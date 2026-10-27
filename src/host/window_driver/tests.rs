@@ -860,9 +860,9 @@ mod screenshot_tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
-    use crate::ui::screenshot::{Screenshot, ScreenshotId};
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
+    use crate::window::screenshot::{Screenshot, ScreenshotId};
 
     /// 64 × 48 physical pixels: logical 64 × 48 at scale 1, 32 × 24 at scale 2.
     const PHYSICAL: UVec2 = UVec2::new(64, 48);
@@ -930,7 +930,7 @@ mod screenshot_tests {
                     .chrome(Chrome::fill(RgbaF32::hex(0x2f6fd0)))
                     .show(ui);
                 if let Frame::Asking(region) = frame {
-                    asked.set(Some(ui.request_screenshot(region)));
+                    asked.set(ui.request_screenshot(region));
                 }
             });
             let repaint = self.window.frame(&mut app).repaint_requested;
@@ -987,7 +987,7 @@ mod screenshot_tests {
         ] {
             let mut scene = Scene::new(format, 1.0);
             let shot = scene.capture(None);
-            let image = shot.image().unwrap();
+            let image = shot.image();
             assert_eq!(image.size(), PHYSICAL, "{format:?}");
             assert_eq!(shot.scale(), 1.0);
             assert_eq!(shot.region(), Rect::new(0.0, 0.0, 64.0, 48.0));
@@ -1001,7 +1001,7 @@ mod screenshot_tests {
     /// At scale 2 the logical region (5.25, 3) + (10 × 6) covers physical x 10.5..30.5 and
     /// y 6..18; rounded out, that is (10, 6) + (21 × 12). A region past the 32 × 24 logical
     /// window is clamped first: (28, 20) + (10 × 10) becomes (28, 20) + (4 × 4), physical
-    /// (56, 40) + (8 × 8). An empty region gives an empty image.
+    /// (56, 40) + (8 × 8). An empty region asks for no image.
     #[test]
     fn a_region_rounds_out_to_whole_physical_pixels() {
         let mut scene = Scene::new(wgpu::TextureFormat::Rgba8UnormSrgb, 2.0);
@@ -1022,7 +1022,7 @@ mod screenshot_tests {
             let shot = scene.capture(Some(region));
             let target = scene.target();
             assert_eq!(shot.region(), clamped);
-            let image = shot.image().unwrap();
+            let image = shot.image();
             assert_eq!(image.size(), size, "{region:?}");
             assert_eq!(shot.scale(), 2.0);
             let crop = imageops::crop_imm(&target, min.x, min.y, size.x, size.y).to_image();
@@ -1032,8 +1032,11 @@ mod screenshot_tests {
             min: Vec2::new(4.0, 4.0),
             size: Size::new(0.0, 3.0),
         };
-        let shot = scene.capture(Some(empty));
-        assert_eq!(shot.image(), None);
+        assert_eq!(
+            scene.window.ui().request_screenshot(Some(empty)),
+            None,
+            "an empty region asks nothing"
+        );
     }
 
     /// A still scene skips its frames; one that asks paints in full anyway, so the image is the
@@ -1045,7 +1048,7 @@ mod screenshot_tests {
             scene.frame(Frame::Still);
         }
         let shot = scene.capture(None);
-        assert_eq!(shot.image().unwrap().pixels, scene.target().into_raw());
+        assert_eq!(shot.image().pixels, scene.target().into_raw());
     }
 
     /// Two regions asked in one frame are two images, each landing in a frame of its own under
@@ -1060,9 +1063,13 @@ mod screenshot_tests {
         );
         let ids = Cell::new(None);
         let mut app = RecordApp::new(|ui: &mut Ui| {
-            let first = ui.request_screenshot(Some(left));
-            let again = ui.request_screenshot(Some(left));
-            let second = ui.request_screenshot(Some(right));
+            let mut ask = |region| {
+                ui.request_screenshot(Some(region))
+                    .expect("a region with pixels")
+            };
+            let first = ask(left);
+            let again = ask(left);
+            let second = ask(right);
             ids.set(Some([first, again, second]));
         });
         scene.window.frame(&mut app);

@@ -1569,7 +1569,7 @@ RgbaF32
 
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
-        pub const fn image(&self) -> Option<&Image>
+        pub const fn image(&self) -> &Image
         pub const fn scale(&self) -> f32
         pub const fn region(&self) -> Rect
 
@@ -2251,7 +2251,7 @@ Ui
         pub const fn set_vsync(&mut self, vsync: Vsync)
         pub const fn vsync(&self) -> Vsync
         pub fn request_repaint(&mut self)
-        pub fn request_screenshot(&mut self, region: Option<Rect>) -> ScreenshotId
+        pub fn request_screenshot(&mut self, region: Option<Rect>) -> Option<ScreenshotId>
         pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot>
         pub fn request_repaint_after(&mut self, after: Duration)
         pub fn open_window(&mut self, token: WindowToken, config: WindowConfig)

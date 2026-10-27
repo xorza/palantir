@@ -118,7 +118,7 @@ fn window_geometry_reports_the_platform_space_not_the_ui_space() {
         .user_scale(UserScale::new(1.25).unwrap());
     zoomed.frame(|_| {});
     assert_eq!(
-        zoomed.ui.display.logical_size().w,
+        zoomed.ui.display().logical_size().w,
         80.0,
         "the UI is laid out in the scaled space",
     );

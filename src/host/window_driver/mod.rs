@@ -31,7 +31,7 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
-use crate::ui::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
+use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
@@ -332,12 +332,12 @@ impl WindowDriver {
                 .front()
                 .and_then(|pending| pending.capture.take())
         }
-        .map(|captured| {
+        .map(|image| {
             let pending = self
                 .captures
                 .pop_front()
                 .expect("the screenshot that landed is the front one");
-            Screenshot::new(captured.image, pending.scale, pending.region, pending.id)
+            Screenshot::new(image, pending.scale, pending.region, pending.id)
         });
         self.ui.set_screenshot_taken(landed);
     }
@@ -488,6 +488,11 @@ impl WindowDriver {
                     let backbuffer = backbuffer
                         .expect("a frame with a screenshot request paints through the backbuffer");
                     let region = request.region.clamp_to(display.logical_rect());
+                    // An ask made between frames, before the window shrank past its region, has
+                    // no pixel left to copy: no image lands for it, as for an empty ask.
+                    if region.is_paint_empty() {
+                        continue;
+                    }
                     self.captures.push_back(PendingScreenshot {
                         capture: backend.capture(backbuffer, physical_region(region, display)),
                         region,

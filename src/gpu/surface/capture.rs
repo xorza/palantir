@@ -18,8 +18,7 @@ const MAP_FAILED: u8 = 2;
 /// blocking the frame; [`Self::take`] hands the pixels over once the device is done.
 #[derive(Debug)]
 pub(crate) struct Capture {
-    /// `None` for an empty region, which needs no copy.
-    staging: Option<Staging>,
+    staging: Staging,
     size: UVec2,
 }
 
@@ -31,13 +30,6 @@ struct Staging {
     /// Written by the map callback, read by [`Capture::take`]; the callback runs inside a device
     /// poll, on whichever thread polls.
     state: Arc<AtomicU8>,
-}
-
-/// What a finished [`Capture`] holds.
-#[derive(Debug)]
-pub(crate) struct Captured {
-    /// `None` for an empty region.
-    pub(crate) image: Option<Image>,
 }
 
 impl Capture {
@@ -55,12 +47,10 @@ impl Capture {
         backbuffer: &Backbuffer,
         region: URect,
     ) -> Self {
-        if region.size.x == 0 || region.size.y == 0 {
-            return Self {
-                staging: None,
-                size: UVec2::ZERO,
-            };
-        }
+        debug_assert!(
+            region.size.x > 0 && region.size.y > 0,
+            "an empty region asks no capture: {region:?}"
+        );
         let full = backbuffer.size();
         debug_assert!(
             region.min.x + region.size.x <= full.x && region.min.y + region.size.y <= full.y,
@@ -129,20 +119,18 @@ impl Capture {
                 mapped.store(done, Ordering::Release);
             });
         Self {
-            staging: Some(Staging {
+            staging: Staging {
                 buffer,
                 padded_row,
                 state,
-            }),
+            },
             size: region.size,
         }
     }
 
     /// Whether the copy's map callback has yet to run. A lost device runs it too, with a failure.
     pub(crate) fn is_pending(&self) -> bool {
-        self.staging
-            .as_ref()
-            .is_some_and(|staging| staging.state.load(Ordering::Acquire) == MAP_PENDING)
+        self.staging.state.load(Ordering::Acquire) == MAP_PENDING
     }
 
     /// The pixels, once the device has finished the copy and a poll ran its map callback; `None`
@@ -151,10 +139,8 @@ impl Capture {
     /// # Panics
     ///
     /// When the copy failed to map, which only a lost device does.
-    pub(crate) fn take(&self) -> Option<Captured> {
-        let Some(staging) = &self.staging else {
-            return Some(Captured { image: None });
-        };
+    pub(crate) fn take(&self) -> Option<Image> {
+        let staging = &self.staging;
         match staging.state.load(Ordering::Acquire) {
             MAP_PENDING => return None,
             MAP_DONE => {}
@@ -175,7 +161,7 @@ impl Capture {
         staging.buffer.unmap();
         let image = Image::from_srgba8(self.size, pixels)
             .expect("a copy of a non-empty region holds four bytes per pixel");
-        Some(Captured { image: Some(image) })
+        Some(image)
     }
 }
 
@@ -214,11 +200,11 @@ pub(crate) mod internals {
                 mapped_at_creation: false,
             });
             Self {
-                staging: Some(Staging {
+                staging: Staging {
                     buffer,
                     padded_row: wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
                     state,
-                }),
+                },
                 size: UVec2::ONE,
             }
         }

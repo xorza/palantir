@@ -134,7 +134,7 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
         button: rect,
     } = warm(button);
     let origin = rect.center();
-    let (base_settles, base_records) = (h.ui.frame_runtime().settle_frames, h.ui.frame_id());
+    let (base_settles, base_records) = (h.ui.frame_runtime().settle_frames(), h.ui.frame_id());
 
     h.press_at(origin);
     h.move_to(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
@@ -151,7 +151,7 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
         "nine full-record frames were driven",
     );
     assert_eq!(
-        h.ui.frame_runtime().settle_frames - base_settles,
+        h.ui.frame_runtime().settle_frames() - base_settles,
         1,
         "only the threshold-crossing frame settles; the drag body is free",
     );

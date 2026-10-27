@@ -1,6 +1,7 @@
 //! Backend-agnostic window vocabulary shared by the recorder ([`Ui`](crate::Ui)) and the windowing host ([`WinitHost`](crate::WinitHost)). Both depend into this module and neither back out, so [`WindowRequests`](window_requests::WindowRequests), [`WindowFrameState`](window_frame_state::WindowFrameState) and [`WindowConfig`](window_config::WindowConfig) carry no winit/wgpu types.
 
 pub(crate) mod cursor_icon;
+pub(crate) mod screenshot;
 pub(crate) mod vsync;
 pub(crate) mod window_commands;
 pub(crate) mod window_config;

@@ -12,7 +12,6 @@ mod frame_stats_readout;
 pub(crate) mod inspected_widget;
 pub(crate) mod layer_scope;
 pub(crate) mod resources;
-pub(crate) mod screenshot;
 pub(crate) mod singletons;
 pub(crate) mod state;
 
@@ -90,14 +89,16 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
-use crate::ui::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
 use crate::window::cursor_icon::CursorIcon;
+use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_directory::WindowDirectory;
+#[cfg(feature = "winit")]
+use crate::window::window_frame_state::WindowFacts;
 use crate::window::window_frame_state::WindowFrameState;
 use crate::window::window_geometry::WindowGeometry;
 use crate::window::window_output::WindowOutput;
@@ -119,6 +120,9 @@ pub struct Ui {
     /// Refcounted so a widget can hold the theme across the `&mut Ui` its `show`
     /// takes; cloning the bundle per widget per frame would be a large copy.
     theme: Rc<Theme>,
+    /// Bumped by every theme write, so a frame can tell its tree was recorded under another
+    /// theme (`RecordBaseline`).
+    theme_epoch: u32,
     /// Cross-frame widget state, keyed by `WidgetId`.
     state: StateMap,
     /// State shared across all instances of a widget kind.
@@ -131,12 +135,7 @@ pub struct Ui {
     /// Cascaded clip/disabled/invisible/transform per node plus the hit index.
     /// Written in the paint phase; read by the encoder, input dispatch and damage.
     cascade: Cascade,
-    /// Whether [`Self::cascade`] is the last painted frame's; only then does
-    /// [`SeenIds::last_frame_endpoint`](crate::scene::seen_ids::SeenIds::last_frame_endpoint)
-    /// name a row of it.
-    cascade_is_last_frame: bool,
     input: InputState,
-    display: Display,
     animation: AnimationMap,
     /// Frame clock, wake queue, repaint/relayout flags and prior-frame validity.
     frame_runtime: FrameRuntime,
@@ -144,14 +143,6 @@ pub struct Ui {
     window_requests: WindowRequests,
     /// Host-to-recorder facts refreshed before each windowed frame.
     window_frame: WindowFrameState,
-    /// The images this frame asked for, one per distinct region; the driver takes them once the
-    /// frame is recorded.
-    screenshot_requests: Vec<ScreenshotRequest>,
-    /// The id the next new ask takes.
-    next_screenshot_id: ScreenshotId,
-    /// The image that landed for this frame, if one did; replaced or cleared before every frame.
-    /// Boxed: a rare, cold value kept out of the fields every pass walks (`hot_struct_sizes`).
-    screenshot_taken: Option<Box<Screenshot>>,
 }
 
 /// Widget- and host-facing authoring API; mostly one-line delegations to sealed subsystems.
@@ -162,7 +153,7 @@ impl Ui {
             layout: &self.layout,
             cascade: &self.cascade,
             gpu_views: &self.gpu_views,
-            stamp: FrameStamp::new(self.display, self.frame_runtime.time),
+            stamp: self.frame_runtime.stamp(),
         }
     }
 
@@ -178,21 +169,17 @@ impl Ui {
             resources,
             forest: Forest::default(),
             theme: Rc::default(),
+            theme_epoch: 0,
             state: StateMap::default(),
             singletons: Singletons::default(),
             gpu_views: GpuViews::default(),
             layout: Layout::default(),
             cascade: Cascade::default(),
-            cascade_is_last_frame: false,
             input: InputState::default(),
-            display: Display::default(),
             animation: AnimationMap::default(),
             frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
             window_frame: WindowFrameState::default(),
-            screenshot_requests: Vec::new(),
-            next_screenshot_id: ScreenshotId::FIRST,
-            screenshot_taken: None,
         }
     }
 
@@ -215,6 +202,7 @@ impl Ui {
     #[inline]
     pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>) {
         self.theme = theme.into();
+        self.theme_epoch = self.theme_epoch.wrapping_add(1);
     }
 
     /// Drive one application frame for `input.window` via [`FrameCycle`]. Pass the
@@ -323,14 +311,14 @@ impl Ui {
              frame's record, so there is nothing for it to retry — drop the \
              call, or move the work into App::update",
         );
-        self.frame_runtime.relayout_requested = true;
+        self.frame_runtime.request_relayout();
     }
 
     /// Monotonic time of the current frame, accumulated from host `dt`s. Pair with
     /// [`Self::request_repaint`] for continuous animation.
     #[inline]
     pub const fn now(&self) -> Duration {
-        self.frame_runtime.time
+        self.frame_runtime.stamp().time
     }
 
     /// Request the mouse cursor. Last writer wins; reset to [`CursorIcon::Default`]
@@ -367,7 +355,7 @@ impl Ui {
             render_frame = self.frame_runtime.render_frame_id,
             "request_repaint",
         );
-        self.frame_runtime.repaint_requested = true;
+        self.frame_runtime.request_repaint();
     }
 
     /// Ask for an image of this frame: the whole window for `None`, else `region` in logical
@@ -380,29 +368,27 @@ impl Ui {
     ///
     /// # Panics
     ///
+    /// An empty region, or one wholly outside the window, holds no pixel and asks nothing:
+    /// `None`, with no image to wait for. An ask made between frames whose region the window
+    /// shrinks past before the next frame lands nothing either.
+    ///
+    /// # Panics
+    ///
     /// Panics if `region` is not finite: its corner and its size are *offsets*. A negative size
     /// is an empty region, as it paints nothing.
     #[track_caller]
-    pub fn request_screenshot(&mut self, region: Option<Rect>) -> ScreenshotId {
-        let window = self.display.logical_rect();
+    pub fn request_screenshot(&mut self, region: Option<Rect>) -> Option<ScreenshotId> {
+        let window = self.frame_runtime.stamp().display.logical_rect();
         let region = region.map_or(window, |region| {
             vec2::offset(region.min);
             vec2::offset(Vec2::new(region.size.w, region.size.h));
             region.clamp_to(window)
         });
-        self.frame_runtime.repaint_requested = true;
-        if let Some(asked) = self
-            .screenshot_requests
-            .iter()
-            .find(|asked| asked.region == region)
-        {
-            return asked.id;
+        if region.is_paint_empty() {
+            return None;
         }
-        let id = self.next_screenshot_id;
-        self.next_screenshot_id = id.next();
-        self.screenshot_requests
-            .push(ScreenshotRequest { region, id });
-        id
+        self.frame_runtime.request_repaint();
+        Some(self.window_requests.ask_screenshot(region))
     }
 
     /// The image the ask `id` of [`Self::request_screenshot`] got, during the one frame it lands
@@ -410,7 +396,8 @@ impl Ui {
     /// frame. Images land in the order they were asked for, one per frame, and the frame one
     /// lands in records.
     pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot> {
-        self.screenshot_taken
+        self.window_frame
+            .screenshot
             .as_deref()
             .filter(|screenshot| screenshot.id() == id)
     }
@@ -418,15 +405,15 @@ impl Ui {
     /// Move the images this frame asked for onto `into`, as the driver takes them once the frame
     /// is recorded.
     pub(crate) fn take_screenshot_requests(&mut self, into: &mut Vec<ScreenshotRequest>) {
-        into.append(&mut self.screenshot_requests);
+        into.append(&mut self.window_requests.screenshots);
     }
 
     /// Hand the next frame the image that landed for it, or none.
     pub(crate) fn set_screenshot_taken(&mut self, screenshot: Option<Screenshot>) {
         if screenshot.is_some() {
-            self.frame_runtime.repaint_requested = true;
+            self.frame_runtime.request_repaint();
         }
-        self.screenshot_taken = screenshot.map(Box::new);
+        self.window_frame.screenshot = screenshot.map(Box::new);
     }
 
     /// Schedule a one-shot wake at `now + after`. Duplicate deadlines collapse.
@@ -437,11 +424,11 @@ impl Ui {
             render_frame = self.frame_runtime.render_frame_id,
             "request_repaint_after",
         );
-        let deadline = self.frame_runtime.time.saturating_add(after);
+        let deadline = self.frame_runtime.stamp().time.saturating_add(after);
         self.frame_runtime.schedule_wake(
             deadline,
             WakeReasons::REAL,
-            self.display.refresh_millihertz,
+            self.frame_runtime.stamp().display.refresh_millihertz,
         );
     }
 
@@ -506,12 +493,17 @@ impl Ui {
     /// Publish this frame's window-manager facts. Asserts the previous close veto
     /// did not survive; [`Self::drain_window_output`] clears it.
     #[cfg(feature = "winit")]
-    pub(crate) fn set_window_facts(&mut self, facts: WindowFrameState) {
+    pub(crate) fn set_window_facts(&mut self, facts: WindowFacts) {
         debug_assert!(
             !self.window_requests.close_vetoed,
             "a veto outlived the frame that raised it",
         );
-        self.window_frame = facts;
+        let WindowFacts {
+            close_requested,
+            placement,
+        } = facts;
+        self.window_frame.close_requested = close_requested;
+        self.window_frame.placement = placement;
     }
 
     /// Seed the pacing level from the swapchain the host opened, so a control
@@ -531,7 +523,7 @@ impl Ui {
     ) -> WindowOutput {
         let close_requested = self.window_frame.close_requested;
         let levels = self.window_requests.drain(token, close_requested, commands);
-        self.window_frame = WindowFrameState::default();
+        self.window_frame.clear_facts();
         levels
     }
 
@@ -550,7 +542,7 @@ impl Ui {
         reason = "a display's logical size is non-negative"
     )]
     pub fn window_geometry(&self) -> WindowGeometry {
-        let logical = self.display.system_logical_size();
+        let logical = self.frame_runtime.stamp().display.system_logical_size();
         WindowGeometry {
             inner_size: UVec2::new(
                 (logical.w.round() as u32).max(1),
@@ -590,7 +582,7 @@ impl Ui {
             frame_id: self.frame_runtime.frame_id,
             render_frame_id: self.frame_runtime.render_frame_id,
             fps: self.frame_runtime.fps_ema,
-            settle_frames: self.frame_runtime.settle_frames,
+            settle_frames: self.frame_runtime.settle_frames(),
             gpu: self.resources.diagnostics().gpu_pass_stats.last_pass(),
         }
     }
@@ -856,9 +848,9 @@ impl Ui {
     #[inline]
     fn last_frame_location(&self, id: WidgetId) -> Option<WidgetLocation> {
         let endpoint = match self.forest.ids.last_frame_endpoint(id) {
-            LastFrame::At(endpoint) if self.cascade_is_last_frame => Some(endpoint),
-            LastFrame::Absent if self.cascade_is_last_frame => None,
-            _ => return self.cascade.locate(id),
+            LastFrame::At(endpoint) => Some(endpoint),
+            LastFrame::Absent => None,
+            LastFrame::Unknown => return self.cascade.locate(id),
         };
         debug_assert_eq!(
             endpoint,
@@ -942,7 +934,7 @@ impl Ui {
         };
         let r = self.animation.animate(request, spec, clock);
         if !r.settled {
-            self.frame_runtime.repaint_requested = true;
+            self.frame_runtime.request_repaint();
         }
         r.cur
     }
@@ -975,7 +967,7 @@ impl Ui {
     /// Active `Display` (physical surface size and both scale factors).
     #[inline]
     pub const fn display(&self) -> Display {
-        self.display
+        self.frame_runtime.stamp().display
     }
 
     /// The application's own scale, multiplied onto the platform's. `UserScale::ONE`
@@ -1237,12 +1229,12 @@ pub(crate) mod internals {
         /// Set the last frame's stamp. `Some` makes the next frame warm (skips warmup); `None` is a
         /// cold start.
         pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
-            self.frame_runtime.prev_stamp = stamp;
+            self.frame_runtime.set_prev_stamp(stamp);
         }
 
         /// Replace the display the next frame lays out at, as the window driver does.
         pub(crate) const fn set_display(&mut self, display: Display) {
-            self.display = display;
+            self.frame_runtime.set_display(display);
         }
     }
 
@@ -1326,6 +1318,7 @@ pub(crate) mod internals {
         /// [`set_theme`](Ui::set_theme). Copy-on-write, so a handle from [`Ui::theme`]
         /// keeps its values.
         pub fn theme_mut(&mut self) -> &mut Theme {
+            self.theme_epoch = self.theme_epoch.wrapping_add(1);
             Rc::make_mut(&mut self.theme)
         }
     }

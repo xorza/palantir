@@ -46,16 +46,6 @@ the measure-cache hit test.
   measure and arrange write directly, indexed by a layer base. A hit copies
   prev → cur once, and `end_frame` swaps. (Structural: after the bugs.)
 
-## Frame cycle
-
-- **The frame plan checks the record baseline.** Frame entry compares theme
-  identity and the font epoch with the last record. A move forces
-  `FullRecord`. The damage PaintOnly arm then only asserts.
-- **`FrameRuntime` owns the frame stamp.** The display and the time of the
-  current frame live together, with `begin_frame` and `end_frame`. The
-  screenshot request moves to `WindowRequests`, and the landed image to
-  `WindowFrameState`.
-
 ## Resources
 
 - **Atlas eviction matches the allocator's unit of reclaim.** Evict whole
@@ -121,42 +111,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 8: Theme values and the spinner
-
-Files: `src/theme/tests/`.
-
-- [ ] **The theme-file fuzz leaves out `1e30`.** `theme/tests/file_values.rs:20`.
-  Target: `1e30` in `SUSPECTS`, after the `.notes/ISSUES.md` entry on large
-  theme lengths is fixed.
-
-## Batch 12: Frame plan and `Ui` state
-
-Files: `src/ui/{frame_runtime/, frame_cycle.rs, mod.rs, frame_report.rs,
-screenshot.rs}`, `src/damage/`, `src/window/window_requests/`, `src/lib.rs`.
-
-- [ ] **A PaintOnly frame paints a stale tree.**
-  `frame_runtime/mod.rs:153-199`, `damage/engine.rs:307-318`. After
-  `set_theme` through `OffscreenHost::ui()`, or a font load in another window,
-  a caret blink repaints old widget colors or old text layout until input
-  arrives. Target: the classify input carries the record baseline (font epoch,
-  theme identity) and forces `FullRecord` on a move; the damage arm asserts.
-  Tests for both cases.
-- [ ] **Frame state is loose on `Ui`.** `ui/mod.rs:133-159, 368-397, 820-832`,
-  `frame_cycle.rs:112-125, 205-209, 257-258, 287-288, 309-316`. Target:
-  `FrameRuntime` owns `stamp` with `begin_frame`/`end_frame`; screenshot
-  fields move to `WindowRequests`/`WindowFrameState`; `SeenIds` owns the
-  cascade pairing; owners' fields are written through methods.
-- [ ] **`FrameReport::repaint_requested` documents one of five writers.**
-  `frame_report.rs:296`. Target: "another frame is owed after this one".
-- [ ] **Re-export docs attach to the wrong items.** `lib.rs:139-141, 274-276,
-  283-285`. Target: no doc comments on `pub use` lines.
-- [ ] **Fields widened for tests.** `damage/engine.rs:165-180`,
-  `damage/node_snapshot.rs:313`, `frame_runtime/mod.rs:73, 81`. Target:
-  private, with accessors in each file's `internals`; `winit/tests.rs:137`
-  goes through `schedule_wake`.
-- [ ] **[public] `Screenshot` duplicates `Image`.** `ui/screenshot.rs:85-128`.
-  Target: `Screenshot { image: Image, scale, region }`.
 
 ## Batch 13: Widget keyboard and response primitives
 

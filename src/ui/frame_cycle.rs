@@ -17,9 +17,8 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
-use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan};
+use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan, RecordBaseline};
 use crate::ui::frame_stats_readout;
-use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_token::WindowToken;
 use std::mem;
 
@@ -52,20 +51,24 @@ impl<'a> FrameCycle<'a> {
         );
 
         let first_frame = self.ui.frame_runtime.is_first_frame();
-        self.ui.frame_runtime.advance_clock(stamp.time);
+        self.ui.frame_runtime.begin_frame(stamp);
         self.ui
             .frame_runtime
             .tick_text_clock(self.ui.resources.text());
+        let record_baseline = RecordBaseline {
+            theme_epoch: self.ui.theme_epoch,
+            font_epoch: self.ui.resources.text().font_epoch(),
+        };
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
+            record_baseline,
             damage_baseline_valid,
             input_policy: self.ui.input_policy(),
             input_signal: self.ui.input.signal_since_last_frame(),
             close_requested: self.ui.close_requested(),
         });
 
-        self.ui.frame_runtime.relayout_requested = false;
-        self.ui.display = stamp.display;
+        self.ui.frame_runtime.begin_pass();
 
         let processing = match plan {
             FramePlan::PaintOnly => {
@@ -87,11 +90,11 @@ impl<'a> FrameCycle<'a> {
                     tracy::zone!("Ui::record_pass.A");
                     self.record_pass(win, app)
                 };
-                let double_layout = action_flag || self.ui.frame_runtime.relayout_requested;
+                let double_layout = action_flag || self.ui.frame_runtime.relayout_requested();
                 if double_layout {
                     tracy::zone!(
                         "Ui::record_pass.B",
-                        text = if self.ui.frame_runtime.relayout_requested {
+                        text = if self.ui.frame_runtime.relayout_requested() {
                             "relayout"
                         } else {
                             "action"
@@ -113,7 +116,7 @@ impl<'a> FrameCycle<'a> {
         self.ui.frame_runtime.note_processing(processing);
 
         // `ids.removed` feeds damage; PaintOnly recorded nothing, so pass an empty set.
-        let surface = self.ui.display.logical_rect();
+        let surface = self.ui.frame_runtime.stamp().display.logical_rect();
         let prev_time = self.ui.frame_runtime.prev_stamp.map(|s| s.time);
         let baseline = FrameBaseline {
             clear: self.ui.theme.window_clear,
@@ -141,25 +144,20 @@ impl<'a> FrameCycle<'a> {
             self.ui.frame_runtime.schedule_wake(
                 min_wake,
                 WakeReasons::ANIMATION,
-                self.ui.display.refresh_millihertz,
+                self.ui.frame_runtime.stamp().display.refresh_millihertz,
             );
         }
 
-        self.ui.frame_runtime.prev_stamp = Some(stamp);
+        self.ui.frame_runtime.end_frame();
 
         // The input frame boundary: held events apply against this frame's cascade; anything input owes the frame asks for it here, since no host event will.
         if self.ui.input.next_frame(&self.ui.cascade) {
-            self.ui.frame_runtime.repaint_requested = true;
+            self.ui.frame_runtime.request_repaint();
         }
 
         let report = FrameReport {
-            repaint_requested: self.ui.frame_runtime.repaint_requested,
-            repaint_after: self
-                .ui
-                .frame_runtime
-                .repaint_wakes
-                .first()
-                .map(|w| w.deadline),
+            repaint_requested: self.ui.frame_runtime.repaint_requested(),
+            repaint_after: self.ui.frame_runtime.next_wake(),
             plan: RenderPlan::from_damage(damage, baseline.clear),
             processing,
         };
@@ -196,8 +194,7 @@ impl<'a> FrameCycle<'a> {
         let warmup_input = mem::replace(&mut self.ui.input, saved_input);
         self.ui.input.adopt_warmup(&warmup_input);
         self.ui.input.refresh_pointer_targets(&self.ui.cascade);
-        self.ui.frame_runtime.relayout_requested = false;
-        self.ui.frame_runtime.repaint_requested = false;
+        self.ui.frame_runtime.withdraw_requests();
     }
 
     /// One `pre_record`, user record, drain action flag, `post_record` cycle; returns whether it saw action input (which triggers a second pass).
@@ -226,8 +223,7 @@ impl<'a> FrameCycle<'a> {
         tracy::zone!("Ui::pre_record");
         self.ui.forest.pre_record();
         self.ui.input.pre_record(&self.ui.cascade);
-        self.ui.window_requests.levels.cursor = CursorIcon::default();
-        self.ui.window_requests.levels.ime_area = None;
+        self.ui.window_requests.begin_pass();
     }
 
     /// Record half of a pass: finalize hashes, measure, arrange, cascade. Cascade runs here so pass B of a `request_relayout` frame reads pass A's rects via [`Ui::response_for`]. Stale cache entries can't match live keys and are reaped in `finalize_frame`.
@@ -236,26 +232,25 @@ impl<'a> FrameCycle<'a> {
         self.ui.forest.post_record();
         self.engines.layout.run(
             &self.ui.forest,
-            self.ui.display.logical_rect(),
+            self.ui.frame_runtime.stamp().display.logical_rect(),
             &mut self.ui.layout,
         );
         self.engines.cascade.run(
             CascadeSource {
                 forest: &self.ui.forest,
                 layout: &self.ui.layout,
-                display: self.ui.display,
+                display: self.ui.frame_runtime.stamp().display,
                 font_epoch: self.ui.resources.text().font_epoch(),
             },
             &mut self.ui.cascade,
         );
-        self.ui.cascade_is_last_frame = false;
+        self.ui.forest.ids.cascade_ran();
     }
 
     /// Paint half of the frame: diffs seen ids against the last painted frame, fans `removed` out to per-widget caches, runs input and damage. Once per [`Self::run`], so a widget vanishing in pass A and returning in pass B keeps its state.
     fn finalize_frame(&mut self) {
         tracy::zone!("Ui::finalize_frame");
         let removed = self.ui.forest.ids.rollover();
-        self.ui.cascade_is_last_frame = true;
         self.engines.layout.text.end_frame(removed);
         self.ui.animation.sweep_removed(removed);
         self.ui.state.sweep_removed(removed);

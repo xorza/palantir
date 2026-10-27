@@ -24,13 +24,13 @@ use std::time::Duration;
 #[derive(Debug, Default)]
 pub(crate) struct DamageEngine {
     /// Last frame's snapshot, **only for widgets with paint rows** (see the module doc). `WidgetId` is unique across planes (`SeenIds::resolve`), so the bare key is safe.
-    pub(crate) prev: WidgetIdMap<NodeSnapshot>,
-    pub(crate) paints: BlockArena<Paint>,
+    pub(super) prev: WidgetIdMap<NodeSnapshot>,
+    pub(super) paints: BlockArena<Paint>,
     /// What the last presented frame was painted under, or `None`: the frame-wide half of the baseline [`Self::prev`] holds per widget. See [`FrameBaseline`], [`Self::note_presented`].
     presented: Option<FrameBaseline>,
     matcher: RowMatcher,
     /// Pass-1 scratch: every damage source appends here unmerged; pass 2 collapses it via `DamageRegion::collapse_from`.
-    pub(crate) raw_rects: Vec<Rect>,
+    pub(super) raw_rects: Vec<Rect>,
 
     /// Scratch for [`build_row_extents`](crate::damage::plane_walk::PlaneWalk::build_row_extents), fed to [`emit_inverted_overlaps`](crate::damage::plane_walk::PlaneWalk::emit_inverted_overlaps); filled only when a node's row order inverted.
     order_extents: Vec<Rect>,
@@ -39,7 +39,7 @@ pub(crate) struct DamageEngine {
 
     root_order: RootOrder,
 
-    pub(crate) counters: DamageCounters,
+    pub(super) counters: DamageCounters,
 }
 
 /// Per-frame inputs shared by [`DamageEngine::compute`] and [`DamageEngine::compute_paint_only`]; `time.prev` is `None` on the first frame, when both skip predamage.
@@ -165,14 +165,15 @@ impl DamageEngine {
         ))
     }
 
-    /// PaintOnly fast path: the tree wasn't rebuilt, so Pass 1 is skipped and only predamaged anim rects remain, unless a frame-wide input moved.
+    /// PaintOnly fast path: the tree wasn't rebuilt, so Pass 1 is skipped and only predamaged anim rects remain. The frame plan records again on any move of what the tree was built under, so the baseline it presents under is the last one.
     pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Option<Damage> {
         tracy::zone!();
         self.counters.begin_pass();
-        // A theme swapped between frames of a retained tree reaches the surface here or nowhere. `prev` stands: it describes the tree being repainted.
-        if self.presented != Some(input.baseline) {
-            return self.note_presented(input.baseline, Some(Damage::Full));
-        }
+        debug_assert_eq!(
+            self.presented,
+            Some(input.baseline),
+            "a paint-only frame under a moved baseline: the frame plan must have recorded",
+        );
         self.raw_rects.clear();
         self.extend_predamaged(&input);
         let damage = self.finish_region(input.surface);
@@ -212,16 +213,36 @@ impl DamageEngine {
     }
 }
 
+#[cfg(feature = "internals")]
+impl DamageEngine {
+    /// This frame's damage rects before they collapse, for the frame harness.
+    pub(crate) fn raw_rects(&self) -> &[Rect] {
+        &self.raw_rects
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::cascade::paint::Paint;
     use crate::cascade::paint::PaintRows as _;
+    use crate::damage::counters::DamageCounters;
     use crate::damage::engine::DamageEngine;
+    use crate::damage::node_snapshot::NodeSnapshot;
     use crate::internals::scratch_report;
     use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 
     impl DamageEngine {
+        /// What the last pass counted.
+        pub(crate) const fn counters(&self) -> &DamageCounters {
+            &self.counters
+        }
+
+        /// Last frame's snapshot of each painting widget.
+        pub(crate) const fn prev(&self) -> &WidgetIdMap<NodeSnapshot> {
+            &self.prev
+        }
+
         /// The buffers no frame reads from an earlier one; `prev` and `paints` are the baseline, and `root_order` holds both kinds.
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
