@@ -91,7 +91,8 @@ impl TextBackend {
         let mut glyphs = None;
         for r in runs {
             let run_key = EncodedRunKey::for_row(r, scale);
-            if self.encoder.try_emit_cached(&mut self.pass, &run_key) {
+            let text = interned_text.resolve(r.text.span);
+            if self.encoder.try_emit_cached(&mut self.pass, &run_key, text) {
                 continue;
             }
             let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());

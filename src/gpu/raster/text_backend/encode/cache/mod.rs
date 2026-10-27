@@ -24,7 +24,35 @@ use crate::text::render::GlyphRasterKey;
 #[derive(Clone, Copy, Debug)]
 struct EncodedEntry {
     span: Span,
+    /// The run's source text, in [`EncodedCache::texts`], so a hit replays only for its own
+    /// text: the key carries a hash of it, which two texts can share.
+    text: Span,
+    text_len: u32,
     last_use: u64,
+}
+
+/// Bytes of source text one [`TextChunk`] holds.
+const CHUNK_BYTES: usize = 8;
+
+/// Eight bytes of a cached run's source text, the slot its text is stored in.
+#[derive(Clone, Copy, Debug)]
+struct TextChunk([u8; CHUNK_BYTES]);
+
+/// The link rides in the first four bytes: nothing reads a free block's text.
+impl BlockSlot for TextChunk {
+    /// 64-byte blocks: most labels fit one.
+    const GRANULE: u32 = 8;
+
+    fn free_link(next: Option<NonMaxU32>) -> Self {
+        let mut bytes = [0; CHUNK_BYTES];
+        bytes[..4].copy_from_slice(&non_max_u32::to_raw(next).to_le_bytes());
+        Self(bytes)
+    }
+
+    fn next_free(self) -> Option<NonMaxU32> {
+        let [a, b, c, d, ..] = self.0;
+        NonMaxU32::from_raw(u32::from_le_bytes([a, b, c, d]))
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -67,6 +95,9 @@ impl BlockSlot for EncodedGlyph {
 pub(crate) struct EncodedCache {
     map: FxHashMap<EncodedKey, EncodedEntry>,
     arena: BlockArena<EncodedGlyph>,
+    texts: BlockArena<TextChunk>,
+    /// Where [`Self::settle`] chunks a run's text before storing it.
+    text_scratch: Vec<TextChunk>,
     /// Where [`Self::stage`] accumulates a row's glyphs before its length is known.
     /// Separate from the arena tail so the block is sized from the finished row, which
     /// lets `block_class(span.len)` recover capacity without storing it.
@@ -82,6 +113,8 @@ impl Default for EncodedCache {
         Self {
             map: FxHashMap::default(),
             arena: BlockArena::default(),
+            texts: BlockArena::default(),
+            text_scratch: Vec::new(),
             pending: Vec::new(),
             expiry: ExpiryWheel::with_keep(ENCODED_CACHE_KEEP_FRAMES),
             counters: EncodedCounters::default(),
@@ -90,20 +123,24 @@ impl Default for EncodedCache {
 }
 
 impl EncodedCache {
-    /// Replay `run_key`'s template into `pass`, shifted to its origin. `false` means
-    /// no live template and the caller owes a full
-    /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run). Each
-    /// instance refreshes its atlas slot's LRU stamp, so `evict_one` can't reclaim a
-    /// slot this frame draws.
+    /// Replay `run_key`'s template of `text` into `pass`, shifted to its origin. `false`
+    /// means no live template of `text` and the caller owes a full
+    /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run), whose settle
+    /// replaces a row another text left under the key. Each instance refreshes its atlas
+    /// slot's LRU stamp, so `evict_one` can't reclaim a slot this frame draws.
     pub(super) fn emit_cached(
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,
         run_key: &EncodedRunKey,
+        text: &str,
     ) -> bool {
         let cur_frame = pass.atlas.cur_frame;
         let Some(entry) = self.map.get_mut(&run_key.key) else {
             return false;
         };
+        if !holds(&self.texts, entry, text) {
+            return false;
+        }
         let glyphs = &self.arena.slots[entry.span.range()];
         let out_start = pass.instances.len();
         pass.instances.reserve(glyphs.len());
@@ -127,6 +164,7 @@ impl EncodedCache {
             // row now, or a y-culled run would pay the failed lookup every frame.
             if let Some(dead) = self.map.remove(&run_key.key) {
                 self.arena.release(dead.span);
+                self.texts.release(dead.text);
             }
             return false;
         }
@@ -154,6 +192,7 @@ impl EncodedCache {
     pub(super) fn sweep(&mut self, cur_frame: u64) {
         let map = &mut self.map;
         let arena = &mut self.arena;
+        let texts = &mut self.texts;
         let probe = &mut self.counters;
         // No stamp check: `last_use` only moves a deadline out, so every ticket that
         // fires is live.
@@ -169,7 +208,9 @@ impl EncodedCache {
                 return Some(dies_at);
             }
             probe.expiries.bump();
-            arena.release(slot.remove().span);
+            let dead = slot.remove();
+            arena.release(dead.span);
+            texts.release(dead.text);
             None
         });
     }
@@ -179,12 +220,14 @@ impl EncodedCache {
     /// keys carry cosmic's `font_id`, which fontdb never reuses.
     pub(super) fn clear(&mut self) {
         let arena = &mut self.arena;
+        let texts = &mut self.texts;
         #[expect(
             clippy::iter_over_hash_type,
             reason = "each span returns to the arena alone, so the order changes nothing"
         )]
         for (_, entry) in self.map.drain() {
             arena.release(entry.span);
+            texts.release(entry.text);
         }
         self.expiry.clear();
     }
@@ -194,11 +237,19 @@ impl EncodedCache {
     /// `EncodedKey` carries neither bounds nor atlas occupancy, so a template with a
     /// hole would replay it forever. Incomplete cases are transient (y-culled lines
     /// return; a full atlas clears). An incomplete encode leaves any existing row intact.
-    pub(super) fn settle(&mut self, key: EncodedKey, frame: u64, coverage: EncodeCoverage) {
+    pub(super) fn settle(
+        &mut self,
+        key: EncodedKey,
+        text: &str,
+        frame: u64,
+        coverage: EncodeCoverage,
+    ) {
         // Destructured so the row is held through `map.entry` while the arena is written.
         let Self {
             map,
             arena,
+            texts,
+            text_scratch,
             pending,
             expiry,
             ..
@@ -207,6 +258,14 @@ impl EncodedCache {
             pending.clear();
             return;
         }
+        text_scratch.clear();
+        text_scratch.extend(text.as_bytes().chunks(CHUNK_BYTES).map(|bytes| {
+            let mut chunk = [0; CHUNK_BYTES];
+            chunk[..bytes.len()].copy_from_slice(bytes);
+            TextChunk(chunk)
+        }));
+        let text_len =
+            u32::try_from(text.len()).expect("a run's text spans at most u32::MAX bytes");
         match map.entry(key) {
             // Release before allocating so a re-encode reclaims its own block (a zoom or
             // width drag re-encodes the same glyph count), keeping a steady gesture from
@@ -214,8 +273,11 @@ impl EncodedCache {
             // outstanding ticket re-files off the refreshed `last_use`.
             Entry::Occupied(mut row) => {
                 arena.release(row.get().span);
+                texts.release(row.get().text);
                 row.insert(EncodedEntry {
                     span: arena.store(pending),
+                    text: texts.store(text_scratch),
+                    text_len,
                     last_use: frame,
                 });
             }
@@ -223,6 +285,8 @@ impl EncodedCache {
             Entry::Vacant(slot) => {
                 slot.insert(EncodedEntry {
                     span: arena.store(pending),
+                    text: texts.store(text_scratch),
+                    text_len,
                     last_use: frame,
                 });
                 expiry.schedule(key, dies_at(frame));
@@ -230,6 +294,15 @@ impl EncodedCache {
         }
         pending.clear();
     }
+}
+
+/// Whether `entry` was encoded from `text`, by its bytes.
+fn holds(texts: &BlockArena<TextChunk>, entry: &EncodedEntry, text: &str) -> bool {
+    entry.text_len as usize == text.len()
+        && texts.slots[entry.text.range()]
+            .iter()
+            .zip(text.as_bytes().chunks(CHUNK_BYTES))
+            .all(|(chunk, bytes)| chunk.0[..bytes.len()] == *bytes)
 }
 
 /// Whether an encode placed every glyph of its run.
@@ -350,7 +423,8 @@ pub(crate) mod internals {
                     area_color: u64::from(run),
                     bins: 0,
                 };
-                self.cache.settle(key, self.frame, EncodeCoverage::Complete);
+                self.cache
+                    .settle(key, BENCH_TEXT, self.frame, EncodeCoverage::Complete);
             }
             self.cache.sweep(self.frame);
             self.cache.map.len()
@@ -376,6 +450,9 @@ pub(crate) mod internals {
             self.cache.arena.counters.counts()
         }
     }
+
+    /// The text every bench row was encoded from: one label's worth, one text block.
+    const BENCH_TEXT: &str = "Encoded label";
 
     /// Sweep harness for the `encoded_cache_sweep` benchmark: `rows` live rows of
     /// `glyphs_per_row`, so an iteration measures [`EncodedCache::sweep`] alone.
@@ -413,7 +490,7 @@ pub(crate) mod internals {
                     area_color: 0,
                     bins: 0,
                 };
-                cache.settle(key, frame, EncodeCoverage::Complete);
+                cache.settle(key, BENCH_TEXT, frame, EncodeCoverage::Complete);
                 // Park `last_use` beyond any frame the bench reaches: rows never expire and every
                 // fired ticket re-files, the steady-state load.
                 cache
