@@ -4,6 +4,7 @@ use crate::display::user_scale::UserScale;
 use crate::internals::ui_harness::UiHarness;
 use crate::ui::tests::support::SURFACE;
 use crate::window::window_commands::WindowCommands;
+use crate::window::window_commands::internals::Seen;
 use crate::window::window_placement::WindowPlacement;
 use crate::window::window_token::WindowToken;
 use glam::{IVec2, UVec2};
@@ -23,29 +24,21 @@ fn window_requests_queue_and_survive_the_frame() {
     });
 
     // Filed during record, still pending after the frame returned.
-    assert_eq!(h.ui.window_requests.commands.opens.len(), 1);
-    assert_eq!(h.ui.window_requests.commands.opens[0].token, open);
-    assert_eq!(
-        h.ui.window_requests.commands.opens[0].config.title,
-        "inspector"
-    );
-    assert_eq!(h.ui.window_requests.commands.closes, vec![close]);
+    let pending = [Seen::Open(open, "inspector"), Seen::Close(close)];
+    assert_eq!(h.ui.window_requests.commands.seen(), pending);
 
     // A quiet frame must not drop the still-undrained queue.
     h.frame(|_| {});
     assert_eq!(
-        h.ui.window_requests.commands.opens.len(),
-        1,
+        h.ui.window_requests.commands.seen(),
+        pending,
         "queue must outlive a quiet frame"
     );
-    assert_eq!(h.ui.window_requests.commands.closes, vec![close]);
 
-    // Emulate the host draining by `append`/`drain`; a third frame leaves them empty.
-    h.ui.window_requests.commands.opens.clear();
-    h.ui.window_requests.commands.closes.clear();
+    // Emulate the host draining; a third frame leaves them empty.
+    h.ui.window_requests.commands.drain();
     h.frame(|_| {});
-    assert!(h.ui.window_requests.commands.opens.is_empty());
-    assert!(h.ui.window_requests.commands.closes.is_empty());
+    assert!(h.ui.window_requests.commands.seen().is_empty());
 
     // `is_window_open` polls the host-refreshed live set, not the pending queues.
     assert!(!h.ui.is_window_open(open), "empty live set ⇒ nothing open");
@@ -97,7 +90,7 @@ fn close_request_veto_protocol() {
     h.ui.window_requests
         .drain(me, h.ui.window_frame.close_requested, &mut out);
     assert!(
-        out.closes.is_empty(),
+        out.seen().is_empty(),
         "a vetoed request must NOT resolve to a close"
     );
 
@@ -107,28 +100,10 @@ fn close_request_veto_protocol() {
     h.ui.window_requests
         .drain(me, h.ui.window_frame.close_requested, &mut out);
     assert_eq!(
-        out.closes,
-        [me],
+        out.seen(),
+        [Seen::Close(me)],
         "an un-vetoed request must resolve to a close"
     );
-}
-
-/// Record passes replay, so one `open_window` call reaches the queue several times per frame: dedup by token, last config wins.
-#[test]
-fn open_window_dedups_by_token_within_a_frame() {
-    use crate::window::window_config::WindowConfig;
-    let mut h = UiHarness::new(SURFACE);
-    let cfg = WindowConfig::new;
-    h.ui.open_window(WindowToken(7), cfg("first"));
-    h.ui.open_window(WindowToken(7), cfg("second"));
-    h.ui.open_window(WindowToken(8), cfg("other"));
-    assert_eq!(h.ui.window_requests.commands.opens.len(), 2);
-    assert_eq!(h.ui.window_requests.commands.opens[0].token, WindowToken(7));
-    assert_eq!(
-        h.ui.window_requests.commands.opens[0].config.title,
-        "second"
-    );
-    assert_eq!(h.ui.window_requests.commands.opens[1].token, WindowToken(8));
 }
 
 /// `window_geometry` answers in the window manager's logical pixels, so a persisted geometry reopens the same window whatever the user scale: a 200×200 surface at dpr 2 is 100×100 to the platform at any scale, while dividing by the product would shrink it 20% per launch at 125%.

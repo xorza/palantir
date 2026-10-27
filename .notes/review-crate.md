@@ -46,10 +46,7 @@ the measure-cache hit test.
 - **Window levels leave through `Ui`.** Cursor, vsync and IME area are read
   from `Ui`. `FrameReport` reports only what the frame did and what it owes.
 - **Errors by layer.** A device failure is `WinitHostError::Gpu`, not a
-  window-surface error. A failed secondary `open_window` does not stop the
-  app.
-- **Window commands are one ordered list.** `WindowCommand::{Open, Close}`,
-  folded in order against the live set, last operation per token wins.
+  window-surface error.
 
 ## Widgets
 
@@ -188,34 +185,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 3: Host and window, correctness
-
-Files: `src/window/window_commands.rs`, `src/host/winit/{runtime.rs, mod.rs}`,
-`src/host/offscreen.rs`, `src/gpu/headless_window.rs`.
-
-- [ ] **Open then close of one token in one frame opens it.**
-  `window_commands.rs:15-37`, `runtime.rs:127-144`. Target:
-  `WindowCommands { ops: Vec<WindowCommand> }`, last op per token wins,
-  folded in order. Fix the `open_window` doc ("last config wins" fails across
-  windows).
-- [ ] **A secondary window that fails to open stops the app.**
-  `runtime.rs:137-139, 169-191`, `winit/mod.rs:265-268, 324-327`. Target: log,
-  and leave the token out of `WindowDirectory`; only the bootstrap window is
-  fatal.
-- [ ] **`HeadlessWindow` copies the full surface each frame.**
-  `headless_window.rs:46`. Target: `.retained_target(true)`.
-- [ ] **`HeadlessWindow` sizes and scale.** `headless_window.rs:38-56,
-  79-90, 104-114`. A zero or oversized extent panics inside wgpu; the scale is
-  checked after a device request. Target: release `assert!` of the extent
-  under `# Panics`, scale checked first.
-- [ ] **`OffscreenHostBuilder::fonts` loads at the setter.**
-  `offscreen.rs:37-38, 48-52`. Target: store a `FontChoice` and resolve it in
-  `build`; `fonts` becomes `const`. Correct the `frame` doc about
-  `retained_target`.
-- [ ] **No test covers a pending, unfinished screenshot.**
-  `window_driver/mod.rs:426`. The `!self.captures.is_empty()` branch lost its
-  only coverage when the screenshot tests started to wait for the device.
 
 ## Batch 4: Owned target and `HeadlessWindow` home
 

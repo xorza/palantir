@@ -34,25 +34,29 @@ impl HeadlessWindow {
     ///
     /// # Panics
     ///
-    /// Panics if `scale` is non-finite or below `1e-4`, as [`OffscreenHost::frame`] does.
+    /// Panics if `scale` is non-finite or below `1e-4`, as [`OffscreenHost::frame`] does, or if
+    /// either side of `size` is zero or past the device's largest 2D texture.
     pub fn new(
         size: UVec2,
         scale: f32,
         clock: impl Clock + 'static,
     ) -> Result<Self, GpuRequestError> {
+        let scale = display::scale_factor(scale);
         let requested =
             RequestedGpu::headless(PowerPreference::HighPerformance, wgpu::Features::empty())?;
         let device = requested.gpu.device.clone();
-        let host = OffscreenHost::builder(requested.gpu).clock(clock).build();
         let target = target(&device, size);
-        let mut window = Self {
+        // One texture, replaced only on a resize, which the host sees as a new target.
+        let host = OffscreenHost::builder(requested.gpu)
+            .clock(clock)
+            .retained_target(true)
+            .build();
+        Ok(Self {
             host,
             device,
             target,
-            scale: 1.0,
-        };
-        window.resize(size, scale);
-        Ok(window)
+            scale,
+        })
     }
 
     /// Run one frame of `app` into the window.
@@ -75,13 +79,10 @@ impl HeadlessWindow {
     ///
     /// # Panics
     ///
-    /// Panics if `scale` is non-finite or below `1e-4`.
+    /// Panics if `scale` is non-finite or below `1e-4`, or if either side of `size` is zero or past
+    /// the device's largest 2D texture.
     pub fn resize(&mut self, size: UVec2, scale: f32) {
-        assert!(
-            display::scale_factor_is_valid(scale),
-            "{}, got {scale}",
-            display::SCALE_RULE
-        );
+        let scale = display::scale_factor(scale);
         let current = self.target.size();
         if UVec2::new(current.width, current.height) != size {
             self.target = target(&self.device, size);
@@ -101,7 +102,13 @@ impl HeadlessWindow {
     }
 }
 
+/// The window's texture; checks `size` first, as wgpu would panic deep inside on a bad extent.
 fn target(device: &wgpu::Device, size: UVec2) -> wgpu::Texture {
+    let max = device.limits().max_texture_dimension_2d;
+    assert!(
+        size.min_element() > 0 && size.max_element() <= max,
+        "a headless window's size is 1..={max} physical pixels per side, got {size}",
+    );
     render_target::internals::texture(
         device,
         TargetSpec {
@@ -111,4 +118,31 @@ fn target(device: &wgpu::Device, size: UVec2) -> wgpu::Texture {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::display::SCALE_RULE;
+    use crate::gpu::headless_window::{HeadlessWindow, target};
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::host::clock::FixedClock;
+    use crate::internals::panic_probe;
+    use glam::UVec2;
+
+    /// A bad scale panics before a device is requested, and a bad extent before wgpu sees it: a
+    /// zero side, or one past the device's largest 2D texture. The largest side itself is
+    /// accepted.
+    #[test]
+    fn a_bad_scale_or_extent_panics_with_its_rule() {
+        panic_probe::assert_panics_with(SCALE_RULE, || {
+            HeadlessWindow::new(UVec2::splat(4), f32::NAN, FixedClock::default())
+        });
+        let gpu = headless_test_gpu();
+        let max = gpu.device.limits().max_texture_dimension_2d;
+        let rule = format!("a headless window's size is 1..={max} physical pixels per side");
+        for size in [UVec2::new(0, 4), UVec2::new(4, 0), UVec2::new(max + 1, 1)] {
+            panic_probe::assert_panics_with(&rule, || target(&gpu.device, size));
+        }
+        assert_eq!(target(&gpu.device, UVec2::new(max, 1)).width(), max);
+    }
 }

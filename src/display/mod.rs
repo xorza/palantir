@@ -28,6 +28,20 @@ pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
     scale_factor.is_finite() && scale_factor >= EPS
 }
 
+/// `scale_factor`, checked by [`scale_factor_is_valid`].
+///
+/// # Panics
+///
+/// Panics with [`SCALE_RULE`] when the check fails.
+#[track_caller]
+pub(crate) fn scale_factor(scale_factor: f32) -> f32 {
+    assert!(
+        scale_factor_is_valid(scale_factor),
+        "{SCALE_RULE}, got {scale_factor}"
+    );
+    scale_factor
+}
+
 /// `system_scale` when the platform reported a usable one, else `1.0`.
 ///
 /// The windowed host's door: winit's `f64` promises nothing, and a bad one
