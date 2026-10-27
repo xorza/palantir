@@ -126,3 +126,77 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
     h.frame(record);
     assert_eq!(h.focus(), Some(trigger_id()), "a click's open leaves focus");
 }
+
+/// A popup and a context menu on one trigger keep a row each, and a close from outside gives the
+/// keys back at once: a key on the next frame reaches the main layer, which the open overlay
+/// silenced. A popup that merely stopped recording would hold them one frame more.
+#[test]
+fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
+    use crate::input::keyboard::key::Key;
+    use crate::input::shortcut::Shortcut;
+    use crate::widgets::context_menu::ContextMenu;
+
+    /// Open, close and probe one trigger kind by the shared trigger id.
+    #[derive(Clone, Copy, Debug)]
+    struct Drive {
+        name: &'static str,
+        open: fn(&mut Ui),
+        close: fn(&mut Ui),
+        is_open: fn(&Ui) -> bool,
+    }
+    let popup = Drive {
+        name: "popup",
+        open: |ui| PopupTrigger::open(ui, trigger_id()),
+        close: |ui| PopupTrigger::close(ui, trigger_id()),
+        is_open: |ui| PopupTrigger::is_open(ui, trigger_id()),
+    };
+    let menu = Drive {
+        name: "menu",
+        open: |ui| ContextMenu::open(ui, trigger_id(), Vec2::new(200.0, 150.0)),
+        close: |ui| ContextMenu::close(ui, trigger_id()),
+        is_open: |ui| ContextMenu::is_open(ui, trigger_id()),
+    };
+    let x = Shortcut::key(Key::Char('x'));
+    let record = |ui: &mut Ui| {
+        let main_read = ui.key_pressed(x);
+        let trigger = Button::new()
+            .id(trigger_id())
+            .label("open")
+            .show(ui)
+            .snapshot();
+        PopupTrigger::on(&trigger).show(ui, |_, _| ());
+        ContextMenu::on(&trigger).show(ui, |_, _| ());
+        main_read
+    };
+
+    for (this, other) in [(popup, menu), (menu, popup)] {
+        let name = this.name;
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| {
+            record(ui);
+        });
+        (this.open)(&mut h.ui);
+        h.frame(|ui| {
+            record(ui);
+        });
+        assert!((this.is_open)(&h.ui), "{name}: open");
+        assert!(
+            !(other.is_open)(&h.ui),
+            "{name}: the other kind's row stays closed"
+        );
+
+        h.key(Key::Char('x'));
+        assert!(
+            !h.frame_value(record),
+            "{name}: premise, the open overlay holds the keys"
+        );
+
+        (this.close)(&mut h.ui);
+        assert!(!(this.is_open)(&h.ui), "{name}: closed");
+        h.key(Key::Char('x'));
+        assert!(
+            h.frame_value(record),
+            "{name}: the next key reaches the main layer"
+        );
+    }
+}

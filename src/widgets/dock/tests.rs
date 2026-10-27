@@ -6,16 +6,19 @@ use glam::{UVec2, Vec2};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::context_menu::ContextMenu;
+use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_path::DockPath;
 use crate::widgets::dock::dock_state::DockState;
-use crate::widgets::dock::dock_tabs::DockTabs;
+use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::dock_view::DockView;
 use crate::widgets::dock::pane_geometry::PaneGeometry;
 use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
@@ -1026,6 +1029,107 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
         d.primary().active_tab(),
         viewer(1),
         "the chosen tab is the one the pane shows",
+    );
+}
+
+/// A viewer that offers a menu on one tab only, whose one item closes it.
+#[derive(Debug)]
+struct MenuOn(Tab);
+
+impl MenuOn {
+    fn item_id() -> WidgetId {
+        WidgetId::from_hash("dock-tab-menu-close")
+    }
+}
+
+impl DockTabs for MenuOn {
+    type Tab = Tab;
+
+    fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
+        Labels.title(ui, tab)
+    }
+
+    fn content(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
+        Labels.content(ui, tab, size);
+    }
+
+    fn has_tab_menu(&mut self, tab: Tab) -> bool {
+        tab == self.0
+    }
+
+    fn tab_menu(&mut self, ui: &mut Ui, menu: DockTabMenu<'_, Tab>) {
+        if MenuItem::new("Close")
+            .id(Self::item_id())
+            .show(ui, menu.close)
+            .clicked()
+        {
+            menu.operations
+                .push(DockOperation::CloseTab { tab: menu.tab });
+        }
+    }
+}
+
+/// A right-click opens a menu only on a chip whose tab declares one, and an item there acts on
+/// the right-clicked tab: Main declares none, so its right-click records nothing, while Prefs's
+/// menu closes Prefs and then closes itself. A menu whose tab the app removes closes with it.
+#[test]
+fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
+    let mut d = seeded();
+    let mut tabs = MenuOn(Tab::Prefs);
+    let mut h = UiHarness::new(SURFACE);
+    h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
+    let strip = DockView::strip_id(&d, d.primary().id);
+    let chip = |tab| TabStrip::chip_id(strip, DockView::tab_key(tab));
+
+    let at = h
+        .rect(chip(Tab::Main))
+        .expect("the Main chip arranged")
+        .center();
+    h.right_click_at(at);
+    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    assert!(!ContextMenu::is_open(&h.ui, chip(Tab::Main)));
+    assert!(h.rect(MenuOn::item_id()).is_none(), "Main has no menu");
+
+    let at = h
+        .rect(chip(Tab::Prefs))
+        .expect("the Prefs chip arranged")
+        .center();
+    h.right_click_at(at);
+    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    assert!(ContextMenu::is_open(&h.ui, chip(Tab::Prefs)));
+    assert!(
+        h.rect(MenuOn::item_id()).is_some(),
+        "Prefs's menu shows its item"
+    );
+
+    h.click_on(MenuOn::item_id());
+    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    assert_eq!(
+        d.all_tabs().collect::<Vec<_>>(),
+        [Tab::Main, viewer(1)],
+        "the item closed the right-clicked tab"
+    );
+    assert!(!ContextMenu::is_open(&h.ui, chip(Tab::Prefs)));
+    assert!(
+        h.rect(MenuOn::item_id()).is_none(),
+        "the menu closed with its pick"
+    );
+
+    tabs.0 = viewer(1);
+    let at = h
+        .rect(chip(viewer(1)))
+        .expect("the viewer chip arranged")
+        .center();
+    h.right_click_at(at);
+    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    assert!(ContextMenu::is_open(&h.ui, chip(viewer(1))));
+    d.retain_tabs(|tab| tab != viewer(1));
+    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    assert!(!ContextMenu::is_open(&h.ui, chip(viewer(1))));
+    assert!(
+        h.rect(MenuOn::item_id()).is_none(),
+        "a menu whose tab the app removed closes"
     );
 }
 

@@ -14,19 +14,22 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::context_menu::ContextMenuState;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::context_menu::menu_separator::MenuSeparator;
 use crate::widgets::context_menu::tests::support::{SURFACE, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
+use crate::widgets::popup::trigger_state::TriggerState;
 use glam::Vec2;
 
 #[test]
 fn close_before_open_does_not_create_state() {
     let mut h = UiHarness::arena();
     ContextMenu::close(h.ui(), trigger_id());
-    assert!(h.ui.state::<ContextMenuState>(trigger_id()).is_none());
+    assert!(
+        h.ui.state::<TriggerState<ContextMenu<'static>>>(trigger_id())
+            .is_none()
+    );
 }
 
 #[test]
@@ -255,4 +258,68 @@ fn nested(ui: &mut Ui) {
                     });
                 });
         });
+}
+
+/// A menu opened while focus shows the ring takes focus on its first row, and Escape gives it back
+/// to the trigger; a disabled trigger closes its menu without running the body, and the menu stays
+/// closed once enabled again.
+#[test]
+fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
+    let copy = WidgetId::from_hash("copy");
+    let scene = |ui: &mut Ui, disabled: bool| {
+        let trigger = Button::new()
+            .id(trigger_id())
+            .label("menu")
+            .disabled(disabled)
+            .show(ui)
+            .snapshot();
+        ContextMenu::on(&trigger)
+            .show(ui, |ui, popup| {
+                MenuItem::new("Copy").id(copy).show(ui, popup);
+                MenuItem::new("Paste").show(ui, popup);
+            })
+            .inner
+            .is_some()
+    };
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| {
+        scene(ui, false);
+    });
+    h.key(Key::Tab);
+    h.frame(|ui| {
+        scene(ui, false);
+    });
+    assert_eq!(
+        h.focus(),
+        Some(trigger_id()),
+        "premise: Tab focuses the trigger"
+    );
+
+    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    assert!(h.frame_value(|ui| scene(ui, false)));
+    assert_eq!(
+        h.focus(),
+        Some(copy),
+        "the keyboard's open focuses the first row"
+    );
+    h.key(Key::Escape);
+    h.frame(|ui| {
+        scene(ui, false);
+    });
+    h.frame(|ui| {
+        scene(ui, false);
+    });
+    assert!(!menu_open(&h.ui));
+    assert_eq!(h.focus(), Some(trigger_id()), "closing gives focus back");
+
+    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    assert!(
+        !h.frame_value(|ui| scene(ui, true)),
+        "the body does not run under a disabled trigger"
+    );
+    assert!(!menu_open(&h.ui), "a disabled trigger closes its menu");
+    assert!(
+        !h.frame_value(|ui| scene(ui, false)),
+        "and it stays closed once enabled again"
+    );
 }

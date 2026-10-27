@@ -108,6 +108,10 @@ impl DockTabs for Panes {
         }
     }
 
+    fn has_tab_menu(&mut self, _tab: Tab) -> bool {
+        true
+    }
+
     fn tab_menu(&mut self, ui: &mut Ui, menu: DockTabMenu<'_, Tab>) {
         let right = MenuItem::new("Split right").show(ui, menu.close).clicked();
         let down = MenuItem::new("Split down").show(ui, menu.close).clicked();

@@ -10,6 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::widget::Widget;
 
 /// What stands between an overlay's body and the layers below it. Pointer and keys
@@ -41,9 +42,9 @@ pub struct OverlayTurn<R> {
     /// What the body returned.
     pub inner: R,
     /// Escape was pressed while the overlay held the keys; always `false` without a backdrop.
-    pub escape: bool,
+    pub escape_pressed: bool,
     /// A press landed on the backdrop rather than the body; always `false` without one.
-    pub outside: bool,
+    pub pressed_outside: bool,
 }
 
 /// Where an overlay records and what stands under it: everything [`OverlayScope::claim`] takes
@@ -66,8 +67,8 @@ pub struct OverlaySpec {
 /// its own body, so a `TextEdit` in a popup keeps the keyboard.
 ///
 /// A custom overlay follows the same order: [`Self::claim`] with the root before
-/// recording, [`Self::record`] the body, then [`Self::withdraw`] on the frame it
-/// closes.
+/// recording, [`Self::record`] the body, then [`Self::finish`] with its response,
+/// which withdraws on the frame it closes.
 #[derive(Debug)]
 pub struct OverlayScope {
     owner: WidgetId,
@@ -120,16 +121,16 @@ impl OverlayScope {
             Some(anchor) => scope.anchor(anchor),
             None => scope,
         };
-        let mut escape = false;
+        let mut escape_pressed = false;
         let inner = scope.show(|ui| {
             let inner = body(ui);
-            escape = owns_input && ui.key_pressed(Shortcut::key(Key::Escape));
+            escape_pressed = owns_input && ui.key_pressed(Shortcut::key(Key::Escape));
             inner
         });
         OverlayTurn {
             inner,
-            escape,
-            outside: self.backdrop_clicked(ui),
+            escape_pressed,
+            pressed_outside: self.backdrop_clicked(ui),
         }
     }
 
@@ -143,6 +144,15 @@ impl OverlayScope {
             Backdrop::Eater(id) => id,
         };
         ui.response_for(id).any_clicked()
+    }
+
+    /// End the turn with `response`: an overlay that closed gives its scope back, as
+    /// [`Self::withdraw`] does, so no close path keeps owning input.
+    pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R> {
+        if response.closed() {
+            self.withdraw(ui);
+        }
+        response
     }
 
     /// Give the scope back once the overlay has resolved that it closed; an overlay

@@ -14,7 +14,6 @@ use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::popup_trigger::PopupTrigger;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
@@ -122,7 +121,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             });
     };
     h.frame(|ui| build(ui, &mut selected));
-    PopupTrigger::open(&mut h.ui, id);
+    ComboBox::open(&mut h.ui, id);
 
     assert_eq!(
         h.frame(|ui| build(ui, &mut selected)).processing,
@@ -272,7 +271,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
                 });
         };
         h.frame(|ui| build(ui, &mut selected));
-        PopupTrigger::open(&mut h.ui, id);
+        ComboBox::open(&mut h.ui, id);
         h.frame(|ui| build(ui, &mut selected));
         h.rect(id.with("list")).expect("combo list arranged").size.h
     };
@@ -318,7 +317,7 @@ fn disabling_an_open_trigger_closes_its_list() {
     assert_eq!(selected, 0, "a click where a row was picks nothing");
 }
 
-/// A focused, closed combo box steps its pick with the arrows (stopping at the ends, each a committed change); Enter, Space and Alt+Down open it, and the arrows step nothing while open.
+/// A focused, closed combo box steps its pick with the arrows (stopping at the ends, each a committed change), from the option it shows when the index is stale; Enter, Space and Alt+Down open it, the arrows step nothing while open, and `open`, `close` and `is_open` drive it from outside.
 #[test]
 fn the_keys_step_a_closed_pick_and_open_the_list() {
     use crate::input::keyboard::key::Key;
@@ -357,18 +356,29 @@ fn the_keys_step_a_closed_pick_and_open_the_list() {
         h.key(key);
         frame(&mut h, &mut selected);
         h.set_modifiers(Modifiers::NONE);
-        assert!(
-            PopupTrigger::is_open(&h.ui, id),
-            "{mods:?} {key:?} opens it"
-        );
+        assert!(ComboBox::is_open(&h.ui, id), "{mods:?} {key:?} opens it");
         h.key(Key::ArrowDown);
         frame(&mut h, &mut selected);
         assert_eq!(selected, 0, "an open list steps nothing");
-        PopupTrigger::close(&mut h.ui, id);
+        ComboBox::close(&mut h.ui, id);
         frame(&mut h, &mut selected);
         h.set_focus(id);
         frame(&mut h, &mut selected);
     }
+
+    // A stale 9 shows C, the last of three: Down steps past nothing it shows and writes nothing,
+    // Up steps from C to B.
+    let mut selected = 9usize;
+    for (key, want, moved) in [(Key::ArrowDown, 9, false), (Key::ArrowUp, 1, true)] {
+        h.key(key);
+        assert_eq!(frame(&mut h, &mut selected), (moved, moved), "{key:?}");
+        assert_eq!(selected, want, "{key:?}");
+    }
+
+    ComboBox::open(&mut h.ui, id);
+    frame(&mut h, &mut selected);
+    assert!(ComboBox::is_open(&h.ui, id), "an outside open records");
+    assert!(h.rect(id.with("list")).is_some());
 }
 
 /// Keyboard path: Enter on the focused combo opens it with focus on the first row; Tab and arrows walk the rows in the list it traps; Enter picks and closes; focus returns to the combo.
@@ -390,7 +400,7 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
 
     h.key(Key::Enter);
     frame(&mut h, &mut selected);
-    assert!(PopupTrigger::is_open(&h.ui, id));
+    assert!(ComboBox::is_open(&h.ui, id));
     let first = h.focus().expect("focus moved into the list");
     assert_ne!(first, id);
 
@@ -410,9 +420,6 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
     let changed = frame(&mut h, &mut selected);
     assert!(changed && selected == 1, "Enter picks the second row");
     frame(&mut h, &mut selected);
-    assert!(
-        !PopupTrigger::is_open(&h.ui, id),
-        "the pick closes the list"
-    );
+    assert!(!ComboBox::is_open(&h.ui, id), "the pick closes the list");
     assert_eq!(h.focus(), Some(id), "focus goes back to the combo box");
 }

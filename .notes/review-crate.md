@@ -53,15 +53,6 @@ the measure-cache hit test.
 
 ## Widgets
 
-- **Overlay rank is relative to the opener.** `OverlayScope::claim`
-  resolves an overlay kind to a rank above the layer it opens in. A bundled
-  widget that opens an overlay inside any overlay then works.
-- **One trigger state machine.** `PopupTrigger`, `ContextMenu`, the
-  `TabStrip` overflow button and the `DockView` chip menus become
-  configurations of one state row keyed by the trigger id. The row stores
-  the resolved popup id, so every close path withdraws the input scope. One
-  crate-private function applies the menu look. `OverlayScope::finish` builds
-  the `OverlayResponse` and withdraws.
 - **Keyboard interaction is a `widget_core` primitive.** An activation
   helper on `Widget` declares the scope, reads the chords through
   `Widget::key_pressed` and folds a keyboard activation into
@@ -197,39 +188,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 2: Overlay rank and trigger lifecycle
-
-Files: `src/widget_core/{overlay_scope.rs, overlay_response.rs}`,
-`src/scene/{layer.rs, forest.rs}`, `src/widgets/{popup, context_menu, modal,
-combo_box, tooltip}/`, `src/widgets/tabs/tab_strip.rs`,
-`src/widgets/dock/{dock_view.rs, dock_tabs.rs}`.
-
-- [ ] **One trigger state machine.** `popup_trigger/mod.rs:243-356`,
-  `context_menu/mod.rs:26-30, 104-169`, `tab_strip.rs:462-503`,
-  `dock_view.rs:428-454`. Target: one state row keyed by trigger id that
-  stores the popup id: open at an anchor, toggle on click, close when
-  disabled, focus first on a keyboard open, withdraw on every close.
-- [ ] **External and disable-driven closes keep the input scope.**
-  `popup_trigger/mod.rs:306-307, 341-348`, `context_menu/mod.rs:156-163`.
-  Target: every close path calls `release_input_scope(popup_id)`. Test: input
-  on the frame after `PopupTrigger::close` and `ContextMenu::close`.
-- [ ] **A dock chip right-click opens an empty menu.**
-  `dock_view.rs:428-454`, `dock_tabs.rs:139-140`. Target: one dock-level menu
-  row, opened only when the app declares a menu. **[public]** (`DockTabs`).
-  Test with and without `tab_menu`.
-- [ ] **The menu look is applied twice.** `context_menu/mod.rs:127-135`,
-  `combo_box/mod.rs:591-600`. Target: one crate-private `menu_look`.
-- [ ] **Popup and Modal duplicate the close tail.** `popup/mod.rs:116-127`,
-  `modal/mod.rs:347-356`. Target: `OverlayScope::finish`. Either Modal takes
-  `ClickOutside` **[public]**, or `ClickOutside::Block` drops its dialog
-  example.
-- [ ] **ComboBox arrows on a stale index write back.**
-  `combo_box/mod.rs:524-537`. Target: compare with `shown`. Extend
-  `combo_box/tests.rs:323`.
-- [ ] **[public] `ComboBox::open/close/is_open`.** `combo_box/mod.rs:430-433`.
-- [ ] **[public] `OverlayTurn` fields are not participles.**
-  `overlay_scope.rs:40-47`. Target: `escape_pressed`, `pressed_outside`.
 
 ## Batch 3: Host and window, correctness
 

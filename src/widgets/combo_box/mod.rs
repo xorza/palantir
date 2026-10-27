@@ -6,8 +6,8 @@ use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
-use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -20,7 +20,6 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
@@ -32,7 +31,8 @@ use std::rc::Rc;
 /// A dropdown selector: a button-styled trigger showing the current choice,
 /// opening a [`crate::Popup`] list on click. Picking a row sets
 /// the `&mut usize` selection and closes; clicking outside or Esc dismisses.
-/// Open state lives in the response map keyed off the trigger id.
+/// Open state lives in the state map keyed off the combo's id; [`Self::open`],
+/// [`Self::close`] and [`Self::is_open`] drive it from outside.
 ///
 /// `*selected` is an *index* coerced for display: past the end of `options`
 /// shows the last option, and an empty list shows an empty trigger. The bound
@@ -133,7 +133,9 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                 } else {
                     shown
                 };
-                if (up || down) && next != *self.selected {
+                // Against the shown pick, not the binding: a stale index steps nothing it does not
+                // show, and is not written back.
+                if (up || down) && next != shown {
                     *self.selected = next;
                     stepped = true;
                 }
@@ -190,16 +192,13 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             id,
             state: response,
         };
-        // The same menu theme as `ContextMenu`, except the minimum: a dropdown is at
+        // The same menu look as `ContextMenu`, except the minimum: a dropdown is at
         // least as wide as its trigger, an explicit set that outranks
         // `ContextMenuTheme::min_width`. Esc closes through the popup.
         let resp = PopupTrigger::on(&trigger)
             .id(id.with("list"))
-            .arrow_focus(Axis::Y)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
-            .default_chrome(ctx.panel.clone())
-            .default_padding(ctx.padding)
-            .default_gap(ctx.gap)
+            .menu_look(ctx)
             .show(ui, |ui, popup| {
                 let mut picked = false;
                 for (i, opt) in options.iter().enumerate() {
@@ -218,6 +217,28 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             changed,
             committed: changed,
         }
+    }
+}
+
+/// Driving a combo box's list from outside, by the combo's id, as
+/// [`ContextMenu`](crate::ContextMenu) and [`PopupTrigger`] are driven. One concrete
+/// instance holds them, so a call names no option type.
+impl ComboBox<'static, &'static str, fn(&&'static str) -> &'static str> {
+    /// Open the list of the combo box `id`, e.g. from a keyboard shortcut; it records on the
+    /// combo's next `show`.
+    pub fn open(ui: &mut Ui, id: WidgetId) {
+        PopupTrigger::open(ui, id);
+    }
+
+    /// Close the list of the combo box `id`, giving back the input it held at once. No-op if
+    /// closed.
+    pub fn close(ui: &mut Ui, id: WidgetId) {
+        PopupTrigger::close(ui, id);
+    }
+
+    /// `true` while the list of the combo box `id` is open.
+    pub fn is_open(ui: &Ui, id: WidgetId) -> bool {
+        PopupTrigger::is_open(ui, id)
     }
 }
 

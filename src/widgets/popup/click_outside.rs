@@ -7,7 +7,7 @@
 /// `PassThrough` does neither, so a permanently recorded overlay can't lock
 /// the host.
 ///
-/// - `Block`: no dismissal signal; Esc is ignored (confirm dialogs).
+/// - `Block`: no dismissal signal; Esc is ignored.
 /// - `Dismiss`: an outside click or Esc sets `OverlayResponse::dismissed`.
 /// - `PassThrough`: presses and keys reach `Main`; never dismisses (toasts).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
