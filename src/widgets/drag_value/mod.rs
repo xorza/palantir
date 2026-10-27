@@ -70,6 +70,7 @@ pub struct DragValue<'a> {
     decimals: usize,
     suffix: TextInput<'a>,
     editable: bool,
+    text_align: Align,
     style: Option<&'a DragValueTheme>,
 }
 
@@ -88,8 +89,16 @@ impl<'a> DragValue<'a> {
             decimals: 2,
             suffix: TextInput::Borrowed(""),
             editable: false,
+            text_align: Align::CENTER,
             style: None,
         }
+    }
+
+    /// The value's position inside the chip, and the inline editor's. Default
+    /// [`Align::CENTER`].
+    pub const fn text_align(mut self, a: Align) -> Self {
+        self.text_align = a;
+        self
     }
 
     /// Value change per logical pixel of horizontal drag. Default `1.0`.
@@ -271,7 +280,7 @@ impl<'a> DragValue<'a> {
                 Shape::text(text, look.text.font())
                     .color(look.text.color)
                     .wrap(TextWrap::Truncate)
-                    .align(Align::CENTER),
+                    .align(self.text_align),
             );
         });
         ValueResponse {
@@ -309,7 +318,7 @@ impl<'a> DragValue<'a> {
         let ended = {
             let edit = TextEdit::new(&mut buffer)
                 .id(id)
-                .text_align(Align::CENTER)
+                .text_align(self.text_align)
                 .select_all_on_focus(true)
                 .style(editor)
                 .size((width, sizes.h()))
