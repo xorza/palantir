@@ -24,8 +24,8 @@ use crate::harness::Harness;
 #[derive(Debug)]
 struct DepthTriangle {
     pipeline: Option<wgpu::RenderPipeline>,
-    depth: Option<wgpu::TextureView>,
-    depth_size: UVec2,
+    /// The depth attachment and the target texture size it was made for.
+    depth: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     logical_square: Option<f32>,
     last_size: UVec2,
     last_display_scale: f32,
@@ -38,7 +38,6 @@ impl DepthTriangle {
         Self {
             pipeline: None,
             depth: None,
-            depth_size: UVec2::ZERO,
             logical_square,
             last_size: UVec2::ZERO,
             last_display_scale: 0.0,
@@ -113,15 +112,12 @@ impl GpuPaint for DepthTriangle {
         self.last_size = ctx.physical_size;
         self.last_display_scale = ctx.display_scale;
         self.last_raster_scale = ctx.raster_scale;
-        // Depth matches the target size (`physical_size`), like the cube.
-        if self.depth.is_none() || self.depth_size != ctx.physical_size {
+        // Depth matches the target texture, which can be larger than `physical_size`, like the cube.
+        let target_size = ctx.target.texture().size();
+        if self.depth.as_ref().map(|(_, size)| *size) != Some(target_size) {
             let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("visual.gpu_view.tri.depth"),
-                size: wgpu::Extent3d {
-                    width: ctx.physical_size.x.max(1),
-                    height: ctx.physical_size.y.max(1),
-                    depth_or_array_layers: 1,
-                },
+                size: target_size,
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -129,8 +125,10 @@ impl GpuPaint for DepthTriangle {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             });
-            self.depth = Some(texture.create_view(&wgpu::TextureViewDescriptor::default()));
-            self.depth_size = ctx.physical_size;
+            self.depth = Some((
+                texture.create_view(&wgpu::TextureViewDescriptor::default()),
+                target_size,
+            ));
         }
         let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("visual.gpu_view.tri.pass"),
@@ -145,7 +143,7 @@ impl GpuPaint for DepthTriangle {
                 },
             })],
             depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: self.depth.as_ref().unwrap(),
+                view: &self.depth.as_ref().unwrap().0,
                 depth_ops: Some(wgpu::Operations {
                     load: wgpu::LoadOp::Clear(1.0),
                     store: wgpu::StoreOp::Discard,
@@ -170,19 +168,51 @@ impl GpuPaint for DepthTriangle {
     }
 }
 
-/// A full-surface `GpuView` reaches the screen, and the √2 capacity ladder's UV crop holds. A 64×64 view gets a 67×67 texture, so 3px of BLUE slack the renderer never touches; the composite must sample `used/capacity` and read green throughout.
+/// A `GpuView` the window clips reaches the screen through its capacity crop. A 64×200 view in a
+/// 64×50 window shows 64×50, and the clipped height buckets to 64, so 14 rows of BLUE slack the
+/// paint never covers; the composite must sample `used/capacity` and read green throughout.
 #[test]
 fn gpu_view_pipeline_depth_and_capacity_crop() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(None)));
     let img = Harness::new()
-        .size(UVec2::new(64, 64))
+        .size(UVec2::new(64, 50))
         .frame(|ui| {
-            // Default sizing fills the surface.
-            GpuView::new(&paint).show(ui);
+            GpuView::new(&paint)
+                .size((Sizing::fixed(64.0), Sizing::fixed(200.0)))
+                .show(ui);
         })
         .image;
-    // (63,63) discriminates: a full [0,1] UV would sample blue slack at texel ≈66.
-    for &(x, y) in &[(32u32, 32u32), (63, 63), (0, 63), (63, 0)] {
+    assert_eq!(paint.borrow().last_size, UVec2::new(64, 50));
+    // (63,49) discriminates: a full [0,1] UV would sample blue slack at texel ≈63.
+    for &(x, y) in &[(32u32, 25u32), (63, 49), (0, 49), (63, 0)] {
+        fixtures::assert_px(
+            img.get_pixel(x, y).0,
+            [0, 255, 0, 255],
+            format_args!("pixel ({x},{y}) is green, not the capacity slack"),
+        );
+    }
+}
+
+/// A view past the device's texture cap is downsampled, so its composite magnifies: a bilinear
+/// read near the crop's edge would blend in the BLUE slack below it. A 100 000 px tall view in a
+/// 64×64 window shows a few texels per axis, and the clipped height buckets past them.
+#[test]
+fn gpu_view_magnified_composite_reads_no_slack() {
+    let paint = Rc::new(RefCell::new(DepthTriangle::new(None)));
+    let img = Harness::new()
+        .size(UVec2::new(64, 64))
+        .frame(|ui| {
+            GpuView::new(&paint)
+                .size((Sizing::fixed(64.0), Sizing::fixed(100_000.0)))
+                .show(ui);
+        })
+        .image;
+    let shown = paint.borrow().last_size;
+    assert!(
+        shown.y < 64 && !shown.y.is_power_of_two(),
+        "the fixture needs a magnified composite over a slack row, got {shown}",
+    );
+    for &(x, y) in &[(32u32, 32u32), (32, 63), (63, 63), (0, 0)] {
         fixtures::assert_px(
             img.get_pixel(x, y).0,
             [0, 255, 0, 255],

@@ -7,6 +7,7 @@
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas, RasterAtlasConfig};
@@ -179,9 +180,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.atlas.flush_pending_uploads(ctx);
     }
 
-    pub(super) fn render_batch<'a>(&'a self, batch_idx: usize, pass: &mut wgpu::RenderPass<'a>) {
+    pub(super) fn render_batch<'a>(
+        &'a self,
+        binder: &mut MainBinder<'a>,
+        pass: &mut wgpu::RenderPass<'a>,
+        batch_idx: usize,
+    ) {
         let span = self.batch_span(batch_idx);
-        self.atlas.draw_span(pass, &self.vbuf, span);
+        self.atlas.draw_span(binder, pass, &self.vbuf, span);
     }
 
     /// Age the atlas against `frame` and drop this frame's quads and batch starts.

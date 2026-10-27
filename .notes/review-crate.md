@@ -96,21 +96,6 @@ Files: `src/gpu/{raster/, wgpu_backend/, resource/}`,
 `src/renderer/gradient_atlas/`,
 `src/renderer/frontend/composer/{rect_grid/, occlusion_pruner.rs}`.
 
-- [ ] **The gradient upload merges no gap.** `MERGE_GAP_ROWS` is `0`: every
-  dirty run is one copy. Target: measure a copy against a staged 2 KiB row
-  and set the gap where merging is cheaper.
-- [ ] **Icon prewarm warms keys the frame never draws.**
-  `icon_backend/mod.rs` `prewarm`. Target: warm the drawn keys; spread the
-  rasters over frames.
-- [ ] **A quad form switch re-binds unchanged groups.**
-  `wgpu_backend/mod.rs` `render_groups`. Target: `Binder` tracks group 0,
-  vertex buffer 0 and the shadow pair apart from the pipeline. Measure with
-  `record_pass`; test the elision in `wgpu_backend/tests`.
-- [ ] **[public] A clipped `GpuView` reallocates while it scrolls.**
-  `gpu_view_targets/mod.rs`. Target: capacity buckets and a sub-rect;
-  changes the `GpuFrameCtx::target` doc contract.
-- [ ] **One tile index.** `rect_grid/mod.rs`, `occlusion_pruner.rs`. Target:
-  one `TileIndex`; bench before.
 - [ ] **Shelved: atlas growth by pages.** `raster_atlas/side.rs` `grow`. A
   grow frame clears and copies up to about 20 MiB. Structural, with no
   measured workload; the `text_atlas` bench is the trigger.

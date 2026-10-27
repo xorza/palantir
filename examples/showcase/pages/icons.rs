@@ -3,8 +3,8 @@
 //! shader), and the size ladder reruns on every window scale change.
 //!
 //! The set is built at startup from the sources below, not compiled in as a generated `const`:
-//! `IconTable::from_svgs` derives each icon's viewBox, tintability and filter use from the artwork,
-//! so a demo page states only its SVGs.
+//! `IconTable::from_svgs` derives each icon's viewBox and tintability from the artwork, so a demo
+//! page states only its SVGs.
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
@@ -30,7 +30,7 @@ const SAVE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 </g></svg>"##;
 
 /// A folder with a radial gradient and a soft drop shadow. The filter case: 10-20x the raster cost
-/// of the others, so the backend prewarms it at load instead of on the frame that first draws it.
+/// of the others, paid on the frame that first draws each size.
 const FOLDER_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
 <defs>
 <filter id="s" x="-40%" y="-40%" width="180%" height="180%">
@@ -62,8 +62,8 @@ const WIDE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 <rect x="26" y="4" width="3" height="8" rx="1.5" fill="#facc15"/>
 </svg>"##;
 
-/// The set, plus the ids resolved once. `from_svgs` derives each icon's viewBox, tintability and
-/// filter use and sorts by name, so ids come back through `by_name` rather than hand-counted.
+/// The set, plus the ids resolved once. `from_svgs` derives each icon's viewBox and tintability and
+/// sorts by name, so ids come back through `by_name` rather than hand-counted.
 #[derive(Clone, Debug)]
 struct Icons {
     set: IconSet,

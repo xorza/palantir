@@ -12,9 +12,9 @@ pub struct GpuFrameCtx<'a> {
     pub queue: &'a wgpu::Queue,
     /// Palantir's main command encoder: record your render pass(es) here.
     pub encoder: &'a mut wgpu::CommandEncoder,
-    /// The off-screen color target, sized exactly to [`Self::physical_size`]; render into the whole target.
+    /// The off-screen color target. Render into its top-left [`Self::physical_size`], with the viewport set to that: while a scroll or the window clips the view, the texture is a size bucket larger than what it shows, so a scroll does not reallocate it each frame, and the composite reads only that corner. Size other attachments of the pass to the texture, `target.texture().size()`, as wgpu requires.
     pub target: &'a wgpu::TextureView,
-    /// The target's actual size in physical pixels, after the widget's composed transform and downsampling for the device texture cap. Size your viewport and attachments to it; the target is reallocated whenever it changes.
+    /// What the target shows, in physical pixels, after the widget's composed transform and downsampling for the device texture cap. Set your viewport to it.
     ///
     /// **What is on screen, not always the whole view**: a widget's rect may reach past the window or a scroll's pane, and nothing is allocated for the unseen part. Then [`Self::physical_full_size`] is the whole and [`Self::physical_offset`] places this within it.
     pub physical_size: UVec2,

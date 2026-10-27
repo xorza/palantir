@@ -24,7 +24,7 @@ use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
 pub trait GpuPaint: 'static {
     /// Builds GPU resources. Called **once** per view; skipped paints and
     /// resizes do not re-run it, so recreate your depth/MSAA attachments in
-    /// [`Self::paint`] when [`GpuFrameCtx::physical_size`] changes. It
+    /// [`Self::paint`] when the size of [`GpuFrameCtx::target`]'s texture changes. It
     /// runs again only after the view is gone (widget unrecorded or window
     /// closed) and returns.
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {

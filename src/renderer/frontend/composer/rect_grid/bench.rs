@@ -7,7 +7,8 @@
 
 use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::frontend::composer::rect_grid::{RectGrid, TILE_CAP, TILE_SIZE};
+use crate::renderer::frontend::composer::rect_grid::RectGrid;
+use crate::renderer::frontend::composer::tile_index::{TILE_CAP, TILE_SIZE};
 use criterion::{Criterion, Throughput};
 use glam::UVec2;
 use std::hint::black_box;
@@ -151,7 +152,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 let mut fixture = SaturatedFixture::new(tiles, wide);
                 fixture.round();
                 assert!(
-                    !fixture.grid.overflow.is_empty(),
+                    fixture.grid.tiles.tile_load(0)[1] > 0,
                     "a saturated fixture walks the overflow chains"
                 );
                 b.iter(|| black_box(fixture.round()));

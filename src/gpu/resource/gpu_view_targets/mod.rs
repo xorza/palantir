@@ -123,14 +123,14 @@ impl GpuViewTargets {
         self.targets.retain(|_, target| target.owner != owner);
     }
 
-    /// `draw`'s target, owned by `owner` and sized to what it shows, allocated or resized as needed.
+    /// `draw`'s target, owned by `owner` and sized to its [`capacity`](RenderTargetDraw::capacity), allocated or resized as needed.
     fn ensure(
         &mut self,
         device: &wgpu::Device,
         draw: &RenderTargetDraw,
         owner: RenderOwnerId,
     ) -> &mut ViewTarget {
-        let size = draw.used;
+        let size = draw.capacity();
         match self.targets.entry(draw.id) {
             Entry::Occupied(entry) => {
                 let target = entry.into_mut();

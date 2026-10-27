@@ -39,6 +39,7 @@ use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
 use crate::renderer::render_buffer::image_draw_row::{ImageDrawRow, ImageInstance};
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshDrawRow, MeshInstance};
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::render_target_draw::RenderTargetDraw;
@@ -353,23 +354,17 @@ impl PaintSink for ComposeSession<'_> {
         if !self.admit_higher_kind(PaintTier::Image, image_urect) {
             return;
         }
-        // A `GpuView` draws over only its visible part, since that is all its target holds; its UV
-        // stays whole.
+        // A `GpuView` draws over only its visible part, since that is all its target holds.
         let seen = view.and_then(|_| self.seen(physical_rect));
         let composite = seen.unwrap_or(physical_rect);
-        self.out.images.push(ImageDrawRow {
-            // Only the registration id: the encoder already resolved fit into `rect` + UV. The
-            // view's off-screen paint is scheduled below, in `frame_targets`.
-            id: p.handle,
-            instance: ImageInstance {
-                rect: composite,
-                uv_min: p.uv_min,
-                uv_size: p.uv_size,
-                tint: p.tint,
-                flags: p.flags,
-                ..bytemuck::Zeroable::zeroed()
-            },
-        });
+        let mut instance = ImageInstance {
+            rect: composite,
+            uv_min: p.uv_min,
+            uv_size: p.uv_size,
+            tint: p.tint,
+            flags: p.flags,
+            ..bytemuck::Zeroable::zeroed()
+        };
         // A `GpuView` also needs its off-screen target painted. Sized to what is on
         // screen, not the rect: layout may return a rect larger than the surface, and
         // following it would allocate and draw discarded pixels.
@@ -391,7 +386,7 @@ impl PaintSink for ComposeSession<'_> {
             // The window lands inside the view by arithmetic, not a clamp: origin rounds
             // down and size rounds up, so `offset + used <= full`. Pinned by
             // `compose_gpu_view_caps_wide_and_tall_targets_uniformly`.
-            self.out.frame_targets.push(RenderTargetDraw {
+            let target = RenderTargetDraw {
                 id: p.handle,
                 used: UVec2::new(px(used.w), px(used.h)),
                 full: UVec2::new(px(whole.w), px(whole.h)),
@@ -399,8 +394,20 @@ impl PaintSink for ComposeSession<'_> {
                 raster_scale: self.composer.transform.physical_scale() * downsample,
                 paint: view.paint.clone(),
                 epoch: view.epoch,
-            });
+            };
+            // The target holds `used` in the top-left of its capacity; the rest is slack.
+            let crop = target.used.as_vec2() / target.capacity().as_vec2();
+            instance.uv_min *= crop;
+            instance.uv_size *= crop;
+            instance.flags = instance.flags.union(ImageFlags::CLAMP_TO_UV);
+            self.out.frame_targets.push(target);
         }
+        self.out.images.push(ImageDrawRow {
+            // Only the registration id: the encoder already resolved fit into `rect` + UV. The
+            // view's off-screen paint is scheduled above, in `frame_targets`.
+            id: p.handle,
+            instance,
+        });
     }
 
     fn curve(&mut self, p: DrawCurvePayload) {

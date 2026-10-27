@@ -6,6 +6,7 @@ pub(crate) mod quad_form;
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
@@ -68,11 +69,25 @@ pub(crate) struct QuadBinding<'a> {
 }
 
 impl<'a> QuadBinding<'a> {
-    /// Bind the pipeline, the gradient group and `buffer` as the instance stream.
+    /// Bind the pipeline, the gradient group and `buffer` as the instance stream, for a pass of one
+    /// draw, which has nothing bound to skip.
     pub(crate) fn bind(self, pass: &mut wgpu::RenderPass<'a>, buffer: &'a wgpu::Buffer) {
         pass.set_pipeline(self.pipeline);
         pass.set_bind_group(0, self.gradient_bind_group, &[]);
         pass.set_vertex_buffer(0, buffer.slice(..));
+    }
+
+    /// [`Self::bind`] over `layout` in the main pass, through `binder`, which skips what is bound.
+    fn bind_through(
+        self,
+        binder: &mut MainBinder<'a>,
+        pass: &mut wgpu::RenderPass<'a>,
+        layout: &'a wgpu::PipelineLayout,
+        buffer: &'a wgpu::Buffer,
+    ) {
+        binder.pipeline(pass, self.pipeline, layout);
+        binder.group(pass, 0, self.gradient_bind_group);
+        binder.vertex(pass, 0, buffer);
     }
 }
 
@@ -114,6 +129,7 @@ impl QuadPipeline {
     /// Bind `binding` over the pre-clear quad. Under [`StencilMode::Test`](crate::gpu::pipeline::stencil_variant::StencilMode::Test), the test at reference 0 matches every pixel and leaves the stencil intact.
     pub(crate) fn bind_clear<'a>(
         &'a self,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         binding: QuadBinding<'a>,
     ) {
@@ -123,7 +139,7 @@ impl QuadPipeline {
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
         // Sets no stencil reference: the schedule dedupes `SetStencilRef` assuming no draw arm sets one, and the ref is already 0.
-        binding.bind(pass, self.clear.buffer());
+        binding.bind_through(binder, pass, &self.pipeline_layout, self.clear.buffer());
     }
 
     pub(crate) fn upload_masks(&mut self, ctx: &mut GpuCtx<'_>, masks: &[Quad]) {
@@ -139,11 +155,12 @@ impl QuadPipeline {
     /// Bind a mask pipeline (stamp or clear) over the mask buffer; the caller sets `stencil_reference` per draw.
     pub(crate) fn bind_mask<'a>(
         &'a self,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         binding: QuadBinding<'a>,
     ) {
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
-        binding.bind(pass, &buf.buffer);
+        binding.bind_through(binder, pass, &self.pipeline_layout, &buf.buffer);
     }
 
     pub(crate) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
@@ -286,18 +303,34 @@ impl QuadPipeline {
     }
 
     /// Bind `binding` over the instance buffer, once per run of one pipeline.
-    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, binding: QuadBinding<'a>) {
-        binding.bind(pass, &self.instance_buffer.buffer);
+    pub(crate) fn bind<'a>(
+        &'a self,
+        binder: &mut MainBinder<'a>,
+        pass: &mut wgpu::RenderPass<'a>,
+        binding: QuadBinding<'a>,
+    ) {
+        binding.bind_through(
+            binder,
+            pass,
+            &self.pipeline_layout,
+            &self.instance_buffer.buffer,
+        );
     }
 
     /// [`Self::bind`] for the shadow variant, which also reads the cutout atlas and corner tables.
     pub(crate) fn bind_shadows<'a>(
         &'a self,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         binding: QuadBinding<'a>,
     ) {
-        self.bind(pass, binding);
-        self.cutouts.bind(pass);
+        binding.bind_through(
+            binder,
+            pass,
+            &self.shadow_layout,
+            &self.instance_buffer.buffer,
+        );
+        self.cutouts.bind(binder, pass);
     }
 
     /// Draw a contiguous slice of the instance buffer. The caller binds once and sets the scissor before each call.

@@ -11,6 +11,7 @@ pub(crate) mod bench;
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
@@ -114,14 +115,15 @@ impl CurvePipeline {
     /// Binds once per pass, before one [`Self::draw`] per curve group batch.
     pub(crate) fn bind<'a>(
         &'a self,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         pipeline: &'a wgpu::RenderPipeline,
         gradient_bind_group: &'a wgpu::BindGroup,
     ) {
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, gradient_bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
-        pass.set_index_buffer(self.idx_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        binder.pipeline(pass, pipeline, &self.pipeline_layout);
+        binder.group(pass, 0, gradient_bind_group);
+        binder.vertex(pass, 0, &self.instance_buffer.buffer);
+        binder.index(pass, &self.idx_buffer, wgpu::IndexFormat::Uint16);
     }
 
     pub(crate) fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {

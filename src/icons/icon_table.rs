@@ -9,7 +9,7 @@ use glam::Vec2;
 use std::borrow::Cow;
 
 /// One baked icon: its name, the size it was drawn at, where its normalized SVG
-/// sits in the set's blob, and two facts the renderer needs before parsing.
+/// sits in the set's blob, and the fact the renderer needs before parsing.
 #[derive(Clone, Debug)]
 pub struct IconDefinition {
     /// Lowercase kebab-case, from the source filename; unique within a set and the
@@ -23,9 +23,6 @@ pub struct IconDefinition {
     /// a coverage mask and takes the shape's full tint; a color icon rasterizes to
     /// RGBA, where tint modulates alpha only.
     pub tintable: bool,
-    /// The icon uses an SVG filter (10-20x costlier to rasterize), so it is
-    /// prewarmed at load rather than on its first draw.
-    pub filtered: bool,
 }
 
 /// An icon set: a name-sorted table (for
@@ -54,7 +51,7 @@ impl IconTable {
     }
 
     /// Build a set from SVG sources at runtime, deriving each icon's viewBox,
-    /// tintability and filter use from one parse. It pays a parse per icon, so a
+    /// and tintability from one parse. It pays a parse per icon, so a
     /// shipped set should use [`Self::baked`]. **That parse is paid twice for any
     /// icon later drawn** (`IconRasterizer` parses again); retaining the tree would
     /// put a parser type in a data type, which costs more than ~180 µs once.
@@ -110,7 +107,6 @@ impl IconTable {
                 view_box: facts.view_box,
                 svg: Span::new(start, len),
                 tintable: facts.tintable,
-                filtered: facts.filtered,
             });
         }
         Ok(Self {
@@ -121,14 +117,6 @@ impl IconTable {
 
     pub(crate) fn icons(&self) -> &[IconDefinition] {
         &self.icons
-    }
-
-    /// Every icon with the id that names it, in table order.
-    pub(crate) fn entries(&self) -> impl Iterator<Item = (IconId, &IconDefinition)> {
-        self.icons.iter().enumerate().map(|(i, def)| {
-            let idx = u16::try_from(i).expect("an IconId names every icon of a set");
-            (IconId::new(idx), def)
-        })
     }
 
     /// The icon named `name` (binary search; no allocation).
@@ -203,11 +191,6 @@ mod tests {
         assert_eq!(table.by_name("a"), Some(IconId::new(0)));
         assert_eq!(table.by_name("b"), Some(IconId::new(1)));
         assert_eq!(table.by_name("c"), None);
-        let minted: Vec<(IconId, &str)> = table
-            .entries()
-            .map(|(id, def)| (id, def.name.as_ref()))
-            .collect();
-        assert_eq!(minted, [(IconId::new(0), "a"), (IconId::new(1), "b")]);
     }
 
     const TINY: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>"#;

@@ -52,6 +52,7 @@ use crate::gpu::device::backend_config::BackendConfig;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::debug_overlay::{DebugOverlay, OverlayDraw};
 use crate::gpu::frame::gpu_timings::GpuTimings;
@@ -63,7 +64,7 @@ use crate::gpu::pipeline::format_pipelines::FormatPipelines;
 use crate::gpu::pipeline::format_pipelines::PipelineSources;
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan};
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{QuadBinding, QuadPipeline};
 use crate::gpu::pipeline::stencil_variant::StencilMode;
@@ -479,14 +480,11 @@ impl WgpuBackend {
         // through the belt.
         self.text.flush(&mut ctx);
 
-        // Icons: prewarm any filtered icon at this scale (an SVG filter is 10-20x an ordinary
-        // raster, so a lazy hit drops a frame), then encode each batch.
         {
             tracy::zone!(
                 "icon.prepare_batches",
                 value = buffer.batches(PaintTier::Icon).len() as u64
             );
-            self.icon.prewarm(buffer.display.scale_factor());
             for (i, b) in buffer.batches(PaintTier::Icon).iter().enumerate() {
                 self.icon.prepare_batch(i, &buffer.icons[b.items.range()]);
             }
@@ -591,8 +589,10 @@ impl WgpuBackend {
                 t.pass_begin(&mut pass);
                 t.begin_pipeline_stats(&mut pass);
             }
+            // One for the pass: what a scissor replay leaves bound stays bound for the next.
+            let mut binder = MainBinder::new(draw.viewport);
             match scissors {
-                RepaintScissors::Full => self.render_groups(draw, &mut pass, None),
+                RepaintScissors::Full => self.render_groups(draw, &mut binder, &mut pass, None),
                 RepaintScissors::Partial(rects) => {
                     let rect_count = rects.len();
                     for (i, r) in rects.iter().enumerate() {
@@ -602,7 +602,7 @@ impl WgpuBackend {
                             scissor = ?r,
                             "wgpu_backend.submit.pass.partial_rect"
                         );
-                        self.render_groups(draw, &mut pass, Some(r));
+                        self.render_groups(draw, &mut binder, &mut pass, Some(r));
                     }
                 }
             }
@@ -621,57 +621,15 @@ impl WgpuBackend {
     fn render_groups<'a>(
         &'a self,
         draw: FrameDraw<'a>,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         damage_scissor: Option<URect>,
     ) {
-        // Tracks the bound pipeline and vertex buffer to skip redundant calls (wgpu records every
-        // `set_pipeline`; drivers don't dedupe). `PreClear` resets it to `None`.
-        #[derive(Debug, PartialEq, Eq)]
-        enum Bound {
-            None,
-            QuadInstance(QuadForm),
-            ShadowInstance(ShadowEntry),
-            Mesh,
-            Image,
-            Curve,
-            MaskStamp,
-            MaskClear,
-            /// Text and icons share one shader and group-0 layout, hence one pipeline pair.
-            /// Both arms bind `raster_pipeline`; a separate pair would draw one tenant's atlas
-            /// through the other's shader (the visual suite's
-            /// `an_icon_between_two_text_runs_lands_in_its_own_pixel_box` would fail).
-            Raster,
-        }
-
-        /// `viewport.push_into(pass)` follows every (re)bind (the rule `IMMEDIATES_BYTES`
-        /// states). [`Self::rebind`] bundles bind, viewport push and recording `bound`;
-        /// `PreClear` stays open-coded since it uses its own vertex buffer.
-        #[derive(Debug)]
-        struct Binder {
-            bound: Bound,
-            viewport: ViewportPush,
-        }
-
-        impl Binder {
-            fn rebind<'p>(
-                &mut self,
-                target: Bound,
-                pass: &mut wgpu::RenderPass<'p>,
-                bind: impl FnOnce(&mut wgpu::RenderPass<'p>),
-            ) {
-                if self.bound != target {
-                    bind(pass);
-                    self.viewport.push_into(pass);
-                    self.bound = target;
-                }
-            }
-        }
-
         tracy::zone!();
         let FrameDraw {
             fmt,
             buffer,
-            viewport,
+            viewport: _,
             masks,
             cutouts,
             timings: _,
@@ -681,10 +639,6 @@ impl WgpuBackend {
         let textures = ImageTextures {
             images: &images,
             targets: &self.gpu_view_targets,
-        };
-        let mut binder = Binder {
-            bound: Bound::None,
-            viewport,
         };
         let stencil = if masks.is_some() {
             StencilMode::Test
@@ -712,13 +666,14 @@ impl WgpuBackend {
             RenderStep::PreClear => {
                 mark(pass, BatchKind::PreClear);
                 debug_marker::push(pass, "preclear");
-                // bind, push viewport, then draw; otherwise the clear quad reads stale immediates
-                // (zero on a partial pass's first PreClear), skipping the damage-region clear.
-                self.quad
-                    .bind_clear(pass, quad(fmt.quad.color(QuadForm::Solid).select(stencil)));
-                viewport.push_into(pass);
+                // Through the binder, so the viewport is pushed before the draw; else the clear quad
+                // reads stale immediates (zero on a partial pass's first PreClear) and clears nothing.
+                self.quad.bind_clear(
+                    binder,
+                    pass,
+                    quad(fmt.quad.color(QuadForm::Solid).select(stencil)),
+                );
                 pass.draw(0..4, 0..1);
-                binder.bound = Bound::None;
                 debug_marker::pop(pass);
             }
             RenderStep::SetScissor(r) => {
@@ -730,18 +685,16 @@ impl WgpuBackend {
             RenderStep::MaskStamp(mi) => {
                 mark(pass, BatchKind::Mask);
                 debug_marker::push(pass, "mask_stamp");
-                binder.rebind(Bound::MaskStamp, pass, |pass| {
-                    self.quad.bind_mask(pass, quad(&fmt.quad.mask_stamp));
-                });
+                self.quad
+                    .bind_mask(binder, pass, quad(&fmt.quad.mask_stamp));
                 self.quad.draw_mask(pass, mi);
                 debug_marker::pop(pass);
             }
             RenderStep::MaskClear(mi) => {
                 mark(pass, BatchKind::Mask);
                 debug_marker::push(pass, "mask_clear");
-                binder.rebind(Bound::MaskClear, pass, |pass| {
-                    self.quad.bind_mask(pass, quad(&fmt.quad.mask_clear));
-                });
+                self.quad
+                    .bind_mask(binder, pass, quad(&fmt.quad.mask_clear));
                 self.quad.draw_mask(pass, mi);
                 debug_marker::pop(pass);
             }
@@ -749,10 +702,8 @@ impl WgpuBackend {
                 mark(pass, BatchKind::Quads);
                 debug_marker::push(pass, "quads");
                 for run in QuadPipeline::quad_runs(&buffer.quads, range) {
-                    binder.rebind(Bound::QuadInstance(run.key), pass, |pass| {
-                        self.quad
-                            .bind(pass, quad(fmt.quad.color(run.key).select(stencil)));
-                    });
+                    self.quad
+                        .bind(binder, pass, quad(fmt.quad.color(run.key).select(stencil)));
                     self.quad.draw(pass, run.instances);
                 }
                 debug_marker::pop(pass);
@@ -761,10 +712,11 @@ impl WgpuBackend {
                 mark(pass, BatchKind::Shadows);
                 debug_marker::push(pass, "shadows");
                 for run in self.quad.shadow_runs(cutouts, range) {
-                    binder.rebind(Bound::ShadowInstance(run.key), pass, |pass| {
-                        self.quad
-                            .bind_shadows(pass, quad(fmt.quad.shadow(run.key).select(stencil)));
-                    });
+                    self.quad.bind_shadows(
+                        binder,
+                        pass,
+                        quad(fmt.quad.shadow(run.key).select(stencil)),
+                    );
                     self.quad.draw_shadows(pass, run.instances);
                 }
                 debug_marker::pop(pass);
@@ -772,10 +724,8 @@ impl WgpuBackend {
             RenderStep::Text { batch } => {
                 mark(pass, BatchKind::Text);
                 debug_marker::push(pass, "text");
-                binder.rebind(Bound::Raster, pass, |pass| {
-                    pass.set_pipeline(raster_pipeline);
-                });
-                self.text.render_batch(batch, pass);
+                binder.pipeline(pass, raster_pipeline, self.raster.pipeline_layout());
+                self.text.render_batch(binder, pass, batch);
                 debug_marker::pop(pass);
             }
             RenderStep::TierBatch { tier, batch } => {
@@ -787,9 +737,7 @@ impl WgpuBackend {
                 let items = || buffer.batches(tier)[batch].items;
                 match tier {
                     PaintTier::Mesh => {
-                        binder.rebind(Bound::Mesh, pass, |pass| {
-                            self.mesh.bind(pass, fmt.mesh.select(stencil));
-                        });
+                        self.mesh.bind(binder, pass, fmt.mesh.select(stencil));
                         self.mesh.draw(
                             pass,
                             MeshBatch {
@@ -799,10 +747,9 @@ impl WgpuBackend {
                         );
                     }
                     PaintTier::Image => {
-                        binder.rebind(Bound::Image, pass, |pass| {
-                            self.image.bind(pass, fmt.image.select(stencil));
-                        });
+                        self.image.bind(binder, pass, fmt.image.select(stencil));
                         self.image.draw(
+                            binder,
                             pass,
                             ImageBatch {
                                 ids: buffer.images.id(),
@@ -812,19 +759,16 @@ impl WgpuBackend {
                         );
                     }
                     PaintTier::Icon => {
-                        binder.rebind(Bound::Raster, pass, |pass| {
-                            pass.set_pipeline(raster_pipeline);
-                        });
-                        self.icon.render_batch(batch, pass);
+                        binder.pipeline(pass, raster_pipeline, self.raster.pipeline_layout());
+                        self.icon.render_batch(binder, pass, batch);
                     }
                     PaintTier::Curve => {
-                        binder.rebind(Bound::Curve, pass, |pass| {
-                            self.curve.bind(
-                                pass,
-                                fmt.curve.select(stencil),
-                                &self.gradient.bind_group,
-                            );
-                        });
+                        self.curve.bind(
+                            binder,
+                            pass,
+                            fmt.curve.select(stencil),
+                            &self.gradient.bind_group,
+                        );
                         self.curve.draw(pass, items());
                     }
                 }

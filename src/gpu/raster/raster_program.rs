@@ -31,6 +31,11 @@ impl RasterProgram {
         }
     }
 
+    /// The pipeline layout both tenants' pipelines are built over.
+    pub(crate) const fn pipeline_layout(&self) -> &wgpu::PipelineLayout {
+        &self.pipeline_layout
+    }
+
     pub(super) const fn layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
     }

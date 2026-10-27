@@ -21,6 +21,7 @@ mod side;
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
 use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
@@ -204,6 +205,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// bind-group shape (see [`RasterQuad`]).
     pub(super) fn draw_span<'a>(
         &'a self,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         vbuf: &'a DynamicBuffer<RasterQuad>,
         span: Span,
@@ -211,8 +213,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         if span.len == 0 {
             return;
         }
-        pass.set_bind_group(0, self.bound.bind_group(), &[]);
-        pass.set_vertex_buffer(0, vbuf.buffer.slice(..));
+        binder.group(pass, 0, self.bound.bind_group());
+        binder.vertex(pass, 0, &vbuf.buffer);
         pass.draw(0..4, span.start..span.start + span.len);
     }
 

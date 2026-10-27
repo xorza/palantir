@@ -52,10 +52,14 @@ fn flush_runs_cover_exactly_the_dirty_rows() {
     assert!(atlas.flush().is_none());
 }
 
-/// Two rows re-dirtied around a resident one upload two, in two runs: the clean row between them
-/// stays on the GPU as it is, while `MERGE_GAP_ROWS` holds no gap worth a merge.
+/// Rows re-dirtied around clean ones: a gap up to `MERGE_GAP_ROWS` rides along in one run, a
+/// wider one splits it. `rows_uploaded` counts what went up, gaps included.
 #[test]
-fn rows_uploaded_counts_the_rows_that_changed_not_the_span() {
+#[expect(
+    clippy::single_range_in_vec_init,
+    reason = "a flush of one run is a one-run slice"
+)]
+fn a_small_gap_rides_in_the_run_and_a_wide_one_splits_it() {
     let mut atlas = CpuGradientAtlas::default();
     let _ = atlas.flush(); // drain the magenta init row
 
@@ -69,14 +73,27 @@ fn rows_uploaded_counts_the_rows_that_changed_not_the_span() {
     // Dirty the outer two directly through the one path that marks rows.
     atlas.mark_row_dirty(1);
     atlas.mark_row_dirty(3);
-    assert_eq!(MERGE_GAP_ROWS, 0, "premise: a one-row gap is not merged");
     let f = atlas.flush().expect("two dirtied rows must flush");
-    assert_eq!(f.runs, [1..2, 3..4]);
-    assert_eq!(f.len_bytes(), 2 * size_of::<LutRowTexels>());
+    assert_eq!(f.runs, [1..4], "the one clean row between rides along");
+    assert_eq!(f.len_bytes(), 3 * size_of::<LutRowTexels>());
 
     let delta = atlas.counters.counts() - before;
     assert_eq!(delta.bakes, 0, "nothing was re-baked, only re-uploaded");
-    assert_eq!(delta.rows_uploaded, 2, "row 2 stays as it is");
+    assert_eq!(delta.rows_uploaded, 3);
+
+    // 1, then 1 + MERGE_GAP_ROWS + 1 is a gap of exactly MERGE_GAP_ROWS; one row further is not.
+    let edge = 2 + MERGE_GAP_ROWS;
+    atlas.mark_row_dirty(1);
+    atlas.mark_row_dirty(edge);
+    atlas.mark_row_dirty(edge + MERGE_GAP_ROWS + 2);
+    let f = atlas.flush().expect("three dirtied rows must flush");
+    assert_eq!(
+        f.runs,
+        [
+            1..edge + 1,
+            edge + MERGE_GAP_ROWS + 2..edge + MERGE_GAP_ROWS + 3
+        ]
+    );
 }
 
 /// A frame redrawing unchanged gradients bakes nothing, evicts nothing and holds the atlas size.

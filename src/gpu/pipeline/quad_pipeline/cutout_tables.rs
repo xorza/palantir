@@ -1,6 +1,7 @@
 //! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept per window.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
@@ -158,9 +159,9 @@ impl CutoutTables {
     }
 
     /// Bind the atlas and the corner stream for a shadow draw.
-    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
-        pass.set_bind_group(1, &self.bind_group, &[]);
-        pass.set_vertex_buffer(1, self.corners.buffer.slice(..));
+    pub(crate) fn bind<'a>(&'a self, binder: &mut MainBinder<'a>, pass: &mut wgpu::RenderPass<'a>) {
+        binder.group(pass, 1, &self.bind_group);
+        binder.vertex(pass, 1, &self.corners.buffer);
     }
 }
 

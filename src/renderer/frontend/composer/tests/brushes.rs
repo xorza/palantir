@@ -278,11 +278,21 @@ fn compose_gpu_view_sized_to_what_the_surface_can_show() {
         "cut off the far side, not the near"
     );
     // And the composite covers exactly what the target holds.
+    let instance = buf.images.instance()[0];
     assert_eq!(
-        buf.images.instance()[0].rect,
+        instance.rect,
         Rect::new(0.0, 0.0, 100.0, 90.0),
         "the visible target was stretched over the whole rect"
     );
+    // Both axes clip: 100 buckets to 128; 90 to 128, held at the whole 120.
+    assert_eq!(target.capacity(), UVec2::new(128, 120));
+    assert_eq!(instance.uv_min, Vec2::ZERO);
+    assert_eq!(
+        instance.uv_size,
+        Vec2::new(100.0 / 128.0, 90.0 / 120.0),
+        "the composite reads the shown corner alone"
+    );
+    assert_eq!(instance.flags, ImageFlags::CLAMP_TO_UV);
 }
 
 /// A view a clip cuts on its near side reports where the target begins, as in
@@ -306,10 +316,11 @@ fn compose_gpu_view_sized_to_what_a_clip_leaves() {
     assert_eq!(target.used, UVec2::new(40, 25));
     assert_eq!(target.full, UVec2::new(100, 60));
     assert_eq!(target.offset, UVec2::new(20, 10));
-    assert_eq!(
-        buf.images.instance()[0].rect,
-        Rect::new(30.0, 20.0, 40.0, 25.0)
-    );
+    let instance = buf.images.instance()[0];
+    assert_eq!(instance.rect, Rect::new(30.0, 20.0, 40.0, 25.0));
+    // 40 buckets to 64 and 25 to 32.
+    assert_eq!(target.capacity(), UVec2::new(64, 32));
+    assert_eq!(instance.uv_size, Vec2::new(40.0 / 64.0, 25.0 / 32.0));
 }
 
 /// A view nothing cuts is left as it was: the target is the whole view, begins
@@ -327,10 +338,14 @@ fn compose_gpu_view_whole_when_nothing_clips_it() {
     assert_eq!(target.used, UVec2::new(80, 40));
     assert_eq!(target.full, target.used, "a whole view is its own whole");
     assert_eq!(target.offset, UVec2::ZERO);
+    let instance = buf.images.instance()[0];
+    assert_eq!(instance.rect, Rect::new(10.0, 20.0, 80.0, 40.0));
     assert_eq!(
-        buf.images.instance()[0].rect,
-        Rect::new(10.0, 20.0, 80.0, 40.0)
+        target.capacity(),
+        target.used,
+        "nothing clipped, nothing bucketed"
     );
+    assert_eq!(instance.uv_size, Vec2::ONE);
 }
 
 #[test]
