@@ -1,4 +1,5 @@
 use super::pretty;
+use crate::theme::spinner::SpinnerTheme;
 use crate::theme::tooltip::TooltipTheme;
 use std::time::Duration;
 
@@ -33,7 +34,7 @@ fn tooltip_timing_serde_stays_scalar_and_rejects_invalid_seconds() {
         assert!(
             error
                 .to_string()
-                .contains("tooltip timing must be finite, non-negative, and representable"),
+                .contains("a duration must be finite, not negative, and representable"),
             "{field}={invalid}: {error}",
         );
     }
@@ -44,4 +45,35 @@ fn tooltip_timing_serde_stays_scalar_and_rejects_invalid_seconds() {
     let parsed = ron::from_str::<TooltipTheme>(&zeroed).expect("zero timing");
     assert_eq!(parsed.delay, Duration::ZERO);
     assert_eq!(parsed.warmup, Duration::ZERO);
+}
+
+/// Seconds travel as `f64`, so 300 ms reads back to the nanosecond. A spinner's period refuses
+/// zero, also the zero that `1e-20` s rounds to, and names the value the file gave.
+#[test]
+fn durations_read_back_exactly_and_a_period_refuses_zero() {
+    let tooltip = TooltipTheme {
+        delay: Duration::from_millis(300),
+        ..TooltipTheme::default()
+    };
+    let parsed = ron::from_str::<TooltipTheme>(&pretty(&tooltip)).expect("parse");
+    assert_eq!(parsed.delay, Duration::from_millis(300));
+
+    let spinner = pretty(&SpinnerTheme::default());
+    assert!(spinner.contains("period: 1.4"), "{spinner}");
+    for (bad, read) in [
+        ("0.0", "0"),
+        ("1e-20", "0.00000000000000000001"),
+        ("-1.0", "-1"),
+    ] {
+        let input = spinner.replace("period: 1.4", &format!("period: {bad}"));
+        let error = ron::from_str::<SpinnerTheme>(&input)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains(&format!(
+                "a period must be a duration above zero, got {read}"
+            )),
+            "{bad}: {error}",
+        );
+    }
 }

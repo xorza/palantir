@@ -5,7 +5,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::align::Align;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
-use crate::theme::text_style::LINE_HEIGHT_MULT;
+use crate::theme::text_style::LINE_HEIGHT_FACTOR;
 use crate::widgets::text_edit::tests::*;
 
 const EDIT_W: f32 = 280.0;
@@ -242,7 +242,10 @@ fn empty_focused_caret_vcenters_against_one_line() {
     let caret_origin = shape_origins(&h.ui, node).caret;
     let c = caret_origin.expect("focused empty editor still paints caret");
     let line_height = 1229.0 / 64.0;
-    assert_eq!(line_height, (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0);
+    assert_eq!(
+        line_height,
+        (16.0 * LINE_HEIGHT_FACTOR * 64.0).round() / 64.0
+    );
     let dy = (INNER_H - line_height) * 0.5;
     assert_eq!(c.x, PAD_L, "caret.x = {}", c.x);
     assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);

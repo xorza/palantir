@@ -13,7 +13,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
-use crate::theme::look::theme_slot::SlotDefaults;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::widget_core::configure::Configure;

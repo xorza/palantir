@@ -1,6 +1,6 @@
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
-use crate::theme::text_style::{LINE_HEIGHT_MULT, TextStyle};
+use crate::theme::text_style::{LINE_HEIGHT_FACTOR, TextStyle};
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::widgets::text_edit::tests::*;
 
@@ -331,8 +331,8 @@ fn pushed_shape_carries_default_line_height_from_theme() {
     // 16 × 1.2 = 19.2 on the shaper's 1/64-px grid: 1228.8 64ths round to 1229.
     assert_eq!(
         lh,
-        (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0,
-        "default line_height is font_size * LINE_HEIGHT_MULT on the 1/64 grid, got {lh}"
+        (16.0 * LINE_HEIGHT_FACTOR * 64.0).round() / 64.0,
+        "default line_height is font_size * LINE_HEIGHT_FACTOR on the 1/64 grid, got {lh}"
     );
     assert_eq!(lh, 19.203125);
 }
@@ -525,10 +525,10 @@ fn line_height_override_changes_caret_rect_height() {
         },
         ..TextEditTheme::default()
     }));
-    let canonical_default: f32 = (16.0 * LINE_HEIGHT_MULT * 64.0).round() / 64.0;
+    let canonical_default: f32 = (16.0 * LINE_HEIGHT_FACTOR * 64.0).round() / 64.0;
     assert_eq!(
         default, canonical_default,
-        "default caret height = canonical font_size * LINE_HEIGHT_MULT, got {default}"
+        "default caret height = canonical font_size * LINE_HEIGHT_FACTOR, got {default}"
     );
     assert_eq!(
         doubled, 32.0,

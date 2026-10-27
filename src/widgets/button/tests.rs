@@ -4,7 +4,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::button::ButtonTheme;
-use crate::theme::look::theme_slot::SlotDefaults;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use glam::UVec2;

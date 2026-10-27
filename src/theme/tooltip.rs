@@ -14,7 +14,7 @@ use glam::Vec2;
 use std::time::Duration;
 
 /// Visuals and timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles paint into `Layer::Tooltip` after `delay` of hover; the `warmup` window keeps later tooltips instant after one is dismissed.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).
     pub panel: Chrome,
@@ -26,11 +26,11 @@ pub struct TooltipTheme {
     pub padding: Spacing,
     /// Cap on the bubble's outer size. Width gates wrap; height is usually `INF`. Override via `.max_size(...)`. Infinite axes round-trip because `Size`'s serde maps non-finite to `None`.
     pub max_size: Size,
-    /// Seconds the pointer must rest on the trigger before the bubble shows (cold start).
-    #[serde(with = "crate::theme::serde::duration_seconds")]
+    /// How long the pointer must rest on the trigger before the bubble shows (cold start); seconds in a file.
+    #[serde(with = "crate::theme::duration_codec::seconds")]
     pub delay: Duration,
-    /// Seconds after a dismissal during which the next tooltip is instant; 0 disables.
-    #[serde(with = "crate::theme::serde::duration_seconds")]
+    /// How long after a dismissal the next tooltip shows at once; zero disables it. Seconds in a file.
+    #[serde(with = "crate::theme::duration_codec::seconds")]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

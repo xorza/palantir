@@ -123,7 +123,7 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    /// Whether this strip's view holds focus; `false` dims the cap to [`TabsTheme::accent_idle`]. Default `true`.
+    /// Whether this strip's view holds focus; `false` dims the cap to [`TabsTheme::cap_unfocused`]. Default `true`.
     pub const fn focused(mut self, focused: bool) -> Self {
         self.focus = if focused {
             TabStripFocus::Focused
@@ -345,7 +345,7 @@ impl StripPass<'_> {
         } else {
             Sense::CLICK
         };
-        let cap = if selected { t.accent_thickness } else { 0.0 };
+        let cap = if selected { t.cap_thickness } else { 0.0 };
         let mut widget = Widget::hstack()
             .id(chip_id)
             .size((Sizing::HUG, Sizing::HUG))

@@ -8,7 +8,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.backdrop(...)`) win; these defaults fill in.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModalTheme {
     /// Dialog panel chrome.
     pub panel: Chrome,

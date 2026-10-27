@@ -230,7 +230,11 @@ fn selection_rects_match_cosmic_highlight_spans() {
         // ranges. A line is 16 × 1.2 = 19.2 px, snapped to
         // round(19.2 × 64) / 64 = 19.203125; the lines sit at y = 0, lh, 2 · lh.
         let lh = 19.203125;
-        assert_eq!(16.0 * LINE_HEIGHT_MULT, 19.2, "premise: production leading");
+        assert_eq!(
+            16.0 * LINE_HEIGHT_FACTOR,
+            19.2,
+            "premise: production leading"
+        );
         let ys: Vec<f32> = actual.iter().map(|r| r.min.y).collect();
         let want: &[f32] = match case.label {
             "single_line" => &[0.0],

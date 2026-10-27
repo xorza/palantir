@@ -12,7 +12,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::DockView`], dock-specific only: dividers read [`Theme::splitter`](crate::Theme::splitter) and pane strips [`Theme::tabs`](crate::Theme::tabs), leaving the drag feedback.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DockTheme {
     /// Wash over the region a drop would occupy.
     pub preview_fill: RgbaF32,

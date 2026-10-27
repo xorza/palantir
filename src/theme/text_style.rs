@@ -11,7 +11,7 @@ use crate::theme::palette::Palette;
 
 /// Default [`TextStyle::line_height_factor`]. A widget convention; the shaper
 /// takes resolved pixels and never sees a multiplier.
-pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
+pub(crate) const LINE_HEIGHT_FACTOR: f32 = 1.2;
 
 /// Default text-rendering inputs, grouped so an app can swap the whole text
 /// look with one assignment.
@@ -58,7 +58,7 @@ impl Default for TextStyle {
         Self {
             font_size: 16.0,
             color: Palette::DEFAULT.text,
-            line_height_factor: LINE_HEIGHT_MULT,
+            line_height_factor: LINE_HEIGHT_FACTOR,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,

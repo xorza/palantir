@@ -13,7 +13,7 @@ use crate::theme::separator::SeparatorTheme;
 /// `panel` is the container chrome, `item` drives [`crate::MenuItem`] rows, `min_width` floors the container so short labels don't paint as a pill.
 ///
 /// Read globally through [`crate::Theme::context_menu`] or per instance through the `style` of [`crate::ContextMenu`], [`crate::MenuItem`] and [`crate::MenuSeparator`].
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[must_use]
 pub struct ContextMenuTheme {
     /// Panel chrome behind the items; its `padding` carves the gutter to the rows.

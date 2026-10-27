@@ -193,7 +193,7 @@ tree renders.
   other unit is named in full in the identifier (`refresh_millihertz`,
   `percent`). A multiplier is a `factor` (`line_height_factor`,
   `scaled_by(factor)`), and a share of a whole is a `ratio` or a `fraction`
-  (`DockSplit::ratio`, `thickness_ratio`, `ProgressBar::new(fraction)`). A
+  (`DockSplit::ratio`, `width_ratio`, `ProgressBar::new(fraction)`). A
   color is linear `RgbaF32`; `SrgbaU8` is for bytes in and out.
 - **Lines and corners.** The width of a line — a stroke, a border, a caret — is
   `width` or `*_width` (`Stroke::width`, `border_width`, `caret_width`,

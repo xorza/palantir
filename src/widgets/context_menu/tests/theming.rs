@@ -11,7 +11,7 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::context_menu::ContextMenuTheme;
 use crate::theme::context_menu::menu_item::MenuItemTheme;
-use crate::theme::look::theme_slot::SlotDefaults;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::separator::SeparatorTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;

@@ -7,17 +7,19 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
-use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 
 /// Visuals for [`crate::Expander`]; the header takes button-style four-state looks.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ExpanderTheme {
-    /// Header look.
+    /// The header's four per-state looks; `flatten` keeps theme files flat (`[expander.normal]`).
+    #[serde(flatten)]
     pub looks: StatefulLook,
     /// Triangle bounding box, corners included; keep it square unless the angles leave it unturned.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
@@ -31,14 +33,14 @@ pub struct ExpanderTheme {
     /// Arrow angle while open (default: upright). `0.0` and `-PI` give down-closed, up-open.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub arrow_open_angle: f32,
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     /// Gap between arrow and label.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
     pub gap: f32,
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     /// Indent of the body.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indent: f32,
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     /// Padding of the body.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub body_padding: Spacing,
     /// `animation` is `None` by default, so a reveal snaps.
     #[serde(flatten)]

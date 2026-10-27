@@ -22,10 +22,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
 use std::ptr;
 
-#[test]
-fn button_theme_pick_precedence() {
-    let theme = ButtonTheme::default();
-    let state = |pointer_over, pressed: bool, disabled| ResponseState {
+/// A response hovered, pressed and disabled as the flags say.
+fn response(pointer_over: bool, pressed: bool, disabled: bool) -> ResponseState {
+    ResponseState {
         pointer_over,
         left: ButtonState {
             phase: if pressed {
@@ -37,22 +36,31 @@ fn button_theme_pick_precedence() {
         },
         disabled,
         ..ResponseState::default()
-    };
+    }
+}
+
+#[test]
+fn button_theme_pick_precedence() {
+    let theme = ButtonTheme::default();
     let cases: &[(ResponseState, &WidgetLook, &str)] = &[
-        (state(false, false, false), &theme.looks.normal, "normal"),
-        (state(true, false, false), &theme.looks.hovered, "hovered"),
+        (response(false, false, false), &theme.looks.normal, "normal"),
         (
-            state(true, true, false),
+            response(true, false, false),
+            &theme.looks.hovered,
+            "hovered",
+        ),
+        (
+            response(true, true, false),
             &theme.looks.active,
             "pressed > hovered",
         ),
         (
-            state(false, false, true),
+            response(false, false, true),
             &theme.looks.disabled,
             "disabled (idle)",
         ),
         (
-            state(true, true, true),
+            response(true, true, true),
             &theme.looks.disabled,
             "disabled wins all",
         ),
@@ -102,14 +110,7 @@ fn text_edit_theme_pick_precedence() {
     }
 
     // The engagement names the active state: a hovered press engages a button's pack, not a field's.
-    let pressed = ResponseState {
-        pointer_over: true,
-        left: ButtonState {
-            phase: ButtonPhase::Held,
-            ..Default::default()
-        },
-        ..ResponseState::default()
-    };
+    let pressed = response(true, true, false);
     assert!(ptr::eq(
         theme.looks.pick(&pressed, Engagement::Focused),
         &raw const theme.looks.hovered,
@@ -124,52 +125,39 @@ fn text_edit_theme_pick_precedence() {
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
     let theme = ToggleTheme::checkbox(&Palette::DEFAULT);
-    let state = |pointer_over, pressed: bool, disabled| ResponseState {
-        pointer_over,
-        left: ButtonState {
-            phase: if pressed {
-                ButtonPhase::Held
-            } else {
-                ButtonPhase::Idle
-            },
-            ..Default::default()
-        },
-        disabled,
-        ..ResponseState::default()
-    };
     let cases: &[(ResponseState, CheckState, &WidgetLook, &str)] = &[
         (
-            state(false, false, false),
+            response(false, false, false),
             CheckState::Unchecked,
             &theme.unchecked.normal,
             "unchecked normal",
         ),
         (
-            state(true, false, false),
+            response(true, false, false),
             CheckState::Unchecked,
             &theme.unchecked.hovered,
             "unchecked hovered",
         ),
         (
-            state(false, false, false),
+            response(false, false, false),
             CheckState::Checked,
             &theme.checked.normal,
             "checked normal",
         ),
         (
-            state(true, false, false),
+            response(true, false, false),
             CheckState::Checked,
             &theme.checked.hovered,
             "checked hovered",
         ),
         (
-            state(true, true, false),
+            response(true, true, false),
             CheckState::Checked,
             &theme.checked.active,
             "checked: pressed > hovered",
         ),
         (
-            state(true, true, true),
+            response(true, true, true),
             CheckState::Checked,
             &theme.checked.disabled,
             "checked: disabled wins all",
@@ -183,7 +171,7 @@ fn toggle_theme_pick_selects_pack_then_state() {
     }
 
     // The check state alone decides: one state, two packs.
-    let idle = state(false, false, false);
+    let idle = response(false, false, false);
     assert!(
         !ptr::eq(
             theme.look(&idle, CheckState::Unchecked),
@@ -201,31 +189,24 @@ fn toggle_theme_pick_selects_pack_then_state() {
 fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     let theme = TabsTheme::default();
     let idle = ResponseState::default();
-    let pressed = ResponseState {
-        pointer_over: true,
-        left: ButtonState {
-            phase: ButtonPhase::Held,
-            ..Default::default()
-        },
-        ..ResponseState::default()
-    };
+    let pressed = response(true, true, false);
     let cases: &[(&ResponseState, TabSelection, &WidgetLook, &str)] = &[
         (
             &idle,
             TabSelection::Selected,
-            &theme.active.normal,
+            &theme.selected.normal,
             "selected",
         ),
         (
             &idle,
             TabSelection::Unselected,
-            &theme.inactive.normal,
+            &theme.unselected.normal,
             "unselected",
         ),
         (
             &pressed,
             TabSelection::Unselected,
-            &theme.inactive.active,
+            &theme.unselected.active,
             "unselected: pressed",
         ),
     ];
@@ -312,8 +293,8 @@ fn bundled_text_inherits_every_axis_but_color() {
     // The reported case: an app at 13 px. An inactive tab names a muted color at rest and none when pressed; both shape at 13 px.
     theme.text = theme.text.with_font_size(13.0);
     let p = Palette::DEFAULT;
-    let rest = theme.tabs.inactive.normal.to_animated(theme.text).text;
-    let pressed = theme.tabs.inactive.active.to_animated(theme.text).text;
+    let rest = theme.tabs.unselected.normal.to_animated(theme.text).text;
+    let pressed = theme.tabs.unselected.active.to_animated(theme.text).text;
     let disabled = theme.text_edit.looks.disabled.to_animated(theme.text).text;
     assert_eq!(rest, theme.text.with_color(p.text_muted));
     assert_eq!(pressed, theme.text);

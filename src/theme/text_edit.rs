@@ -11,8 +11,9 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
-use crate::theme::look::theme_slot::{SlotDefaults, ThemeSlot};
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
@@ -24,7 +25,7 @@ use glam::Vec2;
 /// State-independent fields (`caret`, `caret_width`, `placeholder`,
 /// `selection`, `padding`, `margin`) are flat on the theme. `padding`/`margin`
 /// apply when the builder didn't set them; an explicit zero overrides.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextEditTheme {
     /// The four per-state looks (`active` = focused). `flatten` keeps theme files
     /// flat (`[text_edit.active]`).

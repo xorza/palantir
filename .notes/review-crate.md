@@ -93,14 +93,6 @@ the measure-cache hit test.
 - **No process statics** that the outside world does not force: the
   `FontFamily` name table and the premultiply table move to their owners.
 
-## Theme
-
-- **A theme value is stored in the type its sink uses.** The spinner stores
-  a period as `Duration`. The duration codec round-trips through `f64`, which
-  is exact to the nanosecond.
-- **Theme bundles are comparable values** (`PartialEq`), so round-trip tests
-  compare values, not RON text.
-
 ## Tests and visibility
 
 - **An item is `pub` only when code outside the crate calls it.** Test-only
@@ -152,42 +144,11 @@ comes after it. Delete an item when it is addressed.
 
 ## Batch 8: Theme values and the spinner
 
-Files: `src/theme/`, `src/widgets/spinner/`, `src/theme/tests/`.
+Files: `src/theme/tests/`.
 
-- [ ] **A valid theme `spinner.speed` panics.** `theme/spinner.rs:18-20`,
-  `widgets/spinner/mod.rs:119`. `1e-20` passes `positive`, then
-  `Duration::from_secs_f32(TAU / speed)` panics each frame; a code-built `0.0`
-  panics too. Target: `SpinnerTheme::period: Duration`, checked non-zero on
-  load. **[public]** and a theme-file format change.
-- [ ] **[public] The spinner's stroke is named `thickness`.**
-  `widgets/spinner/mod.rs:81-114`, `theme/spinner.rs:21-26`. Target:
-  `Spinner::width`, `SpinnerTheme::{width_ratio, min_width}`; AGENTS.md
-  cites another `*_ratio` example in place of `thickness_ratio`.
-- [ ] **The duration codec loses precision.** `theme/serde.rs:14, 22`. 300 ms
-  reads back as 300 000 012 ns. Target: `f64`; the error text names a
-  duration.
-- [ ] **[public] Theme bundles have no `PartialEq`.** Target: derive it on
-  every bundle, `SlotDefaults` and `Theme`; the round-trip test compares
-  values.
-- [ ] **The theme-file fuzz draws a subset.** `theme/tests/file_values.rs:20,
-  64-75`. Target: draw the dock and tab strips, an open context menu and a
-  shown tooltip; add `1e-30` and `1e30` to `SUSPECTS`.
-- [ ] **[public] `TabsTheme` names.** `theme/tabs.rs:26-35, 114`. Target:
-  `selected`/`unselected`, `cap_focused`/`cap_unfocused`, `cap_thickness`.
-- [ ] **`ExpanderTheme.looks` is not flattened.** `theme/expander.rs:20-21`.
-  Theme-file format change.
-- [ ] **`WidgetLook::SLOT_LOOK` belongs to wear.** `theme/look/mod.rs:42`.
-  Target: a constant beside `Widget::wear`.
-- [ ] **Names.** `LINE_HEIGHT_MULT` → `LINE_HEIGHT_FACTOR`
-  (`theme/text_style.rs:14`), `chevron_pts` → `chevron_points`
-  (`theme/combo_box.rs:32`).
-- [ ] **File names.** `theme/serde.rs` shadows the crate → `duration_codec.rs`;
-  `SlotDefaults` → `theme/look/slot_defaults.rs`.
-- [ ] **Docs.** `color_picker.rs:148`, `tooltip.rs:29, 32`; doc comments
-  above their `#[serde]` attributes (`toggle.rs:29-41`, `expander.rs:34-40`,
-  `menu_item.rs:20`, `theme_slot.rs:58`).
-- [ ] **Tests.** One `response(..)` helper in `state_looks.rs` (copies at
-  :28, :105, :127, :204). Move `style_override.rs` to `src/widgets/tests/`.
+- [ ] **The theme-file fuzz leaves out `1e30`.** `theme/tests/file_values.rs:20`.
+  Target: `1e30` in `SUSPECTS`, after the `.notes/ISSUES.md` entry on large
+  theme lengths is fixed.
 
 ## Batch 9: Paint parameters and color animation
 
