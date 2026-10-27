@@ -4,6 +4,8 @@
 
 pub(crate) mod clock;
 mod core;
+#[cfg(feature = "internals")]
+pub(crate) mod headless_window;
 pub(crate) mod offscreen;
 mod window_driver;
 #[cfg(feature = "winit")]

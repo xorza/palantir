@@ -91,46 +91,17 @@ pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::surface::render_target;
-    use glam::UVec2;
+    use crate::gpu::surface::render_target::TargetFormat;
 
-    /// A test or bench render target: `label` names it in RenderDoc and validation errors.
-    #[derive(Clone, Copy, Debug)]
-    pub struct TargetSpec<'a> {
-        /// The debug name.
-        pub label: &'a str,
-        /// Physical pixels.
-        pub size: UVec2,
-        /// The texel format.
-        pub format: wgpu::TextureFormat,
-        /// What the texture may be used for.
-        pub usage: wgpu::TextureUsages,
-    }
-
-    /// A single-sample 2D render target as `spec` describes it.
-    pub(crate) fn texture(device: &wgpu::Device, spec: TargetSpec<'_>) -> wgpu::Texture {
-        let TargetSpec {
-            label,
-            size,
-            format,
-            usage,
-        } = spec;
-        device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(label),
-            size: render_target::extent(size),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage,
-            view_formats: &[],
-        })
+    impl TargetFormat {
+        /// 8-bit sRGB RGBA, what an image file holds: the format of the crate's own window targets.
+        pub(crate) const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::surface::render_target::internals::{TargetSpec, texture};
+    use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
     use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::internals::panic_probe;
@@ -158,17 +129,17 @@ mod tests {
                 format,
                 usage,
             };
-            texture(&gpu.device, spec)
+            OwnedTarget::new(&gpu.handles(), spec)
         };
         let good = made(F::Rgba8UnormSrgb, U::RENDER_ATTACHMENT);
-        assert_eq!(RenderTarget::new(&good).size(), UVec2::splat(4));
+        assert_eq!(good.as_target().size(), UVec2::splat(4));
         let linear = made(F::Rgba8Unorm, U::RENDER_ATTACHMENT);
         panic_probe::assert_panics_with("format must be sRGB or float", || {
-            RenderTarget::new(&linear)
+            RenderTarget::new(linear.texture())
         });
         let sampled = made(F::Rgba8UnormSrgb, U::TEXTURE_BINDING);
         panic_probe::assert_panics_with("must allow RENDER_ATTACHMENT", || {
-            RenderTarget::new(&sampled)
+            RenderTarget::new(sampled.texture())
         });
     }
 }

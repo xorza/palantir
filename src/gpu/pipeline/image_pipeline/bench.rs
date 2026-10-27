@@ -9,10 +9,10 @@
 //! Fragment-bound by design, so shader cost moves. Criterion records the image batch's GPU
 //! timestamp, not the frame's wall time.
 
-use crate::bench::fixture::{Backends, Kind, Scale};
+use crate::bench::fixture::{self, Backends, Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
-use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::host::offscreen::OffscreenHost;
+use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::host::headless_window::HeadlessWindow;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::record_app::RecordApp;
 use crate::primitives::layout::sizing::Sizing;
@@ -159,8 +159,7 @@ impl Scene<'_> {
 
 #[derive(Debug)]
 struct Fixture {
-    host: OffscreenHost,
-    target: BenchTarget,
+    window: HeadlessWindow,
     handle: Option<ImageHandle>,
     phase: bool,
 }
@@ -168,8 +167,7 @@ struct Fixture {
 impl Fixture {
     fn new(gpu: &BenchGpu) -> Self {
         Self {
-            host: gpu.plain_host(true),
-            target: gpu.target("palantir.image_pipeline_bench.target", PHYSICAL),
+            window: fixture::plain_window(gpu, PHYSICAL, true),
             handle: None,
             phase: false,
         }
@@ -178,8 +176,7 @@ impl Fixture {
     fn render(&mut self, gpu: &BenchGpu, workload: Workload) {
         self.phase = !self.phase;
         let Self {
-            host,
-            target,
+            window,
             handle,
             phase,
         } = self;
@@ -194,7 +191,7 @@ impl Fixture {
             tint,
         };
         let mut app = RecordApp::new(|ui| scene.record(ui));
-        host.frame(target.as_target(), 1.0, &mut app);
+        window.frame(&mut app);
         gpu.wait();
     }
 }
@@ -216,7 +213,8 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                 fixture.render(gpu, workload);
                 gpu.poll();
                 fixture
-                    .host
+                    .window
+                    .host()
                     .gpu_pass_stats()
                     .last_kind(BatchKind::Image)
                     .is_some()
@@ -231,7 +229,8 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                         fixture.render(gpu, workload);
                         gpu.poll();
                         fixture
-                            .host
+                            .window
+                            .host()
                             .gpu_pass_stats()
                             .last_kind(BatchKind::Image)
                             .expect("an image batch timestamp every frame once one arrived")

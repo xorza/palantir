@@ -863,10 +863,9 @@ mod screenshot_tests {
     use glam::{UVec2, Vec2};
     use image::imageops;
 
-    use crate::gpu::surface::render_target::RenderTarget;
-    use crate::gpu::surface::render_target::internals::TargetSpec;
+    use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
-    use crate::host::offscreen::OffscreenHost;
+    use crate::host::headless_window::HeadlessWindow;
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::size::Size;
@@ -897,33 +896,21 @@ mod screenshot_tests {
         Asking(Option<Rect>),
     }
 
-    /// A host over one texture of `format`, drawing two blocks of different colors so a crop or
-    /// a swapped channel shows.
+    /// A window in `format`, drawing two blocks of different colors so a crop or a swapped
+    /// channel shows.
     struct Scene {
         gpu: HeadlessTestGpuLease,
-        host: OffscreenHost,
-        texture: wgpu::Texture,
-        scale: f32,
+        window: HeadlessWindow,
     }
 
     impl Scene {
         fn new(format: wgpu::TextureFormat, scale: f32) -> Self {
             let gpu = headless_test_gpu();
-            let host = OffscreenHost::builder(gpu.handles())
+            let window = HeadlessWindow::builder(gpu.handles())
                 .shaper(TextShaper::test_mono())
-                .build();
-            let texture = gpu.target_with(TargetSpec {
-                label: "palantir.screenshot.test",
-                size: PHYSICAL,
-                format,
-                usage: HeadlessTestGpuLease::TARGET_USAGES,
-            });
-            Self {
-                gpu,
-                host,
-                texture,
-                scale,
-            }
+                .format(TargetFormat::new(format))
+                .open(PHYSICAL, scale);
+            Self { gpu, window }
         }
 
         /// One frame.
@@ -950,10 +937,7 @@ mod screenshot_tests {
                     ui.request_screenshot(region);
                 }
             });
-            let repaint = self
-                .host
-                .frame(RenderTarget::new(&self.texture), self.scale, &mut app)
-                .repaint_requested;
+            let repaint = self.window.frame(&mut app).repaint_requested;
             FrameRun {
                 repaint,
                 recorded: seen.take(),
@@ -962,7 +946,7 @@ mod screenshot_tests {
 
         /// The target's pixels; the scene is still, so every frame leaves the same ones.
         fn target(&self) -> image::RgbaImage {
-            self.gpu.handles().read_back(&self.texture)
+            self.window.read_back()
         }
 
         /// Ask for `region`, wait for the device, and run the frame the image lands in. Without
@@ -975,7 +959,7 @@ mod screenshot_tests {
             self.gpu.wait();
             let run = self.frame(Frame::Still);
             let shot = self
-                .host
+                .window
                 .ui()
                 .screenshot_taken()
                 .expect("a finished copy lands in the next frame")
@@ -988,7 +972,7 @@ mod screenshot_tests {
             assert!(!run.repaint, "nothing is pending once it landed");
             let after = self.frame(Frame::Still);
             assert_eq!(
-                (after.recorded, self.host.ui().screenshot_taken()),
+                (after.recorded, self.window.ui().screenshot_taken()),
                 (None, None),
                 "a screenshot is an edge of the one frame it lands in"
             );

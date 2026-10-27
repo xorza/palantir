@@ -3,6 +3,8 @@
 
 pub(crate) mod backbuffer;
 pub(crate) mod capture;
+#[cfg(feature = "internals")]
+pub(crate) mod owned_target;
 pub(crate) mod render_target;
 pub(crate) mod stencil;
 #[cfg(feature = "winit")]

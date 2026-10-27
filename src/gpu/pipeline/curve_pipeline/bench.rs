@@ -2,10 +2,10 @@
 //!
 //! Each iteration toggles a control point so damage streams every curve to the backend, then waits for the GPU. Criterion records the curve batch's GPU timestamp, not the frame's wall time.
 
-use crate::bench::fixture::{Backends, Kind, Scale};
+use crate::bench::fixture::{self, Backends, Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
-use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::host::offscreen::OffscreenHost;
+use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::host::headless_window::HeadlessWindow;
 use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::layout::sizing::Sizing;
@@ -96,19 +96,17 @@ fn record_joins(ui: &mut Ui, phase: bool) {
     }
 }
 
-/// A host, its target, and the toggle that keeps each frame repainting.
+/// A window and the toggle that keeps each frame repainting.
 #[derive(Debug)]
 struct Fixture {
-    host: OffscreenHost,
-    target: BenchTarget,
+    window: HeadlessWindow,
     phase: bool,
 }
 
 impl Fixture {
     fn new(gpu: &BenchGpu) -> Self {
         Self {
-            host: gpu.plain_host(true),
-            target: gpu.target("palantir.curve_pipeline_bench.target", PHYSICAL),
+            window: fixture::plain_window(gpu, PHYSICAL, true),
             phase: false,
         }
     }
@@ -117,7 +115,7 @@ impl Fixture {
         self.phase = !self.phase;
         let phase = self.phase;
         let mut app = RecordApp::new(|ui| record(ui, workload, phase));
-        self.host.frame(self.target.as_target(), 1.0, &mut app);
+        self.window.frame(&mut app);
         gpu.wait();
     }
 }
@@ -139,7 +137,8 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                 fixture.render(gpu, workload);
                 gpu.poll();
                 fixture
-                    .host
+                    .window
+                    .host()
                     .gpu_pass_stats()
                     .last_kind(BatchKind::Curve)
                     .is_some()
@@ -154,7 +153,8 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                         fixture.render(gpu, workload);
                         gpu.poll();
                         fixture
-                            .host
+                            .window
+                            .host()
                             .gpu_pass_stats()
                             .last_kind(BatchKind::Curve)
                             .expect("a curve batch timestamp every frame once one arrived")

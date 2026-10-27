@@ -179,7 +179,7 @@ impl Fixture {
         let raster = RasterProgram::new(&g.gpu.device);
         Self {
             backend: TextBackend::new(&g.gpu.device, &raster, shaper),
-            pipelines: raster.build_variants(&g.gpu.device, TARGET_FORMAT),
+            pipelines: raster.build_variants(&g.gpu.device, TARGET_FORMAT.get()),
             belt: StagingBelt::new(g.gpu.device.clone(), 1 << 20),
             store,
             runs,

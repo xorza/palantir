@@ -12,9 +12,9 @@
 //!
 //! Whole-frame wall time is never reported: it moves the opposite way across the `groups` pair.
 
-use crate::bench::fixture::{Backends, Kind, Scale};
-use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-use crate::host::offscreen::OffscreenHost;
+use crate::bench::fixture::{self, Backends, Kind, Scale};
+use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::host::headless_window::HeadlessWindow;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::rect::Rect;
@@ -193,8 +193,7 @@ struct Counts {
 
 #[derive(Debug)]
 struct Fixture {
-    host: OffscreenHost,
-    target: BenchTarget,
+    window: HeadlessWindow,
     handles: Vec<ImageHandle>,
     workload: Workload,
     phase: bool,
@@ -202,10 +201,11 @@ struct Fixture {
 
 impl Fixture {
     fn new(gpu: &BenchGpu, workload: Workload) -> Self {
-        let mut host = gpu.plain_host(false);
+        let mut window = fixture::plain_window(gpu, PHYSICAL, false);
         let handles = (0..workload.textures())
             .map(|seed| {
-                host.ui()
+                window
+                    .ui()
                     .load_image(
                         &Image::from_srgba8(UVec2::new(TEXEL, TEXEL), texels(seed)).unwrap(),
                     )
@@ -213,8 +213,7 @@ impl Fixture {
             })
             .collect();
         Self {
-            host,
-            target: gpu.target("palantir.record_pass_bench.target", PHYSICAL),
+            window,
             handles,
             workload,
             phase: false,
@@ -224,8 +223,7 @@ impl Fixture {
     fn frame(&mut self) {
         self.phase = !self.phase;
         let Self {
-            host,
-            target,
+            window,
             handles,
             workload,
             phase,
@@ -236,7 +234,7 @@ impl Fixture {
             color: tint(*phase),
         };
         let mut app = RecordApp::new(|ui| scene.record(ui));
-        let report = host.frame(target.as_target(), 1.0, &mut app);
+        let report = window.frame(&mut app);
         // A `Partial` frame walks the schedule once per damage rect, which would make the numbers incomparable.
         assert_eq!(
             report.paint(),
@@ -250,7 +248,7 @@ impl Fixture {
 
     /// The composed frame's draw-list shape.
     const fn counts(&self) -> Counts {
-        let buffer = self.host.last_render_buffer();
+        let buffer = self.window.host().last_render_buffer();
         Counts {
             groups: buffer.groups.len(),
             text_batches: buffer.text_batches.len(),
@@ -258,7 +256,8 @@ impl Fixture {
     }
 
     fn record_time(&self) -> Duration {
-        self.host
+        self.window
+            .host()
             .gpu_pass_stats()
             .last_main_pass_cpu()
             .expect("run_main_pass publishes its CPU time on every submitted frame")

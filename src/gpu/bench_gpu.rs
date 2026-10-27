@@ -7,16 +7,14 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::device::requested_gpu::RequestedGpu;
-use crate::gpu::surface::render_target::internals::TargetSpec;
-use crate::gpu::surface::render_target::{self, RenderTarget};
-use crate::gpu::test_gpu::HeadlessTestGpuLease;
-use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
+use crate::gpu::surface::owned_target::OwnedTarget;
+use crate::gpu::surface::render_target::TargetFormat;
 use glam::UVec2;
 use pollster::FutureExt;
 use std::sync::OnceLock;
 
 /// The render target format every bench uses, sRGB like the swapchain.
-pub(crate) const TARGET_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+pub(crate) const TARGET_FORMAT: TargetFormat = TargetFormat::RGBA8_SRGB;
 
 /// Whether the device has the timestamp and pipeline-statistics features `GpuTimings` reads.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,16 +86,8 @@ impl BenchGpu {
     }
 
     /// A `size` render target named `label`, in the swapchain's format.
-    pub fn target(&self, label: &str, size: UVec2) -> BenchTarget {
-        BenchTarget(render_target::internals::texture(
-            &self.gpu.device,
-            TargetSpec {
-                label,
-                size,
-                format: TARGET_FORMAT,
-                usage: HeadlessTestGpuLease::TARGET_USAGES,
-            },
-        ))
+    pub fn target(&self, label: &str, size: UVec2) -> OwnedTarget {
+        OwnedTarget::window(&self.gpu, label, size, TARGET_FORMAT)
     }
 
     /// Drains completed submissions without blocking; timing readback publishes on a poll.
@@ -116,20 +106,9 @@ impl BenchGpu {
             .expect("device poll");
     }
 
-    /// An offscreen host builder on this device.
-    pub fn offscreen_builder(&self) -> OffscreenHostBuilder {
-        OffscreenHost::builder(self.gpu.clone())
-    }
-
-    /// A host whose panels paint no theme chrome, so the driver's own
-    /// draws are all a frame holds.
-    pub(crate) fn plain_host(&self, collect_gpu_stats: bool) -> OffscreenHost {
-        let mut host = self
-            .offscreen_builder()
-            .collect_gpu_stats(collect_gpu_stats)
-            .build();
-        host.ui().theme_mut().panel_chrome = None;
-        host
+    /// The device's handles, for a host on it.
+    pub fn handles(&self) -> Gpu {
+        self.gpu.clone()
     }
 
     /// The adapter and the instrumentation granted.
@@ -148,20 +127,5 @@ impl BenchGpu {
             self.timing_features
                 .contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
         )
-    }
-}
-
-/// A texture a bench driver renders into.
-#[derive(Debug)]
-pub struct BenchTarget(wgpu::Texture);
-
-impl BenchTarget {
-    /// The target a host renders into.
-    pub fn as_target(&self) -> RenderTarget<'_> {
-        RenderTarget::new(&self.0)
-    }
-
-    pub(crate) fn view(&self) -> wgpu::TextureView {
-        self.0.create_view(&wgpu::TextureViewDescriptor::default())
     }
 }

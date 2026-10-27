@@ -22,7 +22,8 @@
 //! `tests/alloc/gates/` and the showcase's `frame bench` page.
 
 use crate::bench::fixture::{Backend, Backends, Kind, Scale};
-use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
+use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::offscreen::OffscreenHost;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::internals::record_app::RecordApp;
@@ -56,8 +57,7 @@ fn gpu() -> &'static BenchGpu {
 /// runs). The default would measure the screenshot path, which copies the
 /// backbuffer out on skip and full frames.
 fn bench_host(g: &BenchGpu) -> OffscreenHost {
-    let mut host = g
-        .offscreen_builder()
+    let mut host = OffscreenHost::builder(g.handles())
         .collect_gpu_stats(false)
         .retained_target(true)
         .build();
@@ -157,7 +157,7 @@ impl Arm {
     }
 
     /// One target per surface the arm renders at.
-    fn targets(self) -> Vec<BenchTarget> {
+    fn targets(self) -> Vec<OwnedTarget> {
         self.sizes()
             .iter()
             .enumerate()
@@ -217,7 +217,7 @@ const SETTLE_FRAMES: u32 = 4;
 /// One frame of the fixture on `target`, at the bench's device pixel ratio.
 fn gpu_frame(
     host: &mut OffscreenHost,
-    target: &BenchTarget,
+    target: &OwnedTarget,
     state: &mut FrameFixture,
 ) -> FramePaint {
     let mut app = RecordApp::new(|ui| state.render(BENCH_SCALE, ui));

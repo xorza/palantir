@@ -25,16 +25,15 @@ use std::time::Duration;
 
 /// The bench device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for
 /// benches outside the crate, which share its adapter check and its devices.
-pub use crate::gpu::bench_gpu::{BenchGpu, BenchTarget, Timing};
-/// The headless window lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for
-/// harnesses outside the crate, which run an app on it without naming wgpu.
-pub use crate::gpu::headless_window::HeadlessWindow;
-/// What a test target is; [`HeadlessTestGpuLease::target_with`] takes it.
-pub use crate::gpu::surface::render_target::internals::TargetSpec;
+pub use crate::gpu::bench_gpu::{BenchGpu, Timing};
+/// A texture a harness renders into and reads back, and what it is made as.
+pub use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 /// The GPU test device lives in `crate::gpu` (`clippy.toml` keeps wgpu types there); re-exported for the suites.
 pub use crate::gpu::test_gpu::{
     HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
 };
+/// One window an app runs in with no desktop.
+pub use crate::host::headless_window::{HeadlessWindow, HeadlessWindowBuilder};
 
 /// The raster-scale quantum, so the allocation suite's scale ramp steps one rung a frame.
 pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;

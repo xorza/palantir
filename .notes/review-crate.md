@@ -34,12 +34,6 @@ the measure-cache hit test.
   desired and the applied `SurfaceConfiguration` and reconfigures in
   `prepare`. On `Reconfigured`, the winit `Window` invalidates the driver's
   target contents. `TargetKey` is `(physical, format)` and loses `vsync`.
-- **`gpu` has one owned target type.** `gpu::surface::OwnedTarget` holds a
-  texture made on a `Gpu`, with `as_target`, `size` and `read_back`. It
-  replaces `BenchTarget`, `headless_window::target` and the five copies of
-  "offscreen host plus its texture". `HeadlessWindow` moves to
-  `host/headless_window.rs` over it, which removes the `gpu → host`, `gpu →
-  ui` and `gpu → app` edges.
 - **One host-options vocabulary.** A crate-private `HostOptions` holds the
   settings that both builders share (fonts, shaper, clipboard, GPU stats,
   pixel snap) and builds `HostCoreConfig` in one place.
@@ -186,29 +180,9 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
 
-## Batch 4: Owned target and `HeadlessWindow` home
-
-Needs batch 3. Files: `src/gpu/surface/owned_target.rs` (new),
-`src/gpu/{bench_gpu.rs, bench.rs, test_gpu.rs}`, `src/host/headless_window.rs`,
-`src/internals/mod.rs`, `tests/alloc/harness/offscreen.rs`,
-`tests/visual/harness.rs`, `src/host/window_driver/tests.rs`.
-
-- [ ] **`gpu → host`, `gpu → ui`, `gpu → app` edges.**
-  `headless_window.rs:6, 13-14, 17-18`, `bench_gpu.rs:13, 119-133`. Target:
-  `OwnedTarget` in `gpu::surface`; `HeadlessWindow` moves to `host/`;
-  `BenchGpu::offscreen_builder` and `plain_host` move to `crate::bench`.
-- [ ] **Five copies of "host plus its texture".** Target: the alloc harness,
-  the screenshot tests and the gpu bench use `HeadlessWindow` over
-  `OwnedTarget`; the visual harness uses `OwnedTarget`.
-- [ ] **`HeadlessWindow` API.** `headless_window.rs:24-29, 38-56, 70-101`.
-  Target: `HeadlessWindow::builder(gpu)` with `OffscreenHostBuilder`'s
-  setters, `open(size, system_scale)`, `system_scale()`, `read_back()`, no
-  duplicate device handle. Consider `request_close()` so the close veto can
-  be tested. Add one test for resize and read-back.
-
 ## Batch 5: Host frame step and time
 
-Needs batch 4. Files: `src/host/{core.rs, clock.rs, window_driver/,
+Files: `src/host/{core.rs, clock.rs, window_driver/,
 offscreen.rs, winit/window/, winit/runtime.rs}`, `src/internals/ui_harness/`,
 `src/ui/mod.rs` (one doc).
 
