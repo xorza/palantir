@@ -234,11 +234,12 @@ impl OffscreenHost {
         self
     }
 
-    /// Block until the device has finished every frame submitted so far. A screenshot asked for
-    /// in one of them then lands in the next frame, so a caller that waits once and runs one
+    /// Block until the device has finished every frame submitted so far, and the copies of their
+    /// screenshots are back, also when other threads poll the same device. A screenshot asked
+    /// for in one of them then lands in the next frame, so a caller that waits once and runs one
     /// frame reads it in [`Ui::screenshot_taken`](crate::Ui::screenshot_taken).
     pub fn wait_for_gpu(&self) {
-        self.core.wait_for_gpu();
+        self.driver.wait_for_captures(self.core.gpu());
     }
 
     /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged. The target may change between calls, unless the builder promised [`OffscreenHostBuilder::retained_target`]. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`].

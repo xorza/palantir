@@ -37,6 +37,9 @@ all-features = false
 # a device in a process of its own.
 [workspace.metadata.drive]
 version = "0.2"
+# The second set lints the build without winit, as the second test lane builds it: CI builds that
+# lane under `-D warnings`, so a warning only it shows would fail CI and nothing here.
+lint = ["--all-features", "--no-default-features"]
 test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
 test-runner = "cargo-test"
 docs = true

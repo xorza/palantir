@@ -825,13 +825,6 @@ impl WgpuBackend {
     }
 
     /// The device and queue every window of this backend presents through.
-    #[cfg_attr(
-        not(feature = "winit"),
-        expect(
-            dead_code,
-            reason = "only the windowed host presents through the device itself"
-        )
-    )]
     pub(crate) const fn gpu(&self) -> &Gpu {
         &self.gpu
     }

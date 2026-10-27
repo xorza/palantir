@@ -40,7 +40,7 @@ impl RealtimeClock {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "winit"))]
 mod tests {
     use crate::host::clock::RealtimeClock;
     use std::time::Duration;

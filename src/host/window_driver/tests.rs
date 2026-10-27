@@ -159,11 +159,8 @@ mod output_validity_tests {
 
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use crate::ui::resources::UiResources;
-    use crate::window::cursor_icon::CursorIcon;
     use crate::window::vsync::Vsync;
     use crate::window::window_commands::WindowCommands;
-    use crate::window::window_commands::internals::Seen;
-    use crate::window::window_config::WindowConfig;
     use crate::window::window_token::WindowToken;
 
     fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
@@ -175,6 +172,10 @@ mod output_validity_tests {
     #[cfg(feature = "winit")]
     #[test]
     fn frame_drain_collects_commands_and_applies_close_veto() {
+        use crate::window::cursor_icon::CursorIcon;
+        use crate::window::window_commands::internals::Seen;
+        use crate::window::window_config::WindowConfig;
+
         let shared = UiResources::isolated_mono();
         let token = WindowToken(17);
         let mut driver = driver(token, &shared);
@@ -360,6 +361,20 @@ mod output_validity_tests {
         driver.captures.clear();
         let landed = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(!landed.report.repaint_requested);
+
+        // A copy whose map callback another thread's poll collected runs on that thread, 20 ms
+        // later: the wait returns only once it ran, though the device was idle all along.
+        driver.captures.push_back(PendingScreenshot {
+            capture: Capture::mapped_elsewhere_after(
+                &headless_test_gpu().device,
+                Duration::from_millis(200),
+            ),
+            region: Rect::new(0.0, 0.0, 1.0, 1.0),
+            scale: 1.0,
+        });
+        driver.wait_for_captures(&headless_test_gpu().handles());
+        assert!(!driver.captures[0].capture.is_pending());
+        driver.captures.clear();
 
         driver.strategy = PresentStrategy::BackbufferCopy;
         let skip_copy = driver.finish_cpu_frame(&mut frontend, report(None));
