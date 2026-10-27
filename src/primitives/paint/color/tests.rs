@@ -66,7 +66,7 @@ fn opaque_emits_six_digits_translucent_emits_eight() {
         s.contains(r##""#3366cc""##),
         "opaque must emit 6 digits: {s}"
     );
-    let s = ron_roundtrip(RgbaF32::srgba(0.2, 0.4, 0.8, 0.5)).text;
+    let s = ron_roundtrip(RgbaF32::from_srgba(SrgbaU8::new(0x33, 0x66, 0xcc, 0x80))).text;
     assert!(
         s.contains(r##""#3366cc80""##),
         "translucent must emit 8 digits: {s}"
@@ -83,6 +83,69 @@ fn extremes_round_trip() {
         let RonRoundTrip { text: s, parsed } = ron_roundtrip(c);
         assert_eq!(s, format!("\"{hex}\""), "{c:?}");
         assert_eq!(parsed, c, "{c:?}");
+    }
+}
+
+/// A color off the 8-bit grid is written as `color(srgb-linear …)` and loads back the same: an
+/// alpha of 0.18 (45.9 255ths), linear channels between two bytes, which leave `/ a` out when
+/// opaque, and the HDR and negative channels a color may hold.
+#[test]
+fn off_grid_colors_write_srgb_linear_and_load_back_the_same() {
+    for (c, text) in [
+        (
+            RgbaF32::WHITE.with_alpha(0.18),
+            "color(srgb-linear 1 1 1 / 0.18)",
+        ),
+        (
+            RgbaF32::new(0.2, 0.4, 0.6, 1.0),
+            "color(srgb-linear 0.2 0.4 0.6)",
+        ),
+        (
+            RgbaF32::new(-0.5, 2.0, 0.0, 0.5),
+            "color(srgb-linear -0.5 2 0 / 0.5)",
+        ),
+    ] {
+        let RonRoundTrip { text: s, parsed } = ron_roundtrip(c);
+        assert_eq!(s, format!("\"{text}\""), "{c:?}");
+        assert_eq!(parsed, c, "{c:?}");
+    }
+    assert_eq!(
+        ron_roundtrip(RgbaF32::WHITE.with_alpha8(46)).text,
+        "\"#ffffff2e\"",
+        "46 255ths is on the grid"
+    );
+}
+
+/// The linear form takes any whitespace between its words and refuses another space, a missing
+/// or extra channel, an empty alpha, a word run into `srgb-linear`, a missing `)`, and a
+/// non-finite channel, under the color rule.
+#[test]
+fn the_linear_form_parses_its_words_and_refuses_the_rest() {
+    assert_eq!(
+        "color( srgb-linear  0.2 0.4\t0.6 /0.5 )".parse::<RgbaF32>(),
+        Ok(RgbaF32::new(0.2, 0.4, 0.6, 0.5))
+    );
+    for bad in [
+        "color(srgb 1 1 1)",
+        "color(srgb-linear 1 1)",
+        "color(srgb-linear 1 1 1 1)",
+        "color(srgb-linear 1 1 1 / )",
+        "color(srgb-linear 1 1 1 / 1 1)",
+        "color(srgb-linear1 1 1)",
+        "color(srgb-linear 1 1 1",
+        "color(srgb-linear 1 x 1)",
+    ] {
+        assert_eq!(
+            bad.parse::<RgbaF32>(),
+            Err("expected color(srgb-linear r g b) or color(srgb-linear r g b / a)"),
+            "{bad}"
+        );
+    }
+    for bad in [
+        "color(srgb-linear NaN 1 1)",
+        "color(srgb-linear 1 1 1 / inf)",
+    ] {
+        assert_eq!(bad.parse::<RgbaF32>(), Err(domain::COLOR_RULE), "{bad}");
     }
 }
 

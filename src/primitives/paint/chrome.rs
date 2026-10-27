@@ -41,7 +41,11 @@ pub struct Chrome {
     pub border: Stroke,
     /// Zero (or sub-`EPS`) radii, the `Default`, are omitted from serialized
     /// output.
-    #[serde(default, skip_serializing_if = "Corners::is_approx_zero")]
+    #[serde(
+        default,
+        skip_serializing_if = "Corners::is_approx_zero",
+        deserialize_with = "crate::primitives::packed::serde::checked::corners"
+    )]
     #[animate(snap)]
     pub corners: Corners,
     /// Single drop / inset shadow; `Shadow::NONE` (the `Default`) means none and is

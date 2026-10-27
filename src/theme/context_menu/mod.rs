@@ -25,7 +25,7 @@ pub struct ContextMenuTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub min_width: f32,
     /// Vertical gutter between rows. `0.0` stacks them flush, like native menus.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
     /// Per-row visuals. See [`MenuItemTheme`].
     pub item: MenuItemTheme,

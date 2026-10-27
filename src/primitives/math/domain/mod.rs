@@ -21,7 +21,8 @@
 //! | [`turn`] | `0..1` | wrapped; non-finite is `0` |
 //! | [`idx`] | `0..len` | clamped; no index when `len == 0` |
 //!
-//! Theme files are checked on load by the same predicates. [`EPS`] is the one epsilon for "can the eye resolve this". Everything is `const fn` because the setters that call it are. [`vec2`] and [`f64`](mod@f64) hold the per-axis and `f64` twins.
+//! Theme files are checked on load by the same predicates, and a file's lengths and offsets also
+//! by [`MAX_FILE_LENGTH`]. [`EPS`] is the one epsilon for "can the eye resolve this". Everything is `const fn` because the setters that call it are. [`vec2`] and [`f64`](mod@f64) hold the per-axis and `f64` twins.
 
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
@@ -35,7 +36,16 @@ pub const EPS: f32 = 1.0e-4;
 /// The largest [`gap`]: the largest finite f16, since containers pack gaps into half-precision lanes.
 pub const MAX_GAP: f32 = F16x4::MAX_LANE;
 
+/// The largest magnitude of a length or offset a file holds, in logical px. wgpu's default
+/// `max_texture_dimension_2d` is 8192, so no window is larger and no part past it can show; and
+/// seven such values sum below [`MAX_GAP`], so a sum that code packs into an f16 lane stays
+/// finite. [`MAX_GAP`] itself would not: two values at it overflow when code adds them.
+pub const MAX_FILE_LENGTH: f32 = 8192.0;
+
 pub(crate) const OFFSET_RULE: &str = "an offset must be finite";
+pub(crate) const FILE_LENGTH_RULE: &str =
+    "a length in a file must be finite, not negative, and at most 8192";
+pub(crate) const FILE_OFFSET_RULE: &str = "an offset in a file must be finite and within ±8192";
 pub(crate) const LENGTH_RULE: &str = "a length must be finite and not negative";
 pub(crate) const EXTENT_RULE: &str = "an extent must not be negative or NaN";
 pub(crate) const GAP_RULE: &str = "a gap must be finite, not negative, and at most 65504";
@@ -130,6 +140,18 @@ pub const fn is_extent(v: f32) -> bool {
 pub const fn extent(v: f32) -> f32 {
     assert!(is_extent(v), "{}", EXTENT_RULE);
     v
+}
+
+/// True if `v` is a length a file may hold: at most [`MAX_FILE_LENGTH`].
+#[inline]
+pub(crate) const fn is_file_length(v: f32) -> bool {
+    is_length(v) && v <= MAX_FILE_LENGTH
+}
+
+/// True if `v` is an offset a file may hold: within ±[`MAX_FILE_LENGTH`].
+#[inline]
+pub(crate) const fn is_file_offset(v: f32) -> bool {
+    is_offset(v) && v.abs() <= MAX_FILE_LENGTH
 }
 
 /// True if `v` is a [`gap`]: a length that fits one f16 lane.

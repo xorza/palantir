@@ -28,15 +28,15 @@ pub struct ScrollbarTheme {
 impl ScrollbarTheme {
     /// The palette defines no scrollbar colors; derived from `text_muted` at decreasing translucency.
     pub fn from_palette(p: &Palette) -> Self {
-        let thumb = |alpha: f32| p.text_muted.with_alpha(alpha);
+        let thumb = |alpha: u8| p.text_muted.with_alpha8(alpha);
         Self {
             thickness: 8.0,
             gap: 4.0,
             min_thumb: 24.0,
             track: RgbaF32::TRANSPARENT,
-            thumb: thumb(0.45),
-            thumb_hovered: thumb(0.65),
-            thumb_active: thumb(0.85),
+            thumb: thumb(115),
+            thumb_hovered: thumb(166),
+            thumb_active: thumb(217),
         }
     }
 }

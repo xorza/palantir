@@ -57,7 +57,7 @@ impl TooltipTheme {
         let panel = Chrome::rounded(p.element, Corners::all(4.0))
             .with_border(Stroke::new(p.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
-                RgbaF32::new(0.0, 0.0, 0.0, 0.6),
+                RgbaF32::BLACK.with_alpha8(153),
                 Vec2::new(2.0, 2.0),
                 5.0,
             ));

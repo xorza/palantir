@@ -11,22 +11,16 @@ fn check<T>(
     validator(&mut deserializer).map_err(|error| error.to_string())
 }
 
-/// Each scalar rule at its ends: the last value it takes, the first it refuses, and the non-finite values every rule refuses, stating the same rule the call-site kind panics with. 65504 is the largest f16; 65505 packs to infinity.
+/// Each scalar rule at its ends: the last value it takes, the first it refuses, and the non-finite values every rule refuses, stating the rule it refused under. A length or an offset in a file stops at 8192; an angle and a positive rate have no such bound.
 #[test]
 fn each_scalar_rule_holds_its_ends() {
     type Rule = fn(&mut ron::Deserializer<'static>) -> Result<f32, ron::Error>;
-    let rows: [(&str, Rule, &[&'static str], &[&'static str]); 6] = [
+    let rows: [(&str, Rule, &[&'static str], &[&'static str]); 5] = [
         (
-            domain::LENGTH_RULE,
+            domain::FILE_LENGTH_RULE,
             |d| checked::length(d),
-            &["0.0", "1e30"],
-            &["-1.0", "inf", "NaN"],
-        ),
-        (
-            domain::GAP_RULE,
-            |d| checked::gap(d),
-            &["0.0", "65504.0"],
-            &["-1.0", "65505.0", "NaN"],
+            &["0.0", "8192.0"],
+            &["-1.0", "8192.001", "1e30", "inf", "NaN"],
         ),
         (
             domain::POSITIVE_RULE,
@@ -41,10 +35,10 @@ fn each_scalar_rule_holds_its_ends() {
             &["-0.5", "1.5", "NaN"],
         ),
         (
-            domain::OFFSET_RULE,
+            domain::FILE_OFFSET_RULE,
             |d| checked::offset(d),
-            &["-1e30", "1e30"],
-            &["inf", "-inf", "NaN"],
+            &["-8192.0", "8192.0"],
+            &["-8192.001", "8192.001", "inf", "-inf", "NaN"],
         ),
         (
             domain::ANGLE_RULE,
@@ -64,7 +58,7 @@ fn each_scalar_rule_holds_its_ends() {
     }
 }
 
-/// The vector rules check every axis: one bad axis refuses the value.
+/// The vector, spacing and corner rules check every axis, edge or radius: one bad one refuses the value.
 #[test]
 fn vector_rules_check_every_axis() {
     assert_eq!(
@@ -77,6 +71,17 @@ fn vector_rules_check_every_axis() {
         Ok(Vec2::new(-1.0, 2.0))
     );
     assert!(check(|d| checked::offset2(d), "(inf, 2.0)").is_err());
+    assert!(check(|d| checked::length2(d), "(1.0, 8193.0)").is_err());
+    assert!(check(|d| checked::offset2(d), "(-8193.0, 0.0)").is_err());
+    assert!(check(|d| checked::padding(d), "8192.0").is_ok());
+    // A spacing is checked as packed: 8193 rounds to the f16 8192, and 8200 is the next lane value.
+    let error = check(|d| checked::padding(d), "(1.0, 8200.0)").expect_err("a long edge");
+    assert!(error.contains(domain::FILE_LENGTH_RULE), "{error}");
+    let error = check(|d| checked::margin(d), "-8200.0").expect_err("a long edge");
+    assert!(error.contains(domain::FILE_OFFSET_RULE), "{error}");
+    assert!(check(|d| checked::corners(d), "8192.0").is_ok());
+    let error = check(|d| checked::corners(d), "(0.0, 8200.0)").expect_err("a long radius");
+    assert!(error.contains(domain::FILE_LENGTH_RULE), "{error}");
     assert!(
         check(
             |d| checked::offset_points3(d),
@@ -89,5 +94,5 @@ fn vector_rules_check_every_axis() {
         "((0.0, 0.0), (NaN, 1.0), (2.0, 0.0))",
     )
     .expect_err("a NaN point");
-    assert!(error.contains(domain::OFFSET_RULE), "{error}");
+    assert!(error.contains(domain::FILE_OFFSET_RULE), "{error}");
 }

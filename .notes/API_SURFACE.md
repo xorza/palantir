@@ -2937,6 +2937,9 @@ widget::domain
 widget::domain::EPS
     const EPS: f32
 
+widget::domain::MAX_FILE_LENGTH
+    const MAX_FILE_LENGTH: f32
+
 widget::domain::MAX_GAP
     const MAX_GAP: f32
 

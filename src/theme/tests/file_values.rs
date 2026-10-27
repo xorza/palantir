@@ -28,7 +28,11 @@ use std::ops::Range;
 use std::panic;
 use std::time::Duration;
 
-const SUSPECTS: [&str; 6] = ["NaN", "inf", "-inf", "-1.0", "0.0", "1e-30"];
+/// The values each number is set to in turn. `8192.0` is the largest length a file holds
+/// (`domain::MAX_FILE_LENGTH`), and `1e30` one far past it.
+const SUSPECTS: [&str; 8] = [
+    "NaN", "inf", "-inf", "-1.0", "0.0", "1e-30", "8192.0", "1e30",
+];
 
 /// Byte ranges of numeric literals in `ron`, outside strings and identifiers.
 fn numbers(ron: &str) -> Vec<Range<usize>> {
@@ -115,9 +119,10 @@ struct Scene {
     color: RgbaF32,
 }
 
-/// One frame of [`probe`] under `theme`, with the menu opened before it.
+/// One frame of [`probe`] under `theme`, with the menu opened before it. Real shaping, so a font
+/// size reaches the shaper and the ink it measures.
 fn render(theme: Theme) -> UiHarness {
-    let mut h = UiHarness::new(UVec2::new(640, 480));
+    let mut h = UiHarness::with_text(UVec2::new(640, 480));
     h.ui().set_theme(theme);
     ContextMenu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
@@ -153,6 +158,36 @@ fn walk(shard: usize) {
     }
 }
 
+/// Every number that loads at 8192 on its own set to 8192 at once: code adds theme lengths before
+/// it packs them into f16 lanes, which one number at a time never reaches.
+#[test]
+fn every_number_at_the_length_bound_at_once_renders() {
+    const BOUND: &str = "8192.0";
+    let base = pretty(&Theme::default());
+    let splice = |document: &mut String, span: &Range<usize>| {
+        document.replace_range(span.clone(), BOUND);
+    };
+    let taken: Vec<Range<usize>> = numbers(&base)
+        .into_iter()
+        .filter(|span| {
+            let mut document = base.clone();
+            splice(&mut document, span);
+            ron::from_str::<Theme>(&document).is_ok()
+        })
+        .collect();
+    assert!(
+        taken.len() > 50,
+        "only {} numbers take {BOUND}",
+        taken.len()
+    );
+    let mut document = base;
+    for span in taken.iter().rev() {
+        splice(&mut document, span);
+    }
+    let theme = ron::from_str::<Theme>(&document).expect("each number loads at the bound");
+    let _ = render(theme);
+}
+
 /// The default theme's probe frame opens the menu and shows the tooltip, so the walk reaches
 /// their theme values.
 #[test]
@@ -178,8 +213,9 @@ fn the_walk_finds_the_theme_numbers() {
     );
 }
 
-/// Fits the per-test budget.
-const SHARDS: usize = 8;
+/// Fits the per-test budget with real shaping: about 0.3 s a shard, beside the 0.4 s a test
+/// binary takes to start with its fonts.
+const SHARDS: usize = 12;
 
 #[test]
 fn file_values_shard_0() {
@@ -219,4 +255,24 @@ fn file_values_shard_6() {
 #[test]
 fn file_values_shard_7() {
     walk(7);
+}
+
+#[test]
+fn file_values_shard_8() {
+    walk(8);
+}
+
+#[test]
+fn file_values_shard_9() {
+    walk(9);
+}
+
+#[test]
+fn file_values_shard_10() {
+    walk(10);
+}
+
+#[test]
+fn file_values_shard_11() {
+    walk(11);
 }

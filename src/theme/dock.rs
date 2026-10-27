@@ -56,7 +56,7 @@ impl DockTheme {
     /// Drop previews and the drag ghost, both drawn in the palette's accent.
     pub fn from_palette(p: &Palette) -> Self {
         Self {
-            preview_fill: p.accent.with_alpha(0.18),
+            preview_fill: p.accent.with_alpha8(46),
             preview_stroke: Stroke::new(p.accent, 1.5),
             preview_radius: 2.0,
             caret_width: 3.0,

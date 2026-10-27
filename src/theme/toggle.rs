@@ -40,7 +40,7 @@ pub struct ToggleTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub indicator_inset: f32,
     /// Gap between box and label.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::gap")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
     /// Track width as a multiple of its height ([`crate::Switch`] only, ~7:4); `1.0` for the square checkbox and radio.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -161,7 +161,7 @@ impl ToggleTheme {
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                chrome: chrome(acc.with_alpha(0.45), Stroke::NONE),
+                chrome: chrome(acc.with_alpha8(115), Stroke::NONE),
                 text: disabled_text,
             },
         };

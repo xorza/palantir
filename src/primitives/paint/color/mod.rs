@@ -260,6 +260,12 @@ impl RgbaF32 {
         )
     }
 
+    /// [`Self::with_alpha`] in 255ths, the step the hex form holds, so a default color is saved as
+    /// hex and loads back the same.
+    pub(crate) const fn with_alpha8(self, a: u8) -> Self {
+        self.with_alpha(alpha_of_byte(a))
+    }
+
     /// Replace the alpha channel, preserving RGB (storage is straight alpha).
     pub const fn with_alpha(self, a: f32) -> Self {
         Self {
@@ -290,7 +296,7 @@ impl RgbaF32 {
             r: srgb_transfer::DECODED_BYTES[bytes.r as usize],
             g: srgb_transfer::DECODED_BYTES[bytes.g as usize],
             b: srgb_transfer::DECODED_BYTES[bytes.b as usize],
-            a: bytes.a as f32 / 255.0,
+            a: alpha_of_byte(bytes.a),
         }
     }
 
@@ -334,34 +340,96 @@ impl From<SrgbaU8> for RgbaF32 {
     }
 }
 
-/// Wire format: a CSS-style hex string, `#rrggbb`, or `#rrggbbaa` when alpha
-/// is not fully opaque.
+/// Wire format: CSS hex, `#rrggbb` or `#rrggbbaa` when alpha is not fully opaque, for a color on
+/// the 8-bit sRGB grid; otherwise CSS Color 4's `color(srgb-linear r g b / a)`, the stored linear
+/// channels in shortest round-trip form, with `/ a` left out for an opaque one. Either way the
+/// color loads back the same. Refused: hex alone, which moves every color off the grid.
 impl Serialize for RgbaF32 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let SrgbaU8 { r, g, b, a } = self.to_srgba();
-        let hex = if a == 0xff {
+        let bytes = self.to_srgba();
+        let SrgbaU8 { r, g, b, a } = bytes;
+        let text = if Self::from_srgba(bytes) != *self {
+            let Self { r, g, b, a } = *self;
+            if a == 1.0 {
+                format!("color(srgb-linear {r} {g} {b})")
+            } else {
+                format!("color(srgb-linear {r} {g} {b} / {a})")
+            }
+        } else if a == 0xff {
             format!("#{r:02x}{g:02x}{b:02x}")
         } else {
             format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
         };
-        serializer.serialize_str(&hex)
+        serializer.serialize_str(&text)
     }
 }
 
 impl<'de> Deserialize<'de> for RgbaF32 {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let raw = Cow::<'de, str>::deserialize(deserializer)?;
-        parse_hex(raw.trim()).map_err(D::Error::custom)
+        parse(raw.trim()).map_err(D::Error::custom)
     }
 }
 
-/// The hex forms the wire format reads, so `parse` and deserialize agree. Not
+/// The forms the wire format reads, so `parse` and deserialize agree. Not
 /// trimmed: the caller decides what whitespace means.
 impl str::FromStr for RgbaF32 {
     type Err = &'static str;
 
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        parse_hex(value)
+        parse(value)
+    }
+}
+
+/// An 8-bit alpha as a straight alpha: the one conversion, so a color built from 255ths is on the
+/// grid [`RgbaF32::from_srgba`] reads.
+const fn alpha_of_byte(a: u8) -> f32 {
+    a as f32 / 255.0
+}
+
+/// A hex color, or `color(srgb-linear …)`.
+fn parse(value: &str) -> Result<RgbaF32, &'static str> {
+    match value.strip_prefix("color(") {
+        Some(body) => parse_linear(body),
+        None => parse_hex(value),
+    }
+}
+
+/// Parse the body of `color(srgb-linear r g b)` or `color(srgb-linear r g b / a)` after its
+/// `color(`: plain numbers, as [`Serialize`] writes them, every channel finite. CSS's
+/// percentages and `none` are not read, nor any space but `srgb-linear`.
+fn parse_linear(body: &str) -> Result<RgbaF32, &'static str> {
+    const FORM: &str = "expected color(srgb-linear r g b) or color(srgb-linear r g b / a)";
+    let inner = body
+        .strip_suffix(')')
+        .and_then(|inner| inner.trim_start().strip_prefix("srgb-linear"))
+        .filter(|channels| channels.starts_with(char::is_whitespace))
+        .ok_or(FORM)?;
+    let (channels, alpha) = match inner.split_once('/') {
+        Some((channels, alpha)) => (channels, Some(alpha)),
+        None => (inner, None),
+    };
+    let numbers = |text: &str, count: usize| -> Result<Vec<f32>, &'static str> {
+        let values = text
+            .split_whitespace()
+            .map(|word| word.parse::<f32>().map_err(|_| FORM))
+            .collect::<Result<Vec<_>, _>>()?;
+        if values.len() == count {
+            Ok(values)
+        } else {
+            Err(FORM)
+        }
+    };
+    let rgb = numbers(channels, 3)?;
+    let a = match alpha {
+        Some(alpha) => numbers(alpha, 1)?[0],
+        None => 1.0,
+    };
+    let color = RgbaF32::new(rgb[0], rgb[1], rgb[2], a);
+    if domain::is_color(color) {
+        Ok(color)
+    } else {
+        Err(domain::COLOR_RULE)
     }
 }
 

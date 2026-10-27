@@ -825,7 +825,7 @@ impl ComposeSession<'_> {
         } else {
             AA_HALF_WIDTH
         };
-        let cover = inscribed.deflated_by(Spacing::all(stroke_inset + aa_inset));
+        let cover = inscribed.deflated_by(Spacing::saturating([stroke_inset + aa_inset; 4]));
         if !cover.is_paint_empty() {
             let idx = self.out.quads.len() as u32 - 1 - self.composer.cursors.quads;
             self.composer.occlusion.record_opaque(idx, cover);

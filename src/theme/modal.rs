@@ -30,7 +30,7 @@ impl ModalTheme {
         Self {
             panel,
             // Black is identical in sRGB and linear, so `RgbaF32::new` is exact.
-            backdrop: RgbaF32::new(0.0, 0.0, 0.0, 0.5),
+            backdrop: RgbaF32::BLACK.with_alpha8(128),
             padding: Spacing::all(20.0),
             min_width: 280.0,
         }
