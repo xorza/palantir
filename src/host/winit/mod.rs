@@ -371,6 +371,7 @@ where
         if win.on_window_event(&event) {
             win.next = FramePresent::Immediate;
         }
+        let was_hidden = win.is_hidden();
 
         match event {
             WindowEvent::RedrawRequested => runtime.draw(slot),
@@ -415,6 +416,10 @@ where
             }
 
             _ => {}
+        }
+        // One check after every arm, so an arm that hides or shows the window cannot skip it.
+        if runtime.window(slot).is_hidden() != was_hidden {
+            runtime.log_visibility(slot);
         }
     }
 }

@@ -936,6 +936,7 @@ HostHandle  [features: winit]
         pub fn request_repaint(&self, window: WindowToken)
         pub fn send_input(&self, window: WindowToken, event: OwnedInputEvent)
         pub fn last_frame(&self, window: WindowToken) -> Option<FrameSummary>
+        pub fn is_hidden(&self, window: WindowToken) -> bool
         pub fn run_on_main(&self, f: impl FnOnce(&mut T) -> bool + Send + 'static) -> Result<(), HostDisconnected>
         pub fn quit(&self)
 
@@ -1572,6 +1573,9 @@ Screenshot
         pub const fn scale(&self) -> f32
         pub const fn region(&self) -> Rect
 
+ScreenshotId
+    struct ScreenshotId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+
 Scroll
     struct Scroll<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn vertical() -> Self
@@ -1837,6 +1841,7 @@ StatefulLook
         pub active: WidgetLook
         pub disabled: WidgetLook
         pub const fn pick(&self, state: &ResponseState, engagement: Engagement) -> &WidgetLook
+        pub const fn each_mut(&mut self) -> [&mut WidgetLook; 4]
 
 Stop
     struct Stop: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
@@ -2246,8 +2251,8 @@ Ui
         pub const fn set_vsync(&mut self, vsync: Vsync)
         pub const fn vsync(&self) -> Vsync
         pub fn request_repaint(&mut self)
-        pub fn request_screenshot(&mut self, region: Option<Rect>)
-        pub fn screenshot_taken(&self) -> Option<&Screenshot>
+        pub fn request_screenshot(&mut self, region: Option<Rect>) -> ScreenshotId
+        pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot>
         pub fn request_repaint_after(&mut self, after: Duration)
         pub fn open_window(&mut self, token: WindowToken, config: WindowConfig)
         pub fn close_window(&mut self, token: WindowToken)

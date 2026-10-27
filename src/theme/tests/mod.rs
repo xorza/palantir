@@ -57,3 +57,17 @@ assert_impl_all!(TextStyle: Copy);
 fn pretty<T: Serialize>(value: &T) -> String {
     ser::to_string_pretty(value, PrettyConfig::default()).expect("serialize")
 }
+
+/// `each_mut` hands out every state's look once, in the order the fields declare them.
+#[test]
+fn each_mut_reaches_every_state_in_order() {
+    let mut look = StatefulLook::default();
+    for (size, state) in [1.0, 2.0, 3.0, 4.0].into_iter().zip(look.each_mut()) {
+        state.text.font_size = Some(size);
+    }
+    assert_eq!(
+        [&look.normal, &look.hovered, &look.active, &look.disabled]
+            .map(|state| state.text.font_size),
+        [Some(1.0), Some(2.0), Some(3.0), Some(4.0)]
+    );
+}

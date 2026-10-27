@@ -146,7 +146,7 @@ mod output_validity_tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::window_driver::tests::{config, spec};
     use crate::host::window_driver::{
-        FrameSpec, PendingScreenshot, PresentPath, PresentStrategy, WindowDriver,
+        FrameSpec, PendingScreenshot, PresentPath, PresentStrategy, ScreenshotId, WindowDriver,
     };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
@@ -350,6 +350,7 @@ mod output_validity_tests {
             capture: Capture::never_landing(&headless_test_gpu().device),
             region: Rect::new(0.0, 0.0, 1.0, 1.0),
             scale: 1.0,
+            id: ScreenshotId::FIRST,
         });
         let waiting = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(matches!(waiting.mode, PresentPath::SkipNoop));
@@ -370,6 +371,7 @@ mod output_validity_tests {
             ),
             region: Rect::new(0.0, 0.0, 1.0, 1.0),
             scale: 1.0,
+            id: ScreenshotId::FIRST,
         });
         driver.wait_for_captures(&headless_test_gpu().handles());
         assert!(!driver.captures[0].capture.is_pending());
@@ -858,7 +860,7 @@ mod screenshot_tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
-    use crate::ui::screenshot::Screenshot;
+    use crate::ui::screenshot::{Screenshot, ScreenshotId};
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
 
@@ -885,6 +887,8 @@ mod screenshot_tests {
     /// channel shows.
     struct Scene {
         window: HeadlessWindow,
+        /// The id of the last ask, whose image a frame looks for.
+        asked: Option<ScreenshotId>,
     }
 
     impl Scene {
@@ -894,15 +898,23 @@ mod screenshot_tests {
                 .shaper(TextShaper::test_mono())
                 .format(TargetFormat::new(format))
                 .open(PHYSICAL, scale);
-            Self { window }
+            Self {
+                window,
+                asked: None,
+            }
+        }
+
+        /// The image of the last ask, in the frame it lands in.
+        fn landed(&mut self) -> Option<&Screenshot> {
+            self.window.ui().screenshot_taken(self.asked?)
         }
 
         /// One frame.
         fn frame(&mut self, frame: Frame) -> FrameRun {
-            let asked = Cell::new(frame);
+            let asked = Cell::new(self.asked);
             let seen = Cell::new(None);
             let mut app = RecordApp::new(|ui: &mut Ui| {
-                if let Some(shot) = ui.screenshot_taken() {
+                if let Some(shot) = asked.get().and_then(|id| ui.screenshot_taken(id)) {
                     seen.set(Some(shot.clone()));
                 }
                 Block::new()
@@ -917,11 +929,12 @@ mod screenshot_tests {
                     .size(8.0)
                     .chrome(Chrome::fill(RgbaF32::hex(0x2f6fd0)))
                     .show(ui);
-                if let Frame::Asking(region) = asked.get() {
-                    ui.request_screenshot(region);
+                if let Frame::Asking(region) = frame {
+                    asked.set(Some(ui.request_screenshot(region)));
                 }
             });
             let repaint = self.window.frame(&mut app).repaint_requested;
+            self.asked = asked.get();
             FrameRun {
                 repaint,
                 recorded: seen.take(),
@@ -943,9 +956,7 @@ mod screenshot_tests {
             self.window.wait_for_gpu();
             let run = self.frame(Frame::Still);
             let shot = self
-                .window
-                .ui()
-                .screenshot_taken()
+                .landed()
                 .expect("a finished copy lands in the next frame")
                 .clone();
             assert_eq!(
@@ -956,7 +967,7 @@ mod screenshot_tests {
             assert!(!run.repaint, "nothing is pending once it landed");
             let after = self.frame(Frame::Still);
             assert_eq!(
-                (after.recorded, self.window.ui().screenshot_taken()),
+                (after.recorded, self.landed()),
                 (None, None),
                 "a screenshot is an edge of the one frame it lands in"
             );
@@ -1035,5 +1046,40 @@ mod screenshot_tests {
         }
         let shot = scene.capture(None);
         assert_eq!(shot.image().unwrap().pixels, scene.target().into_raw());
+    }
+
+    /// Two regions asked in one frame are two images, each landing in a frame of its own under
+    /// the id its ask got, in the order asked, and read by no other id; a region asked again in
+    /// the same frame, as a replayed record pass asks, is one ask.
+    #[test]
+    fn each_ask_lands_under_its_own_id() {
+        let mut scene = Scene::new(wgpu::TextureFormat::Rgba8UnormSrgb, 1.0);
+        let (left, right) = (
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            Rect::new(10.0, 0.0, 10.0, 10.0),
+        );
+        let ids = Cell::new(None);
+        let mut app = RecordApp::new(|ui: &mut Ui| {
+            let first = ui.request_screenshot(Some(left));
+            let again = ui.request_screenshot(Some(left));
+            let second = ui.request_screenshot(Some(right));
+            ids.set(Some([first, again, second]));
+        });
+        scene.window.frame(&mut app);
+        let [first, again, second] = ids.get().unwrap();
+        assert_eq!(first, again, "a region asked again in one frame is one ask");
+        assert_ne!(first, second);
+        let mut landed = Vec::new();
+        for _ in 0..4 {
+            scene.window.wait_for_gpu();
+            scene.frame(Frame::Still);
+            let ui = scene.window.ui();
+            for id in [first, second] {
+                if let Some(shot) = ui.screenshot_taken(id) {
+                    landed.push((id, shot.region()));
+                }
+            }
+        }
+        assert_eq!(landed, [(first, left), (second, right)]);
     }
 }

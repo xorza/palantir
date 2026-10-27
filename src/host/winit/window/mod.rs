@@ -234,6 +234,11 @@ impl Window {
         self.maximized_stale = true;
     }
 
+    /// Whether the window is minimized or occluded, and so skips its frames.
+    pub(super) const fn is_hidden(&self) -> bool {
+        self.visibility.is_hidden()
+    }
+
     pub(super) fn set_occluded(&mut self, occluded: bool) {
         if let Some(hidden) = self.visibility.set_occluded(occluded, Instant::now()) {
             self.clock.skip(hidden);

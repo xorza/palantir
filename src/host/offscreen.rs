@@ -327,6 +327,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::Cell;
+
     use super::*;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -488,6 +490,7 @@ mod tests {
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::test_mono())
             .build();
+        let asked = Cell::new(None);
         let scene = |ui: &mut Ui, ask: bool| {
             Block::new()
                 .id_salt("tile")
@@ -496,7 +499,9 @@ mod tests {
                 .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
                 .show(ui);
             if ask {
-                ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0)));
+                asked.set(Some(
+                    ui.request_screenshot(Some(Rect::new(20.0, 10.0, 30.0, 20.0))),
+                ));
             }
         };
 
@@ -517,7 +522,7 @@ mod tests {
         host.frame(small.as_target(), 1.0, &mut still);
         let shot = host
             .ui()
-            .screenshot_taken()
+            .screenshot_taken(asked.get().unwrap())
             .expect("the carried request lands once the device finishes its copy");
         assert_eq!(shot.region(), Rect::new(20.0, 10.0, 12.0, 14.0));
         let image = shot.image().unwrap();

@@ -413,7 +413,7 @@ pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::inspected_widget::InspectedWidget;
 pub use ui::layer_scope::LayerScope;
-pub use ui::screenshot::Screenshot;
+pub use ui::screenshot::{Screenshot, ScreenshotId};
 pub use widget_core::configure::Configure;
 pub use widget_core::overlay_response::OverlayResponse;
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};

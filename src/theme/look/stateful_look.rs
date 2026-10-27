@@ -38,6 +38,18 @@ impl StatefulLook {
         }
     }
 
+    /// Every state's look, for a restyle that touches them all; destructured, so a state added
+    /// to the look reaches every caller.
+    pub const fn each_mut(&mut self) -> [&mut WidgetLook; 4] {
+        let Self {
+            normal,
+            hovered,
+            active,
+            disabled,
+        } = self;
+        [normal, hovered, active, disabled]
+    }
+
     /// Destructured so a new state fails to compile; see [`Theme::for_each_text`](crate::Theme).
     pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {

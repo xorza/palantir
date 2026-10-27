@@ -31,7 +31,7 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
-use crate::ui::screenshot::Screenshot;
+use crate::ui::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
@@ -66,10 +66,10 @@ pub(super) struct WindowDriver {
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
     cutouts: CutoutPlan,
-    /// The logical region a recorded frame asked an image of, until a frame paints it: one the
-    /// host did not present (an outdated swapchain) carries to the next, and is resolved against
-    /// the display of the frame that paints it, so a resize in between cannot leave it outside.
-    capture_request: Option<Rect>,
+    /// The images a recorded frame asked for, until a frame paints them: ones the host did not
+    /// present (an outdated swapchain) carry to the next, and are resolved against the display of
+    /// the frame that paints them, so a resize in between cannot leave one outside.
+    screenshot_requests: Vec<ScreenshotRequest>,
     /// Screenshots on their way back from the device, oldest first; one lands per frame.
     captures: VecDeque<PendingScreenshot>,
 }
@@ -104,6 +104,7 @@ struct PendingScreenshot {
     capture: Capture,
     region: Rect,
     scale: f32,
+    id: ScreenshotId,
 }
 
 /// Identity of the surface or texture a window renders into: the single gate on retained target
@@ -250,7 +251,7 @@ impl WindowDriver {
             pixel_snap: config.pixel_snap,
             target: None,
             cutouts: CutoutPlan::new(config.cutout_mode),
-            capture_request: None,
+            screenshot_requests: Vec::new(),
             captures: VecDeque::new(),
         }
     }
@@ -336,18 +337,17 @@ impl WindowDriver {
                 .captures
                 .pop_front()
                 .expect("the screenshot that landed is the front one");
-            Screenshot::new(captured.image, pending.scale, pending.region)
+            Screenshot::new(captured.image, pending.scale, pending.region, pending.id)
         });
         self.ui.set_screenshot_taken(landed);
     }
 
     fn finish_cpu_frame(&mut self, frontend: &mut Frontend, mut report: FrameReport) -> CpuFrame {
-        if let Some(region) = self.ui.take_screenshot_request() {
-            self.capture_request = Some(region);
-        }
+        self.ui
+            .take_screenshot_requests(&mut self.screenshot_requests);
         // A screenshot reads the backbuffer, so its frame paints all of it there, whatever
         // damage or present strategy the frame had.
-        let capturing = self.capture_request.is_some();
+        let capturing = !self.screenshot_requests.is_empty();
         if capturing {
             report.plan = Some(report.plan.map_or(
                 RenderPlan {
@@ -483,15 +483,16 @@ impl WindowDriver {
                     debug_overlay,
                 });
                 self.output_valid = true;
-                if let Some(region) = self.capture_request.take() {
+                let display = self.ui.display();
+                for request in self.screenshot_requests.drain(..) {
                     let backbuffer = backbuffer
                         .expect("a frame with a screenshot request paints through the backbuffer");
-                    let display = self.ui.display();
-                    let region = region.clamp_to(display.logical_rect());
+                    let region = request.region.clamp_to(display.logical_rect());
                     self.captures.push_back(PendingScreenshot {
                         capture: backend.capture(backbuffer, physical_region(region, display)),
                         region,
                         scale: display.scale_factor(),
+                        id: request.id,
                     });
                 }
             }
