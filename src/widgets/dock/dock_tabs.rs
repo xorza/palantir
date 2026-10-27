@@ -1,22 +1,20 @@
 //! What the application answers about each tab, and the menu bundle handed to one answer.
 
 use crate::primitives::geometry::size::Size;
-
-use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::dock::dock_operation::DockOperation;
 use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::tab_group::TabGroupId;
-use crate::widgets::tabs::tab_item::TabBadge;
+use crate::widgets::tabs::tab_chip::TabChip;
 
 /// What a [`DockView`](crate::DockView) asks the application about each tab it draws. A trait, since seven questions per tab do not fit in closures without boxing per frame; each runs per visible tab per frame, so keep them cheap.
 pub trait DockTabs {
     /// The application's own tab key — a small `Copy` enum or index.
     type Tab: DockTab;
 
-    /// The chip's label; intern through [`Ui::intern`] or [`fmt!`](crate::fmt).
+    /// The tab's name, for the overflow menu and [`TabChip::show_label`]; intern through [`Ui::intern`] or [`fmt!`](crate::fmt).
     fn title(&mut self, ui: &mut Ui, tab: Self::Tab) -> InternedStr;
 
     /// The tab's body, recorded into the pane's content area; `size` is its arranged size, `None` on the one frame before the pane's first layout.
@@ -32,14 +30,10 @@ pub trait DockTabs {
         true
     }
 
-    /// The chip's status dot. Return [`TabBadge::Idle`] from every tab kind that can ever show one, so the chip keeps its width.
-    fn badge(&mut self, _tab: Self::Tab) -> TabBadge {
-        TabBadge::None
-    }
-
-    /// Icon for `tab`.
-    fn icon(&mut self, _tab: Self::Tab) -> Option<IconHandle> {
-        None
+    /// What `tab`'s chip shows between its padding and its close button: an icon, the name, a
+    /// status mark, in `chip`'s ink to follow its hover and selection. The name alone by default.
+    fn tab_content(&mut self, ui: &mut Ui, _tab: Self::Tab, chip: &TabChip) {
+        chip.show_label(ui);
     }
 
     /// Whether a right-click on `tab`'s chip opens a menu, which [`Self::tab_menu`] then fills.
