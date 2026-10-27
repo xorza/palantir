@@ -1,8 +1,8 @@
 //! `WindowDriver`: the target-agnostic state one host target owns around the
-//! shared renderer: its [`Ui`], the persistent [`Backbuffer`], the shadow cutout
-//! plan, and the frame clock. CPU scratch lives on the shared [`Frontend`], GPU
-//! resources on the shared `WgpuBackend`, so N windows share one renderer without
-//! sharing frame-local geometry.
+//! shared renderer: its [`Ui`], the persistent [`Backbuffer`] and the shadow cutout
+//! plan. The host owns the time and hands it in with each [`FrameSpec`]. CPU scratch
+//! lives on the shared [`Frontend`], GPU resources on the shared `WgpuBackend`, so N
+//! windows share one renderer without sharing frame-local geometry.
 
 use crate::app::App;
 use crate::common::tracy;
@@ -18,7 +18,6 @@ use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::surface::viewport::RepaintScissors;
 use crate::gpu::wgpu_backend::WgpuBackend;
-use crate::host::clock::{Clock, RealtimeClock};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::Frontend;
@@ -32,7 +31,7 @@ use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
 use crate::ui::screenshot::Screenshot;
 use crate::window::vsync::Vsync;
-use crate::window::window_commands::{WindowCommand, WindowCommands};
+use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
@@ -61,9 +60,6 @@ pub(super) struct WindowDriver {
     /// backbuffer.
     stencil: Option<Stencil>,
     strategy: PresentStrategy,
-    /// Per-frame time source ([`RealtimeClock`] on screen,
-    /// [`FixedClock`](crate::host::clock::FixedClock) offscreen).
-    pub(super) clock: Box<dyn Clock>,
     pixel_snap: bool,
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
@@ -118,21 +114,37 @@ pub(super) struct TargetKey {
     pub(super) vsync: Option<Vsync>,
 }
 
-impl TargetKey {
-    pub(super) fn of(target: RenderTarget<'_>) -> Self {
-        Self {
-            physical: target.size(),
-            format: target.format(),
-            vsync: None,
+/// What a host knows of the frame it is about to run: the target, the platform's scale and
+/// refresh rate, and the time.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct FrameSpec {
+    pub(super) physical: UVec2,
+    pub(super) format: TargetFormat,
+    /// The swapchain's present mode; `None` for a texture.
+    pub(super) vsync: Option<Vsync>,
+    pub(super) system_scale: f32,
+    pub(super) refresh_millihertz: Option<u32>,
+    pub(super) now: Duration,
+}
+
+impl FrameSpec {
+    const fn target_key(&self) -> TargetKey {
+        TargetKey {
+            physical: self.physical,
+            format: self.format,
+            vsync: self.vsync,
         }
     }
+}
 
-    /// Whether this key describes a target with the given texture facts. [`PartialEq`]
-    /// compares configuration and would never hold against a plain texture, which has
-    /// no pacing.
-    pub(super) fn describes(&self, physical: UVec2, format: TargetFormat) -> bool {
-        self.physical == physical && self.format == format
-    }
+/// What a host sets on each driver it opens.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DriverConfig {
+    pub(super) strategy: PresentStrategy,
+    /// The host's, inherited by every driver it opens.
+    pub(super) pixel_snap: bool,
+    /// How shadow corners are cut, as the backend allows ([`WgpuBackend::cutout_mode`]).
+    pub(super) cutout_mode: CutoutMode,
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
@@ -213,65 +225,6 @@ pub(super) struct CpuFrame {
     pub(super) mode: PresentPath,
 }
 
-/// Where a submitted frame goes, and the path [`CpuFrame`] chose to take there.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct Presentation<'a> {
-    pub(super) target: RenderTarget<'a>,
-    pub(super) mode: PresentPath,
-}
-
-#[derive(Debug)]
-pub(super) struct WindowDriverBuilder<'a> {
-    token: WindowToken,
-    resources: &'a UiResources,
-    strategy: PresentStrategy,
-    clock: Box<dyn Clock>,
-    pixel_snap: bool,
-    cutout_mode: CutoutMode,
-}
-
-impl WindowDriverBuilder<'_> {
-    pub(super) const fn strategy(mut self, strategy: PresentStrategy) -> Self {
-        self.strategy = strategy;
-        self
-    }
-
-    /// Takes the box: callers already boxed one, and `impl Clock` would box twice.
-    pub(super) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
-        self.clock = clock;
-        self
-    }
-
-    /// How shadow corners are cut, as the backend allows ([`WgpuBackend::cutout_mode`]);
-    /// [`CutoutMode::Shade`] by default, which is right on any device.
-    pub(super) const fn cutout_mode(mut self, mode: CutoutMode) -> Self {
-        self.cutout_mode = mode;
-        self
-    }
-
-    /// Registered here so a builder dropped unbuilt leaves no live token.
-    pub(super) fn build(self) -> WindowDriver {
-        self.resources.windows().add(self.token);
-        WindowDriver {
-            token: self.token,
-            engines: FrameEngines::new(self.resources),
-            ui: Ui::new(self.resources.clone()),
-            render_owner: self.resources.render_owners().reserve(),
-            backbuffer: None,
-            backbuffer_fresh: false,
-            output_valid: false,
-            stencil: None,
-            strategy: self.strategy,
-            clock: self.clock,
-            pixel_snap: self.pixel_snap,
-            target: None,
-            cutouts: CutoutPlan::new(self.cutout_mode),
-            capture_request: None,
-            captures: VecDeque::new(),
-        }
-    }
-}
-
 /// Retires this driver's token from the
 /// [`WindowDirectory`](crate::window::window_directory::WindowDirectory) on drop,
 /// so no close path can leave `Ui::is_window_open` true.
@@ -282,51 +235,51 @@ impl Drop for WindowDriver {
 }
 
 impl WindowDriver {
-    /// This driver's clock; frames and input events must share it.
-    pub(super) fn now(&self) -> Duration {
-        self.clock.now()
-    }
-
-    /// Start building a driver for `token` from the shared [`UiResources`]. Defaults:
-    /// direct adaptive presentation, realtime clock. `pixel_snap` is a parameter
-    /// because every driver a host mints carries the host's.
-    pub(super) fn builder(
-        token: WindowToken,
-        resources: &UiResources,
-        pixel_snap: bool,
-    ) -> WindowDriverBuilder<'_> {
-        WindowDriverBuilder {
+    /// A driver for `token` over the shared [`UiResources`]; registered in the window directory
+    /// here, as its `Drop` retires it.
+    pub(super) fn new(token: WindowToken, resources: &UiResources, config: DriverConfig) -> Self {
+        resources.windows().add(token);
+        Self {
             token,
-            resources,
-            strategy: PresentStrategy::DirectAdaptive,
-            clock: Box::new(RealtimeClock::new()),
-            pixel_snap,
-            cutout_mode: CutoutMode::Shade,
+            engines: FrameEngines::new(resources),
+            ui: Ui::new(resources.clone()),
+            render_owner: resources.render_owners().reserve(),
+            backbuffer: None,
+            backbuffer_fresh: false,
+            output_valid: false,
+            stencil: None,
+            strategy: config.strategy,
+            pixel_snap: config.pixel_snap,
+            target: None,
+            cutouts: CutoutPlan::new(config.cutout_mode),
+            capture_request: None,
+            captures: VecDeque::new(),
         }
     }
 
     /// This driver's [`Display`] for a frame. The one place `pixel_snap` and the user
     /// scale reach a frame: the user scale is written mid-frame, so a host-cached copy
     /// would paint a stale frame after it moves.
-    pub(super) fn display(
-        &self,
-        physical: UVec2,
-        system_scale: f32,
-        refresh_millihertz: Option<u32>,
-    ) -> Display {
+    fn display(&self, spec: &FrameSpec) -> Display {
         Display {
-            physical,
-            system_scale,
+            physical: spec.physical,
+            system_scale: spec.system_scale,
             user_scale: self.ui.user_scale(),
             pixel_snap: self.pixel_snap,
-            refresh_millihertz,
+            refresh_millihertz: spec.refresh_millihertz,
         }
     }
 
-    /// Declare the target the next [`Self::cpu_frame`] renders into, returning
-    /// whether it changed. A change invalidates retained pixels and the damage
-    /// baseline; a swapchain adapter also reconfigures on `true`.
-    pub(super) fn note_target(&mut self, key: TargetKey) -> bool {
+    /// The stamp of the frame `spec` describes, as [`Self::cpu_frame`] takes it.
+    pub(super) fn stamp(&self, spec: &FrameSpec) -> FrameStamp {
+        FrameStamp::new(self.display(spec), spec.now)
+    }
+
+    /// Declare the target of the frame `spec` describes, returning whether it changed. A change
+    /// invalidates retained pixels and the damage baseline; a swapchain adapter also reconfigures
+    /// on `true`.
+    pub(super) fn note_target(&mut self, spec: &FrameSpec) -> bool {
+        let key = spec.target_key();
         if self.target == Some(key) {
             return false;
         }
@@ -349,17 +302,13 @@ impl WindowDriver {
     pub(super) fn cpu_frame<T: App>(
         &mut self,
         frontend: &mut Frontend,
-        display: Display,
+        stamp: FrameStamp,
         app: &mut T,
     ) -> CpuFrame {
         tracy::zone!();
         let report = self.ui.frame(
             &mut self.engines,
-            FrameInput::new(
-                FrameStamp::new(display, self.clock.now()),
-                self.output_valid,
-                self.token,
-            ),
+            FrameInput::new(stamp, self.output_valid, self.token),
             app,
         );
         self.finish_cpu_frame(frontend, report)
@@ -441,42 +390,16 @@ impl WindowDriver {
         self.ui.drain_window_output(self.token, commands)
     }
 
-    /// [`Self::drain_window_output`] for a host with no window lifecycle. Levels
-    /// (cursor, vsync) stay with the recorder and are inert here; commands (open,
-    /// close) mean nothing unserviced, so they are a caller error.
-    ///
-    /// # Panics
-    ///
-    /// Panics if this frame recorded any window open or close request.
-    pub(super) fn deny_window_commands(&mut self) {
-        // Empty by contract, so the drain's `append` moves nothing and nothing allocates.
-        let mut denied = WindowCommands::default();
-        self.drain_window_output(&mut denied);
-        match denied.first() {
-            None => {}
-            Some(WindowCommand::Open { token, .. }) => panic!(
-                "Ui::open_window({token:?}) during an offscreen frame: the offscreen \
-                 host drives one window and has no window lifecycle — use \
-                 WinitHost if the app needs to open windows"
-            ),
-            Some(WindowCommand::Close(token)) => panic!(
-                "Ui::close_window({token:?}) during an offscreen frame: the offscreen \
-                 host drives one window and has no window lifecycle — drop the \
-                 host to release it"
-            ),
-        }
-    }
-
     /// GPU submit against a caller-supplied texture, dispatching on the sealed
     /// [`PresentPath`]. [`PresentPath::SkipCopy`] copies the backbuffer onto the target.
     pub(super) fn render_to_texture(
         &mut self,
         buffer: &RenderBuffer,
         backend: &mut WgpuBackend,
-        presentation: Presentation<'_>,
+        target: RenderTarget<'_>,
+        mode: PresentPath,
     ) {
         tracy::zone!();
-        let Presentation { target, mode } = presentation;
         let size = target.size();
         let display_physical = self.ui.display().physical;
         debug_assert!(
@@ -492,7 +415,7 @@ impl WindowDriver {
         );
         debug_assert!(
             self.target
-                .is_some_and(|key| key.describes(size, target.format())),
+                .is_some_and(|key| key.physical == size && key.format == target.format()),
             "render_to_texture: target ({}x{}, {:?}) differs from the one \
              `note_target` declared ({:?}), so the retained backbuffer / damage \
              baseline were never invalidated for it",

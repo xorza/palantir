@@ -4,7 +4,6 @@
 
 use crate::app::App;
 use crate::common::clipboard::Clipboard;
-use crate::display::Display;
 use crate::gpu::device::backend_config::BackendConfig;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
@@ -12,7 +11,7 @@ use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::host::window_driver::{
-    CpuFrame, PresentPath, Presentation, WindowDriver, WindowDriverBuilder,
+    CpuFrame, DriverConfig, FrameSpec, PresentPath, PresentStrategy, WindowDriver,
 };
 use crate::image_registry::ImageRegistry;
 use crate::renderer::frontend::Frontend;
@@ -76,57 +75,76 @@ impl HostCore {
     }
 
     /// The device and queue every window of this host presents through.
-    #[cfg_attr(
-        not(feature = "winit"),
-        expect(
-            dead_code,
-            reason = "only the windowed host presents through the device itself"
-        )
-    )]
     pub(super) const fn gpu(&self) -> &Gpu {
         self.backend.gpu()
     }
 
-    pub(super) fn driver(&self, token: WindowToken) -> WindowDriverBuilder<'_> {
-        WindowDriver::builder(token, &self.resources, self.pixel_snap)
-            .cutout_mode(self.backend.cutout_mode())
-    }
-
-    /// Retires a closed window's render stream, freeing its `GpuView` targets, which owner-scoped eviction
-    /// would otherwise hold until shutdown. The driver's `Drop` retires its directory entry.
-    #[cfg_attr(
-        not(feature = "winit"),
-        expect(
-            dead_code,
-            reason = "multi-window lifecycle plumbing: every caller is \
-                      under src/host/winit/, so a build without that \
-                      feature has nothing to call it"
+    /// A driver for the window `token`, presenting by `strategy`.
+    pub(super) fn open(&self, token: WindowToken, strategy: PresentStrategy) -> WindowDriver {
+        WindowDriver::new(
+            token,
+            &self.resources,
+            DriverConfig {
+                strategy,
+                pixel_snap: self.pixel_snap,
+                cutout_mode: self.backend.cutout_mode(),
+            },
         )
-    )]
-    pub(super) fn retire(&mut self, driver: &WindowDriver) {
-        self.backend.retire_render_owner(driver.render_owner);
     }
 
-    pub(super) fn cpu_frame<T: App>(
+    /// Run the CPU half of the frame `spec` describes: note its target, hand over a screenshot
+    /// the device finished, and record `app` under the display minted from `spec`.
+    pub(super) fn record<T: App>(
         &mut self,
         driver: &mut WindowDriver,
-        display: Display,
+        spec: FrameSpec,
         app: &mut T,
-    ) -> CpuFrame {
+    ) -> RecordedFrame {
+        let retargeted = driver.note_target(&spec);
         driver.deliver_screenshot(&self.backend);
-        driver.cpu_frame(&mut self.frontend, display, app)
+        let stamp = driver.stamp(&spec);
+        RecordedFrame {
+            cpu: driver.cpu_frame(&mut self.frontend, stamp, app),
+            retargeted,
+        }
     }
 
+    /// The GPU half: draw the recorded frame into `target` by `mode`.
     pub(super) fn submit(
         &mut self,
         driver: &mut WindowDriver,
         target: RenderTarget<'_>,
         mode: PresentPath,
     ) {
-        driver.render_to_texture(
-            &self.frontend.buffer,
-            &mut self.backend,
-            Presentation { target, mode },
-        );
+        driver.render_to_texture(&self.frontend.buffer, &mut self.backend, target, mode);
     }
+
+    /// Close a window: its render stream retires, freeing its `GpuView` targets, which
+    /// owner-scoped eviction would otherwise hold until shutdown, and the driver's `Drop` retires
+    /// its directory entry.
+    #[cfg_attr(
+        not(feature = "winit"),
+        expect(
+            dead_code,
+            reason = "only the windowed host closes a window while it runs"
+        )
+    )]
+    pub(super) fn close(&mut self, driver: WindowDriver) {
+        self.backend.retire_render_owner(driver.render_owner);
+        drop(driver);
+    }
+
+    /// Block until the device has finished every submitted frame, so a screenshot it copies
+    /// lands in the next frame.
+    pub(super) fn wait_for_gpu(&self) {
+        self.gpu().wait();
+    }
+}
+
+/// What [`HostCore::record`] did.
+#[derive(Debug)]
+pub(super) struct RecordedFrame {
+    pub(super) cpu: CpuFrame,
+    /// The target moved, so a swapchain reconfigures before it presents.
+    pub(super) retargeted: bool,
 }

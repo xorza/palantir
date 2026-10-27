@@ -97,13 +97,7 @@ impl BenchGpu {
 
     /// Blocks until all submissions drain, keeping GPU work inside the measured window.
     pub fn wait(&self) {
-        self.gpu
-            .device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("device poll");
+        self.gpu.wait();
     }
 
     /// The device's handles, for a host on it.

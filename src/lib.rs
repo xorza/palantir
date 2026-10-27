@@ -270,10 +270,9 @@ pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 #[cfg(feature = "winit")]
 pub use gpu::surface::surface_usages::SurfaceUsages;
-pub use host::clock::{Clock, FixedClock, RealtimeClock};
 /// The headless render-to-texture host: renders a `Ui` to a caller-supplied
 /// `wgpu::Texture` (screenshots, thumbnails). Also backs the visual harness.
-pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
+pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 #[cfg(feature = "winit")]
 pub use host::winit::{
     WinitHost, WinitHostBuilder,

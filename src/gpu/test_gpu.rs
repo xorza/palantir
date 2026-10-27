@@ -63,12 +63,7 @@ impl HeadlessTestGpuLease {
 
     /// Block until every submission on the device has finished.
     pub fn wait(&self) {
-        self.device
-            .poll(wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            })
-            .expect("wait for the headless test device");
+        self.handles().wait();
     }
 
     /// A new device under this process's GPU lock.

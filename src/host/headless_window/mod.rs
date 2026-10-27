@@ -6,8 +6,7 @@ use crate::display;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::clock::Clock;
-use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
+use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::text::font_scope::FontScope;
@@ -16,6 +15,7 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use glam::UVec2;
 use image::RgbaImage;
+use std::time::Duration;
 
 const LABEL: &str = "palantir.headless_window";
 
@@ -58,9 +58,9 @@ impl HeadlessWindowBuilder {
         self
     }
 
-    /// See [`OffscreenHostBuilder::clock`].
-    pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
-        self.host = self.host.clock(clock);
+    /// See [`OffscreenHostBuilder::time`].
+    pub fn time(mut self, time: OffscreenTime) -> Self {
+        self.host = self.host.time(time);
         self
     }
 
@@ -116,9 +116,36 @@ impl HeadlessWindow {
             .frame(self.target.as_target(), self.system_scale, app)
     }
 
-    /// Deliver one input event, stamped with the window's clock.
+    /// See [`OffscreenHost::on_input`].
     pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta {
         self.host.on_input(event)
+    }
+
+    /// See [`OffscreenHost::advance`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the window was built with [`OffscreenTime::Manual`].
+    #[track_caller]
+    pub fn advance(&mut self, dt: Duration) -> &mut Self {
+        self.host.advance(dt);
+        self
+    }
+
+    /// See [`OffscreenHost::at`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless the window was built with [`OffscreenTime::Manual`].
+    #[track_caller]
+    pub fn at(&mut self, time: Duration) -> &mut Self {
+        self.host.at(time);
+        self
+    }
+
+    /// See [`OffscreenHost::wait_for_gpu`].
+    pub fn wait_for_gpu(&self) {
+        self.host.wait_for_gpu();
     }
 
     /// The window's `Ui`.

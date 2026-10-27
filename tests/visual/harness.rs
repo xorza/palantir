@@ -5,15 +5,13 @@
     reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
 )]
 
-use std::time::Duration;
-
 use glam::UVec2;
 use palantir::golden::image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
-    DebugOverlayConfig, FixedClock, FramePaint, OffscreenHost, Palette, RgbaF32, TextShaper, Theme,
-    Ui,
+    DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, RgbaF32, TextShaper,
+    Theme, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -69,7 +67,7 @@ impl Harness {
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::new())
             .pixel_snap(pixel_snap)
-            .clock(FixedClock::new(Duration::ZERO))
+            .time(OffscreenTime::Manual)
             .build();
         host.ui().set_theme(Theme::from_palette(&FIXTURE_PALETTE));
 

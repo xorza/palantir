@@ -195,12 +195,6 @@ Clipboard
 ClipboardUnavailable
     struct ClipboardUnavailable: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
-Clock
-    trait Clock: Debug
-        fn now(&self) -> Duration
-        fn skip(&mut self, hidden: Duration) { .. }
-        fn deadline(&self, at: Duration) -> Option<Instant> { .. }
-
 CloseHandle
     struct CloseHandle: Debug, Default
         pub fn close(&self)
@@ -699,11 +693,6 @@ ExpanderTheme
         pub body_padding: Spacing
         pub defaults: SlotDefaults
         pub fn from_palette(p: &Palette) -> Self
-
-FixedClock
-    struct FixedClock: Clock, Debug, Default
-        pub const fn new(now: Duration) -> Self
-        pub fn advance(&mut self, dt: Duration)
 
 FocusPolicy
     enum FocusPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1251,6 +1240,9 @@ OffscreenHost
         pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder
         pub const fn ui(&mut self) -> &mut Ui
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
+        pub fn advance(&mut self, dt: Duration) -> &mut Self
+        pub fn at(&mut self, time: Duration) -> &mut Self
+        pub fn wait_for_gpu(&self)
         pub fn frame<T: App>(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut T) -> FrameReport
         pub const fn gpu_pass_stats(&self) -> &GpuPassStats
 
@@ -1259,11 +1251,16 @@ OffscreenHostBuilder
         pub fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
         pub const fn collect_gpu_stats(self, collect: bool) -> Self
-        pub fn clock(self, clock: impl Clock + 'static) -> Self
+        pub const fn time(self, time: OffscreenTime) -> Self
         pub const fn retained_target(self, retained: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn system_clipboard(self, system: bool) -> Self  [features: system-clipboard or winit]
         pub fn build(self) -> OffscreenHost
+
+OffscreenTime
+    enum OffscreenTime: Clone, Copy, Debug, Eq, PartialEq
+        Realtime
+        Manual
 
 Okhsv
     struct Okhsv: Clone, Copy, Debug, Default, PartialEq
@@ -1435,10 +1432,6 @@ RadioButton
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl<'a, T: Debug + PartialEq> Debug for RadioButton<'a, T>
-
-RealtimeClock
-    struct RealtimeClock: Clock, Debug, Default
-        pub fn new() -> Self
 
 Rect
     struct Rect: Clone, Copy, Debug, Default, Hash, PartialEq, Pod, Zeroable

@@ -67,10 +67,7 @@ impl<T: App + 'static> WinitRuntime<T> {
                 pixel_snap: config.pixel_snap,
             },
         );
-        let mut driver = core
-            .driver(token)
-            .strategy(PresentStrategy::DirectAdaptive)
-            .build();
+        let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
         let create_app = bootstrap
             .create_app
             .take()
@@ -182,11 +179,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             .surfaces
             .make_surface(&window, native::physical_size(&window))
             .map_err(|source| WinitHostError::Surface { token, source })?;
-        let driver = self
-            .core
-            .driver(token)
-            .strategy(PresentStrategy::DirectAdaptive)
-            .build();
+        let driver = self.core.open(token, PresentStrategy::DirectAdaptive);
         self.windows.push(Window::new(window, surface, driver));
         Ok(())
     }
@@ -194,7 +187,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Tear down the window holding `token`, if any; the render stream retires before the driver drops.
     fn close_window(&mut self, token: WindowToken) {
         if let Some(win) = self.windows.take(token) {
-            self.core.retire(&win.driver);
+            self.core.close(win.driver);
         }
     }
 }

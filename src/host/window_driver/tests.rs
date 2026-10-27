@@ -1,6 +1,33 @@
 //! Driver tests, grouped by the decision each pins: present-mode selection, output
 //! validity, record-store lifecycle.
 
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
+use crate::gpu::surface::render_target::TargetFormat;
+use crate::host::window_driver::{DriverConfig, FrameSpec, PresentStrategy};
+use glam::UVec2;
+use std::time::Duration;
+
+/// A driver's settings as a host opens it, shading every cutout.
+const fn config(strategy: PresentStrategy, pixel_snap: bool) -> DriverConfig {
+    DriverConfig {
+        strategy,
+        pixel_snap,
+        cutout_mode: CutoutMode::Shade,
+    }
+}
+
+/// A texture frame of `physical` at `system_scale`, at time zero.
+const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
+    FrameSpec {
+        physical,
+        format: TargetFormat::RGBA8_SRGB,
+        vsync: None,
+        system_scale,
+        refresh_millihertz: None,
+        now: Duration::ZERO,
+    }
+}
+
 mod present_mode_tests {
     use crate::damage::Damage;
     use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
@@ -118,14 +145,16 @@ mod output_validity_tests {
     use crate::gpu::surface::capture::Capture;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::host::window_driver::tests::{config, spec};
     use crate::host::window_driver::{
-        PendingScreenshot, PresentPath, PresentStrategy, TargetKey, WindowDriver,
+        FrameSpec, PendingScreenshot, PresentPath, PresentStrategy, WindowDriver,
     };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
     use crate::renderer::render_plan::RenderPlan;
+    use std::time::Duration;
 
     use crate::damage::Damage;
 
@@ -139,54 +168,7 @@ mod output_validity_tests {
     use crate::window::window_token::WindowToken;
 
     fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
-        WindowDriver::builder(token, shared, true).build()
-    }
-
-    /// A host with no window lifecycle drains a quiet frame as a windowed one does
-    /// (the veto lives a frame either way) and keeps the *levels* the recorder
-    /// reads back.
-    #[test]
-    fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
-        let shared = UiResources::isolated_mono();
-        let mut quiet = driver(WindowToken(1), &shared);
-        quiet.ui.keep_open();
-        quiet.ui.set_vsync(Vsync::Off);
-        quiet.ui.set_cursor(CursorIcon::Text);
-
-        quiet.deny_window_commands();
-
-        assert!(
-            !quiet.ui.window_requests().close_vetoed,
-            "a veto against a close that was never requested must not persist"
-        );
-        assert_eq!(
-            quiet.ui.vsync(),
-            Vsync::Off,
-            "a level the host cannot apply is still the one the app set",
-        );
-        assert_eq!(quiet.ui.window_requests().levels.cursor, CursorIcon::Text);
-    }
-
-    #[test]
-    #[should_panic(expected = "Ui::open_window(WindowToken(9))")]
-    fn deny_window_commands_rejects_an_open() {
-        let shared = UiResources::isolated_mono();
-        let mut opener = driver(WindowToken(1), &shared);
-        opener
-            .ui
-            .open_window(WindowToken(9), WindowConfig::new("unservable"));
-
-        opener.deny_window_commands();
-    }
-
-    #[test]
-    #[should_panic(expected = "Ui::close_window(WindowToken(4))")]
-    fn deny_window_commands_rejects_a_close() {
-        let shared = UiResources::isolated_mono();
-        let mut closer = driver(WindowToken(1), &shared);
-        closer.ui.close_window(WindowToken(4));
-
-        closer.deny_window_commands();
+        WindowDriver::new(token, shared, config(PresentStrategy::DirectAdaptive, true))
     }
 
     /// A close request reaches the recorder only from the winit host, so the veto
@@ -285,104 +267,74 @@ mod output_validity_tests {
     #[test]
     fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
         let shared = UiResources::isolated_mono();
-        let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
-        let first = TargetKey {
-            physical: UVec2::new(64, 48),
-            format: TargetFormat::new(wgpu::TextureFormat::Rgba8UnormSrgb),
+        let mut driver = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
+        let first = FrameSpec {
             vsync: Some(Vsync::On),
+            ..spec(UVec2::new(64, 48), 1.0)
         };
-        let resized = TargetKey {
+        let resized = FrameSpec {
             physical: UVec2::new(65, 48),
             ..first
         };
-        let reformatted = TargetKey {
+        let reformatted = FrameSpec {
             format: TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb),
             ..resized
         };
-        let vsync_off = TargetKey {
+        let vsync_off = FrameSpec {
             vsync: Some(Vsync::Off),
             ..reformatted
         };
         // A texture target carries no mode, yet must read as a change against an
         // otherwise-equal surface.
-        let offscreen = TargetKey {
+        let offscreen = FrameSpec {
             vsync: None,
             ..vsync_off
         };
+        // The scale, refresh rate and time are not the target.
+        let rescaled = FrameSpec {
+            system_scale: 2.0,
+            refresh_millihertz: Some(120_000),
+            now: Duration::from_secs(1),
+            ..offscreen
+        };
 
-        assert!(driver.note_target(first), "the first target is a change");
-        assert!(!driver.note_target(first), "an identical target is not");
+        assert!(driver.note_target(&first), "the first target is a change");
+        assert!(!driver.note_target(&first), "an identical target is not");
 
         for changed in [resized, reformatted, vsync_off, offscreen] {
             driver.output_valid = true;
             driver.backbuffer_fresh = true;
-            assert!(driver.note_target(changed));
+            assert!(driver.note_target(&changed));
             assert!(!driver.output_valid, "target change invalidates output");
             assert!(
                 !driver.backbuffer_fresh,
                 "target change invalidates retained target pixels"
             );
-            assert!(!driver.note_target(changed));
+            assert!(!driver.note_target(&changed));
         }
 
         // Repeats after a change must not re-invalidate, or a swapchain window
         // would never keep a damage baseline.
         driver.output_valid = true;
         driver.backbuffer_fresh = true;
-        assert!(!driver.note_target(offscreen));
+        assert!(!driver.note_target(&rescaled));
         assert!(driver.output_valid);
         assert!(driver.backbuffer_fresh);
-    }
-
-    /// The submit-time "same target" check must ignore the pacing, the one key
-    /// field a render target cannot answer for. Regression: `render_to_texture`
-    /// asserted the noted key *equals* `TargetKey::of(target)`, which reports
-    /// `vsync: None` for a plain texture, so every debug-build swapchain frame
-    /// tripped it on first submit.
-    #[test]
-    fn a_surface_key_describes_its_acquired_texture_whatever_the_pacing() {
-        let physical = UVec2::new(3078, 1908);
-        let format = TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb);
-        let surface = TargetKey {
-            physical,
-            format,
-            vsync: Some(Vsync::On),
-        };
-
-        for vsync in [Some(Vsync::On), Some(Vsync::Off), None] {
-            let key = TargetKey { vsync, ..surface };
-            assert!(
-                key.describes(physical, format),
-                "{vsync:?} must still describe its own texture"
-            );
-        }
-
-        // It must still catch a target that is not the one the CPU half ran
-        // against.
-        assert!(!surface.describes(UVec2::new(3078, 1907), format), "size");
-        assert!(
-            !surface.describes(
-                physical,
-                TargetFormat::new(wgpu::TextureFormat::Rgba8UnormSrgb)
-            ),
-            "format"
-        );
-        assert_ne!(
-            surface,
-            TargetKey {
-                vsync: Some(Vsync::Off),
-                ..surface
-            },
-            "describes() is deliberately weaker than equality, not a \
-             replacement for it"
-        );
     }
 
     #[test]
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
-        let mut driver = WindowDriver::builder(WindowToken(1), &shared, true).build();
+        let mut driver = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
         assert!(!driver.output_valid, "first frame has no presented output");
 
         driver.output_valid = true;
@@ -444,28 +396,25 @@ mod output_validity_tests {
 /// What a driver owns while it exists: its place in the app-global window directory
 /// and a render-owner id no sibling shares.
 mod lifecycle_tests {
-    use crate::host::window_driver::WindowDriver;
+    use crate::host::window_driver::tests::config;
+    use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
-    /// The directory entry belongs to the driver, not whoever built or closed it:
-    /// `build` mints it and `Drop` retires it. Registering at builder creation
-    /// would leave a token live when a builder is dropped unbuilt
-    /// (`Ui::is_window_open` true for a window that never opened), and a retirement
-    /// left to the host would need remembering on two close paths.
+    /// The directory entry belongs to the driver, not whoever opened or closed it:
+    /// `new` mints it and `Drop` retires it, as a retirement left to the host would
+    /// need remembering on two close paths.
     #[test]
     fn a_driver_owns_its_directory_entry_from_build_to_drop() {
         let shared = UiResources::isolated_mono();
         let token = WindowToken(11);
+        assert!(!shared.windows().contains(token));
 
-        let builder = WindowDriver::builder(token, &shared, true);
-        drop(builder);
-        assert!(
-            !shared.windows().contains(token),
-            "a builder that never built owns no window",
+        let driver = WindowDriver::new(
+            token,
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
         );
-
-        let driver = WindowDriver::builder(token, &shared, true).build();
         assert!(shared.windows().contains(token));
         drop(driver);
         assert!(
@@ -477,8 +426,16 @@ mod lifecycle_tests {
     #[test]
     fn window_drivers_have_distinct_render_owners() {
         let shared = UiResources::isolated_mono();
-        let first = WindowDriver::builder(WindowToken(1), &shared, true).build();
-        let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
+        let first = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
+        let second = WindowDriver::new(
+            WindowToken(2),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
 
         assert_ne!(first.render_owner, second.render_owner);
     }
@@ -492,7 +449,8 @@ mod record_store_tests {
     use crate::app::App;
     use crate::internals::record_app::RecordApp;
 
-    use crate::host::clock::FixedClock;
+    use crate::display::frame_stamp::FrameStamp;
+    use crate::host::window_driver::tests::config;
     use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::identity::widget_id::WidgetId;
@@ -589,17 +547,21 @@ mod record_store_tests {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let token = WindowToken(17);
-        let mut window = WindowDriver::builder(token, &shared, false)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
+        let mut window = WindowDriver::new(
+            token,
+            &shared,
+            config(PresentStrategy::DirectAdaptive, false),
+        );
         assert_eq!(window.strategy, PresentStrategy::DirectAdaptive);
         assert!(!window.pixel_snap);
-        assert_eq!(window.clock.now(), Duration::ZERO);
         let mut app = LifecycleApp::default();
 
         let _ = window.cpu_frame(
             &mut frontend,
-            Display::from_physical(UVec2::new(112, 112), 1.0),
+            FrameStamp::new(
+                Display::from_physical(UVec2::new(112, 112), 1.0),
+                Duration::ZERO,
+            ),
             &mut app,
         );
 
@@ -617,13 +579,20 @@ mod record_store_tests {
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
-        let mut window_a = WindowDriver::builder(WindowToken(1), &shared, true)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
-        let mut window_b = WindowDriver::builder(WindowToken(2), &shared, true)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
-            .build();
-        let display = Display::from_physical(UVec2::new(112, 112), 1.0);
+        let mut window_a = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
+        let mut window_b = WindowDriver::new(
+            WindowToken(2),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
+        let display = FrameStamp::new(
+            Display::from_physical(UVec2::new(112, 112), 1.0),
+            Duration::ZERO,
+        );
 
         let mesh_a = Mesh::filled_triangle(
             [
@@ -711,7 +680,8 @@ mod display_tests {
     use glam::UVec2;
 
     use crate::display::user_scale::UserScale;
-    use crate::host::window_driver::WindowDriver;
+    use crate::host::window_driver::tests::{config, spec};
+    use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::primitives::geometry::size::Size;
 
     use crate::ui::resources::UiResources;
@@ -722,16 +692,20 @@ mod display_tests {
     #[test]
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
         let shared = UiResources::isolated_mono();
-        let mut driver = WindowDriver::builder(WindowToken(1), &shared, false).build();
+        let mut driver = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, false),
+        );
 
-        let plain = driver.display(UVec2::new(800, 600), 2.0, None);
+        let plain = driver.display(&spec(UVec2::new(800, 600), 2.0));
         assert_eq!(plain.system_scale, 2.0);
         assert_eq!(plain.user_scale, UserScale::ONE);
         assert_eq!(plain.scale_factor(), 2.0);
         assert!(!plain.pixel_snap, "the snap comes from the host, not here");
 
         driver.ui.set_user_scale(UserScale::new(1.25).unwrap());
-        let zoomed = driver.display(UVec2::new(800, 600), 2.0, None);
+        let zoomed = driver.display(&spec(UVec2::new(800, 600), 2.0));
         assert_eq!(zoomed.system_scale, 2.0, "the platform's half is untouched");
         assert_eq!(zoomed.user_scale, UserScale::new(1.25).unwrap());
         assert_eq!(zoomed.scale_factor(), 2.5);
@@ -744,15 +718,23 @@ mod display_tests {
     #[test]
     fn two_windows_mint_the_one_scale() {
         let shared = UiResources::isolated_mono();
-        let mut first = WindowDriver::builder(WindowToken(1), &shared, true).build();
-        let second = WindowDriver::builder(WindowToken(2), &shared, true).build();
+        let mut first = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
+        let second = WindowDriver::new(
+            WindowToken(2),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
 
         first.ui.set_user_scale(UserScale::new(1.5).unwrap());
 
         assert_eq!(second.ui.user_scale(), UserScale::new(1.5).unwrap());
         assert_eq!(
             second
-                .display(UVec2::new(400, 400), 1.0, None)
+                .display(&spec(UVec2::new(400, 400), 1.0))
                 .scale_factor(),
             1.5,
         );
@@ -762,13 +744,15 @@ mod display_tests {
 /// A partial frame whose shadow cutout plan is stale repaints in full.
 mod cutout_census_tests {
     use std::cell::Cell;
+    use std::time::Duration;
 
     use glam::UVec2;
 
     use crate::damage::Damage;
     use crate::display::Display;
+    use crate::display::frame_stamp::FrameStamp;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
-    use crate::host::window_driver::{PresentPath, PresentStrategy, WindowDriver};
+    use crate::host::window_driver::{DriverConfig, PresentPath, PresentStrategy, WindowDriver};
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
@@ -793,11 +777,19 @@ mod cutout_census_tests {
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
-        let mut driver = WindowDriver::builder(WindowToken(1), &shared, true)
-            .strategy(PresentStrategy::BackbufferCopy)
-            .cutout_mode(CutoutMode::Bake)
-            .build();
-        let display = Display::from_physical(UVec2::new(600, 200), 1.0);
+        let mut driver = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            DriverConfig {
+                strategy: PresentStrategy::BackbufferCopy,
+                pixel_snap: true,
+                cutout_mode: CutoutMode::Bake,
+            },
+        );
+        let display = FrameStamp::new(
+            Display::from_physical(UVec2::new(600, 200), 1.0),
+            Duration::ZERO,
+        );
         let cards = Cell::new(3);
         let tick = Cell::new(false);
         let mut app = RecordApp::new(|ui| {
@@ -864,7 +856,7 @@ mod screenshot_tests {
     use image::imageops;
 
     use crate::gpu::surface::render_target::TargetFormat;
-    use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::headless_window::HeadlessWindow;
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
@@ -899,7 +891,6 @@ mod screenshot_tests {
     /// A window in `format`, drawing two blocks of different colors so a crop or a swapped
     /// channel shows.
     struct Scene {
-        gpu: HeadlessTestGpuLease,
         window: HeadlessWindow,
     }
 
@@ -910,7 +901,7 @@ mod screenshot_tests {
                 .shaper(TextShaper::test_mono())
                 .format(TargetFormat::new(format))
                 .open(PHYSICAL, scale);
-            Self { gpu, window }
+            Self { window }
         }
 
         /// One frame.
@@ -956,7 +947,7 @@ mod screenshot_tests {
                 self.frame(Frame::Asking(region)).repaint,
                 "an asking frame asks for the next"
             );
-            self.gpu.wait();
+            self.window.wait_for_gpu();
             let run = self.frame(Frame::Still);
             let shot = self
                 .window
