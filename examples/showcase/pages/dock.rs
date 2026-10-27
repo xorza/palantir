@@ -47,9 +47,9 @@ struct State {
 impl Default for State {
     fn default() -> Self {
         let mut dock = DockState::new("showcase.dock", Tab::Canvas);
-        let primary = dock.primary().id;
+        let primary = dock.primary().id();
         for tab in OPENABLE {
-            dock.find_or_insert(tab, primary);
+            dock.apply(DockOperation::OpenTab { tab });
         }
         dock.apply(DockOperation::MoveTab {
             tab: Tab::Console,

@@ -390,6 +390,12 @@ fn widget_setters_check_their_kinds() {
     for set in length {
         panic_probe::assert_panics_with(domain::LENGTH_RULE, set);
     }
+    drop(DockState::new("kinds.dock", 0_u32).with_edge_fraction(0.5));
+    for bad in [-0.1, 0.6, f32::NAN] {
+        panic_probe::assert_panics_with("edge_fraction must be in 0..=0.5", || {
+            drop(DockState::new("kinds.dock", 0_u32).with_edge_fraction(bad));
+        });
+    }
     let offset: [fn(); 4] = [
         || drop(Scroll::both().pan_by(Vec2::new(f32::NAN, 0.0))),
         || {

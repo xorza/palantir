@@ -14,12 +14,6 @@ the measure-cache hit test.
 
 ## Widgets
 
-- **The tab strip owns its geometry.** A crate-private strip scan (chip hits
-  plus a drop slot from unclipped extents) and one index module
-  (`moved_idx`, `removed_active`) serve `TabStrip`, `TabbedView`, `DockView`
-  and `DockState`.
-- **One split clamp.** `Splitter` takes a ratio floor beside `min_pane`, and
-  `DockView` passes `RATIO_MIN`.
 - **Retained widget state exposes operations, not fields.** `ScrollState`
   owns every offset and zoom write (`reveal`, `coerce_zoom`). TextEdit gets a
   `Composition` satellite for IME and a `History` type for undo.
@@ -101,35 +95,6 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
 
 Each batch leaves the build and tests green. A batch that needs another one
 comes after it. Delete an item when it is addressed.
-
-## Batch 14: Dock, tabs and splitter
-
-Needs batch 2. Files: `src/widgets/{dock, tabs, splitter}/`.
-
-- [ ] **A divider over-drag snaps back on release.**
-  `dock_view.rs:354-374`, `splitter/mod.rs:158-168, 211, 349-350`,
-  `dock_state.rs:381`. Target: a ratio floor on `Splitter` in
-  `Seam::ratio_at`; `DockView` passes `RATIO_MIN`. Test at the view level.
-- [ ] **Drop slots use clipped chip rects.** `dock_view.rs:280-283`,
-  `pane_geometry.rs:49-54, 104-107`, `tabbed_view.rs:284-287`. Target: a
-  `TabStrip` drop-slot query over unclipped chip extents.
-- [ ] **Chip hits, drop slots and index arithmetic computed two or three
-  times.** `tab_strip.rs:435-446` vs `dock_view.rs:207-227`;
-  `tabbed_view.rs:275-307` vs `dock_state.rs:339-345`, `tab_group.rs:415-421`.
-  Target: `TabStrip::scan` and one index module. `TabbedView` gets the dock's
-  caret and Escape cancel; a cancelled drag no longer reorders.
-- [ ] **`DockView::style` is ignored for drop classification.**
-  `dock_view.rs:262-267`. Target: `edge_fraction` and `caret_width` move to
-  the drop policy beside `AllowedSplits`. **[public]**
-- [ ] **[public] `TabbedView` does not follow the page on `Closed`.**
-  `tabbed_view.rs:29-34, 218-241`. Target: apply the removal arithmetic.
-- [ ] **[public] `DockState` mutators outside `apply`.**
-  `dock_state.rs:284-291, 388-396`. `find_or_insert` panics on a stale group.
-  Target: an `OpenTab` operation that tolerates a stale group.
-- [ ] **[public] `TabGroup` fields carry invariants.** `tab_group.rs:15-22`.
-  Target: private fields and getters as `DockSplit` has; `NodeIdx` doc gets
-  `# Panics` for `DockState::node`.
-- [ ] **Tests.** A disabled Splitter mid-drag.
 
 ## Batch 15: Scroll and TextEdit
 

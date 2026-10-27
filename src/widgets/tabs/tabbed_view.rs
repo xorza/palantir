@@ -1,5 +1,6 @@
 //! A strip over a content area, bound to the caller's page index.
 
+use crate::input::keyboard::key::Key;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -10,15 +11,15 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
+use crate::widgets::tabs::reindex;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
-use crate::widgets::tabs::tab_strip;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use std::hash::Hash;
 use std::rc::Rc;
 
 /// What one pass over a [`TabbedView`] asks its caller to do. Only
 /// [`Self::Activated`] is already done when reported; the other two name a change
-/// to the caller's own collection.
+/// to the caller's own collection, which the bound index already follows.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TabsAction {
     /// The visible page changed; the bound index already holds `idx`.
@@ -26,8 +27,9 @@ pub enum TabsAction {
         /// The page now visible.
         idx: usize,
     },
-    /// The page's close button was clicked: remove it and re-derive the bound
-    /// index.
+    /// The page's close button was clicked: remove it from the collection. The bound
+    /// index already names the page that shows next: the one still showing, else the
+    /// one that takes the closed page's slot, else the one before it.
     Closed {
         /// The page to remove.
         idx: usize,
@@ -74,9 +76,10 @@ pub struct TabbedViewResponse<'a> {
 /// ```
 ///
 /// `*selected` is an *index* coerced for display (past the end shows the last page,
-/// an empty list none) and is rewritten only when the user picks or drags. Chips
-/// are keyed by index unless [`keyed`](Self::keyed) names a key per page, which a
-/// list that closes or reorders pages needs.
+/// an empty list none) and is rewritten only when the user picks, closes or drags.
+/// A drag shows the strip's insertion caret, and Escape cancels it. Chips are keyed
+/// by index unless [`keyed`](Self::keyed) names a key per page, which a list that
+/// closes or reorders pages needs.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64> {
@@ -165,7 +168,9 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
     }
 
     /// Record the strip and the page under it; `body` runs once with the visible
-    /// page's index, or not at all with no pages.
+    /// page's index into `options` as passed, or not at all with no pages. A close or a
+    /// move rewrites the binding for the collection after the change, so the body
+    /// still reads this frame's.
     #[track_caller]
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_> {
         let theme = Rc::clone(ui.theme());
@@ -185,6 +190,18 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
         let response = widget.response(ui);
         let id = response.id;
         let strip_id = id.with("strip");
+        let page_keys = || {
+            options
+                .iter()
+                .enumerate()
+                .map(|(slot, page)| key(slot, page))
+        };
+        let was_carried = ui.state::<CarriedChip>(id).and_then(|c| c.key);
+        let mut carried = was_carried;
+        if carried.is_some() && ui.shortcut_pressed(Key::Escape) {
+            carried = None;
+        }
+        let drop = carried.and_then(|_| dropped_slot(ui, strip_id, page_keys()));
         let mut action = None;
         widget.record(ui, None, |ui| {
             let hit = ui.with_state::<TabItemBuf, _>(strip_id, |ui, buf| {
@@ -205,6 +222,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     .id(strip_id)
                     .selected(shown)
                     .overflow(overflow)
+                    .drop_caret(drop)
                     .style(t)
                     .show(ui);
                 StripHit {
@@ -212,33 +230,40 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     // is one request.
                     clicked: strip.activated(),
                     closed: strip.closed,
+                    drag_started: strip.drag_started,
                     drag_stopped: strip.drag_stopped,
                 }
             });
             if let Some(idx) = hit.closed {
+                if let Some(page) = shown {
+                    *selected = reindex::after_removal(page, idx, options.len());
+                }
                 action = Some(TabsAction::Closed { idx });
             } else if let Some(idx) = hit.clicked {
                 *selected = idx;
                 shown = Some(idx);
                 action = Some(TabsAction::Activated { idx });
             }
-            if let Some(from) = hit.drag_stopped
-                && reorderable
-                && let Some(to) = dropped_slot(
-                    ui,
-                    strip_id,
-                    options
-                        .iter()
-                        .enumerate()
-                        .map(|(slot, page)| key(slot, page)),
-                )
-                && to != from
-                && to != from + 1
-                && let Some(page) = shown
-            {
-                *selected = moved_idx(page, from, to);
-                shown = Some(*selected);
-                action = Some(TabsAction::Reordered { from, to });
+            if let Some(slot) = hit.drag_started {
+                carried = page_keys().nth(slot);
+            }
+            if let Some(from) = hit.drag_stopped {
+                let carried_from = carried.is_some() && carried == page_keys().nth(from);
+                carried = None;
+                if reorderable
+                    && carried_from
+                    && let Some(to) = drop
+                    && to != from
+                    && to != from + 1
+                    && let Some(page) = shown
+                {
+                    *selected = reindex::after_move(page, from, to);
+                    action = Some(TabsAction::Reordered { from, to });
+                }
+            }
+            // Written only on a change, so a view nobody drags mints no row.
+            if carried != was_carried {
+                ui.with_state::<CarriedChip, _>(id, |_, c| c.key = carried);
             }
             Panel::vstack()
                 .id(id.with("content"))
@@ -267,11 +292,18 @@ impl<S, L, K> Configure for TabbedView<'_, S, L, K> {
 struct StripHit {
     clicked: Option<usize>,
     closed: Option<usize>,
+    drag_started: Option<usize>,
     drag_stopped: Option<usize>,
 }
 
-/// The slot the pointer released over, from last frame's rects of the chips keyed
-/// `keys`; `None` unless over the strip.
+/// The chip a drag is carrying, by key, kept on the view's id until the release or an Escape.
+#[derive(Debug, Default)]
+struct CarriedChip {
+    key: Option<u64>,
+}
+
+/// The slot the pointer is over, from last frame's extents of the chips keyed `keys`;
+/// `None` unless over the strip.
 fn dropped_slot(
     ui: &mut Ui,
     strip: WidgetId,
@@ -281,34 +313,9 @@ fn dropped_slot(
     if !ui.response_for(strip).rect?.contains(pointer) {
         return None;
     }
-    let chips = keys
-        .into_iter()
-        .filter_map(|key| ui.response_for(TabStrip::chip_id(strip, key)).rect);
-    Some(tab_strip::insertion_slot(chips, pointer.x))
+    Some(TabStrip::drop_slot(ui, strip, keys, pointer.x))
 }
 
 const fn idx_key<S>(idx: usize, _: &S) -> u64 {
     idx as u64
-}
-
-/// Where the page at `idx` sits after [`TabsAction::Reordered`] moves `from` into
-/// gap `to`.
-const fn moved_idx(idx: usize, from: usize, to: usize) -> usize {
-    let landing = if to > from { to - 1 } else { to };
-    if idx == from {
-        return landing;
-    }
-    let without = if idx > from { idx - 1 } else { idx };
-    if without >= landing {
-        without + 1
-    } else {
-        without
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    pub(crate) const fn moved_idx(idx: usize, from: usize, to: usize) -> usize {
-        super::moved_idx(idx, from, to)
-    }
 }

@@ -46,9 +46,9 @@ impl Tab {
 impl Default for DockFixture {
     fn default() -> Self {
         let mut dock = DockState::new("frame_fixture.dock", Tab::Canvas);
-        let primary = dock.primary().id;
+        let primary = dock.primary().id();
         for tab in [Tab::Layers, Tab::History, Tab::Console, Tab::Output] {
-            dock.find_or_insert(tab, primary);
+            dock.apply(DockOperation::OpenTab { tab });
         }
         dock.apply(DockOperation::MoveTab {
             tab: Tab::Console,

@@ -7,32 +7,52 @@ use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_operation::DockDrop;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::dock::tab_group::TabGroupId;
-use crate::widgets::tabs::tab_strip;
 
 /// One pane's last-frame geometry for drop classification; a struct because `pane` and `strip` are both
 /// `Rect`, so transposed arguments would type-check. Panes hold still during a tab drag.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct PaneGeometry<'a> {
+pub(super) struct PaneGeometry {
     pub(super) group: TabGroupId,
     pub(super) pane: Rect,
     pub(super) strip: Rect,
-    pub(super) chips: &'a [Rect],
+    /// The strip's drop slot under the pointer, counted over its chips' uncut extents.
+    pub(super) strip_slot: usize,
+    /// How many tabs the strip holds; a join appends after them.
+    pub(super) tabs: usize,
     /// Whether this pane may still split (nesting cap); if not, edge wedges degrade to a join.
     pub(super) can_split: bool,
     pub(super) allowed: AllowedSplits,
     /// Reach of the split wedges in from each edge, as a fraction of the content rect.
     pub(super) edge_fraction: f32,
-    pub(super) caret_width: f32,
 }
 
-/// Where a drop over one pane would land, plus the region to highlight.
+/// Where a drop over one pane would land, and what shows it.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct DropTarget {
-    pub(super) drop: DockDrop,
-    pub(super) highlight: Rect,
+pub(super) enum DropTarget {
+    /// Into the pane's strip at a slot, which the strip marks with its caret.
+    Slot { group: TabGroupId, idx: usize },
+    /// A join or split over the pane's content, washing the region the tab would take.
+    Region { drop: DockDrop, wash: Rect },
 }
 
-impl PaneGeometry<'_> {
+impl DropTarget {
+    pub(super) const fn drop(self) -> DockDrop {
+        match self {
+            Self::Slot { group, idx } => DockDrop::Into { group, idx },
+            Self::Region { drop, .. } => drop,
+        }
+    }
+
+    /// The caret slot `group`'s strip shows for this drop, if it lands in that strip.
+    pub(super) fn caret_in(self, group: TabGroupId) -> Option<usize> {
+        match self {
+            Self::Slot { group: g, idx } if g == group => Some(idx),
+            _ => None,
+        }
+    }
+}
+
+impl PaneGeometry {
     /// Classifies pointer `p` (known to be over this pane): strip band inserts, inner box joins, outer band
     /// splits toward the nearest offered edge; at the nesting cap or without an offered edge it joins.
     pub(super) fn classify(&self, p: Vec2) -> DropTarget {
@@ -40,17 +60,16 @@ impl PaneGeometry<'_> {
             group,
             pane,
             strip,
-            chips,
+            strip_slot,
+            tabs,
             can_split,
             allowed,
             edge_fraction,
-            caret_width: _,
         } = *self;
         if strip.contains(p) {
-            let idx = tab_strip::insertion_slot(chips.iter().copied(), p.x);
-            return DropTarget {
-                drop: DockDrop::Into { group, idx },
-                highlight: self.caret_rect(idx),
+            return DropTarget::Slot {
+                group,
+                idx: strip_slot,
             };
         }
 
@@ -60,12 +79,9 @@ impl PaneGeometry<'_> {
             pane.size.w,
             (pane.max().y - strip.max().y).max(0.0),
         );
-        let join = DropTarget {
-            drop: DockDrop::Into {
-                group,
-                idx: chips.len(),
-            },
-            highlight: content,
+        let join = DropTarget::Region {
+            drop: DockDrop::Into { group, idx: tabs },
+            wash: content,
         };
         if !can_split || center_box(content, edge_fraction).contains(p) {
             return join;
@@ -85,38 +101,16 @@ impl PaneGeometry<'_> {
             .filter(|(side, _)| allowed.allows(*side))
             .min_by(|a, b| a.1.total_cmp(&b.1));
         match nearest {
-            Some((side, _)) => DropTarget {
+            Some((side, _)) => DropTarget::Region {
                 drop: DockDrop::Split { group, side },
-                highlight: half_rect(content, side),
+                wash: half_rect(content, side),
             },
             None => join,
         }
     }
-
-    /// The insertion caret on the boundary of slot `idx`; an empty strip degrades to the left inset.
-    fn caret_rect(&self, idx: usize) -> Rect {
-        let Self {
-            strip,
-            chips,
-            caret_width,
-            ..
-        } = *self;
-        let x = match (chips.get(idx), chips.last()) {
-            (Some(next), _) => next.min.x - 1.5,
-            (None, Some(last)) => last.max().x + 1.5,
-            (None, None) => strip.min.x + 6.0,
-        };
-        Rect::new(
-            x - caret_width * 0.5,
-            strip.min.y + 2.0,
-            caret_width,
-            (strip.size.h - 2.0).max(0.0),
-        )
-    }
 }
 
-fn center_box(content: Rect, fraction: f32) -> Rect {
-    let f = fraction.clamp(0.0, 0.5);
+fn center_box(content: Rect, f: f32) -> Rect {
     Rect::new(
         content.min.x + content.size.w * f,
         content.min.y + content.size.h * f,
