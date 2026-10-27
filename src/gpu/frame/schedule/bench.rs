@@ -20,7 +20,8 @@
 //! would only dilute the per-group signal. Step and scissor counts print once per workload as the
 //! secondary metric; wall time is the decision metric.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::gpu::frame::schedule::internals::Walk;

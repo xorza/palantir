@@ -1,7 +1,8 @@
 //! What a gradient upload pays for one more copy against one more staged row, which sets
 //! `MERGE_GAP_ROWS`.
 
-use crate::bench::fixture::{Backends, Kind, Scale};
+use crate::bench::backends::Backends;
+use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;

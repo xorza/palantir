@@ -5,7 +5,8 @@
         reason = "the README's showcase recording is a bare GitHub attachment URL, the only form GitHub expands into an inline player"
     )
 )]
-// Scoped to the library: a `[lints]` table would reach the examples too.
+// A published crate documents every exported item. Scoped to the library: a `[lints]` table
+// would reach the examples too.
 #![warn(missing_docs)]
 // The README's counter example builds a `WinitHost`, so it is a doctest only
 // with that feature.
@@ -22,7 +23,6 @@
 //!
 //! # Where to start
 //!
-//! - [`prelude`] is the one import an application screen needs.
 //! - [`App`] is the lifecycle trait; its [`record`](App::record) runs every frame
 //!   and describes the whole UI from scratch.
 //! - [`WinitHost`] owns the event loop, windows and GPU device; [`OffscreenHost`]
@@ -33,8 +33,8 @@
 //!   [`Slider`], [`Checkbox`], [`ComboBox`], [`Scroll`], [`Popup`], [`Modal`] and
 //!   more. Containers are [`Panel`] (h/v/z-stack and canvas) and [`Grid`].
 //! - [`Configure`] carries the settings every node shares (identity, size,
-//!   padding, margin, alignment, visibility). It is a trait: it must be in scope,
-//!   which the [`prelude`] does.
+//!   padding, margin, alignment, visibility). It is a trait, so it must be in
+//!   scope.
 //! - [`Theme`] is the one serializable style tree.
 //! - [`GpuView`] hands a widget-sized `wgpu` render target to your [`GpuPaint`].
 //! - [`widget`] is the other half of the surface: what a widget of your own is
@@ -144,6 +144,11 @@ pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 // foreign.
 pub use wgpu;
 
+// Re-exported whole for the same reason: points, sizes and screen coordinates are `glam` vectors
+// (`Configure::pos`, `Display::physical`, polyline points), so a consumer names them from the
+// version palantir is built against.
+pub use glam;
+
 /// Format text straight into the frame's record store with no `String`:
 /// `fmt!(ui, "…", args…)` is [`Ui::fmt`] over `format_args!`.
 ///
@@ -161,34 +166,6 @@ pub use wgpu;
 macro_rules! fmt {
     ($ui:expr, $($args:tt)*) => {
         $ui.fmt(::core::format_args!($($args)*))
-    };
-}
-
-/// What an application screen types, in one import. Includes [`Configure`], a
-/// trait, without which `Button::new().size(..)` does not compile.
-///
-/// ```
-/// use palantir::prelude::*;
-///
-/// fn screen(ui: &mut Ui) {
-///     Panel::vstack().gap(8.0).show(ui, |ui| {
-///         Text::new("hello").show(ui);
-///         Button::new().label("go").show(ui);
-///     });
-/// }
-/// ```
-///
-/// Not the whole crate: theme bundles, the docking model, hosts, color models and
-/// gradient builders stay at the root; widget authoring stays in [`widget`].
-pub mod prelude {
-    pub use crate::{
-        Align, App, Axis, Block, Brush, Button, Checkbox, Chrome, ComboBox, Configure, ContextMenu,
-        Corners, DragValue, EditEnd, Expander, Grid, GridCell, HAlign, InnerResponse, Justify, Key,
-        KeyPress, MenuItem, Modal, Modifiers, OverlayResponse, Panel, PointerButton, Popup,
-        ProgressBar, RadioButton, Rect, Response, RgbaF32, Scroll, Sense, Separator, Shadow,
-        Shortcut, Size, SizeSpec, Sizing, Slider, Spacing, Spinner, Splitter, Stroke, Switch,
-        TabbedView, Text, TextEdit, TextStyle, Theme, Tooltip, Track, UVec2, Ui, VAlign,
-        ValueResponse, Vec2, WidgetId, WindowToken, fmt,
     };
 }
 
@@ -259,6 +236,8 @@ pub use display::user_scale::UserScale;
 pub use gpu::device::device_features::DeviceFeatures;
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;
+pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
+pub use gpu::device::gpu_init_ctx::GpuInitCtx;
 pub use gpu::device::power_preference::PowerPreference;
 pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
@@ -276,6 +255,10 @@ pub use host::winit::{
     frame_summary::FrameSummary,
     handle::HostHandle,
 };
+pub use icons::error::{IconTableError, SvgParseError};
+pub use icons::icon_set::IconSet;
+pub use icons::icon_table::{IconDefinition, IconTable};
+pub use image_registry::image_handle::ImageHandle;
 pub use input::ime_preedit::ImePreedit;
 pub use input::input_event::InputEvent;
 pub use input::interaction::button_phase::ButtonPhase;
@@ -302,7 +285,9 @@ pub use primitives::geometry::corners::Corners;
 pub use primitives::geometry::rect::Rect;
 pub use primitives::geometry::size::Size;
 pub use primitives::geometry::spacing::Spacing;
+pub use primitives::geometry::translate_scale::TranslateScale;
 pub use primitives::identity::icon_handle::IconHandle;
+pub use primitives::identity::widget_id::WidgetId;
 pub use primitives::layout::align::{Align, HAlign, VAlign};
 pub use primitives::layout::anchor::{Anchor, AnchorAlign};
 pub use primitives::layout::axis::Axis;
@@ -338,26 +323,12 @@ pub use primitives::paint::color::srgba_u8::SrgbaU8;
 pub use primitives::paint::image::error::ImageDataError;
 pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::paint::shadow::Shadow;
+pub use primitives::paint::stroke::Stroke;
 pub use primitives::text::interned_str::InternedStr;
 pub use primitives::text::text_input::TextInput;
-pub use scene::layer::Layer;
-// Signed screen coordinates; re-exported so consumers need no matching `glam`.
-pub use glam::IVec2;
-// Integer pixel extent (`Display.physical`, `WindowConfig` sizes); `.x` is width.
-pub use glam::UVec2;
-// Used by polyline points, `Configure::pos` and `Canvas` placement.
-pub use glam::Vec2;
-pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
-pub use gpu::device::gpu_init_ctx::GpuInitCtx;
-pub use icons::error::{IconTableError, SvgParseError};
-pub use icons::icon_set::IconSet;
-pub use icons::icon_table::{IconDefinition, IconTable};
-pub use image_registry::image_handle::ImageHandle;
-pub use primitives::geometry::translate_scale::TranslateScale;
-pub use primitives::identity::widget_id::WidgetId;
-pub use primitives::paint::stroke::Stroke;
 pub use renderer::error::ImageTooLarge;
 pub use renderer::gpu_paint::GpuPaint;
+pub use scene::layer::Layer;
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;
 pub use text::font_scope::FontScope;

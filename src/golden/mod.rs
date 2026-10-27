@@ -1,17 +1,15 @@
 //! Golden-image regression testing: render, compare against a stored PNG, and
-//! report how they differ. Feature-gated so nothing pays for `image` unless it
-//! asks.
+//! report how they differ. Feature-gated so nothing pays for the PNG codec
+//! unless it asks.
 
 mod row_stats;
-
-/// The `image` Palantir was built against; this module's surface uses
-/// `image::RgbaImage`.
-pub use image;
 
 use std::path::{Path, PathBuf};
 
 use crate::golden::row_stats::RowStats;
-use image::RgbaImage;
+use crate::primitives::paint::image::Image;
+use glam::UVec2;
+use image::ExtendedColorType;
 use std::env;
 use std::fs;
 use std::io;
@@ -37,35 +35,26 @@ impl Tolerance {
         max_pixels: 0,
     };
 
-    /// Compare two equal-sized RGBA images under these thresholds.
-    pub fn diff(self, actual: &RgbaImage, expected: &RgbaImage) -> DiffReport {
+    /// Compare two equal-sized images under these thresholds.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the two differ in size.
+    pub fn diff(self, actual: &Image, expected: &Image) -> DiffReport {
         assert_eq!(
-            actual.dimensions(),
-            expected.dimensions(),
-            "image sizes differ: actual {:?} vs expected {:?}",
-            actual.dimensions(),
-            expected.dimensions(),
+            actual.size(),
+            expected.size(),
+            "image sizes differ: actual {} vs expected {}",
+            actual.size(),
+            expected.size(),
         );
-        let (w, h) = actual.dimensions();
-        let mut diff_image = RgbaImage::new(w, h);
-
-        // A pair covering no pixels differs nowhere; `chunks_exact` rejects a
-        // zero-length chunk.
-        if w == 0 || h == 0 {
-            return DiffReport {
-                max_channel_delta: 0,
-                differing_pixels: 0,
-                diff_image,
-                tolerance: self,
-            };
-        }
-
-        let row_bytes = w as usize * 4;
+        let mut diff_image = Image::blank(actual.size());
+        let row_bytes = actual.size().x as usize * 4;
         let totals = actual
-            .as_raw()
+            .pixels
             .chunks_exact(row_bytes)
-            .zip(expected.as_raw().chunks_exact(row_bytes))
-            .zip(diff_image.chunks_exact_mut(row_bytes))
+            .zip(expected.pixels.chunks_exact(row_bytes))
+            .zip(diff_image.pixels.chunks_exact_mut(row_bytes))
             .map(|((a_row, e_row), d_row)| RowStats::scan_row(a_row, e_row, d_row))
             .fold(RowStats::default(), RowStats::merge);
         DiffReport {
@@ -85,7 +74,7 @@ pub struct DiffReport {
     /// How many pixels differ at all.
     pub differing_pixels: u32,
     /// The two images overlaid, differing pixels marked.
-    pub diff_image: RgbaImage,
+    pub diff_image: Image,
     /// The tolerance the comparison ran under.
     pub tolerance: Tolerance,
 }
@@ -127,8 +116,8 @@ const ADAPTER_FILE: &str = "adapter.txt";
 /// A comparison that failed: the two images and what [`Tolerance::diff`] measured between them.
 #[derive(Clone, Copy, Debug)]
 struct Failure<'a> {
-    actual: &'a RgbaImage,
-    expected: &'a RgbaImage,
+    actual: &'a Image,
+    expected: &'a Image,
     report: &'a DiffReport,
 }
 
@@ -152,11 +141,18 @@ impl Goldens {
     }
 
     /// The golden files no name in `names` claims, sorted. A suite asserts this
-    /// empty.
+    /// empty. A missing golden directory holds none.
+    ///
+    /// # Panics
+    ///
+    /// Panics when the golden directory exists and cannot be read.
     pub fn orphans<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Vec<PathBuf> {
         let claimed: Vec<&str> = names.into_iter().collect();
-        let Ok(entries) = fs::read_dir(self.root.join("golden")) else {
-            return Vec::new();
+        let dir = self.root.join("golden");
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Vec::new(),
+            Err(error) => panic!("read {}: {error}", dir.display()),
         };
         let mut orphans: Vec<PathBuf> = entries
             .map(|entry| entry.expect("read golden directory entry").path())
@@ -194,7 +190,7 @@ impl Goldens {
     /// cannot report success. With `UPDATE_GOLDEN` set, a missing or failing golden
     /// is rewritten and passes. A pass clears an earlier failure's output.
     #[track_caller]
-    pub fn assert_matches(&self, name: &str, actual: &RgbaImage) {
+    pub fn assert_matches(&self, name: &str, actual: &Image) {
         let on_mismatch = if env::var_os(UPDATE).is_some_and(|value| !value.is_empty()) {
             OnMismatch::Rewrite
         } else {
@@ -211,7 +207,7 @@ impl Goldens {
     ///
     /// Panics when the images differ beyond the tolerance, or in size.
     #[track_caller]
-    pub fn assert_same(&self, name: &str, actual: &RgbaImage, expected: &RgbaImage) {
+    pub fn assert_same(&self, name: &str, actual: &Image, expected: &Image) {
         let output = self.output_dir(name);
         let report = self.tolerance.diff(actual, expected);
         if report.passes() {
@@ -230,7 +226,7 @@ impl Goldens {
     }
 
     #[track_caller]
-    fn check(&self, name: &str, actual: &RgbaImage, on_mismatch: OnMismatch) {
+    fn check(&self, name: &str, actual: &Image, on_mismatch: OnMismatch) {
         self.check_adapter(on_mismatch);
         let golden = self.golden_path(name);
         let output = self.output_dir(name);
@@ -245,11 +241,9 @@ impl Goldens {
             );
         }
 
-        let expected = image::open(&golden)
-            .unwrap_or_else(|error| panic!("read golden {}: {error}", golden.display()))
-            .to_rgba8();
-        let report = (actual.dimensions() == expected.dimensions())
-            .then(|| self.tolerance.diff(actual, &expected));
+        let expected = load(&golden);
+        let report =
+            (actual.size() == expected.size()).then(|| self.tolerance.diff(actual, &expected));
         if report.as_ref().is_some_and(DiffReport::passes) {
             Self::clear_output(&output);
             return;
@@ -261,9 +255,9 @@ impl Goldens {
         }
         let Some(report) = report else {
             panic!(
-                "`{name}` is {:?}, golden is {:?} — a golden is only meaningful at one size",
-                actual.dimensions(),
-                expected.dimensions()
+                "`{name}` is {}, golden is {} — a golden is only meaningful at one size",
+                actual.size(),
+                expected.size()
             );
         };
 
@@ -323,14 +317,9 @@ impl Goldens {
             report,
         } = failure;
         fs::create_dir_all(output).expect("create golden output directory");
-        actual.save(output.join("actual.png")).expect("save actual");
-        expected
-            .save(output.join("expected.png"))
-            .expect("save expected");
-        report
-            .diff_image
-            .save(output.join("diff.png"))
-            .expect("save diff");
+        save(actual, &output.join("actual.png"));
+        save(expected, &output.join("expected.png"));
+        save(&report.diff_image, &output.join("diff.png"));
         format!(
             "  max channel delta {}\n  \
              differing pixels  {}\n  \
@@ -352,11 +341,34 @@ impl Goldens {
         }
     }
 
-    fn write(&self, golden: &Path, actual: &RgbaImage) {
+    fn write(&self, golden: &Path, actual: &Image) {
         fs::create_dir_all(golden.parent().expect("golden path has a directory"))
             .expect("create golden directory");
-        actual.save(golden).expect("save golden");
+        save(actual, golden);
     }
+}
+
+/// Read the PNG at `path` as RGBA8.
+fn load(path: &Path) -> Image {
+    let decoded = image::open(path)
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+        .into_rgba8();
+    let size = UVec2::new(decoded.width(), decoded.height());
+    Image::from_srgba8(size, decoded.into_raw())
+        .unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+}
+
+/// Write `image` as an RGBA8 PNG at `path`.
+fn save(image: &Image, path: &Path) {
+    let size = image.size();
+    image::save_buffer(
+        path,
+        &image.pixels,
+        size.x,
+        size.y,
+        ExtendedColorType::Rgba8,
+    )
+    .unwrap_or_else(|error| panic!("write {}: {error}", path.display()));
 }
 
 #[cfg(test)]

@@ -8,7 +8,8 @@
 //! - `input/scroll_stream`: `ScrollPixels` against a scroll target.
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls, one input frame per burst.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::input::input_event::InputEvent;
 use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;

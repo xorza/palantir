@@ -6,7 +6,7 @@
 )]
 
 use glam::{UVec2, Vec2};
-use palantir::golden::image::RgbaImage;
+use image::RgbaImage;
 use palantir::widget::{ImageShape, Shape};
 use palantir::{
     Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, Panel, Rect, RgbaF32,

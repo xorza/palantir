@@ -2,9 +2,9 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, Surface, api};
+use palantir::glam::Vec2;
 use palantir::{
     Align, Block, Chrome, Configure, Corners, Panel, RgbaF32, Sizing, Stroke, TranslateScale, Ui,
-    Vec2,
 };
 
 const CARD: f32 = 200.0;

@@ -77,8 +77,9 @@ The default features carry the winit host and the OS clipboard. With
 for an app that already owns its window and event loop.
 
 ```rust no_run
-use palantir::prelude::*;
-use palantir::{WinitHost, WinitHostError};
+use palantir::{
+    App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost, WinitHostError, fmt,
+};
 
 struct Counter { clicks: u32 }
 
@@ -215,8 +216,9 @@ palantir = { version = "*", features = ["internals"] }
 ```
 
 ```rust
-use palantir::prelude::*;
+use palantir::glam::UVec2;
 use palantir::internals::ui_harness::UiHarness;
+use palantir::{Button, Configure, Ui, WidgetId};
 
 let inc = WidgetId::from_hash("inc");
 let mut clicks = 0_u32;

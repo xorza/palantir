@@ -1,6 +1,7 @@
 //! DamageEngine CPU-side regression bench: whole CPU frames (record through damage, no encode or GPU) over a ~1056-node grid on each `Damage` path, shape-count churn, a raised sibling's paint-order inversion, and the three `DamageRegion::add` branches. Text measurement uses the mono fallback.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
 use crate::internals::ui_harness::UiHarness;

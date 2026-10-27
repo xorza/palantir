@@ -5,8 +5,6 @@ Every item the crate exports, rendered as its declaration from rustdoc JSON
 no features and one build per public feature; a tag names the builds an item or a
 line needs or loses. `internals` is the crate's own test surface and is left out.
 
-`prelude` re-exports these root items: `Align`, `App`, `Axis`, `Block`, `Brush`, `Button`, `Checkbox`, `Chrome`, `ComboBox`, `Configure`, `ContextMenu`, `Corners`, `DragValue`, `EditEnd`, `Expander`, `Grid`, `GridCell`, `HAlign`, `InnerResponse`, `Justify`, `Key`, `KeyPress`, `MenuItem`, `Modal`, `Modifiers`, `OverlayResponse`, `Panel`, `PointerButton`, `Popup`, `ProgressBar`, `RadioButton`, `Rect`, `Response`, `RgbaF32`, `Scroll`, `Sense`, `Separator`, `Shadow`, `Shortcut`, `Size`, `SizeSpec`, `Sizing`, `Slider`, `Spacing`, `Spinner`, `Splitter`, `Stroke`, `Switch`, `TabbedView`, `Text`, `TextEdit`, `TextStyle`, `Theme`, `Tooltip`, `Track`, `UVec2`, `Ui`, `VAlign`, `ValueResponse`, `Vec2`, `WidgetId`, `WindowToken`, `fmt`.
-
 ```text
 Align
     struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -893,7 +891,7 @@ Grid
         impl<Rows: Debug, Cols: Debug> Debug for Grid<Rows, Cols>
 
 GridCell
-    struct GridCell: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<(u16, u16)>, Hash, PartialEq, Pod, Zeroable
+    struct GridCell: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<(u16, u16)>, Hash, NoUninit, PartialEq
         pub const fn at(row: u16, col: u16) -> Self
         pub const fn with_span(self, row_span: u16, col_span: u16) -> Self
         pub const fn row(self) -> u16
@@ -959,9 +957,6 @@ Hsv
 HueSlice
     struct HueSlice: Clone, Copy, Debug
         pub fn color(self, s: f32, v: f32) -> RgbaF32
-
-IVec2
-    pub use glam::IVec2 as IVec2
 
 IconDefinition
     struct IconDefinition: Clone, Debug
@@ -2264,9 +2259,6 @@ TranslateScale
         pub const fn inverse_vector(self, v: Vec2) -> Vec2
         pub const fn apply_rect(self, r: Rect) -> Rect
 
-UVec2
-    pub use glam::UVec2 as UVec2
-
 Ui
     struct Ui: Debug
         pub const fn theme(&self) -> &Rc<Theme>
@@ -2378,9 +2370,6 @@ ValueResponse
         pub response: Response<'a>
         pub changed: bool
         pub committed: bool
-
-Vec2
-    pub use glam::Vec2 as Vec2
 
 Visibility
     enum Visibility: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, Ord, PartialEq, PartialOrd
@@ -2502,6 +2491,9 @@ ZoomPivot
 fmt
     macro fmt!
 
+glam
+    pub use glam as glam
+
 golden  [features: golden]
     mod
 
@@ -2509,7 +2501,7 @@ golden::DiffReport  [features: golden]
     struct DiffReport: Debug
         pub max_channel_delta: u8
         pub differing_pixels: u32
-        pub diff_image: RgbaImage
+        pub diff_image: Image
         pub tolerance: Tolerance
         pub const fn passes(&self) -> bool
 
@@ -2519,18 +2511,15 @@ golden::Goldens  [features: golden]
         pub fn with_adapter(self, adapter: impl Into<String>) -> Self
         pub fn orphans<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Vec<PathBuf>
         pub const fn with_tolerance(self, tolerance: Tolerance) -> Self
-        pub fn assert_matches(&self, name: &str, actual: &RgbaImage)
-        pub fn assert_same(&self, name: &str, actual: &RgbaImage, expected: &RgbaImage)
+        pub fn assert_matches(&self, name: &str, actual: &Image)
+        pub fn assert_same(&self, name: &str, actual: &Image, expected: &Image)
 
 golden::Tolerance  [features: golden]
     struct Tolerance: Clone, Copy, Debug, Default, Eq, PartialEq
         pub max_delta: u8
         pub max_pixels: u32
         pub const EXACT: Self
-        pub fn diff(self, actual: &RgbaImage, expected: &RgbaImage) -> DiffReport
-
-golden::image  [features: golden]
-    pub use image as image
+        pub fn diff(self, actual: &Image, expected: &Image) -> DiffReport
 
 wgpu
     pub use wgpu as wgpu

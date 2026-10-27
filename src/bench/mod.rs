@@ -13,9 +13,11 @@
 //! else. Each case records one number: wall time, or, where the doc says so, the device or pass
 //! time it reads back through `iter_custom`.
 
-pub mod fixture;
+pub(crate) mod backends;
+pub(crate) mod fixture;
+pub(crate) mod kind;
 
-use crate::bench::fixture::Backends;
+use crate::bench::backends::Backends;
 use crate::cascade;
 use crate::gpu::frame::schedule;
 use crate::gpu::pipeline::{curve_pipeline, image_pipeline};
@@ -24,7 +26,6 @@ use crate::layout::cache as measure_cache;
 use crate::primitives::packed::half_simd;
 use crate::renderer::frontend;
 use crate::renderer::frontend::composer;
-use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::gradient_atlas;
 use crate::scene::tree::paint_animations;
 use crate::widgets::{color_field, text_edit};
@@ -48,7 +49,6 @@ pub fn run(c: &mut Criterion) {
     paint_animations::bench::atomic(c);
     gpu::bench::atomic(c, backends);
     gpu::resource::bench::atomic(c, backends);
-    rect_grid::bench::atomic(c);
     schedule::bench::atomic(c);
     text_backend::bench::atomic(c, backends);
     text_edit::bench::atomic(c);

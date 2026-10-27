@@ -1,5 +1,7 @@
-use palantir::prelude::*;
-use palantir::{HostHandle, WinitHost, WinitHostError};
+use palantir::{
+    App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
+    WinitHostError, fmt,
+};
 
 #[derive(Debug)]
 struct Counter {

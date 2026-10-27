@@ -7,17 +7,18 @@
 //! typical and a heavy draw count: curves alone, then the higher-kind tiers
 //! (meshes, images, text) where overlap decides whether a batch closes.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
-use crate::display::frame_stamp::FrameStamp;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::composer::Composer;
+use crate::renderer::frontend::composer::compose_rig::ComposeRig;
+use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
@@ -25,17 +26,13 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::record_store::RecordStore;
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{Criterion, Throughput};
 use glam::{UVec2, Vec2};
 use std::hint::black_box;
-use std::num::NonZeroU32;
-use std::time::Duration;
 use strum::{IntoStaticStr, VariantArray};
 
 /// A typical frame's draw count and a heavy one; per-draw cost is flat, so two
@@ -45,20 +42,14 @@ const DRAW_COUNTS: [usize; 2] = [256, 4096];
 #[derive(Debug)]
 struct ComposeBench {
     cmds: PaintCapture,
-    store: RecordStore,
-    composer: Composer,
-    out: RenderBuffer,
-    display: Display,
+    rig: ComposeRig,
 }
 
 impl ComposeBench {
     fn new(cmds: PaintCapture, physical: UVec2) -> Self {
         Self {
             cmds,
-            store: RecordStore::default(),
-            composer: Composer::new(NonZeroU32::new(8192).unwrap()),
-            out: RenderBuffer::new(),
-            display: Display::from_physical(physical, 1.0),
+            rig: ComposeRig::new(Display::from_physical(physical, 1.0)),
         }
     }
 
@@ -90,14 +81,9 @@ impl ComposeBench {
     }
 
     fn compose(&mut self) -> usize {
-        self.composer
-            .begin(
-                FrameStamp::new(self.display, Duration::ZERO),
-                &self.store,
-                &mut self.out,
-            )
-            .replay_from(&self.cmds);
-        self.out.meshes.len() + self.out.images.len() + self.out.curves.len()
+        self.rig.compose(&self.cmds);
+        let out = &self.rig.out;
+        out.meshes.len() + out.images.len() + out.curves.len()
     }
 }
 
@@ -293,9 +279,12 @@ pub(crate) fn atomic(c: &mut Criterion) {
             group.bench_function(id, |b| {
                 let mut fixture = case.fixture(draw_count);
                 assert_eq!(fixture.compose(), draw_count);
-                assert_eq!(fixture.out.groups.len(), case.expected_groups(draw_count));
                 assert_eq!(
-                    fixture.out.text_batches.len(),
+                    fixture.rig.out.groups.len(),
+                    case.expected_groups(draw_count)
+                );
+                assert_eq!(
+                    fixture.rig.out.text_batches.len(),
                     case.expected_text_batches(draw_count),
                 );
                 b.iter(|| black_box(fixture.compose()));
@@ -303,4 +292,5 @@ pub(crate) fn atomic(c: &mut Criterion) {
         }
     }
     group.finish();
+    rect_grid::bench::atomic(c);
 }

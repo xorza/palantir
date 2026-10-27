@@ -18,7 +18,8 @@
 //! [`GradientAtlasCounters`](super::counters::GradientAtlasCounters) first, so
 //! a fixture that stops doing what its name says fails loudly.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::stops::Stop;

@@ -1,7 +1,7 @@
 //! Pixel-level shadow fixtures.
 
 use glam::{IVec2, UVec2, Vec2};
-use palantir::golden::image::{Rgba, RgbaImage};
+use image::{Rgba, RgbaImage};
 use palantir::widget::{ShadowShape, Shape};
 use palantir::{
     Chrome, ClipMode, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Stroke, Ui,

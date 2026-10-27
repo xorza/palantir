@@ -10,16 +10,16 @@
 //! No device, so the budget is strict zero; real-adapter cost is
 //! `gates::on_gpu`'s.
 
+use crate::fixtures::parked_icons::ParkedIcons;
 use crate::harness;
 use crate::harness::Audit;
 use glam::Vec2;
 use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
-    Block, Chrome, Configure, FramePaint, Grid, IconSet, IconTable, Panel, RgbaF32, Sizing, Stroke,
-    Track, TranslateScale, Ui,
+    Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Stroke, Track,
+    TranslateScale, Ui,
 };
-use std::rc::Rc;
 
 /// Distinct nudge positions: more than one so damage is full every frame, few
 /// enough that the tree isn't culled off the surface.
@@ -129,24 +129,14 @@ fn mesh_static_alloc_free() {
 /// backend, which this frontend never runs (`gates::on_gpu`'s scale ramp
 /// reaches them).
 ///
-/// The set is re-loaded inside the scene, as an immediate-mode caller writes it,
-/// pinning that re-loading is a refcount bump: `IconRegistry::register` finds
-/// the live `IconSet` and clones it. A second slot would show here first.
-///
-/// The set is *parked* across frames: an `IconSet` owns its parses and rasters,
-/// so dropping it would unload and re-rasterize each frame (hence `#[must_use]`
-/// on `load_icons`).
+/// The set is a [`ParkedIcons`]: `IconRegistry::register` finds the live `IconSet` and clones
+/// it, and a second slot would show here first.
 #[test]
 fn many_icons_compose_alloc_free() {
-    const SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
-    let atlas = Rc::new(IconTable::from_svgs([("chip", SVG)]).unwrap());
-    let mut held: Option<IconSet> = None;
+    let mut icons = ParkedIcons::new();
 
     frontend_audit(move |ui| {
-        // `insert` drops last frame's clone *after* this frame's exists, so the shared
-        // owner never reaches zero.
-        let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
-        let chip = icons.by_name("chip").expect("the one icon of the set");
+        let chip = icons.chip(ui);
         Grid::new()
             .auto_id()
             .cols([Track::FILL; 20])

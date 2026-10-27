@@ -14,7 +14,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
+use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;

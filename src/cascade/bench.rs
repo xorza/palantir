@@ -2,7 +2,8 @@
 //! paint-only or transform change, and a forced full rebuild), and the hit
 //! test input runs per event against a disjoint grid of interactive rows.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::cascade::Cascade;
 use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;

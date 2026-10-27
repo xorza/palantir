@@ -4,11 +4,12 @@ use crate::harness;
 use crate::harness::Audit;
 use std::time::Duration;
 
+use palantir::glam::Vec2;
 use palantir::{
     Anchor, AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorPicker,
     Configure, ContextMenu, Easing, Expander, ExpanderTheme, MenuItem, Modal, Panel, Popup,
     ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
-    Spinner, Switch, Text, TextEdit, Tooltip, Ui, Vec2, WidgetId,
+    Spinner, Switch, Text, TextEdit, Tooltip, Ui, WidgetId,
 };
 
 #[test]

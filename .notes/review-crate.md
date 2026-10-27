@@ -59,6 +59,12 @@ Sources: `.notes/research/2026-10-26-review-decisions.md`.
   text the cached buffer holds; the key stays a hash. Refused: std
   `RandomState`, foldhash and FxHash, none of which is exact; a source copy in
   the key, which would make it neither `Copy` nor small.
+- **`UiHarness` keeps its `pub` surface**, as README.md offers it to app
+  authors for headless UI tests through `internals`. Refused: narrowing it to
+  the methods the allocation suite calls; a supported `testing` module (a
+  design pass of its own). Source: the owner, 2026-10-28.
+- **`[profile.dev]` stays at `opt-level = 1`.** Source: the owner,
+  2026-10-28.
 - **Double-click time and radius stay constants** (500 ms, 5 px). Refused:
   platform queries and an app-set option.
 
@@ -83,40 +89,6 @@ Files: `src/internals/`, `src/bench/`, `src/golden/`, `tests/`,
 `src/renderer/frontend/composer/{bench.rs, tests/, mod.rs}`,
 `src/primitives/layout/visibility/tests.rs`, `Cargo.toml`.
 
-- [ ] **`Goldens::orphans` hides read errors.** `golden/mod.rs:158-160`.
-  Target: empty only on `NotFound`; panic with the path otherwise.
-- [ ] **About 30 `UiHarness` methods and `Passes` are `pub` for crate tests
-  only.** `ui_harness/mod.rs:166-516` and below, `ui_harness/passes.rs`,
-  `bench/mod.rs:16`. Target: `pub(crate)` under `#[cfg(test)]`; `bench::fixture`
-  `pub(crate)`; rewrite the tier paragraph at `mod.rs:52-55`.
-- [ ] **Each golden comparison leases the GPU for the adapter name.**
-  `tests/visual/goldens.rs:17-19`. Target: build the suite once.
-- [ ] **Dead warmup floor in the alloc probe.**
-  `tests/alloc/harness/mod.rs:256-260`.
-- [ ] **Copied fixtures.** One `ICON_SVG` and an icon-parking helper in
-  `tests/alloc/fixtures/mod.rs`. `ComposeRig` moves to the composer's
-  `internals` so `composer/bench.rs:44-60` uses it with
-  `TEST_MAX_TEXTURE_DIM`.
-- [ ] **A probabilistic race loop with file I/O.** `golden/tests.rs:199`.
-  Target: a few iterations, or a direct test of the staged rename.
-- [ ] **`rect_grid` widened for a bench.** `composer/mod.rs:28-29`. Target:
-  private; `composer::bench` calls it.
-- [ ] **Tests at the wrong layer.** `primitives/layout/visibility/tests.rs`
-  cases move to the layout, encoder and input suites.
-- [ ] **File names.** `internals/dock_fixture.rs`; `bench/kind.rs` and
-  `bench/backends.rs`.
-- [ ] **Docs.** `tests/alloc/gates/on_gpu.rs:10` (no CI skip by name),
-  `ui_harness/tests/fixtures.rs:26`.
-- [ ] **`[profile.dev] opt-level = 1` has no reason.** `Cargo.toml:106`.
-- [ ] **[public] Partial glam re-exports and `prelude`.** `lib.rs:186-194,
-  351-355`. Target: `pub use glam;` whole beside `pub use wgpu;`; the three
-  glam items and `prelude` go; callers write `palantir::glam::Vec2`.
-- [ ] **[public] `golden` names `image` types.** `golden/mod.rs:9, 41, 88,
-  197, 214`. Target: `Goldens` and `DiffReport` take and hold palantir's
-  `Image`; `pub use image` goes; tests/visual takes `image` as a
-  dev-dependency for `imageops`.
-- [ ] **`missing_docs` has no reason.** `lib.rs:9`. Target: a one-line
-  reason beside it.
 - [ ] **The global guide forbids the re-exports the crate keeps.**
   `~/.claude/CLAUDE.md` "No crate re-exports another crate". Target: one
   exception, "a crate whose public signatures name a foreign type

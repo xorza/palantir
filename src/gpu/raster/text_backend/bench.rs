@@ -9,7 +9,8 @@
 //! Each runs as a whole `frame`, and some as `prepare` alone, for the CPU cost a GPU submit would
 //! drown.
 
-use crate::bench::fixture::{Backend, Backends, Kind, Scale};
+use crate::bench::backends::{Backend, Backends};
+use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu_ctx::GpuCtx;

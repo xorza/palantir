@@ -1,7 +1,7 @@
 //! The app's scale against the platform's: the render path sees only their product, and a larger product paints larger. Neither fixture holds a golden; each asserts a relation between two renders.
 
 use glam::UVec2;
-use palantir::golden::image::{Rgba, RgbaImage};
+use image::{Rgba, RgbaImage};
 use palantir::{Block, Chrome, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
 use crate::goldens;

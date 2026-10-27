@@ -369,3 +369,46 @@ fn a_collapsed_child_takes_no_room() {
         );
     }
 }
+
+/// A hidden child keeps its slot: in a gap-10 row of three 40-wide blocks, the hidden middle one
+/// sits at 40 + 10 = 50 and `b` past it and both gaps, at 50 + 40 + 10 = 100.
+#[test]
+fn a_hidden_child_keeps_its_slot() {
+    let [a_id, hid_id, b_id] = ["a", "hid", "b"].map(WidgetId::from_hash);
+    let mut h = UiHarness::new(UVec2::new(400, 100));
+    h.frame(|ui| {
+        Panel::hstack().auto_id().gap(10.0).show(ui, |ui| {
+            Block::new().id(a_id).size(40.0).show(ui);
+            Block::new().id(hid_id).size(40.0).hidden().show(ui);
+            Block::new().id(b_id).size(40.0).show(ui);
+        });
+    });
+    assert_eq!(h.arranged(hid_id), Rect::new(50.0, 0.0, 40.0, 40.0));
+    assert_eq!(h.arranged(b_id), Rect::new(100.0, 0.0, 40.0, 40.0));
+}
+
+/// A collapsed fill child drops its weight: beside it, two weight-1 fills split a 400-wide row
+/// 200 / 200, where its weight 3 would have left them 80 each.
+#[test]
+fn a_collapsed_child_drops_its_fill_weight() {
+    let [a_id, gone_id, b_id] = ["a", "gone", "b"].map(WidgetId::from_hash);
+    let mut h = UiHarness::new(UVec2::new(400, 100));
+    h.frame(|ui| {
+        Panel::hstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui, |ui| {
+                let fill = |weight| (Sizing::fill(weight), Sizing::HUG);
+                Block::new().id(a_id).size(fill(1.0)).show(ui);
+                Block::new()
+                    .id(gone_id)
+                    .size(fill(3.0))
+                    .collapsed()
+                    .show(ui);
+                Block::new().id(b_id).size(fill(1.0)).show(ui);
+            });
+    });
+    let (a, b) = (h.arranged(a_id), h.arranged(b_id));
+    assert_eq!((a.min.x, a.size.w), (0.0, 200.0));
+    assert_eq!((b.min.x, b.size.w), (200.0, 200.0));
+}

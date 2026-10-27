@@ -12,7 +12,9 @@
 //!
 //! Whole-frame wall time is never reported: it moves the opposite way across the `groups` pair.
 
-use crate::bench::fixture::{self, Backends, Kind, Scale};
+use crate::bench::backends::Backends;
+use crate::bench::fixture;
+use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::headless_window::HeadlessWindow;
 use crate::image_registry::image_handle::ImageHandle;

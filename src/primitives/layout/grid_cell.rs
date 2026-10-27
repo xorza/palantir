@@ -7,13 +7,13 @@ use std::hash;
 
 /// Per-child placement in a `Grid` parent; inert otherwise. `(row, col)` is the top-left cell, spans default to 1.
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::NoUninit)]
 #[must_use]
 pub struct GridCell {
-    pub(crate) row: u16,
-    pub(crate) col: u16,
-    pub(crate) row_span: u16,
-    pub(crate) col_span: u16,
+    row: u16,
+    col: u16,
+    row_span: u16,
+    col_span: u16,
 }
 
 impl hash::Hash for GridCell {

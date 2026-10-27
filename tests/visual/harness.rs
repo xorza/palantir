@@ -6,7 +6,7 @@
 )]
 
 use glam::UVec2;
-use palantir::golden::image::RgbaImage;
+use image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{

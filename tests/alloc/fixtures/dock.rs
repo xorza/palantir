@@ -2,7 +2,7 @@
 //!
 //! Audits the composition: the response scan, the recursive `Splitter` walk, a `TabStrip` per pane rebuilt each frame, and a closed per-chip context menu.
 
-use palantir::internals::frame_fixture::dock_fixture::DockFixture;
+use palantir::internals::dock_fixture::DockFixture;
 
 use crate::harness::Audit;
 

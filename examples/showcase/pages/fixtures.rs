@@ -4,10 +4,11 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, Surface, api};
+use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
     Align, Block, Button, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Sizing, Stroke, Text,
-    TextStyle, Ui, Vec2,
+    TextStyle, Ui,
 };
 
 pub(crate) fn build(ui: &mut Ui) {

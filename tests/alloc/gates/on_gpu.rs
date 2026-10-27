@@ -7,16 +7,16 @@
 //! So neither gate reads a strict zero. The still-tree gate measures the
 //! adapter's floor on an empty scene through the same target and pins the tree
 //! to it, so CI runs it on every adapter. The ramp's ceiling was measured on
-//! one adapter and does not transfer, so CI skips it by name.
-
-use std::rc::Rc;
+//! one adapter and does not transfer, so it is `#[ignore]`d and runs by hand on
+//! that adapter.
 
 use glam::UVec2;
 use palantir::internals::frame_fixture::{BENCH_DPR, FrameFixture};
 use palantir::internals::{HeadlessTestGpuLease, TEXT_SCALE_STEP, isolated_headless_test_gpu};
 use palantir::widget::Shape;
-use palantir::{Configure, Grid, IconSet, IconTable, Panel, Sizing, Track, TranslateScale, Ui};
+use palantir::{Configure, Grid, Panel, Sizing, Track, TranslateScale, Ui};
 
+use crate::fixtures::parked_icons::ParkedIcons;
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::offscreen::OffscreenTarget;
 use crate::harness::{Audit, Report};
@@ -94,9 +94,6 @@ fn still_tree_frame_costs_the_empty_floor() {
     );
 }
 
-/// One `16×16` box, so the SVG pipeline is what the rasterizer spends.
-const RAMP_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="3" fill="#fff"/></svg>"##;
-
 /// Icons the ramp draws: enough that a per-raster regression reads as a
 /// multiple, few enough that glyphs still dominate as in a real UI.
 const RAMP_ICONS: u16 = 5;
@@ -145,8 +142,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
         RENDER_SURFACE,
     );
 
-    let atlas = Rc::new(IconTable::from_svgs([("chip", RAMP_ICON_SVG)]).unwrap());
-    let mut held: Option<IconSet> = None;
+    let mut icons = ParkedIcons::new();
     let mut state = FrameFixture::default();
     let mut zoom = 1.0f32;
 
@@ -158,9 +154,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
         .run_frames(|| {
             zoom += TEXT_SCALE_STEP;
             target.frame(&gpu, BENCH_DPR, |ui| {
-                // Parked across frames: re-loading is a refcount bump.
-                let icons = held.insert(ui.load_icons(Rc::clone(&atlas)));
-                let chip = icons.by_name("chip").expect("the one icon of the set");
+                let chip = icons.chip(ui);
                 Panel::vstack()
                     .auto_id()
                     .size((Sizing::FILL, Sizing::FILL))

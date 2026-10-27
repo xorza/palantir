@@ -7,10 +7,9 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
+use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{ImageShape, Shape};
-use palantir::{
-    Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, UVec2, Ui, Vec2, WidgetId,
-};
+use palantir::{Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, Ui, WidgetId};
 
 fn checker() -> Image {
     const N: u32 = 64;

@@ -52,10 +52,10 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     if any_content_floor_col {
         for c in tree.active_children(node) {
             let cell = grid.cell(tree, c);
-            if cell.col_span != 1 {
+            if cell.col_span() != 1 {
                 continue;
             }
-            let i = cell.col as usize;
+            let i = cell.col() as usize;
             let t = &cols.tracks[i];
             if t.sizing().is_hug() {
                 let range = pass.intrinsic_range(c, Axis::X);
@@ -126,22 +126,22 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
 
         {
             let s = pass.grid_mut().depth_stack.cur();
-            if cell.col_span == 1
-                && cols.tracks[cell.col as usize]
+            if cell.col_span() == 1
+                && cols.tracks[cell.col() as usize]
                     .sizing()
                     .fill_weight()
                     .is_some()
             {
-                let i = cell.col as usize;
+                let i = cell.col() as usize;
                 s.col.fill_content[i] = s.col.fill_content[i].max(d.size.w);
             }
-            if cell.row_span == 1
-                && rows.tracks[cell.row as usize]
+            if cell.row_span() == 1
+                && rows.tracks[cell.row() as usize]
                     .sizing()
                     .fill_weight()
                     .is_some()
             {
-                let i = cell.row as usize;
+                let i = cell.row() as usize;
                 s.row.fill_content[i] = s.row.fill_content[i].max(d.size.h);
             }
         }
@@ -152,8 +152,8 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         // `d.size.h`: a scrollable child's desired height is not its minimum, and
         // unwritten (0.0) a cramped Hug row would collapse to `Track.min`.
         // Multi-row spans wait for the loop below.
-        if cell.row_span == 1 {
-            let row = cell.row as usize;
+        if cell.row_span() == 1 {
+            let row = cell.row() as usize;
             let sizing = rows.tracks[row].sizing();
             if sizing.is_hug() || sizing.fill_weight().is_some() {
                 let row_ranges = pass.grid_track_state_mut().ranges_mut(rows.id);

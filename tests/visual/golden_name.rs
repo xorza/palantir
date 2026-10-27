@@ -4,8 +4,8 @@ use std::env;
 use std::fs;
 
 use glam::UVec2;
+use image::RgbaImage;
 use palantir::Ui;
-use palantir::golden::image::RgbaImage;
 
 use crate::goldens;
 use crate::harness::Harness;
@@ -37,7 +37,7 @@ impl GoldenName {
     /// `actual` matches this golden.
     #[track_caller]
     pub(crate) fn assert_matches(self, actual: &RgbaImage) {
-        goldens::suite().assert_matches(self.name(), actual);
+        goldens::suite().assert_matches(self.name(), &goldens::to_image(actual));
     }
 
     /// One frame of `scene` at `size` on a fresh [`Harness`] matches this golden.

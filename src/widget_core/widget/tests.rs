@@ -127,12 +127,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     assert_eq!(widget.authored_pos(), pos);
     assert_eq!(
         widget.authored_grid_cell(),
-        GridCell {
-            row: 2,
-            col: 3,
-            row_span: 4,
-            col_span: 5,
-        },
+        GridCell::at(2, 3).with_span(4, 5)
     );
     assert_eq!(widget.authored_gap(), Some(6.0));
     assert_eq!(widget.authored_line_gap(), Some(7.0));

@@ -2,7 +2,9 @@
 //!
 //! Each iteration toggles a control point so damage streams every curve to the backend, then waits for the GPU. Criterion records the curve batch's GPU timestamp, not the frame's wall time.
 
-use crate::bench::fixture::{self, Backends, Kind, Scale};
+use crate::bench::backends::Backends;
+use crate::bench::fixture;
+use crate::bench::kind::{Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::host::headless_window::HeadlessWindow;

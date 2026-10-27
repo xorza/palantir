@@ -4,11 +4,12 @@
 
 use crate::support;
 use palantir::SlotDefaults;
+use palantir::glam::Vec2;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
     AnimationSpec, Block, Brush, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, Grid,
     LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
-    Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, Vec2, WidgetId, WidgetLook, fmt,
+    Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, WidgetId, WidgetLook, fmt,
 };
 use std::array;
 

@@ -9,7 +9,7 @@
 )]
 
 use glam::{UVec2, Vec2};
-use palantir::golden::image::RgbaImage;
+use image::RgbaImage;
 use palantir::widget::{IconFit, IconShape, Shape};
 use palantir::{Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, Text, TextStyle, Ui};
 use std::ops;

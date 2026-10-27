@@ -4,8 +4,8 @@
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::shortcut::Shortcut;
+use crate::internals::dock_fixture::DockFixture;
 use crate::internals::frame_fixture::FrameFixture;
-use crate::internals::frame_fixture::dock_fixture::DockFixture;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;

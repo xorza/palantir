@@ -4,8 +4,9 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
+use palantir::glam::Vec2;
 use palantir::widget::{Mesh, Shape};
-use palantir::{LinearGradient, RgbaF32, Stroke, Ui, Vec2, WidgetId};
+use palantir::{LinearGradient, RgbaF32, Stroke, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui) {
