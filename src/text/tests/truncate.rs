@@ -71,7 +71,7 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
     );
 
     let mut keys = Vec::new();
-    for fit in [LineFit::Clip, LineFit::Ellipsis] {
+    for fit in [LineFit::Clip, LineFit::Ellipsis, LineFit::EllipsisMiddle] {
         let cut = c.measure_truncated(long, params, fit);
         assert!(
             cut.size.w <= w,
@@ -103,20 +103,21 @@ fn a_truncating_fit_cuts_an_overflowing_label_to_one_fitting_line() {
         keys.push(cut.buffer_key());
     }
 
-    // Clip, ellipsis and wrap bake three different strings at one width, so each must key a distinct cache slot.
+    // Each fit and wrap bake a different string at one width, so each must key a distinct cache slot.
     let wrapped = c.measure(long, params);
     assert_eq!(wrapped.buffer_key().fit(), LineFit::Wrap);
-    assert_ne!(keys[0], keys[1], "clip and ellipsis must key distinctly");
-    assert_ne!(
-        keys[0],
-        wrapped.buffer_key(),
-        "clip and wrap must key distinctly"
-    );
-    assert_ne!(
-        keys[1],
-        wrapped.buffer_key(),
-        "ellipsis and wrap must key distinctly"
-    );
+    keys.push(wrapped.buffer_key());
+    for (pos, key) in keys.iter().enumerate() {
+        for other in &keys[pos + 1..] {
+            assert_ne!(
+                key,
+                other,
+                "{:?} and {:?} must key distinctly",
+                key.fit(),
+                other.fit()
+            );
+        }
+    }
 }
 
 #[test]
@@ -231,6 +232,107 @@ fn fitting_prefix_cuts_on_logical_cluster_boundaries() {
 }
 
 #[test]
+fn fitting_suffix_keeps_the_logical_tail_on_cluster_boundaries() {
+    // The prefix test's runs, sorted into logical order as `fitting_prefix` leaves them; entries are (start, end, advance).
+    type Run = &'static [(usize, usize, f32)];
+    const LTR: Run = &[(0, 1, 10.0), (1, 2, 10.0), (2, 3, 10.0)];
+    const CLUSTER: Run = &[(0, 1, 10.0), (1, 9, 10.0), (1, 9, 10.0)];
+    const MARK: Run = &[(0, 3, 10.0), (0, 3, 0.0), (3, 4, 10.0)];
+
+    for (run, avail, min_start, expected, why) in [
+        (LTR, 0.0, 0, None, "no budget keeps nothing"),
+        (LTR, 9.9, 0, None, "a glyph is all-or-nothing"),
+        (LTR, 10.0, 0, Some(2), "an exact fit keeps the last glyph"),
+        (LTR, 25.0, 0, Some(1), "the first glyph would overrun"),
+        (LTR, 30.0, 0, Some(0), "the whole run fits"),
+        (
+            CLUSTER,
+            10.0,
+            0,
+            None,
+            "one glyph of the cluster is unaffordable",
+        ),
+        (
+            CLUSTER,
+            20.0,
+            0,
+            Some(1),
+            "20 px pays for the whole cluster",
+        ),
+        (
+            CLUSTER,
+            25.0,
+            0,
+            Some(1),
+            "the glyph before it would overrun",
+        ),
+        (MARK, 10.0, 0, Some(3), "the last glyph alone"),
+        (
+            MARK,
+            20.0,
+            0,
+            Some(0),
+            "a zero-width mark rides along with its base",
+        ),
+        // `min_start` drives the back-off: the previous answer plus one retires a cluster, down to nothing.
+        (
+            LTR,
+            1000.0,
+            1,
+            Some(1),
+            "the bound keeps the first glyph out",
+        ),
+        (LTR, 1000.0, 2, Some(2), "and the one after it"),
+        (LTR, 1000.0, 3, None, "an exhausted bound keeps nothing"),
+        (
+            CLUSTER,
+            1000.0,
+            2,
+            None,
+            "backing off a cluster retires all of its glyphs",
+        ),
+    ] {
+        let glyphs: Vec<ClusterGlyph> = run
+            .iter()
+            .map(|&(start, end, advance)| ClusterGlyph {
+                start,
+                end,
+                advance,
+            })
+            .collect();
+        let tail = cluster_glyph::fitting_suffix(&glyphs, avail, min_start);
+        assert_eq!(tail, expected, "avail={avail} min_start={min_start}: {why}");
+        assert!(
+            tail.is_none_or(|tail| tail >= min_start),
+            "a bounded suffix must start at or above its bound",
+        );
+    }
+}
+
+/// A middle cut keeps both ends of a file name, so the kept tail holds the extension, and puts the ellipsis in the middle of the slot's budget.
+#[test]
+fn ellipsis_middle_keeps_the_start_and_the_extension() {
+    let mut c = CosmicMeasure::default();
+    let name = "DeepSNR_weights_v2_final.onnx";
+    let params = shape(16.0).width(120.0);
+
+    let middle = c.measure_truncated(name, params, LineFit::EllipsisMiddle);
+    let trailing = c.measure_truncated(name, params, LineFit::Ellipsis);
+    assert_eq!(
+        [
+            shaped_text(&c, middle.buffer_key()),
+            shaped_text(&c, trailing.buffer_key())
+        ],
+        ["DeepS…al.onnx", "DeepSNR_wei…"],
+    );
+    assert_eq!(
+        [middle.size.w, trailing.size.w],
+        [119.0, 120.0],
+        "each inside the 120 px slot",
+    );
+}
+
+#[test]
 fn ellipsis_never_measures_wider_than_its_budget() {
     // A cut can overrun its budget by paying for only some of a cluster's glyphs while committing all its bytes (flag, ZWJ emoji), or by reshaping a prefix whose last letter changes form at a word end (Arabic). Both use fonts this crate doesn't bundle, so only the bound holds on every machine.
     //
@@ -244,7 +346,7 @@ fn ellipsis_never_measures_wider_than_its_budget() {
         "\u{645}\u{631}\u{62d}\u{628}\u{627} \u{628}\u{627}\u{644}\u{639}\u{627}\u{644}\u{645}",
     ] {
         for family in [FontFamily::SANS, FontFamily::MONO] {
-            for fit in [LineFit::Clip, LineFit::Ellipsis] {
+            for fit in [LineFit::Clip, LineFit::Ellipsis, LineFit::EllipsisMiddle] {
                 for width_px in 0..=160 {
                     let width = width_px as f32;
                     let m = c.measure_truncated(text, base.family(family).width(width), fit);
@@ -325,7 +427,7 @@ fn a_fitting_label_measures_its_natural_width_whatever_the_cap_or_align() {
     ] {
         let params = shape(16.0).width(cap).halign(halign);
         let natural = c.measure(text, params.unbounded());
-        for fit in [LineFit::Clip, LineFit::Ellipsis] {
+        for fit in [LineFit::Clip, LineFit::Ellipsis, LineFit::EllipsisMiddle] {
             let fitted = c.measure_truncated(text, params, fit);
             assert_eq!(
                 fitted.size, natural.size,
@@ -483,8 +585,13 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
     let text = "first paragraph here\nsecond paragraph";
     let params = shape(16.0).width(90.0);
 
-    // Inside the 90 px budget; the ellipsis costs the clip its last glyphs.
-    for (fit, width) in [(LineFit::Clip, 84.0), (LineFit::Ellipsis, 82.0)] {
+    // Inside the 90 px budget; the ellipsis costs the clip its last glyphs, and the middle cut
+    // its suffix from the first line alone.
+    for (fit, width) in [
+        (LineFit::Clip, 84.0),
+        (LineFit::Ellipsis, 82.0),
+        (LineFit::EllipsisMiddle, 78.0),
+    ] {
         let r = c.measure_truncated(text, params, fit);
         assert_eq!(
             r.size.h,
@@ -493,6 +600,11 @@ fn a_truncating_fit_paints_one_line_even_across_a_newline() {
             r.size.h,
         );
         assert_eq!(r.size.w, width, "{fit:?}");
+        let kept = shaped_text(&c, r.buffer_key());
+        assert!(
+            !kept.contains("second"),
+            "{fit:?} kept the second paragraph: {kept:?}"
+        );
         let newline = text.find('\n').unwrap();
         for g in glyph_poss(&c, r.buffer_key()) {
             assert!(

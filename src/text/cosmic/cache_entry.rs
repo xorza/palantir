@@ -1,6 +1,7 @@
 //! One entry in the shaped-buffer cache, and its two-tier retention state.
 
 use crate::common::expiry_wheel::TicketSeq;
+use crate::text::cosmic::text_cut::TextCut;
 use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use cosmic_text::Buffer;
@@ -16,6 +17,9 @@ pub(super) struct CacheEntry {
     /// buffer; measuring from 0 would count that gap in the width and the
     /// encoder would apply the offset twice. Zero for unbounded buffers.
     pub(super) left: f32,
+    /// The source bytes a truncating fit's buffer shows; `None` for a buffer that shows its
+    /// whole source.
+    pub(super) cut: Option<TextCut>,
     /// First frame on which this entry is dead: set one probation window out on
     /// insertion and a protected window out on each lookup, so the deadline is
     /// the tier. Matches [`ExpiryWheel::schedule`](crate::common::expiry_wheel::ExpiryWheel::schedule).

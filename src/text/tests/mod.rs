@@ -1,6 +1,8 @@
 //! Shared fixtures for the text suite; each submodule owns one axis: [`key`], [`wrap`], [`truncate`], [`geometry`],
 //! [`retention`], [`reuse`].
 
+use cosmic_text::BufferLine;
+
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
@@ -89,6 +91,12 @@ struct GlyphPos {
     line_height: f32,
     start: usize,
     end: usize,
+}
+
+/// The string the buffer under `key` shaped: a truncating fit's cut, marker included.
+fn shaped_text(cosmic: &CosmicMeasure, key: TextShapeKey) -> String {
+    let shaped = cosmic.shaped_run(key).expect("shaped buffer must exist");
+    shaped.buffer.lines.iter().map(BufferLine::text).collect()
 }
 
 /// Glyph geometry in the block-local space the renderer and probe see.

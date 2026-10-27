@@ -518,3 +518,48 @@ fn a_viewport_senses_the_wheel_only_on_the_axes_it_can_pan() {
         assert_eq!(h.ui.input().scroll_targets(), settled, "{label}: settled");
     }
 }
+
+/// [`Scroll::reveal`] pans by the least distance that shows a row: ten 20 px rows in a 50 px
+/// viewport. Row 5 (100..120) below the view lands at its bottom, offset 120 - 50 = 70; row 4
+/// (80..100) is then in view and moves nothing; row 1 (20..40) above it lands at its top,
+/// offset 20. An 80 px row at 30, taller than the view, lands with its start at the top.
+#[test]
+fn reveal_pans_the_least_that_shows_a_child() {
+    let row = |idx: usize| WidgetId::from_hash(("row", idx));
+    let scene = |ui: &mut Ui, heights: &[f32], reveal: Option<usize>| {
+        let mut scroll = Scroll::vertical()
+            .id(WidgetId::from_hash("scroll"))
+            .size((Sizing::fixed(200.0), Sizing::fixed(50.0)));
+        if let Some(idx) = reveal {
+            scroll = scroll.reveal(row(idx));
+        }
+        scroll.show(ui, |ui| {
+            Panel::vstack().id_salt("rows").show(ui, |ui| {
+                for (idx, h) in heights.iter().enumerate() {
+                    fixed_block(ui, row(idx), 200.0, *h);
+                }
+            });
+        });
+    };
+    let rows = [20.0; 10];
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| scene(ui, &rows, None));
+    for (reveal, offset, why) in [
+        (5, 70.0, "a row below lands at the bottom"),
+        (4, 70.0, "a row in view moves nothing"),
+        (1, 20.0, "a row above lands at the top"),
+    ] {
+        h.frame(|ui| scene(ui, &rows, Some(reveal)));
+        assert_eq!(read_state(&h).offset().y, offset, "row {reveal}: {why}");
+    }
+
+    let tall = [30.0, 80.0, 30.0];
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| scene(ui, &tall, None));
+    h.frame(|ui| scene(ui, &tall, Some(1)));
+    assert_eq!(
+        read_state(&h).offset().y,
+        30.0,
+        "a row taller than the view shows its start"
+    );
+}

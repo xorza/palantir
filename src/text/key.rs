@@ -234,7 +234,8 @@ impl FaceBits {
         match (self.0 & FIT_MASK) >> FIT_SHIFT {
             0 => LineFit::Wrap,
             1 => LineFit::Clip,
-            _ => LineFit::Ellipsis,
+            2 => LineFit::Ellipsis,
+            _ => LineFit::EllipsisMiddle,
         }
     }
 }
@@ -271,9 +272,14 @@ const _: () = {
             && LineAlign::Center as u8 == 2
             && LineAlign::Right as u8 == 3
     );
-    assert!(LineFit::Wrap as u8 == 0 && LineFit::Clip as u8 == 1 && LineFit::Ellipsis as u8 == 2);
+    assert!(
+        LineFit::Wrap as u8 == 0
+            && LineFit::Clip as u8 == 1
+            && LineFit::Ellipsis as u8 == 2
+            && LineFit::EllipsisMiddle as u8 == 3
+    );
     assert!(LineAlign::Right as u16 <= (ALIGN_MASK >> ALIGN_SHIFT));
-    assert!(LineFit::Ellipsis as u16 <= (FIT_MASK >> FIT_SHIFT));
+    assert!(LineFit::EllipsisMiddle as u16 <= (FIT_MASK >> FIT_SHIFT));
     assert!(FontWeight::MAX <= WEIGHT_MASK);
 };
 
@@ -293,7 +299,7 @@ impl WrapBound {
         let align = match fit {
             // A truncating fit is one line; nothing for align to move.
             LineFit::Wrap => LineAlign::from(halign),
-            LineFit::Clip | LineFit::Ellipsis => LineAlign::Auto,
+            LineFit::Clip | LineFit::Ellipsis | LineFit::EllipsisMiddle => LineAlign::Auto,
         };
         Self {
             max_w_q: NonMaxU32::saturating(quantize(max_width.canonical_px())),

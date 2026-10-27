@@ -9,6 +9,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::record::ShapeRecord;
 use crate::theme::context_menu::ContextMenuTheme;
 use crate::theme::context_menu::menu_item::MenuItemTheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -165,6 +166,54 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
         panic!("the menu rule paints a solid fill");
     };
     assert_eq!(fill, rule.to_f16(), "rule color comes off the menu");
+}
+
+/// A live row's hint takes the theme's shortcut ink; a disabled row's dims with its label.
+#[test]
+fn a_disabled_rows_hint_dims_with_its_label() {
+    let rows = [WidgetId::from_hash("live"), WidgetId::from_hash("dead")];
+    let menu = |ui: &mut Ui| {
+        ContextMenu::for_id(trigger_id()).show(ui, |ui, popup| {
+            for (id, disabled) in rows.into_iter().zip([false, true]) {
+                MenuItem::new("Copy")
+                    .id(id)
+                    .disabled(disabled)
+                    .shortcut_hint(Shortcut::ctrl('C'))
+                    .show(ui, popup);
+            }
+        });
+    };
+    let mut h = UiHarness::new(SURFACE);
+    let theme = h.ui.theme_mut();
+    theme.context_menu.item.shortcut = RgbaF32::hex(0x00ff00);
+    theme.context_menu.item.looks.disabled.text = theme
+        .context_menu
+        .item
+        .looks
+        .disabled
+        .text
+        .with_color(RgbaF32::hex(0xff00ff));
+    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
+    h.frame(menu);
+    h.frame(menu);
+    let hint_color = |id: WidgetId| {
+        let node =
+            h.ui.forest()
+                .node_for_widget_id(Layer::Menu, id.with("shortcut"));
+        h.ui.tree(Layer::Menu)
+            .shapes_of(node)
+            .find_map(|shape| match shape {
+                ShapeRecord::Text { color, .. } => Some(*color),
+                _ => None,
+            })
+            .expect("the hint records one text shape")
+    };
+    assert_eq!(hint_color(rows[0]), RgbaF32::hex(0x00ff00).to_f16(), "live");
+    assert_eq!(
+        hint_color(rows[1]),
+        RgbaF32::hex(0xff00ff).to_f16(),
+        "disabled"
+    );
 }
 
 /// `.style(...)` beats the global slot on every menu widget and writes nothing back; rows resolve through `WidgetTheme::plan`, so theme `padding`/`margin` fill where the builder was silent and an explicit value wins.
