@@ -270,6 +270,9 @@ pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 #[cfg(feature = "winit")]
 pub use gpu::surface::surface_usages::SurfaceUsages;
+/// One window an app runs in with no desktop: an [`OffscreenHost`] and the texture it
+/// renders into, so a driver of the app need not name wgpu.
+pub use host::headless_window::{HeadlessWindow, HeadlessWindowBuilder};
 /// The headless render-to-texture host: renders a `Ui` to a caller-supplied
 /// `wgpu::Texture` (screenshots, thumbnails). Also backs the visual harness.
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
@@ -277,6 +280,7 @@ pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
     error::{HostDisconnected, WinitHostError},
+    frame_summary::FrameSummary,
     handle::HostHandle,
 };
 /// The event a host feeds a `Ui`; toolkit-independent (see
@@ -298,6 +302,7 @@ pub use input::keyboard::key::Key;
 pub use input::keyboard::key_press::KeyPress;
 pub use input::keyboard::key_text::KeyText;
 pub use input::keyboard::modifiers::Modifiers;
+pub use input::owned_input_event::OwnedInputEvent;
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::{FocusPolicy, InputPolicy};
 pub use input::sense::Sense;
@@ -405,6 +410,7 @@ pub use theme::toggle::ToggleTheme;
 pub use theme::tooltip::TooltipTheme;
 pub use ui::Ui;
 pub use ui::frame_report::{FramePaint, FrameReport};
+pub use ui::inspected_widget::InspectedWidget;
 pub use ui::layer_scope::LayerScope;
 pub use ui::screenshot::Screenshot;
 pub use widget_core::configure::Configure;

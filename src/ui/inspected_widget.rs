@@ -14,7 +14,7 @@ use crate::shape::record_store::RecordStore;
 /// reacts to, and the text it shows.
 #[derive(Clone, Debug, PartialEq)]
 pub struct InspectedWidget {
-    /// The widget, as its `Response` and the harness's input helpers name it.
+    /// The widget, as its `Response` names it.
     pub id: WidgetId,
     /// The visible screen rect: after transforms, cut by the ancestors' clips.
     pub rect: Rect,
@@ -96,9 +96,9 @@ fn own_text(tree: &Tree, store: &RecordStore, root: usize, listed: &WidgetIdSet)
 
 #[cfg(test)]
 mod tests {
-    use crate::internals::inspected_widget::InspectedWidget;
     use crate::internals::ui_harness::UiHarness;
     use crate::prelude::*;
+    use crate::ui::inspected_widget::InspectedWidget;
 
     /// A button labelled "Save", a disabled button "Off", a clickable row holding the text "Open"
     /// and a nested button "Inner", a text field holding "draft", and a button scrolled out of a

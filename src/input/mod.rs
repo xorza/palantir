@@ -7,6 +7,7 @@ pub(crate) mod input_event;
 pub(crate) mod interaction;
 pub(crate) mod key_class;
 pub(crate) mod keyboard;
+pub(crate) mod owned_input_event;
 pub(crate) mod pointer;
 pub(crate) mod policy;
 pub(crate) mod scroll_targets;

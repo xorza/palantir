@@ -14,7 +14,6 @@ use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use glam::UVec2;
-use image::RgbaImage;
 use std::time::Duration;
 
 const LABEL: &str = "palantir.headless_window";
@@ -180,11 +179,19 @@ impl HeadlessWindow {
     pub const fn system_scale(&self) -> f32 {
         self.system_scale
     }
+}
 
-    /// The window's pixels as the last frame left them, waited for. See
-    /// [`OwnedTarget::read_back`].
-    pub fn read_back(&self) -> RgbaImage {
-        self.target.read_back()
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::host::headless_window::HeadlessWindow;
+    use image::RgbaImage;
+
+    impl HeadlessWindow {
+        /// The window's pixels as the last frame left them, waited for. See
+        /// [`OwnedTarget::read_back`](crate::internals::OwnedTarget::read_back).
+        pub fn read_back(&self) -> RgbaImage {
+            self.target.read_back()
+        }
     }
 }
 

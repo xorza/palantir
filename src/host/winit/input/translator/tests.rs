@@ -101,7 +101,7 @@ fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
 }
 
 /// The recorder gets a logical position and the host the physical one it came from (what `Window::resync_pointer`
-/// re-divides on scale changes).
+/// re-divides on scale changes); a sent move traces as the OS move it would come from.
 #[test]
 fn a_move_emits_logical_and_traces_physical() {
     let moved = cursor_moved(300.0, 120.0);
@@ -115,6 +115,12 @@ fn a_move_emits_logical_and_traces_physical() {
         [InputEvent::PointerMoved(at)] if *at == Vec2::new(120.0, 48.0)
     ));
     assert_eq!(trace, PointerTrace::At(Vec2::new(300.0, 120.0)));
+    assert_eq!(PointerTrace::of_input(emitted[0], 2.5), trace);
+    assert_eq!(
+        PointerTrace::of_input(InputEvent::PointerMoved(Vec2::new(f32::NAN, 1.0)), 2.5),
+        PointerTrace::Unchanged,
+        "a move the input screen refuses moves no anchor",
+    );
 }
 
 /// A departure is traced as one, so the host drops a position it must not restate.
@@ -129,6 +135,14 @@ fn a_departure_traces_gone_and_other_events_trace_nothing() {
         PointerTrace::Gone,
     );
     assert!(matches!(emitted.as_slice(), [InputEvent::PointerLeft]));
+    assert_eq!(
+        PointerTrace::of_input(InputEvent::PointerLeft, 1.0),
+        PointerTrace::Gone
+    );
+    assert_eq!(
+        PointerTrace::of_input(InputEvent::PointerPressed(PointerButton::Left), 1.0),
+        PointerTrace::Unchanged,
+    );
 
     assert_eq!(
         Translator::new(PLATFORM).translate(&pinch(0.5), 1.0, |_| {}),

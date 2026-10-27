@@ -20,6 +20,7 @@ use crate::gpu::surface::window_surface::{Acquired, Prepared, WindowSurface};
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
 use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, WindowDriver};
+use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
@@ -98,6 +99,8 @@ pub(super) struct Window {
     frame_set: FrameSet,
     system_facts: Option<SystemFacts>,
     pointer: Option<PointerAnchor>,
+    /// How many events [`HostHandle::send_input`](crate::HostHandle::send_input) delivered.
+    sent_inputs: u64,
 }
 
 impl Window {
@@ -127,6 +130,7 @@ impl Window {
             frame_set: FrameSet::claim(),
             system_facts: None,
             pointer: None,
+            sent_inputs: 0,
         }
     }
 
@@ -142,6 +146,17 @@ impl Window {
         });
         self.note_pointer(trace, scale);
         repaint_requested
+    }
+
+    /// Deliver `event`, in logical px, as [`Self::on_window_event`] delivers what it translates,
+    /// then ask for a frame, so the sender sees one that ran after it.
+    pub(super) fn on_sent_input(&mut self, event: InputEvent<'_>) {
+        let scale = self.translation_scale();
+        let now = self.input_epoch.elapsed();
+        self.driver.ui.on_input(event, now);
+        self.note_pointer(PointerTrace::of_input(event, scale), scale);
+        self.sent_inputs += 1;
+        self.next = FramePresent::Immediate;
     }
 
     /// The scale an event's position is divided by: the one the current cascade was
@@ -237,12 +252,13 @@ impl Window {
 
     /// Run one application/UI frame, acquire the swapchain texture, present it, then
     /// drain window-host output into `commands`. Stores the schedule on [`Self::next`].
+    /// Returns the frame's summary, or `None` when the hidden window skipped it.
     pub(super) fn frame<T: App>(
         &mut self,
         core: &mut HostCore,
         app: &mut T,
         commands: &mut WindowCommands,
-    ) {
+    ) -> Option<FrameSummary> {
         tracy::zone!("Window::frame");
 
         let facts = self.system_facts();
@@ -256,8 +272,9 @@ impl Window {
         // A hidden window skips its frame except the one carrying a close request:
         // only `App::update` / `App::record` can veto, and skipping would close a
         // minimized document past its "save changes?" prompt. One-shot.
-        if self.visibility.is_hidden() && !self.close_requested {
+        let summary = if self.visibility.is_hidden() && !self.close_requested {
             self.next = FramePresent::Idle;
+            None
         } else {
             // The close-request frame runs while hidden, and showing again skips the hidden span
             // assuming no frame ran in it. Restart the span here, or a vetoed close lets the
@@ -279,14 +296,22 @@ impl Window {
                 now: self.clock.now(),
             };
             let cpu = core.record(&mut self.driver, spec, app);
+            let summary = FrameSummary {
+                frame_id: self.driver.ui.frame_id(),
+                sent_inputs: self.sent_inputs,
+                repaint_requested: cpu.report.repaint_requested,
+                repaint_after: cpu.report.repaint_after,
+            };
             self.next = self.present(core, cpu);
-        }
+            Some(summary)
+        };
 
         self.finish(commands);
         // This window's own frame set; marking the main one (`WinitRuntime::draw` owns it)
         // made Tracy report slices as whole frames. Marked past every exit so an occluded
         // frame closes its own frame.
         self.frame_set.mark();
+        summary
     }
 
     fn present(&mut self, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {

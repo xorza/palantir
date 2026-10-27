@@ -1,10 +1,15 @@
 //! [`HostHandle`] and [`UserEvent`]: the cross-thread channel into a running [`WinitHost`](super::WinitHost).
 
+use std::fmt;
+use std::sync::Arc;
+
 use winit::event_loop::EventLoopProxy;
 
 use crate::host::winit::error::HostDisconnected;
+use crate::host::winit::frame_log::FrameLog;
+use crate::host::winit::frame_summary::FrameSummary;
+use crate::input::owned_input_event::OwnedInputEvent;
 use crate::window::window_token::WindowToken;
-use std::fmt;
 
 /// A main-thread closure scheduled via [`HostHandle::run_on_main`].
 pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) -> bool + Send>;
@@ -16,6 +21,8 @@ pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) -> bool + Send>;
 pub(crate) enum UserEvent<T> {
     /// Wakes the loop for one redraw of the named window; coalesced.
     Repaint(WindowToken),
+    /// Input for the named window, delivered as its OS input is.
+    Input(WindowToken, OwnedInputEvent),
     /// Runs a closure on the main thread with `&mut` the app, then repaints every window if it returns `true`.
     RunOnMain(MainTask<T>),
     /// Asks the event loop to exit.
@@ -26,6 +33,7 @@ impl<T> fmt::Debug for UserEvent<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Repaint(token) => f.debug_tuple("Repaint").field(token).finish(),
+            Self::Input(token, event) => f.debug_tuple("Input").field(token).field(event).finish(),
             Self::RunOnMain(_) => f.write_str("RunOnMain(..)"),
             Self::Quit => f.write_str("Quit"),
         }
@@ -37,13 +45,15 @@ impl<T> fmt::Debug for UserEvent<T> {
 /// [`WinitHost::handle`](super::WinitHost::handle) before `run`.
 pub struct HostHandle<T: 'static> {
     pub(super) proxy: EventLoopProxy<UserEvent<T>>,
+    pub(super) frames: Arc<FrameLog>,
 }
 
-// Hand-written to avoid a spurious `T: Clone`/`T: Debug` bound; the handle stores only a proxy.
+// Hand-written to avoid a spurious `T: Clone`/`T: Debug` bound; the handle stores no `T`.
 impl<T: 'static> Clone for HostHandle<T> {
     fn clone(&self) -> Self {
         Self {
             proxy: self.proxy.clone(),
+            frames: Arc::clone(&self.frames),
         }
     }
 }
@@ -58,6 +68,20 @@ impl<T: 'static> HostHandle<T> {
     /// Requests one frame of `window`. Lock-free; dropped silently if the loop or window is gone.
     pub fn request_repaint(&self, window: WindowToken) {
         self.proxy.send_event(UserEvent::Repaint(window)).ok();
+    }
+
+    /// Delivers `event` to `window` before its next frame, as the window's OS input is, stamped
+    /// with the window's input clock, then runs a frame; [`FrameSummary::sent_inputs`] counts the
+    /// event. Events reach the window in the order they are sent. Dropped silently unless the
+    /// window is open.
+    pub fn send_input(&self, window: WindowToken, event: OwnedInputEvent) {
+        self.proxy.send_event(UserEvent::Input(window, event)).ok();
+    }
+
+    /// The last frame `window` ran, or `None` before its first frame, after it closes, and
+    /// once the loop ends. A window skips its frames while hidden, so its summary holds still.
+    pub fn last_frame(&self, window: WindowToken) -> Option<FrameSummary> {
+        self.frames.get(window)
     }
 
     /// Schedules `f` on the main thread with `&mut` the app before the next
@@ -86,6 +110,7 @@ impl<T: 'static> HostHandle<T> {
 #[cfg(test)]
 mod tests {
     use crate::host::winit::handle::UserEvent;
+    use crate::input::input_event::InputEvent;
     use crate::window::window_token::WindowToken;
 
     #[test]
@@ -93,9 +118,15 @@ mod tests {
         let repaint: UserEvent<()> = UserEvent::Repaint(WindowToken(7));
         let task = UserEvent::RunOnMain(Box::new(|(): &mut ()| true));
         let quit: UserEvent<()> = UserEvent::Quit;
+        let input: UserEvent<()> =
+            UserEvent::Input(WindowToken(2), InputEvent::ImeCommit("ok").into());
 
         assert_eq!(format!("{repaint:?}"), "Repaint(WindowToken(7))");
         assert_eq!(format!("{task:?}"), "RunOnMain(..)");
         assert_eq!(format!("{quit:?}"), "Quit");
+        assert_eq!(
+            format!("{input:?}"),
+            r#"Input(WindowToken(2), OwnedInputEvent { event: ImeCommit(""), text: "ok" })"#
+        );
     }
 }

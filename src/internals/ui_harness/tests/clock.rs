@@ -1,5 +1,6 @@
 //! The two clocks, and the step sizes that would silently clamp.
 
+use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
 use crate::internals::panic_probe;
 use crate::internals::ui_harness::tests::support::{self, INSIDE, SURFACE};
 use crate::internals::ui_harness::*;

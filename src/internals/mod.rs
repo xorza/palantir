@@ -10,7 +10,6 @@ pub mod demo_swatches;
 pub mod frame_fixture;
 #[cfg(test)]
 mod hot_struct_sizes;
-pub mod inspected_widget;
 pub(crate) mod paint_capture;
 #[cfg(test)]
 pub(crate) mod panic_probe;
@@ -30,8 +29,6 @@ pub use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 pub use crate::gpu::test_gpu::{
     HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
 };
-/// One window an app runs in with no desktop.
-pub use crate::host::headless_window::{HeadlessWindow, HeadlessWindowBuilder};
 
 /// The raster-scale quantum, so the allocation suite's scale ramp steps one rung a frame.
 pub const TEXT_SCALE_STEP: f32 = text::TEXT_SCALE_STEP;

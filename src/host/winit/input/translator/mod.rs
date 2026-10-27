@@ -22,6 +22,18 @@ pub(crate) enum PointerTrace {
     Gone,
 }
 
+impl PointerTrace {
+    /// The trace of `event`, in logical px at `scale`, as the translator would report the OS
+    /// event it came from. A position the input screen refuses moves nothing.
+    pub(crate) fn of_input(event: InputEvent<'_>, scale: f32) -> Self {
+        match event {
+            InputEvent::PointerMoved(logical) if event.is_valid() => Self::At(logical * scale),
+            InputEvent::PointerLeft => Self::Gone,
+            _ => Self::Unchanged,
+        }
+    }
+}
+
 /// What translation carries from one event to the next.
 ///
 /// A touchscreen reports no mouse events. Windows promotes a touch to mouse

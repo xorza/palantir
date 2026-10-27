@@ -61,6 +61,11 @@ pub(crate) struct PolylineSpans {
 }
 
 impl RecordStore {
+    /// The characters of a text shape this pass recorded, for the widget inspection.
+    pub(crate) fn recorded_str(&self, text: RecordedText) -> &str {
+        &self.text.bytes()[text.span.range()]
+    }
+
     /// Drop every payload the last record pass appended, keeping capacity.
     /// PaintOnly skips this so the retained tree and storage stay valid together.
     pub(crate) fn clear(&mut self) {
@@ -160,19 +165,6 @@ impl RecordStore {
         PolylineSpans {
             points: staged_points,
             colors: staged_colors,
-        }
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::primitives::text::recorded_text::RecordedText;
-    use crate::shape::record_store::RecordStore;
-
-    impl RecordStore {
-        /// The characters of a text shape this pass recorded, for the widget inspection.
-        pub(crate) fn recorded_str(&self, text: RecordedText) -> &str {
-            &self.text.bytes()[text.span.range()]
         }
     }
 }

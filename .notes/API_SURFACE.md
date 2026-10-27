@@ -761,6 +761,13 @@ FrameReport
         pub ime_area: Option<Rect>
         pub const fn paint(&self) -> FramePaint
 
+FrameSummary  [features: winit]
+    struct FrameSummary: Clone, Copy, Debug, Eq, PartialEq
+        pub frame_id: u64
+        pub sent_inputs: u64
+        pub repaint_requested: bool
+        pub repaint_after: Option<Duration>
+
 Gpu
     struct Gpu: Clone, Debug
         pub const fn new(device: Device, queue: Queue) -> Self
@@ -897,12 +904,39 @@ HAlign
         Right = 3
         Stretch = 4
 
+HeadlessWindow
+    struct HeadlessWindow: Debug
+        pub fn builder(gpu: Gpu) -> HeadlessWindowBuilder
+        pub fn frame<T: App>(&mut self, app: &mut T) -> FrameReport
+        pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
+        pub fn advance(&mut self, dt: Duration) -> &mut Self
+        pub fn at(&mut self, time: Duration) -> &mut Self
+        pub fn wait_for_gpu(&self)
+        pub const fn ui(&mut self) -> &mut Ui
+        pub const fn host(&self) -> &OffscreenHost
+        pub fn resize(&mut self, size: UVec2, system_scale: f32)
+        pub fn size(&self) -> UVec2
+        pub const fn system_scale(&self) -> f32
+
+HeadlessWindowBuilder
+    struct HeadlessWindowBuilder: Debug
+        pub fn fonts(self, scope: FontScope) -> Self
+        pub fn shaper(self, shaper: TextShaper) -> Self
+        pub fn collect_gpu_stats(self, collect: bool) -> Self
+        pub fn time(self, time: OffscreenTime) -> Self
+        pub fn pixel_snap(self, pixel_snap: bool) -> Self
+        pub fn system_clipboard(self, system: bool) -> Self  [features: system-clipboard or winit]
+        pub const fn format(self, format: TargetFormat) -> Self
+        pub fn open(self, size: UVec2, system_scale: f32) -> HeadlessWindow
+
 HostDisconnected  [features: winit]
     struct HostDisconnected: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
 HostHandle  [features: winit]
     struct HostHandle<T: 'static>: Clone, Debug
         pub fn request_repaint(&self, window: WindowToken)
+        pub fn send_input(&self, window: WindowToken, event: OwnedInputEvent)
+        pub fn last_frame(&self, window: WindowToken) -> Option<FrameSummary>
         pub fn run_on_main(&self, f: impl FnOnce(&mut T) -> bool + Send + 'static) -> Result<(), HostDisconnected>
         pub fn quit(&self)
 
@@ -1030,11 +1064,22 @@ InputEvent
         ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
         SurfaceFocusLost
+        impl From<InputEvent<'_>> for OwnedInputEvent
 
 InputPolicy
     enum InputPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
         Always
         OnDelta
+
+InspectedWidget
+    struct InspectedWidget: Clone, Debug, PartialEq
+        pub id: WidgetId
+        pub rect: Rect
+        pub sense: Sense
+        pub focusable: bool
+        pub disabled: bool
+        pub clipped: bool
+        pub text: String
 
 InternedStr
     struct InternedStr: Clone, Copy, Debug
@@ -1282,6 +1327,10 @@ OverlayResponse
         impl<R: Copy> Copy for OverlayResponse<R>
         impl<R: Debug> Debug for OverlayResponse<R>
         impl<R: Default> Default for OverlayResponse<R>
+
+OwnedInputEvent
+    struct OwnedInputEvent: Clone, Debug, From<InputEvent<'_>>
+        pub fn as_event(&self) -> InputEvent<'_>
 
 PLATFORM
     const PLATFORM: Platform
@@ -2237,6 +2286,8 @@ Ui
         pub fn user_scale(&self) -> UserScale
         pub fn set_user_scale(&mut self, scale: UserScale)
         pub const fn frame_id(&self) -> u64
+        pub fn inspect(&self, out: &mut Vec<InspectedWidget>)
+        pub const fn double_click_window(&self) -> Duration
         pub const fn render_frame_id(&self) -> u64
         pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a>
         pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_
