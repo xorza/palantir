@@ -90,7 +90,7 @@ use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
-use crate::ui::screenshot::Screenshot;
+use crate::ui::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
 use crate::window::cursor_icon::CursorIcon;
@@ -144,9 +144,11 @@ pub struct Ui {
     window_requests: WindowRequests,
     /// Host-to-recorder facts refreshed before each windowed frame.
     window_frame: WindowFrameState,
-    /// The logical region this frame asked an image of, clamped to the window; the driver takes
-    /// it once the frame is recorded.
-    screenshot_request: Option<Rect>,
+    /// The images this frame asked for, one per distinct region; the driver takes them once the
+    /// frame is recorded.
+    screenshot_requests: Vec<ScreenshotRequest>,
+    /// The id the next new ask takes.
+    next_screenshot_id: ScreenshotId,
     /// The image that landed for this frame, if one did; replaced or cleared before every frame.
     /// Boxed: a rare, cold value kept out of the fields every pass walks (`hot_struct_sizes`).
     screenshot_taken: Option<Box<Screenshot>>,
@@ -188,7 +190,8 @@ impl Ui {
             frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
             window_frame: WindowFrameState::default(),
-            screenshot_request: None,
+            screenshot_requests: Vec::new(),
+            next_screenshot_id: ScreenshotId::FIRST,
             screenshot_taken: None,
         }
     }
@@ -368,38 +371,54 @@ impl Ui {
     }
 
     /// Ask for an image of this frame: the whole window for `None`, else `region` in logical
-    /// pixels, clamped to the window. The host copies the frame as it paints it, and the image
-    /// arrives through [`Self::screenshot_taken`] in the first frame after the device finishes
-    /// the copy; on an [`OffscreenHost`](crate::OffscreenHost),
+    /// pixels, clamped to the window, and get the id to read the image by. The host copies the
+    /// frame as it paints it, and the image arrives through [`Self::screenshot_taken`] in a frame
+    /// after the device finishes the copy; on an [`OffscreenHost`](crate::OffscreenHost),
     /// [`wait_for_gpu`](crate::OffscreenHost::wait_for_gpu) and then one frame lands it. A frame
-    /// paints in full when it asks; a second request in one frame replaces the first.
+    /// paints in full when it asks. Each region a frame asks for is its own image; asking a
+    /// region again in the same frame, as a replayed record pass does, returns the same id.
     ///
     /// # Panics
     ///
     /// Panics if `region` is not finite: its corner and its size are *offsets*. A negative size
     /// is an empty region, as it paints nothing.
     #[track_caller]
-    pub fn request_screenshot(&mut self, region: Option<Rect>) {
+    pub fn request_screenshot(&mut self, region: Option<Rect>) -> ScreenshotId {
         let window = self.display.logical_rect();
         let region = region.map_or(window, |region| {
             vec2::offset(region.min);
             vec2::offset(Vec2::new(region.size.w, region.size.h));
             region.clamp_to(window)
         });
-        self.screenshot_request = Some(region);
         self.frame_runtime.repaint_requested = true;
+        if let Some(asked) = self
+            .screenshot_requests
+            .iter()
+            .find(|asked| asked.region == region)
+        {
+            return asked.id;
+        }
+        let id = self.next_screenshot_id;
+        self.next_screenshot_id = id.next();
+        self.screenshot_requests
+            .push(ScreenshotRequest { region, id });
+        id
     }
 
-    /// The image a [`Self::request_screenshot`] asked for, during the one frame it lands in, as a
-    /// response's `clicked` holds for the frame of the click; `None` in every other frame. Images
-    /// land in the order they were asked for, one per frame, and the frame one lands in records.
-    pub fn screenshot_taken(&self) -> Option<&Screenshot> {
-        self.screenshot_taken.as_deref()
+    /// The image the ask `id` of [`Self::request_screenshot`] got, during the one frame it lands
+    /// in, as a response's `clicked` holds for the frame of the click; `None` in every other
+    /// frame. Images land in the order they were asked for, one per frame, and the frame one
+    /// lands in records.
+    pub fn screenshot_taken(&self, id: ScreenshotId) -> Option<&Screenshot> {
+        self.screenshot_taken
+            .as_deref()
+            .filter(|screenshot| screenshot.id() == id)
     }
 
-    /// The region this frame asked an image of, taken by the driver once the frame is recorded.
-    pub(crate) const fn take_screenshot_request(&mut self) -> Option<Rect> {
-        self.screenshot_request.take()
+    /// Move the images this frame asked for onto `into`, as the driver takes them once the frame
+    /// is recorded.
+    pub(crate) fn take_screenshot_requests(&mut self, into: &mut Vec<ScreenshotRequest>) {
+        into.append(&mut self.screenshot_requests);
     }
 
     /// Hand the next frame the image that landed for it, or none.

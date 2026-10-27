@@ -84,6 +84,12 @@ impl<T: 'static> HostHandle<T> {
         self.frames.get(window)
     }
 
+    /// Whether `window` is minimized or occluded, which holds its frames until it shows; `false`
+    /// once it closes and once the loop ends.
+    pub fn is_hidden(&self, window: WindowToken) -> bool {
+        self.frames.is_hidden(window)
+    }
+
     /// Schedules `f` on the main thread with `&mut` the app before the next
     /// frame; return `true` to repaint every window.
     ///

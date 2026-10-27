@@ -111,6 +111,12 @@ impl<T: App + 'static> WinitRuntime<T> {
         self.windows.by_token(token)
     }
 
+    /// Publish whether the window at `slot` is hidden, for the handles to read.
+    pub(super) fn log_visibility(&mut self, slot: WindowSlot) {
+        let win = self.windows.at(slot);
+        self.frames.set_hidden(win.driver.token, win.is_hidden());
+    }
+
     /// Paint one window; it drains its commands into the pending queue.
     pub(super) fn draw(&mut self, slot: WindowSlot) {
         let single_window = self.windows.len() == 1;
