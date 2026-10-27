@@ -159,7 +159,7 @@ fn many_icons_compose_alloc_free() {
                             .id_salt((r, c))
                             .grid_cell((r, c))
                             .show(ui, |ui| {
-                                ui.add_shape(icons.shape(chip));
+                                ui.add_shape(Shape::icon(chip));
                             });
                     }
                 }

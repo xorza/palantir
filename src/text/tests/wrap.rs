@@ -220,7 +220,7 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
     // **The one empty-text boundary.** A `TextShapeRequest` cannot hold a run with no bytes, so no layer below guards; the crate edge answers it itself.
     let params = ui_shape(16.0);
     assert!(
-        TextShapeRequest::unbounded("", params.font).is_none(),
+        TextShapeRequest::unbounded("", keyed(params.font)).is_none(),
         "an empty run has no request to make of the shaper",
     );
 
@@ -233,7 +233,7 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
             align: Align::h(HAlign::Auto),
             max_width: None,
         }
-        .unbounded_key()
+        .unbounded_key(&FamilyKeys::default())
         .is_some(),
         "a usable face names a key whether or not there are bytes to shape",
     );
@@ -255,7 +255,11 @@ fn an_empty_run_is_answered_at_the_boundary_and_shapes_nothing() {
             assert_eq!(caret.y_top, 0.0);
             // `TextShapeKey` quantizes leading to 1/64 px, so the empty block's band is round(19.2 × 64) / 64.
             assert_eq!(caret.line_height, 19.203125);
-            assert_eq!(probe.byte_at(37.0, 5.0), 0, "every point is byte 0");
+            assert_eq!(
+                probe.byte_at(Vec2::new(37.0, 5.0)),
+                0,
+                "every point is byte 0"
+            );
         });
     }
 }
@@ -410,7 +414,7 @@ fn a_probe_shapes_under_the_key_the_paint_committed() {
         );
 
         // Prove the case is live: for the two resolving policies the committed key is not the raw bind of `width`, so agreement is the resolution working, not both sides binding the same number.
-        let raw = TextShapeRequest::unbounded(text, params.font)
+        let raw = TextShapeRequest::unbounded(text, keyed(params.font))
             .expect("the fixture has text")
             .with_bound(WrapBound::new(
                 width,

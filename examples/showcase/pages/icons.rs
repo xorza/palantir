@@ -8,7 +8,8 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
-use palantir::{IconId, IconSet, IconTable, RgbaF32, Ui, WidgetId};
+use palantir::widget::Shape;
+use palantir::{IconHandle, IconSet, IconTable, RgbaF32, Ui, WidgetId};
 use std::rc::Rc;
 
 /// A diskette: several flat fills over a vertical gradient, inside a clip
@@ -62,15 +63,16 @@ const WIDE_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 
 <rect x="26" y="4" width="3" height="8" rx="1.5" fill="#facc15"/>
 </svg>"##;
 
-/// The set, plus the ids resolved once. `from_svgs` derives each icon's viewBox and tintability and
-/// sorts by name, so ids come back through `by_name` rather than hand-counted.
+/// The set, plus the handles resolved once by name. The set stays held: a handle owns nothing, so
+/// the icons draw only while the set is loaded.
 #[derive(Clone, Debug)]
 struct Icons {
+    #[expect(dead_code, reason = "held so its icons stay loaded")]
     set: IconSet,
-    folder: IconId,
-    new_file: IconId,
-    save: IconId,
-    wide: IconId,
+    folder: IconHandle,
+    new_file: IconHandle,
+    save: IconHandle,
+    wide: IconHandle,
 }
 
 impl Icons {
@@ -89,12 +91,12 @@ impl Icons {
                     ])
                     .expect("the bundled icons are readable SVGs with distinct names"),
                 ));
-                let id = |name| set.by_name(name).expect("bundled icon");
+                let handle = |name| set.by_name(name).expect("bundled icon");
                 Self {
-                    folder: id("folder"),
-                    new_file: id("new-file"),
-                    save: id("save"),
-                    wide: id("wide"),
+                    folder: handle("folder"),
+                    new_file: handle("new-file"),
+                    save: handle("save"),
+                    wide: handle("wide"),
                     set,
                 }
             })
@@ -102,8 +104,8 @@ impl Icons {
         })
     }
 
-    fn draw(&self, ui: &mut Ui, icon: IconId, tint: RgbaF32) {
-        ui.add_shape(self.set.shape(icon).tint(tint));
+    fn draw(ui: &mut Ui, icon: IconHandle, tint: RgbaF32) {
+        ui.add_shape(Shape::icon(icon).tint(tint));
     }
 }
 
@@ -113,7 +115,7 @@ pub(crate) fn build(ui: &mut Ui) {
     Section::new("Sizes")
         .apis(&[
             api!(Ui::load_icons as fn(&Ui, IconTable) -> IconSet),
-            api!(IconSet::shape),
+            api!(IconSet::by_name),
         ])
         .show(ui, |ui| {
             support::note(
@@ -127,7 +129,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     DemoCell::new(label)
                         .size(px + 24.0, px + 24.0)
                         .show(ui, |ui| {
-                            icons.draw(ui, icons.save, RgbaF32::WHITE);
+                            Icons::draw(ui, icons.save, RgbaF32::WHITE);
                         });
                 }
             });
@@ -145,22 +147,22 @@ pub(crate) fn build(ui: &mut Ui) {
                 DemoCell::new("save — gradient + clip path")
                     .size(120.0, 120.0)
                     .show(ui, |ui| {
-                        icons.draw(ui, icons.save, RgbaF32::WHITE);
+                        Icons::draw(ui, icons.save, RgbaF32::WHITE);
                     });
                 DemoCell::new("folder — radial + drop shadow")
                     .size(120.0, 120.0)
                     .show(ui, |ui| {
-                        icons.draw(ui, icons.folder, RgbaF32::WHITE);
+                        Icons::draw(ui, icons.folder, RgbaF32::WHITE);
                     });
                 DemoCell::new("new-file — tintable outline")
                     .size(120.0, 120.0)
                     .show(ui, |ui| {
-                        icons.draw(ui, icons.new_file, RgbaF32::WHITE);
+                        Icons::draw(ui, icons.new_file, RgbaF32::WHITE);
                     });
                 DemoCell::new("wide — 2:1, Contain")
                     .size(160.0, 120.0)
                     .show(ui, |ui| {
-                        icons.draw(ui, icons.wide, RgbaF32::WHITE);
+                        Icons::draw(ui, icons.wide, RgbaF32::WHITE);
                     });
             });
         });
@@ -178,28 +180,26 @@ pub(crate) fn build(ui: &mut Ui) {
                 ("tintable, teal", RgbaF32::srgb(0.30, 0.85, 0.78)),
             ] {
                 DemoCell::new(label).size(96.0, 96.0).show(ui, |ui| {
-                    icons.draw(ui, icons.new_file, tint);
+                    Icons::draw(ui, icons.new_file, tint);
                 });
             }
             // A color icon takes only the tint's alpha: fading, not recoloring.
             DemoCell::new("color icon at 40% alpha")
                 .size(96.0, 96.0)
                 .show(ui, |ui| {
-                    icons.draw(ui, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
+                    Icons::draw(ui, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
                 });
             // …and `desaturate` is the other half of a disabled state: the artwork's own luminance, hue gone.
             DemoCell::new("color icon desaturated")
                 .size(96.0, 96.0)
                 .show(ui, |ui| {
-                    ui.add_shape(icons.set.shape(icons.save).desaturate(true));
+                    ui.add_shape(Shape::icon(icons.save).desaturate(true));
                 });
             DemoCell::new("desaturated + 50% alpha")
                 .size(96.0, 96.0)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        icons
-                            .set
-                            .shape(icons.save)
+                        Shape::icon(icons.save)
                             .desaturate(true)
                             .tint(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
                     );

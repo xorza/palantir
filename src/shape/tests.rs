@@ -1,4 +1,5 @@
 use crate::primitives::geometry::circular_arc::CircularArc;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
@@ -12,10 +13,13 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::rect::RectKind;
 use crate::shape::sealed::LowerShape as _;
+use crate::shape::style::LineCap;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -206,7 +210,6 @@ fn text_noop_rejects_invalid_metrics() {
             Some(origin) => shape.at_origin(origin),
             None => shape,
         };
-        assert!(!shape.has_nan(), "{label}");
         assert!(
             !shape.is_noop(),
             "{label}: a visible run does not stop painting over its origin",
@@ -357,4 +360,99 @@ fn curves_lower_to_their_basis_and_tight_bbox() {
         assert_eq!(basis, want_basis, "{label}");
         assert_eq!(bbox, want_bbox, "{label}");
     }
+}
+
+/// A curve of no length paints its cap alone, as SVG paints a zero-length subpath: a round cap a
+/// disc and a square cap a square, the stroke width across and centered on the point; a butt cap
+/// has no extent. A ramp colors the dot as its start does. Width 4 at (3, 4) covers (1, 2) to
+/// (5, 6); an arc of no radius sits at its center (10, 20), one of no sweep at its start, 5 along
+/// +x at (15, 20).
+#[test]
+fn a_curve_of_no_length_paints_its_cap_alone() {
+    let wide = Stroke::new(RgbaF32::WHITE, 4.0);
+    let thin = Stroke::new(RgbaF32::WHITE, 2.0);
+    let at = Vec2::new(3.0, 4.0);
+    let arc = CircularArc {
+        center: Vec2::new(10.0, 20.0),
+        radius: 5.0,
+        start_angle: 0.0,
+        sweep: 0.0,
+    };
+    let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
+    let red_to_blue = ColorRamp::two_stop(red, RgbaF32::new(0.0, 0.0, 1.0, 1.0));
+    let dot = Shape::cubic_bezier(
+        CubicBezier {
+            p0: at,
+            p1: at,
+            p2: at,
+            p3: at,
+        },
+        wide,
+    );
+    let cases = [
+        (
+            "round line",
+            Shape::line(at, at, wide).cap(LineCap::Round),
+            Rect::new(1.0, 2.0, 4.0, 4.0),
+            Corners::all(2.0),
+            RgbaF32::WHITE,
+        ),
+        (
+            "square line",
+            Shape::line(at, at, wide).cap(LineCap::Square),
+            Rect::new(1.0, 2.0, 4.0, 4.0),
+            Corners::ZERO,
+            RgbaF32::WHITE,
+        ),
+        (
+            "arc of no radius",
+            Shape::arc(
+                CircularArc {
+                    radius: 0.0,
+                    sweep: 1.0,
+                    ..arc
+                },
+                thin,
+            )
+            .cap(LineCap::Round),
+            Rect::new(9.0, 19.0, 2.0, 2.0),
+            Corners::all(1.0),
+            RgbaF32::WHITE,
+        ),
+        (
+            "arc of no sweep",
+            Shape::arc(arc, thin).cap(LineCap::Square),
+            Rect::new(14.0, 19.0, 2.0, 2.0),
+            Corners::ZERO,
+            RgbaF32::WHITE,
+        ),
+        (
+            "ramped cubic",
+            dot.clone().ramp(red_to_blue).cap(LineCap::Round),
+            Rect::new(1.0, 2.0, 4.0, 4.0),
+            Corners::all(2.0),
+            red,
+        ),
+    ];
+    for (label, shape, want_rect, want_corners, want_color) in cases {
+        assert!(!shape.is_noop(), "{label}");
+        let ShapeRecord::Quad(QuadShape::Rect {
+            kind: RectKind::Rounded,
+            local_rect: Some(rect),
+            corners,
+            fill: ShapeBrush::Solid(color),
+            ..
+        }) = shape.lower(&mut RecordStore::default())
+        else {
+            panic!("{label}: a dot lowers to a solid rect");
+        };
+        assert_eq!(rect, want_rect, "{label}");
+        assert_eq!(corners, want_corners, "{label}");
+        assert_eq!(color, want_color.to_f16(), "{label}");
+    }
+    assert!(
+        Shape::line(at, at, wide).is_noop(),
+        "a butt cap has no extent"
+    );
+    assert!(dot.is_noop(), "nor on a cubic");
 }

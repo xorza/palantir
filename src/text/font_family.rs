@@ -1,111 +1,58 @@
-//! [`FontFamily`] and the process-wide table of interned family names.
+//! [`FontFamily`]: a family named inline, so it needs no table to mean anything.
 
-use rustc_hash::FxHashMap;
 use serde::de;
 use std::fmt;
-use std::sync::{LazyLock, RwLock, RwLockReadGuard};
+use std::str;
 
-/// Static: a deserialized `TextStyle` has no shaper to resolve names against.
-static NAMES: LazyLock<RwLock<FamilyTable>> =
-    LazyLock::new(|| RwLock::new(FamilyTable::seeded(FAMILY_LIMIT)));
-
-/// Every index a `u16` can name.
-const FAMILY_LIMIT: usize = 1 << 16;
-
-/// Append-only; names are leaked so lookups return `&'static str`.
-#[derive(Debug)]
-struct FamilyTable {
-    names: Vec<&'static str>,
-    index: FxHashMap<&'static str, u16>,
-    /// Fewer than [`FAMILY_LIMIT`] in the test that fills one.
-    limit: usize,
+/// Which family to shape in, by name. `Copy`: the name sits inline, so a family needs no table
+/// to name it, and a deserialized style resolves wherever it is shaped. Each shaper keys the
+/// families it meets on its own. Serializes as its name.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FontFamily {
+    len: u8,
+    /// The name's bytes, zero past `len`, so equality and hashing read the whole array.
+    bytes: [u8; Self::MAX_NAME_LEN],
 }
-
-impl FamilyTable {
-    fn seeded(limit: usize) -> Self {
-        let mut table = Self {
-            names: Vec::new(),
-            index: FxHashMap::default(),
-            limit,
-        };
-        for name in [FontFamily::SANS_NAME, FontFamily::MONO_NAME] {
-            table.push(name);
-        }
-        table
-    }
-
-    fn get(&self, name: &str) -> Option<FontFamily> {
-        self.index.get(name).map(|&idx| FontFamily(idx))
-    }
-
-    fn intern(&mut self, name: &str) -> Option<FontFamily> {
-        if let Some(found) = self.get(name) {
-            return Some(found);
-        }
-        if self.names.len() >= self.limit {
-            return None;
-        }
-        Some(self.push(String::leak(name.to_owned())))
-    }
-
-    fn push(&mut self, name: &'static str) -> FontFamily {
-        let idx =
-            u16::try_from(self.names.len()).expect("the table limit keeps every index inside u16");
-        self.names.push(name);
-        self.index.insert(name, idx);
-        FontFamily(idx)
-    }
-}
-
-/// Which family to shape in; the `Copy` index into the interned name table.
-/// Serializes as its name.
-#[derive(Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub struct FontFamily(u16);
 
 impl FontFamily {
+    /// The longest name a family holds, in bytes.
+    pub const MAX_NAME_LEN: usize = 63;
+
     /// Bundled Inter.
-    pub const SANS: Self = Self(0);
+    pub const SANS: Self = Self::named("Inter").expect("the bundled name fits");
     /// Bundled JetBrains Mono.
-    pub const MONO: Self = Self(1);
+    pub const MONO: Self = Self::named("JetBrains Mono").expect("the bundled name fits");
 
-    const SANS_NAME: &'static str = "Inter";
-    const MONO_NAME: &'static str = "JetBrains Mono";
-
-    /// The family called `name`, interning it on first sight.
-    ///
-    /// `None` when 65 536 families are already interned and `name` is new.
-    pub fn named(name: &str) -> Option<Self> {
-        if let Some(found) = read_names().get(name) {
-            return Some(found);
+    /// The family called `name`. `None` for an empty name or one longer than
+    /// [`Self::MAX_NAME_LEN`] bytes.
+    pub const fn named(name: &str) -> Option<Self> {
+        let name = name.as_bytes();
+        if name.is_empty() || name.len() > Self::MAX_NAME_LEN {
+            return None;
         }
-        // Re-check under the write lock: two threads can both miss the read.
-        NAMES
-            .write()
-            .expect("the font name table is poisoned")
-            .intern(name)
+        let mut bytes = [0; Self::MAX_NAME_LEN];
+        let mut i = 0;
+        while i < name.len() {
+            bytes[i] = name[i];
+            i += 1;
+        }
+        Some(Self {
+            len: name.len() as u8,
+            bytes,
+        })
     }
 
     /// This family's name.
-    pub fn name(self) -> &'static str {
-        read_names()
-            .names
-            .get(usize::from(self.0))
-            .copied()
-            .expect("a font family index this process never interned")
-    }
-
-    /// `pub(crate)`: an index means nothing outside this process.
-    pub(crate) const fn raw(self) -> u16 {
-        self.0
-    }
-
-    pub(crate) const fn from_raw(raw: u16) -> Self {
-        Self(raw)
+    pub fn name(&self) -> &str {
+        str::from_utf8(&self.bytes[..usize::from(self.len)])
+            .expect("a family is built from a whole `str`")
     }
 }
 
-fn read_names() -> RwLockReadGuard<'static, FamilyTable> {
-    NAMES.read().expect("the font name table is poisoned")
+impl Default for FontFamily {
+    fn default() -> Self {
+        Self::SANS
+    }
 }
 
 impl fmt::Debug for FontFamily {
@@ -126,7 +73,7 @@ impl<'de> serde::Deserialize<'de> for FontFamily {
     }
 }
 
-/// A visitor, so a borrowed name interns without allocating.
+/// A visitor, so a borrowed name reads without allocating.
 #[derive(Debug)]
 struct NameVisitor;
 
@@ -134,57 +81,42 @@ impl de::Visitor<'_> for NameVisitor {
     type Value = FontFamily;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("a font family name")
+        f.write_str("a font family name of 1 to 63 bytes")
     }
 
     fn visit_str<E: de::Error>(self, name: &str) -> Result<Self::Value, E> {
-        FontFamily::named(name).ok_or_else(|| E::custom("more than 65536 font families interned"))
+        FontFamily::named(name).ok_or_else(|| {
+            E::custom(format_args!(
+                "a font family name must be 1 to {} bytes, got {}",
+                FontFamily::MAX_NAME_LEN,
+                name.len()
+            ))
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::text::font_family::{FamilyTable, FontFamily};
+    use crate::text::font_family::FontFamily;
     use ron::ser;
 
     #[test]
-    fn the_seeded_families_are_the_bundled_faces() {
-        assert_eq!(FontFamily::SANS.raw(), 0);
-        assert_eq!(FontFamily::MONO.raw(), 1);
+    fn the_bundled_families_name_the_bundled_faces() {
         assert_eq!(FontFamily::SANS.name(), "Inter");
         assert_eq!(FontFamily::MONO.name(), "JetBrains Mono");
         assert_eq!(FontFamily::default(), FontFamily::SANS);
-        assert_eq!(FontFamily::named("Inter").unwrap(), FontFamily::SANS);
-        assert_eq!(
-            FontFamily::named("JetBrains Mono").unwrap(),
-            FontFamily::MONO
-        );
+        assert_eq!(FontFamily::named("Inter"), Some(FontFamily::SANS));
+        assert_eq!(FontFamily::named("JetBrains Mono"), Some(FontFamily::MONO));
     }
 
+    /// A name is 1 to 63 bytes: 63 fit, 64 do not, and an empty name names no family.
     #[test]
-    fn a_new_name_interns_once() {
-        let first = FontFamily::named("Palantir Test Family").unwrap();
-        let again = FontFamily::named("Palantir Test Family").unwrap();
-        assert_eq!(first, again);
-        assert_eq!(first.name(), "Palantir Test Family");
-        assert!(first.raw() >= 2, "a fresh name cannot take a seeded index");
-    }
-
-    #[test]
-    fn a_full_table_refuses_a_new_name() {
-        let mut table = FamilyTable::seeded(4);
-        let fresh = ["Full Table A", "Full Table B"].map(|name| table.intern(name));
-        assert_eq!(fresh, [Some(FontFamily(2)), Some(FontFamily(3))]);
-        assert_eq!(table.intern("Full Table C"), None, "the table is full");
-        for (name, idx) in [
-            ("Inter", 0),
-            ("JetBrains Mono", 1),
-            ("Full Table A", 2),
-            ("Full Table B", 3),
-        ] {
-            assert_eq!(table.intern(name), Some(FontFamily(idx)), "{name}");
-        }
-        assert_eq!(table.names.len(), 4, "a refusal leaves no trace");
+    fn a_name_fits_or_is_refused() {
+        let longest = "f".repeat(FontFamily::MAX_NAME_LEN);
+        assert_eq!(FontFamily::named(&longest).unwrap().name(), longest);
+        assert_eq!(FontFamily::named(&format!("{longest}f")), None);
+        assert_eq!(FontFamily::named(""), None);
+        assert_ne!(FontFamily::named("Inter Display"), Some(FontFamily::SANS));
     }
 
     #[test]
@@ -199,5 +131,8 @@ mod tests {
         let unknown: FontFamily = ron::from_str("\"Segoe UI\"").expect("parse");
         assert_eq!(unknown, FontFamily::named("Segoe UI").unwrap());
         assert_eq!(unknown.name(), "Segoe UI");
+
+        let long = format!("\"{}\"", "f".repeat(64));
+        assert!(ron::from_str::<FontFamily>(&long).is_err());
     }
 }

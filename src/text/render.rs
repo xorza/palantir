@@ -3,7 +3,7 @@
 
 use crate::primitives::geometry::urect::URect;
 use cosmic_text::{CacheKey, SubpixelBin};
-use glam::Vec2;
+use glam::{IVec2, Vec2};
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RunPlacement {
@@ -14,17 +14,16 @@ pub(crate) struct RunPlacement {
     pub(crate) bounds: Option<URect>,
 }
 
-/// One glyph's physical-px placement plus its opaque raster key; `x`/`y` position the image before
-/// its raster bearing ([`RasterImage::bearing`](crate::widget::RasterImage)). Public so callers drawing
-/// their own text get the backend's answer; see [`TextGlyphs`](crate::widget::TextGlyphs).
+/// One glyph's physical-px placement plus its opaque raster key; `physical` positions the image
+/// before its raster bearing ([`RasterImage::bearing`](crate::widget::RasterImage)). Public so
+/// callers drawing their own text get the backend's answer; see
+/// [`TextGlyphs`](crate::widget::TextGlyphs).
 #[derive(Clone, Copy, Debug)]
 pub struct PlacedGlyph {
     /// Raster identity of the glyph.
     pub raster_key: GlyphRasterKey,
-    /// X origin in px.
-    pub x: i32,
-    /// Y origin in px.
-    pub y: i32,
+    /// The glyph's origin in physical pixels.
+    pub physical: IVec2,
 }
 
 /// Opaque per-glyph rasterization identity: cosmic's `CacheKey` behind a newtype so no cosmic-text

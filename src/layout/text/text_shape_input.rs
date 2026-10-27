@@ -6,9 +6,9 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::record::ShapeRecord;
-use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
 use crate::text::request::TextShapeRequest;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 
 /// One `ShapeRecord::Text`'s layout-side inputs, from [`Self::on_leaf`] and [`Self::on_container`].
@@ -20,7 +20,7 @@ pub(crate) struct TextShapeInput<'a> {
     ///
     /// [`RecordedText`]: crate::primitives::text::recorded_text::RecordedText
     pub(crate) text_hash: u64,
-    pub(crate) font: GlyphFont,
+    pub(crate) font: ShapingFont,
     pub(crate) wrap: TextWrap,
     /// From `Shape::Text.align`; with wrap on, cosmic-text bakes per-line offsets into the shaped buffer,
     /// so it must reach `TextSystem::measure` and `TextShapeKey`.
@@ -118,11 +118,11 @@ mod tests {
     use crate::internals::panic_probe;
     use crate::layout::text::text_shape_input::{TextShapeInput, checked_text_ordinal};
     use crate::primitives::layout::align::HAlign;
-    use crate::text::font_family::FontFamily;
+    use crate::text::family_keys::FamilyKey;
     use crate::text::font_slant::FontSlant;
     use crate::text::font_weight::FontWeight;
-    use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
+    use crate::text::shaping_font::ShapingFont;
     use crate::text::wrap::TextWrap;
 
     #[test]
@@ -135,10 +135,10 @@ mod tests {
         );
     }
 
-    const FACE: GlyphFont = GlyphFont {
+    const FACE: ShapingFont = ShapingFont {
         size: 16.0,
         line_height: 19.2,
-        family: FontFamily::SANS,
+        family: FamilyKey::from_raw(0),
         weight: FontWeight::REGULAR,
         slant: FontSlant::Normal,
     };

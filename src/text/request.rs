@@ -1,8 +1,8 @@
 //! Source text paired with the canonical parameters it shapes under.
 
 use crate::common::hash;
-use crate::text::glyph_font::GlyphFont;
 use crate::text::key::{TextShapeKey, WrapBound};
+use crate::text::shaping_font::ShapingFont;
 
 /// Source text paired with its canonical shaping parameters.
 ///
@@ -22,14 +22,14 @@ impl<'a> TextShapeRequest<'a> {
     /// [`TextGlyphs`](crate::widget::TextGlyphs) call, so the screen sits at the
     /// boundary both cross. Hashes `text` itself; a caller holding the hash uses
     /// [`Self::for_key`]. `None` for empty text or an unusable face.
-    pub(crate) fn unbounded(text: &'a str, font: GlyphFont) -> Option<Self> {
+    pub(crate) fn unbounded(text: &'a str, font: ShapingFont) -> Option<Self> {
         let key = TextShapeKey::for_text(text, font)?;
         (!text.is_empty()).then_some(Self { text, key })
     }
 
-    /// Pair `text` with a key already minted for it. **The one place a key is
-    /// checked against the bytes**, so cached buffer reuse is sound; debug-only, as
-    /// re-hashing costs `O(n)` per run per frame. `None` for empty text.
+    /// Pair `text` with a key already minted for it, checked in debug builds, as
+    /// re-hashing costs `O(n)` per run per frame. A cached buffer is reused only when
+    /// its bytes match, so a key that two texts share is safe. `None` for empty text.
     pub(crate) fn for_key(text: &'a str, key: TextShapeKey) -> Option<Self> {
         debug_assert_eq!(
             key.text_hash,
@@ -54,20 +54,15 @@ impl<'a> TextShapeRequest<'a> {
     }
 }
 
-// Wider than `cfg(test)`: the text benches lower one const face through
-// `unbounded_request`.
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
     use super::*;
-    #[cfg(test)]
     use crate::primitives::layout::align::HAlign;
-    #[cfg(test)]
+    use crate::text::family_keys::FamilyKeys;
     use crate::text::font_family::FontFamily;
-    #[cfg(test)]
     use crate::text::font_slant::FontSlant;
-    #[cfg(test)]
     use crate::text::font_weight::FontWeight;
-    #[cfg(test)]
+    use crate::text::glyph_font::GlyphFont;
     use crate::text::wrap::LineFit;
 
     /// A shaping request's parameters without its text, so a test describes one
@@ -75,16 +70,11 @@ pub(crate) mod internals {
     #[derive(Clone, Copy, Debug)]
     pub(crate) struct TestShape {
         pub(crate) font: GlyphFont,
-        /// Assertion-side: benches shape unbounded, so only tests bind a width or
-        /// alignment.
-        #[cfg(test)]
         pub(crate) max_width: Option<f32>,
-        #[cfg(test)]
         pub(crate) halign: HAlign,
     }
 
     /// Field reads for assertions; production forwards a request whole.
-    #[cfg(test)]
     impl<'a> TextShapeRequest<'a> {
         pub(crate) fn text(self) -> &'a str {
             self.text
@@ -103,24 +93,39 @@ pub(crate) mod internals {
         pub(crate) const fn new(font: GlyphFont) -> Self {
             Self {
                 font,
-                #[cfg(test)]
                 max_width: None,
-                #[cfg(test)]
                 halign: HAlign::Auto,
             }
         }
 
         /// Fixtures always name text and a usable face, so the nothing-to-shape
-        /// boundary is a wiring bug here.
-        pub(crate) fn unbounded_request(self, text: &str) -> TextShapeRequest<'_> {
-            TextShapeRequest::unbounded(text, self.font)
+        /// boundary is a wiring bug here. `keys` is the table of the shaper that shapes it.
+        pub(crate) fn unbounded_request_in<'a>(
+            self,
+            keys: &FamilyKeys,
+            text: &'a str,
+        ) -> TextShapeRequest<'a> {
+            TextShapeRequest::unbounded(text, ShapingFont::new(self.font, keys))
                 .expect("a shaping fixture needs text and a usable face")
+        }
+
+        /// [`Self::unbounded_request_in`] for a bundled family, which every table keys alike.
+        pub(crate) fn unbounded_request(self, text: &str) -> TextShapeRequest<'_> {
+            self.unbounded_request_in(&self.bundled_keys(), text)
+        }
+
+        /// A table of its own, right only for the bundled families every table keys first.
+        fn bundled_keys(self) -> FamilyKeys {
+            assert!(
+                matches!(self.font.family, FontFamily::SANS | FontFamily::MONO),
+                "a test shape in another family keys through its measurer's table",
+            );
+            FamilyKeys::default()
         }
     }
 
     /// Builders for the one or two overrides a case wants; named for the field each
     /// sets. Assertion-side: only a test overrides a field or binds a width.
-    #[cfg(test)]
     impl TestShape {
         pub(crate) fn font_size(self, size: f32) -> Self {
             Self {
@@ -190,12 +195,22 @@ pub(crate) mod internals {
         /// is a shaper-level fixture, so the gate is a width alone where
         /// `TextShaper::layout` gates on `(width, wrap.line_fit())`. Both bind
         /// through [`WrapBound::new`].
-        pub(crate) fn request(self, text: &str, fit: LineFit) -> TextShapeRequest<'_> {
-            let request = self.unbounded_request(text);
+        pub(crate) fn request_in<'a>(
+            self,
+            keys: &FamilyKeys,
+            text: &'a str,
+            fit: LineFit,
+        ) -> TextShapeRequest<'a> {
+            let request = self.unbounded_request_in(keys, text);
             match self.max_width {
                 Some(width) => request.with_bound(WrapBound::new(width, self.halign, fit)),
                 None => request,
             }
+        }
+
+        /// [`Self::request_in`] for a bundled family.
+        pub(crate) fn request(self, text: &str, fit: LineFit) -> TextShapeRequest<'_> {
+            self.request_in(&self.bundled_keys(), text, fit)
         }
     }
 }

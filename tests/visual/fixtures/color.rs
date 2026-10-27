@@ -66,7 +66,7 @@ fn ramp(ui: &mut Ui) {
                 .pos(Vec2::new(x + 5.0, ICON_Y))
                 .size((Sizing::fixed(10.0), Sizing::fixed(10.0)))
                 .show(ui, |ui| {
-                    ui.add_shape(icons.shape(solid).fit(IconFit::Fill).tint(gray(v)));
+                    ui.add_shape(Shape::icon(solid).fit(IconFit::Fill).tint(gray(v)));
                 });
         }
     });

@@ -3,7 +3,6 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::domain;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::ImageFit;
 use crate::shape::record::ShapeRecord;
@@ -102,10 +101,6 @@ impl IconShape {
 impl sealed::LowerShape for IconShape {
     fn is_noop(&self) -> bool {
         self.local_rect.is_some_and(Rect::is_paint_empty) || self.tint.is_noop()
-    }
-
-    fn has_nan(&self) -> bool {
-        self.local_rect.has_nan() || self.tint.has_nan()
     }
 
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {

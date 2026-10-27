@@ -25,7 +25,7 @@ pub struct GpuFrameCtx<'a> {
     /// Logical→display scale for this window's monitor; display pixel density only.
     pub display_scale: f32,
     /// Logical→target scale for this view, including display scale, composed transforms and device-cap downsampling.
-    pub raster_scale: f32,
+    pub raster_factor: f32,
     /// Wall-clock time since this view last painted (`Duration::ZERO` on its first), for framerate-independent animation.
     pub dt: Duration,
 }
@@ -35,7 +35,7 @@ impl fmt::Debug for GpuFrameCtx<'_> {
         f.debug_struct("GpuFrameCtx")
             .field("physical_size", &self.physical_size)
             .field("display_scale", &self.display_scale)
-            .field("raster_scale", &self.raster_scale)
+            .field("raster_factor", &self.raster_factor)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
     }

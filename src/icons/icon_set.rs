@@ -4,8 +4,6 @@ use crate::icons::icon_registry::IconSetToken;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::identity::icon_id::IconId;
 use crate::primitives::identity::icon_ref::IconRef;
-use crate::shape::Shape;
-use crate::shape::icon::IconShape;
 use std::fmt;
 use std::rc::Rc;
 
@@ -41,15 +39,19 @@ impl IconSet {
         Self { inner }
     }
 
-    /// The handle for `icon`, for [`Shape::icon`](crate::widget::Shape::icon).
-    ///
-    /// # Panics
-    ///
-    /// If `icon` is past this set's end. An in-range id from another set is not
-    /// caught.
-    pub fn handle(&self, icon: IconId) -> IconHandle {
-        // Resolved now so a bad id fails at the caller and the encoder never
-        // consults the registry.
+    /// The icon named `name`, for [`Shape::icon`](crate::widget::Shape::icon) (binary search; no
+    /// allocation). Resolve once and keep the handle: it names this set, so it cannot draw
+    /// another set's icon.
+    pub fn by_name(&self, name: &str) -> Option<IconHandle> {
+        self.inner
+            .table()
+            .by_name(name)
+            .map(|icon| self.handle(icon))
+    }
+
+    /// The handle for `icon`, an id of this set's table.
+    pub(crate) fn handle(&self, icon: IconId) -> IconHandle {
+        // Resolved now so the encoder never consults the registry.
         IconHandle::new(
             IconRef {
                 set: self.inner.id(),
@@ -57,21 +59,5 @@ impl IconSet {
             },
             self.inner.table().def(icon).view_box,
         )
-    }
-
-    /// Look an icon up by name (binary search; no allocation). Resolve once and
-    /// keep the id: it stays valid for this set.
-    pub fn by_name(&self, name: &str) -> Option<IconId> {
-        self.inner.table().by_name(name)
-    }
-
-    /// The icon as a shape; shorthand for `Shape::icon(set.handle(icon))`.
-    ///
-    /// # Panics
-    ///
-    /// If `icon` is past this set's end. An in-range id from another set is not
-    /// caught.
-    pub fn shape(&self, icon: IconId) -> IconShape {
-        Shape::icon(self.handle(icon))
     }
 }

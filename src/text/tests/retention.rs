@@ -23,7 +23,7 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
     let original = wrap.measure(text, wrap_params);
     let original_glyphs = glyph_poss(&wrap, original.buffer_key());
     wrap.drop_all_buffers();
-    assert!(wrap.shaped_run(original.buffer_key()).is_none());
+    assert!(wrap.resident_run(original.buffer_key()).is_none());
     wrap.ensure_buffer(TextShapeRequest::for_key(text, original.buffer_key()).unwrap());
     let restored = wrap.measure(text, wrap_params);
     assert_eq!(restored.size, original.size);
@@ -38,17 +38,17 @@ fn ensure_buffer_exactly_restores_wrap_and_truncation() {
         let original_glyphs = glyph_poss(&truncated, original.buffer_key());
         truncated.drop_all_buffers();
         assert!(
-            truncated.shaped_run(original.buffer_key()).is_none(),
+            truncated.resident_run(original.buffer_key()).is_none(),
             "fit: {fit:?}"
         );
         assert!(
-            truncated.shaped_run(unbounded.buffer_key()).is_none(),
+            truncated.resident_run(unbounded.buffer_key()).is_none(),
             "fit: {fit:?}",
         );
 
         truncated.ensure_buffer(TextShapeRequest::for_key(text, original.buffer_key()).unwrap());
         assert!(
-            truncated.shaped_run(unbounded.buffer_key()).is_some(),
+            truncated.resident_run(unbounded.buffer_key()).is_some(),
             "truncation restoration must rebuild its unbounded probe for {fit:?}",
         );
         let restored = truncated.measure_with_fit(text, params, fit);
@@ -76,12 +76,12 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
     let mut recycled = CosmicMeasure::default();
     recycled.measure(text, base);
     recycled.drop_all_buffers();
-    assert_eq!(recycled.recycle_pool_stats().len, 1);
+    assert_eq!(recycled.recycle_pool_len(), 1);
 
     let narrow = base.width(72.0);
     let actual = recycled.measure(text, narrow);
     assert_eq!(
-        recycled.recycle_pool_stats().len,
+        recycled.recycle_pool_len(),
         0,
         "the new miss must consume the evicted buffer",
     );
@@ -96,26 +96,33 @@ fn recycled_buffer_matches_fresh_shape_at_new_width() {
     );
 }
 
+/// The pool keeps every evicted buffer, past any count, so a drag that sheds a frame's runs finds
+/// them all on the next. What sits untouched through a whole trim period goes after it, one buffer
+/// per frame: frame 1 opens a period, a miss in it takes one of 200, so 199 sat untouched when
+/// frame 1 + `POOL_TRIM_FRAMES` closes it, and the next 199 frames drop them.
 #[test]
-fn recycle_pool_retention_is_bounded() {
+fn recycle_pool_keeps_its_peak_and_trims_what_goes_cold() {
     let mut c = CosmicMeasure::default();
-    let pool = c.recycle_pool_stats();
-    assert!(pool.capacity >= pool.limit);
+    let n = 200;
+    fill_distinct_widths(&mut c, n);
+    c.drop_all_buffers();
+    assert_eq!(c.recycle_pool_len(), n as usize, "no cap below the peak");
 
-    for round in 0..2 {
-        for i in 0..pool.limit + 16 {
-            let width = 40.0 + (round * (pool.limit + 16) + i) as f32;
-            c.measure(
-                "bounded recycle pool",
-                shape(14.0).leading(18.0).width(width).halign(HAlign::Left),
-            );
-        }
-        c.drop_all_buffers();
-        let after = c.recycle_pool_stats();
-        assert_eq!(after.len, pool.limit);
-        assert_eq!(after.capacity, pool.capacity);
-        assert_eq!(after.limit, pool.limit);
-    }
+    idle_frames(&mut c, 1);
+    c.measure(BODY, distinct_width_shape(n));
+    assert_eq!(c.recycle_pool_len(), 199);
+    idle_frames(&mut c, shaped_buffer_cache::internals::POOL_TRIM_FRAMES - 1);
+    assert_eq!(
+        c.recycle_pool_len(),
+        200,
+        "the miss's buffer expired back in, and nothing trims inside the period",
+    );
+    idle_frames(&mut c, 1);
+    assert_eq!(c.recycle_pool_len(), 199, "one buffer per frame");
+    idle_frames(&mut c, 198);
+    assert_eq!(c.recycle_pool_len(), 1, "the buffer the period used stays");
+    idle_frames(&mut c, 50);
+    assert_eq!(c.recycle_pool_len(), 1);
 }
 
 /// `n` distinct cache keys, one per width, all inserted this frame.
@@ -150,7 +157,7 @@ fn probationary_entries_age_out_on_schedule_regardless_of_cache_size() {
     idle_frames(&mut c, 1);
     assert_eq!(c.cache_len(), 0, "one frame past the window, all dropped");
     for key in &keys {
-        assert!(c.shaped_run(*key).is_none());
+        assert!(c.resident_run(*key).is_none());
     }
 
     let mut big = CosmicMeasure::default();
@@ -179,10 +186,16 @@ fn a_lookup_promotes_an_entry_to_the_protected_window() {
     // Untouched keys are gone; promoted ones have 120 frames, not 4.
     idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
     assert_eq!(c.cache_len(), 2);
-    assert!(c.shaped_run(keys[0]).is_some(), "promoted key survives");
-    assert!(c.shaped_run(keys[1]).is_some(), "promoted key survives");
-    assert!(c.shaped_run(keys[2]).is_none(), "probationary key dropped");
-    assert!(c.shaped_run(keys[3]).is_none(), "probationary key dropped");
+    assert!(c.resident_run(keys[0]).is_some(), "promoted key survives");
+    assert!(c.resident_run(keys[1]).is_some(), "promoted key survives");
+    assert!(
+        c.resident_run(keys[2]).is_none(),
+        "probationary key dropped"
+    );
+    assert!(
+        c.resident_run(keys[3]).is_none(),
+        "probationary key dropped"
+    );
 
     // The protected window is `RENDERED_RUN_KEEP_SPREAD_MASK` frames wide, each key
     // at its own point: this pins floor and ceiling.
@@ -208,7 +221,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
     let touch_working_set = |c: &mut CosmicMeasure, working_set: &[TextShapeKey]| {
         for key in working_set {
             assert!(
-                c.shaped_run(*key).is_some(),
+                c.resident_run(*key).is_some(),
                 "a working-set key must never be evicted",
             );
             c.ensure_buffer(TextShapeRequest::for_key(BODY, *key).unwrap());
@@ -236,7 +249,7 @@ fn steady_key_churn_costs_a_bounded_cache_and_spares_the_working_set() {
     );
     for key in &working_set {
         assert!(
-            c.shaped_run(*key).is_some(),
+            c.resident_run(*key).is_some(),
             "60 frames of churn must not have touched the working set",
         );
     }

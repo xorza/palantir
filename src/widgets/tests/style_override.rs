@@ -10,7 +10,7 @@ use crate::shape::record::ShapeRecord;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
-use crate::text::glyph_font::GlyphFont;
+use crate::text::shaping_font::ShapingFont;
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -176,7 +176,7 @@ fn per_axis_setters_outrank_the_style_bundle() {
 /// What one `Shape::Text` was recorded with.
 #[derive(Debug)]
 struct RecordedFace {
-    font: GlyphFont,
+    font: ShapingFont,
     color: RgbaF16,
 }
 

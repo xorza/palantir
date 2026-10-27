@@ -26,8 +26,8 @@ fn cache_key_discriminates_every_shaping_axis() {
         (
             "family",
             shape(16.0).family(FontFamily::MONO),
-            |k: TextShapeKey| u32::from(k.family().raw()),
-            u32::from(base.family().raw()),
+            |k: TextShapeKey| u32::from(k.family().get()),
+            u32::from(base.family().get()),
         ),
         (
             "weight",
@@ -52,7 +52,7 @@ fn cache_key_discriminates_every_shaping_axis() {
         );
     }
 
-    assert_eq!(base.family(), FontFamily::SANS);
+    assert_eq!(base.family(), FamilyKey::from_raw(0));
     assert_eq!(base.weight(), FontWeight::REGULAR);
     assert_eq!(base.slant(), FontSlant::Normal);
     assert_eq!(
@@ -90,7 +90,7 @@ fn an_absent_key_is_free_and_no_minted_key_claims_its_niche() {
     for face in [shape(16.0).font, shape(64.0).leading(90.0).font] {
         for raw in [0, 1, u64::MAX] {
             assert_eq!(
-                TextShapeKey::unbounded(raw, face).text_hash,
+                TextShapeKey::unbounded(raw, keyed(face)).text_hash,
                 TextShapeKey::content_hash(raw),
                 "a minted key carries the mapped hash, not the raw one",
             );
@@ -212,7 +212,7 @@ fn above_epsilon_metrics_survive_cache_key_canonicalization() {
     // Both floor onto the key's 1/64-px grid, not zero.
     assert_eq!(key.font_size(), 1.0 / 64.0);
     assert_eq!(key.line_height(), 1.0 / 64.0);
-    assert!(cosmic.shaped_run(key).is_some());
+    assert!(cosmic.resident_run(key).is_some());
 }
 
 #[test]
@@ -316,13 +316,13 @@ fn quantized_key_shaping_is_insertion_order_independent() {
 fn key_for(recorded: &RecordedText) -> TextShapeKey {
     TextShapeKey::unbounded(
         recorded.hash,
-        GlyphFont {
+        keyed(GlyphFont {
             size: 16.0,
             line_height: 19.2,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
-        },
+        }),
     )
 }
 
@@ -353,4 +353,65 @@ fn a_mismatched_key_and_source_are_rejected() {
     let other_interned = store.intern("bye");
     let other = store.record_text(other_interned);
     let _ = ShapedTextRef::new(key, &other);
+}
+
+/// A key carries a hash of its text, so two texts can share one. A hit compares the bytes, and a
+/// lookup that finds another text's buffer evicts it and shapes its own. Forged here by pairing one
+/// key with two texts: each line ending is part of the bytes. A truncated entry compares the source
+/// it was cut from, not the `prefix + "…"` its buffer holds.
+#[test]
+fn a_hit_is_verified_against_the_bytes() {
+    let face = shape(14.0).leading(18.0);
+    for (text, other) in [
+        ("hello", "world"),
+        ("a\nb", "a\r\nb"),
+        ("a\r\nb\n", "a\r\nb"),
+        ("x\r", "x\n"),
+        ("one\n\rtwo", "one\ntwo"),
+    ] {
+        let mut c = CosmicMeasure::default();
+        let key = c.measure(text, face).buffer_key();
+        let before = c.cache_counts();
+        c.root(TextShapeRequest { text, key }, WrapFloor::Skip);
+        let genuine = c.cache_counts() - before;
+        assert_eq!(
+            (genuine.hits, genuine.shapes, genuine.collisions),
+            (1, 0, 0),
+            "{text:?} hits its own buffer",
+        );
+
+        let forged = TextShapeRequest { text: other, key };
+        let root = c.root(forged, WrapFloor::Skip);
+        let collided = c.cache_counts() - before;
+        assert_eq!(
+            (collided.shapes, collided.collisions),
+            (1, 1),
+            "{other:?} under {text:?}'s key reshapes",
+        );
+        let fresh = CosmicMeasure::default().measure(other, face);
+        assert_eq!(root.extent.size, fresh.size, "{other:?}");
+        assert!(c.shaped_run(forged).is_some());
+        assert!(c.shaped_run(TextShapeRequest { text, key }).is_none());
+    }
+
+    let long = "a label far too long for its slot";
+    let narrow = face.width(60.0);
+    let mut c = CosmicMeasure::default();
+    let key = c
+        .truncate(long, narrow, LineFit::Ellipsis)
+        .fitted
+        .buffer_key();
+    let before = c.cache_counts();
+    c.resolve(TextShapeRequest { text: long, key });
+    let genuine = c.cache_counts() - before;
+    assert_eq!(
+        (genuine.hits, genuine.collisions),
+        (1, 0),
+        "the cut compares its source"
+    );
+    let other = "another label too long for its slot";
+    let extent = c.resolve(TextShapeRequest { text: other, key });
+    assert!((c.cache_counts() - before).collisions >= 1);
+    let fresh = CosmicMeasure::default().measure_truncated(other, narrow, LineFit::Ellipsis);
+    assert_eq!(extent.size, fresh.size);
 }

@@ -3,7 +3,6 @@
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
 use crate::shape::paint::image_source::ImageSource;
@@ -50,7 +49,13 @@ impl ImageShape {
     }
 
     /// How the image is placed inside the paint rect.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless a [`ImageFit::Tile`]'s `offset` is an [offset](crate::widget::domain::offset) and each axis of its `scale` is [positive](crate::widget::domain::positive).
+    #[track_caller]
     pub const fn fit(mut self, fit: ImageFit) -> Self {
+        fit.validate();
         self.fit = fit;
         self
     }
@@ -88,10 +93,6 @@ impl ImageShape {
 impl sealed::LowerShape for ImageShape {
     fn is_noop(&self) -> bool {
         self.local_rect.is_some_and(Rect::is_paint_empty) || self.tint.is_noop()
-    }
-
-    fn has_nan(&self) -> bool {
-        self.local_rect.has_nan() || self.tint.has_nan() || self.fit.has_nan()
     }
 
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {

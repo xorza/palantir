@@ -1,6 +1,7 @@
 //! One entry in the shaped-buffer cache, and its two-tier retention state.
 
 use crate::common::expiry_wheel::TicketSeq;
+use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
 use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
 use cosmic_text::Buffer;
@@ -25,6 +26,38 @@ pub(super) struct CacheEntry {
     /// [`ShapedBufferCache::supersede`](crate::text::cosmic::shaped_buffer_cache::ShapedBufferCache::supersede)
     /// and dies in the sweep, so demote/promote cycles don't accumulate tickets.
     pub(super) ticket_seq: TicketSeq,
+    /// The source a truncated buffer was cut from, as it holds `prefix + "…"`; empty where the
+    /// buffer holds its whole source, as a run is never empty. Recycled with the buffer.
+    pub(super) source: String,
+}
+
+impl CacheEntry {
+    pub(super) const fn run(&self) -> ShapedRun<'_> {
+        ShapedRun {
+            buffer: &self.buffer,
+            left: self.left,
+            cut: !self.source.is_empty(),
+        }
+    }
+
+    /// Whether this entry was shaped from `text`. A key carries a hash of its text, so two
+    /// texts can share one; the bytes decide. An untruncated buffer holds its source as its
+    /// lines and their endings.
+    pub(super) fn holds(&self, text: &str) -> bool {
+        if !self.source.is_empty() {
+            return self.source == text;
+        }
+        let mut rest = text.as_bytes();
+        for line in &self.buffer.lines {
+            for part in [line.text(), line.ending().as_str()] {
+                let Some(tail) = rest.strip_prefix(part.as_bytes()) else {
+                    return false;
+                };
+                rest = tail;
+            }
+        }
+        rest.is_empty()
+    }
 }
 
 /// What one cached buffer measured to: an **unbounded** buffer is a

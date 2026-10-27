@@ -2,15 +2,16 @@ use crate::bench::fixture::{Backend, Kind, Scale};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::HAlign;
 use crate::text::cosmic::shaped_buffer_cache;
+use crate::text::family_keys::FamilyKeys;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::WrapBound;
 use crate::text::request::TextShapeRequest;
-use crate::text::request::internals::TestShape;
 use crate::text::shaped_text::ShapedText;
 use crate::text::shaper::TextShaper;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
 use criterion::measurement::WallTime;
@@ -64,37 +65,48 @@ const WRAPPED: RunBinding = RunBinding {
     available_width: Some(WRAP_W),
 };
 
-/// The face every arm shapes in. `TestShape` is the in-tree tests' fixture.
-const UI_FACE: TestShape = TestShape::new(GlyphFont {
+/// The face every arm shapes in.
+const UI_FACE: GlyphFont = GlyphFont {
     size: BODY_PX,
     line_height: BODY_PX * LEADING_RATIO,
     family: FontFamily::SANS,
     weight: FontWeight::REGULAR,
     slant: FontSlant::Normal,
-});
+};
+
+/// `font` keyed once, outside the measured loop. Keyed in a table of its own: `font` is in
+/// [`FontFamily::SANS`], which every table keys first, so the key names it in any shaper.
+fn keyed(font: GlyphFont) -> ShapingFont {
+    debug_assert_eq!(font.family, FontFamily::SANS);
+    ShapingFont::new(font, &FamilyKeys::default())
+}
+
+/// `text` in `font`, unbounded.
+fn unbounded(text: &str, font: ShapingFont) -> TextShapeRequest<'_> {
+    TextShapeRequest::unbounded(text, font).expect("a bench run has text and a usable face")
+}
 
 /// [`TEXT`] as one ellipsized label: the reuse slot it is measured through and its face.
 #[derive(Clone, Copy, Debug)]
 struct TruncatedRun {
     slot: TextRunSlot,
-    shape: TestShape,
+    font: ShapingFont,
 }
 
 impl TruncatedRun {
     /// The label at `slot` in [`UI_FACE`] resized to `font_size` and `weight`.
     fn new(slot: &str, font_size: f32, weight: FontWeight) -> Self {
-        // Set field by field: outside `cfg(test)` the fixture is `font` alone, so
-        // `..UI_FACE` would update nothing.
-        let mut shape = UI_FACE;
-        shape.font.size = font_size;
-        shape.font.line_height = font_size * LEADING_RATIO;
-        shape.font.weight = weight;
         Self {
             slot: TextRunSlot {
                 widget_id: WidgetId::from_hash(slot),
                 ordinal: 0,
             },
-            shape,
+            font: keyed(GlyphFont {
+                size: font_size,
+                line_height: font_size * LEADING_RATIO,
+                weight,
+                ..UI_FACE
+            }),
         }
     }
 
@@ -106,7 +118,7 @@ impl TruncatedRun {
             available_width: Some(width),
         };
         text_system
-            .measure(self.slot, self.shape.unbounded_request(TEXT), binding)
+            .measure(self.slot, unbounded(TEXT, self.font), binding)
             .shaped
     }
 
@@ -150,9 +162,8 @@ fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
 /// so it is the layer's alone; the clock tick ages the shaped-buffer cache in
 /// both designs, so it is charged to both.
 fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
-    fn request_for(text: &str) -> TextShapeRequest<'_> {
-        UI_FACE.unbounded_request(text)
-    }
+    let face = keyed(UI_FACE);
+    let request_for = |text| unbounded(text, face);
 
     group.throughput(Throughput::Elements(REUSE_LAYER_LABELS as u64));
     bench_shared_content(group);
@@ -241,11 +252,9 @@ fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
 /// lost 46% and 170% on these and 37-43% on the plain hit paths, since a
 /// 24-byte `TextShapeKey` hash costs more than the dedup saves.
 fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
-    fn request() -> TextShapeRequest<'static> {
-        UI_FACE.unbounded_request(REPEATED)
-    }
-
     const REPEATED: &str = "Enabled";
+    let face = keyed(UI_FACE);
+    let request = || unbounded(REPEATED, face);
     let slots: Vec<TextRunSlot> = (0..REUSE_LAYER_LABELS)
         .map(|i| TextRunSlot {
             widget_id: WidgetId::from_hash("shared-content-bench"),

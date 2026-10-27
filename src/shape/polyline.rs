@@ -5,7 +5,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::record::{ColorMode, ShapeRecord};
@@ -25,7 +24,7 @@ pub struct PolylineShape<'a> {
     pub(crate) colors: PolylineColors<'a>,
     pub(crate) cap: LineCap,
     pub(crate) join: LineJoin,
-    /// The points' AABB, folded once at construction so [`sealed::LowerShape::has_nan`] is `O(1)`; a borrowed slice has nothing to memoize on.
+    /// The points' AABB, folded once at construction so [`Shape::polyline`](crate::widget::Shape::polyline) checks every point in one test.
     pub(crate) bbox: Rect,
 }
 
@@ -42,25 +41,35 @@ impl<'a> PolylineShape<'a> {
         }
     }
 
-    /// One color per point, lerped between points; multiplies the stroke color per channel. `colors.len()` must equal the point count.
+    /// One color per point, lerped between points; multiplies the stroke color per channel.
     ///
     /// # Panics
     ///
-    /// Panics unless every color is a [color](crate::widget::domain::color).
+    /// Panics unless `colors` has one entry per point and every color is a
+    /// [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn per_point(mut self, colors: &'a [RgbaF32]) -> Self {
+        assert!(
+            colors.len() == self.points.len(),
+            "per-point polyline colors must number the points",
+        );
         check_colors(colors);
         self.colors = PolylineColors::PerPoint(colors);
         self
     }
 
-    /// One color per segment, each a solid block; multiplies the stroke color. `colors.len()` must be one less than the point count.
+    /// One color per segment, each a solid block; multiplies the stroke color.
     ///
     /// # Panics
     ///
-    /// As [`Self::per_point`].
+    /// Panics unless `colors` has one entry per segment, one fewer than the points, and every
+    /// color is a [color](crate::widget::domain::color).
     #[track_caller]
     pub const fn per_segment(mut self, colors: &'a [RgbaF32]) -> Self {
+        assert!(
+            colors.len() == self.points.len().saturating_sub(1),
+            "per-segment polyline colors must number the segments, one fewer than the points",
+        );
         check_colors(colors);
         self.colors = PolylineColors::PerSegment(colors);
         self
@@ -99,6 +108,8 @@ const fn check_colors(colors: &[RgbaF32]) {
 }
 
 impl PolylineColors<'_> {
+    /// Whether the colors fit `points_len` points, as [`PolylineShape::per_point`] and
+    /// [`PolylineShape::per_segment`] assert.
     const fn matches(&self, points_len: usize) -> bool {
         match self {
             PolylineColors::Single => true,
@@ -106,44 +117,19 @@ impl PolylineColors<'_> {
             PolylineColors::PerSegment(colors) => colors.len() == points_len.saturating_sub(1),
         }
     }
-
-    /// Check the per-point / per-segment cardinality contract; release-checked because the composer would read a short color slice past its end.
-    pub(crate) fn assert_matches(&self, points_len: usize) {
-        assert!(
-            self.matches(points_len),
-            "Shape::Polyline {self:?} does not fit {points_len} points: per-point colors \
-             number the points, per-segment colors one fewer",
-        );
-    }
-
-    const fn colors(&self) -> &[RgbaF32] {
-        match self {
-            PolylineColors::Single => &[],
-            PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => colors,
-        }
-    }
 }
 
 impl sealed::LowerShape for PolylineShape<'_> {
-    /// A wrong-length color slice is never a no-op, however transparent; lowering's cardinality assert names the bug.
     fn is_noop(&self) -> bool {
         if self.stroke.is_noop() || self.points.len() < 2 {
             return true;
         }
         match self.colors {
             PolylineColors::Single => false,
-            _ if !self.colors.matches(self.points.len()) => false,
             PolylineColors::PerPoint(colors) | PolylineColors::PerSegment(colors) => {
                 colors.iter().all(|color| color.is_noop())
             }
         }
-    }
-
-    /// Colors are scanned, since `bbox` does not cover them: a NaN channel would reach the shader.
-    fn has_nan(&self) -> bool {
-        self.stroke.has_nan()
-            || self.bbox.has_nan()
-            || self.colors.colors().iter().any(NanCheck::has_nan)
     }
 
     /// Points into the store, colors multiplied by the stroke color, then the content hash. A single stroke lowers to `ShapeRecord::Curve` instead.
@@ -162,17 +148,12 @@ impl sealed::LowerShape for PolylineShape<'_> {
             PolylineColors::PerSegment(cs) => (ColorMode::PerSegment, cs),
         };
 
-        // `Shapes::add` drops < 2-point polylines via `is_noop`, so a degenerate slice is a caller bug; color cardinality is checked here since a query answers, it does not validate.
+        // `Shapes::add` drops < 2-point polylines via `is_noop`, and the color setters checked the count.
         debug_assert!(
             points.len() >= 2,
             "polyline with < 2 points reached lowering"
         );
-        colors.assert_matches(points.len());
-        // `bbox` was folded by `PolylineShape::new` so `Shapes::add` can screen before staging. Two passes beat one interleaved: the fold vectorizes alone and the copy becomes one `memcpy`.
-        debug_assert!(
-            !bbox.has_nan(),
-            "NaN polyline point reached lowering — `Shapes::add` screens the bbox",
-        );
+        debug_assert!(colors.matches(points.len()));
         let staged = store.stage_polyline(points, color_slice, stroke.color);
         let lowered_colors = &store.polyline_colors[staged.colors.range()];
 

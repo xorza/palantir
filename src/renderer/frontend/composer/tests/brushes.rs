@@ -203,19 +203,19 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
     struct Case {
         dpr: f32,
         expected_size: UVec2,
-        expected_raster_scale: f32,
+        expected_raster_factor: f32,
     }
 
     let cases = [
         Case {
             dpr: 1.0,
             expected_size: UVec2::new(60, 30),
-            expected_raster_scale: 3.0,
+            expected_raster_factor: 3.0,
         },
         Case {
             dpr: 2.0,
             expected_size: UVec2::new(120, 60),
-            expected_raster_scale: 6.0,
+            expected_raster_factor: 6.0,
         },
     ];
 
@@ -235,7 +235,10 @@ fn compose_gpu_view_carries_nested_transform_and_dpr_to_raster_target() {
         let target = &buf.frame_targets[0];
         assert_eq!(target.used, case.expected_size, "{case:?}");
         assert_eq!(buf.frame_views().display_scale, case.dpr, "{case:?}");
-        assert_eq!(target.raster_scale, case.expected_raster_scale, "{case:?}");
+        assert_eq!(
+            target.raster_factor, case.expected_raster_factor,
+            "{case:?}"
+        );
         assert_eq!(
             buf.images.instance()[0].rect.size,
             Size::new(case.expected_size.x as f32, case.expected_size.y as f32),
@@ -387,7 +390,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
         let target = &buf.frame_targets[0];
         assert_eq!(target.used, case.expected_target, "{case:?}");
         assert_eq!(buf.frame_views().display_scale, 1.0, "{case:?}");
-        assert_eq!(target.raster_scale, 0.5, "{case:?}");
+        assert_eq!(target.raster_factor, 0.5, "{case:?}");
         assert_eq!(
             buf.images.instance()[0].rect.size,
             case.logical_size,

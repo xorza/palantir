@@ -18,7 +18,10 @@ use cosmic_text::Buffer;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
-const RECYCLE_POOL_CAP: usize = 128;
+/// Frames a pooled buffer must sit untouched before the pool lets it go. Long against the pauses
+/// in a resize drag, so a drag that resumes finds its buffers; short against a session, so a burst
+/// of text does not hold its peak for good.
+const POOL_TRIM_PERIOD_FRAMES: u64 = 600;
 
 /// Frames a *probationary* entry survives before [`ShapedBufferCache::tick_frame`]
 /// drops it: inserted and never looked up, or
@@ -55,6 +58,25 @@ pub(super) struct ShapedBuffer {
     pub(super) buffer: Buffer,
     pub(super) extent: CachedExtent,
     pub(super) left: f32,
+    pub(super) source: String,
+}
+
+/// An evicted entry's allocations, as the pool hands them back to be shaped into.
+#[derive(Debug)]
+pub(super) struct Recycled {
+    pub(super) buffer: Buffer,
+    /// Empty, with the capacity of the source it last held.
+    pub(super) source: String,
+}
+
+impl Recycled {
+    fn of(entry: CacheEntry) -> Self {
+        let CacheEntry {
+            buffer, mut source, ..
+        } = entry;
+        source.clear();
+        Self { buffer, source }
+    }
 }
 
 /// A resident shaped buffer with the x its glyph block starts at.
@@ -62,6 +84,8 @@ pub(super) struct ShapedBuffer {
 pub(crate) struct ShapedRun<'a> {
     pub(crate) buffer: &'a Buffer,
     pub(crate) left: f32,
+    /// The buffer holds a truncated prefix of its source, `prefix + "…"`, not the whole of it.
+    pub(crate) cut: bool,
 }
 
 /// One shaped `Buffer` per [`TextShapeKey`], on a two-tier age window: protected is
@@ -85,8 +109,7 @@ pub(super) struct ShapedBufferCache {
     /// a key changing every frame re-pins that minimum on each insert, and every frame
     /// would walk the whole map to reclaim one entry.
     expiry: ExpiryWheel<TextShapeKey>,
-    /// LIFO pool fed by eviction; `Buffer::set_text` reuses its allocations.
-    recycle_pool: Vec<Buffer>,
+    recycle_pool: RecyclePool,
     pub(super) counters: CacheCounters,
 }
 
@@ -96,7 +119,7 @@ impl Default for ShapedBufferCache {
             entries: FxHashMap::default(),
             frame: 0,
             expiry: ExpiryWheel::with_keep(KEEP_FRAMES),
-            recycle_pool: Vec::with_capacity(RECYCLE_POOL_CAP),
+            recycle_pool: RecyclePool::default(),
             counters: CacheCounters::default(),
         }
     }
@@ -111,19 +134,34 @@ impl ShapedBufferCache {
         self.frame
     }
 
-    /// Look up the shaped run for `key`, or `None` when no buffer is resident. Absence
-    /// is an answer here. Does not promote, unlike [`Self::hit`].
-    pub(super) fn shaped_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-        self.entries.get(&key).map(|e| ShapedRun {
-            buffer: &e.buffer,
-            left: e.left,
-        })
+    /// Look up the shaped run of `text` under `key`, or `None` when no buffer of it is resident.
+    /// Absence is an answer here. Does not promote, unlike [`Self::hit`].
+    pub(super) fn shaped_run(&self, key: TextShapeKey, text: &str) -> Option<ShapedRun<'_>> {
+        self.entries
+            .get(&key)
+            .filter(|e| e.holds(text))
+            .map(CacheEntry::run)
     }
 
-    /// The resident entry under `key`, its deadline pushed to the protected window.
-    /// Being asked for is the evidence of reuse over scan traffic.
-    pub(super) fn hit(&mut self, key: TextShapeKey) -> Option<&mut CacheEntry> {
-        let entry = self.entries.get_mut(&key)?;
+    /// The run resident under `key`, whatever text it holds: for a caller that checked the text
+    /// through [`Self::shaped_run`] or [`Self::hit`] and held the cache since.
+    pub(super) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
+        self.entries.get(&key).map(CacheEntry::run)
+    }
+
+    /// The resident entry of `text` under `key`, its deadline pushed to the protected window.
+    /// Being asked for is the evidence of reuse over scan traffic. An entry shaped from other
+    /// text under the same key is evicted, so the caller's miss files its own.
+    pub(super) fn hit(&mut self, key: TextShapeKey, text: &str) -> Option<&mut CacheEntry> {
+        let Entry::Occupied(slot) = self.entries.entry(key) else {
+            return None;
+        };
+        if !slot.get().holds(text) {
+            self.counters.collisions.bump();
+            self.recycle_pool.push(Recycled::of(slot.remove()));
+            return None;
+        }
+        let entry = slot.into_mut();
         entry.dies_at = self.frame + RENDERED_RUN_KEEP_FRAMES + key.keep_spread() + 1;
         self.counters.hits.bump();
         Some(entry)
@@ -144,6 +182,7 @@ impl ShapedBufferCache {
             buffer,
             extent,
             left,
+            source,
         } = shaped;
         // Counted here, not per `shape_until_scroll`: one cached run is one tally even if
         // the truncation back-off reshapes several times. The ellipsis probe isn't counted.
@@ -158,6 +197,7 @@ impl ShapedBufferCache {
                 left,
                 dies_at,
                 ticket_seq,
+                source,
             },
         );
         debug_assert!(
@@ -216,9 +256,10 @@ impl ShapedBufferCache {
                 return Some(slot.get().dies_at);
             }
             counters.expiries.bump();
-            recycle_into(recycle_pool, slot.remove().buffer);
+            recycle_pool.push(Recycled::of(slot.remove()));
             None
         });
+        self.recycle_pool.tick(frame);
     }
 
     /// Drop every shaped buffer now, recycling each. Owed by `CosmicMeasure::load_font`;
@@ -230,27 +271,63 @@ impl ShapedBufferCache {
             reason = "each buffer returns to the pool alone, so the order changes nothing"
         )]
         for (_, entry) in self.entries.drain() {
-            recycle_into(recycle_pool, entry.buffer);
+            recycle_pool.push(Recycled::of(entry));
         }
         self.expiry.clear();
     }
 
     /// A buffer to reshape into, or `None` when the caller must build one.
-    pub(super) fn take_recycled(&mut self) -> Option<Buffer> {
+    pub(super) fn take_recycled(&mut self) -> Option<Recycled> {
         self.recycle_pool.pop()
     }
 
-    /// Hand back a buffer that never became an entry (the ellipsis probe's).
-    pub(super) fn recycle(&mut self, buffer: Buffer) {
-        recycle_into(&mut self.recycle_pool, buffer);
+    /// Hand back allocations that never became an entry (the ellipsis probe's).
+    pub(super) fn recycle(&mut self, recycled: Recycled) {
+        self.recycle_pool.push(recycled);
     }
 }
 
-/// The pool's one write as a free function: [`ShapedBufferCache::tick_frame`] and
-/// [`ShapedBufferCache::drop_all`] hold another field across it.
-fn recycle_into(pool: &mut Vec<Buffer>, buffer: Buffer) {
-    if pool.len() < RECYCLE_POOL_CAP {
-        pool.push(buffer);
+/// LIFO pool fed by eviction; `Buffer::set_text` reuses its allocations.
+///
+/// Uncapped, so it never holds more than the cache's peak: a buffer is built only when the pool
+/// is empty, so every buffer was an entry at once. A cap below the peak would drop buffers that
+/// the next frame of a drag builds again. It trims what goes cold instead, as Go's `sync.Pool`
+/// drops a victim generation: the buffers the pool never dipped into over a
+/// [`POOL_TRIM_PERIOD_FRAMES`] period are surplus, and go one per frame over the next, so no frame
+/// frees a heap.
+#[derive(Debug, Default)]
+struct RecyclePool {
+    buffers: Vec<Recycled>,
+    /// The fewest buffers the pool held this period: that many sat untouched through it.
+    low_water: usize,
+    /// Buffers the last period left untouched and not yet dropped.
+    surplus: usize,
+    /// The frame the current period ends on.
+    period_ends: u64,
+}
+
+impl RecyclePool {
+    fn push(&mut self, recycled: Recycled) {
+        self.buffers.push(recycled);
+    }
+
+    fn pop(&mut self) -> Option<Recycled> {
+        let buffer = self.buffers.pop();
+        self.low_water = self.low_water.min(self.buffers.len());
+        buffer
+    }
+
+    /// Close the period once `frame` reaches its end, then drop one surplus buffer. Compared, not
+    /// counted, as the frame clock can jump.
+    fn tick(&mut self, frame: u64) {
+        if frame >= self.period_ends {
+            self.surplus = self.low_water;
+            self.low_water = self.buffers.len();
+            self.period_ends = frame + POOL_TRIM_PERIOD_FRAMES;
+        }
+        if self.surplus > 0 && self.pop().is_some() {
+            self.surplus -= 1;
+        }
     }
 }
 
@@ -267,12 +344,7 @@ pub(crate) mod internals {
     pub(crate) const RING_FRAMES: u64 = ExpiryWheel::<TextShapeKey>::slots_for_keep(KEEP_FRAMES);
 
     #[cfg(test)]
-    #[derive(Debug, PartialEq, Eq)]
-    pub(crate) struct RecyclePoolStats {
-        pub(crate) len: usize,
-        pub(crate) capacity: usize,
-        pub(crate) limit: usize,
-    }
+    pub(crate) const POOL_TRIM_FRAMES: u64 = POOL_TRIM_PERIOD_FRAMES;
 
     #[cfg(test)]
     impl ShapedBufferCache {
@@ -290,12 +362,8 @@ pub(crate) mod internals {
             self.entries.get(&key).map(|entry| entry.extent.extent())
         }
 
-        pub(crate) fn recycle_pool_stats(&self) -> RecyclePoolStats {
-            RecyclePoolStats {
-                len: self.recycle_pool.len(),
-                capacity: self.recycle_pool.capacity(),
-                limit: RECYCLE_POOL_CAP,
-            }
+        pub(crate) fn recycle_pool_len(&self) -> usize {
+            self.recycle_pool.buffers.len()
         }
     }
 }

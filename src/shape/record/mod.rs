@@ -23,7 +23,7 @@ use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::{BrushHash, ShapeBrush};
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::style::{LineCap, LineJoin};
-use crate::text::glyph_font::GlyphFont;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::TextWrap;
 use glam::Vec2;
 use std::hash;
@@ -64,10 +64,10 @@ pub(crate) enum ShapeRecord {
         /// Lowered text storage and its content hash; arena-backed input is normalized into the active record store first, so span and hash can't come from different passes.
         text: RecordedText,
         color: RgbaF16,
-        /// The face and metrics to shape in, the type [`TextShape`](crate::widget::TextShape) authors and [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from.
+        /// The face and metrics to shape in, as [`TextShape`](crate::widget::TextShape) authors them with the family keyed by the store's shaper; [`TextShapeKey`](crate::text::key::TextShapeKey) is minted from it.
         ///
         /// `line_height` is a resolved px leading fed to `Metrics::new` (authoring sets `size * line_height_factor`); carrying px keeps widget conventions out of the shaper and gives different leading distinct buffers.
-        font: GlyphFont,
+        font: ShapingFont,
         wrap: TextWrap,
         align: Align,
     },
@@ -375,7 +375,7 @@ impl ShapeRecord {
         text.hash(h);
         font.size.hash_visual(h);
         font.line_height.hash_visual(h);
-        let face = (u64::from(font.family.raw()) << 40)
+        let face = (u64::from(font.family.get()) << 40)
             | (u64::from(font.weight.get()) << 24)
             | ((font.slant as u64) << 16)
             | (u64::from(align.raw()) << 8)
@@ -413,7 +413,7 @@ fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
     }
 }
 
-/// **The backstop behind the NaN gate**: `Shapes::add` screens the authored shape and debug-asserts this on the resulting record.
+/// **The backstop behind the shape setters' checks**: `Shapes::add` debug-asserts this on each lowered record.
 ///
 /// An assertion, not a check: by here a gradient sits behind a `GradientId` and a triangle's `radius` went through `radius.max(0.0)`, so a clean record proves nothing. Bulk inputs arrive as a `bbox` under the AABB NaN contract.
 impl NanCheck for ShapeRecord {

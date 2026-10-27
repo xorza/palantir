@@ -101,8 +101,10 @@ impl EditState {
 #[cfg(test)]
 mod tests {
     use crate::common::hash;
+    use crate::text::family_keys::FamilyKeys;
     use crate::text::glyph_font::GlyphFont;
     use crate::text::key::TextShapeKey;
+    use crate::text::shaping_font::ShapingFont;
     use crate::widgets::text_edit::edit_state::EditState;
     use crate::widgets::text_edit::history::{EditKind, EditParts, SelectionState};
 
@@ -112,7 +114,8 @@ mod tests {
     #[test]
     fn both_entry_points_mint_one_buffers_identity_alike() {
         for text in ["", "a", "hello world", "\u{1f600} multi\nline"] {
-            let probe = TextShapeKey::unbounded(hash::str(text), GlyphFont::new(16.0));
+            let face = ShapingFont::new(GlyphFont::new(16.0), &FamilyKeys::default());
+            let probe = TextShapeKey::unbounded(hash::str(text), face);
             assert_eq!(
                 EditState::text_hash(text),
                 probe.text_hash,

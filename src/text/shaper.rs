@@ -4,6 +4,7 @@ use crate::primitives::geometry::size::Size;
 use crate::text::cosmic::CosmicMeasure;
 use crate::text::error::FontLoadError;
 use crate::text::extent::TextExtent;
+use crate::text::family_keys::FamilyKeys;
 use crate::text::font_family::FontFamily;
 use crate::text::font_scope::FontScope;
 use crate::text::font_source::FontSource;
@@ -162,7 +163,8 @@ impl TextShaper {
     /// # Errors
     ///
     /// [`FontLoadError::Io`] for an unreadable file, [`FontLoadError::NoFaces`] for
-    /// bytes with no face, [`FontLoadError::FamilyTableFull`] for a full family table.
+    /// bytes with no face, [`FontLoadError::FamilyNameTooLong`] for a font whose every
+    /// family name is too long.
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         let loaded = self
             .shared
@@ -172,6 +174,11 @@ impl TextShaper {
             .load_font(source.into())?;
         self.shared.font_epoch.set(self.shared.font_epoch.get() + 1);
         Ok(loaded)
+    }
+
+    /// The families this shaper keys, for a record store that records text it shapes.
+    pub(crate) fn family_keys(&self) -> FamilyKeys {
+        self.shared.inner.borrow().cosmic.families().clone()
     }
 
     /// Whether a face answers to `family`.
@@ -186,7 +193,7 @@ impl TextShaper {
 
     /// How many times [`Self::load_font`] has changed the database. Every cache keyed
     /// on a resolved face owes this a comparison: a load changes which face a family
-    /// resolves to, but a [`TextShapeKey`] carries only the family index. Read by the
+    /// resolves to, but a [`TextShapeKey`] carries only the family's key. Read by the
     /// encoded-run cache and by `TextSystem::sync_fonts`; shaped buffers are dropped by
     /// [`CosmicMeasure::load_font`].
     pub(crate) fn font_epoch(&self) -> u32 {
@@ -201,12 +208,13 @@ impl TextShaper {
     pub(crate) fn layout<'a>(&'a self, run: &TextRun<'a>) -> TextProbe<'a> {
         let mut inner = self.shared.inner.borrow_mut();
         let halign = run.align.halign();
-        let Some(unbounded) = run.unbounded_request() else {
+        let keys = inner.cosmic.families().clone();
+        let Some(unbounded) = run.unbounded_request(&keys) else {
             // Nothing to shape (no bytes, or a face with no usable size): the block is empty
             // at its own origin.
             let shape = ProbedShape {
                 size: Size::ZERO,
-                key: run.unbounded_key(),
+                key: run.unbounded_key(&keys),
             };
             return TextProbe::new(run, shape, inner);
         };
@@ -305,6 +313,8 @@ pub(crate) mod internals {
     use crate::text::shaped_text::ShapedText;
     #[cfg(test)]
     use crate::text::wrap::TextWrap;
+    #[cfg(test)]
+    use glam::Vec2;
 
     impl TextShaper {
         /// Deterministic mono shaper for tests and headless tools: every glyph is
@@ -362,7 +372,7 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, shape: TestShape) -> usize {
-            self.probe_layout(text, shape, |probe| probe.byte_at(x, y))
+            self.probe_layout(text, shape, |probe| probe.byte_at(Vec2::new(x, y)))
         }
 
         /// Hold the exclusive borrow for the caller's scope, proving an encoded-cache hit
@@ -382,7 +392,12 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn has_cosmic_buffer(&self, key: TextShapeKey) -> bool {
-            self.shared.inner.borrow().cosmic.shaped_run(key).is_some()
+            self.shared
+                .inner
+                .borrow()
+                .cosmic
+                .resident_run(key)
+                .is_some()
         }
 
         pub(crate) fn drop_cosmic_buffers(&self) {
@@ -391,6 +406,12 @@ pub(crate) mod internals {
     }
 
     impl TextShaper {
+        /// A shaper over an empty font database, so a case can watch a family arrive.
+        #[cfg(test)]
+        pub(crate) fn with_no_fonts() -> Self {
+            Self::over(CosmicMeasure::with_no_fonts())
+        }
+
         pub(crate) fn cosmic_cache_len(&self) -> usize {
             self.shared.inner.borrow().cosmic.cache_len()
         }

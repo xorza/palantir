@@ -2,7 +2,6 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::lower;
@@ -88,14 +87,6 @@ impl sealed::LowerShape for RectShape {
     fn is_noop(&self) -> bool {
         self.local_rect.is_some_and(Rect::is_paint_empty)
             || (self.fill.is_noop() && self.border.is_noop())
-    }
-
-    /// `fill` is screened here, not at intern: gradient geometry is hidden behind a `GradientId` afterward, and rejecting after the intern would leave the row in the pool.
-    fn has_nan(&self) -> bool {
-        self.local_rect.has_nan()
-            || self.corners.has_nan()
-            || self.fill.has_nan()
-            || self.border.has_nan()
     }
 
     /// Geometry is already in storage form; the fill interns through [`lower::brush`], the pool chrome shares.

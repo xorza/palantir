@@ -41,7 +41,7 @@ fn an_unchanged_stamp_skips_the_paint_and_a_bucket_keeps_the_texture() {
         used: UVec2::new(32, 24),
         full: UVec2::new(32, 24),
         offset: UVec2::ZERO,
-        raster_scale: 1.0,
+        raster_factor: 1.0,
         paint,
         epoch: 1,
     };
@@ -90,7 +90,7 @@ fn an_unchanged_stamp_skips_the_paint_and_a_bucket_keeps_the_texture() {
                 epoch: 2,
                 used: UVec2::new(16, 24),
                 offset: UVec2::new(16, 0),
-                raster_scale: 2.0,
+                raster_factor: 2.0,
                 ..draw
             },
             true,

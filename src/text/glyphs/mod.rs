@@ -11,6 +11,7 @@ use crate::text::glyph_font::GlyphFont;
 use crate::text::glyphs::glyph_line::GlyphLine;
 use crate::text::render::{GlyphRasterKey, PlacedGlyph, RunPlacement};
 use crate::text::request::TextShapeRequest;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::WrapFloor;
 use glam::Vec2;
 use std::cell::RefMut;
@@ -43,19 +44,20 @@ impl<'a> TextGlyphs<'a> {
         self.cosmic.extract_glyphs(request, placement, out)
     }
 
-    /// Lay `line.text` out without wrapping at `line.raster_scale`, rewriting `out`
+    /// Lay `line.text` out without wrapping at `line.raster_factor`, rewriting `out`
     /// with a [`PlacedGlyph`] apiece. A `\n` still breaks lines. Positions are
     /// relative to the line's origin (left edge, top of the line box), so a run laid
     /// out once can be placed every frame. Cosmic bins each glyph's own fractional
-    /// `x * raster_scale` into its raster key, so an atlas can hold up to four
+    /// `x * raster_factor` into its raster key, so an atlas can hold up to four
     /// entries per glyph per size. Empty text, or a `font` whose size or leading is
     /// not a positive finite number, clears `out` and returns.
     pub fn line(&mut self, line: GlyphLine<'_>, out: &mut Vec<PlacedGlyph>) {
         let GlyphLine {
             text,
             font,
-            raster_scale,
+            raster_factor,
         } = line;
+        let font = ShapingFont::new(font, self.cosmic.families());
         // One of the two crate edges for a run with nothing to shape; see
         // `TextShapeRequest`.
         let Some(request) = TextShapeRequest::unbounded(text, font) else {
@@ -66,7 +68,7 @@ impl<'a> TextGlyphs<'a> {
         // and clips.
         let placement = RunPlacement {
             origin: Vec2::ZERO,
-            scale: raster_scale,
+            scale: raster_factor,
             bounds: None,
         };
         self.extract_glyphs(request, placement, out);
@@ -80,6 +82,7 @@ impl<'a> TextGlyphs<'a> {
     /// glyphs from `line`. Empty text, or a `font` with no usable size, measures
     /// [`Size::ZERO`].
     pub fn measure(&mut self, text: &str, font: GlyphFont) -> Size {
+        let font = ShapingFont::new(font, self.cosmic.families());
         TextShapeRequest::unbounded(text, font).map_or(Size::ZERO, |request| {
             self.cosmic.root(request, WrapFloor::Skip).extent.size
         })

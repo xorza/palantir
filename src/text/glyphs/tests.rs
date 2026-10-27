@@ -20,13 +20,13 @@ fn a_line_lays_out_left_to_right_and_repeats_itself() {
         GlyphLine {
             text: "abc",
             font,
-            raster_scale: 1.0,
+            raster_factor: 1.0,
         },
         &mut out,
     );
     assert_eq!(out.len(), 3, "{out:?}");
     // Whole-pixel pen positions; the fraction goes to the raster key's subpixel bin.
-    let xs: Vec<_> = out.iter().map(|glyph| glyph.x).collect();
+    let xs: Vec<_> = out.iter().map(|glyph| glyph.physical.x).collect();
     assert_eq!(xs, [0, 9, 18], "{out:?}");
 
     let first: Vec<_> = out.iter().map(|glyph| glyph.raster_key).collect();
@@ -34,7 +34,7 @@ fn a_line_lays_out_left_to_right_and_repeats_itself() {
         GlyphLine {
             text: "abc",
             font,
-            raster_scale: 1.0,
+            raster_factor: 1.0,
         },
         &mut out,
     );
@@ -45,7 +45,7 @@ fn a_line_lays_out_left_to_right_and_repeats_itself() {
         GlyphLine {
             text: "xyz",
             font,
-            raster_scale: 1.0,
+            raster_factor: 1.0,
         },
         &mut out,
     );
@@ -65,7 +65,7 @@ fn an_empty_line_has_no_glyphs_and_no_extent() {
         GlyphLine {
             text: "a",
             font,
-            raster_scale: 1.0,
+            raster_factor: 1.0,
         },
         &mut out,
     );
@@ -75,7 +75,7 @@ fn an_empty_line_has_no_glyphs_and_no_extent() {
         GlyphLine {
             text: "",
             font,
-            raster_scale: 1.0,
+            raster_factor: 1.0,
         },
         &mut out,
     );
@@ -95,7 +95,7 @@ fn scale_changes_the_raster_and_not_the_run() {
         GlyphLine {
             text: "abc",
             font,
-            raster_scale: 1.0,
+            raster_factor: 1.0,
         },
         &mut single,
     );
@@ -104,7 +104,7 @@ fn scale_changes_the_raster_and_not_the_run() {
         GlyphLine {
             text: "abc",
             font,
-            raster_scale: 2.0,
+            raster_factor: 2.0,
         },
         &mut double,
     );
@@ -116,10 +116,10 @@ fn scale_changes_the_raster_and_not_the_run() {
             "two scales shared one raster"
         );
     }
-    let xs: Vec<_> = single.iter().map(|glyph| glyph.x).collect();
+    let xs: Vec<_> = single.iter().map(|glyph| glyph.physical.x).collect();
     assert_eq!(xs, [0, 9, 18], "{single:?}");
     // Doubled advances: the 1× subpixel bins put the pen at 9 + ~0 and 18 + ~3/4, so 18 and 37 + ~1/2 at 2×.
-    let xs: Vec<_> = double.iter().map(|glyph| glyph.x).collect();
+    let xs: Vec<_> = double.iter().map(|glyph| glyph.physical.x).collect();
     assert_eq!(xs, [0, 18, 37], "{double:?}");
 
     // The measured extent is in logical pixels, untouched by raster scale.
@@ -142,7 +142,7 @@ fn a_placed_glyph_rasterizes_to_the_bitmap_it_describes() {
         GlyphLine {
             text: "A",
             font: GlyphFont::new(32.0),
-            raster_scale: 1.0,
+            raster_factor: 1.0,
         },
         &mut out,
     );

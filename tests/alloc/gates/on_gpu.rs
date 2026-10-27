@@ -14,6 +14,7 @@ use std::rc::Rc;
 use glam::UVec2;
 use palantir::internals::frame_fixture::{BENCH_DPR, FrameFixture};
 use palantir::internals::{HeadlessTestGpuLease, TEXT_SCALE_STEP, isolated_headless_test_gpu};
+use palantir::widget::Shape;
 use palantir::{Configure, Grid, IconSet, IconTable, Panel, Sizing, Track, TranslateScale, Ui};
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
@@ -172,7 +173,7 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
                             .show(ui, |ui| {
                                 for c in 0..RAMP_ICONS {
                                     Panel::zstack().id_salt(c).grid_cell((0, c)).show(ui, |ui| {
-                                        ui.add_shape(icons.shape(chip));
+                                        ui.add_shape(Shape::icon(chip));
                                     });
                                 }
                             });

@@ -225,7 +225,7 @@ fn chrome_lowering_keeps_an_authored_field() {
     }
 }
 
-/// `chrome` is the NaN gate for chrome, which `Shapes::add` never sees. It sanitizes rather than drops,
+/// `chrome` is the NaN gate for chrome, which no shape setter sees. It sanitizes rather than drops,
 /// since `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op. A NaN never reaches
 /// the row: debug asserts, release falls each field back, and `catch_unwind` accepts either.
 #[test]

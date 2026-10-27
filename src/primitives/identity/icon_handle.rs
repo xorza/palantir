@@ -11,7 +11,7 @@ use glam::Vec2;
 /// [`IconSet`](crate::IconSet) keeps the set loaded, and a handle outliving every clone of it
 /// panics when drawn.
 ///
-/// From [`IconSet::handle`](crate::IconSet::handle); consumed by [`Shape::icon`](crate::widget::Shape::icon).
+/// From [`IconSet::by_name`](crate::IconSet::by_name); consumed by [`Shape::icon`](crate::widget::Shape::icon).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct IconHandle {
     pub(crate) icon: IconRef,

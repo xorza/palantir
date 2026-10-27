@@ -7,10 +7,11 @@ use crate::primitives::layout::align::HAlign;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
 use crate::text::RENDERED_RUN_KEEP_SPREAD_MASK;
-use crate::text::font_family::FontFamily;
+use crate::text::family_keys::FamilyKey;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
+use crate::text::shaping_font::ShapingFont;
 use crate::text::wrap::LineFit;
 use std::num::NonZeroU64;
 
@@ -38,7 +39,7 @@ pub(crate) struct TextShapeKey {
     max_w_q: Option<NonMaxU32>,
     /// `line_height * 64`, rounded.
     lh_q: u32,
-    /// [`FontFamily`] index; meaningless outside the interning process, so keys are never persisted.
+    /// [`FamilyKey`]; meaningless outside the shaper that keyed it, so keys are never persisted.
     family_q: u16,
     /// Weight, slant, line align and line fit; see [`FaceBits`].
     face_q: FaceBits,
@@ -70,7 +71,7 @@ impl TextShapeKey {
     /// The unbounded key for `text` at `font`, or `None` where the face has no valid metrics.
     ///
     /// Unlike [`TextShapeRequest::unbounded`](crate::text::request::TextShapeRequest::unbounded), keeps empty text.
-    pub(crate) fn for_text(text: &str, font: GlyphFont) -> Option<Self> {
+    pub(crate) fn for_text(text: &str, font: ShapingFont) -> Option<Self> {
         font.metrics_valid()
             .then(|| Self::unbounded(hash::str(text), font))
     }
@@ -78,8 +79,8 @@ impl TextShapeKey {
     /// The key `text_hash` shapes under at `font`, before any width.
     ///
     /// Callers screen the face first, so an invalid one is a logic error (debug-asserted); unscreened, a NaN size would quantize silently.
-    pub(crate) fn unbounded(text_hash: u64, font: GlyphFont) -> Self {
-        let GlyphFont {
+    pub(crate) fn unbounded(text_hash: u64, font: ShapingFont) -> Self {
+        let ShapingFont {
             size: font_size,
             line_height,
             family,
@@ -96,7 +97,7 @@ impl TextShapeKey {
             size_q: quantize_metric(font_size),
             max_w_q: None,
             lh_q: quantize_metric(line_height),
-            family_q: family.raw(),
+            family_q: family.get(),
             face_q: FaceBits::new(weight, slant, LineAlign::Auto, LineFit::Wrap),
         }
     }
@@ -150,9 +151,9 @@ impl TextShapeKey {
         self.max_w_q.map(|max_w_q| dequantize(max_w_q.get()))
     }
 
-    /// The family this key shapes in.
-    pub(super) const fn family(self) -> FontFamily {
-        FontFamily::from_raw(self.family_q)
+    /// The key of the family this key shapes in.
+    pub(super) const fn family(self) -> FamilyKey {
+        FamilyKey::from_raw(self.family_q)
     }
 
     pub(super) const fn weight(self) -> FontWeight {
@@ -323,13 +324,26 @@ const fn dequantize(value: u32) -> f32 {
 // Also built by the `text_atlas` benchmark.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::text::glyph_font::GlyphFont;
+    use crate::text::family_keys::FamilyKey;
+    use crate::text::font_slant::FontSlant;
+    use crate::text::font_weight::FontWeight;
     use crate::text::key::TextShapeKey;
+    use crate::text::shaping_font::ShapingFont;
 
     impl TextShapeKey {
-        /// A key for a run nothing resolves, for fixtures that only need an identity.
+        /// A key for a run nothing resolves, for fixtures that only need an identity. In the
+        /// first family a table keys, so it builds no table.
         pub(crate) fn fixture() -> Self {
-            Self::unbounded(1, GlyphFont::new(16.0))
+            Self::unbounded(
+                1,
+                ShapingFont {
+                    size: 16.0,
+                    line_height: 16.0,
+                    family: FamilyKey::from_raw(0),
+                    weight: FontWeight::REGULAR,
+                    slant: FontSlant::Normal,
+                },
+            )
         }
     }
 }

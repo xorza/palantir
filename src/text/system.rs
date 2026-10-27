@@ -357,7 +357,7 @@ pub(crate) mod internals {
             shape: TestShape,
             wrap_policy: TextWrap,
         ) -> TestMeasure {
-            let request = shape.unbounded_request(text);
+            let request = shape.unbounded_request_in(&self.shaper().family_keys(), text);
             let root = self.root(slot, request, wrap_policy);
             let shaped = self.measure(
                 slot,

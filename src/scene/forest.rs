@@ -24,6 +24,7 @@ use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
+use crate::text::family_keys::FamilyKeys;
 use std::time::Duration;
 
 /// One arena per [`Plane`]; recording dispatches to `trees[cur_plane]`.
@@ -56,6 +57,14 @@ pub(crate) struct NodeChrome<'a> {
 }
 
 impl Forest {
+    /// A forest whose text records key their families in `families`, the shaper's table.
+    pub(crate) fn new(families: FamilyKeys) -> Self {
+        Self {
+            record_store: RecordStore::new(families),
+            ..Self::default()
+        }
+    }
+
     /// Active plane for the next `open_node`; `Main` outside `Ui::layer` scopes.
     #[inline]
     pub(crate) fn cur_plane(&self) -> Plane {

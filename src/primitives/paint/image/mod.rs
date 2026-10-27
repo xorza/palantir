@@ -5,6 +5,8 @@ pub(crate) mod error;
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::math::domain;
+use crate::primitives::math::domain::vec2;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
@@ -34,6 +36,18 @@ pub enum ImageFit {
         /// Repeats across the paint rect, as a raw UV extent.
         scale: Vec2,
     },
+}
+
+impl ImageFit {
+    /// Panics unless a `Tile`'s `offset` is an offset and each axis of its `scale` is positive.
+    #[track_caller]
+    pub(crate) const fn validate(self) {
+        if let Self::Tile { offset, scale } = self {
+            let _ = vec2::offset(offset);
+            let _ = domain::positive(scale.x);
+            let _ = domain::positive(scale.y);
+        }
+    }
 }
 
 /// How texels are interpolated when an image paints at a size other than its

@@ -706,16 +706,17 @@ FocusRingTheme
 
 FontFamily
     struct FontFamily: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        pub const MAX_NAME_LEN: usize
         pub const SANS: Self
         pub const MONO: Self
-        pub fn named(name: &str) -> Option<Self>
-        pub fn name(self) -> &'static str
+        pub const fn named(name: &str) -> Option<Self>
+        pub fn name(&self) -> &str
 
 FontLoadError
     enum FontLoadError: Debug, Display, Error
         Io { path: PathBuf, source: Error }
         NoFaces
-        FamilyTableFull
+        FamilyNameTooLong
 
 FontScope
     enum FontScope: Clone, Copy, Debug, Eq, PartialEq
@@ -782,7 +783,7 @@ GpuFrameCtx
         pub physical_full_size: UVec2
         pub physical_offset: UVec2
         pub display_scale: f32
-        pub raster_scale: f32
+        pub raster_factor: f32
         pub dt: Duration
 
 GpuInitCtx
@@ -967,14 +968,9 @@ IconHandle
     struct IconHandle: Clone, Copy, Debug, PartialEq
         pub const fn view_box(&self) -> Vec2
 
-IconId
-    struct IconId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
-
 IconSet
     struct IconSet: Clone, Debug
-        pub fn handle(&self, icon: IconId) -> IconHandle
-        pub fn by_name(&self, name: &str) -> Option<IconId>
-        pub fn shape(&self, icon: IconId) -> IconShape
+        pub fn by_name(&self, name: &str) -> Option<IconHandle>
 
 IconTable
     struct IconTable: Debug
@@ -982,8 +978,8 @@ IconTable
         pub fn from_svgs<'a, N: Into<Cow<'static, str>>>(sources: impl IntoIterator<Item = (N, &'a str)>) -> Result<Self, IconTableError>
 
 IconTableError
-    enum IconTableError: Clone, Debug, Display, Eq, Error, PartialEq
-        Unreadable { name: Cow<'static, str> }
+    enum IconTableError: Debug, Display, Error
+        Unreadable { name: Cow<'static, str>, source: SvgParseError }
         TooMany { count: usize }
         DuplicateName { name: Cow<'static, str> }
         TooLarge { bytes: u128 }
@@ -1885,6 +1881,9 @@ SurfaceUsages  [features: winit]
         pub const fn remove(&mut self, other: Self)
         pub const fn set(&mut self, other: Self, on: bool)
 
+SvgParseError
+    struct SvgParseError: Debug, Display, Error
+
 Switch
     struct Switch<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: &'a mut bool) -> Self
@@ -2637,7 +2636,7 @@ widget::GlyphLine
     struct GlyphLine<'a>: Clone, Copy, Debug
         pub text: &'a str
         pub font: GlyphFont
-        pub raster_scale: f32
+        pub raster_factor: f32
 
 widget::GlyphRasterKey
     struct GlyphRasterKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -2777,8 +2776,7 @@ widget::PaintTiming
 widget::PlacedGlyph
     struct PlacedGlyph: Clone, Copy, Debug
         pub raster_key: GlyphRasterKey
-        pub x: i32
-        pub y: i32
+        pub physical: IVec2
 
 widget::PolylineShape
     struct PolylineShape<'a>: Clone, Debug, Lower (blanket)
@@ -2852,8 +2850,8 @@ widget::TextProbe
         pub fn text_hash(&self) -> Option<NonZeroU64>
         pub fn hash_of(text: &str) -> NonZeroU64
         pub fn caret_at(&self, byte_offset: usize) -> Caret
-        pub fn byte_at(&self, x: f32, y: f32) -> usize
-        pub fn selection_rects(&self, range: Range<usize>, out: impl FnMut(Rect))
+        pub fn byte_at(&self, pos: Vec2) -> usize
+        pub fn selection_rects(&self, range: Range<usize>, out: &mut Vec<Rect>)
 
 widget::TextRun
     struct TextRun<'a>: Clone, Copy, Debug

@@ -3,7 +3,6 @@
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
@@ -56,10 +55,6 @@ impl sealed::LowerShape for MeshShape<'_> {
         self.local_rect.is_some_and(Rect::is_paint_empty)
             || self.tint.is_noop()
             || self.mesh.is_noop()
-    }
-
-    fn has_nan(&self) -> bool {
-        self.local_rect.has_nan() || self.tint.has_nan() || self.mesh.bbox().has_nan()
     }
 
     /// Copies vertices and indices into the store and freezes the bbox and content hash.
