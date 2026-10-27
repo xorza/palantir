@@ -32,6 +32,9 @@ pub(crate) struct QuantizedFace {
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(crate) struct TextShapeKey {
     /// Source hash, kept off zero by [`Self::content_hash`] so `Option<TextShapeKey>` stays 24 bytes.
+    /// A hit compares the cached source bytes, so a collision is never served. Refused: an
+    /// exact hasher in its place (none is exact), and the source itself here (the key would be
+    /// neither `Copy` nor small).
     pub(crate) text_hash: NonZeroU64,
     /// `font_size * 64`, rounded.
     size_q: u32,

@@ -15,7 +15,8 @@ use std::time::Duration;
 pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// Maximum interval between two clicks on the same widget for a double-click:
-/// the Windows and Chromium default. The platforms' own settings are not read.
+/// the Windows and Chromium default. Refused: reading the platform setting, and
+/// an app-set option; the radius below is held the same way.
 pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for a double-click.
