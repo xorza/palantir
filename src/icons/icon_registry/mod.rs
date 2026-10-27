@@ -38,7 +38,6 @@ impl Drop for IconSetToken {
     fn drop(&mut self) {
         let mut inner = self.shared.borrow_mut();
         inner.released.push(self.id);
-        inner.epoch += 1;
     }
 }
 
@@ -58,7 +57,6 @@ struct Inner {
     free: Vec<u16>,
     /// Ids whose last [`IconSet`] clone dropped since the last drain.
     released: Vec<IconSetId>,
-    epoch: u64,
 }
 
 /// The icon sets a host has loaded, shared between the `Ui` and the backend that rasterizes from them.
@@ -116,7 +114,6 @@ impl IconRegistry {
         let row = &mut inner.slots[usize::from(slot)];
         row.table = Some(table);
         row.token = Rc::downgrade(&token);
-        inner.epoch += 1;
         IconSet::from_token(token)
     }
 
@@ -149,7 +146,6 @@ impl IconRegistry {
             slots,
             free,
             released,
-            ..
         } = &mut *inner;
         if released.is_empty() {
             return;
@@ -164,38 +160,24 @@ impl IconRegistry {
         forget(released);
         released.clear();
     }
-
-    /// Counts every load and release, so a consumer caching per-set work can tell a swapped set from the same ones; a resident count can't (load, release, load leaves it unchanged).
-    pub(crate) fn epoch(&self) -> u64 {
-        self.inner.borrow().epoch
-    }
-
-    /// The set in table slot `slot`, or `None` where the slot is empty, released, or past the end. Indexed rather than iterated so a caller rasterizing through `&mut self` holds no registry borrow, without collecting into a `Vec`.
-    pub(crate) fn resident(&self, slot: usize) -> Option<ResidentIconSet> {
-        let inner = self.inner.borrow();
-        let row = inner.slots.get(slot)?;
-        if row.token.strong_count() == 0 {
-            return None;
-        }
-        Some(ResidentIconSet {
-            id: IconSetId::new(
-                u16::try_from(slot).expect("`register` keeps every slot index inside u16"),
-                row.generation,
-            ),
-            table: Rc::clone(row.table.as_ref()?),
-        })
-    }
-
-    pub(crate) fn slot_count(&self) -> usize {
-        self.inner.borrow().slots.len()
-    }
 }
 
-/// One loaded set as [`IconRegistry::resident`] hands it out: the id a raster key carries, and the table the bytes come from.
-#[derive(Clone, Debug)]
-pub(crate) struct ResidentIconSet {
-    pub(crate) id: IconSetId,
-    pub(crate) table: Rc<IconTable>,
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::icons::icon_registry::IconRegistry;
+    use crate::primitives::identity::icon_set_id::IconSetId;
+
+    impl IconRegistry {
+        /// The id of every set an [`IconSet`](crate::IconSet) still holds, by slot.
+        pub(crate) fn resident_ids(&self) -> Vec<IconSetId> {
+            let inner = self.inner.borrow();
+            (0u16..)
+                .zip(&inner.slots)
+                .filter(|(_, row)| row.token.strong_count() > 0)
+                .map(|(slot, row)| IconSetId::new(slot, row.generation))
+                .collect()
+        }
+    }
 }
 
 #[cfg(test)]

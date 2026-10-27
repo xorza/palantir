@@ -1,6 +1,7 @@
 //! One frame on the device: the step schedule, the submission, the
 //! timestamp queries, the debug overlay, and the capture labels.
 
+pub(crate) mod binder;
 pub(crate) mod debug_marker;
 pub(crate) mod debug_overlay;
 pub(crate) mod gpu_timings;

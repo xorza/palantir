@@ -28,6 +28,7 @@ pub(crate) mod session;
 // `pub(crate)` only so `bench::driver` can name `rect_grid::bench`.
 pub(crate) mod rect_grid;
 mod stroke_bbox;
+mod tile_index;
 mod transform_stack;
 
 /// The retained half of the CPU compose engine: buffers and stacks kept across

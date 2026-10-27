@@ -83,8 +83,8 @@ struct CubeGpu {
     idxs: wgpu::Buffer,
     uniform: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
-    /// Private depth attachment, recreated on resize.
-    depth: Option<(wgpu::TextureView, UVec2)>,
+    /// Private depth attachment and the target texture size it was made for.
+    depth: Option<(wgpu::TextureView, wgpu::Extent3d)>,
 }
 
 /// The app's persistent renderer; `'static` so it can live behind the `Rc<RefCell<…>>` the framework holds.
@@ -224,16 +224,13 @@ impl GpuPaint for Cube {
         };
 
         let gpu = self.gpu.as_mut().expect("init ran before paint");
-        // Depth matches the color target's size; recreate it when `physical_size` changes.
-        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(ctx.physical_size);
+        // Depth matches the color texture, which can be larger than `physical_size`.
+        let target_size = ctx.target.texture().size();
+        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(target_size);
         if need_depth {
             let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("showcase.cube.depth"),
-                size: wgpu::Extent3d {
-                    width: ctx.physical_size.x.max(1),
-                    height: ctx.physical_size.y.max(1),
-                    depth_or_array_layers: 1,
-                },
+                size: target_size,
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -242,7 +239,7 @@ impl GpuPaint for Cube {
                 view_formats: &[],
             });
             let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            gpu.depth = Some((view, ctx.physical_size));
+            gpu.depth = Some((view, target_size));
         }
         let depth_view = &gpu.depth.as_ref().expect("depth just ensured").0;
 
@@ -277,7 +274,7 @@ impl GpuPaint for Cube {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        // Render at the supplied target resolution; the scissor is belt-and-braces.
+        // Render into the shown corner of the target; the scissor is belt-and-braces.
         let (w, h) = (ctx.physical_size.x.max(1), ctx.physical_size.y.max(1));
         pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
         pass.set_scissor_rect(0, 0, w, h);

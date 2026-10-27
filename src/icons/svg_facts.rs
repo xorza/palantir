@@ -3,14 +3,12 @@
 use glam::Vec2;
 use resvg::usvg;
 
-/// The three facts an [`IconDefinition`](crate::IconDefinition) carries that the markup does not state outright, read off one parse.
+/// The two facts an [`IconDefinition`](crate::IconDefinition) carries that the markup does not state outright, read off one parse.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SvgFacts {
     pub(crate) view_box: Vec2,
     /// Every paint resolved to at most one color, so a draw's tint can supply it.
     pub(crate) tintable: bool,
-    /// Some group carries an SVG filter: 10-20x raster cost.
-    pub(crate) filtered: bool,
 }
 
 /// The parse settings every icon is read under; this survey and the rasterizer's tree must be configured identically.
@@ -24,14 +22,12 @@ impl SvgFacts {
         let tree = usvg::Tree::from_data(svg, &parse_options()).ok()?;
         let mut survey = Survey {
             tintable: true,
-            filtered: false,
             only: None,
         };
         survey.walk(tree.root());
         Some(Self {
             view_box: Vec2::new(tree.size().width(), tree.size().height()),
             tintable: survey.tintable,
-            filtered: survey.filtered,
         })
     }
 }
@@ -40,16 +36,12 @@ impl SvgFacts {
 #[derive(Debug)]
 struct Survey {
     tintable: bool,
-    filtered: bool,
     /// The one color seen so far.
     only: Option<usvg::Color>,
 }
 
 impl Survey {
     fn walk(&mut self, group: &usvg::Group) {
-        if !group.filters().is_empty() {
-            self.filtered = true;
-        }
         for node in group.children() {
             match node {
                 usvg::Node::Group(child) => self.walk(child),
@@ -90,7 +82,6 @@ mod tests {
     use glam::Vec2;
 
     const GRADIENT: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><defs><linearGradient id="g"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="16" height="16" fill="url(#g)"/></svg>"##;
-    const FILTERED: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><defs><filter id="f"><feGaussianBlur stdDeviation="1"/></filter></defs><g filter="url(#f)"><rect width="16" height="16" fill="#333"/></g></svg>"##;
     /// A stroke in a second color: strokes are surveyed too.
     const STROKE_DIFFERS: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" fill="#111" stroke="#eee" stroke-width="2"/></svg>"##;
     /// `fill="none"` on every path with one stroke color: the line-icon shape, which must stay tintable.
@@ -103,7 +94,7 @@ mod tests {
     }
 
     #[test]
-    fn survey_reads_viewbox_tintability_and_filter_use() {
+    fn survey_reads_viewbox_and_tintability() {
         assert_eq!(facts(ONE_COLOR).view_box, Vec2::new(24.0, 12.0));
         assert_eq!(facts(TWO_COLORS).view_box, Vec2::new(16.0, 16.0));
 
@@ -119,18 +110,6 @@ mod tests {
             !facts(OUTLINE_DEFAULT_FILL).tintable,
             "an omitted fill is black, not absent",
         );
-
-        assert!(facts(FILTERED).filtered);
-        for svg in [
-            ONE_COLOR,
-            TWO_COLORS,
-            GRADIENT,
-            STROKE_DIFFERS,
-            OUTLINE,
-            OUTLINE_DEFAULT_FILL,
-        ] {
-            assert!(!facts(svg).filtered, "no filter in this one");
-        }
     }
 
     #[test]

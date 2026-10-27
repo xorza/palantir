@@ -47,6 +47,7 @@ pub fn run(c: &mut Criterion) {
     input::bench::atomic(c);
     paint_animations::bench::atomic(c);
     gpu::bench::atomic(c, backends);
+    gpu::resource::bench::atomic(c, backends);
     rect_grid::bench::atomic(c);
     schedule::bench::atomic(c);
     text_backend::bench::atomic(c, backends);

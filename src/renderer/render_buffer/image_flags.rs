@@ -17,6 +17,9 @@ impl ImageFlags {
     pub(crate) const TAPS_MEAN: Self = Self(1 << 3);
     /// As [`Self::TAPS_MEAN`] but the brightest tap wins ([`ImageDownsample::Peak`](crate::ImageDownsample::Peak)); at most one is set.
     pub(crate) const TAPS_PEAK: Self = Self(1 << 4);
+    /// Sample inside the UV rect alone: past it the texture is slack, as a clipped `GpuView`'s
+    /// bucketed target holds. Only the plain bilinear path reads it, the one a view takes.
+    pub(crate) const CLAMP_TO_UV: Self = Self(1 << 5);
 
     pub(crate) const fn union(self, other: Self) -> Self {
         Self(self.0 | other.0)

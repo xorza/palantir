@@ -1,14 +1,16 @@
 //! Icon render pass: a [`RasterPass`] filled from resvg instead of swash.
 //!
 //! The atlas-to-draw machinery lives on `RasterPass`, shared with text. Here:
-//! the loaded sets, the SVG rasterizer, and the prewarm that keeps filtered
-//! icons off the frame path.
+//! the loaded sets and the SVG rasterizer.
 //!
 //! Rasterization is here because it is the first point where the icon's true
 //! device size is known (display scale and ancestor transforms folded in).
-//! Misses rasterize inline, like a glyph miss.
+//! Misses rasterize inline, like a glyph miss: a raster warmed before its draw
+//! would have to guess that size, and one deferred past it would leave the
+//! frame without the icon.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig, Rasterized};
@@ -16,19 +18,7 @@ use crate::gpu::raster::raster_program::RasterProgram;
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
 use crate::icons::icon_registry::IconRegistry;
-use crate::primitives::identity::icon_ref::IconRef;
 use crate::renderer::render_buffer::icon_draw_row::IconDrawRow;
-
-/// What one [`IconBackend::prewarm`] pass covered: a scale change invalidates
-/// every raster, and a later-loaded set was never warmed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct PrewarmMark {
-    /// Raster scale, by bits: only compared, so exact equality is wanted.
-    scale_bits: u32,
-    /// [`IconRegistry::epoch`], not a set count: releasing one set and loading
-    /// another keeps the count but leaves nothing warmed.
-    epoch: u64,
-}
 
 #[derive(Debug)]
 pub(crate) struct IconBackend {
@@ -37,8 +27,6 @@ pub(crate) struct IconBackend {
     /// The sets the `Ui` side has loaded; shared so a set loaded on frame N
     /// rasterizes on frame N.
     icons: IconRegistry,
-    /// What [`Self::prewarm`] covered, or `None` before the first run.
-    warmed: Option<PrewarmMark>,
 }
 
 impl IconBackend {
@@ -67,38 +55,6 @@ impl IconBackend {
             ),
             rasterizer: IconRasterizer::default(),
             icons,
-            warmed: None,
-        }
-    }
-
-    /// Rasterize every filtered icon in every loaded set at `scale` before the
-    /// frame path asks for one.
-    ///
-    /// An SVG filter costs far more than an unfiltered icon and grows
-    /// superlinearly, so lazily meeting a toolbar of them drops a frame. Only
-    /// icons flagged `filtered` prewarm; the rest are cheap on demand.
-    ///
-    /// Re-runs when the scale changes or a set is loaded.
-    pub(crate) fn prewarm(&mut self, scale: f32) {
-        let mark = PrewarmMark {
-            scale_bits: scale.to_bits(),
-            epoch: self.icons.epoch(),
-        };
-        if self.warmed == Some(mark) {
-            return;
-        }
-        self.warmed = Some(mark);
-        for slot in 0..self.icons.slot_count() {
-            let Some(set) = self.icons.resident(slot) else {
-                continue;
-            };
-            for (icon, def) in set.table.entries() {
-                if !def.filtered {
-                    continue;
-                }
-                let icon = IconRef { set: set.id, icon };
-                self.slot(IconRasterKey::for_box(icon, def.view_box * scale));
-            }
         }
     }
 
@@ -166,8 +122,13 @@ impl IconBackend {
     }
 
     /// Draw the quads `batch_idx` prepared.
-    pub(crate) fn render_batch<'a>(&'a self, batch_idx: usize, pass: &mut wgpu::RenderPass<'a>) {
-        self.pass.render_batch(batch_idx, pass);
+    pub(crate) fn render_batch<'a>(
+        &'a self,
+        binder: &mut MainBinder<'a>,
+        pass: &mut wgpu::RenderPass<'a>,
+        batch_idx: usize,
+    ) {
+        self.pass.render_batch(binder, pass, batch_idx);
     }
 }
 

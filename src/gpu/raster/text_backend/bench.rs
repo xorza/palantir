@@ -13,6 +13,7 @@ use crate::bench::fixture::{Backend, Backends, Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
@@ -233,11 +234,14 @@ impl Fixture {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // `render_batch` binds neither pipeline nor viewport (the render loop owns both, see `Bound::Raster`), so a standalone pass binds its own.
+            // `render_batch` binds neither pipeline nor viewport (the render loop owns both), so a
+            // standalone pass binds its own.
             pass.set_pipeline(self.pipelines.select(StencilMode::Off));
-            ViewportPush { size: Vec2::ZERO }.push_into(&mut pass);
+            let viewport = ViewportPush { size: Vec2::ZERO };
+            viewport.push_into(&mut pass);
+            let mut binder = MainBinder::new(viewport);
             for idx in 0..batches.len() {
-                self.backend.render_batch(idx, &mut pass);
+                self.backend.render_batch(&mut binder, &mut pass, idx);
             }
         }
         self.belt.finish();

@@ -962,7 +962,6 @@ IconDefinition
         pub view_box: Vec2
         pub svg: Span
         pub tintable: bool
-        pub filtered: bool
 
 IconHandle
     struct IconHandle: Clone, Copy, Debug, PartialEq

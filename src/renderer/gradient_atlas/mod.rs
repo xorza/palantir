@@ -54,10 +54,10 @@ pub(crate) const DEFAULT_MAX_ATLAS_ROWS: u32 = 2048;
 /// [`LutRow::FALLBACK`] paints magenta, without repainting what other draws captured.
 pub(crate) const MAX_ATLAS_ROWS: u32 = 4096;
 
-/// Clean rows a flush folds into the run around them rather than start another copy, where a
-/// gap costs less than the copy it saves. Zero, merging nothing, until a measurement of a copy
-/// against a staged 2 KiB row sets it.
-pub(crate) const MERGE_GAP_ROWS: u32 = 0;
+/// Clean rows a flush folds into the run around them rather than start another copy: a copy
+/// costs about as much as 52 staged rows (`.notes/research/2026-10-27-gpu-upload-and-binder.md`,
+/// "A copy against a staged gradient row"), so a gap up to 48 is cheaper to upload than to skip.
+pub(crate) const MERGE_GAP_ROWS: u32 = 48;
 
 /// One row's bookkeeping. `baked` stays a separate `Vec<LutRowTexels>` so the
 /// upload is a single reinterpret to `&[u8]`.
@@ -104,8 +104,8 @@ pub(crate) struct CpuGradientAtlas {
     epoch: u64,
     /// How each registration resolved; zero-sized in a shipping build.
     counters: GradientAtlasCounters,
-    /// Rows changed since the last `flush`, each uploaded once: two scattered bakes
-    /// upload two rows, not the span between them.
+    /// Rows changed since the last `flush`, uploaded as runs that fold in a gap up to
+    /// [`MERGE_GAP_ROWS`]: two bakes far apart upload two rows, not the span between them.
     dirty: DirtyRows,
 }
 

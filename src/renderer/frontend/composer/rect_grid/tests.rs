@@ -1,7 +1,8 @@
 //! Overlap queries: empty and zero-area inputs, tile boundaries, long chains, linear-scan oracle.
 
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::frontend::composer::rect_grid::{RectGrid, TILE_CAP};
+use crate::renderer::frontend::composer::rect_grid::RectGrid;
+use crate::renderer::frontend::composer::tile_index::TILE_CAP;
 use glam::UVec2;
 
 #[test]
@@ -59,8 +60,7 @@ fn rect_grid_chains_past_the_row_and_the_u16_index() {
     g.push(past_u16);
 
     assert_eq!(g.rects.len(), u16::MAX as usize + 2);
-    assert_eq!(g.lens[0] as usize, TILE_CAP);
-    assert_eq!(g.overflow.len(), u16::MAX as usize + 2 - TILE_CAP);
+    assert_eq!(g.tile_load(0), [TILE_CAP, u16::MAX as usize + 2 - TILE_CAP]);
     assert!(g.any_overlap(indexed));
     assert!(g.any_overlap(past_u16));
     assert!(!g.any_overlap(URect::new(20, 20, 1, 1)));
@@ -74,24 +74,39 @@ fn rect_grid_chains_are_per_tile_and_clear() {
     for i in 0..10u32 {
         g.push(URect::new(60, i * 3, 8, 2));
     }
-    assert_eq!(g.lens[0] as usize, TILE_CAP);
-    assert_eq!(g.lens[1] as usize, TILE_CAP);
-    assert_eq!(g.overflow.len(), 4, "two links in each of the two tiles");
+    assert_eq!(
+        g.tile_load(0),
+        [TILE_CAP, 2],
+        "two links in each of the two tiles"
+    );
+    assert_eq!(g.tile_load(1), [TILE_CAP, 2]);
     assert!(g.any_overlap(URect::new(60, 24, 1, 1)));
     assert!(g.any_overlap(URect::new(66, 27, 1, 1)));
     assert!(!g.any_overlap(URect::new(60, 40, 1, 1)));
     g.clear();
     assert!(!g.any_overlap(URect::new(60, 24, 1, 1)));
-    assert_eq!(g.overflow.len(), 0);
+    assert_eq!(g.tile_load(0), [0, 0]);
 
     for tx in 0..3u32 {
         for i in 0..TILE_CAP as u32 {
             g.push(URect::new(tx * 64 + 1, i * 3, 8, 2));
         }
     }
-    assert_eq!(g.overflow.len(), 0, "each rect fits inside its own tile");
+    for tx in 0..3 {
+        assert_eq!(
+            g.tile_load(tx),
+            [TILE_CAP, 0],
+            "each rect fits inside its own tile"
+        );
+    }
     g.push(URect::new(0, 30, 192, 2));
-    assert_eq!(g.overflow.len(), 3, "one link in each saturated tile");
+    for tx in 0..3 {
+        assert_eq!(
+            g.tile_load(tx),
+            [TILE_CAP, 1],
+            "one link in each saturated tile"
+        );
+    }
     for tx in 0..3u32 {
         assert!(
             g.any_overlap(URect::new(tx * 64 + 2, 30, 1, 1)),
@@ -155,8 +170,7 @@ fn rect_grid_start_frame_is_grow_only() {
     // Shrinking keeps tile storage at the high-water mark so cycling viewports does not reallocate.
     let mut g = RectGrid::default();
     g.start_frame(UVec2::new(2048, 2048));
-    let big = g.slots.len();
+    let big = g.tile_capacity();
     g.start_frame(UVec2::new(256, 256));
-    assert_eq!(g.slots.len(), big, "shrink must not deallocate tiles");
-    assert_eq!(g.lens.len(), big, "lens stays parallel to slots");
+    assert_eq!(g.tile_capacity(), big, "shrink must not deallocate tiles");
 }

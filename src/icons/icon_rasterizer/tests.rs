@@ -128,7 +128,6 @@ fn unparseable_icon_fails_once_and_is_not_retried() {
         view_box: Vec2::splat(8.0),
         svg: Span::new(0, BROKEN.len() as u32),
         tintable: true,
-        filtered: false,
     }];
     let table = IconTable::baked(&BROKEN_ICONS, BROKEN.as_bytes());
 

@@ -11,6 +11,7 @@
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
@@ -122,13 +123,14 @@ impl MeshPipeline {
     /// re-pushed by the backend's `rebind` after every pipeline switch.
     pub(crate) fn bind<'a>(
         &'a self,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         pipeline: &'a wgpu::RenderPipeline,
     ) {
-        pass.set_pipeline(pipeline);
-        pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
-        pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
-        pass.set_index_buffer(self.idx_buffer.buffer.slice(..), wgpu::IndexFormat::Uint32);
+        binder.pipeline(pass, pipeline, &self.pipeline_layout);
+        binder.vertex(pass, 0, &self.vertex_buffer.buffer);
+        binder.vertex(pass, 1, &self.instance_buffer.buffer);
+        binder.index(pass, &self.idx_buffer.buffer, wgpu::IndexFormat::Uint32);
     }
 
     /// Draw one mesh batch. `draws` is the frame's per-draw span column and `items`

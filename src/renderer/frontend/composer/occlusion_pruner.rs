@@ -3,7 +3,7 @@
 
 use crate::common::counters::TestOnly;
 use crate::primitives::geometry::rect::Rect;
-use crate::renderer::frontend::composer::rect_grid::TILE_SIZE;
+use crate::renderer::frontend::composer::tile_index::{TILE_SIZE, TileIndex, TileSpan};
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
@@ -24,10 +24,10 @@ struct Occluder {
 /// # Cost
 ///
 /// Up to [`LINEAR_OCCLUDERS`] occluders are scanned linearly. Beyond that a
-/// per-tile index is used: a cover containing a quad contains its top-left
-/// corner, so a query tests only that tile's chain, newest first, and stops at
-/// the first cover drawn beneath the quad. Covers spanning more than
-/// [`LARGE_COVER_TILES`] tiles are tested by every query instead.
+/// [`TileIndex`] is used: a cover containing a quad contains its top-left
+/// corner, so a query tests only that tile's covers, skipping those drawn
+/// beneath the quad. Covers spanning more than [`LARGE_COVER_TILES`] tiles are
+/// tested by every query instead.
 ///
 /// Covers are clamped to the viewport's tiles; the clamp is monotonic, so a
 /// clamped corner still lands in range. An index miss only keeps a quad the GPU
@@ -36,25 +36,13 @@ struct Occluder {
 pub(super) struct OcclusionPruner {
     opaque_in_group: Vec<Occluder>,
     drop_idxs: Vec<u32>,
-    last_tile: UVec2,
-    /// Each tile's newest link in [`Self::cover_links`], or [`NO_LINK`]. Grow-only,
-    /// reset through [`Self::touched_tiles`].
-    tile_heads: Vec<u32>,
-    touched_tiles: Vec<u32>,
-    cover_links: Vec<CoverLink>,
+    /// Each tile's covers, by position in `opaque_in_group`.
+    tiles: TileIndex,
     /// Positions in `opaque_in_group` of covers spanning more than
     /// [`LARGE_COVER_TILES`] tiles, ascending.
     large_covers: Vec<u32>,
     contains_tests: TestOnly<Cell<u32>>,
 }
-
-#[derive(Clone, Copy, Debug)]
-struct CoverLink {
-    at: u32,
-    next: u32,
-}
-
-const NO_LINK: u32 = u32::MAX;
 
 const LINEAR_OCCLUDERS: usize = 16;
 
@@ -63,22 +51,9 @@ const LARGE_COVER_TILES: u32 = 256;
 
 const TILE: f32 = TILE_SIZE as f32;
 
-#[derive(Clone, Copy, Debug)]
-struct TileSpan {
-    min: UVec2,
-    max: UVec2,
-}
-
 impl OcclusionPruner {
     pub(super) fn start_frame(&mut self, viewport: UVec2) {
-        self.last_tile = UVec2::new(
-            viewport.x.div_ceil(TILE_SIZE).max(1) - 1,
-            viewport.y.div_ceil(TILE_SIZE).max(1) - 1,
-        );
-        let tiles = ((self.last_tile.x + 1) * (self.last_tile.y + 1)) as usize;
-        if tiles > self.tile_heads.len() {
-            self.tile_heads.resize(tiles, NO_LINK);
-        }
+        self.tiles.start_frame(viewport);
         self.contains_tests.reset();
         self.clear();
     }
@@ -151,11 +126,7 @@ impl OcclusionPruner {
     }
 
     fn build_index(&mut self) {
-        for &tile in &self.touched_tiles {
-            self.tile_heads[tile as usize] = NO_LINK;
-        }
-        self.touched_tiles.clear();
-        self.cover_links.clear();
+        self.tiles.clear();
         self.large_covers.clear();
         for (at, occluder) in self.opaque_in_group.iter().enumerate() {
             let span = self.span_of(occluder.cover);
@@ -164,36 +135,16 @@ impl OcclusionPruner {
                 self.large_covers.push(at as u32);
                 continue;
             }
-            for y in span.min.y..=span.max.y {
-                for x in span.min.x..=span.max.x {
-                    let tile = self.tile_idx(UVec2::new(x, y));
-                    let head = &mut self.tile_heads[tile as usize];
-                    if *head == NO_LINK {
-                        self.touched_tiles.push(tile);
-                    }
-                    self.cover_links.push(CoverLink {
-                        at: at as u32,
-                        next: *head,
-                    });
-                    *head = (self.cover_links.len() - 1) as u32;
-                }
-            }
+            self.tiles.insert(at as u32, span);
         }
     }
 
     fn indexed_covers(&self, rect: Rect, cursor: usize) -> bool {
-        let tile = self.tile_idx(self.tile_of(rect.min));
-        let mut link = self.tile_heads[tile as usize];
-        while link != NO_LINK {
-            let CoverLink { at, next } = self.cover_links[link as usize];
-            // Newest first: the rest of the chain is drawn beneath the quad.
-            if (at as usize) < cursor {
-                break;
-            }
-            if self.covers(at as usize, rect) {
-                return true;
-            }
-            link = next;
+        // A cover before `cursor` is drawn beneath the quad.
+        if self.tiles.any_in(self.tile_of(rect.min), |at| {
+            at as usize >= cursor && self.covers(at as usize, rect)
+        }) {
+            return true;
         }
         let first = self
             .large_covers
@@ -210,8 +161,8 @@ impl OcclusionPruner {
     /// corner lies strictly before the cover's far edges: a cover edge on a tile
     /// boundary stays out of the next tile.
     fn span_of(&self, rect: Rect) -> TileSpan {
-        let last =
-            ((rect.max() / TILE).ceil() - Vec2::ONE).clamp(Vec2::ZERO, self.last_tile.as_vec2());
+        let last = ((rect.max() / TILE).ceil() - Vec2::ONE)
+            .clamp(Vec2::ZERO, self.tiles.last_tile().as_vec2());
         let span = TileSpan {
             min: self.tile_of(rect.min),
             max: last.as_uvec2(),
@@ -226,12 +177,8 @@ impl OcclusionPruner {
     fn tile_of(&self, point: Vec2) -> UVec2 {
         (point / TILE)
             .floor()
-            .clamp(Vec2::ZERO, self.last_tile.as_vec2())
+            .clamp(Vec2::ZERO, self.tiles.last_tile().as_vec2())
             .as_uvec2()
-    }
-
-    const fn tile_idx(&self, tile: UVec2) -> u32 {
-        tile.y * (self.last_tile.x + 1) + tile.x
     }
 }
 
@@ -250,18 +197,13 @@ pub(crate) mod internals {
             let Self {
                 opaque_in_group,
                 drop_idxs,
-                last_tile: _,
-                tile_heads,
-                touched_tiles,
-                cover_links,
+                tiles,
                 large_covers,
                 contains_tests: _,
             } = self;
             scratch_report::vec_bytes(opaque_in_group)
                 + scratch_report::vec_bytes(drop_idxs)
-                + scratch_report::vec_bytes(tile_heads)
-                + scratch_report::vec_bytes(touched_tiles)
-                + scratch_report::vec_bytes(cover_links)
+                + tiles.scratch_bytes()
                 + scratch_report::vec_bytes(large_covers)
         }
     }

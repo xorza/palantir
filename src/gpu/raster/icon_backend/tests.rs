@@ -75,7 +75,7 @@ mod gpu {
         );
         assert_eq!(backend.pass.atlas.cache.len(), 0, "and so did its raster");
         assert!(
-            (0..icons.slot_count()).all(|slot| icons.resident(slot).is_none()),
+            icons.resident_ids().is_empty(),
             "and the registry freed the slot",
         );
     }
@@ -135,10 +135,11 @@ mod gpu {
                 (1, 1),
                 "frame {frame} retained a dead set's caches",
             );
-            let live = (0..icons.slot_count())
-                .filter(|&slot| icons.resident(slot).is_some())
-                .count();
-            assert_eq!(live, 1, "frame {frame} left a set resident");
+            assert_eq!(
+                icons.resident_ids().len(),
+                1,
+                "frame {frame} left a set resident"
+            );
         }
         drop(held);
         tick(&mut backend, &mut frame);

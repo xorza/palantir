@@ -13,14 +13,12 @@ const A_ICONS: &[IconDefinition] = &[IconDefinition {
     view_box: Vec2::splat(24.0),
     svg: Span::new(0, 1),
     tintable: true,
-    filtered: false,
 }];
 const B_ICONS: &[IconDefinition] = &[IconDefinition {
     name: Cow::Borrowed("b"),
     view_box: Vec2::splat(16.0),
     svg: Span::new(0, 1),
     tintable: false,
-    filtered: true,
 }];
 
 fn a() -> Rc<IconTable> {
@@ -28,12 +26,6 @@ fn a() -> Rc<IconTable> {
 }
 fn b() -> Rc<IconTable> {
     Rc::new(IconTable::baked(B_ICONS, b"b"))
-}
-
-fn resident(reg: &IconRegistry) -> Vec<IconSetId> {
-    (0..reg.slot_count())
-        .filter_map(|slot| Some(reg.resident(slot)?.id))
-        .collect()
 }
 
 fn drain(reg: &IconRegistry) -> Vec<IconSetId> {
@@ -49,14 +41,14 @@ fn reregistering_a_held_set_shares_one_owner_rather_than_taking_a_slot() {
     let set_a = reg.register(Rc::clone(&data_a));
     let set_b = reg.register(Rc::clone(&data_b));
     assert_eq!(
-        resident(&reg),
+        reg.resident_ids(),
         vec![IconSetId::new(0, 0), IconSetId::new(1, 0)]
     );
 
     // Same allocation: same id, no second entry, so a per-frame loader does not grow the table.
     let again = reg.register(Rc::clone(&data_a));
     assert_eq!(again.handle(IconId::new(0)), set_a.handle(IconId::new(0)));
-    assert_eq!(resident(&reg).len(), 2);
+    assert_eq!(reg.resident_ids().len(), 2);
 
     drop(again);
     assert!(drain(&reg).is_empty(), "a live clone still holds the set");
@@ -67,7 +59,7 @@ fn reregistering_a_held_set_shares_one_owner_rather_than_taking_a_slot() {
 
     // Identical data in a separate allocation is a separate set: keyed on identity.
     let twin = reg.register(a());
-    assert_eq!(resident(&reg).len(), 3);
+    assert_eq!(reg.resident_ids().len(), 3);
     drop((set_a, set_b, twin));
 }
 
@@ -78,7 +70,7 @@ fn clones_of_the_registry_share_one_table() {
     let set = reg.register(a());
     let id = set.handle(IconId::new(0)).icon.set;
     assert_eq!(
-        resident(&clone),
+        clone.resident_ids(),
         vec![id],
         "the backend's clone sees the load"
     );
@@ -90,21 +82,16 @@ fn dropping_the_last_set_frees_its_slot_for_the_next_load() {
     let reg = IconRegistry::default();
     let set = reg.register(a());
     let id = set.handle(IconId::new(0)).icon.set;
-    let loaded_epoch = reg.epoch();
 
     let clone = set.clone();
     drop(set);
     assert!(drain(&reg).is_empty());
-    assert_eq!(resident(&reg), vec![id]);
+    assert_eq!(reg.resident_ids(), vec![id]);
 
     drop(clone);
     assert!(
-        reg.epoch() > loaded_epoch,
-        "a release moves the epoch as much as a load does",
-    );
-    assert!(
-        resident(&reg).is_empty(),
-        "a released set is not resident, so no prewarm rasterizes from it",
+        reg.resident_ids().is_empty(),
+        "a released set is not resident",
     );
     assert_eq!(
         reg.get(id).icons()[0].name,
@@ -112,7 +99,7 @@ fn dropping_the_last_set_frees_its_slot_for_the_next_load() {
         "but the slot still holds the atlas until the drain frees it",
     );
     assert_eq!(drain(&reg), vec![id], "and the drain reports it once");
-    assert!(resident(&reg).is_empty(), "the slot is empty now");
+    assert!(reg.resident_ids().is_empty(), "the slot is empty now");
     assert!(drain(&reg).is_empty(), "a drained release does not repeat");
 
     let next = reg.register(b());
@@ -155,7 +142,7 @@ fn loading_a_fresh_atlas_every_frame_cycles_a_fixed_pair_of_slots() {
         held = Some(next);
         reg.drain_released(|_| {});
         assert_eq!(
-            resident(&reg).len(),
+            reg.resident_ids().len(),
             1,
             "frame {frame} left more than one set resident",
         );
@@ -183,7 +170,7 @@ fn one_drain_reports_every_set_released_since_the_last() {
     let mut batches: Vec<Vec<IconSetId>> = Vec::new();
     reg.drain_released(|released| batches.push(released.to_vec()));
     assert_eq!(batches, vec![ids.to_vec()], "one call, both ids, in order");
-    assert_eq!(resident(&reg).len(), 1, "the held set stayed");
+    assert_eq!(reg.resident_ids().len(), 1, "the held set stayed");
 
     // Nothing released: the closure never runs, keeping the every-frame drain free.
     let mut ran = false;

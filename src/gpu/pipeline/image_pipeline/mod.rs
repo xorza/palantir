@@ -8,6 +8,7 @@
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::ShaderBody;
@@ -112,11 +113,12 @@ impl ImagePipeline {
 
     pub(crate) fn bind<'a>(
         &'a self,
+        binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         pipeline: &'a wgpu::RenderPipeline,
     ) {
-        pass.set_pipeline(pipeline);
-        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
+        binder.pipeline(pass, pipeline, &self.pipeline_layout);
+        binder.vertex(pass, 0, &self.instance_buffer.buffer);
     }
 
     /// Draw one image batch. `ids` is the frame's per-draw texture column and
@@ -127,12 +129,14 @@ impl ImagePipeline {
     ///
     /// An **absent id is skipped** silently: its owning
     /// [`ImageHandle`](crate::ImageHandle) was dropped. The check runs once per run.
-    pub(crate) fn draw(
+    pub(crate) fn draw<'a>(
         &self,
-        pass: &mut wgpu::RenderPass<'_>,
+        binder: &mut MainBinder<'a>,
+        pass: &mut wgpu::RenderPass<'a>,
         ImageBatch { ids, items }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
+        binder.forget_group(0);
         for run in Runs::new(items, |i| ids[i as usize]) {
             let Some(bind_group) = textures.bind_group(run.key) else {
                 continue;

@@ -20,6 +20,7 @@ const FLAG_MIN_NEAREST: u32 = /*{IMG_FLAG_MIN_NEAREST}*/;
 const FLAG_MAG_NEAREST: u32 = /*{IMG_FLAG_MAG_NEAREST}*/;
 const FLAG_TAPS_MEAN:   u32 = /*{IMG_FLAG_TAPS_MEAN}*/;
 const FLAG_TAPS_PEAK:   u32 = /*{IMG_FLAG_TAPS_PEAK}*/;
+const FLAG_CLAMP_TO_UV: u32 = /*{IMG_FLAG_CLAMP_TO_UV}*/;
 
 // Taps per axis at the widest footprint. Each tap is itself a bilinear 2×2,
 // so this many of them read about `2 * MAX_TAPS_PER_AXIS` texels per axis:
@@ -56,6 +57,8 @@ struct VsOut {
     @location(0)        uv:   vec2<f32>,
     @location(1) @interpolate(flat) tint: vec4<f32>,
     @location(2) @interpolate(flat) flags: u32,
+    // The UV rect, `(min, max)`, which a `FLAG_CLAMP_TO_UV` sample stays inside.
+    @location(3) @interpolate(flat) uv_rect: vec4<f32>,
 };
 
 @vertex
@@ -66,6 +69,7 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
     out.uv   = in.uv_min + c * in.uv_size;
     out.tint = in.tint;
     out.flags = in.flags;
+    out.uv_rect = vec4<f32>(in.uv_min, in.uv_min + in.uv_size);
     return out;
 }
 
@@ -219,6 +223,11 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let filtered = in.flags
         & (FLAG_MIN_NEAREST | FLAG_MAG_NEAREST | FLAG_TAPS_MEAN | FLAG_TAPS_PEAK);
     if (filtered == 0u) {
+        if ((in.flags & FLAG_CLAMP_TO_UV) != 0u) {
+            // Inset by half a texel, so the bilinear filter reaches no texel past the rect.
+            let half_texel = 0.5 / dims;
+            uv = clamp(uv, in.uv_rect.xy + half_texel, in.uv_rect.zw - half_texel);
+        }
         s = tap(uv, tiled);
     } else {
         let texel_dx = uv_dx * dims;
