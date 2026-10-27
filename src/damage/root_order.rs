@@ -1,20 +1,20 @@
-//! The paint order of a layer's roots between frames.
+//! The paint order of a plane's roots between frames.
 
 use crate::common::non_max_u32::NonMaxU32;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
-use crate::damage::layer_frame::LayerFrame;
+use crate::damage::plane_frame::PlaneFrame;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::scene::per_layer::PerLayer;
+use crate::scene::per_plane::PerPlane;
 use crate::scene::tree::Tree;
 
-/// Each layer's roots from last frame in paint order: the child list of a virtual parent the layer would be as a node.
+/// Each plane's roots from last frame in paint order: the child list of a virtual parent the plane would be as a node.
 ///
 /// A node's children are paint rows, so swapped children flip the row order and the walk damages their overlap. A root has no parent row and no hash includes its position, so two overlapping roots raised past each other with the same content and rects would read as unchanged. Matched by id, so adding or removing a root shifts no other; only the order of roots both frames hold is compared.
 #[derive(Debug, Default)]
 pub(super) struct RootOrder {
-    prev: PerLayer<Vec<WidgetId>>,
-    /// Scratch: last frame's roots of the layer being diffed with their positions, sorted by id.
+    prev: PerPlane<Vec<WidgetId>>,
+    /// Scratch: last frame's roots of the plane being diffed with their positions, sorted by id.
     poss: Vec<(WidgetId, NonMaxU32)>,
     /// Scratch: each current root's position last frame, `None` for a new root.
     matched: Vec<Option<NonMaxU32>>,
@@ -24,15 +24,16 @@ pub(super) struct RootOrder {
 }
 
 impl RootOrder {
-    /// Damage into `out` the overlap of every two roots of `frame`'s layer whose order flipped, and remember this frame's order.
-    pub(super) fn diff(&mut self, frame: LayerFrame<'_>, out: &mut Vec<Rect>) {
-        let LayerFrame {
-            layer,
+    /// Damage into `out` the overlap of every two roots of `frame`'s plane whose order flipped, and remember this frame's order.
+    pub(super) fn diff(&mut self, frame: PlaneFrame<'_>, out: &mut Vec<Rect>) {
+        let PlaneFrame {
+            plane,
             tree,
             cascade,
         } = frame;
         let ids = tree.records.widget_id();
-        let prev = &self.prev[layer];
+        self.prev.ensure(plane);
+        let prev = &self.prev[plane];
         if prev.iter().copied().eq(roots(tree)) {
             return;
         }
@@ -63,8 +64,9 @@ impl RootOrder {
     }
 
     /// Remember `frame`'s root order and damage nothing, for a frame that repaints every root anyway.
-    pub(super) fn remember(&mut self, frame: LayerFrame<'_>) {
-        let prev = &mut self.prev[frame.layer];
+    pub(super) fn remember(&mut self, frame: PlaneFrame<'_>) {
+        self.prev.ensure(frame.plane);
+        let prev = &mut self.prev[frame.plane];
         prev.clear();
         prev.extend(roots(frame.tree));
     }

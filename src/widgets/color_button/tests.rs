@@ -179,9 +179,9 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
 
     let body_id = id.with("panel");
     let body = h.node_of(body_id).expect("popup body recorded");
-    assert_eq!(body.layer, Layer::Popup);
+    assert_eq!(body.plane.layer, Layer::Popup);
     let chrome =
-        h.ui.tree(body.layer)
+        h.ui.tree(body.plane.layer)
             .chrome(body.node)
             .expect("the popup body paints chrome");
     let rect = |id: WidgetId| h.rect(id).expect("arranged");

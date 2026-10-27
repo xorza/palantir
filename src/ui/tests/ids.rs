@@ -5,6 +5,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
 use crate::ui::tests::support::SURFACE;
@@ -100,7 +101,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 fn duplicate_explicit_widget_ids_are_outlined() {
     let mut h = UiHarness::new(UVec2::new(100, 100));
     let button_node = record_duplicate_ids(&mut h).first_node;
-    let button_rect = h.ui.layout[Layer::Main].rect[button_node.idx()];
+    let button_rect = h.ui.layout[Plane::MAIN].rect[button_node.idx()];
     let outlines = collision_outlines(&h.ui);
     assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
     let matched = outlines.iter().any(|rect| {
@@ -161,28 +162,28 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     );
     let pair = h.ui.forest.collisions[0];
     assert_eq!(
-        pair.first.layer,
+        pair.first.plane.layer,
         Layer::Main,
         "first occurrence should be in Main, got {:?}",
-        pair.first.layer,
+        pair.first.plane.layer,
     );
     assert_eq!(
-        pair.second.layer,
+        pair.second.plane.layer,
         Layer::Popup,
         "second occurrence should be in Popup, got {:?}",
-        pair.second.layer,
+        pair.second.plane.layer,
     );
 }
 
-/// Each endpoint's outline comes from its own layer's `LayerLayout`.
+/// Each endpoint's outline comes from its own layer's `PlaneLayout`.
 #[cfg(debug_assertions)]
 #[test]
 fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
     let mut h = UiHarness::new(SURFACE);
     record_cross_layer_duplicate_ids(&mut h);
     let pair = h.ui.forest.collisions[0];
-    let main_rect = h.ui.layout[Layer::Main].rect[pair.first.node.idx()];
-    let popup_rect = h.ui.layout[Layer::Popup].rect[pair.second.node.idx()];
+    let main_rect = h.ui.layout[Plane::MAIN].rect[pair.first.node.idx()];
+    let popup_rect = h.ui.layout[Plane::base(Layer::Popup)].rect[pair.second.node.idx()];
     let outlines = collision_outlines(&h.ui);
     assert_eq!(
         outlines,
@@ -219,26 +220,27 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
     };
     let node_for = |h: &UiHarness, layer: Layer, id: WidgetId| {
         let at = h.node_of(id).expect("recorded");
-        assert_eq!(at.layer, layer);
+        assert_eq!(at.plane.layer, layer);
         at.node
     };
 
     h.frame(&mut record);
     let main_node = node_for(&h, Layer::Main, main_id);
     let popup_node = node_for(&h, Layer::Popup, popup_id);
-    let cold_main = h.ui.layout[Layer::Main].rect[main_node.idx()];
-    let cold_popup = h.ui.layout[Layer::Popup].rect[popup_node.idx()];
+    let cold_main = h.ui.layout[Plane::MAIN].rect[main_node.idx()];
+    let cold_popup = h.ui.layout[Plane::base(Layer::Popup)].rect[popup_node.idx()];
     assert_eq!(cold_main, Rect::new(0.0, 0.0, 40.0, 20.0));
     assert_eq!(cold_popup, Rect::new(80.0, 60.0, 70.0, 30.0));
 
-    let main_span = h.ui.layout[Layer::Main].text_spans[main_node.idx()];
-    let popup_span = h.ui.layout[Layer::Popup].text_spans[popup_node.idx()];
+    let main_span = h.ui.layout[Plane::MAIN].text_spans[main_node.idx()];
+    let popup_span = h.ui.layout[Plane::base(Layer::Popup)].text_spans[popup_node.idx()];
     assert_eq!(main_span, Span::new(0, 1));
     assert_eq!(popup_span, Span::new(0, 1));
-    assert_eq!(h.ui.layout[Layer::Main].text_shapes.len(), 1);
-    assert_eq!(h.ui.layout[Layer::Popup].text_shapes.len(), 1);
-    let cold_main_key = h.ui.layout[Layer::Main].text_shapes[main_span.start as usize].key;
-    let cold_popup_key = h.ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key;
+    assert_eq!(h.ui.layout[Plane::MAIN].text_shapes.len(), 1);
+    assert_eq!(h.ui.layout[Plane::base(Layer::Popup)].text_shapes.len(), 1);
+    let cold_main_key = h.ui.layout[Plane::MAIN].text_shapes[main_span.start as usize].key;
+    let cold_popup_key =
+        h.ui.layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key;
     assert_ne!(cold_main_key, cold_popup_key);
 
     h.engines.layout.forget_last_run();
@@ -249,14 +251,17 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
     );
     let main_node = node_for(&h, Layer::Main, main_id);
     let popup_node = node_for(&h, Layer::Popup, popup_id);
-    assert_eq!(h.ui.layout[Layer::Main].rect[main_node.idx()], cold_main);
-    assert_eq!(h.ui.layout[Layer::Popup].rect[popup_node.idx()], cold_popup);
+    assert_eq!(h.ui.layout[Plane::MAIN].rect[main_node.idx()], cold_main);
     assert_eq!(
-        h.ui.layout[Layer::Main].text_shapes[main_span.start as usize].key,
+        h.ui.layout[Plane::base(Layer::Popup)].rect[popup_node.idx()],
+        cold_popup
+    );
+    assert_eq!(
+        h.ui.layout[Plane::MAIN].text_shapes[main_span.start as usize].key,
         cold_main_key,
     );
     assert_eq!(
-        h.ui.layout[Layer::Popup].text_shapes[popup_span.start as usize].key,
+        h.ui.layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key,
         cold_popup_key,
     );
 }
@@ -280,7 +285,7 @@ fn collisions_do_not_record_into_debug_layer() {
         "collision should have been recorded",
     );
     assert_eq!(
-        h.ui.forest.trees[Layer::Debug].records.len(),
+        h.ui.forest.trees[Plane::base(Layer::Debug)].records.len(),
         0,
         "encoder-direct overlay path must not record nodes into Layer::Debug",
     );
@@ -301,7 +306,7 @@ fn auto_id_collisions_disambiguate() {
         });
     });
     // Synthetic viewport root + 1 panel + 3 chips = 5 distinct ids, no panic.
-    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 5);
+    assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 5);
 }
 
 #[test]

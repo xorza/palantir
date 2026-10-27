@@ -8,7 +8,7 @@ use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::intrinsic_walk::IntrinsicWalk;
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::layer_input::LayerInput;
+use crate::layout::plane_input::PlaneInput;
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
@@ -22,7 +22,7 @@ use crate::text::system::TextRunSlot;
 /// reads and the text arena its leaves shape from.
 ///
 /// The query is a pure function of the subtree and must not write the frame's
-/// text shapes; holding no [`LayerLayout`](crate::layout::layer_layout::LayerLayout)
+/// text shapes; holding no [`PlaneLayout`](crate::layout::plane_layout::PlaneLayout)
 /// enforces that by construction, where a
 /// [`LayoutPass`](crate::layout::pass::LayoutPass) would hold one.
 #[derive(Debug)]
@@ -33,7 +33,7 @@ pub(crate) struct IntrinsicPass<'a> {
 }
 
 impl<'a> IntrinsicPass<'a> {
-    pub(crate) const fn new(engine: &'a mut LayoutEngine, input: LayerInput<'a>) -> Self {
+    pub(crate) const fn new(engine: &'a mut LayoutEngine, input: PlaneInput<'a>) -> Self {
         Self {
             engine,
             tree: input.tree,

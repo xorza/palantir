@@ -9,7 +9,7 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::renderer::frontend::Frontend;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::PaintRepeat;
@@ -207,9 +207,9 @@ fn text_reuse_is_window_local_while_cosmic_buffers_are_shared() {
     let text_id = WidgetId::from_hash("shared-text");
 
     a.frame(|ui| text_window(ui, "window A", 120.0));
-    let a_key = a.ui.layout[Layer::Main].text_shapes[0].buffer_key();
+    let a_key = a.ui.layout[Plane::MAIN].text_shapes[0].buffer_key();
     b.frame(|ui| text_window(ui, "window B", 120.0));
-    let b_key = b.ui.layout[Layer::Main].text_shapes[0].buffer_key();
+    let b_key = b.ui.layout[Plane::MAIN].text_shapes[0].buffer_key();
 
     assert_ne!(a_key, b_key, "different window text needs distinct keys");
     for (label, shaper) in [("A", a.ui.resources.text()), ("B", b.ui.resources.text())] {
@@ -353,7 +353,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
 
     let idle_first = idle.frame(|ui| blinking_text(ui, "idle interned window text"));
     assert_eq!(idle_first.repaint_after, Some(HALF));
-    let idle_key = idle.ui.layout[Layer::Main].text_shapes[0].buffer_key();
+    let idle_key = idle.ui.layout[Plane::MAIN].text_shapes[0].buffer_key();
 
     active.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -455,7 +455,7 @@ fn text_face_hatches_compose_on_the_lowered_record() {
             .show(ui);
     });
 
-    let faces: Vec<(FontWeight, FontSlant)> = h.ui.forest.trees[Layer::Main]
+    let faces: Vec<(FontWeight, FontSlant)> = h.ui.forest.trees[Plane::MAIN]
         .shapes
         .records
         .iter()
@@ -507,7 +507,7 @@ fn widget_text_inputs_lower_exact_bytes() {
         interned_text.all(),
         "borrowedownedowned internedinternedformatted 7"
     );
-    let records = &h.ui.forest.trees[Layer::Main].shapes.records;
+    let records = &h.ui.forest.trees[Plane::MAIN].shapes.records;
     assert_eq!(records.len(), 5);
     for (record, expected) in records.iter().zip([
         "borrowed",
@@ -601,7 +601,7 @@ fn interning_per_pass_records_the_expected_bytes() {
 
     let store = &h.ui.forest.record_store;
     let interned_text = store.interned_text();
-    let records = &h.ui.forest.trees[Layer::Main].shapes.records;
+    let records = &h.ui.forest.trees[Plane::MAIN].shapes.records;
     let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
         panic!("expected one text shape, got {records:?}");
     };

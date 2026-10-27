@@ -97,6 +97,27 @@ fn a_scope_silences_the_layers_strictly_below_it() {
     assert_eq!(seen[Layer::Tooltip.idx()], 1);
 }
 
+/// A scope on a nested plane silences the plane it opened from, as one on a higher layer does:
+/// the overlay opened last reads the keys, the one under it and `Main` read none.
+#[test]
+fn a_nested_overlays_scope_silences_its_opener() {
+    let record = |ui: &mut Ui| {
+        let mut seen = [0; 3];
+        seen[0] = ui.keyboard_events().len();
+        popup_scope(ui, "outer", |ui| {
+            seen[1] = ui.keyboard_events().len();
+            popup_scope(ui, "inner", |ui| seen[2] = ui.keyboard_events().len());
+        });
+        seen
+    };
+    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    h.frame(|ui| {
+        record(ui);
+    });
+    press_escape(&mut h);
+    assert_eq!(h.frame_value(record), [0, 0, 1], "main, outer, inner");
+}
+
 /// A scope that stops being recorded stops owning input, with no release call.
 #[test]
 fn a_scope_that_stops_recording_reopens_the_stream() {

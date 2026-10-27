@@ -10,19 +10,19 @@ use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
-use crate::layout::layer_layout::LayerLayout;
 use crate::layout::pass::ReplayOrigin;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
 use glam::Vec2;
 use std::ops::Range;
 
-/// Where a measure-cache hit lands: the live tree, the subtree's node range in it, and the layer's output columns.
+/// Where a measure-cache hit lands: the live tree, the subtree's node range in it, and the plane's output columns.
 #[derive(Debug)]
 pub(super) struct RestoreTarget<'a> {
     pub(super) tree: &'a Tree,
     pub(super) subtree: Range<usize>,
-    pub(super) layer: &'a mut LayerLayout,
+    pub(super) plane: &'a mut PlaneLayout,
 }
 
 /// Per-frame intermediate state, reset at the top of [`LayoutEngine::run`](crate::layout::engine::LayoutEngine::run). Capacity is retained so steady state is alloc-free.
@@ -32,13 +32,13 @@ pub(super) struct RestoreTarget<'a> {
 ///
 /// 1. **Drained on measure exit** — driver stacks, pushed on enter and truncated on exit, so a [`MeasureCache`](crate::layout::cache::MeasureCache) hit that skips a measure is invisible to them.
 ///
-/// 2. **Retained measure → arrange/record** — `desired`, `floor`, `LayerLayout::scroll_content` and `grid.track_state`. The cache round-trips the node-indexed ones through [`CachedSubtree`]. `grid.track_state` is per-grid, so a hit must call [`Self::restore_after_cache_hit`] to splat [`CachedSubtree::tracks`] back, or every cell collapses to (0, 0).
+/// 2. **Retained measure → arrange/record** — `desired`, `floor`, `PlaneLayout::scroll_content` and `grid.track_state`. The cache round-trips the node-indexed ones through [`CachedSubtree`]. `grid.track_state` is per-grid, so a hit must call [`Self::restore_after_cache_hit`] to splat [`CachedSubtree::tracks`] back, or every cell collapses to (0, 0).
 ///
 /// 3. **Node-indexed measure memos** — `intrinsics`, `available_q`, `stable_from`. Nothing truncates them, and [`MeasureCache::capture_tree`](crate::layout::cache::MeasureCache::capture_tree) reads them after arrange, so a hit subtree must splat them back or its snapshot is silently uncacheable.
 ///
 /// **Adding a field to category (2)** takes a snapshot column, a [`CachedSubtree`] field and a restore branch in [`Self::restore_after_cache_hit`]; exhaustive destructuring enforces all three.
 ///
-/// `arrange_src` is frame-local and in none of the three; measure stamps it on each node of a short-circuited subtree, and [`LayoutPass::replay_arranged`](crate::layout::pass::LayoutPass::replay_arranged) replays rects from it. `local` rides beside `LayerLayout::rect`; `replay_origins` is drained per replay.
+/// `arrange_src` is frame-local and in none of the three; measure stamps it on each node of a short-circuited subtree, and [`LayoutPass::replay_arranged`](crate::layout::pass::LayoutPass::replay_arranged) replays rects from it. `local` rides beside `PlaneLayout::rect`; `replay_origins` is drained per replay.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutScratch {
     /// Test-only observability for this run; see [`LayoutCounters`].
@@ -70,7 +70,7 @@ impl LayoutScratch {
         let n = tree.records.len();
         let Self {
             counters: _,
-            // Decided by `LayoutEngine::run` before the layer loop; resetting here would wipe it.
+            // Decided by `LayoutEngine::run` before the plane loop; resetting here would wipe it.
             cache_rebuild: _,
             grid,
             wrap: _,
@@ -112,7 +112,7 @@ impl LayoutScratch {
         let RestoreTarget {
             tree,
             subtree,
-            layer,
+            plane,
         } = target;
         // Destructured exhaustively so a new `CachedSubtree` column cannot go unrestored. The `_` binding: `root` describes the snapshot, and the measure-hit site returns it.
         let CachedSubtree {
@@ -136,12 +136,12 @@ impl LayoutScratch {
         for (src, offset) in self.arrange_src[subtree.clone()].iter_mut().zip(0..) {
             *src = Some(NonMaxU32::index((nodes_base + offset) as usize));
         }
-        layer.scroll_content[subtree.clone()].copy_from_slice(scroll_content);
+        plane.scroll_content[subtree.clone()].copy_from_slice(scroll_content);
         // Append the snapshot's text-shape range to the live buffer, rebasing its spans by `dest_start`.
-        let dest_start = layer.text_shapes.len() as u32;
-        layer.text_shapes.extend_from_slice(text_shapes);
+        let dest_start = plane.text_shapes.len() as u32;
+        plane.text_shapes.extend_from_slice(text_shapes);
         for (i, snap_span) in text_spans.iter().copied().enumerate() {
-            layer.text_spans[subtree.start + i] = if snap_span.len == 0 {
+            plane.text_spans[subtree.start + i] = if snap_span.len == 0 {
                 Span::default()
             } else {
                 Span {

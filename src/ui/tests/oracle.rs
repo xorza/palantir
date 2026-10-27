@@ -31,6 +31,12 @@ struct Knobs {
     nudge: f32,
     extra: bool,
     hidden: bool,
+    /// `front` opens inside `back`'s body, one plane up, rather than beside it.
+    nest_front: bool,
+    /// Moves `front` right of `back`, so the two overlap less.
+    front_shift: f32,
+    /// A dialog holding a popup of its own, which records above the dialog.
+    dialog: bool,
 }
 
 impl Knobs {
@@ -43,6 +49,9 @@ impl Knobs {
         nudge: 10.0,
         extra: false,
         hidden: false,
+        nest_front: false,
+        front_shift: 0.0,
+        dialog: false,
     };
 }
 
@@ -127,22 +136,56 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     } else {
         ["back", "front"]
     };
-    for name in order {
-        let color = if name == "front" {
-            RgbaF32::srgb(1.0, 0.5, 0.0)
-        } else {
-            RgbaF32::srgb(0.0, 0.5, 1.0)
-        };
-        ui.layer(Layer::Popup)
-            .fixed_at(Vec2::new(300.0, 40.0))
+    if k.nest_front {
+        overlay(ui, "back", 0.0, |ui| {
+            overlay(ui, "front", k.front_shift, |_| {});
+        });
+    } else {
+        for name in order {
+            let shift = if name == "front" { k.front_shift } else { 0.0 };
+            overlay(ui, name, shift, |_| {});
+        }
+    }
+    if k.dialog {
+        ui.layer(Layer::Modal)
+            .fixed_at(Vec2::new(40.0, 200.0))
             .show(|ui| {
                 Block::new()
-                    .id(WidgetId::from_hash(name))
-                    .size(60.0)
-                    .chrome(fill(color))
+                    .id(WidgetId::from_hash("dialog"))
+                    .size(80.0)
+                    .chrome(fill(RgbaF32::srgb(0.4, 0.4, 0.4)))
                     .show(ui);
+                ui.layer(Layer::Popup)
+                    .fixed_at(Vec2::new(60.0, 220.0))
+                    .show(|ui| {
+                        Block::new()
+                            .id(WidgetId::from_hash("dialog-popup"))
+                            .size(50.0)
+                            .chrome(fill(RgbaF32::srgb(0.9, 0.1, 0.6)))
+                            .show(ui);
+                    });
             });
     }
+}
+
+/// A 60 px popup block named `name` at (300 + `shift`, 40), with `body` recorded in its layer
+/// scope after the block.
+fn overlay(ui: &mut Ui, name: &'static str, shift: f32, body: impl FnOnce(&mut Ui)) {
+    let color = if name == "front" {
+        RgbaF32::srgb(1.0, 0.5, 0.0)
+    } else {
+        RgbaF32::srgb(0.0, 0.5, 1.0)
+    };
+    ui.layer(Layer::Popup)
+        .fixed_at(Vec2::new(300.0 + shift, 40.0))
+        .show(|ui| {
+            Block::new()
+                .id(WidgetId::from_hash(name))
+                .size(60.0)
+                .chrome(fill(color))
+                .show(ui);
+            body(ui);
+        });
 }
 
 /// Run `script`, one knob set per frame, with every oracle after each; two primed frames warm the baselines.
@@ -264,4 +307,68 @@ fn resize_between_frames() {
         let report = h.frame(|ui| scene(ui, Knobs::BASE, &picture));
         oracle.check_frame(&h, &report);
     }
+}
+
+/// `front` moves from beside `back` into its body, one plane up, and back out: same content and
+/// rects, so only the plane change tells the retained results apart.
+#[test]
+fn an_overlay_nests_inside_another_and_back() {
+    let nested = Knobs {
+        nest_front: true,
+        ..Knobs::BASE
+    };
+    run(&[nested, Knobs::BASE, nested]);
+}
+
+/// A nested overlay moves and stays nested: the move is confined to its plane.
+#[test]
+fn a_nested_overlay_moves() {
+    let nested = Knobs {
+        nest_front: true,
+        ..Knobs::BASE
+    };
+    run(&[
+        nested,
+        Knobs {
+            front_shift: 30.0,
+            ..nested
+        },
+        nested,
+    ]);
+}
+
+/// A dialog opens with a popup nested in it, which records on the plane above, and closes again.
+#[test]
+fn a_dialog_with_a_nested_popup_opens_and_closes() {
+    run(&[
+        Knobs {
+            dialog: true,
+            ..Knobs::BASE
+        },
+        Knobs::BASE,
+        Knobs {
+            dialog: true,
+            ..Knobs::BASE
+        },
+    ]);
+}
+
+/// `front` paints under `back` as a sibling, then opens inside `back`, one plane up and over it:
+/// the order of the overlap flips through the plane change alone, and the damage covers it.
+#[test]
+fn an_overlay_rises_a_plane_over_its_sibling() {
+    run(&[
+        Knobs {
+            swap_roots: true,
+            ..Knobs::BASE
+        },
+        Knobs {
+            nest_front: true,
+            ..Knobs::BASE
+        },
+        Knobs {
+            swap_roots: true,
+            ..Knobs::BASE
+        },
+    ]);
 }

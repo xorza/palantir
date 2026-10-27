@@ -1,6 +1,6 @@
 //! Per-frame damage detection, computed in [`Ui::frame`](crate::Ui::frame)
 //! after `compute_rollups`, rebuilding the prev-frame snapshot in the same
-//! pass. `LayerWalk::classify` reads `DamageEngine.prev` to pick a tier and
+//! pass. `PlaneWalk::classify` reads `DamageEngine.prev` to pick a tier and
 //! the tier's arm writes the same key back; the read repeats so a live `Entry`
 //! does not pin the map across the dispatch.
 //!
@@ -42,9 +42,9 @@ pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod frame_baseline;
 mod inverted_overlaps;
-mod layer_frame;
-mod layer_walk;
 pub(crate) mod node_snapshot;
+mod plane_frame;
+mod plane_walk;
 pub(crate) mod region;
 mod root_order;
 mod row_matcher;

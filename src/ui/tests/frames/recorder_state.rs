@@ -62,7 +62,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
          before the cascade has seen it",
     );
     let endpoint = h.ui.cascade.by_id[&self_id];
-    let chrome = h.ui.forest.trees[endpoint.layer]
+    let chrome = h.ui.forest.trees[endpoint.plane]
         .chrome(endpoint.node)
         .expect("disabled button chrome");
     let ShapeBrush::Solid(actual_fill) = chrome.fill else {

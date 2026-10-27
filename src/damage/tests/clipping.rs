@@ -9,6 +9,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::ui::Ui;
@@ -245,7 +246,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // to (host_width - padding-fold), not span 400 px.
     let cascade = &h.ui.cascade();
     let host_ep = *cascade.by_id.get(&host_id).expect("host node recorded");
-    let host_entry_idx = (cascade.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
+    let host_entry_idx = (cascade.planes[host_ep.plane].entries_base + host_ep.node.0) as usize;
     let host_rect = cascade.entries[host_entry_idx].rect;
     let tree = h.ui.tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
@@ -253,7 +254,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // The host paints chrome (the BLUE fill), so row 0 is the chrome `Paint`,
     // whose screen is always the 80x40 arranged rect and would pass even with the
     // clip regressed. The shape under test is row 1.
-    let paint_arena = &cascade.layers[Layer::Main].paint_arena;
+    let paint_arena = &cascade.planes[Plane::MAIN].paint_arena;
     let node_span = paint_arena.node_spans[host_ep.node.idx()];
     assert_eq!(node_span.len, 2, "chrome row + shape row");
     let shape_rect = paint_arena.rows[node_span.start as usize + 1].screen;

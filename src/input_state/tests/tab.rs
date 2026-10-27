@@ -471,3 +471,75 @@ fn arrows_walk_an_arrow_group() {
         }
     }
 }
+
+/// A popup opened inside a dialog records above it and traps Tab as a popup does; the dialog's
+/// own stops are out of reach until it closes.
+#[test]
+fn a_popup_nested_in_a_dialog_traps_tab() {
+    let record = |ui: &mut Ui| {
+        ui.layer(Layer::Modal).show(|ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                stop(ui, "m1");
+                stop(ui, "m2");
+                ui.layer(Layer::Popup).show(|ui| {
+                    Panel::vstack().auto_id().show(ui, |ui| {
+                        stop(ui, "p1");
+                        stop(ui, "p2");
+                    });
+                });
+            });
+        });
+    };
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(record);
+    h.set_focus(id("p1"));
+    h.frame(record);
+    for want in ["p2", "p1"] {
+        press(&mut h, false, &mut { record });
+        assert_eq!(h.focus(), Some(id(want)));
+    }
+}
+
+/// A dialog opened from inside a dialog takes focus as it appears, traps Tab on its own stops, and
+/// gives focus back to the outer dialog's stop as it closes: the topmost dialog is the one on the
+/// highest plane.
+#[test]
+fn a_dialog_in_a_dialog_takes_focus_and_gives_it_back() {
+    let record = |inner: bool| {
+        move |ui: &mut Ui| {
+            ui.layer(Layer::Modal).show(|ui| {
+                Panel::vstack().auto_id().show(ui, |ui| {
+                    stop(ui, "m1");
+                    stop(ui, "m2");
+                    if inner {
+                        ui.layer(Layer::Modal).show(|ui| {
+                            Panel::vstack().auto_id().show(ui, |ui| {
+                                stop(ui, "i1");
+                                stop(ui, "i2");
+                            });
+                        });
+                    }
+                });
+            });
+        }
+    };
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(record(false));
+    h.frame(record(false));
+    assert_eq!(h.focus(), Some(id("m1")), "the outer dialog took focus");
+    press(&mut h, false, &mut record(false));
+    assert_eq!(h.focus(), Some(id("m2")));
+
+    h.frame(record(true));
+    assert_eq!(h.focus(), Some(id("i1")), "the inner dialog takes focus");
+    for want in ["i2", "i1"] {
+        press(&mut h, false, &mut record(true));
+        assert_eq!(h.focus(), Some(id(want)), "Tab stays in the inner dialog");
+    }
+    h.frame(record(false));
+    assert_eq!(
+        h.focus(),
+        Some(id("m2")),
+        "closing gives focus back to its opener"
+    );
+}

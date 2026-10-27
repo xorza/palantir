@@ -216,7 +216,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
     }
 }
 
-/// Soundness repro: the damage cull must test `LayerCascade::subtree_paint_rects` (own extent rolled up with descendants'), or a descendant overflowing its parent is skipped though its pixels lie in damage (panning a node graph left stale trails). Parent Canvas Fixed 50×50, child Fixed 40×40 `.pos(60, 0)`, damage = the child's rect: the child must emit a rect quad.
+/// Soundness repro: the damage cull must test `PlaneCascade::subtree_paint_rects` (own extent rolled up with descendants'), or a descendant overflowing its parent is skipped though its pixels lie in damage (panning a node graph left stale trails). Parent Canvas Fixed 50×50, child Fixed 40×40 `.pos(60, 0)`, damage = the child's rect: the child must emit a rect quad.
 #[test]
 fn damage_filter_includes_descendant_overflowing_parent_rect() {
     let mut h = UiHarness::new(UVec2::new(400, 400));

@@ -175,7 +175,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
 
     let derived = trigger_id.with("bubble");
     let bubble = h.node_of(derived).expect("tooltip bubble node");
-    assert_eq!(bubble.layer, Layer::Tooltip);
+    assert_eq!(bubble.plane.layer, Layer::Tooltip);
     let tree = h.ui.tree(Layer::Tooltip);
     let idx = bubble.node.idx();
     assert_eq!(tree.records.layout()[idx].padding, Spacing::ZERO);
@@ -192,7 +192,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
             .show(ui);
     });
     assert_eq!(
-        h.node_of(explicit).map(|at| at.layer),
+        h.node_of(explicit).map(|at| at.plane.layer),
         Some(Layer::Tooltip),
         "an explicit id must reach the recorded bubble",
     );
@@ -542,21 +542,6 @@ fn tooltip_inside_popup_records_without_panic() {
         2,
         "the Tooltip layer holds the bubble raised inside the popup, and its label",
     );
-}
-
-/// A nested layer ranking at or below the current scope is rejected: with no
-/// per-node z-index `Layer::PAINT_ORDER` is the only ordering, so a `Popup` (1)
-/// in a `Modal` (2) body would paint under the modal. `push_layer` catches this
-/// in every build.
-#[test]
-#[should_panic(expected = "must rank above")]
-fn layer_below_current_scope_panics() {
-    let mut h = UiHarness::new(SURFACE);
-    h.frame(|ui| {
-        ui.layer(Layer::Modal).show(|ui| {
-            ui.layer(Layer::Popup).show(|_ui| {});
-        });
-    });
 }
 
 /// A disabled trigger is when the user most wants to know *why*, so

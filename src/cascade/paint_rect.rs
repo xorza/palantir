@@ -3,7 +3,7 @@
 use crate::cascade::paint::Paint;
 use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
-use crate::layout::layer_layout::LayerLayout;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -96,7 +96,7 @@ impl PaintSpan<'_> {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PaintRectCtx<'a> {
     pub(super) tree: &'a Tree,
-    pub(super) layout: &'a LayerLayout,
+    pub(super) layout: &'a PlaneLayout,
     pub(super) node: NodeId,
     pub(super) visible_rect: Rect,
     pub(super) parent_transform: TranslateScale,

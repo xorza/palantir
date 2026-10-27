@@ -1,4 +1,4 @@
-//! One layer's cascade columns.
+//! One plane's cascade columns.
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::paint::PaintArena;
@@ -6,7 +6,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::non_max_u32::NonMaxU32;
 use crate::primitives::geometry::rect::Rect;
 
-/// All per-layer cascade state. `cascade_inputs`, `subtree_paint_rects` and
+/// All per-plane cascade state. `cascade_inputs`, `subtree_paint_rects` and
 /// `paint_arena` are produced together by
 /// [`CascadeEngine::run_tree`](crate::cascade::engine::CascadeEngine::run_tree),
 /// retained together between frames, and read together by the damage diff and
@@ -33,7 +33,7 @@ use crate::primitives::geometry::rect::Rect;
 /// - [`Self::paint_rects`] and [`Self::hit_rows`] are read only by the
 ///   incremental walk, to refresh a node in place.
 #[derive(Debug, Default)]
-pub(crate) struct LayerCascade {
+pub(crate) struct PlaneCascade {
     /// Per-node `cascade_input` fingerprint, indexed like `Tree::records`:
     /// ancestor state plus own arranged rect hash, with the cascade-resolved
     /// `invisible` bit high (see [`CascadeInputHash`]). Damage pairs the full
@@ -61,7 +61,7 @@ pub(crate) struct LayerCascade {
     pub(crate) paint_arena: PaintArena,
     /// Per-node `Tree.rollups.subtree` the retained [`Self::paint_arena`] rows
     /// were built from: the per-node half of the validity gate whose
-    /// whole-layer half is [`Cascade::key`](crate::cascade::Cascade::key). An
+    /// whole-forest half is [`Cascade::key`](crate::cascade::Cascade::key). An
     /// incremental repair recomputes a node where this disagrees with the live
     /// rollup or its `cascade_input` moved, and re-stamps it.
     ///
@@ -82,17 +82,20 @@ pub(crate) struct LayerCascade {
     /// nodes hold a row is structural, so the incremental walk rewrites a moved
     /// node's row through this.
     pub(super) hit_rows: Vec<Option<NonMaxU32>>,
-    /// Offset of this layer's first `EntryRow` in
+    /// Offset of this plane's first `EntryRow` in
     /// [`Cascade::entries`](crate::cascade::Cascade::entries), fixed for the
-    /// layer's run and set at `reset_for`. A full rebuild pushes one entry per
+    /// plane's run and set at `reset_for`. A full rebuild pushes one entry per
     /// node; incremental runs rewrite the block in place, so the entry index is
     /// `entries_base + node.0`. With the per-pass
     /// [`Cascade::by_id`](crate::cascade::Cascade::by_id) snapshot this gives
     /// O(1) `WidgetId → entry` without a per-widget hashmap fill.
     pub(crate) entries_base: u32,
+    /// The plane's `PlaneLayout::rect_hash` these columns were last walked against: while it
+    /// holds, the incremental walk skips subtrees whose inputs held.
+    pub(super) rects: ContentHash,
 }
 
-impl LayerCascade {
+impl PlaneCascade {
     /// Reset all per-node columns for `n_nodes` and stamp `entries_base` in one
     /// call, so a caller cannot reset but forget the offset. Per-node columns
     /// are resized and overwritten in place during the walk, retaining
@@ -114,12 +117,12 @@ impl LayerCascade {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::cascade::internals::OwnedPaint;
-    use crate::cascade::layer_cascade::LayerCascade;
+    use crate::cascade::plane_cascade::PlaneCascade;
     use crate::scene::tree::Tree;
     use crate::scene::tree::iter::TreeItem;
     use crate::scene::tree::node_id::NodeId;
 
-    impl LayerCascade {
+    impl PlaneCascade {
         /// Append `node`'s painting rows and its descendants' with their widgets, in encoder draw order.
         pub(crate) fn owned_paints_of(&self, tree: &Tree, node: NodeId, out: &mut Vec<OwnedPaint>) {
             let arena = &self.paint_arena;

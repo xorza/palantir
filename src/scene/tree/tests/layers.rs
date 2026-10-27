@@ -5,13 +5,16 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
+use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::placement::{Origin, Placement};
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::tests::support::SURFACE;
 use crate::shape::Shape;
 use crate::shape::paint::quad_shape::QuadShape;
@@ -20,12 +23,12 @@ use crate::shape::rect::{RectKind, RectShape};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 #[test]
 fn ui_layer_records_popup_into_separate_tree() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let popup_anchor = glam::Vec2::new(50.0, 60.0);
+    let popup_anchor = Vec2::new(50.0, 60.0);
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-root"))
@@ -81,7 +84,7 @@ fn ui_layer_records_popup_into_separate_tree() {
 fn ui_layer_size_caps_overlay_available() {
     use crate::primitives::geometry::size::Size;
     const SURF: UVec2 = UVec2::new(400, 300);
-    let anchor = glam::Vec2::new(50.0, 40.0);
+    let anchor = Vec2::new(50.0, 40.0);
     let cases: &[(Option<Size>, Size)] = &[
         (None, Size::new(350.0, 260.0)),
         (Some(Size::new(120.0, 80.0)), Size::new(120.0, 80.0)),
@@ -135,7 +138,7 @@ fn empty_popup_body_leaves_popup_tree_empty() {
 
 #[test]
 fn forest_independence_across_recording_orders() {
-    let popup_anchor = glam::Vec2::new(10.0, 10.0);
+    let popup_anchor = Vec2::new(10.0, 10.0);
     let record_main = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-root"))
@@ -180,7 +183,7 @@ fn forest_independence_across_recording_orders() {
 #[test]
 fn mid_recording_popup_with_text_renders_through_encoder() {
     let mut h = UiHarness::with_text(UVec2::new(400, 400));
-    let popup_anchor = glam::Vec2::new(50.0, 100.0);
+    let popup_anchor = Vec2::new(50.0, 100.0);
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("outer-main"))
@@ -250,7 +253,7 @@ fn mid_recording_popup_keeps_trees_independent() {
     }
 
     let mut h = UiHarness::new(UVec2::new(400, 400));
-    let popup_anchor = glam::Vec2::new(50.0, 60.0);
+    let popup_anchor = Vec2::new(50.0, 60.0);
     let parent = h.frame_value(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-parent"))
@@ -329,4 +332,118 @@ fn mid_recording_popup_keeps_trees_independent() {
     for leaf_idx in [1, 2] {
         assert_eq!(popup_tree.records.shape_span()[leaf_idx as usize].len, 0);
     }
+}
+
+/// An overlay opened inside another records in the higher layer of the two, one plane above its
+/// opener when they share a layer, however deep; its root keeps the layer it asked for. Each row
+/// nests `kinds` outermost first and lists the plane each lands on. Every overlay holds a block
+/// at the surface origin, so they overlap: they paint in nesting order and the deepest takes the
+/// press.
+#[test]
+fn a_nested_overlay_records_one_plane_above_its_opener() {
+    fn nest(ui: &mut Ui, kinds: &[Layer], depth: usize) {
+        let Some((&kind, rest)) = kinds.split_first() else {
+            return;
+        };
+        ui.layer(kind).show(|ui| {
+            Block::new()
+                .id(WidgetId::from_hash(("nested", depth)))
+                .size(10.0)
+                .sense(Sense::CLICK)
+                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .show(ui);
+            nest(ui, rest, depth + 1);
+        });
+    }
+    let plane = |layer, depth| Plane { layer, depth };
+    let rows: &[(&str, &[Layer], &[Plane])] = &[
+        (
+            "a popup in a popup",
+            &[Layer::Popup, Layer::Popup],
+            &[plane(Layer::Popup, 0), plane(Layer::Popup, 1)],
+        ),
+        (
+            "a dropdown in a dialog rises to the dialog's layer",
+            &[Layer::Modal, Layer::Popup],
+            &[plane(Layer::Modal, 0), plane(Layer::Modal, 1)],
+        ),
+        (
+            "a dialog in a dialog",
+            &[Layer::Modal, Layer::Modal],
+            &[plane(Layer::Modal, 0), plane(Layer::Modal, 1)],
+        ),
+        (
+            "a higher layer starts at its base",
+            &[Layer::Popup, Layer::Tooltip],
+            &[plane(Layer::Popup, 0), plane(Layer::Tooltip, 0)],
+        ),
+        (
+            "three deep in one layer",
+            &[Layer::Modal, Layer::Popup, Layer::Popup],
+            &[
+                plane(Layer::Modal, 0),
+                plane(Layer::Modal, 1),
+                plane(Layer::Modal, 2),
+            ],
+        ),
+    ];
+    for &(label, kinds, planes) in rows {
+        let mut h = UiHarness::new(SURFACE);
+        h.frame(|ui| nest(ui, kinds, 0));
+        let cascade = h.ui.cascade();
+        for (depth, (&kind, &want)) in kinds.iter().zip(planes).enumerate() {
+            let id = WidgetId::from_hash(("nested", depth));
+            let at = cascade.endpoint(id).expect("recorded");
+            assert_eq!(at.plane, want, "{label}: overlay {depth}");
+            let root = cascade
+                .roots
+                .iter()
+                .find(|row| row.plane == want)
+                .expect("the plane has a root");
+            assert_eq!(
+                root.layer, kind,
+                "{label}: overlay {depth} keeps the layer it asked for"
+            );
+        }
+        let deepest = WidgetId::from_hash(("nested", kinds.len() - 1));
+        assert_eq!(
+            cascade.hit_test_press(Vec2::splat(5.0)).click,
+            Some(deepest),
+            "{label}: the deepest overlay takes the press",
+        );
+        let mut paints = Vec::new();
+        cascade.owned_paints(h.ui.forest(), &mut paints);
+        let painted: Vec<WidgetId> = paints.iter().map(|paint| paint.owner).collect();
+        let nested: Vec<WidgetId> = (0..kinds.len())
+            .map(|depth| WidgetId::from_hash(("nested", depth)))
+            .collect();
+        assert_eq!(painted, nested, "{label}: paint order is nesting order");
+    }
+}
+
+/// A nested overlay with an empty body grows a plane that holds no root; the frame that first
+/// grows it, with nothing else changed, lays out and cascades the new plane as an empty one.
+#[test]
+fn a_new_plane_with_no_root_reaches_every_table() {
+    let record = |ui: &mut Ui, nested: bool| {
+        ui.layer(Layer::Popup).show(|ui| {
+            Block::new()
+                .id(WidgetId::from_hash("outer"))
+                .size(10.0)
+                .show(ui);
+            if nested {
+                ui.layer(Layer::Popup).show(|_| {});
+            }
+        });
+    };
+    let mut h = UiHarness::new(SURFACE);
+    h.frame(|ui| record(ui, false));
+    h.frame(|ui| record(ui, false));
+    h.frame(|ui| record(ui, true));
+    h.frame(|ui| record(ui, true));
+    let nested = Plane {
+        layer: Layer::Popup,
+        depth: 1,
+    };
+    assert!(h.ui.tree(nested).records.is_empty());
 }

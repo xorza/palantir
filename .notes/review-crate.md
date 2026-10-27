@@ -205,12 +205,6 @@ Files: `src/widget_core/{overlay_scope.rs, overlay_response.rs}`,
 combo_box, tooltip}/`, `src/widgets/tabs/tab_strip.rs`,
 `src/widgets/dock/{dock_view.rs, dock_tabs.rs}`.
 
-- [ ] **Nested overlays panic.** `popup/mod.rs:50`,
-  `overlay_scope.rs:150,159`, `scene/forest.rs:289`. A ComboBox, ColorButton
-  or PopupTrigger in a Modal, Popup or menu body, and a Modal in a Modal body,
-  hit the release assert. Target: `OverlaySpec` carries a kind;
-  `OverlayScope::claim` resolves it to a rank above the opener. Test each
-  nesting. **[public]** if `Popup::layer` or `Layer` change shape.
 - [ ] **One trigger state machine.** `popup_trigger/mod.rs:243-356`,
   `context_menu/mod.rs:26-30, 104-169`, `tab_strip.rs:462-503`,
   `dock_view.rs:428-454`. Target: one state row keyed by trigger id that

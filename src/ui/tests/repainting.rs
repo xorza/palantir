@@ -21,6 +21,7 @@ use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
@@ -52,7 +53,7 @@ fn frame_stats_overlay_records_partial_damage() {
     };
     h.frame(&mut body);
     assert_eq!(h.ui.frame_runtime.fps_ema, 0.0);
-    let debug = &h.ui.forest.trees[Layer::Debug];
+    let debug = &h.ui.forest.trees[Plane::base(Layer::Debug)];
     assert_eq!(debug.records.len(), 3, "row, chip and text leaf");
     assert_eq!(debug.chrome_table.len(), 1, "the chip's fill alone");
 
@@ -80,7 +81,9 @@ fn frame_stats_overlay_records_partial_damage() {
     });
     h.at(Duration::from_millis(32)).frame(&mut body);
     assert!(
-        h.ui.forest.trees[Layer::Debug].records.is_empty(),
+        h.ui.forest.trees[Plane::base(Layer::Debug)]
+            .records
+            .is_empty(),
         "Debug layer must clear once frame_stats is turned off",
     );
 }

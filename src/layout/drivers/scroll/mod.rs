@@ -1,4 +1,4 @@
-//! Layout-side scroll driver. Measure records the content extent on [`LayerLayout::scroll_content`](crate::layout::layer_layout::LayerLayout::scroll_content); arrange delegates to the matching stack driver; intrinsic applies measure's per-axis contribution rule.
+//! Layout-side scroll driver. Measure records the content extent on [`PlaneLayout::scroll_content`](crate::layout::plane_layout::PlaneLayout::scroll_content); arrange delegates to the matching stack driver; intrinsic applies measure's per-axis contribution rule.
 
 use crate::layout::drivers::LayoutDriver;
 use crate::layout::drivers::stack::Stack;

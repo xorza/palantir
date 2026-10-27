@@ -8,9 +8,9 @@ use crate::common::tracy;
 use crate::damage::counters::DamageCounters;
 use crate::damage::frame_baseline::FrameBaseline;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
-use crate::damage::layer_frame::LayerFrame;
-use crate::damage::layer_walk::LayerWalk;
 use crate::damage::node_snapshot::NodeSnapshot;
+use crate::damage::plane_frame::PlaneFrame;
+use crate::damage::plane_walk::PlaneWalk;
 use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::damage::root_order::RootOrder;
 use crate::damage::row_matcher::RowMatcher;
@@ -23,7 +23,7 @@ use std::time::Duration;
 /// Output of one frame's damage pass plus the cross-frame state it reads; `prev` is mutated in place so steady-state frames don't allocate. [`Damage`] / [`DamageRegion`] are `Copy`.
 #[derive(Debug, Default)]
 pub(crate) struct DamageEngine {
-    /// Last frame's snapshot, **only for widgets with paint rows** (see the module doc). `WidgetId` is unique across layers (`SeenIds::resolve`), so the bare key is safe.
+    /// Last frame's snapshot, **only for widgets with paint rows** (see the module doc). `WidgetId` is unique across planes (`SeenIds::resolve`), so the bare key is safe.
     pub(crate) prev: WidgetIdMap<NodeSnapshot>,
     pub(crate) paints: BlockArena<Paint>,
     /// What the last presented frame was painted under, or `None`: the frame-wide half of the baseline [`Self::prev`] holds per widget. See [`FrameBaseline`], [`Self::note_presented`].
@@ -32,7 +32,7 @@ pub(crate) struct DamageEngine {
     /// Pass-1 scratch: every damage source appends here unmerged; pass 2 collapses it via `DamageRegion::collapse_from`.
     pub(crate) raw_rects: Vec<Rect>,
 
-    /// Scratch for [`build_row_extents`](crate::damage::layer_walk::LayerWalk::build_row_extents), fed to [`emit_inverted_overlaps`](crate::damage::layer_walk::LayerWalk::emit_inverted_overlaps); filled only when a node's row order inverted.
+    /// Scratch for [`build_row_extents`](crate::damage::plane_walk::PlaneWalk::build_row_extents), fed to [`emit_inverted_overlaps`](crate::damage::plane_walk::PlaneWalk::emit_inverted_overlaps); filled only when a node's row order inverted.
     order_extents: Vec<Rect>,
 
     inversions: InvertedOverlaps,
@@ -94,13 +94,13 @@ impl DamageEngine {
         // Pass 1: every source (structural diff, order inversions, predamaged anim rects, removed eviction tail) pushes into `raw_rects` unmerged.
         self.raw_rects.clear();
 
-        for (layer, tree) in forest.trees.iter_paint_order() {
-            let frame = LayerFrame {
-                layer,
+        for (plane, tree) in forest.trees.iter_paint_order() {
+            let frame = PlaneFrame {
+                plane,
                 tree,
-                cascade: &cascade.layers[layer],
+                cascade: &cascade.planes[plane],
             };
-            LayerWalk {
+            PlaneWalk {
                 prev: &mut self.prev,
                 paints: &mut self.paints,
                 matcher: &mut self.matcher,
@@ -189,8 +189,8 @@ impl DamageEngine {
             now,
             ..
         } = *input;
-        for (layer, tree) in forest.trees.iter_paint_order() {
-            let arena = &cascade.layers[layer].paint_arena;
+        for (plane, tree) in forest.trees.iter_paint_order() {
+            let arena = &cascade.planes[plane].paint_arena;
             let paints = &arena.rows;
             let node_spans = &arena.node_spans;
             for e in &tree.paint_animations.entries {

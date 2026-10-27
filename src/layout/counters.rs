@@ -20,7 +20,7 @@ counter_snapshot! {
 }
 
 /// What the layout pass did this `run`. Reset by [`Self::begin_pass`] once per run,
-/// not in `LayoutScratch::resize_for`, which runs per layer.
+/// not in `LayoutScratch::resize_for`, which runs per plane.
 #[derive(Debug, Default)]
 pub(crate) struct LayoutCounters {
     intrinsic_computes: TestOnly<u32>,

@@ -3,30 +3,22 @@
 use crate::cascade::cascade_source::CascadeSource;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::scene::layer::Layer;
-use crate::scene::per_layer::PerLayer;
 use std::hash::Hasher as _;
 
 /// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run) reads. Equal keys skip the run; keys agreeing on structure refresh geometry and paint in place.
 ///
+/// Folds every plane in paint order, so a key stays a fixed size however deep overlays nest; each plane's own rect hash, which the incremental walk compares plane by plane, is kept on its [`PlaneCascade`](crate::cascade::plane_cascade::PlaneCascade).
+///
 /// Sound only while this names every input the walk reads: add new inputs here.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CascadeKey {
-    /// `Display::scale_factor` bits, the walk's only display read; surface size arrives via [`LayerKey::rects`].
+    /// `Display::scale_factor` bits, the walk's only display read; surface size arrives via [`Self::rects`].
     scale: u32,
     /// [`CascadeSource::font_epoch`].
     font_epoch: u32,
-    layers: PerLayer<LayerKey>,
-}
-
-/// One layer's part of a [`CascadeKey`].
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct LayerKey {
-    /// `TreeFingerprint::cascade_static`: the structural tables' source.
+    /// Each plane's `TreeFingerprint::cascade_static` and `TreeFingerprint::paint_counts`: the structural tables' source; a moved row count is a full rebuild.
     structure: ContentHash,
-    /// `TreeFingerprint::paint_counts`; a moved row count is a full rebuild.
-    paint_counts: ContentHash,
-    /// `LayerLayout::rect_hash`: while it holds, the walk skips subtrees whose inputs held.
+    /// Each plane's `PlaneLayout::rect_hash`.
     rects: ContentHash,
     /// Every root's full subtree hash, in order.
     paint: ContentHash,
@@ -40,23 +32,27 @@ impl CascadeKey {
             display,
             font_epoch,
         } = source;
-        let mut layers = PerLayer::<LayerKey>::default();
-        for (layer, tree) in forest.trees.iter_paint_order() {
-            let mut paint = Hasher::new();
+        let mut structure = Hasher::new();
+        let mut rects = Hasher::new();
+        let mut paint = Hasher::new();
+        for (plane, tree) in forest.trees.iter_paint_order() {
+            structure.write_u8(plane.layer.idx() as u8);
+            structure.write_u8(plane.depth);
+            structure.write_u64(tree.fingerprint.cascade_static.0);
+            structure.write_u64(tree.fingerprint.paint_counts.0);
+            rects.write_u64(layout[plane].rect_hash().0);
             for slot in &tree.roots {
                 paint.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
             }
-            layers[layer] = LayerKey {
-                structure: tree.fingerprint.cascade_static,
-                paint_counts: tree.fingerprint.paint_counts,
-                rects: layout[layer].rect_hash(),
-                paint: ContentHash(paint.finish()),
-            };
+            // A root moving between planes is a paint change too.
+            paint.write_u8(u8::MAX);
         }
         Self {
             scale: display.scale_factor().to_bits(),
             font_epoch,
-            layers,
+            structure: ContentHash(structure.finish()),
+            rects: ContentHash(rects.finish()),
+            paint: ContentHash(paint.finish()),
         }
     }
 
@@ -64,15 +60,6 @@ impl CascadeKey {
     pub(crate) fn keeps_structure(&self, live: &Self) -> bool {
         self.scale == live.scale
             && self.font_epoch == live.font_epoch
-            && self
-                .layers
-                .iter()
-                .zip(live.layers.iter())
-                .all(|(a, b)| a.structure == b.structure && a.paint_counts == b.paint_counts)
-    }
-
-    /// Whether `layer` arranged every node where it did when `self` was built.
-    pub(crate) fn keeps_rects(&self, live: &Self, layer: Layer) -> bool {
-        self.layers[layer].rects == live.layers[layer].rects
+            && self.structure == live.structure
     }
 }

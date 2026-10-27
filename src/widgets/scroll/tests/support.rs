@@ -74,8 +74,8 @@ pub(super) fn scroll_content(ui: &Ui, outer_id: WidgetId) -> Size {
 
 pub(super) fn scroll_viewport(ui: &Ui, outer_id: WidgetId) -> Size {
     let endpoint = scroll_viewport_endpoint(ui, outer_id);
-    let tree = ui.tree(endpoint.layer);
-    ui.arranged_rect(endpoint.layer, endpoint.node)
+    let tree = ui.tree(endpoint.plane.layer);
+    ui.arranged_rect(endpoint.plane.layer, endpoint.node)
         .deflated_by(tree.records.layout()[endpoint.node.idx()].padding)
         .size
 }

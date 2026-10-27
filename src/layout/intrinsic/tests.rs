@@ -2,7 +2,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::layer_input::LayerInput;
+use crate::layout::plane_input::PlaneInput;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
 use crate::primitives::layout::scroll_axes::ScrollAxes;
@@ -96,7 +96,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     h.engines.layout.scratch.counters.reset_intrinsic_computes();
     let store = h.ui.record_store();
     let interned_text = store.interned_text();
-    let input = LayerInput {
+    let input = PlaneInput {
         tree: h.ui.tree(Layer::Main),
         interned_text: &interned_text,
     };
@@ -242,7 +242,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
 
     let store = h.ui.record_store();
     let interned_text = store.interned_text();
-    let input = LayerInput {
+    let input = PlaneInput {
         tree,
         interned_text: &interned_text,
     };

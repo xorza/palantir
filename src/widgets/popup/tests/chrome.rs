@@ -36,7 +36,7 @@ fn the_theme_panel_is_the_last_resort() {
             build(Popup::new(Anchor::at_point(ANCHOR)).id(id)).show(ui, |_, _| {});
         });
         let body = h.node_of(id).expect("popup body recorded");
-        assert_eq!(body.layer, Layer::Popup);
+        assert_eq!(body.plane.layer, Layer::Popup);
         let fill =
             h.ui.tree(Layer::Popup)
                 .chrome(body.node)

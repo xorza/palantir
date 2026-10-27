@@ -2,7 +2,7 @@
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::layout::layer_layout::LayerLayout;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::scene::tree::node_id::NodeId;
@@ -21,7 +21,7 @@ pub(super) fn lines_h(lines: u32, font_px: f32) -> f32 {
 }
 
 /// The leaf's single shaped-text result; asserts the span holds exactly one entry (multi-text callers should index `result.text_shapes[span.range()]`).
-pub(super) fn shaped_text(result: &LayerLayout, id: NodeId) -> ShapedText {
+pub(super) fn shaped_text(result: &PlaneLayout, id: NodeId) -> ShapedText {
     let span = result.text_spans[id.idx()];
     assert_eq!(
         span.len, 1,

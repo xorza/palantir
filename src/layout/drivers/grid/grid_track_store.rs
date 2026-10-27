@@ -72,7 +72,7 @@ impl GridTrackStore {
             self.totals_pool[usize::from(idx)]
                 .iter()
                 .all(Option::is_none),
-            "grid {idx:?} measured twice on one layer; its hug accumulators would carry over",
+            "grid {idx:?} measured twice on one plane; its hug accumulators would carry over",
         );
     }
 

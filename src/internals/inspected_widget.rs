@@ -50,7 +50,7 @@ impl InspectedWidget {
                 disabled: row.disabled,
                 clipped: row.rect.is_paint_empty(),
                 text: own_text(
-                    &forest.trees[endpoint.layer],
+                    &forest.trees[endpoint.plane],
                     &forest.record_store,
                     endpoint.node.idx(),
                     &listed,

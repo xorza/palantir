@@ -195,7 +195,7 @@ fn popup_with_scroll_settles_in_one_frame() {
         h.ui.cascade()
             .endpoint(viewport_id)
             .expect("popup scroll viewport endpoint");
-    assert_eq!(viewport.layer, Layer::Popup);
+    assert_eq!(viewport.plane.layer, Layer::Popup);
     assert_eq!(h.ui.scroll_content(viewport_id), Size::new(80.0, 300.0));
     // Later input frames must hit the same rect.
     for _ in 0..3 {
@@ -341,6 +341,6 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
 /// The arranged rect of the popup body recorded under `id`.
 fn body_rect(h: &UiHarness, id: WidgetId) -> Rect {
     let body = h.node_of(id).expect("popup body recorded");
-    assert_eq!(body.layer, Layer::Popup);
+    assert_eq!(body.plane.layer, Layer::Popup);
     h.ui.layout(Layer::Popup).rect[body.node.idx()]
 }

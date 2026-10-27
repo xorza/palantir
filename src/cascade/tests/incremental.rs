@@ -14,6 +14,7 @@ use crate::internals::ui_harness::UiHarness;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
@@ -173,6 +174,28 @@ fn incremental_matches_full_across_cascade_input_classes() {
             });
     }
 
+    /// A popup holding a block, with a second popup nested in it, one plane up, at `x`.
+    fn nested_overlay(ui: &mut Ui, x: f32, color: RgbaF32, nested: bool) {
+        let inner = |ui: &mut Ui| {
+            ui.layer(Layer::Popup)
+                .fixed_at(Vec2::new(x, 10.0))
+                .show(|ui| colored_frame(ui, color));
+        };
+        ui.layer(Layer::Popup).show(|ui| {
+            Block::new()
+                .id(WidgetId::from_hash("outer-overlay"))
+                .size(80.0)
+                .chrome(Chrome::fill(RgbaF32::WHITE))
+                .show(ui);
+            if nested {
+                inner(ui);
+            }
+        });
+        if !nested {
+            inner(ui);
+        }
+    }
+
     assert_incremental_case(
         "paint-only",
         |ui| colored_frame(ui, RgbaF32::srgb(0.2, 0.4, 0.8)),
@@ -214,6 +237,23 @@ fn incremental_matches_full_across_cascade_input_classes() {
         |ui| layered(ui, Layer::Tooltip),
     );
     assert_incremental_case("reorder", |ui| ordered(ui, false), |ui| ordered(ui, true));
+
+    let blue = RgbaF32::srgb(0.2, 0.4, 0.8);
+    assert_incremental_case(
+        "nested plane paint-only",
+        |ui| nested_overlay(ui, 10.0, blue, true),
+        |ui| nested_overlay(ui, 10.0, RgbaF32::srgb(0.8, 0.2, 0.4), true),
+    );
+    assert_incremental_case(
+        "nested plane moves alone",
+        |ui| nested_overlay(ui, 10.0, blue, true),
+        |ui| nested_overlay(ui, 40.0, blue, true),
+    );
+    assert_incremental_case(
+        "plane migration",
+        |ui| nested_overlay(ui, 10.0, blue, false),
+        |ui| nested_overlay(ui, 10.0, blue, true),
+    );
 }
 
 #[test]
@@ -276,7 +316,7 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
         "a row-count change must be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
     );
 
-    let rows = h.ui.cascade().layers[Layer::Main]
+    let rows = h.ui.cascade().planes[Plane::MAIN]
         .paint_arena
         .node_spans
         .iter()
@@ -511,56 +551,56 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
     assert_eq!(ui.cascade().hits, full.hits, "{label}");
 
     let mut id_count = 0;
-    for layer in Layer::PAINT_ORDER {
-        let widget_ids = ui.tree(layer).records.widget_id();
+    for plane in ui.forest().trees.planes() {
+        let widget_ids = ui.tree(plane).records.widget_id();
         id_count += widget_ids.len();
         for (idx, widget_id) in widget_ids.iter().copied().enumerate() {
             assert_eq!(
                 ui.cascade().by_id[&widget_id],
                 Endpoint {
-                    layer,
+                    plane,
                     node: NodeId(idx as u32),
                 },
-                "{label}: {layer:?} by-id endpoint"
+                "{label}: {plane:?} by-id endpoint"
             );
         }
-        let actual = &ui.cascade().layers[layer];
-        let expected = &full.layers[layer];
+        let actual = &ui.cascade().planes[plane];
+        let expected = &full.planes[plane];
         assert_eq!(
             actual.cascade_inputs, expected.cascade_inputs,
-            "{label}: {layer:?} cascade inputs"
+            "{label}: {plane:?} cascade inputs"
         );
         assert_eq!(
             actual.subtree_paint_rects, expected.subtree_paint_rects,
-            "{label}: {layer:?} subtree paint rects"
+            "{label}: {plane:?} subtree paint rects"
         );
         assert_eq!(
             actual.arena_hashes, expected.arena_hashes,
-            "{label}: {layer:?} arena hashes"
+            "{label}: {plane:?} arena hashes"
         );
         assert_eq!(
             actual.subtree_ends, expected.subtree_ends,
-            "{label}: {layer:?} subtree ends"
+            "{label}: {plane:?} subtree ends"
         );
         assert_eq!(
             actual.paint_rects, expected.paint_rects,
-            "{label}: {layer:?} own paint rects"
+            "{label}: {plane:?} own paint rects"
         );
         assert_eq!(
             actual.hit_rows, expected.hit_rows,
-            "{label}: {layer:?} hit rows"
+            "{label}: {plane:?} hit rows"
         );
         assert_eq!(
             actual.paint_arena.node_spans, expected.paint_arena.node_spans,
-            "{label}: {layer:?} paint spans"
+            "{label}: {plane:?} paint spans"
         );
         assert_eq!(
             actual.paint_arena.rows, expected.paint_arena.rows,
-            "{label}: {layer:?} paint rows"
+            "{label}: {plane:?} paint rows"
         );
         assert_eq!(
             actual.entries_base, expected.entries_base,
-            "{label}: {layer:?} entry base"
+            "{label}: {plane:?} entry base"
         );
     }
     assert_eq!(ui.cascade().by_id.len(), id_count, "{label}: by-id length");

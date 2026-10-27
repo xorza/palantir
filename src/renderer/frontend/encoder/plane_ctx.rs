@@ -1,8 +1,8 @@
-//! [`LayerCtx`]: one layer's encode walk, built per tree by [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
+//! [`PlaneCtx`]: one plane's encode walk, built per tree by [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::damage::region::DamageRegion;
-use crate::layout::layer_layout::LayerLayout;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -56,11 +56,11 @@ struct ShapeItem<'s> {
     record: &'s ShapeRecord,
 }
 
-/// The fixed inputs one layer's encode walk reads.
+/// The fixed inputs one plane's encode walk reads.
 #[derive(Debug)]
-pub(super) struct LayerCtx<'a, 'g> {
+pub(super) struct PlaneCtx<'a, 'g> {
     pub(super) tree: &'a Tree,
-    pub(super) layout: &'a LayerLayout,
+    pub(super) layout: &'a PlaneLayout,
     pub(super) cascade_inputs: &'a [CascadeInputHash],
     pub(super) subtree_paint_rects: &'a [Rect],
     pub(super) gradients: &'a mut GradientPass<'g>,
@@ -74,7 +74,7 @@ pub(super) struct LayerCtx<'a, 'g> {
     pub(super) now: Duration,
 }
 
-impl LayerCtx<'_, '_> {
+impl PlaneCtx<'_, '_> {
     #[inline]
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
         self.gradients.source(brush)

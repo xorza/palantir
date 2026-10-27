@@ -11,7 +11,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::render_plan::RenderPlan;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
@@ -38,7 +38,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.texts.is_empty());
     assert!(buffer.groups.is_empty());
 
-    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 1);
+    assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 1);
     assert!(h.engines.damage.prev.is_empty());
     assert!(h.engines.damage.counters.dirty().is_empty());
     assert!(h.damage_region().is_empty());
@@ -53,7 +53,7 @@ fn empty_then_populated_frame() {
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
     });
-    assert_eq!(h.ui.forest.trees[Layer::Main].records.len(), 2);
+    assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 2);
     // The rowless user Panel gets no prev entry; the viewport root tracks it as a child marker.
     assert_eq!(h.engines.damage.prev.len(), 1);
 }

@@ -1,5 +1,6 @@
 use crate::internals::panic_probe;
 use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::seen_ids::*;
 use crate::scene::tree::node_id::NodeId;
 use std::panic::Location;
@@ -8,7 +9,7 @@ mod reference;
 
 fn ep(node: u32) -> Endpoint {
     Endpoint {
-        layer: Layer::Main,
+        plane: Plane::from(Layer::Main),
         node: NodeId(node),
     }
 }

@@ -6,7 +6,7 @@ use crate::cascade::rows::scope_row::ScopeRow;
 use crate::common::counters::TestOnly;
 use crate::input::key_class::KeyClass;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use std::mem;
 
 /// This pass's resolved scope routing.
@@ -18,12 +18,12 @@ use std::mem;
 /// A pass routes by the state it started with. A focus move (a `TextEdit` whose Escape blurs it must not close the `Popup` around it with the same press) and a withdrawal ([`Self::close`]; an overlay closing on Escape must not hand it to scopes beneath) take effect at the next `resolve`, often in the same frame since action input records twice.
 #[derive(Debug, Default)]
 pub(super) struct Scopes {
-    /// Scopes enclosing the focused widget within [`Self::active_layer`], **outermost first**; empty when nothing focused sits there.
+    /// Scopes enclosing the focused widget within [`Self::active_plane`], **outermost first**; empty when nothing focused sits there.
     path: Vec<ScopeRow>,
     /// [`live_scopes`] folded once per resolve (the filter costs two `Vec` scans per row); every read of the live set goes through here.
     live: Vec<ScopeRow>,
-    /// Topmost layer declaring any scope; an overlay raising it cuts off every layer beneath, on keyboard and pointer.
-    active_layer: Option<Layer>,
+    /// Topmost plane declaring any scope; an overlay raising it cuts off every plane beneath, on keyboard and pointer.
+    active_plane: Option<Plane>,
     outermost: Option<WidgetId>,
     reader_memo: Option<ReaderMemo>,
     /// Scopes withdrawn by [`Self::close`] this frame, honored from the next resolve (the cascade is a frame stale, so a closing overlay has already recorded its scope).
@@ -66,17 +66,17 @@ impl Scopes {
         self.live.clear();
         self.live
             .extend(live_scopes(cascade, &self.closing, &self.closed));
-        self.active_layer = self.live.iter().map(|row| row.layer).max();
-        if let Some(active) = self.active_layer {
+        self.active_plane = self.live.iter().map(|row| row.plane).max();
+        if let Some(active) = self.active_plane {
             if let Some(anchor) = focused {
                 self.path.extend(
                     self.live
                         .iter()
-                        .filter(|row| row.layer == active && cascade.is_within(anchor, row.id)),
+                        .filter(|row| row.plane == active && cascade.is_within(anchor, row.id)),
                 );
             }
             // **Outermost, not last-recorded**, else an app root's accelerators would resolve as the nested focused text field. Subtrees are contiguous in pre-order, so a row inside the standing root is skipped and the first outside opens the next root; between sibling overlays the last recorded wins.
-            self.outermost = self.live.iter().filter(|row| row.layer == active).fold(
+            self.outermost = self.live.iter().filter(|row| row.plane == active).fold(
                 None,
                 |root, row| match root {
                     Some(id) if cascade.is_within(row.id, id) => Some(id),
@@ -117,10 +117,9 @@ impl Scopes {
         mem::swap(&mut self.closed, &mut self.closing);
     }
 
-    /// Whether an overlay's scope cuts `reader`'s layer off both streams (strictly below, so its own body keeps reading).
-    pub(super) fn silences(&self, reader: Layer) -> bool {
-        self.active_layer
-            .is_some_and(|active| active.idx() > reader.idx())
+    /// Whether an overlay's scope cuts `reader`'s plane off both streams (strictly below, so its own body keeps reading).
+    pub(super) fn silences(&self, reader: Plane) -> bool {
+        self.active_plane.is_some_and(|active| active > reader)
     }
 
     /// Whether a scope on the focused widget's path takes `class`: a claim, rather than the outermost fallback of [`Self::grant`].
@@ -140,7 +139,7 @@ impl Scopes {
         })
     }
 
-    /// The scope a press of `class` is granted to: the innermost on the path whose filter takes it, else the layer's outermost.
+    /// The scope a press of `class` is granted to: the innermost on the path whose filter takes it, else the plane's outermost.
     pub(super) fn grant(&self, class: KeyClass) -> Option<WidgetId> {
         self.path
             .iter()
@@ -149,13 +148,13 @@ impl Scopes {
             .or(self.outermost)
     }
 
-    /// Which scope a read at `parent` speaks for; outside every scope, the layer's outermost. `None` means no scope exists at all, not "silenced" (see [`Self::silences`]).
+    /// Which scope a read at `parent` speaks for; outside every scope, the plane's outermost. `None` means no scope exists at all, not "silenced" (see [`Self::silences`]).
     pub(super) fn reader(
         &mut self,
         parent: Option<WidgetId>,
         cascade: &Cascade,
     ) -> Option<WidgetId> {
-        let active = self.active_layer?;
+        let active = self.active_plane?;
         let Some(parent) = parent else {
             return self.outermost;
         };
@@ -167,7 +166,7 @@ impl Scopes {
         let scope = self
             .live
             .iter()
-            .rfind(|row| row.layer == active && cascade.is_within(parent, row.id))
+            .rfind(|row| row.plane == active && cascade.is_within(parent, row.id))
             .map(|row| row.id)
             .or(self.outermost);
         self.reader_memo = Some(ReaderMemo { parent, scope });

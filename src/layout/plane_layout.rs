@@ -1,4 +1,4 @@
-//! One layer's layout output.
+//! One plane's layout output.
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
@@ -13,7 +13,7 @@ use std::hash::Hasher as _;
 /// after the layout pass. Intermediate scratch (desired sizes, grid track state) lives on
 /// `LayoutScratch`. Capacity is reused across frames via `resize_for`.
 #[derive(Debug, Default)]
-pub(crate) struct LayerLayout {
+pub(crate) struct PlaneLayout {
     pub(crate) rect: Vec<Rect>,
     pub(crate) scroll_content: Vec<Size>,
     /// Flat per-frame buffer of shaped text runs, indexed via `text_spans[node]`. Leaf text appends
@@ -27,8 +27,8 @@ pub(crate) struct LayerLayout {
     rect_hash: ContentHash,
 }
 
-impl LayerLayout {
-    /// Destructured so a column added to `LayerLayout` cannot be left un-resized: the per-node columns
+impl PlaneLayout {
+    /// Destructured so a column added to `PlaneLayout` cannot be left un-resized: the per-node columns
     /// are indexed by `NodeId` with no bounds story of their own.
     pub(super) fn resize_for(&mut self, tree: &Tree) {
         let n = tree.records.len();
