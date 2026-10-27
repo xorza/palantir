@@ -417,8 +417,6 @@ impl Ui {
     /// paints in full when it asks. Each region a frame asks for is its own image; asking a
     /// region again in the same frame, as a replayed record pass does, returns the same id.
     ///
-    /// # Panics
-    ///
     /// An empty region, or one wholly outside the window, holds no pixel and asks nothing:
     /// `None`, with no image to wait for. An ask made between frames whose region the window
     /// shrinks past before the next frame lands nothing either.
