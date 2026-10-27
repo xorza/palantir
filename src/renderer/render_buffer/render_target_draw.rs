@@ -48,11 +48,11 @@ impl RenderTargetDraw {
     }
 }
 
-/// The frame's two views of its `GpuView`s: [`Self::draws`] changed and must
-/// repaint, [`Self::live`] still exists. Retention follows the second.
+/// The frame's two views of its `GpuView`s: [`Self::draws`] were composited, and the backend
+/// repaints each whose stamp changed; [`Self::live`] still exists. Retention follows the second.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameViews<'a> {
-    /// The views to paint this frame.
+    /// The views composited this frame, each repainted only when its stamp changed.
     pub(crate) draws: &'a [RenderTargetDraw],
     /// Every view recorded, painted or not: the retention roster.
     pub(crate) live: &'a [TextureId],

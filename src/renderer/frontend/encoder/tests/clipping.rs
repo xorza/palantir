@@ -83,6 +83,43 @@ fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
     assert_eq!(payload.corners, Corners::all(6.0));
 }
 
+/// The mask fits the radii to the box before it insets them. On 100×30 a radius of 20 fits to
+/// `20 · 30 / 40 = 15`, as the chrome paints it; each corner then loses its larger inset, 10, so
+/// the mask's radius is 5. Insetting the unfitted 20 gave 10, a curve outside the painted one.
+#[test]
+fn clip_rounded_fits_overflowing_radii_before_the_uneven_inset() {
+    use crate::primitives::geometry::corners::Corners;
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    h.frame(|ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("pill"))
+                .size((100.0, 30.0))
+                .padding(Spacing::xy(10.0, 2.0))
+                .chrome(Chrome::rounded(
+                    RgbaF32::srgb(0.2, 0.2, 0.2),
+                    Corners::all(20.0),
+                ))
+                .clip_rounded()
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("c"))
+                        .size(10.0)
+                        .show(ui);
+                });
+        });
+    });
+    let cmds = h.encode_paint();
+    let payload = cmds
+        .calls
+        .iter()
+        .find_map(|call| call.as_push_clip())
+        .expect("a rounded clip");
+    let rect = h.arranged(WidgetId::from_hash("pill"));
+    assert_eq!(payload.rect, rect.deflated_by(Spacing::xy(10.0, 2.0)));
+    assert_eq!(payload.corners, Corners::all(5.0));
+}
+
 #[test]
 fn clip_rounded_falls_back_to_scissor_without_chrome() {
     let mut h = UiHarness::new(UVec2::new(200, 200));

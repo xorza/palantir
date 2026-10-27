@@ -1,6 +1,7 @@
 //! Per-corner radii, four f16 lanes in eight bytes like `Spacing` and `RgbaF16`.
 
 use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::num::Num;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
@@ -79,12 +80,20 @@ impl Corners {
         Self(self.0.scaled(factor))
     }
 
-    /// The radii of the padding edge under a border `width` (CSS Backgrounds 3
-    /// §5.5/§5.2): fitted to the box, then each loses `width`, floored at zero.
+    /// The radii of the box inset from one of `size` by `padding`, as a border insets the
+    /// padding edge (CSS Backgrounds 3 §5.2): fitted to the outer box first (§5.5), then each
+    /// loses the larger of its two adjacent insets, floored at zero, so the inner curve stays
+    /// inside both edges.
     #[inline]
-    pub(crate) fn deflated(self, size: Size, width: f32) -> Self {
-        let fitted = self.fitted_radii(size, 1.0);
-        Self(F16x4::from_lanes(fitted.map(|r| (r - width).max(0.0))))
+    pub(crate) fn inner(self, size: Size, padding: Spacing) -> Self {
+        let [tl, tr, br, bl] = self.fitted_radii(size, 1.0);
+        let [left, top, right, bottom] = padding.as_array();
+        Self(F16x4::from_lanes([
+            (tl - top.max(left)).max(0.0),
+            (tr - top.max(right)).max(0.0),
+            (br - bottom.max(right)).max(0.0),
+            (bl - bottom.max(left)).max(0.0),
+        ]))
     }
 
     /// The radii a box of `size` physical px is drawn with: scaled, then
@@ -97,18 +106,7 @@ impl Corners {
 
     /// [`Self::fit_to`] before packing.
     fn fitted_radii(self, size: Size, scale: f32) -> [f32; 4] {
-        let radii = self.as_array().map(|r| r * scale);
-        let [tl, tr, br, bl] = radii;
-        let f = [
-            (size.w, tl + tr),
-            (size.w, bl + br),
-            (size.h, tl + bl),
-            (size.h, tr + br),
-        ]
-        .into_iter()
-        .filter(|&(_, sum)| sum > 0.0)
-        .fold(1.0_f32, |f, (side, sum)| f.min(side.max(0.0) / sum));
-        radii.map(|r| r * f)
+        fit(self.as_array().map(|r| r * scale), size)
     }
 
     /// True when every corner is within UI epsilon of zero; `&self` for serde's `skip_serializing_if`.
@@ -170,6 +168,22 @@ impl LaneCodec for Corners {
     fn lane_is_valid(lane: f32) -> bool {
         (0.0..=F16x4::MAX_LANE).contains(&lane)
     }
+}
+
+/// `radii` (tl, tr, br, bl) on a box of `size`, all scaled by one factor so no two adjacent ones
+/// overlap (CSS Backgrounds 3 §5.5): the CPU's one copy, beside the shader's `fit_radii`.
+pub(crate) fn fit(radii: [f32; 4], size: Size) -> [f32; 4] {
+    let [tl, tr, br, bl] = radii;
+    let f = [
+        (size.w, tl + tr),
+        (size.w, bl + br),
+        (size.h, tl + bl),
+        (size.h, tr + br),
+    ]
+    .into_iter()
+    .filter(|&(_, sum)| sum > 0.0)
+    .fold(1.0_f32, |f, (side, sum)| f.min(side.max(0.0) / sum));
+    radii.map(|r| r * f)
 }
 
 #[cfg(test)]

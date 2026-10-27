@@ -1,9 +1,8 @@
 //! The encode pass: walk the cascaded scene into paint calls, one plane at a time ([`plane_ctx`]);
-//! [`geometry`] owns the shared rect math, [`gradient_resolver`] resolves each gradient once per frame.
+//! [`gradient_resolver`] resolves each gradient once per frame.
 
 #[cfg(debug_assertions)]
 mod collision_overlay;
-mod geometry;
 mod gradient_resolver;
 mod plane_ctx;
 

@@ -9,7 +9,9 @@
 //! A shadow whose shown corners all read tables draws through the cheaper `fs_shadow_tables` ([`ShadowEntry`]), else `fs_shadow`.
 
 use crate::gpu::surface::viewport::RepaintScissors;
+use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::quad::Quad;
@@ -459,14 +461,20 @@ impl CutoutPlan {
             (
                 quad.rect.center(),
                 shadow,
-                fit_radii(spread_radius(radius, spread), shadow),
+                corners::fit(
+                    spread_radius(radius, spread),
+                    Size::new(2.0 * shadow.x, 2.0 * shadow.y),
+                ),
             )
         } else {
             let hole = (half - Vec2::splat(spread)).max(Vec2::ZERO);
             (
                 quad.rect.center() + Vec2::new(x, y),
                 hole,
-                fit_radii(spread_radius(radius, -spread), hole),
+                corners::fit(
+                    spread_radius(radius, -spread),
+                    Size::new(2.0 * hole.x, 2.0 * hole.y),
+                ),
             )
         };
         let reach = ShadowGeometry::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
@@ -525,24 +533,6 @@ fn spread_radius(r: [f32; 4], s: f32) -> [f32; 4] {
             r + s * (1.0 + t * t * t)
         }
     })
-}
-
-fn fit_radii(r: [f32; 4], half: Vec2) -> [f32; 4] {
-    let size = 2.0 * half;
-    let sums = [r[0] + r[1], r[3] + r[2], r[0] + r[3], r[1] + r[2]];
-    let sides = [size.x, size.x, size.y, size.y];
-    let f = sums
-        .iter()
-        .zip(sides)
-        .map(|(&sum, side)| {
-            if sum > 0.0 {
-                side / sum.max(1e-30)
-            } else {
-                1.0
-            }
-        })
-        .fold(1.0f32, f32::min);
-    r.map(|r| r * f)
 }
 
 #[cfg(test)]

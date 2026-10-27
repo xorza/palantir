@@ -169,6 +169,19 @@ impl Rect {
         }
     }
 
+    /// An owner-relative `local` rect placed on this owner rect: the owner itself for `None`,
+    /// else `local` moved by the owner's origin.
+    #[inline]
+    pub(crate) fn resolve_local(self, local: Option<Self>) -> Self {
+        match local {
+            None => self,
+            Some(local) => Self {
+                min: self.min + local.min,
+                size: local.size,
+            },
+        }
+    }
+
     /// Inset by `amount` on each side, clamping the size at zero. Counterpart to [`Self::inflated`]; the uniform case of [`Self::deflated_by`].
     #[inline]
     pub const fn deflated(self, amount: f32) -> Self {

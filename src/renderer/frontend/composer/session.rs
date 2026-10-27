@@ -19,7 +19,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::geometry;
-use crate::renderer::frontend::composer::physical_map::PhysicalMap;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::composer::{Composer, GroupCursors, OpenBatch, PolylineScratch};
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -52,7 +51,7 @@ use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
-use crate::text::TEXT_SCALE_STEP;
+use crate::text;
 use glam::{U16Vec2, UVec2, Vec2};
 use std::num::NonZeroI64;
 
@@ -179,13 +178,11 @@ impl Drop for ComposeSession<'_> {
 
 impl PaintSink for ComposeSession<'_> {
     fn push_clip(&mut self, p: PushClipPayload) {
-        let scale = self.out.display.scale_factor();
-        let edges = self.out.display.edge_rounding();
-        let viewport_physical = self.out.display.physical;
         let logical_radius = (!p.corners.is_approx_zero()).then_some(p.corners);
-        let world = self.composer.transform.apply_rect(p.rect);
-        let physical = world.scaled_by(scale, edges);
-        let me = geometry::urect_from_physical(physical.min, physical.max(), viewport_physical);
+        let ScaledRect {
+            physical,
+            urect: me,
+        } = self.scaled_rect(p.rect);
         let parent = self.composer.clip.top();
         let scissor = match parent {
             Some(parent) => me.clamp_to(parent.scissor),
@@ -193,7 +190,7 @@ impl PaintSink for ComposeSession<'_> {
         };
         let parent_chain = parent.map_or_else(Span::default, |f| f.chain);
         let chain = if let Some(logical_radius) = logical_radius {
-            let scale_physical = geometry::physical_scale(self.composer.transform.cur(), scale);
+            let scale_physical = self.composer.transform.physical_scale();
             // `mask_rect` stays unclamped: the SDF needs the true edges or corners shift inward
             // when the clip leaves the viewport.
             let rc = RoundedClip {
@@ -271,13 +268,12 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
-        let scale = self.out.display.scale_factor();
         let viewport_physical = self.out.display.physical;
         // `draw_mesh` already gated empty meshes, so `vertices` is non-empty. Inflate by 0.5 phys px
         // like polyline's AA fringe: overlap-test false negatives reorder paint. Mesh
         // skips snapping, so it cannot use `scaled_rect`.
-        let transform = self.composer.transform.cur();
-        let physical = PhysicalMap::new(transform, p.origin, scale).bbox(p.bbox);
+        let to_physical = self.composer.transform.physical_map(p.origin);
+        let physical = to_physical.bbox(p.bbox);
         let fringe = Vec2::splat(AA_HALF_WIDTH);
         let mesh_urect = geometry::urect_from_physical(
             physical.min - fringe,
@@ -291,8 +287,8 @@ impl PaintSink for ComposeSession<'_> {
         }
         // Verts stay owner-local; the per-instance translate folds in owner origin and transform
         // stack, so the shader produces physical coords.
-        let scale_physical = geometry::physical_scale(transform, scale);
-        let physical_translate = (transform.scale * p.origin + transform.translation) * scale;
+        let scale_physical = self.composer.transform.physical_scale();
+        let physical_translate = to_physical.point(Vec2::ZERO);
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
                 vertices: p.vertices,
@@ -362,8 +358,8 @@ impl PaintSink for ComposeSession<'_> {
         let seen = view.and_then(|_| self.seen(physical_rect));
         let composite = seen.unwrap_or(physical_rect);
         self.out.images.push(ImageDrawRow {
-            // Only the registration id: the encoder already resolved fit into `rect` + UV. `target`
-            // only schedules the off-screen paint.
+            // Only the registration id: the encoder already resolved fit into `rect` + UV. The
+            // view's off-screen paint is scheduled below, in `frame_targets`.
             id: p.handle,
             instance: ImageInstance {
                 rect: composite,
@@ -378,7 +374,6 @@ impl PaintSink for ComposeSession<'_> {
         // screen, not the rect: layout may return a rect larger than the surface, and
         // following it would allocate and draw discarded pixels.
         if let Some(view) = view {
-            let scale = self.out.display.scale_factor();
             let cap = NonZeroI64::from(self.composer.max_texture_dim).get();
             let whole = physical_rect.size;
             // The cap is measured against the whole view so the downsample does not change as the
@@ -401,8 +396,7 @@ impl PaintSink for ComposeSession<'_> {
                 used: UVec2::new(px(used.w), px(used.h)),
                 full: UVec2::new(px(whole.w), px(whole.h)),
                 offset: UVec2::new(at(offset.x), at(offset.y)),
-                raster_scale: geometry::physical_scale(self.composer.transform.cur(), scale)
-                    * downsample,
+                raster_scale: self.composer.transform.physical_scale() * downsample,
                 paint: view.paint.clone(),
                 epoch: view.epoch,
             });
@@ -410,9 +404,8 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn curve(&mut self, p: DrawCurvePayload) {
-        let scale = self.out.display.scale_factor();
         let transform = self.composer.transform.cur();
-        let width_physical = p.width * geometry::physical_scale(transform, scale);
+        let width_physical = p.width * self.composer.transform.physical_scale();
         let cap = p.cap;
         let bbox_urect = StrokeBbox {
             transform,
@@ -429,7 +422,7 @@ impl PaintSink for ComposeSession<'_> {
         }
         // Owner origin folds in here so the record stays owner-local. No snapping: it would warp
         // the traced shape.
-        let to_physical = PhysicalMap::new(transform, p.origin, scale);
+        let to_physical = self.composer.transform.physical_map(p.origin);
         let spin = p.bounds.spin();
         let proto = CurveInstance {
             width: width_physical,
@@ -485,7 +478,7 @@ impl PaintSink for ComposeSession<'_> {
                 }
                 // The transform is translate + uniform scale, so a circle stays a circle: transform
                 // the center, scale the radius.
-                let radius_physical = radius * geometry::physical_scale(transform, scale);
+                let radius_physical = radius * self.composer.transform.physical_scale();
                 // Sub-instance count from the exact arc length; chord sagitta stays under 0.3 px
                 // even at r = 1.
                 let n = geometry::sub_instance_count(radius_physical * (a1 - a0).abs());
@@ -504,13 +497,12 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn polyline(&mut self, p: DrawPolylinePayload) {
-        let scale = self.out.display.scale_factor();
         let display = self.out.display;
         let mode = p.color_mode;
         let cap = p.cap;
         let join = p.join;
         let transform = self.composer.transform.cur();
-        let width_physical = p.width * geometry::physical_scale(transform, scale);
+        let width_physical = p.width * self.composer.transform.physical_scale();
 
         // Inflated physical AABB, computed once for cull and overlap. Inflating by the
         // stroke fringe means the cull never trims reachable pixels. Clamped here because
@@ -537,7 +529,7 @@ impl PaintSink for ComposeSession<'_> {
         // Transform points to physical px with owner origin folded in. No snapping: it would shift
         // thin lines off-axis.
         self.composer.polyline.points.clear();
-        let to_physical = PhysicalMap::new(transform, p.origin, scale);
+        let to_physical = self.composer.transform.physical_map(p.origin);
         if let Some(spin) = p.bounds.spin() {
             let rotor = spin.rotor();
             self.composer.polyline.points.extend(
@@ -669,13 +661,12 @@ impl PaintSink for ComposeSession<'_> {
         // the scale-step fraction like the run's damage rect (`inflate_text_damage`).
         // Covered, never rounded in, so the last AA column is not cut.
         let unclipped = {
-            let inked = self
-                .composer
-                .transform
-                .apply_rect(t.rect.inflated_by(t.ink));
+            let local_inked = t.rect.inflated_by(t.ink);
+            let inked = self.composer.transform.apply_rect(local_inked);
             let lead = (world.min - inked.min) * scale;
             let size = Vec2::new(inked.size.w, inked.size.h) * scale;
-            let pad = size * (TEXT_SCALE_STEP * 0.5);
+            let slack = text::snap_slack(local_inked.size);
+            let pad = Vec2::new(slack.w, slack.h) * scale;
             let min = physical_rect.min - lead;
             geometry::urect_from_physical(min - pad, min + size + pad, self.out.display.physical)
         };
@@ -719,8 +710,7 @@ impl PaintSink for ComposeSession<'_> {
 impl ComposeSession<'_> {
     /// Reduce a quad-tier draw to physical space; everything past this is shape-blind.
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
-        let transform = self.composer.transform.cur();
-        let scale_physical = geometry::physical_scale(transform, self.out.display.scale_factor());
+        let scale_physical = self.composer.transform.physical_scale();
         match p.geometry {
             QuadGeometry::Rect { rect, corners } => {
                 let source = self.scaled_rect(rect);
@@ -758,9 +748,8 @@ impl ComposeSession<'_> {
                 c,
                 radius,
             } => {
-                let scale = self.out.display.scale_factor();
                 // No snapping: the SDF handles sub-pixel placement.
-                let to_physical = PhysicalMap::new(transform, origin, scale);
+                let to_physical = self.composer.transform.physical_map(origin);
                 let (a, b, c) = (
                     to_physical.point(a),
                     to_physical.point(b),
@@ -975,24 +964,45 @@ impl ComposeSession<'_> {
     /// would be reordered above it (quad is the lowest kind). Text is checked against
     /// the open batch's grid and batches closed in this group ([`Self::closed_hit`]); an
     /// open-batch hit also closes the batch so its text cannot coalesce forward and
-    /// re-cover the quad.
+    /// re-cover the quad. A batch renders at the end of its last group, so one whose last
+    /// group is already closed paints below the quad and needs no flush.
     fn quad_forces_flush(&mut self, overlap: URect) {
         if self.composer.batch.open_grid.any_overlap(overlap) {
+            let renders_after = self
+                .composer
+                .batch
+                .open
+                .as_ref()
+                .is_some_and(|b| self.renders_after_in_flight(b.last_group));
             self.close_batch();
-            self.flush();
+            if renders_after {
+                self.flush();
+            }
         } else if self.closed_hit(overlap) || self.composer.higher_kinds.any_overlap(overlap) {
             self.flush();
         }
     }
 
-    /// `true` if `q` overlaps text of a batch closed in the in-flight group. The first
-    /// query hitting a pending batch scissor drains all pending batches into the closed
+    /// Whether a text batch whose last group is `last_group` renders at the end of the in-flight
+    /// group, after its draws, and not at the end of a group already closed.
+    const fn renders_after_in_flight(&self, last_group: u32) -> bool {
+        last_group as usize == self.out.groups.len()
+    }
+
+    /// `true` if `q` overlaps text of a batch closed in the in-flight group that renders at its
+    /// end. The first query hitting a pending batch scissor drains those batches into the closed
     /// grid; groups nothing probes never pay the fill.
     fn closed_hit(&mut self, q: URect) -> bool {
+        let in_flight = self.out.groups.len();
         let batch = &mut self.composer.batch;
         let pending = &self.out.text_batches[batch.pending_batch_cursor..];
-        if pending.iter().any(|b| b.scissor.intersects(q)) {
-            for b in pending {
+        let renders_after = |b: &&TextBatch| b.last_group as usize == in_flight;
+        if pending
+            .iter()
+            .filter(renders_after)
+            .any(|b| b.scissor.intersects(q))
+        {
+            for b in pending.iter().filter(renders_after) {
                 for ti in b.texts.range() {
                     batch.closed_grid.push(self.out.texts[ti].bounds);
                 }

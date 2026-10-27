@@ -2,7 +2,6 @@
 //! how a logical rect lands on physical pixels.
 
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::math::num::F32Px;
@@ -101,12 +100,6 @@ pub(super) fn snap_text_scale(s: f32) -> f32 {
 /// the GPU consumes. Pairs [`URect::covering`] with [`URect::clamp_to`].
 pub(super) fn urect_from_physical(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
     URect::covering(Rect::from_min_max(min, max)).clamp_to(URect::new(0, 0, viewport.x, viewport.y))
-}
-
-/// Physical pixels per owner-local unit under `transform`.
-#[inline]
-pub(super) const fn physical_scale(transform: TranslateScale, display_scale: f32) -> f32 {
-    transform.scale * display_scale
 }
 
 #[cold]

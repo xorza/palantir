@@ -45,12 +45,25 @@ pub(crate) mod shaper;
 pub(crate) mod system;
 pub(crate) mod wrap;
 
+use crate::primitives::geometry::size::Size;
+
 /// Additive step on the text-scale ladder. The composer snaps a continuous zoom scale to a rung before it picks a glyph-cache key (`composer::geometry::snap_text_scale`).
 ///
 /// Additive, not proportional: the step shrinks as a percent of size as zoom grows (0.005/4 ≈ 0.125% at 4×, 0.5% at 1×, 1% at 0.5×). Fine rungs where every percent shows, coarse rungs and fewer atlas keys at low zoom.
 ///
 /// Measurement uses the unscaled `font_size`; only paint snaps. At a non-rung zoom the glyph block is up to `TEXT_SCALE_STEP / 2` off the layout rect per axis. `TextDrawRow.bounds` clips the excess and the cascade (`inflate_text_damage`) inflates damage by the same fraction.
 pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
+
+/// How far a run inked over `inked` (local logical px) can paint past it per side, in the logical
+/// px of its screen. The snap moves the scale by at most `TEXT_SCALE_STEP / 2`, absolute, so the
+/// painted block moves by `inked × STEP/2` whatever the zoom: padding the transformed size instead
+/// would shrink the slack below scale 1 and cut glyphs.
+pub(crate) fn snap_slack(inked: Size) -> Size {
+    Size::new(
+        inked.w * (TEXT_SCALE_STEP * 0.5),
+        inked.h * (TEXT_SCALE_STEP * 0.5),
+    )
+}
 
 /// Frames a *rendered* run's shaped buffer survives untouched: the floor of the cache's protected tier (each entry adds its share of [`RENDERED_RUN_KEEP_SPREAD_MASK`]), and the ceiling the glyph-template window (`gpu::raster::text_backend::encode::cache::ENCODED_CACHE_KEEP_FRAMES`) must stay under.
 ///

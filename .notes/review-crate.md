@@ -36,11 +36,6 @@ the measure-cache hit test.
 
 ## Paint and geometry
 
-- **One function per geometric fact, on the primitive it describes.**
-  `Corners::inner(size, padding)` fits first, then reduces each corner by the
-  larger adjacent inset. One text snap-slack function over the local inked
-  size. One CPU corner-fit function. The cascade, the encoder, the composer
-  and the cutout plan call them.
 - **Validation happens at the setter.** Every shape setter checks its input
   with `#[track_caller]`. The release-silent `LowerShape::has_nan` gate goes.
   `#[track_caller]` and `# Panics` follow each call chain down to its assert.
@@ -143,38 +138,6 @@ Files: `src/theme/tests/`.
 - [ ] **The theme-file fuzz leaves out `1e30`.** `theme/tests/file_values.rs:20`.
   Target: `1e30` in `SUSPECTS`, after the `.notes/ISSUES.md` entry on large
   theme lengths is fixed.
-
-## Batch 10: Geometric facts computed once
-
-Rendering changes: run the golden suite. Files:
-`src/primitives/geometry/corners/`, `src/renderer/frontend/{encoder,
-composer}/`, `src/cascade/paint_rect.rs`,
-`src/gpu/pipeline/quad_pipeline/cutout_plan/`.
-
-- [ ] **The rounded-clip mask uses unfitted corners.**
-  `encoder/layer_ctx.rs:421-436` vs `:384`. Chrome 100×30, radius 20,
-  padding 10/2: mask 10, correct 5. Target: `Corners::inner(size, padding)`
-  for the mask and the inset shadow. Extend `encoder/tests/clipping.rs:52-80`
-  with overflowing radii and uneven padding.
-- [ ] **The text bounds pad shrinks with zoom.** `composer/session.rs:666-680`
-  vs `cascade/paint_rect.rs:50-64`. Target: one slack function over the local
-  inked size. Extend `composer/tests/batching.rs:768-805` with a transform
-  scale below 1.
-- [ ] **Two CPU copies of the corner fit.** `cutout_plan/mod.rs:530-546`,
-  `corners/mod.rs:94-112`. Target: one `pub(crate)` function.
-- [ ] **Placement math is rebuilt at each draw.**
-  `composer/session.rs:152-160, 192-198`, and about 8 `physical_scale` sites.
-  Target: the transform stack stores the composed physical map;
-  `push_clip` calls `scaled_rect`. Keep `(T·x)·dpr` order; check
-  `composer/tests/scaling.rs`.
-- [ ] **Local-rect resolution has two spellings.** `encoder/geometry.rs:1-15`,
-  `cascade/paint_rect.rs:292, 302`. Target: one method on the rect; delete
-  the module.
-- [ ] **Text batch hits flush the group for nothing.**
-  `composer/session.rs:956-981`. Target: skip the flush when the hit batch's
-  `last_group` is below the in-flight group.
-- [ ] **Docs.** `render_buffer/mod.rs:52`, `session.rs:378-379`,
-  `render_target_draw.rs:52-58`, `renderer/mod.rs:3`.
 
 ## Batch 11: Layout correctness
 
