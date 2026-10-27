@@ -310,6 +310,10 @@ ComboBox
             pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
             pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        impl ComboBox<'static, &'static str, fn(&&'static str) -> &'static str>
+            pub fn open(ui: &mut Ui, id: WidgetId)
+            pub fn close(ui: &mut Ui, id: WidgetId)
+            pub fn is_open(ui: &Ui, id: WidgetId) -> bool
         impl<'a, S: Debug, L: Debug> Debug for ComboBox<'a, S, L>
 
 ComboBoxTheme
@@ -574,6 +578,7 @@ DockTabs
         fn draggable(&mut self, _tab: Self::Tab) -> bool { .. }
         fn badge(&mut self, _tab: Self::Tab) -> TabBadge { .. }
         fn icon(&mut self, _tab: Self::Tab) -> Option<IconHandle> { .. }
+        fn has_tab_menu(&mut self, _tab: Self::Tab) -> bool { .. }
         fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) { .. }
 
 DockTheme
@@ -2632,6 +2637,7 @@ widget::OverlayScope
     struct OverlayScope: Debug
         pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
         pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R>
+        pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R>
         pub fn withdraw(self, ui: &mut Ui)
 
 widget::OverlaySpec
@@ -2643,8 +2649,8 @@ widget::OverlaySpec
 widget::OverlayTurn
     struct OverlayTurn<R>
         pub inner: R
-        pub escape: bool
-        pub outside: bool
+        pub escape_pressed: bool
+        pub pressed_outside: bool
         impl<R: Debug> Debug for OverlayTurn<R>
 
 widget::PaintAnimation

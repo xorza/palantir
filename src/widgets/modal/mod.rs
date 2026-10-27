@@ -102,15 +102,11 @@ impl<'a> Modal<'a> {
         });
         let response = OverlayResponse {
             id: root_id,
-            dismissed: turn.outside || turn.escape,
+            dismissed: turn.pressed_outside || turn.escape_pressed,
             close_requested: handle.requested(),
             inner: turn.inner,
         };
-        if response.closed() {
-            scope.withdraw(ui);
-        }
-
-        response
+        scope.finish(ui, response)
     }
 }
 

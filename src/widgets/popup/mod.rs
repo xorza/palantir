@@ -2,14 +2,18 @@
 
 pub(crate) mod click_outside;
 pub(crate) mod popup_trigger;
+pub(crate) mod trigger_state;
 
 use crate::input::sense::Sense;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::anchor::Anchor;
+use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
+use crate::theme::context_menu::ContextMenuTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
-use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
@@ -113,18 +117,25 @@ impl Popup {
         let response = OverlayResponse {
             id,
             // `Dismiss` also closes on Esc so hosts read one `closed()` signal.
-            dismissed: dismiss_mode && (turn.outside || turn.escape),
+            dismissed: dismiss_mode && (turn.pressed_outside || turn.escape_pressed),
             close_requested: handle.requested(),
             inner: turn.inner,
         };
-        if response.closed() {
-            scope.withdraw(ui);
-        }
-        response
+        scope.finish(ui, response)
     }
 }
 
 impl Popup {
+    /// Dress the popup as a menu panel: the menu theme's chrome, padding, row gap and minimum
+    /// width, each unless the caller set it, and arrow keys walking the rows.
+    pub(crate) fn menu_look(self, menu: &ContextMenuTheme) -> Self {
+        self.default_chrome(menu.panel.clone())
+            .default_padding(menu.padding)
+            .default_min_size(Size::new(menu.min_width, 0.0))
+            .default_gap(menu.gap)
+            .arrow_focus(Axis::Y)
+    }
+
     /// Paint `chrome` behind this widget; unset falls back to
     /// `panel_chrome`. [`Chrome::NONE`] suppresses the fallback.
     ///

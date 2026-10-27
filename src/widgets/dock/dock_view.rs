@@ -125,6 +125,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
         let id = widget.resolve(ui);
         let response = widget.response(ui);
         let mut cx = DockCtx {
+            dock: id,
             state,
             operations,
             tabs,
@@ -134,6 +135,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
         };
         widget.record(ui, None, |ui| {
             cx.node(ui, DockState::<T>::ROOT, DockPath::ROOT);
+            cx.tab_menu(ui);
             if let Some(tab) = DockView::drag(state, ui) {
                 ui.set_cursor(CursorIcon::Grabbing);
                 cx.drag_feedback(ui, tab);
@@ -328,6 +330,23 @@ impl<T> Default for DockOpBuf<T> {
     }
 }
 
+/// The chip whose menu is open, kept on the dock's own id: one menu at a time, since it is modal.
+#[derive(Clone, Copy, Debug)]
+struct TabMenuTarget<T> {
+    tab: T,
+    group: TabGroupId,
+}
+
+impl<T: DockTab> TabMenuTarget<T> {
+    /// The chip the menu opened from, which keys its open state.
+    fn chip(&self, state: &DockState<T>) -> WidgetId {
+        TabStrip::chip_id(
+            DockView::strip_id(state, self.group),
+            DockView::tab_key(self.tab),
+        )
+    }
+}
+
 #[derive(Debug, Default)]
 struct ChipRects {
     rects: Vec<Rect>,
@@ -335,6 +354,8 @@ struct ChipRects {
 
 #[derive(Debug)]
 struct DockCtx<'c, T, D> {
+    /// The dock's own id, which holds the open tab menu's target.
+    dock: WidgetId,
     state: &'c DockState<T>,
     operations: &'c mut Vec<DockOperation<T>>,
     tabs: &'c mut D,
@@ -425,32 +446,64 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
         {
             self.operations.push(DockOperation::ActivateTab { tab });
         }
+        // A right-click opens the tab's menu only where the app declares one, as an empty menu
+        // would still eat the next click.
         for &tab in &group.tabs {
-            let key = DockView::tab_key(tab);
-            let menu_id = strip_id.with(("menu", key));
-            if ui
-                .response_for(TabStrip::chip_id(strip_id, key))
-                .right
-                .clicked()
+            let chip = TabStrip::chip_id(strip_id, DockView::tab_key(tab));
+            if ui.response_for(chip).right.clicked()
+                && self.tabs.has_tab_menu(tab)
                 && let Some(p) = ui.pointer_pos()
             {
-                ContextMenu::open(ui, menu_id, p);
-            }
-            let operations = &mut *self.operations;
-            let tabs = &mut *self.tabs;
-            ContextMenu::for_id(menu_id)
-                .size((Sizing::HUG, Sizing::HUG))
-                .show(ui, |ui, close| {
-                    tabs.tab_menu(
-                        ui,
-                        DockTabMenu {
-                            tab,
-                            group: group.id,
-                            operations,
-                            close,
-                        },
-                    );
+                let target = TabMenuTarget {
+                    tab,
+                    group: group.id,
+                };
+                ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| {
+                    *row = Some(target);
                 });
+                ContextMenu::open(ui, chip, p);
+            }
+        }
+    }
+
+    /// The open tab menu, if any: one per dock, recorded once the panes are.
+    fn tab_menu(&mut self, ui: &mut Ui) {
+        let Some(target) = ui
+            .state::<Option<TabMenuTarget<T>>>(self.dock)
+            .copied()
+            .flatten()
+        else {
+            return;
+        };
+        let chip = target.chip(self.state);
+        // The app can remove or move the tab while its menu is open; a menu for a chip that is
+        // gone would act on a tab that is not there.
+        if self
+            .state
+            .find_tab(target.tab)
+            .is_none_or(|at| at.group != target.group)
+        {
+            ContextMenu::close(ui, chip);
+            ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| *row = None);
+            return;
+        }
+        let operations = &mut *self.operations;
+        let tabs = &mut *self.tabs;
+        ContextMenu::for_id(chip)
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui, close| {
+                tabs.tab_menu(
+                    ui,
+                    DockTabMenu {
+                        tab: target.tab,
+                        group: target.group,
+                        operations,
+                        close,
+                    },
+                );
+            });
+        if !ContextMenu::is_open(ui, chip) {
+            ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| *row = None);
         }
     }
 

@@ -5,6 +5,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
+use crate::scene::layer::Layer;
+use crate::theme::context_menu::ContextMenuTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -13,6 +15,7 @@ use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::Popup;
+use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 
 /// A [`Popup`] dropped below a trigger: a click opens it; a second click, an
 /// outside press, Escape or a [`CloseHandle`] closes it. The whole protocol of a
@@ -45,14 +48,6 @@ pub struct PopupTrigger {
     trigger: ResponseState,
     /// The popup this trigger drops; its anchor is a placeholder until `show`.
     popup: Popup,
-}
-
-/// One trigger's popup state, keyed off the trigger's id: whether it is open
-/// and was on show last frame.
-#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
-struct PopupTriggerState {
-    open: bool,
-    shown: bool,
 }
 
 impl PopupTrigger {
@@ -88,6 +83,18 @@ impl PopupTrigger {
         self
     }
 
+    /// Record into `layer` rather than [`Layer::Popup`], as a menu button's menu does.
+    pub(crate) const fn layer(mut self, layer: Layer) -> Self {
+        self.popup = self.popup.layer(layer);
+        self
+    }
+
+    /// Dress the popup as a menu panel, as [`ContextMenu`](crate::ContextMenu) is.
+    pub(crate) fn menu_look(mut self, menu: &ContextMenuTheme) -> Self {
+        self.popup = self.popup.menu_look(menu);
+        self
+    }
+
     /// Toggle the open flag on a trigger click, close it on a disabled trigger, and
     /// record the popup below the trigger while open.
     ///
@@ -104,64 +111,32 @@ impl PopupTrigger {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
-        let state = ui
-            .state::<PopupTriggerState>(self.for_id)
-            .copied()
-            .unwrap_or_default();
-        let mut open = state.open;
-        if self.trigger.clicked() {
-            open = !open;
+        TriggerFrame {
+            for_id: self.for_id,
+            toggled: self.trigger.clicked(),
+            opened: None,
+            disabled: self.trigger.disabled,
+            rect: self.trigger.rect,
         }
-        if self.trigger.disabled {
-            open = false;
-        }
-        let mut resp = OverlayResponse::default();
-        let mut shown = false;
-        if open && let Some(rect) = self.trigger.rect {
-            shown = true;
-            resp = self
-                .popup
-                .anchor(Anchor::below(rect))
-                .show(ui, |ui, handle| Some(body(ui, handle)));
-            if !state.shown && ui.is_focus_visible() {
-                ui.focus_first_within(resp.id);
-            }
-            if resp.closed() {
-                open = false;
-            }
-        }
-        let next = PopupTriggerState {
-            open,
-            shown: shown && open,
-        };
-        if next != state {
-            ui.with_state::<PopupTriggerState, _>(self.for_id, |_, s| *s = next);
-        }
-        resp
+        .show::<Self, R>(ui, self.popup, body)
     }
 
     /// Open the popup of the trigger `for_id`, e.g. from a keyboard shortcut; it
     /// records on that trigger's next `show`.
     pub fn open(ui: &mut Ui, for_id: WidgetId) {
-        ui.with_state::<PopupTriggerState, _>(for_id, |_, s| s.open = true);
+        TriggerState::<Self>::open(ui, for_id, Opening::Below);
     }
 
-    /// Close the popup of the trigger `for_id`. No-op if already closed.
+    /// Close the popup of the trigger `for_id`, giving back the input it held at once. No-op if
+    /// already closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        // Probed first, so closing a closed popup stores nothing.
-        if ui
-            .state::<PopupTriggerState>(for_id)
-            .is_some_and(|s| s.open)
-        {
-            ui.with_state::<PopupTriggerState, _>(for_id, |_, s| s.open = false);
-        }
+        TriggerState::<Self>::close(ui, for_id);
     }
 
     /// `true` while the popup of the trigger `for_id` is open. No row is allocated
     /// for a never-opened trigger.
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
-        ui.state::<PopupTriggerState>(for_id)
-            .is_some_and(|state| state.open)
+        TriggerState::<Self>::is_open(ui, for_id)
     }
 }
 

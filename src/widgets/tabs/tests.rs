@@ -12,8 +12,8 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
-use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::panel::Panel;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
@@ -735,13 +735,13 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     h.click_on(chevron);
     h.frame(build(half_way));
     assert!(
-        ContextMenu::is_open(&h.ui, chevron),
+        PopupTrigger::is_open(&h.ui, chevron),
         "premise: the menu is open"
     );
     h.frame(|_| {});
     h.frame(build(half_way));
     assert!(
-        !ContextMenu::is_open(&h.ui, chevron),
+        !PopupTrigger::is_open(&h.ui, chevron),
         "the strip came back with its menu closed"
     );
 }

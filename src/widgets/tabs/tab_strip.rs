@@ -15,6 +15,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::chrome::Chrome;
+use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::look::engagement::Engagement;
@@ -26,10 +27,10 @@ use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
+use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
-use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::tabs::tab_item::TabItem;
 use crate::widgets::text::Text;
@@ -460,7 +461,7 @@ impl StripPass<'_> {
             })
         };
         let button_id = strip.with("overflow");
-        if !items.iter().any(hidden) && !ContextMenu::is_open(ui, button_id) {
+        if !items.iter().any(hidden) && !PopupTrigger::is_open(ui, button_id) {
             return;
         }
         let chevron = self.glyph_button(ui, button_id);
@@ -476,13 +477,16 @@ impl StripPass<'_> {
         button.record(ui, Some(&chevron.chrome), |ui| {
             chevron.glyph(ui, button_id, "\u{22ef}");
         });
-        if chevron.state.clicked()
-            && let Some(rect) = chevron.state.rect
-        {
-            ContextMenu::open(ui, button_id, Vec2::new(rect.min.x, rect.max().y));
-        }
-        let picked = ContextMenu::for_id(button_id)
+        let ui_theme = Rc::clone(ui.theme());
+        let trigger = ResponseSnapshot {
+            id: button_id,
+            state: chevron.state,
+        };
+        // A menu button: the chevron's click toggles a menu below it.
+        let picked = PopupTrigger::on(&trigger)
             .size((Sizing::HUG, Sizing::HUG))
+            .layer(Layer::Menu)
+            .menu_look(&ui_theme.context_menu)
             .show(ui, |ui, popup| {
                 let mut picked = None;
                 for (i, item) in items.iter().enumerate() {
@@ -499,7 +503,6 @@ impl StripPass<'_> {
             });
         if let Some(slot) = picked.inner.flatten() {
             self.hits.menu_picked = Some(slot);
-            ContextMenu::close(ui, button_id);
         }
     }
 

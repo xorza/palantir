@@ -11,7 +11,7 @@ use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::tab_group::TabGroupId;
 use crate::widgets::tabs::tab_item::TabBadge;
 
-/// What a [`DockView`](crate::DockView) asks the application about each tab it draws. A trait, since six questions per tab do not fit in closures without boxing per frame; each runs per visible tab per frame, so keep them cheap.
+/// What a [`DockView`](crate::DockView) asks the application about each tab it draws. A trait, since seven questions per tab do not fit in closures without boxing per frame; each runs per visible tab per frame, so keep them cheap.
 pub trait DockTabs {
     /// The application's own tab key — a small `Copy` enum or index.
     type Tab: DockTab;
@@ -42,7 +42,13 @@ pub trait DockTabs {
         None
     }
 
-    /// The chip's right-click menu: records [`MenuItem`](crate::MenuItem)s into the open menu; empty means none.
+    /// Whether a right-click on `tab`'s chip opens a menu, which [`Self::tab_menu`] then fills.
+    fn has_tab_menu(&mut self, _tab: Self::Tab) -> bool {
+        false
+    }
+
+    /// The chip's right-click menu: records [`MenuItem`](crate::MenuItem)s into the open menu.
+    /// Opens only for a tab [`Self::has_tab_menu`] answers `true` for.
     fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) {}
 }
 

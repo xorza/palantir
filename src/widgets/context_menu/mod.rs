@@ -3,10 +3,8 @@
 pub(crate) mod menu_item;
 pub(crate) mod menu_separator;
 
-use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
-use crate::primitives::layout::axis::Axis;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
@@ -19,15 +17,10 @@ use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::Popup;
+use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 
 use glam::Vec2;
 use std::rc::Rc;
-
-/// Open state for one context-menu site, keyed off the trigger's id.
-#[derive(Default, Clone, Copy, Debug)]
-struct ContextMenuState {
-    open_at: Option<Vec2>,
-}
 
 /// A right-click or programmatically opened popup menu attached to a trigger.
 ///
@@ -60,6 +53,8 @@ pub struct ContextMenu<'a> {
     for_id: WidgetId,
     /// The trigger reported a right-click this frame.
     open_on_show: bool,
+    /// The trigger is disabled, which closes its menu.
+    disabled: bool,
     /// The popup this menu is. Its anchor is a placeholder until `show`; a
     /// closed menu returns before recording. It owns the chrome too, so
     /// `.chrome(..)` and the theme fallback land in one place.
@@ -74,6 +69,7 @@ impl<'a> ContextMenu<'a> {
         Self {
             for_id,
             open_on_show: false,
+            disabled: false,
             popup: Popup::new(Anchor::at_point(Vec2::ZERO)).default_id(for_id.with("body")),
             style: None,
         }
@@ -85,6 +81,7 @@ impl<'a> ContextMenu<'a> {
     pub fn on(snapshot: &ResponseSnapshot) -> Self {
         Self {
             open_on_show: snapshot.right.clicked(),
+            disabled: snapshot.disabled,
             ..Self::for_id(snapshot.id)
         }
     }
@@ -99,46 +96,31 @@ impl<'a> ContextMenu<'a> {
     /// Record the menu and return the popup's outcome.
     ///
     /// `inner` is `None` when the menu is closed and the body did not run.
-    /// The body records in [`Layer::Menu`], so a menu can be raised from
-    /// inside a popup or dialog.
+    /// The body records in [`Layer::Menu`]. A menu opened while focus shows
+    /// the ring (from the keyboard) takes focus on its first row, and a
+    /// disabled trigger closes it.
     pub fn show<R>(
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
-        if self.open_on_show
-            && let Some(p) = ui.pointer_pos()
-        {
-            ContextMenu::open(ui, self.for_id, p);
-        }
-        // Read via `state` so a never-opened menu stores no StateMap row.
-        let Some(open_at) = ui
-            .state::<ContextMenuState>(self.for_id)
-            .and_then(|st| st.open_at)
-        else {
-            return OverlayResponse::default();
-        };
-
+        let opened = (self.open_on_show)
+            .then(|| ui.pointer_pos())
+            .flatten()
+            .map(|p| Opening::At(vec2::offset(p)));
         let ui_theme = Rc::clone(ui.theme());
         let ctx = self.style.unwrap_or(&ui_theme.context_menu);
-
         // The caller's `Configure` calls already landed on the popup; the
         // theme fills the rest. Identity falls back to the trigger's.
-        let resp = self
-            .popup
-            .layer(Layer::Menu)
-            .anchor(Anchor::at_point(open_at))
-            .default_chrome(ctx.panel.clone())
-            .default_padding(ctx.padding)
-            .default_min_size(Size::new(ctx.min_width, 0.0))
-            .default_gap(ctx.gap)
-            .arrow_focus(Axis::Y)
-            .show(ui, |ui, handle| Some(body(ui, handle)));
-        if resp.closed() {
-            ContextMenu::close(ui, self.for_id);
+        let popup = self.popup.layer(Layer::Menu).menu_look(ctx);
+        TriggerFrame {
+            for_id: self.for_id,
+            toggled: false,
+            opened,
+            disabled: self.disabled,
+            rect: None,
         }
-
-        resp
+        .show::<ContextMenu<'static>, R>(ui, popup, body)
     }
 
     /// Open the menu keyed off `for_id` at surface-space `point`. Idempotent;
@@ -149,23 +131,17 @@ impl<'a> ContextMenu<'a> {
     /// Panics unless both axes of `point` are [offsets](crate::widget::domain::offset).
     #[track_caller]
     pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2) {
-        ui.with_state::<ContextMenuState, _>(for_id, |_, s| s.open_at = Some(vec2::offset(point)));
+        TriggerState::<ContextMenu<'static>>::open(ui, for_id, Opening::At(vec2::offset(point)));
     }
 
-    /// Close the menu keyed off `for_id`. No-op if closed.
+    /// Close the menu keyed off `for_id`, giving back the input it held at once. No-op if closed.
     pub fn close(ui: &mut Ui, for_id: WidgetId) {
-        if ui
-            .state::<ContextMenuState>(for_id)
-            .is_some_and(|s| s.open_at.is_some())
-        {
-            ui.with_state::<ContextMenuState, _>(for_id, |_, s| s.open_at = None);
-        }
+        TriggerState::<ContextMenu<'static>>::close(ui, for_id);
     }
 
     /// Whether the menu keyed off `for_id` is open. Allocates no row.
     pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
-        ui.state::<ContextMenuState>(for_id)
-            .is_some_and(|st| st.open_at.is_some())
+        TriggerState::<ContextMenu<'static>>::is_open(ui, for_id)
     }
 }
 
