@@ -11,7 +11,7 @@ use crate::display;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::host::clock::RealtimeClock;
-use crate::host::core::{HostCore, HostCoreConfig, RecordedFrame};
+use crate::host::core::{HostCore, HostCoreConfig};
 use crate::host::window_driver::{CpuFrame, FrameSpec, PresentStrategy, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
@@ -255,10 +255,7 @@ impl OffscreenHost {
         app: &mut T,
     ) -> FrameReport {
         let spec = self.spec(target, system_scale);
-        let RecordedFrame {
-            cpu: CpuFrame { report, mode },
-            ..
-        } = self.core.record(&mut self.driver, spec, app);
+        let CpuFrame { report, mode } = self.core.record(&mut self.driver, spec, app);
         // Before submitting, so the failure leaves the target untouched.
         deny_window_commands(&mut self.driver);
         self.core.submit(&mut self.driver, target, mode);
@@ -271,7 +268,6 @@ impl OffscreenHost {
         FrameSpec {
             physical: target.size(),
             format: target.format(),
-            vsync: None,
             system_scale: display::scale_factor(system_scale),
             refresh_millihertz: None,
             now: self.time.now(),
@@ -483,10 +479,7 @@ mod tests {
         for (frame, paints) in [(0, true), (1, false)] {
             let target = texture.as_target();
             let spec = host.spec(target, 1.0);
-            let RecordedFrame {
-                cpu: CpuFrame { mode, .. },
-                ..
-            } = host.core.record(&mut host.driver, spec, &mut app);
+            let CpuFrame { mode, .. } = host.core.record(&mut host.driver, spec, &mut app);
             assert_eq!(
                 matches!(mode, PresentPath::Direct(_) | PresentPath::ViaBackbuffer(_)),
                 paints,
@@ -531,10 +524,7 @@ mod tests {
         let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
         let spec = host.spec(large.as_target(), 1.0);
         let mut asking = RecordApp::new(|ui: &mut Ui| scene(ui, true));
-        let RecordedFrame {
-            cpu: CpuFrame { report, .. },
-            ..
-        } = host.core.record(&mut host.driver, spec, &mut asking);
+        let CpuFrame { report, .. } = host.core.record(&mut host.driver, spec, &mut asking);
         assert!(
             report.repaint_requested,
             "the unpainted request asks for a frame"

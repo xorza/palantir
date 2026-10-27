@@ -14,10 +14,6 @@ the measure-cache hit test.
 
 ## Host and window
 
-- **The swapchain owns its configuration.** `WindowSurface` compares the
-  desired and the applied `SurfaceConfiguration` and reconfigures in
-  `prepare`. On `Reconfigured`, the winit `Window` invalidates the driver's
-  target contents. `TargetKey` is `(physical, format)` and loses `vsync`.
 - **One host-options vocabulary.** A crate-private `HostOptions` holds the
   settings that both builders share (fonts, shaper, clipboard, GPU stats,
   pixel snap) and builds `HostCoreConfig` in one place.
@@ -172,27 +168,6 @@ offscreen.rs, winit/window/, winit/runtime.rs}`, `src/internals/ui_harness/`,
 
 - [ ] **`UiHarness` repeats the display mint.** `ui_harness/mod.rs:639-651`.
   Target: one display mint on `FrameSpec` that both call.
-
-## Batch 6: Swapchain configuration and the winit window
-
-Files: `src/gpu/surface/{window_surface.rs, surface_manager/}`,
-`src/host/window_driver/`, `src/host/winit/window/`.
-
-- [ ] **`TargetKey` mixes target identity and swapchain configuration.**
-  `window_driver/mod.rs:111-136, 326-336, 494-504`,
-  `winit/window/mod.rs:305-314, 327-332, 435-443`. Target: `WindowSurface`
-  owns desired vs applied configuration, `prepare(gpu) -> Reconfigured`;
-  `TargetKey` and `FrameSpec` drop `vsync`.
-- [ ] **The winit per-window policy is untested.**
-  `winit/window/mod.rs:78-116, 240-443`. Target: satellites `Visibility`,
-  `AppliedLevels`, `PresentSchedule`; a pure `present_policy` over an
-  `AcquireOutcome`, tested table-driven with exact back-off values.
-- [ ] **`SurfaceManager` keeps an unused `Gpu`, and the texture cap is read
-  twice.** `surface_manager/mod.rs:41-44, 88`, `core.rs:43-46`. Target:
-  startup moves the `Gpu` out; the resize clamp reads `HostCore`'s cap.
-- [ ] **Host tests.** Move `app_lifecycle_follows_frame_plan_and_record_replays`
-  (`winit/tests.rs:47-79`) to `src/ui/tests/frames/`, so the no-winit lane
-  runs it. Reduce `builder_retains_defaults_and_overrides` to the overrides.
 
 ## Batch 7: Public host surface
 

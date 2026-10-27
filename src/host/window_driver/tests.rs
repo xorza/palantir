@@ -21,7 +21,6 @@ const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
     FrameSpec {
         physical,
         format: TargetFormat::RGBA8_SRGB,
-        vsync: None,
         system_scale,
         refresh_millihertz: None,
         now: Duration::ZERO,
@@ -258,24 +257,18 @@ mod output_validity_tests {
         }
     }
 
-    /// `note_target` is the single gate on retained target state: it reports a
-    /// change once per distinct size/format/present-mode and every change clears
-    /// the last-frame pixels and the damage baseline. The present-mode axis is what
-    /// a runtime vsync toggle rides: the gate is the sole re-reader of the host's
-    /// `SurfaceConfiguration`, so a key blind to the field would leave the
-    /// swapchain on the old mode.
+    /// `note_target` is the single gate on retained target state: each distinct size or format
+    /// clears the last-frame pixels and the damage baseline once, and a repeat, or a frame that
+    /// moves only the scale, refresh rate or time, clears nothing.
     #[test]
-    fn note_target_tracks_size_format_and_present_mode_and_invalidates_on_change() {
+    fn note_target_invalidates_once_per_size_or_format() {
         let shared = UiResources::isolated_mono();
         let mut driver = WindowDriver::new(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
-        let first = FrameSpec {
-            vsync: Some(Vsync::On),
-            ..spec(UVec2::new(64, 48), 1.0)
-        };
+        let first = spec(UVec2::new(64, 48), 1.0);
         let resized = FrameSpec {
             physical: UVec2::new(65, 48),
             ..first
@@ -284,46 +277,31 @@ mod output_validity_tests {
             format: TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb),
             ..resized
         };
-        let vsync_off = FrameSpec {
-            vsync: Some(Vsync::Off),
-            ..reformatted
-        };
-        // A texture target carries no mode, yet must read as a change against an
-        // otherwise-equal surface.
-        let offscreen = FrameSpec {
-            vsync: None,
-            ..vsync_off
-        };
-        // The scale, refresh rate and time are not the target.
         let rescaled = FrameSpec {
             system_scale: 2.0,
             refresh_millihertz: Some(120_000),
             now: Duration::from_secs(1),
-            ..offscreen
+            ..reformatted
         };
-
-        assert!(driver.note_target(&first), "the first target is a change");
-        assert!(!driver.note_target(&first), "an identical target is not");
-
-        for changed in [resized, reformatted, vsync_off, offscreen] {
+        // Whether noting `spec` cleared what a kept target holds.
+        let mut clears = |spec: &FrameSpec| {
             driver.output_valid = true;
             driver.backbuffer_fresh = true;
-            assert!(driver.note_target(&changed));
-            assert!(!driver.output_valid, "target change invalidates output");
-            assert!(
-                !driver.backbuffer_fresh,
-                "target change invalidates retained target pixels"
-            );
-            assert!(!driver.note_target(&changed));
+            driver.note_target(spec);
+            assert_eq!(driver.output_valid, driver.backbuffer_fresh);
+            !driver.output_valid
+        };
+        for (label, spec, want) in [
+            ("the first target", first, true),
+            ("an identical one", first, false),
+            ("a new size", resized, true),
+            ("its repeat", resized, false),
+            ("a new format", reformatted, true),
+            ("its repeat", reformatted, false),
+            ("a new scale, refresh rate and time", rescaled, false),
+        ] {
+            assert_eq!(clears(&spec), want, "{label}");
         }
-
-        // Repeats after a change must not re-invalidate, or a swapchain window
-        // would never keep a damage baseline.
-        driver.output_valid = true;
-        driver.backbuffer_fresh = true;
-        assert!(!driver.note_target(&rescaled));
-        assert!(driver.output_valid);
-        assert!(driver.backbuffer_fresh);
     }
 
     #[test]

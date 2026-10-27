@@ -1269,12 +1269,6 @@ pub(crate) mod internals {
             &mut self.animation
         }
 
-        /// Only the winit host's own tests write here.
-        #[cfg(feature = "winit")]
-        pub(crate) fn frame_runtime_mut(&mut self) -> &mut FrameRuntime {
-            &mut self.frame_runtime
-        }
-
         pub(crate) fn window_requests(&self) -> &WindowRequests {
             &self.window_requests
         }

@@ -19,6 +19,7 @@ use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::resources::{UiDevice, UiResources};
 use crate::window::window_token::WindowToken;
+use std::num::NonZeroU32;
 use std::rc::Rc;
 
 /// What a host seals at build beside its device; `pixel_snap` is the host's, inherited by every driver.
@@ -36,6 +37,7 @@ pub(super) struct HostCore {
     pub(super) frontend: Frontend,
     pub(super) backend: WgpuBackend,
     pixel_snap: bool,
+    max_texture_dim: NonZeroU32,
 }
 
 impl HostCore {
@@ -71,7 +73,17 @@ impl HostCore {
             frontend,
             backend,
             pixel_snap: config.pixel_snap,
+            max_texture_dim,
         }
+    }
+
+    /// The device's largest 2D texture side, read once: the cap on surfaces, images and atlases.
+    #[cfg_attr(
+        not(feature = "winit"),
+        expect(dead_code, reason = "only a swapchain is sized by the platform")
+    )]
+    pub(super) const fn max_texture_dim(&self) -> NonZeroU32 {
+        self.max_texture_dim
     }
 
     /// The device and queue every window of this host presents through.
@@ -99,14 +111,11 @@ impl HostCore {
         driver: &mut WindowDriver,
         spec: FrameSpec,
         app: &mut T,
-    ) -> RecordedFrame {
-        let retargeted = driver.note_target(&spec);
+    ) -> CpuFrame {
+        driver.note_target(&spec);
         driver.deliver_screenshot(&self.backend);
         let stamp = driver.stamp(&spec);
-        RecordedFrame {
-            cpu: driver.cpu_frame(&mut self.frontend, stamp, app),
-            retargeted,
-        }
+        driver.cpu_frame(&mut self.frontend, stamp, app)
     }
 
     /// The GPU half: draw the recorded frame into `target` by `mode`.
@@ -139,12 +148,4 @@ impl HostCore {
     pub(super) fn wait_for_gpu(&self) {
         self.gpu().wait();
     }
-}
-
-/// What [`HostCore::record`] did.
-#[derive(Debug)]
-pub(super) struct RecordedFrame {
-    pub(super) cpu: CpuFrame,
-    /// The target moved, so a swapchain reconfigures before it presents.
-    pub(super) retargeted: bool,
 }

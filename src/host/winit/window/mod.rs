@@ -1,9 +1,13 @@
 //! Per-window winit state and swapchain frame orchestration.
 
-use std::sync::Arc;
-use std::time::{Duration, Instant};
+mod applied_levels;
+mod present_schedule;
+mod visibility;
 
-use glam::{IVec2, UVec2, Vec2};
+use std::sync::Arc;
+use std::time::Instant;
+
+use glam::{IVec2, Vec2};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::WindowEvent;
 use winit::window::Window as WinitWindow;
@@ -12,16 +16,17 @@ use crate::app::App;
 use crate::common::platform::PLATFORM;
 use crate::common::tracy::{self, FrameSet};
 use crate::display;
-use crate::gpu::device::gpu::Gpu;
-use crate::gpu::surface::window_surface::{Acquired, WindowSurface};
+use crate::gpu::surface::window_surface::{Acquired, Prepared, WindowSurface};
 use crate::host::clock::RealtimeClock;
-use crate::host::core::{HostCore, RecordedFrame};
-use crate::host::window_driver::{CpuFrame, FrameSpec, WindowDriver};
+use crate::host::core::HostCore;
+use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, WindowDriver};
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
+use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
+use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
+use crate::host::winit::window::visibility::Visibility;
 use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
-use crate::window::cursor_icon::CursorIcon;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFrameState;
@@ -68,12 +73,6 @@ impl PointerAnchor {
     }
 }
 
-/// First delay after a `Validation` acquire: about one frame at 60 Hz.
-const ACQUIRE_RETRY_MIN: Duration = Duration::from_millis(16);
-
-/// Ceiling for [`Window::acquire_retry`]: two wake-ups a second.
-const ACQUIRE_RETRY_MAX: Duration = Duration::from_millis(500);
-
 /// Everything one native window owns.
 #[derive(Debug)]
 pub(super) struct Window {
@@ -84,17 +83,9 @@ pub(super) struct Window {
     pub(super) system_scale: f32,
     pub(super) next: FramePresent,
     pub(super) close_requested: bool,
-    cursor: CursorIcon,
-    /// The IME caret area in force, in physical px, or `None` while IME is off. Physical
-    /// so a scale change re-places the candidate list.
-    ime_area: Option<Rect>,
-    /// When the window became hidden; its clock skips the gap on resume.
-    occluded_at: Option<Instant>,
-    /// The platform reported the window occluded; [`Self::minimized`] is the other
-    /// hidden reason.
-    occluded: bool,
-    /// Resized to zero: how Windows reports a minimize (no `Occluded`).
-    minimized: bool,
+    levels: AppliedLevels,
+    visibility: Visibility,
+    schedule: PresentSchedule,
     translator: Translator,
     /// The frame clock, which skips the spans the window is hidden.
     clock: RealtimeClock,
@@ -104,18 +95,9 @@ pub(super) struct Window {
     /// A resize can change only whether the window is maximized (moves arrive as
     /// `Moved`), so only that fact is marked stale.
     maximized_stale: bool,
-    /// The surface size a suboptimal acquire last reconfigured for: the swapchain
-    /// rebuilds once per size, not every frame while a resize is pending.
-    suboptimal_handled: Option<UVec2>,
     frame_set: FrameSet,
     system_facts: Option<SystemFacts>,
     pointer: Option<PointerAnchor>,
-    /// How long the next frame waits before retrying an acquire that failed validation;
-    /// `None` while healthy. Other failures are transient and an immediate repaint
-    /// settles them, but a validation failure repeats, so without a delay the host
-    /// builds a full CPU draw list per loop iteration for nothing. Doubles to
-    /// [`ACQUIRE_RETRY_MAX`].
-    acquire_retry: Option<Duration>,
 }
 
 impl Window {
@@ -135,20 +117,16 @@ impl Window {
             system_scale,
             next: FramePresent::Immediate,
             close_requested: false,
-            cursor: CursorIcon::default(),
-            ime_area: None,
-            occluded_at: None,
-            occluded: false,
-            minimized: false,
+            levels: AppliedLevels::default(),
+            visibility: Visibility::default(),
+            schedule: PresentSchedule::default(),
             translator: Translator::new(PLATFORM),
             clock: RealtimeClock::new(),
             input_epoch: Instant::now(),
             maximized_stale: false,
-            suboptimal_handled: None,
             frame_set: FrameSet::claim(),
             system_facts: None,
             pointer: None,
-            acquire_retry: None,
         }
     }
 
@@ -242,29 +220,19 @@ impl Window {
     }
 
     pub(super) fn set_occluded(&mut self, occluded: bool) {
-        self.occluded = occluded;
-        self.update_hidden();
+        if let Some(hidden) = self.visibility.set_occluded(occluded, Instant::now()) {
+            self.clock.skip(hidden);
+        }
     }
 
     /// The window was resized to zero (minimized on Windows) or back. Returns whether
     /// that changed anything.
     pub(super) fn set_minimized(&mut self, minimized: bool) -> bool {
-        let changed = self.minimized != minimized;
-        self.minimized = minimized;
-        self.update_hidden();
-        changed
-    }
-
-    fn update_hidden(&mut self) {
-        let hidden = self.occluded || self.minimized;
-        match (hidden, self.occluded_at) {
-            (true, None) => self.occluded_at = Some(Instant::now()),
-            (false, Some(at)) => {
-                self.occluded_at = None;
-                self.clock.skip(at.elapsed());
-            }
-            _ => {}
+        let changed = self.visibility.is_minimized() != minimized;
+        if let Some(hidden) = self.visibility.set_minimized(minimized, Instant::now()) {
+            self.clock.skip(hidden);
         }
+        changed
     }
 
     /// Run one application/UI frame, acquire the swapchain texture, present it, then
@@ -285,37 +253,32 @@ impl Window {
             placement: facts.placement,
         });
 
-        // An occluded window skips its frame except the one carrying a close request:
+        // A hidden window skips its frame except the one carrying a close request:
         // only `App::update` / `App::record` can veto, and skipping would close a
         // minimized document past its "save changes?" prompt. One-shot.
-        if self.occluded_at.is_some() && !self.close_requested {
+        if self.visibility.is_hidden() && !self.close_requested {
             self.next = FramePresent::Idle;
         } else {
-            // The close-request frame runs while occluded, and `set_occluded(false)` skips the
-            // hidden span assuming none did. Restart the span here, or a vetoed close lets the
-            // un-occlude move the origin past this frame's stamp and the frame clock goes
-            // backwards (`advance_clock` still assigns `time`), skewing repaint deadlines and
-            // multi-press timing.
-            if self.occluded_at.is_some() {
-                self.occluded_at = Some(Instant::now());
-            }
+            // The close-request frame runs while hidden, and showing again skips the hidden span
+            // assuming no frame ran in it. Restart the span here, or a vetoed close lets the
+            // skip move the origin past this frame's stamp and the frame clock goes backwards
+            // (`advance_clock` still assigns `time`), skewing repaint deadlines and multi-press
+            // timing.
+            self.visibility.restart(Instant::now());
             // Before the display is minted, so a frame at a new scale hit-tests in the same space.
             self.resync_pointer();
+            // Before the record, which reads whether the target still holds the last frame.
+            if self.surface.prepare(core.gpu()) == Prepared::Rebuilt {
+                self.driver.invalidate_target_contents();
+            }
             let spec = FrameSpec {
                 physical: self.surface.size(),
                 format: self.surface.format(),
-                vsync: Some(self.surface.vsync()),
                 system_scale: self.system_scale,
                 refresh_millihertz: facts.refresh_millihertz,
                 now: self.clock.now(),
             };
-            let RecordedFrame { cpu, retargeted } = core.record(&mut self.driver, spec, app);
-            // A size, format or present-mode change invalidates retained target state and
-            // needs a reconfigure. Identical repeats (Wayland resends configures) must cost
-            // nothing: `surface.configure` waits for GPU idle (wgpu #7447: 100ms+ stalls).
-            if retargeted {
-                self.surface.configure(core.gpu());
-            }
+            let cpu = core.record(&mut self.driver, spec, app);
             self.next = self.present(core, cpu);
         }
 
@@ -326,70 +289,56 @@ impl Window {
         self.frame_set.mark();
     }
 
-    /// Rebuild the swapchain and tell the driver what it retained went with it; see
-    /// [`WindowDriver::invalidate_target_contents`].
-    fn reconfigure(&mut self, gpu: &Gpu) {
-        self.surface.configure(gpu);
-        self.driver.invalidate_target_contents();
-    }
-
     fn present(&mut self, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
-        let repaint = if report.plan.is_none() {
-            self.acquire_retry = None;
-            report.repaint_requested
+        let outcome = if report.plan.is_none() {
+            AcquireOutcome::Skipped
         } else {
-            let retry = self.acquire_retry.take();
-            match self.surface.acquire() {
-                Acquired::Ready(frame) => {
-                    core.submit(&mut self.driver, frame.target(), mode);
-                    self.window.pre_present_notify();
-                    frame.present(core.gpu());
-                    report.repaint_requested
-                }
-                // Still presentable: present it, then rebuild once per size.
-                Acquired::Suboptimal(frame) => {
-                    core.submit(&mut self.driver, frame.target(), mode);
-                    self.window.pre_present_notify();
-                    frame.present(core.gpu());
-                    let size = self.surface.size();
-                    if self.suboptimal_handled != Some(size) {
-                        tracing::warn!("surface acquire: suboptimal");
-                        self.suboptimal_handled = Some(size);
-                        self.reconfigure(core.gpu());
-                    }
-                    report.repaint_requested
-                }
-                Acquired::Outdated => {
-                    tracing::warn!("surface acquire: outdated / lost");
-                    self.reconfigure(core.gpu());
-                    true
-                }
-                Acquired::Timeout => {
-                    tracing::warn!("surface acquire: timeout");
-                    true
-                }
-                Acquired::Validation => {
-                    tracing::warn!("surface acquire: validation");
-                    self.acquire_retry = Some(retry.map_or(ACQUIRE_RETRY_MIN, |delay| {
-                        (delay * 2).min(ACQUIRE_RETRY_MAX)
-                    }));
-                    true
-                }
-                Acquired::Occluded => false,
-            }
+            self.acquire_and_present(core, mode)
         };
-
-        // Ahead of `repaint`, which every failing acquire asks for: the delay paces it.
-        if let Some(delay) = self.acquire_retry {
-            return FramePresent::At(self.clock.deadline(self.clock.now() + delay));
+        let decision = self.schedule.after(outcome, &report);
+        if decision.rebuild {
+            if let AcquireOutcome::Suboptimal(_) = outcome {
+                tracing::warn!("surface acquire: suboptimal");
+            }
+            self.surface.mark_stale();
         }
-        if repaint {
-            FramePresent::Immediate
-        } else if let Some(due) = report.repaint_after {
-            FramePresent::At(self.clock.deadline(due))
-        } else {
-            FramePresent::Idle
+        match decision.wake {
+            Wake::Now => FramePresent::Immediate,
+            Wake::After(delay) => FramePresent::At(self.clock.deadline(self.clock.now() + delay)),
+            Wake::At(due) => FramePresent::At(self.clock.deadline(due)),
+            Wake::Idle => FramePresent::Idle,
+        }
+    }
+
+    /// Acquire the swapchain image and, if it came, draw `mode` into it and present.
+    fn acquire_and_present(&mut self, core: &mut HostCore, mode: PresentPath) -> AcquireOutcome {
+        match self.surface.acquire() {
+            Acquired::Ready(frame) => {
+                core.submit(&mut self.driver, frame.target(), mode);
+                self.window.pre_present_notify();
+                frame.present(core.gpu());
+                AcquireOutcome::Presented
+            }
+            Acquired::Suboptimal(frame) => {
+                core.submit(&mut self.driver, frame.target(), mode);
+                self.window.pre_present_notify();
+                frame.present(core.gpu());
+                AcquireOutcome::Suboptimal(self.surface.size())
+            }
+            Acquired::Outdated => {
+                tracing::warn!("surface acquire: outdated / lost");
+                AcquireOutcome::Outdated
+            }
+            Acquired::Timeout => {
+                tracing::warn!("surface acquire: timeout");
+                AcquireOutcome::Timeout
+            }
+            Acquired::Validation => {
+                tracing::warn!("surface acquire: validation");
+                AcquireOutcome::Validation
+            }
+            Acquired::Occluded => AcquireOutcome::Occluded,
         }
     }
 
@@ -398,9 +347,8 @@ impl Window {
     /// apply a vsync change, and consume the one-shot close request.
     fn finish(&mut self, commands: &mut WindowCommands) {
         let output = self.driver.drain_window_output(commands);
-        if output.cursor != self.cursor {
+        if self.levels.set_cursor(output.cursor) {
             self.window.set_cursor(native::cursor(output.cursor));
-            self.cursor = output.cursor;
         }
         self.set_vsync(output.vsync);
         self.set_ime_area(output.ime);
@@ -411,29 +359,27 @@ impl Window {
     /// `None`; only on a change.
     fn set_ime_area(&mut self, caret: Option<Rect>) {
         let physical = caret.map(|rect| physical_rect(rect, self.effective_scale()));
-        if physical == self.ime_area {
-            return;
-        }
-        match physical {
-            Some(rect) => {
-                if self.ime_area.is_none() {
-                    self.window.set_ime_allowed(true);
-                }
-                self.window.set_ime_cursor_area(
-                    PhysicalPosition::new(f64::from(rect.min.x), f64::from(rect.min.y)),
-                    PhysicalSize::new(f64::from(rect.size.w), f64::from(rect.size.h)),
-                );
+        let area = match self.levels.set_ime_area(physical) {
+            None => return,
+            Some(ImeChange::Disable) => {
+                self.window.set_ime_allowed(false);
+                return;
             }
-            None => self.window.set_ime_allowed(false),
-        }
-        self.ime_area = physical;
+            Some(ImeChange::Enable(rect)) => {
+                self.window.set_ime_allowed(true);
+                rect
+            }
+            Some(ImeChange::Move(rect)) => rect,
+        };
+        self.window.set_ime_cursor_area(
+            PhysicalPosition::new(f64::from(area.min.x), f64::from(area.min.y)),
+            PhysicalSize::new(f64::from(area.size.w), f64::from(area.size.h)),
+        );
     }
 
-    /// Point the swapchain config at `vsync`, if not already paced that way. The
-    /// reconfigure is left to the next frame's target check in [`HostCore::record`]:
-    /// doing it here would leave `target` naming the old configuration so the check
-    /// would skip it. The forced repaint is because an idle window schedules no next
-    /// frame.
+    /// Point the swapchain at `vsync`, if not already paced that way; the next frame's
+    /// [`WindowSurface::prepare`] rebuilds it. The forced repaint is because an idle
+    /// window schedules no next frame.
     fn set_vsync(&mut self, vsync: Vsync) {
         if self.surface.set_vsync(vsync) {
             self.next = FramePresent::Immediate;

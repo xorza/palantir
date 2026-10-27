@@ -55,11 +55,12 @@ impl<T: App + 'static> WinitRuntime<T> {
         let window = native::create_window(event_loop, token, &config.window)?;
         let SurfaceStartup {
             surfaces,
+            gpu,
             first_surface,
         } = SurfaceManager::start(&window, native::physical_size(&window), config.gpu_config())
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let core = HostCore::new(
-            surfaces.gpu.clone(),
+            gpu,
             HostCoreConfig {
                 shaper: fonts.join(),
                 clipboard: Clipboard::system_or_memory(),
@@ -177,7 +178,13 @@ impl<T: App + 'static> WinitRuntime<T> {
         let window = native::create_window(event_loop, token, config)?;
         let surface = self
             .surfaces
-            .make_surface(&window, native::physical_size(&window))
+            .make_surface(
+                &window,
+                SurfaceManager::clamp_extent(
+                    self.core.max_texture_dim(),
+                    native::physical_size(&window),
+                ),
+            )
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let driver = self.core.open(token, PresentStrategy::DirectAdaptive);
         self.windows.push(Window::new(window, surface, driver));

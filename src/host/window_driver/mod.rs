@@ -30,7 +30,6 @@ use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
 use crate::ui::screenshot::Screenshot;
-use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
@@ -104,14 +103,13 @@ struct PendingScreenshot {
     scale: f32,
 }
 
-/// Identity of the surface or texture a window renders into. The single gate on
-/// retained target state; on a swapchain host it also decides surface
-/// reconfiguration, so a swapchain setting that becomes mutable must be added here.
+/// Identity of the surface or texture a window renders into: the single gate on retained target
+/// state. A swapchain that rebuilds at the same key says so through
+/// [`WindowDriver::invalidate_target_contents`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct TargetKey {
     pub(super) physical: UVec2,
     pub(super) format: TargetFormat,
-    pub(super) vsync: Option<Vsync>,
 }
 
 /// What a host knows of the frame it is about to run: the target, the platform's scale and
@@ -120,8 +118,6 @@ pub(super) struct TargetKey {
 pub(super) struct FrameSpec {
     pub(super) physical: UVec2,
     pub(super) format: TargetFormat,
-    /// The swapchain's present mode; `None` for a texture.
-    pub(super) vsync: Option<Vsync>,
     pub(super) system_scale: f32,
     pub(super) refresh_millihertz: Option<u32>,
     pub(super) now: Duration,
@@ -132,7 +128,6 @@ impl FrameSpec {
         TargetKey {
             physical: self.physical,
             format: self.format,
-            vsync: self.vsync,
         }
     }
 }
@@ -275,22 +270,19 @@ impl WindowDriver {
         FrameStamp::new(self.display(spec), spec.now)
     }
 
-    /// Declare the target of the frame `spec` describes, returning whether it changed. A change
-    /// invalidates retained pixels and the damage baseline; a swapchain adapter also reconfigures
-    /// on `true`.
-    pub(super) fn note_target(&mut self, spec: &FrameSpec) -> bool {
+    /// Declare the target of the frame `spec` describes. A change invalidates retained pixels and
+    /// the damage baseline.
+    pub(super) fn note_target(&mut self, spec: &FrameSpec) {
         let key = spec.target_key();
-        if self.target == Some(key) {
-            return false;
+        if self.target != Some(key) {
+            self.target = Some(key);
+            self.invalidate_target_contents();
         }
-        self.target = Some(key);
-        self.invalidate_target_contents();
-        true
     }
 
-    /// Declare the target's contents gone. Every `surface.configure` owes this:
-    /// [`Self::note_target`] makes it when the key moves, and the winit host where it
-    /// reconfigures a lost or suboptimal swapchain (new images, same key).
+    /// Declare the target's contents gone. Every swapchain rebuild owes this:
+    /// [`Self::note_target`] makes it when the key moves, and the winit host when its
+    /// swapchain rebuilds at the same key (new images: a lost, stale or repaced one).
     pub(super) const fn invalidate_target_contents(&mut self) {
         self.output_valid = false;
         self.backbuffer_fresh = false;
