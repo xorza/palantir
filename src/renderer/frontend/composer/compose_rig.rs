@@ -10,22 +10,23 @@ use crate::shape::record_store::RecordStore;
 use std::num::NonZeroU32;
 use std::time::Duration;
 
-/// One composer, output buffer and record store reused by every [`Self::compose`], so multi-frame tests exercise production's buffer reuse.
+/// One composer, output buffer and record store reused by every [`Self::compose`], so
+/// multi-frame tests and the bench exercise production's buffer reuse.
 #[derive(Debug)]
-pub(super) struct ComposeRig {
-    pub(super) composer: Composer,
-    pub(super) out: RenderBuffer,
-    pub(super) store: RecordStore,
-    pub(super) display: Display,
+pub(crate) struct ComposeRig {
+    pub(crate) composer: Composer,
+    pub(crate) out: RenderBuffer,
+    pub(crate) store: RecordStore,
+    pub(crate) display: Display,
 }
 
 impl ComposeRig {
     /// A rig at the deviceless test texture cap.
-    pub(super) fn new(display: Display) -> Self {
+    pub(crate) fn new(display: Display) -> Self {
         Self::with_texture_cap(display, TEST_MAX_TEXTURE_DIM)
     }
 
-    pub(super) fn with_texture_cap(display: Display, max_texture_dim: NonZeroU32) -> Self {
+    pub(crate) fn with_texture_cap(display: Display, max_texture_dim: NonZeroU32) -> Self {
         Self {
             composer: Composer::new(max_texture_dim),
             out: RenderBuffer::new(),
@@ -35,7 +36,7 @@ impl ComposeRig {
     }
 
     /// Compose `recorded` as one frame into [`Self::out`].
-    pub(super) fn compose(&mut self, recorded: &PaintCapture) {
+    pub(crate) fn compose(&mut self, recorded: &PaintCapture) {
         self.composer
             .begin(
                 FrameStamp::new(self.display, Duration::ZERO),

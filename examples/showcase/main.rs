@@ -6,7 +6,8 @@ mod pages;
 mod shell;
 mod support;
 
-use palantir::{UVec2, WindowConfig, WinitHost, WinitHostError};
+use palantir::glam::UVec2;
+use palantir::{WindowConfig, WinitHost, WinitHostError};
 use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<(), WinitHostError> {

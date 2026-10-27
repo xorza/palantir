@@ -2,7 +2,8 @@
 //! one animates: the scan every shape pays to learn it is still, at a count
 //! far past a real frame's so a per-shape regression shows.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::{PaintAnimationEntry, PaintAnimations};
 use crate::shape::paint_animation::curves;

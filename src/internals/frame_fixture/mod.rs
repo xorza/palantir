@@ -19,7 +19,6 @@
 
 mod card;
 mod chrome;
-pub mod dock_fixture;
 mod forms;
 mod lists;
 mod panes;

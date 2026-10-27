@@ -5,7 +5,7 @@
 //! test writes its second frame under `tests/visual/output/damage_<name>/`.
 
 use glam::{IVec2, UVec2, Vec2};
-use palantir::golden::image::{Rgba, RgbaImage};
+use image::{Rgba, RgbaImage};
 use palantir::{
     Block, Button, Chrome, Configure, DebugOverlayConfig, FramePaint, Panel, Rect, RgbaF32, Sizing,
     Ui,

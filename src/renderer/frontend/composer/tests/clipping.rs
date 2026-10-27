@@ -7,7 +7,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::frontend::composer::tests::compose_rig::ComposeRig;
+use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, curve, draw, draw_marked, image, mesh, params, push_distinct_rounded_clips,
     run, survivor_calls, text,

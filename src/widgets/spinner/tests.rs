@@ -5,9 +5,11 @@ use std::f32::consts::TAU;
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::spinner::SpinnerTheme;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::spinner::Spinner;
@@ -165,5 +167,112 @@ fn explicit_layout_size_is_independent_from_diameter() {
             hug: Size::ZERO,
             default: Size::new(12.0, 12.0),
         }
+    );
+}
+
+#[derive(Clone, Copy, Debug)]
+enum InvisibleSpinnerCase {
+    Hidden,
+    Collapsed,
+    HiddenAncestor,
+}
+
+fn show_spinner_case(ui: &mut Ui, case: InvisibleSpinnerCase) {
+    match case {
+        InvisibleSpinnerCase::Hidden => {
+            Spinner::new()
+                .id(WidgetId::from_hash("spinner"))
+                .hidden()
+                .show(ui);
+        }
+        InvisibleSpinnerCase::Collapsed => {
+            Spinner::new()
+                .id(WidgetId::from_hash("spinner"))
+                .collapsed()
+                .show(ui);
+        }
+        InvisibleSpinnerCase::HiddenAncestor => {
+            Panel::hstack()
+                .id(WidgetId::from_hash("hidden-parent"))
+                .hidden()
+                .show(ui, |ui| {
+                    Spinner::new().id(WidgetId::from_hash("spinner")).show(ui);
+                });
+        }
+    }
+}
+
+#[test]
+fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
+    for case in [
+        InvisibleSpinnerCase::Hidden,
+        InvisibleSpinnerCase::Collapsed,
+        InvisibleSpinnerCase::HiddenAncestor,
+    ] {
+        let mut h = UiHarness::new(UVec2::new(100, 100));
+        let report = h.frame(|ui| {
+            show_spinner_case(ui, case);
+        });
+        let tree = h.ui.tree(Layer::Main);
+
+        assert_eq!(
+            tree.shapes.records.len(),
+            1,
+            "{case:?}: the authored spinner shape must survive",
+        );
+        assert!(
+            tree.paint_animations.entries.is_empty(),
+            "{case:?}: an invisible spinner must have no active animation row",
+        );
+        assert_eq!(
+            report.repaint_after, None,
+            "{case:?}: an invisible spinner must not schedule another frame",
+        );
+    }
+}
+
+#[test]
+fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
+    fn show_spinner(ui: &mut Ui, visibility: Visibility) {
+        Spinner::new()
+            .id(WidgetId::from_hash("transition-spinner"))
+            .visibility(visibility)
+            .show(ui);
+    }
+
+    let mut h = UiHarness::new(UVec2::new(100, 100));
+
+    let visible = h.frame(|ui| {
+        show_spinner(ui, Visibility::Visible);
+    });
+    assert_eq!(visible.repaint_after, Some(Duration::ZERO));
+    assert_eq!(h.ui.tree(Layer::Main).paint_animations.entries.len(), 1);
+
+    h.ui.request_repaint();
+    let hidden_at = Duration::from_millis(16);
+    let hidden = h.at(hidden_at).frame(|ui| {
+        show_spinner(ui, Visibility::Hidden);
+    });
+    assert_eq!(hidden.repaint_after, None);
+    assert_eq!(
+        h.ui.tree(Layer::Main).shapes.records.len(),
+        1,
+        "hiding must retain the authored spinner shape",
+    );
+    assert!(
+        h.ui.tree(Layer::Main).paint_animations.entries.is_empty(),
+        "hiding must drop the active animation row",
+    );
+
+    h.ui.request_repaint();
+    let shown_at = Duration::from_millis(32);
+    let shown = h.at(shown_at).frame(|ui| {
+        show_spinner(ui, Visibility::Visible);
+    });
+    assert_eq!(shown.repaint_after, Some(shown_at));
+    assert_eq!(
+        h.ui.tree(Layer::Main).paint_animations.entries.len(),
+        1,
+        "showing must restore the active animation row",
     );
 }

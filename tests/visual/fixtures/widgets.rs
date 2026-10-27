@@ -1,7 +1,7 @@
 //! Per-widget fixtures: the smallest scene exercising one widget's render path.
 
 use glam::{UVec2, Vec2};
-use palantir::golden::image::Rgba;
+use image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
     Block, Button, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ComboBox,

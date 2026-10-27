@@ -1,7 +1,7 @@
 //! Tab and dock fixtures: the chip row's chrome, and the pane tree the dock walks it onto.
 
 use glam::UVec2;
-use palantir::internals::frame_fixture::dock_fixture::DockFixture;
+use palantir::internals::dock_fixture::DockFixture;
 use palantir::{
     Block, Chrome, Configure, Corners, Panel, Sizing, TabItem, TabStrip, TabbedView, Text, Ui,
     WidgetId,

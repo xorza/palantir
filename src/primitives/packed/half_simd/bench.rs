@@ -13,7 +13,8 @@
 //! per-iteration `black_box` costs more than the conversion; both made the arms
 //! read identical.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::primitives::packed::half_simd::F16x4;
 use criterion::{Criterion, Throughput};
 use half::f16;

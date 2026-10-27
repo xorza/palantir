@@ -1,2 +1,2 @@
 # Open issues
-- `GridCell` (`src/primitives/layout/grid_cell.rs`) is a checked value with getters, but its fields are `pub(crate)`, so crate code reads and can write them past the getters and the constructor's checks.
+- `cargo drive bench --test` stops at `atomic/curve_pipeline/gpu` on an adapter without in-pass timestamps (Apple M5, Metal): `curve_pipeline/bench.rs:148` asserts a curve batch timestamp, so every case after it never runs.

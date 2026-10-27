@@ -4,10 +4,11 @@
 
 use crate::support;
 use crate::support::{Col, Section, api};
+use palantir::glam::Vec2;
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
     Align, Chrome, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Shadow,
-    Sizing, Stroke, Text, Ui, VAlign, Vec2, WidgetId, fmt,
+    Sizing, Stroke, Text, Ui, VAlign, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;

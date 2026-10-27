@@ -4,8 +4,9 @@
 
 use crate::support;
 use crate::support::{CELL_PADDING, DemoCell, Section, Surface, api};
+use palantir::glam::Vec2;
 use palantir::widget::{ShadowShape, Shape};
-use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, Vec2};
+use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui};
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);
 const CARD_INK: RgbaF32 = RgbaF32::hex(0xf2f2f7);

@@ -5,7 +5,8 @@
 //! - `realistic`: ~70–200 label-sized rects, two quad probes each, a third surviving the union pre-reject; decides `TILE_SIZE` and `TILE_CAP`.
 //! - `saturated`: tiles filled past `TILE_CAP` plus wide rects spanning all of them, so every query walks a chain.
 
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::frontend::composer::tile_index::{TILE_CAP, TILE_SIZE};

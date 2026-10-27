@@ -3,7 +3,6 @@
 mod batching;
 mod brushes;
 mod clipping;
-mod compose_rig;
 mod curves;
 mod pruning;
 mod quad_builder;

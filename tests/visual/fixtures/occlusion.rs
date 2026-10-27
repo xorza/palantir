@@ -1,7 +1,7 @@
 //! Occlusion pruning at fractional coordinates: an opaque quad over another must paint what the pair paints when no pruning can apply.
 
 use glam::UVec2;
-use palantir::golden::image::RgbaImage;
+use image::RgbaImage;
 use palantir::widget::Shape;
 use palantir::{Configure, Panel, Rect, RgbaF32, Sizing, Ui};
 

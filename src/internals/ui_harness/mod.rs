@@ -51,10 +51,10 @@
 //!     [`UiHarness::frame`] runs the frames held input owes first and answers from
 //!     the last; [`UiHarness::step`] steps one at a time.
 //!
-//! Tiers: `impl UiHarness` (`pub`) leaves the crate through
-//! `palantir::internals::ui_harness`; `impl UiHarness` (`pub(crate)`) is construction;
-//! `mod unit` (`#[cfg(test)]`) is for in-tree suites only, so a bench build does
-//! not see it as unused.
+//! Tiers: the `pub` methods leave the crate through
+//! `palantir::internals::ui_harness`, as the README's headless UI tests use them;
+//! the `pub(crate)` ones are construction; `mod unit` (`#[cfg(test)]`) is for
+//! in-tree suites only, so a bench build does not see it as unused.
 
 use crate::app::App;
 use crate::common::time::MAX_ANIMATION_DT;

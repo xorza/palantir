@@ -2,8 +2,9 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
+use palantir::glam::Vec2;
 use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
-use palantir::{ColorRamp, RgbaF32, Stop, Stroke, Ui, Vec2};
+use palantir::{ColorRamp, RgbaF32, Stop, Stroke, Ui};
 
 pub(crate) fn build(ui: &mut Ui) {
     Section::new("Width")

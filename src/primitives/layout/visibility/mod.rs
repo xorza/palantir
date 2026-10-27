@@ -25,6 +25,3 @@ impl Visibility {
         matches!(self, Self::Collapsed)
     }
 }
-
-#[cfg(test)]
-mod tests;

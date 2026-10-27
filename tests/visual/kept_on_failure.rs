@@ -7,7 +7,7 @@ use std::fs;
 use std::path::Path;
 use std::thread;
 
-use palantir::golden::image::RgbaImage;
+use image::RgbaImage;
 
 use crate::goldens;
 

@@ -1,4 +1,5 @@
-use crate::bench::fixture::{Backend, Kind, Scale};
+use crate::bench::backends::Backend;
+use crate::bench::kind::{Kind, Scale};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::HAlign;
 use crate::text::cosmic::shaped_buffer_cache;

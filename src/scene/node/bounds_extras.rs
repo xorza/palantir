@@ -32,12 +32,7 @@ impl Hash for BoundsExtras {
 impl BoundsExtras {
     pub(crate) const DEFAULT: Self = Self {
         pos: Vec2::ZERO,
-        grid: GridCell {
-            row: 0,
-            col: 0,
-            row_span: 1,
-            col_span: 1,
-        },
+        grid: GridCell::at(0, 0),
         min_size: Size::ZERO,
         max_size: Size::INF,
         tab_idx: 0,

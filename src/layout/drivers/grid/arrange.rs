@@ -50,8 +50,8 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner: Size) {
             let s = pass.grid_mut().depth_stack.cur();
             Rect {
                 min: Vec2::new(
-                    s.col.offsets[cell.col as usize],
-                    s.row.offsets[cell.row as usize],
+                    s.col.offsets[cell.col() as usize],
+                    s.row.offsets[cell.row() as usize],
                 ),
                 size: Size::new(
                     s.col.span_size(cell.track_span(Axis::X), cols.gap),

@@ -96,9 +96,19 @@ fn own_text(tree: &Tree, store: &RecordStore, root: usize, listed: &WidgetIdSet)
 
 #[cfg(test)]
 mod tests {
+    use crate::input::sense::Sense;
     use crate::internals::ui_harness::UiHarness;
-    use crate::prelude::*;
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::layout::sizing::Sizing;
+    use crate::ui::Ui;
     use crate::ui::inspected_widget::InspectedWidget;
+    use crate::widget_core::configure::Configure;
+    use crate::widgets::button::Button;
+    use crate::widgets::panel::Panel;
+    use crate::widgets::scroll::Scroll;
+    use crate::widgets::text::Text;
+    use crate::widgets::text_edit::TextEdit;
+    use glam::UVec2;
 
     /// A button labelled "Save", a disabled button "Off", a clickable row holding the text "Open"
     /// and a nested button "Inner", a text field holding "draft", and a button scrolled out of a

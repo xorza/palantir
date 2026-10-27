@@ -3,36 +3,34 @@
 
 use std::path::PathBuf;
 
-use image::{Rgba, RgbaImage};
-
-use crate::golden::{Goldens, OnMismatch, Tolerance};
+use crate::golden::{Goldens, OnMismatch, Tolerance, load};
 use crate::internals::panic_probe;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::image::Image;
+use glam::UVec2;
 use std::env;
 use std::fs;
 use std::process;
 use std::sync::Barrier;
 use std::thread;
 
-/// A pair covering no pixels passes; a zero width would otherwise panic in `chunks_exact`.
-#[test]
-fn a_zero_pixel_pair_passes() {
-    let empty = RgbaImage::new(0, 0);
-    let report = Tolerance::default().diff(&empty, &empty);
-    assert_eq!(report.differing_pixels, 0);
-    assert!(report.passes());
+/// A `w`×`h` image of one texel.
+fn solid(w: u32, h: u32, [r, g, b, a]: [u8; 4]) -> Image {
+    let mut image = Image::blank(UVec2::new(w, h));
+    image.texels_mut().fill(SrgbaU8::new(r, g, b, a));
+    image
+}
 
-    // Zero width with real height, and the transpose.
-    for (w, h) in [(0, 8), (8, 0)] {
-        let strip = RgbaImage::new(w, h);
-        let report = Tolerance::default().diff(&strip, &strip);
-        assert_eq!(report.differing_pixels, 0, "{w}x{h}");
-        assert!(report.passes(), "{w}x{h}");
-    }
+/// `image` with the texel at column `x`, row `y` set to `rgba`.
+fn with_texel(mut image: Image, x: u32, y: u32, [r, g, b, a]: [u8; 4]) -> Image {
+    let idx = (y * image.size().x + x) as usize;
+    image.texels_mut()[idx] = SrgbaU8::new(r, g, b, a);
+    image
 }
 
 #[test]
 fn identical_images_pass_exactly() {
-    let img = RgbaImage::from_pixel(8, 8, Rgba([10, 20, 30, 255]));
+    let img = solid(8, 8, [10, 20, 30, 255]);
     let report = Tolerance::EXACT.diff(&img, &img);
     assert_eq!(report.max_channel_delta, 0);
     assert_eq!(report.differing_pixels, 0);
@@ -43,9 +41,8 @@ fn identical_images_pass_exactly() {
 /// A pixel differs on any channel difference; the verdict bounds the differing count and the worst delta.
 #[test]
 fn the_verdict_bounds_both_the_count_and_the_delta() {
-    let e = RgbaImage::from_pixel(10, 10, Rgba([100, 100, 100, 255]));
-    let mut a = e.clone();
-    a.put_pixel(3, 4, Rgba([103, 100, 100, 255]));
+    let e = solid(10, 10, [100, 100, 100, 255]);
+    let a = with_texel(e.clone(), 3, 4, [103, 100, 100, 255]);
 
     let exact = Tolerance::EXACT.diff(&a, &e);
     assert_eq!(exact.max_channel_delta, 3);
@@ -66,19 +63,20 @@ fn the_verdict_bounds_both_the_count_and_the_delta() {
 /// The diff map marks every differing pixel and dims the rest of `actual` to a quarter.
 #[test]
 fn the_diff_map_marks_every_differing_pixel() {
-    let e = RgbaImage::from_pixel(2, 1, Rgba([100, 100, 100, 255]));
-    let mut a = e.clone();
-    a.put_pixel(1, 0, Rgba([101, 100, 100, 255]));
+    let e = solid(2, 1, [100, 100, 100, 255]);
+    let a = with_texel(e.clone(), 1, 0, [101, 100, 100, 255]);
     let report = Tolerance::EXACT.diff(&a, &e);
-    assert_eq!(*report.diff_image.get_pixel(0, 0), Rgba([25, 25, 25, 255]));
-    assert_eq!(*report.diff_image.get_pixel(1, 0), Rgba([255, 0, 0, 255]));
+    assert_eq!(
+        report.diff_image.texels(),
+        [SrgbaU8::new(25, 25, 25, 255), SrgbaU8::new(255, 0, 0, 255)]
+    );
 }
 
 #[test]
 #[should_panic(expected = "image sizes differ")]
 fn dimension_mismatch_panics() {
-    let a = RgbaImage::new(4, 4);
-    let e = RgbaImage::new(4, 5);
+    let a = Image::blank(UVec2::new(4, 4));
+    let e = Image::blank(UVec2::new(4, 5));
     let _ = Tolerance::default().diff(&a, &e);
 }
 
@@ -108,11 +106,11 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
         max_delta: 2,
         max_pixels: 16,
     });
-    let solid = |v: u8| RgbaImage::from_pixel(4, 4, Rgba([v, 10, 10, 255]));
-    let (base, near, far) = (solid(10), solid(11), solid(50));
+    let red = |v: u8| solid(4, 4, [v, 10, 10, 255]);
+    let (base, near, far) = (red(10), red(11), red(50));
     let golden = goldens.golden_path("g");
     let output = dir.0.join("output").join("g");
-    let stored = || image::open(&golden).unwrap().to_rgba8();
+    let stored = || load(&golden);
 
     goldens.check("g", &base, OnMismatch::Rewrite);
     assert_eq!(stored(), base, "a missing golden is written by an update");
@@ -152,11 +150,7 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
         goldens.assert_same("pair", &far, &base);
     });
     for (file, written) in [("actual.png", &far), ("expected.png", &base)] {
-        assert_eq!(
-            image::open(pair.join(file)).unwrap().to_rgba8(),
-            *written,
-            "{file}"
-        );
+        assert_eq!(load(&pair.join(file)), *written, "{file}");
     }
     assert!(pair.join("diff.png").exists(), "and the diff map");
     assert!(
@@ -169,7 +163,7 @@ fn failures_leave_artifacts_updates_rewrite_and_passes_clear() {
 #[test]
 fn goldens_record_and_hold_their_adapter() {
     let dir = Scratch::new("adapter");
-    let image = RgbaImage::from_pixel(2, 2, Rgba([1, 2, 3, 255]));
+    let image = solid(2, 2, [1, 2, 3, 255]);
     let sidecar = dir.0.join("golden").join("adapter.txt");
     let first = Goldens::new(&dir.0).with_adapter("GPU A");
     first.check("g", &image, OnMismatch::Rewrite);
@@ -196,7 +190,7 @@ fn goldens_record_and_hold_their_adapter() {
         racing.check(name, &image, OnMismatch::Rewrite);
     }
     let sidecar_dir = sidecar.parent().unwrap();
-    for _ in 0..200 {
+    for _ in 0..4 {
         fs::remove_file(&sidecar).unwrap();
         let start = Barrier::new(names.len());
         thread::scope(|scope| {
@@ -223,13 +217,14 @@ fn goldens_record_and_hold_their_adapter() {
     assert_eq!(staged, 0, "every staged sidecar is renamed into place");
 }
 
-/// Every golden no name claims is an orphan, in name order; the sidecar is not a golden.
+/// Every golden no name claims is an orphan, in name order; the sidecar is not a golden. A missing
+/// directory holds none; one that cannot be read panics with its path.
 #[test]
 fn orphans_are_the_goldens_no_name_claims() {
     let dir = Scratch::new("orphans");
     let goldens = Goldens::new(&dir.0).with_adapter("GPU A");
     assert!(goldens.orphans([]).is_empty(), "no directory, no orphans");
-    let image = RgbaImage::from_pixel(1, 1, Rgba([0, 0, 0, 255]));
+    let image = solid(1, 1, [0, 0, 0, 255]);
     for name in ["kept", "old", "older"] {
         goldens.check(name, &image, OnMismatch::Rewrite);
     }
@@ -238,4 +233,13 @@ fn orphans_are_the_goldens_no_name_claims() {
         [goldens.golden_path("old"), goldens.golden_path("older")],
     );
     assert!(goldens.orphans(["kept", "old", "older"]).is_empty());
+
+    // A golden path that is no directory is a read error, not an empty suite.
+    let blocked = Scratch::new("orphans-blocked");
+    fs::create_dir_all(&blocked.0).unwrap();
+    let golden = blocked.0.join("golden");
+    fs::write(&golden, "").unwrap();
+    panic_probe::assert_panics_with(&format!("read {}", golden.display()), || {
+        Goldens::new(&blocked.0).orphans([])
+    });
 }

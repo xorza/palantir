@@ -1,5 +1,5 @@
-//! The non-frame affordances: the arena, the clipboard, and a shared text
-//! cache.
+//! The non-frame affordances: the arena, the clipboard, and resources shared
+//! between harnesses.
 
 use crate::internals::ui_harness::tests::support::SURFACE;
 use crate::internals::ui_harness::*;
@@ -22,8 +22,9 @@ fn arena_interns_without_ever_recording() {
     assert_eq!(store.interned_text().resolve(recorded.span), "label");
 }
 
+/// Two harnesses built from one `UiResources` share what it holds; the clipboard shows it.
 #[test]
-fn from_resources_pairs_two_harnesses_onto_one_text_cache() {
+fn from_resources_shares_one_resource_set_between_harnesses() {
     let shared = UiResources::isolated_text();
     let mut first = UiHarness::from_resources(shared.clone(), SURFACE);
     let second = UiHarness::from_resources(shared, SURFACE);

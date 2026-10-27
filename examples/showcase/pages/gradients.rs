@@ -2,9 +2,10 @@
 
 use crate::support;
 use crate::support::{DemoCell, Section, api};
+use palantir::glam::Vec2;
 use palantir::{
     Block, Brush, Chrome, Configure, ConicGradient, Corners, Interpolation, LinearGradient,
-    RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui, Vec2,
+    RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 

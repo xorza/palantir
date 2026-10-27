@@ -21,7 +21,8 @@
 //! lives in [`crate::internals::frame_fixture`], shared with the allocation gates in
 //! `tests/alloc/gates/` and the showcase's `frame bench` page.
 
-use crate::bench::fixture::{Backend, Backends, Kind, Scale};
+use crate::bench::backends::{Backend, Backends};
+use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::offscreen::OffscreenHost;

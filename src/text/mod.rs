@@ -87,7 +87,9 @@ pub(crate) const RENDERED_RUN_KEEP_SPREAD_MASK: u64 = 15;
 pub(crate) mod internals {
     use crate::text::cosmic::shaped_buffer_cache;
 
-    /// The shaped-buffer cache's short window; see `crate::internals::PROBATION_KEEP_FRAMES`.
+    /// The shaped-buffer cache's short window: the first expiry drain comes due this many frames
+    /// after the first shape.
+    #[cfg(test)]
     pub(crate) const PROBATION_KEEP_FRAMES: u64 = shaped_buffer_cache::PROBATION_KEEP_FRAMES;
 
     /// Frames one revolution of the expiry ring takes; see `crate::internals::SHAPED_BUFFER_RING_FRAMES`.

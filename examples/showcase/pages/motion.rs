@@ -2,10 +2,11 @@
 
 use crate::support;
 use crate::support::{Section, api};
+use palantir::glam::Vec2;
 use palantir::widget::AnimationRequest;
 use palantir::{
     AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, Panel, RgbaF32, Sense,
-    Sizing, Stroke, Text, Ui, Vec2, WidgetId,
+    Sizing, Stroke, Text, Ui, WidgetId,
 };
 use std::time::Duration;
 

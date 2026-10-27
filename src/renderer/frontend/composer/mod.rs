@@ -20,13 +20,14 @@ use std::num::NonZeroU32;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod clip_stack;
+#[cfg(feature = "internals")]
+pub(crate) mod compose_rig;
 mod geometry;
 mod higher_kind_rects;
 mod occlusion_pruner;
 mod physical_map;
+mod rect_grid;
 pub(crate) mod session;
-// `pub(crate)` only so `bench::driver` can name `rect_grid::bench`.
-pub(crate) mod rect_grid;
 mod stroke_bbox;
 mod tile_index;
 mod transform_stack;
