@@ -411,8 +411,6 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                     label,
                     closable: self.tabs.closable(tab),
                     draggable: self.tabs.draggable(tab),
-                    badge: self.tabs.badge(tab),
-                    icon: self.tabs.icon(tab),
                 });
             }
             let hit = TabStrip::new(&buf.items)
@@ -421,7 +419,9 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 .focused(focused)
                 .overflow(self.overflow)
                 .drop_caret(self.drop.and_then(|drop| drop.caret_in(group.id)))
-                .show(ui);
+                .show(ui, |ui, chip| {
+                    self.tabs.tab_content(ui, group.tabs[chip.slot], chip);
+                });
             hit.keyed.or(hit.menu_picked)
         });
         // The scan sees only chip and close-button ids; keyboard moves and popup entries have none, so they land a frame later.

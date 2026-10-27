@@ -2,8 +2,9 @@
 
 use crate::support;
 use palantir::{
-    Button, Configure, DockDrop, DockOperation, DockState, DockTabMenu, DockTabs, DockView,
-    InternedStr, MenuItem, Panel, Size, Sizing, SplitSide, TabBadge, Text, Ui, WidgetId, fmt,
+    Block, Button, Chrome, Configure, Corners, DockDrop, DockOperation, DockState, DockTabMenu,
+    DockTabs, DockView, InternedStr, MenuItem, Panel, Size, Sizing, SplitSide, TabChip, Text, Ui,
+    WidgetId, fmt,
 };
 
 /// The showcase's tab key: a small `Copy` value.
@@ -101,10 +102,14 @@ impl DockTabs for Panes {
         tab != Tab::Canvas
     }
 
-    fn badge(&mut self, tab: Tab) -> TabBadge {
-        match tab {
-            Tab::Canvas => TabBadge::On,
-            _ => TabBadge::None,
+    fn tab_content(&mut self, ui: &mut Ui, tab: Tab, chip: &TabChip) {
+        chip.show_label(ui);
+        if tab == Tab::Canvas {
+            Block::new()
+                .id(chip.id.with("dot"))
+                .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
+                .chrome(Chrome::rounded(chip.text.color, Corners::all(3.0)))
+                .show(ui);
         }
     }
 

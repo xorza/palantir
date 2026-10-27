@@ -1,4 +1,4 @@
-//! The chip row on its own: geometry, selection cap, close button, badge, overflow, keyboard travel, drag sensing.
+//! The chip row on its own: geometry, selection cap, close button, overflow, keyboard travel, drag sensing.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
@@ -15,9 +15,12 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::chrome::Chrome;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::text::wrap::TextWrap;
+use crate::shape::style::LineCap;
+use crate::theme::close_shown::CloseShown;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::tab_selection::TabSelection;
@@ -32,8 +35,8 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
+use crate::widgets::tabs::tab_chip::TabChip;
 use crate::widgets::tabs::tab_item::TabItem;
-use crate::widgets::text::Text;
 use glam::Vec2;
 use std::rc::Rc;
 
@@ -73,7 +76,7 @@ pub struct TabStripResponse<'a> {
 /// ```
 /// # use palantir::{TabItem, TabStrip, Ui};
 /// # fn demo(ui: &mut Ui, items: &[TabItem], active: usize) {
-/// let hit = TabStrip::new(items).selected(active).show(ui);
+/// let hit = TabStrip::new(items).selected(active).show(ui, |ui, chip| chip.show_label(ui));
 /// if let Some(i) = hit.activated() {
 ///     // activate items[i]
 /// }
@@ -206,8 +209,14 @@ impl<'a> TabStrip<'a> {
         )
     }
 
-    /// Records the strip, and its overflow menu when open.
-    pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_> {
+    /// Records the strip, and its overflow menu when open. `content` records what each chip shows
+    /// between its padding and its close button, [`TabChip::show_label`] for the name alone: the
+    /// app draws a tab, the strip keeps its frame, as Zed's `Item::tab_content` splits it.
+    pub fn show(
+        self,
+        ui: &mut Ui,
+        mut content: impl FnMut(&mut Ui, &TabChip),
+    ) -> TabStripResponse<'_> {
         let theme = Rc::clone(ui.theme());
         let t = self.style.unwrap_or(&theme.tabs);
         let ambient = theme.text;
@@ -254,7 +263,7 @@ impl<'a> TabStrip<'a> {
                     .child_align(Align::v(VAlign::Bottom))
                     .show(ui, |ui| {
                         for slot in 0..items.len() {
-                            pass.chip(ui, slot);
+                            pass.chip(ui, slot, &mut content);
                         }
                     });
                 if overflow == TabOverflow::Menu {
@@ -404,16 +413,13 @@ impl StripPass<'_> {
         let look = self.theme.close.pick(&response, Engagement::Pressed);
         GlyphButton {
             chrome: look.chrome.clone(),
-            text: TextStyle {
-                line_height_factor: 1.0,
-                ..look.text.apply(&self.ambient)
-            },
+            ink: look.text.apply(&self.ambient).color,
             response,
         }
     }
 
-    /// The chip at `slot`: cap-bearing outer box, filled inner box, and icon, label, badge, close button inside.
-    fn chip(&mut self, ui: &mut Ui, slot: usize) {
+    /// The chip at `slot`: cap-bearing outer box, filled inner box, and the content and close button inside.
+    fn chip(&mut self, ui: &mut Ui, slot: usize, content: &mut impl FnMut(&mut Ui, &TabChip)) {
         let t = self.theme;
         let item = self.items[slot];
         let selected = self.selected == Some(slot);
@@ -445,24 +451,35 @@ impl StripPass<'_> {
             corners: Corners::top((t.radius - cap).max(0.0)),
             ..look.chrome
         };
-        // The selected chip lifts its inner top inset by the cap, so height is unchanged; a badge or close button trades the right inset for its box (`TabsTheme::trailing_inset`).
+        // The selected chip lifts its inner top inset by the cap, so height is unchanged; a close button trades the right inset for its box (`TabsTheme::trailing_inset`).
         let [pad_l, pad_t, pad_r, pad_b] = t.chip_padding.as_array();
-        let trailing = if item.badge.is_reserved() || item.closable {
+        let trailing = if item.closable {
             t.trailing_inset
         } else {
             pad_r
         };
         let padding = Spacing::new(pad_l, (pad_t - cap).max(0.0), trailing, pad_b);
 
-        let text = look.text;
-        let TabItem {
-            badge,
-            icon,
-            label,
-            closable,
-            ..
-        } = item;
-        let close = closable.then(|| self.glyph_button(ui, close_id));
+        let chip = TabChip {
+            slot,
+            key: item.key,
+            label: item.label,
+            selected,
+            text: look.text,
+            id: chip_id,
+        };
+        let closable = item.closable;
+        // A chip that hides its button keeps the button's box, so the chip's width does not change
+        // as the button comes and goes; the box senses nothing, so the pointer there reaches the
+        // chip, which then shows the button.
+        let close_shown = match t.close_shown {
+            CloseShown::Always => true,
+            // Within, not on: the pointer on the button or on a widget of the content's
+            // still holds the chip.
+            CloseShown::SelectedOrHovered => selected || ui.is_hover_within(chip_id),
+        };
+        let close = (closable && close_shown).then(|| self.glyph_button(ui, close_id));
+        let close_slot = closable && !close_shown;
 
         let inner = Widget::hstack()
             .id(chip_id.with("fill"))
@@ -472,32 +489,7 @@ impl StripPass<'_> {
             .child_align(Align::v(VAlign::Center));
         widget.record(ui, Some(&cap_chrome), |ui| {
             inner.record(ui, Some(&inner_chrome), |ui| {
-                if let Some(handle) = icon {
-                    let side = text.font_size;
-                    let art = Widget::leaf()
-                        .id(chip_id.with("icon"))
-                        .size((Sizing::fixed(side), Sizing::fixed(side)));
-                    art.record(ui, None, |ui| {
-                        ui.add_shape(Shape::icon(handle));
-                    });
-                }
-                Text::new(label)
-                    .id(chip_id.with("label"))
-                    .style(&text)
-                    .text_wrap(TextWrap::Ellipsis)
-                    .show(ui);
-                if badge.is_reserved() {
-                    let fill = if badge.is_inked() {
-                        Chrome::rounded(t.badge, Corners::all(t.badge_size * 0.5))
-                    } else {
-                        Chrome::NONE
-                    };
-                    let dot = Widget::leaf()
-                        .id(chip_id.with("badge"))
-                        .size((Sizing::fixed(t.badge_size), Sizing::fixed(t.badge_size)))
-                        .align(Align::v(VAlign::Center));
-                    dot.record(ui, Some(&fill), |_| {});
-                }
+                content(ui, &chip);
                 if let Some(close) = &close {
                     let button = Widget::zstack()
                         .id(close_id)
@@ -506,8 +498,14 @@ impl StripPass<'_> {
                         .align(Align::v(VAlign::Center))
                         .child_align(Align::CENTER);
                     button.record(ui, Some(&close.chrome), |ui| {
-                        close.glyph(ui, "\u{00d7}");
+                        close.cross(ui, t.close_size, t.close_glyph, t.close_stroke);
                     });
+                }
+                if close_slot {
+                    Widget::leaf()
+                        .id(close_id.with("slot"))
+                        .size((Sizing::fixed(t.close_size), Sizing::fixed(t.close_size)))
+                        .record(ui, None, |_| {});
                 }
             });
         });
@@ -580,7 +578,7 @@ impl StripPass<'_> {
             .align(Align::v(VAlign::Bottom))
             .child_align(Align::CENTER);
         button.record(ui, Some(&chevron.chrome), |ui| {
-            chevron.glyph(ui, "\u{22ef}");
+            chevron.ellipsis(ui, t.close_size, t.close_glyph, t.close_stroke);
         });
         let ui_theme = Rc::clone(ui.theme());
         // A menu button: the chevron's click toggles a menu below it.
@@ -647,21 +645,48 @@ impl StripPass<'_> {
 }
 
 /// A small glyph button: a chip's close cross and the overflow chevron, both wearing [`TabsTheme::close`].
+///
+/// Each glyph is drawn shapes in the look's text color, not a font's "×" or "⋯": a font glyph
+/// sits on its baseline at the font's own weight, so it rode below the button's center.
 #[derive(Debug)]
 struct GlyphButton {
     response: ResponseSnapshot,
     chrome: Chrome,
-    /// The look's text with the leading removed, else the glyph rides high.
-    text: TextStyle,
+    ink: RgbaF32,
 }
 
 impl GlyphButton {
-    fn glyph(&self, ui: &mut Ui, glyph: &'static str) {
-        Text::new(glyph)
-            .id(self.response.id.with("glyph"))
-            .style(&self.text)
-            .text_align(Align::CENTER)
-            .show(ui);
+    /// A cross `extent` wide with `stroke` arms, centered in the `side` box.
+    fn cross(&self, ui: &mut Ui, side: f32, extent: f32, stroke: f32) {
+        let center = Vec2::splat(side * 0.5);
+        let half = extent * 0.5;
+        for (from, to) in [
+            (center - Vec2::splat(half), center + Vec2::splat(half)),
+            (
+                center + Vec2::new(half, -half),
+                center + Vec2::new(-half, half),
+            ),
+        ] {
+            ui.add_shape(Shape::line(from, to, Stroke::new(self.ink, stroke)).cap(LineCap::Round));
+        }
+    }
+
+    /// Three dots centered in the `side` box, in the proportions of the cross they sit beside, as
+    /// Lucide's and Feather's `ellipsis` sit beside their `x`: where the cross spans 12 grid units
+    /// at a 2-unit stroke, the dots are 7 units apart and 4 across, a 1-unit circle stroked 2.
+    fn ellipsis(&self, ui: &mut Ui, side: f32, extent: f32, stroke: f32) {
+        let pitch = extent * 7.0 / 12.0;
+        let diameter = 2.0 * stroke;
+        let radius = stroke;
+        for step in [-1.0, 0.0, 1.0] {
+            let x = side * 0.5 + step * pitch;
+            let y = side * 0.5;
+            ui.add_shape(
+                Shape::rect(Rect::new(x - radius, y - radius, diameter, diameter))
+                    .corners(radius)
+                    .fill(self.ink),
+            );
+        }
     }
 }
 

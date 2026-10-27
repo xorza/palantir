@@ -25,7 +25,6 @@ use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
-use crate::widgets::tabs::tab_item::TabBadge;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use ron::ser;
 use std::mem;
@@ -859,13 +858,6 @@ impl DockTabs for Labels {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |_| {});
     }
-
-    fn badge(&mut self, tab: Tab) -> TabBadge {
-        match tab {
-            Tab::Main => TabBadge::Idle,
-            _ => TabBadge::None,
-        }
-    }
 }
 
 const SURFACE: UVec2 = UVec2::new(600, 400);
@@ -929,7 +921,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
         .rect(DockView::strip_id(&d, primary))
         .expect("the strip arranged");
     // The Prefs chip sits below the 4 px padding, down to the strip's bottom.
-    assert_eq!(chip_rect, Rect::new(86.5, 4.0, 76.0, strip.size.h - 4.0));
+    assert_eq!(chip_rect, Rect::new(77.0, 4.0, 76.0, strip.size.h - 4.0));
 }
 
 /// A divider dragged past the split clamp stops at it, so the release keeps what the drag drew:

@@ -3,30 +3,39 @@
 use glam::UVec2;
 use palantir::internals::frame_fixture::dock_fixture::DockFixture;
 use palantir::{
-    Configure, Panel, Sizing, TabBadge, TabItem, TabStrip, TabbedView, Text, Ui, WidgetId,
+    Block, Chrome, Configure, Corners, Panel, Sizing, TabItem, TabStrip, TabbedView, Text, Ui,
+    WidgetId,
 };
 
 use crate::golden_name::GoldenName;
 
-/// A strip alone: a selected accent-capped chip, an inked badge, close buttons.
+/// A strip alone: a selected accent-capped chip, a dot the app's content adds, close buttons.
 #[test]
 fn tab_strip_matches_golden() {
     fn scene(ui: &mut Ui) {
-        let items: Vec<TabItem> = [("curves", TabBadge::None), ("levels", TabBadge::On)]
+        let items: Vec<TabItem> = ["curves", "levels", "export"]
             .into_iter()
-            .chain([("export", TabBadge::None)])
             .enumerate()
-            .map(|(i, (label, badge))| TabItem {
-                badge,
-                ..TabItem::new(i as u64, ui.intern(label))
-            })
+            .map(|(i, label)| TabItem::new(i as u64, ui.intern(label)))
             .collect();
         Panel::vstack()
             .id_salt("strip-well")
             .size((Sizing::FILL, Sizing::HUG))
             .padding(12.0)
             .show(ui, |ui| {
-                TabStrip::new(&items).id_salt("strip").selected(1).show(ui);
+                TabStrip::new(&items)
+                    .id_salt("strip")
+                    .selected(1)
+                    .show(ui, |ui, chip| {
+                        chip.show_label(ui);
+                        if chip.selected {
+                            Block::new()
+                                .id(chip.id.with("dot"))
+                                .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
+                                .chrome(Chrome::rounded(chip.text.color, Corners::all(3.0)))
+                                .show(ui);
+                        }
+                    });
             });
     }
 
