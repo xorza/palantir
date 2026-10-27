@@ -1,14 +1,20 @@
-//! Chip identity, badge box, close-over-activate, keyboard travel, page binding.
+//! Chip identity, chip content, the close cross, close-over-activate, keyboard travel, page binding.
 
 use glam::{UVec2, Vec2};
 
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::sense::Sense;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::record::ShapeRecord;
+use crate::shape::style::LineCap;
+use crate::theme::close_shown::CloseShown;
 use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -18,7 +24,7 @@ use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::tabs::reindex;
-use crate::widgets::tabs::tab_item::{TabBadge, TabItem};
+use crate::widgets::tabs::tab_item::TabItem;
 use crate::widgets::tabs::tab_strip::internals::insertion_slot;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
@@ -32,24 +38,21 @@ fn strip_id() -> WidgetId {
 }
 
 /// Three chips keyed 10 / 20 / 30 so a key can't be mistaken for a slot.
-fn items(ui: &mut Ui, badge: TabBadge) -> Vec<TabItem> {
+fn items(ui: &mut Ui) -> Vec<TabItem> {
     [(10u64, "alpha"), (20, "beta"), (30, "gamma")]
         .into_iter()
-        .map(|(key, label)| TabItem {
-            badge: if key == 10 { badge } else { TabBadge::None },
-            ..TabItem::new(key, ui.intern(label))
-        })
+        .map(|(key, label)| TabItem::new(key, ui.intern(label)))
         .collect()
 }
 
 /// One frame of a three-chip strip, with `selected` capped.
-fn strip_frame(h: &mut UiHarness, selected: usize, badge: TabBadge) {
+fn strip_frame(h: &mut UiHarness, selected: usize) {
     h.frame(|ui| {
-        let items = items(ui, badge);
+        let items = items(ui);
         TabStrip::new(&items)
             .id(strip_id())
             .selected(selected)
-            .show(ui);
+            .show(ui, |ui, chip| chip.show_label(ui));
     });
 }
 
@@ -58,17 +61,23 @@ fn strip_frame(h: &mut UiHarness, selected: usize, badge: TabBadge) {
 fn chip_ids_follow_the_key_and_not_the_slot() {
     let mut h = UiHarness::new(SURFACE);
     h.prime(2, |ui| {
-        let items = items(ui, TabBadge::None);
-        TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
+        let items = items(ui);
+        TabStrip::new(&items)
+            .id(strip_id())
+            .selected(0)
+            .show(ui, |ui, chip| chip.show_label(ui));
     });
     let alpha = TabStrip::chip_id(strip_id(), 10);
     let before = h.rect(alpha).expect("alpha arranged");
 
     // Reversed; alpha keeps its id.
     h.prime(2, |ui| {
-        let mut items = items(ui, TabBadge::None);
+        let mut items = items(ui);
         items.reverse();
-        TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
+        TabStrip::new(&items)
+            .id(strip_id())
+            .selected(0)
+            .show(ui, |ui, chip| chip.show_label(ui));
     });
     let after = h
         .rect(alpha)
@@ -92,45 +101,189 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
     );
 }
 
-/// The badge changes visibility, never layout.
+/// The content records between the chip's padding and its close button, handed the chip it
+/// stands for in the ink the chip's look wears.
 #[test]
-fn the_badge_reserves_the_same_box_idle_and_inked() {
+fn the_content_records_inside_the_chip_before_its_close_button() {
     let mut h = UiHarness::new(SURFACE);
     let alpha = TabStrip::chip_id(strip_id(), 10);
-    let dot = alpha.with("badge");
+    let dot = alpha.with("dot");
+    let mut handed = Vec::new();
+    h.prime(2, |ui| {
+        handed.clear();
+        let items = items(ui);
+        TabStrip::new(&items)
+            .id(strip_id())
+            .selected(0)
+            .show(ui, |ui, chip| {
+                handed.push((chip.slot, chip.key, chip.selected, chip.id));
+                chip.show_label(ui);
+                if chip.key == 10 {
+                    Block::new()
+                        .id(chip.id.with("dot"))
+                        .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
+                        .show(ui);
+                }
+            });
+    });
+    assert_eq!(
+        handed,
+        [
+            (0, 10, true, alpha),
+            (1, 20, false, TabStrip::chip_id(strip_id(), 20)),
+            (2, 30, false, TabStrip::chip_id(strip_id(), 30)),
+        ],
+    );
+    let label = h.rect(alpha.with("label")).expect("the label recorded");
+    let dot = h.rect(dot).expect("the content's own widget recorded");
+    let close = h
+        .rect(TabStrip::close_id(strip_id(), 10))
+        .expect("the close button recorded");
+    let chip = h.rect(alpha).expect("arranged");
+    let gap = h.ui.theme().tabs.label_gap;
+    assert_eq!(
+        (dot.min.x - label.max().x, close.min.x - dot.max().x),
+        (gap, gap),
+        "the content's parts and the close button sit `label_gap` apart: {label:?} {dot:?} {close:?}",
+    );
+    assert!(
+        chip.min.x < label.min.x && close.max().x <= chip.max().x,
+        "the content and the button are inside the chip: {chip:?}",
+    );
+}
+
+/// The close cross is two round-capped lines in the close look's ink, crossing at the button's
+/// center, and no text: on the stock 16 px button with an 8 px cross, from (4, 4) to (12, 12) and
+/// from (12, 4) to (4, 12).
+#[test]
+fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
+    let mut h = UiHarness::new(SURFACE);
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
+    let theme = h.ui.theme();
+    let t = &theme.tabs;
+    assert_eq!((t.close_size, t.close_glyph), (16.0, 8.0), "premise");
+    let stroke = t.close_stroke;
+    let ink = t.close.normal.text.apply(&theme.text).color.to_f16();
+    let node = h.node_for_widget_id(TabStrip::close_id(strip_id(), 20));
+    let tree = h.ui.tree(Layer::Main);
+    let mut lines = Vec::new();
+    for shape in tree.shapes_of(node) {
+        match shape {
+            ShapeRecord::Curve {
+                cap,
+                basis: CurveBasis::Cubic(line),
+                stroke: drawn,
+                ..
+            } => {
+                assert_eq!(
+                    (*cap, drawn.width, drawn.color),
+                    (LineCap::Round, stroke, ink)
+                );
+                lines.push([line.p0, line.p3]);
+            }
+            ShapeRecord::Text { .. } => panic!("the cross is drawn, not a glyph"),
+            _ => {}
+        }
+    }
+    assert_eq!(
+        lines,
+        [
+            [Vec2::new(4.0, 4.0), Vec2::new(12.0, 12.0)],
+            [Vec2::new(12.0, 4.0), Vec2::new(4.0, 12.0)],
+        ],
+    );
+}
+
+/// Under `SelectedOrHovered`, an unselected chip at rest keeps its button's box unsensed, so it is
+/// as wide as with the button shown and the pointer there reaches the chip; the pointer on the
+/// chip shows the button in that box.
+#[test]
+fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
     let beta = TabStrip::chip_id(strip_id(), 20);
-
-    h.prime(2, |ui| {
-        let items = items(ui, TabBadge::Idle);
-        TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
-    });
-    let idle_chip = h.rect(alpha).expect("alpha arranged");
-    let idle_dot = h.rect(dot).expect("an idle badge still reserves its box");
-
-    h.prime(2, |ui| {
-        let items = items(ui, TabBadge::On);
-        TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
-    });
-    let inked_chip = h.rect(alpha).expect("still there");
-    let inked_dot = h.rect(dot).expect("still there");
-
-    assert_eq!(
-        (idle_chip.size.w, idle_chip.size.h),
-        (inked_chip.size.w, inked_chip.size.h),
-        "the dot resized the chip: {idle_chip:?} idle against {inked_chip:?} inked",
+    let close = TabStrip::close_id(strip_id(), 20);
+    let slot = close.with("slot");
+    let mut h = UiHarness::new(SURFACE);
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
+    let always = h.rect(beta).expect("arranged");
+    assert!(
+        h.rect(close).is_some(),
+        "premise: `Always` shows every button"
     );
+
+    h.ui.theme_mut().tabs.close_shown = CloseShown::SelectedOrHovered;
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
+    let rest = h.rect(beta).expect("arranged");
     assert_eq!(
-        (idle_dot.size.w, idle_dot.size.h),
-        (inked_dot.size.w, inked_dot.size.h),
-        "the inked dot fills exactly the box the idle one reserved",
+        h.rect(close),
+        None,
+        "no button on an unselected chip at rest"
+    );
+    let close_size = h.ui.theme().tabs.close_size;
+    let kept = h.rect(slot).expect("the button's box is kept");
+    assert_eq!((kept.size.w, kept.size.h), (close_size, close_size));
+    assert_eq!(
+        rest.size, always.size,
+        "the hidden button keeps the chip's width"
     );
     assert!(
-        inked_dot.max().x <= inked_chip.max().x,
-        "the dot overflowed its chip: {inked_dot:?} in {inked_chip:?}",
+        h.rect(TabStrip::close_id(strip_id(), 10)).is_some(),
+        "the selected chip shows its button",
+    );
+
+    assert_eq!(
+        h.hit_at(h.center_of(slot)),
+        Some(beta),
+        "the kept box senses nothing, so the pointer there reaches the chip",
+    );
+
+    h.move_to(h.center_of(beta.with("label")));
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
+    assert_eq!(
+        h.rect(close),
+        Some(kept),
+        "the pointer on the chip shows its button where the box was kept",
+    );
+    assert_eq!(h.rect(slot), None);
+    assert_eq!(h.rect(beta).expect("arranged").size, always.size);
+
+    // A widget of the content's that senses the pointer is within the chip, so the pointer on it
+    // keeps the button.
+    let pin = beta.with("pin");
+    let pinned = |h: &mut UiHarness| {
+        h.frame(|ui| {
+            let items = items(ui);
+            TabStrip::new(&items)
+                .id(strip_id())
+                .selected(0)
+                .show(ui, |ui, chip| {
+                    chip.show_label(ui);
+                    Block::new()
+                        .id(chip.id.with("pin"))
+                        .size((Sizing::fixed(8.0), Sizing::fixed(8.0)))
+                        .sense(Sense::HOVER)
+                        .show(ui);
+                });
+        });
+    };
+    h.move_to(Vec2::ZERO);
+    pinned(&mut h);
+    pinned(&mut h);
+    assert_eq!(h.rect(close), None, "premise: the pointer left the chip");
+    h.move_to(h.center_of(pin));
+    pinned(&mut h);
+    pinned(&mut h);
+    assert_eq!(
+        h.hit_at(h.center_of(pin)),
+        Some(pin),
+        "premise: the pin takes the pointer"
     );
     assert!(
-        h.rect(beta.with("badge")).is_none(),
-        "a chip with no badge reserves no box",
+        h.rect(close).is_some(),
+        "the pointer on the content's own widget shows the button",
     );
 }
 
@@ -138,8 +291,8 @@ fn the_badge_reserves_the_same_box_idle_and_inked() {
 #[test]
 fn the_selection_cap_adds_no_height() {
     let mut h = UiHarness::new(SURFACE);
-    strip_frame(&mut h, 0, TabBadge::None);
-    strip_frame(&mut h, 0, TabBadge::None);
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
     let selected = h.rect(TabStrip::chip_id(strip_id(), 10)).expect("arranged");
     let plain = h.rect(TabStrip::chip_id(strip_id(), 20)).expect("arranged");
     assert_eq!(
@@ -152,13 +305,16 @@ fn the_selection_cap_adds_no_height() {
 #[test]
 fn a_close_click_reports_a_close_and_not_a_click() {
     let mut h = UiHarness::new(SURFACE);
-    strip_frame(&mut h, 0, TabBadge::None);
-    strip_frame(&mut h, 0, TabBadge::None);
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
 
     h.click_on(TabStrip::close_id(strip_id(), 20));
     let hit = h.frame_value(|ui| {
-        let items = items(ui, TabBadge::None);
-        let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
+        let items = items(ui);
+        let r = TabStrip::new(&items)
+            .id(strip_id())
+            .selected(0)
+            .show(ui, |ui, chip| chip.show_label(ui));
         (r.clicked, r.activated(), r.closed)
     });
     assert_eq!(
@@ -172,13 +328,16 @@ fn a_close_click_reports_a_close_and_not_a_click() {
 #[test]
 fn a_chip_click_reports_its_slot() {
     let mut h = UiHarness::new(SURFACE);
-    strip_frame(&mut h, 0, TabBadge::None);
-    strip_frame(&mut h, 0, TabBadge::None);
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
 
     h.click_on(TabStrip::chip_id(strip_id(), 30));
     let hit = h.frame_value(|ui| {
-        let items = items(ui, TabBadge::None);
-        let r = TabStrip::new(&items).id(strip_id()).selected(0).show(ui);
+        let items = items(ui);
+        let r = TabStrip::new(&items)
+            .id(strip_id())
+            .selected(0)
+            .show(ui, |ui, chip| chip.show_label(ui));
         (r.clicked, r.keyed, r.activated(), r.closed)
     });
     assert_eq!(hit, (Some(2), None, Some(2), None));
@@ -188,20 +347,20 @@ fn a_chip_click_reports_its_slot() {
 #[test]
 fn arrows_home_and_end_travel_and_wrap() {
     let mut h = UiHarness::new(SURFACE);
-    strip_frame(&mut h, 0, TabBadge::None);
-    strip_frame(&mut h, 0, TabBadge::None);
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
     h.set_focus(strip_id());
-    strip_frame(&mut h, 0, TabBadge::None);
+    strip_frame(&mut h, 0);
 
     let travel = |h: &mut UiHarness, key: Key, mods: Modifiers, selected: usize| {
         h.set_modifiers(mods);
         h.key(key);
         let hit = h.frame_value(|ui| {
-            let items = items(ui, TabBadge::None);
+            let items = items(ui);
             let r = TabStrip::new(&items)
                 .id(strip_id())
                 .selected(selected)
-                .show(ui);
+                .show(ui, |ui, chip| chip.show_label(ui));
             assert_eq!(r.activated(), r.keyed, "a keyboard move is an activation");
             (r.keyed, r.clicked)
         });
@@ -260,8 +419,11 @@ fn arrows_home_and_end_travel_and_wrap() {
     for (key, want) in [(Key::ArrowRight, 0), (Key::ArrowLeft, 2)] {
         h.key(key);
         let keyed = h.frame_value(|ui| {
-            let items = items(ui, TabBadge::None);
-            TabStrip::new(&items).id(strip_id()).show(ui).keyed
+            let items = items(ui);
+            TabStrip::new(&items)
+                .id(strip_id())
+                .show(ui, |ui, chip| chip.show_label(ui))
+                .keyed
         });
         assert_eq!(keyed, Some(want), "{key:?} with no selection");
     }
@@ -274,12 +436,12 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
 
     let record = |h: &mut UiHarness, selected: usize| {
         h.frame_value(|ui| {
-            let items = items(ui, TabBadge::None);
+            let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
                 .selected(selected)
                 .size((Sizing::fixed(90.0), Sizing::HUG))
-                .show(ui)
+                .show(ui, |ui, chip| chip.show_label(ui))
                 .keyed
         })
     };
@@ -319,7 +481,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
     ];
     for (label, filler_h, page_y, band_x) in cases {
         let build = |ui: &mut Ui| {
-            let items = items(ui, TabBadge::None);
+            let items = items(ui);
             Scroll::vertical()
                 .id(page)
                 .size((Sizing::fixed(300.0), Sizing::fixed(150.0)))
@@ -328,7 +490,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
                         .id(strip_id())
                         .selected(0)
                         .size((Sizing::fixed(90.0), Sizing::HUG))
-                        .show(ui);
+                        .show(ui, |ui, chip| chip.show_label(ui));
                     Block::new()
                         .id_salt("filler")
                         .size((Sizing::fixed(280.0), Sizing::fixed(filler_h)))
@@ -374,16 +536,16 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
 #[test]
 fn travel_needs_focus_inside_the_strip() {
     let mut h = UiHarness::new(SURFACE);
-    strip_frame(&mut h, 0, TabBadge::None);
-    strip_frame(&mut h, 0, TabBadge::None);
+    strip_frame(&mut h, 0);
+    strip_frame(&mut h, 0);
     h.clear_focus();
     h.key(Key::ArrowRight);
     let keyed = h.frame_value(|ui| {
-        let items = items(ui, TabBadge::None);
+        let items = items(ui);
         TabStrip::new(&items)
             .id(strip_id())
             .selected(0)
-            .show(ui)
+            .show(ui, |ui, chip| chip.show_label(ui))
             .keyed
     });
     assert_eq!(keyed, None);
@@ -401,11 +563,11 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
             .input_scope(KeyFilter::ACCEL | KeyFilter::FOCUS)
             .show(ui, |ui| {
                 let at_root = ui.shortcut_pressed(probe);
-                let items = items(ui, TabBadge::None);
+                let items = items(ui);
                 let keyed = TabStrip::new(&items)
                     .id(strip_id())
                     .selected(0)
-                    .show(ui)
+                    .show(ui, |ui, chip| chip.show_label(ui))
                     .keyed;
                 (at_root, keyed)
             })
@@ -466,13 +628,13 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
     let caret = strip_id().with("caret");
     let build = |slot: usize| {
         move |ui: &mut Ui| {
-            let items = items(ui, TabBadge::None);
+            let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
                 .selected(0)
                 .drop_caret(Some(slot))
                 .size((Sizing::fixed(90.0), Sizing::HUG))
-                .show(ui);
+                .show(ui, |ui, chip| chip.show_label(ui));
         }
     };
     let extent = |h: &UiHarness, key: u64| {
@@ -609,7 +771,7 @@ fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
 #[test]
 fn a_stale_strip_selection_caps_the_last_chip() {
     let mut h = UiHarness::new(SURFACE);
-    strip_frame(&mut h, 9, TabBadge::None);
+    strip_frame(&mut h, 9);
     let capped = |key: u64| {
         let node = h
             .node_of(TabStrip::chip_id(strip_id(), key))
@@ -867,13 +1029,13 @@ fn a_move_and_a_close_carry_every_index_with_its_page() {
 fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     let build = |width: f32| {
         move |ui: &mut Ui| {
-            let items = items(ui, TabBadge::None);
+            let items = items(ui);
             TabStrip::new(&items)
                 .id(strip_id())
                 .selected(0)
                 .overflow(TabOverflow::Menu)
                 .size((Sizing::fixed(width), Sizing::HUG))
-                .show(ui);
+                .show(ui, |ui, chip| chip.show_label(ui));
         }
     };
     let chevron = strip_id().with("overflow");
@@ -897,19 +1059,38 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         h.rect(chevron).is_some(),
         "a chip cut in half is a chip the strip cannot show whole",
     );
+    // Three dots in the cross's proportions: the stock 8 px cross at a 1.5 px stroke spaces them
+    // 8 · 7 / 12 ≈ 4.67 apart about the 16 px button's center, each 2 · 1.5 = 3 across.
+    let node = h.node_for_widget_id(chevron);
+    let dots: Vec<Rect> =
+        h.ui.tree(Layer::Main)
+            .shapes_of(node)
+            .filter_map(|shape| match shape {
+                ShapeRecord::Quad(QuadShape::Rect {
+                    local_rect: Some(rect),
+                    ..
+                }) => Some(*rect),
+                _ => None,
+            })
+            .collect();
+    let pitch = 8.0 * 7.0 / 12.0;
+    assert_eq!(
+        dots,
+        [-pitch, 0.0, pitch].map(|dx| Rect::new(8.0 + dx - 1.5, 6.5, 3.0, 3.0)),
+    );
 
     // The chevron opens the menu; its row reports a menu pick, which `activated` merges.
     h.click_on(chevron);
     h.frame(build(half_way));
     h.click_on(strip_id().with("overflow").with(30u64));
     let picked = h.frame_value(|ui| {
-        let items = items(ui, TabBadge::None);
+        let items = items(ui);
         let r = TabStrip::new(&items)
             .id(strip_id())
             .selected(0)
             .overflow(TabOverflow::Menu)
             .size((Sizing::fixed(half_way), Sizing::HUG))
-            .show(ui);
+            .show(ui, |ui, chip| chip.show_label(ui));
         (r.menu_picked, r.clicked, r.activated())
     });
     assert_eq!(picked, (Some(2), None, Some(2)));

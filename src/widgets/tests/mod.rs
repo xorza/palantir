@@ -519,7 +519,9 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |_, _| {});
                 let items = [TabItem::new(1, ui.intern("one"))];
-                TabStrip::new(&items).selected(5).show(ui);
+                TabStrip::new(&items)
+                    .selected(5)
+                    .show(ui, |ui, chip| chip.show_label(ui));
                 Slider::new(&mut slid, 10.0..=0.0).show(ui);
                 DragValue::new(&mut dragged).range(5.0..=-5.0).show(ui);
                 ColorField::new(&mut coords).show(ui);
