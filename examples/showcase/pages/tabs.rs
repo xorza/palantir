@@ -1,11 +1,11 @@
 //! The two tab widgets: a page view bound to an index, and the strip on
-//! its own with badges, close buttons and overflow.
+//! its own with content of the app's, close buttons and overflow.
 
 use crate::support;
 use crate::support::{Section, api};
 use palantir::{
-    Configure, Panel, Sizing, TabBadge, TabItem, TabOverflow, TabStrip, TabbedView, Text, Ui,
-    WidgetId, fmt,
+    Block, Chrome, Configure, Corners, Panel, Sizing, TabChip, TabItem, TabOverflow, TabStrip,
+    TabbedView, Text, Ui, WidgetId, fmt,
 };
 
 const PAGES: [&str; 3] = ["Color", "Geometry", "Metadata"];
@@ -73,13 +73,13 @@ pub(crate) fn build(ui: &mut Ui) {
             });
 
         Section::new("The strip alone")
-            .apis(&[api!(TabStrip::new), api!(TabBadge::Idle)])
+            .apis(&[api!(TabStrip::new), api!(TabChip::show_label)])
             .show(ui, |ui| {
                 support::note(
                     ui,
-                    "TabStrip draws chips and nothing else. Every chip reserves the status \
-                     dot's box and the even ones ink it, so a dot never shifts a neighbor. \
-                     Close a chip with its × button.",
+                    "TabStrip draws each chip's frame and close button, and the app records what \
+                     the chip shows: here the label and, on the even layers, a dot in the \
+                     chip's ink. Close a chip with its button.",
                 );
                 strip_demo(ui, s);
             });
@@ -107,7 +107,7 @@ pub(crate) fn build(ui: &mut Ui) {
                         let hit = TabStrip::new(&s.items)
                             .selected(s.overflowing)
                             .overflow(TabOverflow::Menu)
-                            .show(ui);
+                            .show(ui, |ui, chip| chip.show_label(ui));
                         if let Some(i) = hit.activated() {
                             s.overflowing = i;
                         }
@@ -121,17 +121,11 @@ fn strip_demo(ui: &mut Ui, s: &mut State) {
     support::well(ui, |ui| {
         s.items.clear();
         for &key in &s.open {
-            let badge = if key % 2 == 0 {
-                TabBadge::On
-            } else {
-                TabBadge::Idle
-            };
-            s.items.push(TabItem {
-                badge,
-                ..TabItem::new(key, fmt!(ui, "layer {key}"))
-            });
+            s.items.push(TabItem::new(key, fmt!(ui, "layer {key}")));
         }
-        let hit = TabStrip::new(&s.items).selected(s.picked).show(ui);
+        let hit = TabStrip::new(&s.items)
+            .selected(s.picked)
+            .show(ui, layer_chip);
         if let Some(slot) = hit.closed
             && s.open.len() > 1
         {
@@ -143,4 +137,16 @@ fn strip_demo(ui: &mut Ui, s: &mut State) {
     });
     let line = fmt!(ui, "{} open, slot {} selected", s.open.len(), s.picked);
     support::readout(ui, "chips", line);
+}
+
+/// A layer's chip: its label, and a dot on the even layers in the chip's ink.
+fn layer_chip(ui: &mut Ui, chip: &TabChip) {
+    chip.show_label(ui);
+    if chip.key.is_multiple_of(2) {
+        Block::new()
+            .id(chip.id.with("dot"))
+            .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
+            .chrome(Chrome::rounded(chip.text.color, Corners::all(3.0)))
+            .show(ui);
+    }
 }

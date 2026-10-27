@@ -12,7 +12,7 @@ use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::panel::Panel;
 use crate::widgets::tabs::reindex;
-use crate::widgets::tabs::tab_item::{TabBadge, TabItem, TabItemBuf};
+use crate::widgets::tabs::tab_item::{TabItem, TabItemBuf};
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use std::hash::Hash;
 use std::rc::Rc;
@@ -214,8 +214,6 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                         label: text,
                         closable,
                         draggable: reorderable,
-                        badge: TabBadge::None,
-                        icon: None,
                     });
                 }
                 let strip = TabStrip::new(&buf.items)
@@ -224,7 +222,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     .overflow(overflow)
                     .drop_caret(drop)
                     .style(t)
-                    .show(ui);
+                    .show(ui, |ui, chip| chip.show_label(ui));
                 StripHit {
                     // The view owns its selection, so every way of asking for a tab
                     // is one request.

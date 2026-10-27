@@ -7,6 +7,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
+use crate::theme::close_shown::CloseShown;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -53,7 +54,7 @@ pub struct TabsTheme {
     /// Inset between a chip's edges and its label, apart from [`SlotDefaults::padding`].
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub chip_padding: Spacing,
-    /// Trailing inset replacing [`Self::chip_padding`]'s right one when a badge or close button follows.
+    /// Trailing inset replacing [`Self::chip_padding`]'s right one when a close button follows.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub trailing_inset: f32,
     /// Chip width floor.
@@ -67,17 +68,22 @@ pub struct TabsTheme {
     /// Close button side in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub close_size: f32,
-    /// Ink of the status dot.
-    pub badge: RgbaF32,
-    /// Status-dot diameter in logical px.
+    /// The close cross's extent in logical px, centered in the button, which also spaces the
+    /// overflow button's dots; its arms are drawn strokes, not a font's "×", so the cross sits on
+    /// the button's center at a weight the theme sets.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub badge_size: f32,
+    pub close_glyph: f32,
+    /// The close cross's stroke in logical px, and half the overflow button's dot diameter.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub close_stroke: f32,
+    /// Which chips show their close button.
+    pub close_shown: CloseShown,
     /// The insertion mark a chip drag shows at the slot it would drop into.
     pub caret: RgbaF32,
     /// Breadth of the insertion mark in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub caret_width: f32,
-    /// Gutter between a chip's icon, label, badge and close button.
+    /// Gutter between the parts of a chip's content, and before its close button.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub label_gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
@@ -106,8 +112,9 @@ impl TabsTheme {
             min_width: _,
             max_width: _,
             close_size: _,
-            badge: _,
-            badge_size: _,
+            close_glyph: _,
+            close_stroke: _,
+            close_shown: _,
             caret: _,
             caret_width: _,
             label_gap: _,
@@ -182,8 +189,9 @@ impl TabsTheme {
                 },
             },
             close_size: 16.0,
-            badge: p.accent,
-            badge_size: 3.5,
+            close_glyph: 8.0,
+            close_stroke: 1.5,
+            close_shown: CloseShown::Always,
             caret: p.accent,
             caret_width: 3.0,
             label_gap: 6.0,

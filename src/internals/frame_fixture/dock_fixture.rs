@@ -1,17 +1,20 @@
 //! A settled dock as a recordable scene, at a real editor's scale.
 
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::block::Block;
 use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_state::DockState;
 use crate::widgets::dock::dock_tabs::DockTabs;
 use crate::widgets::dock::dock_view::DockView;
 use crate::widgets::dock::split_side::SplitSide;
 use crate::widgets::panel::Panel;
-use crate::widgets::tabs::tab_item::TabBadge;
+use crate::widgets::tabs::tab_chip::TabChip;
 use crate::widgets::text::Text;
 
 /// Three panes and two dividers (canvas beside a console, an output pane under it) and five tabs across three strips; each body is one line of its title. Shared by the allocation gates and visual suite.
@@ -120,10 +123,14 @@ impl DockTabs for Panes {
         tab != Tab::Canvas
     }
 
-    fn badge(&mut self, tab: Tab) -> TabBadge {
-        match tab {
-            Tab::Canvas => TabBadge::On,
-            _ => TabBadge::None,
+    fn tab_content(&mut self, ui: &mut Ui, tab: Tab, chip: &TabChip) {
+        chip.show_label(ui);
+        if tab == Tab::Canvas {
+            Block::new()
+                .id(chip.id.with("dot"))
+                .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
+                .chrome(Chrome::rounded(chip.text.color, Corners::all(3.0)))
+                .show(ui);
         }
     }
 }

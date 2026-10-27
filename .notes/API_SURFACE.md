@@ -200,6 +200,11 @@ CloseHandle
         pub fn close(&self)
         pub const fn requested(&self) -> bool
 
+CloseShown
+    enum CloseShown: Clone, Copy, Debug, Default, Deserialize<'de>, Eq, PartialEq, Serialize
+        Always
+        SelectedOrHovered
+
 ColorButton
     struct ColorButton<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(picker: ColorPicker<'a>) -> Self
@@ -571,8 +576,7 @@ DockTabs
         fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>)
         fn closable(&mut self, _tab: Self::Tab) -> bool { .. }
         fn draggable(&mut self, _tab: Self::Tab) -> bool { .. }
-        fn badge(&mut self, _tab: Self::Tab) -> TabBadge { .. }
-        fn icon(&mut self, _tab: Self::Tab) -> Option<IconHandle> { .. }
+        fn tab_content(&mut self, ui: &mut Ui, _tab: Self::Tab, chip: &TabChip) { .. }
         fn has_tab_menu(&mut self, _tab: Self::Tab) -> bool { .. }
         fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) { .. }
 
@@ -625,6 +629,7 @@ DragNum
 DragValue
     struct DragValue<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(value: impl Into<DragNum<'a>>) -> Self
+        pub const fn text_align(self, a: Align) -> Self
         pub const fn speed(self, speed: f64) -> Self
         pub const fn range(self, range: RangeInclusive<f64>) -> Self
         pub const fn decimals(self, n: usize) -> Self
@@ -1586,6 +1591,7 @@ Scroll
         pub fn horizontal() -> Self
         pub fn both() -> Self
         pub fn pan_by(self, delta: Vec2) -> Self
+        pub const fn reveal(self, child: WidgetId) -> Self
         pub fn zoom_by(self, factor: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ScrollbarTheme>>) -> Self
         pub const fn bar_mode(self, mode: BarMode) -> Self
@@ -1898,13 +1904,15 @@ TabAddress
         pub group: TabGroupId
         pub idx: usize
 
-TabBadge
-    enum TabBadge: Clone, Copy, Debug, Default, Eq, PartialEq
-        None
-        Idle
-        On
-        pub const fn is_reserved(self) -> bool
-        pub const fn is_inked(self) -> bool
+TabChip
+    struct TabChip: Clone, Copy, Debug
+        pub slot: usize
+        pub key: u64
+        pub label: InternedStr
+        pub selected: bool
+        pub text: TextStyle
+        pub id: WidgetId
+        pub fn show_label(&self, ui: &mut Ui)
 
 TabGroup
     struct TabGroup<T>
@@ -1929,8 +1937,6 @@ TabItem
         pub label: InternedStr
         pub closable: bool
         pub draggable: bool
-        pub badge: TabBadge
-        pub icon: Option<IconHandle>
         pub const fn new(key: u64, label: InternedStr) -> Self
 
 TabOverflow
@@ -1952,7 +1958,7 @@ TabStrip
         pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
         pub fn chip_id(strip: WidgetId, key: u64) -> WidgetId
         pub fn close_id(strip: WidgetId, key: u64) -> WidgetId
-        pub fn show(self, ui: &mut Ui) -> TabStripResponse<'_>
+        pub fn show(self, ui: &mut Ui, content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse<'_>
 
 TabStripFocus
     enum TabStripFocus: Clone, Copy, Debug, Eq, PartialEq
@@ -2016,8 +2022,9 @@ TabsTheme
         pub max_width: f32
         pub close: StatefulLook
         pub close_size: f32
-        pub badge: RgbaF32
-        pub badge_size: f32
+        pub close_glyph: f32
+        pub close_stroke: f32
+        pub close_shown: CloseShown
         pub caret: RgbaF32
         pub caret_width: f32
         pub label_gap: f32
@@ -2143,6 +2150,7 @@ TextWrap
         Scroll
         Truncate
         Ellipsis
+        EllipsisMiddle
         Wrap
         WrapWithOverflow
 

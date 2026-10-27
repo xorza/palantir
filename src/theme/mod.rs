@@ -4,6 +4,7 @@
 
 pub(crate) mod button;
 pub(crate) mod check_state;
+pub(crate) mod close_shown;
 pub(crate) mod color_picker;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
