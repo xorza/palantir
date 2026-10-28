@@ -28,9 +28,17 @@ impl LayoutDriver for Canvas {
     ///
     /// **Content size per axis depends on the canvas's sizing on that axis.** A `Hug` axis reports `max(child_pos + child_desired)`; a `Fill` axis reports `max(child_desired)`, so `.pos(...)` cannot inflate the canvas past its available and flicker `Damage::Full` while dragging.
     /// Negative positions render outside `inner` either way (the running max starts at 0); build scrollable negative-origin canvases on [`crate::widgets::scroll::Scroll`].
+    ///
+    /// A bounded axis has no floor: a child larger than the canvas overflows it rather than holding it open, as CSS gives a scroll container no content-based minimum and WPF's Canvas does not size to its children. A floor here would rise through every `Fill` parent, so one tall child would push its window's layout past the window.
     fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
         // Active children only: a collapsed child must not inflate the content size. The position decides both the room a bounded axis has left and the extent a Hug axis grows to; `measure_per_axis_hug` derives each.
-        pass.measure_per_axis_hug(self.node, inner_avail, |tree, c| tree.bounds(c).pos)
+        let hug = pass.tree.records.layout()[self.node.idx()].size.hug_mask();
+        let measured =
+            pass.measure_per_axis_hug(self.node, inner_avail, |tree, c| tree.bounds(c).pos);
+        Measured {
+            floor: measured.floor.select(hug, Size::ZERO),
+            ..measured
+        }
     }
 
     /// Each child gets a slot at `bounds.pos`, sized per its desired size; `Fill` falls back to intrinsic as in `measure`.
@@ -52,19 +60,24 @@ impl LayoutDriver for Canvas {
         }
     }
 
-    /// Intrinsic size of a Canvas, mirroring `measure`: `Hug` returns `max(child.pos + child.intrinsic)`; `Fill` drops the offset so a `.pos(...)` past `available` cannot floor it.
+    /// Intrinsic size of a Canvas, mirroring `measure`: `Hug` returns `max(child.pos + child.intrinsic)`; `Fill` drops the offset so a `.pos(...)` past `available` cannot floor it, and has no min-content, as `measure` gives it no floor.
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange {
         let axis = query.axis();
-        let pos_inflates = axis
+        let hug = axis
             .main_sizing(pass.tree().records.layout()[self.node.idx()].size)
             .is_hug();
-        pass.children_max(self.node, query, |tree, c| {
-            if pos_inflates {
+        let range = pass.children_max(self.node, query, |tree, c| {
+            if hug {
                 axis.main_v(tree.bounds(c).pos)
             } else {
                 0.0
             }
-        })
+        });
+        if hug {
+            range
+        } else {
+            IntrinsicRange { min: 0.0, ..range }
+        }
     }
 }
 
