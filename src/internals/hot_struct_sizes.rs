@@ -139,14 +139,14 @@ const PINS: &[Pin] = &[
     pin::<Node>("scene::Node", 104, 4),
     pin::<ShapeRecord>("shape::ShapeRecord", 88, 8),
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
-    // 16 of them the backdrop filter, two f16 words.
-    pin::<ChromeRow>("scene::ChromeRow", 80, 8),
+    // 18 of them the backdrop filter, two f16 words and its ceiling, which tips the row past 80.
+    pin::<ChromeRow>("scene::ChromeRow", 88, 8),
     pin::<ShapeStroke>("shape::ShapeStroke", 12, 4),
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    // 36 of them the backdrop filter, its lens optional.
-    pin::<Chrome>("primitives::Chrome", 160, 4),
+    // 44 of them the backdrop filter, its ceiling and lens optional.
+    pin::<Chrome>("primitives::Chrome", 168, 4),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
@@ -174,23 +174,23 @@ const PINS: &[Pin] = &[
     pin::<Slider<'static>>("widgets::Slider", 184, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 152, 8),
-    // 32 of them the chrome's backdrop filter.
-    pin::<Panel>("widgets::Panel", 280, 8),
-    pin::<Block>("widgets::Block", 280, 8),
-    pin::<Grid>("widgets::Grid", 280, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 344, 8),
+    // 40 of them the chrome's backdrop filter.
+    pin::<Panel>("widgets::Panel", 288, 8),
+    pin::<Block>("widgets::Block", 288, 8),
+    pin::<Grid>("widgets::Grid", 288, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 352, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
-    pin::<Popup>("widgets::Popup", 312, 8),
-    pin::<Modal<'static>>("widgets::Modal", 312, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 344, 8),
+    pin::<Popup>("widgets::Popup", 320, 8),
+    pin::<Modal<'static>>("widgets::Modal", 320, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 352, 8),
     pin::<GpuView>("widgets::GpuView", 144, 8),
-    pin::<ContextMenu<'static>>("widgets::ContextMenu", 336, 8),
+    pin::<ContextMenu<'static>>("widgets::ContextMenu", 344, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 384, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 1040, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 1072, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

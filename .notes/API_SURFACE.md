@@ -78,6 +78,7 @@ BackdropFilter
         pub blur: f32
         pub saturation: f32
         pub noise: f32
+        pub max_luminance: Option<f32>
         pub lens: Option<Lens>
         pub const NONE: Self
         pub const fn blur(sigma: f32) -> Self
@@ -86,6 +87,7 @@ BackdropFilter
         pub const fn with_blur(self, sigma: f32) -> Self
         pub const fn with_saturation(self, saturation: f32) -> Self
         pub const fn with_noise(self, noise: f32) -> Self
+        pub const fn with_max_luminance(self, luminance: f32) -> Self
         pub const fn with_lens(self, lens: Lens) -> Self
         pub const fn is_noop(&self) -> bool
         impl<'de> Deserialize<'de> where BackdropFilter: Default

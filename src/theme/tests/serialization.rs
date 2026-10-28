@@ -41,10 +41,14 @@ fn widget_look_serde_roundtrip() {
         },
         WidgetLook {
             chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
-                .with_backdrop_filter(BackdropFilter::frosted(12.0).with_lens(Lens {
-                    dispersion: 0.0,
-                    ..Lens::default()
-                })),
+                .with_backdrop_filter(
+                    BackdropFilter::frosted(12.0)
+                        .with_max_luminance(0.05)
+                        .with_lens(Lens {
+                            dispersion: 0.0,
+                            ..Lens::default()
+                        }),
+                ),
             text: TextStyleOverrides::NONE,
         },
         WidgetLook {
@@ -78,8 +82,8 @@ fn widget_look_serde_roundtrip() {
 }
 
 /// A backdrop filter in a file names only what differs from `BackdropFilter::NONE`, and each
-/// field is checked by its kind: a blur a length, saturation and noise factors, a lens's index at
-/// least 1 and its dispersion and highlight fractions.
+/// field is checked by its kind: a blur a length, saturation, noise and a luminance ceiling
+/// factors, a lens's index at least 1 and its dispersion and highlight fractions.
 #[test]
 fn backdrop_filters_load_by_their_kinds() {
     for (label, ron, want) in [
@@ -97,6 +101,19 @@ fn backdrop_filters_load_by_their_kinds() {
         ("negative blur", "(blur: -1.0)", None),
         ("NaN saturation", "(saturation: NaN)", None),
         ("negative noise", "(noise: -0.1)", None),
+        (
+            "ceiling",
+            "(max_luminance: Some(0.05))",
+            Some(BackdropFilter::NONE.with_max_luminance(0.05)),
+        ),
+        (
+            "no ceiling",
+            "(max_luminance: None)",
+            Some(BackdropFilter::NONE),
+        ),
+        ("negative ceiling", "(max_luminance: Some(-0.1))", None),
+        ("NaN ceiling", "(max_luminance: Some(NaN))", None),
+        ("infinite ceiling", "(max_luminance: Some(inf))", None),
         (
             "index below 1",
             "(lens: Some((refractive_index: 0.9)))",

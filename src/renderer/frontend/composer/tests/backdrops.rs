@@ -22,13 +22,14 @@ use crate::shape::rect::RectKind;
 use glam::UVec2;
 
 fn pane(buf: &mut PaintCapture, rect: Rect, sigma: f32, alpha: f32) {
+    let backdrop = LoweredBackdrop::from(BackdropFilter::blur(sigma));
     let quad = DrawQuadPayload::backdrop(BackdropQuad {
         kind: RectKind::Rounded,
         rect,
         corners: Corners::ZERO,
         tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
         stroke: ShapeStroke::NONE,
-        backdrop: LoweredBackdrop::from(BackdropFilter::blur(sigma)),
+        backdrop,
     });
     let key = PaneKey {
         owner: WidgetId::from_hash("pane"),
@@ -38,7 +39,7 @@ fn pane(buf: &mut PaintCapture, rect: Rect, sigma: f32, alpha: f32) {
         DrawPanePayload {
             quad,
             key,
-            lens: None,
+            backdrop,
         },
         alpha,
     );
@@ -113,7 +114,7 @@ fn a_pane_past_every_plan_coerces_to_the_widest() {
                 DrawPanePayload {
                     quad,
                     key,
-                    lens: backdrop.lens(),
+                    backdrop,
                 },
                 1.0,
             );

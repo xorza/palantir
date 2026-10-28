@@ -188,6 +188,7 @@ mod tests {
             plan: BlurPlan::new(2.0),
             barrier: 0,
             lens: None,
+            max_luminance: 65504.0,
             capture,
         };
         buffer.backdrops.extend([

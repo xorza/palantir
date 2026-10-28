@@ -43,6 +43,20 @@ pub(crate) fn factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, 
     read(deserializer, domain::is_factor, domain::FACTOR_RULE)
 }
 
+/// An optional [factor](domain::factor).
+pub(crate) fn optional_factor<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f32>, D::Error> {
+    let value = Option::<f32>::deserialize(deserializer)?;
+    match value {
+        Some(v) if !domain::is_factor(v) => Err(D::Error::custom(format_args!(
+            "{}, got {v}",
+            domain::FACTOR_RULE
+        ))),
+        _ => Ok(value),
+    }
+}
+
 /// A [refractive index](crate::Lens::is_refractive_index): finite and at least 1.
 pub(crate) fn refractive_index<'de, D: Deserializer<'de>>(
     deserializer: D,

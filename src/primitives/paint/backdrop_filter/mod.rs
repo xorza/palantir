@@ -19,6 +19,17 @@
 //!   plain value. Blur is a Gaussian σ in logical px, as [`Shadow::blur`](crate::Shadow) and CSS
 //!   `blur()` take it. Frosted adds Apple's saturation of 1.8 and grain. Refused: Acrylic's
 //!   exclusion blend, which its replications drop; a free light direction.
+//! - **A luminance ceiling keeps text over a pane legible.** `max_luminance` caps the relative
+//!   luminance of what the pane shows, after the blur, saturation and grain and before the tint,
+//!   by scaling the color, so its hue and chroma hold. The ground under a pane's text is then at
+//!   most `(1 − α)·max_luminance + α·tint`, whatever is painted behind it, and an author derives
+//!   the ceiling from the contrast its inks need, as WCAG 1.4.3 measures it. Fluent's acrylic
+//!   serves the same need with a luminosity layer (`AcrylicBrush::TintLuminosityOpacity`,
+//!   <https://learn.microsoft.com/windows/winui/api/microsoft.ui.xaml.media.acrylicbrush>).
+//!   Refused: that luminosity blend and CSS `brightness()`, which compress or scale the dark
+//!   range too and so show less of the backdrop for the same bound; a tint alone, opaque enough
+//!   to hold the bound over white, which leaves a few percent of the backdrop to see. A floor,
+//!   for dark ink on a light tint, waits for a workload.
 //! - **Linear light.** The capture, the blur and the composite run in linear light, as the rest
 //!   of the pipeline blends, so a blur keeps the energy of bright detail. Refused: blurring
 //!   sRGB-encoded values to imitate a browser's look.
@@ -43,7 +54,7 @@ use palantir_anim_derive::Animatable;
 /// frame where nothing does.
 ///
 /// Plain data, checked where it enters a shape or a [`Chrome`](crate::Chrome): `blur` is a
-/// [length](crate::widget::domain::length), `saturation` and `noise`
+/// [length](crate::widget::domain::length), `saturation`, `noise` and a `max_luminance`
 /// [factors](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
 /// packs into one, and the lens's own checks hold. Where it paints, a value a tween carried past
 /// the lanes saturates at 65504, and the blur at σ 16384 physical px.
@@ -62,6 +73,15 @@ pub struct BackdropFilter {
     /// color; 0 is none, and a few hundredths show it.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::factor")]
     pub noise: f32,
+    /// The highest relative luminance the pane shows under its tint, if any: a brighter pixel is
+    /// scaled down to it, its hue and chroma kept. The lane it packs into rounds it down, never
+    /// up; an 8-bit target's dither then moves a pixel by at most half an encoded step.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::primitives::packed::serde::checked::optional_factor"
+    )]
+    #[animate(snap)]
+    pub max_luminance: Option<f32>,
     /// Glass that bends what the pane shows across a rounded bezel at its edge, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[animate(snap)]
@@ -103,6 +123,7 @@ impl BackdropFilter {
         blur: 0.0,
         saturation: 1.0,
         noise: 0.0,
+        max_luminance: None,
         lens: None,
     };
 
@@ -121,6 +142,7 @@ impl BackdropFilter {
             blur: sigma,
             saturation: 1.8,
             noise: 0.04,
+            max_luminance: None,
             lens: None,
         }
     }
@@ -151,6 +173,12 @@ impl BackdropFilter {
         self
     }
 
+    /// This filter with what it shows held to at most `luminance`, a relative luminance.
+    pub const fn with_max_luminance(mut self, luminance: f32) -> Self {
+        self.max_luminance = Some(luminance);
+        self
+    }
+
     /// This filter seen through `lens`.
     pub const fn with_lens(mut self, lens: Lens) -> Self {
         self.lens = Some(lens);
@@ -160,16 +188,24 @@ impl BackdropFilter {
     /// True when the filter changes nothing it shows, so a rect with it makes no pane. Takes
     /// `&self` because `Chrome` names it in a `skip_serializing_if`.
     pub const fn is_noop(&self) -> bool {
-        self.blur == 0.0 && self.saturation == 1.0 && self.noise == 0.0 && self.lens.is_none()
+        self.blur == 0.0
+            && self.saturation == 1.0
+            && self.noise == 0.0
+            && self.max_luminance.is_none()
+            && self.lens.is_none()
     }
 
-    /// Panics unless `blur` is a length, `saturation` and `noise` factors, and the lens valid.
+    /// Panics unless `blur` is a length, `saturation`, `noise` and a `max_luminance` factors, and
+    /// the lens valid.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
         domain::lane(domain::length(self.blur));
         domain::lane(domain::factor(self.saturation));
         domain::lane(domain::factor(self.noise));
+        if let Some(luminance) = self.max_luminance {
+            domain::lane(domain::factor(luminance));
+        }
         if let Some(lens) = &self.lens {
             lens.validate();
         }
@@ -187,6 +223,7 @@ impl NanCheck for BackdropFilter {
         self.blur.is_nan()
             || self.saturation.is_nan()
             || self.noise.is_nan()
+            || self.max_luminance.is_some_and(f32::is_nan)
             || self.lens.is_some_and(Lens::has_nan)
     }
 }

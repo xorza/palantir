@@ -1,4 +1,4 @@
-//! A backdrop lowered to two four-lane words.
+//! A backdrop lowered to two four-lane words and a luminance ceiling.
 
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
@@ -10,11 +10,14 @@ use std::hash;
 
 /// A [`BackdropFilter`] as a record keeps it: `look = (σ, saturation, noise, highlight)` and
 /// `lens = (bezel, thickness, refractive_index, dispersion)`, lengths in logical px, which the
-/// composer scales to physical; a pane with no lens has a zero `lens`.
+/// composer scales to physical; a pane with no lens has a zero `lens`. `max_luminance` is the
+/// ceiling's f16 bits, rounded down so the pane never shows brighter than its author allowed, and
+/// 65504 for a pane with none.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct LoweredBackdrop {
     look: F16x4,
     lens: F16x4,
+    max_luminance: u16,
 }
 
 impl LoweredBackdrop {
@@ -22,6 +25,7 @@ impl LoweredBackdrop {
     pub(crate) const NONE: Self = Self {
         look: F16x4::ZERO,
         lens: F16x4::ZERO,
+        max_luminance: 0,
     };
 
     /// Whether a rect with this backdrop draws as an ordinary rect.
@@ -38,6 +42,11 @@ impl LoweredBackdrop {
     pub(crate) fn fill_axis(self) -> FillAxis {
         let [sigma, saturation, noise, _] = self.look.lanes();
         FillAxis::from_lanes([sigma, saturation, noise, 1.0])
+    }
+
+    /// The highest relative luminance the pane shows: its ceiling, or 65504 with none.
+    pub(crate) fn max_luminance(self) -> f32 {
+        half::f16::from_bits(self.max_luminance).to_f32()
     }
 
     /// The lens, `None` for a pane of no glass.
@@ -96,7 +105,23 @@ impl From<BackdropFilter> for LoweredBackdrop {
                 highlight,
             ]),
             lens,
+            max_luminance: backdrop
+                .max_luminance
+                .map_or(half::f16::MAX.to_bits(), f16_at_or_below),
         }
+    }
+}
+
+/// The bits of the f16 nearest `v` at or below it, `v` a factor saturated at 65504: a ceiling
+/// that rounded up would let a pane show brighter than its author derived.
+fn f16_at_or_below(v: f32) -> u16 {
+    debug_assert!(v >= 0.0, "a ceiling is a factor: {v}");
+    let v = F16x4::saturate_lane(v);
+    let nearest = half::f16::from_f32(v);
+    if nearest.to_f32() > v {
+        nearest.to_bits() - 1
+    } else {
+        nearest.to_bits()
     }
 }
 
@@ -104,11 +129,14 @@ impl hash::Hash for LoweredBackdrop {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.look.as_u64());
         state.write_u64(self.lens.as_u64());
+        state.write_u16(self.max_luminance);
     }
 }
 
 impl NanCheck for LoweredBackdrop {
     fn has_nan(&self) -> bool {
-        self.look.has_nan() || self.lens.has_nan()
+        self.look.has_nan()
+            || self.lens.has_nan()
+            || half::f16::from_bits(self.max_luminance).is_nan()
     }
 }

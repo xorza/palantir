@@ -175,12 +175,7 @@ impl Look {
                 highlight: 0.6,
             })
         };
-        let backdrop = BackdropFilter {
-            blur: sigma,
-            saturation: 1.0,
-            noise: 0.0,
-            lens: None,
-        };
+        let backdrop = BackdropFilter::blur(sigma);
         match self {
             Self::Blur => (backdrop, RgbaF32::TRANSPARENT),
             Self::Frosted => (

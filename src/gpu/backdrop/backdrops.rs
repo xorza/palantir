@@ -16,9 +16,10 @@ use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
 
 /// How a pane's quad finds its result, as `quad_pipeline/shader.wgsl` declares `BackdropSlot`:
-/// the result's texel coordinate of the lattice's first texel, the physical px of a texel, and
-/// the pane's lens, `(bezel, thickness, refractive_index, dispersion)` with its highlight, zero for
-/// a pane of no glass.
+/// the result's texel coordinate of the lattice's first texel, the physical px of a texel, the
+/// pane's lens, `(bezel, thickness, refractive_index, dispersion)` with its highlight, zero for a
+/// pane of no glass, and its luminance ceiling. `pad` rounds the size up to the 16 bytes the
+/// shader's `vec4` aligns the struct to.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct BackdropSlot {
@@ -26,6 +27,8 @@ struct BackdropSlot {
     lattice: f32,
     highlight: f32,
     lens: [f32; 4],
+    max_luminance: f32,
+    pad: [f32; 3],
 }
 
 /// The side the results atlas starts at; it doubles when a result finds no room.
@@ -200,6 +203,8 @@ impl Backdrops {
                 lattice: cached.plan.lattice() as f32,
                 highlight: row.lens.map_or(0.0, |lens| lens.highlight),
                 lens,
+                max_luminance: row.max_luminance,
+                pad: [0.0; 3],
             });
         }
         self.blur.prepare(ctx, &self.jobs);

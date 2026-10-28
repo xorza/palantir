@@ -55,7 +55,7 @@ use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
-use crate::shape::paint::lens_optics::LensOptics;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
@@ -121,11 +121,12 @@ impl ScaledRect {
     }
 }
 
-/// What a pane's quad brings beyond its lanes: its key, and its lens in physical px.
+/// What a pane's quad brings beyond its lanes: its key, and its backdrop as recorded, in logical
+/// px.
 #[derive(Clone, Copy, Debug)]
 struct Pane {
     key: PaneKey,
-    lens: Option<Lens>,
+    backdrop: LoweredBackdrop,
 }
 
 /// The two ends of one polyline segment's color ramp.
@@ -296,13 +297,13 @@ impl PaintSink for ComposeSession<'_> {
             p.quad.fill.kind.is_backdrop(),
             "a pane's quad is a backdrop"
         );
-        let scale = self.composer.transform.physical_scale();
-        let lens = p.lens.map(|lens| Lens {
-            bezel: lens.bezel * scale,
-            thickness: lens.thickness * scale,
-            ..lens
-        });
-        self.push_quad(p.quad, Some(Pane { key: p.key, lens }));
+        self.push_quad(
+            p.quad,
+            Some(Pane {
+                key: p.key,
+                backdrop: p.backdrop,
+            }),
+        );
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -938,15 +939,9 @@ impl ComposeSession<'_> {
         self.close_batch();
         self.flush();
         let plan = BlurPlan::new(packed.fill_axis.lanes()[0]);
+        let scale = self.composer.transform.physical_scale();
         // A lens samples its blur up to its reach aside, and each sample reads the blur's.
-        let lens_reach = pane.lens.map_or(0, |lens| {
-            LensOptics {
-                bezel: lens.bezel,
-                thickness: lens.thickness,
-                index: lens.refractive_index,
-            }
-            .reach(lens.refractive_index + 0.5 * lens.dispersion)
-        });
+        let lens_reach = pane.backdrop.lens_reach(scale);
         let reach = UVec2::splat(plan.reach().saturating_add(lens_reach));
         let footprint = URect::from_min_max(
             visible.min.saturating_sub(reach),
@@ -961,7 +956,12 @@ impl ComposeSession<'_> {
             footprint,
             plan,
             barrier: self.out.groups.len() as u32,
-            lens: pane.lens,
+            lens: pane.backdrop.lens().map(|lens| Lens {
+                bezel: lens.bezel * scale,
+                thickness: lens.thickness * scale,
+                ..lens
+            }),
+            max_luminance: pane.backdrop.max_luminance(),
             capture: false,
         });
         row
