@@ -14,6 +14,12 @@ use wgpu::util::StagingBelt;
 /// Odd on one side, so a level's last texel straddles the surface's edge.
 const SURFACE: UVec2 = UVec2::new(97, 64);
 const FORMAT: TargetFormat = TargetFormat::RGBA8_SRGB;
+
+/// A capture format that filters, whose tents fetch bilinearly, and one that does not without
+/// `FLOAT32_FILTERABLE`, whose tents load.
+fn formats() -> [TargetFormat; 2] {
+    [FORMAT, TargetFormat::new(wgpu::TextureFormat::Rgba32Float)]
+}
 /// One past each level boundary, and either side of the first: full resolution, then one, two
 /// and three halvings.
 const SIGMAS: [f32; 5] = [1.5, 4.0, 4.01, 10.0, 20.0];
@@ -108,7 +114,8 @@ fn reference(plan: BlurPlan, pixels: &[[u8; 4]]) -> [Plane; 4] {
     })
 }
 
-/// Run `jobs` over the capture `pixels`, into a `dest_size` destination read back whole.
+/// Run `jobs` over the capture `pixels`, into a `dest_size` destination read back whole. The
+/// capture takes the jobs' format: `Rgba32Float` holds each byte's linear value.
 fn blur(
     gpu: &HeadlessTestGpuLease,
     pixels: &[[u8; 4]],
@@ -117,14 +124,31 @@ fn blur(
 ) -> Vec<[f32; 4]> {
     let device = &gpu.device;
     let mut engine = BackdropBlur::new(device);
-    engine.capture_view(device, FORMAT, SURFACE);
+    let format = jobs[0].format;
+    engine.capture_view(device, format, SURFACE);
     let capture = &engine.captures[0].target.texture;
+    let linear: Vec<[f32; 4]> = pixels
+        .iter()
+        .map(|px| {
+            [
+                srgb_decode(px[0]) as f32,
+                srgb_decode(px[1]) as f32,
+                srgb_decode(px[2]) as f32,
+                f32::from(px[3]) / 255.0,
+            ]
+        })
+        .collect();
+    let (bytes, texel): (&[u8], u32) = if format == FORMAT {
+        (bytemuck::cast_slice(pixels), 4)
+    } else {
+        (bytemuck::cast_slice(&linear), 16)
+    };
     gpu.queue.write_texture(
         capture.as_image_copy(),
-        bytemuck::cast_slice(pixels),
+        bytes,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(SURFACE.x * 4),
+            bytes_per_row: Some(SURFACE.x * texel),
             rows_per_image: None,
         },
         wgpu::Extent3d {
@@ -204,12 +228,12 @@ fn read_f16(gpu: &HeadlessTestGpuLease, texture: &wgpu::Texture) -> Vec<[f32; 4]
     out
 }
 
-/// The whole surface as one job.
-fn whole(plan: BlurPlan, dest_origin: UVec2) -> BlurJob {
+/// The whole surface as one job, from a capture of `format`.
+fn whole(plan: BlurPlan, dest_origin: UVec2, format: TargetFormat) -> BlurJob {
     BlurJob {
         plan,
         surface: SURFACE,
-        format: FORMAT,
+        format,
         region: plan
             .region(URect::new(0, 0, SURFACE.x, SURFACE.y), SURFACE)
             .unwrap(),
@@ -219,15 +243,19 @@ fn whole(plan: BlurPlan, dest_origin: UVec2) -> BlurJob {
 
 /// The GPU passes match the reference arithmetic on every texel the job writes, its apron
 /// mirrored past the surface's edges included. Each stored stage rounds to `f16`, half an ulp
-/// relative, 2⁻¹¹: the levels, the scratch and the result, `levels + 2` stores of values at most
-/// 1. The capture's sRGB decode is exact to `f32`, far inside that.
+/// relative, 2⁻¹¹: the levels, the scratch and the result, `levels + 2` stores of values no
+/// larger than 1. The capture's sRGB decode is exact to `f32`, far inside that. A capture that
+/// filters and one that does not run the tents' two paths.
 #[test]
 fn the_passes_match_the_reference_arithmetic() {
     let gpu = headless_test_gpu();
     let pixels = capture_pixels();
-    for sigma in SIGMAS {
+    for (format, sigma) in formats()
+        .into_iter()
+        .flat_map(|format| SIGMAS.map(|sigma| (format, sigma)))
+    {
         let plan = BlurPlan::new(sigma);
-        let job = whole(plan, UVec2::new(3, 5));
+        let job = whole(plan, UVec2::new(3, 5), format);
         let dest = job.dest_rect();
         let got = blur(&gpu, &pixels, &[job], dest.max());
         let want = reference(plan, &pixels);
@@ -243,7 +271,7 @@ fn the_passes_match_the_reference_arithmetic() {
                     let (g, w) = (f64::from(texel[c]), plane.at(lx, ly));
                     assert!(
                         (g - w).abs() <= tolerance,
-                        "σ {sigma}: texel ({x}, {y}) channel {c} is {g}, want {w}"
+                        "{format:?} σ {sigma}: texel ({x}, {y}) channel {c} is {g}, want {w}"
                     );
                 }
             }
@@ -252,8 +280,8 @@ fn the_passes_match_the_reference_arithmetic() {
 }
 
 /// A region inside another gives the texels of its own pane, the region shrunk by the reach, the
-/// same values bit for bit, wherever the two results land: every read is by whole texel, so the
-/// arithmetic does not depend on where a pass's target sits.
+/// same values bit for bit, wherever the two results land: every read lands on the lattice's
+/// texels at a fixed phase, so the arithmetic does not depend on where a pass's target sits.
 #[test]
 fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
     let gpu = headless_test_gpu();
@@ -262,7 +290,7 @@ fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
         let plan = BlurPlan::new(sigma);
         let lattice = plan.lattice();
         let reach = plan.reach().div_ceil(lattice);
-        let big = whole(plan, UVec2::ZERO);
+        let big = whole(plan, UVec2::ZERO, FORMAT);
         let pane = URect::new(2 * reach, reach, 4, 3);
         let small = BlurJob {
             region: URect::from_min_max(

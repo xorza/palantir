@@ -104,6 +104,8 @@ impl RectShape {
 }
 
 impl sealed::LowerShape for RectShape {
+    const CAN_BE_PANE: bool = true;
+
     fn is_noop(&self) -> bool {
         self.local_rect.is_some_and(Rect::is_paint_empty)
             || (self.fill.is_noop() && self.border.is_noop() && self.backdrop_filter.is_noop())
