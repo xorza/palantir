@@ -137,7 +137,7 @@ tree renders.
   kind or the arrangement it builds (`Panel::hstack`, `Sizing::fixed`,
   `Anchor::below`, `Splitter::row`, `Shape::rect`, `Chrome::rounded`).
   `from_*` converts another representation (`Image::from_srgba8`,
-  `Rect::from_min_max`, `ButtonTheme::from_palette`). `on(&snapshot)` attaches
+  `Rect::from_min_max`, `ButtonTheme::from_parts`). `on(&snapshot)` attaches
   an overlay to a trigger, with the snapshot first and required text second;
   `for_id(id)` attaches by id. No widget constructor takes `ui`; a
   `Response` borrows the `Ui`, so `Response::new` does.

@@ -143,8 +143,8 @@ ButtonTheme
     struct ButtonTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub defaults: SlotDefaults
-        pub fn from_palette(p: &Palette) -> Self
-        pub fn menu_button(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn menu_button(p: &Palette, m: &Metrics) -> Self
 
 CheckState
     enum CheckState: Clone, Copy, Debug, Eq, From<bool>, PartialEq
@@ -273,7 +273,7 @@ ColorPickerTheme
         pub value: DragValueTheme
         pub hex: TextEditTheme
         pub label: TextStyleOverrides
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 ColorRamp
     struct ColorRamp: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -319,7 +319,7 @@ ComboBoxTheme
         pub gap: f32
         pub arrow_size: Vec2
         pub arrow_width: f32
-        pub const fn from_palette(_p: &Palette) -> Self
+        pub const fn from_metrics(m: &Metrics) -> Self
 
 Configure
     trait Configure: Sized
@@ -387,7 +387,7 @@ ContextMenuTheme
         pub gap: f32
         pub item: MenuItemTheme
         pub separator: SeparatorTheme
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Corners
     struct Corners: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
@@ -586,7 +586,7 @@ DockTheme
         pub ghost: WidgetLook
         pub ghost_padding: Spacing
         pub ghost_offset: Vec2
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 DockView
     struct DockView<'a, T>: Configure, ThemeDefaults (blanket)
@@ -641,7 +641,7 @@ DragValueTheme
         pub chip: ButtonTheme
         pub editor: TextEditTheme
         pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 DriverError
     struct DriverError: Debug, Display, Error
@@ -694,7 +694,7 @@ ExpanderTheme
         pub indent: f32
         pub body_padding: Spacing
         pub defaults: SlotDefaults
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 FocusPolicy
     enum FocusPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -705,7 +705,7 @@ FocusRingTheme
     struct FocusRingTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub color: RgbaF32
         pub width: f32
-        pub const fn from_palette(p: &Palette) -> Self
+        pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 FontFamily
     struct FontFamily: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -1235,13 +1235,21 @@ MenuItemTheme
         pub shortcut: RgbaF32
         pub gap: f32
         pub defaults: SlotDefaults
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 MenuSeparator
     struct MenuSeparator<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
+
+Metrics
+    struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+        pub space: SpaceSteps
+        pub radius: RadiusSteps
+        pub stroke: StrokeSteps
+        pub float_shadow: Shadow
+        pub const DEFAULT: Self
 
 Modal
     struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1258,7 +1266,7 @@ ModalTheme
         pub backdrop: RgbaF32
         pub padding: Spacing
         pub min_width: f32
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Modifiers
     struct Modifiers: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1352,7 +1360,7 @@ Palette
         pub const fn border_soft(&self) -> RgbaF32
         pub const fn border_mid(&self) -> RgbaF32
         pub const fn border_strong(&self) -> RgbaF32
-        pub fn popup_panel(&self) -> Chrome
+        pub fn popup_panel(&self, m: &Metrics) -> Chrome
 
 Panel
     struct Panel: Configure, Debug, ThemeDefaults (blanket)
@@ -1493,6 +1501,13 @@ RadioButton
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl<'a, T: Debug> Debug for RadioButton<'a, T>
 
+RadiusSteps
+    struct RadiusSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub mark: f32
+        pub control: f32
+        pub card: f32
+        pub float: f32
+
 Rect
     struct Rect: Clone, Copy, Debug, Default, Hash, PartialEq, Pod, Zeroable
         pub min: Vec2
@@ -1625,7 +1640,7 @@ ScrollbarTheme
         pub thumb: RgbaF32
         pub thumb_hovered: RgbaF32
         pub thumb_active: RgbaF32
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Sense
     struct Sense: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1662,8 +1677,8 @@ SeparatorTheme
         pub color: RgbaF32
         pub thickness: f32
         pub margin: Spacing
-        pub const fn from_palette(p: &Palette) -> Self
-        pub fn menu_separator(p: &Palette) -> Self
+        pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn menu_separator(p: &Palette, m: &Metrics) -> Self
 
 Shadow
     struct Shadow: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -1763,6 +1778,14 @@ SlotDefaults
         pub margin: Spacing
         pub animation: Option<AnimationSpec>
 
+SpaceSteps
+    struct SpaceSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub xs: f32
+        pub sm: f32
+        pub md: f32
+        pub lg: f32
+        pub xl: f32
+
 Spacing
     struct Spacing: Add, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
@@ -1828,7 +1851,7 @@ SplitterTheme
         pub rule_thickness: f32
         pub hovered: RgbaF32
         pub active: RgbaF32
-        pub const fn from_palette(p: &Palette) -> Self
+        pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Spread
     enum Spread: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -1871,6 +1894,12 @@ Stroke
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
         pub const fn new(color: RgbaF32, width: f32) -> Self
+
+StrokeSteps
+    struct StrokeSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub hairline: f32
+        pub fine: f32
+        pub line: f32
 
 SurfaceError  [features: winit]
     #[non_exhaustive]
@@ -2035,7 +2064,7 @@ TabsTheme
         pub label_gap: f32
         pub defaults: SlotDefaults
         pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 TargetFormat
     struct TargetFormat: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -2095,7 +2124,7 @@ TextEditTheme
         pub selection: RgbaF32
         pub defaults: SlotDefaults
         pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 TextInput
     enum TextInput<'a>: Debug, Default, From<Cow<'a, str>>, From<InternedStr>, From<String>
@@ -2187,7 +2216,7 @@ Theme
         pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 ToggleTheme
     struct ToggleTheme: Clone, Debug, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
@@ -2201,9 +2230,9 @@ ToggleTheme
         pub gap: f32
         pub track_aspect: f32
         pub defaults: SlotDefaults
-        pub fn checkbox(p: &Palette) -> Self
-        pub fn radio(p: &Palette) -> Self
-        pub fn switch(p: &Palette) -> Self
+        pub fn checkbox(p: &Palette, m: &Metrics) -> Self
+        pub fn radio(p: &Palette, m: &Metrics) -> Self
+        pub fn switch(p: &Palette, m: &Metrics) -> Self
 
 Tooltip
     struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2228,7 +2257,7 @@ TooltipTheme
         pub delay: Duration
         pub warmup: Duration
         pub gap: f32
-        pub fn from_palette(p: &Palette) -> Self
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Track
     struct Track: Clone, Copy, Debug, From<Sizing>, Hash, PartialEq

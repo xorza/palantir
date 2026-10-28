@@ -8,6 +8,7 @@ use crate::text::font_family::FontFamily;
 use crate::theme::ThemeText;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::look::stateful_look::StatefulLook;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style_overrides::TextStyleOverrides;
@@ -72,7 +73,7 @@ pub struct ColorPickerTheme {
     /// bundled monospace face, so digits don't shuffle as a number changes length
     /// (the panel also pins their boxes to one width).
     ///
-    /// Built from the stock bundle at [`Self::from_palette`], so restyling
+    /// Built from the stock bundle at [`Self::from_parts`], so restyling
     /// [`Theme::drag_value`](crate::Theme) doesn't move these. Only face and size
     /// are named; other axes follow [`Theme::text`](crate::Theme).
     pub value: DragValueTheme,
@@ -106,8 +107,8 @@ fn mono_states(looks: &mut StatefulLook) {
     }
 }
 
-fn mono_edit(p: &Palette) -> TextEditTheme {
-    let mut edit = TextEditTheme::from_palette(p);
+fn mono_edit(p: &Palette, m: &Metrics) -> TextEditTheme {
+    let mut edit = TextEditTheme::from_parts(p, m);
     mono_states(&mut edit.looks);
     edit.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
     edit
@@ -145,8 +146,8 @@ impl ColorPickerTheme {
         f(ThemeText::Overrides(label));
     }
 
-    /// Geometry and the handle's ink are fixed; the checker, border, popup and text come from `p`.
-    pub fn from_palette(p: &Palette) -> Self {
+    /// The control's own sizes and the handle's ink are fixed; its lines and popup geometry come from `m`, its checker, border, popup fill and text from `p`.
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             field_width: 208.0,
             field_height: 160.0,
@@ -154,26 +155,26 @@ impl ColorPickerTheme {
             chip_size: 38.0,
             swatch_size: 18.0,
             handle_radius: 6.0,
-            handle_width: 1.5,
+            handle_width: m.stroke.fine,
             handle_outer: RgbaF32::BLACK.with_alpha8(191),
             handle_inner: RgbaF32::WHITE.with_alpha8(242),
             checker_light: p.element_mid,
             checker_dark: p.element,
             checker_cell: 6.0,
             border: p.element_strong,
-            border_width: 1.0,
+            border_width: m.stroke.hairline,
             gap: 6.0,
-            popup: p.popup_panel(),
-            popup_padding: Spacing::all(8.0),
+            popup: p.popup_panel(m),
+            popup_padding: Spacing::all(m.space.sm),
             // The editor derives from the chip, as `DragValueTheme` promises, so an
             // editable value keeps its box and text in place.
             value: {
-                let mut chip = DragValueTheme::from_palette(p).chip;
+                let mut chip = DragValueTheme::from_parts(p, m).chip;
                 mono_states(&mut chip.looks);
                 chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
-                DragValueTheme::from_chip(chip, &TextEditTheme::from_palette(p))
+                DragValueTheme::from_chip(chip, &TextEditTheme::from_parts(p, m))
             },
-            hex: mono_edit(p),
+            hex: mono_edit(p, m),
             label: TextStyleOverrides {
                 family: Some(FontFamily::MONO),
                 ..TextStyleOverrides::NONE
@@ -186,6 +187,6 @@ impl ColorPickerTheme {
 
 impl Default for ColorPickerTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

@@ -6,7 +6,7 @@ use std::time::Duration;
 
 /// What a case times, the first part of its id.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Kind {
+pub enum Kind {
     /// One stage, one widget or one operation on a made input.
     Atomic,
     /// Palantir's frame, or a chain of its stages from record onward, over a scene.
@@ -15,7 +15,7 @@ pub(crate) enum Kind {
 
 impl Kind {
     /// The group `name` of this kind, sampled as `scale` says.
-    pub(crate) fn group<'a>(
+    pub fn group<'a>(
         self,
         c: &'a mut Criterion,
         name: &str,
@@ -33,7 +33,7 @@ impl Kind {
 
 /// How long one iteration of a case takes, which sets how criterion samples it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Scale {
+pub enum Scale {
     /// Microseconds an iteration.
     Sample,
     /// Up to 300 ms an iteration (every case here, as measured), so fewer and longer samples.

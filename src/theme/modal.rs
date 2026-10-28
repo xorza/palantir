@@ -5,6 +5,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.backdrop(...)`) win; these defaults fill in.
@@ -23,15 +24,16 @@ pub struct ModalTheme {
 }
 
 impl ModalTheme {
-    /// A raised panel over a half-opaque black scrim.
-    pub fn from_palette(p: &Palette) -> Self {
-        let panel = Chrome::rounded(p.element_mid, Corners::all(12.0))
-            .with_border(Stroke::new(p.border_mid(), 1.0));
+    /// A floating panel over a half-opaque black scrim.
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
+        let panel = Chrome::rounded(p.element_mid, Corners::all(m.radius.float))
+            .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
+            .with_shadow(m.float_shadow);
         Self {
             panel,
             // Black is identical in sRGB and linear, so `RgbaF32::new` is exact.
             backdrop: RgbaF32::BLACK.with_alpha8(128),
-            padding: Spacing::all(20.0),
+            padding: Spacing::all(m.space.xl),
             min_width: 280.0,
         }
     }
@@ -39,6 +41,6 @@ impl ModalTheme {
 
 impl Default for ModalTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

@@ -12,6 +12,7 @@ use crate::theme::look::WidgetLook;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::tab_selection::TabSelection;
 use crate::theme::tab_strip_focus::TabStripFocus;
@@ -124,7 +125,7 @@ fn text_edit_theme_pick_precedence() {
 /// [`ToggleTheme`]'s pick needs an input the response can't supply: `Pick = CheckState` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on the check state, the precedence within each, and that the packs never resolve to the same slot (so `Pick` is load-bearing).
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
-    let theme = ToggleTheme::checkbox(&Palette::DEFAULT);
+    let theme = ToggleTheme::checkbox(&Palette::DEFAULT, &Metrics::DEFAULT);
     let cases: &[(ResponseState, CheckState, &WidgetLook, &str)] = &[
         (
             response(false, false, false),
@@ -248,7 +249,7 @@ fn animated_look_line_height_delegates_to_text_style() {
 fn the_picker_value_editor_is_its_chip() {
     use crate::theme::Theme;
 
-    let theme = Theme::from_palette(&Palette::DEFAULT);
+    let theme = Theme::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT);
     let value = &theme.color_picker.value;
     assert_eq!(value.editor.looks.normal, value.chip.looks.normal);
     assert_eq!(value.editor.looks.hovered, value.chip.looks.hovered);
@@ -265,7 +266,7 @@ fn the_picker_value_editor_is_its_chip() {
     );
 }
 
-/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_palette`. By-design exceptions, in walk order: the tooltip's 13 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
+/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 13 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
 #[test]
 fn bundled_text_inherits_every_axis_but_color() {
     use crate::theme::{Theme, ThemeText};

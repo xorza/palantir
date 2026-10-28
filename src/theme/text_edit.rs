@@ -14,6 +14,7 @@ use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
@@ -36,7 +37,7 @@ pub struct TextEditTheme {
     /// Ink for the caret.
     pub caret: RgbaF32,
     /// Width of the caret rect in logical px, painted as a thin Overlay rect at the
-    /// caret's prefix-x. Default 1.5 px.
+    /// caret's prefix-x.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub caret_width: f32,
     /// Selection highlight fill, a wash behind the selected glyphs.
@@ -80,19 +81,19 @@ impl TextEditTheme {
         // `Tree::open_node` folds the chrome's border into the padding, so the inner
         // rect sits inside the ring, and `TextEdit::show` mirrors that fold. Off
         // `normal`: the width is one number across states (see
-        // [`TextEditTheme::from_palette`]).
+        // [`TextEditTheme::from_parts`]).
         let ring = self.looks.normal.chrome.border_inset();
         at - Vec2::new(text.w, text.h) * 0.5
             - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
     }
 
     /// A field whose stroke changes color on focus but never width.
-    pub fn from_palette(p: &Palette) -> Self {
-        let radius = Corners::all(4.0);
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
+        let radius = Corners::all(m.radius.control);
         // Constant stroke width across states: `Tree::open_node` folds it into
         // padding, so a change would shift the inner rect and jitter the text on
-        // focus. 1.5 px gives focus emphasis without the shift.
-        let stroke_w = 1.5;
+        // focus. The fine step gives focus emphasis without the shift.
+        let stroke_w = m.stroke.fine;
         let normal_chrome = Chrome::rounded(p.element_mid, radius)
             .with_border(Stroke::new(p.border_soft(), stroke_w));
         let focused_chrome = Chrome::rounded(p.element_mid, radius)
@@ -121,10 +122,10 @@ impl TextEditTheme {
             },
             placeholder: p.text_muted,
             caret: p.text,
-            caret_width: 1.5,
+            caret_width: m.stroke.fine,
             selection,
             defaults: SlotDefaults {
-                padding: Spacing::xy(5.0, 3.0),
+                padding: Spacing::xy(m.space.sm, m.space.xs),
                 margin: Spacing::ZERO,
                 animation: None,
             },
@@ -148,6 +149,6 @@ impl ThemeSlot for TextEditTheme {
 
 impl Default for TextEditTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

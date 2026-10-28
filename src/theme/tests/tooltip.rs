@@ -10,7 +10,7 @@ fn tooltip_theme_defaults() {
     assert_eq!(theme.warmup, Duration::from_secs(1));
     assert_eq!(theme.max_size.w, 280.0);
     assert!(theme.max_size.h.is_infinite());
-    assert_eq!(theme.gap, 6.0);
+    assert_eq!(theme.gap, 8.0);
 }
 
 #[test]

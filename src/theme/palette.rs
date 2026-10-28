@@ -1,11 +1,10 @@
-//! The color roster every theme recipe draws from. [`Palette`] is the input to [`crate::Theme::from_palette`]; [`Palette::DEFAULT`] is the built-in neutral dark grayscale with a blue accent.
+//! The color roster every theme recipe draws from. [`Palette`] is the color input to [`crate::Theme::from_parts`]; [`Palette::DEFAULT`] is the built-in neutral dark grayscale with a blue accent.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use glam::Vec2;
+use crate::theme::metrics::Metrics;
 
 /// Semantic color roster for theme assembly. The three `element` rungs name a tier, never a widget state: a button rests on `element_mid` and hovers to `element_strong`, a menu row rests transparent and hovers to `element_mid`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -60,15 +59,11 @@ impl Palette {
         self.text_muted.with_alpha8(89)
     }
 
-    /// Chrome for a body a [`crate::Popup`] drops from a trigger, one recipe so context menu, combo list and picker read as one system. Radius is the small-overlay step shared with [`TooltipTheme`](crate::TooltipTheme); the shadow separates it from what it opened over, since its fill matches the panels beneath.
-    pub fn popup_panel(&self) -> Chrome {
-        Chrome::rounded(self.element, Corners::all(4.0))
-            .with_border(Stroke::new(self.border_mid(), 1.0))
-            .with_shadow(Shadow::drop(
-                RgbaF32::BLACK.with_alpha8(128),
-                Vec2::new(0.0, 3.0),
-                6.0,
-            ))
+    /// Chrome for a body a [`crate::Popup`] drops from a trigger, one recipe so context menu, combo list and picker read as one system. It rounds and casts as every floating surface does; the shadow separates it from what it opened over, since its fill matches the panels beneath.
+    pub fn popup_panel(&self, m: &Metrics) -> Chrome {
+        Chrome::rounded(self.element, Corners::all(m.radius.float))
+            .with_border(Stroke::new(self.border_mid(), m.stroke.hairline))
+            .with_shadow(m.float_shadow)
     }
 }
 

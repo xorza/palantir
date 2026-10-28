@@ -1,6 +1,7 @@
 //! What a splitter's divider wears, and how wide it is to grab.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Splitter`]: layout reserves the `rule_thickness` seam (painted in `rule`); the `grab_thickness` drag target is an invisible overlay straddling it, filled `hovered` or `active`.
@@ -22,11 +23,11 @@ pub struct SplitterTheme {
 
 impl SplitterTheme {
     /// A hairline rule in a six-pixel grab band.
-    pub const fn from_palette(p: &Palette) -> Self {
+    pub const fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             grab_thickness: 6.0,
             rule: p.border_soft(),
-            rule_thickness: 1.0,
+            rule_thickness: m.stroke.hairline,
             hovered: p.element_mid,
             active: p.accent.with_alpha8(153),
         }
@@ -35,6 +36,6 @@ impl SplitterTheme {
 
 impl Default for SplitterTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

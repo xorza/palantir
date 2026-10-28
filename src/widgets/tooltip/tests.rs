@@ -84,10 +84,10 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
     assert_eq!(small.max().y, above_edge);
     assert_eq!(large.max().y, above_edge);
     // Mono at 13 px: 6.5 px a char, 15.59375 px a line (15.6 snapped to 1/64),
-    // inside 6 + 6 by 4 + 4 padding and a 1 px border. "tip" is one 19.5 px line;
-    // the long text wraps at 280 - 14 = 266 (40 chars) onto two lines.
-    assert_eq!(small.size, Size::new(19.5 + 14.0, 15.59375 + 10.0));
-    assert_eq!(large.size, Size::new(260.0 + 14.0, 2.0 * 15.59375 + 10.0));
+    // inside 8 + 8 by 4 + 4 padding and a 1 px border. "tip" is one 19.5 px line;
+    // the long text wraps at 280 - 18 = 262 (40 chars) onto two lines.
+    assert_eq!(small.size, Size::new(19.5 + 18.0, 15.59375 + 10.0));
+    assert_eq!(large.size, Size::new(260.0 + 18.0, 2.0 * 15.59375 + 10.0));
     assert_eq!(large.max().x, SURFACE.x as f32);
     assert_eq!(
         shrunk, small,
@@ -109,9 +109,9 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .text_shapes
         .first()
         .expect("tooltip text shaped");
-    // Forty 6.5 px chars a line, broken mid-token, inside 14 px of padding and border.
+    // Forty 6.5 px chars a line, broken mid-token, inside 18 px of padding and border.
     assert_eq!(shaped.extent.size, Size::new(260.0, 2.0 * 15.59375));
-    assert_eq!(bubble.size.w, 260.0 + 14.0);
+    assert_eq!(bubble.size.w, 260.0 + 18.0);
     assert!(
         shaped.extent.size.w <= bubble.size.w - ui.ui.theme().tooltip.padding.sums().w,
         "text width {} must fit inside bubble width {}",

@@ -11,6 +11,7 @@ use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
@@ -21,7 +22,8 @@ pub struct MenuItemTheme {
     /// Four-state row look.
     #[serde(flatten)]
     pub looks: StatefulLook,
-    /// Shortcut hint color on a live row; a disabled row's hint takes its label's ink.
+    /// Shortcut hint color on a resting live row; a hovered, pressed or disabled row's hint takes
+    /// its label's ink.
     pub shortcut: RgbaF32,
     /// Minimum gutter between the label and its shortcut hint (the row is `SpaceBetween`).
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -44,11 +46,11 @@ impl MenuItemTheme {
     }
 
     /// Rows transparent at rest, one surface step brighter on hover.
-    pub fn from_palette(p: &Palette) -> Self {
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         // Hover is one surface step brighter (`element_mid`), as `ButtonTheme::menu_button`; `active` keeps it
         // since a click closes the menu. The chip radius stays under the panel's so it nests in the corner.
         let hovered = WidgetLook {
-            chrome: Chrome::rounded(p.element_mid, Corners::all(3.0)),
+            chrome: Chrome::rounded(p.element_mid, Corners::all(m.radius.control)),
             text: TextStyleOverrides::NONE,
         };
         Self {
@@ -62,9 +64,9 @@ impl MenuItemTheme {
                 },
             },
             shortcut: p.text_muted,
-            gap: 16.0,
+            gap: m.space.xl,
             defaults: SlotDefaults {
-                padding: Spacing::xy(8.0, 5.0),
+                padding: m.row_padding(),
                 margin: Spacing::ZERO,
                 animation: None,
             },
@@ -86,6 +88,6 @@ impl ThemeSlot for MenuItemTheme {
 
 impl Default for MenuItemTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

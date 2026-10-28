@@ -8,7 +8,7 @@ use std::fmt::Write;
 /// Fixed-size editor: scroll stays at zero while text fits, grows to keep the
 /// caret visible on overflow, and snaps back when the caret returns home. Mono
 /// fallback (8 px/char at 16 px font, 1.5 px caret). Inner width is
-/// `280 - 2*(5 + 1.5)` = 267 px: theme padding 5 px plus the 1.5 px stroke that
+/// `280 - 2*(8 + 1.5)` = 261 px: theme padding 8 px plus the 1.5 px stroke that
 /// `Tree::open_node` folds into padding, which TextEdit mirrors.
 #[test]
 fn scroll_keeps_caret_inside_visible_inner_rect() {
@@ -33,13 +33,13 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     assert_eq!(scroll, Vec2::ZERO, "text fits — no scroll");
 
     // Long text: caret at end (100) -> x = 800 px. The trailing clamp leaves a
-    // caret-width sliver: scroll.x = (800 + 1.5) - (267 - 1.5) = 536.
+    // caret-width sliver: scroll.x = (800 + 1.5) - (261 - 1.5) = 542.
     let mut long = "a".repeat(100);
     h.frame(|ui| body(ui, &mut long));
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut long));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset();
-    assert_eq!(scroll.x, 536.0, "scroll.x = {}", scroll.x);
+    assert_eq!(scroll.x, 542.0, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
 
     // Caret home: scroll.x snaps back to show the text start.
@@ -53,7 +53,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
 /// permanent left clip. Pins (1) the editor reserves the caret sliver in its
 /// desired width, and (2) `update_scroll` upper-clamps `scroll.x` to the content
 /// end so the transient scroll from the one-frame-stale rect settles to zero.
-/// Mono fallback: 8 px/char at 16 px, 1.5 px caret, 5 px padding + 1.5 px stroke.
+/// Mono fallback: 8 px/char at 16 px, 1.5 px caret, 8 px padding + 1.5 px stroke.
 #[test]
 fn hug_width_editor_shows_full_text_after_growth() {
     fn body(ui: &mut Ui, buf: &mut String) {
@@ -113,19 +113,19 @@ fn click_hit_test_compensates_for_scroll() {
     h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut buf));
     // Scrolled to the end: 100 mono glyphs of 8 px plus the 1.5 px caret room
-    // at each end, past the 280 - 2 × 6.5 = 267 px inner rect.
+    // at each end, past the 280 - 2 × 9.5 = 261 px inner rect.
     let scroll_x = h.state::<TextEditState>(ed_id).view.scroll.offset().x;
-    assert_eq!(scroll_x, 800.0 + 2.0 * 1.5 - 267.0);
+    assert_eq!(scroll_x, 800.0 + 2.0 * 1.5 - 261.0);
 
-    // Click 8 px in, 1.5 px into the inner rect. With scroll compensation the
-    // hit-test sees the glyph boundary at scroll_x / 8 = 67; without, byte 0.
-    h.press_at(Vec2::new(8.0, 20.0));
+    // Click 11 px in, 1.5 px into the inner rect. With scroll compensation the
+    // hit-test sees the nearest glyph boundary to (542 + 1.5) / 8 = 67.9, 68; without, byte 0.
+    h.press_at(Vec2::new(11.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     h.release();
     h.frame(|ui| body(ui, &mut buf));
 
     let caret = h.state::<TextEditState>(ed_id).edit.caret;
-    assert_eq!(caret, 67, "the byte visibly at the left edge");
+    assert_eq!(caret, 68, "the byte visibly at the left edge");
 }
 
 /// The wheel pans a multi-line editor whose content overflows, and the caret

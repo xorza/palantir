@@ -13,6 +13,7 @@ use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::tab_selection::TabSelection;
 use crate::theme::tab_strip_focus::TabStripFocus;
@@ -133,9 +134,9 @@ impl TabsTheme {
         }
     }
 
-    /// Chips rounded at the top only.
-    pub fn from_palette(p: &Palette) -> Self {
-        let radius = 4.0;
+    /// Chips card-rounded at the top only, inset as a menu row.
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
+        let radius = m.radius.card;
         let top = Corners::top(radius);
         let inactive_text = TextStyleOverrides::NONE.with_color(p.text_muted);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
@@ -158,15 +159,15 @@ impl TabsTheme {
             },
             cap_focused: p.accent,
             cap_unfocused: p.element_strong,
-            cap_thickness: 2.0,
+            cap_thickness: m.stroke.line,
             strip: Chrome::NONE,
-            strip_padding: Spacing::new(6.0, 4.0, 6.0, 0.0),
-            gap: 3.0,
+            strip_padding: Spacing::new(m.space.sm, m.space.xs, m.space.sm, 0.0),
+            gap: m.space.xs,
             rule: p.border_soft(),
             rule_thickness: 0.0,
             radius,
-            chip_padding: Spacing::new(10.0, 4.0, 10.0, 4.0),
-            trailing_inset: 4.0,
+            chip_padding: m.row_padding(),
+            trailing_inset: m.space.xs,
             min_width: 48.0,
             max_width: 200.0,
             close: StatefulLook {
@@ -175,12 +176,12 @@ impl TabsTheme {
                     text: inactive_text,
                 },
                 hovered: WidgetLook {
-                    chrome: Chrome::rounded(p.element_strong, Corners::all(3.0)),
+                    chrome: Chrome::rounded(p.element_strong, Corners::all(m.radius.control)),
                     text: TextStyleOverrides::NONE,
                 },
                 active: WidgetLook {
-                    chrome: Chrome::rounded(p.element_strong, Corners::all(3.0))
-                        .with_border(Stroke::new(p.border_focused, 1.0)),
+                    chrome: Chrome::rounded(p.element_strong, Corners::all(m.radius.control))
+                        .with_border(Stroke::new(p.border_focused, m.stroke.hairline)),
                     text: TextStyleOverrides::NONE,
                 },
                 disabled: WidgetLook {
@@ -190,11 +191,11 @@ impl TabsTheme {
             },
             close_size: 16.0,
             close_glyph: 8.0,
-            close_stroke: 1.5,
+            close_stroke: m.stroke.fine,
             close_shown: CloseShown::Always,
             caret: p.accent,
-            caret_width: 3.0,
-            label_gap: 6.0,
+            caret_width: m.stroke.line,
+            label_gap: m.space.sm,
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
@@ -206,7 +207,7 @@ impl TabsTheme {
 
 impl Default for TabsTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }
 

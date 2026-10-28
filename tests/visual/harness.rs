@@ -10,8 +10,8 @@ use image::RgbaImage;
 use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
-    DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, RgbaF32, TextShaper,
-    Theme, Ui,
+    DebugOverlayConfig, FramePaint, Metrics, OffscreenHost, OffscreenTime, Palette, RgbaF32,
+    TextShaper, Theme, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -69,7 +69,8 @@ impl Harness {
             .pixel_snap(pixel_snap)
             .time(OffscreenTime::Manual)
             .build();
-        host.ui().set_theme(Theme::from_palette(&FIXTURE_PALETTE));
+        host.ui()
+            .set_theme(Theme::from_parts(&FIXTURE_PALETTE, &Metrics::DEFAULT));
 
         Self {
             host,

@@ -5,8 +5,8 @@ use image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
     Block, Button, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ComboBox,
-    Configure, Corners, DragValue, InputEvent, Key, KeyText, Modal, Panel, ProgressBar, Rect,
-    RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme, Ui,
+    Configure, Corners, DragValue, InputEvent, Key, KeyText, Metrics, Modal, Panel, ProgressBar,
+    Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme, Ui,
 };
 
 use crate::fixtures;
@@ -233,7 +233,7 @@ fn progress_bar_half_matches_golden() {
 /// `Canvas` track with `.pos`ed knob.
 #[test]
 fn toggle_switch_states_matches_golden() {
-    let mut style = ToggleTheme::switch(&FIXTURE_PALETTE);
+    let mut style = ToggleTheme::switch(&FIXTURE_PALETTE, &Metrics::DEFAULT);
     // At the rest position, with no first-frame transient.
     style.defaults.animation = None;
     GoldenName::ToggleSwitchStates.assert_scene(UVec2::new(220, 110), |ui| {

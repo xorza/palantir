@@ -4,8 +4,8 @@
 
 use palantir::{
     Align, AnimationSpec, App, Axis, Block, Button, ButtonTheme, Checkbox, Chrome, Configure,
-    Corners, FocusPolicy, FontFamily, FontWeight, Justify, Key, Palette, Panel, RgbaF32, Scroll,
-    Shortcut, Sizing, SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyle,
+    Corners, FocusPolicy, FontFamily, FontWeight, Justify, Key, Metrics, Palette, Panel, RgbaF32,
+    Scroll, Shortcut, Sizing, SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyle,
     TextStyleOverrides, TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook,
     WindowConfig, WindowToken, fmt,
 };
@@ -298,7 +298,7 @@ pub(crate) struct Shell {
 
 impl Shell {
     pub(crate) fn new(ui: &mut Ui) -> Self {
-        let mut theme = Theme::from_palette(&showcase_palette());
+        let mut theme = Theme::from_parts(&showcase_palette(), &Metrics::DEFAULT);
         // The library default is no button animation; the showcase demos it.
         theme.button.defaults.animation = Some(AnimationSpec::SPRING);
         ui.set_theme(theme);

@@ -14,6 +14,7 @@ use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
@@ -75,74 +76,78 @@ impl ToggleTheme {
         self.check_points.map(|p| p * self.box_size)
     }
 
-    /// Defaults for [`crate::Checkbox`]: 16 px box, 3 px corner radius.
-    pub fn checkbox(p: &Palette) -> Self {
-        Self::built(
-            ToggleGeometry {
-                corner: 3.0,
-                box_size: 16.0,
-                indicator_inset: 4.0,
-            },
-            p.window_bg,
-            p,
-        )
+    /// Defaults for [`crate::Checkbox`]: 16 px box, control-rounded.
+    pub fn checkbox(p: &Palette, m: &Metrics) -> Self {
+        ToggleGeometry {
+            corner: m.radius.control,
+            box_size: 16.0,
+            indicator_inset: 4.0,
+        }
+        .theme(p.window_bg, p, m)
     }
 
     /// Defaults for [`crate::RadioButton`]: 16 px pip with pill radius.
-    pub fn radio(p: &Palette) -> Self {
-        Self::built(
-            ToggleGeometry {
-                corner: 8.0,
-                box_size: 16.0,
-                indicator_inset: 4.0,
-            },
-            p.window_bg,
-            p,
-        )
+    pub fn radio(p: &Palette, m: &Metrics) -> Self {
+        ToggleGeometry {
+            corner: 8.0,
+            box_size: 16.0,
+            indicator_inset: 4.0,
+        }
+        .theme(p.window_bg, p, m)
     }
 
     /// Defaults for [`crate::Switch`]: a 20 px-tall pill track with a white knob, animated slide and cross-fade; `box_size` is the track height.
-    pub fn switch(p: &Palette) -> Self {
-        let mut t = Self::built(
-            ToggleGeometry {
-                corner: 10.0,
-                box_size: 20.0,
-                indicator_inset: 3.0,
-            },
-            p.text,
-            p,
-        );
+    pub fn switch(p: &Palette, m: &Metrics) -> Self {
+        let mut t = ToggleGeometry {
+            corner: 10.0,
+            box_size: 20.0,
+            indicator_inset: 3.0,
+        }
+        .theme(p.text, p, m);
         t.track_aspect = 1.75;
         t.defaults.animation = Some(AnimationSpec::SPRING);
         t
     }
+}
 
-    fn built(geometry: ToggleGeometry, indicator: RgbaF32, p: &Palette) -> Self {
-        let ToggleGeometry {
+/// A toggle's three same-typed lengths, named, so no two swap and still compile; [`Self::theme`] builds the toggle's theme from them.
+#[derive(Clone, Copy, Debug)]
+struct ToggleGeometry {
+    /// Corner radius of the box/pip chrome; `box_size / 2` makes the pill.
+    corner: f32,
+    box_size: f32,
+    indicator_inset: f32,
+}
+
+impl ToggleGeometry {
+    /// The toggle theme of this geometry, its `indicator` painted over the checked chrome.
+    fn theme(self, indicator: RgbaF32, p: &Palette, m: &Metrics) -> ToggleTheme {
+        let Self {
             corner,
             box_size,
             indicator_inset,
-        } = geometry;
+        } = self;
         let radius = Corners::all(corner);
         let edge = p.border_strong();
+        let hairline = m.stroke.hairline;
         let chrome =
             |fill: RgbaF32, stroke: Stroke| Chrome::rounded(fill, radius).with_border(stroke);
         let disabled_text = TextStyleOverrides::NONE.with_color(p.text_disabled);
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                chrome: chrome(p.element_mid, Stroke::new(edge, 1.0)),
+                chrome: chrome(p.element_mid, Stroke::new(edge, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             hovered: WidgetLook {
-                chrome: chrome(p.element_strong, Stroke::new(edge, 1.0)),
+                chrome: chrome(p.element_strong, Stroke::new(edge, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                chrome: chrome(p.element_strong, Stroke::new(p.border_focused, 1.0)),
+                chrome: chrome(p.element_strong, Stroke::new(p.border_focused, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
-                chrome: chrome(p.element, Stroke::new(p.border_soft(), 1.0)),
+                chrome: chrome(p.element, Stroke::new(p.border_soft(), hairline)),
                 text: disabled_text,
             },
         };
@@ -157,7 +162,7 @@ impl ToggleTheme {
                 text: TextStyleOverrides::NONE,
             },
             active: WidgetLook {
-                chrome: chrome(acc, Stroke::new(p.border_focused, 1.0)),
+                chrome: chrome(acc, Stroke::new(p.border_focused, hairline)),
                 text: TextStyleOverrides::NONE,
             },
             disabled: WidgetLook {
@@ -165,19 +170,19 @@ impl ToggleTheme {
                 text: disabled_text,
             },
         };
-        Self {
+        ToggleTheme {
             unchecked,
             checked,
             indicator,
             box_size,
-            indicator_width: 2.0,
+            indicator_width: m.stroke.line,
             indicator_inset,
             check_points: [
                 Vec2::new(3.5 / 16.0, 8.5 / 16.0),
                 Vec2::new(7.0 / 16.0, 12.0 / 16.0),
                 Vec2::new(12.5 / 16.0, 4.5 / 16.0),
             ],
-            gap: 8.0,
+            gap: m.space.sm,
             track_aspect: 1.0,
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
@@ -186,15 +191,6 @@ impl ToggleTheme {
             },
         }
     }
-}
-
-/// The three same-typed lengths [`ToggleTheme::built`] would otherwise take positionally, where any two swap and still compile.
-#[derive(Clone, Copy, Debug)]
-struct ToggleGeometry {
-    /// Corner radius of the box/pip chrome; `box_size / 2` makes the pill.
-    corner: f32,
-    box_size: f32,
-    indicator_inset: f32,
 }
 
 impl ThemeSlot for ToggleTheme {

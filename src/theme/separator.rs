@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Separator`]. Builder overrides (`.color`, `.thickness`, `.margin`) win; these fill in otherwise.
@@ -20,26 +21,26 @@ pub struct SeparatorTheme {
 }
 
 impl SeparatorTheme {
-    /// A one-pixel rule in the palette's softest border color, no margin.
-    pub const fn from_palette(p: &Palette) -> Self {
+    /// A hairline rule in the palette's softest border color, no margin.
+    pub const fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             color: p.border_soft(),
-            thickness: 1.0,
+            thickness: m.stroke.hairline,
             margin: Spacing::ZERO,
         }
     }
 
     /// The [`crate::MenuSeparator`] recipe: the same rule, held off the rows around it.
-    pub fn menu_separator(p: &Palette) -> Self {
+    pub fn menu_separator(p: &Palette, m: &Metrics) -> Self {
         Self {
-            margin: Spacing::xy(0.0, 4.0),
-            ..Self::from_palette(p)
+            margin: Spacing::xy(0.0, m.space.xs),
+            ..Self::from_parts(p, m)
         }
     }
 }
 
 impl Default for SeparatorTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }
