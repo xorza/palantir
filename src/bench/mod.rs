@@ -20,6 +20,7 @@ pub(crate) mod fixture;
 pub mod kind;
 
 use crate::bench::backends::Backends;
+use crate::bench::case_group::BetweenCases;
 use crate::cascade;
 use crate::gpu::backdrop;
 use crate::gpu::backdrop::backdrop_blur;
@@ -36,8 +37,11 @@ use crate::widgets::{color_field, text_edit};
 use crate::{animation, damage, gpu, input, layout, text, ui};
 use criterion::Criterion;
 
-/// Every case, atomic first. The host's adapters are listed once here; no device opens.
+/// Every case, atomic first. The host's adapters are listed once here; no device opens, as
+/// [`BenchGpu::shared`](crate::gpu::bench_gpu::BenchGpu::shared) refuses to open one between
+/// cases.
 pub fn run(c: &mut Criterion) {
+    let _between = BetweenCases::set(true);
     let backends = Backends::probe();
 
     animation::bench::atomic(c);

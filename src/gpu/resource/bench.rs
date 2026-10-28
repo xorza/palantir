@@ -4,6 +4,7 @@
 use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
@@ -28,6 +29,40 @@ enum Upload {
     Merged,
 }
 
+/// What a case uploads into: the atlas texture, tall enough for the widest gap, the staging belt,
+/// and the rows' source bytes.
+#[derive(Debug)]
+struct Fixture {
+    texture: wgpu::Texture,
+    belt: StagingBelt,
+    source: Vec<u8>,
+}
+
+impl Fixture {
+    fn new(gpu: &Gpu) -> Self {
+        let rows = DIRTY + (DIRTY - 1) * GAPS[GAPS.len() - 1];
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("palantir.bench.gradient_upload"),
+            size: wgpu::Extent3d {
+                width: LUT_ROW_TEXELS as u32,
+                height: rows,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba16Float,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        Self {
+            texture,
+            belt: StagingBelt::new(gpu.device.clone(), 1 << 20),
+            source: vec![0u8; (rows * ROW_BYTES) as usize],
+        }
+    }
+}
+
 /// `atomic/gradient_upload/gpu/<split|merged>/gap<g>`: [`DIRTY`] rows `g` clean rows apart,
 /// staged in the belt and copied into the atlas texture as `split` or `merged` says, then
 /// submitted and waited for. Per dirty row. Where `merged` stops being cheaper is the gap a
@@ -36,25 +71,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
-    let bench = BenchGpu::shared(Timing::Bare);
-    let gpu = bench.handles();
-    let rows = DIRTY + (DIRTY - 1) * GAPS[GAPS.len() - 1];
-    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.bench.gradient_upload"),
-        size: wgpu::Extent3d {
-            width: LUT_ROW_TEXELS as u32,
-            height: rows,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Rgba16Float,
-        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    });
-    let source = vec![0u8; (rows * ROW_BYTES) as usize];
-    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 20);
     let mut group = Kind::Atomic.group(c, "gradient_upload", Scale::Sample);
     group.throughput(Throughput::Elements(u64::from(DIRTY)));
     for gap in GAPS {
@@ -73,12 +89,22 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                 }
             };
             let bytes: u32 = runs.iter().map(|run| run.len() as u32 * ROW_BYTES).sum();
+            // Criterion calls the closure once per warm-up round and per sample: the fixture is
+            // built on the first, so every timed iteration finds the belt's chunks allocated.
+            let mut fixture = None;
             group.bench_function(backend.case(&format!("{name}/gap{gap}")), |b| {
+                let bench = BenchGpu::shared(Timing::Bare);
+                let gpu = bench.handles();
+                let Fixture {
+                    texture,
+                    belt,
+                    source,
+                } = fixture.get_or_insert_with(|| Fixture::new(&gpu));
                 b.iter(|| {
                     let mut encoder = gpu
                         .device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-                    let mut ctx = GpuCtx::new(&gpu, &mut belt, &mut encoder);
+                    let mut ctx = GpuCtx::new(&gpu, belt, &mut encoder);
                     let Staged {
                         mut view,
                         buffer,
@@ -107,7 +133,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                                 },
                             },
                             wgpu::TexelCopyTextureInfo {
-                                texture: &texture,
+                                texture,
                                 mip_level: 0,
                                 origin: wgpu::Origin3d {
                                     x: 0,

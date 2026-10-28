@@ -2,6 +2,7 @@
 //! [`Timing`] flavor, process-static. Separate from [`crate::gpu::test_gpu`],
 //! whose interprocess lock a bench must not block behind.
 
+use crate::bench::case_group::BetweenCases;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
@@ -100,10 +101,21 @@ impl BenchGpu {
     }
 
     /// The process's device of `timing`, opened by the first caller.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called between the cases of [`crate::bench::run`]: a group's body runs in
+    /// every run, so a device it opens opens in a filtered run too, against the rule that a case
+    /// builds its inputs in its own closure.
+    #[track_caller]
     pub fn shared(timing: Timing) -> &'static Self {
         static INSTRUMENTED: OnceLock<BenchGpu> = OnceLock::new();
         static PASS_ONLY: OnceLock<BenchGpu> = OnceLock::new();
         static BARE: OnceLock<BenchGpu> = OnceLock::new();
+        assert!(
+            !BetweenCases::now(),
+            "a bench opens its device in a case closure, not in its group's body"
+        );
         match timing {
             Timing::Instrumented => INSTRUMENTED.get_or_init(|| build(Timing::Instrumented)),
             Timing::PassOnly => PASS_ONLY.get_or_init(|| build(Timing::PassOnly)),
