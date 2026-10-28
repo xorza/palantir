@@ -23,10 +23,11 @@ use palantir_anim_derive::Animatable;
 /// `chrome` and `default_chrome` check it where it enters and panic unless
 /// every color is a [color](crate::widget::domain::color), gradient angles are
 /// [angles](crate::widget::domain::angle), centers
-/// [offsets](crate::widget::domain::offset), radial radii and the border width
-/// [lengths](crate::widget::domain::length), each corner radius a length of at most
-/// 65504 (one f16 lane), and the shadow's offset and spread offsets and its blur a
-/// length, and the backdrop filter as [`BackdropFilter`] lists.
+/// [lane offsets](crate::widget::domain::lane_offset), the border width a
+/// [length](crate::widget::domain::length), radial radii, each corner radius and the
+/// shadow's blur [gaps](crate::widget::domain::gap) (lengths of at most 65504, one f16
+/// lane), the shadow's offset and spread lane offsets, and the backdrop filter as
+/// [`BackdropFilter`] lists.
 // Intentionally **not `Copy`**: it is the largest of the three types
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.

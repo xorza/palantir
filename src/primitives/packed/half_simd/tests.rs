@@ -22,15 +22,22 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
         }
     }
 
-    // `has_nan` is that sweep at the infinity threshold; pin it against real f16 semantics.
+    // `has_nan` is that sweep at the infinity threshold, and `any_lane_infinite` picks the two
+    // infinities out of it; pin both against real f16 semantics.
     for bits in 0..=u16::MAX {
-        let want = f16::from_bits(bits).is_nan();
+        let value = f16::from_bits(bits);
         for lane in 0..4 {
             let mut lanes = [0u16; 4];
             lanes[lane] = bits;
+            let packed = F16x4::from_bits(lanes);
             assert_eq!(
-                F16x4::from_bits(lanes).has_nan(),
-                want,
+                packed.has_nan(),
+                value.is_nan(),
+                "bits={bits:#06x} lane={lane}"
+            );
+            assert_eq!(
+                packed.any_lane_infinite(),
+                value.is_infinite(),
                 "bits={bits:#06x} lane={lane}",
             );
         }
@@ -62,10 +69,20 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     );
 }
 
-/// [`F16x4::scaled`] must be bit-identical to `from_lanes(lanes().map(* k))`, swept over every f16 pattern in a rotating lane arrangement against scale classes that could round differently (identity, zero, sign flip, halving, overflow, non-terminating fraction).
+/// [`F16x4::scaled`] must be bit-identical to `from_lanes(lanes().map(* k))`, and
+/// [`F16x4::scaled_saturating`] to the same with each product clamped to ±65504, swept over every
+/// f16 pattern in a rotating lane arrangement against scale classes that could round differently
+/// (identity, zero, sign flip, halving, overflow, non-terminating fraction). The sweep holds every
+/// infinity and NaN, so the clamp's NaN handling is checked too.
 #[test]
 fn scaled_is_bit_identical_to_the_composed_round_trip() {
     let composed = |bits: F16x4, k: f32| F16x4::from_lanes(bits.lanes().map(|v| v * k));
+    let saturated = |bits: F16x4, k: f32| {
+        F16x4::from_lanes(
+            bits.lanes()
+                .map(|v| (v * k).clamp(-F16x4::MAX_LANE, F16x4::MAX_LANE)),
+        )
+    };
     for hi in 0..=u16::MAX {
         // Rotate the pattern across lanes so a lane-index mistake cannot hide.
         let bits = F16x4::from_bits([hi, hi ^ 0x3C00, hi.wrapping_add(0x1234), !hi]);
@@ -74,6 +91,12 @@ fn scaled_is_bit_identical_to_the_composed_round_trip() {
                 bits.scaled(k),
                 composed(bits, k),
                 "bits={:#06x?} k={k}",
+                bits.0,
+            );
+            assert_eq!(
+                bits.scaled_saturating(k),
+                saturated(bits, k),
+                "saturating bits={:#06x?} k={k}",
                 bits.0,
             );
         }

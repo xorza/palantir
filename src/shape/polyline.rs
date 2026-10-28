@@ -46,14 +46,14 @@ impl<'a> PolylineShape<'a> {
     /// # Panics
     ///
     /// Panics unless `colors` has one entry per point and every color is a
-    /// [color](crate::widget::domain::color).
+    /// [color](crate::widget::domain::color), as is its product with the stroke color.
     #[track_caller]
     pub const fn per_point(mut self, colors: &'a [RgbaF32]) -> Self {
         assert!(
             colors.len() == self.points.len(),
             "per-point polyline colors must number the points",
         );
-        check_colors(colors);
+        check_colors(colors, self.stroke.color);
         self.colors = PolylineColors::PerPoint(colors);
         self
     }
@@ -63,14 +63,14 @@ impl<'a> PolylineShape<'a> {
     /// # Panics
     ///
     /// Panics unless `colors` has one entry per segment, one fewer than the points, and every
-    /// color is a [color](crate::widget::domain::color).
+    /// color is a [color](crate::widget::domain::color), as is its product with the stroke color.
     #[track_caller]
     pub const fn per_segment(mut self, colors: &'a [RgbaF32]) -> Self {
         assert!(
             colors.len() == self.points.len().saturating_sub(1),
             "per-segment polyline colors must number the segments, one fewer than the points",
         );
-        check_colors(colors);
+        check_colors(colors, self.stroke.color);
         self.colors = PolylineColors::PerSegment(colors);
         self
     }
@@ -98,11 +98,18 @@ pub(crate) enum PolylineColors<'a> {
     PerSegment(&'a [RgbaF32]),
 }
 
+pub(crate) const TINT_RULE: &str =
+    "a polyline color times its stroke color must have channels of at most 65504";
+
+/// Each of `colors` a color, and its product with `stroke`, which lowering packs into f16 lanes,
+/// one too: two colors each in range can multiply past the largest f16. Refused rather than
+/// saturated, as the drawn color would then differ from the product asked for.
 #[track_caller]
-const fn check_colors(colors: &[RgbaF32]) {
+const fn check_colors(colors: &[RgbaF32], stroke: RgbaF32) {
     let mut i = 0;
     while i < colors.len() {
-        let _ = domain::color(colors[i]);
+        let color = domain::color(colors[i]);
+        assert!(domain::is_color(color.tinted(stroke)), "{}", TINT_RULE);
         i += 1;
     }
 }

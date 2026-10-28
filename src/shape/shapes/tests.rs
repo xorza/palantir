@@ -169,8 +169,12 @@ fn builders_refuse_what_they_check() {
     use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
+    use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+    use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
     use crate::primitives::paint::shadow::Shadow;
+    use crate::shape::paint::lowered_shadow::LoweredShadow;
+    use crate::shape::polyline::TINT_RULE;
     use crate::text::glyph_font::GlyphFont;
 
     const N: f32 = f32::NAN;
@@ -181,7 +185,7 @@ fn builders_refuse_what_they_check() {
             Shape::rect(ok_rect).fill(white).corners(radius)
         });
     }
-    panic_probe::assert_panics_with("a color must have finite channels", || {
+    panic_probe::assert_panics_with("a color must have finite channels of at most 65504", || {
         Shape::rect(ok_rect).border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0))
     });
     panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
@@ -190,13 +194,96 @@ fn builders_refuse_what_they_check() {
     panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
         Shape::rect(ok_rect).fill(LinearGradient::two_stop(N, white, RgbaF32::BLACK))
     });
-    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
-        Shape::shadow(Shadow {
-            color: white,
-            blur: N,
-            ..Shadow::default()
-        })
+    // 65520 is the least magnitude that packs to an infinite f16 lane; 65504 is the greatest
+    // finite one. A gradient's center and radius and every shadow scalar pack into such lanes.
+    let wide = 65520.0;
+    let half = Vec2::splat(0.5);
+    let radial = |center, radius| {
+        RadialGradient::builder(center, radius)
+            .stop(0.0, white)
+            .stop(1.0, RgbaF32::BLACK)
+            .build()
+    };
+    panic_probe::assert_panics_with(domain::LANE_OFFSET_RULE, || {
+        Shape::rect(ok_rect).fill(radial(Vec2::new(wide, 0.5), half))
     });
+    panic_probe::assert_panics_with(domain::GAP_RULE, || {
+        Shape::rect(ok_rect).fill(radial(half, Vec2::new(0.5, wide)))
+    });
+    panic_probe::assert_panics_with(domain::LANE_OFFSET_RULE, || {
+        Shape::rect(ok_rect).fill(
+            ConicGradient::builder(Vec2::new(0.5, -wide), 0.0)
+                .stop(0.0, white)
+                .stop(1.0, RgbaF32::BLACK)
+                .build(),
+        )
+    });
+    let _ = Shape::rect(ok_rect).fill(radial(Vec2::splat(-65504.0), Vec2::splat(65504.0)));
+    for (rule, shadow) in [
+        (
+            domain::GAP_RULE,
+            Shadow {
+                blur: N,
+                ..Shadow::default()
+            },
+        ),
+        (
+            domain::GAP_RULE,
+            Shadow {
+                blur: wide,
+                ..Shadow::default()
+            },
+        ),
+        (
+            domain::LANE_OFFSET_RULE,
+            Shadow {
+                spread: wide,
+                ..Shadow::default()
+            },
+        ),
+        (
+            domain::LANE_OFFSET_RULE,
+            Shadow {
+                spread: -wide,
+                ..Shadow::default()
+            },
+        ),
+        (
+            domain::LANE_OFFSET_RULE,
+            Shadow {
+                offset: Vec2::new(wide, 0.0),
+                ..Shadow::default()
+            },
+        ),
+        (
+            domain::LANE_OFFSET_RULE,
+            Shadow {
+                offset: Vec2::new(0.0, -wide),
+                ..Shadow::default()
+            },
+        ),
+    ] {
+        panic_probe::assert_panics_with(rule, || {
+            Shape::shadow(Shadow {
+                color: white,
+                ..shadow
+            })
+        });
+    }
+    let widest = Shadow {
+        color: white,
+        offset: Vec2::splat(-65504.0),
+        blur: 65504.0,
+        spread: 65504.0,
+        inset: false,
+    };
+    let lowered = LoweredShadow::from(widest).geometry();
+    assert_eq!(
+        (lowered.offset, lowered.blur, lowered.spread),
+        (widest.offset, widest.blur, widest.spread),
+        "the widest shadow packs exactly"
+    );
+    let _ = Shape::shadow(widest);
     let arc = CircularArc {
         center: Vec2::ZERO,
         radius: 4.0,
@@ -299,6 +386,18 @@ fn builders_refuse_what_they_check() {
         let colors = [white, RgbaF32::new(N, 0.0, 0.0, 1.0)];
         drop(Shape::polyline(&[Vec2::ZERO, Vec2::X], thin()).per_point(&colors));
     });
+    // Each color multiplies the stroke color into one f16 lane: 255 · 256 = 65280 fits under
+    // 65504, and 256 · 256 = 65536 does not, though each factor is a color.
+    let bright = Stroke::new(RgbaF32::new(256.0, 1.0, 1.0, 1.0), 1.0);
+    let two = [Vec2::ZERO, Vec2::X];
+    let _ = Shape::polyline(&two, bright).per_segment(&[RgbaF32::new(255.0, 1.0, 1.0, 1.0)]);
+    panic_probe::assert_panics_with(TINT_RULE, || {
+        let colors = [white, RgbaF32::new(256.0, 1.0, 1.0, 1.0)];
+        drop(Shape::polyline(&two, bright).per_point(&colors));
+    });
+    panic_probe::assert_panics_with(TINT_RULE, || {
+        drop(Shape::polyline(&two, bright).per_segment(&[RgbaF32::new(256.0, 1.0, 1.0, 1.0)]));
+    });
     let _ = Shape::rect(Rect::new(0.0, 0.0, -4.0, 8.0));
 
     // A tile's phase is an offset and each axis of its repeat count positive.
@@ -325,4 +424,19 @@ fn handle(width: u32) -> ImageHandle {
 
 fn thin() -> Stroke {
     Stroke::new(RgbaF32::WHITE, 1.0)
+}
+
+/// Debug-only: a shadow that skipped `Shadow::validate` fails where it lowers, at 65520, the
+/// least magnitude that packs to an infinite f16 lane.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "a shadow scalar packs past the largest f16")]
+fn a_shadow_past_the_largest_f16_fails_where_it_lowers() {
+    use crate::primitives::paint::shadow::Shadow;
+    use crate::shape::paint::lowered_shadow::LoweredShadow;
+
+    let _ = LoweredShadow::from(Shadow {
+        blur: 65520.0,
+        ..Shadow::default()
+    });
 }

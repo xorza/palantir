@@ -207,7 +207,7 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     const IN_CONST: f32 = domain::length(2.0);
     assert_eq!(IN_CONST, 2.0);
 
-    let rows: [(Kind, &[f32], &[f32]); 6] = [
+    let rows: [(Kind, &[f32], &[f32]); 7] = [
         (
             (domain::OFFSET_RULE, domain::is_offset, domain::offset),
             &[-1e30, -1.0, 0.0, 1e30],
@@ -227,6 +227,21 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
             (domain::GAP_RULE, domain::is_gap, domain::gap),
             &[0.0, 1.0, 65504.0],
             &[65505.0, -1.0, f32::NAN, f32::INFINITY],
+        ),
+        (
+            (
+                domain::LANE_OFFSET_RULE,
+                domain::is_lane_offset,
+                domain::lane_offset,
+            ),
+            &[-65504.0, -1.0, 0.0, 65504.0],
+            &[
+                65505.0,
+                -65505.0,
+                f32::NAN,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+            ],
         ),
         (
             (domain::POSITIVE_RULE, domain::is_positive, domain::positive),
@@ -251,20 +266,26 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     }
 }
 
-/// Kinds over other types: a color checks every channel and lets HDR through, a count starts at one, a power of two stays under its maximum.
+/// Kinds over other types: a color checks every channel and lets HDR through up to 65504, the
+/// largest f16, which it packs to exactly; a count starts at one, a power of two stays under its
+/// maximum.
 #[test]
 fn compound_kinds_check_every_part() {
     let hdr = RgbaF32::new(2.0, -1.0, 0.0, 1.0);
     assert_eq!(domain::color(hdr), hdr);
+    let brightest = RgbaF32::new(65504.0, 65504.0, 65504.0, 1.0);
+    assert_eq!(domain::color(brightest), brightest);
+    assert_eq!(RgbaF32::from(brightest.to_f16()), brightest);
     for channel in 0..4 {
-        for bad in [f32::NAN, f32::INFINITY] {
+        for bad in [f32::NAN, f32::INFINITY, 65505.0] {
             let mut lanes = [0.5; 4];
             lanes[channel] = bad;
             let c = RgbaF32::new(lanes[0], lanes[1], lanes[2], lanes[3]);
             assert!(!domain::is_color(c), "channel {channel} = {bad}");
-            panic_probe::assert_panics_with("a color must have finite channels", || {
-                domain::color(c)
-            });
+            panic_probe::assert_panics_with(
+                "a color must have finite channels of at most 65504",
+                || domain::color(c),
+            );
         }
     }
 
@@ -289,6 +310,13 @@ fn compound_kinds_check_every_part() {
     });
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
         vec2::offset(Vec2::new(f32::INFINITY, 0.0))
+    });
+    assert_eq!(
+        vec2::lane_offset(Vec2::new(65504.0, -65504.0)),
+        Vec2::new(65504.0, -65504.0)
+    );
+    panic_probe::assert_panics_with(domain::LANE_OFFSET_RULE, || {
+        vec2::lane_offset(Vec2::new(0.0, -65505.0))
     });
 }
 

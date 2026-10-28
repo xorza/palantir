@@ -419,7 +419,7 @@ fn parse_linear(body: &str) -> Result<RgbaF32, ParseColorError> {
     if domain::is_color(color) {
         Ok(color)
     } else {
-        Err(ParseColorError::NonFinite)
+        Err(ParseColorError::Channel)
     }
 }
 

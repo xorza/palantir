@@ -144,10 +144,11 @@ fn the_linear_form_parses_its_words_and_refuses_the_rest() {
     for bad in [
         "color(srgb-linear NaN 1 1)",
         "color(srgb-linear 1 1 1 / inf)",
+        "color(srgb-linear 65520 1 1)",
     ] {
         assert_eq!(
             bad.parse::<RgbaF32>(),
-            Err(ParseColorError::NonFinite),
+            Err(ParseColorError::Channel),
             "{bad}"
         );
     }
@@ -210,8 +211,8 @@ fn color_parse_rejects_malformed_input() {
         "expected color(srgb-linear r g b) or color(srgb-linear r g b / a)"
     );
     assert_eq!(
-        ParseColorError::NonFinite.to_string(),
-        "a color must have finite channels"
+        ParseColorError::Channel.to_string(),
+        "a color must have finite channels of at most 65504"
     );
 }
 
@@ -323,4 +324,13 @@ fn lowering_clamps_what_a_tween_overshoots() {
     for a in [-0.5, -1e-3, f32::NEG_INFINITY] {
         assert!(RgbaF32::new(0.5, 0.5, 0.5, a).is_noop(), "{a}");
     }
+}
+
+/// Debug-only: a color that skipped `domain::color` fails where it lowers, at 65520, the least
+/// channel that packs to an infinite f16 lane.
+#[cfg(debug_assertions)]
+#[test]
+#[should_panic(expected = "a color channel packs past the largest f16")]
+fn a_color_past_the_largest_f16_fails_where_it_lowers() {
+    let _ = RgbaF32::new(65520.0, 0.0, 0.0, 1.0).to_f16();
 }

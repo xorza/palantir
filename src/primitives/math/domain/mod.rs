@@ -11,10 +11,11 @@
 //! | [`length`] | finite, `>= 0` | panic |
 //! | [`extent`] | `>= 0`, `+inf` allowed | panic |
 //! | [`gap`] | a length `<= 65504` (one f16 lane) | panic |
+//! | [`lane_offset`] | an offset within `±65504` (one f16 lane) | panic |
 //! | [`positive`] | finite, `> 0` | panic |
 //! | [`factor`] | finite, `>= 0` | panic |
 //! | [`angle`] | finite | panic |
-//! | [`color`] | every channel finite | panic |
+//! | [`color`] | every channel finite and `<= 65504` (one f16 lane) | panic |
 //! | [`count`] | `>= 1` | panic |
 //! | [`power_of_two_in`] | a power of two in `1..=max` | panic |
 //! | [`f64::range`] | both ends finite | panic; the order is kept |
@@ -50,11 +51,12 @@ pub(crate) const FILE_OFFSET_RULE: &str = "an offset in a file must be finite an
 pub(crate) const LENGTH_RULE: &str = "a length must be finite and not negative";
 pub(crate) const EXTENT_RULE: &str = "an extent must not be negative or NaN";
 pub(crate) const GAP_RULE: &str = "a gap must be finite, not negative, and at most 65504";
+pub(crate) const LANE_OFFSET_RULE: &str = "a lane offset must be finite and within ±65504";
 pub(crate) const POSITIVE_RULE: &str = "a positive value must be finite and above zero";
 pub(crate) const FACTOR_RULE: &str = "a factor must be finite and not negative";
 pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
-pub(crate) const COLOR_RULE: &str = "a color must have finite channels";
+pub(crate) const COLOR_RULE: &str = "a color must have finite channels of at most 65504";
 pub(crate) const COUNT_RULE: &str = "a count must be at least 1";
 pub(crate) const POWER_OF_TWO_RULE: &str =
     "the value must be a power of two no larger than its maximum";
@@ -174,6 +176,24 @@ pub const fn gap(v: f32) -> f32 {
     v
 }
 
+/// True if `v` is a [`lane_offset`]: an offset that fits one f16 lane.
+#[inline]
+pub const fn is_lane_offset(v: f32) -> bool {
+    is_offset(v) && v.abs() <= F16x4::MAX_LANE
+}
+
+/// `v`, which must be a *lane offset*: an offset of magnitude at most 65504, one f16 lane.
+///
+/// # Panics
+///
+/// Panics unless [`is_lane_offset`]`(v)`.
+#[inline]
+#[track_caller]
+pub const fn lane_offset(v: f32) -> f32 {
+    assert!(is_lane_offset(v), "{}", LANE_OFFSET_RULE);
+    v
+}
+
 /// True if `v` is [`positive`]: finite and above zero.
 #[inline]
 pub const fn is_positive(v: f32) -> bool {
@@ -229,13 +249,20 @@ pub const fn angle(v: f32) -> f32 {
     v
 }
 
-/// True if every channel of `c` is finite.
+/// True if every channel of `c` is finite and at most 65504.
 #[inline]
 pub const fn is_color(c: RgbaF32) -> bool {
-    c.r.is_finite() && c.g.is_finite() && c.b.is_finite() && c.a.is_finite()
+    is_channel(c.r) && is_channel(c.g) && is_channel(c.b) && is_channel(c.a)
 }
 
-/// `c`, which must be a *color*: every channel finite. Above `1` is valid (HDR, tween overshoot).
+/// A channel a color lowers to one f16 lane: a larger one is infinite there. Below zero is left
+/// to the lowering, which clamps it.
+const fn is_channel(v: f32) -> bool {
+    v.is_finite() && v <= F16x4::MAX_LANE
+}
+
+/// `c`, which must be a *color*: every channel finite and at most 65504, the largest f16, as a
+/// color lowers to f16 lanes. Above `1` is valid (HDR, tween overshoot).
 ///
 /// # Panics
 ///
