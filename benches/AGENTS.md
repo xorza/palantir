@@ -41,7 +41,10 @@ cargo drive bench --test                  # each case once
 
 - An id is `<kind>/<group>/<backend>/<rest…>`, and criterion's filter is a
   regex over it. A case builds its inputs in its own closure, so a filtered
-  run pays for nothing it does not time, and `'/cpu/'` opens no device.
+  run pays for nothing it does not time, and `'/cpu/'` opens no device;
+  `BenchGpu::shared` panics if a group's body opens one. The adapter probe
+  at startup still loads the GPU driver; `PALANTIR_BENCH_NO_GPU=1` skips it
+  and every GPU case.
 - A host without a GPU adapter runs no `gpu` case and says so once.
 - `--quick` while you iterate; report only a full run's numbers.
 
@@ -109,7 +112,9 @@ commit its own target directory.
 ## Profiling
 
 `benches/bench-perf.sh` (Linux) profiles the bench under the rules above,
-with `perf` on the other cores; its header lists the options. It needs
+with `perf` on the other cores; its header lists the options. A filter that
+selects CPU cases alone runs with `PALANTIR_BENCH_NO_GPU=1`, so the driver
+stays out of the profile. It needs
 `sudo sysctl kernel.perf_event_paranoid=-1 kernel.nmi_watchdog=0`, and warns
 when either is missing. It builds the binary `cargo bench` builds, so neither
 rebuilds after the other.

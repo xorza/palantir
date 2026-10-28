@@ -107,6 +107,13 @@ CASES=$(grep -c ': benchmark$' <<<"$LIST")
 echo "    $BIN on cpu$PIN_CPU, perf on $PERF_CPUS"
 echo "    $CASES cases of $FILTER, $PROFILE_TIME s each a pass"
 
+# A case id is `<kind>/<group>/<backend>/…`. With no `gpu` case selected, the
+# bench skips its adapter probe, which loads the GPU driver into the profile.
+if ! grep ': benchmark$' <<<"$LIST" | cut -d/ -f3 | grep -qvx cpu; then
+    export PALANTIR_BENCH_NO_GPU=1
+    echo "    CPU cases only: PALANTIR_BENCH_NO_GPU=1, so no GPU driver loads"
+fi
+
 mkdir -p tmp
 OUT=tmp/palantir-perf
 BENCH_LOG=$OUT-bench.log

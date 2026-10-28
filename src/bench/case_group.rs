@@ -3,6 +3,35 @@
 use criterion::measurement::WallTime;
 use criterion::{Bencher, BenchmarkGroup, Throughput};
 use std::fmt;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+/// Whether code runs between the cases of [`crate::bench::run`]: in a group's own body, which
+/// every run executes, a filtered one or `--list` included, as opposed to a case closure, which
+/// only a run that selects the case does. A static, as criterion hands a case closure no context
+/// to carry it to [`BenchGpu::shared`](crate::gpu::bench_gpu::BenchGpu::shared).
+static BETWEEN_CASES: AtomicBool = AtomicBool::new(false);
+
+/// While alive, sets whether code runs [between cases](BETWEEN_CASES), and puts the setting back
+/// when dropped.
+#[derive(Debug)]
+pub(crate) struct BetweenCases(bool);
+
+impl BetweenCases {
+    pub(crate) fn set(between: bool) -> Self {
+        Self(BETWEEN_CASES.swap(between, Ordering::Relaxed))
+    }
+
+    /// Whether code runs between cases now: in a group's body, outside every case closure.
+    pub(crate) fn now() -> bool {
+        BETWEEN_CASES.load(Ordering::Relaxed)
+    }
+}
+
+impl Drop for BetweenCases {
+    fn drop(&mut self) {
+        BETWEEN_CASES.store(self.0, Ordering::Relaxed);
+    }
+}
 
 /// A group of cases whose ids, `<backend>/<rest…>` past the group's own name, all have the depth
 /// of the first: a filter such as `'^atomic/composer/cpu/[^/]+/256$'` then means the same thing
@@ -32,7 +61,7 @@ impl<'a> CaseGroup<'a> {
         }
     }
 
-    /// Register case `id` of this group, timed by `f`.
+    /// Register case `id` of this group, timed by `f`, which runs inside the case.
     ///
     /// # Panics
     ///
@@ -41,7 +70,7 @@ impl<'a> CaseGroup<'a> {
     pub fn bench_function(
         &mut self,
         id: String,
-        f: impl FnMut(&mut Bencher<'_, WallTime>),
+        mut f: impl FnMut(&mut Bencher<'_, WallTime>),
     ) -> &mut Self {
         let depth = id.split('/').count();
         let first = *self.depth.get_or_insert(depth);
@@ -50,7 +79,10 @@ impl<'a> CaseGroup<'a> {
             "{}/{id}: every case of a group has the depth of its first",
             self.name
         );
-        self.group.bench_function(id, f);
+        self.group.bench_function(id, |bencher| {
+            let _inside = BetweenCases::set(false);
+            f(bencher);
+        });
         self
     }
 

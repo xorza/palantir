@@ -1,6 +1,7 @@
 //! The backends a case runs on: the CPU always, the GPU when the host has an adapter.
 
 use crate::gpu::bench_gpu::{BenchAdapter, BenchGpu};
+use std::env;
 
 /// The backends a case may run on: the CPU always, the GPU when the host has an adapter.
 #[derive(Clone, Copy, Debug)]
@@ -19,14 +20,25 @@ pub enum Backend {
 }
 
 impl Backends {
+    /// The environment variable that, set to anything but empty, keeps a run off the GPU.
+    pub const NO_GPU: &str = "PALANTIR_BENCH_NO_GPU";
+
     /// The backends of this host, from the adapter the GPU cases would open: no device is opened,
     /// so a run that filters to CPU cases opens none. Each kind of GPU case the host cannot run is
     /// said once on stderr, as those cases are then missing from the run.
+    ///
+    /// With [`NO_GPU`](Self::NO_GPU) set, nothing is probed and no GPU case registers. A probe
+    /// creates a wgpu instance, which loads the GPU driver into the process; a profile of CPU cases
+    /// that sets it holds none of the driver's work.
     #[expect(
         clippy::print_stderr,
         reason = "the notice is what keeps missing GPU cases from reading as a full run"
     )]
     pub fn probe() -> Self {
+        if env::var_os(Self::NO_GPU).is_some_and(|value| !value.is_empty()) {
+            eprintln!("palantir benches: {} is set, so no GPU cases", Self::NO_GPU);
+            return Self { adapter: None };
+        }
         let adapter = BenchGpu::probe();
         match adapter {
             None => eprintln!("palantir benches: no GPU adapter, so no GPU cases"),
