@@ -57,6 +57,28 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         )
     }
 
+    /// A read-only storage buffer for items of type `T`: `STORAGE | COPY_DST`.
+    pub(crate) fn storage(
+        device: &wgpu::Device,
+        label: &'static str,
+        initial_capacity: usize,
+    ) -> Self {
+        Self::new(
+            device,
+            BufferSpec {
+                label,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+                initial_capacity,
+            },
+        )
+    }
+
+    /// The items the buffer holds before it grows; a grow replaces the buffer, so a bind group
+    /// over it is built again when this changes.
+    pub(crate) const fn capacity(&self) -> usize {
+        self.capacity
+    }
+
     /// An index buffer for items of type `T`: `INDEX | COPY_DST`.
     pub(crate) fn idx(device: &wgpu::Device, label: &'static str, initial_capacity: usize) -> Self {
         Self::new(

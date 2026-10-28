@@ -261,18 +261,21 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     );
 }
 
-/// `atomic/composer/cpu/curves/<count>` and
+/// `atomic/composer/cpu/curves/alone/<count>` and
 /// `atomic/composer/cpu/higher_kind_overlap/<case>/<count>`: one replay of recorded paint into
 /// draw groups and batches, the groups and batches checked first. Per draw.
 pub(crate) fn atomic(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "composer", Scale::Sample);
     for curve_count in DRAW_COUNTS {
         group.throughput(Throughput::Elements(curve_count as u64));
-        group.bench_function(Backend::Cpu.case(&format!("curves/{curve_count}")), |b| {
-            let mut fixture = ComposeBench::curves(curve_count);
-            assert_eq!(fixture.compose(), curve_count);
-            b.iter(|| black_box(fixture.compose()));
-        });
+        group.bench_function(
+            Backend::Cpu.case(&format!("curves/alone/{curve_count}")),
+            |b| {
+                let mut fixture = ComposeBench::curves(curve_count);
+                assert_eq!(fixture.compose(), curve_count);
+                b.iter(|| black_box(fixture.compose()));
+            },
+        );
     }
     for &case in HigherKindCase::VARIANTS {
         let label: &'static str = case.into();

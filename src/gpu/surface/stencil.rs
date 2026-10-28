@@ -20,7 +20,7 @@ pub(crate) struct Stencil {
 
 impl Stencil {
     /// `Stencil8` suffices for the mask path; UI is 2D.
-    pub(super) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
+    pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
 
     /// Depth/stencil state for one rounded-clip pipeline; only `compare`,
     /// `pass_op` and `write_mask` differ, so the rest is stated once.

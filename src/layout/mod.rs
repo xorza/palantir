@@ -6,6 +6,8 @@
 mod axis_align_pair;
 mod axis_share;
 mod axis_slot;
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
 pub(crate) mod cache;
 pub(crate) mod counters;
 pub(crate) mod depth_scratch;

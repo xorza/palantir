@@ -318,6 +318,11 @@ pub(crate) mod internals {
             self.core.backend.gpu_image_cache_len()
         }
 
+        /// The blurs the last frame ran, one per pane whose cached result went stale.
+        pub(crate) const fn backdrop_blurs(&self) -> usize {
+            self.core.backend.backdrop_blurs()
+        }
+
         /// Paints the next frame in full, as after a swapchain reconfigure.
         pub const fn invalidate_target_contents(&mut self) {
             self.driver.invalidate_target_contents();

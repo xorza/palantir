@@ -9,7 +9,6 @@ use crate::common::span::Span;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::group_batch::GroupBatch;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
 use std::fmt;
@@ -134,6 +133,12 @@ pub(crate) struct Schedule<'a> {
     pub(crate) damage_scissor: Option<URect>,
     /// The frame's [`MaskPlan`] when the pass has a stencil, else `None`.
     pub(crate) masks: Option<&'a MaskPlan>,
+    /// The first group this walk paints: a main pass broken at a pane's barrier resumes there.
+    pub(crate) from: u32,
+    /// The groups this walk paints, `groups[from..barrier]`: a main pass breaks at a capturing
+    /// pane's barrier to copy what the groups before it painted. `None` paints every group from
+    /// `from`.
+    pub(crate) barrier: Option<u32>,
 }
 
 impl Schedule<'_> {
@@ -165,8 +170,17 @@ impl Schedule<'_> {
         // would be erased there anyway.
         emit: &mut dyn FnMut(RenderStep),
     ) {
+        let end = self
+            .barrier
+            .map_or(self.buffer.groups.len(), |barrier| barrier as usize);
+        debug_assert!(
+            end <= self.buffer.groups.len(),
+            "a barrier past the last group"
+        );
         ScheduleWalk {
             buffer: self.buffer,
+            from: self.from as usize,
+            end,
             damage_scissor: self.damage_scissor,
             cursors: ScheduleCursors::default(),
             state: PassState {
@@ -184,6 +198,9 @@ impl Schedule<'_> {
 #[derive(Debug)]
 struct ScheduleWalk<'a> {
     buffer: &'a RenderBuffer,
+    /// The groups walked, `groups[from..end]`.
+    from: usize,
+    end: usize,
     damage_scissor: Option<URect>,
     cursors: ScheduleCursors,
     state: PassState<'a>,
@@ -194,9 +211,13 @@ impl ScheduleWalk<'_> {
         let buffer = self.buffer;
         let full_viewport = URect::new(0, 0, buffer.display.physical.x, buffer.display.physical.y);
 
+        // Only the walk that starts at the first group clears: one resuming after a barrier paints
+        // over what the walk before it left.
         if let Some(scissor) = self.damage_scissor {
             self.state.scissor(scissor);
-            self.state.push(RenderStep::PreClear);
+            if self.from == 0 {
+                self.state.push(RenderStep::PreClear);
+            }
         }
 
         // Text batches map to a group via `last_group`, monotonic across batches, so one
@@ -207,7 +228,11 @@ impl ScheduleWalk<'_> {
         // rendered group, batches with `last_group < i` are emitted (the composer's
         // overlap rule means no quad in `(last_group, i)` overlapped them). A trailing
         // drain covers tail-skipped groups.
-        for (i, g) in buffer.groups.iter().enumerate() {
+        // A walk that resumes after a barrier skips what the walk before it drew: the composer
+        // closes every batch at a barrier, so none straddles `from`.
+        let from = self.from;
+        advance_past_skipped(&buffer.text_batches, &mut self.cursors.text, from);
+        for (i, g) in buffer.groups[..self.end].iter().enumerate().skip(from) {
             // Drop mesh/image/curve batches anchored in earlier damage-skipped groups.
             for tier in PaintTier::ALL {
                 advance_past_skipped(
@@ -242,8 +267,9 @@ impl ScheduleWalk<'_> {
                 self.emit_group_body(i, effective);
             }
         }
-        // Trailing drain, before the tail clear so a still-stamped chain elides.
-        self.drain_text_batches(usize::MAX);
+        // Trailing drain, before the tail clear so a still-stamped chain elides. A batch past the
+        // walk's last group renders in a walk that reaches it.
+        self.drain_text_batches(self.end);
         self.state.clear_active();
     }
 
@@ -256,7 +282,7 @@ impl ScheduleWalk<'_> {
     /// Drain every text batch whose `last_group < target`, each with its own
     /// bounds-union scissor intersected with the damage region (the text backend has
     /// no per-fragment x-clip). `target = i` drains stuck batches before group `i`;
-    /// `i + 1` the group's own after its quads; `usize::MAX` the tail.
+    /// `i + 1` the group's own after its quads; `end` the tail.
     fn drain_text_batches(&mut self, target: usize) {
         let batches = &self.buffer.text_batches;
         while self.cursors.text < batches.len() && batches[self.cursors.text].last_group() < target
@@ -434,7 +460,7 @@ struct ScheduleCursors {
 }
 
 /// Advance `cursor` past batches anchored in damage-skipped groups.
-fn advance_past_skipped(batches: &[GroupBatch], cursor: &mut usize, before: usize) {
+fn advance_past_skipped<B: PerGroupBatch>(batches: &[B], cursor: &mut usize, before: usize) {
     while *cursor < batches.len() && batches[*cursor].last_group() < before {
         *cursor += 1;
     }
@@ -481,6 +507,18 @@ pub(crate) mod internals {
             damage: Option<URect>,
             stencil: StencilMode,
         ) -> WalkCounts {
+            self.run_between(buffer, damage, stencil, (0, None))
+        }
+
+        /// [`Self::run`] over the groups from `from` to `barrier`, as one pass of a main pass
+        /// broken at a pane's barrier walks.
+        pub(crate) fn run_between(
+            &self,
+            buffer: &RenderBuffer,
+            damage: Option<URect>,
+            stencil: StencilMode,
+            (from, barrier): (u32, Option<u32>),
+        ) -> WalkCounts {
             let mut counts = WalkCounts::default();
             let masks = match stencil {
                 StencilMode::Off => None,
@@ -490,6 +528,8 @@ pub(crate) mod internals {
                 buffer,
                 damage_scissor: damage,
                 masks,
+                from,
+                barrier,
             };
             schedule.for_each_step(&mut |step| {
                 counts.steps += 1;

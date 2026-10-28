@@ -1,9 +1,10 @@
-//! The chrome a container paints behind its children: fill, border, corner radii
-//! and a shadow, as one value a theme hands over whole.
+//! The chrome a container paints behind its children: fill, border, corner radii,
+//! a shadow and a backdrop filter, as one value a theme hands over whole.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -25,7 +26,7 @@ use palantir_anim_derive::Animatable;
 /// [offsets](crate::widget::domain::offset), radial radii and the border width
 /// [lengths](crate::widget::domain::length), each corner radius a length of at most
 /// 65504 (one f16 lane), and the shadow's offset and spread offsets and its blur a
-/// length.
+/// length, and the backdrop filter as [`BackdropFilter`] lists.
 // Intentionally **not `Copy`**: it is the largest of the three types
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.
@@ -55,6 +56,11 @@ pub struct Chrome {
     /// and an inset one over it, inside the border.
     #[serde(default, skip_serializing_if = "Shadow::is_noop")]
     pub shadow: Shadow,
+    /// What the chrome does to the pixels painted before it, under its fill, which tints
+    /// them: [`BackdropFilter::NONE`] (the `Default`) does nothing and is omitted from
+    /// serialized output. A gradient fill and the border paint over the pane.
+    #[serde(default, skip_serializing_if = "BackdropFilter::is_noop")]
+    pub backdrop_filter: BackdropFilter,
 }
 
 impl Chrome {
@@ -67,6 +73,7 @@ impl Chrome {
         self.border.validate();
         self.corners.validate();
         self.shadow.validate();
+        self.backdrop_filter.validate();
     }
 
     /// Canonical chrome that paints nothing; an explicit override to suppress
@@ -76,6 +83,7 @@ impl Chrome {
         border: Stroke::NONE,
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
+        backdrop_filter: BackdropFilter::NONE,
     };
 
     /// True when this paints nothing visible. The encoder skips no-op chrome; the
@@ -83,7 +91,10 @@ impl Chrome {
     /// own draw.
     #[inline]
     pub const fn is_noop(&self) -> bool {
-        self.fill.is_noop() && self.border.is_noop() && self.shadow.is_noop()
+        self.fill.is_noop()
+            && self.border.is_noop()
+            && self.shadow.is_noop()
+            && self.backdrop_filter.is_noop()
     }
 
     /// How far the border reaches in from the edge: its width, or zero when the
@@ -108,6 +119,7 @@ impl Chrome {
             border: Stroke::NONE,
             corners: Corners::ZERO,
             shadow: Shadow::NONE,
+            backdrop_filter: BackdropFilter::NONE,
         }
     }
 
@@ -118,6 +130,7 @@ impl Chrome {
             border: Stroke::NONE,
             corners,
             shadow: Shadow::NONE,
+            backdrop_filter: BackdropFilter::NONE,
         }
     }
 
@@ -132,6 +145,12 @@ impl Chrome {
         self.shadow = shadow;
         self
     }
+
+    /// Set the backdrop filter, keeping the rest: the fill tints the filtered pixels.
+    pub const fn with_backdrop_filter(mut self, filter: BackdropFilter) -> Self {
+        self.backdrop_filter = filter;
+        self
+    }
 }
 
 /// Every field can carry a NaN (the fill through a gradient's geometry, the rest
@@ -143,6 +162,7 @@ impl NanCheck for Chrome {
             || self.border.has_nan()
             || self.corners.has_nan()
             || self.shadow.has_nan()
+            || self.backdrop_filter.has_nan()
     }
 }
 

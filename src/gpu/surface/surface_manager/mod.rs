@@ -19,10 +19,12 @@ use std::fmt;
 const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = SurfaceUsages::ALL.to_wgpu();
 
 /// Taken when offered. A GLES surface is the default framebuffer and
-/// advertises only `RENDER_ATTACHMENT`, so requiring this made it unusable;
-/// without it the backbuffer is drawn onto the surface
-/// ([`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto)).
-const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::COPY_DST;
+/// advertises only `RENDER_ATTACHMENT`, so requiring these made it unusable;
+/// without `COPY_DST` the backbuffer is drawn onto the surface
+/// ([`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto)), and
+/// without `COPY_SRC` a frame whose panes capture paints through the backbuffer.
+const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages =
+    wgpu::TextureUsages::COPY_DST.union(wgpu::TextureUsages::COPY_SRC);
 
 /// Device and swapchain choices a host seals at startup.
 #[derive(Clone, Copy, Debug, Default)]

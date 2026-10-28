@@ -33,6 +33,7 @@ impl FillKind {
     pub(crate) const TAG_SHADOW_INSET: u32 = 5;
     pub(crate) const TAG_TRIANGLE: u32 = 6;
     pub(crate) const TAG_RAMP: u32 = 7;
+    pub(crate) const TAG_BACKDROP: u32 = 8;
 
     #[inline]
     pub(crate) const fn tag(self) -> u32 {
@@ -84,6 +85,10 @@ impl FillKind {
     /// `fill_lut_row`, so there is no axis or spread.
     pub(crate) const RAMP: Self = Self(Self::TAG_RAMP);
 
+    /// Backdrop-pane marker: `fill` is the tint, `fill_axis = (σ, saturation, noise, opacity)`,
+    /// and `fill_lut_row` the pane's row in the frame's backdrops.
+    pub(crate) const BACKDROP: Self = Self(Self::TAG_BACKDROP);
+
     /// Bit 16: fragment fast path, set by the composer on a solid, sharp,
     /// stroke-less, pixel-aligned quad whose fragments are all interior, so the
     /// shader skips the SDF + composite path. Read as `FILL_FLAG_FAST`.
@@ -123,12 +128,18 @@ impl FillKind {
     pub(crate) const fn is_shadow(self) -> bool {
         matches!(self.tag(), Self::TAG_SHADOW_DROP | Self::TAG_SHADOW_INSET)
     }
+
+    /// True iff this marks a backdrop pane.
+    #[inline]
+    pub(crate) const fn is_backdrop(self) -> bool {
+        self.tag() == Self::TAG_BACKDROP
+    }
 }
 
 // The fields tile the word without overlapping and every value fits its field.
 const _: () = {
     assert!(FillKind::TAG_MASK < 1 << FillKind::SPREAD_SHIFT);
-    assert!(FillKind::TAG_RAMP <= FillKind::TAG_MASK);
+    assert!(FillKind::TAG_BACKDROP <= FillKind::TAG_MASK);
     assert!(Spread::Reflect as u32 <= FillKind::SPREAD_MASK);
     let spread_bits = FillKind::SPREAD_MASK << FillKind::SPREAD_SHIFT;
     assert!(spread_bits & (FillKind::FAST_BIT | FillKind::WINDOW_BIT) == 0);

@@ -1,4 +1,5 @@
 use crate::bench::backends::Backend;
+use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
 use crate::primitives::layout::align::HAlign;
@@ -15,8 +16,7 @@ use crate::text::shaper::TextShaper;
 use crate::text::shaping_font::ShapingFont;
 use crate::text::system::{RunBinding, TextRunSlot, TextSystem};
 use crate::text::wrap::{LineFit, TextWrap, WrapFloor};
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 
 const TEXT: &str = "A long property label used to exercise character-precise truncation across many previously unseen widths.";
@@ -162,7 +162,7 @@ fn frame_end(text: &mut TextSystem, shaper: &TextShaper) {
 /// `TextSystem::end_frame` retains every row, which the layer-less arms lack,
 /// so it is the layer's alone; the clock tick ages the shaped-buffer cache in
 /// both designs, so it is charged to both.
-fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_reuse_layer(group: &mut CaseGroup<'_>) {
     let face = keyed(UI_FACE);
     let request_for = |text| unbounded(text, face);
 
@@ -252,7 +252,7 @@ fn bench_reuse_layer(group: &mut BenchmarkGroup<'_, WallTime>) {
 /// wrap slots and a shared row cannot. Content-keying was prototyped: it
 /// lost 46% and 170% on these and 37-43% on the plain hit paths, since a
 /// 24-byte `TextShapeKey` hash costs more than the dedup saves.
-fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_shared_content(group: &mut CaseGroup<'_>) {
     const REPEATED: &str = "Enabled";
     let face = keyed(UI_FACE);
     let request = || unbounded(REPEATED, face);
@@ -317,9 +317,9 @@ fn bench_shared_content(group: &mut BenchmarkGroup<'_, WallTime>) {
 /// The residency assertion is the standing guard: with supersession working
 /// the drag holds a handful of buffers; without it every rendered frame is
 /// promoted to the 120-frame window and residency tracks the drag's length.
-fn bench_resize_drag(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_resize_drag(group: &mut CaseGroup<'_>) {
     group.throughput(Throughput::Elements(1));
-    group.bench_function(Backend::Cpu.case("resize_drag_frame"), |b| {
+    group.bench_function(Backend::Cpu.case("resize_drag/frame"), |b| {
         let run = TruncatedRun::new("text-shape-resize-drag", BODY_PX, FontWeight::REGULAR);
         let shaper = TextShaper::new();
         let mut text = TextSystem::new(shaper.clone());
@@ -358,7 +358,7 @@ fn bench_resize_drag(group: &mut BenchmarkGroup<'_, WallTime>) {
 /// The label is long enough that the cut keeps a short prefix: the whole
 /// string is shaped once into the cached unbounded probe and only the prefix
 /// is reshaped per width.
-fn bench_ellipsis_churn(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_ellipsis_churn(group: &mut CaseGroup<'_>) {
     const HEADING_PX: f32 = 20.0;
     group.throughput(Throughput::Elements(1));
 

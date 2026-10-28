@@ -2,9 +2,11 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::lower;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
@@ -29,6 +31,7 @@ pub struct RectShape {
     pub(crate) corners: Corners,
     pub(crate) fill: Brush,
     pub(crate) border: Stroke,
+    pub(crate) backdrop_filter: BackdropFilter,
 }
 
 impl RectShape {
@@ -39,6 +42,7 @@ impl RectShape {
             corners: Corners::ZERO,
             fill: Brush::TRANSPARENT,
             border: Stroke::NONE,
+            backdrop_filter: BackdropFilter::NONE,
         }
     }
 
@@ -81,12 +85,27 @@ impl RectShape {
         self.corners = corners;
         self
     }
+
+    /// Show the pixels painted before the rect through `filter`, blurred and shaded, under its
+    /// fill, which tints them: a pane. A gradient fill and the border paint over the pane.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `filter.blur` is a [length](crate::widget::domain::length), its
+    /// `saturation` and `noise` [factors](crate::widget::domain::factor), and its lens's
+    /// `bezel` and `thickness` lengths and `refractive_index` at least 1.
+    #[track_caller]
+    pub const fn backdrop_filter(mut self, filter: BackdropFilter) -> Self {
+        filter.validate();
+        self.backdrop_filter = filter;
+        self
+    }
 }
 
 impl sealed::LowerShape for RectShape {
     fn is_noop(&self) -> bool {
         self.local_rect.is_some_and(Rect::is_paint_empty)
-            || (self.fill.is_noop() && self.border.is_noop())
+            || (self.fill.is_noop() && self.border.is_noop() && self.backdrop_filter.is_noop())
     }
 
     /// Geometry is already in storage form; the fill interns through [`lower::brush`], the pool chrome shares.
@@ -97,6 +116,7 @@ impl sealed::LowerShape for RectShape {
             corners,
             fill,
             border,
+            backdrop_filter,
         } = self;
         ShapeRecord::Quad(QuadShape::Rect {
             kind,
@@ -104,6 +124,7 @@ impl sealed::LowerShape for RectShape {
             corners,
             fill: lower::brush(store, &fill),
             border: ShapeStroke::from(border),
+            backdrop: LoweredBackdrop::from(backdrop_filter),
         })
     }
 }

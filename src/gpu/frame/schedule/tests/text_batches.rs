@@ -2,7 +2,7 @@
 
 use crate::common::span::Span;
 use crate::gpu::frame::schedule::tests::support::{
-    DrawOp, buf_with_batches, collect, group, simplify, text_batch,
+    DrawOp, buf_with_batches, collect, collect_between, group, simplify, text_batch,
 };
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
@@ -97,5 +97,42 @@ fn text_batches_emit_once_after_their_last_group() {
         let buf = buf_with_batches(groups, batches);
         let steps = collect(&buf, case.damage, None);
         assert_eq!(simplify(&buf, &steps), case.want, "{}", case.label);
+    }
+}
+
+/// A main pass broken at a pane's barrier walks the groups before it and their text batches,
+/// which the composer closed there, then resumes past them: the two walks draw what the whole
+/// walk draws, in its order, and only a walk from the first group clears. A barrier at 0 leaves the
+/// first walk only the clear, and the second, from the first group too, is the whole walk; one
+/// past the last group leaves the second nothing.
+#[test]
+fn a_walk_broken_at_a_barrier_draws_the_whole_walk_once() {
+    let groups = vec![
+        group(Span::new(0, 1)),
+        group(Span::new(1, 1)),
+        group(Span::new(2, 2)),
+    ];
+    let batches = vec![
+        text_batch(Span::new(0, 1), 0),
+        text_batch(Span::new(1, 1), 2),
+    ];
+    let buf = buf_with_batches(groups, batches);
+    let damage = Some(URect::new(0, 0, 100, 100));
+    let whole = [
+        DrawOp::PreClear,
+        DrawOp::Quads(0),
+        DrawOp::Text(0),
+        DrawOp::Quads(1),
+        DrawOp::Quads(2),
+        DrawOp::Text(1),
+    ];
+    assert_eq!(simplify(&buf, &collect(&buf, damage, None)), whole);
+    // The ops before each barrier: the clear, then group 0 with its text, group 1, group 2.
+    for (barrier, split) in [(0, 1), (1, 3), (2, 4), (3, 6)] {
+        let before = collect_between(&buf, damage, None, (0, Some(barrier)));
+        let after = collect_between(&buf, damage, None, (barrier, None));
+        assert_eq!(simplify(&buf, &before), whole[..split], "before {barrier}");
+        let resumed = if barrier == 0 { 0 } else { split };
+        assert_eq!(simplify(&buf, &after), whole[resumed..], "after {barrier}");
     }
 }

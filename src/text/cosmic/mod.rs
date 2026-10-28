@@ -608,7 +608,7 @@ impl CosmicMeasure {
     /// # Why not `Buffer::set_ellipsize`
     ///
     /// Cosmic can truncate itself, but that was measured and reverted: about 4.9x slower
-    /// on `text_shape/resize_drag_frame`. Cosmic must see the whole string to cut, so
+    /// on `text_shape/resize_drag/frame`. Cosmic must see the whole string to cut, so
     /// every new width reshapes all of it. The dependency on the cached unbounded probe
     /// is the point: a drag pays the full-string shape once and reshapes only the short
     /// prefix. Revisiting needs the full shape cached across widths, i.e. a different

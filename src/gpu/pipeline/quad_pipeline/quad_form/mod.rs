@@ -11,6 +11,8 @@ pub(crate) enum QuadForm {
     Gradient = 1,
     /// Rounded triangle.
     Triangle = 2,
+    /// A pane over its backdrop, which reads the frame's backdrop results at group 2.
+    Backdrop = 3,
 }
 
 impl QuadForm {
@@ -19,6 +21,7 @@ impl QuadForm {
         match kind.tag() {
             FillKind::TAG_SOLID => Self::Solid,
             FillKind::TAG_TRIANGLE => Self::Triangle,
+            FillKind::TAG_BACKDROP => Self::Backdrop,
             _ => Self::Gradient,
         }
     }

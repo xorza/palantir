@@ -73,6 +73,23 @@ Axis
         X
         Y
 
+BackdropFilter
+    struct BackdropFilter: Animatable, Clone, Copy, Debug, Default, PartialEq, Serialize
+        pub blur: f32
+        pub saturation: f32
+        pub noise: f32
+        pub lens: Option<Lens>
+        pub const NONE: Self
+        pub const fn blur(sigma: f32) -> Self
+        pub const fn frosted(sigma: f32) -> Self
+        pub const fn glass(lens: Lens) -> Self
+        pub const fn with_blur(self, sigma: f32) -> Self
+        pub const fn with_saturation(self, saturation: f32) -> Self
+        pub const fn with_noise(self, noise: f32) -> Self
+        pub const fn with_lens(self, lens: Lens) -> Self
+        pub const fn is_noop(&self) -> bool
+        impl<'de> Deserialize<'de> where BackdropFilter: Default
+
 BarMode
     enum BarMode: Clone, Copy, Debug, Default, Eq, PartialEq
         Reserved
@@ -164,12 +181,14 @@ Chrome
         pub border: Stroke
         pub corners: Corners
         pub shadow: Shadow
+        pub backdrop_filter: BackdropFilter
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
         pub fn fill<I: Into<Brush>>(brush: I) -> Self
         pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self
         pub const fn with_border(self, border: Stroke) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
+        pub const fn with_backdrop_filter(self, filter: BackdropFilter) -> Self
 
 ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
@@ -1210,6 +1229,16 @@ LayerScope
         pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn max_size(self, size: impl Into<Size>) -> Self
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
+
+Lens
+    struct Lens: Clone, Copy, Debug, Default, PartialEq, Serialize
+        pub bezel: f32
+        pub thickness: f32
+        pub refractive_index: f32
+        pub dispersion: f32
+        pub highlight: f32
+        pub const fn is_refractive_index(n: f32) -> bool
+        impl<'de> Deserialize<'de> where Lens: Default
 
 LinearGeometry
     struct LinearGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
@@ -2848,6 +2877,7 @@ widget::RectShape
         pub fn fill(self, fill: impl Into<Brush>) -> Self
         pub const fn border(self, border: Stroke) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
+        pub const fn backdrop_filter(self, filter: BackdropFilter) -> Self
 
 widget::ShadowShape
     struct ShadowShape: Clone, Debug, Lower (blanket)
@@ -3043,6 +3073,9 @@ widget::domain::f64::positive
 widget::domain::f64::range
     const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64>
 
+widget::domain::factor
+    const fn factor(v: f32) -> f32
+
 widget::domain::fraction
     const fn fraction(v: f32) -> f32
 
@@ -3069,6 +3102,9 @@ widget::domain::is_count
 
 widget::domain::is_extent
     const fn is_extent(v: f32) -> bool
+
+widget::domain::is_factor
+    const fn is_factor(v: f32) -> bool
 
 widget::domain::is_fraction
     const fn is_fraction(v: f32) -> bool

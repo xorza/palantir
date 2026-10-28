@@ -1,5 +1,6 @@
 //! What the composer makes of a frame of paint calls.
 
+mod backdrops;
 mod batching;
 mod brushes;
 mod clipping;

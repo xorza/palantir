@@ -42,6 +42,7 @@ use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
@@ -68,6 +69,9 @@ pub(crate) trait PaintSink {
     /// One quad-tier draw (rect, windowed rect, shadow or triangle), all
     /// through one gate so they agree on what is invisible.
     fn quad(&mut self, payload: DrawQuadPayload);
+
+    /// A backdrop pane: a quad over the pixels painted before it, and its key.
+    fn pane(&mut self, payload: DrawPanePayload);
 
     fn text(&mut self, payload: DrawTextPayload);
 
@@ -97,6 +101,15 @@ pub(crate) trait PaintSink {
             return;
         }
         self.quad(payload);
+    }
+
+    #[inline]
+    fn draw_pane(&mut self, payload: DrawPanePayload, alpha: f32) {
+        let payload = payload.faded(alpha);
+        if payload.is_noop() {
+            return;
+        }
+        self.pane(payload);
     }
 
     #[inline]

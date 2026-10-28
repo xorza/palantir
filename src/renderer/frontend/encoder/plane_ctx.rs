@@ -1,17 +1,18 @@
 //! [`PlaneCtx`]: one plane's encode walk, built per tree by [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
-use crate::damage::region::DamageRegion;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::image::{FitRect, ImageDownsample, ImageFilter, ImageFit};
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::frontend::encoder::cull_region::CullRegion;
 use crate::renderer::frontend::encoder::gradient_resolver::GradientPass;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -21,9 +22,10 @@ use crate::renderer::frontend::payload::draw_image_payload::{
     DrawImagePayload, ImageDraw, ViewPaint,
 };
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{
-    DrawQuadPayload, RectQuad, TriangleQuad,
+    BackdropQuad, DrawQuadPayload, RectQuad, TriangleQuad,
 };
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
@@ -36,10 +38,13 @@ use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationCursor;
+use crate::scene::tree::pane_entry::PaneSource;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::{ShapeRecord, TextAnchor};
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::shape::rect::RectKind;
@@ -67,14 +72,71 @@ pub(super) struct PlaneCtx<'a, 'g> {
     pub(super) paint_animation_cursor: PaintAnimationCursor<'a>,
     /// Live `GpuView`s by owner `WidgetId`, one map across layers; an `ImageSource::GpuView` carries only its epoch.
     pub(super) gpu_views: &'a GpuViews,
-    pub(super) damage_filter: Option<&'a DamageRegion>,
+    pub(super) damage_filter: Option<CullRegion<'a>>,
     /// Logical-px inflation of each `subtree_paint_rect` before the damage cull, covering the AA pad the backend PreClears.
     pub(super) damage_cull_margin: f32,
     pub(super) viewport: Rect,
     pub(super) now: Duration,
 }
 
+/// Paint `quad`, as a pane over the pixels painted before it when `pane` gives its backdrop
+/// filter and key. A pane's tint is solid: a gradient fill and the border over it draw as the
+/// rect above the pane.
+fn paint_rect(
+    quad: RectQuad,
+    pane: Option<(LoweredBackdrop, PaneKey)>,
+    spin: Option<Spin>,
+    alpha: f32,
+    out: &mut impl PaintSink,
+) {
+    if let Some((backdrop, key)) = pane {
+        let tint = match quad.fill {
+            BrushSource::Solid(color) => Some(color),
+            BrushSource::Gradient(_) => None,
+        };
+        let pane = DrawQuadPayload::backdrop(BackdropQuad {
+            kind: quad.kind,
+            rect: quad.rect,
+            corners: quad.corners,
+            tint: tint.unwrap_or(RgbaF16::TRANSPARENT),
+            stroke: if tint.is_some() {
+                quad.stroke
+            } else {
+                ShapeStroke::NONE
+            },
+            backdrop,
+        })
+        .turned(spin);
+        out.draw_pane(
+            DrawPanePayload {
+                quad: pane,
+                key,
+                lens: backdrop.lens(),
+            },
+            alpha,
+        );
+        if tint.is_some() {
+            return;
+        }
+    }
+    out.draw_quad(DrawQuadPayload::rect(quad).turned(spin), alpha);
+}
+
 impl PlaneCtx<'_, '_> {
+    /// The key of the pane `owner` records as shape `shape_idx`, from the tree's pane list.
+    fn pane_key(&self, owner: NodeId, shape_idx: u32) -> PaneKey {
+        let panes = &self.tree.panes;
+        let at = panes
+            .binary_search_by_key(&(shape_idx, PaneSource::Shape), |entry| {
+                (entry.shape_idx, entry.source)
+            })
+            .expect("a painted pane is listed");
+        PaneKey {
+            owner: self.tree.records.widget_id()[owner.idx()],
+            shape: panes[at].row,
+        }
+    }
+
     #[inline]
     fn brush_source(&mut self, brush: ShapeBrush) -> BrushSource {
         self.gradients.source(brush)
@@ -121,21 +183,19 @@ impl PlaneCtx<'_, '_> {
                     corners,
                     fill,
                     border,
-                    ..
+                    backdrop,
                 } => {
                     let rect = owner_rect.resolve_local(*local_rect);
-                    let fill = self.brush_source(*fill);
-                    out.draw_quad(
-                        DrawQuadPayload::rect(RectQuad {
-                            kind: *kind,
-                            rect,
-                            corners: *corners,
-                            fill,
-                            stroke: *border,
-                        })
-                        .turned(spin),
-                        alpha,
-                    );
+                    let quad = RectQuad {
+                        kind: *kind,
+                        rect,
+                        corners: *corners,
+                        fill: self.brush_source(*fill),
+                        stroke: *border,
+                    };
+                    let pane =
+                        (!backdrop.is_none()).then(|| (*backdrop, self.pane_key(id, shape_idx)));
+                    paint_rect(quad, pane, spin, alpha, out);
                 }
                 QuadShape::Shadow {
                     local_rect,
@@ -389,15 +449,23 @@ impl PlaneCtx<'_, '_> {
 
         if let Some(chrome) = chrome {
             // Alpha `1.0`: chrome isn't a shape, so no paint animation. CSS Backgrounds 3 §7.1 order: drop shadow under the fill, inset over it.
-            let fill = DrawQuadPayload::rect(RectQuad {
+            let fill = RectQuad {
                 kind: RectKind::Rounded,
                 rect,
                 corners: chrome.corners,
                 fill: self.brush_source(chrome.fill),
                 stroke: chrome.border,
+            };
+            // A chrome pane is its node's first paint row.
+            let pane = (!chrome.backdrop.is_none()).then(|| {
+                let key = PaneKey {
+                    owner: self.tree.records.widget_id()[id.idx()],
+                    shape: 0,
+                };
+                (chrome.backdrop, key)
             });
             if chrome.shadow.inset() {
-                out.draw_quad(fill, 1.0);
+                paint_rect(fill, pane, None, 1.0, out);
                 let width = chrome.border.width;
                 let padding_box = Rect {
                     min: Vec2::ZERO,
@@ -416,7 +484,7 @@ impl PlaneCtx<'_, '_> {
                 if let Some(shadow) = DrawQuadPayload::shadow(rect, chrome.corners, chrome.shadow) {
                     out.draw_quad(shadow, 1.0);
                 }
-                out.draw_quad(fill, 1.0);
+                paint_rect(fill, pane, None, 1.0, out);
             }
             if chrome.ring {
                 let ring = DrawQuadPayload::rect(RectQuad {

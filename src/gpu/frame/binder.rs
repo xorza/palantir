@@ -48,9 +48,9 @@ impl<'a> PassState<'a> for wgpu::RenderPass<'a> {
 /// The binder of a main pass.
 pub(crate) type MainBinder<'a> = Binder<'a, wgpu::RenderPass<'a>>;
 
-/// Bind-group and vertex-buffer slots a draw of this backend uses: group 0 and 1 (a shadow's
-/// cutout tables), buffer 0 and 1 (a mesh's instances, a shadow's corners).
-const SLOTS: usize = 2;
+/// Bind-group and vertex-buffer slots a draw of this backend uses: group 0, 1 (a shadow's cutout
+/// tables) and 2 (a pane's backdrops), buffer 0 and 1 (a mesh's instances, a shadow's corners).
+const SLOTS: usize = 3;
 
 /// What a pass has bound, slot by slot, so a pipeline switch keeps the groups and buffers it
 /// shares with the last one: a quad's form switch sets the pipeline alone.

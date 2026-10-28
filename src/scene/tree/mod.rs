@@ -11,6 +11,7 @@ pub(crate) mod iter;
 pub(crate) mod node_id;
 pub(crate) mod node_record;
 pub(crate) mod paint_animations;
+pub(crate) mod pane_entry;
 pub(crate) mod recording_scratch;
 mod rollup_inputs;
 pub(crate) mod root_slot;
@@ -42,6 +43,7 @@ use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::node_record::NodeRecord;
 use crate::scene::tree::paint_animations::PaintAnimations;
+use crate::scene::tree::pane_entry::{PaneEntry, PaneSource};
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
 #[cfg(debug_assertions)]
 use crate::scene::tree::rollup_inputs::RollupCheck;
@@ -87,6 +89,8 @@ pub(crate) struct Tree {
     /// Sparse shape-keyed paint animations, cleared in `pre_record`. Sampling is a
     /// pure function of `now`, so no timestamps are stored.
     pub(crate) paint_animations: PaintAnimations,
+    /// The backdrop panes recorded this frame, in shape order; cleared in `pre_record`.
+    pub(crate) panes: Vec<PaneEntry>,
 
     pub(crate) rollups: SubtreeRollups,
     pub(crate) fingerprint: TreeFingerprint,
@@ -149,6 +153,7 @@ impl Tree {
         self.focus_ring = ShapeStroke::default();
         self.shapes.records.clear();
         self.paint_animations.clear();
+        self.panes.clear();
         self.roots.clear();
     }
 
@@ -491,6 +496,19 @@ impl Tree {
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
         let effectively_visible = parent_frame.is_none_or(|f| f.effectively_visible)
             && cols.layout.meta.visibility().is_visible();
+        // A chrome with a backdrop filter is a pane at the node's first row.
+        if effectively_visible
+            && ex
+                .chrome
+                .is_some_and(|row| !self.chrome_table[row.idx()].backdrop.is_none())
+        {
+            self.panes.push(PaneEntry {
+                node: new_id,
+                shape_idx: self.shapes.records.len() as u32,
+                source: PaneSource::Chrome,
+                row: 0,
+            });
+        }
         // The child adds one marker row to the parent's paint span; its own counter
         // starts past its chrome row.
         if let Some(parent) = scratch.open_frames.last_mut() {

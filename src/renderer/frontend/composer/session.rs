@@ -9,14 +9,17 @@ use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::math::domain::{EPS, is_invisible};
 use crate::primitives::math::num::{F32Px, Vec2Ext};
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use crate::primitives::paint::backdrop_filter::Lens;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::clip_stack::ClipFrame;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
@@ -26,6 +29,7 @@ use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
 use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
@@ -33,6 +37,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::backdrop_row::BackdropRow;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -48,7 +53,9 @@ use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
+use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::lens_optics::LensOptics;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
@@ -112,6 +119,13 @@ impl ScaledRect {
             urect: geometry::urect_from_physical(physical.min, physical.max(), viewport),
         }
     }
+}
+
+/// What a pane's quad brings beyond its lanes: its key, and its lens in physical px.
+#[derive(Clone, Copy, Debug)]
+struct Pane {
+    key: PaneKey,
+    lens: Option<Lens>,
 }
 
 /// The two ends of one polyline segment's color ramp.
@@ -270,38 +284,25 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn quad(&mut self, p: DrawQuadPayload) {
-        let packed = self.pack_quad(&p);
-        if self.fold_into_clear(&p, &packed) {
-            return;
-        }
-        // Skip the quad when entirely outside the scissor. The clipped rect is also the
-        // overlap test's rect, so an ancestor-clipped quad does not force a needless flush.
-        let visible = self.composer.clip.clamped(packed.rect.urect);
-        if visible.is_paint_empty() {
-            return;
-        }
-        self.quad_forces_flush(visible);
-        // Fragment fast path: a solid, sharp, stroke-less, pixel-aligned quad has
-        // coverage exactly 1.0, so the shader returns the fill directly. `SOLID` excludes
-        // shadows and triangles.
-        let fast = p.fill.kind == FillKind::SOLID && packed.is_pixel_aligned();
-        let fill_kind = if fast {
-            p.fill.kind.with_fast()
-        } else {
-            p.fill.kind
-        };
-        self.out.quads.push(Quad {
-            rect: packed.rect.physical,
-            fill: p.fill.color,
-            corners: packed.corners,
-            stroke_color: p.stroke.color,
-            stroke_width: packed.stroke_width,
-            fill_kind,
-            fill_lut_row: p.fill.lut_row,
-            fill_axis: packed.fill_axis,
-            rotation: packed.rotation,
+        debug_assert!(
+            !p.fill.kind.is_backdrop(),
+            "a pane arrives through `pane`, with its key"
+        );
+        self.push_quad(p, None);
+    }
+
+    fn pane(&mut self, p: DrawPanePayload) {
+        debug_assert!(
+            p.quad.fill.kind.is_backdrop(),
+            "a pane's quad is a backdrop"
+        );
+        let scale = self.composer.transform.physical_scale();
+        let lens = p.lens.map(|lens| Lens {
+            bezel: lens.bezel * scale,
+            thickness: lens.thickness * scale,
+            ..lens
         });
-        self.record_opaque_cover(&p, &packed);
+        self.push_quad(p.quad, Some(Pane { key: p.key, lens }));
     }
 
     fn mesh(&mut self, p: DrawMeshPayload) {
@@ -796,6 +797,46 @@ impl PaintSink for ComposeSession<'_> {
 }
 
 impl ComposeSession<'_> {
+    /// A quad-tier draw, or pane `pane`'s quad.
+    fn push_quad(&mut self, p: DrawQuadPayload, pane: Option<Pane>) {
+        let packed = self.pack_quad(&p);
+        if self.fold_into_clear(&p, &packed) {
+            return;
+        }
+        // Skip the quad when entirely outside the scissor. The clipped rect is also the
+        // overlap test's rect, so an ancestor-clipped quad does not force a needless flush.
+        let visible = self.composer.clip.clamped(packed.rect.urect);
+        if visible.is_paint_empty() {
+            return;
+        }
+        let lut_row = match pane {
+            Some(pane) => self.open_barrier(&packed, visible, pane),
+            None => p.fill.lut_row,
+        };
+        self.quad_forces_flush(visible);
+        // Fragment fast path: a solid, sharp, stroke-less, pixel-aligned quad has
+        // coverage exactly 1.0, so the shader returns the fill directly. `SOLID` excludes
+        // shadows and triangles.
+        let fast = p.fill.kind == FillKind::SOLID && packed.is_pixel_aligned();
+        let fill_kind = if fast {
+            p.fill.kind.with_fast()
+        } else {
+            p.fill.kind
+        };
+        self.out.quads.push(Quad {
+            rect: packed.rect.physical,
+            fill: p.fill.color,
+            corners: packed.corners,
+            stroke_color: p.stroke.color,
+            stroke_width: packed.stroke_width,
+            fill_kind,
+            fill_lut_row: lut_row,
+            fill_axis: packed.fill_axis,
+            rotation: packed.rotation,
+        });
+        self.record_opaque_cover(&p, &packed);
+    }
+
     /// Reduce a quad-tier draw to physical space; everything past this is shape-blind.
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
         let scale_physical = self.composer.transform.physical_scale();
@@ -811,9 +852,13 @@ impl ComposeSession<'_> {
                     Some(_) => EdgeRounding::Exact,
                 };
                 let source = self.scaled_rect_with(rect, edges);
-                // Shadow scalars are logical px, so scale them; a gradient axis is unit-space.
+                // Shadow scalars are logical px, so scale them, and a pane's σ; a gradient axis
+                // is unit-space.
                 let fill_axis = if p.fill.kind.is_shadow() {
                     p.fill_axis.scaled(scale_physical)
+                } else if p.fill.kind.is_backdrop() {
+                    let [sigma, saturation, noise, opacity] = p.fill_axis.lanes();
+                    FillAxis::from_lanes([sigma * scale_physical, saturation, noise, opacity])
                 } else {
                     p.fill_axis
                 };
@@ -881,6 +926,43 @@ impl ComposeSession<'_> {
                 }
             }
         }
+    }
+
+    /// End everything painted so far at a barrier before the pane `packed`, seen at `visible`, and
+    /// list the pane; its row is the quad's `fill_lut_row`. The text batch and the group close, so
+    /// nothing before the barrier coalesces, reorders or prunes against what follows: the main
+    /// pass can break there and read the pixels the groups before it painted.
+    fn open_barrier(&mut self, packed: &PackedQuad, visible: URect, pane: Pane) -> LutRow {
+        self.close_batch();
+        self.flush();
+        let plan = BlurPlan::new(packed.fill_axis.lanes()[0]);
+        // A lens samples its blur up to its reach aside, and each sample reads the blur's.
+        let lens_reach = pane.lens.map_or(0, |lens| {
+            LensOptics {
+                bezel: lens.bezel,
+                thickness: lens.thickness,
+                index: lens.refractive_index,
+            }
+            .reach(lens.refractive_index + 0.5 * lens.dispersion)
+        });
+        let reach = UVec2::splat(plan.reach().saturating_add(lens_reach));
+        let footprint = URect::from_min_max(
+            visible.min.saturating_sub(reach),
+            visible
+                .max()
+                .saturating_add(reach)
+                .min(self.out.display.physical),
+        );
+        let row = LutRow(self.out.backdrops.len() as u32);
+        self.out.backdrops.push(BackdropRow {
+            key: pane.key,
+            footprint,
+            plan,
+            barrier: self.out.groups.len() as u32,
+            lens: pane.lens,
+            capture: false,
+        });
+        row
     }
 
     /// Clear fold: an opaque, solid, sharp, unclipped quad covering the viewport is

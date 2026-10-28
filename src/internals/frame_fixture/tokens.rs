@@ -4,6 +4,7 @@
 
 use crate::internals::demo_swatches;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
@@ -31,6 +32,7 @@ pub(super) fn card_chrome() -> Chrome {
         border: Stroke::new(BORDER, 1.0),
         corners: Corners::all(8.0),
         shadow: Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 2.0), 9.0),
+        backdrop_filter: BackdropFilter::NONE,
     }
 }
 

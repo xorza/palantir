@@ -4,6 +4,7 @@ use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -74,6 +75,7 @@ pub(super) fn show(ui: &mut Ui) {
                                     glam::Vec2::new(0.0, 2.0),
                                     8.0,
                                 ),
+                                backdrop_filter: BackdropFilter::NONE,
                             })
                             .show(ui);
                         // Cascade `Hidden` flattening: the alert ring this tile would show on a threshold breach. A ZStack sibling, so reserving its box costs no layout.

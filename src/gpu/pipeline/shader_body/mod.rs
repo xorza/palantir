@@ -12,6 +12,7 @@ use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use crate::shape::stroke_bounds::MITER_LIMIT;
 use crate::shape::style::LineCap;
@@ -28,6 +29,7 @@ pub(crate) enum ShaderBody {
     Image,
     RasterAtlas,
     Blit,
+    BackdropBlur,
 }
 
 impl ShaderBody {
@@ -39,6 +41,7 @@ impl ShaderBody {
             Self::Image => include_str!("../image_pipeline/shader.wgsl"),
             Self::RasterAtlas => include_str!("../../raster/raster_atlas/shader.wgsl"),
             Self::Blit => include_str!("../blit_pipeline/shader.wgsl"),
+            Self::BackdropBlur => include_str!("../../backdrop/backdrop_blur/blur.wgsl"),
         }
     }
 
@@ -50,6 +53,7 @@ impl ShaderBody {
             Self::Image => "palantir.image.shader",
             Self::RasterAtlas => "palantir.raster.shader",
             Self::Blit => "palantir.blit.shader",
+            Self::BackdropBlur => "palantir.backdrop.blur.shader",
         }
     }
 
@@ -116,6 +120,10 @@ impl ShaderBody {
                 ShaderConstant::uint("FLAG_DESATURATE", FLAG_DESATURATE),
                 ShaderConstant::uint("FLAG_COLOR", FLAG_COLOR),
             ],
+            Self::BackdropBlur => vec![ShaderConstant::uint(
+                "TAP_VEC4S",
+                BlurPlan::MAX_TAPS.div_ceil(4) as u32,
+            )],
             Self::Mesh | Self::Blit => Vec::new(),
         }
     }

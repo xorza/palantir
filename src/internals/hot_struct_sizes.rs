@@ -114,7 +114,7 @@ const UI_SIZE: usize = 2848;
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const FRAME_ENGINES_SIZE: usize = 2000;
+const FRAME_ENGINES_SIZE: usize = 2168;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)
@@ -139,12 +139,14 @@ const PINS: &[Pin] = &[
     pin::<Node>("scene::Node", 104, 4),
     pin::<ShapeRecord>("shape::ShapeRecord", 88, 8),
     pin::<RecordedText>("shapes::RecordedText", 16, 8),
-    pin::<ChromeRow>("scene::ChromeRow", 64, 8),
+    // 16 of them the backdrop filter, two f16 words.
+    pin::<ChromeRow>("scene::ChromeRow", 80, 8),
     pin::<ShapeStroke>("shape::ShapeStroke", 12, 4),
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    pin::<Chrome>("primitives::Chrome", 124, 4),
+    // 36 of them the backdrop filter, its lens optional.
+    pin::<Chrome>("primitives::Chrome", 160, 4),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
@@ -172,22 +174,23 @@ const PINS: &[Pin] = &[
     pin::<Slider<'static>>("widgets::Slider", 184, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 152, 8),
-    pin::<Panel>("widgets::Panel", 248, 8),
-    pin::<Block>("widgets::Block", 248, 8),
-    pin::<Grid>("widgets::Grid", 248, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 312, 8),
+    // 32 of them the chrome's backdrop filter.
+    pin::<Panel>("widgets::Panel", 280, 8),
+    pin::<Block>("widgets::Block", 280, 8),
+    pin::<Grid>("widgets::Grid", 280, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 344, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 168, 8),
-    pin::<Popup>("widgets::Popup", 272, 8),
-    pin::<Modal<'static>>("widgets::Modal", 272, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 304, 8),
+    pin::<Popup>("widgets::Popup", 312, 8),
+    pin::<Modal<'static>>("widgets::Modal", 312, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 344, 8),
     pin::<GpuView>("widgets::GpuView", 144, 8),
-    pin::<ContextMenu<'static>>("widgets::ContextMenu", 296, 8),
+    pin::<ContextMenu<'static>>("widgets::ContextMenu", 336, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 384, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 896, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 1040, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

@@ -1,6 +1,5 @@
 use super::*;
 use crate::internals::ui_harness::UiHarness;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::frame_report::FramePaint;
 use crate::widgets::button::Button;
 use std::cell::RefCell;

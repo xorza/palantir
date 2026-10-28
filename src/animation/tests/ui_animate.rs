@@ -4,6 +4,7 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{self, AnimationUi, SLOT};
 use crate::internals::ui_harness::UiHarness;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -133,6 +134,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         border: Stroke::new(RgbaF32::hex(0xffffff), 2.0),
         corners: Corners::all(4.0),
         shadow: Shadow::NONE,
+        backdrop_filter: BackdropFilter::NONE,
     };
     let look = WidgetLook {
         chrome: chrome.clone(),

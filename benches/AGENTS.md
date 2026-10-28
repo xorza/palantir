@@ -5,6 +5,29 @@ sits in a `bench.rs` beside the code it measures, and `src/bench/mod.rs`
 states the rules: the kinds, the ids, one number for each case, and the
 `Scale` sampling policy (`clippy.toml` keeps a group from setting its own).
 
+## Which cases
+
+The frame fixture (`internals::frame_fixture`) is the representative screen:
+`integration/frame` runs it whole, and one atomic group per stage runs that
+stage alone over it, so a moved frame points at its stage.
+
+| stage | over the frame fixture | on made inputs |
+|---|---|---|
+| input | | `atomic/input`, `atomic/hit_test` |
+| record | `atomic/record` | `atomic/text_edit`, `atomic/animation` |
+| layout | `atomic/layout` | `atomic/text_shape`, `integration/measure_cache` |
+| cascade | `atomic/cascade` | |
+| damage | | `atomic/damage`, `integration/damage` |
+| encode + compose | `atomic/encode` | `atomic/composer`, `atomic/rect_grid` |
+| paint, CPU | | `atomic/record_pass`, `atomic/schedule` |
+| paint, GPU | `atomic/main_pass` | `atomic/*_pipeline`, `atomic/*_atlas`, `atomic/backdrop_*` |
+| the frame | `integration/frame`, `integration/backdrop_frame` | |
+
+`integration/frame` arms: `cached` (a still frame), `partial` and
+`alternating` (state changes), `scrolling` and `resizing` (whole repaints),
+`hovering` and `typing` (input driving the frame). Every case of a group has
+one id depth (`CaseGroup` holds it), so a filter on a level selects alike.
+
 ## Running
 
 ```sh

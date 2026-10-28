@@ -9,8 +9,9 @@ use crate::damage;
 use crate::damage::counters::DamageCounters;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
 use crate::damage::node_snapshot::NodeSnapshot;
+use crate::damage::pane_walk::PaneWalk;
 use crate::damage::plane_frame::PlaneFrame;
-use crate::damage::row_matcher::{PaintsChange, RowMatcher};
+use crate::damage::row_matcher::{NodeRows, PaintsChange, RowMatcher, RowPlaces};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::tree::iter::TreeItem;
@@ -50,6 +51,10 @@ pub(super) struct PlaneWalk<'a> {
     pub(super) paints: &'a mut BlockArena<Paint>,
     pub(super) matcher: &'a mut RowMatcher,
     pub(super) raw_rects: &'a mut Vec<Rect>,
+    /// Marks each node's rects with its first paint row, for the panes' forward walk.
+    pub(super) panes: &'a mut PaneWalk,
+    /// The plane's place in paint order.
+    pub(super) ord: usize,
     /// Per-row screen extents for the order-inversion check; filled only when a node's row order inverted.
     pub(super) order_extents: &'a mut Vec<Rect>,
     pub(super) inversions: &'a mut InvertedOverlaps,
@@ -70,6 +75,12 @@ impl PlaneWalk<'_> {
                 widget_id: self.frame.tree.records.widget_id()[i],
                 parent_key: self.parent_key(i),
             };
+            // A node's rects, and its subtree's, come from its first row or later.
+            let span = self.frame.cascade.paint_arena.node_spans[i];
+            self.panes.mark(
+                self.raw_rects.len(),
+                PaneWalk::node_position(self.ord, span),
+            );
             let advance = match self.classify(node) {
                 Tier::Untracked => 1,
                 Tier::Added => self.on_added(node),
@@ -190,9 +201,25 @@ impl PlaneWalk<'_> {
             prev: prev.paint_span,
             cur,
         };
-        let leg = self
-            .matcher
-            .diff_changed_leg(self.paints, self.raw_rects, change);
+        let span = self.frame.cascade.paint_arena.node_spans[i];
+        let leg = self.matcher.diff_changed_leg(
+            self.paints,
+            self.raw_rects,
+            change,
+            &mut RowPlaces {
+                panes: self.panes,
+                of: NodeRows {
+                    ord: self.ord,
+                    span,
+                },
+                pane_rows: &self.frame.cascade.panes,
+            },
+        );
+        // The node's own rects from here on: the whole of it, from its first row.
+        self.panes.mark(
+            self.raw_rects.len(),
+            PaneWalk::node_position(self.ord, span),
+        );
 
         // Exact-matched rows emit no content damage, but a pair whose paint order inverted still flips its overlap. Only exact pairs participate; moved and added rows already cover theirs.
         if leg.order_inverted {

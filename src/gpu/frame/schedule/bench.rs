@@ -16,6 +16,10 @@
 //!   the clear / re-stamp elision already applies and the scissor
 //!   requests around it collapse too.
 //!
+//! `segments/<panes>/512` walks a 512-group frame in one piece more than `panes` backdrop panes, broken
+//! at their barriers spread evenly through it, as the main pass breaks at each capturing pane: the
+//! CPU the breaks add over one walk.
+//!
 //! Walks run at full repaint (`damage = None`): the damage opener adds a fixed two steps per walk and
 //! would only dilute the per-group signal. Step and scissor counts print once per workload as the
 //! secondary metric; wall time is the decision metric.
@@ -42,6 +46,8 @@ use glam::{UVec2, Vec2};
 use std::hint::black_box;
 
 const VIEWPORT: u32 = 1024;
+/// The groups of the `segments` frame.
+const SEGMENT_GROUPS: usize = 512;
 
 #[derive(Clone, Copy, Debug)]
 enum Workload {
@@ -166,6 +172,37 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 b.iter(|| black_box(walk.run(&buffer, None, workload.stencil())));
             });
         }
+    }
+    for panes in [1u32, 8, 64] {
+        group.throughput(Throughput::Elements(SEGMENT_GROUPS as u64));
+        group.bench_function(
+            Backend::Cpu.case(&format!("segments/{panes}/{SEGMENT_GROUPS}")),
+            |b| {
+                let buffer = Workload::DistinctScissors.fixture(SEGMENT_GROUPS);
+                let walk = Walk::new(&buffer);
+                let barriers: Vec<u32> = (1..=panes)
+                    .map(|i| i * SEGMENT_GROUPS as u32 / (panes + 1))
+                    .collect();
+                let walk_all = || {
+                    let mut from = 0;
+                    let mut scissors = 0;
+                    for barrier in barriers.iter().copied().map(Some).chain([None]) {
+                        scissors += walk
+                            .run_between(&buffer, None, StencilMode::Off, (from, barrier))
+                            .scissors;
+                        from = barrier.unwrap_or(from);
+                    }
+                    scissors
+                };
+                // Every group sets its own scissor once, whichever piece walks it.
+                assert_eq!(
+                    walk_all(),
+                    SEGMENT_GROUPS,
+                    "segments/{panes}/{SEGMENT_GROUPS}"
+                );
+                b.iter(|| black_box(walk_all()));
+            },
+        );
     }
     group.finish();
 }

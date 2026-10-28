@@ -7,14 +7,14 @@ use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::bench::backends::Backend;
+use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::text_style::TextStyle;
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion, Throughput};
+use criterion::{Criterion, Throughput};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -50,7 +50,7 @@ fn look(bg: RgbaF32, text: RgbaF32) -> AnimatedLook {
     }
 }
 
-fn bench_motion(group: &mut BenchmarkGroup<'_, WallTime>, motion: Motion) {
+fn bench_motion(group: &mut CaseGroup<'_>, motion: Motion) {
     group.bench_function(Backend::Cpu.case(motion.label()), |b| {
         let ids: Vec<_> = (0..ROWS)
             .map(|idx| WidgetId::from_hash(idx as u64))

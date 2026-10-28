@@ -11,6 +11,7 @@ use crate::primitives::layout::align::Align;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -209,6 +210,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
                 glam::Vec2::new(0.0, 3.0),
                 10.0,
             ),
+            backdrop_filter: BackdropFilter::NONE,
         })
         .show(ui, |ui, _handle| {
             Text::new("Capture written to disk")

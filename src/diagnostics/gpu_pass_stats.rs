@@ -106,7 +106,16 @@ struct Inner {
     kind_ns: [Option<u64>; BatchKind::COUNT],
     stats: Option<PipelineStats>,
     copy_out_ns: Option<u64>,
+    backdrops: BackdropTimes,
     main_pass_cpu_ns: Option<u64>,
+}
+
+/// The last frame's backdrop panes on the device, in ns: the sums of their captures and of their
+/// blurs, `None` when it timed none.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct BackdropTimes {
+    pub(crate) captures: Option<u64>,
+    pub(crate) blurs: Option<u64>,
 }
 
 /// Shared GPU-stats handle; clones share the latest sample, `None` until the first
@@ -118,19 +127,23 @@ pub struct GpuPassStats {
 
 impl GpuPassStats {
     /// Whole-pass duration; `None` until the first resolve or without
-    /// `TIMESTAMP_QUERY`.
+    /// `TIMESTAMP_QUERY`. On a frame whose backdrop panes capture, the main pass
+    /// breaks at each, and the duration spans the captures and blurs between.
     pub fn last_pass(&self) -> Option<Duration> {
         self.inner.borrow().pass_ns.map(Duration::from_nanos)
     }
 
     /// Per-category duration; `None` without `TIMESTAMP_QUERY_INSIDE_PASSES` or if
-    /// the category did not run last frame.
+    /// the category did not run last frame. The captures and blurs between the
+    /// passes the main pass breaks into count in no category, and a frame of more
+    /// breaks than its timestamps hold publishes none.
     pub fn last_kind(&self, kind: BatchKind) -> Option<Duration> {
         self.inner.borrow().kind_ns[kind.idx()].map(Duration::from_nanos)
     }
 
-    /// Pipeline-statistics counters around the main pass; `None` without
-    /// `PIPELINE_STATISTICS_QUERY`.
+    /// Pipeline-statistics counters around the main pass, summed over the passes
+    /// it breaks into at backdrop panes; `None` without `PIPELINE_STATISTICS_QUERY`,
+    /// or when the last frame broke it into more than 16 passes.
     pub fn last_pipeline_stats(&self) -> Option<PipelineStats> {
         self.inner.borrow().stats
     }
@@ -167,12 +180,24 @@ impl GpuPassStats {
         self.inner.borrow_mut().kind_ns = [None; BatchKind::COUNT];
     }
 
-    pub(crate) fn record_pipeline_stats(&self, stats: PipelineStats) {
-        self.inner.borrow_mut().stats = Some(stats);
+    pub(crate) fn record_pipeline_stats(&self, stats: Option<PipelineStats>) {
+        self.inner.borrow_mut().stats = stats;
     }
 
     pub(crate) fn record_copy_out_ns(&self, ns: Option<u64>) {
         self.inner.borrow_mut().copy_out_ns = ns;
+    }
+
+    #[cfg_attr(
+        not(feature = "internals"),
+        expect(dead_code, reason = "the backdrop benches read it")
+    )]
+    pub(crate) fn last_backdrops(&self) -> BackdropTimes {
+        self.inner.borrow().backdrops
+    }
+
+    pub(crate) fn record_backdrop_ns(&self, times: BackdropTimes) {
+        self.inner.borrow_mut().backdrops = times;
     }
 }
 
@@ -243,7 +268,7 @@ mod tests {
         s.record_kind_ns(BatchKind::Text, 1_000_000);
         s.record_pass_ns(3_000_000);
         s.record_main_pass_cpu_ns(500_000);
-        s.record_pipeline_stats(stats);
+        s.record_pipeline_stats(Some(stats));
         s.clear_kinds();
         for kind in BatchKind::ALL {
             assert_eq!(s.last_kind(kind), None, "{kind:?}");

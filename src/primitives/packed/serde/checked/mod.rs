@@ -4,6 +4,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::packed::serde::LaneCodec;
+use crate::primitives::paint::backdrop_filter::Lens;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer};
 use glam::Vec2;
@@ -35,6 +36,22 @@ pub(crate) fn length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, 
 /// A [positive](domain::positive) rate or divisor.
 pub(crate) fn positive<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
     read(deserializer, domain::is_positive, domain::POSITIVE_RULE)
+}
+
+/// A [factor](domain::factor).
+pub(crate) fn factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    read(deserializer, domain::is_factor, domain::FACTOR_RULE)
+}
+
+/// A [refractive index](crate::Lens::is_refractive_index): finite and at least 1.
+pub(crate) fn refractive_index<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<f32, D::Error> {
+    read(
+        deserializer,
+        Lens::is_refractive_index,
+        Lens::REFRACTIVE_INDEX_RULE,
+    )
 }
 
 /// A [fraction](domain::fraction). A file's value outside `0..=1` is refused, not clamped.

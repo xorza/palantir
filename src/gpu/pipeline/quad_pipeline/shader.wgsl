@@ -91,6 +91,30 @@ const FILTER_SERIES_MIN_SIGMA: f32 = /*{FILTER_SERIES_MIN_SIGMA}*/;
 // `FILTER_SERIES_MIN_SIGMA`, whose difference loses more, as it grows with σ.
 const FILTER_PDF_SERIES_MIN_SIGMA: f32 = 5.0;
 
+// A frame's backdrop panes (`Backdrops`): each pane's blurred last level in
+// its slot of `backdrop_results`, which its quad's `fill_lut_row` indexes,
+// read through a cubic B-spline, or texel for texel at full resolution.
+// Bound to the backdrop pipeline only.
+struct BackdropSlot {
+    // The slot's texel coordinate, texel `j`'s center at `j`, of the
+    // lattice's texel 0.
+    offset: vec2<f32>,
+    // Physical px of one texel of the pane's last level.
+    lattice: f32,
+    // The strength of the lamp's glint off the lens's bezel.
+    highlight: f32,
+    // The lens, `(bezel, thickness, refractive_index, dispersion)` in
+    // physical px, zero for a pane of no glass (`LensOptics`).
+    lens: vec4<f32>,
+};
+@group(2) @binding(0) var backdrop_results: texture_2d<f32>;
+@group(2) @binding(1) var backdrop_sampler: sampler;
+@group(2) @binding(2) var<storage, read> backdrop_slots: array<BackdropSlot>;
+
+// Whether the target stores 8 bits a channel through the sRGB curve, which a
+// pane dithers its smooth result for (`fs_backdrop`).
+override DITHER_SRGB8: bool = false;
+
 // The paths `fs` takes, pinned per pipeline (`QuadForm`): the driver drops
 // the rest, so a solid rect's pipeline does not hold a gradient's or a
 // triangle's registers.
@@ -982,6 +1006,151 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         if (in.turned != 0u) {
             // Turned, the quad edge no longer lies on content of its own
             // extent, so it is a visible edge and fades as any edge does.
+            let e = abs(in.local - in.size * 0.5) - in.size * 0.5;
+            window *= edge_coverage(e.x) * edge_coverage(e.y);
+        }
+        return window;
+    }
+    return composite(d, fill, in.stroke_color, in.stroke_width);
+}
+
+// The pane's result at screen position `p`: the B-spline over the slot's
+// texels through four bilinear fetches (Sigg and Hadwiger), whose weights
+// add the same variance at every phase, or the texel itself at level 0.
+fn backdrop_result(p: vec2<f32>, slot: BackdropSlot) -> vec3<f32> {
+    let x = p / slot.lattice - vec2<f32>(0.5) + slot.offset;
+    if (slot.lattice == 1.0) {
+        // A lens reads between pixels, where the bilinear read is the
+        // lens's own resampling; else a pixel center lands on a texel's.
+        if (slot.lens.x > 0.0) {
+            let size = vec2<f32>(textureDimensions(backdrop_results));
+            return textureSampleLevel(backdrop_results, backdrop_sampler, (x + vec2<f32>(0.5)) / size, 0.0).rgb;
+        }
+        return textureLoad(backdrop_results, vec2<i32>(floor(x + vec2<f32>(0.5))), 0).rgb;
+    }
+    let base = floor(x);
+    let f = x - base;
+    let g = vec2<f32>(1.0) - f;
+    let w0 = g * g * g / 6.0;
+    let w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+    let w3 = f * f * f / 6.0;
+    let w2 = vec2<f32>(1.0) - w0 - w1 - w3;
+    let s0 = w0 + w1;
+    let s1 = w2 + w3;
+    let size = vec2<f32>(textureDimensions(backdrop_results));
+    let lo = (base - vec2<f32>(0.5) + w1 / s0) / size;
+    let hi = (base + vec2<f32>(1.5) + w3 / s1) / size;
+    return s0.y * (s0.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(lo.x, lo.y), 0.0).rgb
+                 + s1.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(hi.x, lo.y), 0.0).rgb)
+         + s1.y * (s0.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(lo.x, hi.y), 0.0).rgb
+                 + s1.x * textureSampleLevel(backdrop_results, backdrop_sampler, vec2<f32>(hi.x, hi.y), 0.0).rgb);
+}
+
+// A grain value in `0..1` for the whole pixel of the pane's own frame at
+// `local`, so the grain moves and turns with the pane.
+fn grain(local: vec2<f32>) -> f32 {
+    let cell = vec2<u32>(vec2<i32>(floor(local)) + vec2<i32>(32768));
+    var h = cell.x * 0x9E3779B1u ^ (cell.y * 0x85EBCA77u);
+    h ^= h >> 15u;
+    h *= 0x2C1B3C6Du;
+    h ^= h >> 12u;
+    return f32(h >> 8u) / 16777216.0;
+}
+
+fn srgb_encode(c: vec3<f32>) -> vec3<f32> {
+    let lo = c * 12.92;
+    let hi = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055;
+    return select(hi, lo, c <= vec3<f32>(0.0031308));
+}
+
+fn srgb_decode(e: vec3<f32>) -> vec3<f32> {
+    let lo = e / 12.92;
+    let hi = pow((e + 0.055) / 1.055, vec3<f32>(2.4));
+    return select(hi, lo, e <= vec3<f32>(0.04045));
+}
+
+// How far in, px, a lens sends the sample `inward` px in from its edge for
+// light of index `index`: the squircle bezel's tilt, Snell's law in vector
+// form for light falling straight down, and the bent ray carried from the
+// glass's top to the plane under it. `LensOptics::displacement`'s copy.
+fn lens_displacement(lens: vec4<f32>, inward: f32, index: f32) -> f32 {
+    let x = clamp(inward / lens.x, 0.0, 1.0);
+    let g = 1.0 - x;
+    let rise = max(1.0 - g * g * g * g, 1e-30);
+    let height = lens.y * pow(rise, 0.25);
+    let slope = select(lens.y / lens.x * g * g * g * pow(rise, -0.75), 0.0, x >= 1.0);
+    let norm = sqrt(slope * slope + 1.0);
+    let nx = slope / norm;
+    let nz = 1.0 / norm;
+    let eta = 1.0 / index;
+    let k = 1.0 - eta * eta * (1.0 - nz * nz);
+    let along = eta * nz - sqrt(k);
+    return height * (-along * nx) / (eta - along * nz);
+}
+
+// The glint a top-left lamp leaves on the bezel `inward` px in, its outward
+// normal `outward` on the screen: Schlick's Fresnel at the surface's tilt,
+// times how squarely the bezel faces the lamp.
+fn lens_glint(lens: vec4<f32>, inward: f32, outward: vec2<f32>) -> f32 {
+    let x = clamp(inward / lens.x, 0.0, 1.0);
+    let g = 1.0 - x;
+    let rise = max(1.0 - g * g * g * g, 1e-30);
+    let slope = select(lens.y / lens.x * g * g * g * pow(rise, -0.75), 0.0, x >= 1.0);
+    let cos_in = 1.0 / sqrt(slope * slope + 1.0);
+    let f0 = pow((lens.z - 1.0) / (lens.z + 1.0), 2.0);
+    let fresnel = f0 + (1.0 - f0) * pow(1.0 - cos_in, 5.0);
+    let facing = max(dot(outward, vec2<f32>(-0.70710678, -0.70710678)), 0.0);
+    return fresnel * facing;
+}
+
+// A pane over the pixels painted before it (`FillKind::BACKDROP`): its
+// blurred result, saturated, grained and tinted by `fill`, at the pane's
+// opacity, `fill_axis = (σ, saturation, noise, opacity)`. A paint
+// animation's fade scaled the opacity and the tint's alpha alike, so the
+// tint's own share is its alpha over the opacity.
+@fragment
+fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
+    let slot = backdrop_slots[in.fill_lut_row];
+    // The distance and its screen gradient, in uniform control flow: a lens
+    // bends along the gradient, which is the edge's outward normal on the
+    // screen, turned with the pane.
+    let d = sdf_rounded_rect(in.local, in.size, in.radius);
+    let gradient = vec2<f32>(dpdx(d), dpdy(d));
+    var c = backdrop_result(in.clip.xy, slot);
+    let lens = slot.lens;
+    let inward = -d;
+    if (lens.x > 0.0 && inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
+        let outward = normalize(gradient);
+        let index = lens.z;
+        c = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index), slot);
+        if (lens.w > 0.0) {
+            c.r = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index - 0.5 * lens.w), slot).r;
+            c.b = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index + 0.5 * lens.w), slot).b;
+        }
+        c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
+    }
+    let saturation = in.fill_axis.y;
+    let noise = in.fill_axis.z;
+    let opacity = in.fill_axis.w;
+    c = max(mix(vec3<f32>(dot(c, LUMA)), c, saturation), vec3<f32>(0.0));
+    if (noise > 0.0) {
+        c = mix(c, vec3<f32>(grain(in.local)), noise);
+    }
+    let tint = select(0.0, in.fill.a / opacity, opacity > 0.0);
+    c = mix(c, in.fill.rgb, clamp(tint, 0.0, 1.0));
+    if (DITHER_SRGB8) {
+        // Interleaved gradient noise (Jimenez) of one encoded step, so a
+        // smooth blur stores no band.
+        let ign = fract(52.9829189 * fract(dot(floor(in.clip.xy), vec2<f32>(0.06711056, 0.00583715))));
+        c = srgb_decode(max(srgb_encode(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
+    }
+    let fill = vec4<f32>(c, opacity);
+    if (all(in.local > in.core.xy) && all(in.local < in.core.zw)) {
+        return premultiply(fill.rgb, fill.a);
+    }
+    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
+        var window = composite_window(d, fill, in.stroke_color, in.stroke_width);
+        if (in.turned != 0u) {
             let e = abs(in.local - in.size * 0.5) - in.size * 0.5;
             window *= edge_coverage(e.x) * edge_coverage(e.y);
         }

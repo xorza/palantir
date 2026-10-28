@@ -10,7 +10,7 @@ use std::ops::Range;
 /// so an evicted raster is room for the next one its shelf takes. A bucketed packer reclaims only
 /// whole buckets, which made an atlas evict raster after raster before any space came back.
 #[derive(Debug)]
-pub(super) struct ShelfPacker {
+pub(crate) struct ShelfPacker {
     /// The side's edge in texels.
     size: u16,
     /// Sorted by `y`; together they cover `0..top`.
@@ -36,7 +36,7 @@ struct Shelf {
 }
 
 impl ShelfPacker {
-    pub(super) const fn new(size: u16) -> Self {
+    pub(crate) const fn new(size: u16) -> Self {
         Self {
             size,
             shelves: Vec::new(),
@@ -54,7 +54,7 @@ impl ShelfPacker {
     /// The top-left of a free rectangle of `size`, now taken; `None` when no shelf and no unclaimed
     /// row has room. The lowest shelf that takes the raster and has a span wide enough wins, then a
     /// new shelf, then an empty shelf of any taller height.
-    pub(super) fn allocate(&mut self, size: U16Vec2) -> Option<U16Vec2> {
+    pub(crate) fn allocate(&mut self, size: U16Vec2) -> Option<U16Vec2> {
         let (w, h) = (size.x, size.y);
         debug_assert!(w > 0 && h > 0, "a raster with no texels owns no rectangle");
         if w > self.size || h > self.size {
@@ -110,7 +110,7 @@ impl ShelfPacker {
 
     /// Return the rectangle of `width` at `origin`, as [`Self::allocate`] placed it. Empty shelves
     /// at the bottom go back to the unclaimed rows.
-    pub(super) fn deallocate(&mut self, origin: U16Vec2, width: u16) {
+    pub(crate) fn deallocate(&mut self, origin: U16Vec2, width: u16) {
         let shelf = self.shelf_at(origin.y);
         let freed = origin.x..origin.x + width;
         let free = &mut self.shelves[shelf].free;
@@ -172,7 +172,7 @@ impl ShelfPacker {
 
     /// Widen and deepen the side to `size`, keeping every placement: each shelf gains the new
     /// columns, and the new rows join the unclaimed ones.
-    pub(super) fn grow(&mut self, size: u16) {
+    pub(crate) fn grow(&mut self, size: u16) {
         debug_assert!(size >= self.size, "a side only grows");
         let old = self.size;
         for shelf in &mut self.shelves {

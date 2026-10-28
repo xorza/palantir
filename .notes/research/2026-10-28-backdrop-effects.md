@@ -138,3 +138,52 @@
   another format needs its own set.
 - Layers paint bottom-up (`Main`, `Popup`, `Modal`, `Menu`, `Tooltip`), all
   into one `RenderBuffer`.
+
+## The capture: replay against split (2026-10-28)
+
+`integration/backdrop_frame/gpu/*/scrolling` (three panes, 2560×1440, every
+pane recaptured each frame) and `modal/scrolling` (one pane over a 4K
+window), wall time per frame, against the same cases with the main pass split
+at each pane's barrier (`*_split`). The split frames match the replay's bit
+for bit (`a_split_main_pass_paints_what_the_replay_paints`).
+
+| case | AMD 680M replay | split | Apple M5 replay | split |
+|---|---|---|---|---|
+| blur | 6.44 ms | 4.74 ms | 2.32 ms | 2.00 ms |
+| frosted | 6.46 ms | 4.82 ms | 2.32 ms | 2.01 ms |
+| glass | 13.41 ms | 13.08 ms | 5.13 ms | 4.89 ms |
+| modal 4K | 10.18 ms | 9.60 ms | 5.51 ms | 4.88 ms |
+
+The M5 runs are in ABBA order (replay, split, split, replay), and each pair
+agrees within 1 %. The 680M runs are one pass each. The M5 is a tiler:
+there a split stores and loads the whole attachment and still wins.
+Its fat-LTO bench build peaked at 3.1 GB RSS.
+
+Partial frames (`*/under`, two panes recapture; `*/sliding`, one or none),
+ABBA on both hosts:
+
+| case | AMD 680M replay | split | Apple M5 replay | split |
+|---|---|---|---|---|
+| blur under | 3.9–4.1 ms | 3.9–4.0 ms | 1.58–1.60 ms | 1.67–1.68 ms |
+| frosted under | 3.7–4.1 ms | 3.8–4.2 ms | 1.58–1.60 ms | 1.67–1.68 ms |
+| glass under | 10.27–10.30 ms | 10.08–10.23 ms | 3.69–3.71 ms | 3.77–3.78 ms |
+| blur sliding | 1.86 ms | 1.77–1.79 ms | 0.402 ms | 0.402 ms |
+| glass sliding | 5.53–5.60 ms | 5.01–5.42 ms | 1.60–1.61 ms | 1.61–1.62 ms |
+
+On the M5 the split costs a partial frame about 6 % with two captures: the
+tiler stores and loads the whole attachment for a small footprint. On the
+680M the two agree within the run-to-run drift.
+
+- Impeller ends the pass at a backdrop and draws the stored texture back
+  full-screen into a new pass (`FlipBackdrop`, engine commit 55983).
+  Flutter's `BackdropGroup` exists to share that cost.
+
+## The wider `Chrome` (2026-10-28)
+
+`Chrome` grew from 124 to 160 bytes with `backdrop_filter`, `ChromeRow` from
+64 to 80, and each widget holding a chrome by 32. On the AMD 680M, ABBA,
+the cascade benches did not move (`integration/cascade/cpu/*` within 1 %);
+the CPU frames of the frame fixture, which has no pane, rose about 2 %
+(`integration/frame/cpu/cached` 131–135 µs to 135–137 µs, `alternating`
+203–204 µs to 207–210 µs, `scrolling` 221–223 µs to 226–229 µs), against a
+spread of up to 2.6 % between the two base runs.

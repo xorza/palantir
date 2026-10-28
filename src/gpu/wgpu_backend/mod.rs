@@ -22,6 +22,11 @@
 //!   rect, `LoadOp::Load`ing the backbuffer, with each group's scissor narrowed to
 //!   the rect (scaled, padded for AA bleed, clamped; zero-area rects dropped).
 //!
+//! A backdrop pane that captures breaks the main pass at its barrier: the pass ends, the pane's
+//! footprint is copied out of the target and blurred, and the next pass loads the target. On a
+//! Partial frame the footprint joins the scissors, as the target there holds the last frame's
+//! pane.
+//!
 //! The `dim_undamaged` debug mode adds a pre-pass on Partial frames in its own pass:
 //! the no-stencil dim pipeline is incompatible with the main pass's stencil
 //! attachment on rounded-clip frames.
@@ -43,11 +48,12 @@
 //!
 //! # GPU timestamps
 //!
-//! Main-pass timestamps resolve just before `encoder.finish()`; `after_submit`
-//! reads back any earlier frame whose map completed.
+//! The frame's timings close just before `encoder.finish()` ([`GpuTimings::finish`]); `after_submit`
+//! publishes any earlier frame that landed.
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
+use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::backend_config::BackendConfig;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
@@ -55,7 +61,8 @@ use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::debug_overlay::{DebugOverlay, OverlayDraw};
-use crate::gpu::frame::gpu_timings::GpuTimings;
+use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
+use crate::gpu::frame::main_segment::MainSegment;
 use crate::gpu::frame::schedule::{MaskPlan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Submission, SubmissionTargets};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
@@ -103,6 +110,8 @@ pub(crate) struct WgpuBackend {
     /// Shared gradient LUT atlas lent to the quad and curve pipelines.
     gradient: GpuGradientAtlas,
     quad: QuadPipeline,
+    /// The frame's backdrop panes: their captures, blurs and results.
+    backdrops: Backdrops,
     mesh: MeshPipeline,
     image: ImagePipeline,
     /// The registered images; host recorders create, rewrite and free them through the
@@ -128,11 +137,11 @@ pub(crate) struct WgpuBackend {
     /// Render pipelines keyed by swapchain color format, built lazily by [`Self::ensure_format`].
     /// The surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<TargetFormat, FormatPipelines>,
-    /// What timing this device can do; `Some` when the host opted in and the device has
-    /// `TIMESTAMP_QUERY`.
+    /// What timing this device can do; `Some` when the host opted in, and a device without
+    /// timestamps then times frames on the CPU clock ([`GpuTimings`]).
     timing: Option<TimingSupport>,
-    /// Main-pass timestamp queries per render owner, made on its first submit: a readback
-    /// lands a frame late, so one shared set would publish a frame of another window.
+    /// GPU timings per render owner, made on its first submit: a frame publishes frames late, so
+    /// one shared set would publish a frame of another window.
     gpu_timings: FxHashMap<RenderOwnerId, GpuTimings>,
 }
 
@@ -166,6 +175,8 @@ struct FrameDraw<'a> {
 #[derive(Clone, Copy, Debug)]
 struct MainPass<'a> {
     color_view: &'a wgpu::TextureView,
+    /// The texture `color_view` views, which a pane's capture copies out of.
+    color: &'a wgpu::Texture,
     stencil_view: Option<&'a wgpu::TextureView>,
     clear: wgpu::Color,
     scissors: &'a RepaintScissors,
@@ -183,7 +194,8 @@ impl WgpuBackend {
             resources.gradient_atlas.clone(),
             texture_binding.clone(),
         );
-        let quad = QuadPipeline::new(&device, &texture_binding);
+        let backdrops = Backdrops::new(&device);
+        let quad = QuadPipeline::new(&device, &texture_binding, backdrops.layout());
         let mesh = MeshPipeline::new(&device);
         let image = ImagePipeline::new(&device, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
@@ -198,18 +210,21 @@ impl WgpuBackend {
         let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
         let features = device.features();
         let timestamp_period = queue.get_timestamp_period();
-        let timing = (config.collect_gpu_stats
-            && features.contains(wgpu::Features::TIMESTAMP_QUERY)
-            && timestamp_period > 0.0)
-            .then_some(TimingSupport {
-                period_ns: timestamp_period,
-                features,
-            });
+        // A device whose timestamps have no period times frames on the CPU clock.
+        let timing = config.collect_gpu_stats.then_some(TimingSupport {
+            period_ns: timestamp_period,
+            features: if timestamp_period > 0.0 {
+                features
+            } else {
+                wgpu::Features::empty()
+            },
+        });
         Self {
             gpu: Gpu::new(device, queue),
             staging_belt,
             gradient,
             quad,
+            backdrops,
             mesh,
             image,
             image_store,
@@ -348,6 +363,7 @@ impl WgpuBackend {
             draw,
             MainPass {
                 color_view,
+                color: via_backbuffer.map_or(surface_texture, Backbuffer::texture),
                 stencil_view,
                 clear: clear_color,
                 scissors: &repaint_scissors,
@@ -357,7 +373,7 @@ impl WgpuBackend {
 
         if let Some(bb) = via_backbuffer {
             if let Some(t) = draw.timings {
-                t.copy_out_begin(&mut encoder);
+                t.encoder_mark(&mut encoder, Mark::CopyOutStart);
             }
             if target.takes_copy() {
                 bb.copy_onto(&mut encoder, surface_texture);
@@ -368,7 +384,7 @@ impl WgpuBackend {
                 bb.draw_onto(&mut encoder, view, &draw.fmt.blit);
             }
             if let Some(t) = draw.timings {
-                t.copy_out_end(&mut encoder);
+                t.encoder_mark(&mut encoder, Mark::CopyOutEnd);
             }
         }
 
@@ -380,14 +396,14 @@ impl WgpuBackend {
         }
 
         if let Some(t) = self.gpu_timings.get_mut(&owner) {
-            t.resolve(&mut encoder);
+            t.finish(&mut encoder);
         }
 
         self.staging_belt.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
 
         if let Some(t) = self.gpu_timings.get_mut(&owner) {
-            t.after_submit(&self.gpu.device, stats);
+            t.after_submit(&self.gpu, stats);
         }
 
         let frame = self.text.end_frame();
@@ -459,6 +475,15 @@ impl WgpuBackend {
             self.quad
                 .upload_clear(&mut ctx, buffer.display.physical.as_vec2(), clear);
         }
+        // Every frame, so a pane that left frees its cached result.
+        self.backdrops.prepare(
+            &mut ctx,
+            BackdropFrame {
+                buffer,
+                owner,
+                format: targets.surface.format(),
+            },
+        );
 
         {
             tracy::zone!(
@@ -519,18 +544,19 @@ impl WgpuBackend {
         }
     }
 
-    /// Open the main render pass against the backbuffer and walk the schedule once
-    /// per damage rect (once, unscissored, on Full): one `begin_render_pass`, one stencil
-    /// `LoadOp::Clear(0)`, one color load.
+    /// The main pass, broken at the barrier of each pane that captures: the pass ends, the pane's
+    /// footprint is copied out of the target into its capture and blurred, and the next pass
+    /// loads the target and paints on. Each pass walks the schedule once per damage rect (once,
+    /// unscissored, on Full), and only the first clears.
     ///
     /// Every walk leaves the stencil clean: one ending with a mask stamped emits a tail
     /// clear under the stamp's scissor. That, not rect disjointness, keeps one rect's
     /// stencil writes from a later rect's reads, since `RenderPlan::AA_PADDING` can make
     /// disjoint rects' padded scissors overlap.
     ///
-    /// Host CPU time for all of it, including the end-of-pass replay on `pass`'s drop,
-    /// publishes to [`GpuPassStats::last_main_pass_cpu`]; it scales with draw-step count
-    /// and is what the `record_pass` benchmark reads.
+    /// Host CPU time for all of it, including each pass's end-of-pass replay on drop, publishes
+    /// to [`GpuPassStats::last_main_pass_cpu`]; it scales with draw-step count and is what the
+    /// `record_pass` benchmark reads.
     fn run_main_pass(
         &self,
         draw: FrameDraw<'_>,
@@ -538,17 +564,73 @@ impl WgpuBackend {
         encoder: &mut wgpu::CommandEncoder,
     ) {
         tracy::zone!();
+        debug_assert_eq!(
+            target.stencil_view.is_some(),
+            draw.masks.is_some(),
+            "the mask plan rides exactly the passes with a stencil attachment",
+        );
+        let started = Instant::now();
+        let mut from = 0;
+        let mut opened = false;
+        for (pane, row) in draw.buffer.backdrops.iter().enumerate() {
+            if !row.capture {
+                continue;
+            }
+            // Panes that share a barrier share the break.
+            if row.barrier > from || !opened {
+                let segment = if opened {
+                    MainSegment::Inner
+                } else {
+                    MainSegment::First
+                };
+                self.run_main_segment(draw, target, segment, (from, Some(row.barrier)), encoder);
+                opened = true;
+                from = row.barrier;
+            }
+            let job = self
+                .backdrops
+                .job(pane)
+                .expect("a pane that captures has a blur");
+            let mark = |encoder: &mut wgpu::CommandEncoder, phase| {
+                if let Some(t) = draw.timings {
+                    t.encoder_mark(encoder, Mark::Backdrop { pane: job, phase });
+                }
+            };
+            mark(encoder, BackdropPhase::CaptureStart);
+            self.backdrops
+                .copy_capture(encoder, job, target.color, row.footprint);
+            mark(encoder, BackdropPhase::BlurStart);
+            self.backdrops.encode_blur(encoder, job);
+            mark(encoder, BackdropPhase::BlurEnd);
+        }
+        let segment = if opened {
+            MainSegment::Last
+        } else {
+            MainSegment::Whole
+        };
+        self.run_main_segment(draw, target, segment, (from, None), encoder);
+        draw.stats
+            .record_main_pass_cpu_ns(started.elapsed().as_nanos() as u64);
+    }
+
+    /// One pass of the main pass: the groups from `from` to `barrier` (to the last with `None`),
+    /// once per damage rect. Timestamps open with the first pass and close with the last, the
+    /// breaks between count in no category, and each pass adds its pipeline statistics.
+    fn run_main_segment(
+        &self,
+        draw: FrameDraw<'_>,
+        target: MainPass<'_>,
+        segment: MainSegment,
+        (from, barrier): (u32, Option<u32>),
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
         let MainPass {
             color_view,
+            color: _,
             stencil_view,
             clear,
             scissors,
         } = target;
-        debug_assert_eq!(
-            stencil_view.is_some(),
-            draw.masks.is_some(),
-            "the mask plan rides exactly the passes with a stencil attachment",
-        );
         let depth_stencil_attachment =
             stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
                 view,
@@ -560,59 +642,53 @@ impl WgpuBackend {
                 }),
             });
         let load_op = match scissors {
-            RepaintScissors::Full => wgpu::LoadOp::Clear(clear),
-            RepaintScissors::Partial(_) => wgpu::LoadOp::Load,
+            RepaintScissors::Full if segment.opens() => wgpu::LoadOp::Clear(clear),
+            _ => wgpu::LoadOp::Load,
         };
         // The descriptor covers basic mode; with `TIMESTAMP_QUERY_INSIDE_PASSES` we write inline
-        // via `pass_begin` / `pass_end` for one gap-free stream.
-        let timestamp_writes = draw.timings.and_then(GpuTimings::pass_writes);
-        let started = Instant::now();
-        // Scoped so `pass` drops, replaying its commands, inside the measured window.
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("palantir.renderer.main.pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: color_view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: load_op,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment,
-                timestamp_writes,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            if let Some(t) = draw.timings {
-                t.pass_begin(&mut pass);
-                t.begin_pipeline_stats(&mut pass);
+        // via `segment_begin` / `segment_end` for one gap-free stream.
+        let timestamp_writes = draw.timings.and_then(|t| t.pass_writes(segment));
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.renderer.main.pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: color_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: load_op,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment,
+            timestamp_writes,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        if let Some(t) = draw.timings {
+            t.segment_begin(&mut pass, segment);
+        }
+        // One for the pass: what a scissor replay leaves bound stays bound for the next.
+        let mut binder = MainBinder::new(draw.viewport);
+        match scissors {
+            RepaintScissors::Full => {
+                self.render_groups(draw, &mut binder, &mut pass, None, from, barrier);
             }
-            // One for the pass: what a scissor replay leaves bound stays bound for the next.
-            let mut binder = MainBinder::new(draw.viewport);
-            match scissors {
-                RepaintScissors::Full => self.render_groups(draw, &mut binder, &mut pass, None),
-                RepaintScissors::Partial(rects) => {
-                    let rect_count = rects.len();
-                    for (i, r) in rects.iter().enumerate() {
-                        tracing::trace!(
-                            rect = i,
-                            of = rect_count,
-                            scissor = ?r,
-                            "wgpu_backend.submit.pass.partial_rect"
-                        );
-                        self.render_groups(draw, &mut binder, &mut pass, Some(r));
-                    }
+            RepaintScissors::Partial(rects) => {
+                let rect_count = rects.len();
+                for (i, r) in rects.iter().enumerate() {
+                    tracing::trace!(
+                        rect = i,
+                        of = rect_count,
+                        scissor = ?r,
+                        "wgpu_backend.submit.pass.partial_rect"
+                    );
+                    self.render_groups(draw, &mut binder, &mut pass, Some(r), from, barrier);
                 }
             }
-            if let Some(t) = draw.timings {
-                t.end_pipeline_stats(&mut pass);
-                t.pass_end(&mut pass);
-            }
         }
-        draw.stats
-            .record_main_pass_cpu_ns(started.elapsed().as_nanos() as u64);
+        if let Some(t) = draw.timings {
+            t.segment_end(&mut pass, segment);
+        }
     }
 
     /// Dispatch each step of the per-frame schedule ([`Schedule::for_each_step`]) to the wgpu
@@ -624,6 +700,8 @@ impl WgpuBackend {
         binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         damage_scissor: Option<URect>,
+        from: u32,
+        barrier: Option<u32>,
     ) {
         tracy::zone!();
         let FrameDraw {
@@ -665,6 +743,8 @@ impl WgpuBackend {
             buffer,
             damage_scissor,
             masks,
+            from,
+            barrier,
         };
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => {
@@ -706,8 +786,13 @@ impl WgpuBackend {
                 mark(pass, BatchKind::Quads);
                 debug_marker::push(pass, "quads");
                 for run in QuadPipeline::quad_runs(&buffer.quads, range) {
-                    self.quad
-                        .bind(binder, pass, quad(fmt.quad.color(run.key).select(stencil)));
+                    let binding = quad(fmt.quad.color(run.key).select(stencil));
+                    if run.key == QuadForm::Backdrop {
+                        self.quad
+                            .bind_backdrop(binder, pass, binding, self.backdrops.group());
+                    } else {
+                        self.quad.bind(binder, pass, binding);
+                    }
                     self.quad.draw(pass, run.instances);
                 }
                 debug_marker::pop(pass);
@@ -899,6 +984,7 @@ impl WgpuBackend {
     )]
     pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
         self.gpu_view_targets.retire_owner(owner);
+        self.backdrops.retire(owner);
         self.gpu_timings.remove(&owner);
     }
 }
@@ -957,6 +1043,11 @@ pub(crate) mod internals {
 
         pub(crate) fn gpu_image_cache_len(&self) -> usize {
             self.image_store.resident()
+        }
+
+        /// The blurs the last frame ran, one per pane whose cached result went stale.
+        pub(crate) const fn backdrop_blurs(&self) -> usize {
+            self.backdrops.blurs()
         }
     }
 }

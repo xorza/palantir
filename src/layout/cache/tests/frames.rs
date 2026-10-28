@@ -1,6 +1,7 @@
 //! Cache × full-frame integration: the warm-cache frame must reproduce the cold layout (and encoded commands).
 
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::text::extent::TextExtent;
 use crate::text::font_scope::internals::INTER;
 use crate::text::key::TextShapeKey;
@@ -403,6 +404,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                         border: Stroke::new(RgbaF32::srgb(0.3, 0.34, 0.42), 1.0),
                         corners: Corners::all(4.0),
                         shadow: Shadow::NONE,
+                        backdrop_filter: BackdropFilter::NONE,
                     })
                     .show(ui, |ui| {
                         Grid::new()

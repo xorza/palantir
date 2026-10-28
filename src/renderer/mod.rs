@@ -5,6 +5,7 @@ pub(crate) mod error;
 pub(crate) mod frontend;
 pub(crate) mod gpu_paint;
 pub(crate) mod gradient_atlas;
+pub(crate) mod pane_captures;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;
 pub(crate) mod render_owner_id;

@@ -2,6 +2,7 @@
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::paint::PaintArena;
+use crate::cascade::pane_row::PaneRow;
 use crate::common::content_hash::ContentHash;
 use crate::common::non_max_u32::NonMaxU32;
 use crate::primitives::geometry::rect::Rect;
@@ -82,6 +83,12 @@ pub(crate) struct PlaneCascade {
     /// nodes hold a row is structural, so the incremental walk rewrites a moved
     /// node's row through this.
     pub(super) hit_rows: Vec<Option<NonMaxU32>>,
+    /// Per-node scale of the transform the node's shapes paint under, which a pane's blur reach
+    /// scales by; kept, as the paint rows are, for a node the incremental walk skips.
+    pub(super) shape_scales: Vec<f32>,
+    /// The plane's backdrop panes in paint order, rebuilt after every walk from the tree's panes
+    /// and the rows above.
+    pub(crate) panes: Vec<PaneRow>,
     /// Offset of this plane's first `EntryRow` in
     /// [`Cascade::entries`](crate::cascade::Cascade::entries), fixed for the
     /// plane's run and set at `reset_for`. A full rebuild pushes one entry per
@@ -110,6 +117,7 @@ impl PlaneCascade {
         self.arena_hashes.resize(n_nodes, ContentHash::default());
         self.paint_rects.resize(n_nodes, Rect::ZERO);
         self.hit_rows.resize(n_nodes, None);
+        self.shape_scales.resize(n_nodes, 1.0);
         self.entries_base = entries_base;
     }
 }

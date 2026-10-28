@@ -234,6 +234,14 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
+        label: "materials",
+        blurb: "Backdrop filters: blur, frosted glass and glass, as shapes and as chrome.",
+        keys: &[],
+        flow: Flow::Scroll,
+        build: |ui, _| pages::materials::build(ui),
+    },
+    Page {
+        group: Group::Paint,
         label: "icons",
         blurb: "SVG icons rasterized at the exact physical size they land on.",
         keys: &["Ctrl +", "Ctrl −"],

@@ -5,6 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -21,13 +22,15 @@ pub(crate) enum QuadShape {
     /// Filled or bordered rounded rectangle, or inverse window, by `kind`.
     /// `local_rect = None` covers the owner's arranged rect; `Some(r)` paints
     /// in owner-relative coords, in the slot it was pushed in, under the
-    /// owner's clip but outside its pan transform.
+    /// owner's clip but outside its pan transform. A `backdrop` other than
+    /// `NONE` makes it a pane over the pixels painted before it.
     Rect {
         kind: RectKind,
         local_rect: Option<Rect>,
         corners: Corners,
         fill: ShapeBrush,
         border: ShapeStroke,
+        backdrop: LoweredBackdrop,
     },
     /// Gaussian-blurred rounded rect (drop or inset shadow). `local_rect =
     /// None` shadows the owner's arranged rect; the composer shifts a drop
@@ -80,8 +83,15 @@ impl NanCheck for QuadShape {
                 corners,
                 fill,
                 border,
+                backdrop,
                 ..
-            } => local_rect.has_nan() || corners.has_nan() || fill.has_nan() || border.has_nan(),
+            } => {
+                local_rect.has_nan()
+                    || corners.has_nan()
+                    || fill.has_nan()
+                    || border.has_nan()
+                    || backdrop.has_nan()
+            }
             Self::Shadow {
                 local_rect,
                 corners,
