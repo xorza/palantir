@@ -9,7 +9,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::damage::node_snapshot::NodeSnapshot;
 use crate::damage::region::{CollapsedDamage, DamageRegion};
-use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
+use crate::gpu::raster::raster_atlas::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::input::interaction::response_state::ResponseState;
 use crate::input_state::target_scroll_delta::TargetScrollDelta;
 use crate::layout::cache::measure_snapshot::MeasureSnapshot;
@@ -201,24 +201,25 @@ const PINS: &[Pin] = &[
     pin::<NodeSnapshot>("damage::node_snapshot::NodeSnapshot", 40, 8),
     pin::<PushClipPayload>("payload::PushClipPayload", 24, 4),
     pin::<DrawQuadPayload>("payload::DrawQuadPayload", 76, 4),
-    pin::<DrawTextPayload>("payload::DrawTextPayload", 64, 8),
+    pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
     pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 56, 4),
-    pin::<DrawMeshPayload>("payload::DrawMeshPayload", 48, 4),
-    pin::<DrawImagePayload>("payload::DrawImagePayload", 56, 8),
+    pin::<DrawMeshPayload>("payload::DrawMeshPayload", 64, 4),
+    pin::<DrawImagePayload>("payload::DrawImagePayload", 72, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
-    pin::<DrawIconPayload>("payload::DrawIconPayload", 32, 4),
-    pin::<Quad>("renderer::Quad", 60, 4),
+    pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
+    pin::<Quad>("renderer::Quad", 64, 4),
     pin::<CurveInstance>("renderer::CurveInstance", 76, 4),
-    pin::<MeshInstance>("renderer::MeshInstance", 20, 4),
-    pin::<ImageInstance>("renderer::ImageInstance", 44, 4),
+    pin::<MeshInstance>("renderer::MeshInstance", 24, 4),
+    pin::<ImageInstance>("renderer::ImageInstance", 48, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
     pin::<RasterQuad>("atlas::RasterQuad", 28, 4),
+    pin::<SpunRasterQuad>("atlas::SpunRasterQuad", 44, 4),
     pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
-    pin::<TextDrawRow>("renderer::TextDrawRow", 72, 8),
-    pin::<IconDrawRow>("renderer::IconDrawRow", 32, 4),
+    pin::<TextDrawRow>("renderer::TextDrawRow", 88, 8),
+    pin::<IconDrawRow>("renderer::IconDrawRow", 48, 4),
     pin::<ImageDrawRow>("renderer::ImageDrawRow", 56, 8),
-    pin::<MeshDrawRow>("renderer::MeshDrawRow", 36, 4),
+    pin::<MeshDrawRow>("renderer::MeshDrawRow", 40, 4),
 ];
 
 #[test]

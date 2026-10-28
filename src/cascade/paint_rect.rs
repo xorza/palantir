@@ -189,7 +189,7 @@ impl PaintRectCtx<'_> {
             None => {}
         }
 
-        // The owner-local bound a stroked shape is damaged against: its recorded bbox, or the square it sweeps under a rotating paint anim (what the composer culls against). No angle is read.
+        // The owner-local bound a shape is damaged against: its own bound, or the square that bound sweeps under a rotating paint anim (what the composer culls against). No angle is read.
         let spun_if_animated = |bbox: Rect, shape_idx: u32| {
             if tree.paint_animations.rotates(shape_idx) {
                 bbox.spun_cover(layout_rect.spin_pivot())
@@ -228,7 +228,10 @@ impl PaintRectCtx<'_> {
                         let inked = anchor
                             .bbox_local(layout_rect.size, padding, shaped.extent.size)
                             .inflated_by(shaped.extent.ink);
-                        inflate_text_damage(shape.to_screen(inked, None), inked.size, shape_clip)
+                        // A turned run's slack turns with it, so it pads the swept square by the
+                        // slack of that square: no slack vector reaches past it.
+                        let swept = spun_if_animated(inked, idx);
+                        inflate_text_damage(shape.to_screen(swept, None), swept.size, shape_clip)
                     }
                     ShapeRecord::Polyline {
                         width,
@@ -265,18 +268,19 @@ impl PaintRectCtx<'_> {
                     // A triangle's bbox carries its corner radius but not the physical AA fringe, added here like the stroked kinds above.
                     ShapeRecord::Quad(QuadShape::Triangle { bbox, .. }) => clip_screen(
                         shape
-                            .to_screen(*bbox, None)
+                            .to_screen(spun_if_animated(*bbox, idx), None)
                             .inflated(AA_HALF_WIDTH / display_scale),
                         shape_clip,
                     ),
                     // These kinds resolve their whole bound in owner-local space, so one lift finishes each. A quad's shadow halo is inside `QuadShape::bbox_local`.
-                    ShapeRecord::Quad(quad) => {
-                        shape.to_screen(quad.bbox_local(layout_rect.size), shape_clip)
-                    }
+                    ShapeRecord::Quad(quad) => shape.to_screen(
+                        spun_if_animated(quad.bbox_local(layout_rect.size), idx),
+                        shape_clip,
+                    ),
                     ShapeRecord::Mesh {
                         bbox, local_rect, ..
                     } => shape.to_screen(
-                        record::mesh_paint_bbox_local(*bbox, *local_rect),
+                        spun_if_animated(record::mesh_paint_bbox_local(*bbox, *local_rect), idx),
                         shape_clip,
                     ),
                     // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::None`.
@@ -286,8 +290,11 @@ impl PaintRectCtx<'_> {
                         fit,
                         ..
                     } => shape.to_screen(
-                        fit.resolve(owner_local.resolve_local(*local_rect), source.intrinsic())
-                            .rect,
+                        spun_if_animated(
+                            fit.resolve(owner_local.resolve_local(*local_rect), source.intrinsic())
+                                .rect,
+                            idx,
+                        ),
                         shape_clip,
                     ),
                     ShapeRecord::Icon {
@@ -296,7 +303,10 @@ impl PaintRectCtx<'_> {
                         fit,
                         ..
                     } => shape.to_screen(
-                        fit.resolve(owner_local.resolve_local(*local_rect), handle.view_box()),
+                        spun_if_animated(
+                            fit.resolve(owner_local.resolve_local(*local_rect), handle.view_box()),
+                            idx,
+                        ),
                         shape_clip,
                     ),
                 };

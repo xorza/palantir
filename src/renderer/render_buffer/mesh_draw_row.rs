@@ -25,12 +25,14 @@ pub(crate) struct MeshDrawRow {
     pub(crate) instance: MeshInstance,
 }
 
-/// Per-mesh GPU state in a `step_mode: Instance` buffer: `physical = pos * scale + translate`, `out_color = vertex.color * tint`.
+/// Per-mesh GPU state in a `step_mode: Instance` buffer: `physical = rotor_scale ⊗ pos + translate`,
+/// the complex product turning and scaling at once, and `out_color = vertex.color * tint`.
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct MeshInstance {
     pub(crate) translate: Vec2,
-    pub(crate) scale: f32,
+    /// `scale · (cos, sin)` of the turn; `(scale, 0)` unturned.
+    pub(crate) rotor_scale: Vec2,
     pub(crate) tint: RgbaF16,
 }

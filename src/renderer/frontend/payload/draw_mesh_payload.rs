@@ -3,6 +3,7 @@
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::payload::spin::Spin;
 use glam::Vec2;
 
 /// Mesh draw payload: owner-local spans into the window's [`RecordStore`] (`meshes`); the composer folds `origin` into the per-instance translate so the vertex stream stays content-stable.
@@ -16,6 +17,8 @@ pub(crate) struct DrawMeshPayload {
     pub(crate) tint: RgbaF16,
     pub(crate) vertices: Span,
     pub(crate) idxs: Span,
+    /// A paint animation's turn, its pivot relative to `origin`.
+    pub(crate) spin: Option<Spin>,
 }
 
 impl DrawMeshPayload {

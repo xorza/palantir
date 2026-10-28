@@ -380,7 +380,8 @@ impl QuadPipeline {
 /// Vertices per shadow instance: a 3×3 grid less the center, two triangles per cell.
 const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
-const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
+// Location 9 is the shadow pipeline's per-instance cutout tables, so the turn takes 10.
+const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = wgpu::vertex_attr_array![
     0 => Float32x2,
     1 => Float32x2,
     2 => Uint32x2,
@@ -390,6 +391,7 @@ const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array!
     6 => Uint32,
     7 => Uint32,
     8 => Uint32x2,
+    10 => Float32,
 ];
 
 // Compile-time guard: each attribute offset must match its `Quad` field; a reorder or same-size swap would mis-route data without changing the stride.
@@ -404,6 +406,7 @@ const _: () = {
     assert!(QUAD_INSTANCE_ATTRS[6].offset == offset_of!(Quad, fill_kind) as u64);
     assert!(QUAD_INSTANCE_ATTRS[7].offset == offset_of!(Quad, fill_lut_row) as u64);
     assert!(QUAD_INSTANCE_ATTRS[8].offset == offset_of!(Quad, fill_axis) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[9].offset == offset_of!(Quad, rotation) as u64);
 };
 
 #[cfg(feature = "internals")]

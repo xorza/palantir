@@ -386,7 +386,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             FillKind::SHADOW_DROP
         };
         assert_eq!(shadow.fill.kind, expected_kind, "{label}");
-        let QuadGeometry::Rect { rect, corners } = shadow.geometry else {
+        let QuadGeometry::Rect { rect, corners, .. } = shadow.geometry else {
             panic!("{label}: a shadow has rect geometry");
         };
         let expected = Rect {

@@ -4,10 +4,12 @@
 
 use crate::common::span::Span;
 use crate::gpu::raster::raster_atlas::internals::unallocated_dies_at;
+use crate::gpu::raster::raster_pass::RasterDraw;
 use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::raster::text_backend::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use glam::Vec2;
@@ -202,6 +204,80 @@ fn deferred_upload_keeps_batches_distinct() {
         assert_eq!(gb.dim, ga.dim);
         assert_eq!(gb.pos, [ga.pos[0], ga.pos[1] + 40]);
     }
+    rig.backend.tick_frame();
+}
+
+/// A turned run emits the quads its unturned twin does, from the same encoded template, into the
+/// turned buffer, each carrying the run's physical pivot and `(cos, sin)`; the unturned buffer gets
+/// none of them, a batch mixing both draws them in emission order, and a later unturned frame
+/// emits flat again.
+#[test]
+fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
+    let mut rig = TextRig::new();
+    let flat = rig.row("File", 16.8, Vec2::new(20.0, 20.0));
+    let spin = Spin {
+        pivot: Vec2::new(30.0, 25.0),
+        angle: 0.5,
+    };
+    let turned = TextDrawRow {
+        spin: Some(spin),
+        ..flat
+    };
+
+    rig.frame(1.0, &[slice::from_ref(&flat)]);
+    let unturned = rig.backend.pass.instances.clone();
+    assert_eq!(
+        unturned.len(),
+        4,
+        "'File' shapes to one glyph per character"
+    );
+    assert!(rig.backend.pass.spun.is_empty());
+    rig.backend.tick_frame();
+
+    rig.frame(1.0, &[slice::from_ref(&turned)]);
+    assert!(rig.backend.pass.instances.is_empty(), "nothing stays flat");
+    let rotor = Vec2::from_angle(0.5);
+    assert_eq!(rig.backend.pass.spun.len(), unturned.len());
+    for (spun, quad) in rig.backend.pass.spun.iter().zip(&unturned) {
+        assert_eq!(spun.quad.pos, quad.pos);
+        assert_eq!(spun.quad.uv_and_kind, quad.uv_and_kind);
+        assert_eq!((spun.pivot, spun.rotor), (spin.pivot, rotor));
+    }
+    rig.backend.tick_frame();
+
+    // A batch draws in emission order, back-to-back turned runs as one draw; a turned run that
+    // opens the next batch stays that batch's own.
+    let flat_low = rig.row("File", 16.8, Vec2::new(20.0, 60.0));
+    let turned_low = TextDrawRow {
+        spin: Some(spin),
+        ..flat_low
+    };
+    rig.frame(
+        1.0,
+        &[
+            &[flat, turned, turned_low, flat_low],
+            slice::from_ref(&turned),
+        ],
+    );
+    let draws = |batch_idx| {
+        let mut draws = Vec::new();
+        rig.backend.pass.for_each_draw(batch_idx, |d| draws.push(d));
+        draws
+    };
+    assert_eq!(
+        draws(0),
+        [
+            RasterDraw::Flat(Span::new(0, 4)),
+            RasterDraw::Spun(Span::new(0, 8)),
+            RasterDraw::Flat(Span::new(4, 4)),
+        ]
+    );
+    assert_eq!(draws(1), [RasterDraw::Spun(Span::new(8, 4))]);
+    rig.backend.tick_frame();
+
+    rig.frame(1.0, &[slice::from_ref(&flat)]);
+    assert_eq!(rig.backend.pass.instances.len(), unturned.len());
+    assert!(rig.backend.pass.spun.is_empty());
     rig.backend.tick_frame();
 }
 

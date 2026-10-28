@@ -297,60 +297,111 @@ fn button_unhover_damage_covers_only_the_button() {
     );
 }
 
-/// A spinning stroke is damaged against the square it sweeps, matching `StrokeBounds::new`, so `extend_predamaged` covers every angle.
+/// A turning shape of each kind that turns is damaged against the square its bound sweeps,
+/// matching what the composer culls against, so `extend_predamaged` covers every angle.
 ///
-/// Fixture: 80x40 owner, line (10,10)-(70,30), pivot (40,20), far endpoint r = sqrt(30^2 + 10^2) = 31.623. A quarter turn puts it at pivot + (-10,30), outside the owner box. The pad is 0.5 half-width plus 0.5 fringe (butt cap, no join): 1 per side. Time zero, so the cascade covers the sweep from the registration alone.
+/// Fixture: 80x40 owner, pivot (40,20). Each shape spans (10,10)-(70,30): a line between those
+/// corners, a triangle and a mesh with one vertex on each, a rect, and six mono glyphs 10 wide at
+/// line height 20. The farthest corner of that box is r = sqrt(30^2 + 10^2) = 31.623 from the
+/// pivot, and a quarter turn puts (70,30) at pivot + (-10,30), outside the owner box. Pads past the
+/// square: the line's half-width plus its fringe, 0.5 + 0.5 = 1 (butt cap, no join); the
+/// triangle's AA fringe, 0.5 at scale 1; none for the mesh and the rect; the text's snap slack,
+/// which turns with it, so that of the square: 2r x 0.0025 = 0.158 on every side, where the
+/// unturned run's (60 x 0.0025, 20 x 0.0025) = (0.15, 0.05) would leave a turned corner out. Time zero, so the cascade covers the sweep from the registration alone.
 #[test]
-fn a_spun_stroke_is_damaged_against_the_square_it_sweeps() {
+fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
+    use crate::primitives::geometry::mesh::Mesh;
     use crate::shape::paint_animation::PaintAnimation;
     use crate::shape::paint_animation::PaintRepeat;
     use crate::shape::paint_animation::curves;
     use std::f32::consts::TAU;
     use std::time::Duration;
 
+    #[derive(Clone, Copy, Debug)]
+    enum Kind {
+        Line,
+        Triangle,
+        Mesh,
+        Rect,
+        Text,
+    }
+
+    let (lo, hi) = (Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0));
+    let corner = Vec2::new(10.0, 30.0);
+    let mut mesh = Mesh::with_capacity(3, 3);
+    let vertices = [lo, hi, corner].map(|pos| mesh.vertex(pos, RED));
+    mesh.triangle(vertices[0], vertices[1], vertices[2]);
     let owner_id = WidgetId::from_hash("spin_owner");
-    let mut h = UiHarness::cold(DISPLAY.physical);
-    frame(&mut h, |ui| {
-        Panel::hstack()
-            .id(WidgetId::from_hash("root"))
-            .show(ui, |ui| {
-                Panel::zstack()
-                    .id(owner_id)
-                    .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
-                    .show(ui, |ui| {
-                        ui.add_shape_animated(
-                            Shape::polyline(
-                                &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
-                                Stroke::new(RED, 1.0),
-                            ),
-                            PaintAnimation::turn(0.0, 1.0)
+    let r = 30.0_f32.hypot(10.0);
+    for (kind, pad) in [
+        (Kind::Line, 1.0),
+        (Kind::Triangle, 0.5),
+        (Kind::Mesh, 0.0),
+        (Kind::Rect, 0.0),
+        (Kind::Text, 2.0 * r * 0.0025),
+    ] {
+        let mut h = UiHarness::cold(DISPLAY.physical);
+        frame(&mut h, |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id(owner_id)
+                        .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
+                        .show(ui, |ui| {
+                            let turn = PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs_f32(TAU / 1.0))
                                 .with_repeat(PaintRepeat::Forever)
-                                .with_curve(curves::linear),
-                        );
-                    });
-            });
-    });
+                                .with_curve(curves::linear);
+                            match kind {
+                                Kind::Line => ui.add_shape_animated(
+                                    Shape::polyline(&[lo, hi], Stroke::new(RED, 1.0)),
+                                    turn,
+                                ),
+                                Kind::Triangle => ui.add_shape_animated(
+                                    Shape::triangle(lo, hi, corner).fill(RED),
+                                    turn,
+                                ),
+                                Kind::Mesh => ui.add_shape_animated(Shape::mesh(&mesh), turn),
+                                Kind::Rect => ui.add_shape_animated(
+                                    Shape::rect(Rect::from_min_max(lo, hi)).fill(RED),
+                                    turn,
+                                ),
+                                Kind::Text => {
+                                    let label = ui.intern("abcdef");
+                                    ui.add_shape_animated(
+                                        Shape::text(label, GlyphFont::new(20.0)).at_origin(lo),
+                                        turn,
+                                    );
+                                }
+                            }
+                        });
+                });
+        });
 
-    let owner = h.rect(owner_id).expect("the owner arranged");
-    let node_idx = h.ui.cascade().by_id[&owner_id].node.idx();
-    let span = h.ui.cascade().planes[Plane::MAIN].paint_arena.node_spans[node_idx];
-    assert_eq!(span.len, 1, "the owner paints the one animated shape");
-    let row = h.ui.cascade().planes[Plane::MAIN].paint_arena.rows[span.start as usize].screen;
+        let owner = h.rect(owner_id).expect("the owner arranged");
+        let node_idx = h.ui.cascade().by_id[&owner_id].node.idx();
+        let span = h.ui.cascade().planes[Plane::MAIN].paint_arena.node_spans[node_idx];
+        assert_eq!(
+            span.len, 1,
+            "{kind:?}: the owner paints the one animated shape"
+        );
+        let row = h.ui.cascade().planes[Plane::MAIN].paint_arena.rows[span.start as usize].screen;
 
-    let pivot = owner.min + Vec2::new(40.0, 20.0);
-    let want = Rect::square_about(pivot, 30.0_f32.hypot(10.0)).inflated(1.0);
-    assert_eq!(row, want, "the damage is the swept square");
-    let quarter_turn = pivot + Vec2::new(-10.0, 30.0);
-    assert!(
-        row.contains(quarter_turn),
-        "damaged {row:?} misses the sweep"
-    );
-    assert!(
-        !owner.contains(quarter_turn),
-        "the fixture's sweep must leave the owner box, or it proves nothing"
-    );
+        let pivot = owner.min + Vec2::new(40.0, 20.0);
+        let want = Rect::square_about(pivot, r).inflated(pad);
+        assert_eq!(row, want, "{kind:?}: the damage is the swept square");
+        let quarter_turn = pivot + Vec2::new(-10.0, 30.0);
+        assert!(
+            row.contains(quarter_turn),
+            "{kind:?}: damaged {row:?} misses the sweep"
+        );
+        assert!(
+            !owner.contains(quarter_turn),
+            "the fixture's sweep must leave the owner box, or it proves nothing"
+        );
+    }
 }
 
 /// `NodeSnapshot.paint_span` has one entry per Paint row (chrome at row 0, then direct shapes), mirroring `Cascade::paint_arenas`.

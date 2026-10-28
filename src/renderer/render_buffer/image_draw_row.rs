@@ -37,4 +37,6 @@ pub(crate) struct ImageInstance {
     pub(crate) tint: RgbaF16,
     /// Tile wrap, min/mag nearest sampling and minification tap mode.
     pub(crate) flags: ImageFlags,
+    /// A paint animation's turn about `rect`'s center, in radians; `0` for none.
+    pub(crate) rotation: f32,
 }

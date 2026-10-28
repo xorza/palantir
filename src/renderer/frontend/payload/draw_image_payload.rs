@@ -3,6 +3,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 
@@ -20,6 +21,8 @@ pub(crate) struct DrawImagePayload {
     /// [`ImageInstance::flags`](crate::renderer::render_buffer::image_draw_row::ImageInstance).
     /// [`ImageFlags::NONE`] takes one bilinear tap.
     pub(crate) flags: ImageFlags,
+    /// A paint animation's turn, its pivot in the same logical frame as `rect`.
+    pub(crate) spin: Option<Spin>,
 }
 
 /// One image draw as [`PaintSink::image`] takes it: the payload plus the paint callback of a `GpuView`.

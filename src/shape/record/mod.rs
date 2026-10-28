@@ -155,11 +155,6 @@ impl TextAnchor {
 }
 
 impl ShapeRecord {
-    /// Whether a turn paint animation rotates this record: the stroke pipelines alone read one.
-    pub(crate) const fn rotates(&self) -> bool {
-        matches!(self, Self::Polyline { .. } | Self::Curve { .. })
-    }
-
     /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::add`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
     ///
     /// The schedule is `discriminant → per-variant fields` at every nesting level (`mem::discriminant`, so it cannot drift from the enum). Nothing is persisted, so variants can be added or reordered freely. `Polyline` and `Mesh` hand over a `content_hash` their lowering computed, as their payload bytes live in the `RecordStore` this never sees.

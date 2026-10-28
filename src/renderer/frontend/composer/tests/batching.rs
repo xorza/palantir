@@ -24,7 +24,7 @@ use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::renderer::frontend::payload::stroke_bounds::Spin;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::record::ColorMode;

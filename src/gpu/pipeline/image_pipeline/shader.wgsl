@@ -50,6 +50,8 @@ struct VsIn {
     @location(3) uv_size:   vec2<f32>,
     @location(4) tint:      vec4<f32>,
     @location(5) flags:     u32,
+    // A paint animation's turn about the rect's center, in radians; 0 for none.
+    @location(6) rotation:  f32,
 };
 
 struct VsOut {
@@ -59,13 +61,33 @@ struct VsOut {
     @location(2) @interpolate(flat) flags: u32,
     // The UV rect, `(min, max)`, which a `FLAG_CLAMP_TO_UV` sample stays inside.
     @location(3) @interpolate(flat) uv_rect: vec4<f32>,
+    // A turned image's position in its own unturned frame, relative to its
+    // center, and its half size: `fs` fades the edges by them. Unread
+    // unturned, where the rect's edges are the drawn quad's.
+    @location(4) local: vec2<f32>,
+    @location(5) @interpolate(flat) half_size: vec2<f32>,
+    @location(6) @interpolate(flat) turned: u32,
 };
 
 @vertex
 fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
-    let c = CORNERS[vi];
+    var c = CORNERS[vi];
     var out: VsOut;
-    out.clip = clip_from_px(in.rect_min + c * in.rect_size);
+    let half = in.rect_size * 0.5;
+    var at = in.rect_min + c * in.rect_size;
+    if (in.rotation != 0.0) {
+        // A turned edge falls between pixels, so the quad reaches
+        // `AA_HALF_WIDTH` past it in the image's own frame, where a rotation
+        // keeps distances, and the uv runs on with it.
+        c = (c * in.rect_size + (c * 2.0 - 1.0) * AA_HALF_WIDTH) / max(in.rect_size, vec2<f32>(1e-6));
+        let l = c * in.rect_size - half;
+        let cs = vec2<f32>(cos(in.rotation), sin(in.rotation));
+        at = in.rect_min + half + vec2<f32>(cs.x * l.x - cs.y * l.y, cs.y * l.x + cs.x * l.y);
+    }
+    out.clip = clip_from_px(at);
+    out.local = c * in.rect_size - half;
+    out.half_size = half;
+    out.turned = u32(in.rotation != 0.0);
     out.uv   = in.uv_min + c * in.uv_size;
     out.tint = in.tint;
     out.flags = in.flags;
@@ -264,5 +286,11 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
 
     // `s` is premultiplied already; the tint is not, so it is premultiplied
     // here and the two multiply as the premultiplied values they both are.
-    return s * premultiply(in.tint.rgb, in.tint.a);
+    var out = s * premultiply(in.tint.rgb, in.tint.a);
+    if (in.turned != 0u) {
+        // Distance outside the nearer edge on each axis, a box's ramp.
+        let d = abs(in.local) - in.half_size;
+        out *= edge_coverage(d.x) * edge_coverage(d.y);
+    }
+    return out;
 }

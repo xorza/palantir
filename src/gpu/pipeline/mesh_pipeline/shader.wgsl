@@ -13,10 +13,11 @@ struct VsIn {
     // pipeline's `PREMULTIPLIED_ALPHA_BLENDING` blend state. See AGENTS.md
     // "Color pipeline" for the shared contract.
     @location(1) color: vec4<f32>,
-    // Per-instance transform + tint. `physical = pos * scale + translate`;
+    // Per-instance transform + tint. `physical = rotor_scale ⊗ pos + translate`,
+    // a complex product that turns and scales at once;
     // `out_color = premultiply(color * tint)`.
     @location(2) translate: vec2<f32>,
-    @location(3) scale: f32,
+    @location(3) rotor_scale: vec2<f32>,
     @location(4) tint: vec4<f32>,
 };
 
@@ -28,7 +29,9 @@ struct VsOut {
 @vertex
 fn vs(in: VsIn) -> VsOut {
     var out: VsOut;
-    out.clip = clip_from_px(in.pos * in.scale + in.translate);
+    let rs = in.rotor_scale;
+    let turned = vec2<f32>(rs.x * in.pos.x - rs.y * in.pos.y, rs.y * in.pos.x + rs.x * in.pos.y);
+    out.clip = clip_from_px(turned + in.translate);
     let straight = vec4<f32>(srgb_to_linear(in.color.rgb), in.color.a) * in.tint;
     out.color = premultiply(straight.rgb, straight.a);
     return out;

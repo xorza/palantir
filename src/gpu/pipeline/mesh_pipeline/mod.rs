@@ -198,14 +198,14 @@ const fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
 // vertex color.
 const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
     2 => Float32x2,
-    3 => Float32,
+    3 => Float32x2,
     4 => Float16x4,
 ];
 
 const _: () = {
     use std::mem::offset_of;
     assert!(MESH_INSTANCE_ATTRS[0].offset == offset_of!(MeshInstance, translate) as u64);
-    assert!(MESH_INSTANCE_ATTRS[1].offset == offset_of!(MeshInstance, scale) as u64);
+    assert!(MESH_INSTANCE_ATTRS[1].offset == offset_of!(MeshInstance, rotor_scale) as u64);
     assert!(MESH_INSTANCE_ATTRS[2].offset == offset_of!(MeshInstance, tint) as u64);
 };
 

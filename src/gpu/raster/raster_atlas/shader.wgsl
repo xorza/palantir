@@ -75,6 +75,59 @@ fn vs(in: VertexIn) -> VertexOut {
     return out;
 }
 
+// A turned quad: `VertexIn` plus its run's turn about the physical `pivot`,
+// `rotor = (cos, sin)` (`SpunRasterQuad`).
+struct SpunIn {
+    @builtin(vertex_index) idx: u32,
+    @location(0) pos: vec2<i32>,
+    @location(1) dim: vec2<u32>,
+    @location(2) size: vec2<u32>,
+    @location(3) uv_and_kind: u32,
+    @location(4) color: vec4<f32>,
+    @location(5) pivot: vec2<f32>,
+    @location(6) rotor: vec2<f32>,
+}
+
+// `VertexOut`'s fields, then the quad's own unturned frame: the position
+// relative to its center and its half size, which `fs_spun` fades the edges
+// by.
+struct SpunOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
+    @location(1) @interpolate(flat) flags: u32,
+    @location(2) texel: vec2<f32>,
+    @location(3) @interpolate(flat) texel_rect: vec4<i32>,
+    @location(4) local: vec2<f32>,
+    @location(5) @interpolate(flat) half_size: vec2<f32>,
+}
+
+// A turned quad. Its texels no longer sit on pixels, so it always takes the
+// filtered path; it reaches `AA_HALF_WIDTH` past each drawn edge in its own
+// frame, where a rotation keeps distances, and the texel coordinate runs on
+// with it, clamped to the raster's slot by `taps`.
+@vertex
+fn vs_spun(in: SpunIn) -> SpunOut {
+    let u = in.uv_and_kind & U_MASK;
+    let flags = (in.uv_and_kind >> U_BITS) & FLAG_MASK;
+    let v = in.uv_and_kind >> V_SHIFT;
+
+    let corner = vec2<f32>(f32(in.idx & 1u), f32((in.idx >> 1u) & 1u));
+    let size = vec2<f32>(in.size);
+    let drawn = corner * size + (corner * 2.0 - 1.0) * AA_HALF_WIDTH;
+    let p = vec2<f32>(in.pos) + drawn - in.pivot;
+    let turned = in.pivot + vec2<f32>(in.rotor.x * p.x - in.rotor.y * p.y, in.rotor.y * p.x + in.rotor.x * p.y);
+
+    var out: SpunOut;
+    out.position = clip_from_px(turned);
+    out.color = in.color;
+    out.flags = flags | FLAG_RESAMPLE;
+    out.texel = vec2<f32>(vec2<u32>(u, v)) + drawn * vec2<f32>(in.dim) / max(size, vec2<f32>(1.0));
+    out.texel_rect = vec4<i32>(vec2<i32>(vec2<u32>(u, v)), vec2<i32>(vec2<u32>(u, v) + in.dim) - 1);
+    out.local = drawn - size * 0.5;
+    out.half_size = size * 0.5;
+    return out;
+}
+
 // Bilinear weights and the four texel addresses around `texel`, clamped to
 // the raster's own rect so a tap never reads a neighboring slot.
 struct Taps {
@@ -115,6 +168,15 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     let gray = vec3<f32>(dot(s.rgb, LUMA));
     let rgb = select(s.rgb, gray, (in.flags & FLAG_DESATURATE) != 0u);
     return premultiply(rgb, s.a) * in.color.a;
+}
+
+// A turned quad: filtered as a resampled one, faded over `AA_HALF_WIDTH`
+// past each of its turned edges.
+@fragment
+fn fs_spun(in: SpunOut) -> @location(0) vec4<f32> {
+    let d = abs(in.local) - in.half_size;
+    let fade = edge_coverage(d.x) * edge_coverage(d.y);
+    return resampled(VertexOut(in.position, in.color, in.flags, in.texel, in.texel_rect)) * fade;
 }
 
 // An icon drawn at a size other than its raster's: the four nearest texels,

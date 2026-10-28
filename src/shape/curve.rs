@@ -144,8 +144,8 @@ impl sealed::LowerShape for CurveShape {
 
     /// The geometry's [`CurveBasis`] plus its tight bbox; tessellation is GPU-side at draw time.
     /// A curve of no length lowers to its cap alone, as SVG paints a zero-length subpath: a disc
-    /// for a round cap, an axis-aligned square for a square one, the stroke width across. Being a
-    /// quad, the dot does not follow a `turn` animation.
+    /// for a round cap, a square for a square one, the stroke width across, turning with a `turn`
+    /// animation as any quad does.
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {
         let Self {
             geometry,
