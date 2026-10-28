@@ -14,7 +14,7 @@ pub enum ParseColorError {
     Digit,
     /// A `color(` form that is not `color(srgb-linear r g b)` or `color(srgb-linear r g b / a)`.
     LinearForm,
-    /// A `color(srgb-linear …)` channel that is not finite or is above 65504, the largest f16.
+    /// A `color(srgb-linear …)` channel that does not round to a finite f16, within ±65504.
     Channel,
 }
 

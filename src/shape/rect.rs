@@ -76,8 +76,8 @@ impl RectShape {
     ///
     /// # Panics
     ///
-    /// Panics unless every radius is a [length](crate::widget::domain::length) of at most
-    /// 65504, one f16 lane.
+    /// Panics unless every radius is a [length](crate::widget::domain::length) and a
+    /// [lane](crate::widget::domain::lane).
     #[track_caller]
     pub fn corners(mut self, corners: impl Into<Corners>) -> Self {
         let corners = corners.into();
@@ -93,7 +93,8 @@ impl RectShape {
     ///
     /// Panics unless `filter.blur` is a [length](crate::widget::domain::length), its
     /// `saturation` and `noise` [factors](crate::widget::domain::factor), and its lens's
-    /// `bezel` and `thickness` lengths and `refractive_index` at least 1.
+    /// `bezel` and `thickness` lengths and `refractive_index` at least 1, each a
+    /// [lane](crate::widget::domain::lane).
     #[track_caller]
     pub const fn backdrop_filter(mut self, filter: BackdropFilter) -> Self {
         filter.validate();

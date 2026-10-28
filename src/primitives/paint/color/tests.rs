@@ -210,10 +210,7 @@ fn color_parse_rejects_malformed_input() {
         ParseColorError::LinearForm.to_string(),
         "expected color(srgb-linear r g b) or color(srgb-linear r g b / a)"
     );
-    assert_eq!(
-        ParseColorError::Channel.to_string(),
-        "a color must have finite channels of at most 65504"
-    );
+    assert_eq!(ParseColorError::Channel.to_string(), domain::COLOR_RULE);
 }
 
 /// Colors blend premultiplied: `a` premultiplies to `(0.5, 0, 0.25 | 0.5)` and the transparent `b`
@@ -326,11 +323,10 @@ fn lowering_clamps_what_a_tween_overshoots() {
     }
 }
 
-/// Debug-only: a color that skipped `domain::color` fails where it lowers, at 65520, the least
-/// channel that packs to an infinite f16 lane.
-#[cfg(debug_assertions)]
+/// A color the crate derives past 65504, as a tween overshoots, saturates where it lowers, the
+/// other channels and the alpha kept: 65520 is the least channel that would pack to infinity.
 #[test]
-#[should_panic(expected = "a color channel packs past the largest f16")]
-fn a_color_past_the_largest_f16_fails_where_it_lowers() {
-    let _ = RgbaF32::new(65520.0, 0.0, 0.0, 1.0).to_f16();
+fn a_derived_color_past_65504_saturates_where_it_lowers() {
+    let lowered = RgbaF32::from(RgbaF32::new(65520.0, 1.0e9, 0.5, 1.0).to_f16());
+    assert_eq!(lowered, RgbaF32::new(65504.0, 65504.0, 0.5, 1.0));
 }

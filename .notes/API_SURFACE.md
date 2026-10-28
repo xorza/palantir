@@ -3115,8 +3115,8 @@ widget::domain::is_gap
 widget::domain::is_invisible
     const fn is_invisible(v: f32) -> bool
 
-widget::domain::is_lane_offset
-    const fn is_lane_offset(v: f32) -> bool
+widget::domain::is_lane
+    const fn is_lane(v: f32) -> bool
 
 widget::domain::is_length
     const fn is_length(v: f32) -> bool
@@ -3130,8 +3130,8 @@ widget::domain::is_positive
 widget::domain::is_power_of_two_in
     const fn is_power_of_two_in(n: u32, max: u32) -> bool
 
-widget::domain::lane_offset
-    const fn lane_offset(v: f32) -> f32
+widget::domain::lane
+    const fn lane(v: f32) -> f32
 
 widget::domain::length
     const fn length(v: f32) -> f32
@@ -3166,8 +3166,8 @@ widget::domain::vec2::band_fraction
 widget::domain::vec2::fraction_or
     const fn fraction_or(v: Vec2, fallback: Vec2) -> Vec2
 
-widget::domain::vec2::is_lane_offset
-    const fn is_lane_offset(v: Vec2) -> bool
+widget::domain::vec2::is_lane
+    const fn is_lane(v: Vec2) -> bool
 
 widget::domain::vec2::is_length
     const fn is_length(v: Vec2) -> bool
@@ -3175,8 +3175,8 @@ widget::domain::vec2::is_length
 widget::domain::vec2::is_offset
     const fn is_offset(v: Vec2) -> bool
 
-widget::domain::vec2::lane_offset
-    const fn lane_offset(v: Vec2) -> Vec2
+widget::domain::vec2::lane
+    const fn lane(v: Vec2) -> Vec2
 
 widget::domain::vec2::length
     const fn length(v: Vec2) -> Vec2

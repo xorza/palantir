@@ -1,6 +1,7 @@
 //! Per-side padding and margin: four f16 lanes in eight bytes, like `Corners` and `RgbaF16`.
 
 use crate::primitives::geometry::size::Size;
+use crate::primitives::math::domain;
 use crate::primitives::math::num::Number;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
@@ -50,9 +51,8 @@ impl Spacing {
     ///
     /// # Panics
     ///
-    /// Panics unless every edge packs to a finite f16: finite, and below 65520 in magnitude, which
-    /// rounds to 65504. A larger edge would pack to infinity and fail in a later setter, under
-    /// another rule.
+    /// Panics unless every edge is a [lane](crate::widget::domain::lane): finite, and below 65520
+    /// in magnitude, which rounds to 65504. A larger edge would pack to infinity.
     #[inline]
     #[track_caller]
     pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
@@ -63,23 +63,23 @@ impl Spacing {
     ///
     /// # Panics
     ///
-    /// Panics unless every lane packs to a finite f16, as [`Self::new`].
+    /// Panics unless every lane fits, as [`Self::new`].
     #[inline]
     #[track_caller]
     pub fn from_array(v: [f32; 4]) -> Self {
-        let packed = F16x4::from_lanes(v);
         assert!(
-            !packed.any_lane_non_finite(),
+            v.iter().all(|&lane| domain::is_lane(lane)),
             "{}",
             <Self as LaneCodec>::LANE_RULE
         );
-        Self(packed)
+        Self(F16x4::from_lanes(v))
     }
 
     /// A spacing the crate derives from valid lengths (a padding grown by a border, ink past a
-    /// glyph run), whose lanes saturate at ±65504 rather than pack to infinity: the lengths have
-    /// no upper bound, and a spacing that wide reaches past every window a texture can fill, so
-    /// the clamp changes nothing drawn. Authored spacings go through [`Self::new`], which refuses.
+    /// glyph run), whose lanes [saturate](F16x4::saturate_lane) at ±65504 rather than pack to
+    /// infinity: the lengths have no upper bound, and a spacing that wide reaches past every window
+    /// a texture can fill, so the clamp changes nothing drawn. Authored spacings go through
+    /// [`Self::new`], which refuses.
     ///
     /// # Panics
     ///
@@ -87,7 +87,7 @@ impl Spacing {
     #[inline]
     #[track_caller]
     pub(crate) fn saturating(lanes: [f32; 4]) -> Self {
-        Self::from_array(lanes.map(|lane| lane.clamp(-F16x4::MAX_LANE, F16x4::MAX_LANE)))
+        Self::from_array(lanes.map(F16x4::saturate_lane))
     }
 
     /// The size this spacing costs: `w = left + right`, `h = top + bottom`.
@@ -142,10 +142,11 @@ impl LaneCodec for Spacing {
         [horizontal, vertical, horizontal, vertical]
     }
 
-    const LANE_RULE: &'static str = "a spacing lane must be finite and within ±65504";
+    const LANE_RULE: &'static str =
+        "a spacing lane must be finite and round to within ±65504 in f16";
 
     fn lane_is_valid(lane: f32) -> bool {
-        lane.abs() <= F16x4::MAX_LANE
+        domain::is_lane(lane)
     }
 }
 

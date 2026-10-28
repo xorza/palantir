@@ -64,10 +64,11 @@ impl TriangleShape {
     ///
     /// # Panics
     ///
-    /// Panics unless `radius` is a [length](crate::widget::domain::length).
+    /// Panics unless `radius` is a [length](crate::widget::domain::length) and a
+    /// [lane](crate::widget::domain::lane), as it packs into an f16 lane.
     #[track_caller]
     pub const fn radius(mut self, radius: f32) -> Self {
-        self.radius = domain::length(radius);
+        self.radius = domain::lane(domain::length(radius));
         self
     }
 

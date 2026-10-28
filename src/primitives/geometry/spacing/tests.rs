@@ -139,15 +139,17 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
     }
 }
 
-/// A file lane is any finite f32 an f16 lane can hold, either sign:
-/// ±65504 is the largest, and one past it packs to infinity.
+/// A file lane is any f32 that rounds to a finite f16, either sign: ±65519.99 rounds to
+/// ±65504, the largest, and ±65520 packs to infinity.
 #[test]
 fn deserialize_rejects_a_lane_past_f16() {
     for (input, valid) in [
         ("65504.0", true),
         ("-65504.0", true),
-        ("65505.0", false),
-        ("-65505.0", false),
+        ("65519.99", true),
+        ("-65519.99", true),
+        ("65520.0", false),
+        ("-65520.0", false),
         ("inf", false),
         ("NaN", false),
     ] {

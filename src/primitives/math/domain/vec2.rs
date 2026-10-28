@@ -56,21 +56,21 @@ pub const fn offset(v: Vec2) -> Vec2 {
     v
 }
 
-/// True if both axes are [lane offsets](domain::lane_offset).
+/// True if both axes are [lanes](domain::lane).
 #[inline]
-pub const fn is_lane_offset(v: Vec2) -> bool {
-    domain::is_lane_offset(v.x) && domain::is_lane_offset(v.y)
+pub const fn is_lane(v: Vec2) -> bool {
+    domain::is_lane(v.x) && domain::is_lane(v.y)
 }
 
-/// `v`, whose axes must both be *lane offsets*.
+/// `v`, whose axes must both be *lanes*.
 ///
 /// # Panics
 ///
-/// Panics unless [`is_lane_offset`]`(v)`.
+/// Panics unless [`is_lane`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn lane_offset(v: Vec2) -> Vec2 {
-    assert!(is_lane_offset(v), "{}", domain::LANE_OFFSET_RULE);
+pub const fn lane(v: Vec2) -> Vec2 {
+    assert!(is_lane(v), "{}", domain::LANE_RULE);
     v
 }
 

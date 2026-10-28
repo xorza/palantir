@@ -35,16 +35,15 @@ pub struct Shadow {
 
 impl Shadow {
     /// Panics unless the color is a [color](domain::color), offset and spread
-    /// are [lane offsets](domain::lane_offset), and blur is a [gap](domain::gap):
-    /// the lowered shadow packs all four into f16 lanes, where a wider value is
-    /// infinite and makes the paint rect NaN.
+    /// are [offsets](domain::offset), and blur is a [length](domain::length), each
+    /// a [lane](domain::lane): the lowered shadow packs all four into f16 lanes.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
         let _ = domain::color(self.color);
-        vec2::lane_offset(self.offset);
-        domain::gap(self.blur);
-        domain::lane_offset(self.spread);
+        vec2::lane(vec2::offset(self.offset));
+        domain::lane(domain::length(self.blur));
+        domain::lane(domain::offset(self.spread));
     }
 
     /// The "no shadow" sentinel; `const` for theme tables.

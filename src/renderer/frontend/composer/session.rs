@@ -858,7 +858,12 @@ impl ComposeSession<'_> {
                     p.fill_axis.scaled_saturating(scale_physical)
                 } else if p.fill.kind.is_backdrop() {
                     let [sigma, saturation, noise, opacity] = p.fill_axis.lanes();
-                    FillAxis::from_lanes([sigma * scale_physical, saturation, noise, opacity])
+                    FillAxis::from_lanes_saturating([
+                        sigma * scale_physical,
+                        saturation,
+                        noise,
+                        opacity,
+                    ])
                 } else {
                     p.fill_axis
                 };
@@ -902,7 +907,8 @@ impl ComposeSession<'_> {
                     to_physical.point(b),
                     to_physical.point(c),
                 );
-                let radius_physical = (radius * scale_physical).max(0.0);
+                // Saturated as the f16 lane holds it, so the quad and the shader take one radius.
+                let radius_physical = F16x4::saturate_lane((radius * scale_physical).max(0.0));
                 // Covering AABB of the rounded shape; the stroke sits on the inner edge, so it adds
                 // no outward reach.
                 let lo = a.min(b).min(c);

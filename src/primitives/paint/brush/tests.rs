@@ -292,7 +292,7 @@ fn stop_offsets_coerce_in_code_and_are_refused_in_files() {
     ] {
         assert_eq!(Stop::new(offset, RgbaF32::WHITE).offset(), want, "{offset}");
     }
-    panic_probe::assert_panics_with("a color must have finite channels of at most 65504", || {
+    panic_probe::assert_panics_with(domain::COLOR_RULE, || {
         Stop::new(0.5, RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0))
     });
 

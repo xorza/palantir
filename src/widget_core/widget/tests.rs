@@ -274,7 +274,7 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
         ("negative infinite gap", || {
             Widget::hstack().gap(f32::NEG_INFINITY)
         }),
-        ("f16-overflow gap", || Widget::hstack().gap(MAX_GAP + 1.0)),
+        ("f16-overflow gap", || Widget::hstack().gap(65520.0)),
         ("negative line gap", || Widget::wrap_hstack().line_gap(-1.0)),
         ("NaN line gap", || Widget::wrap_hstack().line_gap(f32::NAN)),
         ("positive infinite line gap", || {
@@ -284,7 +284,7 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
             Widget::wrap_hstack().line_gap(f32::NEG_INFINITY)
         }),
         ("f16-overflow line gap", || {
-            Widget::wrap_hstack().line_gap(MAX_GAP + 1.0)
+            Widget::wrap_hstack().line_gap(65520.0)
         }),
     ];
 
