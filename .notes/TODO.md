@@ -5,4 +5,4 @@
 - mesh once registrations
 - flexbox
 - platform time doubleclick
-- glass, blur
+- glass, blur (`.notes/proposal-backdrop-effects.md`)
