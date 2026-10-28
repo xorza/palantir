@@ -1,6 +1,7 @@
 //! What a scroll's bars wear, reserved beside the content or floating over it.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Scroll`] reservation-layout scrollbars. Under [`BarMode::Reserved`](crate::BarMode) the widget takes `thickness` of padding off each panned axis's far edge and paints the bar there. Track and thumb are pill-capped; the thumb fill follows hover and drag state.
@@ -27,11 +28,11 @@ pub struct ScrollbarTheme {
 
 impl ScrollbarTheme {
     /// The palette defines no scrollbar colors; derived from `text_muted` at decreasing translucency.
-    pub fn from_palette(p: &Palette) -> Self {
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let thumb = |alpha: u8| p.text_muted.with_alpha8(alpha);
         Self {
             thickness: 8.0,
-            gap: 4.0,
+            gap: m.space.xs,
             min_thumb: 24.0,
             track: RgbaF32::TRANSPARENT,
             thumb: thumb(115),
@@ -43,6 +44,6 @@ impl ScrollbarTheme {
 
 impl Default for ScrollbarTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

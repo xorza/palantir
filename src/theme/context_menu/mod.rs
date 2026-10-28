@@ -6,6 +6,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::ThemeText;
 use crate::theme::context_menu::menu_item::MenuItemTheme;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::separator::SeparatorTheme;
 
@@ -48,20 +49,20 @@ impl ContextMenuTheme {
     }
 
     /// The popup panel, with a [`MenuItemTheme`] and the menu [`SeparatorTheme`].
-    pub fn from_palette(p: &Palette) -> Self {
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
-            panel: p.popup_panel(),
-            padding: Spacing::all(4.0),
+            panel: p.popup_panel(m),
+            padding: Spacing::all(m.space.xs),
             min_width: 160.0,
             gap: 0.0,
-            item: MenuItemTheme::from_palette(p),
-            separator: SeparatorTheme::menu_separator(p),
+            item: MenuItemTheme::from_parts(p, m),
+            separator: SeparatorTheme::menu_separator(p, m),
         }
     }
 }
 
 impl Default for ContextMenuTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

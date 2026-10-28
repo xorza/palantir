@@ -4,14 +4,14 @@ use crate::gpu::bench_gpu::{BenchAdapter, BenchGpu};
 
 /// The backends a case may run on: the CPU always, the GPU when the host has an adapter.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct Backends {
+pub struct Backends {
     /// The adapter the GPU cases open their device on; `None` on a host with none.
     adapter: Option<BenchAdapter>,
 }
 
 /// One backend a case runs on, the first part of its case.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Backend {
+pub enum Backend {
     /// No device: the case runs on the CPU alone.
     Cpu,
     /// A device opens for the case.
@@ -26,7 +26,7 @@ impl Backends {
         clippy::print_stderr,
         reason = "the notice is what keeps missing GPU cases from reading as a full run"
     )]
-    pub(crate) fn probe() -> Self {
+    pub fn probe() -> Self {
         let adapter = BenchGpu::probe();
         match adapter {
             None => eprintln!("palantir benches: no GPU adapter, so no GPU cases"),
@@ -42,7 +42,7 @@ impl Backends {
     }
 
     /// The backends a case with both runs on, the CPU first.
-    pub(crate) fn all(self) -> Vec<Backend> {
+    pub fn all(self) -> Vec<Backend> {
         if self.adapter.is_some() {
             vec![Backend::Cpu, Backend::Gpu]
         } else {
@@ -74,7 +74,7 @@ impl Backend {
     }
 
     /// `rest` under this backend: `gpu/cached`.
-    pub(crate) fn case(self, rest: &str) -> String {
+    pub fn case(self, rest: &str) -> String {
         format!("{}/{rest}", self.id())
     }
 }

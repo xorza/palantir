@@ -14,9 +14,9 @@
 //! something else. Each case records one number: wall time, or, where the doc says so, the
 //! device or pass time it reads back through `iter_custom`.
 
-pub(crate) mod backends;
+pub mod backends;
 pub(crate) mod fixture;
-pub(crate) mod kind;
+pub mod kind;
 
 use crate::bench::backends::Backends;
 use crate::cascade;

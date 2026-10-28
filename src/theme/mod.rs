@@ -14,6 +14,7 @@ mod duration_codec;
 pub(crate) mod expander;
 pub(crate) mod focus_ring;
 pub(crate) mod look;
+pub(crate) mod metrics;
 pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;
@@ -42,6 +43,7 @@ use crate::theme::dock::DockTheme;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::focus_ring::FocusRingTheme;
+use crate::theme::metrics::Metrics;
 use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
 use crate::theme::progress_bar::ProgressBarTheme;
@@ -227,30 +229,30 @@ impl Theme {
         color_picker.for_each_text(f);
     }
 
-    /// Assemble a full theme from a [`Palette`]. The single source of the recipes: `Theme::default()` is `from_palette(&Palette::DEFAULT)`.
-    pub fn from_palette(p: &Palette) -> Self {
+    /// Assemble a full theme from a [`Palette`]'s colors and a [`Metrics`]' steps. The single source of the recipes: `Theme::default()` is `from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)`.
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
-            button: ButtonTheme::from_palette(p),
-            checkbox: ToggleTheme::checkbox(p),
-            radio: ToggleTheme::radio(p),
-            switch: ToggleTheme::switch(p),
-            scrollbar: ScrollbarTheme::from_palette(p),
-            text_edit: TextEditTheme::from_palette(p),
-            drag_value: DragValueTheme::from_palette(p),
-            context_menu: ContextMenuTheme::from_palette(p),
-            combo_box: ComboBoxTheme::from_palette(p),
-            modal: ModalTheme::from_palette(p),
-            color_picker: ColorPickerTheme::from_palette(p),
-            tooltip: TooltipTheme::from_palette(p),
+            button: ButtonTheme::from_parts(p, m),
+            checkbox: ToggleTheme::checkbox(p, m),
+            radio: ToggleTheme::radio(p, m),
+            switch: ToggleTheme::switch(p, m),
+            scrollbar: ScrollbarTheme::from_parts(p, m),
+            text_edit: TextEditTheme::from_parts(p, m),
+            drag_value: DragValueTheme::from_parts(p, m),
+            context_menu: ContextMenuTheme::from_parts(p, m),
+            combo_box: ComboBoxTheme::from_metrics(m),
+            modal: ModalTheme::from_parts(p, m),
+            color_picker: ColorPickerTheme::from_parts(p, m),
+            tooltip: TooltipTheme::from_parts(p, m),
             progress_bar: ProgressBarTheme::from_palette(p),
-            separator: SeparatorTheme::from_palette(p),
+            separator: SeparatorTheme::from_parts(p, m),
             slider: SliderTheme::from_palette(p),
             spinner: SpinnerTheme::from_palette(p),
-            splitter: SplitterTheme::from_palette(p),
-            tabs: TabsTheme::from_palette(p),
-            dock: DockTheme::from_palette(p),
-            expander: ExpanderTheme::from_palette(p),
-            focus_ring: FocusRingTheme::from_palette(p),
+            splitter: SplitterTheme::from_parts(p, m),
+            tabs: TabsTheme::from_parts(p, m),
+            dock: DockTheme::from_parts(p, m),
+            expander: ExpanderTheme::from_parts(p, m),
+            focus_ring: FocusRingTheme::from_parts(p, m),
             text: TextStyle::default().with_color(p.text),
             window_clear: p.window_bg,
             panel_chrome: None,
@@ -261,7 +263,7 @@ impl Theme {
 
 impl Default for Theme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }
 

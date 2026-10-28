@@ -7,6 +7,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
@@ -45,25 +46,25 @@ impl DockTheme {
         ghost.for_each_text(f);
     }
 
-    /// Drop previews and the drag ghost, both drawn in the palette's accent.
-    pub fn from_palette(p: &Palette) -> Self {
+    /// Drop previews and the drag ghost, both drawn in the palette's accent. The ghost reads as a tab lifted off its strip: a tab's corners and inset.
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             preview_fill: p.accent.with_alpha8(46),
-            preview_stroke: Stroke::new(p.accent, 1.5),
-            preview_radius: 2.0,
+            preview_stroke: Stroke::new(p.accent, m.stroke.fine),
+            preview_radius: m.radius.mark,
             ghost: WidgetLook {
-                chrome: Chrome::rounded(p.element, Corners::all(4.0))
-                    .with_border(Stroke::new(p.accent, 1.0)),
+                chrome: Chrome::rounded(p.element, Corners::all(m.radius.card))
+                    .with_border(Stroke::new(p.accent, m.stroke.hairline)),
                 text: TextStyleOverrides::NONE,
             },
-            ghost_padding: Spacing::new(10.0, 4.0, 10.0, 4.0),
-            ghost_offset: Vec2::new(14.0, 18.0),
+            ghost_padding: m.row_padding(),
+            ghost_offset: Vec2::new(m.space.md, m.space.lg),
         }
     }
 }
 
 impl Default for DockTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

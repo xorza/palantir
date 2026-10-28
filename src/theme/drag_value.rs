@@ -3,6 +3,7 @@
 use crate::theme::ThemeText;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::stateful_look::StatefulLook;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
 
@@ -41,17 +42,17 @@ impl DragValueTheme {
         editor.for_each_text(f);
     }
 
-    /// One palette drives both: the chip from the button recipe, the editor via [`Self::from_chip`].
-    pub fn from_palette(p: &Palette) -> Self {
+    /// One palette and one set of metrics drive both: the chip from the button recipe, the editor via [`Self::from_chip`].
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self::from_chip(
-            ButtonTheme::from_palette(p),
-            &TextEditTheme::from_palette(p),
+            ButtonTheme::from_parts(p, m),
+            &TextEditTheme::from_parts(p, m),
         )
     }
 }
 
 impl Default for DragValueTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

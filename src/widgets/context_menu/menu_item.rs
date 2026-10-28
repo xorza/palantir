@@ -69,6 +69,9 @@ impl<'a> MenuItem<'a> {
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
         let disabled = response.disabled;
+        // A lit row, under the pointer or pressed, sits on a fill its resting hint ink may not
+        // clear, so its hint takes the label's ink, as a tab's and a menu title's text lights.
+        let lit = response.hovered() || response.pressed();
 
         // The look plan comes off one borrow of the theme that ends before `wear` reborrows `ui`; a menu row picks and animates like a Button.
         let theme = ui.theme();
@@ -113,7 +116,7 @@ impl<'a> MenuItem<'a> {
                 // A disabled row's hint dims with its label: in the hint's own ink it would be
                 // the brightest text on a row that does nothing.
                 let hint = Text::new(s).id(id.with("shortcut")).style(&text_style);
-                if disabled {
+                if disabled || lit {
                     hint
                 } else {
                     hint.color(shortcut_color)

@@ -10,6 +10,7 @@ use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
@@ -70,8 +71,10 @@ impl ExpanderTheme {
     }
 
     /// A header transparent at rest, picking up a surface fill on hover.
-    pub fn from_palette(p: &Palette) -> Self {
-        let radius = Corners::all(4.0);
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
+        let radius = Corners::all(m.radius.control);
+        let arrow_size = Vec2::new(9.0, 9.0);
+        let gap = m.space.sm;
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
@@ -91,15 +94,15 @@ impl ExpanderTheme {
                     text: TextStyleOverrides::NONE.with_color(p.text_disabled),
                 },
             },
-            arrow_size: Vec2::new(9.0, 9.0),
+            arrow_size,
             arrow_radius: 1.5,
             arrow_closed_angle: -FRAC_PI_2,
             arrow_open_angle: 0.0,
-            gap: 8.0,
-            indent: 17.0,
-            body_padding: Spacing::new(0.0, 4.0, 0.0, 4.0),
+            gap,
+            indent: arrow_size.x + gap,
+            body_padding: Spacing::new(0.0, m.space.xs, 0.0, m.space.xs),
             defaults: SlotDefaults {
-                padding: Spacing::new(4.0, 4.0, 4.0, 4.0),
+                padding: Spacing::all(m.space.xs),
                 margin: Spacing::ZERO,
                 animation: None,
             },
@@ -109,7 +112,7 @@ impl ExpanderTheme {
 
 impl Default for ExpanderTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }
 

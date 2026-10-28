@@ -887,7 +887,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     assert_eq!(left_pane, Rect::new(0.0, 0.0, 299.5, 400.0));
     assert_eq!(right_pane, Rect::new(300.5, 0.0, 299.5, 400.0));
 
-    // One 27.2 px chip row under 4 px of top padding; content takes the rest.
+    // One 35.2 px chip row (19.2 px line, 8 px padding each side) under 4 px of top padding; content takes the rest.
     for (group, pane) in [(primary, left_pane), (right, right_pane)] {
         let strip = h
             .rect(DockView::strip_id(&d, group))
@@ -895,7 +895,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
         assert_eq!(
             strip,
             Rect {
-                size: Size::new(pane.size.w, 31.203125),
+                size: Size::new(pane.size.w, 39.203125),
                 ..pane
             }
         );
@@ -920,8 +920,11 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     let strip = h
         .rect(DockView::strip_id(&d, primary))
         .expect("the strip arranged");
-    // The Prefs chip sits below the 4 px padding, down to the strip's bottom.
-    assert_eq!(chip_rect, Rect::new(77.0, 4.0, 76.0, strip.size.h - 4.0));
+    // The Prefs chip sits below the 4 px padding, down to the strip's bottom. A chip is 12 px of
+    // padding, its mono label at 8 px a char, an 8 px gap, the 16 px close and a 4 px trailing
+    // inset: the four-letter chip before it is 72 px, so Prefs starts at 8 + 72 + 4 = 84 and is
+    // 12 + 40 + 8 + 16 + 4 = 80 px wide.
+    assert_eq!(chip_rect, Rect::new(84.0, 4.0, 80.0, strip.size.h - 4.0));
 }
 
 /// A divider dragged past the split clamp stops at it, so the release keeps what the drag drew:

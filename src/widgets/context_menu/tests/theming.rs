@@ -168,7 +168,8 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     assert_eq!(fill, rule.to_f16(), "rule color comes off the menu");
 }
 
-/// A live row's hint takes the theme's shortcut ink; a disabled row's dims with its label.
+/// A live row's hint takes the theme's shortcut ink; a disabled row's dims with its label, and a
+/// hovered row's lights with its label.
 #[test]
 fn a_disabled_rows_hint_dims_with_its_label() {
     let rows = [WidgetId::from_hash("live"), WidgetId::from_hash("dead")];
@@ -193,10 +194,17 @@ fn a_disabled_rows_hint_dims_with_its_label() {
         .disabled
         .text
         .with_color(RgbaF32::hex(0xff00ff));
+    theme.context_menu.item.looks.hovered.text = theme
+        .context_menu
+        .item
+        .looks
+        .hovered
+        .text
+        .with_color(RgbaF32::hex(0x0000ff));
     ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     h.frame(menu);
-    let hint_color = |id: WidgetId| {
+    let hint_color = |h: &UiHarness, id: WidgetId| {
         let node =
             h.ui.forest()
                 .node_for_widget_id(Layer::Menu, id.with("shortcut"));
@@ -208,11 +216,24 @@ fn a_disabled_rows_hint_dims_with_its_label() {
             })
             .expect("the hint records one text shape")
     };
-    assert_eq!(hint_color(rows[0]), RgbaF32::hex(0x00ff00).to_f16(), "live");
     assert_eq!(
-        hint_color(rows[1]),
+        hint_color(&h, rows[0]),
+        RgbaF32::hex(0x00ff00).to_f16(),
+        "live"
+    );
+    assert_eq!(
+        hint_color(&h, rows[1]),
         RgbaF32::hex(0xff00ff).to_f16(),
         "disabled"
+    );
+    let live = h.rect(rows[0]).expect("the live row arranged").center();
+    h.move_to(live);
+    h.frame(menu);
+    h.frame(menu);
+    assert_eq!(
+        hint_color(&h, rows[0]),
+        RgbaF32::hex(0x0000ff).to_f16(),
+        "hovered"
     );
 }
 

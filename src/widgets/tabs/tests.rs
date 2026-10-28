@@ -440,7 +440,7 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
             TabStrip::new(&items)
                 .id(strip_id())
                 .selected(selected)
-                .size((Sizing::fixed(90.0), Sizing::HUG))
+                .size((Sizing::fixed(120.0), Sizing::HUG))
                 .show(ui, |ui, chip| chip.show_label(ui))
                 .keyed
         })
@@ -633,7 +633,7 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
                 .id(strip_id())
                 .selected(0)
                 .drop_caret(Some(slot))
-                .size((Sizing::fixed(90.0), Sizing::HUG))
+                .size((Sizing::fixed(120.0), Sizing::HUG))
                 .show(ui, |ui, chip| chip.show_label(ui));
         }
     };

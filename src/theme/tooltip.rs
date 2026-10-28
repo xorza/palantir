@@ -4,13 +4,11 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use glam::Vec2;
 use std::time::Duration;
 
 /// Visuals and timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles paint into `Layer::Tooltip` after `delay` of hover; the `warmup` window keeps later tooltips instant after one is dismissed.
@@ -52,29 +50,25 @@ impl TooltipTheme {
         f(ThemeText::Overrides(text));
     }
 
-    /// A small raised bubble with a soft drop shadow.
-    pub fn from_palette(p: &Palette) -> Self {
-        let panel = Chrome::rounded(p.element, Corners::all(4.0))
-            .with_border(Stroke::new(p.border_mid(), 1.0))
-            .with_shadow(Shadow::drop(
-                RgbaF32::BLACK.with_alpha8(153),
-                Vec2::new(2.0, 2.0),
-                5.0,
-            ));
+    /// A small control-rounded bubble that floats as a menu does.
+    pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
+        let panel = Chrome::rounded(p.element, Corners::all(m.radius.control))
+            .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
+            .with_shadow(m.float_shadow);
         Self {
             panel,
             text: TextStyleOverrides::NONE.with_font_size(13.0),
-            padding: Spacing::xy(6.0, 4.0),
+            padding: Spacing::xy(m.space.sm, m.space.xs),
             max_size: Size::new(280.0, f32::INFINITY),
             delay: Duration::from_millis(500),
             warmup: Duration::from_secs(1),
-            gap: 6.0,
+            gap: m.space.sm,
         }
     }
 }
 
 impl Default for TooltipTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

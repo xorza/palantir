@@ -5,8 +5,8 @@ use crate::support;
 use crate::support::{Section, api};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
-    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioButton, RgbaF32, Sizing, Slider, Switch,
-    Text, TextEdit, Theme, Track, Ui, WidgetId,
+    FocusRingTheme, Grid, Metrics, Modal, Panel, PopupTrigger, RadioButton, RgbaF32, Sizing,
+    Slider, Switch, Text, TextEdit, Theme, Track, Ui, WidgetId,
 };
 
 const PLANS: [&str; 3] = ["Free", "Pro", "Team"];
@@ -516,7 +516,8 @@ fn ring(ui: &mut Ui) {
                 Text::new("color").style(&support::note_style()).show(ui);
                 ColorButton::new(ColorPicker::new(&mut color)).show(ui);
                 if Button::new().label("Reset").show(ui).clicked() {
-                    let default = FocusRingTheme::from_palette(&shell::showcase_palette());
+                    let default =
+                        FocusRingTheme::from_parts(&shell::showcase_palette(), &Metrics::DEFAULT);
                     width = f64::from(default.width);
                     color = default.color;
                 }

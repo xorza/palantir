@@ -1,4 +1,4 @@
-//! Tests for `TextEdit::text_align` and per-mode default alignment. Mono fallback: 8 px/char at 16 px font, line height 19.203125 (`round(19.2 × 64) / 64`). Editor 280×40, padding (5, 3) plus 1.5 px stroke folded in: effective (6.5, 4.5), inner rect 267×31.
+//! Tests for `TextEdit::text_align` and per-mode default alignment. Mono fallback: 8 px/char at 16 px font, line height 19.203125 (`round(19.2 × 64) / 64`). Editor 280×40, padding (8, 4) plus 1.5 px stroke folded in: effective (9.5, 5.5), inner rect 261×29.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -10,14 +10,14 @@ use crate::widgets::text_edit::tests::*;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
-/// Theme padding (5, 3) plus chrome stroke (1.5), folded as the encoder's clip and TextEdit do.
-const PAD_L: f32 = 6.5;
-const PAD_T: f32 = 4.5;
+/// Theme padding (8, 4) plus chrome stroke (1.5), folded as the encoder's clip and TextEdit do.
+const PAD_L: f32 = 9.5;
+const PAD_T: f32 = 5.5;
 /// Default `TextEditTheme::caret_width`, reserved at each line's trailing edge.
 const CARET_W: f32 = 1.5;
-const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 267
-const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 31
-const ALIGN_W: f32 = INNER_W - CARET_W; // 265.5
+const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 261
+const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 29
+const ALIGN_W: f32 = INNER_W - CARET_W; // 259.5
 const LINE_H: f32 = 19.203_125;
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
@@ -157,8 +157,8 @@ fn single_line_default_is_left_vcenter() {
 #[test]
 fn single_line_text_align_table() {
     // Sweep every (HAlign × VAlign) on single-line "abcd"; overflow clamping does not fire.
-    let cx = (ALIGN_W - TEXT_W_4CH) * 0.5; // 118.25
-    let rx = ALIGN_W - TEXT_W_4CH; // 236.5
+    let cx = (ALIGN_W - TEXT_W_4CH) * 0.5; // 113.75
+    let rx = ALIGN_W - TEXT_W_4CH; // 227.5
     let cy = (INNER_H - LINE_H) * 0.5;
     let by = INNER_H - LINE_H;
     let cases: &[(Align, f32, f32, &str)] = &[
@@ -296,7 +296,7 @@ fn click_compensates_for_right_align() {
 
 #[test]
 fn align_overflow_clamps_to_zero() {
-    // Text wider than the inner rect ("a" × 100 = 800 px > 270): offset clamps to zero, so x = padding.left.
+    // Text wider than the inner rect ("a" × 100 = 800 px > 261): offset clamps to zero, so x = padding.left.
     for align in [Align::LEFT, Align::RIGHT, Align::CENTER] {
         let mut h = UiHarness::new(NARROW);
         let mut buf = "a".repeat(100);
