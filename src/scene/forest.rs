@@ -241,14 +241,24 @@ impl Forest {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;
             };
-            Self::note_pane(tree, frame, shape_idx);
+            Self::note_pane::<S>(tree, frame, shape_idx);
             true
         });
     }
 
-    /// List shape `shape_idx` among the tree's panes when it is one and paints.
-    fn note_pane(tree: &mut Tree, frame: &OpenFrame, shape_idx: u32) {
-        if frame.effectively_visible && tree.shapes.records[shape_idx as usize].is_pane() {
+    /// List shape `shape_idx`, of kind `S`, among the tree's panes when it is one and paints. A kind
+    /// that cannot be a pane reads nothing, and its record is checked to agree.
+    fn note_pane<S: Lower>(tree: &mut Tree, frame: &OpenFrame, shape_idx: u32) {
+        let is_pane = || tree.shapes.records[shape_idx as usize].is_pane();
+        if !S::CAN_BE_PANE {
+            debug_assert!(
+                !is_pane(),
+                "a {} lowered to a pane, but its kind says it cannot be one",
+                std::any::type_name::<S>()
+            );
+            return;
+        }
+        if frame.effectively_visible && is_pane() {
             tree.panes.push(PaneEntry {
                 node: frame.node,
                 shape_idx,
@@ -273,7 +283,7 @@ impl Forest {
                 return false;
             };
             tree.shapes.fold_paint_animation(shape_idx, &animation);
-            Self::note_pane(tree, frame, shape_idx);
+            Self::note_pane::<S>(tree, frame, shape_idx);
             // The paint row is charged either way.
             if frame.effectively_visible {
                 tree.paint_animations.push_entry(PaintAnimationEntry {

@@ -14,9 +14,13 @@
 //!   its phase, so a blurred edge jumps as content scrolls a pixel (15.7 % of the peak at σ 2);
 //!   dual Kawase, whose strength steps by iteration count; a full-resolution Gaussian at every σ;
 //!   bilinear upscaling, which shows the lattice.
-//! - **Every pass reads by whole texel.** Taps are `textureLoad`s with the weights in the shader.
-//!   Refused: linear-sampled tap pairs, whose split weight rounds to the hardware's sub-texel
-//!   precision (Vulkan allows 1/16).
+//! - **A residual reads by whole texel; a tent by bilinear fetch.** Residual taps are
+//!   `textureLoad`s with the weights in the shader. A tent inside its level is four bilinear
+//!   fetches at quarter phases, `[1 3 3 1] / 8` being half `[1 3] / 4` and half `[3 1] / 4` on
+//!   each axis, whose quarter weights the coarsest sub-texel precision Vulkan allows (1/16)
+//!   holds exactly; it took 59 % off a σ 48 blur on the M5, whose passes wait on texture reads.
+//!   A capture whose format does not filter loads all sixteen. Refused: linear-sampled pairs of
+//!   residual taps, whose split weight rounds to that precision.
 //! - **The reach is the plan's exact support.** [`BlurPlan::reach`] sums every stage's support in
 //!   physical px, so a capture of any larger region gives a pane's pixels bit for bit. Refused:
 //!   3σ of the whole kernel.
@@ -37,13 +41,17 @@ use glam::UVec2;
 /// for texel at level 0. Every stage keeps an impulse's mean at every phase, so a pane's blur does
 /// not shift as content scrolls under it by a pixel. Lengths are physical px, and a level's texel
 /// is `2^level` of them.
+///
+/// A plan holds what decides a frame — its levels, radius and reach — and the residual's
+/// variance; [`Self::taps`] solves the weights only for a blur that runs, as a pane that keeps its
+/// result and the cascade's footprint read none.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BlurPlan {
     levels: u8,
     radius: u8,
-    /// The residual's weights at offsets `0..=radius`, normalized over `-radius..=radius`.
-    taps: [f32; Self::MAX_TAPS],
     reach: u32,
+    /// The residual's variance in the last level's texel².
+    residual: f64,
 }
 
 impl BlurPlan {
@@ -78,13 +86,12 @@ impl BlurPlan {
         let texel = f64::from(1u32 << levels);
         let residual =
             ((f64::from(sigma).powi(2) - Self::fixed_variance(levels)) / (texel * texel)).max(0.0);
-        let residual_taps = ResidualTaps::solve(residual);
-        let reach = Self::reach_of(levels, residual_taps.radius);
+        let radius = residual_radius(residual);
         Self {
             levels,
-            radius: residual_taps.radius as u8,
-            taps: residual_taps.taps,
-            reach,
+            radius: radius as u8,
+            reach: Self::reach_of(levels, radius),
+            residual,
         }
     }
 
@@ -131,9 +138,10 @@ impl BlurPlan {
         1 << self.levels
     }
 
-    /// The residual's weights at offsets `0..=radius`.
-    pub(crate) fn taps(&self) -> &[f32] {
-        &self.taps[..=usize::from(self.radius)]
+    /// The residual's weights at offsets `0..=radius`, normalized over `-radius..=radius`, and
+    /// zero past it, so a sum over all of them is the sum over the kernel: solved on each call.
+    pub(crate) fn taps(self) -> [f32; Self::MAX_TAPS] {
+        residual_taps(self.residual, usize::from(self.radius))
     }
 
     pub(crate) const fn radius(self) -> u8 {
@@ -169,67 +177,68 @@ impl BlurPlan {
     }
 }
 
-/// The residual Gaussian's taps, solved so their discrete variance is the residual's.
-#[derive(Debug)]
-struct ResidualTaps {
-    radius: usize,
-    taps: [f32; BlurPlan::MAX_TAPS],
+/// Newton steps on the kernel's σ: from the nominal σ the variance converges in about five, and a
+/// step that leaves the bracket bisects it instead.
+const MAX_STEPS: u32 = 64;
+
+/// The taps a side a residual of `variance` texel² takes: its σ cut at
+/// `ShadowGeometry::REACH_SIGMAS`, none for no residual.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "a multiple of a square root is not negative"
+)]
+fn residual_radius(variance: f64) -> usize {
+    if variance == 0.0 {
+        return 0;
+    }
+    let reach = f64::from(ShadowGeometry::REACH_SIGMAS) * variance.sqrt();
+    (reach.ceil() as usize).clamp(1, BlurPlan::MAX_RADIUS)
 }
 
-impl ResidualTaps {
-    /// Newton steps on the kernel's σ: from the nominal σ the variance converges in about five, and
-    /// a step that leaves the bracket bisects it instead.
-    const MAX_STEPS: u32 = 64;
-
-    fn solve(variance: f64) -> Self {
-        let mut taps = [0.0; BlurPlan::MAX_TAPS];
-        if variance == 0.0 {
-            taps[0] = 1.0;
-            return Self { radius: 0, taps };
-        }
-        let reach = f64::from(ShadowGeometry::REACH_SIGMAS) * variance.sqrt();
-        #[expect(
-            clippy::cast_sign_loss,
-            reason = "a multiple of a square root is not negative"
-        )]
-        let radius = (reach.ceil() as usize).clamp(1, BlurPlan::MAX_RADIUS);
-        debug_assert!(
-            variance < kernel_variance(radius, f64::INFINITY).value,
-            "a residual of {variance} texel² exceeds what {radius} taps a side can hold"
-        );
-        let (mut lo, mut hi) = (0.0, radius as f64);
-        while kernel_variance(radius, hi).value < variance {
-            hi *= 2.0;
-        }
-        let mut sigma = variance.sqrt().clamp(lo, hi);
-        for _ in 0..Self::MAX_STEPS {
-            let at = kernel_variance(radius, sigma);
-            let miss = at.value - variance;
-            if miss.abs() <= f64::EPSILON * variance {
-                break;
-            }
-            if miss < 0.0 {
-                lo = sigma;
-            } else {
-                hi = sigma;
-            }
-            let newton = sigma - miss / at.slope;
-            sigma = if newton > lo && newton < hi {
-                newton
-            } else {
-                f64::midpoint(lo, hi)
-            };
-            if hi - lo <= f64::EPSILON * hi {
-                break;
-            }
-        }
-        let weights = gaussian(radius, sigma);
-        let total = weights[0] + 2.0 * weights[1..=radius].iter().sum::<f64>();
-        for (tap, w) in taps.iter_mut().zip(&weights[..=radius]) {
-            *tap = (w / total) as f32;
-        }
-        Self { radius, taps }
+/// The residual Gaussian's normalized weights, `radius` taps a side, solved so their discrete
+/// variance is `variance`.
+fn residual_taps(variance: f64, radius: usize) -> [f32; BlurPlan::MAX_TAPS] {
+    let mut taps = [0.0; BlurPlan::MAX_TAPS];
+    if radius == 0 {
+        taps[0] = 1.0;
+        return taps;
     }
+    debug_assert!(
+        variance < kernel_variance(radius, f64::INFINITY).value,
+        "a residual of {variance} texel² exceeds what {radius} taps a side can hold"
+    );
+    let (mut lo, mut hi) = (0.0, radius as f64);
+    while kernel_variance(radius, hi).value < variance {
+        hi *= 2.0;
+    }
+    let mut sigma = variance.sqrt().clamp(lo, hi);
+    for _ in 0..MAX_STEPS {
+        let at = kernel_variance(radius, sigma);
+        let miss = at.value - variance;
+        if miss.abs() <= f64::EPSILON * variance {
+            break;
+        }
+        if miss < 0.0 {
+            lo = sigma;
+        } else {
+            hi = sigma;
+        }
+        let newton = sigma - miss / at.slope;
+        sigma = if newton > lo && newton < hi {
+            newton
+        } else {
+            f64::midpoint(lo, hi)
+        };
+        if hi - lo <= f64::EPSILON * hi {
+            break;
+        }
+    }
+    let weights = gaussian(radius, sigma);
+    let total = weights[0] + 2.0 * weights[1..=radius].iter().sum::<f64>();
+    for (tap, w) in taps.iter_mut().zip(&weights[..=radius]) {
+        *tap = (w / total) as f32;
+    }
+    taps
 }
 
 /// Unnormalized Gaussian weights of `sigma` at offsets `0..=radius`; an infinite σ is flat.
@@ -290,11 +299,12 @@ pub(crate) mod internals {
         /// The residual Gaussian over `level`, mirrored at its edges.
         pub(crate) fn reference_residual(self, level: &[f64]) -> Vec<f64> {
             let radius = i64::from(self.radius);
+            let taps = self.taps();
             (0..level.len() as i64)
                 .map(|i| {
                     (-radius..=radius)
                         .map(|k| {
-                            f64::from(self.taps[k.unsigned_abs() as usize])
+                            f64::from(taps[k.unsigned_abs() as usize])
                                 * level[mirror(i + k, level.len())]
                         })
                         .sum()

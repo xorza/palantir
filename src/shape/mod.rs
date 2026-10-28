@@ -66,6 +66,10 @@ mod sealed {
         reason = "nothing outside the crate can name the sealed trait, so the crate-private types in its signature cannot leak"
     )]
     pub trait LowerShape: fmt::Debug {
+        /// Whether a shape of this kind can be a backdrop pane, which the record notes; only a rect
+        /// carries a backdrop filter, so every other kind skips the check.
+        const CAN_BE_PANE: bool = false;
+
         /// True if this shape paints nothing; checked before [`Self::lower`].
         fn is_noop(&self) -> bool;
 

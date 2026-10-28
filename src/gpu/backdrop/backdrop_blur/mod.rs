@@ -85,7 +85,19 @@ struct Sampled {
 #[derive(Debug)]
 struct CaptureTarget {
     format: TargetFormat,
+    /// Whether the format filters, so the passes that read the capture fetch it bilinearly.
+    filters: bool,
     target: Sampled,
+}
+
+/// The passes that read their source through one bind layout: a filtering one for the levels
+/// and every capture whose format filters, a loading one for a capture whose format does not
+/// (`Rgba32Float` without `FLOAT32_FILTERABLE`).
+#[derive(Debug)]
+struct SourcePasses {
+    layout: wgpu::BindGroupLayout,
+    tent: wgpu::RenderPipeline,
+    horizontal: wgpu::RenderPipeline,
 }
 
 /// Levels `1..` in one texture, mip `k − 1` holding level `k` of the largest surface seen, each
@@ -102,10 +114,10 @@ struct Levels {
 /// nothing.
 #[derive(Debug)]
 pub(crate) struct BackdropBlur {
-    tent: wgpu::RenderPipeline,
-    horizontal: wgpu::RenderPipeline,
+    filtered: SourcePasses,
+    loaded: SourcePasses,
     vertical: wgpu::RenderPipeline,
-    source_layout: wgpu::BindGroupLayout,
+    sampler: wgpu::Sampler,
     params_layout: wgpu::BindGroupLayout,
     params: wgpu::Buffer,
     params_group: wgpu::BindGroup,
@@ -124,18 +136,31 @@ pub(crate) struct BackdropBlur {
 
 impl BackdropBlur {
     pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let source_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.backdrop.blur.source.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
+        let texture_entry = |filterable| wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        };
+        let filtered_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("palantir.backdrop.blur.source.filtered.bgl"),
+            entries: &[
+                texture_entry(true),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
                 },
-                count: None,
-            }],
+            ],
+        });
+        let loaded_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("palantir.backdrop.blur.source.loaded.bgl"),
+            entries: &[texture_entry(false)],
         });
         let params_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.backdrop.blur.params.bgl"),
@@ -150,28 +175,58 @@ impl BackdropBlur {
                 count: None,
             }],
         });
-        let layout = PipelineRecipe::pipeline_layout(
-            device,
-            "palantir.backdrop.blur.pl",
-            &[Some(&source_layout), Some(&params_layout)],
-        );
         let shader = ShaderBody::BackdropBlur.module(device);
-        let pipeline = |label, fragment_entry| {
-            PipelineRecipe {
-                fragment_entry,
-                blend: None,
-                ..PipelineRecipe::color(label, &shader, &layout, LEVEL_FORMAT)
+        let passes = |source_layout: wgpu::BindGroupLayout, tent_entry| {
+            let layout = PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.backdrop.blur.pl",
+                &[Some(&source_layout), Some(&params_layout)],
+            );
+            let pipeline = |label, fragment_entry| {
+                PipelineRecipe {
+                    fragment_entry,
+                    blend: None,
+                    ..PipelineRecipe::color(label, &shader, &layout, LEVEL_FORMAT)
+                }
+                .build(device)
+            };
+            SourcePasses {
+                tent: pipeline("palantir.backdrop.blur.tent", tent_entry),
+                horizontal: pipeline("palantir.backdrop.blur.horizontal", "fs_horizontal"),
+                layout: source_layout,
             }
-            .build(device)
         };
+        let filtered = passes(filtered_layout, "fs_tent");
+        let loaded = passes(loaded_layout, "fs_tent_loads");
+        let vertical = PipelineRecipe {
+            fragment_entry: "fs_vertical",
+            blend: None,
+            ..PipelineRecipe::color(
+                "palantir.backdrop.blur.vertical",
+                &shader,
+                &PipelineRecipe::pipeline_layout(
+                    device,
+                    "palantir.backdrop.blur.pl",
+                    &[Some(&filtered.layout), Some(&params_layout)],
+                ),
+                LEVEL_FORMAT,
+            )
+        }
+        .build(device);
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("palantir.backdrop.blur.sampler"),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let params_capacity = 16;
         let params = params_buffer(device, params_capacity);
         let params_group = params_group(device, &params_layout, &params);
         Self {
-            tent: pipeline("palantir.backdrop.blur.tent", "fs_tent"),
-            horizontal: pipeline("palantir.backdrop.blur.horizontal", "fs_horizontal"),
-            vertical: pipeline("palantir.backdrop.blur.vertical", "fs_vertical"),
-            source_layout,
+            filtered,
+            loaded,
+            vertical,
+            sampler,
             params_layout,
             params,
             params_group,
@@ -196,9 +251,21 @@ impl BackdropBlur {
             .iter()
             .position(|c| c.format == format)
             .unwrap_or_else(|| {
+                let filters = format
+                    .get()
+                    .guaranteed_format_features(device.features())
+                    .flags
+                    .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
                 self.captures.push(CaptureTarget {
                     format,
-                    target: self.sampled(device, "palantir.backdrop.capture", format.get(), size),
+                    filters,
+                    target: self.sampled(
+                        device,
+                        "palantir.backdrop.capture",
+                        format.get(),
+                        size,
+                        filters,
+                    ),
                 });
                 self.captures.len() - 1
             });
@@ -209,6 +276,7 @@ impl BackdropBlur {
                 "palantir.backdrop.capture",
                 format.get(),
                 have.max(size),
+                self.captures[at].filters,
             );
         }
         at
@@ -259,7 +327,7 @@ impl BackdropBlur {
             .collect();
         let groups = views
             .iter()
-            .map(|view| self.source_group(device, view))
+            .map(|view| self.source_group(device, view, true))
             .collect();
         self.levels = Some(Levels {
             texture,
@@ -281,6 +349,7 @@ impl BackdropBlur {
             "palantir.backdrop.scratch",
             LEVEL_FORMAT,
             have.max(size),
+            true,
         ));
     }
 
@@ -299,6 +368,7 @@ impl BackdropBlur {
         label: &'static str,
         format: wgpu::TextureFormat,
         size: UVec2,
+        filters: bool,
     ) -> Sampled {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
@@ -318,7 +388,7 @@ impl BackdropBlur {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let group = self.source_group(device, &view);
+        let group = self.source_group(device, &view, filters);
         Sampled {
             texture,
             view,
@@ -326,14 +396,30 @@ impl BackdropBlur {
         }
     }
 
-    fn source_group(&self, device: &wgpu::Device, view: &wgpu::TextureView) -> wgpu::BindGroup {
+    /// The group a pass reads `view` through, with the sampler where its format `filters`.
+    fn source_group(
+        &self,
+        device: &wgpu::Device,
+        view: &wgpu::TextureView,
+        filters: bool,
+    ) -> wgpu::BindGroup {
+        let texture = wgpu::BindGroupEntry {
+            binding: 0,
+            resource: wgpu::BindingResource::TextureView(view),
+        };
+        let sampler = wgpu::BindGroupEntry {
+            binding: 1,
+            resource: wgpu::BindingResource::Sampler(&self.sampler),
+        };
+        let (layout, entries) = if filters {
+            (&self.filtered.layout, &[texture, sampler][..])
+        } else {
+            (&self.loaded.layout, &[texture][..])
+        };
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("palantir.backdrop.blur.source"),
-            layout: &self.source_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(view),
-            }],
+            layout,
+            entries,
         })
     }
 
@@ -424,12 +510,19 @@ impl BackdropBlur {
             0 => &capture.target.group,
             k => &level_groups.expect("a blurred level has its levels")[usize::from(k) - 1],
         };
+        let passes_of = |level: u8| {
+            if level == 0 && !capture.filters {
+                &self.loaded
+            } else {
+                &self.filtered
+            }
+        };
         for k in 1..=levels {
             let view = &level_views.expect("a blurred level has its levels")[usize::from(k) - 1];
             self.pass(
                 encoder,
                 Pass {
-                    pipeline: &self.tent,
+                    pipeline: &passes_of(k - 1).tent,
                     target: view,
                     source: source_of(k - 1),
                     slot,
@@ -442,7 +535,7 @@ impl BackdropBlur {
         self.pass(
             encoder,
             Pass {
-                pipeline: &self.horizontal,
+                pipeline: &passes_of(levels).horizontal,
                 target: &scratch.view,
                 source: source_of(levels),
                 slot,
@@ -587,7 +680,7 @@ impl BlurParams {
 
 fn taps_of(plan: BlurPlan) -> [[f32; 4]; TAP_VEC4S] {
     let mut taps = [[0.0; 4]; TAP_VEC4S];
-    for (i, &w) in plan.taps().iter().enumerate() {
+    for (i, w) in plan.taps().into_iter().enumerate() {
         taps[i / 4][i % 4] = w;
     }
     taps

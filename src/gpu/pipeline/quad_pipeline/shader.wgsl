@@ -1116,9 +1116,9 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     // screen, turned with the pane.
     let d = sdf_rounded_rect(in.local, in.size, in.radius);
     let gradient = vec2<f32>(dpdx(d), dpdy(d));
-    var c = backdrop_result(in.clip.xy, slot);
     let lens = slot.lens;
     let inward = -d;
+    var c: vec3<f32>;
     if (lens.x > 0.0 && inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
         let outward = normalize(gradient);
         let index = lens.z;
@@ -1128,6 +1128,8 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
             c.b = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index + 0.5 * lens.w), slot).b;
         }
         c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
+    } else {
+        c = backdrop_result(in.clip.xy, slot);
     }
     let saturation = in.fill_axis.y;
     let noise = in.fill_axis.z;
