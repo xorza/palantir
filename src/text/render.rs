@@ -34,8 +34,7 @@ pub struct GlyphRasterKey(pub(crate) CacheKey);
 /// A physical-px origin: integer part plus cosmic's packed subpixel bins.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct SubpixelOrigin {
-    pub(crate) x: i32,
-    pub(crate) y: i32,
+    pub(crate) pixel: IVec2,
     /// Bits 0-1: `y_bin`; bits 2-3: `x_bin`.
     pub(crate) bins: u8,
 }
@@ -47,8 +46,7 @@ impl SubpixelOrigin {
         let (x, x_bin) = SubpixelBin::new(origin.x);
         let (y, y_bin) = SubpixelBin::new(origin.y);
         Self {
-            x,
-            y,
+            pixel: IVec2::new(x, y),
             bins: ((x_bin as u8) << 2) | (y_bin as u8),
         }
     }

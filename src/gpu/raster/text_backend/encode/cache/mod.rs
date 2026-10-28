@@ -20,6 +20,7 @@ use crate::gpu::raster::text_backend::encoded_counters::EncodedCounters;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::text::RENDERED_RUN_KEEP_FRAMES;
 use crate::text::render::GlyphRasterKey;
+use glam::{IVec2, U16Vec2, UVec2};
 
 #[derive(Clone, Copy, Debug)]
 struct EncodedEntry {
@@ -72,9 +73,9 @@ impl BlockSlot for EncodedGlyph {
     fn free_link(next: Option<NonMaxU32>) -> Self {
         Self {
             instance: RasterQuad {
-                pos: [0, 0],
-                dim: [0; 2],
-                size: [0; 2],
+                pos: IVec2::ZERO,
+                dim: U16Vec2::ZERO,
+                size: UVec2::ZERO,
                 uv_and_kind: 0,
                 color: RgbaF16::TRANSPARENT,
             },
@@ -154,7 +155,7 @@ impl EncodedCache {
             }
             let g = glyph.instance;
             pass.instances.push(RasterQuad {
-                pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
+                pos: g.pos + run_key.pixel,
                 ..g
             });
             slot.last_use = cur_frame;
@@ -407,9 +408,9 @@ pub(crate) mod internals {
                 for glyph in 0..self.glyphs_per_row {
                     self.cache.stage(EncodedGlyph {
                         instance: RasterQuad {
-                            pos: [glyph as i32, run as i32],
-                            dim: [0; 2],
-                            size: [0; 2],
+                            pos: IVec2::new(glyph as i32, run as i32),
+                            dim: U16Vec2::ZERO,
+                            size: UVec2::ZERO,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },
@@ -473,9 +474,9 @@ pub(crate) mod internals {
                 for glyph in 0..glyphs_per_row {
                     cache.stage(EncodedGlyph {
                         instance: RasterQuad {
-                            pos: [glyph as i32, row as i32],
-                            dim: [0; 2],
-                            size: [0; 2],
+                            pos: IVec2::new(glyph as i32, row as i32),
+                            dim: U16Vec2::ZERO,
+                            size: UVec2::ZERO,
                             uv_and_kind: 0,
                             color: RgbaF16::TRANSPARENT,
                         },

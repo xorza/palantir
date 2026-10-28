@@ -3,7 +3,7 @@
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
-use glam::{I16Vec2, IVec2, U16Vec2};
+use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 
 /// Where a packed raster sits on its side, its bearing and its packer rectangle; a non-drawing entry owns none.
 #[derive(Clone, Copy, Debug)]
@@ -20,24 +20,23 @@ pub(crate) struct SlotPlacement {
 impl SlotPlacement {
     /// The instance drawing this raster at `pen` plus the bearing.
     pub(crate) fn quad(self, pen: IVec2, color: RgbaF16) -> RasterQuad {
-        let dim = self.size.to_array();
         RasterQuad {
             // Bearing `y` is up; screen `y` is down.
-            pos: [
+            pos: IVec2::new(
                 pen.x + i32::from(self.bearing.x),
                 pen.y - i32::from(self.bearing.y),
-            ],
-            dim,
-            size: dim,
+            ),
+            dim: self.size,
+            size: self.size.as_uvec2(),
             uv_and_kind: RasterQuad::pack_uv(self.origin.x, self.origin.y, self.content),
             color,
         }
     }
 
     /// [`Self::quad`] resampled to `size` physical px, for an icon outside the exact band.
-    pub(crate) fn quad_sized(self, pen: IVec2, size: U16Vec2, color: RgbaF16) -> RasterQuad {
+    pub(crate) fn quad_sized(self, pen: IVec2, size: UVec2, color: RgbaF16) -> RasterQuad {
         RasterQuad {
-            size: size.to_array(),
+            size,
             ..self.quad(pen, color)
         }
     }

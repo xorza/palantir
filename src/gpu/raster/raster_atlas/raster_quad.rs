@@ -3,16 +3,18 @@
 
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
-use glam::Vec2;
+use glam::{IVec2, U16Vec2, UVec2, Vec2};
 
-/// One per-instance vertex record. 28 bytes, `Pod`.
+/// One per-instance vertex record. 32 bytes, `Pod`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct RasterQuad {
-    pub(crate) pos: [i32; 2],
-    pub(crate) dim: [u16; 2],
-    /// The drawn extents in physical px; equal to `dim` except for resampled icons.
-    pub(crate) size: [u16; 2],
+    pub(crate) pos: IVec2,
+    pub(crate) dim: U16Vec2,
+    /// The drawn extents in physical px; equal to `dim` except for resampled icons. `u32`, as a
+    /// resampled icon's quad is its whole box, which a zoom takes past 65535 px; exact to 2²⁴ px,
+    /// where the shader's f32 texel mapping stops being exact.
+    pub(crate) size: UVec2,
     /// Atlas origin plus content type, packed by [`Self::pack_uv`].
     pub(crate) uv_and_kind: u32,
     /// Straight-alpha linear RGBA; the shader premultiplies at output.
@@ -70,7 +72,7 @@ const _: () = {
 
 /// A [`RasterQuad`] a paint animation turns: the quad as drawn unturned, and the turn of its whole
 /// run about the physical `pivot`, as `rotor = (cos, sin)`. In a buffer of its own, so an
-/// unturned glyph keeps its 28 bytes.
+/// unturned glyph keeps its 32 bytes.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct SpunRasterQuad {
@@ -92,7 +94,7 @@ impl SpunRasterQuad {
 const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Sint32x2,
     1 => Uint16x2,
-    2 => Uint16x2,
+    2 => Uint32x2,
     3 => Uint32,
     4 => Float16x4,
 ];
@@ -110,7 +112,7 @@ const _: () = {
 const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
     0 => Sint32x2,
     1 => Uint16x2,
-    2 => Uint16x2,
+    2 => Uint32x2,
     3 => Uint32,
     4 => Float16x4,
     5 => Float32x2,
@@ -136,14 +138,14 @@ mod tests {
     use std::mem::offset_of;
 
     #[test]
-    fn raster_quad_is_28_bytes() {
-        assert_eq!(size_of::<RasterQuad>(), 28);
+    fn raster_quad_is_32_bytes() {
+        assert_eq!(size_of::<RasterQuad>(), 32);
         assert_eq!(align_of::<RasterQuad>(), 4);
         assert_eq!(offset_of!(RasterQuad, pos), 0);
         assert_eq!(offset_of!(RasterQuad, dim), 8);
         assert_eq!(offset_of!(RasterQuad, size), 12);
-        assert_eq!(offset_of!(RasterQuad, uv_and_kind), 16);
-        assert_eq!(offset_of!(RasterQuad, color), 20);
+        assert_eq!(offset_of!(RasterQuad, uv_and_kind), 20);
+        assert_eq!(offset_of!(RasterQuad, color), 24);
     }
 
     /// The three fields share one `u32`; `u` is taken at its range top to catch a mask one bit too wide.

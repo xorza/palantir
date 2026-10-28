@@ -61,7 +61,7 @@ use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::text;
-use glam::{U16Vec2, UVec2, Vec2};
+use glam::{UVec2, Vec2};
 use std::num::NonZeroI64;
 
 /// One compose pass in flight: the [`Composer`]'s scratch bound to the buffer
@@ -356,10 +356,6 @@ impl PaintSink for ComposeSession<'_> {
         });
     }
 
-    #[expect(
-        clippy::cast_sign_loss,
-        reason = "every value is clamped to a non-negative range before the cast"
-    )]
     fn icon(&mut self, p: DrawIconPayload) {
         let ScaledRect {
             physical: physical_rect,
@@ -384,7 +380,7 @@ impl PaintSink for ComposeSession<'_> {
             // Whole-pixel origin with the raster centered in its box; the `Nearest` atlas sampler
             // needs integer origins.
             let centered = physical_rect.min + (box_px - key.size().as_vec2()) * 0.5;
-            (centered.fast_round().as_ivec2(), key.size())
+            (centered.fast_round().as_ivec2(), key.size().as_uvec2())
         } else {
             // Above the exact band the raster is a nearby or capped rung; at its own size it
             // would stick out of or leave a gap in the box the cull and damage rects use. So
@@ -392,7 +388,7 @@ impl PaintSink for ComposeSession<'_> {
             let min = physical_rect.min.fast_round();
             let max = physical_rect.max().fast_round();
             let size = (max - min).max(Vec2::ONE);
-            (min.as_ivec2(), U16Vec2::new(size.x as u16, size.y as u16))
+            (min.as_ivec2(), size.as_uvec2())
         };
         self.out.icons.push(IconDrawRow {
             key,
