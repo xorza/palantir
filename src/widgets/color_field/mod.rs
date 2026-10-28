@@ -170,10 +170,9 @@ impl AreaValue for Field<'_> {
 fn fill(image: &mut Image, model: ColorModel, hue: f32) {
     let slice = model.slice(hue);
     let size = image.size();
-    image.fill_with(|col, row| {
-        let sat = (col as f32 + 0.5) / size.x as f32;
-        let val = 1.0 - (row as f32 + 0.5) / size.y as f32;
-        slice.color(sat, val).to_srgba()
+    image.fill_with(|at| {
+        let share = (at.as_vec2() + 0.5) / size.as_vec2();
+        slice.color(share.x, 1.0 - share.y).to_srgba()
     });
 }
 

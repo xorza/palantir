@@ -186,8 +186,9 @@ fn shadows(ui: &mut Ui, k: Knobs) {
 /// A 60 px checker, so an image drawn past its node shows.
 fn picture(h: &mut Harness) -> ImageHandle {
     let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]).unwrap();
-    image.fill_with(|x, y| {
-        let on = (x / 10 + y / 10) % 2 == 0;
+    image.fill_with(|at| {
+        let cell = at / 10;
+        let on = (cell.x + cell.y) % 2 == 0;
         SrgbaU8::new(if on { 230 } else { 40 }, 120, 60, 255)
     });
     h.host.ui().load_image(&image).expect("a 60 px image loads")
