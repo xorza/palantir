@@ -1011,7 +1011,7 @@ Image
         pub const fn size(&self) -> UVec2
         pub fn texels(&self) -> &[SrgbaU8]
         pub fn texels_mut(&mut self) -> &mut [SrgbaU8]
-        pub fn fill_with(&mut self, texel: impl FnMut(u32, u32) -> SrgbaU8)
+        pub fn fill_with(&mut self, texel: impl FnMut(UVec2) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
         pub fn repeat_row(&mut self, row: u32)
 

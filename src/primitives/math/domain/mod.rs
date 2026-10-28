@@ -166,7 +166,7 @@ pub const fn is_gap(v: f32) -> bool {
     is_length(v) && is_lane(v)
 }
 
-/// `v`, which must be a *gap*: a length and a [lane](lane), as a container packs its gaps into f16
+/// `v`, which must be a *gap*: a length and a [lane], as a container packs its gaps into f16
 /// lanes.
 ///
 /// # Panics
@@ -260,7 +260,7 @@ pub const fn is_color(c: RgbaF32) -> bool {
     is_lane(c.r) && is_lane(c.g) && is_lane(c.b) && is_lane(c.a)
 }
 
-/// `c`, which must be a *color*: every channel a [lane](lane), as a color lowers to
+/// `c`, which must be a *color*: every channel a [lane], as a color lowers to
 /// f16 lanes. Above `1` is valid (HDR, tween overshoot), and so is below `0`, which the lowering
 /// clamps.
 ///
