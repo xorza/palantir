@@ -20,6 +20,7 @@ mod shadow;
 mod shapes;
 mod tabs;
 mod text;
+mod turn;
 mod user_scale;
 mod widgets;
 

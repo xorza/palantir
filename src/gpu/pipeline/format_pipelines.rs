@@ -6,7 +6,7 @@ use crate::gpu::pipeline::image_pipeline::ImagePipeline;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
 use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
-use crate::gpu::raster::raster_program::RasterProgram;
+use crate::gpu::raster::raster_program::{RasterProgram, RasterVariants};
 
 /// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
 #[derive(Debug)]
@@ -16,7 +16,7 @@ pub(crate) struct FormatPipelines {
     pub(crate) image: StencilVariant,
     pub(crate) curve: StencilVariant,
     /// Base + stencil-test pipelines for **both** raster tenants: glyph and icon quads share one shader and group-0 layout, binding whichever atlas the step names. See [`RasterProgram`].
-    pub(crate) raster: StencilVariant,
+    pub(crate) raster: RasterVariants,
     /// Presents the retained backbuffer onto a target that can't be copied into. No stencil twin: it runs in its own pass after every clipped draw.
     pub(crate) blit: wgpu::RenderPipeline,
 }

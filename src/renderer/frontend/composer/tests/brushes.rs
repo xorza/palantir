@@ -15,18 +15,23 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    curve, draw, gpu_view, image, params, run, run_with_texture_cap,
+    curve, draw, gpu_view, gpu_view_payload, image, params, run, run_with_texture_cap,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::{
+    DrawImagePayload, ImageDraw, ViewPaint,
+};
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
+use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
+use std::f32::consts::FRAC_PI_2;
 
 /// A solid `Brush::Solid` panel emits a Quad with `fill_kind = BRUSH_KIND_SOLID
 /// = 0`, `fill_lut_row = 0` (no gradient) and the fill color passed through.
@@ -174,6 +179,7 @@ fn compose_emits_image_batch_for_drawimage() {
                         tint: RgbaF32::WHITE.to_f16(),
                         handle: TextureId(0xc0ffee),
                         flags: ImageFlags::NONE,
+                        spin: None,
                     },
                     view: None,
                 },
@@ -440,6 +446,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
                         tint: RgbaF32::WHITE.to_f16(),
                         handle: TextureId(1),
                         flags: ImageFlags::NONE,
+                        spin: None,
                     },
                     view: None,
                 },
@@ -467,6 +474,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         tint: RgbaF32::WHITE.to_f16(),
                         handle: TextureId(1),
                         flags: ImageFlags::NONE,
+                        spin: None,
                     },
                     view: None,
                 },
@@ -482,6 +490,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         tint: RgbaF32::WHITE.to_f16(),
                         handle: TextureId(2),
                         flags: ImageFlags::TILED,
+                        spin: None,
                     },
                     view: None,
                 },
@@ -497,6 +506,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                         tint: RgbaF32::WHITE.to_f16(),
                         handle: TextureId(3),
                         flags: ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST),
+                        spin: None,
                     },
                     view: None,
                 },
@@ -553,4 +563,72 @@ fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
     assert_eq!(buf.curves.len(), 2);
     assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
     assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
+}
+
+/// An image turned a quarter about the logical pivot (50, 50) at scale 1: its rect
+/// (40, 40)..(60, 50) has its center (50, 45) turned to (55, 50), so the instance is (45, 45) 20×10
+/// at the angle, with its uv unchanged. A turned `GpuView` draws its whole rect: its visible part
+/// is no rect of its own.
+#[test]
+fn a_turned_image_moves_its_center_and_keeps_its_uv() {
+    const EPS: f32 = 1e-4;
+    let spin = Some(Spin {
+        pivot: Vec2::new(50.0, 50.0),
+        angle: FRAC_PI_2,
+    });
+    let buf = run(
+        |b, _| {
+            b.draw_image(
+                ImageDraw {
+                    payload: DrawImagePayload {
+                        rect: Rect::new(40.0, 40.0, 20.0, 10.0),
+                        uv_min: Vec2::ZERO,
+                        uv_size: Vec2::ONE,
+                        tint: RgbaF32::WHITE.to_f16(),
+                        handle: TextureId(1),
+                        flags: ImageFlags::NONE,
+                        spin,
+                    },
+                    view: None,
+                },
+                1.0,
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    let instance = buf.images.instance()[0];
+    assert!(
+        instance.rect.min.abs_diff_eq(Vec2::new(45.0, 45.0), EPS),
+        "{:?}",
+        instance.rect
+    );
+    assert_eq!(instance.rect.size, Size::new(20.0, 10.0));
+    assert_eq!(instance.rotation, FRAC_PI_2);
+    assert_eq!((instance.uv_min, instance.uv_size), (Vec2::ZERO, Vec2::ONE));
+
+    let paint = GpuPaintRef::noop();
+    let half_off = Rect::new(-10.0, 40.0, 20.0, 10.0);
+    let buf = run(
+        |b, _| {
+            b.draw_image(
+                ImageDraw {
+                    payload: DrawImagePayload {
+                        spin,
+                        ..gpu_view_payload(half_off, TextureId(2))
+                    },
+                    view: Some(ViewPaint {
+                        paint: &paint,
+                        epoch: 1,
+                    }),
+                },
+                1.0,
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(
+        buf.frame_targets[0].used,
+        UVec2::new(20, 10),
+        "the whole view"
+    );
 }

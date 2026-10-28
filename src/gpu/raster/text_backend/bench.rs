@@ -15,8 +15,8 @@ use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
-use crate::gpu::raster::raster_program::RasterProgram;
+use crate::gpu::pipeline::stencil_variant::StencilMode;
+use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::raster::text_backend::encode::cache::internals::{ChurnBench, SweepBench};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::surface::viewport::ViewportPush;
@@ -109,6 +109,7 @@ impl BenchRun<'_> {
             bounds: URect::new(0, 0, PHYSICAL.x, PHYSICAL.y),
             color: RgbaF16::new(gray, gray, gray, 1.0),
             scale: 1.0,
+            spin: None,
         }
     }
 }
@@ -165,7 +166,8 @@ struct Batch<'a> {
 #[derive(Debug)]
 struct Fixture {
     backend: TextBackend,
-    pipelines: StencilVariant,
+    program: RasterProgram,
+    pipelines: RasterVariants,
     belt: StagingBelt,
     store: RecordStore,
     runs: Vec<TextDrawRow>,
@@ -178,10 +180,11 @@ impl Fixture {
         let shaper = TextShaper::new();
         let mut store = RecordStore::default();
         let runs = make_runs(&mut store, &shaper);
-        let raster = RasterProgram::new(&g.gpu.device);
+        let program = RasterProgram::new(&g.gpu.device);
         Self {
-            backend: TextBackend::new(&g.gpu.device, &raster, shaper),
-            pipelines: raster.build_variants(&g.gpu.device, TARGET_FORMAT.get()),
+            backend: TextBackend::new(&g.gpu.device, &program, shaper),
+            pipelines: program.build_variants(&g.gpu.device, TARGET_FORMAT.get()),
+            program,
             belt: StagingBelt::new(g.gpu.device.clone(), 1 << 20),
             store,
             runs,
@@ -235,14 +238,17 @@ impl Fixture {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // `render_batch` binds neither pipeline nor viewport (the render loop owns both), so a
-            // standalone pass binds its own.
-            pass.set_pipeline(self.pipelines.select(StencilMode::Off));
-            let viewport = ViewportPush { size: Vec2::ZERO };
-            viewport.push_into(&mut pass);
-            let mut binder = MainBinder::new(viewport);
+            // `render_batch` binds the pipeline a span needs, and the binder pushes the viewport
+            // with the first.
+            let mut binder = MainBinder::new(ViewportPush { size: Vec2::ZERO });
+            let pipelines = RasterPipelines {
+                flat: self.pipelines.flat.select(StencilMode::Off),
+                spun: self.pipelines.spun.select(StencilMode::Off),
+                layout: self.program.pipeline_layout(),
+            };
             for idx in 0..batches.len() {
-                self.backend.render_batch(&mut binder, &mut pass, idx);
+                self.backend
+                    .render_batch(&mut binder, &mut pass, idx, pipelines);
             }
         }
         self.belt.finish();

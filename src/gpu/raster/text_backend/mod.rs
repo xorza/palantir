@@ -19,7 +19,7 @@ use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
-use crate::gpu::raster::raster_program::RasterProgram;
+use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
 use crate::gpu::raster::text_backend::encode::encoder::{MissedRun, TextEncoder};
 use crate::primitives::text::interned_text::InternedText;
@@ -56,6 +56,7 @@ impl TextBackend {
                 program,
                 RasterPassConfig {
                     vbuf: "palantir.text.vbuf",
+                    spun_vbuf: "palantir.text.spun_vbuf",
                     atlas: RasterAtlasConfig {
                         label: "palantir.text",
                         // Skips the 256->512->1024 grow chain on the first text-heavy frame.
@@ -92,23 +93,29 @@ impl TextBackend {
         for r in runs {
             let run_key = EncodedRunKey::for_row(r, scale);
             let text = interned_text.resolve(r.text.span);
-            if self.encoder.try_emit_cached(&mut self.pass, &run_key, text) {
-                continue;
-            }
-            let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
-            self.encoder.encode_run(
-                &mut self.pass,
-                glyphs,
-                MissedRun {
-                    request: r.text.resolve_request(&interned_text),
-                    placement: RunPlacement {
-                        origin: run_key.origin(),
-                        scale: scale * r.scale,
-                        bounds: Some(r.bounds),
+            let start = self.pass.instances.len();
+            if !self.encoder.try_emit_cached(&mut self.pass, &run_key, text) {
+                let glyphs = glyphs.get_or_insert_with(|| self.shaper.glyphs());
+                self.encoder.encode_run(
+                    &mut self.pass,
+                    glyphs,
+                    MissedRun {
+                        request: r.text.resolve_request(&interned_text),
+                        placement: RunPlacement {
+                            origin: run_key.origin(),
+                            scale: scale * r.scale,
+                            // A turned run's lines reach rows its unturned ones do not, so it
+                            // culls none against its bounds.
+                            bounds: r.spin.is_none().then_some(r.bounds),
+                        },
+                        key: run_key,
                     },
-                    key: run_key,
-                },
-            );
+                );
+            }
+            // A turned run is emitted as an unturned one, then turned whole.
+            if let Some(spin) = r.spin {
+                self.pass.turn_since(start, spin);
+            }
         }
     }
 
@@ -142,8 +149,9 @@ impl TextBackend {
         binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         batch_idx: usize,
+        pipelines: RasterPipelines<'a>,
     ) {
-        self.pass.render_batch(binder, pass, batch_idx);
+        self.pass.render_batch(binder, pass, batch_idx, pipelines);
     }
 }
 

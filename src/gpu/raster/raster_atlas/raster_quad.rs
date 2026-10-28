@@ -3,6 +3,7 @@
 
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
+use glam::Vec2;
 
 /// One per-instance vertex record. 28 bytes, `Pod`.
 #[repr(C)]
@@ -67,6 +68,27 @@ const _: () = {
     assert!(FLAG_DESATURATE & FLAG_COLOR == 0, "the two flags overlap");
 };
 
+/// A [`RasterQuad`] a paint animation turns: the quad as drawn unturned, and the turn of its whole
+/// run about the physical `pivot`, as `rotor = (cos, sin)`. In a buffer of its own, so an
+/// unturned glyph keeps its 28 bytes.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct SpunRasterQuad {
+    pub(crate) quad: RasterQuad,
+    pub(crate) pivot: Vec2,
+    pub(crate) rotor: Vec2,
+}
+
+impl SpunRasterQuad {
+    pub(crate) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
+        wgpu::VertexBufferLayout {
+            array_stride: size_of::<Self>() as u64,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &SPUN_RASTER_QUAD_ATTRS,
+        }
+    }
+}
+
 const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Sint32x2,
     1 => Uint16x2,
@@ -83,6 +105,28 @@ const _: () = {
     assert!(RASTER_QUAD_ATTRS[2].offset == offset_of!(RasterQuad, size) as u64);
     assert!(RASTER_QUAD_ATTRS[3].offset == offset_of!(RasterQuad, uv_and_kind) as u64);
     assert!(RASTER_QUAD_ATTRS[4].offset == offset_of!(RasterQuad, color) as u64);
+};
+
+const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
+    0 => Sint32x2,
+    1 => Uint16x2,
+    2 => Uint16x2,
+    3 => Uint32,
+    4 => Float16x4,
+    5 => Float32x2,
+    6 => Float32x2,
+];
+
+// The leading five match `RasterQuad`'s, so `vs_spun` reads the quad as `vs` does.
+const _: () = {
+    use std::mem::offset_of;
+    let mut i = 0;
+    while i < RASTER_QUAD_ATTRS.len() {
+        assert!(SPUN_RASTER_QUAD_ATTRS[i].offset == RASTER_QUAD_ATTRS[i].offset);
+        i += 1;
+    }
+    assert!(SPUN_RASTER_QUAD_ATTRS[5].offset == offset_of!(SpunRasterQuad, pivot) as u64);
+    assert!(SPUN_RASTER_QUAD_ATTRS[6].offset == offset_of!(SpunRasterQuad, rotor) as u64);
 };
 
 #[cfg(test)]

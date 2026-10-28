@@ -28,6 +28,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::{
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
@@ -109,6 +110,9 @@ impl PlaneCtx<'_, '_> {
         }
         let alpha = paint_mod.alpha;
         let owner_rect = self.layout.rect[id.idx()];
+        // The turn for payloads placed in the encoder's logical frame; a payload whose points are
+        // relative to an origin of its own takes `Spin::about_owner` with that origin.
+        let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
         match shape {
             ShapeRecord::Quad(shape) => match shape {
                 QuadShape::Rect {
@@ -128,7 +132,8 @@ impl PlaneCtx<'_, '_> {
                             corners: *corners,
                             fill,
                             stroke: *border,
-                        }),
+                        })
+                        .turned(spin),
                         alpha,
                     );
                 }
@@ -140,7 +145,7 @@ impl PlaneCtx<'_, '_> {
                     // The composer grows a drop shadow from the source rect in physical pixels, so it lands on the same pixels as the fill.
                     let source = owner_rect.resolve_local(*local_rect);
                     if let Some(shadow) = DrawQuadPayload::shadow(source, *corners, *shadow) {
-                        out.draw_quad(shadow, alpha);
+                        out.draw_quad(shadow.turned(spin), alpha);
                     }
                 }
                 QuadShape::Triangle {
@@ -152,11 +157,18 @@ impl PlaneCtx<'_, '_> {
                     border,
                     bbox: _,
                 } => {
-                    // Owner-local corner points; the composer folds in `origin` and the transform. Solid fill only: the reused quad lanes have no room for a gradient.
+                    // Owner-local corner points, turned here by a paint animation; the composer folds in `origin` and the transform. Solid fill only: the reused quad lanes have no room for a gradient.
+                    let mut points = [*a, *b, *c];
+                    if let Some(spin) =
+                        Spin::about_owner(owner_rect, owner_rect.min, paint_mod.rotation)
+                    {
+                        let rotor = spin.rotor();
+                        points = points.map(|q| rotor.apply(q));
+                    }
                     out.draw_quad(
                         DrawQuadPayload::triangle(TriangleQuad {
                             origin: owner_rect.min,
-                            points: [*a, *b, *c],
+                            points,
                             radius: *radius,
                             fill: *fill,
                             stroke: *border,
@@ -194,6 +206,7 @@ impl PlaneCtx<'_, '_> {
                         ink: shaped.extent.ink,
                         color: *color,
                         text: ShapedTextRef::new(key, text),
+                        spin,
                     },
                     alpha,
                 );
@@ -239,6 +252,7 @@ impl PlaneCtx<'_, '_> {
                         tint: *tint,
                         vertices: *vertices,
                         idxs: *idxs,
+                        spin: Spin::about_owner(owner_rect, origin, paint_mod.rotation),
                     },
                     alpha,
                 );
@@ -281,6 +295,7 @@ impl PlaneCtx<'_, '_> {
                         icon: handle.icon,
                         tint: *tint,
                         desaturate: *desaturate,
+                        spin,
                     },
                     alpha,
                 );
@@ -337,6 +352,7 @@ impl PlaneCtx<'_, '_> {
                             tint: *tint,
                             handle,
                             flags,
+                            spin,
                         },
                         view,
                     },

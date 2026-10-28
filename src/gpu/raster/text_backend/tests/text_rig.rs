@@ -77,6 +77,7 @@ impl TextRig {
             bounds: URect::new(0, 0, PHYSICAL.x, PHYSICAL.y),
             color: RgbaF16::new(0.94, 0.94, 0.94, 1.0),
             scale: 1.0,
+            spin: None,
         }
     }
 

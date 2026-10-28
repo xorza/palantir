@@ -134,6 +134,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
                     tint: RgbaF32::WHITE.to_f16(),
                     handle,
                     flags: ImageFlags::NONE,
+                    spin: None,
                 },
                 view: has_paint.then_some(ViewPaint {
                     paint: &paint,
@@ -181,6 +182,7 @@ fn the_gate_sees_the_faded_payload() {
             tint: RgbaF32::WHITE.to_f16(),
             handle: TextureId(7),
             flags: ImageFlags::NONE,
+            spin: None,
         },
         view: None,
     };

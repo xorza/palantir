@@ -218,6 +218,20 @@ impl Rect {
             .length()
     }
 
+    /// The axis-aligned bound of this rect turned `angle` radians about `pivot`.
+    #[inline]
+    pub(crate) fn turned_cover(self, pivot: Vec2, angle: f32) -> Self {
+        let (sin, cos) = angle.sin_cos();
+        let half = Vec2::new(self.size.w * 0.5, self.size.h * 0.5);
+        let reach = Vec2::new(
+            cos.abs() * half.x + sin.abs() * half.y,
+            sin.abs() * half.x + cos.abs() * half.y,
+        );
+        let v = self.center() - pivot;
+        let center = pivot + Vec2::new(cos * v.x - sin * v.y, sin * v.x + cos * v.y);
+        Self::from_min_max(center - reach, center + reach)
+    }
+
     /// The square this rect covers at every rotation about `pivot`; angle-free, so composer culling and cascade damage agree.
     #[inline]
     pub(crate) fn spun_cover(self, pivot: Vec2) -> Self {

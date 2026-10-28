@@ -3,6 +3,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::payload::spin::Spin;
 
 /// One baked-icon draw, in logical px; physical box, raster size and atlas slot are decided downstream.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -14,6 +15,8 @@ pub(crate) struct DrawIconPayload {
     pub(crate) tint: RgbaF16,
     /// Draw a color icon as its own luminance.
     pub(crate) desaturate: bool,
+    /// A paint animation's turn, its pivot in the same logical frame as `rect`.
+    pub(crate) spin: Option<Spin>,
 }
 
 impl DrawIconPayload {

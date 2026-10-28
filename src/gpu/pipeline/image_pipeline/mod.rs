@@ -147,7 +147,7 @@ impl ImagePipeline {
     }
 }
 
-const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
+const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
     0 => Float32x2,
     1 => Float32x2,
     2 => Float32x2,
@@ -155,6 +155,7 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array
     // Tint is linear straight-alpha; the shader premultiplies at write.
     4 => Float16x4,
     5 => Uint32,
+    6 => Float32,
 ];
 
 // Attribute offsets must match the `ImageInstance` fields; `offset_of!`
@@ -167,6 +168,7 @@ const _: () = {
     assert!(IMAGE_INSTANCE_ATTRS[3].offset == offset_of!(ImageInstance, uv_size) as u64);
     assert!(IMAGE_INSTANCE_ATTRS[4].offset == offset_of!(ImageInstance, tint) as u64);
     assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, flags) as u64);
+    assert!(IMAGE_INSTANCE_ATTRS[6].offset == offset_of!(ImageInstance, rotation) as u64);
 };
 
 #[cfg(feature = "internals")]

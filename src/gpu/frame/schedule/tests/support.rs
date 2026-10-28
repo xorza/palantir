@@ -133,6 +133,7 @@ fn dummy_text() -> TextDrawRow {
         },
         color: RgbaF32::WHITE.to_f16(),
         scale: 1.0,
+        spin: None,
     }
 }
 

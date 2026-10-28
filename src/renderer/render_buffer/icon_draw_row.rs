@@ -2,6 +2,7 @@
 
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::payload::spin::Spin;
 use glam::{IVec2, U16Vec2};
 
 /// One icon draw in physical-pixel space. The composer resolves where and how big; the backend resolves pixels (rasterizing on an atlas miss), so the icon rasterizes at its true device size.
@@ -19,4 +20,6 @@ pub(crate) struct IconDrawRow {
     pub(crate) color: RgbaF16,
     /// Draw a color icon as its own luminance; folded into the quad's packed uv field.
     pub(crate) desaturate: bool,
+    /// A paint animation's turn of the quad, about a physical pivot.
+    pub(crate) spin: Option<Spin>,
 }

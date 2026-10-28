@@ -9,6 +9,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeometry};
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
@@ -21,7 +22,13 @@ use glam::Vec2;
 pub(crate) enum QuadGeometry {
     /// A logical-px rect and corner radii; a shadow's are the source shape's
     /// (the composer grows a drop shadow's paint rect from it after snapping).
-    Rect { rect: Rect, corners: Corners },
+    /// `spin` is a paint animation's turn, its pivot in the same logical frame
+    /// as `rect`.
+    Rect {
+        rect: Rect,
+        corners: Corners,
+        spin: Option<Spin>,
+    },
     /// Owner-local corner points and rounding. The composer folds `origin`
     /// and the push-transform, scales to physical px, derives the covering
     /// AABB (points inflated by `radius + AA fringe`) and packs the points
@@ -117,11 +124,26 @@ impl DrawQuadPayload {
             lanes.kind = lanes.kind.with_window();
         }
         Self {
-            geometry: QuadGeometry::Rect { rect, corners },
+            geometry: QuadGeometry::Rect {
+                rect,
+                corners,
+                spin: None,
+            },
             fill: lanes,
             stroke: stroke.normalized(),
             fill_axis: fill.fill_axis(),
         }
+    }
+
+    /// This rect or shadow turned by `spin`. A triangle's points turn before it is built.
+    pub(crate) fn turned(mut self, spin: Option<Spin>) -> Self {
+        match &mut self.geometry {
+            QuadGeometry::Rect { spin: slot, .. } => *slot = spin,
+            QuadGeometry::Triangle { .. } => {
+                debug_assert!(spin.is_none(), "a triangle's points carry its turn");
+            }
+        }
+        self
     }
 
     /// `shadow` cast by the source `rect`, or `None` when it paints nothing:
@@ -137,7 +159,11 @@ impl DrawQuadPayload {
             FillKind::SHADOW_DROP
         };
         Some(Self {
-            geometry: QuadGeometry::Rect { rect, corners },
+            geometry: QuadGeometry::Rect {
+                rect,
+                corners,
+                spin: None,
+            },
             fill: GpuFill {
                 color: shadow.color,
                 kind,

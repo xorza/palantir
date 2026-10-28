@@ -211,6 +211,7 @@ fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
             tint: RgbaF32::WHITE.to_f16(),
             vertices: Span::new(0, 3),
             idxs: Span::new(0, 3),
+            spin: None,
         },
         1.0,
     );
@@ -236,6 +237,7 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
                 key: TextShapeKey::fixture(),
                 span: Span::default(),
             },
+            spin: None,
         },
         1.0,
     );
@@ -251,6 +253,7 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
                 tint: RgbaF32::WHITE.to_f16(),
                 handle: TextureId(1),
                 flags: ImageFlags::NONE,
+                spin: None,
             },
             view: None,
         },

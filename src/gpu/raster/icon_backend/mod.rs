@@ -14,7 +14,7 @@ use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig, Rasterized};
-use crate::gpu::raster::raster_program::RasterProgram;
+use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram};
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
 use crate::icons::icon_registry::IconRegistry;
@@ -37,6 +37,7 @@ impl IconBackend {
                 program,
                 RasterPassConfig {
                     vbuf: "palantir.icon.vbuf",
+                    spun_vbuf: "palantir.icon.spun_vbuf",
                     atlas: RasterAtlasConfig {
                         label: "palantir.icon",
                         // The reverse of text: color icons are the expected content, so the color
@@ -72,7 +73,11 @@ impl IconBackend {
             if row.desaturate {
                 quad.uv_and_kind |= RasterQuad::DESATURATE;
             }
+            let start = self.pass.instances.len();
             self.pass.instances.push(quad);
+            if let Some(spin) = row.spin {
+                self.pass.turn_since(start, spin);
+            }
         }
     }
 
@@ -127,8 +132,9 @@ impl IconBackend {
         binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
         batch_idx: usize,
+        pipelines: RasterPipelines<'a>,
     ) {
-        self.pass.render_batch(binder, pass, batch_idx);
+        self.pass.render_batch(binder, pass, batch_idx, pipelines);
     }
 }
 

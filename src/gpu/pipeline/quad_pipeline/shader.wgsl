@@ -188,6 +188,8 @@ struct VertexOut {
     // `AA_HALF_WIDTH`, where `composite` is the fill (`fs`). Empty where the
     // shape has no such interior.
     @location(10) @interpolate(flat) core: vec4<f32>,
+    // Nonzero for a turned quad, whose quad edge is no pixel edge (`fs`).
+    @location(11) @interpolate(flat) turned: u32,
 };
 
 // What a shadow's fragments read: `vs_shadow`'s geometry, worked out once
@@ -217,6 +219,9 @@ struct ShadowOut {
     // relative to its center: on an axis strictly inside it, the pair of
     // edges across that axis is constant (`shadow_coverage`).
     @location(10) @interpolate(flat) core: vec4<f32>,
+    // The quad's turn: its center and `(cos, sin)`, which `shadow_pixel`
+    // undoes so every position above stays in the unturned frame.
+    @location(11) @interpolate(flat) turn: vec4<f32>,
 };
 
 // The instance attributes every quad pipeline reads.
@@ -230,6 +235,10 @@ struct QuadIn {
     @location(6) fill_kind:    u32,
     @location(7) fill_lut_row: u32,
     @location(8) fill_axis_packed: vec2<u32>,
+    // A paint animation's turn about the quad's center, in radians; 0 for
+    // none. The quad's own frame is unturned: `local`, the SDF and the
+    // fill read it, and only the drawn corners turn.
+    @location(10) rotation:    f32,
 };
 
 @vertex
@@ -262,7 +271,7 @@ fn vs_shadow(
     @location(9) cutouts: vec4<u32>,
 ) -> ShadowOut {
     let q = quad_vertex(0u, quad);
-    let bounds = shaded_bounds(quad.pos, quad.size, quad.fill_kind);
+    let bounds = shaded_bounds(quad.pos, quad.size, quad.fill_kind, quad.rotation);
     let half = quad.size * 0.5;
     let center = quad.pos + half;
     let kind = quad.fill_kind & FILL_TAG_MASK;
@@ -303,7 +312,9 @@ fn vs_shadow(
     let cy = cell / 3u;
     let unit = CORNERS[CELL_TRIANGLES[vi % 6u]];
     var out: ShadowOut;
-    out.clip = clip_from_px(vec2<f32>(xs[cx + u32(unit.x)], ys[cy + u32(unit.y)]));
+    let vertex = vec2<f32>(xs[cx + u32(unit.x)], ys[cy + u32(unit.y)]);
+    out.clip = clip_from_px(turned(vertex, center, quad.rotation));
+    out.turn = vec4<f32>(center, cos(quad.rotation), sin(quad.rotation));
     out.fill = q.fill;
     out.kind = kind;
     out.sigma = sigma;
@@ -334,9 +345,36 @@ struct Bounds {
     hi: vec2<f32>,
 };
 
-fn shaded_bounds(pos: vec2<f32>, size: vec2<f32>, fill_kind: u32) -> Bounds {
+// `p` turned `rotation` radians about `center`. Exact at no turn, so an
+// unturned quad draws where it always has.
+fn turned(p: vec2<f32>, center: vec2<f32>, rotation: f32) -> vec2<f32> {
+    if (rotation == 0.0) {
+        return p;
+    }
+    let cs = vec2<f32>(cos(rotation), sin(rotation));
+    let v = p - center;
+    return center + vec2<f32>(cs.x * v.x - cs.y * v.y, cs.y * v.x + cs.x * v.y);
+}
+
+// `p` turned back by `turn` (`ShadowOut::turn`), the inverse of `turned`.
+fn unturned(p: vec2<f32>, turn: vec4<f32>) -> vec2<f32> {
+    if (turn.w == 0.0) {
+        return p;
+    }
+    let v = p - turn.xy;
+    return turn.xy + vec2<f32>(turn.z * v.x + turn.w * v.y, turn.z * v.y - turn.w * v.x);
+}
+
+// Every pixel center within `AA_HALF_WIDTH` of the rect; a window's is a
+// hard cut, drawn at its rect. A turned quad's frame is not the pixel grid,
+// so it reaches `AA_HALF_WIDTH` past each edge there instead, a distance the
+// rotation keeps, and a window's edge fades with it (`fs`).
+fn shaded_bounds(pos: vec2<f32>, size: vec2<f32>, fill_kind: u32, rotation: f32) -> Bounds {
     var b = Bounds(pos, pos + size);
-    if ((fill_kind & FILL_FLAG_WINDOW) == 0u) {
+    if (rotation != 0.0) {
+        b.lo -= vec2<f32>(AA_HALF_WIDTH);
+        b.hi += vec2<f32>(AA_HALF_WIDTH);
+    } else if ((fill_kind & FILL_FLAG_WINDOW) == 0u) {
         b.lo = floor(b.lo - vec2<f32>(AA_HALF_WIDTH - 0.5));
         b.hi = ceil(b.hi + vec2<f32>(AA_HALF_WIDTH - 0.5));
     }
@@ -369,7 +407,7 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     let s_lo = unpack2x16float(stroke_color_packed.x);
     let s_hi = unpack2x16float(stroke_color_packed.y);
     let stroke_color = vec4<f32>(s_lo.x, s_lo.y, s_hi.x, s_hi.y);
-    let bounds = shaded_bounds(pos, size, fill_kind);
+    let bounds = shaded_bounds(pos, size, fill_kind, quad.rotation);
     let corner = select(bounds.lo, bounds.hi, CORNERS[vi] > vec2<f32>(0.5));
     let local = corner - pos;
 
@@ -387,7 +425,8 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     }
 
     var out: VertexOut;
-    out.clip         = clip_from_px(corner);
+    // Only the drawn corner turns: `local` stays in the quad's own frame.
+    out.clip         = clip_from_px(turned(corner, pos + size * 0.5, quad.rotation));
     out.local        = local;
     out.size         = size;
     out.fill         = fill;
@@ -399,6 +438,7 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     out.fill_axis    = axis_lanes;
     out.inv_size     = 1.0 / max(size, vec2<f32>(ZERO_EPS));
     out.core         = vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN);
+    out.turned       = u32(quad.rotation != 0.0);
     // Inside the quad by the largest radius, no corner's arc reaches; by the
     // stroke and `AA_HALF_WIDTH`, its inner edge's coverage is 1. A window
     // paints outside its shape, and a triangle's lanes are not radii.
@@ -938,7 +978,14 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     }
     let d = sdf_rounded_rect(in.local, in.size, in.radius);
     if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
-        return composite_window(d, fill, in.stroke_color, in.stroke_width);
+        var window = composite_window(d, fill, in.stroke_color, in.stroke_width);
+        if (in.turned != 0u) {
+            // Turned, the quad edge no longer lies on content of its own
+            // extent, so it is a visible edge and fades as any edge does.
+            let e = abs(in.local - in.size * 0.5) - in.size * 0.5;
+            window *= edge_coverage(e.x) * edge_coverage(e.y);
+        }
+        return window;
     }
     return composite(d, fill, in.stroke_color, in.stroke_width);
 }
@@ -1039,8 +1086,9 @@ struct ShadowPixel {
 };
 
 fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
-    var px = ShadowPixel(in.clip.xy - in.box_center, 0.0);
-    let s = in.clip.xy - in.source_center;
+    let frag = unturned(in.clip.xy, in.turn);
+    var px = ShadowPixel(frag - in.box_center, 0.0);
+    let s = frag - in.source_center;
     if (in.kind == BRUSH_KIND_SHADOW_DROP) {
         // CSS clips an outer shadow inside the box that casts it
         // (Backgrounds 3 §7.1.1). Only where the source's own coverage is

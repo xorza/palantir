@@ -13,4 +13,5 @@ pub(crate) mod draw_text_payload;
 pub(crate) mod gpu_fill;
 pub(crate) mod push_clip_payload;
 pub(crate) mod resolved_gradient;
+pub(crate) mod spin;
 pub(crate) mod stroke_bounds;

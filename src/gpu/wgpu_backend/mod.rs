@@ -69,7 +69,7 @@ use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{QuadBinding, QuadPipeline};
 use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::gpu::raster::icon_backend::IconBackend;
-use crate::gpu::raster::raster_program::RasterProgram;
+use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
@@ -645,7 +645,11 @@ impl WgpuBackend {
         } else {
             StencilMode::Off
         };
-        let raster_pipeline = fmt.raster.select(stencil);
+        let raster = RasterPipelines {
+            flat: fmt.raster.flat.select(stencil),
+            spun: fmt.raster.spun.select(stencil),
+            layout: self.raster.pipeline_layout(),
+        };
         let quad = |pipeline| QuadBinding {
             pipeline,
             gradient_bind_group: &self.gradient.bind_group,
@@ -724,8 +728,7 @@ impl WgpuBackend {
             RenderStep::Text { batch } => {
                 mark(pass, BatchKind::Text);
                 debug_marker::push(pass, "text");
-                binder.pipeline(pass, raster_pipeline, self.raster.pipeline_layout());
-                self.text.render_batch(binder, pass, batch);
+                self.text.render_batch(binder, pass, batch, raster);
                 debug_marker::pop(pass);
             }
             RenderStep::TierBatch { tier, batch } => {
@@ -759,8 +762,7 @@ impl WgpuBackend {
                         );
                     }
                     PaintTier::Icon => {
-                        binder.pipeline(pass, raster_pipeline, self.raster.pipeline_layout());
-                        self.icon.render_batch(binder, pass, batch);
+                        self.icon.render_batch(binder, pass, batch, raster);
                     }
                     PaintTier::Curve => {
                         self.curve.bind(

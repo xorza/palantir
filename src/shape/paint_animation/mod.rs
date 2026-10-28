@@ -7,6 +7,17 @@
 //!
 //! An animation drives alpha, rotation, or both. Translation and scale would need a swept union the
 //! cascade can't bound without sampling; a rotation's cover is the same square at every angle.
+//!
+//! A turn rotates any shape kind about its owner box's center, at paint time only; it is not a
+//! rotation in `TranslateScale`, whose axis-aligned rects the scissor and hit-test math rely on.
+//! Damage takes the square the shape's bound sweeps, so no angle reaches the cascade. Each kind
+//! turns where its geometry is cheapest to turn: a polyline's and a curve's points in the
+//! composer, a triangle's in the encoder, a mesh through a complex scale in its instance, a quad
+//! and an image through an angle about their own center in the vertex shader (the fragment works
+//! in their unturned frame, where a rotation keeps the AA width), and text and icons through a
+//! turned instance buffer of their own, so an unturned glyph keeps its size. Refused:
+//! tessellating quads and text into meshes, which loses the SDF's AA and the instanced batching;
+//! drawing a turned shape offscreen and compositing it, a pass and a texture per shape.
 
 pub mod curves;
 pub(crate) mod paint_mod;
@@ -32,7 +43,7 @@ pub type PaintCurve = fn(f32) -> f32;
 pub struct PaintChannel {
     /// Alpha multiplier over its range. `None` leaves opacity alone. The sample is a *fraction*: clamped to `0..=1`, `0` if not finite.
     pub alpha: Option<PaintRange>,
-    /// Full turns about the owner box's center over its range. `None` leaves orientation alone; non-finite reads as no turn. Honored on polylines, curves and arcs only.
+    /// Full turns about the owner box's center over its range. `None` leaves orientation alone; non-finite reads as no turn.
     pub turn: Option<PaintRange>,
 }
 

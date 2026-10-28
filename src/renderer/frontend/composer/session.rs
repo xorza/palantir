@@ -5,7 +5,7 @@ use crate::icons::icon_raster_key::IconRasterKey;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
@@ -31,6 +31,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
@@ -70,15 +71,19 @@ pub(crate) struct ComposeSession<'a> {
 /// a rect and a triangle.
 #[derive(Debug)]
 struct PackedQuad {
+    /// The quad's own rect, unturned, and the whole pixels it reaches turned.
     rect: ScaledRect,
     corners: Corners,
     fill_axis: FillAxis,
     stroke_width: f32,
+    /// A paint animation's turn about the rect's center, in radians.
+    rotation: f32,
 }
 
 impl PackedQuad {
+    /// Unturned with neither a stroke nor a rounded corner: the edges are the rect's.
     const fn is_sharp(&self) -> bool {
-        is_invisible(self.stroke_width) && self.corners.is_approx_zero()
+        self.rotation == 0.0 && is_invisible(self.stroke_width) && self.corners.is_approx_zero()
     }
 
     /// [`Self::is_sharp`] plus physical edges on whole pixels. Exactness makes the
@@ -147,12 +152,42 @@ impl ComposeSession<'_> {
     /// Apply the walk transform to a logical rect and scale it to physical px with integer bounds,
     /// once, for cull and instance alike.
     fn scaled_rect(&self, rect: Rect) -> ScaledRect {
+        self.scaled_rect_with(rect, self.out.display.edge_rounding())
+    }
+
+    fn scaled_rect_with(&self, rect: Rect, edges: EdgeRounding) -> ScaledRect {
         let world = self.composer.transform.apply_rect(rect);
-        let physical = world.scaled_by(
-            self.out.display.scale_factor(),
-            self.out.display.edge_rounding(),
-        );
+        let physical = world.scaled_by(self.out.display.scale_factor(), edges);
         ScaledRect::from_physical(physical, self.out.display.physical)
+    }
+
+    /// `spin`, its pivot in the encoder's logical frame, about the physical pivot it maps to.
+    fn physical_spin(&self, spin: Spin) -> Spin {
+        Spin {
+            pivot: self
+                .composer
+                .transform
+                .physical_map(Vec2::ZERO)
+                .point(spin.pivot),
+            angle: spin.angle,
+        }
+    }
+
+    /// `physical` moved so its center is turned by `spin` about the physical pivot, which a
+    /// rotation by `spin.angle` about that center then completes: together a turn of the whole
+    /// rect about the pivot. Its pixels are those of the turned rect's bound.
+    fn turned_rect(&self, physical: Rect, spin: Spin) -> ScaledRect {
+        let physical_spin = self.physical_spin(spin);
+        let center = physical.center();
+        let moved = Rect {
+            min: physical.min + physical_spin.rotor().apply(center) - center,
+            size: physical.size,
+        };
+        let reach = moved.turned_cover(moved.center(), spin.angle);
+        ScaledRect {
+            physical: moved,
+            urect: geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical),
+        }
     }
 
     /// The part of `whole` that can be seen (inside the surface and the active clip),
@@ -264,6 +299,7 @@ impl PaintSink for ComposeSession<'_> {
             fill_kind,
             fill_lut_row: p.fill.lut_row,
             fill_axis: packed.fill_axis,
+            rotation: packed.rotation,
         });
         self.record_opaque_cover(&p, &packed);
     }
@@ -274,7 +310,8 @@ impl PaintSink for ComposeSession<'_> {
         // like polyline's AA fringe: overlap-test false negatives reorder paint. Mesh
         // skips snapping, so it cannot use `scaled_rect`.
         let to_physical = self.composer.transform.physical_map(p.origin);
-        let physical = to_physical.bbox(p.bbox);
+        let bbox = p.spin.map_or(p.bbox, |spin| p.bbox.spun_cover(spin.pivot));
+        let physical = to_physical.bbox(bbox);
         let fringe = Vec2::splat(AA_HALF_WIDTH);
         let mesh_urect = geometry::urect_from_physical(
             physical.min - fringe,
@@ -288,16 +325,30 @@ impl PaintSink for ComposeSession<'_> {
         }
         // Verts stay owner-local; the per-instance translate folds in owner origin and transform
         // stack, so the shader produces physical coords.
+        // A turn about the pivot `c` maps `pos` to `R(pos - c) + c`, so the instance takes
+        // `s·R` as its complex scale and `s·(c - R c)` into its translate.
         let scale_physical = self.composer.transform.physical_scale();
-        let physical_translate = to_physical.point(Vec2::ZERO);
+        let (rotor_scale, translate) = match p.spin {
+            None => (
+                Vec2::new(scale_physical, 0.0),
+                to_physical.point(Vec2::ZERO),
+            ),
+            Some(spin) => {
+                let rotor = Vec2::from_angle(spin.angle);
+                (
+                    rotor * scale_physical,
+                    to_physical.point(spin.pivot - rotor.rotate(spin.pivot)),
+                )
+            }
+        };
         self.out.meshes.push(MeshDrawRow {
             draw: MeshDraw {
                 vertices: p.vertices,
                 idxs: p.idxs,
             },
             instance: MeshInstance {
-                translate: physical_translate,
-                scale: scale_physical,
+                translate,
+                rotor_scale,
                 tint: p.tint,
                 ..bytemuck::Zeroable::zeroed()
             },
@@ -313,6 +364,16 @@ impl PaintSink for ComposeSession<'_> {
             physical: physical_rect,
             urect,
         } = self.scaled_rect(p.rect);
+        // A turned icon is placed as an unturned one and turned whole about the pivot on the GPU,
+        // so only what it reaches changes.
+        let spin = p.spin.map(|spin| self.physical_spin(spin));
+        let urect = match spin {
+            None => urect,
+            Some(spin) => {
+                let reach = physical_rect.turned_cover(spin.pivot, spin.angle);
+                geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical)
+            }
+        };
         if !self.admit_higher_kind(PaintTier::Icon, urect) {
             return;
         }
@@ -338,6 +399,7 @@ impl PaintSink for ComposeSession<'_> {
             size,
             color: p.tint,
             desaturate: p.desaturate,
+            spin,
         });
     }
 
@@ -347,15 +409,25 @@ impl PaintSink for ComposeSession<'_> {
     )]
     fn image(&mut self, draw: ImageDraw<'_>) {
         let ImageDraw { payload: p, view } = draw;
+        // A turned image snaps to no pixel, and moves its center about the pivot as a quad does.
         let ScaledRect {
             physical: physical_rect,
             urect: image_urect,
-        } = self.scaled_rect(p.rect);
+        } = match p.spin {
+            None => self.scaled_rect(p.rect),
+            Some(spin) => {
+                let exact = self.scaled_rect_with(p.rect, EdgeRounding::Exact).physical;
+                self.turned_rect(exact, spin)
+            }
+        };
         if !self.admit_higher_kind(PaintTier::Image, image_urect) {
             return;
         }
-        // A `GpuView` draws over only its visible part, since that is all its target holds.
-        let seen = view.and_then(|_| self.seen(physical_rect));
+        // A `GpuView` draws over only its visible part, since that is all its target holds; a
+        // turned one draws whole, as its visible part is not a rect of its own.
+        let seen = view
+            .filter(|_| p.spin.is_none())
+            .and_then(|_| self.seen(physical_rect));
         let composite = seen.unwrap_or(physical_rect);
         let mut instance = ImageInstance {
             rect: composite,
@@ -363,6 +435,7 @@ impl PaintSink for ComposeSession<'_> {
             uv_size: p.uv_size,
             tint: p.tint,
             flags: p.flags,
+            rotation: p.spin.map_or(0.0, |spin| spin.angle),
             ..bytemuck::Zeroable::zeroed()
         };
         // A `GpuView` also needs its off-screen target painted. Sized to what is on
@@ -661,6 +734,7 @@ impl PaintSink for ComposeSession<'_> {
     }
 
     fn text(&mut self, t: DrawTextPayload) {
+        let spin = t.spin.map(|spin| self.physical_spin(spin));
         let world = self.composer.transform.apply_rect(t.rect);
         let scale = self.out.display.scale_factor();
         let physical_rect = world.scaled_by(scale, self.out.display.edge_rounding());
@@ -675,7 +749,13 @@ impl PaintSink for ComposeSession<'_> {
             let slack = text::snap_slack(local_inked.size);
             let pad = Vec2::new(slack.w, slack.h) * scale;
             let min = physical_rect.min - lead;
-            geometry::urect_from_physical(min - pad, min + size + pad, self.out.display.physical)
+            let mut reach = Rect::from_min_max(min - pad, min + size + pad);
+            // A turned run is placed as an unturned one and turned whole about the pivot on the
+            // GPU, so only what it reaches changes.
+            if let Some(spin) = spin {
+                reach = reach.turned_cover(spin.pivot, spin.angle);
+            }
+            geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical)
         };
         // `bounds` feeds the batch GPU scissor and the backend's per-line y-cull; there is no
         // per-glyph clip. An empty intersection with the clip skips the push.
@@ -709,6 +789,7 @@ impl PaintSink for ComposeSession<'_> {
             // Snap the ancestor-transform part of the text scale to 0.5% steps; continuous zoom
             // would mint a new glyph cache key every frame.
             scale: geometry::snap_text_scale(self.composer.transform.scale()),
+            spin,
         });
         self.composer.batch.open_grid.push(bounds);
     }
@@ -719,8 +800,17 @@ impl ComposeSession<'_> {
     fn pack_quad(&self, p: &DrawQuadPayload) -> PackedQuad {
         let scale_physical = self.composer.transform.physical_scale();
         match p.geometry {
-            QuadGeometry::Rect { rect, corners } => {
-                let source = self.scaled_rect(rect);
+            QuadGeometry::Rect {
+                rect,
+                corners,
+                spin,
+            } => {
+                // A turned rect snaps to no pixel: its edges are not on the pixel grid.
+                let edges = match spin {
+                    None => self.out.display.edge_rounding(),
+                    Some(_) => EdgeRounding::Exact,
+                };
+                let source = self.scaled_rect_with(rect, edges);
                 // Shadow scalars are logical px, so scale them; a gradient axis is unit-space.
                 let fill_axis = if p.fill.kind.is_shadow() {
                     p.fill_axis.scaled(scale_physical)
@@ -741,11 +831,16 @@ impl ComposeSession<'_> {
                 } else {
                     source
                 };
+                let (rect, rotation) = match spin {
+                    None => (rect, 0.0),
+                    Some(spin) => (self.turned_rect(rect.physical, spin), spin.angle),
+                };
                 PackedQuad {
                     rect,
                     corners,
                     fill_axis,
                     stroke_width: p.stroke.width * scale_physical,
+                    rotation,
                 }
             }
             QuadGeometry::Triangle {
@@ -782,6 +877,7 @@ impl ComposeSession<'_> {
                     corners: Corners::from_bits([ax, ay, bx, by]),
                     fill_axis: FillAxis::from(F16x4::from_bits([cx, cy, radius_f16, 0])),
                     stroke_width: (p.stroke.width * scale_physical).max(0.0),
+                    rotation: 0.0,
                 }
             }
         }
@@ -814,10 +910,11 @@ impl ComposeSession<'_> {
     }
 
     /// Opaque-cover annotation, for the occlusion pruner, of the quad just pushed. `SOLID` only: a
-    /// shadow's blur and a triangle's empty corners don't cover the whole `rect`. A quad on the
-    /// fast path has no anti-aliased edge to inset by.
+    /// shadow's blur and a triangle's empty corners don't cover the whole `rect`, and a turned
+    /// quad covers no axis-aligned rect of its own. A quad on the fast path has no anti-aliased
+    /// edge to inset by.
     fn record_opaque_cover(&mut self, p: &DrawQuadPayload, packed: &PackedQuad) {
-        if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() {
+        if p.fill.kind != FillKind::SOLID || !p.fill.color.is_opaque() || packed.rotation != 0.0 {
             return;
         }
         let quad = self.out.quads.last().expect("the quad just pushed");

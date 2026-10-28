@@ -784,12 +784,6 @@ impl Ui {
     /// shape is identical every frame, so the widget never re-records. Drops silently
     /// if the shape was noop-collapsed.
     ///
-    /// # Panics
-    ///
-    /// Panics on a turn (`PaintAnimation::turn` or `with_turn`) for a shape other than a
-    /// polyline or a curve: rotating the other kinds is not implemented yet. A curve of no
-    /// length counts as another kind, as it paints its cap as a rect.
-    ///
     /// ```
     /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
     /// # use palantir::{Rect, RgbaF32, Ui};

@@ -23,7 +23,6 @@ use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
-use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::text::family_keys::FamilyKeys;
 use std::time::Duration;
@@ -256,10 +255,6 @@ impl Forest {
             let Some(shape_idx) = tree.shapes.add(shape, store) else {
                 return false;
             };
-            let record = &tree.shapes.records[shape_idx as usize];
-            if animation.rotates() && !record.rotates() {
-                turn_unimplemented(record);
-            }
             tree.shapes.fold_paint_animation(shape_idx, &animation);
             // The paint row is charged either way.
             if frame.effectively_visible {
@@ -371,18 +366,6 @@ impl Forest {
             .last()
             .map(|f| tree.records.widget_id()[f.node.idx()])
     }
-}
-
-/// A turn on a shape that cannot rotate: only the stroke pipelines read a rotation, so the shape
-/// would paint unrotated with nothing to say so.
-#[cold]
-#[inline(never)]
-#[expect(
-    clippy::unimplemented,
-    reason = "rotating quads, text, images, icons and meshes is planned (`.notes/TODO.md`)"
-)]
-fn turn_unimplemented(record: &ShapeRecord) -> ! {
-    unimplemented!("a turn paint animation rotates polylines and curves only, not {record:?}")
 }
 
 #[cfg(test)]

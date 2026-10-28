@@ -88,6 +88,7 @@ mod tests {
             bounds: URect::new(0, 0, 100, 100),
             color: RgbaF32::WHITE.to_f16(),
             scale: 1.0,
+            spin: None,
         };
         EncodedRunKey::for_row(&row, 1.0)
     }

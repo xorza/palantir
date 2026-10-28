@@ -1,5 +1,6 @@
 //! What the display scale and a transform do to what is drawn.
 
+use crate::common::span::Span;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -15,8 +16,10 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
+use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{RectQuad, TriangleQuad};
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
@@ -24,6 +27,7 @@ use crate::shape::stroke_bounds::StrokeJoints;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
 use glam::{UVec2, Vec2};
+use std::f32::consts::FRAC_PI_2;
 
 #[test]
 fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
@@ -530,4 +534,97 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     );
     assert_eq!(buf.quads.len(), 1, "only the spread one paints");
     assert_eq!(buf.quads[0].rect, Rect::new(48.0, 48.0, 4.0, 4.0));
+}
+
+/// A quarter turn about the pivot `c = (6, 6)` of a mesh at origin (4, 4), at display scale 2:
+/// `R c = (−6, 6)`, so the instance's complex scale is `2·(cos, sin) = (0, 2)` and its translate
+/// `2·((4, 4) + c − R c) = 2·(16, 4) = (32, 8)`. Unturned, the same mesh is `(2, 0)` and
+/// `2·(4, 4) = (8, 8)`. The tolerance is the f32 cosine of a quarter turn, −4.4e-8, not 0, times
+/// the lengths involved.
+#[test]
+fn a_turned_mesh_instance_turns_and_scales_at_once() {
+    const EPS: f32 = 1e-5;
+    let instance = |spin: Option<Spin>| {
+        let buf = run(
+            |b, _| {
+                b.draw_mesh(
+                    DrawMeshPayload {
+                        bbox: Rect::new(0.0, 0.0, 12.0, 12.0),
+                        origin: Vec2::new(4.0, 4.0),
+                        tint: RgbaF32::WHITE.to_f16(),
+                        vertices: Span::new(0, 3),
+                        idxs: Span::new(0, 3),
+                        spin,
+                    },
+                    1.0,
+                );
+            },
+            &params(2.0, UVec2::new(200, 200)),
+        );
+        buf.meshes.instance()[0]
+    };
+    let still = instance(None);
+    assert_eq!(still.rotor_scale, Vec2::new(2.0, 0.0));
+    assert_eq!(still.translate, Vec2::new(8.0, 8.0));
+
+    let turned = instance(Some(Spin {
+        pivot: Vec2::new(6.0, 6.0),
+        angle: FRAC_PI_2,
+    }));
+    assert!(
+        turned.rotor_scale.abs_diff_eq(Vec2::new(0.0, 2.0), EPS),
+        "{:?}",
+        turned.rotor_scale
+    );
+    assert!(
+        turned.translate.abs_diff_eq(Vec2::new(32.0, 8.0), EPS),
+        "{:?}",
+        turned.translate
+    );
+}
+
+/// An opaque rect turned a quarter about the logical pivot (50, 50), at display scale 2: its
+/// physical rect (80, 80)..(120, 100) has its center (100, 90) turned about the physical pivot
+/// (100, 100) to (110, 100), so the instance is (90, 90) 40×20 at the angle, unsnapped and off
+/// the fast path. A turned quad occludes nothing: a quad under its own rect but outside the turned
+/// shape, at physical (124, 94)..(126, 96), survives the group.
+#[test]
+fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
+    const EPS: f32 = 1e-4;
+    let display = params(2.0, UVec2::new(200, 200));
+    let opaque = |rect: Rect| {
+        DrawQuadPayload::rect(RectQuad {
+            kind: RectKind::Rounded,
+            rect,
+            corners: Corners::ZERO,
+            fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+            stroke: ShapeStroke::NONE,
+        })
+    };
+    let buf = run(
+        |b, _| {
+            b.draw_quad(opaque(Rect::new(62.0, 47.0, 1.0, 1.0)), 1.0);
+            b.draw_quad(
+                opaque(Rect::new(40.0, 40.0, 20.0, 10.0)).turned(Some(Spin {
+                    pivot: Vec2::new(50.0, 50.0),
+                    angle: FRAC_PI_2,
+                })),
+                1.0,
+            );
+        },
+        &display,
+    );
+    assert_eq!(buf.quads.len(), 2, "the turned quad occludes nothing");
+    let turned = buf.quads[1];
+    assert!(
+        turned.rect.min.abs_diff_eq(Vec2::new(90.0, 90.0), EPS),
+        "{:?}",
+        turned.rect
+    );
+    assert_eq!(turned.rect.size, Size::new(40.0, 20.0));
+    assert_eq!(turned.rotation, FRAC_PI_2);
+    assert!(
+        !turned.fill_kind.is_fast(),
+        "a turned quad is not pixel-aligned"
+    );
 }

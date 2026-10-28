@@ -31,11 +31,9 @@ use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
 use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
 use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
-use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_atlas::shelf_packer::ShelfPacker;
 use crate::gpu::raster::raster_atlas::side::Side;
 use crate::gpu::raster::raster_program::RasterProgram;
-use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
@@ -203,20 +201,21 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         }
     }
 
-    /// Bind this atlas and draw `span` of `vbuf`'s quad instances; text and icon share one
-    /// bind-group shape (see [`RasterQuad`]).
+    /// Bind this atlas and draw `span` of `vbuf`'s quad instances, unturned or turned; text and
+    /// icon share one bind-group shape (see
+    /// [`RasterQuad`](crate::gpu::raster::raster_atlas::raster_quad::RasterQuad)).
     pub(super) fn draw_span<'a>(
         &'a self,
         binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
-        vbuf: &'a DynamicBuffer<RasterQuad>,
+        vbuf: &'a wgpu::Buffer,
         span: Span,
     ) {
         if span.len == 0 {
             return;
         }
         binder.group(pass, 0, self.bound.bind_group());
-        binder.vertex(pass, 0, &vbuf.buffer);
+        binder.vertex(pass, 0, vbuf);
         pass.draw(0..4, span.start..span.start + span.len);
     }
 

@@ -16,7 +16,7 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
-use crate::renderer::frontend::payload::stroke_bounds::Spin;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::record::ColorMode;
