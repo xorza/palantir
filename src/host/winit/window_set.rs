@@ -50,6 +50,10 @@ impl WindowSet {
         self.windows.push(window);
     }
 
+    pub(super) fn pop(&mut self) -> Option<Window> {
+        self.windows.pop()
+    }
+
     pub(super) fn take(&mut self, token: WindowToken) -> Option<Window> {
         let slot = self.slot_of_token(token)?;
         Some(self.windows.swap_remove(slot.0))

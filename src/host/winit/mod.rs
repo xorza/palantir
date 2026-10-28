@@ -309,7 +309,10 @@ where
 {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent<T>) {
         match event {
-            UserEvent::Quit => event_loop.exit(),
+            UserEvent::Quit => match self.running() {
+                Some(runtime) => runtime.close_all_windows(),
+                None => event_loop.exit(),
+            },
             UserEvent::Repaint(token) => {
                 if let Some(runtime) = self.running()
                     && let Some(win) = runtime.by_token(token)
@@ -353,7 +356,19 @@ where
             event_loop.set_control_flow(ControlFlow::Wait);
             return;
         };
+        // On Wayland a dropped window goes only when winit next tends its windows, ahead of this
+        // callback, and the roundtrip that ends winit's `run_on_demand` sends that to the
+        // compositor. So the loop exits the iteration after the last window closed, and the
+        // windows are gone from the screen before the app drops, however long its drop takes.
+        if runtime.has_no_windows() {
+            event_loop.exit();
+            return;
+        }
         runtime.drain_window_requests(event_loop);
+        if runtime.has_no_windows() {
+            event_loop.set_control_flow(ControlFlow::Poll);
+            return;
+        }
         runtime.repaint_on_shared_change();
         runtime.schedule(event_loop, now);
     }
