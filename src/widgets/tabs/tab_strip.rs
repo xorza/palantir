@@ -481,9 +481,12 @@ impl StripPass<'_> {
         let close = (closable && close_shown).then(|| self.glyph_button(ui, close_id));
         let close_slot = closable && !close_shown;
 
+        // Every chip is at least as tall as a close button, closable or not, so the strip keeps
+        // its height as a closable tab comes and goes beside a pinned one.
         let inner = Widget::hstack()
             .id(chip_id.with("fill"))
             .size((Sizing::HUG, Sizing::HUG))
+            .min_size(Size::new(0.0, t.close_size + padding.sums().h))
             .padding(padding)
             .gap(t.label_gap)
             .child_align(Align::v(VAlign::Center));
