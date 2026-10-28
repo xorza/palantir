@@ -7,6 +7,7 @@ pub(crate) mod draw_curve_payload;
 pub(crate) mod draw_icon_payload;
 pub(crate) mod draw_image_payload;
 pub(crate) mod draw_mesh_payload;
+pub(crate) mod draw_pane_payload;
 pub(crate) mod draw_polyline_payload;
 pub(crate) mod draw_quad_payload;
 pub(crate) mod draw_text_payload;

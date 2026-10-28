@@ -15,6 +15,10 @@
 //! - **`scrolling`**: shifts a `Panel::transform` so only the cascade walk sees change.
 //! - **`alternating`**: a scroll step (full repaint) then a counter tick (small partial);
 //!   measures what a full frame costs the partial after it.
+//! - **`hovering`**: the pointer moves from the request card's checkbox to its submit button and
+//!   back, one move a frame: input routing, hover state and its small partial repaint.
+//! - **`typing`**: the request card's name field holds the focus and takes a character, then a
+//!   backspace, one a frame: an edit's reshaping, caret and small partial repaint.
 //!
 //! The surface is 2560 × 1440 at 2×, a 1280 × 720 window, and the fixture is taller, so the CPU
 //! backend processes the whole tree while paint and the GPU see only the screen. The workload
@@ -22,10 +26,14 @@
 //! `tests/alloc/gates/` and the showcase's `frame bench` page.
 
 use crate::bench::backends::{Backend, Backends};
+use crate::bench::case_group::CaseGroup;
+use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::offscreen::OffscreenHost;
+use crate::input::input_event::InputEvent;
+use crate::input::keyboard::key::Key;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::internals::record_app::RecordApp;
 use crate::internals::ui_harness::UiHarness;
@@ -33,8 +41,8 @@ use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion};
+use crate::window::window_token::WindowToken;
+use criterion::Criterion;
 use glam::UVec2;
 use std::slice;
 use std::time::Instant;
@@ -99,28 +107,34 @@ impl CpuHarness {
 enum Arm {
     Alternating,
     Cached,
+    Hovering,
     Partial,
     Resizing,
     Scrolling,
+    Typing,
 }
 
 impl Arm {
     /// Sorted by label, the order criterion lists them.
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 7] = [
         Self::Alternating,
         Self::Cached,
+        Self::Hovering,
         Self::Partial,
         Self::Resizing,
         Self::Scrolling,
+        Self::Typing,
     ];
 
     const fn label(self) -> &'static str {
         match self {
             Self::Alternating => "alternating",
             Self::Cached => "cached",
+            Self::Hovering => "hovering",
             Self::Partial => "partial",
             Self::Resizing => "resizing",
             Self::Scrolling => "scrolling",
+            Self::Typing => "typing",
         }
     }
 
@@ -130,7 +144,7 @@ impl Arm {
         match self {
             Self::Alternating => &[FramePaint::Full, FramePaint::Partial],
             Self::Cached => &[FramePaint::Skip],
-            Self::Partial => &[FramePaint::Partial],
+            Self::Hovering | Self::Partial | Self::Typing => &[FramePaint::Partial],
             Self::Resizing | Self::Scrolling => &[FramePaint::Full],
         }
     }
@@ -139,21 +153,56 @@ impl Arm {
     const fn sizes(self) -> &'static [UVec2] {
         match self {
             Self::Resizing => &RESIZE_POOL,
-            Self::Alternating | Self::Cached | Self::Partial | Self::Scrolling => {
-                slice::from_ref(&BENCH_SURFACE)
-            }
+            Self::Alternating
+            | Self::Cached
+            | Self::Hovering
+            | Self::Partial
+            | Self::Scrolling
+            | Self::Typing => slice::from_ref(&BENCH_SURFACE),
         }
     }
 
     /// Set the fixture to frame `n`'s state.
     fn advance(self, state: &mut FrameFixture, n: u32) {
         match self {
-            Self::Cached | Self::Resizing => {}
+            Self::Cached | Self::Hovering | Self::Resizing | Self::Typing => {}
             Self::Partial => state.tick = state.tick.wrapping_add(1),
             Self::Scrolling => scroll(state),
             // A scroll step on even frames (full repaint), a counter tick on odd ones (small rect).
             Self::Alternating if n.is_multiple_of(2) => scroll(state),
             Self::Alternating => state.tick = state.tick.wrapping_add(1),
+        }
+    }
+
+    /// The input frame `n` sends `ui` before it records, after the arm puts the focus where it
+    /// types: none until the last frame resolved the widgets the arm aims at.
+    fn input(self, state: &FrameFixture, ui: &mut Ui, n: u32) -> Option<InputEvent<'static>> {
+        let probes = state.probes;
+        match self {
+            Self::Hovering => {
+                let id = if n.is_multiple_of(2) {
+                    probes.enabled
+                } else {
+                    probes.submit
+                }?;
+                let rect = ui.response_for(id).rect?;
+                Some(InputEvent::PointerMoved(rect.center()))
+            }
+            Self::Typing => {
+                let edit = probes.name_edit?;
+                if ui.focus() != Some(edit) {
+                    ui.set_focus(edit);
+                }
+                let key = if n.is_multiple_of(2) {
+                    Key::Char('x')
+                } else {
+                    Key::Backspace
+                };
+                Some(InputEvent::key_down(key))
+            }
+            Self::Alternating | Self::Cached | Self::Partial | Self::Resizing | Self::Scrolling => {
+                None
+            }
         }
     }
 
@@ -170,38 +219,47 @@ impl Arm {
 
     /// Measure this arm on `backend`: build its frame with `build` in the case, run it through
     /// [`SETTLE_FRAMES`], pin one cycle of [`Self::paints`], then time frames.
-    fn measure<F>(
-        self,
-        group: &mut BenchmarkGroup<'_, WallTime>,
-        backend: Backend,
-        build: impl Fn() -> F,
-    ) where
+    fn measure<F>(self, group: &mut CaseGroup<'_>, backend: Backend, build: impl Fn() -> F)
+    where
         F: FnMut(&mut FrameFixture, u32) -> FramePaint,
     {
         group.bench_function(backend.case(self.label()), |b| {
             let mut frame = build();
             let mut state = FrameFixture::default();
             let mut n = 0u32;
+            // A frame's paint, and whether the typing arm's key reached the field: a character
+            // after an even frame, none after an odd.
             let mut step = || {
                 self.advance(&mut state, n);
                 let paint = frame(&mut state, n);
+                let typed = self != Self::Typing
+                    || state.name() == if n.is_multiple_of(2) { "x" } else { "" };
                 n = n.wrapping_add(1);
-                paint
+                (paint, typed)
             };
             for _ in 0..SETTLE_FRAMES {
                 step();
             }
             for &want in self.paints() {
+                let (paint, typed) = step();
                 assert_eq!(
-                    step(),
+                    paint,
                     want,
                     "the {}/{} frames plan another paint",
                     backend.id(),
                     self.label()
                 );
+                assert!(typed, "{}/typing: the key misses the field", backend.id());
             }
             b.iter(&mut step);
         });
+    }
+}
+
+/// Send through `send` the release of a key `event` presses, so the next press is not a repeat.
+fn release(event: InputEvent<'static>, send: impl FnOnce(InputEvent<'static>)) {
+    if let InputEvent::KeyDown { key, .. } = event {
+        send(InputEvent::KeyUp { key });
     }
 }
 
@@ -238,6 +296,13 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                         if arm == Arm::Resizing {
                             h.frontend.harness.resize(sizes[n as usize % sizes.len()]);
                         }
+                        let harness = &mut h.frontend.harness;
+                        if let Some(event) = arm.input(state, &mut harness.ui, n) {
+                            harness.on_input(event);
+                            release(event, |up| {
+                                harness.on_input(up);
+                            });
+                        }
                         h.frame(|ui| state.render(BENCH_SCALE, ui))
                     }
                 }),
@@ -247,6 +312,12 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                     let mut host = bench_host(g);
                     move |state: &mut FrameFixture, n: u32| {
                         let target = &targets[n as usize % targets.len()];
+                        if let Some(event) = arm.input(state, host.ui(), n) {
+                            host.on_input(event);
+                            release(event, |up| {
+                                host.on_input(up);
+                            });
+                        }
                         let paint = gpu_frame(&mut host, target, state);
                         g.wait();
                         paint
@@ -254,6 +325,70 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                 }),
             }
         }
+    }
+    group.finish();
+}
+
+/// Two stages of the frame alone over the frame fixture: record, and the main pass.
+pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+    record(c);
+    main_pass(c, backends);
+}
+
+/// `atomic/record/cpu/frame`: one record pass of the frame fixture alone, its hashes finalized:
+/// the widgets' code, node and shape recording and lowering, without layout or what follows.
+fn record(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "record", Scale::Sample);
+    group.bench_function(Backend::Cpu.case("frame"), |b| {
+        let mut state = FrameFixture::default();
+        let mut h = UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR);
+        h.frame(|ui| state.render(BENCH_SCALE, ui));
+        let mut app = RecordApp::new(|ui: &mut Ui| state.render(BENCH_SCALE, ui));
+        let mut pass = || h.ui.record_alone(&mut h.engines, WindowToken(0), &mut app);
+        pass();
+        b.iter(&mut pass);
+    });
+    group.finish();
+}
+
+/// `atomic/main_pass/gpu/<arm>`: the device time of the main pass alone over the frame fixture,
+/// read back from its timestamps: `scrolling`, a whole repaint each frame, and `partial`, the
+/// footer counter's small rect. What the GPU pays to paint the frame, without the CPU half
+/// [`integration`] adds. On Metal the pass time is the frame's wall time from submit to done
+/// ([`GpuTimings`](crate::gpu::frame::gpu_timings::GpuTimings)), so it also holds the frame's
+/// uploads, copies and the wake-up's latency.
+fn main_pass(c: &mut Criterion, backends: Backends) {
+    let Some(backend) = backends.gpu() else {
+        return;
+    };
+    let mut group = Kind::Atomic.group(c, "main_pass", Scale::Frame);
+    for arm in [Arm::Partial, Arm::Scrolling] {
+        group.bench_function(backend.case(arm.label()), |b| {
+            let g = gpu();
+            let target = g.target("palantir.main_pass_bench", BENCH_SURFACE);
+            let mut host = OffscreenHost::builder(g.handles())
+                .collect_gpu_stats(true)
+                .retained_target(true)
+                .build();
+            host.ui().theme_mut().window_clear = WINDOW_CLEAR;
+            let mut state = FrameFixture::default();
+            let mut n = 0u32;
+            let mut frame = || {
+                arm.advance(&mut state, n);
+                n = n.wrapping_add(1);
+                let paint = gpu_frame(&mut host, &target, &mut state);
+                g.wait();
+                g.poll();
+                (paint, host.gpu_pass_stats().last_pass())
+            };
+            for _ in 0..SETTLE_FRAMES {
+                frame();
+            }
+            assert_eq!(frame().0, arm.paints()[0], "main_pass/{}", arm.label());
+            let mut time = || frame().1;
+            fixture::settle_timestamps(&mut time);
+            b.iter_custom(|iters| fixture::device_time(iters, &mut time));
+        });
     }
     group.finish();
 }

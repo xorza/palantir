@@ -7,6 +7,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::chrome::Chrome;
@@ -352,6 +353,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             border: case.border,
             corners: case.corners,
             shadow: if case.inset { shadow.inset() } else { shadow },
+            backdrop_filter: BackdropFilter::NONE,
         };
         let mut h = UiHarness::new(UVec2::new(200, 200));
         h.frame(|ui| {

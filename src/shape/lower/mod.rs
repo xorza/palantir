@@ -18,6 +18,7 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -114,6 +115,11 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
     } else {
         chrome.shadow.into()
     };
+    let backdrop = if chrome.backdrop_filter.has_nan() {
+        LoweredBackdrop::NONE
+    } else {
+        LoweredBackdrop::from(chrome.backdrop_filter)
+    };
     let ring = ShapeStroke::from(ring);
     let has_ring = !ring.is_noop();
     // Fed as whole words from registers: a struct packed for one `write` is stored field by field and read back wider, a load the CPU can't forward.
@@ -124,6 +130,7 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
     border.hash_into(&mut h);
     ring.hash_into(&mut h);
     shadow.hash(&mut h);
+    backdrop.hash(&mut h);
     h.write_u8(brush.tag);
     let hash = ContentHash(h.finish());
     ChromeRow {
@@ -131,6 +138,7 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
         border,
         corners,
         shadow,
+        backdrop,
         hash,
         ring: has_ring,
     }

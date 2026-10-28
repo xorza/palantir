@@ -166,10 +166,16 @@ fn record_fixture(mut state: FrameFixture) -> UiHarness {
     h
 }
 
-/// `integration/cascade/cpu/<mutation>`: the cascade run over the frame fixture, incremental
+/// The cascade's run and the hit test it serves.
+pub(crate) fn atomic(c: &mut Criterion) {
+    run(c);
+    hit_test(c);
+}
+
+/// `atomic/cascade/cpu/<mutation>`: the cascade run alone over the frame fixture, incremental
 /// after a paint-only or a transform change, and a forced full rebuild.
-pub(crate) fn integration(c: &mut Criterion) {
-    let mut group = Kind::Integration.group(c, "cascade", Scale::Sample);
+fn run(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "cascade", Scale::Sample);
     for (label, mutation) in [
         ("paint_only", RunMutation::PaintOnly),
         ("transform", RunMutation::Transform),
@@ -195,7 +201,7 @@ pub(crate) fn integration(c: &mut Criterion) {
 /// `atomic/hit_test/cpu/<test>/<query>/<density>`: one hit test against [`ENTRY_COUNT`] rows, a
 /// share of them interactive in a disjoint grid. `topmost` exits on the first row and stays flat;
 /// `miss` traverses every row and scales: the gap is the scan a spatial index would remove.
-pub(crate) fn atomic(c: &mut Criterion) {
+fn hit_test(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "hit_test", Scale::Sample);
     for density in DENSITIES {
         let interactive = ENTRY_COUNT * density.percent / 100;

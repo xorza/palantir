@@ -27,6 +27,7 @@ fn quad_shapes_hash_apart() {
             corners,
             fill,
             border: stroke,
+            backdrop: LoweredBackdrop::NONE,
         })
     };
 

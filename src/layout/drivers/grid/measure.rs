@@ -68,16 +68,19 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
                 col_ranges.min[i] = col_ranges.min[i].max(min);
             }
         }
-        // After every span-1 cell, so a spanning cell grows only what they leave short.
-        for c in tree.active_children(node) {
-            let span = grid.cell(tree, c).track_span(Axis::X);
-            if span.len < 2 {
-                continue;
+        // After every span-1 cell, so a spanning cell grows only what they leave short; spans that
+        // cross a Fill column after those that cross none.
+        for flexible in [false, true] {
+            for c in tree.active_children(node) {
+                let span = grid.cell(tree, c).track_span(Axis::X);
+                if span.len < 2 || grid::crosses_fill(cols.tracks, span) != flexible {
+                    continue;
+                }
+                let range = pass.intrinsic_range(c, Axis::X);
+                let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
+                grid::distribute_span(cols.tracks, span, cols.gap, range.min, col_ranges.min);
+                grid::distribute_span(cols.tracks, span, cols.gap, range.max, col_ranges.max);
             }
-            let range = pass.intrinsic_range(c, Axis::X);
-            let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
-            grid::distribute_span(cols.tracks, span, cols.gap, range.min, col_ranges.min);
-            grid::distribute_span(cols.tracks, span, cols.gap, range.max, col_ranges.max);
         }
     }
 
@@ -165,16 +168,19 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         }
     }
 
-    // A multi-row cell grows the Hug rows it crosses by what the span-1 rows leave short.
-    for c in tree.active_children(node) {
-        let span = grid.cell(tree, c).track_span(Axis::Y);
-        if span.len < 2 {
-            continue;
+    // A multi-row cell grows the rows it crosses by what the span-1 rows leave short; spans that
+    // cross a Fill row after those that cross none.
+    for flexible in [false, true] {
+        for c in tree.active_children(node) {
+            let span = grid.cell(tree, c).track_span(Axis::Y);
+            if span.len < 2 || grid::crosses_fill(rows.tracks, span) != flexible {
+                continue;
+            }
+            let (size, floor) = (pass.desired(c).h, pass.floor(c).h);
+            let row_ranges = pass.grid_track_state_mut().ranges_mut(rows.id);
+            grid::distribute_span(rows.tracks, span, rows.gap, floor, row_ranges.min);
+            grid::distribute_span(rows.tracks, span, rows.gap, size, row_ranges.max);
         }
-        let (size, floor) = (pass.desired(c).h, pass.floor(c).h);
-        let row_ranges = pass.grid_track_state_mut().ranges_mut(rows.id);
-        grid::distribute_span(rows.tracks, span, rows.gap, floor, row_ranges.min);
-        grid::distribute_span(rows.tracks, span, rows.gap, size, row_ranges.max);
     }
 
     // Resolve row heights. Fill rows are left uncommitted: the row `resolved`

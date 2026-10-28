@@ -199,6 +199,13 @@ impl<'a> FrameCycle<'a> {
 
     /// One `pre_record`, user record, drain action flag, `post_record` cycle; returns whether it saw action input (which triggers a second pass).
     fn record_pass<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
+        let action_flag = self.record_user(win, app);
+        self.post_record();
+        action_flag
+    }
+
+    /// The record half of a pass before `post_record`: `pre_record`, then the user closure under the viewport root; returns whether it saw action input.
+    fn record_user<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
         self.pre_record();
         // Synthetic viewport root for Layer::Main; else the first user node becomes the root and layout forces its rect to the surface, overriding its `Sizing` / `Sense`.
         let viewport_id = self.ui.resolve_ident(Ident::Verbatim(WidgetId::VIEWPORT));
@@ -212,7 +219,6 @@ impl<'a> FrameCycle<'a> {
             frame_stats_readout::record(self.ui);
         }
         self.ui.close_node();
-        self.post_record();
         action_flag
     }
 
@@ -257,5 +263,29 @@ impl<'a> FrameCycle<'a> {
         self.ui.gpu_views.sweep_removed(removed);
 
         self.ui.input.end_frame(&self.ui.cascade);
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::app::App;
+    use crate::ui::Ui;
+    use crate::ui::frame_cycle::FrameCycle;
+    use crate::ui::frame_engines::FrameEngines;
+    use crate::window::window_token::WindowToken;
+
+    impl Ui {
+        /// One record pass of `app` alone, its hashes finalized: no layout, cascade, damage or
+        /// frame sweep, so a bench times record apart from the stages after it.
+        pub(crate) fn record_alone<T: App>(
+            &mut self,
+            engines: &mut FrameEngines,
+            win: WindowToken,
+            app: &mut T,
+        ) {
+            let mut cycle = FrameCycle::new(self, engines);
+            let _ = cycle.record_user(win, app);
+            cycle.ui.forest.post_record();
+        }
     }
 }

@@ -2,6 +2,7 @@
 
 mod arena;
 mod clipping;
+mod panes;
 mod shapes;
 mod support;
 mod surface;

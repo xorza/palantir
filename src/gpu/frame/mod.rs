@@ -5,5 +5,6 @@ pub(crate) mod binder;
 pub(crate) mod debug_marker;
 pub(crate) mod debug_overlay;
 pub(crate) mod gpu_timings;
+pub(crate) mod main_segment;
 pub(crate) mod schedule;
 pub(crate) mod submission;

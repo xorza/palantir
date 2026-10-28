@@ -38,21 +38,24 @@ pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
             .child_align(Align::CENTER)
             .size((Sizing::FILL, Sizing::HUG))
             .show(ui, |ui| {
-                TextEdit::new(&mut state.name)
+                let edit = TextEdit::new(&mut state.name)
                     .id_salt("edit-name")
                     .size((Sizing::fill(2.0), Sizing::HUG))
                     .show(ui);
-                Checkbox::new(&mut state.enabled)
+                state.probes.name_edit = Some(edit.response.id);
+                let enabled = Checkbox::new(&mut state.enabled)
                     .id_salt("enabled")
                     .label("enabled")
                     .show(ui);
+                state.probes.enabled = Some(enabled.response.id);
                 for v in 0u8..3 {
                     RadioButton::new(&mut state.role, v)
                         .id_salt(("role", v))
                         .label(["read", "write", "admin"][v as usize])
                         .show(ui);
                 }
-                Button::new().id_salt("submit").label("Submit").show(ui);
+                let submit = Button::new().id_salt("submit").label("Submit").show(ui);
+                state.probes.submit = Some(submit.id);
             });
         // `Collapsed`, not `Hidden`: the validation line stays recorded but out of the way, whereas `Hidden` would reserve its row. The paint-skip path is exercised in the stat strip.
         Text::new("Name is required")

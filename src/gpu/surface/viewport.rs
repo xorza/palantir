@@ -4,6 +4,7 @@ use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::urect::URect;
+use crate::renderer::pane_captures::PaneCaptures;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use glam::Vec2;
@@ -11,13 +12,17 @@ use std::{iter, slice};
 use tinyvec::ArrayVec;
 
 #[derive(Debug)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "built once a frame on the stack; boxing it would allocate per frame"
+)]
 pub(crate) enum RepaintScissors {
     Full,
     Partial(PartialScissors),
 }
 
 impl RepaintScissors {
-    /// The physical-px repaint shape of `damage`: `Full`, or `Partial` with scissors after scaling, AA padding and clamping. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
+    /// The physical-px repaint shape of `damage`: `Full`, or `Partial` with scissors after scaling, AA padding and clamping, then the footprint of each pane that captures, as the target there still holds the last frame's pane. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
     pub(crate) fn new(damage: Damage, buffer: &RenderBuffer) -> Self {
         match damage {
             Damage::Full => Self::Full,
@@ -28,27 +33,29 @@ impl RepaintScissors {
                         rects.push(s);
                     }
                 }
-                Self::Partial(PartialScissors::new(rects))
+                for row in buffer.backdrops.iter().filter(|row| row.capture) {
+                    rects.push(row.footprint);
+                }
+                debug_assert!(
+                    !rects.is_empty(),
+                    "Partial plan produced no damage scissors"
+                );
+                Self::Partial(PartialScissors { rects })
             }
         }
     }
 }
 
-/// The non-empty scissor list a `Partial` repaint walks. Non-emptiness is the constructor's `debug_assert!`; splitting off a `first` would cost an O(n) shift to build.
+/// The non-empty scissor list a `Partial` repaint walks. Non-emptiness is [`RepaintScissors::new`]'s `debug_assert!`; splitting off a `first` would cost an O(n) shift to build.
 #[derive(Debug)]
 pub(crate) struct PartialScissors {
-    rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>,
+    rects: ArrayVec<[URect; SCISSOR_CAP]>,
 }
 
-impl PartialScissors {
-    fn new(rects: ArrayVec<[URect; DAMAGE_RECT_CAP]>) -> Self {
-        debug_assert!(
-            !rects.is_empty(),
-            "Partial plan produced no damage scissors"
-        );
-        Self { rects }
-    }
+/// The damage rects, and a footprint for each pane a partial frame captures.
+const SCISSOR_CAP: usize = DAMAGE_RECT_CAP + PaneCaptures::PARTIAL_CAP;
 
+impl PartialScissors {
     pub(crate) fn len(&self) -> usize {
         self.rects.len()
     }
@@ -119,9 +126,9 @@ pub(crate) mod internals {
         /// A partial repaint inside `rects`, as [`RepaintScissors::new`]
         /// would make one.
         pub(crate) fn partial(rects: &[URect]) -> Self {
-            Self::Partial(PartialScissors::new(
-                rects.iter().copied().collect::<ArrayVec<_>>(),
-            ))
+            Self::Partial(PartialScissors {
+                rects: rects.iter().copied().collect::<ArrayVec<_>>(),
+            })
         }
     }
 }
@@ -135,7 +142,11 @@ mod tests {
     use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::urect::URect;
+    use crate::primitives::identity::pane_key::PaneKey;
+    use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::render_buffer::RenderBuffer;
+    use crate::renderer::render_buffer::backdrop_row::BackdropRow;
+    use crate::shape::paint::blur_plan::BlurPlan;
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
@@ -154,6 +165,8 @@ mod tests {
         assert!(matches!(repaint, RepaintScissors::Full));
     }
 
+    /// A partial repaint keeps each damage rect, scaled, padded and clamped, and adds the footprint
+    /// of each pane that captures, as the target there holds the last frame's pane.
     #[test]
     fn partial_repaint_preserves_padded_physical_scissors() {
         let damage = DamageRegion::collapse_from(
@@ -164,15 +177,40 @@ mod tests {
             0.0,
             Rect::new(0.0, 0.0, 50.0, 50.0),
         );
-        let repaint = RepaintScissors::new(Damage::Partial(damage), &buffer());
+        // Two panes, one capturing: its footprint, already physical, joins the scissors last.
+        let mut buffer = buffer();
+        let pane = |shape, footprint, capture| BackdropRow {
+            key: PaneKey {
+                owner: WidgetId::from_hash("pane"),
+                shape,
+            },
+            footprint,
+            plan: BlurPlan::new(2.0),
+            barrier: 0,
+            lens: None,
+            capture,
+        };
+        buffer.backdrops.extend([
+            pane(0, URect::new(30, 30, 40, 20), true),
+            pane(1, URect::new(0, 60, 20, 20), false),
+        ]);
+        let repaint = RepaintScissors::new(Damage::Partial(damage), &buffer);
         let RepaintScissors::Partial(rects) = repaint else {
             panic!("partial plan produced a full repaint");
         };
         // At 2x the rects are (10,10)-(20,20) and (60,40)-(80,50); the 2px AA pad extends each edge.
         assert_eq!(
             rects.iter().collect::<Vec<_>>(),
-            [URect::new(8, 8, 14, 14), URect::new(58, 38, 24, 14),]
+            [
+                URect::new(8, 8, 14, 14),
+                URect::new(58, 38, 24, 14),
+                URect::new(30, 30, 40, 20),
+            ]
         );
+        assert!(matches!(
+            RepaintScissors::new(Damage::Full, &buffer),
+            RepaintScissors::Full
+        ));
     }
 
     #[test]

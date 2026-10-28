@@ -40,11 +40,24 @@ pub(super) fn collect(
     damage_scissor: Option<URect>,
     masks: Option<&MaskPlan>,
 ) -> Vec<RenderStep> {
+    collect_between(buffer, damage_scissor, masks, (0, None))
+}
+
+/// [`collect`] of the walk over the groups from `from` to `barrier`, as one pass of a main pass
+/// broken at a pane's barrier walks.
+pub(super) fn collect_between(
+    buffer: &RenderBuffer,
+    damage_scissor: Option<URect>,
+    masks: Option<&MaskPlan>,
+    (from, barrier): (u32, Option<u32>),
+) -> Vec<RenderStep> {
     let mut steps = Vec::new();
     let schedule = Schedule {
         buffer,
         damage_scissor,
         masks,
+        from,
+        barrier,
     };
     schedule.for_each_step(&mut |s| steps.push(s));
     steps

@@ -2,12 +2,15 @@
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::damage::Damage;
+use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::internals::ui_harness::UiHarness;
 use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::renderer::render_plan::RenderPlan;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use criterion::{Criterion, Throughput};
@@ -109,6 +112,43 @@ pub(crate) fn integration(c: &mut Criterion) {
                 expected_gradients,
             );
             b.iter(|| black_box(fixture.frame(fill_case)));
+        });
+    }
+    group.finish();
+}
+
+/// `atomic/encode/cpu/<arm>`: encode and compose alone over the frame fixture, its tree recorded
+/// and laid out once: `full` builds the whole screen's draw list, `partial` the one the footer
+/// counter's tick plans. Per draw group built.
+pub(crate) fn atomic(c: &mut Criterion) {
+    let mut group = Kind::Atomic.group(c, "encode", Scale::Sample);
+    for (label, partial) in [("full", false), ("partial", true)] {
+        group.bench_function(Backend::Cpu.case(label), |b| {
+            let mut state = FrameFixture::default();
+            let mut h = FrontendHarness::new(UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR));
+            h.frame(|ui| state.render(BENCH_SCALE, ui));
+            state.tick += 1;
+            let report = h.frame(|ui| state.render(BENCH_SCALE, ui));
+            let plan = if partial {
+                report.plan.expect("a tick paints")
+            } else {
+                RenderPlan {
+                    clear: h.harness.ui.theme().window_clear,
+                    damage: Damage::Full,
+                }
+            };
+            assert_eq!(
+                matches!(plan.damage, Damage::Partial(_)),
+                partial,
+                "encode/{label}: the plan"
+            );
+            let mut build = || {
+                h.frontend.build(h.harness.ui.frame_scene(), plan);
+                h.frontend.buffer.groups.len()
+            };
+            let groups = build();
+            assert!(groups > 0, "encode/{label}: no group built");
+            b.iter(|| black_box(build()));
         });
     }
     group.finish();

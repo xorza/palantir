@@ -14,6 +14,7 @@ pub(crate) mod gpu_view;
 pub(crate) mod gradients;
 pub(crate) mod icons;
 pub(crate) mod images;
+pub(crate) mod materials;
 pub(crate) mod motion;
 pub(crate) mod overlays;
 pub(crate) mod pan_zoom;

@@ -11,6 +11,7 @@ pub(crate) mod counters;
 pub(crate) mod engine;
 pub(crate) mod paint;
 mod paint_rect;
+pub(crate) mod pane_row;
 pub(crate) mod plane_cascade;
 pub(crate) mod rows;
 

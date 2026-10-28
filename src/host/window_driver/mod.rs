@@ -23,6 +23,7 @@ use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::Frontend;
+use crate::renderer::pane_captures::{PaneCaptures, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
@@ -66,6 +67,8 @@ pub(super) struct WindowDriver {
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
     cutouts: CutoutPlan,
+    /// The captures this window's panes hold, which decide what a frame captures again.
+    pane_captures: PaneCaptures,
     /// The images a recorded frame asked for, until a frame paints them: ones the host did not
     /// present (an outdated swapchain) carry to the next, and are resolved against the display of
     /// the frame that paints them, so a resize in between cannot leave one outside.
@@ -251,6 +254,7 @@ impl WindowDriver {
             pixel_snap: config.pixel_snap,
             target: None,
             cutouts: CutoutPlan::new(config.cutout_mode),
+            pane_captures: PaneCaptures::default(),
             screenshot_requests: Vec::new(),
             captures: VecDeque::new(),
         }
@@ -369,11 +373,15 @@ impl WindowDriver {
         }
         if let PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) = mode {
             frontend.build(self.ui.frame_scene(), plan);
-            if self.plan_cutouts(&frontend.buffer, plan) == Census::Stale {
-                // The pixels this partial frame keeps show a cutout form the frame no longer picks.
+            // More panes capture than the repaint holds scissors for, or the pixels this partial
+            // frame keeps show a cutout form the frame no longer picks: it paints whole.
+            if self.settle_panes(&mut frontend.buffer, plan) == Settled::Overflow
+                || self.plan_cutouts(&frontend.buffer, plan) == Census::Stale
+            {
                 let full = plan.to_full();
                 mode = path(Some(full), self.backbuffer_fresh);
                 frontend.build(self.ui.frame_scene(), full);
+                self.settle_panes(&mut frontend.buffer, full);
                 let census = self.plan_cutouts(&frontend.buffer, full);
                 debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
             }
@@ -383,6 +391,14 @@ impl WindowDriver {
             report.repaint_requested = true;
         }
         CpuFrame { report, mode }
+    }
+
+    fn settle_panes(&mut self, buffer: &mut RenderBuffer, plan: RenderPlan) -> Settled {
+        self.pane_captures.settle(
+            buffer,
+            matches!(plan.damage, Damage::Full),
+            self.engines.damage.dirty_panes(),
+        )
     }
 
     fn plan_cutouts(&mut self, buffer: &RenderBuffer, plan: RenderPlan) -> Census {
@@ -431,6 +447,16 @@ impl WindowDriver {
             target.format(),
             self.target,
         );
+        // A capture copies out of the target; a target that gives no copy paints a frame that
+        // captures through the backbuffer. A direct frame is whole, so the backbuffer may be new.
+        let mode = match mode {
+            PresentPath::Direct(plan)
+                if !target.gives_copy() && buffer.backdrops.iter().any(|row| row.capture) =>
+            {
+                PresentPath::ViaBackbuffer(plan)
+            }
+            mode => mode,
+        };
         let debug_overlay = self.ui.debug_overlay();
         // Shared by both paint paths. Gated: on a skip frame `buffer.rounded_clips` is
         // stale.

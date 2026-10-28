@@ -2,15 +2,19 @@
 //! [`Timing`] flavor, process-static. Separate from [`crate::gpu::test_gpu`],
 //! whose interprocess lock a bench must not block behind.
 
+use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::device::requested_gpu::RequestedGpu;
+use crate::gpu::frame::gpu_timings::{GpuTimings, Mark};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use glam::UVec2;
+use std::iter;
 use std::sync::OnceLock;
+use std::time::Duration;
 
 /// The render target format every bench uses, sRGB like the swapchain.
 pub(crate) const TARGET_FORMAT: TargetFormat = TargetFormat::RGBA8_SRGB;
@@ -23,6 +27,8 @@ const BENCH_POWER: PowerPreference = PowerPreference::HighPerformance;
 pub(crate) struct BenchAdapter {
     /// Whether it writes timestamps inside a render pass, which a batch's own GPU time needs.
     pub(crate) pass_timestamps: bool,
+    /// Whether it writes timestamps between passes, which the frame's own backdrop timings read.
+    pub(crate) encoder_timestamps: bool,
 }
 
 /// Whether the device has the timestamp and pipeline-statistics features `GpuTimings` reads.
@@ -87,6 +93,9 @@ impl BenchGpu {
             pass_timestamps: features.contains(
                 wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES,
             ),
+            encoder_timestamps: features.contains(
+                wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+            ),
         })
     }
 
@@ -138,5 +147,57 @@ impl BenchGpu {
             self.timing_features
                 .contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
         )
+    }
+}
+
+/// The device time of a run of whole passes, read through the device's [`GpuTimings`]: from
+/// timestamps written between passes, which split nothing on a tiler, or on the CPU clock from its
+/// submit to the queue's work-done callback where the device writes none there (Metal).
+#[derive(Debug)]
+pub(crate) struct PassTimer {
+    timings: GpuTimings,
+}
+
+impl PassTimer {
+    pub(crate) fn new(gpu: &BenchGpu) -> Self {
+        let Gpu { device, queue } = &gpu.gpu;
+        let timings =
+            GpuTimings::for_runs(device, queue.get_timestamp_period(), gpu.timing_features);
+        Self { timings }
+    }
+
+    /// The device time of the passes `record` encodes, submitted and waited for.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the run's time does not read back once the device is idle.
+    pub(crate) fn time(
+        &mut self,
+        gpu: &BenchGpu,
+        record: impl FnOnce(&mut wgpu::CommandEncoder),
+    ) -> Duration {
+        let Gpu { device, queue } = &gpu.gpu;
+        let encoder = |label| {
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) })
+        };
+        // A sink of its own, so no earlier run's time can stand in for this one's.
+        let sink = GpuPassStats::default();
+        let mut run = encoder("palantir.bench.pass_timer");
+        self.timings.encoder_mark(&mut run, Mark::RunStart);
+        record(&mut run);
+        self.timings.encoder_mark(&mut run, Mark::RunEnd);
+        self.timings.finish(&mut run);
+        queue.submit(iter::once(run.finish()));
+        self.timings.after_submit(&gpu.gpu, &sink);
+        gpu.wait();
+        // The run's queries resolve once the queue said it is done, in a submission of their own.
+        let mut readback = encoder("palantir.bench.pass_timer.readback");
+        self.timings.resolve_done(&mut readback);
+        queue.submit(iter::once(readback.finish()));
+        self.timings.after_submit(&gpu.gpu, &sink);
+        gpu.wait();
+        self.timings.after_submit(&gpu.gpu, &sink);
+        sink.last_pass()
+            .expect("a run's time reads back once the device is idle")
     }
 }

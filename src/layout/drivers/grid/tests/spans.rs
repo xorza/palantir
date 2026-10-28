@@ -401,3 +401,91 @@ fn a_spanning_share_stops_at_the_track_max() {
     );
     assert_eq!(grid.size.w, 200.0, "column 1 takes the rest, to 150");
 }
+
+/// A spanning cell that crosses a Fill column grows only its Fill columns, by weight, and holds the
+/// Hug ones at their own content (CSS Grid §12.5 step 4); such spans grow after every span that
+/// crosses no Fill column (steps 3, then 4). Each case: the columns, the spans `(first, count,
+/// width)` in record order, a fixed-width cell per column on the second row, and where each column
+/// starts. No gaps.
+///
+/// - `[Hug, Fill, Hug]`, a 300 span over 40 and 40: the Fill takes `300 − 80 = 220`, so the
+///   columns start at 0, 40, 260.
+/// - `[Fill 1, Hug, Fill 3]`, a 400 span over the 40 middle: `360` splits 1:3, 90 and 270, so
+///   the columns start at 0, 90, 130.
+/// - `[Hug, Fill max 100, Hug]`, the first case's span: the Fill stops at its 100 and the rest
+///   overflows, so the columns start at 0, 40, 140.
+/// - `[Hug, Hug, Fill]`, a 150 span over all three recorded before a 100 span over the Hug
+///   two: the Hug two take 50 each first, so the Fill takes the 50 left, and the columns start at
+///   0, 50, 100. Taken in record order, the Fill would take all 150.
+#[test]
+fn a_span_over_a_fill_column_grows_only_its_fill_columns() {
+    struct Case {
+        what: &'static str,
+        cols: [Track; 3],
+        spans: &'static [(u16, u16, f32)],
+        cells: [f32; 3],
+        starts: [f32; 3],
+    }
+    let cases = [
+        Case {
+            what: "hug fill hug",
+            cols: [Track::HUG, Track::FILL, Track::HUG],
+            spans: &[(0, 3, 300.0)],
+            cells: [40.0, 0.0, 40.0],
+            starts: [0.0, 40.0, 260.0],
+        },
+        Case {
+            what: "weighted fills",
+            cols: [Track::fill(1.0), Track::HUG, Track::fill(3.0)],
+            spans: &[(0, 3, 400.0)],
+            cells: [0.0, 40.0, 0.0],
+            starts: [0.0, 90.0, 130.0],
+        },
+        Case {
+            what: "fill at its max",
+            cols: [Track::HUG, Track::FILL.with_max(100.0), Track::HUG],
+            spans: &[(0, 3, 300.0)],
+            cells: [40.0, 0.0, 40.0],
+            starts: [0.0, 40.0, 140.0],
+        },
+        Case {
+            what: "hug spans first",
+            cols: [Track::HUG, Track::HUG, Track::FILL],
+            spans: &[(0, 3, 150.0), (0, 2, 100.0)],
+            cells: [0.0, 0.0, 0.0],
+            starts: [0.0, 50.0, 100.0],
+        },
+    ];
+    for case in cases {
+        let mut h = UiHarness::new(UVec2::new(600, 200));
+        h.frame(|ui| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                Grid::new()
+                    .id(WidgetId::from_hash("grid"))
+                    .size((Sizing::HUG, Sizing::HUG))
+                    .cols(case.cols)
+                    .rows([Track::HUG, Track::HUG])
+                    .show(ui, |ui| {
+                        for (i, &(first, count, w)) in case.spans.iter().enumerate() {
+                            Block::new()
+                                .id(WidgetId::from_hash(("span", i)))
+                                .grid_cell(GridCell::at(0, first).with_span(1, count))
+                                .size((Sizing::fixed(w), Sizing::fixed(10.0)))
+                                .show(ui);
+                        }
+                        for (col, w) in (0u16..).zip(case.cells) {
+                            Block::new()
+                                .id(WidgetId::from_hash(("cell", col)))
+                                .grid_cell((1, col))
+                                .size((Sizing::fixed(w), Sizing::fixed(10.0)))
+                                .show(ui);
+                        }
+                    });
+            });
+        });
+        let grid = h.arranged(WidgetId::from_hash("grid"));
+        let starts = [0u16, 1, 2]
+            .map(|col| h.arranged(WidgetId::from_hash(("cell", col))).min.x - grid.min.x);
+        assert_eq!(starts, case.starts, "{}", case.what);
+    }
+}

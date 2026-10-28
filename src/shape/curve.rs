@@ -13,6 +13,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::shape::lower;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
@@ -170,6 +171,7 @@ impl sealed::LowerShape for CurveShape {
                 corners,
                 fill: lower::brush(store, &Brush::Solid(color)),
                 border: ShapeStroke::from(Stroke::NONE),
+                backdrop: LoweredBackdrop::NONE,
             });
         }
         let basis = geometry.basis();

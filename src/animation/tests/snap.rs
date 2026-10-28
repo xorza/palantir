@@ -7,6 +7,7 @@ use crate::animation::spring::Spring;
 use crate::animation::tests::support::{self, AnimationUi, Release, SLOT};
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -27,6 +28,7 @@ fn spring_snap_fields_carry_target_immediately() {
         border: Stroke::NONE,
         corners: Corners::all(2.0),
         shadow: Shadow::NONE,
+        backdrop_filter: BackdropFilter::NONE,
     };
     let _ = map.step(
         AnimationRequest::new(id, SLOT, start.clone()),
@@ -40,6 +42,7 @@ fn spring_snap_fields_carry_target_immediately() {
         border: Stroke::NONE,
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
+        backdrop_filter: BackdropFilter::NONE,
     };
     let r = map.step(
         AnimationRequest::new(id, SLOT, target.clone()),
@@ -83,12 +86,14 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
         border: Stroke::new(RgbaF32::BLACK, 0.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
+        backdrop_filter: BackdropFilter::NONE,
     };
     let moving = Chrome {
         fill: Brush::Solid(RgbaF32::WHITE),
         border: Stroke::new(RgbaF32::BLACK, 10.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
+        backdrop_filter: BackdropFilter::NONE,
     };
     let _ = map.step(
         AnimationRequest::new(id, SLOT, start),
@@ -120,6 +125,7 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
         border: Stroke::new(RgbaF32::BLACK, 20.0),
         corners: Corners::ZERO,
         shadow: Shadow::NONE,
+        backdrop_filter: BackdropFilter::NONE,
     };
     let result = map.step(
         AnimationRequest::new(id, SLOT, target),

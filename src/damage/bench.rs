@@ -1,11 +1,16 @@
 //! DamageEngine CPU-side regression bench: whole CPU frames (record through damage, no encode or GPU) over a ~1056-node grid on each `Damage` path, shape-count churn, a raised sibling's paint-order inversion, and the three `DamageRegion::add` branches. Text measurement uses the mono fallback.
 
 use crate::bench::backends::Backend;
+use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
+use crate::cascade::pane_row::PaneRow;
 use crate::damage::Damage;
+use crate::damage::dirty_panes::DirtyPanes;
+use crate::damage::pane_walk::PaneWalk;
 use crate::damage::region::DamageRegion;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
@@ -15,8 +20,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion};
+use criterion::Criterion;
 use std::hint::black_box;
 
 const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
@@ -122,7 +126,7 @@ struct ArenaSettle {
     next_frame: u32,
 }
 
-fn bench_workloads(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_workloads(group: &mut CaseGroup<'_>) {
     let cold = RgbaF32::srgb(0.2, 0.4, 0.8);
     let hot = RgbaF32::srgb(0.9, 0.4, 0.2);
 
@@ -342,7 +346,7 @@ fn bench_workloads(group: &mut BenchmarkGroup<'_, WallTime>) {
 }
 
 /// `atomic/damage/cpu/region_add/<branch>/<n>_in_<m>_out`: a region built from rects, once
-/// for each branch of `DamageRegion::add`.
+/// for each branch of `DamageRegion::add`; and [`backdrop_walk`]'s cases.
 pub(crate) fn atomic(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "damage", Scale::Sample);
 
@@ -375,7 +379,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
             b.iter(|| black_box(DamageRegion::from_rects(rects).iter_rects().count()));
         });
     }
-
+    backdrop_walk(&mut group);
     group.finish();
 }
 
@@ -403,9 +407,9 @@ fn build_ordered_siblings(ui: &mut Ui, order: &[usize]) {
 /// Raises one child to the front, as clicking a node on a graph canvas does.
 ///
 /// `emit_inverted_overlaps` enumerates every `(j1, j2)` pair once `has_order_inversion` fires, while raising one child inverts only `n`; these arms show whether that is visible, and from what fanout. Each iteration alternates orders so every frame trips the inversion.
-fn bench_paint_order_inversion(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_paint_order_inversion(group: &mut CaseGroup<'_>) {
     for count in ORDER_FANOUT {
-        group.bench_function(Backend::Cpu.case(&format!("paint_order/{count}")), |b| {
+        group.bench_function(Backend::Cpu.case(&format!("paint_order_{count}")), |b| {
             let flat: Vec<usize> = (0..count).collect();
             let mut raised = flat.clone();
             let last = raised.pop().expect("fanout is non-empty");
@@ -429,7 +433,7 @@ fn bench_paint_order_inversion(group: &mut BenchmarkGroup<'_, WallTime>) {
     }
 }
 
-/// `integration/damage/cpu/<workload>` and `integration/damage/cpu/paint_order/<count>`: whole
+/// `integration/damage/cpu/<workload>` and `integration/damage/cpu/paint_order_<count>`: whole
 /// CPU frames, record through damage, on each `Damage` path, under shape churn, and with one
 /// raised sibling inverting paint order.
 pub(crate) fn integration(c: &mut Criterion) {
@@ -437,4 +441,50 @@ pub(crate) fn integration(c: &mut Criterion) {
     bench_workloads(&mut group);
     bench_paint_order_inversion(&mut group);
     group.finish();
+}
+
+/// `atomic/damage/cpu/backdrop_walk/<panes>/<rects>`: the forward walk over `panes` panes in a
+/// row against `rects` raw rects, each painted after the pane before it and touching no footprint,
+/// so every pane scans every rect before it and none goes stale: the walk's worst case.
+fn backdrop_walk(group: &mut CaseGroup<'_>) {
+    for panes in [1u32, 8, 64] {
+        for rects in [1u32, 16, 256] {
+            let case = format!("backdrop_walk/{panes}/{rects}");
+            group.bench_function(Backend::Cpu.case(&case), |b| {
+                let rows: Vec<(u64, PaneRow)> = (0..panes)
+                    .map(|i| {
+                        let rect = Rect::new(i as f32 * 20.0, 0.0, 10.0, 10.0);
+                        let pane = PaneRow {
+                            key: PaneKey {
+                                owner: WidgetId::from_hash(i),
+                                shape: 0,
+                            },
+                            row: 2 * i + 1,
+                            rect,
+                            footprint: rect.inflated(4.0),
+                        };
+                        (PaneWalk::position(0, pane.row), pane)
+                    })
+                    .collect();
+                let mut walk = PaneWalk::marking();
+                let mut raw = Vec::new();
+                let mut dirty = DirtyPanes::default();
+                let fill = |walk: &mut PaneWalk, raw: &mut Vec<Rect>| {
+                    walk.reset();
+                    raw.clear();
+                    for r in 0..rects {
+                        walk.mark(raw.len(), PaneWalk::position(0, 2 * (r % panes)));
+                        raw.push(Rect::new(r as f32, 500.0, 4.0, 4.0));
+                    }
+                };
+                fill(&mut walk, &mut raw);
+                assert!(walk.walk_over(&rows, &mut raw, &mut dirty));
+                assert_eq!(dirty, DirtyPanes::default(), "no pane goes stale");
+                b.iter(|| {
+                    fill(&mut walk, &mut raw);
+                    black_box(walk.walk_over(&rows, &mut raw, &mut dirty))
+                });
+            });
+        }
+    }
 }

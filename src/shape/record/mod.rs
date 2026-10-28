@@ -19,6 +19,7 @@ use crate::shape::icon::IconFit;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::{BrushHash, ShapeBrush};
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -155,6 +156,20 @@ impl TextAnchor {
 }
 
 impl ShapeRecord {
+    /// The backdrop of a rect drawn as a pane over the pixels before it, `None` for every other
+    /// record.
+    pub(crate) const fn backdrop(&self) -> Option<LoweredBackdrop> {
+        match self {
+            Self::Quad(QuadShape::Rect { backdrop, .. }) if !backdrop.is_none() => Some(*backdrop),
+            _ => None,
+        }
+    }
+
+    /// Whether the record is a pane over the pixels before it.
+    pub(crate) const fn is_pane(&self) -> bool {
+        self.backdrop().is_some()
+    }
+
     /// The record's canonical content hash, filling the parallel `Shapes::hashes` arena at `Shapes::add`; `Tree::compute_rollups` and damage diff read it, and production code never rehashes a record.
     ///
     /// The schedule is `discriminant → per-variant fields` at every nesting level (`mem::discriminant`, so it cannot drift from the enum). Nothing is persisted, so variants can be added or reordered freely. `Polyline` and `Mesh` hand over a `content_hash` their lowering computed, as their payload bytes live in the `RecordStore` this never sees.
@@ -173,12 +188,14 @@ impl ShapeRecord {
                         corners,
                         fill,
                         border,
+                        backdrop,
                     } => {
                         h.write_u8(*kind as u8);
                         hash_optional_rect(*local_rect, &mut h);
                         corners.hash(&mut h);
                         hash_brush(*fill, &mut h);
                         border.hash_into(&mut h);
+                        backdrop.hash(&mut h);
                     }
                     QuadShape::Shadow {
                         local_rect,

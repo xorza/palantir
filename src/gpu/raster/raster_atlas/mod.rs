@@ -17,7 +17,7 @@ pub(crate) mod counters;
 mod free_slots;
 pub(crate) mod packed_metadata;
 pub(crate) mod raster_quad;
-mod shelf_packer;
+pub(crate) mod shelf_packer;
 mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;

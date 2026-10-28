@@ -55,6 +55,9 @@ impl GoldenName {
 }
 
 golden_names! {
+    BackdropGlass => "backdrop_glass",
+    BackdropPanes => "backdrop_panes",
+    BackdropTurned => "backdrop_turned",
     AddShapeRoundedRectLinearGradient => "add_shape_rounded_rect_linear_gradient",
     ArcShapes => "arc_shapes",
     ButtonHello => "button_hello",
@@ -87,6 +90,7 @@ golden_names! {
     ScrollWithUserPadding => "scroll_with_user_padding",
     ScrollXyOverflow => "scroll_xy_overflow",
     ShowcaseGradientsPage => "showcase_gradients_page",
+    ShowcaseMaterialsPage => "showcase_materials_page",
     SliderThirtyPercent => "slider_thirty_percent",
     Spinner => "spinner",
     SurfaceRoundedClipsFullFillChild => "surface_rounded_clips_full_fill_child",

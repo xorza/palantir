@@ -3,9 +3,11 @@
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::backdrop_row::BackdropRow;
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
@@ -20,6 +22,7 @@ use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use soa_rs::Soa;
 use std::time::Duration;
 
+pub(crate) mod backdrop_row;
 pub(crate) mod curve_caps;
 pub(crate) mod curve_instance;
 pub(crate) mod curve_kind;
@@ -62,6 +65,12 @@ pub(crate) struct RenderBuffer {
     pub(crate) curves: Vec<CurveInstance>,
     /// Flat pool of rounded-clip mask chains (outer→inner); `DrawGroup.rounded_clips` and `TextBatch.rounded_clips` are spans into it. Value-equal chains dedup at mask staging.
     pub(crate) rounded_clips: Vec<RoundedClip>,
+    /// The backdrop panes in paint order; each one that captures breaks the main pass at its
+    /// barrier and copies what the groups before it painted.
+    pub(crate) backdrops: Vec<BackdropRow>,
+    /// Every pane of the frame, drawn or not: the backend's roster, which keeps an unchanged
+    /// pane's cached blur while it stays out of the frame's damage.
+    pub(crate) live_panes: Vec<PaneKey>,
     /// Clear fold: an unclipped opaque solid sharp quad covering the viewport discards everything composed before it and is dropped, its fill recorded here for the backend to clear to.
     pub(crate) clear_override: Option<RgbaF16>,
     /// The display this buffer was composed for, held whole so every reader sees the viewport the compose session used.
@@ -85,6 +94,8 @@ impl RenderBuffer {
             icons: Vec::new(),
             curves: Vec::new(),
             rounded_clips: Vec::new(),
+            backdrops: Vec::new(),
+            live_panes: Vec::new(),
             clear_override: None,
             display: Display::default(),
             time: Duration::ZERO,
@@ -146,5 +157,6 @@ impl RenderBuffer {
         self.icons.clear();
         self.curves.clear();
         self.rounded_clips.clear();
+        self.backdrops.clear();
     }
 }

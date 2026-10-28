@@ -1,4 +1,5 @@
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
@@ -34,8 +35,17 @@ fn widget_look_serde_roundtrip() {
                 border: Stroke::new(RgbaF32::hex(0xffffff), 1.5),
                 corners: Corners::all(6.0),
                 shadow: Shadow::NONE,
+                backdrop_filter: BackdropFilter::NONE,
             },
             text: TextStyleOverrides::NONE.with_font_size(20.0),
+        },
+        WidgetLook {
+            chrome: Chrome::rounded(RgbaF32::hex(0xffffff).with_alpha(0.2), Corners::all(8.0))
+                .with_backdrop_filter(BackdropFilter::frosted(12.0).with_lens(Lens {
+                    dispersion: 0.0,
+                    ..Lens::default()
+                })),
+            text: TextStyleOverrides::NONE,
         },
         WidgetLook {
             chrome: Chrome::NONE,
@@ -64,6 +74,38 @@ fn widget_look_serde_roundtrip() {
             "{serialized}"
         );
         assert!(!serialized.contains("None"), "{serialized}");
+    }
+}
+
+/// A backdrop filter in a file names only what differs from `BackdropFilter::NONE`, and each
+/// field is checked by its kind: a blur a length, saturation and noise factors, a lens's index at
+/// least 1 and its dispersion and highlight fractions.
+#[test]
+fn backdrop_filters_load_by_their_kinds() {
+    for (label, ron, want) in [
+        ("blur alone", "(blur: 8.0)", Some(BackdropFilter::blur(8.0))),
+        (
+            "gray",
+            "(saturation: 0.0)",
+            Some(BackdropFilter::NONE.with_saturation(0.0)),
+        ),
+        (
+            "default lens",
+            "(lens: Some(()))",
+            Some(BackdropFilter::glass(Lens::default())),
+        ),
+        ("negative blur", "(blur: -1.0)", None),
+        ("NaN saturation", "(saturation: NaN)", None),
+        ("negative noise", "(noise: -0.1)", None),
+        (
+            "index below 1",
+            "(lens: Some((refractive_index: 0.9)))",
+            None,
+        ),
+        ("dispersion past 1", "(lens: Some((dispersion: 1.5)))", None),
+    ] {
+        let got = ron::from_str::<BackdropFilter>(ron).ok();
+        assert_eq!(got, want, "{label}");
     }
 }
 

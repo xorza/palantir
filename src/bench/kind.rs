@@ -1,5 +1,6 @@
 //! The policy every case follows: its kind and how criterion samples it.
 
+use crate::bench::case_group::CaseGroup;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, SamplingMode};
 use std::time::Duration;
@@ -14,20 +15,17 @@ pub enum Kind {
 }
 
 impl Kind {
-    /// The group `name` of this kind, sampled as `scale` says.
-    pub fn group<'a>(
-        self,
-        c: &'a mut Criterion,
-        name: &str,
-        scale: Scale,
-    ) -> BenchmarkGroup<'a, WallTime> {
+    /// The group `name` of this kind, sampled as `scale` says. Each name is made once, as the
+    /// group holds its cases to one depth only among the cases it registers.
+    pub fn group<'a>(self, c: &'a mut Criterion, name: &str, scale: Scale) -> CaseGroup<'a> {
         let kind = match self {
             Self::Atomic => "atomic",
             Self::Integration => "integration",
         };
-        let mut group = c.benchmark_group(format!("{kind}/{name}"));
+        let name = format!("{kind}/{name}");
+        let mut group = c.benchmark_group(&name);
         scale.apply(&mut group);
-        group
+        CaseGroup::new(group, name)
     }
 }
 

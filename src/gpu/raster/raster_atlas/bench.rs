@@ -68,19 +68,19 @@ fn submit(gpu: &BenchGpu, record: impl FnOnce(&mut wgpu::CommandEncoder)) {
     gpu.wait();
 }
 
-/// `atomic/raster_atlas/gpu/<grow/<side>/<from>|submit>`: wall time from the grow to the drained
+/// `atomic/raster_atlas/gpu/<grow_<side>/<from>|submit/empty>`: wall time from the grow to the drained
 /// submit that blits it, and the same submit with nothing recorded.
 pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
     let mut group = Kind::Atomic.group(c, "raster_atlas", Scale::Frame);
-    group.bench_function(backend.case("submit"), |b| {
+    group.bench_function(backend.case("submit/empty"), |b| {
         let gpu = gpu();
         b.iter(|| submit(gpu, |_| {}));
     });
     for (content, from) in GROWS {
-        let id = format!("grow/{}/{from}", content.side_name());
+        let id = format!("grow_{}/{from}", content.side_name());
         group.bench_function(backend.case(&id), |b| {
             let gpu = gpu();
             let zeros = vec![0; (from * from * content.bytes_per_pixel()) as usize];

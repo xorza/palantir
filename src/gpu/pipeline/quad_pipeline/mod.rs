@@ -32,6 +32,8 @@ pub(crate) struct QuadVariants {
     solid: StencilVariant,
     gradient: StencilVariant,
     triangle: StencilVariant,
+    /// Backdrop panes, `fs_backdrop` over [`QuadPipeline`]'s backdrop layout.
+    backdrop: StencilVariant,
     /// Drop and inset shadows, reading the baked cutouts ([`CutoutTables`]); apart from `fs` to keep the blur integral out of other quads.
     shadow_general: StencilVariant,
     /// Shadows whose every drawn corner reads a table (`fs_shadow_tables`).
@@ -48,6 +50,7 @@ impl QuadVariants {
             QuadForm::Solid => &self.solid,
             QuadForm::Gradient => &self.gradient,
             QuadForm::Triangle => &self.triangle,
+            QuadForm::Backdrop => &self.backdrop,
         }
     }
 
@@ -104,6 +107,9 @@ pub(crate) struct QuadPipeline {
     pipeline_layout: wgpu::PipelineLayout,
     /// [`Self::pipeline_layout`] plus the cutout atlas at group 1, for the shadow variant.
     shadow_layout: wgpu::PipelineLayout,
+    /// [`Self::pipeline_layout`] plus the frame's backdrop results at group 2, for the backdrop
+    /// variant.
+    backdrop_layout: wgpu::PipelineLayout,
     /// The shadows' baked corner cutouts.
     cutouts: CutoutTables,
     /// Whether shadows draw as a grid of cells (`vs_shadow`). Off only in internals, which build the one-cell reference.
@@ -168,7 +174,11 @@ impl QuadPipeline {
     }
 
     /// Build the format-independent quad resources; per-format pipelines come from [`Self::build_variants`].
-    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        textures: &TextureBinding,
+        backdrops: &wgpu::BindGroupLayout,
+    ) -> Self {
         let shader = ShaderBody::Quad.module(device);
         let cutouts = CutoutTables::new(device, &shader);
 
@@ -189,6 +199,11 @@ impl QuadPipeline {
                 device,
                 "palantir.quad.shadow.pl",
                 &[Some(textures.layout()), Some(cutouts.layout())],
+            ),
+            backdrop_layout: PipelineRecipe::pipeline_layout(
+                device,
+                "palantir.quad.backdrop.pl",
+                &[Some(textures.layout()), None, Some(backdrops)],
             ),
             cutouts,
             shadow_grid: true,
@@ -269,6 +284,27 @@ impl QuadPipeline {
                 "palantir.quad.pipeline.triangle.stencil_test",
                 QuadForm::Triangle,
             ),
+            backdrop: StencilVariant::build(
+                device,
+                PipelineRecipe {
+                    fragment_entry: "fs_backdrop",
+                    constants: &[(
+                        "DITHER_SRGB8",
+                        f64::from(u8::from(
+                            format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
+                        )),
+                    )],
+                    vertex_buffers: slice::from_ref(&instance),
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..PipelineRecipe::color(
+                        "palantir.quad.pipeline.backdrop",
+                        &self.shader,
+                        &self.backdrop_layout,
+                        format,
+                    )
+                },
+                "palantir.quad.pipeline.backdrop.stencil_test",
+            ),
             shadow_general: shadow(
                 "palantir.quad.pipeline.shadow",
                 "palantir.quad.pipeline.shadow.stencil_test",
@@ -315,6 +351,23 @@ impl QuadPipeline {
             &self.pipeline_layout,
             &self.instance_buffer.buffer,
         );
+    }
+
+    /// [`Self::bind`] for the backdrop variant, which also reads the frame's backdrop results.
+    pub(crate) fn bind_backdrop<'a>(
+        &'a self,
+        binder: &mut MainBinder<'a>,
+        pass: &mut wgpu::RenderPass<'a>,
+        binding: QuadBinding<'a>,
+        backdrops: &'a wgpu::BindGroup,
+    ) {
+        binding.bind_through(
+            binder,
+            pass,
+            &self.backdrop_layout,
+            &self.instance_buffer.buffer,
+        );
+        binder.group(pass, 2, backdrops);
     }
 
     /// [`Self::bind`] for the shadow variant, which also reads the cutout atlas and corner tables.

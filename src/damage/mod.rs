@@ -39,10 +39,12 @@ use crate::primitives::geometry::rect::Rect;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod counters;
+pub(crate) mod dirty_panes;
 pub(crate) mod engine;
 pub(crate) mod frame_baseline;
 mod inverted_overlaps;
 pub(crate) mod node_snapshot;
+mod pane_walk;
 mod plane_frame;
 mod plane_walk;
 pub(crate) mod region;

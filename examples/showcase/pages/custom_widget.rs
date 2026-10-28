@@ -4,6 +4,7 @@
 
 use crate::support;
 use crate::support::{Col, Section, api};
+use palantir::BackdropFilter;
 use palantir::glam::Vec2;
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
@@ -303,6 +304,7 @@ impl StepButton {
             border: Stroke::NONE,
             corners: Corners::all(support::RADIUS),
             shadow: Shadow::NONE,
+            backdrop_filter: BackdropFilter::NONE,
         };
         let widget = Widget::leaf()
             .id(id)

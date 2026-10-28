@@ -1,9 +1,12 @@
 //! Lowered paint data shared by shape records and node chrome.
 
+pub(crate) mod blur_plan;
 pub(crate) mod chrome_row;
 pub(crate) mod curve_basis;
 pub(crate) mod curve_ramp;
 pub(crate) mod image_source;
+pub(crate) mod lens_optics;
+pub(crate) mod lowered_backdrop;
 pub(crate) mod lowered_shadow;
 pub(crate) mod quad_shape;
 pub(crate) mod shape_brush;

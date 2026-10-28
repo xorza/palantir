@@ -7,6 +7,7 @@ use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::counters::CascadeCounters;
 use crate::cascade::paint::Paint;
 use crate::cascade::paint_rect::{self, PaintRectCtx};
+use crate::cascade::pane_row::PaneRow;
 use crate::cascade::plane_cascade::PlaneCascade;
 use crate::cascade::rows::arrow_group_row::ArrowGroupRow;
 use crate::cascade::rows::entry_row::EntryRow;
@@ -22,12 +23,14 @@ use crate::input::sense::Sense;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::float_hash;
 use crate::scene::forest::Forest;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
+use crate::scene::tree::pane_entry::PaneSource;
 use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -477,6 +480,7 @@ impl CascadeEngine {
                 }
                 lc.cascade_inputs[iu] = cascade_input;
                 lc.paint_rects[iu] = subtree_seed;
+                lc.shape_scales[iu] = desc_transform.scale();
                 sink.emit(
                     tree,
                     lc,
@@ -517,7 +521,44 @@ impl CascadeEngine {
         while let Some(popped) = self.stack.pop() {
             finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
         }
+        list_panes(tree, lc, display_scale);
         true
+    }
+}
+
+/// Rebuild `lc.panes` from the panes `tree` recorded, each at its paint row and that row's screen.
+fn list_panes(tree: &Tree, lc: &mut PlaneCascade, display_scale: f32) {
+    lc.panes.clear();
+    let widget_ids = tree.records.widget_id();
+    for entry in &tree.panes {
+        let node = entry.node.idx();
+        let span = lc.paint_arena.node_spans[node];
+        if span.len == 0 {
+            continue;
+        }
+        debug_assert!(
+            entry.row < span.len,
+            "a pane's row lies in its owner's span"
+        );
+        let row = span.start + entry.row;
+        let rect = lc.paint_arena.rows[row as usize].screen;
+        if rect.is_paint_empty() {
+            continue;
+        }
+        let backdrop = match entry.source {
+            PaneSource::Chrome => tree.chrome(entry.node).map(|row| row.backdrop),
+            PaneSource::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
+        }
+        .expect("a listed pane has a backdrop");
+        lc.panes.push(PaneRow {
+            key: PaneKey {
+                owner: widget_ids[node],
+                shape: entry.row,
+            },
+            row,
+            rect,
+            footprint: PaneRow::footprint_of(rect, backdrop, lc.shape_scales[node], display_scale),
+        });
     }
 }
 

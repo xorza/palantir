@@ -1,5 +1,6 @@
 //! Showcase regressions where two Grid cells (or back-to-back grids in a vstack) painted over each other, pinned by arranged-rect order and `DrawText` x positions.
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 
@@ -32,6 +33,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
             border: Stroke::new(RgbaF32::srgb(0.30, 0.34, 0.42), 1.0),
             corners: Corners::all(4.0),
             shadow: Shadow::NONE,
+            backdrop_filter: BackdropFilter::NONE,
         })
         .show(ui, |ui| {
             Text::new("title")

@@ -15,6 +15,7 @@
 //! `cached / forced_miss` is what the cache buys on a comparable workload.
 
 use crate::bench::backends::Backend;
+use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
 use crate::internals::cache_fixture::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::internals::ui_harness::UiHarness;
@@ -32,8 +33,7 @@ use crate::widgets::block::Block;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
-use criterion::measurement::WallTime;
-use criterion::{BenchmarkGroup, Criterion};
+use criterion::Criterion;
 use std::hint::black_box;
 
 const LIST_GROUPS: usize = 50;
@@ -138,7 +138,7 @@ fn build_grid_intrinsics(ui: &mut Ui) {
 }
 
 fn bench_cache_pair(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+    group: &mut CaseGroup<'_>,
     name: &str,
     make_ui: fn() -> UiHarness,
     build: fn(&mut Ui),
@@ -163,7 +163,7 @@ fn bench_cache_pair(
 }
 
 fn bench_cache_workload(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+    group: &mut CaseGroup<'_>,
     name: &str,
     make_ui: fn() -> UiHarness,
     build: fn(&mut Ui),
@@ -183,7 +183,7 @@ fn bench_cache_workload(
 }
 
 fn bench_broad_localized(
-    group: &mut BenchmarkGroup<'_, WallTime>,
+    group: &mut CaseGroup<'_>,
     name: &str,
     harness: impl Fn() -> UiHarness,
     change: BroadChange,
@@ -228,7 +228,7 @@ fn build_scroll_window(ui: &mut Ui, first: usize) {
 /// the descriptor id sequence is unchanged, so a scrolling window rebuilds it
 /// every frame (one hash insert per descriptor) and a still one never does. The
 /// arms differ only in whether the window moves, which the warm-up checks.
-fn bench_virtual_scroll(group: &mut BenchmarkGroup<'_, WallTime>) {
+fn bench_virtual_scroll(group: &mut CaseGroup<'_>) {
     for (name, stride) in [("static", 0usize), ("scrolling", 1)] {
         group.bench_function(Backend::Cpu.case(&format!("virtual_scroll/{name}")), |b| {
             const FRAMES: u32 = 64;

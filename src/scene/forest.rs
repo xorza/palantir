@@ -19,6 +19,7 @@ use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::paint_animations::PaintAnimationEntry;
+use crate::scene::tree::pane_entry::{PaneEntry, PaneSource};
 use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
@@ -236,9 +237,25 @@ impl Forest {
 
     /// Lowers a user-facing [`Shape`](crate::widget::Shape) and appends it to the active tree's shape buffer.
     pub(crate) fn add_shape<S: Lower>(&mut self, shape: S) {
-        self.push_shape("add_shape", |tree, store, _| {
-            tree.shapes.add(shape, store).is_some()
+        self.push_shape("add_shape", |tree, store, frame| {
+            let Some(shape_idx) = tree.shapes.add(shape, store) else {
+                return false;
+            };
+            Self::note_pane(tree, frame, shape_idx);
+            true
         });
+    }
+
+    /// List shape `shape_idx` among the tree's panes when it is one and paints.
+    fn note_pane(tree: &mut Tree, frame: &OpenFrame, shape_idx: u32) {
+        if frame.effectively_visible && tree.shapes.records[shape_idx as usize].is_pane() {
+            tree.panes.push(PaneEntry {
+                node: frame.node,
+                shape_idx,
+                source: PaneSource::Shape,
+                row: frame.paint_rows,
+            });
+        }
     }
 
     /// Appends a `GpuView` shape to the active node. Only the redraw `epoch` rides the shape; it skips lowering and never noop-collapses.
@@ -256,6 +273,7 @@ impl Forest {
                 return false;
             };
             tree.shapes.fold_paint_animation(shape_idx, &animation);
+            Self::note_pane(tree, frame, shape_idx);
             // The paint row is charged either way.
             if frame.effectively_visible {
                 tree.paint_animations.push_entry(PaintAnimationEntry {

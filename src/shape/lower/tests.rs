@@ -1,5 +1,6 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
@@ -33,8 +34,8 @@ fn with_corners(corners: Corners) -> Chrome {
     }
 }
 
-/// The four ways a `Chrome` can carry a NaN, one per field; no no-op predicate owns the question.
-fn nan_chromes() -> [(&'static str, Chrome); 4] {
+/// The five ways a `Chrome` can carry a NaN, one per field; no no-op predicate owns the question.
+fn nan_chromes() -> [(&'static str, Chrome); 5] {
     [
         (
             "corners",
@@ -61,6 +62,10 @@ fn nan_chromes() -> [(&'static str, Chrome); 4] {
                 },
                 ..Chrome::fill(RgbaF32::WHITE)
             },
+        ),
+        (
+            "backdrop filter",
+            Chrome::fill(RgbaF32::WHITE).with_backdrop_filter(BackdropFilter::blur(f32::NAN)),
         ),
     ]
 }
@@ -213,6 +218,20 @@ fn chrome_lowering_keeps_an_authored_field() {
                 ..shadow
             }),
         ),
+        (
+            "backdrop blur",
+            base.clone().with_backdrop_filter(BackdropFilter::blur(4.0)),
+        ),
+        (
+            "backdrop frosted",
+            base.clone()
+                .with_backdrop_filter(BackdropFilter::frosted(4.0)),
+        ),
+        (
+            "backdrop lens",
+            base.clone()
+                .with_backdrop_filter(BackdropFilter::glass(Lens::default())),
+        ),
     ];
     let hashes: Vec<_> = variants
         .iter()
@@ -241,6 +260,7 @@ fn a_nan_chrome_field_never_reaches_the_row() {
             !row.corners.has_nan()
                 && !row.border.has_nan()
                 && !row.shadow.has_nan()
+                && !row.backdrop.has_nan()
                 && !row.fill.has_nan(),
             "a NaN {label} must not survive lowering",
         );

@@ -12,6 +12,7 @@
 //! | [`extent`] | `>= 0`, `+inf` allowed | panic |
 //! | [`gap`] | a length `<= 65504` (one f16 lane) | panic |
 //! | [`positive`] | finite, `> 0` | panic |
+//! | [`factor`] | finite, `>= 0` | panic |
 //! | [`angle`] | finite | panic |
 //! | [`color`] | every channel finite | panic |
 //! | [`count`] | `>= 1` | panic |
@@ -50,6 +51,7 @@ pub(crate) const LENGTH_RULE: &str = "a length must be finite and not negative";
 pub(crate) const EXTENT_RULE: &str = "an extent must not be negative or NaN";
 pub(crate) const GAP_RULE: &str = "a gap must be finite, not negative, and at most 65504";
 pub(crate) const POSITIVE_RULE: &str = "a positive value must be finite and above zero";
+pub(crate) const FACTOR_RULE: &str = "a factor must be finite and not negative";
 pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
 pub(crate) const COLOR_RULE: &str = "a color must have finite channels";
@@ -187,6 +189,25 @@ pub const fn is_positive(v: f32) -> bool {
 #[track_caller]
 pub const fn positive(v: f32) -> f32 {
     assert!(is_positive(v), "{}", POSITIVE_RULE);
+    v
+}
+
+/// True if `v` is a [`factor`]: finite and not negative.
+#[inline]
+pub const fn is_factor(v: f32) -> bool {
+    v.is_finite() && v >= 0.0
+}
+
+/// `v`, which must be a *factor*: a multiplier, finite and not negative, where zero takes the
+/// whole effect away (a saturation of 0 is gray).
+///
+/// # Panics
+///
+/// Panics unless [`is_factor`]`(v)`.
+#[inline]
+#[track_caller]
+pub const fn factor(v: f32) -> f32 {
+    assert!(is_factor(v), "{}", FACTOR_RULE);
     v
 }
 

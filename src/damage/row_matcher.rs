@@ -1,12 +1,40 @@
 //! Pairing one node's paint rows against last frame's, and turning the unpaired into damage.
 
 use crate::cascade::paint::Paint;
+use crate::cascade::pane_row::PaneRow;
 use crate::common::block_arena::BlockArena;
 use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
 use crate::damage;
+use crate::damage::pane_walk::PaneWalk;
 use crate::primitives::geometry::rect::Rect;
 use std::cmp::Ordering;
+
+/// Where a node's rows stand in paint order, for marking the rects the matcher pushes.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct NodeRows {
+    pub(super) ord: usize,
+    /// The node's current span in the plane's rows.
+    pub(super) span: Span,
+}
+
+impl NodeRows {
+    const fn row(self, row: u32) -> u64 {
+        PaneWalk::position(self.ord, self.span.start + row)
+    }
+
+    const fn gone(self) -> u64 {
+        PaneWalk::gone_position(self.ord, self.span)
+    }
+}
+
+/// The panes' walk the matcher marks into, the node it diffs, and the plane's panes.
+#[derive(Debug)]
+pub(super) struct RowPlaces<'a> {
+    pub(super) panes: &'a mut PaneWalk,
+    pub(super) of: NodeRows,
+    pub(super) pane_rows: &'a [PaneRow],
+}
 
 /// Result of [`RowMatcher::diff_changed_leg`].
 #[derive(Debug)]
@@ -56,6 +84,7 @@ impl RowMatcher {
         paints: &mut BlockArena<Paint>,
         out: &mut Vec<Rect>,
         change: PaintsChange<'_>,
+        places: &mut RowPlaces<'_>,
     ) -> ChangedLeg {
         let PaintsChange {
             prev: prev_span,
@@ -73,8 +102,8 @@ impl RowMatcher {
 
         self.reset_for(prev, cur_paints);
         self.claim_exact(prev, cur_paints);
-        self.emit_moves_and_adds(out, prev, cur_paints);
-        self.emit_removals(out, prev);
+        self.emit_moves_and_adds(out, prev, cur_paints, places);
+        self.emit_removals(out, prev, places);
 
         let span = if prev_len == cur_paints.len() {
             paints.slots[prev_span.range()].copy_from_slice(cur_paints);
@@ -149,7 +178,16 @@ impl RowMatcher {
     /// Phase 3: a curr row sharing a prev row's `hash` is the same shape moved, so both rects are damaged; one with no partner is an add and damages only its own rect.
     ///
     /// Requires `cur_keyed` sorted hash-major, so one never-reset forward cursor over `prev_keyed` serves every curr row. Child markers have zero screens and are dropped by [`damage::push_screen`].
-    fn emit_moves_and_adds(&mut self, out: &mut Vec<Rect>, prev: &[Paint], cur: &[Paint]) {
+    /// Each rect is marked with its place for the panes' walk: a current row at its own, a prev
+    /// row before every current one.
+    fn emit_moves_and_adds(
+        &mut self,
+        out: &mut Vec<Rect>,
+        prev: &[Paint],
+        cur: &[Paint],
+        places: &mut RowPlaces<'_>,
+    ) {
+        let of = places.of;
         let mut pi = 0;
         for &(ck, crow) in &self.cur_keyed {
             if self.matched_pos[crow as usize].is_some() {
@@ -165,23 +203,50 @@ impl RowMatcher {
             }
             match self.prev_keyed.get(pi) {
                 Some(&(pk, prow)) if pk.hash == ck.hash => {
+                    let gone = self.gone_place(prow, places);
+                    places.panes.mark(out.len(), gone);
                     damage::push_screen(out, prev[prow as usize].screen);
+                    places.panes.mark(out.len(), of.row(crow));
                     damage::push_screen(out, cur[crow as usize].screen);
                     self.prev_matched[prow as usize] = true;
                     pi += 1;
                 }
-                _ => damage::push_screen(out, cur[crow as usize].screen),
+                _ => {
+                    places.panes.mark(out.len(), of.row(crow));
+                    damage::push_screen(out, cur[crow as usize].screen);
+                }
             }
         }
     }
 
     /// Phase 4: prev rows no phase claimed are gone; damage them.
-    fn emit_removals(&self, out: &mut Vec<Rect>, prev: &[Paint]) {
+    fn emit_removals(&self, out: &mut Vec<Rect>, prev: &[Paint], places: &mut RowPlaces<'_>) {
         for (row, p) in prev.iter().enumerate() {
             if !self.prev_matched[row] {
+                let gone = self.gone_place(row as u32, places);
+                places.panes.mark(out.len(), gone);
                 damage::push_screen(out, p.screen);
             }
         }
+    }
+
+    /// The place of prev row `prow`, gone this frame, for the panes' walk: its earliest possible
+    /// one, just after the last current row matched exactly to a prev row before it, else before
+    /// every current row. A pane it could have been under counts it as before.
+    ///
+    /// A pane now at `prow` is the exception: it takes the gone row's own place, so a pane that
+    /// changed in place is not under itself. Were the gone row not that pane, the pane's key, its
+    /// owner and row, named no pane last frame, and it has no capture to keep.
+    fn gone_place(&self, prow: u32, places: &RowPlaces<'_>) -> u64 {
+        let of = places.of;
+        let row = of.span.start + prow;
+        if prow < of.span.len && places.pane_rows.iter().any(|pane| pane.row == row) {
+            return of.row(prow);
+        }
+        self.matched_pos
+            .iter()
+            .rposition(|matched| matched.is_some_and(|p| p.get() < prow))
+            .map_or_else(|| of.gone(), |crow| of.row(crow as u32) + 1)
     }
 
     /// True when matched prev positions are not non-decreasing in curr order. Equal neighbors cannot occur (each prev row is claimed once), so `is_sorted` is exact.

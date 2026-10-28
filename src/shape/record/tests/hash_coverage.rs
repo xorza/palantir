@@ -3,6 +3,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
@@ -49,6 +50,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             corners,
             fill,
             border: stroke,
+            backdrop: LoweredBackdrop::NONE,
         })
     };
     let base = quad_rect(
@@ -101,6 +103,29 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             ShapeBrush::Solid(red),
             stroke,
         ),
+    );
+    let ShapeRecord::Quad(QuadShape::Rect {
+        kind,
+        local_rect,
+        corners,
+        fill,
+        border,
+        ..
+    }) = base
+    else {
+        unreachable!()
+    };
+    moves(
+        "Quad/Rect.backdrop",
+        &base,
+        &ShapeRecord::Quad(QuadShape::Rect {
+            kind,
+            local_rect,
+            corners,
+            fill,
+            border,
+            backdrop: LoweredBackdrop::from(BackdropFilter::blur(8.0)),
+        }),
     );
     moves(
         "Quad/Rect.stroke",

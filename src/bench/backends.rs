@@ -30,13 +30,21 @@ impl Backends {
         let adapter = BenchGpu::probe();
         match adapter {
             None => eprintln!("palantir benches: no GPU adapter, so no GPU cases"),
-            Some(BenchAdapter {
-                pass_timestamps: false,
-            }) => eprintln!(
-                "palantir benches: the adapter writes no in-pass timestamps, so no batch-timed \
-                 GPU cases"
-            ),
-            Some(_) => {}
+            Some(adapter) => {
+                if !adapter.pass_timestamps {
+                    eprintln!(
+                        "palantir benches: the adapter writes no in-pass timestamps, so no \
+                         batch-timed GPU cases"
+                    );
+                }
+                if !adapter.encoder_timestamps {
+                    eprintln!(
+                        "palantir benches: the adapter writes no timestamps between passes, so \
+                         no cases reading the frame's backdrop timings, and runs of passes read \
+                         wall time, from submit to done"
+                    );
+                }
+            }
         }
         Self { adapter }
     }
@@ -53,6 +61,14 @@ impl Backends {
     /// The backends a GPU-only case runs on: the GPU, when there is one.
     pub(crate) fn gpu(self) -> Option<Backend> {
         self.adapter.map(|_| Backend::Gpu)
+    }
+
+    /// The backend a case reading the frame's own backdrop timings runs on: the GPU, when its
+    /// adapter writes timestamps between passes, where the frame writes them.
+    pub(crate) fn encoder_timed_gpu(self) -> Option<Backend> {
+        self.adapter
+            .filter(|adapter| adapter.encoder_timestamps)
+            .map(|_| Backend::Gpu)
     }
 
     /// The backend a case timing one batch inside the pass runs on: the GPU, when its adapter

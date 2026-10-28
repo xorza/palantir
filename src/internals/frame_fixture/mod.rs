@@ -27,6 +27,7 @@ mod stat_strip;
 mod tokens;
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::chrome::Chrome;
@@ -73,6 +74,20 @@ pub struct FrameFixture {
     /// Divider position for the split-pane card.
     split: f32,
     grid_rows: Vec<Track>,
+    /// The widgets the frame bench's input arms aim at, as the last render resolved them.
+    pub(crate) probes: FixtureProbes,
+}
+
+/// Ids a render records of the widgets an input arm drives, so input reaches them without the
+/// node structure changing.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct FixtureProbes {
+    /// The request card's name field.
+    pub(crate) name_edit: Option<WidgetId>,
+    /// The request card's checkbox.
+    pub(crate) enabled: Option<WidgetId>,
+    /// The request card's submit button.
+    pub(crate) submit: Option<WidgetId>,
 }
 
 impl Default for FrameFixture {
@@ -91,11 +106,17 @@ impl Default for FrameFixture {
             dark_mode: true,
             split: 0.42,
             grid_rows: Vec::new(),
+            probes: FixtureProbes::default(),
         }
     }
 }
 
 impl FrameFixture {
+    /// What the request card's name field holds.
+    pub(crate) fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Record the whole fixture page into `ui` at `scale`.
     pub fn render(&mut self, scale: usize, ui: &mut Ui) {
         let sidebar_items = 5 * scale;
