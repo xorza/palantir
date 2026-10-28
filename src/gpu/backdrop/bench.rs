@@ -10,6 +10,8 @@
 //!   [`integration`].
 //! - `integration/backdrop_frame/gpu/modal/<arm>`: whole 4K frames under a pane over the window;
 //!   see [`modal`].
+//! - `integration/backdrop_frame/gpu/cards/scrolling`: whole frames under eight frosted cards apart
+//!   from each other; see [`cards`].
 
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
@@ -409,6 +411,7 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
     }
     if let Some(backend) = backends.gpu() {
         modal(&mut group, backend);
+        cards(&mut group, backend);
     }
     group.finish();
 }
@@ -493,4 +496,58 @@ fn modal(group: &mut CaseGroup<'_>, backend: Backend) {
             bencher.iter(&mut frame);
         });
     }
+}
+
+/// `integration/backdrop_frame/gpu/cards/scrolling`: whole frames of the frame fixture scrolling
+/// under eight frosted cards in a 4 × 2 grid, 60 logical px apart, past a blur's reach, as a
+/// dashboard of glass tiles sits. Every card captures every frame, and none paints under another's
+/// footprint.
+fn cards(group: &mut CaseGroup<'_>, backend: Backend) {
+    group.bench_function(backend.case("cards/scrolling"), |bencher| {
+        let gpu = BenchGpu::shared(Timing::PassOnly);
+        let target = gpu.target("palantir.bench.backdrop_cards", FRAME_SURFACE);
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .collect_gpu_stats(false)
+            .retained_target(true)
+            .build();
+        let mut fixture = FrameFixture::default();
+        let mut n = 0u32;
+        let mut frame = || {
+            n += 1;
+            fixture.scroll_offset = Vec2::new(0.0, (n % 64) as f32);
+            let mut app = RecordApp::new(|ui: &mut Ui| {
+                Panel::zstack()
+                    .id_salt("backdrop-cards")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        fixture.render(BENCH_SCALE, ui);
+                        Panel::canvas()
+                            .id_salt("backdrop-cards-panes")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                for i in 0..8 {
+                                    let at = Vec2::new(
+                                        60.0 + (i % 4) as f32 * 300.0,
+                                        80.0 + (i / 4) as f32 * 260.0,
+                                    );
+                                    let rect = Rect::new(at.x, at.y, 240.0, 200.0);
+                                    ui.add_shape(Look::Frosted.pane_at(rect));
+                                }
+                            });
+                    });
+            });
+            let paint = host.frame(target.as_target(), FRAME_DPR, &mut app).paint();
+            gpu.wait();
+            (paint, host.backdrop_blurs())
+        };
+        for _ in 0..4 {
+            frame();
+        }
+        assert_eq!(
+            frame(),
+            (FramePaint::Full, 8),
+            "the page scrolls under every card"
+        );
+        bencher.iter(&mut frame);
+    });
 }

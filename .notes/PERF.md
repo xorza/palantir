@@ -169,3 +169,48 @@ Stopped here at the user's request; the loop is not finished.
 - **M5 drift.** The MacBook Air has no fan: one ABBA run read a base binary 16 % slow on both of
   its A runs, and interleaved short runs then showed no difference. Confirm any surprising M5
   result by alternating runs.
+
+# Run 2: rendering, from the backdrop (2026-10-28)
+
+Branch `perf-rendering` from `082303185`. Hosts: local (680M) and **m2**, 192.168.0.7, an Apple
+M2 MacBook Air with 8 GB, Metal, macOS 27; the M5 is no longer used.
+
+## Setup
+
+- **Build peaks:** local 2.6 GB, m2 3.15 GB (of 8 GB), one build at a time there.
+- **m2 noise floor** (A/A, four runs, the rendering filter): median change 0.2 %; CPU cases within
+  2.8 %, p90 1.4 %; GPU cases p90 3 %, with `text_atlas/gpu/zoom_smooth/frame` at 12 % and
+  `gradient_upload/gpu/split/gap48` at 8 %. The local floor is run 1's.
+- **CPU A/B across binaries moves by code placement.** A composer change that a cached frame never
+  runs read +4.4 % on `backdrop_frame/cpu/*/cached` between two binaries, and +0.1 % to +0.9 %
+  when one binary switched it at run time. Judge CPU candidates inside one binary.
+
+## Rejected
+
+- **Share the last pass break between panes whose footprints nothing since touches** (local
+  branch `spike-share-barrier`). The composer keeps the last barrier and a grid of what painted
+  since; a pane whose footprint misses all of it captures there. Measured in one binary, switched
+  at run time, against eight separate frosted cards (`cards/scrolling`, seven breaks saved):
+  m2 −0.9 % (4.71 → 4.67 ms), local −3.3 % inside the 8 % frame floor; the three-pane frames m2
+  −0.7 % to −1.5 %. A break costs the M2 about 6 µs at 2560 × 1440, not the whole-target store
+  and load run 1 assumed; the gain does not pay for a composer module and a grid push per draw
+  after a pane.
+- **Cut the residual at 3σ instead of 4σ.** Level-0 taps drop from 33 to 25, but the impulse
+  response leaves the Gaussian by up to 0.83 % of its peak (σ 4), past the 0.4 % `blur_plan`
+  promises.
+
+## Kept
+
+- **A bench of eight separate frosted cards** (`integration/backdrop_frame/gpu/cards/scrolling`):
+  the many-pane frame no other arm covers. Start: 5.26 ms local, 4.71 ms m2.
+
+## Open
+
+- **Renderer CPU.** `atomic/encode/cpu/full` (12 µs) spends 20 % in `encode_node`, 12 % in
+  `push_quad`, 9 % in `RectGrid::push`; `record_pass/gpu/groups/per_item` is 85 µs local against
+  6.8 µs on the M2, most of it inside `wgpu_core` per command. Not profiled to the assembly.
+- **Main pass GPU** (`main_pass/gpu/scrolling`: 426 µs local, 700 µs m2): no GPU profiler on
+  either host (RGP, Xcode capture), so any shader change is a blind A/B.
+- **`backdrop_frame/gpu/*/under` on the M2** spends 1.6 ms over `hover` for two captures; its
+  split between the footprints' repaint, the copies and the blurs is not measured, as the M2
+  writes no timestamps between passes.
