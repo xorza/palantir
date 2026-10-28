@@ -18,9 +18,9 @@ fn key(scale_q: u32) -> EncodedKey {
 fn glyph(tag: u32) -> EncodedGlyph {
     EncodedGlyph {
         instance: RasterQuad {
-            pos: [tag as i32, -(tag as i32)],
-            dim: [tag as u16, (tag >> 16) as u16],
-            size: [(tag ^ 0x5a5a) as u16, 0],
+            pos: IVec2::new(tag as i32, -(tag as i32)),
+            dim: U16Vec2::new(tag as u16, (tag >> 16) as u16),
+            size: UVec2::new(tag ^ 0x5a5a, 0),
             uv_and_kind: tag << 8,
             color: bytemuck::cast(u64::from(!tag)),
         },

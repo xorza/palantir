@@ -341,7 +341,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     // Origin 10*1.5 = 15, 20*1.5 = 30, and the raster fills the box exactly,
     // so centering shifts nothing.
     assert_eq!(row.origin, IVec2::new(15, 30));
-    assert_eq!(row.size, row.key.size(), "drawn texel for texel");
+    assert_eq!(row.size, row.key.size().as_uvec2(), "drawn texel for texel");
     assert_eq!(
         out.batches(PaintTier::Icon).len(),
         1,
@@ -362,7 +362,7 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     );
     assert_eq!(out.icons[0].key.size(), U16Vec2::new(76, 76));
     assert_eq!(out.icons[0].origin, IVec2::new(15, 15));
-    assert_eq!(out.icons[0].size, U16Vec2::new(75, 75));
+    assert_eq!(out.icons[0].size, UVec2::new(75, 75));
 
     // 300 logical px at 2 → 600 physical, past the 512 cap: the raster is
     // 512, and the quad still fills the 600 px box at (20, 40).
@@ -378,7 +378,22 @@ fn icon_resolves_to_a_whole_pixel_raster_at_the_display_scale() {
     );
     assert_eq!(out.icons[0].key.size(), U16Vec2::new(512, 512));
     assert_eq!(out.icons[0].origin, IVec2::new(20, 40));
-    assert_eq!(out.icons[0].size, U16Vec2::new(600, 600));
+    assert_eq!(out.icons[0].size, UVec2::new(600, 600));
+
+    // A box past 65535 px, as a zoom makes: (−90000, 0) wide 100000 still covers the screen to
+    // 10000, and the quad is the whole box, where 16 bits held 65535 and ended it at −24465.
+    let out = run(
+        |buf, _| {
+            icon(
+                buf,
+                Rect::new(-90000.0, 0.0, 100000.0, 100.0),
+                IconRef::fixture(0, 0),
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(out.icons[0].origin, IVec2::new(-90000, 0));
+    assert_eq!(out.icons[0].size, UVec2::new(100000, 100));
 }
 
 /// Two icons in one group share a batch; an overlapping curve above them

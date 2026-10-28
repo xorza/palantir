@@ -108,10 +108,7 @@ impl TextEncoder {
             pass.instances.push(quad);
             cache.stage(EncodedGlyph {
                 instance: RasterQuad {
-                    pos: [
-                        quad.pos[0] - run_key.origin_x,
-                        quad.pos[1] - run_key.origin_y,
-                    ],
+                    pos: quad.pos - run_key.pixel,
                     ..quad
                 },
                 atlas_slot: idx,

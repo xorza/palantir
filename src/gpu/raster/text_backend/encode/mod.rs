@@ -9,7 +9,7 @@ use crate::primitives::math::num::F32Px;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::key::TextShapeKey;
 use crate::text::render::SubpixelOrigin;
-use glam::Vec2;
+use glam::{IVec2, Vec2};
 
 pub(super) mod cache;
 pub(super) mod encoder;
@@ -33,8 +33,7 @@ pub(crate) struct EncodedKey {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct EncodedRunKey {
     key: EncodedKey,
-    origin_x: i32,
-    origin_y: i32,
+    pixel: IVec2,
 }
 
 impl EncodedRunKey {
@@ -42,10 +41,7 @@ impl EncodedRunKey {
     /// not the exact origin, gives every origin in a bin the template its key caches.
     pub(super) fn origin(&self) -> Vec2 {
         let bin = |bits: u8| f32::from(bits & 0b11) * 0.25;
-        Vec2::new(
-            self.origin_x as f32 + bin(self.key.bins >> 2),
-            self.origin_y as f32 + bin(self.key.bins),
-        )
+        self.pixel.as_vec2() + Vec2::new(bin(self.key.bins >> 2), bin(self.key.bins))
     }
 
     /// The key for `row` at `frame_scale * row.scale`, plus its integer-pixel origin.
@@ -61,8 +57,7 @@ impl EncodedRunKey {
                 area_color,
                 bins: sub.bins,
             },
-            origin_x: sub.x,
-            origin_y: sub.y,
+            pixel: sub.pixel,
         }
     }
 }

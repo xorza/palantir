@@ -17,7 +17,7 @@ use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::quad::Quad;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use bytemuck::{Pod, Zeroable};
-use glam::{UVec2, Vec2};
+use glam::{U16Vec2, UVec2, Vec2};
 use std::cmp::Reverse;
 use std::mem;
 
@@ -27,8 +27,8 @@ pub(crate) struct BakeTable {
     pub(crate) table: u32,
     pub(crate) r: f32,
     pub(crate) sigma: f32,
-    pub(crate) lo: [u16; 2],
-    pub(crate) hi: [u16; 2],
+    pub(crate) lo: U16Vec2,
+    pub(crate) hi: U16Vec2,
 }
 
 #[repr(C)]
@@ -331,8 +331,8 @@ impl CutoutPlan {
                     table,
                     r: used.key.r(),
                     sigma: used.key.sigma(),
-                    lo: span.lo.to_array().map(texel),
-                    hi: span.hi.to_array().map(texel),
+                    lo: U16Vec2::from_array(span.lo.to_array().map(texel)),
+                    hi: U16Vec2::from_array(span.hi.to_array().map(texel)),
                 });
             }
         }

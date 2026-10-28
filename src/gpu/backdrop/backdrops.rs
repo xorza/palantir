@@ -12,7 +12,7 @@ use crate::primitives::identity::pane_key::PaneKey;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::shape::paint::blur_plan::BlurPlan;
-use glam::{U16Vec2, UVec2};
+use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
 
 /// How a pane's quad finds its result, as `quad_pipeline/shader.wgsl` declares `BackdropSlot`:
@@ -22,7 +22,7 @@ use rustc_hash::FxHashMap;
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct BackdropSlot {
-    offset: [f32; 2],
+    offset: Vec2,
     lattice: f32,
     highlight: f32,
     lens: [f32; 4],
@@ -196,7 +196,7 @@ impl Backdrops {
                 ]
             });
             self.slots.push(BackdropSlot {
-                offset: ((cached.slot.min + apron).as_vec2() - cached.region.min.as_vec2()).into(),
+                offset: (cached.slot.min + apron).as_vec2() - cached.region.min.as_vec2(),
                 lattice: cached.plan.lattice() as f32,
                 highlight: row.lens.map_or(0.0, |lens| lens.highlight),
                 lens,

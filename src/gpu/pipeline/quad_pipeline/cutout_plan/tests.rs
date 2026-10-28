@@ -9,7 +9,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::quad::Quad;
-use glam::{UVec2, Vec2};
+use glam::{U16Vec2, UVec2, Vec2};
 
 /// A drop shadow over a `size` quad, every corner `radius`, blurred by `sigma`, no spread.
 fn drop_shadow(size: Size, radius: f32, sigma: f32) -> Quad {
@@ -113,8 +113,8 @@ fn equal_corners_share_one_table() {
             table: code,
             r: 8.0,
             sigma: 16.0,
-            lo: [0, 0],
-            hi: [87, 87],
+            lo: U16Vec2::new(0, 0),
+            hi: U16Vec2::new(87, 87),
         }],
     );
     assert_eq!(
@@ -335,7 +335,7 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
     assert_eq!(plan.corners()[0], CornerTables([code; 4]));
     assert_eq!(
         (plan.tables()[0].lo, plan.tables()[0].hi),
-        ([0, 0], [125, 125])
+        (U16Vec2::new(0, 0), U16Vec2::new(125, 125))
     );
     let sliver = RepaintScissors::partial(&[URect::new(0, 0, 4, 4)]);
     let census = plan.build(&quads[..1], &sliver, viewport);
@@ -345,7 +345,7 @@ fn a_partial_repaint_plans_what_a_full_one_does() {
     assert_eq!(plan.tables().len(), 1, "the sliver reads the table");
     assert_eq!(
         (plan.tables()[0].lo, plan.tables()[0].hi),
-        ([101, 101], [125, 125]),
+        (U16Vec2::new(101, 101), U16Vec2::new(125, 125)),
         "the sliver's texels",
     );
     let elsewhere = RepaintScissors::partial(&[URect::new(1900, 150, 4, 4)]);
@@ -384,8 +384,8 @@ fn a_repaint_past_a_corners_region_bakes_what_it_reads() {
             table: code,
             r: 7.25,
             sigma: 16.0,
-            lo: [84, 0],
-            hi: [87, 47],
+            lo: U16Vec2::new(84, 0),
+            hi: U16Vec2::new(87, 47),
         }],
     );
 }

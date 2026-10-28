@@ -12,7 +12,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use glam::Vec2;
+use glam::{IVec2, Vec2};
 use std::slice;
 
 mod text_rig;
@@ -202,7 +202,7 @@ fn deferred_upload_keeps_batches_distinct() {
         assert_eq!(gb.color, color_b);
         assert_eq!(gb.uv_and_kind, ga.uv_and_kind);
         assert_eq!(gb.dim, ga.dim);
-        assert_eq!(gb.pos, [ga.pos[0], ga.pos[1] + 40]);
+        assert_eq!(gb.pos, ga.pos + IVec2::new(0, 40));
     }
     rig.backend.tick_frame();
 }
