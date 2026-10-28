@@ -1,10 +1,11 @@
 use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats};
-use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::frame::gpu_timings::query_tracer::{
     BACKDROP_IDX, COPY_OUT_IDX, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer, STATS_DONE,
     STATS_FAILED, TIMESTAMPS_DONE, TIMESTAMPS_FAILED, mappings_complete, mappings_failed,
 };
 use crate::gpu::frame::main_segment::MainSegment;
+use crate::gpu::test_gpu;
 use std::time::Duration;
 
 fn ts_bytes(ticks: &[u64]) -> Vec<u8> {
@@ -154,17 +155,15 @@ fn readback_waits_for_every_mapping_and_reports_failures() {
 /// on an adapter without timestamps.
 #[test]
 fn a_frame_publishes_after_the_next_frame_resolved_it() {
-    let g = BenchGpu::shared(Timing::PassOnly);
-    if !g.timing_features.contains(wgpu::Features::TIMESTAMP_QUERY) {
+    let lease = test_gpu::headless_test_gpu();
+    let features = (lease.device.features() & DeviceRequirements::GPU_TIMING_FEATURES)
+        .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
+    if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
         return;
     }
-    let gpu = &g.gpu;
-    let mut tracer = QueryTracer::new(
-        &gpu.device,
-        gpu.queue.get_timestamp_period(),
-        g.timing_features,
-    );
-    let target = g.target("palantir.test.query_tracer", glam::UVec2::splat(64));
+    let gpu = &lease.handles();
+    let mut tracer = QueryTracer::new(&gpu.device, gpu.queue.get_timestamp_period(), features);
+    let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let sink = GpuPassStats::default();
     let frame = |tracer: &mut QueryTracer| {
         let mut encoder = gpu
@@ -190,7 +189,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
         tracer.finish(&mut encoder);
         gpu.queue.submit([encoder.finish()]);
         tracer.after_submit(gpu, &sink);
-        g.wait();
+        lease.wait();
         tracer.after_submit(gpu, &sink);
     };
     frame(&mut tracer);
@@ -213,20 +212,14 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
 /// timestamps.
 #[test]
 fn a_break_between_passes_counts_in_no_kind() {
-    let g = BenchGpu::shared(Timing::Instrumented);
-    if !g
-        .timing_features
-        .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES)
-    {
+    let lease = test_gpu::headless_test_gpu();
+    let features = lease.device.features() & DeviceRequirements::GPU_TIMING_FEATURES;
+    if !features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES) {
         return;
     }
-    let gpu = &g.gpu;
-    let mut tracer = QueryTracer::new(
-        &gpu.device,
-        gpu.queue.get_timestamp_period(),
-        g.timing_features,
-    );
-    let target = g.target("palantir.test.query_tracer", glam::UVec2::splat(64));
+    let gpu = &lease.handles();
+    let mut tracer = QueryTracer::new(&gpu.device, gpu.queue.get_timestamp_period(), features);
+    let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let view = target.view();
     let mut encoder = gpu
         .device

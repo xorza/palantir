@@ -73,8 +73,8 @@ fn empty_floor(gpu: &HeadlessTestGpuLease, target: &mut OffscreenTarget) -> u64 
 /// `create_command_encoder` and `submit`. The mode omits those, so one more
 /// allocation on most frames fails the comparison.
 ///
-/// The leased test device has no timestamp or pipeline-statistics features,
-/// whose queries allocate per frame.
+/// The host leaves `collect_gpu_stats` off, so no timestamp or
+/// pipeline-statistics query, which allocates per frame, runs.
 #[test]
 fn still_tree_frame_costs_the_empty_floor() {
     let gpu = isolated_headless_test_gpu();

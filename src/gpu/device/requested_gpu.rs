@@ -100,7 +100,7 @@ impl GpuRequest<'_> {
         &self,
         instance: &wgpu::Instance,
     ) -> Result<wgpu::Adapter, GpuRequestError> {
-        instance
+        let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: adapter_policy(self.power_preference),
                 compatible_surface: self.compatible_surface,
@@ -110,12 +110,7 @@ impl GpuRequest<'_> {
             .block_on()
             .map_err(|source| GpuRequestError::RequestAdapter {
                 source: DriverError::new(source),
-            })
-    }
-
-    /// Pick an adapter and open a device on it.
-    pub(crate) fn open(self, instance: &wgpu::Instance) -> Result<RequestedGpu, GpuRequestError> {
-        let adapter = self.adapter(instance)?;
+            })?;
 
         // Which GPU won the `power_preference` sort decides a session's frame
         // times (a hybrid laptop's wrong pick means cross-adapter copies), and
@@ -130,7 +125,17 @@ impl GpuRequest<'_> {
             requested = ?self.power_preference,
             "selected gpu adapter"
         );
+        Ok(adapter)
+    }
 
+    /// Pick an adapter and open a device on it.
+    pub(crate) fn open(self, instance: &wgpu::Instance) -> Result<RequestedGpu, GpuRequestError> {
+        let adapter = self.adapter(instance)?;
+        self.open_on(adapter)
+    }
+
+    /// Open a device on `adapter`, which [`Self::adapter`] picked.
+    pub(crate) fn open_on(self, adapter: wgpu::Adapter) -> Result<RequestedGpu, GpuRequestError> {
         let requirements = DeviceRequirements::negotiate(&adapter, self.optional)
             .map_err(|source| GpuRequestError::Requirements { source })?;
         let (device, queue) = adapter
