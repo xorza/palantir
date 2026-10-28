@@ -4,7 +4,7 @@ use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 
-/// Linear-RGB color packed as four f16 lanes in 8 B (align 2), half of `RgbaF32` at display precision (f16 carries ~3 decimal digits and the full f32 range). Packs through `F16x4::from_lanes` / `lanes`; Pod-compatible; Hash delegates to [`F16x4`].
+/// Linear-RGB color packed as four f16 lanes in 8 B (align 2), half of `RgbaF32` at display precision (f16 carries ~3 decimal digits and magnitudes up to 65504, the bound [`domain::color`](crate::primitives::math::domain::color) holds a color to). Packs through `F16x4::from_lanes` / `lanes`; Pod-compatible; Hash delegates to [`F16x4`].
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct RgbaF16(F16x4);
@@ -23,12 +23,17 @@ impl RgbaF16 {
     /// for [`Self::is_noop`] to drop.
     #[inline]
     pub(crate) fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
-        Self(F16x4::from_lanes([
+        let packed = F16x4::from_lanes([
             at_least_zero(r),
             at_least_zero(g),
             at_least_zero(b),
             if a > 1.0 { 1.0 } else { at_least_zero(a) },
-        ]))
+        ]);
+        debug_assert!(
+            !packed.any_lane_infinite(),
+            "a color channel packs past the largest f16"
+        );
+        Self(packed)
     }
 
     /// Scale the alpha lane by `by`, leaving the color lanes alone (storage is straight-alpha, so no premultiply). `by == 1.0` is the common case, so callers skip this.

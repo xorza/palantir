@@ -14,8 +14,8 @@ pub enum ParseColorError {
     Digit,
     /// A `color(` form that is not `color(srgb-linear r g b)` or `color(srgb-linear r g b / a)`.
     LinearForm,
-    /// A `color(srgb-linear …)` channel that is not finite.
-    NonFinite,
+    /// A `color(srgb-linear …)` channel that is not finite or is above 65504, the largest f16.
+    Channel,
 }
 
 impl Display for ParseColorError {
@@ -24,7 +24,7 @@ impl Display for ParseColorError {
             Self::Length => "expected #rrggbb or #rrggbbaa",
             Self::Digit => "invalid hex digit",
             Self::LinearForm => "expected color(srgb-linear r g b) or color(srgb-linear r g b / a)",
-            Self::NonFinite => domain::COLOR_RULE,
+            Self::Channel => domain::COLOR_RULE,
         })
     }
 }

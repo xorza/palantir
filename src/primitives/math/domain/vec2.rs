@@ -56,6 +56,24 @@ pub const fn offset(v: Vec2) -> Vec2 {
     v
 }
 
+/// True if both axes are [lane offsets](domain::lane_offset).
+#[inline]
+pub const fn is_lane_offset(v: Vec2) -> bool {
+    domain::is_lane_offset(v.x) && domain::is_lane_offset(v.y)
+}
+
+/// `v`, whose axes must both be *lane offsets*.
+///
+/// # Panics
+///
+/// Panics unless [`is_lane_offset`]`(v)`.
+#[inline]
+#[track_caller]
+pub const fn lane_offset(v: Vec2) -> Vec2 {
+    assert!(is_lane_offset(v), "{}", domain::LANE_OFFSET_RULE);
+    v
+}
+
 /// True if both axes are [file lengths](domain::is_file_length).
 #[inline]
 pub(crate) const fn is_file_length(v: Vec2) -> bool {

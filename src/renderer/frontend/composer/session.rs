@@ -855,7 +855,7 @@ impl ComposeSession<'_> {
                 // Shadow scalars are logical px, so scale them, and a pane's σ; a gradient axis
                 // is unit-space.
                 let fill_axis = if p.fill.kind.is_shadow() {
-                    p.fill_axis.scaled(scale_physical)
+                    p.fill_axis.scaled_saturating(scale_physical)
                 } else if p.fill.kind.is_backdrop() {
                     let [sigma, saturation, noise, opacity] = p.fill_axis.lanes();
                     FillAxis::from_lanes([sigma * scale_physical, saturation, noise, opacity])

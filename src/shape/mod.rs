@@ -212,7 +212,7 @@ impl Shape {
     ///
     /// # Panics
     ///
-    /// Panics unless color, offset, spread and blur hold their kinds.
+    /// Panics unless the shadow holds the kinds [`Chrome`](crate::Chrome) lists for one.
     #[track_caller]
     pub const fn shadow(shadow: Shadow) -> ShadowShape {
         shadow.validate();

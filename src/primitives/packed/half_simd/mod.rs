@@ -85,6 +85,20 @@ impl F16x4 {
         false
     }
 
+    /// True if any lane is an infinity of either sign: what a finite value past [`Self::MAX_LANE`]
+    /// packs to.
+    #[inline]
+    pub(crate) const fn any_lane_infinite(self) -> bool {
+        let mut i = 0;
+        while i < 4 {
+            if self.0[i] & Self::ABS_MASK == Self::NAN_EXP {
+                return true;
+            }
+            i += 1;
+        }
+        false
+    }
+
     /// True if any lane is NaN: [`Self::any_lane_above`] at infinity.
     #[inline]
     pub(crate) const fn has_nan(self) -> bool {
@@ -125,7 +139,14 @@ impl F16x4 {
     /// Fused because `from_lanes(lanes().map(*k))` bounces through two `[f32; 4]` arrays that LLVM does not fold back into one register chain.
     #[inline]
     pub(crate) fn scaled(self, k: f32) -> Self {
-        Self(arch::scaled(self.0, k))
+        Self(arch::scaled(self.0, k, f32::INFINITY))
+    }
+
+    /// [`Self::scaled`] with each lane saturated at ±[`Self::MAX_LANE`] instead of packed to
+    /// infinity; a NaN lane stays NaN.
+    #[inline]
+    pub(crate) fn scaled_saturating(self, k: f32) -> Self {
+        Self(arch::scaled(self.0, k, Self::MAX_LANE))
     }
 
     /// The 8 storage bytes as one `u64`, for a single hasher write.

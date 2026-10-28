@@ -494,6 +494,11 @@ fn compose_snaps_quad_edges_only_under_pixel_snap() {
 ///
 /// A source with no size still casts its spread: (50, 50) grown by 2 is
 /// (48, 48, 4, 4). With no blur and no spread it casts nothing.
+///
+/// A σ of 40000 at 2× is 80000 physical px, past the largest f16: the lane
+/// saturates at 65504 and the quad grows by 4 · 65504 = 262016 from the
+/// source (20, 20, 40, 40), to (−261996, −261996, 524072, 524072), where an
+/// infinite lane would have dropped it.
 #[test]
 fn drop_shadow_quad_grows_from_the_snapped_source() {
     use crate::primitives::paint::shadow::Shadow;
@@ -534,6 +539,24 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     );
     assert_eq!(buf.quads.len(), 1, "only the spread one paints");
     assert_eq!(buf.quads[0].rect, Rect::new(48.0, 48.0, 4.0, 4.0));
+
+    let buf = run(
+        |b, _| {
+            b.draw_quad(
+                drop(
+                    Rect::new(10.0, 10.0, 20.0, 20.0),
+                    0.0,
+                    [0.0, 0.0, 40000.0, 0.0],
+                ),
+                1.0,
+            );
+        },
+        &params(2.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.quads.len(), 1, "the widest shadow still paints");
+    let q = &buf.quads[0];
+    assert_eq!(q.fill_axis.lanes(), [0.0, 0.0, 65504.0, 0.0]);
+    assert_eq!(q.rect, Rect::new(-261996.0, -261996.0, 524072.0, 524072.0));
 }
 
 /// A quarter turn about the pivot `c = (6, 6)` of a mesh at origin (4, 4), at display scale 2:

@@ -18,6 +18,6 @@ pub(super) fn from_f32x4(src: [f32; 4]) -> [u16; 4] {
 }
 
 #[inline]
-pub(super) fn scaled(bits: [u16; 4], k: f32) -> [u16; 4] {
-    from_f32x4(to_f32x4(bits).map(|v| v * k))
+pub(super) fn scaled(bits: [u16; 4], k: f32, limit: f32) -> [u16; 4] {
+    from_f32x4(to_f32x4(bits).map(|v| (v * k).clamp(-limit, limit)))
 }
