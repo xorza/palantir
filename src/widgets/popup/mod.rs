@@ -6,6 +6,7 @@ pub(crate) mod trigger_state;
 
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::chrome::Chrome;
@@ -94,7 +95,7 @@ impl Popup {
         // Resolved before the layer switch so the body and eater ids are scoped
         // to the trigger's site, not the side layer's root.
         let id = widget.resolve(ui);
-        let eater_id = id.with("eater");
+        let eater_id = Self::eater_id(id);
         // Takes the pointer and the keys from lower layers together, or neither.
         let backdrop = if click_outside == ClickOutside::PassThrough {
             Backdrop::None
@@ -126,6 +127,11 @@ impl Popup {
 }
 
 impl Popup {
+    /// The full-surface click-eater under the popup `id`, which takes a press outside its body.
+    pub(crate) fn eater_id(id: WidgetId) -> WidgetId {
+        id.with("eater")
+    }
+
     /// Dress the popup as a menu panel: the menu theme's chrome, padding, row gap and minimum
     /// width, each unless the caller set it, and arrow keys walking the rows.
     pub(crate) fn menu_look(self, menu: &ContextMenuTheme) -> Self {

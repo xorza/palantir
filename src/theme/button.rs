@@ -72,9 +72,8 @@ impl ButtonTheme {
         looks.for_each_text(f);
     }
 
-    /// Flat "menu-trigger" preset for menu-bar `Button`s: transparent at rest, hover-only fill, no border or shadow, inset as a menu row. Deliberately a recipe, not a [`Theme`] slot, since no widget resolves against it; hand it to [`Button::style`].
+    /// Flat "menu-trigger" preset: transparent at rest, hover-only fill, no border or shadow, inset as a menu row. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button outside a menu bar.
     ///
-    /// [`Theme`]: crate::Theme
     /// [`Button::style`]: crate::Button::style
     pub fn menu_button(p: &Palette, m: &Metrics) -> Self {
         let flat = |fill: Brush| WidgetLook {

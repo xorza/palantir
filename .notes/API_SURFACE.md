@@ -1252,6 +1252,24 @@ LinearGradient
 LinearGradientBuilder
     type LinearGradientBuilder = GradientBuilder<LinearGeometry>
 
+MenuBar
+    struct MenuBar<'a>: Configure, Debug, ThemeDefaults (blanket)
+        pub fn new() -> Self
+        pub fn style(self, s: impl Into<Option<&'a MenuBarTheme>>) -> Self
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut MenuBarMenus<'_>) -> R) -> InnerResponse<'_, R>
+
+MenuBarMenus
+    struct MenuBarMenus<'u>: Debug
+        pub fn menu<'l, R>(&mut self, label: impl Into<TextInput<'l>>, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<R>
+
+MenuBarTheme
+    struct MenuBarTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+        pub title: StatefulLook
+        pub open: WidgetLook
+        pub gap: f32
+        pub defaults: SlotDefaults
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+
 MenuItem
     struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
@@ -1273,6 +1291,11 @@ MenuSeparator
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
+
+MenuState
+    enum MenuState: Clone, Copy, Debug, Eq, PartialEq
+        Shut
+        Open
 
 Metrics
     struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -2229,6 +2252,7 @@ Theme
         pub text_edit: TextEditTheme
         pub drag_value: DragValueTheme
         pub context_menu: ContextMenuTheme
+        pub menu_bar: MenuBarTheme
         pub combo_box: ComboBoxTheme
         pub modal: ModalTheme
         pub color_picker: ColorPickerTheme

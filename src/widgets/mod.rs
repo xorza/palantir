@@ -26,6 +26,7 @@ pub(crate) mod drag_value;
 pub(crate) mod expander;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
+pub(crate) mod menu_bar;
 pub(crate) mod modal;
 pub(crate) mod panel;
 pub(crate) mod popup;

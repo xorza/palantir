@@ -1,4 +1,4 @@
-//! Side-layer widgets: popups (above the main tree, escaping clip), tooltips (delay with warmup) and context menus (secondary-click).
+//! Side-layer widgets: popups (above the main tree, escaping clip), tooltips (delay with warmup), context menus (secondary-click) and a menu bar.
 
 use std::time::Duration;
 
@@ -6,7 +6,7 @@ use crate::support;
 use crate::support::{Section, api};
 use palantir::{
     Align, Anchor, AnchorAlign, Block, Button, Checkbox, ClickOutside, Configure, ContextMenu,
-    ContextMenuTheme, Justify, Key, MenuItem, MenuSeparator, Panel, Popup, PopupTrigger,
+    ContextMenuTheme, Justify, Key, MenuBar, MenuItem, MenuSeparator, Panel, Popup, PopupTrigger,
     RadioButton, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui, WidgetId,
 };
 
@@ -49,6 +49,7 @@ pub(crate) fn build(ui: &mut Ui) {
         anchor_section(ui, s);
         tooltip_section(ui);
         context_menu_section(ui, s);
+        menu_bar_section(ui, s);
     });
 }
 
@@ -275,6 +276,36 @@ fn context_menu_section(ui: &mut Ui, s: &mut State) {
                     }
                     .show(ui, &mut s.action);
                 }
+            });
+        });
+}
+
+fn menu_bar_section(ui: &mut Ui, s: &mut State) {
+    Section::new("Menu bar")
+        .apis(&[api!(MenuBar::new)])
+        .show(ui, |ui| {
+            support::note(
+                ui,
+                "Click a title to open its menu. While one is open, moving onto another title \
+                 opens that one, and ← → move between the menus.",
+            );
+            support::row(ui, |ui| {
+                MenuBar::new().show(ui, |bar| {
+                    for (title, rows) in [
+                        ("File", ["New", "Open…", "Save"]),
+                        ("Edit", ["Undo", "Redo", "Copy"]),
+                        ("View", ["Zoom In", "Zoom Out", "Fit"]),
+                    ] {
+                        bar.menu(title, |ui, close| {
+                            for row in rows {
+                                if MenuItem::new(row).id_salt(row).show(ui, close).clicked() {
+                                    s.action = Some(row);
+                                }
+                            }
+                        });
+                    }
+                });
+                support::readout(ui, "last action", s.action.unwrap_or("—"));
             });
         });
 }
