@@ -107,6 +107,9 @@ impl BenchGpu {
     /// Panics when called between the cases of [`crate::bench::run`]: a group's body runs in
     /// every run, so a device it opens opens in a filtered run too, against the rule that a case
     /// builds its inputs in its own closure.
+    ///
+    /// Panics in debug when a unit test calls it: the lib's test process opens one instance, the
+    /// one [`headless_test_gpu`](crate::gpu::test_gpu::headless_test_gpu) leases from.
     #[track_caller]
     pub fn shared(timing: Timing) -> &'static Self {
         static INSTRUMENTED: OnceLock<BenchGpu> = OnceLock::new();
@@ -116,6 +119,16 @@ impl BenchGpu {
             !BetweenCases::now(),
             "a bench opens its device in a case closure, not in its group's body"
         );
+        #[expect(
+            clippy::assertions_on_constants,
+            reason = "constant per build: false only in the lib's own test build"
+        )]
+        {
+            debug_assert!(
+                !cfg!(test),
+                "a unit test leases its device from `headless_test_gpu`, the process's one instance"
+            );
+        }
         match timing {
             Timing::Instrumented => INSTRUMENTED.get_or_init(|| build(Timing::Instrumented)),
             Timing::PassOnly => PASS_ONLY.get_or_init(|| build(Timing::PassOnly)),
