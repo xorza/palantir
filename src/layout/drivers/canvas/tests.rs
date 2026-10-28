@@ -94,6 +94,48 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
     assert_eq!(child.min.y - r.min.y, 100.0);
 }
 
+/// A Fill canvas below a 50-tall header in a 200-tall column gets the 150 left, though its child is
+/// 300 tall: a bounded axis has no floor, so the child overflows instead of pushing the column past
+/// the window, as a floor of the child's height would, to 350.
+#[test]
+fn canvas_fill_axis_has_no_floor() {
+    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let (column, canvas) = h.under_outer(|ui| {
+        let mut canvas = None;
+        let column = Panel::vstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("header"))
+                    .size((Sizing::FILL, Sizing::fixed(50.0)))
+                    .show(ui);
+                canvas = Some(
+                    Panel::canvas()
+                        .auto_id()
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .pos((10.0, 20.0))
+                                .size((50.0, 300.0))
+                                .show(ui);
+                        })
+                        .response
+                        .node(),
+                );
+            })
+            .response
+            .node();
+        (column, canvas.unwrap())
+    });
+    assert_eq!(h.ui.arranged_rect(Layer::Main, column).size.h, 200.0);
+    let canvas_rect = h.ui.arranged_rect(Layer::Main, canvas);
+    assert_eq!((canvas_rect.min.y, canvas_rect.size.h), (50.0, 150.0));
+    let tall = h.arranged(WidgetId::from_hash("tall"));
+    assert_eq!((tall.min.y, tall.size.h), (70.0, 300.0));
+}
+
 #[test]
 fn canvas_negative_position_does_not_extend_bbox() {
     // Canvas measures `max(pos + desired)` from zero, so negative coords bleed past the top-left instead of growing it.
