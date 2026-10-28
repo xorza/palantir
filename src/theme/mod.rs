@@ -14,6 +14,7 @@ mod duration_codec;
 pub(crate) mod expander;
 pub(crate) mod focus_ring;
 pub(crate) mod look;
+pub(crate) mod menu_bar;
 pub(crate) mod metrics;
 pub(crate) mod modal;
 pub(crate) mod palette;
@@ -43,6 +44,7 @@ use crate::theme::dock::DockTheme;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::focus_ring::FocusRingTheme;
+use crate::theme::menu_bar::MenuBarTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
@@ -88,6 +90,8 @@ pub struct Theme {
     pub drag_value: DragValueTheme,
     /// Panel and rows of every [`crate::ContextMenu`] and [`crate::ComboBox`] dropdown.
     pub context_menu: ContextMenuTheme,
+    /// The titles of every [`crate::MenuBar`]; its menus wear [`Self::context_menu`].
+    pub menu_bar: MenuBarTheme,
     /// [`crate::ComboBox`] geometry; colors come from [`Self::button`] and [`Self::context_menu`].
     pub combo_box: ComboBoxTheme,
     /// Panel and backdrop of every [`crate::Modal`].
@@ -194,6 +198,7 @@ impl Theme {
             text_edit,
             drag_value,
             context_menu,
+            menu_bar,
             tooltip,
             tabs,
             dock,
@@ -222,6 +227,7 @@ impl Theme {
         text_edit.for_each_text(f);
         drag_value.for_each_text(f);
         context_menu.for_each_text(f);
+        menu_bar.for_each_text(f);
         tooltip.for_each_text(f);
         tabs.for_each_text(f);
         dock.for_each_text(f);
@@ -240,6 +246,7 @@ impl Theme {
             text_edit: TextEditTheme::from_parts(p, m),
             drag_value: DragValueTheme::from_parts(p, m),
             context_menu: ContextMenuTheme::from_parts(p, m),
+            menu_bar: MenuBarTheme::from_parts(p, m),
             combo_box: ComboBoxTheme::from_metrics(m),
             modal: ModalTheme::from_parts(p, m),
             color_picker: ColorPickerTheme::from_parts(p, m),

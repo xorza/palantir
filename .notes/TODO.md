@@ -5,4 +5,4 @@
 - mesh once registrations
 - flexbox
 - platform time doubleclick
-- backdrop filters, optimize: `/optimize-perf src/gpu/backdrop` with the composer's, the damage walk's and the quad shader's backdrop paths, over every case under `'backdrop'`, with the M5 (192.168.0.6) as a second host. Targets on the M5 at 4K: capture and blur of a 1920×1080 footprint at σ 40 px under 0.25 ms GPU; a cached frame with three panes within 5 % of the same frame without them; the damage walk and the composer's barriers under 2 % of the CPU frame. Candidates: a capture margin, so a sliding pane keeps its region longer; `Rg11b10Ufloat` levels, if a banding golden holds; a capture of only the damaged part of a region, grown by the reach; the separable passes as one compute pass with the level in workgroup memory; sorted marks for the quadratic pane walk; bilinear tap pairs where a level is already smooth.
+- backdrop fixtures

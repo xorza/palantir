@@ -34,7 +34,8 @@ declaration, good-looking and fast. I made it.
   steady-state frame allocates nothing. See [Performance](#performance).
 - **Widgets included** — buttons, text and text editing, sliders, checkboxes,
   combo boxes, scroll and pan-zoom views, grids, tabs, a dock, popups, modals,
-  tooltips and context menus, all styled from one serializable `Theme`.
+  tooltips, context menus and a menu bar, all styled from one serializable
+  `Theme`.
 - **SVG artwork** — icons rasterize at their exact physical size into the
   icon atlas, so they stay crisp at any scale factor and cost nothing until
   first drawn. Gradients and filters included.

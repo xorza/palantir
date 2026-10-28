@@ -68,6 +68,11 @@ const EXCLUDED: &[(&str, &str)] = &[
         "same as modal — nothing is recorded until a right-click",
     ),
     (
+        "menu_bar",
+        "its menus record nothing until a click, as context_menu's; its titles alone \
+             would move every existing bench number for coverage its own tests already give",
+    ),
+    (
         "gpu_view",
         "needs a `wgpu::Device` the deviceless CPU/alloc harnesses don't have",
     ),

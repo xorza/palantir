@@ -76,11 +76,37 @@ impl<K: 'static> TriggerState<K> {
         if state.open.is_none() {
             return;
         }
-        if let Some(popup) = state.shown {
-            ui.release_input_scope(popup);
-        }
+        state.shut(ui);
         ui.with_state::<Self, _>(for_id, |_, state| *state = Self::default());
     }
+
+    /// A state opened at `opening`, for an owner that keeps it rather than the trigger's row.
+    pub(crate) const fn opened(opening: Opening) -> Self {
+        Self {
+            open: Some(opening),
+            shown: None,
+            kind: PhantomData,
+        }
+    }
+
+    /// Whether the popup is open.
+    pub(crate) const fn is_open_now(self) -> bool {
+        self.open.is_some()
+    }
+
+    /// Give back the input scope this state's popup held, as it closes.
+    pub(crate) fn shut(self, ui: &mut Ui) {
+        if let Some(popup) = self.shown {
+            ui.release_input_scope(popup);
+        }
+    }
+}
+
+/// What [`TriggerFrame::settle`] leaves: the popup's outcome and the state to keep.
+#[derive(Debug)]
+pub(crate) struct Settled<K, R> {
+    pub(crate) response: OverlayResponse<Option<R>>,
+    pub(crate) state: TriggerState<K>,
 }
 
 /// One frame of a trigger's overlay: what the trigger did this frame, and where it stands.
@@ -110,7 +136,24 @@ impl TriggerFrame {
         popup: Popup,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
-        let state = TriggerState::<K>::of(ui, self.for_id);
+        let for_id = self.for_id;
+        let state = TriggerState::<K>::of(ui, for_id);
+        let settled = self.settle(ui, state, popup, body);
+        if settled.state != state {
+            ui.with_state::<TriggerState<K>, _>(for_id, |_, row| *row = settled.state);
+        }
+        settled.response
+    }
+
+    /// [`Self::show`] over a `state` its owner keeps rather than the trigger's row, as a menu bar
+    /// keeps one for the one menu it has open; the state to keep comes back.
+    pub(crate) fn settle<K, R>(
+        self,
+        ui: &mut Ui,
+        state: TriggerState<K>,
+        popup: Popup,
+        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+    ) -> Settled<K, R> {
         let mut open = state.open;
         if self.toggled {
             open = match open {
@@ -146,14 +189,13 @@ impl TriggerFrame {
         } else if let Some(popup) = state.shown {
             ui.release_input_scope(popup);
         }
-        let next = TriggerState {
-            open,
-            shown,
-            kind: PhantomData,
-        };
-        if next != state {
-            ui.with_state::<TriggerState<K>, _>(self.for_id, |_, row| *row = next);
+        Settled {
+            response: resp,
+            state: TriggerState {
+                open,
+                shown,
+                kind: PhantomData,
+            },
         }
-        resp
     }
 }
