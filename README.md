@@ -38,10 +38,10 @@ declaration, good-looking and fast. I made it.
 - **SVG artwork** — icons rasterize at their exact physical size into the
   icon atlas, so they stay crisp at any scale factor and cost nothing until
   first drawn. Gradients and filters included.
-- **Keyboard all the way** — `Tab` / `Shift+Tab` walk every interactive
-  widget, dialogs and menus trap focus and give it back on close, the arrows
-  walk menus and any `arrow_focus` group, and widgets take the keys WAI-ARIA
-  gives their role. The focus ring shows only for keyboard focus.
+- **Materials** — blur, frosted glass and refracting glass on any rect or
+  widget chrome, with a luminance ceiling that keeps text on it legible.
+- **Keyboard all the way** — `Tab` reaches every widget, dialogs and menus
+  trap focus, and widgets take the keys WAI-ARIA gives their role.
 - **IME text** — an input method composes inline in a `TextEdit`,
   underlined at the caret, and its candidate list follows the caret.
 - **Raw `wgpu` inside a widget** — implement `GpuPaint` and a `GpuView`
