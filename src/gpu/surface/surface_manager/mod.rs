@@ -5,6 +5,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use glam::UVec2;
+use wgpu::rwh::HasDisplayHandle;
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
@@ -44,6 +45,18 @@ pub(crate) struct SurfaceManager {
     vsync: Vsync,
 }
 
+/// What [`SurfaceManager::start`] opens the device for: the first window and the display it lives
+/// on. Generic to keep the windowing toolkit out of this module.
+#[derive(Debug)]
+pub(crate) struct FirstWindow<'a, D, W> {
+    /// Kept by the instance for its whole life, as GLES reads its EGL display from it: a handle to
+    /// the display alone, so the window's native resources go when the window closes.
+    pub(crate) display: D,
+    pub(crate) window: &'a Arc<W>,
+    /// The window's physical extent.
+    pub(crate) size: UVec2,
+}
+
 /// What [`SurfaceManager::start`] returns: the device it opened, and the adapter-probe surface
 /// reused as the first window's swapchain.
 #[derive(Debug)]
@@ -55,18 +68,20 @@ pub(crate) struct SurfaceStartup {
 
 impl SurfaceManager {
     /// Pick the shared adapter and device, and create the first native surface.
-    /// `window` is generic to keep the windowing toolkit out of this module;
-    /// `size` is its physical extent.
-    pub(crate) fn start<W>(
-        window: &Arc<W>,
-        size: UVec2,
+    pub(crate) fn start<D, W>(
+        first: FirstWindow<'_, D, W>,
         cfg: HostGpuConfig,
     ) -> Result<SurfaceStartup, SurfaceStartError>
     where
+        D: HasDisplayHandle + fmt::Debug + Send + Sync + 'static,
         W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
-        // Built from the window's display handle so GLES finds its EGL display.
-        let instance = GpuRequest::windowed_instance(window)?;
+        let FirstWindow {
+            display,
+            window,
+            size,
+        } = first;
+        let instance = GpuRequest::windowed_instance(display)?;
         let surface = create_surface(&instance, window)?;
 
         // Timing features are optional: `DeviceRequirements` drops those the

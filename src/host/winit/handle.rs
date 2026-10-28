@@ -107,7 +107,8 @@ impl<T: 'static> HostHandle<T> {
             .map_err(|_| HostDisconnected)
     }
 
-    /// Asks the event loop to exit; the current frame finishes.
+    /// Asks the host to close every window and then end the event loop; the current frame
+    /// finishes. The windows leave the screen before the app drops.
     pub fn quit(&self) {
         self.proxy.send_event(UserEvent::Quit).ok();
     }

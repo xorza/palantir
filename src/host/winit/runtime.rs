@@ -9,7 +9,7 @@ use winit::window::WindowId;
 use crate::app::App;
 use crate::common::tracy;
 use crate::gpu::error::SurfaceStartError;
-use crate::gpu::surface::surface_manager::{SurfaceManager, SurfaceStartup};
+use crate::gpu::surface::surface_manager::{FirstWindow, SurfaceManager, SurfaceStartup};
 use crate::host::core::HostCore;
 use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
@@ -65,11 +65,18 @@ impl<T: App + 'static> WinitRuntime<T> {
             surfaces,
             gpu,
             first_surface,
-        } = SurfaceManager::start(&window, native::physical_size(&window), config.gpu_config())
-            .map_err(|error| match error {
-                SurfaceStartError::Gpu { source } => WinitHostError::Gpu { source },
-                SurfaceStartError::Surface { source } => WinitHostError::Surface { token, source },
-            })?;
+        } = SurfaceManager::start(
+            FirstWindow {
+                display: event_loop.owned_display_handle(),
+                window: &window,
+                size: native::physical_size(&window),
+            },
+            config.gpu_config(),
+        )
+        .map_err(|error| match error {
+            SurfaceStartError::Gpu { source } => WinitHostError::Gpu { source },
+            SurfaceStartError::Surface { source } => WinitHostError::Surface { token, source },
+        })?;
         let shaper =
             options.shaper_or_else(|| scan.expect("a scan runs when no shaper is set").join());
         let core = HostCore::new(gpu, options, shaper);
@@ -152,9 +159,17 @@ impl<T: App + 'static> WinitRuntime<T> {
             }
         }
         self.pending_commands = commands;
-        if self.windows.is_empty() {
-            event_loop.exit();
+    }
+
+    /// Close every window for a quit: the loop exits once winit has destroyed them.
+    pub(super) fn close_all_windows(&mut self) {
+        while let Some(win) = self.windows.pop() {
+            self.retire(win);
         }
+    }
+
+    pub(super) const fn has_no_windows(&self) -> bool {
+        self.windows.is_empty()
     }
 
     /// Repaint everything when an app-global setting changed (debug overlay flags, user scale).
@@ -206,12 +221,31 @@ impl<T: App + 'static> WinitRuntime<T> {
         Ok(())
     }
 
-    /// Tear down the window holding `token`, if any; the render stream retires before the driver drops.
+    /// Tear down the window holding `token`, if any.
     fn close_window(&mut self, token: WindowToken) {
         if let Some(win) = self.windows.take(token) {
-            self.core.close(win.driver);
-            self.frames.remove(token);
+            self.retire(win);
         }
+    }
+
+    /// Tear down `win`: its render stream retires before the driver drops, and its surface goes
+    /// before the native window, whose last share this must hold. A share held anywhere else keeps
+    /// the window on screen past its close: on Wayland its toplevel goes only with the last one.
+    fn retire(&mut self, win: Window) {
+        let Window {
+            window,
+            surface,
+            driver,
+            ..
+        } = win;
+        self.frames.remove(driver.token);
+        self.core.close(driver);
+        drop(surface);
+        debug_assert_eq!(
+            Arc::strong_count(&window),
+            1,
+            "a closed window's native window is shared past its close"
+        );
     }
 }
 

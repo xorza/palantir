@@ -67,8 +67,8 @@ impl GpuRequest<'_> {
         ))
     }
 
-    /// The instance a windowed host requests through, carrying the display
-    /// `window` lives on.
+    /// The instance a windowed host requests through, carrying the display its
+    /// windows live on.
     ///
     /// GLES picks its EGL display from the handle; without it the adapter
     /// comes from a surfaceless display and is rejected as incompatible with
@@ -78,17 +78,13 @@ impl GpuRequest<'_> {
         clippy::absolute_paths,
         reason = "gated on `winit`, so it names the path inline instead of a cfg'd import"
     )]
-    pub(crate) fn windowed_instance<W>(
-        window: &std::sync::Arc<W>,
-    ) -> Result<wgpu::Instance, GpuRequestError>
+    pub(crate) fn windowed_instance<D>(display: D) -> Result<wgpu::Instance, GpuRequestError>
     where
-        W: wgpu::rwh::HasDisplayHandle + std::fmt::Debug + Send + Sync + 'static,
+        D: wgpu::rwh::HasDisplayHandle + std::fmt::Debug + Send + Sync + 'static,
     {
         Self::check_backend()?;
         Ok(wgpu::Instance::new(
-            wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(
-                std::sync::Arc::clone(window),
-            )),
+            wgpu::InstanceDescriptor::new_with_display_handle_from_env(Box::new(display)),
         ))
     }
 
