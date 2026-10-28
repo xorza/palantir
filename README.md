@@ -2,8 +2,6 @@
   <img src="https://raw.githubusercontent.com/xorza/palantir/master/assets/logo/palantir-badge.svg" width="256" alt="Palantir logo" />
 </p>
 
-<h1 align="center">Palantir</h1>
-
 <p align="center">
   An immediate-mode GUI library for Rust — WPF-style two-pass layout, wgpu renderer.
 </p>
@@ -64,7 +62,8 @@ https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
 Built with Palantir: [Darkroom](https://github.com/xorza/Darkroom), a
 node-graph editor for image and data pipelines.
 
-![Darkroom app screenshot](https://raw.githubusercontent.com/xorza/palantir/master/docs/media/darkroom-screenshot.png)
+<img width="2285" height="1976" alt="Screenshot_20261029_000442" src="https://github.com/user-attachments/assets/8ae87047-429d-4aef-8cbc-0d2dfe8a8e8c" />
+
 
 ## Getting started
 
