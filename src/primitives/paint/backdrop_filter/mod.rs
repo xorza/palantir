@@ -44,8 +44,9 @@ use palantir_anim_derive::Animatable;
 ///
 /// Plain data, checked where it enters a shape or a [`Chrome`](crate::Chrome): `blur` is a
 /// [length](crate::widget::domain::length), `saturation` and `noise`
-/// [factors](crate::widget::domain::factor), and the lens's own checks hold. Where it paints,
-/// every value saturates at 65504, and the blur at σ 16384 physical px.
+/// [factors](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
+/// packs into one, and the lens's own checks hold. Where it paints, a value a tween carried past
+/// the lanes saturates at 65504, and the blur at σ 16384 physical px.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
 #[serde(default)]
 #[must_use]
@@ -166,9 +167,9 @@ impl BackdropFilter {
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
-        domain::length(self.blur);
-        domain::factor(self.saturation);
-        domain::factor(self.noise);
+        domain::lane(domain::length(self.blur));
+        domain::lane(domain::factor(self.saturation));
+        domain::lane(domain::factor(self.noise));
         if let Some(lens) = &self.lens {
             lens.validate();
         }
@@ -201,17 +202,18 @@ impl Lens {
     }
 
     /// Panics unless `bezel` and `thickness` are lengths and `refractive_index` a refractive
-    /// index.
+    /// index, each a [lane](domain::lane) as it packs into one.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
-        domain::length(self.bezel);
-        domain::length(self.thickness);
+        domain::lane(domain::length(self.bezel));
+        domain::lane(domain::length(self.thickness));
         assert!(
             Self::is_refractive_index(self.refractive_index),
             "{}",
             Self::REFRACTIVE_INDEX_RULE
         );
+        domain::lane(self.refractive_index);
     }
 
     fn has_nan(self) -> bool {

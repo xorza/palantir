@@ -22,12 +22,11 @@ use palantir_anim_derive::Animatable;
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's
 /// `chrome` and `default_chrome` check it where it enters and panic unless
 /// every color is a [color](crate::widget::domain::color), gradient angles are
-/// [angles](crate::widget::domain::angle), centers
-/// [lane offsets](crate::widget::domain::lane_offset), the border width a
-/// [length](crate::widget::domain::length), radial radii, each corner radius and the
-/// shadow's blur [gaps](crate::widget::domain::gap) (lengths of at most 65504, one f16
-/// lane), the shadow's offset and spread lane offsets, and the backdrop filter as
-/// [`BackdropFilter`] lists.
+/// [angles](crate::widget::domain::angle), centers and the shadow's offset and spread
+/// [offsets](crate::widget::domain::offset), the border width, radial radii, each corner
+/// radius and the shadow's blur [lengths](crate::widget::domain::length), and the backdrop
+/// filter as [`BackdropFilter`] lists. Every value but the border width packs into an f16
+/// lane, so it is a [lane](crate::widget::domain::lane) too.
 // Intentionally **not `Copy`**: it is the largest of the three types
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.

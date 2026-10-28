@@ -1,6 +1,25 @@
 //! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that `Spacing`, `Corners`, `RgbaF16`, `FillAxis` and `LoweredShadow` wrap.
 //!
 //! Bypasses `half`'s slice converters, which pay a runtime `is_x86_feature_detected!("f16c")` and an out-of-line call per use. Each architecture's conversions are a file of their own, picked here and nowhere else: `x86_64` runs the F16C intrinsics, `portable` takes `half`'s slice path.
+//!
+//! # Decisions
+//!
+//! - **A lane holds ±65504, and nothing packs past it.** A value someone authors is refused where
+//!   it enters unless it rounds to a finite f16 ([`F16x4::fits_lane`]): [`domain::lane`] on top
+//!   of its own kind, [`domain::gap`], [`domain::color`], `Spacing`'s constructors and
+//!   `Corners::validate`. The rule is the rounding, not `<= 65504`, so a check of a packed lane,
+//!   as `Corners` makes where a widget takes plain chrome data, agrees with one of the f32 before
+//!   it. A value the crate derives from valid ones (a tween's overshoot, a sum, a scale to
+//!   physical px) saturates where it packs ([`F16x4::from_lanes_saturating`],
+//!   [`F16x4::scaled_saturating`]), which moves only a length past every texture a device allows
+//!   (32768 px at most) or a channel past 5 million nits (65504 × the 80-nit white of scRGB).
+//!   Packed as is, an out-of-range value is infinite and becomes a NaN rect or a dropped draw. As
+//!   `Spacing::new` and `Spacing::saturating` split authored from derived. Refused: one rule for
+//!   both, which would either panic on a tween or quietly clamp what a caller typed.
+//!
+//! [`domain::lane`]: crate::primitives::math::domain::lane
+//! [`domain::gap`]: crate::primitives::math::domain::gap
+//! [`domain::color`]: crate::primitives::math::domain::color
 
 #[cfg(not(target_arch = "x86_64"))]
 mod portable;
@@ -35,6 +54,25 @@ impl F16x4 {
 
     pub(crate) const MAX_LANE: f32 = half::f16::MAX.to_f32_const();
 
+    /// The least magnitude that packs to infinity: half the f16 step at [`Self::MAX_LANE`] past
+    /// it, where round-to-nearest-even leaves the largest finite f16.
+    const LANE_LIMIT: f32 = Self::MAX_LANE
+        + (Self::MAX_LANE - half::f16::from_bits(half::f16::MAX.to_bits() - 1).to_f32_const())
+            / 2.0;
+
+    /// True if `v` fits one lane: it rounds to a finite f16, within ±[`Self::MAX_LANE`], so a
+    /// check before the pack and one of the packed lane agree. NaN does not fit.
+    #[inline]
+    pub(crate) const fn fits_lane(v: f32) -> bool {
+        v.abs() < Self::LANE_LIMIT
+    }
+
+    /// `v` saturated at ±[`Self::MAX_LANE`]; a NaN stays NaN.
+    #[inline]
+    pub(crate) const fn saturate_lane(v: f32) -> f32 {
+        v.clamp(-Self::MAX_LANE, Self::MAX_LANE)
+    }
+
     #[inline(always)]
     pub(crate) const fn lane_bits(self, lane: usize) -> u16 {
         self.0[lane]
@@ -46,9 +84,18 @@ impl F16x4 {
         Self(bits)
     }
 
+    /// `lanes` packed as they are: a lane that does not [fit](Self::fits_lane) packs to
+    /// infinity, for a check of the packed lanes to refuse.
     #[inline]
     pub(crate) fn from_lanes(lanes: [f32; 4]) -> Self {
         Self(arch::from_f32x4(lanes))
+    }
+
+    /// `lanes`, each [saturated](Self::saturate_lane) at ±65504, packed: the pack of a value the
+    /// crate derives.
+    #[inline]
+    pub(crate) fn from_lanes_saturating(lanes: [f32; 4]) -> Self {
+        Self(arch::from_f32x4(lanes.map(Self::saturate_lane)))
     }
 
     /// True if any lane's magnitude exceeds the f16 bit pattern `bits` (sign ignored). `bits` must be `<= 0x7FFF`.
@@ -78,20 +125,6 @@ impl F16x4 {
         while i < 4 {
             let lane = self.0[i];
             if lane & !Self::ABS_MASK != 0 && lane & Self::ABS_MASK != 0 {
-                return true;
-            }
-            i += 1;
-        }
-        false
-    }
-
-    /// True if any lane is an infinity of either sign: what a finite value past [`Self::MAX_LANE`]
-    /// packs to.
-    #[inline]
-    pub(crate) const fn any_lane_infinite(self) -> bool {
-        let mut i = 0;
-        while i < 4 {
-            if self.0[i] & Self::ABS_MASK == Self::NAN_EXP {
                 return true;
             }
             i += 1;
@@ -134,7 +167,7 @@ impl F16x4 {
         arch::to_f32x4(self.0)
     }
 
-    /// Per-lane f32 multiply, re-quantized through f16.
+    /// Per-lane f32 multiply, re-quantized through f16 as [`Self::from_lanes`] packs.
     ///
     /// Fused because `from_lanes(lanes().map(*k))` bounces through two `[f32; 4]` arrays that LLVM does not fold back into one register chain.
     #[inline]
@@ -142,8 +175,8 @@ impl F16x4 {
         Self(arch::scaled(self.0, k, f32::INFINITY))
     }
 
-    /// [`Self::scaled`] with each lane saturated at ±[`Self::MAX_LANE`] instead of packed to
-    /// infinity; a NaN lane stays NaN.
+    /// [`Self::scaled`] with each product [saturated](Self::saturate_lane), as
+    /// [`Self::from_lanes_saturating`] packs.
     #[inline]
     pub(crate) fn scaled_saturating(self, k: f32) -> Self {
         Self(arch::scaled(self.0, k, Self::MAX_LANE))

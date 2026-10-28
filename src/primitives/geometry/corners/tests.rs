@@ -196,14 +196,15 @@ fn deserialize_accepts_scalar_array_and_integer_forms() {
     }
 }
 
-/// A file radius is a finite, non-negative f16: 0 and 65504 are the ends; -1, past 65504, infinity and NaN fail with the rule.
+/// A file radius is a non-negative f32 that rounds to a finite f16: 0 and 65519.99, which rounds to 65504, are the ends; -1, 65520, infinity and NaN fail with the rule.
 #[test]
 fn deserialize_rejects_a_radius_f16_cannot_hold() {
     for (input, valid) in [
         ("0.0", true),
         ("65504.0", true),
         ("-1.0", false),
-        ("65505.0", false),
+        ("65519.99", true),
+        ("65520.0", false),
         ("inf", false),
         ("NaN", false),
     ] {

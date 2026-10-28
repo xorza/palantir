@@ -225,19 +225,15 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
         ),
         (
             (domain::GAP_RULE, domain::is_gap, domain::gap),
-            &[0.0, 1.0, 65504.0],
-            &[65505.0, -1.0, f32::NAN, f32::INFINITY],
+            &[0.0, 1.0, 65504.0, 65519.99],
+            &[65520.0, -1.0, f32::NAN, f32::INFINITY],
         ),
         (
-            (
-                domain::LANE_OFFSET_RULE,
-                domain::is_lane_offset,
-                domain::lane_offset,
-            ),
-            &[-65504.0, -1.0, 0.0, 65504.0],
+            (domain::LANE_RULE, domain::is_lane, domain::lane),
+            &[-65519.99, -1.0, 0.0, 65504.0],
             &[
-                65505.0,
-                -65505.0,
+                65520.0,
+                -65520.0,
                 f32::NAN,
                 f32::INFINITY,
                 f32::NEG_INFINITY,
@@ -277,15 +273,12 @@ fn compound_kinds_check_every_part() {
     assert_eq!(domain::color(brightest), brightest);
     assert_eq!(RgbaF32::from(brightest.to_f16()), brightest);
     for channel in 0..4 {
-        for bad in [f32::NAN, f32::INFINITY, 65505.0] {
+        for bad in [f32::NAN, f32::INFINITY, 65520.0, -65520.0] {
             let mut lanes = [0.5; 4];
             lanes[channel] = bad;
             let c = RgbaF32::new(lanes[0], lanes[1], lanes[2], lanes[3]);
             assert!(!domain::is_color(c), "channel {channel} = {bad}");
-            panic_probe::assert_panics_with(
-                "a color must have finite channels of at most 65504",
-                || domain::color(c),
-            );
+            panic_probe::assert_panics_with(domain::COLOR_RULE, || domain::color(c));
         }
     }
 
@@ -312,12 +305,10 @@ fn compound_kinds_check_every_part() {
         vec2::offset(Vec2::new(f32::INFINITY, 0.0))
     });
     assert_eq!(
-        vec2::lane_offset(Vec2::new(65504.0, -65504.0)),
+        vec2::lane(Vec2::new(65504.0, -65504.0)),
         Vec2::new(65504.0, -65504.0)
     );
-    panic_probe::assert_panics_with(domain::LANE_OFFSET_RULE, || {
-        vec2::lane_offset(Vec2::new(0.0, -65505.0))
-    });
+    panic_probe::assert_panics_with(domain::LANE_RULE, || vec2::lane(Vec2::new(0.0, -65520.0)));
 }
 
 /// A range's ends are validated and its order kept.

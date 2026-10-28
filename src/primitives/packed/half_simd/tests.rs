@@ -1,4 +1,4 @@
-use crate::primitives::packed::half_simd::F16x4;
+use crate::primitives::packed::half_simd::{F16x4, arch};
 use half::f16;
 
 /// The SWAR lane compare, checked exhaustively against the scalar form: all 65 536 f16 bit patterns in each of four lane positions at both thresholds. A carry escaping into a neighboring lane would show only for specific patterns.
@@ -22,22 +22,15 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
         }
     }
 
-    // `has_nan` is that sweep at the infinity threshold, and `any_lane_infinite` picks the two
-    // infinities out of it; pin both against real f16 semantics.
+    // `has_nan` is that sweep at the infinity threshold; pin it against real f16 semantics.
     for bits in 0..=u16::MAX {
-        let value = f16::from_bits(bits);
+        let want = f16::from_bits(bits).is_nan();
         for lane in 0..4 {
             let mut lanes = [0u16; 4];
             lanes[lane] = bits;
-            let packed = F16x4::from_bits(lanes);
             assert_eq!(
-                packed.has_nan(),
-                value.is_nan(),
-                "bits={bits:#06x} lane={lane}"
-            );
-            assert_eq!(
-                packed.any_lane_infinite(),
-                value.is_infinite(),
+                F16x4::from_bits(lanes).has_nan(),
+                want,
                 "bits={bits:#06x} lane={lane}",
             );
         }
@@ -69,38 +62,68 @@ fn any_lane_above_matches_the_scalar_compare_for_every_pattern() {
     );
 }
 
-/// [`F16x4::scaled`] must be bit-identical to `from_lanes(lanes().map(* k))`, and
-/// [`F16x4::scaled_saturating`] to the same with each product clamped to ±65504, swept over every
-/// f16 pattern in a rotating lane arrangement against scale classes that could round differently
-/// (identity, zero, sign flip, halving, overflow, non-terminating fraction). The sweep holds every
-/// infinity and NaN, so the clamp's NaN handling is checked too.
+/// The fused scale kernel must be bit-identical to decoding, multiplying and encoding in steps,
+/// and with a limit to the same with each product clamped to it, swept over every f16 pattern in
+/// a rotating lane arrangement against scale classes that could round differently (identity,
+/// zero, sign flip, halving, overflow, non-terminating fraction). The sweep holds every infinity
+/// and NaN, so the clamp's NaN handling is checked too; [`F16x4::scaled_saturating`] is the kernel
+/// at ±65504.
 #[test]
 fn scaled_is_bit_identical_to_the_composed_round_trip() {
-    let composed = |bits: F16x4, k: f32| F16x4::from_lanes(bits.lanes().map(|v| v * k));
-    let saturated = |bits: F16x4, k: f32| {
-        F16x4::from_lanes(
-            bits.lanes()
-                .map(|v| (v * k).clamp(-F16x4::MAX_LANE, F16x4::MAX_LANE)),
-        )
+    let composed = |bits: [u16; 4], k: f32, limit: f32| {
+        arch::from_f32x4(arch::to_f32x4(bits).map(|v| (v * k).clamp(-limit, limit)))
     };
     for hi in 0..=u16::MAX {
         // Rotate the pattern across lanes so a lane-index mistake cannot hide.
-        let bits = F16x4::from_bits([hi, hi ^ 0x3C00, hi.wrapping_add(0x1234), !hi]);
+        let bits = [hi, hi ^ 0x3C00, hi.wrapping_add(0x1234), !hi];
         for k in [1.0f32, 0.0, -3.0, 0.5, 1.0e4, 1.0 / 3.0] {
+            for limit in [f32::INFINITY, F16x4::MAX_LANE] {
+                assert_eq!(
+                    arch::scaled(bits, k, limit),
+                    composed(bits, k, limit),
+                    "bits={bits:#06x?} k={k} limit={limit}",
+                );
+            }
             assert_eq!(
-                bits.scaled(k),
-                composed(bits, k),
-                "bits={:#06x?} k={k}",
-                bits.0,
-            );
-            assert_eq!(
-                bits.scaled_saturating(k),
-                saturated(bits, k),
-                "saturating bits={:#06x?} k={k}",
-                bits.0,
+                F16x4::from_bits(bits).scaled_saturating(k).0,
+                arch::scaled(bits, k, F16x4::MAX_LANE),
             );
         }
     }
+}
+
+/// A lane fits what rounds to a finite f16: below 65520 in magnitude, the largest f32 under it
+/// rounding down to 65504, so a check before the pack agrees with one of the packed lane at every
+/// f32 around the bound. NaN and the infinities do not fit. A saturating pack holds a value past
+/// the bound at ±65504, keeps one inside and lets NaN through, where the exact pack of 65520 is
+/// infinite.
+#[test]
+fn a_lane_fits_what_rounds_to_a_finite_f16_and_saturates_past_it() {
+    for (v, fits) in [
+        (65504.0f32, true),
+        (-65520.0f32.next_down(), true),
+        (0.0, true),
+        (65520.0, false),
+        (-65520.0, false),
+        (f32::NAN, false),
+        (f32::INFINITY, false),
+    ] {
+        assert_eq!(F16x4::fits_lane(v), fits, "{v}");
+    }
+    let mut v = 65000.0f32;
+    while v < 66000.0 {
+        for v in [v, -v] {
+            assert_eq!(F16x4::fits_lane(v), f16::from_f32(v).is_finite(), "{v}");
+        }
+        v = v.next_up();
+    }
+    let max = f16::MAX.to_bits();
+    assert_eq!(
+        F16x4::from_lanes_saturating([1.0e6, -65520.0, 1.5, f32::NAN]).0[..3],
+        [max, f16::MIN.to_bits(), f16::from_f32(1.5).to_bits()]
+    );
+    assert!(F16x4::from_lanes_saturating([0.0, 0.0, 0.0, f32::NAN]).has_nan());
+    assert_eq!(arch::from_f32x4([65520.0; 4])[0], f16::INFINITY.to_bits());
 }
 
 /// Packing matches `half`'s scalar round-to-nearest-even bit for bit. Row one is exact in f16 so it also unpacks to itself; 1.1 in row two has no f16 form.
@@ -140,12 +163,12 @@ fn from_f32_matches_scalar_reference_on_sweep() {
         let x = (i as f32 - 10_000.0) * 7.3;
         let tiny = (i as f32 - 10_000.0) * 1.0e-8;
         for v in [x, tiny] {
-            let got = F16x4::from_lanes([v; 4]).0;
+            let got = arch::from_f32x4([v; 4]);
             let want = f16::from_f32(v).to_bits();
             assert_eq!(got[0], want, "v = {v}");
         }
     }
-    let inf = F16x4::from_lanes([1.0e6, -1.0e6, f32::INFINITY, 0.0]).0;
+    let inf = arch::from_f32x4([1.0e6, -1.0e6, f32::INFINITY, 0.0]);
     assert_eq!(inf[0], f16::INFINITY.to_bits());
     assert_eq!(inf[1], f16::NEG_INFINITY.to_bits());
     assert_eq!(inf[2], f16::INFINITY.to_bits());

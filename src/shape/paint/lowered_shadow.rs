@@ -84,18 +84,19 @@ impl LoweredShadow {
     }
 }
 
+/// Saturating: [`Shadow::validate`] holds an authored shadow within the lanes, and an animated
+/// chrome's tween may overshoot it.
 impl From<Shadow> for LoweredShadow {
     #[inline]
     fn from(shadow: Shadow) -> Self {
-        let geometry_f16 =
-            F16x4::from_lanes([shadow.offset.x, shadow.offset.y, shadow.blur, shadow.spread]);
-        debug_assert!(
-            !geometry_f16.any_lane_infinite(),
-            "a shadow scalar packs past the largest f16"
-        );
         Self {
             color: shadow.color.to_f16(),
-            geometry_f16,
+            geometry_f16: F16x4::from_lanes_saturating([
+                shadow.offset.x,
+                shadow.offset.y,
+                shadow.blur,
+                shadow.spread,
+            ]),
             inset_flag: u16::from(shadow.inset),
         }
     }

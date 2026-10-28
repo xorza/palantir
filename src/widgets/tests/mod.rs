@@ -252,7 +252,7 @@ fn chrome_setters_check_the_chrome() {
 
     let bad: [(&str, Chrome); 6] = [
         (
-            "a color must have finite channels of at most 65504",
+            domain::COLOR_RULE,
             Chrome::fill(RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0)),
         ),
         (
@@ -268,14 +268,14 @@ fn chrome_setters_check_the_chrome() {
             Chrome::rounded(RgbaF32::WHITE, Corners::all(1.0e5)),
         ),
         (
-            domain::GAP_RULE,
+            domain::LENGTH_RULE,
             Chrome::fill(RgbaF32::WHITE).with_shadow(Shadow {
                 blur: f32::NAN,
                 ..Shadow::default()
             }),
         ),
         (
-            domain::LANE_OFFSET_RULE,
+            domain::LANE_RULE,
             Chrome::fill(RgbaF32::WHITE).with_shadow(Shadow {
                 spread: 65520.0,
                 ..Shadow::default()
@@ -353,10 +353,7 @@ fn widget_setters_check_their_kinds() {
     ];
     for set in color_cases {
         set(RgbaF32::new(2.0, 0.0, 0.0, 1.0));
-        panic_probe::assert_panics_with(
-            "a color must have finite channels of at most 65504",
-            || set(NAN_RED),
-        );
+        panic_probe::assert_panics_with(domain::COLOR_RULE, || set(NAN_RED));
     }
 
     let texel_cases: [fn(u32); 2] = [

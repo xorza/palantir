@@ -69,6 +69,8 @@ impl LoweredBackdrop {
     }
 }
 
+/// Saturating: [`BackdropFilter::validate`] holds an authored filter within the lanes, and an
+/// animated chrome's tween may overshoot it.
 impl From<BackdropFilter> for LoweredBackdrop {
     fn from(backdrop: BackdropFilter) -> Self {
         if backdrop.is_noop() {
@@ -76,7 +78,7 @@ impl From<BackdropFilter> for LoweredBackdrop {
         }
         // The lens's fractions coerce here, where they start to paint.
         let lens = backdrop.lens.map_or(F16x4::ZERO, |lens| {
-            saturated([
+            F16x4::from_lanes_saturating([
                 lens.bezel,
                 lens.thickness,
                 lens.refractive_index,
@@ -87,7 +89,7 @@ impl From<BackdropFilter> for LoweredBackdrop {
             .lens
             .map_or(0.0, |lens| domain::fraction(lens.highlight));
         Self {
-            look: saturated([
+            look: F16x4::from_lanes_saturating([
                 backdrop.blur,
                 backdrop.saturation,
                 backdrop.noise,
@@ -96,13 +98,6 @@ impl From<BackdropFilter> for LoweredBackdrop {
             lens,
         }
     }
-}
-
-/// `lanes`, none negative, saturated at 65504 rather than packed to infinity: a length that wide
-/// reaches past every window a texture can fill, and a factor that large drives every channel to
-/// its end, so the clamp changes nothing drawn.
-fn saturated(lanes: [f32; 4]) -> F16x4 {
-    F16x4::from_lanes(lanes.map(|lane| lane.min(F16x4::MAX_LANE)))
 }
 
 impl hash::Hash for LoweredBackdrop {

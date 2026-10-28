@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::math::domain;
 use crate::primitives::math::num::Number;
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::packed::serde::LaneCodec;
@@ -21,8 +22,9 @@ pub struct Corners(F16x4);
 f16x4_lanes!(Corners, [tl, tr, br, bl]);
 
 impl Corners {
-    /// Panics unless every radius is a [length](crate::widget::domain::length)
-    /// the f16 lanes hold (at most 65504); a larger one would pack to infinity.
+    /// Panics unless every radius is a [length](crate::widget::domain::length) and a
+    /// [lane](crate::widget::domain::lane). Checked on the packed lanes, where a radius that is no
+    /// lane is infinite: the same check as one of the f32 radii.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(self) {
@@ -97,11 +99,11 @@ impl Corners {
     }
 
     /// The radii a box of `size` physical px is drawn with: scaled, then
-    /// reduced so adjacent corners don't overlap (CSS Backgrounds 3 §5.5).
-    /// Packed once from f32, so a radius too large for f16 fits the box instead
-    /// of reaching the shader as `inf`. `fit_radii` in `shader.wgsl` is the shader's copy.
+    /// reduced so adjacent corners don't overlap (CSS Backgrounds 3 §5.5), and
+    /// [saturated](F16x4::from_lanes_saturating) where a box past 131008 px still leaves one past
+    /// the lanes. `fit_radii` in `shader.wgsl` is the shader's copy.
     pub(crate) fn fit_to(self, size: Size, scale: f32) -> Self {
-        Self(F16x4::from_lanes(self.fitted_radii(size, scale)))
+        Self(F16x4::from_lanes_saturating(self.fitted_radii(size, scale)))
     }
 
     /// [`Self::fit_to`] before packing.
@@ -163,10 +165,10 @@ impl LaneCodec for Corners {
     }
 
     const LANE_RULE: &'static str =
-        "a corner radius must be finite, not negative, and at most 65504";
+        "a corner radius must be finite, not negative, and round to at most 65504 in f16";
 
     fn lane_is_valid(lane: f32) -> bool {
-        (0.0..=F16x4::MAX_LANE).contains(&lane)
+        domain::is_length(lane) && domain::is_lane(lane)
     }
 }
 

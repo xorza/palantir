@@ -10,12 +10,12 @@
 //! | [`offset`] | finite | panic |
 //! | [`length`] | finite, `>= 0` | panic |
 //! | [`extent`] | `>= 0`, `+inf` allowed | panic |
-//! | [`gap`] | a length `<= 65504` (one f16 lane) | panic |
-//! | [`lane_offset`] | an offset within `±65504` (one f16 lane) | panic |
+//! | [`gap`] | a length that rounds to at most `65504` in f16 (one lane: below `65520`) | panic |
+//! | [`lane`] | rounds to within `±65504` in f16 (below `65520`); on top of the kind of a value that packs into an f16 lane | panic |
 //! | [`positive`] | finite, `> 0` | panic |
 //! | [`factor`] | finite, `>= 0` | panic |
 //! | [`angle`] | finite | panic |
-//! | [`color`] | every channel finite and `<= 65504` (one f16 lane) | panic |
+//! | [`color`] | every channel a [`lane`] | panic |
 //! | [`count`] | `>= 1` | panic |
 //! | [`power_of_two_in`] | a power of two in `1..=max` | panic |
 //! | [`f64::range`] | both ends finite | panic; the order is kept |
@@ -50,13 +50,15 @@ pub(crate) const FILE_LENGTH_RULE: &str =
 pub(crate) const FILE_OFFSET_RULE: &str = "an offset in a file must be finite and within ±8192";
 pub(crate) const LENGTH_RULE: &str = "a length must be finite and not negative";
 pub(crate) const EXTENT_RULE: &str = "an extent must not be negative or NaN";
-pub(crate) const GAP_RULE: &str = "a gap must be finite, not negative, and at most 65504";
-pub(crate) const LANE_OFFSET_RULE: &str = "a lane offset must be finite and within ±65504";
+pub(crate) const GAP_RULE: &str =
+    "a gap must be finite, not negative, and round to at most 65504 in f16";
+pub(crate) const LANE_RULE: &str = "a value packed into an f16 lane must round to within ±65504";
 pub(crate) const POSITIVE_RULE: &str = "a positive value must be finite and above zero";
 pub(crate) const FACTOR_RULE: &str = "a factor must be finite and not negative";
 pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
-pub(crate) const COLOR_RULE: &str = "a color must have finite channels of at most 65504";
+pub(crate) const COLOR_RULE: &str =
+    "a color must have finite channels that round to within ±65504 in f16";
 pub(crate) const COUNT_RULE: &str = "a count must be at least 1";
 pub(crate) const POWER_OF_TWO_RULE: &str =
     "the value must be a power of two no larger than its maximum";
@@ -158,13 +160,14 @@ pub(crate) const fn is_file_offset(v: f32) -> bool {
     is_offset(v) && v.abs() <= MAX_FILE_LENGTH
 }
 
-/// True if `v` is a [`gap`]: a length that fits one f16 lane.
+/// True if `v` is a [`gap`]: a [length](is_length) that is a [lane](is_lane) too.
 #[inline]
 pub const fn is_gap(v: f32) -> bool {
-    is_length(v) && v <= MAX_GAP
+    is_length(v) && is_lane(v)
 }
 
-/// `v`, which must be a *gap*: a length of at most 65504, one f16 lane.
+/// `v`, which must be a *gap*: a length and a [lane](lane), as a container packs its gaps into f16
+/// lanes.
 ///
 /// # Panics
 ///
@@ -176,21 +179,23 @@ pub const fn gap(v: f32) -> f32 {
     v
 }
 
-/// True if `v` is a [`lane_offset`]: an offset that fits one f16 lane.
+/// True if `v` is a [`lane`]: it rounds to a finite f16, within ±65504.
 #[inline]
-pub const fn is_lane_offset(v: f32) -> bool {
-    is_offset(v) && v.abs() <= F16x4::MAX_LANE
+pub const fn is_lane(v: f32) -> bool {
+    F16x4::fits_lane(v)
 }
 
-/// `v`, which must be a *lane offset*: an offset of magnitude at most 65504, one f16 lane.
+/// `v`, which must be a *lane*: a value that packs into one f16 lane, rounding to within ±65504
+/// rather than to infinity. Checked on top of the value's own kind, wherever a value packs into a
+/// lane: `lane(length(blur))`.
 ///
 /// # Panics
 ///
-/// Panics unless [`is_lane_offset`]`(v)`.
+/// Panics unless [`is_lane`]`(v)`.
 #[inline]
 #[track_caller]
-pub const fn lane_offset(v: f32) -> f32 {
-    assert!(is_lane_offset(v), "{}", LANE_OFFSET_RULE);
+pub const fn lane(v: f32) -> f32 {
+    assert!(is_lane(v), "{}", LANE_RULE);
     v
 }
 
@@ -249,20 +254,15 @@ pub const fn angle(v: f32) -> f32 {
     v
 }
 
-/// True if every channel of `c` is finite and at most 65504.
+/// True if every channel of `c` is a [lane](is_lane).
 #[inline]
 pub const fn is_color(c: RgbaF32) -> bool {
-    is_channel(c.r) && is_channel(c.g) && is_channel(c.b) && is_channel(c.a)
+    is_lane(c.r) && is_lane(c.g) && is_lane(c.b) && is_lane(c.a)
 }
 
-/// A channel a color lowers to one f16 lane: a larger one is infinite there. Below zero is left
-/// to the lowering, which clamps it.
-const fn is_channel(v: f32) -> bool {
-    v.is_finite() && v <= F16x4::MAX_LANE
-}
-
-/// `c`, which must be a *color*: every channel finite and at most 65504, the largest f16, as a
-/// color lowers to f16 lanes. Above `1` is valid (HDR, tween overshoot).
+/// `c`, which must be a *color*: every channel a [lane](lane), as a color lowers to
+/// f16 lanes. Above `1` is valid (HDR, tween overshoot), and so is below `0`, which the lowering
+/// clamps.
 ///
 /// # Panics
 ///

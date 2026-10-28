@@ -169,6 +169,7 @@ fn builders_refuse_what_they_check() {
     use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
+    use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
     use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
@@ -185,18 +186,25 @@ fn builders_refuse_what_they_check() {
             Shape::rect(ok_rect).fill(white).corners(radius)
         });
     }
-    panic_probe::assert_panics_with("a color must have finite channels of at most 65504", || {
+    panic_probe::assert_panics_with(domain::COLOR_RULE, || {
         Shape::rect(ok_rect).border(Stroke::new(RgbaF32::srgba(0.0, N, 0.0, 1.0), 2.0))
     });
-    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
-        Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y).radius(N)
-    });
+    // 65520 is the least magnitude that packs to an infinite f16 lane; 65504 is the greatest
+    // finite one. Every value below packs into such a lane, so its kind's rule refuses a NaN or a
+    // sign, and the lane rule a magnitude.
+    let wide = 65520.0;
+    for (rule, radius) in [
+        (domain::LENGTH_RULE, N),
+        (domain::LENGTH_RULE, -1.0),
+        (domain::LANE_RULE, wide),
+    ] {
+        panic_probe::assert_panics_with(rule, || {
+            Shape::triangle(Vec2::ZERO, Vec2::X, Vec2::Y).radius(radius)
+        });
+    }
     panic_probe::assert_panics_with(domain::ANGLE_RULE, || {
         Shape::rect(ok_rect).fill(LinearGradient::two_stop(N, white, RgbaF32::BLACK))
     });
-    // 65520 is the least magnitude that packs to an infinite f16 lane; 65504 is the greatest
-    // finite one. A gradient's center and radius and every shadow scalar pack into such lanes.
-    let wide = 65520.0;
     let half = Vec2::splat(0.5);
     let radial = |center, radius| {
         RadialGradient::builder(center, radius)
@@ -204,13 +212,12 @@ fn builders_refuse_what_they_check() {
             .stop(1.0, RgbaF32::BLACK)
             .build()
     };
-    panic_probe::assert_panics_with(domain::LANE_OFFSET_RULE, || {
-        Shape::rect(ok_rect).fill(radial(Vec2::new(wide, 0.5), half))
-    });
-    panic_probe::assert_panics_with(domain::GAP_RULE, || {
-        Shape::rect(ok_rect).fill(radial(half, Vec2::new(0.5, wide)))
-    });
-    panic_probe::assert_panics_with(domain::LANE_OFFSET_RULE, || {
+    for (center, radius) in [(Vec2::new(wide, 0.5), half), (half, Vec2::new(0.5, wide))] {
+        panic_probe::assert_panics_with(domain::LANE_RULE, || {
+            Shape::rect(ok_rect).fill(radial(center, radius))
+        });
+    }
+    panic_probe::assert_panics_with(domain::LANE_RULE, || {
         Shape::rect(ok_rect).fill(
             ConicGradient::builder(Vec2::new(0.5, -wide), 0.0)
                 .stop(0.0, white)
@@ -219,44 +226,59 @@ fn builders_refuse_what_they_check() {
         )
     });
     let _ = Shape::rect(ok_rect).fill(radial(Vec2::splat(-65504.0), Vec2::splat(65504.0)));
+    for filter in [
+        BackdropFilter::blur(wide),
+        BackdropFilter {
+            saturation: wide,
+            ..BackdropFilter::blur(1.0)
+        },
+        BackdropFilter::blur(1.0).with_lens(Lens {
+            thickness: wide,
+            ..Lens::default()
+        }),
+    ] {
+        panic_probe::assert_panics_with(domain::LANE_RULE, || {
+            Shape::rect(ok_rect).backdrop_filter(filter)
+        });
+    }
     for (rule, shadow) in [
         (
-            domain::GAP_RULE,
+            domain::LENGTH_RULE,
             Shadow {
                 blur: N,
                 ..Shadow::default()
             },
         ),
         (
-            domain::GAP_RULE,
+            domain::LANE_RULE,
             Shadow {
                 blur: wide,
                 ..Shadow::default()
             },
         ),
         (
-            domain::LANE_OFFSET_RULE,
+            domain::LANE_RULE,
             Shadow {
                 spread: wide,
                 ..Shadow::default()
             },
         ),
         (
-            domain::LANE_OFFSET_RULE,
+            domain::LANE_RULE,
             Shadow {
                 spread: -wide,
                 ..Shadow::default()
             },
         ),
         (
-            domain::LANE_OFFSET_RULE,
+            domain::LANE_RULE,
             Shadow {
                 offset: Vec2::new(wide, 0.0),
                 ..Shadow::default()
             },
         ),
         (
-            domain::LANE_OFFSET_RULE,
+            domain::LANE_RULE,
             Shadow {
                 offset: Vec2::new(0.0, -wide),
                 ..Shadow::default()
@@ -426,17 +448,24 @@ fn thin() -> Stroke {
     Stroke::new(RgbaF32::WHITE, 1.0)
 }
 
-/// Debug-only: a shadow that skipped `Shadow::validate` fails where it lowers, at 65520, the
-/// least magnitude that packs to an infinite f16 lane.
-#[cfg(debug_assertions)]
+/// A shadow the crate derives past the lanes, as an animated chrome's tween overshoots, saturates
+/// where it lowers: 65520, the least magnitude that would pack to infinity, lowers to 65504, and
+/// its halo stays finite.
 #[test]
-#[should_panic(expected = "a shadow scalar packs past the largest f16")]
-fn a_shadow_past_the_largest_f16_fails_where_it_lowers() {
+fn a_derived_shadow_past_65504_saturates_where_it_lowers() {
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
 
-    let _ = LoweredShadow::from(Shadow {
+    let geometry = LoweredShadow::from(Shadow {
+        offset: Vec2::new(-65520.0, 1.0),
         blur: 65520.0,
+        spread: 1.0e9,
         ..Shadow::default()
-    });
+    })
+    .geometry();
+    assert_eq!(
+        (geometry.offset, geometry.blur, geometry.spread),
+        (Vec2::new(-65504.0, 1.0), 65504.0, 65504.0)
+    );
+    assert_eq!(geometry.halo(), 4.0 * 65504.0 + 65504.0);
 }

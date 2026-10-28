@@ -99,7 +99,7 @@ pub(crate) enum PolylineColors<'a> {
 }
 
 pub(crate) const TINT_RULE: &str =
-    "a polyline color times its stroke color must have channels of at most 65504";
+    "a polyline color times its stroke color must have channels that round to within ±65504 in f16";
 
 /// Each of `colors` a color, and its product with `stroke`, which lowering packs into f16 lanes,
 /// one too: two colors each in range can multiply past the largest f16. Refused rather than

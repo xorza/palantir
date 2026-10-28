@@ -19,21 +19,19 @@ impl RgbaF16 {
     ///
     /// The one place a color is lowered, so the one clamp: a tween that overshoots (`OutBack`, a
     /// bouncy spring) may carry alpha past `0..=1` or a channel below zero, which the blend would
-    /// paint as light added or taken away. Channels above 1 stay, as HDR. A NaN passes through,
-    /// for [`Self::is_noop`] to drop.
+    /// paint as light added or taken away. Channels above 1 stay, as HDR, up to 65504, where a
+    /// channel the crate derived saturates; [`domain::color`] holds an authored one there. A NaN
+    /// passes through, for [`Self::is_noop`] to drop.
+    ///
+    /// [`domain::color`]: crate::primitives::math::domain::color
     #[inline]
     pub(crate) fn new(r: f32, g: f32, b: f32, a: f32) -> Self {
-        let packed = F16x4::from_lanes([
+        Self(F16x4::from_lanes_saturating([
             at_least_zero(r),
             at_least_zero(g),
             at_least_zero(b),
             if a > 1.0 { 1.0 } else { at_least_zero(a) },
-        ]);
-        debug_assert!(
-            !packed.any_lane_infinite(),
-            "a color channel packs past the largest f16"
-        );
-        Self(packed)
+        ]))
     }
 
     /// Scale the alpha lane by `by`, leaving the color lanes alone (storage is straight-alpha, so no premultiply). `by == 1.0` is the common case, so callers skip this.

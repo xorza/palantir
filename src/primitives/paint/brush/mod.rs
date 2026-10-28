@@ -38,7 +38,7 @@ pub enum Brush {
 
 impl Brush {
     /// Panics unless the color or gradient geometry holds its kinds ([`domain`]); stops are checked when made.
-    /// A gradient's center and radius pack into f16 lanes, so they are lane offsets and gaps.
+    /// A gradient's center and radius pack into f16 lanes, so each is a [lane](domain::lane) too.
     #[inline]
     #[track_caller]
     pub(crate) const fn validate(&self) {
@@ -50,12 +50,11 @@ impl Brush {
                 domain::angle(g.geometry.angle);
             }
             Self::Radial(g) => {
-                vec2::lane_offset(g.geometry.center);
-                domain::gap(g.geometry.radius.x);
-                domain::gap(g.geometry.radius.y);
+                vec2::lane(vec2::offset(g.geometry.center));
+                vec2::lane(vec2::length(g.geometry.radius));
             }
             Self::Conic(g) => {
-                vec2::lane_offset(g.geometry.center);
+                vec2::lane(vec2::offset(g.geometry.center));
                 domain::angle(g.geometry.start_angle);
             }
         }

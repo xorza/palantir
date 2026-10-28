@@ -27,17 +27,22 @@ impl FillAxis {
         Self(F16x4::from_lanes(lanes))
     }
 
+    /// `lanes` [saturated](F16x4::from_lanes_saturating), for lanes the composer scales to
+    /// physical px: a pane's σ by the display scale and every zoom.
+    #[inline]
+    pub(crate) fn from_lanes_saturating(lanes: [f32; 4]) -> Self {
+        Self(F16x4::from_lanes_saturating(lanes))
+    }
+
     #[inline]
     pub(crate) fn lanes(self) -> [f32; 4] {
         self.0.lanes()
     }
 
     /// Every lane times `s` in one decode-multiply-encode pass, saturated at ±65504
-    /// ([`F16x4::scaled_saturating`]). A shadow's lanes scale to physical px by the display scale
-    /// and every zoom, which no logical bound covers. Saturated rather than infinite, a drop
-    /// shadow's quad is built from the same lanes the shader reads, so it finds its source again;
-    /// a σ, offset or spread of 65504 physical px reaches past every texture a device allows
-    /// today, 32768 px at most.
+    /// ([`F16x4::scaled_saturating`]), as a shadow's lanes scale to physical px by the display
+    /// scale and every zoom, which no logical check bounds (`half_simd`, "A lane holds ±65504").
+    /// The drop quad is built from these same lanes, so the shader finds its source again.
     #[inline]
     pub(crate) fn scaled_saturating(self, s: f32) -> Self {
         Self(self.0.scaled_saturating(s))
