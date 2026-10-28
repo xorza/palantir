@@ -75,7 +75,8 @@ pub struct BackdropFilter {
     pub noise: f32,
     /// The highest relative luminance the pane shows under its tint, if any: a brighter pixel is
     /// scaled down to it, its hue and chroma kept. The lane it packs into rounds it down, never
-    /// up; an 8-bit target's dither then moves a pixel by at most half an encoded step.
+    /// up; an 8-bit target then stores each channel within one encoded step of the composite,
+    /// half a step of dither and half of the rounding to a byte.
     #[serde(
         skip_serializing_if = "Option::is_none",
         deserialize_with = "crate::primitives::packed::serde::checked::optional_factor"
