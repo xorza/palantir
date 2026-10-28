@@ -301,6 +301,34 @@ fn the_selection_cap_adds_no_height() {
     );
 }
 
+/// A pinned chip is as tall as a closable one when the close box is taller than the label, so
+/// the strip keeps its height as closable tabs open and close beside it.
+#[test]
+fn a_pinned_chip_is_as_tall_as_a_closable_one() {
+    let mut h = UiHarness::new(SURFACE);
+    h.ui.theme_mut().tabs.close_size = 30.0;
+    for _ in 0..2 {
+        h.frame(|ui| {
+            let mut items = items(ui);
+            items[0].closable = false;
+            TabStrip::new(&items)
+                .id(strip_id())
+                .selected(0)
+                .show(ui, |ui, chip| chip.show_label(ui));
+        });
+    }
+    let pinned = h.rect(TabStrip::chip_id(strip_id(), 10)).expect("arranged");
+    let closable = h.rect(TabStrip::chip_id(strip_id(), 20)).expect("arranged");
+    let t = &h.ui.theme().tabs;
+    let [_, pad_t, _, pad_b] = t.chip_padding.to_array();
+    // The close box sets the height: its 30 px between the chip's top and bottom insets.
+    assert_eq!(closable.size.h, 30.0 + pad_t + pad_b);
+    assert_eq!(
+        pinned.size.h, closable.size.h,
+        "pinned {pinned:?} against closable {closable:?}"
+    );
+}
+
 /// Close wins over activate when one press reaches both.
 #[test]
 fn a_close_click_reports_a_close_and_not_a_click() {

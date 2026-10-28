@@ -66,7 +66,8 @@ pub struct TabsTheme {
     pub max_width: f32,
     /// Look pack for the chip's close button.
     pub close: StatefulLook,
-    /// Close button side in logical px.
+    /// Close button side in logical px, and the floor of every chip's content height, closable or
+    /// not, so the strip keeps one height.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub close_size: f32,
     /// The close cross's extent in logical px, centered in the button, which also spaces the
