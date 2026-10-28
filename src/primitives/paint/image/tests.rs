@@ -70,8 +70,8 @@ fn image_stores_valid_rgba8_dimensions_and_pixels() {
 fn fill_with_visits_every_texel_in_row_major_order() {
     let mut image = Image::blank(UVec2::new(3, 2));
     let mut visited = 0;
-    image.fill_with(|col, row| {
-        let texel = SrgbaU8::rgb(col as u8, row as u8, visited);
+    image.fill_with(|at| {
+        let texel = SrgbaU8::rgb(at.x as u8, at.y as u8, visited);
         visited += 1;
         texel
     });

@@ -106,7 +106,7 @@ fn equal_corners_share_one_table() {
         drop_shadow(Size::new(500.0, 300.0), 8.0, 16.0),
     ];
     let plan = plan(&quads);
-    let code = CutoutPlan::code([0, 0], 87);
+    let code = CutoutPlan::code(UVec2::ZERO, 87);
     assert_eq!(
         plan.tables(),
         [BakeTable {
@@ -374,7 +374,7 @@ fn a_repaint_past_a_corners_region_bakes_what_it_reads() {
     let mut quad = inset_shadow(Size::new(200.0, 200.0), 7.25, 16.0);
     quad.fill_axis = FillAxis::from_lanes([100.0, 0.0, 16.0, 0.0]);
     let mut plan = plan(&[quad]);
-    let code = CutoutPlan::code([0, 0], 87);
+    let code = CutoutPlan::code(UVec2::ZERO, 87);
     assert_eq!(plan.corners(), [CornerTables([code; 4])]);
     let band = RepaintScissors::partial(&[URect::new(0, 0, 35, 72)]);
     assert_eq!(plan.build(&[quad], &band, WIDE), Census::Cur);

@@ -383,8 +383,8 @@ impl CutoutPlan {
         &self.entries
     }
 
-    pub(crate) const fn code(cell: [u32; 2], side: u32) -> u32 {
-        cell[0] | (cell[1] << 6) | (side << 12)
+    pub(crate) const fn code(cell: UVec2, side: u32) -> u32 {
+        cell.x | (cell.y << 6) | (side << 12)
     }
 
     /// A table's side for `(r, σ)`: a texel per `σ / TEXELS_PER_SIGMA` across the cutout square widened by `reach`, plus one for bilinear.
@@ -427,7 +427,7 @@ impl CutoutPlan {
             if y + cells > Self::CELLS {
                 break;
             }
-            self.codes[at as usize] = Self::code([x, y], side);
+            self.codes[at as usize] = Self::code(UVec2::new(x, y), side);
             x += cells;
             shelf = shelf.max(cells);
         }
@@ -510,7 +510,7 @@ const _: () = {
     assert!(CutoutPlan::CELLS <= 1 << 6);
     assert!(CutoutPlan::MAX_SIDE < 1 << 20);
     assert!(CutoutPlan::MAX_SIDE <= u16::MAX as u32);
-    assert!(CutoutPlan::code([63, 63], CutoutPlan::MAX_SIDE) != CutoutPlan::NONE);
+    assert!(CutoutPlan::code(UVec2::new(63, 63), CutoutPlan::MAX_SIDE) != CutoutPlan::NONE);
 };
 
 #[expect(

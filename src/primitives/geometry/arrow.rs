@@ -22,11 +22,8 @@ impl Arrow {
     /// [`Self::points`] turned `radians` about the box's center. Only square in a square box: a quarter turn swaps extents, clipping one axis.
     pub(crate) fn rotated(self, radians: f32) -> [Vec2; 3] {
         let center = self.size * 0.5;
-        let (sin, cos) = radians.sin_cos();
-        self.points().map(|p| {
-            let Vec2 { x, y } = p - center;
-            center + Vec2::new(x * cos - y * sin, x * sin + y * cos)
-        })
+        let turn = Vec2::from_angle(radians);
+        self.points().map(|p| center + turn.rotate(p - center))
     }
 
     /// [`Self::rotated`] as a filled triangle's vertices with corners rounded by `radius`. The renderer rounds by dilating, so vertices sit one radius inside the box to fill it exactly. A radius over half the shorter side is fitted to it.

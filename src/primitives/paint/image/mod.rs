@@ -149,12 +149,12 @@ impl Image {
         bytemuck::cast_slice_mut(&mut self.pixels)
     }
 
-    /// Every texel from its column and row, row by row.
-    pub fn fill_with(&mut self, mut texel: impl FnMut(u32, u32) -> SrgbaU8) {
+    /// Every texel from its position, column then row, row by row.
+    pub fn fill_with(&mut self, mut texel: impl FnMut(UVec2) -> SrgbaU8) {
         let width = self.size.x as usize;
         for (row, line) in self.texels_mut().chunks_exact_mut(width).enumerate() {
             for (col, out) in line.iter_mut().enumerate() {
-                *out = texel(col as u32, row as u32);
+                *out = texel(UVec2::new(col as u32, row as u32));
             }
         }
     }
