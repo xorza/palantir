@@ -111,7 +111,7 @@ fn paint_rect(
             DrawPanePayload {
                 quad: pane,
                 key,
-                lens: backdrop.lens(),
+                backdrop,
             },
             alpha,
         );

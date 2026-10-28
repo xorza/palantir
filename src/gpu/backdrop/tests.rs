@@ -140,6 +140,53 @@ fn a_pane_shows_the_pixels_before_it_blurred() {
     }
 }
 
+/// A luminance ceiling scales what a pane shows down to it before the tint, and leaves what is
+/// darker alone. White on the left, the black clear on the right, under a pane of σ 1 tinted gray
+/// 0.2 at alpha 0.5 and capped at 0.1, which lowers to the f16 0.0999755859375: away from the
+/// seam, the white side composites to `0.5 · 0.0999755859375 + 0.5 · 0.2 = 0.14998779296875` and
+/// the black side to `0.5 · 0 + 0.5 · 0.2 = 0.1`, each channel within one 8-bit step. Without
+/// the ceiling the white side is `0.5 · 1 + 0.5 · 0.2 = 0.6`.
+#[test]
+fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
+    let paint = |ceiling: Option<f32>| {
+        whole(move |ui: &mut Ui| {
+            Panel::canvas()
+                .id_salt("backdrop-ceiling")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 32.0, 48.0)).fill(RgbaF32::WHITE));
+                    let filter = BackdropFilter {
+                        max_luminance: ceiling,
+                        ..BackdropFilter::blur(1.0)
+                    };
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 64.0, 48.0))
+                            .fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5))
+                            .backdrop_filter(filter),
+                    );
+                });
+        })
+    };
+    for (ceiling, white, black) in [(Some(0.1), 0.149_987_792_968_75, 0.1), (None, 0.6, 0.1)] {
+        let got = paint(ceiling);
+        for (xs, want) in [(4..28, white), (36..60, black)] {
+            for x in xs {
+                for y in 4..44 {
+                    let pixel = got.get_pixel(x, y);
+                    for c in 0..3 {
+                        let g = f64::from(pixel[c]);
+                        assert!(
+                            (g - encode(want)).abs() <= 1.0,
+                            "{ceiling:?}: ({x}, {y}) channel {c} is {g}, want {:.2}",
+                            encode(want)
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// A canvas with a square of `under` painted before a pane of σ `sigma` at `pane`, and a square
 /// of `over` painted after it, inside it.
 fn layered(ui: &mut Ui, under: RgbaF32, pane: Rect, sigma: f32, over: RgbaF32) {

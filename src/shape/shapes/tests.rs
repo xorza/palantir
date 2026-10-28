@@ -232,6 +232,7 @@ fn builders_refuse_what_they_check() {
             saturation: wide,
             ..BackdropFilter::blur(1.0)
         },
+        BackdropFilter::blur(1.0).with_max_luminance(wide),
         BackdropFilter::blur(1.0).with_lens(Lens {
             thickness: wide,
             ..Lens::default()

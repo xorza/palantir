@@ -35,7 +35,7 @@ fn with_corners(corners: Corners) -> Chrome {
 }
 
 /// The five ways a `Chrome` can carry a NaN, one per field; no no-op predicate owns the question.
-fn nan_chromes() -> [(&'static str, Chrome); 5] {
+fn nan_chromes() -> [(&'static str, Chrome); 6] {
     [
         (
             "corners",
@@ -66,6 +66,11 @@ fn nan_chromes() -> [(&'static str, Chrome); 5] {
         (
             "backdrop filter",
             Chrome::fill(RgbaF32::WHITE).with_backdrop_filter(BackdropFilter::blur(f32::NAN)),
+        ),
+        (
+            "luminance ceiling",
+            Chrome::fill(RgbaF32::WHITE)
+                .with_backdrop_filter(BackdropFilter::blur(1.0).with_max_luminance(f32::NAN)),
         ),
     ]
 }
@@ -226,6 +231,11 @@ fn chrome_lowering_keeps_an_authored_field() {
             "backdrop frosted",
             base.clone()
                 .with_backdrop_filter(BackdropFilter::frosted(4.0)),
+        ),
+        (
+            "backdrop ceiling",
+            base.clone()
+                .with_backdrop_filter(BackdropFilter::blur(4.0).with_max_luminance(0.1)),
         ),
         (
             "backdrop lens",

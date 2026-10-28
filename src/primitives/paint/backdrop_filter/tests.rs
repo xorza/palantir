@@ -13,6 +13,7 @@ fn the_looks_and_setters_set_their_own_fields() {
             blur: 6.0,
             saturation: 1.0,
             noise: 0.0,
+            max_luminance: None,
             lens: None,
         }
     );
@@ -22,6 +23,7 @@ fn the_looks_and_setters_set_their_own_fields() {
             blur: 12.0,
             saturation: 1.8,
             noise: 0.04,
+            max_luminance: None,
             lens: None,
         }
     );
@@ -37,6 +39,7 @@ fn the_looks_and_setters_set_their_own_fields() {
         .with_blur(2.0)
         .with_saturation(0.5)
         .with_noise(0.1)
+        .with_max_luminance(0.2)
         .with_lens(lens);
     assert_eq!(
         set,
@@ -44,6 +47,7 @@ fn the_looks_and_setters_set_their_own_fields() {
             blur: 2.0,
             saturation: 0.5,
             noise: 0.1,
+            max_luminance: Some(0.2),
             lens: Some(lens),
         }
     );
@@ -53,6 +57,7 @@ fn the_looks_and_setters_set_their_own_fields() {
         BackdropFilter::blur(0.5),
         BackdropFilter::NONE.with_saturation(0.0),
         BackdropFilter::NONE.with_noise(0.01),
+        BackdropFilter::NONE.with_max_luminance(1.0),
         BackdropFilter::glass(lens),
     ] {
         assert!(!filter.is_noop(), "{filter:?}");
@@ -70,6 +75,10 @@ fn a_filter_out_of_its_kinds_panics_where_it_enters() {
             "a factor must",
         ),
         (BackdropFilter::NONE.with_noise(-0.5), "a factor must"),
+        (
+            BackdropFilter::NONE.with_max_luminance(-0.1),
+            "a factor must",
+        ),
         (
             BackdropFilter::glass(Lens {
                 thickness: f32::INFINITY,
@@ -98,6 +107,32 @@ fn a_filter_out_of_its_kinds_panics_where_it_enters() {
                 .unwrap_or_default();
             assert!(message.contains(rule), "{entry} {filter:?}: {message}");
         }
+    }
+}
+
+/// A luminance ceiling lowers to the f16 at or below it, so a pane never shows brighter than
+/// its author allowed: 0.3's nearest f16 is 0.300048828125 = 1229/4096, above it, so it lowers
+/// one step down, to 0.2998046875 = 307/1024; 0.1's nearest, 0.0999755859375 = 819/8192, is
+/// below it and stays; 0.5 is exact. A filter with no ceiling lowers to 65504, the lane's top,
+/// and 1e6, which a tween may carry past the lane, saturates there.
+#[test]
+fn a_luminance_ceiling_rounds_down_where_it_lowers() {
+    let lowered = |ceiling: Option<f32>| {
+        LoweredBackdrop::from(BackdropFilter {
+            max_luminance: ceiling,
+            ..BackdropFilter::blur(1.0)
+        })
+        .max_luminance()
+    };
+    for (ceiling, want) in [
+        (Some(0.3), 307.0 / 1024.0),
+        (Some(0.1), 819.0 / 8192.0),
+        (Some(0.5), 0.5),
+        (Some(0.0), 0.0),
+        (Some(1.0e6), 65504.0),
+        (None, 65504.0),
+    ] {
+        assert_eq!(lowered(ceiling), want, "{ceiling:?}");
     }
 }
 

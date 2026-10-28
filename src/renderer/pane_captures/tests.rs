@@ -25,6 +25,7 @@ fn row(i: u32, footprint: URect, sigma: f32) -> BackdropRow {
         plan: BlurPlan::new(sigma),
         barrier: i,
         lens: None,
+        max_luminance: 65504.0,
         capture: false,
     }
 }

@@ -106,6 +106,9 @@ struct BackdropSlot {
     // The lens, `(bezel, thickness, refractive_index, dispersion)` in
     // physical px, zero for a pane of no glass (`LensOptics`).
     lens: vec4<f32>,
+    // The highest relative luminance the pane shows under its tint; 65504
+    // for a pane with no ceiling.
+    max_luminance: f32,
 };
 @group(2) @binding(0) var backdrop_results: texture_2d<f32>;
 @group(2) @binding(1) var backdrop_sampler: sampler;
@@ -1104,8 +1107,9 @@ fn lens_glint(lens: vec4<f32>, inward: f32, outward: vec2<f32>) -> f32 {
 }
 
 // A pane over the pixels painted before it (`FillKind::BACKDROP`): its
-// blurred result, saturated, grained and tinted by `fill`, at the pane's
-// opacity, `fill_axis = (σ, saturation, noise, opacity)`. A paint
+// blurred result, saturated, grained, held under its luminance ceiling and
+// tinted by `fill`, at the pane's opacity,
+// `fill_axis = (σ, saturation, noise, opacity)`. A paint
 // animation's fade scaled the opacity and the tint's alpha alike, so the
 // tint's own share is its alpha over the opacity.
 @fragment
@@ -1137,6 +1141,11 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     c = max(mix(vec3<f32>(dot(c, LUMA)), c, saturation), vec3<f32>(0.0));
     if (noise > 0.0) {
         c = mix(c, vec3<f32>(grain(in.local)), noise);
+    }
+    // Scaled rather than clamped per channel, so the hue and the chroma hold.
+    let luminance = dot(c, LUMA);
+    if (luminance > slot.max_luminance) {
+        c *= slot.max_luminance / luminance;
     }
     let tint = select(0.0, in.fill.a / opacity, opacity > 0.0);
     c = mix(c, in.fill.rgb, clamp(tint, 0.0, 1.0));

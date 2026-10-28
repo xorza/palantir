@@ -20,6 +20,8 @@ pub(crate) struct BackdropRow {
     pub(crate) barrier: u32,
     /// The pane's lens with its lengths in physical px, if it is glass.
     pub(crate) lens: Option<Lens>,
+    /// The highest relative luminance the pane shows under its tint.
+    pub(crate) max_luminance: f32,
     /// Whether the pane captures this frame, which repaints its footprint; else its held result
     /// serves. Set by [`PaneCaptures::settle`](crate::renderer::pane_captures::PaneCaptures::settle).
     pub(crate) capture: bool,
