@@ -2,13 +2,37 @@
 
 ## Practice elsewhere
 
-- CSS `backdrop-filter`: the working group resolved in November 2023 to read
-  past the element's edge by mirror (`edgeMode="mirror"`); Chrome had
-  duplicated the edge pixels, so "even a 1px scroll can cause the color to
-  completely change" under a blurred bar, because "the blur is only given the
-  pixels immediately behind the element". Firefox and Safari show no such
-  flicker. <https://groups.google.com/a/chromium.org/g/blink-dev/c/ZtMnFCHZhMQ>,
+- CSS `backdrop-filter`: the backdrop is the content behind the element, and
+  a blur samples past its edge by mirroring that content inward
+  (`edgeMode="mirror"`, fxtf-drafts #374 and #527, resolved November 2023;
+  Filter Effects 2: "if the filter functions list includes a blur() filter,
+  the filter will be applied with edgeMode=mirror"). Chrome had duplicated
+  the edge pixels, so "even a 1px scroll can cause the color to completely
+  change"; its PSA says mirror "visually aligns closely to Safari's filter".
+  No source found says that Safari or Firefox read content past the
+  element's edge; they show no flicker, by an unstated method.
+  <https://drafts.csswg.org/filter-effects-2/>,
+  <https://groups.google.com/a/chromium.org/g/blink-dev/c/ZtMnFCHZhMQ>,
   <https://jameshfisher.com/2024/04/23/backdrop-blur-without-the-flickering/>
+- CSS `blur(<length>)` takes the Gaussian's standard deviation, unlike
+  `box-shadow`, whose blur radius is 2σ. Apple's `blur(17.5px)` is σ = 17.5.
+  <https://drafts.fxtf.org/filter-effects/#funcdef-filter-blur>
+- Android SurfaceFlinger clamps a blur to its rect: a read past the rect
+  takes the edge color (change 561d05c18f, "Fix blur sampling outside bounds
+  of layer"). Compose's `BlurredEdgeTreatment` offers the same clamp or
+  transparent black.
+  <https://android.googlesource.com/platform/frameworks/native/+/561d05c18f>
+- Every engine found reads the backdrop back from the target it is drawing
+  into, and none replays the draws below. WebRender splits the parent
+  surface's task into phases on one backing surface: "Primitives added prior
+  to the backdrop filter will be added to task A, phase 0", the filter reads
+  a resolve of it, and "A(1) is bound to the same backing surface as A(0)
+  but does not clear the target" (bugs 1762818, 2011747). Impeller ends the
+  pass and blits the backdrop; PR 55983 removes the last blit where the
+  device has framebuffer fetch.
+  <https://bugzilla.mozilla.org/show_bug.cgi?id=1762818>,
+  <https://bugzilla.mozilla.org/show_bug.cgi?id=2011747>,
+  <https://dart.googlesource.com/external/github.com/flutter/engine/+/a456ad0a7d782a5e869ae017f5770fcdac49a54b>
 - Chromium `cc` damage: a surface with a pixel-moving backdrop filter that
   intersects damage from content drawn before it takes its whole rect into
   the damage (`HasFilterThatMovesPixels`, `intersects_damage_under`).
@@ -37,9 +61,9 @@
   <https://chrisbanes.github.io/haze/latest/usage>,
   <https://chrisbanes.github.io/haze/latest/blur/>
 - Skia GPU blur: halves the image and the sigma while sigma exceeds 4
-  (`kMaxLinearBlurSigma`, radius 27), then runs a separable Gaussian with
-  linear sampling; under about 5×5 a single 2D kernel is faster than two
-  passes. <https://skia.googlesource.com/skia/+/chrome/m118/src/gpu/BlurUtils.h>,
+  (`kMaxLinearBlurSigma = 4.f`, at most 28 samples a pass), then runs a
+  separable Gaussian with linear sampling; its radius is `ceil(3σ)`, and a
+  direct 2D kernel stays near 5×5. <https://skia.googlesource.com/skia/+/chrome/m118/src/gpu/BlurUtils.h>,
   <https://skia.googlesource.com/skia/+/0c42332/src/effects/SkGpuBlurUtils.cpp>
 - Dual Kawase (Bjørge, ARM, SIGGRAPH 2015): different down- and upsample
   kernels at a constant sampling distance, less bandwidth than a Gaussian.
@@ -61,7 +85,18 @@
   <https://cdn.jsdelivr.net/npm/@ybouane/liquidglass@1.0.3/src/shaders.ts>
 - Bicubic B-spline from four bilinear fetches: Sigg and Hadwiger, "Fast
   Third-Order Texture Filtering", GPU Gems 2 ch. 20. The cubic B-spline's
-  variance is 1/3 texel².
+  variance is 1/3 texel², and by Marsden's identity `Σ j² B(x − j) = x² + 1/3`
+  at every phase `x`, so the variance it adds does not depend on where a
+  pixel falls between texels.
+
+## Arithmetic
+
+- The tent `[1 3 3 1] / 8` has variance 0.75 source texel²: two bilinear
+  fetches at ±0.75 texel read it on one axis, four in 2D.
+- A Gaussian truncated at ±3σ keeps 0.9733 of its variance: a kernel cut at
+  `ceil(3σ)` and renormalized is 1.3 % narrower than its nominal σ.
+- `f32::exp` is not `const` (rustc 1.99.1, E0015), so no `const fn` can
+  compute Gaussian weights.
 - Interleaved gradient noise: Jimenez, "Next Generation Post Processing in
   Call of Duty: Advanced Warfare", SIGGRAPH 2014; a per-pixel dither with no
   texture.
@@ -82,12 +117,24 @@
 - `OcclusionPruner` drops a quad covered by a later opaque quad of the same
   scissor group; text batches coalesce across groups while paint order
   holds; the clear fold drops everything before a full-viewport opaque quad.
-- Damage folds `raw_rects` in paint order (`DamageEngine::compute`), then
-  `finish_region` collapses them by the pass-budget heuristic.
+- `finish_region` collapses `raw_rects` by the pass-budget heuristic.
 - `GpuView` targets: `frame_targets` lists the ones to repaint and
   `live_targets` the roster that keeps the rest alive, the retention pattern
   a cached backdrop can reuse.
 - `Shadow::blur` is a Gaussian σ in logical px, half CSS's blur radius;
   shadows are analytic in the quad shader and need no backdrop.
+- `prelude.wgsl` substitutes `AA_HALF_WIDTH` as a constant, and the
+  immediates hold only `viewport_size`, which `clip_from_px` divides by, so
+  clip space does not depend on the target's resolution.
+- Fragment code reads `@builtin(position)` as surface px: the quad shadow
+  (`shadow_pixel`) and the cutout bake in `quad_pipeline/shader.wgsl`.
+- The raster atlas's flat path reads one texel per pixel by `textureLoad`
+  and takes `FLAG_RESAMPLE` only when a quad's size differs from its
+  raster's; at another target scale it would skip texels.
+- `DamageEngine::compute` pushes `raw_rects` per plane in paint order, then
+  the predamaged animation rects and the removed widgets' rects, which carry
+  no paint position.
+- Pipelines are built per `TargetFormat` (`FormatPipelines`); a target in
+  another format needs its own set.
 - Layers paint bottom-up (`Main`, `Popup`, `Modal`, `Menu`, `Tooltip`), all
   into one `RenderBuffer`.
