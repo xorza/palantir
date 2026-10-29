@@ -6,6 +6,7 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::stencil::Stencil;
+use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -32,6 +33,8 @@ pub(crate) struct Submission<'a> {
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) plan: RenderPlan,
+    /// What [`Self::plan`] repaints inside, which the CPU half fitted to the draw list.
+    pub(crate) scissors: &'a RepaintScissors,
     pub(crate) cutouts: &'a CutoutPlan,
     pub(crate) debug_overlay: DebugOverlayConfig,
 }

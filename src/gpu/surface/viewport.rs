@@ -23,37 +23,66 @@ pub(crate) enum RepaintScissors {
 
 impl RepaintScissors {
     /// The physical-px repaint shape of `damage`: `Full`, or `Partial` with scissors after scaling, AA padding and clamping, then the footprint of each pane that captures, as the target there still holds the last frame's pane. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
-    pub(crate) fn new(damage: Damage, buffer: &RenderBuffer) -> Self {
+    ///
+    /// The scissors are disjoint: each keeps only the pixels the ones before it left, split into
+    /// at most four rects. The main pass replays the groups once per scissor, and after a pane's
+    /// barrier it replays them without a clear, so a pixel two scissors share would composite
+    /// every translucent draw past the barrier twice, as a padded damage rect inside a footprint
+    /// did. `None` when the pieces outgrow [`SCISSOR_CAP`]: the frame then paints whole.
+    pub(crate) fn new(damage: Damage, buffer: &RenderBuffer) -> Option<Self> {
         match damage {
-            Damage::Full => Self::Full,
+            Damage::Full => Some(Self::Full),
             Damage::Partial(damage) => {
-                let mut rects = ArrayVec::new();
-                for r in damage.region.iter_rects() {
-                    if let Some(s) = logical_rect_to_physical_scissor(r, buffer) {
-                        rects.push(s);
+                let mut rects: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
+                let damage_rects = damage
+                    .region
+                    .iter_rects()
+                    .filter_map(|r| logical_rect_to_physical_scissor(r, buffer));
+                let footprints = buffer
+                    .backdrops
+                    .iter()
+                    .filter(|row| row.capture)
+                    .map(|row| row.footprint);
+                for scissor in damage_rects.chain(footprints) {
+                    let mut pieces: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
+                    pieces.push(scissor);
+                    for &kept in &rects {
+                        let mut left: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
+                        for piece in pieces {
+                            for rest in piece.minus(kept) {
+                                // `try_push` hands back what did not fit.
+                                if left.try_push(rest).is_some() {
+                                    return None;
+                                }
+                            }
+                        }
+                        pieces = left;
                     }
-                }
-                for row in buffer.backdrops.iter().filter(|row| row.capture) {
-                    rects.push(row.footprint);
+                    for piece in pieces {
+                        if rects.try_push(piece).is_some() {
+                            return None;
+                        }
+                    }
                 }
                 debug_assert!(
                     !rects.is_empty(),
                     "Partial plan produced no damage scissors"
                 );
-                Self::Partial(PartialScissors { rects })
+                Some(Self::Partial(PartialScissors { rects }))
             }
         }
     }
 }
 
-/// The non-empty scissor list a `Partial` repaint walks. Non-emptiness is [`RepaintScissors::new`]'s `debug_assert!`; splitting off a `first` would cost an O(n) shift to build.
+/// The non-empty, pairwise disjoint scissor list a `Partial` repaint walks. Non-emptiness is [`RepaintScissors::new`]'s `debug_assert!`; splitting off a `first` would cost an O(n) shift to build.
 #[derive(Debug)]
 pub(crate) struct PartialScissors {
     rects: ArrayVec<[URect; SCISSOR_CAP]>,
 }
 
-/// The damage rects, and a footprint for each pane a partial frame captures.
-const SCISSOR_CAP: usize = DAMAGE_RECT_CAP + PaneCaptures::PARTIAL_CAP;
+/// The damage rects, and a footprint for each pane a partial frame captures, each footprint room
+/// for the four pieces a damage rect inside it leaves.
+const SCISSOR_CAP: usize = DAMAGE_RECT_CAP + 4 * PaneCaptures::PARTIAL_CAP;
 
 impl PartialScissors {
     pub(crate) fn len(&self) -> usize {
@@ -124,8 +153,15 @@ pub(crate) mod internals {
 
     impl RepaintScissors {
         /// A partial repaint inside `rects`, as [`RepaintScissors::new`]
-        /// would make one.
+        /// would make one: they must be disjoint, as its are.
         pub(crate) fn partial(rects: &[URect]) -> Self {
+            debug_assert!(
+                rects
+                    .iter()
+                    .enumerate()
+                    .all(|(i, a)| rects[i + 1..].iter().all(|b| !a.intersects(*b))),
+                "repaint scissors are disjoint"
+            );
             Self::Partial(PartialScissors {
                 rects: rects.iter().copied().collect::<ArrayVec<_>>(),
             })
@@ -162,11 +198,37 @@ mod tests {
     #[test]
     fn full_repaint_has_no_partial_scissors() {
         let repaint = RepaintScissors::new(Damage::Full, &buffer());
-        assert!(matches!(repaint, RepaintScissors::Full));
+        assert!(matches!(repaint, Some(RepaintScissors::Full)));
+    }
+
+    /// Eight capturing footprints, each a band across eight damage strips, split into eight pieces
+    /// apiece: 8 + 8 × 8 = 72 scissors, past the cap of 40, so no partial repaint fits.
+    #[test]
+    fn scissors_past_the_cap_fit_no_partial_repaint() {
+        let strips: Vec<Rect> = (0..8)
+            .map(|i| Rect::new(1.0 + 6.0 * i as f32, 0.0, 1.0, 50.0))
+            .collect();
+        let damage = DamageRegion::collapse_from(&strips, 0.0, Rect::new(0.0, 0.0, 50.0, 50.0));
+        assert_eq!(damage.region.iter_rects().count(), 8);
+        let mut buffer = buffer();
+        buffer.backdrops.extend((0..8).map(|j| BackdropRow {
+            key: PaneKey {
+                owner: WidgetId::from_hash("pane"),
+                shape: j,
+            },
+            footprint: URect::new(0, 12 * j, 100, 6),
+            plan: BlurPlan::new(2.0),
+            barrier: 0,
+            lens: None,
+            max_luminance: 65504.0,
+            capture: true,
+        }));
+        assert!(RepaintScissors::new(Damage::Partial(damage), &buffer).is_none());
     }
 
     /// A partial repaint keeps each damage rect, scaled, padded and clamped, and adds the footprint
-    /// of each pane that captures, as the target there holds the last frame's pane.
+    /// of each pane that captures, as the target there holds the last frame's pane, less what the
+    /// damage rects already cover: no pixel lies under two scissors.
     #[test]
     fn partial_repaint_preserves_padded_physical_scissors() {
         let damage = DamageRegion::collapse_from(
@@ -196,21 +258,24 @@ mod tests {
             pane(1, URect::new(0, 60, 20, 20), false),
         ]);
         let repaint = RepaintScissors::new(Damage::Partial(damage), &buffer);
-        let RepaintScissors::Partial(rects) = repaint else {
+        let Some(RepaintScissors::Partial(rects)) = repaint else {
             panic!("partial plan produced a full repaint");
         };
-        // At 2x the rects are (10,10)-(20,20) and (60,40)-(80,50); the 2px AA pad extends each edge.
+        // At 2x the rects are (10,10)-(20,20) and (60,40)-(80,50); the 2px AA pad extends each
+        // edge. The footprint, (30,30)-(70,50), loses the corner (58,38)-(70,50) the second
+        // covers: the band above it, (30,30)-(70,38), and the part left of it, (30,38)-(58,50).
         assert_eq!(
             rects.iter().collect::<Vec<_>>(),
             [
                 URect::new(8, 8, 14, 14),
                 URect::new(58, 38, 24, 14),
-                URect::new(30, 30, 40, 20),
+                URect::new(30, 30, 40, 8),
+                URect::new(30, 38, 28, 12),
             ]
         );
         assert!(matches!(
             RepaintScissors::new(Damage::Full, &buffer),
-            RepaintScissors::Full
+            Some(RepaintScissors::Full)
         ));
     }
 

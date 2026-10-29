@@ -151,3 +151,56 @@ fn the_fields_still_lie_in_scissor_order() {
         bytemuck::cast_slice::<u32, u8>(&[1, 2, 3, 4])
     );
 }
+
+/// `minus` keeps the pixels outside the cut as disjoint bands: above, below, then left and right
+/// between them. A hole in the middle leaves all four, a corner two, a miss the rect whole, a
+/// cover nothing; the pieces' area is the rect's less the overlap, and no two pieces meet.
+#[test]
+fn minus_cases() {
+    let cases: &[(&str, URect, URect, &[URect])] = &[
+        (
+            "hole",
+            URect::new(0, 0, 10, 10),
+            URect::new(3, 3, 4, 4),
+            &[
+                URect::new(0, 0, 10, 3),
+                URect::new(0, 7, 10, 3),
+                URect::new(0, 3, 3, 4),
+                URect::new(7, 3, 3, 4),
+            ],
+        ),
+        (
+            "corner",
+            URect::new(0, 0, 10, 10),
+            URect::new(6, 6, 10, 10),
+            &[URect::new(0, 0, 10, 6), URect::new(0, 6, 6, 4)],
+        ),
+        (
+            "miss",
+            URect::new(0, 0, 10, 10),
+            URect::new(10, 0, 5, 5),
+            &[URect::new(0, 0, 10, 10)],
+        ),
+        (
+            "cover",
+            URect::new(2, 2, 4, 4),
+            URect::new(0, 0, 10, 10),
+            &[],
+        ),
+    ];
+    for (label, rect, cut, want) in cases {
+        let pieces = rect.minus(*cut);
+        assert_eq!(pieces.as_slice(), *want, "{label}");
+        let overlap = rect.intersect(*cut).map_or(0, URect::area);
+        assert_eq!(
+            pieces.iter().map(|p| p.area()).sum::<u64>(),
+            rect.area() - overlap,
+            "{label}: area"
+        );
+        for (i, a) in pieces.iter().enumerate() {
+            for b in &pieces[i + 1..] {
+                assert!(!a.intersects(*b), "{label}: {a:?} meets {b:?}");
+            }
+        }
+    }
+}

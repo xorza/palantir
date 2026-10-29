@@ -427,13 +427,26 @@ fn a_partial_repaint_that_moves_a_kept_table_is_stale() {
         "{:?}",
         plan.entries()
     );
-    for (from, census) in [(50, Census::Stale), (0, Census::Cur)] {
+    // Two disjoint scissors meeting across the first shadow cover it as one does.
+    for (what, rects, census) in [
+        (
+            "from 50",
+            &[URect::new(50, 0, 1650, 120)][..],
+            Census::Stale,
+        ),
+        ("from 0", &[URect::new(0, 0, 1700, 120)], Census::Cur),
+        (
+            "two meeting",
+            &[URect::new(0, 0, 25, 120), URect::new(25, 0, 1675, 120)],
+            Census::Cur,
+        ),
+    ] {
         let mut plan = plan_in(&row(14, 0.0), viewport);
-        let repaint = RepaintScissors::partial(&[URect::new(from, 0, 1700 - from, 120)]);
+        let repaint = RepaintScissors::partial(rects);
         assert_eq!(
             plan.build(&row(13, 0.0), &repaint, viewport),
             census,
-            "from {from}"
+            "{what}"
         );
     }
 }

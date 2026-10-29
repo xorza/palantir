@@ -67,6 +67,9 @@ pub(super) struct WindowDriver {
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
     cutouts: CutoutPlan,
+    /// The scissors the frame the CPU half built repaints inside, which its GPU half submits:
+    /// worked out once, where an overflow can still make the frame whole.
+    scissors: RepaintScissors,
     /// The captures this window's panes hold, which decide what a frame captures again.
     pane_captures: PaneCaptures,
     /// The images a recorded frame asked for, until a frame paints them: ones the host did not
@@ -254,6 +257,7 @@ impl WindowDriver {
             pixel_snap: config.pixel_snap,
             target: None,
             cutouts: CutoutPlan::new(config.cutout_mode),
+            scissors: RepaintScissors::Full,
             pane_captures: PaneCaptures::default(),
             screenshot_requests: Vec::new(),
             captures: VecDeque::new(),
@@ -373,17 +377,26 @@ impl WindowDriver {
         }
         if let PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) = mode {
             frontend.build(self.ui.frame_scene(), plan);
-            // More panes capture than the repaint holds scissors for, or the pixels this partial
-            // frame keeps show a cutout form the frame no longer picks: it paints whole.
-            if self.settle_panes(&mut frontend.buffer, plan) == Settled::Overflow
-                || self.plan_cutouts(&frontend.buffer, plan) == Census::Stale
-            {
-                let full = plan.to_full();
-                mode = path(Some(full), self.backbuffer_fresh);
-                frontend.build(self.ui.frame_scene(), full);
-                self.settle_panes(&mut frontend.buffer, full);
-                let census = self.plan_cutouts(&frontend.buffer, full);
-                debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
+            // More panes capture than the repaint holds scissors for, the disjoint scissors
+            // outgrow their cap, or the pixels this partial frame keeps show a cutout form the
+            // frame no longer picks: it paints whole.
+            let fits = self.settle_panes(&mut frontend.buffer, plan) == Settled::Fits;
+            let scissors = fits
+                .then(|| RepaintScissors::new(plan.damage, &frontend.buffer))
+                .flatten();
+            match scissors {
+                Some(scissors) if self.plan_cutouts(&frontend.buffer, &scissors) == Census::Cur => {
+                    self.scissors = scissors;
+                }
+                _ => {
+                    let full = plan.to_full();
+                    mode = path(Some(full), self.backbuffer_fresh);
+                    frontend.build(self.ui.frame_scene(), full);
+                    self.settle_panes(&mut frontend.buffer, full);
+                    let census = self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full);
+                    debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
+                    self.scissors = RepaintScissors::Full;
+                }
             }
         }
         // The host runs frames until each screenshot lands, as nothing else wakes it then.
@@ -401,10 +414,9 @@ impl WindowDriver {
         )
     }
 
-    fn plan_cutouts(&mut self, buffer: &RenderBuffer, plan: RenderPlan) -> Census {
-        let scissors = RepaintScissors::new(plan.damage, buffer);
+    fn plan_cutouts(&mut self, buffer: &RenderBuffer, scissors: &RepaintScissors) -> Census {
         self.cutouts
-            .build(&buffer.quads, &scissors, buffer.display.physical)
+            .build(&buffer.quads, scissors, buffer.display.physical)
     }
 
     /// [`Ui::drain_window_output`] bound to this driver's token; the offscreen
@@ -483,6 +495,14 @@ impl WindowDriver {
             // A direct repaint leaves the mirror stale; one through the backbuffer matches
             // the target.
             PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) => {
+                debug_assert!(
+                    matches!(
+                        (plan.damage, &self.scissors),
+                        (Damage::Full, RepaintScissors::Full)
+                            | (Damage::Partial(_), RepaintScissors::Partial(_))
+                    ),
+                    "the scissors are the ones the CPU half fitted to this plan"
+                );
                 let backbuffer = mode.renders_via_backbuffer().then(|| {
                     let ensured = backend.ensure_backbuffer(&mut self.backbuffer, target);
                     // A Partial arrives un-escalated only when `backbuffer_fresh`, so a recreate
@@ -507,6 +527,7 @@ impl WindowDriver {
                     store,
                     buffer,
                     plan,
+                    scissors: &self.scissors,
                     cutouts: &self.cutouts,
                     debug_overlay,
                 });

@@ -5,6 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::num::F32Px;
 use glam::UVec2;
 use std::hash;
+use tinyvec::ArrayVec;
 
 /// Axis-aligned rectangle in physical pixels (`u32`), for scissors, glyph clip
 /// bounds and viewport extents. Logical-px rects use [`Rect`], whose shape and
@@ -88,6 +89,12 @@ impl URect {
         UVec2::new(self.min.x + self.size.x, self.min.y + self.size.y)
     }
 
+    /// The pixels inside, wide enough that no rect overflows it.
+    #[inline]
+    pub(crate) const fn area(self) -> u64 {
+        self.size.x as u64 * self.size.y as u64
+    }
+
     /// True when this rect paints no pixels: an empty axis ([`Rect::is_paint_empty`]'s
     /// counterpart, which also has NaN and a tolerance).
     #[inline]
@@ -148,6 +155,35 @@ impl URect {
             ),
             UVec2::new(larger(a.x, b.x), larger(a.y, b.y)),
         )
+    }
+
+    /// The pixels of `self` outside `other`, as at most four disjoint rects: the band above
+    /// `other`, the band below it, and the parts left and right of it between the two. `self`
+    /// whole when the two do not overlap; none when `other` covers it.
+    pub(crate) fn minus(self, other: Self) -> ArrayVec<[Self; 4]> {
+        let mut pieces = ArrayVec::new();
+        let Some(cut) = self.intersect(other) else {
+            pieces.push(self);
+            return pieces;
+        };
+        let (max, cut_max) = (self.max(), cut.max());
+        for piece in [
+            Self::from_min_max(self.min, UVec2::new(max.x, cut.min.y)),
+            Self::from_min_max(UVec2::new(self.min.x, cut_max.y), max),
+            Self::from_min_max(
+                UVec2::new(self.min.x, cut.min.y),
+                UVec2::new(cut.min.x, cut_max.y),
+            ),
+            Self::from_min_max(
+                UVec2::new(cut_max.x, cut.min.y),
+                UVec2::new(max.x, cut_max.y),
+            ),
+        ] {
+            if !piece.is_paint_empty() {
+                pieces.push(piece);
+            }
+        }
+        pieces
     }
 }
 
