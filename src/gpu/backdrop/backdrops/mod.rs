@@ -14,7 +14,6 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::renderer::render_owner_id::RenderOwnerId;
-use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
 use std::ops::Range;
@@ -37,17 +36,8 @@ struct BackdropSlot {
 /// The side the results atlas starts at; it doubles when a result finds no room.
 const FIRST_SIDE: u32 = 1024;
 
-/// A pane's result kept across frames: what it blurred, and what it holds.
-#[derive(Clone, Copy, Debug)]
-struct Cached {
-    plan: BlurPlan,
-    surface: UVec2,
-    /// The region blurred, in texels of the plan's last level.
-    region: URect,
-    result: Kept,
-}
-
-/// What a cached result holds.
+/// A pane's result kept across frames, under the plan and region its row names: the pane ledger
+/// says what it blurred.
 #[derive(Clone, Copy, Debug)]
 enum Kept {
     /// The atlas texels the result and its apron hold.
@@ -83,7 +73,7 @@ pub(crate) struct BlurBreak {
 #[derive(Debug)]
 pub(crate) struct Backdrops {
     blur: BackdropBlur,
-    cache: FxHashMap<(RenderOwnerId, PaneKey), Cached>,
+    cache: FxHashMap<(RenderOwnerId, PaneKey), Kept>,
     packer: ShelfPacker,
     atlas: wgpu::Texture,
     atlas_view: wgpu::TextureView,
@@ -187,31 +177,21 @@ impl Backdrops {
         // from the others'.
         let mut scratch_row = 0;
         for row in &buffer.backdrops {
-            let region = row
-                .plan
-                .region(row.footprint, surface)
-                .expect("a pane's footprint lies on the surface");
             let at = (owner, row.key);
-            let fresh = |result| Cached {
-                plan: row.plan,
-                surface,
-                region,
-                result,
-            };
-            let cached = match row.source {
-                PaneSource::Capture => {
-                    let size = region.size + UVec2::splat(2 * row.plan.apron());
+            let kept = match row.source {
+                PaneSource::Capture { barrier } => {
+                    let size = row.region.size + UVec2::splat(2 * row.plan.apron());
                     let slot = self.slot_for(ctx, at, size);
                     let job = self.jobs.len();
                     match self.breaks.last_mut() {
-                        Some(last) if last.barrier == row.barrier => last.jobs.end = job + 1,
+                        Some(last) if last.barrier == barrier => last.jobs.end = job + 1,
                         last => {
                             debug_assert!(
-                                last.is_none_or(|last| last.barrier < row.barrier),
+                                last.is_none_or(|last| last.barrier < barrier),
                                 "panes stand in paint order"
                             );
                             self.breaks.push(BlurBreak {
-                                barrier: row.barrier,
+                                barrier,
                                 jobs: job..job + 1,
                             });
                             scratch_row = 0;
@@ -221,46 +201,36 @@ impl Backdrops {
                         plan: row.plan,
                         surface,
                         format,
-                        region,
+                        region: row.region,
                         dest_origin: slot.min,
                         scratch_origin: UVec2::new(0, scratch_row),
                     });
                     self.footprints.push(row.footprint);
-                    scratch_row += region.size.y;
-                    fresh(Kept::Slot(slot))
+                    scratch_row += row.region.size.y;
+                    self.cache.insert(at, Kept::Slot(slot));
+                    Kept::Slot(slot)
                 }
                 PaneSource::Clear => {
                     self.drop_result(at);
-                    fresh(Kept::Clear(held_clear(clear, format)))
+                    let kept = Kept::Clear(held_clear(clear, format));
+                    self.cache.insert(at, kept);
+                    kept
                 }
                 PaneSource::Hidden => {
-                    self.drop_result(at);
                     // Its quad was pruned, so no fragment reads its slot.
                     self.slots.push(BackdropSlot::default());
                     continue;
                 }
-                PaneSource::Held => {
-                    let cached = *self
-                        .cache
-                        .get(&at)
-                        .expect("a pane that keeps its capture holds a result");
-                    debug_assert!(
-                        cached.plan == row.plan
-                            && cached.surface == surface
-                            && cached.region.union(region) == cached.region,
-                        "a kept result blurred what the pane shows"
-                    );
-                    cached
-                }
+                PaneSource::Held => *self
+                    .cache
+                    .get(&at)
+                    .expect("a pane that keeps its capture holds a result"),
             };
-            if row.source != PaneSource::Held {
-                self.cache.insert(at, cached);
-            }
-            let (offset, lattice, clear) = match cached.result {
+            let (offset, lattice, clear) = match kept {
                 Kept::Slot(slot) => {
-                    let apron = UVec2::splat(cached.plan.apron());
-                    let offset = (slot.min + apron).as_vec2() - cached.region.min.as_vec2();
-                    (offset, cached.plan.lattice() as f32, [0.0; 3])
+                    let apron = UVec2::splat(row.plan.apron());
+                    let offset = (slot.min + apron).as_vec2() - row.region.min.as_vec2();
+                    (offset, row.plan.lattice() as f32, [0.0; 3])
                 }
                 Kept::Clear(clear) => (Vec2::ZERO, 0.0, clear),
             };
@@ -294,9 +264,9 @@ impl Backdrops {
     /// Drop the results of `owner`'s panes not in `live`, the panes its frame painted or kept.
     fn evict(&mut self, owner: RenderOwnerId, live: &[PaneKey]) {
         let packer = &mut self.packer;
-        self.cache.retain(|&(at, key), cached| {
+        self.cache.retain(|&(at, key), kept| {
             let keep = at != owner || live.contains(&key);
-            if !keep && let Kept::Slot(slot) = cached.result {
+            if !keep && let Kept::Slot(slot) = *kept {
                 packer.deallocate(slot_origin(slot), slot.size.x as u16);
             }
             keep
@@ -343,10 +313,7 @@ impl Backdrops {
         at: (RenderOwnerId, PaneKey),
         size: UVec2,
     ) -> URect {
-        if let Some(Cached {
-            result: Kept::Slot(slot),
-            ..
-        }) = self.cache.get(&at)
+        if let Some(Kept::Slot(slot)) = self.cache.get(&at)
             && slot.size.x >= size.x
             && slot.size.y >= size.y
         {
@@ -370,11 +337,7 @@ impl Backdrops {
 
     /// Drop pane `at`'s cached result, freeing its slot of the atlas if it holds one.
     fn drop_result(&mut self, at: (RenderOwnerId, PaneKey)) {
-        if let Some(Cached {
-            result: Kept::Slot(slot),
-            ..
-        }) = self.cache.remove(&at)
-        {
+        if let Some(Kept::Slot(slot)) = self.cache.remove(&at) {
             self.packer
                 .deallocate(slot_origin(slot), slot.size.x as u16);
         }

@@ -19,7 +19,7 @@ use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
 use crate::scene::tree::ChromeInput;
 use crate::scene::tree::Tree;
 use crate::scene::tree::paint_animations::PaintAnimationEntry;
-use crate::scene::tree::pane_entry::{PaneEntry, PaneSource};
+use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
 use crate::shape::Lower;
@@ -262,7 +262,7 @@ impl Forest {
             tree.panes.push(PaneEntry {
                 node: frame.node,
                 shape_idx,
-                source: PaneSource::Shape,
+                origin: PaneOrigin::Shape,
                 row: frame.paint_rows,
             });
         }

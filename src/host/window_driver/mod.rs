@@ -18,15 +18,16 @@ use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
-use crate::gpu::surface::viewport::RepaintScissors;
 use crate::gpu::wgpu_backend::WgpuBackend;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
+use crate::renderer::frontend::BuildPlan;
 use crate::renderer::frontend::Frontend;
-use crate::renderer::pane_captures::{PaneCaptures, Settled};
+use crate::renderer::pane_captures::{PaneCaptures, PaneDamage, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::ui::Ui;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
@@ -120,6 +121,8 @@ struct PendingScreenshot {
 pub(super) struct TargetKey {
     pub(super) physical: UVec2,
     pub(super) format: TargetFormat,
+    /// Whether pixels can be copied out of the target, as a pane's capture is.
+    pub(super) gives_copy: bool,
 }
 
 /// What a host knows of the frame it is about to run: the target, the platform's scale and
@@ -128,6 +131,8 @@ pub(super) struct TargetKey {
 pub(super) struct FrameSpec {
     pub(super) physical: UVec2,
     pub(super) format: TargetFormat,
+    /// Whether pixels can be copied out of the target, as a pane's capture is.
+    pub(super) gives_copy: bool,
     pub(super) system_scale: f32,
     pub(super) refresh_millihertz: Option<u32>,
     pub(super) now: Duration,
@@ -138,6 +143,7 @@ impl FrameSpec {
         TargetKey {
             physical: self.physical,
             format: self.format,
+            gives_copy: self.gives_copy,
         }
     }
 }
@@ -376,14 +382,17 @@ impl WindowDriver {
             self.output_valid = false;
         }
         if let PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) = mode {
-            frontend.build(self.ui.frame_scene(), plan);
-            // More panes capture than the repaint holds scissors for, the disjoint scissors
-            // outgrow their cap, or the pixels this partial frame keeps show a cutout form the
-            // frame no longer picks: it paints whole.
-            let fits = self.settle_panes(&mut frontend.buffer, plan) == Settled::Fits;
-            let scissors = fits
-                .then(|| RepaintScissors::new(plan.damage, &frontend.buffer))
-                .flatten();
+            // More panes capture than the repaint holds scissors for: the frame paints whole,
+            // known before it builds.
+            let mut plan = plan;
+            if self.decide_panes(plan) == Settled::Overflow {
+                plan = plan.to_full();
+                mode = path(Some(plan), self.backbuffer_fresh);
+            }
+            self.build(frontend, plan);
+            // The disjoint scissors outgrow their cap, or the pixels this partial frame keeps show
+            // a cutout form the frame no longer picks: it paints whole.
+            let scissors = RepaintScissors::new(plan.damage, &frontend.buffer);
             match scissors {
                 Some(scissors) if self.plan_cutouts(&frontend.buffer, &scissors) == Census::Cur => {
                     self.scissors = scissors;
@@ -391,13 +400,15 @@ impl WindowDriver {
                 _ => {
                     let full = plan.to_full();
                     mode = path(Some(full), self.backbuffer_fresh);
-                    frontend.build(self.ui.frame_scene(), full);
-                    self.settle_panes(&mut frontend.buffer, full);
+                    self.decide_panes(full);
+                    self.build(frontend, full);
                     let census = self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full);
                     debug_assert_eq!(census, Census::Cur, "a full repaint keeps no pixel");
                     self.scissors = RepaintScissors::Full;
                 }
             }
+            self.pane_captures.settle(&frontend.buffer);
+            mode = self.capture_path(mode, &frontend.buffer);
         }
         // The host runs frames until each screenshot lands, as nothing else wakes it then.
         if capturing || !self.captures.is_empty() {
@@ -406,12 +417,48 @@ impl WindowDriver {
         CpuFrame { report, mode }
     }
 
-    fn settle_panes(&mut self, buffer: &mut RenderBuffer, plan: RenderPlan) -> Settled {
-        self.pane_captures.settle(
-            buffer,
-            matches!(plan.damage, Damage::Full),
-            self.engines.damage.dirty_panes(),
+    /// The ledger's tickets for a frame painted by `plan`.
+    fn decide_panes(&mut self, plan: RenderPlan) -> Settled {
+        let scene = self.ui.frame_scene();
+        self.pane_captures.decide(
+            scene.panes(),
+            scene.stamp.display,
+            PaneDamage::of(plan, self.engines.damage.dirty_panes()),
         )
+    }
+
+    /// Encode and compose the frame `plan` paints, under the ledger's tickets.
+    fn build(&self, frontend: &mut Frontend, plan: RenderPlan) {
+        frontend.build(
+            self.ui.frame_scene(),
+            BuildPlan {
+                render: plan,
+                panes: self.pane_captures.tickets(),
+            },
+        );
+    }
+
+    /// `mode` for a frame whose panes capture as `buffer` says: a direct frame paints through the
+    /// backbuffer when its captures cannot copy out of the target, which gives no copy, or would
+    /// copy more than the surface holds, where its blurs read the backbuffer and the copy onto
+    /// the target moves the surface once. A direct frame is whole, so the backbuffer may be new.
+    fn capture_path(&self, mode: PresentPath, buffer: &RenderBuffer) -> PresentPath {
+        let PresentPath::Direct(plan) = mode else {
+            return mode;
+        };
+        let captured = buffer.captured_area();
+        if captured == 0 {
+            return mode;
+        }
+        let target = self
+            .target
+            .expect("a frame that captures has noted its target");
+        let surface = u64::from(target.physical.x) * u64::from(target.physical.y);
+        if !target.gives_copy || captured >= surface {
+            PresentPath::ViaBackbuffer(plan)
+        } else {
+            mode
+        }
     }
 
     fn plan_cutouts(&mut self, buffer: &RenderBuffer, scissors: &RepaintScissors) -> Census {
@@ -459,22 +506,12 @@ impl WindowDriver {
             target.format(),
             self.target,
         );
-        // A capture copies out of the target, which a target that gives no copy cannot do. A frame
-        // whose captures copy more than the surface holds paints through the backbuffer too: its
-        // blurs read the backbuffer, and the copy onto the target moves the surface once. A
-        // direct frame is whole, so the backbuffer may be new.
-        let mode = match mode {
-            PresentPath::Direct(plan) => {
-                let captured = buffer.captured_area();
-                let surface = u64::from(size.x) * u64::from(size.y);
-                if captured > 0 && (!target.gives_copy() || captured >= surface) {
-                    PresentPath::ViaBackbuffer(plan)
-                } else {
-                    PresentPath::Direct(plan)
-                }
-            }
-            mode => mode,
-        };
+        debug_assert!(
+            !matches!(mode, PresentPath::Direct(_))
+                || buffer.captured_area() == 0
+                || target.gives_copy(),
+            "a direct frame's captures copy out of the target"
+        );
         let debug_overlay = self.ui.debug_overlay();
         // Shared by both paint paths. Gated: on a skip frame `buffer.rounded_clips` is
         // stale.

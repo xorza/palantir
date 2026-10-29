@@ -30,6 +30,10 @@ mod clear;
 mod neighbors;
 
 const SIZE: UVec2 = UVec2::new(64, 48);
+/// A clear three tenths of a step past the sRGB bytes 51, 115 and 178, so a pane that showed it
+/// unrounded could miss the clear around it by a step, and far enough from the midpoints that
+/// the target rounds it as the CPU does.
+pub(super) const CLEAR: RgbaF32 = RgbaF32::srgb(51.3 / 255.0, 115.3 / 255.0, 178.3 / 255.0);
 const PANE: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
 
 /// Stripes of three colors and widths under where the pane sits, and the pane when `sigma` is
@@ -293,10 +297,7 @@ fn assert_within_a_step(got: &RgbaImage, want: &RgbaImage, what: &str) {
 #[test]
 fn a_partial_frame_recaptures_only_a_stale_pane() {
     let gpu = headless_test_gpu();
-    let mut window = HeadlessWindow::builder(gpu.handles())
-        .shaper(TextShaper::test_mono())
-        .open(SIZE, 1.0);
-    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    let mut window = window(&gpu, SIZE, RgbaF32::BLACK);
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
     // Two levels down at σ 10: an 4 px lattice, which a one-pixel slide can stay inside.

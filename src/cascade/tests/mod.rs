@@ -4,4 +4,5 @@
 mod cols;
 mod hit_index;
 mod incremental;
+mod panes;
 mod transforms;

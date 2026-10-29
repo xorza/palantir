@@ -148,7 +148,7 @@ impl RenderBuffer {
     pub(crate) fn captured_area(&self) -> u64 {
         self.backdrops
             .iter()
-            .filter(|row| row.source == PaneSource::Capture)
+            .filter(|row| matches!(row.source, PaneSource::Capture { .. }))
             .map(|row| row.footprint.area())
             .sum()
     }

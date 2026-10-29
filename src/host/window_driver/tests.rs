@@ -21,6 +21,7 @@ const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
     FrameSpec {
         physical,
         format: TargetFormat::RGBA8_SRGB,
+        gives_copy: true,
         system_scale,
         refresh_millihertz: None,
         now: Duration::ZERO,
@@ -277,11 +278,15 @@ mod output_validity_tests {
             format: TargetFormat::new(wgpu::TextureFormat::Bgra8UnormSrgb),
             ..resized
         };
+        let uncopyable = FrameSpec {
+            gives_copy: false,
+            ..reformatted
+        };
         let rescaled = FrameSpec {
             system_scale: 2.0,
             refresh_millihertz: Some(120_000),
             now: Duration::from_secs(1),
-            ..reformatted
+            ..uncopyable
         };
         // Whether noting `spec` cleared what a kept target holds.
         let mut clears = |spec: &FrameSpec| {
@@ -298,6 +303,7 @@ mod output_validity_tests {
             ("its repeat", resized, false),
             ("a new format", reformatted, true),
             ("its repeat", reformatted, false),
+            ("one that gives no copy", uncopyable, true),
             ("a new scale, refresh rate and time", rescaled, false),
         ] {
             assert_eq!(clears(&spec), want, "{label}");
@@ -1098,5 +1104,76 @@ mod screenshot_tests {
             }
         }
         assert_eq!(landed, [(first, left), (second, right)]);
+    }
+}
+
+mod capture_path_tests {
+    use crate::host::window_driver::tests::{config, spec};
+    use crate::host::window_driver::{FrameSpec, PresentPath, PresentStrategy, WindowDriver};
+    use crate::internals::record_app::RecordApp;
+    use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::paint::backdrop_filter::BackdropFilter;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+    use crate::shape::Shape;
+    use crate::ui::resources::UiResources;
+    use crate::widget_core::configure::Configure;
+    use crate::widgets::panel::Panel;
+    use crate::window::window_token::WindowToken;
+    use glam::UVec2;
+
+    /// The present path of a fresh window's first frame, whole, under one pane at `pane` on a
+    /// 100 × 80 target that gives a copy when `gives_copy` is.
+    fn first_frame(pane: Rect, gives_copy: bool) -> PresentPath {
+        let shared = UiResources::isolated_mono();
+        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
+        let mut driver = WindowDriver::new(
+            WindowToken(1),
+            &shared,
+            config(PresentStrategy::DirectAdaptive, true),
+        );
+        let spec = FrameSpec {
+            gives_copy,
+            ..spec(UVec2::new(100, 80), 1.0)
+        };
+        driver.note_target(&spec);
+        let mut app = RecordApp::new(|ui| {
+            Panel::canvas()
+                .id_salt("panes")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 4.0, 4.0)).fill(RgbaF32::WHITE));
+                    ui.add_shape(Shape::rect(pane).backdrop_filter(BackdropFilter::blur(2.0)));
+                });
+        });
+        let stamp = driver.stamp(&spec);
+        driver.cpu_frame(&mut frontend, stamp, &mut app).mode
+    }
+
+    /// A whole frame paints straight into the target unless its captures cannot copy out of it,
+    /// which gives no copy, or would copy as much as the surface holds: then it paints through
+    /// the backbuffer, where its blurs read their level 0 in place.
+    #[test]
+    fn a_capturing_frame_paints_through_the_backbuffer_where_its_captures_outweigh_it() {
+        let small = Rect::new(4.0, 4.0, 20.0, 20.0);
+        let whole = Rect::new(0.0, 0.0, 100.0, 80.0);
+        for (pane, gives_copy, through, what) in [
+            (small, true, false, "a small capture"),
+            (small, false, true, "a target that gives no copy"),
+            (whole, true, true, "a capture of the whole surface"),
+        ] {
+            let mode = first_frame(pane, gives_copy);
+            assert_eq!(
+                matches!(mode, PresentPath::ViaBackbuffer(_)),
+                through,
+                "{what}: {mode:?}"
+            );
+            assert!(!matches!(
+                mode,
+                PresentPath::SkipNoop | PresentPath::SkipCopy
+            ));
+        }
     }
 }

@@ -43,7 +43,7 @@ use crate::scene::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::node_record::NodeRecord;
 use crate::scene::tree::paint_animations::PaintAnimations;
-use crate::scene::tree::pane_entry::{PaneEntry, PaneSource};
+use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
 #[cfg(debug_assertions)]
 use crate::scene::tree::rollup_inputs::RollupCheck;
@@ -505,7 +505,7 @@ impl Tree {
             self.panes.push(PaneEntry {
                 node: new_id,
                 shape_idx: self.shapes.records.len() as u32,
-                source: PaneSource::Chrome,
+                origin: PaneOrigin::Chrome,
                 row: 0,
             });
         }

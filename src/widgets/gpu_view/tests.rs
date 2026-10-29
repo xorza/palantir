@@ -7,7 +7,7 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
-use crate::renderer::frontend::Frontend;
+use crate::renderer::frontend::{BuildPlan, Frontend};
 use crate::renderer::gpu_paint::gpu_paint_ref::internals::NoopPaint;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
@@ -112,7 +112,10 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         damage,
     };
 
-    frontend.build(h.ui.frame_scene(), plan(Damage::Full));
+    frontend.build(
+        h.ui.frame_scene(),
+        BuildPlan::without_panes(plan(Damage::Full)),
+    );
     assert_eq!(
         frontend.buffer.frame_targets.len(),
         1,
@@ -127,7 +130,10 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 
     // Damage confined to the corner opposite the bottom-right view.
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
-    frontend.build(h.ui.frame_scene(), plan(Damage::Partial(elsewhere)));
+    frontend.build(
+        h.ui.frame_scene(),
+        BuildPlan::without_panes(plan(Damage::Partial(elsewhere))),
+    );
     assert!(
         frontend.buffer.frame_targets.is_empty(),
         "the view is outside the damage region, so nothing repaints it",

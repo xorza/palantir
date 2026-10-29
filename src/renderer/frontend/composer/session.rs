@@ -9,7 +9,6 @@ use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::geometry::urect::URect;
-use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::math::domain::{EPS, is_invisible};
 use crate::primitives::math::num::{F32Px, Vec2Ext};
 use crate::primitives::packed::fill_axis::FillAxis;
@@ -36,6 +35,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
@@ -53,7 +53,6 @@ use crate::renderer::render_buffer::rounded_clip::RoundedClip;
 use crate::renderer::render_buffer::text_batch::TextBatch;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::renderer::render_buffer::{MAX_ROUNDED_CLIP_DEPTH, RenderBuffer};
-use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
@@ -121,11 +120,11 @@ impl ScaledRect {
     }
 }
 
-/// What a pane's quad brings beyond its lanes: its key, and its backdrop as recorded, in logical
-/// px.
+/// What a pane's quad brings beyond its lanes: its ticket, and its backdrop as recorded, in
+/// logical px.
 #[derive(Clone, Copy, Debug)]
 struct Pane {
-    key: PaneKey,
+    ticket: PaneTicket,
     backdrop: LoweredBackdrop,
 }
 
@@ -301,7 +300,7 @@ impl PaintSink for ComposeSession<'_> {
         self.push_quad(
             p.quad,
             Some(Pane {
-                key: p.key,
+                ticket: p.ticket,
                 backdrop: p.backdrop,
             }),
         );
@@ -809,7 +808,7 @@ impl ComposeSession<'_> {
             return;
         }
         let lut_row = match pane {
-            Some(pane) => self.open_barrier(visible, pane),
+            Some(pane) => self.list_pane(visible, pane),
             None => p.fill.lut_row,
         };
         self.quad_forces_flush(visible);
@@ -926,50 +925,52 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// List the pane `pane`, seen at `visible`, with the barrier its capture reads at; its row is
-    /// the quad's `fill_lut_row`. A pane whose footprint misses everything painted since the last
-    /// break shares it, `0` before any. Else the text batch and the group close at a new barrier,
-    /// so nothing before it coalesces, reorders or prunes against what follows: the main pass
-    /// can break there and read the pixels the groups before it painted.
-    fn open_barrier(&mut self, visible: URect, pane: Pane) -> LutRow {
-        let scale = self.composer.transform.physical_scale();
-        // The σ in f32, as the cascade's footprint takes it: rounded to f16 again, near a level's
-        // edge it would pick another plan, whose reach the footprint misses.
-        let plan = BlurPlan::new(pane.backdrop.sigma() * scale);
-        // A lens samples its blur up to its reach aside, and each sample reads the blur's.
-        let lens_reach = pane.backdrop.lens_reach(scale);
-        let reach = UVec2::splat(plan.reach().saturating_add(lens_reach));
-        let footprint = URect::from_min_max(
-            visible.min.saturating_sub(reach),
-            visible
-                .max()
-                .saturating_add(reach)
-                .min(self.out.display.physical),
+    /// List the pane `pane`, seen at `visible`, where its ticket says; its row is the quad's
+    /// `fill_lut_row`. A held pane joins the open group. A capturing pane whose footprint misses
+    /// everything painted since the last break shares it, and shows the clear when that is `0`,
+    /// before any; else the text batch and the group close at a new barrier, so nothing before it
+    /// coalesces, reorders or prunes against what follows: the main pass can break there and read
+    /// the pixels the groups before it painted.
+    fn list_pane(&mut self, visible: URect, pane: Pane) -> LutRow {
+        let Pane { ticket, backdrop } = pane;
+        debug_assert!(
+            ticket.footprint.union(visible) == ticket.footprint,
+            "a pane's footprint holds what it shows"
         );
-        let barrier = self
-            .composer
-            .pane_break
-            .shared(footprint)
-            .unwrap_or_else(|| {
-                self.close_batch();
-                self.flush();
-                let barrier = self.out.groups.len() as u32;
-                self.composer.pane_break.open(barrier);
-                barrier
-            });
+        let source = if ticket.captures {
+            let barrier = self
+                .composer
+                .pane_break
+                .shared(ticket.footprint)
+                .unwrap_or_else(|| {
+                    self.close_batch();
+                    self.flush();
+                    let barrier = self.out.groups.len() as u32;
+                    self.composer.pane_break.open(barrier);
+                    barrier
+                });
+            if barrier == 0 {
+                PaneSource::Clear
+            } else {
+                PaneSource::Capture { barrier }
+            }
+        } else {
+            PaneSource::Held
+        };
+        let scale = self.composer.transform.physical_scale();
         let row = LutRow(self.out.backdrops.len() as u32);
         self.out.backdrops.push(BackdropRow {
-            key: pane.key,
-            footprint,
-            plan,
-            barrier,
-            lens: pane.backdrop.lens().map(|lens| Lens {
+            key: ticket.key,
+            footprint: ticket.footprint,
+            plan: ticket.plan,
+            region: ticket.region,
+            lens: backdrop.lens().map(|lens| Lens {
                 bezel: lens.bezel * scale,
                 thickness: lens.thickness * scale,
                 ..lens
             }),
-            max_luminance: pane.backdrop.max_luminance(),
-            source: PaneSource::Held,
+            max_luminance: backdrop.max_luminance(),
+            source,
         });
         row
     }

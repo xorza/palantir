@@ -10,6 +10,7 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::renderer::frontend::BuildPlan;
 use crate::renderer::render_plan::RenderPlan;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -143,7 +144,8 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 "encode/{label}: the plan"
             );
             let mut build = || {
-                h.frontend.build(h.harness.ui.frame_scene(), plan);
+                h.frontend
+                    .build(h.harness.ui.frame_scene(), BuildPlan::without_panes(plan));
                 h.frontend.buffer.groups.len()
             };
             let groups = build();

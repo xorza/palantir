@@ -30,7 +30,8 @@ use crate::scene::forest::Forest;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::pane_entry::PaneSource;
+use crate::scene::tree::pane_entry::PaneOrigin;
+use crate::shape::paint::blur_plan::BlurPlan;
 use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -545,11 +546,13 @@ fn list_panes(tree: &Tree, lc: &mut PlaneCascade, display_scale: f32) {
         if rect.is_paint_empty() {
             continue;
         }
-        let backdrop = match entry.source {
-            PaneSource::Chrome => tree.chrome(entry.node).map(|row| row.backdrop),
-            PaneSource::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
+        let backdrop = match entry.origin {
+            PaneOrigin::Chrome => tree.chrome(entry.node).map(|row| row.backdrop),
+            PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
         }
         .expect("a listed pane has a backdrop");
+        let scale = lc.shape_scales[node] * display_scale;
+        let plan = BlurPlan::new(backdrop.sigma() * scale);
         lc.panes.push(PaneRow {
             key: PaneKey {
                 owner: widget_ids[node],
@@ -557,7 +560,9 @@ fn list_panes(tree: &Tree, lc: &mut PlaneCascade, display_scale: f32) {
             },
             row,
             rect,
-            footprint: PaneRow::footprint_of(rect, backdrop, lc.shape_scales[node], display_scale),
+            plan,
+            footprint: rect
+                .inflated(PaneRow::reach(plan, backdrop.lens_reach(scale)) / display_scale),
         });
     }
 }

@@ -6,12 +6,12 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::stencil::Stencil;
-use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::shape::record_store::RecordStore;
 
 /// `Copy` because all three are borrows: [`WgpuBackend::submit`] pulls them out and still hands the whole [`Submission`] on.

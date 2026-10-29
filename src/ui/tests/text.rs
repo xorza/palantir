@@ -9,7 +9,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::interned_str::InternedStr;
-use crate::renderer::frontend::Frontend;
+use crate::renderer::frontend::{BuildPlan, Frontend};
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -382,7 +382,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     assert!(!idle.ui.resources.text().has_cosmic_buffer(idle_key));
 
     let mut frontend = Frontend::for_test();
-    frontend.build(idle.ui.frame_scene(), plan);
+    frontend.build(idle.ui.frame_scene(), BuildPlan::without_panes(plan));
     let run = frontend
         .buffer
         .texts
