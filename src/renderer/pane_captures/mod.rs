@@ -20,6 +20,12 @@
 //!   Only where it would capture: a partial frame keeps every draw under a capturing pane's
 //!   footprint, so a barrier of 0 there means nothing lies under it, where a held pane's barrier
 //!   counts only the draws the damage kept.
+//! - **A hidden pane drops its capture.** A pane whose quad a later opaque quad covers, which
+//!   the occlusion pruner or the clear fold drops, neither captures nor keeps what it held:
+//!   damage under it while it is hidden reaches no capture, so a kept result would be stale when
+//!   it shows. It captures anew then, as the cover's leaving damages its rect. Refused: never
+//!   pruning a pane, which keeps its result fresh at the cost of a capture and a blur a frame for
+//!   a pane nobody sees.
 
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::primitives::geometry::urect::URect;
@@ -72,7 +78,7 @@ impl PaneCaptures {
     /// Mark where each of `buffer`'s panes takes its result this frame. On a `full` frame every
     /// pane takes a new one, else each one `dirty` holds or whose held capture does not serve:
     /// from the clear when nothing is painted before it, else from a capture. Drops the captures
-    /// of panes no longer on screen.
+    /// of panes no longer on screen, and of hidden panes, which stay hidden.
     pub(crate) fn settle(
         &mut self,
         buffer: &mut RenderBuffer,
@@ -84,6 +90,10 @@ impl PaneCaptures {
         let surface = buffer.display.physical;
         let mut captures = 0;
         for row in &mut buffer.backdrops {
+            if row.source == PaneSource::Hidden {
+                self.held.remove(&row.key);
+                continue;
+            }
             let region = row
                 .plan
                 .region(row.footprint, surface)

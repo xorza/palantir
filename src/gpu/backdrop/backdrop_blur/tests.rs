@@ -1,5 +1,6 @@
-use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, LEVEL_FORMAT};
+use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, BlurParams, LEVEL_FORMAT};
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
@@ -8,6 +9,7 @@ use crate::shape::paint::blur_plan::internals::{mirror, reference_tent};
 use glam::UVec2;
 use half::f16;
 use std::iter;
+use std::mem::offset_of;
 use std::sync::mpsc;
 use wgpu::util::StagingBelt;
 
@@ -317,4 +319,25 @@ fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
             }
         }
     }
+}
+
+/// `BlurParams` lies as `blur.wgsl` declares it, which a uniform binding reads unchecked: its
+/// taps start on the 16 bytes a `vec4` array aligns to, past the radius and its pad.
+#[test]
+fn blur_params_lie_as_the_shader_reads_them() {
+    ShaderBody::BackdropBlur.assert_struct_layout(
+        "BlurParams",
+        size_of::<BlurParams>(),
+        &[
+            (
+                "target_to_lattice",
+                offset_of!(BlurParams, target_to_lattice),
+            ),
+            ("level_size", offset_of!(BlurParams, level_size)),
+            ("source_origin", offset_of!(BlurParams, source_origin)),
+            ("source_max", offset_of!(BlurParams, source_max)),
+            ("radius", offset_of!(BlurParams, radius)),
+            ("taps", offset_of!(BlurParams, taps)),
+        ],
+    );
 }

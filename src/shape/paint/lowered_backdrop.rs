@@ -38,10 +38,11 @@ impl LoweredBackdrop {
         self.look.lanes()[0]
     }
 
-    /// The pane quad's axis lanes, `(σ, saturation, noise, opacity)`, at full opacity.
+    /// The pane quad's axis lanes, `(0, saturation, noise, opacity)`, at full opacity. The σ stays
+    /// out: the composer plans the blur from [`Self::sigma`] in f32, and no shader reads it.
     pub(crate) fn fill_axis(self) -> FillAxis {
-        let [sigma, saturation, noise, _] = self.look.lanes();
-        FillAxis::from_lanes([sigma, saturation, noise, 1.0])
+        let [_, saturation, noise, _] = self.look.lanes();
+        FillAxis::from_lanes([0.0, saturation, noise, 1.0])
     }
 
     /// The highest relative luminance the pane shows: its ceiling, or 65504 with none.

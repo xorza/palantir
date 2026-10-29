@@ -2,7 +2,7 @@
 //!
 //! - `TIMESTAMP_QUERY_INSIDE_PASSES` writes a timestamp at every category transition in `render_groups`, attributed per [`BatchKind`]; off, only pass begin/end are timed. Where the main pass breaks at a pane, the break's start and end are timestamped, and the captures and blurs between count in no category.
 //! - `PIPELINE_STATISTICS_QUERY` brackets each pass of the main pass, and the frame publishes their sum.
-//! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_IDX`], published as [`GpuPassStats::last_copy_out`], and each backdrop pane's capture and blur at [`BACKDROP_IDX`], published as their sums.
+//! - `TIMESTAMP_QUERY_INSIDE_ENCODERS` brackets the backbuffer copy-out at [`COPY_OUT_IDX`], published as [`GpuPassStats::last_copy_out`], and each backdrop break's captures and blurs at [`BACKDROP_IDX`], published as their sums.
 //!
 //! A frame's queries resolve in a later frame, once the queue said the frame's work is done, and
 //! read back after that frame completes: publishing lags two frames. A Metal device on macOS 26
@@ -28,13 +28,13 @@ const MAX_TIMESTAMPS: u32 = 32;
 /// Where the copy-out's timestamps sit, past every main-pass slot; a query resolve must land on a `QUERY_RESOLVE_BUFFER_ALIGNMENT` offset, which the main pass's slots fill exactly.
 const COPY_OUT_IDX: u32 = MAX_TIMESTAMPS;
 const COPY_OUT_OFFSET: u64 = COPY_OUT_IDX as u64 * BYTES_PER_U64;
-/// The panes whose capture and blur are timed; a frame's later panes go untimed.
-const MAX_TIMED_PANES: u32 = 8;
-/// Where the panes' timestamps start, at the resolve alignment past the copy-out's: three each,
-/// the capture's start, its end, which starts the blur, and the blur's end.
+/// The backdrop breaks whose captures and blurs are timed; a frame's later breaks go untimed.
+const MAX_TIMED_BREAKS: u32 = 8;
+/// Where the breaks' timestamps start, at the resolve alignment past the copy-out's: three each,
+/// the captures' start, their end, which starts the blurs, and the blurs' end.
 const BACKDROP_IDX: u32 = 2 * MAX_TIMESTAMPS;
 const BACKDROP_OFFSET: u64 = BACKDROP_IDX as u64 * BYTES_PER_U64;
-const QUERY_COUNT: u32 = BACKDROP_IDX + 3 * MAX_TIMED_PANES;
+const QUERY_COUNT: u32 = BACKDROP_IDX + 3 * MAX_TIMED_BREAKS;
 const TIMESTAMP_BUFFER_BYTES: u64 = QUERY_COUNT as u64 * BYTES_PER_U64;
 
 const _: () = assert!(COPY_OUT_OFFSET.is_multiple_of(wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT));
@@ -93,8 +93,8 @@ struct Slot {
     /// break between passes; empty in basic mode.
     segment_kinds: Vec<Option<BatchKind>>,
     copied_out: bool,
-    /// The panes whose timestamps the slot holds.
-    backdrop_panes: u32,
+    /// The backdrop breaks whose timestamps the slot holds.
+    backdrop_breaks: u32,
     /// The passes whose pipeline statistics the slot holds; `None` when the frame had more than
     /// [`MAX_STATS_PASSES`].
     stats_passes: Option<u32>,
@@ -117,8 +117,8 @@ struct Inner {
     /// A break found no room for its timestamps, so the frame attributes no time by kind.
     kinds_void: Cell<bool>,
     copied_out: Cell<bool>,
-    /// The panes timed this frame.
-    backdrop_panes: Cell<u32>,
+    /// The backdrop breaks timed this frame.
+    backdrop_breaks: Cell<u32>,
     /// The passes that opened a pipeline-statistics query this frame, counting those past
     /// [`MAX_STATS_PASSES`].
     stats_passes: Cell<u32>,
@@ -184,7 +184,7 @@ impl QueryTracer {
             timestamps_count: 0,
             segment_kinds: Vec::with_capacity(MAX_TIMESTAMPS as usize),
             copied_out: false,
-            backdrop_panes: 0,
+            backdrop_breaks: 0,
             stats_passes: Some(0),
             stats_buffer: pipeline_stats
                 .then(|| staging("palantir.gpu_timings.stats.staging", STATS_BUFFER_BYTES)),
@@ -216,7 +216,7 @@ impl QueryTracer {
                 broken: Cell::new(false),
                 kinds_void: Cell::new(false),
                 copied_out: Cell::new(false),
-                backdrop_panes: Cell::new(0),
+                backdrop_breaks: Cell::new(0),
                 stats_passes: Cell::new(0),
             },
         }
@@ -351,14 +351,14 @@ impl QueryTracer {
                 self.inner.copied_out.set(true);
                 COPY_OUT_IDX + 1
             }
-            Mark::Backdrop { pane, phase } => {
-                let Some(pane) = u32::try_from(pane).ok().filter(|&p| p < MAX_TIMED_PANES) else {
+            Mark::Backdrop { at, phase } => {
+                let Some(at) = u32::try_from(at).ok().filter(|&b| b < MAX_TIMED_BREAKS) else {
                     return;
                 };
                 if phase == BackdropPhase::BlurEnd {
-                    self.inner.backdrop_panes.set(pane + 1);
+                    self.inner.backdrop_breaks.set(at + 1);
                 }
-                BACKDROP_IDX + 3 * pane + phase as u32
+                BACKDROP_IDX + 3 * at + phase as u32
             }
         };
         encoder.write_timestamp(set, idx);
@@ -371,7 +371,7 @@ impl QueryTracer {
     /// a free slot, or goes unmeasured while every slot is busy.
     pub(super) fn finish(&mut self, encoder: &mut wgpu::CommandEncoder) {
         let copied_out = self.inner.copied_out.replace(false);
-        let backdrop_panes = self.inner.backdrop_panes.replace(0);
+        let backdrop_breaks = self.inner.backdrop_breaks.replace(0);
         let stats_passes = self.inner.stats_passes.replace(0);
         if let Some(at) = self.writing.take() {
             // Basic mode is 2 (the descriptor wrote 0/1); per-batch is what the segments and `mark()` accumulated.
@@ -392,7 +392,7 @@ impl QueryTracer {
             drop(kinds);
             slot.stats_passes = (stats_passes <= MAX_STATS_PASSES).then_some(stats_passes);
             slot.copied_out = copied_out;
-            slot.backdrop_panes = backdrop_panes;
+            slot.backdrop_breaks = backdrop_breaks;
             slot.done.store(false, Release);
             slot.state = SlotState::Submitted;
             self.submitted = Some(at);
@@ -499,9 +499,9 @@ impl Slot {
         if self.copied_out {
             copy(COPY_OUT_IDX..COPY_OUT_IDX + 2, COPY_OUT_OFFSET);
         }
-        if self.backdrop_panes > 0 {
+        if self.backdrop_breaks > 0 {
             copy(
-                BACKDROP_IDX..BACKDROP_IDX + 3 * self.backdrop_panes,
+                BACKDROP_IDX..BACKDROP_IDX + 3 * self.backdrop_breaks,
                 BACKDROP_OFFSET,
             );
         }
@@ -569,7 +569,7 @@ impl Slot {
             self.timestamps_count as usize,
         );
         publisher.copy_out(&ts_range, self.copied_out);
-        publisher.backdrops(&ts_range, self.backdrop_panes);
+        publisher.backdrops(&ts_range, self.backdrop_breaks);
         drop(ts_range);
         self.timestamps_buffer.unmap();
 
@@ -627,15 +627,16 @@ impl Publisher<'_> {
         self.sink.record_copy_out_ns(ns);
     }
 
-    /// The sums of `panes` panes' capture and blur times; a frame with none clears both.
-    fn backdrops(self, ts: &[u8], panes: u32) {
-        let at = |pane: u32, phase: u32| (BACKDROP_IDX + 3 * pane + phase) as usize;
+    /// The sums of `breaks` backdrop breaks' capture and blur times; a frame with none clears
+    /// both.
+    fn backdrops(self, ts: &[u8], breaks: u32) {
+        let at = |at: u32, phase: u32| (BACKDROP_IDX + 3 * at + phase) as usize;
         let sum = |from: u32, to: u32| {
-            (0..panes)
-                .map(|pane| self.span_ns(ts, at(pane, from), at(pane, to)))
+            (0..breaks)
+                .map(|b| self.span_ns(ts, at(b, from), at(b, to)))
                 .sum::<u64>()
         };
-        let timed = panes > 0;
+        let timed = breaks > 0;
         self.sink.record_backdrop_ns(BackdropTimes {
             captures: timed.then(|| sum(0, 1)),
             blurs: timed.then(|| sum(1, 2)),

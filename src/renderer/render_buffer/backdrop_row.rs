@@ -23,7 +23,8 @@ pub(crate) struct BackdropRow {
     /// The highest relative luminance the pane shows under its tint.
     pub(crate) max_luminance: f32,
     /// Where the pane's result comes from this frame. Set by
-    /// [`PaneCaptures::settle`](crate::renderer::pane_captures::PaneCaptures::settle).
+    /// [`PaneCaptures::settle`](crate::renderer::pane_captures::PaneCaptures::settle), or
+    /// [`PaneSource::Hidden`] by the composer.
     pub(crate) source: PaneSource,
 }
 
@@ -38,4 +39,8 @@ pub(crate) enum PaneSource {
     /// Nothing is painted before it, so its backdrop is the clear, which a blur leaves as it is:
     /// it shows the clear and neither captures nor blurs.
     Clear,
+    /// A later opaque quad covers its quad, which the composer dropped: the occlusion pruner, or
+    /// the clear fold. It shows nothing, captures nothing and holds no result, so it captures
+    /// anew once it shows.
+    Hidden,
 }

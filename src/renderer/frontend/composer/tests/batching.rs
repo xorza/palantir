@@ -22,16 +22,18 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
+use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
+use crate::shape::rect::RectKind;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_6};
 
 /// `Quad -> Text -> Quad` in one scissor makes two groups, so the second quad renders after the text.
 #[test]
@@ -169,6 +171,58 @@ fn a_quad_over_text_that_already_rendered_does_not_flush() {
         Span::new(0, 2),
         "both quads draw in group 1"
     );
+}
+
+/// A quad over text whose last group is already closed, and over an image of the open group,
+/// closes the batch and flushes: the image renders at the end of group 1, so the quad goes to
+/// group 2, above it.
+#[test]
+fn a_quad_over_closed_text_and_an_open_image_flushes() {
+    let buf = run(
+        |b, _arena| {
+            text(b, Rect::new(0.0, 0.0, 50.0, 20.0));
+            image(b, Rect::new(100.0, 0.0, 40.0, 40.0));
+            draw(b, Rect::new(100.0, 0.0, 40.0, 40.0)); // over the image: flushes group 0
+            image(b, Rect::new(150.0, 0.0, 40.0, 40.0)); // in group 1
+            draw(b, Rect::new(0.0, 0.0, 200.0, 40.0)); // over the text and the second image
+        },
+        &params(1.0, UVec2::new(200, 100)),
+    );
+    assert_eq!(buf.text_batches.len(), 1);
+    assert_eq!(buf.text_batches[0].last_group, 0);
+    assert_eq!(buf.groups.len(), 3, "the last quad flushes group 1");
+    assert_eq!(buf.groups[1].quads, Span::new(0, 1));
+    assert_eq!(buf.groups[2].quads, Span::new(1, 1));
+}
+
+/// A quad turned 30° about its center reaches the AA half width past each edge in its own frame:
+/// (10, 10)..(30, 20) shades (8, 4)..(32, 26), as `Quad::shaded_rect` says. An image in row 25,
+/// which only that fringe reaches, comes before it, so the quad flushes to paint above it.
+#[test]
+fn a_turned_quad_orders_against_its_fringe() {
+    let buf = run(
+        |b, _arena| {
+            image(b, Rect::new(18.0, 25.0, 4.0, 1.0));
+            b.draw_quad(
+                DrawQuadPayload::rect(RectQuad {
+                    kind: RectKind::Rounded,
+                    rect: Rect::new(10.0, 10.0, 20.0, 10.0),
+                    corners: Corners::ZERO,
+                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+                    stroke: ShapeStroke::NONE,
+                })
+                .turned(Some(Spin {
+                    pivot: Vec2::new(20.0, 15.0),
+                    angle: FRAC_PI_6,
+                })),
+                1.0,
+            );
+        },
+        &params(1.0, UVec2::new(100, 100)),
+    );
+    assert_eq!(buf.quads[0].shaded_rect(), Rect::new(8.0, 4.0, 24.0, 22.0));
+    assert_eq!(buf.groups.len(), 2, "the quad flushes past the image");
+    assert_eq!(buf.groups[1].quads, Span::new(0, 1));
 }
 
 #[test]

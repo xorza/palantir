@@ -1741,6 +1741,7 @@ dependencies = [
  "glam",
  "half",
  "image",
+ "naga",
  "padding-struct",
  "palantir",
  "palantir-anim-derive",

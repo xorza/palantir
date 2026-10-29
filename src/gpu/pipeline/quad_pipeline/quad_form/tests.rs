@@ -1,4 +1,5 @@
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
+use crate::internals::panic_probe;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
 
@@ -15,7 +16,20 @@ fn a_quad_takes_its_tags_form() {
         ),
         (FillKind::conic(Spread::Reflect), QuadForm::Gradient),
         (FillKind::TRIANGLE, QuadForm::Triangle),
+        (FillKind::BACKDROP, QuadForm::Backdrop),
     ] {
         assert_eq!(QuadForm::of(kind), form, "{kind:?}");
+    }
+}
+
+/// No quad form draws a shadow or the curves' ramp.
+#[test]
+fn a_tag_no_form_draws_panics() {
+    for kind in [
+        FillKind::SHADOW_DROP,
+        FillKind::SHADOW_INSET,
+        FillKind::RAMP,
+    ] {
+        panic_probe::assert_panics_with("a quad form draws the tag", || QuadForm::of(kind));
     }
 }

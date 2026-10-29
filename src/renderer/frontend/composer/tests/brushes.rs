@@ -33,8 +33,7 @@ use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
 
-/// A solid `Brush::Solid` panel emits a Quad with `fill_kind = BRUSH_KIND_SOLID
-/// = 0`, `fill_lut_row = 0` (no gradient) and the fill color passed through.
+/// A solid `Brush::Solid` panel emits a Quad with `fill_kind = FillKind::SOLID`, `fill_lut_row = 0` (no gradient) and the fill color passed through.
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     let mut buffer = PaintCapture::default();

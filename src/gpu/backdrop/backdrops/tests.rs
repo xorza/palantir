@@ -1,6 +1,7 @@
 use crate::display::Display;
-use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops, Kept, held_clear};
+use crate::gpu::backdrop::backdrops::{BackdropFrame, BackdropSlot, Backdrops, Kept, held_clear};
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
@@ -14,6 +15,7 @@ use crate::renderer::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 use std::iter;
+use std::mem::offset_of;
 use wgpu::util::StagingBelt;
 
 const SURFACE: UVec2 = UVec2::new(200, 100);
@@ -156,5 +158,23 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
             TargetFormat::new(wgpu::TextureFormat::Rgba16Float)
         ),
         [float.r, float.g, float.b]
+    );
+}
+
+/// `BackdropSlot` lies as the quad shader declares it, which a storage binding reads unchecked:
+/// the clear, a `vec3` the shader aligns to 16 bytes, starts after the lens at 32.
+#[test]
+fn a_backdrop_slot_lies_as_the_shader_reads_it() {
+    ShaderBody::Quad.assert_struct_layout(
+        "BackdropSlot",
+        size_of::<BackdropSlot>(),
+        &[
+            ("offset", offset_of!(BackdropSlot, offset)),
+            ("lattice", offset_of!(BackdropSlot, lattice)),
+            ("highlight", offset_of!(BackdropSlot, highlight)),
+            ("lens", offset_of!(BackdropSlot, lens)),
+            ("clear", offset_of!(BackdropSlot, clear)),
+            ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
+        ],
     );
 }

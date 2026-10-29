@@ -64,10 +64,8 @@ impl ShaderBody {
                 ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
                 ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
                 ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
-                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::TAG_SOLID),
                 ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
                 ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
-                ShaderConstant::uint("BRUSH_KIND_CONIC", FillKind::TAG_CONIC),
                 ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
                 ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
                 ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
@@ -186,6 +184,61 @@ fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
         "WGSL template contains an unsubstituted constant marker",
     );
     specialized
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::gpu::pipeline::shader_body::ShaderBody;
+    use naga::front::wgsl;
+    use naga::proc::Layouter;
+
+    impl ShaderBody {
+        /// Assert that struct `name` of this shader, laid out as naga lays it out for wgpu, is
+        /// `size` bytes with `members` in order, each a WGSL member's name and the offset of the
+        /// Rust field that mirrors it.
+        #[track_caller]
+        pub(crate) fn assert_struct_layout(
+            self,
+            name: &str,
+            size: usize,
+            members: &[(&str, usize)],
+        ) {
+            let module = wgsl::parse_str(&self.specialize())
+                .unwrap_or_else(|err| panic!("{self:?} parses: {err}"));
+            let mut layouter = Layouter::default();
+            layouter
+                .update(module.to_ctx())
+                .unwrap_or_else(|err| panic!("{self:?} lays out: {err}"));
+            let (handle, ty) = module
+                .types
+                .iter()
+                .find(|(_, ty)| ty.name.as_deref() == Some(name))
+                .unwrap_or_else(|| panic!("{self:?} declares struct {name}"));
+            let naga::TypeInner::Struct {
+                members: declared, ..
+            } = &ty.inner
+            else {
+                panic!("{name} is a struct");
+            };
+            let declared: Vec<(&str, usize)> = declared
+                .iter()
+                .map(|m| {
+                    (
+                        m.name.as_deref().expect("a named member"),
+                        m.offset as usize,
+                    )
+                })
+                .collect();
+            assert_eq!(
+                declared, members,
+                "{name}'s members against its Rust mirror"
+            );
+            assert_eq!(
+                layouter[handle].size as usize, size,
+                "{name}'s size against its Rust mirror"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

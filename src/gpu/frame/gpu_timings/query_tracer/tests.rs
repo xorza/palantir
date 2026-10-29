@@ -87,7 +87,7 @@ fn copy_out_publishes_its_two_timestamps_or_clears() {
     assert_eq!(sink.last_copy_out(), None, "a frame with no copy clears it");
 }
 
-/// Two panes' captures and blurs publish as sums of their spans, at 1 ns/tick: captures
+/// Two breaks' captures and blurs publish as sums of their spans, at 1 ns/tick: captures
 /// `(110 − 100) + (230 − 200)` = 40 ns, blurs `(150 − 110) + (290 − 230)` = 100 ns; a frame
 /// with none clears both.
 #[test]

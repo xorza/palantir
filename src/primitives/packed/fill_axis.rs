@@ -27,13 +27,6 @@ impl FillAxis {
         Self(F16x4::from_lanes(lanes))
     }
 
-    /// `lanes` [saturated](F16x4::from_lanes_saturating), for lanes the composer scales to
-    /// physical px: a pane's σ by the display scale and every zoom.
-    #[inline]
-    pub(crate) fn from_lanes_saturating(lanes: [f32; 4]) -> Self {
-        Self(F16x4::from_lanes_saturating(lanes))
-    }
-
     #[inline]
     pub(crate) fn lanes(self) -> [f32; 4] {
         self.0.lanes()

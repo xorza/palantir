@@ -37,8 +37,9 @@ test.
      `pipeline ⇄ shader_body` module cycles.
    - Each atlas has its own growth and "full" contract, and the backdrop atlas panics.
    - Each pipeline hand-rolls the same scaffolding with a different bind and upload shape.
-5. **Rust and WGSL mirrors are not pinned.** `BackdropSlot`, the shadow spread rules and the shadow
-   box are written twice, and no test compares the two copies.
+5. **Rust and WGSL logic mirrors are not pinned.** The shadow spread rules and the shadow box are
+   written twice, and no test compares the two copies. (The buffer structs are pinned by naga
+   reflection: `ShaderBody::assert_struct_layout`.)
 
 ### Target design
 
@@ -86,77 +87,7 @@ test.
   - Quad draws are keyed once per instance (`QuadDraw::{Form, Shadow}`), and the pipeline knows
     which groups each key binds. The backend does not branch on `QuadForm::Backdrop`.
 
-### Decisions that are yours
-
-- **naga as a dev-dependency:** for a reflection test that pins every Rust/WGSL struct and vertex
-  location, and that replaces the hand-written WGSL call-graph scanner in `shader_body/tests.rs`.
-  Without it, batch 1 pins `BackdropSlot` with hand `offset_of!` asserts.
-- **`DriverError` variants (public API):** they box `RequestAdapterError`, `RequestDeviceError`
-  and `CreateSurfaceError` as `dyn Error`. The guide keeps a foreign error as its own type, and
-  the crate already does `pub use wgpu`.
-- **Device loss (public behavior):** no `set_device_lost_callback` or `on_uncaptured_error` is
-  set. A GPU reset panics in `Gpu::wait`, in `Capture::take`, or in wgpu's default handler.
-  Choose an error case that the host surfaces, or a documented crash contract.
-- **Benches and the layering rule (AGENTS.md):** `gpu/bench.rs`, `curve_pipeline/bench.rs`,
-  `image_pipeline/bench.rs` and `frontend/bench.rs` import `host`, `ui`, `widgets` and
-  `widget_core`, against "a top-level module imports only modules to its left". AGENTS.md also
-  puts each `bench.rs` beside the code it measures. Choose: write a bench exemption into the
-  layering rule, or move the end-to-end benches to `src/bench/`.
-
 ## Plan
-
-### Batch 1: bugs
-
-Each item is small and independent, and each gets a test.
-
-- [ ] `src/renderer/frontend/composer/session.rs:1170-1185` `quad_forces_flush`.
-  - Defect: on an open-batch hit whose batch's last group is already closed, it closes the batch
-    and returns without the `higher_kinds.any_overlap` / `closed_hit` test. A quad after an
-    overlapping image, mesh, icon or curve in the open group stays in that group and is painted
-    below it.
-  - Repro: `text(0,0,50,20); image(100,0,40,40); draw(100,0,40,40); image(150,0,40,40);
-    draw(0,0,200,40)`.
-  - Target: flush when `renders_after || closed_hit(q) || higher_kinds.any_overlap(q)`, whatever
-    the batch-close branch did.
-- [ ] `src/renderer/frontend/composer/occlusion_pruner.rs:86-89`.
-  - Defect: the pruner exempts only shadows. A pane quad covered by a later opaque quad in its
-    group is dropped, but its `BackdropRow` stays, so the frame still copies and blurs it: about 5
-    passes, 48 µs each on the M2.
-  - Target: never prune an `is_backdrop()` quad, or drop its row with it.
-- [ ] `src/renderer/frontend/composer/session.rs:194-206` `turned_rect` against
-  `src/renderer/quad.rs:37-41` `Quad::shaded_rect`.
-  - Defect: for a turned quad, cull, order and the pane break use a rect one pixel row short of
-    the shaded AA fringe. A draw that touches only the fringe neither flushes nor orders, and a
-    later pane can share a break that misses it.
-  - Target: one reach function per instance type, used by cull, order, pane break and prune.
-    Check turned images (`session.rs:411-420`) the same way.
-- [ ] `src/renderer/frontend/composer/session.rs:942` against `src/cascade/pane_row.rs:24-35`.
-  - Defect: the composer builds the `BlurPlan` from the σ lane rounded to f16. The cascade builds
-    it from the f32 σ. Near a level threshold the composer's reach can pass the cascade footprint
-    plus its 1 px margin: on a partial frame the capture then reads pixels that were not encoded.
-  - Target: the composer takes `pane.backdrop.sigma() * scale` in f32. Batch 2 removes the second
-    derivation.
-- [ ] `src/gpu/wgpu_backend/mod.rs` `run_main_pass` against
-  `src/gpu/frame/gpu_timings/query_tracer/mod.rs:32,354-361`.
-  - Defect: timing slots are per pane (`MAX_TIMED_PANES = 8`, 3 slots each), but blurs run per
-    break. A break whose last job index is 8 or more drops its `BlurEnd`, so the whole break's blur
-    time is lost. 12 panes in one break publish `blurs: Some(0)`.
-  - Target: three marks per break (capture start, blur start, blur end), capped by breaks.
-- [ ] `src/gpu/pipeline/quad_pipeline/shader.wgsl:647`, `src/gpu/pipeline/curve_pipeline/shader.wgsl:426`.
-  - Defect: implicit-LOD `textureSample` under branches on flat varyings. Naga accepts it only
-    because it relaxes fragment uniformity; Tint rejects it.
-  - Target: `textureSampleLevel(…, 0.0)`, as the image shader does. The LUT has one mip, so the
-    pixels do not change.
-- [ ] `src/gpu/pipeline/quad_pipeline/quad_form/mod.rs:494-501`, `shader.wgsl:582-593,636-640`.
-  - Defect: an unknown fill tag silently becomes Gradient, then Solid, and an unknown spread
-    becomes Pad. The crate mints these tags, so such a value is a logic error painted as a
-    plausible quad.
-  - Target: `debug_assert!` / `unreachable!` in `QuadForm::of`. The WGSL fallback is the last
-    known tag.
-- [ ] `src/gpu/backdrop/backdrops/mod.rs:28-35` against `quad_pipeline/shader.wgsl:98-115`.
-  - Defect: `BackdropSlot` (48 B, `clear: vec3` at 32) is not pinned. A field reorder would
-    misread silently, because a Rust `[f32; 3]` aligns to 4 and a WGSL `vec3` to 16.
-  - Target: `size_of` / `offset_of!` asserts now, or the naga reflection test (your decision).
 
 ### Batch 2: the pane ledger decides the capture set once
 
@@ -384,7 +315,7 @@ Needs batch 5.
 Files: `src/renderer/frontend/composer/` (`session.rs`, `mod.rs`, `rect_grid/`, `tile_index.rs`,
 `occlusion_pruner.rs`, `higher_kind_rects.rs`, `pane_break.rs`), `src/renderer/frontend/paint_sink/`,
 `src/renderer/frontend/payload/draw_quad_payload/`, `src/renderer/frontend/encoder/plane_ctx.rs`.
-Batch 1 already fixes the bugs; this batch removes their cause.
+The bugs these paths caused are fixed; this batch removes their cause.
 
 - [ ] `session.rs` (1281 lines).
   - Defect: per-kind lowering is mixed with paint-order arbitration. Quad (806-815), text
@@ -478,6 +409,8 @@ Files: `src/gpu/pipeline/` (all families, `shader_body/`, `format_pipelines.rs`)
   - the `QuadForm::of` table adds `Backdrop` and the shadow tags;
   - `curve_indices_tile_adjacent_cross_sections` (`curve_pipeline/mod.rs:177-200`) checks hand
     indices, not the generator's own formula;
+  - `shader_body/tests.rs` (`reachable_functions`, `strip_comments`) walks the WGSL call graph
+    by hand; naga, now a dev-dependency, gives the module's call graph;
   - remove `a_span_past_the_keys_panics` (`runs.rs:80-85`, std's bounds check) and
     `raster_quad_is_32_bytes` (already pinned by `hot_struct_sizes.rs:218`).
 
@@ -552,6 +485,36 @@ Files: `src/host/offscreen.rs:109-150`, `src/host/window_driver/mod.rs:197-216`,
   - Defect: the color side stores straight alpha and premultiplies per tap, while
     `WgpuImageStore` premultiplies at upload.
   - Target: premultiply at upload.
+- [ ] `src/gpu/error.rs` `DriverError` (public API, approved).
+  - Defect: it boxes `RequestAdapterError`, `RequestDeviceError` and `CreateSurfaceError` as
+    `dyn Error`, though the crate does `pub use wgpu`.
+  - Target: one variant per failure, each holding its wgpu error type as its `source`.
+    Regenerate `.notes/API_SURFACE.md`.
 - [ ] `src/gpu/test_gpu.rs:46-60`.
   - Defect: the lease keeps device and queue apart, and `handles()` clones a `Gpu` on each call.
   - Target: the lease holds a `Gpu`.
+
+### Batch 12: recover from a lost device
+
+Decided 2026-10-29: recover, as the WebGPU spec advises for a loss the app did not cause and as
+Zed's gpui does on wgpu (zed-industries/zed PR #50898). Needs batch 5, whose `RenderStream` is
+what a recovery rebuilds. The public API shape (the `GpuPaint` hook, the error variant) is
+proposed before it lands.
+
+- [ ] `src/gpu/device/gpu.rs:56-63`, `src/gpu/surface/capture.rs:221-226`,
+  `src/gpu/surface/window_surface.rs:104-106`.
+  - Defect: no `set_device_lost_callback` or `on_uncaptured_error` is set. A GPU reset panics in
+    `Gpu::wait`, in `Capture::take`, or in wgpu's default handler on the next submit. Surface
+    `Lost` is folded into `Outdated`, which only rebuilds the swapchain.
+  - Target:
+    - a device-lost callback, for any reason but `Destroyed`, sets a flag that the host reads
+      before each frame;
+    - the host requests a new adapter and device, and rebuilds the backend, every window's
+      stream and surface, the atlases, and the registered images from their CPU copies; the next
+      frame of every window paints whole, and the UI state stays;
+    - `GpuPaint` gets a hook that builds its resources again on the new device;
+    - when no adapter or device comes back, `run()` returns a device-lost error, and no frame is
+      submitted to the lost device.
+  - Tests: a headless host recovered through the recovery's internal entry paints the same
+    pixels as a fresh one. wgpu has no call that loses a device for a reason other than
+    `Destroyed`, so the callback's flag is set by hand.
