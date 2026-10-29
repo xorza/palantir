@@ -315,6 +315,10 @@ impl WgpuBackend {
             ..
         } = submission;
         let via_backbuffer = route == Route::ViaBackbuffer;
+        debug_assert!(
+            via_backbuffer || !repaint_scissors.is_partial(),
+            "a direct frame paints whole: a swapchain image holds nothing at acquire"
+        );
         if via_backbuffer {
             let made = stream.ensure_backbuffer(&self.gpu.device, &self.texture_binding, target);
             // A partial arrives un-escalated only onto a fresh backbuffer, so a new one means that
