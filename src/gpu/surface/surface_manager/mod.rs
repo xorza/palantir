@@ -154,6 +154,22 @@ impl SurfaceManager {
         self.build_window_surface(surface, size)
     }
 
+    /// A new surface for `window` in place of `lost`, which the platform lost: at its size and its
+    /// pacing, configured on its first [`WindowSurface::prepare`].
+    pub(crate) fn renew<W>(
+        &self,
+        window: &Arc<W>,
+        lost: &WindowSurface,
+    ) -> Result<WindowSurface, SurfaceError>
+    where
+        W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
+    {
+        debug_assert!(lost.is_lost(), "only a lost surface is replaced");
+        let mut surface = self.make_surface(window, lost.size())?;
+        let _ = surface.set_vsync(lost.vsync());
+        Ok(surface)
+    }
+
     /// Pick an sRGB format and bundle `surface` with a fresh configuration of `size`, without
     /// calling `surface.configure`; the first [`WindowSurface::prepare`] applies it.
     fn build_window_surface(

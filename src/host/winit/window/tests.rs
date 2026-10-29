@@ -153,7 +153,8 @@ fn applied_levels_report_only_changes() {
 
 /// How each acquire outcome schedules the next frame. A validation failure backs off from 16 ms,
 /// doubling to the 500 ms ceiling (16, 32, 64, 128, 256, 500, 500), ahead of any repaint the
-/// frame asked for; any other outcome clears the back-off. A suboptimal swapchain rebuilds once
+/// frame asked for; a lost surface backs off the same way and reconfigures nothing, as the host
+/// makes a new one; any other outcome clears the back-off. A suboptimal swapchain rebuilds once
 /// per size, an outdated one every time.
 #[test]
 fn the_schedule_follows_each_acquire_outcome() {
@@ -300,6 +301,24 @@ fn the_schedule_follows_each_acquire_outcome() {
         (
             "a still frame clears it",
             O::Skipped,
+            report(false, None),
+            wake(Wake::Idle),
+        ),
+        (
+            "a lost surface",
+            O::Lost,
+            report(false, None),
+            wake(Wake::After(ms(16))),
+        ),
+        (
+            "lost again",
+            O::Lost,
+            report(true, None),
+            wake(Wake::After(ms(32))),
+        ),
+        (
+            "made again and presented",
+            O::Presented,
             report(false, None),
             wake(Wake::Idle),
         ),

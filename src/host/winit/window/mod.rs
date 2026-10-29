@@ -358,8 +358,12 @@ impl Window {
                 AcquireOutcome::Suboptimal(self.surface.size())
             }
             Acquired::Outdated => {
-                tracing::warn!("surface acquire: outdated / lost");
+                tracing::warn!("surface acquire: outdated");
                 AcquireOutcome::Outdated
+            }
+            Acquired::Lost => {
+                tracing::warn!("surface acquire: lost");
+                AcquireOutcome::Lost
             }
             Acquired::Timeout => {
                 tracing::warn!("surface acquire: timeout");

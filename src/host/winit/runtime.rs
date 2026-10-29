@@ -132,6 +132,15 @@ impl<T: App + 'static> WinitRuntime<T> {
         {
             self.frames.record(win.driver.token, summary);
         }
+        if win.surface.is_lost() {
+            match self.surfaces.renew(&win.window, &win.surface) {
+                Ok(surface) => win.surface = surface,
+                // The window keeps its lost surface, and its next frame tries again after a pause.
+                Err(error) => {
+                    tracing::error!(token = ?win.driver.token, %error, "lost surface not made again");
+                }
+            }
+        }
         if single_window {
             tracy::mark_main_frame();
         }
