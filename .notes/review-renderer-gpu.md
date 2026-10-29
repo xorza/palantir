@@ -51,35 +51,6 @@ test.
 
 ## Plan
 
-### Batch 6: the backend's pass plan and one draw context
-
-Files: `src/gpu/wgpu_backend/`, `src/gpu/pipeline/quad_pipeline/`, `src/gpu/frame/schedule/`.
-Needs batch 5.
-
-- [ ] `wgpu_backend/mod.rs:277-411,562-687`.
-  - Defect: the pass plan is decided inline while encoding: the dim pre-pass, each segment's
-    LoadOp, the breaks, copy-out against `draw_onto`, the overlay pass. The backend has no unit
-    test.
-  - Target: a pure `FramePasses::plan(..) -> [PassStep]`, tested like `Schedule`, and a thin
-    executor.
-- [ ] `wgpu_backend/mod.rs:614-860` `render_groups`.
-  - Defect: each tenant's binding is built by hand:
-    - `fmt.X.select(stencil)` appears 8 times;
-    - the mark and debug-group triad appears 8 times;
-    - `render_groups` has 6 parameters besides `self` and `run_main_segment` has 5;
-    - `(from, barrier): (u32, Option<u32>)` is a tuple parameter, also in `Walk::run_between`.
-  - Target: a `DrawCtx`, one wrapper for the mark and debug group, and a named `GroupSpan`.
-- [ ] `wgpu_backend/mod.rs:783-791`, `quad_form/mod.rs:16-30`, `quad_pipeline/mod.rs:287-307,357-371`,
-  `schedule/mod.rs:302-316`.
-  - Defect: the backend branches on `run.key == QuadForm::Backdrop` to choose the bind method. The
-    backdrop form is chosen by entry point, not by the `QUAD_FORM` override. One quad stream is
-    split three times: shadows, forms, shadow entries.
-  - Target: `QuadDraw { Form(QuadForm) | Shadow(ShadowEntry) }`, computed once per instance, and
-    `QuadPipeline::bind_draw(key, groups)`.
-- [ ] `wgpu_backend/mod.rs:10-12`.
-  - Defect: the module doc says every pipeline "spells the same six steps"; text and icon do not.
-  - Target: a doc that matches, or nothing.
-
 ### Batch 7: one owner of paint order in the composer
 
 Files: `src/renderer/frontend/composer/` (`session.rs`, `mod.rs`, `rect_grid/`, `tile_index.rs`,

@@ -3,7 +3,7 @@
 
 mod damage_replay;
 mod mesh_image;
-mod shadow_runs;
+mod quad_steps;
 mod stencil;
 mod support;
 mod text_batches;

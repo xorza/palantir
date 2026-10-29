@@ -91,10 +91,6 @@ pub(crate) struct PartialScissors {
 const SCISSOR_CAP: usize = DAMAGE_RECT_CAP + 4 * PaneCaptures::PARTIAL_CAP;
 
 impl PartialScissors {
-    pub(crate) fn len(&self) -> usize {
-        self.rects.len()
-    }
-
     pub(crate) fn iter(&self) -> iter::Copied<slice::Iter<'_, URect>> {
         self.rects.iter().copied()
     }

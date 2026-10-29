@@ -1,6 +1,7 @@
 //! Where a text batch spanning several groups actually emits.
 
 use crate::common::span::Span;
+use crate::gpu::frame::schedule::GroupSpan;
 use crate::gpu::frame::schedule::tests::support::{
     DrawOp, buf_with_batches, collect, collect_between, group, simplify, text_batch,
 };
@@ -129,8 +130,24 @@ fn a_walk_broken_at_a_barrier_draws_the_whole_walk_once() {
     assert_eq!(simplify(&buf, &collect(&buf, damage, None)), whole);
     // The ops before each barrier: the clear, then group 0 with its text, group 1, group 2.
     for (barrier, split) in [(0, 1), (1, 3), (2, 4), (3, 6)] {
-        let before = collect_between(&buf, damage, None, (0, Some(barrier)));
-        let after = collect_between(&buf, damage, None, (barrier, None));
+        let before = collect_between(
+            &buf,
+            damage,
+            None,
+            GroupSpan {
+                from: 0,
+                barrier: Some(barrier),
+            },
+        );
+        let after = collect_between(
+            &buf,
+            damage,
+            None,
+            GroupSpan {
+                from: barrier,
+                barrier: None,
+            },
+        );
         assert_eq!(simplify(&buf, &before), whole[..split], "before {barrier}");
         let resumed = if barrier == 0 { 0 } else { split };
         assert_eq!(simplify(&buf, &after), whole[resumed..], "after {barrier}");

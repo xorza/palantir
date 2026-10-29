@@ -1,4 +1,4 @@
-//! Command-recording benchmark: the host CPU cost of translating one frame's `RenderStep` stream into wgpu commands inside `WgpuBackend::run_main_pass`.
+//! Command-recording benchmark: the host CPU cost of translating one frame's `RenderStep` stream into wgpu commands inside the main pass of `WgpuBackend::submit`.
 //!
 //! This cost scales with draw-step count, not pixels, and no other benchmark sees it.
 //!
@@ -262,7 +262,7 @@ impl Fixture {
             .host()
             .gpu_pass_stats()
             .last_main_pass_cpu()
-            .expect("run_main_pass publishes its CPU time on every submitted frame")
+            .expect("the main pass publishes its CPU time on every submitted frame")
     }
 }
 
