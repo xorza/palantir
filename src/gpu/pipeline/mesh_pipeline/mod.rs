@@ -1,8 +1,8 @@
 //! GPU side of user-supplied colored triangle meshes: like
 //! [`crate::gpu::pipeline::quad_pipeline::QuadPipeline`] but indexed triangle
 //! lists with per-vertex pos+color and per-instance transform+tint. The vertex
-//! stream is content-stable across frames; per-draw state is in a parallel
-//! instance buffer.
+//! stream uploads each frame beside a parallel instance buffer of per-draw
+//! state.
 //!
 //! **No `mesh_mask.wgsl`:** rounded-clip masks are quad-shaped and stamped by
 //! [`QuadPipeline`](crate::gpu::pipeline::quad_pipeline::QuadPipeline) (`fs_mask`).

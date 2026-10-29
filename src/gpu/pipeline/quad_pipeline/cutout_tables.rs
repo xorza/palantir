@@ -7,6 +7,8 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::surface::render_target;
+use glam::UVec2;
 use pollster::FutureExt;
 use std::mem::offset_of;
 
@@ -45,11 +47,7 @@ impl CutoutTables {
         let atlas = device
             .create_texture(&wgpu::TextureDescriptor {
                 label: Some("palantir.quad.cutouts"),
-                size: wgpu::Extent3d {
-                    width: side,
-                    height: side,
-                    depth_or_array_layers: 1,
-                },
+                size: render_target::extent(UVec2::splat(side)),
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -115,11 +113,7 @@ impl CutoutTables {
         let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
         let _ = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.quad.cutouts.probe"),
-            size: wgpu::Extent3d {
-                width: 1,
-                height: 1,
-                depth_or_array_layers: 1,
-            },
+            size: render_target::extent(UVec2::ONE),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,

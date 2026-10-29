@@ -52,13 +52,12 @@ fn prepare(
     buffer.display = Display::from_physical(SURFACE, 1.0);
     buffer.backdrops.extend_from_slice(rows);
     buffer.live_panes.extend(rows.iter().map(|row| row.key));
-    let handles = gpu.handles();
     let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
     let mut encoder = gpu
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     {
-        let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
+        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
         backdrops.prepare(
             &mut ctx,
             BackdropFrame {

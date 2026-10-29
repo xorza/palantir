@@ -11,14 +11,12 @@ use crate::renderer::frontend::composer::polyline_scratch::PolylineScratch;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::shape::record_store::RecordStore;
-use std::num::NonZeroU32;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod clip_stack;
-#[cfg(feature = "internals")]
-pub(crate) mod compose_rig;
 mod curve_run;
 mod geometry;
 mod higher_kind_rects;
@@ -52,22 +50,20 @@ pub(crate) struct Composer {
     polyline: PolylineScratch,
     /// Which draws may reorder within a group, and where groups and text batches close.
     order: PaintOrder,
-    /// Device `max_texture_dimension_2d`: the composer downsamples any
-    /// composited `GpuView` whose physical rect exceeds it. Fixed per device,
-    /// so it rides the ctor.
-    max_texture_dim: NonZeroU32,
+    /// The device ceiling: the composer downsamples any composited `GpuView` whose physical rect
+    /// exceeds it. Fixed per device, so it rides the ctor.
+    texture_limit: TextureLimit,
 }
 
 impl Composer {
-    /// New composer capped at the device's `max_texture_dimension_2d`, all
-    /// scratch empty.
-    pub(crate) fn new(max_texture_dim: NonZeroU32) -> Self {
+    /// New composer under the device's `texture_limit`, all scratch empty.
+    pub(crate) fn new(texture_limit: TextureLimit) -> Self {
         Self {
             clip: ClipStack::default(),
             transform: TransformStack::default(),
             polyline: PolylineScratch::default(),
             order: PaintOrder::default(),
-            max_texture_dim,
+            texture_limit,
         }
     }
 
@@ -119,7 +115,7 @@ pub(crate) mod internals {
                 transform,
                 polyline,
                 order,
-                max_texture_dim: _,
+                texture_limit: _,
             } = self;
             clip.scratch_bytes()
                 + transform.scratch_bytes()

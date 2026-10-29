@@ -161,7 +161,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY) {
         return;
     }
-    let gpu = &lease.handles();
+    let gpu = &*lease;
     let mut tracer = QueryTracer::new(&gpu.device, gpu.queue.get_timestamp_period(), features);
     let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let sink = GpuPassStats::default();
@@ -217,7 +217,7 @@ fn a_break_between_passes_counts_in_no_kind() {
     if !features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES) {
         return;
     }
-    let gpu = &lease.handles();
+    let gpu = &*lease;
     let mut tracer = QueryTracer::new(&gpu.device, gpu.queue.get_timestamp_period(), features);
     let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let view = target.view();

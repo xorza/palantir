@@ -10,8 +10,8 @@ struct VsIn {
     // product, so the rasterizer interpolates premultiplied color across
     // the face — white to transparent black is half-white at half alpha
     // midway, not a dark fringe — and `fs` writes it as is, matching the
-    // pipeline's `PREMULTIPLIED_ALPHA_BLENDING` blend state. See AGENTS.md
-    // "Color pipeline" for the shared contract.
+    // pipeline's `PREMULTIPLIED_ALPHA_BLENDING` blend state, the contract
+    // `premultiply` in `prelude.wgsl` states.
     @location(1) color: vec4<f32>,
     // Per-instance transform + tint. `physical = rotor_scale ⊗ pos + translate`,
     // a complex product that turns and scales at once;

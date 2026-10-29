@@ -28,8 +28,8 @@ counter_snapshot! {
     evictions: u32,
     /// Capacity doublings, a one-way ratchet.
     growths: u32,
-    /// LUT rows handed to the GPU, summed over flushes. A flush uploads the
-    /// whole `min..=max` span, so compare with [`Self::bakes`].
+    /// LUT rows handed to the GPU, summed over flushes: each flush's dirty runs, with clean gaps
+    /// of up to `MERGE_GAP_ROWS` folded in, so compare with [`Self::bakes`].
     rows_uploaded: u32,
     /// Registrations that resolved to
     /// [`LutRow::FALLBACK`](crate::primitives::paint::lut_row::LutRow): table full and capped.

@@ -171,17 +171,13 @@ impl<'a> RampColors<'a> {
 mod tests {
     use crate::primitives::paint::brush::gradient::Interpolation;
     use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-    use crate::primitives::paint::brush::gradient::stops::Stop;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::primitives::paint::color::rgba_f16::RgbaF16;
-    use crate::renderer::gradient_atlas::bake::{self, LUT_ROW_TEXELS};
 
     /// Black to white in linear light is `0.25` grey at a quarter; opaque red to clear blue at
     /// `0.2` is premultiplied `(0.8, 0, 0, 0.8)`, which is straight red at alpha `0.8`; and past
-    /// either end the end's color. Under Oklab, the color at each texel's `t`, premultiplied,
-    /// is the texel the bake writes, so a curve split at `t` paints what the whole one does.
+    /// either end the end's color. `gradient_atlas`'s bake tests hold each texel to it.
     #[test]
-    fn a_ramps_color_at_t_is_what_its_bake_holds() {
+    fn a_ramps_color_at_t_blends_its_stops() {
         let linear = ColorRamp::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)
             .with_interpolation(Interpolation::Linear);
         assert_eq!(linear.color_at(0.25), RgbaF32::new(0.25, 0.25, 0.25, 1.0));
@@ -193,21 +189,5 @@ mod tests {
         )
         .with_interpolation(Interpolation::Linear);
         assert_eq!(fade.color_at(0.2), RgbaF32::new(1.0, 0.0, 0.0, 0.8));
-
-        let oklab = ColorRamp::new([
-            Stop::new(0.0, RgbaF32::hex(0xfa993b)),
-            Stop::new(0.5, RgbaF32::hex(0x44b5ff)),
-            Stop::new(1.0, RgbaF32::hex(0xbf5459).with_alpha(0.5)),
-        ]);
-        let mut row = [RgbaF16::TRANSPARENT; LUT_ROW_TEXELS];
-        bake::row(&oklab, &mut row);
-        for (texel, baked) in row.iter().enumerate() {
-            let t = texel as f32 / (LUT_ROW_TEXELS - 1) as f32;
-            assert_eq!(
-                oklab.color_at(t).premultiplied().to_f16(),
-                *baked,
-                "texel {texel}"
-            );
-        }
     }
 }

@@ -32,6 +32,7 @@ use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::side::Side;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
+use crate::gpu::surface::render_target;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
@@ -348,11 +349,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                     },
                     aspect: wgpu::TextureAspect::All,
                 },
-                wgpu::Extent3d {
-                    width: c.size.x,
-                    height: c.size.y,
-                    depth_or_array_layers: 1,
-                },
+                render_target::extent(c.size),
             );
             for row in self.pending_pixels[c.pixels()].chunks_exact(row_bytes) {
                 view.slice(at..at + row_bytes).copy_from_slice(row);

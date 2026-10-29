@@ -22,16 +22,6 @@ impl DirtyRows {
         self.bits[(row / u64::BITS) as usize] |= 1 << (row % u64::BITS);
     }
 
-    /// Mark every row below `rows`.
-    pub(super) fn mark_below(&mut self, rows: u32) {
-        let full = (rows / u64::BITS) as usize;
-        self.bits[..full].fill(u64::MAX);
-        let rest = rows % u64::BITS;
-        if rest != 0 {
-            self.bits[full] |= (1 << rest) - 1;
-        }
-    }
-
     /// The dirty rows as sorted runs, a gap of up to `merge_gap` clean rows folded into the run
     /// around it, and every row clean again. An empty slice when nothing was dirty.
     pub(super) fn take_runs(&mut self, merge_gap: u32) -> &[Range<u32>] {
@@ -89,9 +79,9 @@ mod tests {
         // Gaps: 7..9 is two rows, 10..63 fifty-three, 66..130 sixty-four.
         assert_eq!(dirty.take_runs(2), [5..10, 63..66, 130..131]);
 
-        dirty.mark_below(70);
+        (0..70).for_each(|row| dirty.mark(row));
         assert_eq!(dirty.take_runs(0), [0..70]);
-        dirty.mark_below(128);
+        (0..128).for_each(|row| dirty.mark(row));
         assert_eq!(dirty.take_runs(0), [0..128], "a whole number of words");
         assert!(dirty.take_runs(0).is_empty());
     }

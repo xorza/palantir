@@ -175,7 +175,7 @@ mod output_validity_tests {
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
     use crate::renderer::render_plan::RenderPlan;
     use std::time::Duration;
 
@@ -336,7 +336,7 @@ mod output_validity_tests {
     #[test]
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
         let mut driver = new_driver(
             WindowToken(1),
             &shared,
@@ -466,7 +466,7 @@ mod record_store_tests {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
 
     use crate::shape::Shape;
 
@@ -553,7 +553,7 @@ mod record_store_tests {
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
         let token = WindowToken(17);
         let mut window = new_driver(
             token,
@@ -586,7 +586,7 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
         let mut window_a = new_driver(
             WindowToken(1),
             &shared,
@@ -771,7 +771,7 @@ mod cutout_census_tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
     use crate::shape::Shape;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;
@@ -787,7 +787,7 @@ mod cutout_census_tests {
     #[test]
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
         let mut driver = WindowDriver::new(
             WindowToken(1),
             &shared,
@@ -1133,7 +1133,7 @@ mod capture_path_tests {
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
     use crate::shape::Shape;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;
@@ -1145,7 +1145,7 @@ mod capture_path_tests {
     /// 100 × 80 target that gives a copy when `gives_copy` is.
     fn first_frame(pane: Rect, gives_copy: bool) -> PresentPath {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
         let mut driver = new_driver(
             WindowToken(1),
             &shared,

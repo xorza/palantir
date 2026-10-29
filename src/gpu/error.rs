@@ -8,29 +8,6 @@ use crate::gpu::device::device_features::DeviceFeatures;
 #[cfg(feature = "winit")]
 use crate::gpu::surface::surface_usages::SurfaceUsages;
 
-/// A driver failure kept whole but unnamed, so no graphics-API type reaches the published surface.
-#[derive(Debug)]
-pub struct DriverError(Box<dyn Error + Send + Sync + 'static>);
-
-impl DriverError {
-    pub(crate) fn new(source: impl Error + Send + Sync + 'static) -> Self {
-        Self(Box::new(source))
-    }
-}
-
-impl Display for DriverError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
-    }
-}
-
-impl Error for DriverError {
-    /// Skips the driver error itself; the holding variant prints its words.
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.0.source()
-    }
-}
-
 /// A device or adapter cannot run Palantir's pipelines.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnmetRequirements {
@@ -79,8 +56,8 @@ pub enum GpuRequestError {
     NoBackend,
     /// No graphics adapter matched the requested power policy.
     RequestAdapter {
-        /// What the driver reported.
-        source: DriverError,
+        /// What wgpu reported.
+        source: wgpu::RequestAdapterError,
     },
     /// The adapter that answered cannot run Palantir's pipelines.
     Requirements {
@@ -89,8 +66,8 @@ pub enum GpuRequestError {
     },
     /// The adapter could not create the logical device.
     RequestDevice {
-        /// What the driver reported.
-        source: DriverError,
+        /// What wgpu reported.
+        source: wgpu::RequestDeviceError,
     },
 }
 
@@ -130,8 +107,8 @@ impl Error for GpuRequestError {
 pub enum SurfaceError {
     /// The platform could not create a presentation surface for the window.
     Create {
-        /// What the driver reported.
-        source: DriverError,
+        /// What wgpu reported.
+        source: wgpu::CreateSurfaceError,
     },
     /// The selected adapter cannot present to this window's surface.
     Incompatible,

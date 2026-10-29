@@ -7,7 +7,10 @@ use std::env;
 use std::fmt::{self, Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::iter;
+use std::ops::Deref;
 use std::sync::OnceLock;
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -15,7 +18,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::surface::render_target::{self, TargetFormat};
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;
@@ -42,34 +45,40 @@ impl Display for LeaseFailed {
     }
 }
 
-/// A headless device and its queue, waited idle when the lease drops.
+/// A headless device and its queue, waited idle when the lease drops. It lends its [`Gpu`], as a
+/// guard does.
 #[derive(Debug)]
 pub struct HeadlessTestGpuLease {
-    /// The queue.
-    pub queue: wgpu::Queue,
-    /// The device.
-    pub device: wgpu::Device,
+    gpu: Gpu,
     /// The adapter the device opened on; golden suites record it.
     pub adapter: String,
 }
 
+impl Deref for HeadlessTestGpuLease {
+    type Target = Gpu;
+
+    fn deref(&self) -> &Gpu {
+        &self.gpu
+    }
+}
+
 impl HeadlessTestGpuLease {
-    /// Borrowed handles to the device and queue.
+    /// An owned clone of the handles, for an API that takes a [`Gpu`] by value.
     pub fn handles(&self) -> Gpu {
-        Gpu::new(self.device.clone(), self.queue.clone())
+        self.gpu.clone()
     }
 
     /// A 2D `Rgba8UnormSrgb` window target of `size`; `label` names the test in RenderDoc and
     /// validation errors.
     pub fn target(&self, label: &str, size: UVec2) -> OwnedTarget {
-        OwnedTarget::window(&self.handles(), label, size, TargetFormat::RGBA8_SRGB)
+        OwnedTarget::window(self, label, size, TargetFormat::RGBA8_SRGB)
     }
 
     /// A 2D `Rgba8UnormSrgb` target of `size` that takes copies but gives none, as a texture an
     /// app renders into may be.
     pub fn uncopied_target(&self, label: &str, size: UVec2) -> OwnedTarget {
         OwnedTarget::new(
-            &self.handles(),
+            self,
             TargetSpec {
                 label,
                 size,
@@ -81,7 +90,55 @@ impl HeadlessTestGpuLease {
 
     /// Block until every submission on the device has finished.
     pub fn wait(&self) {
-        self.handles().wait();
+        self.gpu.wait();
+    }
+
+    /// Every texel of `texture`'s first layer, rows top to bottom with no padding, waited for.
+    ///
+    /// # Panics
+    ///
+    /// For a texture made without `COPY_SRC`, or of a compressed or depth format.
+    pub fn read_texture(&self, texture: &wgpu::Texture) -> Vec<u8> {
+        let texel = texture
+            .format()
+            .block_copy_size(None)
+            .expect("a color texture copies whole texels");
+        let row = texture.width() * texel;
+        let padded = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("palantir.test.read_texture"),
+            size: u64::from(padded) * u64::from(texture.height()),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        encoder.copy_texture_to_buffer(
+            texture.as_image_copy(),
+            wgpu::TexelCopyBufferInfo {
+                buffer: &buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded),
+                    rows_per_image: Some(texture.height()),
+                },
+            },
+            render_target::extent(render_target::texture_size(texture)),
+        );
+        self.queue.submit(iter::once(encoder.finish()));
+        let slice = buffer.slice(..);
+        let (tx, rx) = mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |mapped| {
+            tx.send(mapped).ok();
+        });
+        self.wait();
+        rx.recv().unwrap().expect("the read buffer maps");
+        let data = slice.get_mapped_range().unwrap();
+        data.chunks_exact(padded as usize)
+            .flat_map(|line| &line[..row as usize])
+            .copied()
+            .collect()
     }
 
     /// A new device on the process's one adapter.
@@ -100,8 +157,7 @@ impl HeadlessTestGpuLease {
             .open_on(adapter)
             .unwrap_or_else(|why| panic!("open headless test gpu: {why}"));
         Self {
-            queue: gpu.gpu.queue,
-            device: gpu.gpu.device,
+            gpu: gpu.gpu,
             adapter: adapter_identity(&info),
         }
     }
@@ -161,8 +217,7 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
     static GPU: OnceLock<HeadlessTestGpuLease> = OnceLock::new();
     let gpu = GPU.get_or_init(HeadlessTestGpuLease::request);
     HeadlessTestGpuLease {
-        queue: gpu.queue.clone(),
-        device: gpu.device.clone(),
+        gpu: gpu.gpu.clone(),
         adapter: gpu.adapter.clone(),
     }
 }

@@ -50,58 +50,6 @@ test.
 
 ## Plan
 
-### Batch 11: smaller items
-
-- [ ] `src/renderer/gradient_atlas/mod.rs:225-229` `grow`.
-  - Defect: `mark_below(grown)` uploads every row, the zero rows too: 8 MiB in one frame for
-    2048 → 4096. The comment's reason is inverted. The `counters.rs` doc of `rows_uploaded` is
-    stale.
-  - Target: a texture-to-texture copy of the old rows, which uploads nothing, and a correct doc.
-- [ ] `frontend/mod.rs:43,79`, `composer/mod.rs:79`, `texture_limit/mod.rs:7-10`.
-  - Defect: `TextureLimit` says it is "the one ceiling", but `Frontend` and `Composer` take a raw
-    `NonZeroU32`. `TEST_MAX_TEXTURE_DIM` calls 8192 the downlevel default; that default is 2048,
-    and 8192 is `Limits::default`.
-  - Target: pass `TextureLimit`, and fix the doc.
-- [ ] `composer/mod.rs:24-25`, `compose_rig.rs`.
-  - Defect: a test and bench harness in its own gated module, which is none of AGENTS.md's four
-    homes.
-  - Target: move it to the composer's end-of-file `internals` or to `src/internals/`.
-- [ ] `src/gpu/surface/owned_target/mod.rs:134-205` against `surface/capture.rs:67-246`.
-  - Defect: `read_back` re-implements `Capture` (row padding, staging, swizzle). Texture to `UVec2`
-    is written three times, and `Extent3d` is built by hand four times.
-  - Target: `Capture` reads any `&Texture`, and `render_target::extent` everywhere.
-- [ ] `src/gpu/resource/texture_region.rs`.
-  - Defect: one caller, whose `first_row` is always 0. Its doc names a gradient-atlas user that no
-    longer exists.
-  - Target: inline it into `WgpuImageStore::write`.
-- [ ] `src/primitives/paint/brush/gradient/color_ramp.rs:177`.
-  - Defect: a test in `primitives` imports `renderer::gradient_atlas::bake`, an edge to the right.
-  - Target: move the cross-check to `gradient_atlas/tests/bake.rs`.
-- [ ] Stale references:
-  - `prelude.wgsl:65` and `mesh_pipeline/shader.wgsl:14` cite an AGENTS.md "Color pipeline"
-    section that does not exist;
-  - `curve_pipeline/shader.wgsl:36` cites `render_buffer/curve.rs`, not `curve_instance.rs`;
-  - `evict_one` is named in `text_backend/encode/cache/mod.rs:131`, `text_backend/bench.rs:45`,
-    `text_backend/tests/mod.rs:22` and `raster_atlas/tests.rs:79`;
-  - `mesh_pipeline/mod.rs:4` says the vertex stream is "content-stable", but it uploads every
-    frame;
-  - `gpu_ctx.rs:1-9` lists its fields;
-  - the `FrameDraw.stats` doc (`wgpu_backend/mod.rs:167-170`) gives a reason that does not
-    follow;
-  - the `PresentStrategy` doc repeats `present_path`.
-- [ ] `src/gpu/pipeline/raster_pipeline/shader.wgsl:150-171`.
-  - Defect: the color side stores straight alpha and premultiplies per tap, while
-    `WgpuImageStore` premultiplies at upload.
-  - Target: premultiply at upload.
-- [ ] `src/gpu/error.rs` `DriverError` (public API, approved).
-  - Defect: it boxes `RequestAdapterError`, `RequestDeviceError` and `CreateSurfaceError` as
-    `dyn Error`, though the crate does `pub use wgpu`.
-  - Target: one variant per failure, each holding its wgpu error type as its `source`.
-    Regenerate `.notes/API_SURFACE.md`.
-- [ ] `src/gpu/test_gpu.rs:46-60`.
-  - Defect: the lease keeps device and queue apart, and `handles()` clones a `Gpu` on each call.
-  - Target: the lease holds a `Gpu`.
-
 ### Batch 12: recover from a lost device
 
 Decided 2026-10-29: recover, as the WebGPU spec advises for a loss the app did not cause and as

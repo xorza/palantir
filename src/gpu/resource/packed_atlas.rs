@@ -2,7 +2,8 @@
 //! ceiling, and the copy of its texels into the grown texture.
 
 use crate::gpu::resource::shelf_packer::ShelfPacker;
-use glam::U16Vec2;
+use crate::gpu::surface::render_target;
+use glam::{U16Vec2, UVec2};
 
 /// What every texture of one atlas shares through its doublings.
 #[derive(Debug)]
@@ -20,11 +21,7 @@ impl AtlasSpec {
     fn create(&self, device: &wgpu::Device, edge: u32) -> wgpu::Texture {
         device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&self.label),
-            size: wgpu::Extent3d {
-                width: edge,
-                height: edge,
-                depth_or_array_layers: 1,
-            },
+            size: render_target::extent(UVec2::splat(edge)),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -123,11 +120,7 @@ impl PackedAtlas {
         encoder.copy_texture_to_texture(
             self.texture.as_image_copy(),
             texture.as_image_copy(),
-            wgpu::Extent3d {
-                width: old,
-                height: old,
-                depth_or_array_layers: 1,
-            },
+            render_target::extent(UVec2::splat(old)),
         );
         self.view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         self.texture = texture;
@@ -161,49 +154,9 @@ const fn fits_edge(size: U16Vec2, edge: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
-    use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+    use crate::gpu::test_gpu::headless_test_gpu;
     use glam::U16Vec2;
     use std::iter;
-    use std::sync::mpsc;
-
-    /// Every texel of an R8 `texture`, rows top to bottom.
-    fn read_r8(gpu: &HeadlessTestGpuLease, texture: &wgpu::Texture) -> Vec<u8> {
-        let (w, h) = (texture.width(), texture.height());
-        let padded = w.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
-        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("test.packed_atlas.read"),
-            size: u64::from(padded * h),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        encoder.copy_texture_to_buffer(
-            texture.as_image_copy(),
-            wgpu::TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded),
-                    rows_per_image: Some(h),
-                },
-            },
-            texture.size(),
-        );
-        gpu.queue.submit(iter::once(encoder.finish()));
-        let slice = buffer.slice(..);
-        let (tx, rx) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |mapped| {
-            tx.send(mapped).ok();
-        });
-        gpu.wait();
-        rx.recv().unwrap().unwrap();
-        let data = slice.get_mapped_range().unwrap();
-        data.chunks_exact(padded as usize)
-            .flat_map(|line| line[..w as usize].iter().copied())
-            .collect()
-    }
 
     /// Two grows in one frame move the packer's edge twice and make one texture, at the final
     /// edge, when the frame commits: 16 to 64, held to the 64 ceiling past it. The old texels
@@ -261,7 +214,7 @@ mod tests {
         gpu.queue.submit(iter::once(encoder.finish()));
         assert_eq!(atlas.texture().width(), 64);
 
-        let read = read_r8(&gpu, atlas.texture());
+        let read = gpu.read_texture(atlas.texture());
         for y in 0..64usize {
             for x in 0..64usize {
                 let want = if x < 16 && y < 16 {

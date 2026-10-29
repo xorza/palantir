@@ -1,6 +1,7 @@
 //! Fills, images and raster targets: what each emits and what rides with it.
 
 use crate::common::span::Span;
+use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -12,7 +13,6 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     curve, draw, gpu_view, gpu_view_payload, image, params, run, run_with_texture_cap,

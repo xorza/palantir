@@ -664,9 +664,6 @@ DragValueTheme
         pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
-DriverError
-    struct DriverError: Debug, Display, Error
-
 Easing
     enum Easing: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
         Linear
@@ -833,9 +830,9 @@ GpuRequestError
     #[non_exhaustive]
     enum GpuRequestError: Debug, Display, Error
         NoBackend
-        RequestAdapter { source: DriverError }
+        RequestAdapter { source: RequestAdapterError }
         Requirements { source: UnmetRequirements }
-        RequestDevice { source: DriverError }
+        RequestDevice { source: RequestDeviceError }
 
 GpuView
     struct GpuView: Configure, Debug, ThemeDefaults (blanket)
@@ -1958,7 +1955,7 @@ StrokeSteps
 SurfaceError  [features: winit]
     #[non_exhaustive]
     enum SurfaceError: Debug, Display, Error
-        Create { source: DriverError }
+        Create { source: CreateSurfaceError }
         Incompatible
         MissingSrgb
         MissingUsages { missing: SurfaceUsages }

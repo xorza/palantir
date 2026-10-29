@@ -49,7 +49,7 @@ use crate::shape::record_store::RecordStore;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::text;
 use glam::{UVec2, Vec2};
-use std::num::NonZeroI64;
+use std::num::NonZeroU32;
 
 /// One compose pass in flight: the [`Composer`]'s scratch bound to the buffer
 /// being filled, the record payloads, and the display. Paint arrives through
@@ -345,12 +345,17 @@ impl PaintSink for ComposeSession<'_> {
         // screen, not the rect: layout may return a rect larger than the surface, and
         // following it would allocate and draw discarded pixels.
         if let Some(view) = view {
-            let cap = NonZeroI64::from(self.composer.max_texture_dim).get();
+            // A recorder with no device has no ceiling.
+            let max = self
+                .composer
+                .texture_limit
+                .max_dimension()
+                .map_or(u32::MAX, NonZeroU32::get);
+            let cap = i64::from(max);
             let whole = physical_rect.size;
             // The cap is measured against the whole view so the downsample does not change as the
             // view scrolls (it would shimmer).
-            let downsample =
-                (self.composer.max_texture_dim.get() as f32 / whole.w.max(whole.h)).min(1.0);
+            let downsample = (max as f32 / whole.w.max(whole.h)).min(1.0);
             let px = |v: f32| ((v * downsample).ceil() as i64).clamp(1, cap) as u32;
             // Floored at zero, unlike a size: a target needs a pixel, and a corner may be the
             // origin.

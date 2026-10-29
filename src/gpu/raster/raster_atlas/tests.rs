@@ -76,7 +76,7 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
         AtlasSlot::for_test(false, 903),  // 903 + 121 = 1024 <= 1024 -> reclaimed
         AtlasSlot::for_test(false, 904),  // 904 + 121 = 1025 > 1024 -> re-filed
         AtlasSlot::for_test(false, 1024), // freshly touched -> re-filed
-        AtlasSlot::for_test(true, 1),     // allocated -> evict_one's job
+        AtlasSlot::for_test(true, 1),     // allocated -> evict_for's job
     ];
     let mut cache = FxHashMap::default();
     for i in 0..slots.len() as u32 {

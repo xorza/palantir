@@ -7,6 +7,7 @@
 
 use crate::common::span::Span;
 use crate::display::Display;
+use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -14,7 +15,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -30,6 +30,7 @@ use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::shape::style::{LineCap, LineJoin};
@@ -117,8 +118,8 @@ pub(super) fn run_with_texture_cap(
     display: &Display,
     max_texture_dim: u32,
 ) -> RenderBuffer {
-    let cap = NonZeroU32::new(max_texture_dim).unwrap();
-    run_in(ComposeRig::with_texture_cap(*display, cap), build)
+    let limit = TextureLimit::from_device(NonZeroU32::new(max_texture_dim).unwrap());
+    run_in(ComposeRig::with_texture_limit(*display, limit), build)
 }
 
 /// One frame of `rig`, recorded by `build` into a fresh capture and the rig's store.

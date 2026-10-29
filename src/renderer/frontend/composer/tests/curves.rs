@@ -2,6 +2,7 @@
 //! joins.
 
 use crate::common::span::Span;
+use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
@@ -9,7 +10,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
     TestPolyline, clip, curve, image, mesh, params, run, text,
 };

@@ -325,7 +325,7 @@ impl BackdropBlur {
                 });
                 self.captures.len() - 1
             });
-        let have = extent_of(&self.captures[at].target.texture);
+        let have = render_target::texture_size(&self.captures[at].target.texture);
         if have.x < size.x || have.y < size.y {
             self.captures[at].target = self.sampled(
                 device,
@@ -342,7 +342,10 @@ impl BackdropBlur {
     fn ensure_levels(&mut self, device: &wgpu::Device, first: UVec2, levels: u8) {
         let mips = u32::from(levels);
         let (have, have_mips) = self.levels.as_ref().map_or((UVec2::ZERO, 0), |l| {
-            (extent_of(&l.texture), l.views.len() as u32)
+            (
+                render_target::texture_size(&l.texture),
+                l.views.len() as u32,
+            )
         });
         if have.x >= first.x && have.y >= first.y && have_mips >= mips {
             return;
@@ -354,11 +357,7 @@ impl BackdropBlur {
         let size = grown(have, first, ceiling(device)).map(|side| side.next_multiple_of(last));
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.backdrop.levels"),
-            size: wgpu::Extent3d {
-                width: size.x,
-                height: size.y,
-                depth_or_array_layers: 1,
-            },
+            size: render_target::extent(size),
             mip_level_count: mips,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -393,7 +392,7 @@ impl BackdropBlur {
         let have = self
             .scratch
             .as_ref()
-            .map_or(UVec2::ZERO, |s| extent_of(&s.texture));
+            .map_or(UVec2::ZERO, |s| render_target::texture_size(&s.texture));
         if have.x >= size.x && have.y >= size.y {
             return;
         }
@@ -425,11 +424,7 @@ impl BackdropBlur {
     ) -> Sampled {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
-            size: wgpu::Extent3d {
-                width: size.x.max(1),
-                height: size.y.max(1),
-                depth_or_array_layers: 1,
-            },
+            size: render_target::extent(size.max(UVec2::ONE)),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -725,7 +720,7 @@ impl BackdropBlur {
                     .iter()
                     .find(|c| c.format == format)
                     .expect("ensured before the parameters");
-                extent_of(&capture.target.texture)
+                render_target::texture_size(&capture.target.texture)
             },
             |target| target.size,
         );
@@ -734,7 +729,7 @@ impl BackdropBlur {
                 .levels
                 .as_ref()
                 .expect("a blurred level has its levels");
-            extent_of(&levels.texture) >> u32::from(level - 1)
+            render_target::texture_size(&levels.texture) >> u32::from(level - 1)
         };
         let source_max = |level: u8| match level {
             0 => capture_max,
@@ -871,10 +866,6 @@ fn level_region(region: URect, levels: u8, level: u8, surface: UVec2) -> URect {
         UVec2::ZERO,
         level_extent(surface, level),
     ))
-}
-
-fn extent_of(texture: &wgpu::Texture) -> UVec2 {
-    UVec2::new(texture.width(), texture.height())
 }
 
 fn params_buffer(device: &wgpu::Device, slots: usize) -> wgpu::Buffer {

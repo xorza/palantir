@@ -20,8 +20,8 @@ use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::forest::Forest;
-use std::num::NonZeroU32;
 
 /// What a frame builds: the plan it paints by, and the ticket of each pane of its scene, planes
 /// and panes in paint order.
@@ -60,11 +60,11 @@ pub(crate) struct Frontend {
 }
 
 impl Frontend {
-    /// `max_texture_dim` caps `GpuView` target sizes; the [`Composer`] downsamples larger views.
-    pub(crate) fn new(max_texture_dim: NonZeroU32, gradient_atlas: SharedGradientAtlas) -> Self {
+    /// `texture_limit` caps `GpuView` target sizes; the [`Composer`] downsamples larger views.
+    pub(crate) fn new(texture_limit: TextureLimit, gradient_atlas: SharedGradientAtlas) -> Self {
         Self {
             encoder: Encoder::new(gradient_atlas),
-            composer: Composer::new(max_texture_dim),
+            composer: Composer::new(texture_limit),
             buffer: RenderBuffer::new(),
         }
     }
@@ -98,10 +98,12 @@ pub(crate) mod internals {
     use crate::renderer::frontend::{BuildPlan, Frontend};
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::renderer::texture_limit::TextureLimit;
     use std::num::NonZeroU32;
 
-    /// No `wgpu::Device` to query; 8192 is the downlevel-default cap.
-    pub(crate) const TEST_MAX_TEXTURE_DIM: NonZeroU32 = NonZeroU32::new(8192).unwrap();
+    /// No `wgpu::Device` to query; 8192 is `wgpu::Limits::default`'s `max_texture_dimension_2d`.
+    pub(crate) const TEST_TEXTURE_LIMIT: TextureLimit =
+        TextureLimit::from_device(NonZeroU32::new(8192).unwrap());
 
     impl BuildPlan<'static> {
         /// A build of a scene that holds no pane, as a test or a bench drives one; the encoder
@@ -113,7 +115,7 @@ pub(crate) mod internals {
 
     impl Frontend {
         pub(crate) fn for_test() -> Self {
-            Self::new(TEST_MAX_TEXTURE_DIM, SharedGradientAtlas::default())
+            Self::new(TEST_TEXTURE_LIMIT, SharedGradientAtlas::default())
         }
 
         /// Leaves out `buffer`, the composed frame the backend reads.

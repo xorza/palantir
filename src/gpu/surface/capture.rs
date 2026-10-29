@@ -1,14 +1,16 @@
-//! [`Capture`]: a region of a painted frame on its way back from the device.
+//! [`Capture`]: a region of a texture on its way back from the device.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::backbuffer::Backbuffer;
+use crate::gpu::surface::render_target;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use std::iter;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
+use std::thread;
 
 const BYTES_PER_PIXEL: u32 = 4;
 
@@ -16,8 +18,9 @@ const MAP_PENDING: u8 = 0;
 const MAP_DONE: u8 = 1;
 const MAP_FAILED: u8 = 2;
 
-/// One region of a frame, copied from the backbuffer into a staging buffer that maps without
-/// blocking the frame; [`Self::take`] hands the pixels over once the device is done.
+/// One region of a texture, copied into a staging buffer that maps without blocking the frame;
+/// [`Self::take`] hands the pixels over once the device is done. A screenshot copies the
+/// backbuffer, a test reads back a target.
 #[derive(Debug)]
 pub(crate) struct Capture {
     staging: Staging,
@@ -36,13 +39,20 @@ struct Staging {
     state: Arc<AtomicU8>,
 }
 
-/// What a capture copies out of the backbuffer, and how.
+/// What a capture copies, and how.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CaptureSource<'a> {
-    pub(crate) backbuffer: &'a Backbuffer,
-    /// The blit into [`Capture::FORMAT`], where [`Capture::needs_blit`] says the backbuffer
-    /// asks for one.
-    pub(crate) blit: Option<&'a wgpu::RenderPipeline>,
+    /// A texture made with `COPY_SRC`.
+    pub(crate) texture: &'a wgpu::Texture,
+    /// The blit into [`Capture::FORMAT`], where [`Capture::needs_blit`] says the texture asks
+    /// for one.
+    pub(crate) blit: Option<CaptureBlit<'a>>,
+}
+
+/// The blit a capture of a texture not in 8-bit RGBA or BGRA encodes through.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CaptureBlit<'a> {
+    pub(crate) pipeline: &'a wgpu::RenderPipeline,
     pub(crate) binding: &'a TextureBinding,
 }
 
@@ -51,44 +61,50 @@ impl Capture {
     /// format, so a BGRA or float target reads back as every other.
     pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-    /// Whether a backbuffer of `format` reaches [`Self::FORMAT`] only through a blit: any but the
-    /// 8-bit sRGB formats, whose bytes a capture copies as they are.
+    /// Whether a texture of `format` reaches [`Self::FORMAT`] only through a blit: any but the
+    /// 8-bit RGBA and BGRA formats, whose bytes a capture copies as they are. A frame's target
+    /// is sRGB or float, so only a test's read-back meets an 8-bit unorm one, whose bytes it takes
+    /// as they are.
     pub(crate) const fn needs_blit(format: wgpu::TextureFormat) -> bool {
         !matches!(
             format,
-            wgpu::TextureFormat::Rgba8UnormSrgb | wgpu::TextureFormat::Bgra8UnormSrgb
+            wgpu::TextureFormat::Rgba8UnormSrgb
+                | wgpu::TextureFormat::Bgra8UnormSrgb
+                | wgpu::TextureFormat::Rgba8Unorm
+                | wgpu::TextureFormat::Bgra8Unorm
         )
     }
 
-    /// Start copying `region` of the backbuffer, which holds the frame just submitted, and map
-    /// the copy once the device finishes. An 8-bit sRGB backbuffer is copied as is, BGRA swapped
-    /// on the way out; any other format is first blitted into a region-sized [`Self::FORMAT`]
+    /// Start copying `region` of the source texture, which holds what was submitted before, and
+    /// map the copy once the device finishes. An 8-bit texture is copied as is, BGRA swapped on
+    /// the way out; any other format is first blitted into a region-sized [`Self::FORMAT`]
     /// texture. Nothing is allocated past the region.
+    ///
+    /// # Panics
+    ///
+    /// For a texture made without `COPY_SRC`, and for one that needs a blit when `source` has
+    /// none.
     pub(crate) fn start(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         source: CaptureSource<'_>,
         region: URect,
     ) -> Self {
-        let CaptureSource {
-            backbuffer,
-            blit,
-            binding,
-        } = source;
+        let CaptureSource { texture, blit } = source;
+        assert!(
+            texture.usage().contains(wgpu::TextureUsages::COPY_SRC),
+            "a capture copies out of a texture made with COPY_SRC"
+        );
         debug_assert!(
             region.size.x > 0 && region.size.y > 0,
             "an empty region asks no capture: {region:?}"
         );
-        let full = backbuffer.size();
+        let full = render_target::texture_size(texture);
         debug_assert!(
             region.min.x + region.size.x <= full.x && region.min.y + region.size.y <= full.y,
-            "a capture region {region:?} inside the {full} backbuffer"
+            "a capture region {region:?} inside the {full} texture"
         );
-        let extent = wgpu::Extent3d {
-            width: region.size.x,
-            height: region.size.y,
-            depth_or_array_layers: 1,
-        };
+        let extent = render_target::extent(region.size);
         let padded_row = (region.size.x * BYTES_PER_PIXEL)
             .div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
             * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -102,13 +118,9 @@ impl Capture {
             label: Some("palantir.capture"),
         });
         let at_region = wgpu::TexelCopyTextureInfo {
-            texture: backbuffer.texture(),
+            texture,
             mip_level: 0,
-            origin: wgpu::Origin3d {
-                x: region.min.x,
-                y: region.min.y,
-                z: 0,
-            },
+            origin: render_target::origin(region.min),
             aspect: wgpu::TextureAspect::All,
         };
         let into_buffer = wgpu::TexelCopyBufferInfo {
@@ -119,11 +131,14 @@ impl Capture {
                 rows_per_image: Some(region.size.y),
             },
         };
-        let format = backbuffer.texture().format();
-        let bgra = format == wgpu::TextureFormat::Bgra8UnormSrgb;
+        let format = texture.format();
+        let bgra = matches!(
+            format,
+            wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm
+        );
         if Self::needs_blit(format) {
-            let blit =
-                blit.unwrap_or_else(|| panic!("a {format:?} backbuffer needs the capture blit"));
+            let CaptureBlit { pipeline, binding } =
+                blit.unwrap_or_else(|| panic!("a {format:?} texture needs the capture blit"));
             let texture = |label, format, usage| {
                 device.create_texture(&wgpu::TextureDescriptor {
                     label: Some(label),
@@ -152,7 +167,7 @@ impl Capture {
             let cut_view = cut.create_view(&wgpu::TextureViewDescriptor::default());
             let bind_group = binding.bind_group(device, &cut_view, "palantir.capture.region.bg");
             let encoded_view = encoded.create_view(&wgpu::TextureViewDescriptor::default());
-            blit_pipeline::draw(&mut encoder, &bind_group, &encoded_view, blit);
+            blit_pipeline::draw(&mut encoder, &bind_group, &encoded_view, pipeline);
             encoder.copy_texture_to_buffer(encoded.as_image_copy(), into_buffer, extent);
         } else {
             encoder.copy_texture_to_buffer(at_region, into_buffer, extent);
@@ -182,6 +197,17 @@ impl Capture {
         self.staging.state.load(Ordering::Acquire) == MAP_PENDING
     }
 
+    /// Block until the copy's map callback has run. A poll on another thread that shares `gpu`
+    /// may collect the callback and run it after this thread's wait returns, so the wait repeats
+    /// until the callback has run.
+    pub(crate) fn wait_landed(&self, gpu: &Gpu) {
+        gpu.wait();
+        while self.is_pending() {
+            thread::yield_now();
+            gpu.wait();
+        }
+    }
+
     /// The pixels, once the device has finished the copy and a poll ran its map callback.
     ///
     /// # Panics
@@ -191,9 +217,9 @@ impl Capture {
     pub(crate) fn take(self) -> Image {
         let staging = &self.staging;
         match staging.state.load(Ordering::Acquire) {
-            MAP_PENDING => panic!("a screenshot taken before its copy landed"),
+            MAP_PENDING => panic!("a capture taken before its copy landed"),
             MAP_DONE => {}
-            _ => panic!("a screenshot's staging buffer failed to map: the device is lost"),
+            _ => panic!("a capture's staging buffer failed to map: the device is lost"),
         }
         let row_bytes = (self.size.x * BYTES_PER_PIXEL) as usize;
         let mut pixels = Vec::with_capacity(row_bytes * self.size.y as usize);
