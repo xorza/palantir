@@ -6,7 +6,7 @@ use std::ops::RangeInclusive;
 /// True if `v` is [`positive`]: finite and above zero.
 #[inline]
 pub const fn is_positive(v: f64) -> bool {
-    v.is_finite() && v > 0.0
+    v > 0.0 && v <= f64::MAX
 }
 
 /// `v`, which must be *positive* (a step, a speed).

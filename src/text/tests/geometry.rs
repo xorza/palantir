@@ -181,6 +181,14 @@ fn selection_rects_match_cosmic_highlight_spans() {
             range: 2..12,
             max_width: None,
         },
+        // A combining mark makes a two-`char` grapheme, and a ligature one glyph of several
+        // graphemes; the range ends inside the ligature.
+        Case {
+            label: "multi_char_clusters",
+            text: "e\u{301}ffi office",
+            range: 1..12,
+            max_width: None,
+        },
         Case {
             label: "soft_wrap_and_graphemes",
             text: "á one two three four five",

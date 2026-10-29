@@ -1,8 +1,9 @@
 //! Which set of axes a picker drives.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::hsv::Hsv;
-use crate::primitives::paint::color::okhsv::{Okhsv, OkhsvSlice};
+use crate::primitives::paint::color::hsv::{Hsv, HsvColumn};
+use crate::primitives::paint::color::okhsv::{Okhsv, OkhsvColumn, OkhsvSlice};
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
 /// The color model a picker's field and hue bar work in. [`Okhsv`] is the default for its perceptual axes; [`Hsv`] matches numbers from other tools. Serialized so a host can persist the pick.
 #[derive(
@@ -56,6 +57,37 @@ impl HueSlice {
         match self.0 {
             HueSliceKind::Okhsv(slice) => slice.color(s, v),
             HueSliceKind::Hsv(hue) => Hsv::new(hue, s, v).to_color(),
+        }
+    }
+
+    /// This hue at saturation `s`, which clamps, ready to answer a run of values.
+    pub(crate) fn column(self, s: f32) -> HueColumn {
+        HueColumn(match self.0 {
+            HueSliceKind::Okhsv(slice) => HueColumnKind::Okhsv(slice.column(s)),
+            HueSliceKind::Hsv(hue) => HueColumnKind::Hsv(HsvColumn::new(hue, s)),
+        })
+    }
+}
+
+/// One hue and saturation of one model, with what every value shares solved once. Take one
+/// from [`HueSlice::column`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HueColumn(HueColumnKind);
+
+#[derive(Clone, Copy, Debug)]
+enum HueColumnKind {
+    Okhsv(OkhsvColumn),
+    Hsv(HsvColumn),
+}
+
+impl HueColumn {
+    /// `slice.color(s, v).to_srgba()` for the slice and saturation this column holds; `v`
+    /// clamps to `0..1`.
+    #[inline]
+    pub(crate) fn to_srgba(self, v: f32) -> SrgbaU8 {
+        match self.0 {
+            HueColumnKind::Okhsv(column) => column.color(v).to_srgba(),
+            HueColumnKind::Hsv(column) => column.to_srgba(v),
         }
     }
 }

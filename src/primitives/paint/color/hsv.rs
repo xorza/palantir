@@ -4,6 +4,7 @@
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgb_transfer;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
 /// Hue, saturation and value in the classic HSV space.
 ///
@@ -29,28 +30,9 @@ impl Hsv {
         Self { h, s, v }
     }
 
-    #[expect(
-        clippy::cast_sign_loss,
-        reason = "a turn puts the hue in [0, 6), so its sector is non-negative"
-    )]
     /// The color in linear RGB.
     pub fn to_color(self) -> RgbaF32 {
-        let hue = domain::turn(self.h) * 6.0;
-        let sat = domain::fraction(self.s);
-        let val = domain::fraction(self.v);
-        let sector = hue.floor();
-        let f = hue - sector;
-        let down = val * (1.0 - sat);
-        let falling = val * (1.0 - f * sat);
-        let rising = val * (1.0 - (1.0 - f) * sat);
-        let [r, g, b] = match sector as u32 % 6 {
-            0 => [val, rising, down],
-            1 => [falling, val, down],
-            2 => [down, val, rising],
-            3 => [down, falling, val],
-            4 => [rising, down, val],
-            _ => [val, down, falling],
-        };
+        let [r, g, b] = HsvColumn::new(self.h, self.s).encoded(self.v);
         RgbaF32::srgb(r, g, b)
     }
 
@@ -82,6 +64,66 @@ impl Hsv {
             h: (sixth / 6.0).rem_euclid(1.0),
             s: (spread / high).clamp(0.0, 1.0),
             v: high.clamp(0.0, 1.0),
+        }
+    }
+}
+
+/// One hue and saturation of [`Hsv`], ready to answer a run of values: each channel is the
+/// value times a factor fixed here.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HsvColumn {
+    sector: u32,
+    /// `1 - s`, `1 - f s` and `1 - (1 - f) s`, for the hue's place `f` within its sector.
+    down: f32,
+    falling: f32,
+    rising: f32,
+}
+
+impl HsvColumn {
+    /// The hue wraps and the saturation clamps, as [`Hsv::to_color`] reads them.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "a turn puts the hue in [0, 6), so its sector is non-negative"
+    )]
+    pub(crate) fn new(h: f32, s: f32) -> Self {
+        let hue = domain::turn(h) * 6.0;
+        let sat = domain::fraction(s);
+        let sector = hue.floor();
+        let f = hue - sector;
+        Self {
+            sector: sector as u32 % 6,
+            down: 1.0 - sat,
+            falling: 1.0 - f * sat,
+            rising: 1.0 - (1.0 - f) * sat,
+        }
+    }
+
+    /// The sRGB-encoded channels at value `v`, which clamps.
+    #[inline]
+    fn encoded(self, v: f32) -> [f32; 3] {
+        let val = domain::fraction(v);
+        let down = val * self.down;
+        let falling = val * self.falling;
+        let rising = val * self.rising;
+        match self.sector {
+            0 => [val, rising, down],
+            1 => [falling, val, down],
+            2 => [down, val, rising],
+            3 => [down, falling, val],
+            4 => [rising, down, val],
+            _ => [val, down, falling],
+        }
+    }
+
+    /// `Hsv::new(h, s, v).to_color().to_srgba()`, without the decode and encode between.
+    #[inline]
+    pub(crate) fn to_srgba(self, v: f32) -> SrgbaU8 {
+        let [r, g, b] = self.encoded(v);
+        SrgbaU8 {
+            r: srgb_transfer::byte_of_encoded(r),
+            g: srgb_transfer::byte_of_encoded(g),
+            b: srgb_transfer::byte_of_encoded(b),
+            a: u8::MAX,
         }
     }
 }

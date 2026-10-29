@@ -113,9 +113,13 @@ pub const fn offset(v: f32) -> f32 {
 }
 
 /// True if `v` is a [`length`]: finite and not negative.
+///
+/// Bounded by `f32::MAX`, not `is_finite`, here and in the other signed kinds: LLVM folds
+/// `is_finite() && v >= 0.0` into one class test, which x86 lowers to a dozen integer ops where
+/// these are two compares.
 #[inline]
 pub const fn is_length(v: f32) -> bool {
-    v.is_finite() && v >= 0.0
+    v >= 0.0 && v <= f32::MAX
 }
 
 /// `v`, which must be a *length*: a distance, finite and not negative. Zero is a length.
@@ -202,7 +206,7 @@ pub const fn lane(v: f32) -> f32 {
 /// True if `v` is [`positive`]: finite and above zero.
 #[inline]
 pub const fn is_positive(v: f32) -> bool {
-    v.is_finite() && v > 0.0
+    v > 0.0 && v <= f32::MAX
 }
 
 /// `v`, which must be *positive*: finite and above zero.
@@ -220,7 +224,7 @@ pub const fn positive(v: f32) -> f32 {
 /// True if `v` is a [`factor`]: finite and not negative.
 #[inline]
 pub const fn is_factor(v: f32) -> bool {
-    v.is_finite() && v >= 0.0
+    v >= 0.0 && v <= f32::MAX
 }
 
 /// `v`, which must be a *factor*: a multiplier, finite and not negative, where zero takes the
@@ -257,7 +261,8 @@ pub const fn angle(v: f32) -> f32 {
 /// True if every channel of `c` is a [lane](is_lane).
 #[inline]
 pub const fn is_color(c: RgbaF32) -> bool {
-    is_lane(c.r) && is_lane(c.g) && is_lane(c.b) && is_lane(c.a)
+    // `&`, not `&&`: unordered, the four compares are one vector compare.
+    is_lane(c.r) & is_lane(c.g) & is_lane(c.b) & is_lane(c.a)
 }
 
 /// `c`, which must be a *color*: every channel a [lane], as a color lowers to

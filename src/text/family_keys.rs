@@ -30,6 +30,9 @@ pub(crate) struct FamilyKeys(Rc<RefCell<Table>>);
 struct Table {
     families: Vec<FontFamily>,
     keys: FxHashMap<FontFamily, FamilyKey>,
+    /// The key [`FamilyKeys::key`] answered last. A frame's text runs mostly share one family,
+    /// and comparing its 64 bytes costs a fraction of hashing them.
+    last: FamilyKey,
 }
 
 impl Default for FamilyKeys {
@@ -37,6 +40,7 @@ impl Default for FamilyKeys {
         let keys = Self(Rc::new(RefCell::new(Table {
             families: Vec::new(),
             keys: FxHashMap::default(),
+            last: FamilyKey(0),
         })));
         for family in [FontFamily::SANS, FontFamily::MONO] {
             keys.key(family);
@@ -53,15 +57,21 @@ impl FamilyKeys {
     /// Panics on a 65 537th family, past what a `u16` key names.
     pub(crate) fn key(&self, family: FontFamily) -> FamilyKey {
         let mut table = self.0.borrow_mut();
-        if let Some(&key) = table.keys.get(&family) {
-            return key;
+        if table.families.get(usize::from(table.last.0)) == Some(&family) {
+            return table.last;
         }
-        let key = FamilyKey(
-            u16::try_from(table.families.len())
-                .expect("one shaper keys at most 65 536 font families"),
-        );
-        table.families.push(family);
-        table.keys.insert(family, key);
+        let key = if let Some(&key) = table.keys.get(&family) {
+            key
+        } else {
+            let key = FamilyKey(
+                u16::try_from(table.families.len())
+                    .expect("one shaper keys at most 65 536 font families"),
+            );
+            table.families.push(family);
+            table.keys.insert(family, key);
+            key
+        };
+        table.last = key;
         key
     }
 
@@ -85,8 +95,8 @@ mod tests {
     use crate::text::family_keys::{FamilyKey, FamilyKeys};
     use crate::text::font_family::FontFamily;
 
-    /// The bundled pair holds the first two keys; a new family takes the next, once; a family
-    /// reads back from its key; two tables mint apart.
+    /// The bundled pair holds the first two keys; a new family takes the next, once, and keeps
+    /// it after another family's lookup; a family reads back from its key; two tables mint apart.
     #[test]
     fn keys_are_minted_once_per_family_per_table() {
         let keys = FamilyKeys::default();
@@ -95,6 +105,12 @@ mod tests {
         let segoe = FontFamily::named("Segoe UI").unwrap();
         assert_eq!(keys.key(segoe), FamilyKey(2));
         assert_eq!(keys.key(segoe), FamilyKey(2));
+        assert_eq!(
+            keys.key(FontFamily::SANS),
+            FamilyKey(0),
+            "past the last key"
+        );
+        assert_eq!(keys.key(segoe), FamilyKey(2), "back to it");
         assert_eq!(keys.family(FamilyKey(2)), segoe);
 
         let other = FamilyKeys::default();

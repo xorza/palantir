@@ -207,7 +207,7 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     const IN_CONST: f32 = domain::length(2.0);
     assert_eq!(IN_CONST, 2.0);
 
-    let rows: [(Kind, &[f32], &[f32]); 7] = [
+    let rows: [(Kind, &[f32], &[f32]); 8] = [
         (
             (domain::OFFSET_RULE, domain::is_offset, domain::offset),
             &[-1e30, -1.0, 0.0, 1e30],
@@ -215,8 +215,27 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
         ),
         (
             (domain::LENGTH_RULE, domain::is_length, domain::length),
-            &[0.0, -0.0, 1.0, 1e30],
-            &[-EPS, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY],
+            &[0.0, -0.0, 1e-40, 1.0, 1e30, f32::MAX],
+            &[
+                -1e-40,
+                -EPS,
+                -1.0,
+                f32::NAN,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+            ],
+        ),
+        (
+            (domain::FACTOR_RULE, domain::is_factor, domain::factor),
+            &[0.0, -0.0, 1e-40, 1.0, 1e30, f32::MAX],
+            &[
+                -1e-40,
+                -EPS,
+                -1.0,
+                f32::NAN,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+            ],
         ),
         (
             (domain::EXTENT_RULE, domain::is_extent, domain::extent),
@@ -241,8 +260,8 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
         ),
         (
             (domain::POSITIVE_RULE, domain::is_positive, domain::positive),
-            &[f32::MIN_POSITIVE, 1.0, 1e30],
-            &[0.0, -0.0, -1.0, f32::NAN, f32::INFINITY],
+            &[1e-40, f32::MIN_POSITIVE, 1.0, 1e30, f32::MAX],
+            &[0.0, -0.0, -1e-40, -1.0, f32::NAN, f32::INFINITY],
         ),
         (
             (domain::ANGLE_RULE, domain::is_angle, domain::angle),
@@ -311,9 +330,18 @@ fn compound_kinds_check_every_part() {
     panic_probe::assert_panics_with(domain::LANE_RULE, || vec2::lane(Vec2::new(0.0, -65520.0)));
 }
 
-/// A range's ends are validated and its order kept.
+/// The `f64` twins: a positive value is finite and above zero, subnormals and `f64::MAX`
+/// included; a range's ends are validated and its order kept.
 #[test]
-fn range_keeps_finite_ends_in_order_and_refuses_the_rest() {
+fn f64_twins_take_their_domain_and_refuse_the_rest() {
+    for v in [1e-310, f64::MIN_POSITIVE, 1.0, f64::MAX] {
+        assert!(domain::f64::is_positive(v), "takes {v}");
+        assert_eq!(domain::f64::positive(v).to_bits(), v.to_bits());
+    }
+    for v in [0.0, -0.0, -1e-310, -1.0, f64::NAN, f64::INFINITY] {
+        assert!(!domain::f64::is_positive(v), "refuses {v}");
+        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || domain::f64::positive(v));
+    }
     assert_eq!(domain::f64::range(3.0..=1.0), 3.0..=1.0);
     assert_eq!(domain::f64::range(-1.0..=2.0), -1.0..=2.0);
     assert_eq!(domain::f64::range(5.0..=5.0), 5.0..=5.0);

@@ -123,22 +123,52 @@ impl OkhsvSlice {
 
     /// The opaque color at `s` and `v` on this hue; both clamp to `0..1`.
     pub(crate) fn color(self, s: f32, v: f32) -> RgbaF32 {
+        self.column(s).color(v)
+    }
+
+    /// This hue at saturation `s`, which clamps, with what every value shares solved once.
+    pub(crate) fn column(self, s: f32) -> OkhsvColumn {
         let sat = domain::fraction(s);
-        let val = domain::fraction(v);
 
         let denom = ANCHOR_S + self.slopes.t - self.slopes.t * self.k * sat;
         let l_v = 1.0 - sat * ANCHOR_S / denom;
         let c_v = sat * self.slopes.t * ANCHOR_S / denom;
+        OkhsvColumn {
+            cos: self.cos,
+            sin: self.sin,
+            l_v,
+            c_v,
+            scale: self.top_scale(l_v, c_v),
+        }
+    }
+}
 
-        let lightness = val * l_v;
-        let chroma = val * c_v;
+/// One hue and saturation of [`Okhsv`], ready to answer a run of values: the triangle's top and
+/// the gamut scale depend on the saturation alone. Take one from [`OkhsvSlice::column`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OkhsvColumn {
+    cos: f32,
+    sin: f32,
+    l_v: f32,
+    c_v: f32,
+    scale: f32,
+}
+
+impl OkhsvColumn {
+    /// The opaque color at value `v`, which clamps.
+    #[inline]
+    pub(crate) fn color(self, v: f32) -> RgbaF32 {
+        let val = domain::fraction(v);
+
+        let lightness = val * self.l_v;
+        let chroma = val * self.c_v;
         let toed = toe_inv(lightness);
         let chroma = if lightness > 0.0 {
             chroma * toed / lightness
         } else {
             0.0
         };
-        let scale = self.top_scale(l_v, c_v);
+        let scale = self.scale;
 
         let rgb = Oklab {
             l: toed * scale,

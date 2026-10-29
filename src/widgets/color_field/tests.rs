@@ -151,6 +151,32 @@ fn texels_are_srgb_encoded() {
     assert_eq!(image.texels()[2], SrgbaU8::rgb(128, 96, 96));
 }
 
+/// The fill solves each column once and skips the decode and encode of HSV, and still writes
+/// the bytes of `slice.color(s, v).to_srgba()` at every texel's center: both models, hues on
+/// either side of a sector edge, and widths that leave a partial column block.
+#[test]
+fn the_fill_matches_the_color_of_every_texel() {
+    for model in ColorModel::ALL {
+        for hue in [0.0, 0.1, 1.0 / 6.0, 0.62, 0.999] {
+            for size in [UVec2::new(1, 1), UVec2::new(16, 3), UVec2::new(37, 23)] {
+                let mut image = Image::blank(size);
+                fill(&mut image, model, hue);
+                let slice = model.slice(hue);
+                let mut expected = Image::blank(size);
+                expected.fill_with(|at| {
+                    let share = (at.as_vec2() + 0.5) / size.as_vec2();
+                    slice.color(share.x, 1.0 - share.y).to_srgba()
+                });
+                assert_eq!(
+                    image.texels(),
+                    expected.texels(),
+                    "{model:?} at hue {hue}, {size}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn a_hue_change_repaints_the_whole_field() {
     let id = WidgetId::from_hash("field-repaint");

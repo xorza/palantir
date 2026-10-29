@@ -133,3 +133,45 @@ fn encode_byte_matches_the_search_everywhere() {
         assert_eq!(encode_byte(y), searched(y), "y = {y:e}");
     }
 }
+
+/// `byte_of_encoded` against the decode and the encode it skips.
+fn decoded_then_encoded(c: f32) -> u8 {
+    encode_byte(decode(f64::from(c)))
+}
+
+/// Every `f32` within 4096 ulps of each threshold, and every 4099th bit pattern of `0..=1`
+/// (~260 000 inputs), lands on the byte the decode and the encode give; each threshold sits
+/// within four ulps of its midpoint `(k + 1/2) / 255`.
+#[test]
+fn byte_of_encoded_matches_decode_then_encode() {
+    for (k, &threshold) in ENCODED_THRESHOLDS[..255].iter().enumerate() {
+        let midpoint = (k as f64 + 0.5) / 255.0;
+        assert!(
+            (f64::from(threshold) - midpoint).abs()
+                <= 4.0 * f64::from(threshold - threshold.next_down()),
+            "threshold {k} at {threshold:e}, midpoint {midpoint:e}",
+        );
+        let bits = threshold.to_bits();
+        for bits in bits.saturating_sub(4096)..=(bits + 4096).min(1.0f32.to_bits()) {
+            let c = f32::from_bits(bits);
+            assert_eq!(byte_of_encoded(c), decoded_then_encoded(c), "c = {c:e}");
+        }
+    }
+    for bits in (0..=1.0f32.to_bits())
+        .step_by(4099)
+        .chain([1.0f32.to_bits()])
+    {
+        let c = f32::from_bits(bits);
+        assert_eq!(byte_of_encoded(c), decoded_then_encoded(c), "c = {c:e}");
+    }
+}
+
+/// Every `f32` in `0..=1` lands on the byte the decode and the encode give.
+#[test]
+#[ignore = "about 10⁹ inputs: run with --ignored after a change to the table"]
+fn byte_of_encoded_matches_decode_then_encode_everywhere() {
+    for bits in 0..=1.0f32.to_bits() {
+        let c = f32::from_bits(bits);
+        assert_eq!(byte_of_encoded(c), decoded_then_encoded(c), "c = {c:e}");
+    }
+}

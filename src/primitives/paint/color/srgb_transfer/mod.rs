@@ -49,7 +49,7 @@ pub(super) fn encode(y: f32) -> f32 {
 /// (checked at table build), so one compare is exact; a binary search takes
 /// eight unpredictable branches.
 #[inline]
-pub(super) fn encode_byte(y: f32) -> u8 {
+pub(super) const fn encode_byte(y: f32) -> u8 {
     // NaN, negatives and values below the first threshold count none.
     if y.is_nan() || y < THRESHOLDS_F32[0] {
         return 0;
@@ -59,8 +59,50 @@ pub(super) fn encode_byte(y: f32) -> u8 {
     }
     let bucket = (y.to_bits() >> BUCKET_SHIFT) - FIRST_BUCKET;
     let start = BUCKET_BYTES[bucket as usize];
-    start + u8::from(y >= THRESHOLDS_F32[usize::from(start)])
+    start + (y >= THRESHOLDS_F32[start as usize]) as u8
 }
+
+/// The byte an encoded component `c` in `0..=1` lands on through [`decode`] and then
+/// [`encode_byte`], with neither run: what `RgbaF32::srgb(c, ..).to_srgba()` gives.
+///
+/// **Counted, as `encode_byte` is.** The pair is monotonic in `c`, so the byte rises to `k + 1`
+/// at one `f32`, [`ENCODED_THRESHOLDS`]`[k]`, a few ulps from `(k + 1/2) / 255`. Each lies half
+/// a step inside its bucket `floor(255 c)`, so that bucket's threshold is the only one in reach.
+#[inline]
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "an encoded component is in 0..=1, so its bucket is too"
+)]
+pub(super) fn byte_of_encoded(c: f32) -> u8 {
+    debug_assert!(
+        (0.0..=1.0).contains(&c),
+        "an encoded component in 0..=1, got {c}"
+    );
+    let bucket = (c * 255.0) as u8;
+    bucket + u8::from(c >= ENCODED_THRESHOLDS[usize::from(bucket)])
+}
+
+/// Entry `k` is the least `f32` whose decode encodes to a byte past `k`, `+inf` at 255; found
+/// by stepping ulps from `(k + 1/2) / 255`.
+const ENCODED_THRESHOLDS: [f32; 256] = {
+    const fn byte(c: f32) -> u8 {
+        encode_byte(decode(c as f64))
+    }
+    let mut thresholds = [f32::INFINITY; 256];
+    let mut k = 0;
+    while k < 255 {
+        let mut c = ((k as f64 + 0.5) / 255.0) as f32;
+        while byte(c) as usize > k {
+            c = c.next_down();
+        }
+        while byte(c) as usize <= k {
+            c = c.next_up();
+        }
+        thresholds[k] = c;
+        k += 1;
+    }
+    thresholds
+};
 
 /// Mantissa bits a bucket keeps beside the exponent: seven is the fewest that
 /// leave at most one threshold per bucket (at six, two share one).
