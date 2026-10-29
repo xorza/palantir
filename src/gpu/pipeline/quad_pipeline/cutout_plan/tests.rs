@@ -1,5 +1,6 @@
+use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
-    BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowEntry, spread_radius,
+    BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowBox, ShadowEntry, spread_radius,
 };
 use crate::primitives::geometry::corners::{self, Corners};
 use crate::primitives::geometry::rect::Rect;
@@ -9,6 +10,7 @@ use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::quad::Quad;
 use crate::renderer::repaint_scissors::RepaintScissors;
+use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};
 
 /// A drop shadow over a `size` quad, every corner `radius`, blurred by `sigma`, no spread.
@@ -86,6 +88,139 @@ fn radius_rules_follow_the_shader() {
         [1.0; 4],
         "room to spare"
     );
+}
+
+/// One `shadow_box` call, as `vs_shadow` makes it.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct ShadowBoxIn {
+    radius: [f32; 4],
+    fill_axis: [f32; 4],
+    half: [f32; 2],
+    kind: u32,
+    pad: u32,
+}
+
+/// What `shadow_box` returned.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Pod, Zeroable)]
+struct ShadowBoxOut {
+    radius: [f32; 4],
+    center: [f32; 2],
+    half: [f32; 2],
+}
+
+const SHADOW_BOX_PROBE: &str = "
+struct ShadowBoxIn { radius: vec4<f32>, fill_axis: vec4<f32>, half: vec2<f32>, kind: u32, pad: u32 }
+struct ShadowBoxOut { radius: vec4<f32>, center: vec2<f32>, half: vec2<f32> }
+@group(0) @binding(14) var<storage, read> probe_in: array<ShadowBoxIn>;
+@group(0) @binding(15) var<storage, read_write> probe_out: array<ShadowBoxOut>;
+@compute @workgroup_size(1)
+fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
+    let q = probe_in[id.x];
+    let b = shadow_box(q.kind, q.half, q.radius, q.fill_axis);
+    probe_out[id.x] = ShadowBoxOut(b.radius, b.center, b.half);
+}
+";
+
+/// The cutout plan sizes its tables from the box the shader blurs, so the shader's
+/// `shadow_box` and [`ShadowBox`] agree on every arm of the spread rule: a radius at least
+/// the spread, one below it, a sharp corner, a zero and a negative spread, radii the fit
+/// scales, and a box the spread collapses. Within 4 ULP, as WGSL allows `/` 2.5 ULP and
+/// a fused multiply-add.
+#[test]
+fn shadow_box_follows_the_shader() {
+    let shadow = |kind: FillKind, size: Size, radii: [f32; 4], axis: [f32; 4]| Quad {
+        rect: Rect::new(0.0, 0.0, size.w, size.h),
+        corners: Corners::from((radii[0], radii[1], radii[2], radii[3])),
+        fill_kind: kind,
+        fill_axis: FillAxis::from_lanes(axis),
+        ..Quad::default()
+    };
+    let (drop, inset) = (FillKind::SHADOW_DROP, FillKind::SHADOW_INSET);
+    let quads = [
+        shadow(
+            drop,
+            Size::new(100.0, 60.0),
+            [8.0, 0.0, 4.0, 10.0],
+            [0.0, 0.0, 2.0, 4.0],
+        ),
+        shadow(
+            drop,
+            Size::new(100.0, 60.0),
+            [3.0, 5.0, 12.0, 0.0],
+            [0.0, 0.0, 2.0, 6.0],
+        ),
+        shadow(
+            drop,
+            Size::new(100.0, 60.0),
+            [8.0, 0.0, 4.0, 10.0],
+            [0.0, 0.0, 2.0, -3.0],
+        ),
+        shadow(
+            drop,
+            Size::new(100.0, 60.0),
+            [8.0, 0.0, 4.0, 10.0],
+            [0.0, 0.0, 2.0, 0.0],
+        ),
+        shadow(
+            drop,
+            Size::new(80.0, 50.0),
+            [30.0, 30.0, 20.0, 40.0],
+            [0.0, 0.0, 1.5, 2.0],
+        ),
+        shadow(
+            drop,
+            Size::new(20.0, 20.0),
+            [4.0; 4],
+            [0.0, 0.0, 1.0, -12.0],
+        ),
+        shadow(
+            inset,
+            Size::new(100.0, 60.0),
+            [8.0, 0.0, 4.0, 10.0],
+            [5.0, -3.0, 2.0, 4.0],
+        ),
+        shadow(
+            inset,
+            Size::new(100.0, 60.0),
+            [8.0, 0.0, 4.0, 10.0],
+            [0.0, 2.5, 3.0, -2.0],
+        ),
+        shadow(
+            inset,
+            Size::new(60.0, 60.0),
+            [8.0; 4],
+            [1.0, 1.0, 2.0, 40.0],
+        ),
+    ];
+    let inputs: Vec<ShadowBoxIn> = quads
+        .iter()
+        .map(|quad| ShadowBoxIn {
+            radius: quad.corners.to_array(),
+            fill_axis: quad.fill_axis.lanes(),
+            half: [quad.rect.size.w * 0.5, quad.rect.size.h * 0.5],
+            kind: quad.fill_kind.tag(),
+            pad: 0,
+        })
+        .collect();
+    let gpu: Vec<ShadowBoxOut> = QuadPipeline::SHADER.probe(SHADOW_BOX_PROBE, &inputs);
+    let close = |a: f32, b: f32| (a - b).abs() <= 4.0 * f32::EPSILON * a.abs().max(b.abs());
+    for (at, (quad, gpu)) in quads.iter().zip(&gpu).enumerate() {
+        let cpu = ShadowBox::of(quad);
+        let cpu_lanes = cpu
+            .radius
+            .into_iter()
+            .chain(cpu.center.to_array())
+            .chain(cpu.half.to_array());
+        let gpu_lanes = gpu.radius.into_iter().chain(gpu.center).chain(gpu.half);
+        for (lane, (c, g)) in cpu_lanes.zip(gpu_lanes).enumerate() {
+            assert!(
+                close(c, g),
+                "quad {at} lane {lane}: {cpu:?} against {gpu:?}"
+            );
+        }
+    }
 }
 
 /// A 400×300 drop shadow blurred by 16, radius 8: its box is the source inset

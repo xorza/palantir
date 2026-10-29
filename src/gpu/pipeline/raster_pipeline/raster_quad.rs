@@ -1,9 +1,11 @@
-//! The instance a [`RasterAtlas`](crate::gpu::raster::raster_atlas::RasterAtlas)
-//! is drawn through, with the shader and vertex layout that read it.
+//! The instance a `RasterAtlas` of `gpu::raster` is drawn through, with the vertex layout that
+//! reads it.
 
+use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{IVec2, U16Vec2, UVec2, Vec2};
+use std::mem::offset_of;
 
 /// One per-instance vertex record. 32 bytes, `Pod`.
 #[repr(C)]
@@ -36,18 +38,16 @@ impl RasterQuad {
         u32::from(u) | ((kind as u32) << KIND_SHIFT) | (u32::from(v) << V_SHIFT)
     }
 
-    pub(crate) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Self>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &RASTER_QUAD_ATTRS,
-        }
-    }
+    pub(crate) const LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+        size_of::<Self>(),
+        wgpu::VertexStepMode::Instance,
+        &RASTER_QUAD_ATTRS,
+    );
 }
 
 /// Bits of `uv_and_kind` that hold `u`, and the shift the flags sit at. Both
 /// atlases fit in 12; everything else, including the shader's copy
-/// (`ShaderBody::RasterAtlas`), derives from this.
+/// (`RasterProgram::SHADER`), derives from this.
 pub(crate) const U_BITS: u32 = 14;
 
 const U_MAX: u32 = (1 << U_BITS) - 1;
@@ -82,71 +82,77 @@ pub(crate) struct SpunRasterQuad {
 }
 
 impl SpunRasterQuad {
-    pub(crate) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Self>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &SPUN_RASTER_QUAD_ATTRS,
-        }
-    }
+    pub(crate) const LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+        size_of::<Self>(),
+        wgpu::VertexStepMode::Instance,
+        &SPUN_RASTER_QUAD_ATTRS,
+    );
 }
 
-const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
-    0 => Sint32x2,
-    1 => Uint16x2,
-    2 => Uint32x2,
-    3 => Uint32,
-    4 => Float16x4,
+const RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 5] = [
+    vertex_attr(0, wgpu::VertexFormat::Sint32x2, offset_of!(RasterQuad, pos)),
+    vertex_attr(1, wgpu::VertexFormat::Uint16x2, offset_of!(RasterQuad, dim)),
+    vertex_attr(
+        2,
+        wgpu::VertexFormat::Uint32x2,
+        offset_of!(RasterQuad, size),
+    ),
+    vertex_attr(
+        3,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(RasterQuad, uv_and_kind),
+    ),
+    vertex_attr(
+        4,
+        wgpu::VertexFormat::Float16x4,
+        offset_of!(RasterQuad, color),
+    ),
 ];
 
-// Guard: attribute offsets match the fields; `offset_of!` catches a same-size reorder.
-const _: () = {
-    use std::mem::offset_of;
-    assert!(RASTER_QUAD_ATTRS[0].offset == offset_of!(RasterQuad, pos) as u64);
-    assert!(RASTER_QUAD_ATTRS[1].offset == offset_of!(RasterQuad, dim) as u64);
-    assert!(RASTER_QUAD_ATTRS[2].offset == offset_of!(RasterQuad, size) as u64);
-    assert!(RASTER_QUAD_ATTRS[3].offset == offset_of!(RasterQuad, uv_and_kind) as u64);
-    assert!(RASTER_QUAD_ATTRS[4].offset == offset_of!(RasterQuad, color) as u64);
-};
-
-const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
-    0 => Sint32x2,
-    1 => Uint16x2,
-    2 => Uint32x2,
-    3 => Uint32,
-    4 => Float16x4,
-    5 => Float32x2,
-    6 => Float32x2,
+const SPUN_RASTER_QUAD_ATTRS: [wgpu::VertexAttribute; 7] = [
+    vertex_attr(
+        0,
+        wgpu::VertexFormat::Sint32x2,
+        offset_of!(SpunRasterQuad, quad.pos),
+    ),
+    vertex_attr(
+        1,
+        wgpu::VertexFormat::Uint16x2,
+        offset_of!(SpunRasterQuad, quad.dim),
+    ),
+    vertex_attr(
+        2,
+        wgpu::VertexFormat::Uint32x2,
+        offset_of!(SpunRasterQuad, quad.size),
+    ),
+    vertex_attr(
+        3,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(SpunRasterQuad, quad.uv_and_kind),
+    ),
+    vertex_attr(
+        4,
+        wgpu::VertexFormat::Float16x4,
+        offset_of!(SpunRasterQuad, quad.color),
+    ),
+    vertex_attr(
+        5,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(SpunRasterQuad, pivot),
+    ),
+    vertex_attr(
+        6,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(SpunRasterQuad, rotor),
+    ),
 ];
-
-// The leading five match `RasterQuad`'s, so `vs_spun` reads the quad as `vs` does.
-const _: () = {
-    use std::mem::offset_of;
-    let mut i = 0;
-    while i < RASTER_QUAD_ATTRS.len() {
-        assert!(SPUN_RASTER_QUAD_ATTRS[i].offset == RASTER_QUAD_ATTRS[i].offset);
-        i += 1;
-    }
-    assert!(SPUN_RASTER_QUAD_ATTRS[5].offset == offset_of!(SpunRasterQuad, pivot) as u64);
-    assert!(SPUN_RASTER_QUAD_ATTRS[6].offset == offset_of!(SpunRasterQuad, rotor) as u64);
-};
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::raster::raster_atlas::raster_quad::{FLAG_MASK, RasterQuad, U_BITS, U_MAX};
+    use crate::gpu::pipeline::raster_pipeline::raster_quad::{
+        FLAG_MASK, RasterQuad, U_BITS, U_MAX,
+    };
     use crate::primitives::paint::content_type::ContentType;
-    use std::mem::offset_of;
-
-    #[test]
-    fn raster_quad_is_32_bytes() {
-        assert_eq!(size_of::<RasterQuad>(), 32);
-        assert_eq!(align_of::<RasterQuad>(), 4);
-        assert_eq!(offset_of!(RasterQuad, pos), 0);
-        assert_eq!(offset_of!(RasterQuad, dim), 8);
-        assert_eq!(offset_of!(RasterQuad, size), 12);
-        assert_eq!(offset_of!(RasterQuad, uv_and_kind), 20);
-        assert_eq!(offset_of!(RasterQuad, color), 24);
-    }
 
     /// The three fields share one `u32`; `u` is taken at its range top to catch a mask one bit too wide.
     #[test]

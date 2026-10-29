@@ -9,9 +9,9 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
@@ -19,7 +19,9 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::renderer::render_buffer::image_draw_row::ImageInstance;
+use crate::renderer::render_buffer::image_flags::ImageFlags;
 use rustc_hash::FxHashMap;
+use std::mem::offset_of;
 
 /// One batch of image draws: the frame's per-draw texture column and this
 /// batch's slice of it. `items` is the same [`Span`] that indexes the instance
@@ -56,11 +58,19 @@ pub(crate) struct ImagePipeline {
 }
 
 impl ImagePipeline {
+    /// This family's shader body.
+    pub(crate) const SHADER: ShaderBody = ShaderBody {
+        label: "palantir.image.shader",
+        wgsl: include_str!("shader.wgsl"),
+        includes: &[],
+        constants: shader_constants,
+    };
+
     /// Format-independent resources: shader and instance buffer. Pipelines come
     /// from [`Self::build_variants`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
-        let shader = ShaderBody::Image.module(device);
+        let shader = Self::SHADER.module(device);
 
         let instance_buffer =
             DynamicBuffer::<ImageInstance>::vertex(device, "palantir.image.instances", 16);
@@ -68,19 +78,11 @@ impl ImagePipeline {
         Self {
             instance_buffer,
             shader,
-            pipeline_layout: PipelineRecipe::pipeline_layout(
+            pipeline_layout: pipeline_recipe::pipeline_layout(
                 device,
                 "palantir.image.pl",
                 &[Some(textures.layout())],
             ),
-        }
-    }
-
-    pub(super) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<ImageInstance>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &IMAGE_INSTANCE_ATTRS,
         }
     }
 
@@ -94,7 +96,7 @@ impl ImagePipeline {
         StencilVariant::build(
             device,
             PipelineRecipe {
-                vertex_buffers: &[Some(Self::instance_layout())],
+                vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 ..PipelineRecipe::color(
                     "palantir.image.pipeline",
@@ -147,29 +149,62 @@ impl ImagePipeline {
     }
 }
 
-const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 7] = wgpu::vertex_attr_array![
-    0 => Float32x2,
-    1 => Float32x2,
-    2 => Float32x2,
-    3 => Float32x2,
+const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 7] = [
+    vertex_attr(
+        0,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(ImageInstance, rect.min),
+    ),
+    vertex_attr(
+        1,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(ImageInstance, rect.size),
+    ),
+    vertex_attr(
+        2,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(ImageInstance, uv_min),
+    ),
+    vertex_attr(
+        3,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(ImageInstance, uv_size),
+    ),
     // Tint is linear straight-alpha; the shader premultiplies at write.
-    4 => Float16x4,
-    5 => Uint32,
-    6 => Float32,
+    vertex_attr(
+        4,
+        wgpu::VertexFormat::Float16x4,
+        offset_of!(ImageInstance, tint),
+    ),
+    vertex_attr(
+        5,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(ImageInstance, flags),
+    ),
+    vertex_attr(
+        6,
+        wgpu::VertexFormat::Float32,
+        offset_of!(ImageInstance, rotation),
+    ),
 ];
 
-// Attribute offsets must match the `ImageInstance` fields; `offset_of!`
-// catches a same-size reorder that `array_stride == size_of` would miss.
-const _: () = {
-    use std::mem::offset_of;
-    assert!(IMAGE_INSTANCE_ATTRS[0].offset == offset_of!(ImageInstance, rect.min) as u64);
-    assert!(IMAGE_INSTANCE_ATTRS[1].offset == offset_of!(ImageInstance, rect.size) as u64);
-    assert!(IMAGE_INSTANCE_ATTRS[2].offset == offset_of!(ImageInstance, uv_min) as u64);
-    assert!(IMAGE_INSTANCE_ATTRS[3].offset == offset_of!(ImageInstance, uv_size) as u64);
-    assert!(IMAGE_INSTANCE_ATTRS[4].offset == offset_of!(ImageInstance, tint) as u64);
-    assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, flags) as u64);
-    assert!(IMAGE_INSTANCE_ATTRS[6].offset == offset_of!(ImageInstance, rotation) as u64);
-};
+const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+    size_of::<ImageInstance>(),
+    wgpu::VertexStepMode::Instance,
+    &IMAGE_INSTANCE_ATTRS,
+);
+
+/// The numbers [`ImagePipeline::SHADER`] takes from the Rust types that own them.
+fn shader_constants() -> Vec<ShaderConstant> {
+    vec![
+        ShaderConstant::uint("IMG_FLAG_TILED", ImageFlags::TILED.bits()),
+        ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", ImageFlags::MIN_NEAREST.bits()),
+        ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", ImageFlags::MAG_NEAREST.bits()),
+        ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", ImageFlags::TAPS_MEAN.bits()),
+        ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", ImageFlags::TAPS_PEAK.bits()),
+        ShaderConstant::uint("IMG_FLAG_CLAMP_TO_UV", ImageFlags::CLAMP_TO_UV.bits()),
+    ]
+}
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;

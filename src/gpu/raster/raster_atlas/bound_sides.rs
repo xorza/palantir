@@ -1,7 +1,7 @@
 //! [`BoundSides`]: the group-0 binding over a [`RasterAtlas`](crate::gpu::raster::raster_atlas::RasterAtlas)'s two sides.
 
+use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::raster_atlas::side::Side;
-use crate::gpu::raster::raster_program::RasterProgram;
 use crate::primitives::paint::content_type::ContentType;
 
 /// The group-0 binding over an atlas's `[mask, color]` sides, in two tiers: the layout outlives any pair of textures and any atlas, so it belongs to the shared [`RasterProgram`]; the bind group describes current textures and a grow replaces it via [`Self::rebind`].

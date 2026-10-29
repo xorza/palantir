@@ -9,7 +9,7 @@ use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::damage::node_snapshot::NodeSnapshot;
 use crate::damage::region::{CollapsedDamage, DamageRegion};
-use crate::gpu::raster::raster_atlas::raster_quad::{RasterQuad, SpunRasterQuad};
+use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::input::interaction::response_state::ResponseState;
 use crate::input_state::target_scroll_delta::TargetScrollDelta;
 use crate::layout::cache::measure_snapshot::MeasureSnapshot;
@@ -215,8 +215,8 @@ const PINS: &[Pin] = &[
     pin::<MeshInstance>("renderer::MeshInstance", 24, 4),
     pin::<ImageInstance>("renderer::ImageInstance", 48, 4),
     pin::<MeshVertex>("primitives::MeshVertex", 12, 4),
-    pin::<RasterQuad>("atlas::RasterQuad", 32, 4),
-    pin::<SpunRasterQuad>("atlas::SpunRasterQuad", 48, 4),
+    pin::<RasterQuad>("raster_pipeline::RasterQuad", 32, 4),
+    pin::<SpunRasterQuad>("raster_pipeline::SpunRasterQuad", 48, 4),
     pin::<PlacedGlyph>("text::PlacedGlyph", 32, 4),
     pin::<ShapedTextRef>("text::ShapedTextRef", 32, 8),
     pin::<TextDrawRow>("renderer::TextDrawRow", 88, 8),

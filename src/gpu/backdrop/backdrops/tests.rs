@@ -2,7 +2,7 @@ use crate::display::Display;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, BackdropSlot, Backdrops, Kept, held_clear};
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
@@ -169,7 +169,7 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
 /// the clear, a `vec3` the shader aligns to 16 bytes, starts after the lens at 32.
 #[test]
 fn a_backdrop_slot_lies_as_the_shader_reads_it() {
-    ShaderBody::Quad.assert_struct_layout(
+    QuadPipeline::SHADER.assert_struct_layout(
         "BackdropSlot",
         size_of::<BackdropSlot>(),
         &[

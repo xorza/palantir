@@ -2,13 +2,13 @@
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use pollster::FutureExt;
-use std::slice;
+use std::mem::offset_of;
 
 /// The atlas, the bake pipeline and this frame's tables.
 #[derive(Debug)]
@@ -79,15 +79,10 @@ impl CutoutTables {
                 resource: wgpu::BindingResource::TextureView(&atlas),
             }],
         });
-        let bake_layout = PipelineRecipe::pipeline_layout(device, "palantir.quad.cutouts.pl", &[]);
-        let bake_buffer = Some(wgpu::VertexBufferLayout {
-            array_stride: size_of::<BakeTable>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &BAKE_ATTRS,
-        });
+        let bake_layout = pipeline_recipe::pipeline_layout(device, "palantir.quad.cutouts.pl", &[]);
         let bake_pipeline = PipelineRecipe {
             vertex_entry: "vs_cutout_bake",
-            vertex_buffers: slice::from_ref(&bake_buffer),
+            vertex_buffers: &[Some(BAKE_LAYOUT)],
             topology: wgpu::PrimitiveTopology::TriangleStrip,
             fragment_entry: "fs_cutout_bake",
             color_writes: wgpu::ColorWrites::RED,
@@ -146,13 +141,12 @@ impl CutoutTables {
     }
 
     /// The per-instance stream `vs_shadow` reads at location 9, parallel to the quads.
-    pub(crate) const fn corner_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<CornerTables>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &CORNER_ATTRS,
-        }
-    }
+    pub(crate) const CORNER_LAYOUT: wgpu::VertexBufferLayout<'static> =
+        pipeline_recipe::vertex_layout(
+            size_of::<CornerTables>(),
+            wgpu::VertexStepMode::Instance,
+            &CORNER_ATTRS,
+        );
 
     /// Upload `plan`'s corner tables and bake its tables on `ctx`'s encoder before the shadow pass.
     pub(crate) fn prepare(&mut self, ctx: &mut GpuCtx<'_>, plan: &CutoutPlan) {
@@ -191,25 +185,25 @@ impl CutoutTables {
     }
 }
 
-const BAKE_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
-    0 => Uint32,
-    1 => Float32,
-    2 => Float32,
-    3 => Uint16x2,
-    4 => Uint16x2,
+const BAKE_ATTRS: [wgpu::VertexAttribute; 5] = [
+    vertex_attr(0, wgpu::VertexFormat::Uint32, offset_of!(BakeTable, table)),
+    vertex_attr(1, wgpu::VertexFormat::Float32, offset_of!(BakeTable, r)),
+    vertex_attr(2, wgpu::VertexFormat::Float32, offset_of!(BakeTable, sigma)),
+    vertex_attr(3, wgpu::VertexFormat::Uint16x2, offset_of!(BakeTable, lo)),
+    vertex_attr(4, wgpu::VertexFormat::Uint16x2, offset_of!(BakeTable, hi)),
 ];
 
-const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![9 => Uint32x4];
+const BAKE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+    size_of::<BakeTable>(),
+    wgpu::VertexStepMode::Instance,
+    &BAKE_ATTRS,
+);
 
-// The bake attributes must sit where `BakeTable` keeps its fields, as `QUAD_INSTANCE_ATTRS` checks for `Quad`.
-const _: () = {
-    use std::mem::offset_of;
-    assert!(BAKE_ATTRS[0].offset == offset_of!(BakeTable, table) as u64);
-    assert!(BAKE_ATTRS[1].offset == offset_of!(BakeTable, r) as u64);
-    assert!(BAKE_ATTRS[2].offset == offset_of!(BakeTable, sigma) as u64);
-    assert!(BAKE_ATTRS[3].offset == offset_of!(BakeTable, lo) as u64);
-    assert!(BAKE_ATTRS[4].offset == offset_of!(BakeTable, hi) as u64);
-};
+const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = [vertex_attr(
+    9,
+    wgpu::VertexFormat::Uint32x4,
+    offset_of!(CornerTables, 0),
+)];
 
 #[cfg(test)]
 mod tests {

@@ -118,6 +118,9 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   multiplies changes the grain, so it is a rendering change, not an optimization.
 - **A narrower results atlas** (`Rg11b10Ufloat`, `Rgb10a2Unorm`), for a B-spline read that is a
   third of the composite: a 6-bit mantissa or 10-bit linear bands under an 8-bit sRGB step.
+- **`LoadOp::DontCare` on the blit**, which writes every texel with blending off. wgpu-core
+  refuses it under `InstanceFlags::STRICT_WEBGPU_COMPLIANCE`, which a device the app opened can
+  carry and not report, so the blit would fail validation there.
 - **`is_finite() && v >= 0.0` in a value kind.** LLVM folds it into one class test that x86
   lowers to 14 integer ops; the kinds bound by `f32::MAX` instead, two compares.
 
@@ -134,6 +137,10 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
 - **Shadow coverage per instance**: `filter_cdf_series` takes `1 / σ` and `h²/6` per pixel,
   where the vertex stage could hand them on flat. The coverage math is about 40 µs of the
   shadows' 115 µs on the 680M.
+- **A shadow corner stream per shadow, not per quad.** In a frame with a shadow every quad
+  uploads 16 B of `CornerTables` (25 % over its 64 B), which only shadow instances read; in
+  `CutoutMode::Shade` all of them are `NONE`. A stream per shadow needs the instance buffer bound
+  at an offset for each shadow run, and the run's shadow ordinal. No bench shows the upload.
 - **Shader costs with a profiler.** RGP on the 680M and Xcode's Metal System Trace on the m2 can
   now split the main pass (quads, shadows) and `backdrop_frame/gpu/*/under` on the m2, which
   spends 1.6 ms over `hover` on two captures.

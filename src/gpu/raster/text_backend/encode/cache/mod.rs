@@ -13,7 +13,7 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
 use crate::common::span::Span;
-use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
+use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::RasterPass;
 use crate::gpu::raster::text_backend::encode::{EncodedKey, EncodedRunKey};
 use crate::gpu::raster::text_backend::encoded_counters::EncodedCounters;

@@ -6,8 +6,8 @@ use crate::gpu::pipeline::image_pipeline::ImagePipeline;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::{QuadPass, QuadPipeline, QuadVariants};
+use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
-use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram, RasterVariants};
 
 /// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
 #[derive(Debug)]

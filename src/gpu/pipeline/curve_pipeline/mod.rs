@@ -12,12 +12,18 @@ pub(crate) mod bench;
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::{CurveInstance, SEGMENTS_PER_INSTANCE};
+use crate::renderer::render_buffer::curve_kind::CurveKind;
+use crate::shape::stroke_bounds::MITER_LIMIT;
+use crate::shape::style::LineCap;
+use std::mem::offset_of;
 use wgpu::util::DeviceExt;
 
 const IDXS_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
@@ -56,8 +62,16 @@ pub(crate) struct CurvePipeline {
 }
 
 impl CurvePipeline {
+    /// This family's shader body.
+    pub(crate) const SHADER: ShaderBody = ShaderBody {
+        label: "palantir.curve.shader",
+        wgsl: include_str!("shader.wgsl"),
+        includes: &[GRADIENT],
+        constants: shader_constants,
+    };
+
     pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
-        let shader = ShaderBody::Curve.module(device);
+        let shader = Self::SHADER.module(device);
 
         let instance_buffer =
             DynamicBuffer::<CurveInstance>::vertex(device, "palantir.curve.instances", 64);
@@ -72,19 +86,11 @@ impl CurvePipeline {
             idx_buffer,
             shader,
             // Gradient at group 0; the viewport rides the shared immediate region.
-            pipeline_layout: PipelineRecipe::pipeline_layout(
+            pipeline_layout: pipeline_recipe::pipeline_layout(
                 device,
                 "palantir.curve.pl",
                 &[Some(textures.layout())],
             ),
-        }
-    }
-
-    pub(super) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<CurveInstance>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &CURVE_INSTANCE_ATTRS,
         }
     }
 
@@ -96,7 +102,7 @@ impl CurvePipeline {
         StencilVariant::build(
             device,
             PipelineRecipe {
-                vertex_buffers: &[Some(Self::instance_layout())],
+                vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 ..PipelineRecipe::color(
                     "palantir.curve.pipeline",
                     &self.shader,
@@ -134,38 +140,95 @@ impl CurvePipeline {
     }
 }
 
-const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
-    0 => Float32x2,
-    1 => Float32x2,
-    2 => Float32x2,
-    3 => Float32x2,
-    4 => Float32x2,
-    5 => Float32,
-    6 => Float16x4,
-    7 => Float16x4,
-    8 => Uint32,
-    9 => Uint32,
-    10 => Uint32,
-    11 => Uint32,
+const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = [
+    vertex_attr(
+        0,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(CurveInstance, p0),
+    ),
+    vertex_attr(
+        1,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(CurveInstance, p1),
+    ),
+    vertex_attr(
+        2,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(CurveInstance, p2),
+    ),
+    vertex_attr(
+        3,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(CurveInstance, p3),
+    ),
+    // Spans the adjacent `t0` and `t1`.
+    vertex_attr(
+        4,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(CurveInstance, t0),
+    ),
+    vertex_attr(
+        5,
+        wgpu::VertexFormat::Float32,
+        offset_of!(CurveInstance, width),
+    ),
+    vertex_attr(
+        6,
+        wgpu::VertexFormat::Float16x4,
+        offset_of!(CurveInstance, color0),
+    ),
+    vertex_attr(
+        7,
+        wgpu::VertexFormat::Float16x4,
+        offset_of!(CurveInstance, color1),
+    ),
+    vertex_attr(
+        8,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(CurveInstance, caps),
+    ),
+    vertex_attr(
+        9,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(CurveInstance, fill_kind),
+    ),
+    vertex_attr(
+        10,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(CurveInstance, fill_lut_row),
+    ),
+    vertex_attr(
+        11,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(CurveInstance, kind),
+    ),
 ];
 
-// Attribute offsets must match the `CurveInstance` fields they feed (`array_stride == size_of` misses
-// a same-size reorder); attr 4 (`Float32x2`) spans the adjacent `t0`,`t1`.
-const _: () = {
-    use std::mem::offset_of;
-    assert!(CURVE_INSTANCE_ATTRS[0].offset == offset_of!(CurveInstance, p0) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[1].offset == offset_of!(CurveInstance, p1) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[2].offset == offset_of!(CurveInstance, p2) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[3].offset == offset_of!(CurveInstance, p3) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[4].offset == offset_of!(CurveInstance, t0) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[5].offset == offset_of!(CurveInstance, width) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[6].offset == offset_of!(CurveInstance, color0) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[7].offset == offset_of!(CurveInstance, color1) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, caps) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_kind) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[10].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[11].offset == offset_of!(CurveInstance, kind) as u64);
-};
+const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+    size_of::<CurveInstance>(),
+    wgpu::VertexStepMode::Instance,
+    &CURVE_INSTANCE_ATTRS,
+);
+
+/// The numbers [`CurvePipeline::SHADER`] takes from the Rust types that own them.
+fn shader_constants() -> Vec<ShaderConstant> {
+    vec![
+        ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
+        ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
+        ShaderConstant::uint("CAP_MASK", CurveCaps::CAP_MASK),
+        ShaderConstant::uint("CAP_AT_START", CurveCaps::AT_START),
+        ShaderConstant::uint("CAP_AT_END", CurveCaps::AT_END),
+        ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
+        ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
+        ShaderConstant::uint("KIND_ARC", CurveKind::ARC.bits()),
+        ShaderConstant::uint("KIND_SEGMENT", CurveKind::SEGMENT.bits()),
+        ShaderConstant::uint("KIND_JOIN_ROUND", CurveKind::JOIN_ROUND.bits()),
+        ShaderConstant::uint("KIND_JOIN_BEVEL", CurveKind::JOIN_BEVEL.bits()),
+        ShaderConstant::uint("KIND_JOIN_MITER", CurveKind::JOIN_MITER.bits()),
+        ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
+        ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
+    ]
+}
 
 #[cfg(test)]
 mod tests {
@@ -174,28 +237,16 @@ mod tests {
     };
     use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
 
+    /// Segment `s` joins cross-sections `s` and `s + 1`, vertices `2s, 2s + 1` and `2s + 2, 2s + 3`,
+    /// as two triangles of one winding: 16 segments over 34 vertices, the first two and the last
+    /// written out.
     #[test]
     fn curve_indices_tile_adjacent_cross_sections() {
-        assert_eq!(CURVE_IDXS.len(), IDXS_PER_INSTANCE as usize);
-        assert_eq!(
-            CURVE_IDXS.iter().copied().max(),
-            Some(UNIQUE_VERTICES_PER_INSTANCE - 1)
-        );
-        for segment in 0..SEGMENTS_PER_INSTANCE as u16 {
-            let vertex = 2 * segment;
-            let offset = 6 * segment as usize;
-            assert_eq!(
-                &CURVE_IDXS[offset..offset + 6],
-                &[
-                    vertex,
-                    vertex + 2,
-                    vertex + 1,
-                    vertex + 1,
-                    vertex + 2,
-                    vertex + 3
-                ],
-                "segment {segment}"
-            );
-        }
+        assert_eq!(SEGMENTS_PER_INSTANCE, 16);
+        assert_eq!(IDXS_PER_INSTANCE, 96);
+        assert_eq!(UNIQUE_VERTICES_PER_INSTANCE, 34);
+        assert_eq!(&CURVE_IDXS[..12], &[0, 2, 1, 1, 2, 3, 2, 4, 3, 3, 4, 5]);
+        assert_eq!(&CURVE_IDXS[90..], &[30, 32, 31, 31, 32, 33]);
+        assert_eq!(CURVE_IDXS.iter().copied().max(), Some(33));
     }
 }

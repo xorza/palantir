@@ -1,7 +1,7 @@
 //! The miss half of the hit/miss split in [the module doc](super): turns a
 //! laid-out text row into glyph instances. The hit half is [`EncodedCache::emit_cached`].
 
-use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
+use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::{RasterPass, Rasterized};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
 use crate::gpu::raster::text_backend::encode::cache::{EncodeCoverage, EncodedCache, EncodedGlyph};

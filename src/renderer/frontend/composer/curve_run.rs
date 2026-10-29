@@ -21,7 +21,11 @@ pub(super) struct CurveRun {
 impl CurveRun {
     /// Lower `p`, `width_physical` wide, under `lowering`: its control points or arc in physical
     /// px, and as many sub-instances as its length needs.
-    pub(super) fn lower(p: &DrawCurvePayload, width_physical: f32, lowering: &Lowering<'_>) -> Self {
+    pub(super) fn lower(
+        p: &DrawCurvePayload,
+        width_physical: f32,
+        lowering: &Lowering<'_>,
+    ) -> Self {
         let cap = p.cap;
         // Owner origin folds in here so the record stays owner-local. No snapping: it would warp
         // the traced shape.

@@ -1,13 +1,17 @@
 //! The GPU program every raster quad draws through, whichever tenant rasterized it: one shader module and one
 //! group-0 layout, so one pipeline pair per swapchain format. Each tenant still owns its atlas; a shared
-//! layout shares the shape of a binding, not the space behind it. See [`RasterPass`] for the CPU half.
-//!
-//! [`RasterPass`]: crate::gpu::raster::raster_pass::RasterPass
+//! layout shares the shape of a binding, not the space behind it. `gpu::raster`'s `RasterPass` is
+//! the CPU half.
 
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::shader_body::ShaderBody;
+pub(crate) mod raster_quad;
+
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::pipeline::raster_pipeline::raster_quad::{
+    FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, U_BITS, V_SHIFT,
+};
+use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
+use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
-use crate::gpu::raster::raster_atlas::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::resource::texture_binding::TextureBinding;
 
 /// The two pipeline pairs one swapchain format draws raster quads with.
@@ -37,12 +41,20 @@ pub(crate) struct RasterProgram {
 }
 
 impl RasterProgram {
+    /// This family's shader body.
+    pub(crate) const SHADER: ShaderBody = ShaderBody {
+        label: "palantir.raster.shader",
+        wgsl: include_str!("shader.wgsl"),
+        includes: &[],
+        constants: shader_constants,
+    };
+
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let layout = Self::create_layout(device);
         let pipeline_layout =
-            PipelineRecipe::pipeline_layout(device, "palantir.raster.pl", &[Some(&layout)]);
+            pipeline_recipe::pipeline_layout(device, "palantir.raster.pl", &[Some(&layout)]);
         Self {
-            shader: ShaderBody::RasterAtlas.module(device),
+            shader: Self::SHADER.module(device),
             layout,
             pipeline_layout,
         }
@@ -53,7 +65,7 @@ impl RasterProgram {
         &self.pipeline_layout
     }
 
-    pub(super) const fn layout(&self) -> &wgpu::BindGroupLayout {
+    pub(crate) const fn layout(&self) -> &wgpu::BindGroupLayout {
         &self.layout
     }
 
@@ -68,7 +80,7 @@ impl RasterProgram {
             flat: StencilVariant::build(
                 device,
                 PipelineRecipe {
-                    vertex_buffers: &[Some(RasterQuad::instance_layout())],
+                    vertex_buffers: &[Some(RasterQuad::LAYOUT)],
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
                     ..PipelineRecipe::color(
                         "palantir.raster.pipeline",
@@ -82,7 +94,7 @@ impl RasterProgram {
             spun: StencilVariant::build(
                 device,
                 PipelineRecipe {
-                    vertex_buffers: &[Some(SpunRasterQuad::instance_layout())],
+                    vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
                     vertex_entry: "vs_spun",
                     fragment_entry: "fs_spun",
@@ -108,4 +120,15 @@ impl RasterProgram {
             ],
         })
     }
+}
+
+/// The numbers [`RasterProgram::SHADER`] takes from the Rust types that own them.
+fn shader_constants() -> Vec<ShaderConstant> {
+    vec![
+        ShaderConstant::uint("U_BITS", U_BITS),
+        ShaderConstant::uint("V_SHIFT", V_SHIFT),
+        ShaderConstant::uint("FLAG_MASK", FLAG_MASK),
+        ShaderConstant::uint("FLAG_DESATURATE", FLAG_DESATURATE),
+        ShaderConstant::uint("FLAG_COLOR", FLAG_COLOR),
+    ]
 }

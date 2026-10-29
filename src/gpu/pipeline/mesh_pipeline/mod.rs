@@ -12,12 +12,13 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::geometry::mesh::MeshVertex;
 use crate::renderer::render_buffer::mesh_draw_row::{MeshDraw, MeshInstance};
+use std::mem::offset_of;
 
 /// One frame's mesh geometry and per-draw state, uploaded together because an
 /// instance indexes a draw's vertex and index spans.
@@ -48,11 +49,19 @@ pub(crate) struct MeshPipeline {
 }
 
 impl MeshPipeline {
+    /// This family's shader body.
+    pub(crate) const SHADER: ShaderBody = ShaderBody {
+        label: "palantir.mesh.shader",
+        wgsl: include_str!("shader.wgsl"),
+        includes: &[],
+        constants: Vec::new,
+    };
+
     /// Format-independent mesh resources; pipelines come from
     /// [`Self::build_variants`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let shader = ShaderBody::Mesh.module(device);
+        let shader = Self::SHADER.module(device);
 
         let vertex_buffer =
             DynamicBuffer::<MeshVertex>::vertex(device, "palantir.mesh.vertices", 256);
@@ -66,15 +75,7 @@ impl MeshPipeline {
             instance_buffer,
             shader,
             // No bind groups: only the shared immediate region for the viewport.
-            pipeline_layout: PipelineRecipe::pipeline_layout(device, "palantir.mesh.pl", &[]),
-        }
-    }
-
-    pub(super) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<MeshInstance>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &MESH_INSTANCE_ATTRS,
+            pipeline_layout: pipeline_recipe::pipeline_layout(device, "palantir.mesh.pl", &[]),
         }
     }
 
@@ -88,7 +89,7 @@ impl MeshPipeline {
         StencilVariant::build(
             device,
             PipelineRecipe {
-                vertex_buffers: &[Some(mesh_vertex_layout()), Some(Self::instance_layout())],
+                vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
                 ..PipelineRecipe::color(
                     "palantir.mesh.pipeline",
                     &self.shader,
@@ -171,43 +172,52 @@ fn mesh_upload_required(vertices: usize, idxs: usize, instances: usize) -> bool 
     true
 }
 
-const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
-    0 => Float32x2,
+const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = [
+    vertex_attr(
+        0,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(MeshVertex, pos),
+    ),
     // `Unorm8x4` normalizes `u8/255` to 0..1. `MeshVertex::color` holds sRGB-encoded
     // bytes, decoded per vertex in the shader.
-    1 => Unorm8x4,
+    vertex_attr(
+        1,
+        wgpu::VertexFormat::Unorm8x4,
+        offset_of!(MeshVertex, color),
+    ),
 ];
 
-// Attribute offsets must match the struct fields; `offset_of!` catches a
-// same-size reorder that `array_stride == size_of` would miss.
-const _: () = {
-    use std::mem::offset_of;
-    assert!(MESH_VERTEX_ATTRS[0].offset == offset_of!(MeshVertex, pos) as u64);
-    assert!(MESH_VERTEX_ATTRS[1].offset == offset_of!(MeshVertex, color) as u64);
-};
-
-const fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
-    wgpu::VertexBufferLayout {
-        array_stride: size_of::<MeshVertex>() as u64,
-        step_mode: wgpu::VertexStepMode::Vertex,
-        attributes: &MESH_VERTEX_ATTRS,
-    }
-}
+const VERTEX_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+    size_of::<MeshVertex>(),
+    wgpu::VertexStepMode::Vertex,
+    &MESH_VERTEX_ATTRS,
+);
 
 // Tint is straight-alpha linear; the shader multiplies it by the decoded
 // vertex color.
-const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
-    2 => Float32x2,
-    3 => Float32x2,
-    4 => Float16x4,
+const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = [
+    vertex_attr(
+        2,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(MeshInstance, translate),
+    ),
+    vertex_attr(
+        3,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(MeshInstance, rotor_scale),
+    ),
+    vertex_attr(
+        4,
+        wgpu::VertexFormat::Float16x4,
+        offset_of!(MeshInstance, tint),
+    ),
 ];
 
-const _: () = {
-    use std::mem::offset_of;
-    assert!(MESH_INSTANCE_ATTRS[0].offset == offset_of!(MeshInstance, translate) as u64);
-    assert!(MESH_INSTANCE_ATTRS[1].offset == offset_of!(MeshInstance, rotor_scale) as u64);
-    assert!(MESH_INSTANCE_ATTRS[2].offset == offset_of!(MeshInstance, tint) as u64);
-};
+const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+    size_of::<MeshInstance>(),
+    wgpu::VertexStepMode::Instance,
+    &MESH_INSTANCE_ATTRS,
+);
 
 #[cfg(test)]
 mod tests {

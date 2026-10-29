@@ -2,8 +2,8 @@
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
+use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::surface::render_target::{self, TargetFormat};
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -184,6 +184,14 @@ pub(crate) struct BackdropBlur {
 }
 
 impl BackdropBlur {
+    /// This family's shader body.
+    pub(crate) const SHADER: ShaderBody = ShaderBody {
+        label: "palantir.backdrop.blur.shader",
+        wgsl: include_str!("blur.wgsl"),
+        includes: &[],
+        constants: shader_constants,
+    };
+
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let texture_entry = |filterable| wgpu::BindGroupLayoutEntry {
             binding: 0,
@@ -224,9 +232,9 @@ impl BackdropBlur {
                 count: None,
             }],
         });
-        let shader = ShaderBody::BackdropBlur.module(device);
+        let shader = Self::SHADER.module(device);
         let passes = |source_layout: wgpu::BindGroupLayout, tent_entry| {
-            let layout = PipelineRecipe::pipeline_layout(
+            let layout = pipeline_recipe::pipeline_layout(
                 device,
                 "palantir.backdrop.blur.pl",
                 &[Some(&source_layout), Some(&params_layout)],
@@ -253,7 +261,7 @@ impl BackdropBlur {
             ..PipelineRecipe::color(
                 "palantir.backdrop.blur.vertical",
                 &shader,
-                &PipelineRecipe::pipeline_layout(
+                &pipeline_recipe::pipeline_layout(
                     device,
                     "palantir.backdrop.blur.pl",
                     &[Some(&filtered.layout), Some(&params_layout)],
@@ -911,6 +919,14 @@ fn ceiling(device: &wgpu::Device) -> u32 {
 
 /// The texels [`grown`] rounds an edge up to.
 const GROWTH_GRANULE: u32 = 256;
+
+/// The numbers [`BackdropBlur::SHADER`] takes from the Rust types that own them.
+fn shader_constants() -> Vec<ShaderConstant> {
+    vec![ShaderConstant::uint(
+        "TAP_VEC4S",
+        BlurPlan::MAX_TAPS.div_ceil(4) as u32,
+    )]
+}
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {

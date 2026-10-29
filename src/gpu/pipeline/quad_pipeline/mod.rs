@@ -8,13 +8,13 @@ pub(crate) mod quad_form;
 use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::runs::Runs;
-use crate::gpu::pipeline::shader_body::ShaderBody;
+use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
@@ -22,9 +22,12 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
+use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use glam::Vec2;
+use std::mem::offset_of;
 use std::slice;
 
 /// Every quad pipeline one swapchain format needs: color per [`QuadForm`], shadows per edge form, and two stencil-writing mask variants.
@@ -147,6 +150,14 @@ pub(crate) struct QuadPipeline {
 }
 
 impl QuadPipeline {
+    /// This family's shader body.
+    pub(crate) const SHADER: ShaderBody = ShaderBody {
+        label: "palantir.quad.shader",
+        wgsl: include_str!("shader.wgsl"),
+        includes: &[GRADIENT],
+        constants: shader_constants,
+    };
+
     /// Upload the pre-clear quad: full-viewport, opaque `color`, no stroke or rounding, so AA fringes blend over the clear color.
     pub(crate) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: RgbaF16) {
         debug_assert!(
@@ -209,7 +220,7 @@ impl QuadPipeline {
         textures: &TextureBinding,
         backdrops: &wgpu::BindGroupLayout,
     ) -> Self {
-        let shader = ShaderBody::Quad.module(device);
+        let shader = Self::SHADER.module(device);
         let cutouts = CutoutTables::new(device, &shader);
 
         let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
@@ -221,17 +232,17 @@ impl QuadPipeline {
             clear: SingleQuadBuffer::new(device, "palantir.quad.clear"),
             shader,
             // Gradient atlas at group 0. One layout serves all pipelines; stencil state and fragment entry are not part of it.
-            pipeline_layout: PipelineRecipe::pipeline_layout(
+            pipeline_layout: pipeline_recipe::pipeline_layout(
                 device,
                 "palantir.quad.pl",
                 &[Some(textures.layout())],
             ),
-            shadow_layout: PipelineRecipe::pipeline_layout(
+            shadow_layout: pipeline_recipe::pipeline_layout(
                 device,
                 "palantir.quad.shadow.pl",
                 &[Some(textures.layout()), Some(cutouts.layout())],
             ),
-            backdrop_layout: PipelineRecipe::pipeline_layout(
+            backdrop_layout: pipeline_recipe::pipeline_layout(
                 device,
                 "palantir.quad.backdrop.pl",
                 &[Some(textures.layout()), None, Some(backdrops)],
@@ -241,21 +252,13 @@ impl QuadPipeline {
         }
     }
 
-    pub(super) const fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
-        wgpu::VertexBufferLayout {
-            array_stride: size_of::<Quad>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &QUAD_INSTANCE_ATTRS,
-        }
-    }
-
     /// Build every quad pipeline against `format`, the only format-dependent quad objects; the atlas and buffers are reused.
     pub(super) fn build_variants(
         &self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) -> QuadVariants {
-        let instance = Some(Self::instance_layout());
+        let instance = Some(INSTANCE_LAYOUT);
         // The mask pair writes stencil only: `fs_mask` discards outside the SDF, color writes are off, the blend is inert.
         let mask = |label: &'static str, depth_stencil: wgpu::DepthStencilState| {
             PipelineRecipe {
@@ -269,7 +272,7 @@ impl QuadPipeline {
             }
             .build(device)
         };
-        let shadow_buffers = [instance.clone(), Some(CutoutTables::corner_layout())];
+        let shadow_buffers = [instance.clone(), Some(CutoutTables::CORNER_LAYOUT)];
         let grid = f64::from(u8::from(self.shadow_grid));
         let shadow = |label, stencil_label, fragment_entry, series: bool| {
             StencilVariant::build(
@@ -359,11 +362,15 @@ impl QuadPipeline {
         }
     }
 
-    /// Upload the frame's quads, work out the draw each takes, and bake the cutout tables planned
-    /// for them.
+    /// Upload the frame's quads, and work out the draw each takes under `cutouts`.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad], cutouts: &CutoutPlan) {
         self.instance_buffer.upload_instances(ctx, quads);
         quad_draw::fill(&mut self.draws, quads, cutouts.entries(), self.shadow_grid);
+    }
+
+    /// Upload the shadows' corner stream and bake the tables `cutouts` plans, in a pass of its
+    /// own on `ctx`'s encoder, before the main pass reads them.
+    pub(crate) fn prepare_cutouts(&mut self, ctx: &mut GpuCtx<'_>, cutouts: &CutoutPlan) {
         self.cutouts.prepare(ctx, cutouts);
     }
 
@@ -426,33 +433,71 @@ impl QuadPipeline {
 const SHADOW_GRID_VERTICES: u32 = 8 * 6;
 
 // Location 9 is the shadow pipeline's per-instance cutout tables, so the turn takes 10.
-const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = wgpu::vertex_attr_array![
-    0 => Float32x2,
-    1 => Float32x2,
-    2 => Uint32x2,
-    3 => Uint32x2,
-    4 => Uint32x2,
-    5 => Float32,
-    6 => Uint32,
-    7 => Uint32,
-    8 => Uint32x2,
-    10 => Float32,
+const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = [
+    vertex_attr(0, wgpu::VertexFormat::Float32x2, offset_of!(Quad, rect.min)),
+    vertex_attr(
+        1,
+        wgpu::VertexFormat::Float32x2,
+        offset_of!(Quad, rect.size),
+    ),
+    vertex_attr(2, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, fill)),
+    vertex_attr(3, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, corners)),
+    vertex_attr(
+        4,
+        wgpu::VertexFormat::Uint32x2,
+        offset_of!(Quad, stroke_color),
+    ),
+    vertex_attr(
+        5,
+        wgpu::VertexFormat::Float32,
+        offset_of!(Quad, stroke_width),
+    ),
+    vertex_attr(6, wgpu::VertexFormat::Uint32, offset_of!(Quad, fill_kind)),
+    vertex_attr(
+        7,
+        wgpu::VertexFormat::Uint32,
+        offset_of!(Quad, fill_lut_row),
+    ),
+    vertex_attr(8, wgpu::VertexFormat::Uint32x2, offset_of!(Quad, fill_axis)),
+    vertex_attr(10, wgpu::VertexFormat::Float32, offset_of!(Quad, rotation)),
 ];
 
-// Compile-time guard: each attribute offset must match its `Quad` field; a reorder or same-size swap would mis-route data without changing the stride.
-const _: () = {
-    use std::mem::offset_of;
-    assert!(QUAD_INSTANCE_ATTRS[0].offset == offset_of!(Quad, rect.min) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[1].offset == offset_of!(Quad, rect.size) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[2].offset == offset_of!(Quad, fill) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[3].offset == offset_of!(Quad, corners) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[4].offset == offset_of!(Quad, stroke_color) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[5].offset == offset_of!(Quad, stroke_width) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[6].offset == offset_of!(Quad, fill_kind) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[7].offset == offset_of!(Quad, fill_lut_row) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[8].offset == offset_of!(Quad, fill_axis) as u64);
-    assert!(QUAD_INSTANCE_ATTRS[9].offset == offset_of!(Quad, rotation) as u64);
-};
+const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vertex_layout(
+    size_of::<Quad>(),
+    wgpu::VertexStepMode::Instance,
+    &QUAD_INSTANCE_ATTRS,
+);
+
+/// The numbers [`QuadPipeline::SHADER`] takes from the Rust types that own them.
+fn shader_constants() -> Vec<ShaderConstant> {
+    vec![
+        ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
+        ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
+        ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
+        ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
+        ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
+        ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
+        ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
+        ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
+        ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
+        ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
+        ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
+        ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
+        ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
+        // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
+        ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
+        ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
+        ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeometry::REACH_SIGMAS),
+        ShaderConstant::float("CUTOUT_MIN_SIGMA", CutoutPlan::MIN_SIGMA),
+        ShaderConstant::float("FILTER_SERIES_MIN_SIGMA", CutoutPlan::SERIES_MIN_SIGMA),
+        ShaderConstant::float("CUTOUT_TEXELS_PER_SIGMA", CutoutPlan::TEXELS_PER_SIGMA),
+        ShaderConstant::float("CUTOUT_ATLAS_SIZE", CutoutPlan::ATLAS_SIZE as f32),
+        ShaderConstant::uint("CUTOUT_CELL", CutoutPlan::CELL),
+        ShaderConstant::uint("NO_CUTOUT_TABLE", CutoutPlan::NONE),
+        ShaderConstant::uint("CUTOUT_NODES", CutoutPlan::SHADED_NODES),
+        ShaderConstant::uint("CUTOUT_BAKE_NODES", CutoutPlan::BAKED_NODES),
+    ]
+}
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {

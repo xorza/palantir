@@ -17,9 +17,9 @@ mod encoded_counters;
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
+use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
-use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::text_backend::encode::EncodedRunKey;
 use crate::gpu::raster::text_backend::encode::encoder::{MissedRun, TextEncoder};
 use crate::primitives::text::interned_text::InternedText;

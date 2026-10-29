@@ -11,10 +11,10 @@
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
+use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
+use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
-use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig, Rasterized};
-use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram};
 use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::IconRasterizer;
 use crate::icons::icon_registry::IconRegistry;

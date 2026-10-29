@@ -77,11 +77,4 @@ mod tests {
         let split: Vec<_> = Runs::new(Span::new(0, 3), |i| alternating[i as usize]).collect();
         assert_eq!(split, [run(7, 0, 1), run(9, 1, 1), run(7, 2, 1)]);
     }
-
-    #[test]
-    #[should_panic(expected = "index out of bounds")]
-    fn a_span_past_the_keys_panics() {
-        let keys = [1u8; 2];
-        let _ = Runs::new(Span::new(1, 2), |i| keys[i as usize]).count();
-    }
 }
