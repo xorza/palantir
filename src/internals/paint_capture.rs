@@ -1,8 +1,8 @@
 //! Capturing [`PaintSink`] for tests and benches: [`PaintCapture`] holds the
 //! call sequence as owned values, and [`PaintCapture::replay`] feeds it to
 //! another sink so the compose bench can time compose alone. "Capture", not
-//! "record", which the crate spends on authoring. It sits below the `draw_*`
-//! no-op gates, so equal captures mean equal painted operations.
+//! "record", which the crate spends on authoring. It sits below the `draw`
+//! no-op gate, so equal captures mean equal painted operations.
 
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::paint_sink::PaintSink;

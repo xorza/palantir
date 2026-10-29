@@ -2,6 +2,7 @@
 
 use crate::common::span::Span;
 use crate::primitives::math::domain::is_invisible;
+use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::record::ColorMode;
 use crate::shape::style::{LineCap, LineJoin};
@@ -28,8 +29,17 @@ pub(crate) struct DrawPolylinePayload {
 }
 
 impl DrawPolylinePayload {
+    /// Fewer than two points, or an invisible stroke width: an invariant (`PaintPayload::check`
+    /// asserts it), not a filter.
     #[inline]
-    pub(crate) fn faded(self, by: f32) -> Self {
+    pub(crate) const fn is_degenerate(&self) -> bool {
+        self.points.len < 2 || is_invisible(self.width)
+    }
+}
+
+impl PaintPayload for DrawPolylinePayload {
+    #[inline]
+    fn faded(self, by: f32) -> Self {
         if by == 1.0 {
             return self;
         }
@@ -42,14 +52,23 @@ impl DrawPolylinePayload {
     /// Paints nothing: degenerate, or faded out. Colors are not checked (an O(n) span read); the
     /// bbox is not either, since a zero-area one can still paint stroke pixels.
     #[inline]
-    pub(crate) const fn is_noop(&self) -> bool {
+    fn is_noop(&self) -> bool {
         self.is_degenerate() || is_invisible(self.alpha)
     }
 
-    /// Fewer than two points, or an invisible stroke width: an invariant (`PaintSink::draw_polyline`
-    /// asserts it), not a filter.
-    #[inline]
-    pub(crate) const fn is_degenerate(&self) -> bool {
-        self.points.len < 2 || is_invisible(self.width)
+    fn paint(self, sink: &mut impl PaintSink) {
+        sink.polyline(self);
+    }
+
+    /// Geometry is asserted, not gated: `PolylineShape::is_noop` rejects `< 2` points and a
+    /// non-painting width before lowering, and the encoder forwards both verbatim. Other payloads
+    /// gate because theirs are layout outputs that can legitimately collapse. Debug-only is safe:
+    /// `is_noop` also covers the geometry, and the composer emits nothing for one.
+    fn check(&self) {
+        debug_assert!(
+            !self.is_degenerate(),
+            "degenerate polyline reached the sink — `PolylineShape::is_noop` \
+             should have dropped it: {self:?}",
+        );
     }
 }

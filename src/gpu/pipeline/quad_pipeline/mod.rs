@@ -162,7 +162,7 @@ impl QuadPipeline {
         self.clear.upload(ctx, q);
     }
 
-    /// Bind `binding` over the pre-clear quad. Under [`StencilMode::Test`](crate::gpu::pipeline::stencil_variant::StencilMode::Test), the test at reference 0 matches every pixel and leaves the stencil intact.
+    /// Bind `binding` over the pre-clear quad. Under [`StencilMode::Test`], the test at reference 0 matches every pixel and leaves the stencil intact.
     pub(crate) fn bind_clear<'a>(
         &'a self,
         binder: &mut MainBinder<'a>,

@@ -7,6 +7,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::{
     DrawQuadPayload, QuadGeometry, RectQuad, TriangleQuad,

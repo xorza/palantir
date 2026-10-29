@@ -203,7 +203,7 @@ fn a_turned_quad_orders_against_its_fringe() {
     let buf = run(
         |b, _arena| {
             image(b, Rect::new(18.0, 25.0, 4.0, 1.0));
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Rounded,
                     rect: Rect::new(10.0, 10.0, 20.0, 10.0),
@@ -225,6 +225,63 @@ fn a_turned_quad_orders_against_its_fringe() {
     assert_eq!(buf.groups[1].quads, Span::new(0, 1));
 }
 
+/// A quad 20 px square at x 10..30, turned a quarter about (50, 50), lands at x 40..60, which
+/// the clip x 40..60 shows: the cull reads the pixels it reaches turned, (39.5, 9.5)..(60.5, 30.5)
+/// grown by its fringe and clipped, so it is kept. Unturned, the same quad lies outside the clip
+/// and is culled.
+#[test]
+fn a_turned_quad_is_culled_by_the_pixels_it_reaches() {
+    let quad = |spin| {
+        DrawQuadPayload::rect(RectQuad {
+            kind: RectKind::Rounded,
+            rect: Rect::new(10.0, 40.0, 20.0, 20.0),
+            corners: Corners::ZERO,
+            fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+            stroke: ShapeStroke::NONE,
+        })
+        .turned(spin)
+    };
+    let quads = |spin| {
+        run(
+            |b, _arena| {
+                clip(b, Rect::new(40.0, 0.0, 20.0, 100.0));
+                b.draw(quad(spin), 1.0);
+                b.pop_clip();
+            },
+            &params(1.0, UVec2::new(100, 100)),
+        )
+        .quads
+        .len()
+    };
+    let turned = Some(Spin {
+        pivot: Vec2::new(50.0, 50.0),
+        angle: FRAC_PI_2,
+    });
+    assert_eq!(quads(turned), 1, "turned into the clip");
+    assert_eq!(quads(None), 0, "unturned, outside it");
+}
+
+/// A quad orders by the whole pixels it shades, `Quad::shaded_rect`: one at x 10..20 shades
+/// columns 10..20 and leaves an image at x 20..30 in its group; one at x 10..20.25 shades column
+/// 20 too, so it closes the group to paint above the image recorded before it.
+#[test]
+fn a_quad_orders_by_the_pixels_it_shades() {
+    for (width, groups) in [(10.0, 1), (10.25, 2)] {
+        let buf = run(
+            |b, _arena| {
+                image(b, Rect::new(20.0, 0.0, 10.0, 10.0));
+                draw(b, Rect::new(10.0, 0.0, width, 10.0));
+            },
+            &params_unsnapped(1.0, UVec2::new(100, 100)),
+        );
+        assert_eq!(
+            buf.quads[0].shaded_rect(),
+            Rect::new(10.0, 0.0, if width == 10.0 { 10.0 } else { 11.0 }, 10.0)
+        );
+        assert_eq!(buf.groups.len(), groups, "width {width}");
+    }
+}
+
 #[test]
 fn compose_shadow_outer_halo_after_text_splits_group() {
     let sigma = 4.0;
@@ -233,7 +290,7 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
     let buf = run(
         |b, _arena| {
             text(b, Rect::new(39.0, 60.0, 2.0, 10.0));
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::shadow(
                     source,
                     Corners::ZERO,
@@ -382,7 +439,7 @@ fn compose_spins_polyline_about_bbox_center() {
         store.polyline_points.push(Vec2::new(85.0, 50.0));
         let c_start = store.polyline_colors.len() as u32;
         store.polyline_colors.push(RgbaF32::WHITE.to_f16());
-        buffer.draw_polyline(
+        buffer.draw(
             DrawPolylinePayload {
                 alpha: 1.0,
                 bounds: if rotation == 0.0 {
@@ -760,7 +817,7 @@ fn images_between_labels_coalesce_text_the_same_way() {
         |buf, _| {
             for i in 0..BUTTONS {
                 let x = i as f32 * 100.0;
-                buf.draw_image(
+                buf.draw(
                     ImageDraw {
                         payload: gpu_view_payload(Rect::new(x, 0.0, 16.0, 16.0), TextureId(1)),
                         view: None,
@@ -820,7 +877,7 @@ fn text_batch_drains_past_a_non_overlapping_image() {
     let out = run(
         |buf, _| {
             text(buf, Rect::new(0.0, 0.0, 60.0, 16.0));
-            buf.draw_image(
+            buf.draw(
                 ImageDraw {
                     payload: gpu_view_payload(Rect::new(100.0, 0.0, 16.0, 16.0), TextureId(1)),
                     view: None,

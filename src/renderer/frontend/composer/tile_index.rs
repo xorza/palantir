@@ -15,6 +15,10 @@ pub(super) const TILE_SIZE: u32 = 64;
 /// past it chains the rest, so pathological UIs pay a pointer walk only in crowded tiles.
 pub(super) const TILE_CAP: usize = 8;
 
+/// The most tiles an entry is listed in: one spanning more goes in the large lane, which every
+/// query walks, so a viewport-wide entry costs one push, not a push per tile (2040 at 4K).
+const LARGE_TILES: u32 = 256;
+
 /// An empty overflow chain.
 const NO_OVERFLOW: u32 = u32::MAX;
 
@@ -35,6 +39,7 @@ pub(super) struct TileSpan {
 /// A row-major grid of tiles ([`TILE_SIZE`] physical px), each listing the ids registered over
 /// it, so a query walks only the tiles it touches. An id spanning tiles is listed in each, so a
 /// query may meet it twice; callers stop at the first hit, so that costs only a constant factor.
+/// An id spanning more than [`LARGE_TILES`] tiles is listed once, in a lane every query walks.
 ///
 /// Storage is flat SoA (`lens` + fixed `slots` rows), not a `Vec<TinyVec>`: registering and
 /// walking are the composer's hottest loops, and TinyVec's tag dispatch cost ~2% of the frame. For
@@ -57,6 +62,8 @@ pub(super) struct TileIndex {
     /// Tiles registered into since the last clear: what [`Self::clear`] walks instead of the
     /// whole grid. A tile is listed when it first goes non-empty. Capacity is retained.
     touched: Vec<u32>,
+    /// The ids spanning more than [`LARGE_TILES`] tiles, in insert order.
+    large: Vec<u32>,
 }
 
 impl TileIndex {
@@ -87,6 +94,7 @@ impl TileIndex {
         }
         self.touched.clear();
         self.overflow.clear();
+        self.large.clear();
     }
 
     /// The last tile of the grid, the bound a span is clamped to.
@@ -109,9 +117,14 @@ impl TileIndex {
         }
     }
 
-    /// List `id` in every tile of `span`.
+    /// List `id` in every tile of `span`, or once in the large lane past [`LARGE_TILES`].
     #[inline(always)]
     pub(super) fn insert(&mut self, id: u32, span: TileSpan) {
+        let tiles = span.max - span.min + UVec2::ONE;
+        if tiles.x * tiles.y > LARGE_TILES {
+            self.large.push(id);
+            return;
+        }
         let inline = u16::try_from(id).ok();
         for ty in span.min.y..=span.max.y {
             let row = ty * self.cols;
@@ -136,11 +149,17 @@ impl TileIndex {
         }
     }
 
-    /// Whether `hit` answers `true` for an id listed in tile `tile` (by grid position), stopping
-    /// at the first.
+    /// Whether `hit` answers `true` for an id listed over tile `tile` (by grid position), in the
+    /// tile or the large lane, stopping at the first.
     #[inline]
-    pub(super) fn any_in(&self, tile: UVec2, hit: impl FnMut(u32) -> bool) -> bool {
-        self.any_at((tile.y * self.cols + tile.x) as usize, hit)
+    pub(super) fn any_in(&self, tile: UVec2, mut hit: impl FnMut(u32) -> bool) -> bool {
+        self.any_at((tile.y * self.cols + tile.x) as usize, &mut hit) || self.any_large(hit)
+    }
+
+    /// Whether `hit` answers `true` for an id of the large lane.
+    #[inline(always)]
+    fn any_large(&self, mut hit: impl FnMut(u32) -> bool) -> bool {
+        self.large.iter().any(|&id| hit(id))
     }
 
     /// [`Self::any_in`] by flat tile index.
@@ -174,7 +193,7 @@ impl TileIndex {
                 }
             }
         }
-        false
+        self.any_large(hit)
     }
 }
 
@@ -194,12 +213,14 @@ pub(crate) mod internals {
                 overflow_heads,
                 overflow,
                 touched,
+                large,
             } = self;
             scratch_report::vec_bytes(lens)
                 + scratch_report::vec_bytes(slots)
                 + scratch_report::vec_bytes(overflow_heads)
                 + scratch_report::vec_bytes(overflow)
                 + scratch_report::vec_bytes(touched)
+                + scratch_report::vec_bytes(large)
         }
 
         /// Tiles the storage holds, the high-water mark of every viewport; `lens`, `slots` and

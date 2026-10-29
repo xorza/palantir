@@ -77,7 +77,7 @@ pub(super) fn text(buf: &mut PaintCapture, r: Rect) {
 
 /// A [`text`] run whose glyphs' ink reaches `ink` past `r`.
 pub(super) fn inked_text(buf: &mut PaintCapture, r: Rect, ink: Spacing) {
-    buf.draw_text(
+    buf.draw(
         DrawTextPayload {
             rect: r,
             ink,
@@ -147,7 +147,7 @@ pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayloa
 
 /// Draw a `GpuView` at `rect`: [`gpu_view_payload`] under a no-op paint, full alpha.
 pub(super) fn gpu_view(buf: &mut PaintCapture, rect: Rect, handle: TextureId) {
-    buf.draw_image(
+    buf.draw(
         ImageDraw {
             payload: gpu_view_payload(rect, handle),
             view: Some(ViewPaint {
@@ -161,7 +161,7 @@ pub(super) fn gpu_view(buf: &mut PaintCapture, rect: Rect, handle: TextureId) {
 
 /// The payload the encoder builds for an icon: fit-resolved logical rect, identity, tint.
 pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
-    buf.draw_icon(
+    buf.draw(
         DrawIconPayload {
             rect: r,
             icon,
@@ -175,7 +175,7 @@ pub(super) fn icon(buf: &mut PaintCapture, r: Rect, icon: IconRef) {
 
 pub(super) fn mesh(buf: &mut PaintCapture, bbox: Rect) {
     // 3 verts / 3 indices and an opaque tint clear `DrawMeshPayload::is_noop`.
-    buf.draw_mesh(
+    buf.draw(
         DrawMeshPayload {
             bbox,
             origin: Vec2::ZERO,
@@ -261,7 +261,7 @@ impl<'a> TestPolyline<'a> {
             lo = lo.min(p);
             hi = hi.max(p);
         }
-        b.draw_polyline(
+        b.draw(
             DrawPolylinePayload {
                 alpha: 1.0,
                 bounds: StrokeBounds::Still(Rect::from_min_max(lo, hi)),
@@ -282,7 +282,7 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
     use crate::primitives::geometry::cubic_bezier::CubicBezier;
     use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::shape::paint::curve_basis::CurveBasis;
-    b.draw_curve(
+    b.draw(
         DrawCurvePayload {
             bounds: StrokeBounds::Still(bbox),
             origin: Vec2::ZERO,
@@ -304,7 +304,7 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 }
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
-    b.draw_image(
+    b.draw(
         ImageDraw {
             payload: DrawImagePayload {
                 rect: r,

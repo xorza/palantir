@@ -6,9 +6,10 @@
 //! (`capture`).
 //!
 //! A sink implements the raw half, one method per payload kind. The encoder
-//! calls the provided `draw_*` gates, which test `is_noop` and forward or do
-//! nothing, so there is one copy of each gate. Payload construction lives on
-//! the payload types (`DrawQuadPayload::rect`, ...), not here.
+//! calls the provided [`PaintSink::draw`] gate, which fades a [`PaintPayload`],
+//! tests `is_noop` and forwards or does nothing, so there is one gate for every
+//! kind. Payload construction lives on the payload types
+//! (`DrawQuadPayload::rect`, ...), not here.
 //!
 //! The encoder is generic over the sink, not `&mut dyn PaintSink`, so the
 //! gates inline.
@@ -23,15 +24,16 @@
 //! 2. **Authoring shapes** (`Shape::is_noop` at `Shapes::add`;
 //!    `Chrome::is_noop` at `Tree::open_node`) skip lowering work, which a
 //!    payload-level gate cannot, since the work has already happened.
-//! 3. **Lowered payloads** (`Draw*Payload::is_noop`, called from the `draw_*`
-//!    gates) are the single correctness gate; callers do not pre-check.
+//! 3. **Lowered payloads** ([`PaintPayload::is_noop`], called from the
+//!    [`PaintSink::draw`] gate) are the single correctness gate; callers do not
+//!    pre-check.
 //!
 //! Tier 2 is an optimization, tier 3 correctness. The gate is bypassable
 //! (`sink.quad(payload)` compiles anywhere); `PaintCapture::replay` does so
 //! because its input already passed.
 //!
-//! Exception: [`PaintSink::draw_polyline`] asserts its geometry before
-//! gating. `Shape::Polyline::is_noop` catches those conditions at tier 2 and
+//! Exception: a polyline asserts its geometry before gating
+//! ([`PaintPayload::check`]). `Shape::Polyline::is_noop` catches those conditions at tier 2 and
 //! nothing between the tiers can invalidate them, so a degenerate polyline
 //! here is a broken contract. The gate still drops the payload's own no-ops.
 //!
@@ -49,13 +51,8 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 
 /// Sink for one frame's lowered paint operations, in authoring order. The
-/// required methods are what a sink implements; the provided `draw_*` gates
-/// are what the encoder paints through, and no sink overrides them.
-///
-/// Each gate takes an `alpha` (a paint animation's opacity) and folds it into
-/// the payload before testing it, so a shape animated to nothing drops out
-/// through the existing gate. It is a parameter so an encoder arm cannot
-/// forget to fade. `1.0` means no animation.
+/// required methods are what a sink implements; the provided [`Self::draw`]
+/// gate is what the encoder paints through, and no sink overrides it.
 pub(crate) trait PaintSink {
     /// Push a clip region. `payload.corners` is zero for a rect clip.
     fn push_clip(&mut self, payload: PushClipPayload);
@@ -94,88 +91,37 @@ pub(crate) trait PaintSink {
 
     fn curve(&mut self, payload: DrawCurvePayload);
 
+    /// The gate the encoder paints through: fade `payload` by `alpha` (a paint animation's
+    /// opacity, `1.0` when still), drop it where it paints nothing, else hand it to the method of
+    /// its kind. A parameter, so an encoder arm cannot forget to fade.
     #[inline]
-    fn draw_quad(&mut self, payload: DrawQuadPayload, alpha: f32) {
+    fn draw(&mut self, payload: impl PaintPayload, alpha: f32)
+    where
+        Self: Sized,
+    {
+        payload.check();
         let payload = payload.faded(alpha);
         if payload.is_noop() {
             return;
         }
-        self.quad(payload);
+        payload.paint(self);
     }
+}
 
-    #[inline]
-    fn draw_pane(&mut self, payload: DrawPanePayload, alpha: f32) {
-        let payload = payload.faded(alpha);
-        if payload.is_noop() {
-            return;
-        }
-        self.pane(payload);
-    }
+/// A lowered draw: it fades, says whether it paints, and names the [`PaintSink`] method that
+/// takes it, so one gate ([`PaintSink::draw`]) serves every kind.
+pub(crate) trait PaintPayload: Sized {
+    /// This draw with its alpha scaled by `by`.
+    fn faded(self, by: f32) -> Self;
 
-    #[inline]
-    fn draw_text(&mut self, payload: DrawTextPayload, alpha: f32) {
-        let payload = payload.faded(alpha);
-        if payload.is_noop() {
-            return;
-        }
-        self.text(payload);
-    }
+    /// Whether it paints nothing, the one correctness gate (module docs, tier 3).
+    fn is_noop(&self) -> bool;
 
-    #[inline]
-    fn draw_mesh(&mut self, payload: DrawMeshPayload, alpha: f32) {
-        let payload = payload.faded(alpha);
-        if payload.is_noop() {
-            return;
-        }
-        self.mesh(payload);
-    }
+    /// Hand it to the method of `sink` that takes its kind.
+    fn paint(self, sink: &mut impl PaintSink);
 
-    #[inline]
-    fn draw_icon(&mut self, payload: DrawIconPayload, alpha: f32) {
-        let payload = payload.faded(alpha);
-        if payload.is_noop() {
-            return;
-        }
-        self.icon(payload);
-    }
-
-    #[inline]
-    fn draw_curve(&mut self, payload: DrawCurvePayload, alpha: f32) {
-        let payload = payload.faded(alpha);
-        if payload.is_noop() {
-            return;
-        }
-        self.curve(payload);
-    }
-
-    #[inline]
-    fn draw_image(&mut self, payload: ImageDraw<'_>, alpha: f32) {
-        let payload = payload.faded(alpha);
-        if payload.is_noop() {
-            return;
-        }
-        self.image(payload);
-    }
-
-    #[inline]
-    fn draw_polyline(&mut self, payload: DrawPolylinePayload, alpha: f32) {
-        let payload = payload.faded(alpha);
-        // Geometry is asserted, not gated: `PolylineShape::is_noop` rejects
-        // `< 2` points and a non-painting width before lowering, and the
-        // encoder forwards both verbatim. Other payloads gate because theirs
-        // are layout outputs that can legitimately collapse. Debug-only is
-        // safe: `is_noop` below also covers the geometry, and the composer
-        // emits nothing for one. The assert names the broken contract.
-        debug_assert!(
-            !payload.is_degenerate(),
-            "degenerate polyline reached the sink — `PolylineShape::is_noop` \
-             should have dropped it: {payload:?}",
-        );
-        if payload.is_noop() {
-            return;
-        }
-        self.polyline(payload);
-    }
+    /// Assert what upstream guarantees of it, ahead of the gate; nothing by default.
+    fn check(&self) {}
 }
 
 #[cfg(test)]

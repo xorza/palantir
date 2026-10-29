@@ -4,30 +4,49 @@
 )]
 
 //! The composer's replay of recorded paint into draw groups and batches, at a
-//! typical and a heavy draw count: curves alone, then the higher-kind tiers
-//! (meshes, images, text) where overlap decides whether a batch closes.
+//! typical and a heavy draw count: curves alone, the higher-kind tiers (meshes,
+//! images, text) where overlap decides whether a batch closes, and the quad
+//! lane: plain, clipped, under rounded clips, pruned, as panes, and a polyline.
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::cascade::pane_row::PaneRow;
 use crate::common::span::Span;
 use crate::display::Display;
 use crate::internals::paint_capture::PaintCapture;
+use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::geometry::urect::URect;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
+use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
+use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
+use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
+use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
+use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
+use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
+use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::paint::shape_stroke::ShapeStroke;
+use crate::shape::record::ColorMode;
+use crate::shape::rect::RectKind;
+use crate::shape::style::{LineCap, LineJoin};
 use crate::text::key::TextShapeKey;
 use crate::text::shaped_ref::ShapedTextRef;
 use criterion::{Criterion, Throughput};
@@ -57,7 +76,7 @@ impl ComposeBench {
         assert!(curve_count > 0);
         let mut cmds = PaintCapture::default();
         for _ in 0..curve_count {
-            cmds.draw_curve(
+            cmds.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(16.0, 63.0, 96.0, 2.0)),
                     origin: Vec2::ZERO,
@@ -203,8 +222,157 @@ impl HigherKindCase {
     }
 }
 
+/// The quad lane's shapes: what it costs to order, clip, prune and list a run of quads.
+#[derive(Clone, Copy, Debug, IntoStaticStr, VariantArray)]
+#[strum(serialize_all = "snake_case")]
+enum QuadCase {
+    /// A grid of quads apart: one group, nothing to close.
+    Plain,
+    /// Each quad inside a rect clip of its own: a group per quad.
+    Clipped,
+    /// Each quad inside a rounded clip of its own: a group and a mask chain per quad.
+    RoundedClip,
+    /// Every quad opaque over the one before: the group's prune keeps the last.
+    Pruned,
+    /// A grid of panes that hold their results: listed, never breaking the main pass.
+    Panes,
+    /// One polyline of that many points: its kept walk and its segment and joint instances.
+    Polyline,
+}
+
+impl QuadCase {
+    /// Columns of the grid the quads lay out in, a cell each.
+    const COLS: u32 = 64;
+    const CELL: f32 = 16.0;
+
+    fn fixture(self, count: usize) -> ComposeBench {
+        assert!(count > 0);
+        let mut cmds = PaintCapture::default();
+        let rows = (count as u32).div_ceil(Self::COLS);
+        let viewport = UVec2::new(Self::COLS, rows) * Self::CELL as u32;
+        let cell = |i: usize| {
+            let at = Vec2::new(
+                (i as u32 % Self::COLS) as f32,
+                (i as u32 / Self::COLS) as f32,
+            );
+            Rect::new(
+                at.x * Self::CELL + 2.0,
+                at.y * Self::CELL + 2.0,
+                Self::CELL - 4.0,
+                Self::CELL - 4.0,
+            )
+        };
+        let mut bench = ComposeBench::new(PaintCapture::default(), viewport);
+        match self {
+            Self::Plain => (0..count).for_each(|i| push_quad(&mut cmds, cell(i))),
+            Self::Clipped | Self::RoundedClip => {
+                for i in 0..count {
+                    let corners = match self {
+                        Self::RoundedClip => Corners::all(3.0),
+                        _ => Corners::ZERO,
+                    };
+                    cmds.push_clip(PushClipPayload {
+                        rect: cell(i),
+                        corners,
+                    });
+                    push_quad(&mut cmds, cell(i));
+                    cmds.pop_clip();
+                }
+            }
+            Self::Pruned => {
+                let rect = Rect::new(0.0, 0.0, Self::CELL * 4.0, Self::CELL * 4.0);
+                (0..count).for_each(|_| push_quad(&mut cmds, rect));
+            }
+            Self::Panes => (0..count).for_each(|i| push_pane(&mut cmds, cell(i), i as u32)),
+            Self::Polyline => {
+                let store = &mut bench.rig.store;
+                let p_start = store.polyline_points.len() as u32;
+                let width = viewport.x as f32;
+                store.polyline_points.extend((0..count).map(|i| {
+                    let x = i as f32 / count as f32 * width;
+                    Vec2::new(x, Self::CELL * (1.0 + (i % 2) as f32))
+                }));
+                let c_start = store.polyline_colors.len() as u32;
+                store.polyline_colors.push(RgbaF32::WHITE.to_f16());
+                cmds.draw(
+                    DrawPolylinePayload {
+                        alpha: 1.0,
+                        bounds: StrokeBounds::Still(Rect::new(0.0, Self::CELL, width, Self::CELL)),
+                        origin: Vec2::ZERO,
+                        width: 2.0,
+                        points: Span::new(p_start, count as u32),
+                        colors: Span::new(c_start, 1),
+                        color_mode: ColorMode::Single,
+                        cap: LineCap::Butt,
+                        join: LineJoin::Miter,
+                    },
+                    1.0,
+                );
+            }
+        }
+        bench.cmds = cmds;
+        bench
+    }
+
+    /// What one replay leaves: quads, groups and listed panes for the quad arms, curve instances
+    /// for the polyline, one segment per gap and one joint per interior point.
+    const fn expected(self, count: usize) -> [usize; 3] {
+        match self {
+            Self::Plain => [count, 1, 0],
+            Self::Clipped | Self::RoundedClip => [count, count, 0],
+            Self::Pruned => [1, 1, 0],
+            Self::Panes => [count, 1, count],
+            Self::Polyline => [2 * count - 3, 1, 0],
+        }
+    }
+}
+
+fn push_quad(cmds: &mut PaintCapture, rect: Rect) {
+    cmds.draw(
+        DrawQuadPayload::rect(RectQuad {
+            kind: RectKind::Rounded,
+            rect,
+            corners: Corners::ZERO,
+            fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
+            stroke: ShapeStroke::NONE,
+        }),
+        1.0,
+    );
+}
+
+/// A pane at `rect` that holds its result, so it lists without breaking the main pass.
+fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
+    let plan = BlurPlan::new(4.0);
+    let footprint = URect::covering(rect.inflated(PaneRow::reach(plan, 0)));
+    cmds.draw(
+        DrawPanePayload {
+            kind: RectKind::Rounded,
+            rect,
+            corners: Corners::ZERO,
+            spin: None,
+            tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
+            stroke: ShapeStroke::NONE,
+            backdrop: LoweredBackdrop::from(BackdropFilter::blur(4.0)),
+            opacity: 1.0,
+            ticket: PaneTicket {
+                key: PaneKey {
+                    owner: WidgetId::from_hash("bench.pane"),
+                    shape: i,
+                },
+                footprint,
+                plan,
+                region: plan
+                    .region(footprint, footprint.max())
+                    .expect("a bench pane paints"),
+                captures: false,
+            },
+        },
+        1.0,
+    );
+}
+
 fn push_mesh(cmds: &mut PaintCapture, bbox: Rect) {
-    cmds.draw_mesh(
+    cmds.draw(
         DrawMeshPayload {
             bbox,
             origin: Vec2::ZERO,
@@ -228,7 +396,7 @@ fn cell_rect(at: Vec2, within: Rect) -> Rect {
 }
 
 fn push_text(cmds: &mut PaintCapture, rect: Rect) {
-    cmds.draw_text(
+    cmds.draw(
         DrawTextPayload {
             rect,
             ink: Spacing::ZERO,
@@ -244,7 +412,7 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
 }
 
 fn push_image(cmds: &mut PaintCapture, rect: Rect) {
-    cmds.draw_image(
+    cmds.draw(
         ImageDraw {
             payload: DrawImagePayload {
                 rect,
@@ -261,9 +429,10 @@ fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     );
 }
 
-/// `atomic/composer/cpu/curves/alone/<count>` and
-/// `atomic/composer/cpu/higher_kind_overlap/<case>/<count>`: one replay of recorded paint into
-/// draw groups and batches, the groups and batches checked first. Per draw.
+/// `atomic/composer/cpu/curves/alone/<count>`,
+/// `atomic/composer/cpu/higher_kind_overlap/<case>/<count>` and
+/// `atomic/composer/cpu/quads/<case>/<count>`: one replay of recorded paint into draw groups and
+/// batches, what it leaves checked first. Per draw.
 pub(crate) fn atomic(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "composer", Scale::Sample);
     for curve_count in DRAW_COUNTS {
@@ -292,6 +461,27 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 assert_eq!(
                     fixture.rig.out.text_batches.len(),
                     case.expected_text_batches(draw_count),
+                );
+                b.iter(|| black_box(fixture.compose()));
+            });
+        }
+    }
+    for &case in QuadCase::VARIANTS {
+        let label: &'static str = case.into();
+        for count in DRAW_COUNTS {
+            group.throughput(Throughput::Elements(count as u64));
+            group.bench_function(Backend::Cpu.case(&format!("quads/{label}/{count}")), |b| {
+                let mut fixture = case.fixture(count);
+                fixture.compose();
+                let out = &fixture.rig.out;
+                let drawn = match case {
+                    QuadCase::Polyline => out.curves.len(),
+                    _ => out.quads.len(),
+                };
+                assert_eq!(
+                    [drawn, out.groups.len(), out.backdrops.len()],
+                    case.expected(count),
+                    "{label}/{count}"
                 );
                 b.iter(|| black_box(fixture.compose()));
             });
