@@ -14,7 +14,10 @@ use crate::window::vsync::Vsync;
 /// idle (wgpu #7447: 100 ms+ stalls), and Wayland resends identical configures.
 #[derive(Debug)]
 pub(crate) struct WindowSurface {
-    surface: wgpu::Surface<'static>,
+    /// `None` once the platform lost it: a lost surface does not configure, so the host makes the
+    /// window a new one ([`SurfaceManager::renew`](crate::gpu::surface::surface_manager::SurfaceManager::renew)),
+    /// and the lost one goes first, as a platform may refuse a second surface on one window.
+    surface: Option<wgpu::Surface<'static>>,
     config: wgpu::SurfaceConfiguration,
     /// What the swapchain was built with; `None` before the first build and once it went stale.
     applied: Option<wgpu::SurfaceConfiguration>,
@@ -34,7 +37,7 @@ impl WindowSurface {
         config: wgpu::SurfaceConfiguration,
     ) -> Self {
         Self {
-            surface,
+            surface: Some(surface),
             config,
             applied: None,
         }
@@ -78,12 +81,21 @@ impl WindowSurface {
         true
     }
 
-    /// Rebuild the swapchain when the configuration it was built with is not the one wanted.
+    /// Whether the platform lost the surface, so the window needs a new one.
+    pub(crate) const fn is_lost(&self) -> bool {
+        self.surface.is_none()
+    }
+
+    /// Rebuild the swapchain when the configuration it was built with is not the one wanted. A
+    /// lost surface has nothing to rebuild: its acquire reports the loss.
     pub(crate) fn prepare(&mut self, gpu: &Gpu) -> Prepared {
+        let Some(surface) = &self.surface else {
+            return Prepared::Kept;
+        };
         if self.applied.as_ref() == Some(&self.config) {
             return Prepared::Kept;
         }
-        self.surface.configure(&gpu.device, &self.config);
+        surface.configure(&gpu.device, &self.config);
         self.applied = Some(self.config.clone());
         Prepared::Rebuilt
     }
@@ -95,10 +107,15 @@ impl WindowSurface {
     }
 
     /// Take the next frame to render into; the tracy zone closes on the acquire, where a vsync-paced frame blocks.
-    pub(crate) fn acquire(&self) -> Acquired {
+    /// A surface the platform lost is dropped here, and every acquire until the host replaces it
+    /// reports [`Acquired::Lost`].
+    pub(crate) fn acquire(&mut self) -> Acquired {
+        let Some(surface) = &self.surface else {
+            return Acquired::Lost;
+        };
         let acquired = {
             tracy::zone!("Surface::acquire");
-            self.surface.get_current_texture()
+            surface.get_current_texture()
         };
         match acquired {
             wgpu::CurrentSurfaceTexture::Success(frame) => Acquired::Ready(SurfaceFrame(frame)),
@@ -106,8 +123,11 @@ impl WindowSurface {
             wgpu::CurrentSurfaceTexture::Suboptimal(frame) => {
                 Acquired::Suboptimal(SurfaceFrame(frame))
             }
-            wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
-                Acquired::Outdated
+            wgpu::CurrentSurfaceTexture::Outdated => Acquired::Outdated,
+            wgpu::CurrentSurfaceTexture::Lost => {
+                self.surface = None;
+                self.applied = None;
+                Acquired::Lost
             }
             wgpu::CurrentSurfaceTexture::Timeout => Acquired::Timeout,
             wgpu::CurrentSurfaceTexture::Validation => Acquired::Validation,
@@ -121,8 +141,10 @@ pub(crate) enum Acquired {
     Ready(SurfaceFrame),
     /// A frame that still presents from a stale swapchain: present or drop it, then rebuild.
     Suboptimal(SurfaceFrame),
-    /// The swapchain is gone. Rebuild it and paint again.
+    /// The swapchain no longer matches the surface. Rebuild it and paint again.
     Outdated,
+    /// The platform lost the surface, which no configure revives: the window needs a new one.
+    Lost,
     /// The acquire timed out. Paint again.
     Timeout,
     /// The call was rejected; back off rather than build a draw list nothing accepts.

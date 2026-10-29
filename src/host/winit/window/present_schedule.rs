@@ -4,7 +4,7 @@ use crate::ui::frame_report::FrameReport;
 use glam::UVec2;
 use std::time::Duration;
 
-/// First delay after a `Validation` acquire: about one frame at 60 Hz.
+/// First delay after a `Validation` or `Lost` acquire: about one frame at 60 Hz.
 const ACQUIRE_RETRY_MIN: Duration = Duration::from_millis(16);
 
 /// Ceiling for the back-off: two wake-ups a second.
@@ -18,8 +18,10 @@ pub(super) enum AcquireOutcome {
     Presented,
     /// Presented from a stale swapchain of this size.
     Suboptimal(UVec2),
-    /// The swapchain is gone.
+    /// The swapchain no longer matches the surface.
     Outdated,
+    /// The platform lost the surface, and the host makes a new one.
+    Lost,
     Timeout,
     /// The call was rejected.
     Validation,
@@ -49,10 +51,10 @@ pub(super) struct PresentDecision {
 /// The acquire history a window's next frames depend on.
 #[derive(Debug, Default)]
 pub(super) struct PresentSchedule {
-    /// How long the next frame waits before retrying an acquire that failed validation; `None`
-    /// while healthy. Other failures are transient and an immediate repaint settles them, but a
-    /// validation failure repeats, so without a delay the host builds a full CPU draw list per
-    /// loop iteration for nothing. Doubles to [`ACQUIRE_RETRY_MAX`].
+    /// How long the next frame waits before retrying an acquire that failed validation or lost
+    /// its surface; `None` while healthy. Other failures are transient and an immediate repaint
+    /// settles them, but these can repeat, so without a delay the host builds a full CPU draw list
+    /// per loop iteration for nothing. Doubles to [`ACQUIRE_RETRY_MAX`].
     acquire_retry: Option<Duration>,
     /// The surface size a suboptimal acquire last rebuilt for: the swapchain rebuilds once per
     /// size, not every frame while a resize is pending.
@@ -82,7 +84,8 @@ impl PresentSchedule {
                 true
             }
             AcquireOutcome::Timeout => true,
-            AcquireOutcome::Validation => {
+            // A surface made again can fail again, so a loss backs off as a rejection does.
+            AcquireOutcome::Validation | AcquireOutcome::Lost => {
                 self.acquire_retry = Some(retry.map_or(ACQUIRE_RETRY_MIN, |delay| {
                     (delay * 2).min(ACQUIRE_RETRY_MAX)
                 }));
