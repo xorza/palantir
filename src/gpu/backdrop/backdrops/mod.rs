@@ -237,13 +237,10 @@ impl Backdrops {
         &self.layout
     }
 
-    /// The group of the last prepared frame with a pane; only such a frame draws a pane's quad.
-    pub(crate) const fn group(&self) -> &wgpu::BindGroup {
-        &self
-            .resources
-            .as_ref()
-            .expect("a frame with a pane prepared")
-            .group
+    /// The group the last prepared frame's panes read their results through; `None` before the
+    /// first frame with a pane.
+    pub(crate) fn group(&self) -> Option<&wgpu::BindGroup> {
+        self.resources.as_ref().map(|resources| &resources.group)
     }
 
     /// Give each of the frame's panes its result: a blur into a slot of the atlas for one that

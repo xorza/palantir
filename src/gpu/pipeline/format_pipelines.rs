@@ -4,9 +4,10 @@ use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
 use crate::gpu::pipeline::mesh_pipeline::MeshPipeline;
-use crate::gpu::pipeline::quad_pipeline::{QuadPipeline, QuadVariants};
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
-use crate::gpu::raster::raster_program::{RasterProgram, RasterVariants};
+use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
+use crate::gpu::pipeline::quad_pipeline::{QuadPass, QuadPipeline, QuadVariants};
+use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
+use crate::gpu::raster::raster_program::{RasterPipelines, RasterProgram, RasterVariants};
 
 /// All render pipelines for one swapchain format, keyed in the backend by [`TargetFormat`](crate::gpu::surface::render_target::TargetFormat).
 #[derive(Debug)]
@@ -54,5 +55,58 @@ impl FormatPipelines {
             raster: raster.build_variants(device, format),
             blit: blit.build(device, format),
         }
+    }
+
+    /// These pipelines as a pass binds them: the stencil-test twins where the pass has the
+    /// rounded-clip attachment.
+    pub(crate) const fn for_pass(&self, stencil: StencilMode) -> PassPipelines<'_> {
+        PassPipelines { fmt: self, stencil }
+    }
+}
+
+/// A format's pipelines for one pass, each picked for its stencil attachment in one place.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PassPipelines<'a> {
+    fmt: &'a FormatPipelines,
+    stencil: StencilMode,
+}
+
+impl<'a> PassPipelines<'a> {
+    pub(crate) const fn quads(self) -> QuadPass<'a> {
+        QuadPass::new(&self.fmt.quad, self.stencil)
+    }
+
+    pub(crate) const fn quad(self, draw: QuadDraw) -> &'a wgpu::RenderPipeline {
+        self.quads().pipeline(draw)
+    }
+
+    pub(crate) const fn mesh(self) -> &'a wgpu::RenderPipeline {
+        self.fmt.mesh.select(self.stencil)
+    }
+
+    pub(crate) const fn image(self) -> &'a wgpu::RenderPipeline {
+        self.fmt.image.select(self.stencil)
+    }
+
+    pub(crate) const fn curve(self) -> &'a wgpu::RenderPipeline {
+        self.fmt.curve.select(self.stencil)
+    }
+
+    /// Both raster tenants' pipelines, over the program's `layout`.
+    pub(crate) const fn raster(self, layout: &'a wgpu::PipelineLayout) -> RasterPipelines<'a> {
+        RasterPipelines {
+            flat: self.fmt.raster.flat.select(self.stencil),
+            spun: self.fmt.raster.spun.select(self.stencil),
+            layout,
+        }
+    }
+
+    /// The stencil-writing mask pipelines, which only a pass with the attachment binds.
+    pub(crate) const fn mask_stamp(self) -> &'a wgpu::RenderPipeline {
+        &self.fmt.quad.mask_stamp
+    }
+
+    pub(crate) const fn mask_clear(self) -> &'a wgpu::RenderPipeline {
+        &self.fmt.quad.mask_clear
     }
 }

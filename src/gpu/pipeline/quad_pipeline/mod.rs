@@ -2,6 +2,7 @@
 
 pub(crate) mod cutout_plan;
 mod cutout_tables;
+pub(crate) mod quad_draw;
 pub(crate) mod quad_form;
 
 use crate::common::span::Span;
@@ -10,10 +11,11 @@ use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
+use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::ShaderBody;
-use crate::gpu::pipeline::stencil_variant::StencilVariant;
+use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -45,21 +47,35 @@ pub(crate) struct QuadVariants {
 }
 
 impl QuadVariants {
-    pub(crate) const fn color(&self, form: QuadForm) -> &StencilVariant {
-        match form {
-            QuadForm::Solid => &self.solid,
-            QuadForm::Gradient => &self.gradient,
-            QuadForm::Triangle => &self.triangle,
-            QuadForm::Backdrop => &self.backdrop,
+    /// The pipelines a quad of `draw` draws through.
+    pub(crate) const fn of(&self, draw: QuadDraw) -> &StencilVariant {
+        match draw {
+            QuadDraw::Form(QuadForm::Solid) => &self.solid,
+            QuadDraw::Form(QuadForm::Gradient) => &self.gradient,
+            QuadDraw::Form(QuadForm::Triangle) => &self.triangle,
+            QuadDraw::Form(QuadForm::Backdrop) => &self.backdrop,
+            QuadDraw::Shadow(ShadowEntry::Tables) => &self.shadow_tables,
+            QuadDraw::Shadow(ShadowEntry::TablesWide) => &self.shadow_tables_wide,
+            QuadDraw::Shadow(ShadowEntry::General) => &self.shadow_general,
         }
     }
+}
 
-    pub(crate) const fn shadow(&self, entry: ShadowEntry) -> &StencilVariant {
-        match entry {
-            ShadowEntry::Tables => &self.shadow_tables,
-            ShadowEntry::TablesWide => &self.shadow_tables_wide,
-            ShadowEntry::General => &self.shadow_general,
-        }
+/// A format's quad pipelines for one pass: each draw picks its own, with the pass's stencil test.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct QuadPass<'a> {
+    variants: &'a QuadVariants,
+    stencil: StencilMode,
+}
+
+impl<'a> QuadPass<'a> {
+    pub(crate) const fn new(variants: &'a QuadVariants, stencil: StencilMode) -> Self {
+        Self { variants, stencil }
+    }
+
+    /// The pipeline a quad of `draw` draws through in this pass.
+    pub(crate) const fn pipeline(self, draw: QuadDraw) -> &'a wgpu::RenderPipeline {
+        self.variants.of(draw).select(self.stencil)
     }
 }
 
@@ -94,10 +110,24 @@ impl<'a> QuadBinding<'a> {
     }
 }
 
+/// A run of quads of one [`QuadDraw`], the pass's pipelines it picks its own from, and the groups
+/// it reads.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct QuadRun<'a> {
+    pub(crate) draw: QuadDraw,
+    pub(crate) instances: Span,
+    pub(crate) pipelines: QuadPass<'a>,
+    pub(crate) gradient_bind_group: &'a wgpu::BindGroup,
+    /// The frame's backdrop results, which a run of [`QuadForm::Backdrop`] reads at group 2.
+    pub(crate) backdrops: Option<&'a wgpu::BindGroup>,
+}
+
 /// Format-independent quad resources; per-format pipelines are [`QuadVariants`].
 #[derive(Debug)]
 pub(crate) struct QuadPipeline {
     instance_buffer: DynamicBuffer<Quad>,
+    /// Each uploaded quad's draw, parallel to the instance buffer.
+    draws: Vec<QuadDraw>,
     /// Lazy buffer of one `Quad` per deduped rounded clip this frame; grows monotonically. `None` until the first stencil frame.
     mask_buffer: Option<DynamicBuffer<Quad>>,
     /// The partial-repaint pre-clear quad, drawn first inside the damage scissor so `LoadOp::Load` doesn't leak last frame's AA fringe.
@@ -186,6 +216,7 @@ impl QuadPipeline {
 
         Self {
             instance_buffer,
+            draws: Vec::new(),
             mask_buffer: None,
             clear: SingleQuadBuffer::new(device, "palantir.quad.clear"),
             shader,
@@ -328,9 +359,11 @@ impl QuadPipeline {
         }
     }
 
-    /// Upload the frame's quads and bake the cutout tables planned for them.
+    /// Upload the frame's quads, work out the draw each takes, and bake the cutout tables planned
+    /// for them.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad], cutouts: &CutoutPlan) {
         self.instance_buffer.upload_instances(ctx, quads);
+        quad_draw::fill(&mut self.draws, quads, cutouts.entries(), self.shadow_grid);
         self.cutouts.prepare(ctx, cutouts);
     }
 
@@ -338,95 +371,54 @@ impl QuadPipeline {
         self.cutouts.mode()
     }
 
-    /// Bind `binding` over the instance buffer, once per run of one pipeline.
-    pub(crate) fn bind<'a>(
+    /// The runs of `instances`, a group's quads, that each draw through one [`QuadDraw`], in
+    /// paint order.
+    pub(crate) fn runs(&self, instances: Span) -> Runs<impl Fn(u32) -> QuadDraw + '_> {
+        Runs::new(instances, |i| self.draws[i as usize])
+    }
+
+    /// Bind the pipeline `run`'s draw picks over the instance buffer, with the groups the draw
+    /// reads, and draw it:
+    /// a shadow reads the cutout tables and draws the eight cells around its hole, a backdrop pane
+    /// reads the frame's results.
+    pub(crate) fn draw_run<'a>(
         &'a self,
         binder: &mut MainBinder<'a>,
         pass: &mut wgpu::RenderPass<'a>,
-        binding: QuadBinding<'a>,
+        run: QuadRun<'a>,
     ) {
-        binding.bind_through(
-            binder,
-            pass,
-            &self.pipeline_layout,
-            &self.instance_buffer.buffer,
-        );
-    }
-
-    /// [`Self::bind`] for the backdrop variant, which also reads the frame's backdrop results.
-    pub(crate) fn bind_backdrop<'a>(
-        &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
-        binding: QuadBinding<'a>,
-        backdrops: &'a wgpu::BindGroup,
-    ) {
-        binding.bind_through(
-            binder,
-            pass,
-            &self.backdrop_layout,
-            &self.instance_buffer.buffer,
-        );
-        binder.group(pass, 2, backdrops);
-    }
-
-    /// [`Self::bind`] for the shadow variant, which also reads the cutout atlas and corner tables.
-    pub(crate) fn bind_shadows<'a>(
-        &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
-        binding: QuadBinding<'a>,
-    ) {
-        binding.bind_through(
-            binder,
-            pass,
-            &self.shadow_layout,
-            &self.instance_buffer.buffer,
-        );
-        self.cutouts.bind(binder, pass);
-    }
-
-    /// Draw a contiguous slice of the instance buffer. The caller binds once and sets the scissor before each call.
-    pub(crate) fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
+        let QuadRun {
+            draw,
+            instances,
+            pipelines,
+            gradient_bind_group,
+            backdrops,
+        } = run;
         if instances.len == 0 {
             return;
         }
-        pass.draw(0..4, instances.into());
-    }
-
-    /// The runs of `instances`, a shadow step's span, that draw through one [`ShadowEntry`], in paint
-    /// order, read off the frame's `plan`.
-    pub(crate) fn shadow_runs<'a>(
-        &self,
-        plan: &'a CutoutPlan,
-        instances: Span,
-    ) -> Runs<impl Fn(u32) -> ShadowEntry + 'a> {
-        let grid = self.shadow_grid;
-        let entries = plan.entries();
-        Runs::new(instances, move |i| {
-            if grid {
-                entries[i as usize]
-            } else {
-                ShadowEntry::General
+        let binding = QuadBinding {
+            pipeline: pipelines.pipeline(draw),
+            gradient_bind_group,
+        };
+        let buffer = &self.instance_buffer.buffer;
+        match draw {
+            QuadDraw::Form(QuadForm::Backdrop) => {
+                binding.bind_through(binder, pass, &self.backdrop_layout, buffer);
+                let backdrops = backdrops.expect("a frame that draws a pane prepared its results");
+                binder.group(pass, 2, backdrops);
+                pass.draw(0..4, instances.into());
             }
-        })
-    }
-
-    /// The runs of `instances`, a quad step's span, that each draw through one [`QuadForm`], in paint
-    /// order, read off the frame's `quads`.
-    pub(crate) fn quad_runs(
-        quads: &[Quad],
-        instances: Span,
-    ) -> Runs<impl Fn(u32) -> QuadForm + '_> {
-        Runs::new(instances, |i| QuadForm::of(quads[i as usize].fill_kind))
-    }
-
-    /// [`Self::draw`] for shadows from [`Self::bind_shadows`]: each instance is the eight cells around the hole, two triangles each.
-    pub(crate) fn draw_shadows<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
-        if instances.len == 0 {
-            return;
+            QuadDraw::Form(_) => {
+                binding.bind_through(binder, pass, &self.pipeline_layout, buffer);
+                pass.draw(0..4, instances.into());
+            }
+            QuadDraw::Shadow(_) => {
+                binding.bind_through(binder, pass, &self.shadow_layout, buffer);
+                self.cutouts.bind(binder, pass);
+                pass.draw(0..SHADOW_GRID_VERTICES, instances.into());
+            }
         }
-        pass.draw(0..SHADOW_GRID_VERTICES, instances.into());
     }
 }
 

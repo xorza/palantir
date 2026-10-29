@@ -2,7 +2,7 @@
 
 use crate::common::span::Span;
 use crate::display::Display;
-use crate::gpu::frame::schedule::{MaskPlan, RenderStep, Schedule};
+use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -27,7 +27,6 @@ pub(super) enum DrawOp {
     MaskWrite(u32),
     MaskClear(u32),
     Quads(usize),
-    Shadows(usize),
     Text(usize),
     Meshes(usize),
     Images(usize),
@@ -40,24 +39,23 @@ pub(super) fn collect(
     damage_scissor: Option<URect>,
     masks: Option<&MaskPlan>,
 ) -> Vec<RenderStep> {
-    collect_between(buffer, damage_scissor, masks, (0, None))
+    collect_between(buffer, damage_scissor, masks, GroupSpan::ALL)
 }
 
-/// [`collect`] of the walk over the groups from `from` to `barrier`, as one pass of a main pass
-/// broken at a pane's barrier walks.
+/// [`collect`] of the walk over `groups`, as one pass of a main pass broken at a pane's barrier
+/// walks.
 pub(super) fn collect_between(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
     masks: Option<&MaskPlan>,
-    (from, barrier): (u32, Option<u32>),
+    groups: GroupSpan,
 ) -> Vec<RenderStep> {
     let mut steps = Vec::new();
     let schedule = Schedule {
         buffer,
         damage_scissor,
         masks,
-        from,
-        barrier,
+        groups,
     };
     schedule.for_each_step(&mut |s| steps.push(s));
     steps
@@ -87,9 +85,6 @@ pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawO
             RenderStep::MaskStamp(mi) => out.push(DrawOp::MaskWrite(*mi)),
             RenderStep::MaskClear(mi) => out.push(DrawOp::MaskClear(*mi)),
             RenderStep::Quads { range } => out.push(DrawOp::Quads(group_of(buffer, *range))),
-            RenderStep::Shadows { range } => {
-                out.push(DrawOp::Shadows(group_of(buffer, *range)));
-            }
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::TierBatch { tier, batch } => {
                 let group = buffer.batches(*tier)[*batch].last_group as usize;
@@ -105,7 +100,7 @@ pub(super) fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawO
     out
 }
 
-/// The group whose quad span holds `run` (a run is the whole span unless it mixes shadows with other quads).
+/// The group whose quad span is `run`.
 fn group_of(buffer: &RenderBuffer, run: Span) -> usize {
     buffer
         .groups

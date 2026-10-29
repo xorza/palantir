@@ -28,6 +28,7 @@ use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
 use crate::common::span::Span;
 use crate::display::Display;
+use crate::gpu::frame::schedule::GroupSpan;
 use crate::gpu::frame::schedule::internals::Walk;
 use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::primitives::geometry::corners::Corners;
@@ -188,7 +189,12 @@ pub(crate) fn atomic(c: &mut Criterion) {
                     let mut scissors = 0;
                     for barrier in barriers.iter().copied().map(Some).chain([None]) {
                         scissors += walk
-                            .run_between(&buffer, None, StencilMode::Off, (from, barrier))
+                            .run_between(
+                                &buffer,
+                                None,
+                                StencilMode::Off,
+                                GroupSpan { from, barrier },
+                            )
                             .scissors;
                         from = barrier.unwrap_or(from);
                     }

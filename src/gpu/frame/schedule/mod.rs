@@ -102,12 +102,9 @@ pub(crate) enum RenderStep {
     /// Bind the mask-clear pipeline (`Always` + `Replace`, ref 0) and draw the mask
     /// quad at this index; a chain's outermost quad resets the whole chain.
     MaskClear(u32),
+    /// Draw a group's quads, shadows among them: the backend splits the range where the
+    /// pipeline changes.
     Quads {
-        range: Span,
-    },
-    /// The same for shadow quads. A group's quad range splits into runs wherever the
-    /// kind changes.
-    Shadows {
         range: Span,
     },
     /// Render a coalesced text batch in one draw, right after the batch's last group
@@ -125,6 +122,15 @@ pub(crate) enum RenderStep {
     },
 }
 
+/// The groups one pass of the main pass paints, `groups[from..barrier]`: a main pass breaks at
+/// a capturing pane's barrier to copy what the groups before it painted, and resumes there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GroupSpan {
+    pub(crate) from: u32,
+    /// `None` paints every group from `from`.
+    pub(crate) barrier: Option<u32>,
+}
+
 /// One walk of a frame's schedule: what [`Self::for_each_step`] reads.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Schedule<'a> {
@@ -133,12 +139,7 @@ pub(crate) struct Schedule<'a> {
     pub(crate) damage_scissor: Option<URect>,
     /// The frame's [`MaskPlan`] when the pass has a stencil, else `None`.
     pub(crate) masks: Option<&'a MaskPlan>,
-    /// The first group this walk paints: a main pass broken at a pane's barrier resumes there.
-    pub(crate) from: u32,
-    /// The groups this walk paints, `groups[from..barrier]`: a main pass breaks at a capturing
-    /// pane's barrier to copy what the groups before it painted. `None` paints every group from
-    /// `from`.
-    pub(crate) barrier: Option<u32>,
+    pub(crate) groups: GroupSpan,
 }
 
 impl Schedule<'_> {
@@ -170,6 +171,7 @@ impl Schedule<'_> {
         emit: &mut dyn FnMut(RenderStep),
     ) {
         let end = self
+            .groups
             .barrier
             .map_or(self.buffer.groups.len(), |barrier| barrier as usize);
         debug_assert!(
@@ -178,7 +180,7 @@ impl Schedule<'_> {
         );
         ScheduleWalk {
             buffer: self.buffer,
-            from: self.from as usize,
+            from: self.groups.from as usize,
             end,
             damage_scissor: self.damage_scissor,
             cursors: ScheduleCursors::default(),
@@ -299,27 +301,14 @@ impl ScheduleWalk<'_> {
         }
     }
 
-    fn emit_quad_runs(&mut self, quads: Span) {
-        let range = quads.range();
-        let mut start = range.start;
-        let runs = self.buffer.quads[range]
-            .chunk_by(|a, b| a.fill_kind.is_shadow() == b.fill_kind.is_shadow());
-        for run in runs {
-            let span = Span::from(start..start + run.len());
-            self.state.push(if run[0].fill_kind.is_shadow() {
-                RenderStep::Shadows { range: span }
-            } else {
-                RenderStep::Quads { range: span }
-            });
-            start += run.len();
-        }
-    }
-
     /// The draws every non-skipped group emits: quads, text batches, then mesh /
     /// image / curve batches, after re-requesting the group's scissor and stencil
     /// (the text drain may have changed them). Caller gates it on content.
     fn emit_group_body(&mut self, i: usize, effective: URect) {
-        self.emit_quad_runs(self.buffer.groups[i].quads);
+        let quads = self.buffer.groups[i].quads;
+        if quads.len != 0 {
+            self.state.push(RenderStep::Quads { range: quads });
+        }
         self.drain_text_batches(i + 1);
         if !self.has_tier_batch_at(i) {
             return;
@@ -473,7 +462,7 @@ fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> b
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::frame::schedule::{MaskPlan, RenderStep, Schedule};
+    use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
     use crate::gpu::pipeline::stencil_variant::StencilMode;
     use crate::primitives::geometry::urect::URect;
     use crate::renderer::render_buffer::RenderBuffer;
@@ -485,6 +474,14 @@ pub(crate) mod internals {
         pub(crate) steps: usize,
         pub(crate) scissors: usize,
         pub(crate) stencil_refs: usize,
+    }
+
+    impl GroupSpan {
+        /// Every group: a main pass no pane breaks.
+        pub(crate) const ALL: Self = Self {
+            from: 0,
+            barrier: None,
+        };
     }
 
     /// Schedule-walk harness for the `schedule` benchmark.
@@ -506,17 +503,17 @@ pub(crate) mod internals {
             damage: Option<URect>,
             stencil: StencilMode,
         ) -> WalkCounts {
-            self.run_between(buffer, damage, stencil, (0, None))
+            self.run_between(buffer, damage, stencil, GroupSpan::ALL)
         }
 
-        /// [`Self::run`] over the groups from `from` to `barrier`, as one pass of a main pass
-        /// broken at a pane's barrier walks.
+        /// [`Self::run`] over `groups`, as one pass of a main pass broken at a pane's barrier
+        /// walks.
         pub(crate) fn run_between(
             &self,
             buffer: &RenderBuffer,
             damage: Option<URect>,
             stencil: StencilMode,
-            (from, barrier): (u32, Option<u32>),
+            groups: GroupSpan,
         ) -> WalkCounts {
             let mut counts = WalkCounts::default();
             let masks = match stencil {
@@ -527,8 +524,7 @@ pub(crate) mod internals {
                 buffer,
                 damage_scissor: damage,
                 masks,
-                from,
-                barrier,
+                groups,
             };
             schedule.for_each_step(&mut |step| {
                 counts.steps += 1;
