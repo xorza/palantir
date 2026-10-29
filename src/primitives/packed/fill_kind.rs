@@ -85,8 +85,8 @@ impl FillKind {
     /// `fill_lut_row`, so there is no axis or spread.
     pub(crate) const RAMP: Self = Self(Self::TAG_RAMP);
 
-    /// Backdrop-pane marker: `fill` is the tint, `fill_axis = (σ, saturation, noise, opacity)`,
-    /// and `fill_lut_row` the pane's row in the frame's backdrops.
+    /// Backdrop-pane marker: `fill` is the tint, `fill_axis = (0, saturation, noise, opacity)`,
+    /// and `fill_lut_row` the pane's row in the frame's backdrops, whose plan holds the σ.
     pub(crate) const BACKDROP: Self = Self(Self::TAG_BACKDROP);
 
     /// Bit 16: fragment fast path, set by the composer on a solid, sharp,

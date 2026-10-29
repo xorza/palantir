@@ -15,7 +15,7 @@ use crate::primitives::math::num::{F32Px, Vec2Ext};
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::packed::half_simd::F16x4;
-use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use crate::primitives::paint::antialias::{self, AA_HALF_WIDTH};
 use crate::primitives::paint::backdrop_filter::Lens;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -190,7 +190,8 @@ impl ComposeSession<'_> {
 
     /// `physical` moved so its center is turned by `spin` about the physical pivot, which a
     /// rotation by `spin.angle` about that center then completes: together a turn of the whole
-    /// rect about the pivot. Its pixels are those of the turned rect's bound.
+    /// rect about the pivot. Its pixels are those the shader shades:
+    /// [`antialias::turned_reach`] of it, as the occlusion pruner reads them.
     fn turned_rect(&self, physical: Rect, spin: Spin) -> ScaledRect {
         let physical_spin = self.physical_spin(spin);
         let center = physical.center();
@@ -198,7 +199,7 @@ impl ComposeSession<'_> {
             min: physical.min + physical_spin.rotor().apply(center) - center,
             size: physical.size,
         };
-        let reach = moved.turned_cover(moved.center(), spin.angle);
+        let reach = antialias::turned_reach(moved, spin.angle);
         ScaledRect {
             physical: moved,
             urect: geometry::urect_from_physical(reach.min, reach.max(), self.out.display.physical),
@@ -808,7 +809,7 @@ impl ComposeSession<'_> {
             return;
         }
         let lut_row = match pane {
-            Some(pane) => self.open_barrier(&packed, visible, pane),
+            Some(pane) => self.open_barrier(visible, pane),
             None => p.fill.lut_row,
         };
         self.quad_forces_flush(visible);
@@ -851,18 +852,10 @@ impl ComposeSession<'_> {
                     Some(_) => EdgeRounding::Exact,
                 };
                 let source = self.scaled_rect_with(rect, edges);
-                // Shadow scalars are logical px, so scale them, and a pane's σ; a gradient axis
-                // is unit-space.
+                // Shadow scalars are logical px, so scale them; a gradient axis is unit-space,
+                // and a pane's lanes are ratios.
                 let fill_axis = if p.fill.kind.is_shadow() {
                     p.fill_axis.scaled_saturating(scale_physical)
-                } else if p.fill.kind.is_backdrop() {
-                    let [sigma, saturation, noise, opacity] = p.fill_axis.lanes();
-                    FillAxis::from_lanes_saturating([
-                        sigma * scale_physical,
-                        saturation,
-                        noise,
-                        opacity,
-                    ])
                 } else {
                     p.fill_axis
                 };
@@ -933,14 +926,16 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// List the pane `packed`, seen at `visible`, with the barrier its capture reads at; its row is
+    /// List the pane `pane`, seen at `visible`, with the barrier its capture reads at; its row is
     /// the quad's `fill_lut_row`. A pane whose footprint misses everything painted since the last
     /// break shares it, `0` before any. Else the text batch and the group close at a new barrier,
     /// so nothing before it coalesces, reorders or prunes against what follows: the main pass
     /// can break there and read the pixels the groups before it painted.
-    fn open_barrier(&mut self, packed: &PackedQuad, visible: URect, pane: Pane) -> LutRow {
-        let plan = BlurPlan::new(packed.fill_axis.lanes()[0]);
+    fn open_barrier(&mut self, visible: URect, pane: Pane) -> LutRow {
         let scale = self.composer.transform.physical_scale();
+        // The σ in f32, as the cascade's footprint takes it: rounded to f16 again, near a level's
+        // edge it would pick another plan, whose reach the footprint misses.
+        let plan = BlurPlan::new(pane.backdrop.sigma() * scale);
         // A lens samples its blur up to its reach aside, and each sample reads the blur's.
         let lens_reach = pane.backdrop.lens_reach(scale);
         let reach = UVec2::splat(plan.reach().saturating_add(lens_reach));
@@ -1166,20 +1161,23 @@ impl ComposeSession<'_> {
     /// the open batch's grid and batches closed in this group ([`Self::closed_hit`]); an
     /// open-batch hit also closes the batch so its text cannot coalesce forward and
     /// re-cover the quad. A batch renders at the end of its last group, so one whose last
-    /// group is already closed paints below the quad and needs no flush.
+    /// group is already closed paints below the quad and needs no flush of its own; a
+    /// higher-kind draw in the group still does.
     fn quad_forces_flush(&mut self, overlap: URect) {
+        let mut renders_after = false;
         if self.composer.batch.open_grid.any_overlap(overlap) {
-            let renders_after = self
+            renders_after = self
                 .composer
                 .batch
                 .open
                 .as_ref()
                 .is_some_and(|b| self.renders_after_in_flight(b.last_group));
             self.close_batch();
-            if renders_after {
-                self.flush();
-            }
-        } else if self.closed_hit(overlap) || self.composer.higher_kinds.any_overlap(overlap) {
+        }
+        if renders_after
+            || self.closed_hit(overlap)
+            || self.composer.higher_kinds.any_overlap(overlap)
+        {
             self.flush();
         }
     }
@@ -1246,9 +1244,13 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// Clear-fold discard: drop the scene output and its scratch. Walk state survives: the clip
-    /// stack is empty by precondition and transform pops may still be ahead.
+    /// Clear-fold discard: drop the scene output and its scratch, and hide the panes before the
+    /// cover. Walk state survives: the clip stack is empty by precondition and transform pops may
+    /// still be ahead.
     fn discard_composed(&mut self) {
+        for row in &mut self.out.backdrops {
+            row.source = PaneSource::Hidden;
+        }
         self.out.discard_scene();
         self.composer.reset_group_scratch(self.out.display.physical);
     }

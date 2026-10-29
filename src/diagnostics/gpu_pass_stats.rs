@@ -110,8 +110,8 @@ struct Inner {
     main_pass_cpu_ns: Option<u64>,
 }
 
-/// The last frame's backdrop panes on the device, in ns: the sums of their captures and of their
-/// blurs, `None` when it timed none.
+/// The last frame's backdrop work on the device, in ns: the sums over its breaks of their
+/// captures and of their blurs, `None` when it timed none.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BackdropTimes {
     pub(crate) captures: Option<u64>,

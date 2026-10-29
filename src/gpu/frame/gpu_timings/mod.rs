@@ -38,11 +38,11 @@ use crate::gpu::frame::gpu_timings::query_tracer::QueryTracer;
 use crate::gpu::frame::gpu_timings::wall_clock_tracer::WallClockTracer;
 use crate::gpu::frame::main_segment::MainSegment;
 
-/// Where a pane's timestamp sits among its three.
+/// Where a backdrop break's timestamp sits among its three.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BackdropPhase {
     CaptureStart = 0,
-    /// The capture's end and the blur's start.
+    /// The captures' end and the blurs' start.
     BlurStart = 1,
     BlurEnd = 2,
 }
@@ -58,9 +58,9 @@ pub(crate) enum Mark {
     /// The backbuffer's copy onto the surface.
     CopyOutStart,
     CopyOutEnd,
-    /// Pane `pane`'s capture and blur, at `phase`.
+    /// The captures and blurs of the frame's backdrop break `at`, at `phase`.
     Backdrop {
-        pane: usize,
+        at: usize,
         phase: BackdropPhase,
     },
 }

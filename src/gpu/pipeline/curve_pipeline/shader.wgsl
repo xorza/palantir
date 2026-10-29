@@ -423,10 +423,13 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // query keeps this pipeline valid across that resize.
         let dims = vec2<f32>(textureDimensions(gradient_tex));
         let lut_v = (f32(in.lut_row) + 0.5) / dims.y;
-        let c = textureSample(
+        // The LUT has one mip, so the level is 0, taken explicitly: the
+        // branch on the flat `flags` is not uniform control flow.
+        let c = textureSampleLevel(
             gradient_tex,
             gradient_sampler,
             vec2<f32>(lut_u(in.curve_t, dims.x), lut_v),
+            0.0,
         );
         // The stroke color multiplies the sample, channel by channel —
         // the same rule as a mesh tint, on the straight colors. See

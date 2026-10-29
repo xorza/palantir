@@ -6,7 +6,9 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::renderer::pane_captures::{PaneCaptures, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::BackdropRow;
-use crate::renderer::render_buffer::backdrop_row::PaneSource::{self, Capture, Clear, Held};
+use crate::renderer::render_buffer::backdrop_row::PaneSource::{
+    self, Capture, Clear, Held, Hidden,
+};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 
@@ -70,7 +72,8 @@ fn settle(
 /// serve it: another plan, or a footprint that leaves the held region. At σ 10 the plan blurs
 /// two levels down, a 4 px lattice: a footprint over x 41..139 snaps to texels 10..35, one over
 /// 42..140 too, and one over 37..135 starts at texel 9, outside. A pane with nothing painted
-/// before it, at barrier 0, shows the clear where it would capture, and holds it after.
+/// before it, at barrier 0, shows the clear where it would capture, and holds it after. A hidden
+/// pane drops what it held, so it captures once it shows, though its capture would serve.
 #[test]
 fn a_pane_captures_when_its_held_capture_does_not_serve() {
     let none = DirtyPanes::default();
@@ -88,8 +91,12 @@ fn a_pane_captures_when_its_held_capture_does_not_serve() {
         barrier: 0,
         ..row(2, at(300), 10.0)
     };
+    let hidden = BackdropRow {
+        source: Hidden,
+        ..row(1, at(200), 12.0)
+    };
     let mut captures = PaneCaptures::default();
-    let steps: [Step<'_>; 11] = [
+    let steps: [Step<'_>; 13] = [
         ("new", &[row(0, at(41), 10.0)], false, none, &[Capture]),
         ("still", &[row(0, at(41), 10.0)], false, none, &[Held]),
         ("inside", &[row(0, at(42), 10.0)], false, none, &[Held]),
@@ -110,6 +117,8 @@ fn a_pane_captures_when_its_held_capture_does_not_serve() {
             none,
             &[Held, Capture],
         ),
+        ("hidden", &[hidden], false, none, &[Hidden]),
+        ("shown", &[row(1, at(200), 12.0)], false, none, &[Capture]),
         ("first", &[first], false, none, &[Clear]),
         ("first still", &[first], false, none, &[Held]),
         ("first whole", &[first], true, none, &[Clear]),

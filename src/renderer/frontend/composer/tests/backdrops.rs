@@ -15,6 +15,7 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{BackdropQuad, DrawQuadPayload};
+use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::shape_stroke::ShapeStroke;
@@ -82,12 +83,11 @@ fn a_pane_cuts_the_frame_at_its_barrier() {
     let quad = buf.quads[1];
     assert!(quad.fill_kind.is_backdrop());
     assert_eq!(quad.fill_lut_row, LutRow(0));
-    assert_eq!(quad.fill_axis.lanes(), [10.0, 1.0, 0.0, 1.0]);
+    assert_eq!(quad.fill_axis.lanes(), [0.0, 1.0, 0.0, 1.0]);
 }
 
 /// A pane past every plan and every lens coerces instead of overflowing: σ 10⁶ logical saturates
-/// at 65504 where it lowers, scales to an infinite f16 lane at scale 2, and plans as
-/// `BlurPlan::MAX_SIGMA`; a lens of thickness and index 65504 reaches `u32::MAX`, so the footprint
+/// at 65504 where it lowers, and at scale 2 plans as `BlurPlan::MAX_SIGMA`; a lens of thickness and index 65504 reaches `u32::MAX`, so the footprint
 /// is the whole surface.
 #[test]
 fn a_pane_past_every_plan_coerces_to_the_widest() {
@@ -130,6 +130,23 @@ fn a_pane_past_every_plan_coerces_to_the_widest() {
     );
 }
 
+/// A pane's plan takes its σ in f32, as the cascade's footprint does. σ 1639/256 at scale 1.25 is
+/// 8.0029 physical px, past the 8 px edge of the second level: two levels. Rounded to f16 again
+/// it would be 8.0 and one level, whose reach differs.
+#[test]
+fn a_panes_plan_takes_its_sigma_unrounded() {
+    let sigma = 1639.0 / 256.0;
+    let physical = sigma * 1.25;
+    assert!(physical > 8.0);
+    assert_eq!(BlurPlan::new(physical).levels(), 2);
+    assert_eq!(BlurPlan::new(8.0).levels(), 1);
+    let buf = run(
+        |b, _| pane(b, Rect::new(20.0, 20.0, 20.0, 20.0), sigma, 1.0),
+        &params(1.25, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.backdrops[0].plan, BlurPlan::new(physical));
+}
+
 /// A quad after a pane covering one before it leaves it alone: the pane's capture copies what it
 /// painted. σ 4 at scale 1 reaches 16 px, so the pane's footprint takes in the first quad.
 #[test]
@@ -170,10 +187,11 @@ fn a_fade_scales_the_panes_opacity() {
     );
 }
 
-/// An opaque quad over the whole surface after a pane hides the pane: the clear fold drops it and
-/// its row.
+/// An opaque quad over the whole surface after a pane hides the pane: the clear fold drops its
+/// quad and keeps its row, hidden, so it neither captures nor keeps a result that goes stale under
+/// the cover.
 #[test]
-fn the_clear_fold_drops_the_panes_before_it() {
+fn the_clear_fold_hides_the_panes_before_it() {
     let buf = run(
         |b, _| {
             pane(b, Rect::new(0.0, 0.0, 10.0, 10.0), 4.0, 1.0);
@@ -181,8 +199,33 @@ fn the_clear_fold_drops_the_panes_before_it() {
         },
         &params(1.0, UVec2::new(100, 100)),
     );
-    assert!(buf.backdrops.is_empty());
+    let sources: Vec<PaneSource> = buf.backdrops.iter().map(|row| row.source).collect();
+    assert_eq!(sources, [PaneSource::Hidden]);
     assert!(buf.quads.is_empty());
+}
+
+/// An opaque quad of a pane's group that covers the pane prunes its quad and hides its row; a
+/// pane beside it keeps both, and its quad still reads its own row.
+#[test]
+fn a_pane_under_an_opaque_quad_is_hidden() {
+    let buf = run(
+        |b, _| {
+            draw(b, Rect::new(0.0, 0.0, 10.0, 10.0));
+            pane(b, Rect::new(20.0, 20.0, 20.0, 20.0), 1.0, 1.0);
+            pane(b, Rect::new(60.0, 20.0, 20.0, 20.0), 1.0, 1.0);
+            draw(b, Rect::new(10.0, 10.0, 40.0, 40.0));
+        },
+        &params(1.0, UVec2::new(100, 100)),
+    );
+    let sources: Vec<PaneSource> = buf.backdrops.iter().map(|row| row.source).collect();
+    assert_eq!(sources, [PaneSource::Hidden, PaneSource::Held]);
+    let panes: Vec<LutRow> = buf
+        .quads
+        .iter()
+        .filter(|quad| quad.fill_kind.is_backdrop())
+        .map(|quad| quad.fill_lut_row)
+        .collect();
+    assert_eq!(panes, [LutRow(1)]);
 }
 
 /// A pane with nothing composed before it stands at barrier 0, which the backend reads as a

@@ -16,13 +16,19 @@ pub(crate) enum QuadForm {
 }
 
 impl QuadForm {
-    /// The form a quad of `kind` draws through; an unknown tag takes the gradient form, whose `eval_fill` falls back to solid.
+    /// The form a quad of `kind` draws through.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a tag no quad form draws: a shadow, which draws through the shadow pipelines,
+    /// or the curves' ramp.
     pub(crate) const fn of(kind: FillKind) -> Self {
         match kind.tag() {
             FillKind::TAG_SOLID => Self::Solid,
+            FillKind::TAG_LINEAR | FillKind::TAG_RADIAL | FillKind::TAG_CONIC => Self::Gradient,
             FillKind::TAG_TRIANGLE => Self::Triangle,
             FillKind::TAG_BACKDROP => Self::Backdrop,
-            _ => Self::Gradient,
+            _ => panic!("a quad form draws the tag"),
         }
     }
 }

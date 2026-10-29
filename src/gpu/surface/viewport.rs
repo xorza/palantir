@@ -176,6 +176,7 @@ mod tests {
     use crate::damage::region::DamageRegion;
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
+    use crate::gpu::pipeline::shader_body::ShaderBody;
     use crate::gpu::surface::viewport::{RepaintScissors, ViewportPush};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::urect::URect;
@@ -185,6 +186,7 @@ mod tests {
     use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
     use crate::shape::paint::blur_plan::BlurPlan;
     use glam::{UVec2, Vec2};
+    use std::mem::offset_of;
     use std::time::Duration;
 
     fn buffer() -> RenderBuffer {
@@ -308,5 +310,17 @@ mod tests {
         expected[..4].copy_from_slice(&1.5_f32.to_ne_bytes());
         expected[4..].copy_from_slice(&(-2.25_f32).to_ne_bytes());
         assert_eq!(encoded, expected);
+    }
+
+    /// The viewport push lies as the prelude's `Immediates` declares it, which every shader reads
+    /// at `ViewportPush::OFFSET`.
+    #[test]
+    fn the_viewport_push_lies_as_the_shader_reads_it() {
+        assert_eq!(ViewportPush::OFFSET, 0);
+        ShaderBody::Quad.assert_struct_layout(
+            "Immediates",
+            ViewportPush::BYTES,
+            &[("viewport_size", offset_of!(ViewportPush, size))],
+        );
     }
 }

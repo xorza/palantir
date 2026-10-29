@@ -4,7 +4,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
-use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use crate::primitives::paint::antialias::{self, AA_HALF_WIDTH};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
 use bytemuck::{Pod, Zeroable};
@@ -49,10 +49,7 @@ impl Quad {
                 (self.rect.max() + grow).ceil(),
             );
         }
-        let turned = self
-            .rect
-            .inflated(AA_HALF_WIDTH)
-            .turned_cover(self.rect.center(), self.rotation);
+        let turned = antialias::turned_reach(self.rect, self.rotation);
         Rect::from_min_max(turned.min.floor(), turned.max().ceil())
     }
 }

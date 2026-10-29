@@ -53,6 +53,10 @@ common → primitives → {animation, text, input, display, window, image_regist
   moving the trait into `gpu` would make `ui` depend on `gpu` for `GpuViews`.
 - **`app` ⇄ `ui` stays a cycle.** `App` is the callback contract of the frame
   cycle; the two are one concept.
+- **A bench may import modules to its right.** A `bench.rs` sits beside the
+  code it measures (**Non-shipping code**), and a whole-frame case drives it
+  through `host`, `ui` and `widgets`, as the desktop does. Refused: moving
+  such cases to `src/bench/`, away from the code they measure.
 
 ## Public API
 

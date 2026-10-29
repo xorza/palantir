@@ -5,6 +5,7 @@ use crate::common::counters::TestOnly;
 use crate::primitives::geometry::rect::Rect;
 use crate::renderer::frontend::composer::tile_index::{TILE_SIZE, TileIndex, TileSpan};
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use glam::{UVec2, Vec2};
 use std::cell::Cell;
 
@@ -102,6 +103,11 @@ impl OcclusionPruner {
                 (cursor..occluders).any(|at| self.covers(at, shaded))
             };
             if covered {
+                // A pane that shows nothing must not capture, nor keep a result that goes
+                // stale while it is hidden.
+                if q.fill_kind.is_backdrop() {
+                    out.backdrops[q.fill_lut_row.0 as usize].source = PaneSource::Hidden;
+                }
                 self.drop_idxs.push(i as u32);
             }
         }

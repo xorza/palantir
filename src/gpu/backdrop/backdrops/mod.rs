@@ -233,6 +233,12 @@ impl Backdrops {
                     self.drop_result(at);
                     fresh(Kept::Clear(held_clear(clear, format)))
                 }
+                PaneSource::Hidden => {
+                    self.drop_result(at);
+                    // Its quad was pruned, so no fragment reads its slot.
+                    self.slots.push(BackdropSlot::default());
+                    continue;
+                }
                 PaneSource::Held => {
                     let cached = *self
                         .cache

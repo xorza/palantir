@@ -151,15 +151,12 @@ const FILL_TAG_MASK: u32 = /*{FILL_TAG_MASK}*/;
 const SPREAD_SHIFT: u32 = /*{SPREAD_SHIFT}*/;
 const SPREAD_MASK: u32 = /*{SPREAD_MASK}*/;
 
-// Brush kind tag:
-//   solid  (use `fill` directly)
+// Gradient kind tag, which the gradient form reads (`QuadForm::of`):
 //   linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
 //   radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
 //   conic  (sample LUT via `fill_axis = (cx, cy, start_angle, _)`)
-const BRUSH_KIND_SOLID:        u32 = /*{BRUSH_KIND_SOLID}*/;
 const BRUSH_KIND_LINEAR:       u32 = /*{BRUSH_KIND_LINEAR}*/;
 const BRUSH_KIND_RADIAL:       u32 = /*{BRUSH_KIND_RADIAL}*/;
-const BRUSH_KIND_CONIC:        u32 = /*{BRUSH_KIND_CONIC}*/;
 // Fragment fast path (`FillKind::FAST_BIT`). The composer sets it on a
 // solid, sharp, stroke-less quad whose rect is pixel-aligned — every
 // rasterized fragment is interior (SDF coverage exactly 1.0), so `fs`
@@ -586,21 +583,16 @@ fn apply_spread(t: f32, mode: u32) -> f32 {
     if (mode == SPREAD_REFLECT) {
         return abs(fract(t * 0.5) - 0.5) * 2.0;
     }
-    // Pad, and the safe answer for a mode this shader was not told
-    // about: clamping keeps `t` inside the LUT row either way.
+    // Pad, the remaining mode.
     return clamp(t, 0.0, 1.0);
 }
 
-// Resolve the fill color at a given fragment. Solid path returns
-// `in.fill` verbatim.
-// Linear path projects `in.local` onto `fill_axis.xy` (object-local
-// 0..1 axis), maps to 0..1 via `(t0, t1)`, applies spread, samples
-// the LUT row at `fill_lut_row`.
+// Resolve a gradient's fill color at a given fragment. Linear path
+// projects `in.local` onto `fill_axis.xy` (object-local 0..1 axis), maps
+// to 0..1 via `(t0, t1)`, applies spread, samples the LUT row at
+// `fill_lut_row`.
 fn eval_fill(in: VertexOut) -> vec4<f32> {
     let kind = in.fill_kind & FILL_TAG_MASK;
-    if (kind == BRUSH_KIND_SOLID) {
-        return in.fill;
-    }
     let spread  = (in.fill_kind >> SPREAD_SHIFT) & SPREAD_MASK;
     let local01 = in.local * in.inv_size;
     var t01: f32 = 0.0;
@@ -623,20 +615,16 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         let ry = select(1.0, radius.y, abs(radius.y) > ZERO_EPS);
         let d  = (local01 - center) / vec2<f32>(rx, ry);
         t01 = length(d);
-    } else if (kind == BRUSH_KIND_CONIC) {
-        // Conic: sweep around `center`, starting at `start_angle`
-        // (radians, clockwise on screen: y points down). atan2 returns
-        // -π..π; the +1.0 then fract
-        // wraps to 0..1 in a single step regardless of sign.
+    } else {
+        // Conic, the remaining gradient kind (`QuadForm::of`): sweep
+        // around `center`, starting at `start_angle` (radians, clockwise
+        // on screen: y points down). atan2 returns -π..π; the +1.0 then
+        // fract wraps to 0..1 in a single step regardless of sign.
         let center      = in.fill_axis.xy;
         let start_angle = in.fill_axis.z;
         let p           = local01 - center;
         let theta       = atan2(p.y, p.x);
         t01 = fract((theta - start_angle) / TAU + 1.0);
-    } else {
-        // Unknown brush kind: fall back to solid fill rather than
-        // silently sampling the LUT with garbage `t`.
-        return in.fill;
     }
     let t = apply_spread(t01, spread);
     // Row count is queried, not baked in as a const: the atlas texture
@@ -644,7 +632,9 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
     // holds, and a query keeps this pipeline valid across that resize.
     let dims = vec2<f32>(textureDimensions(gradient_tex));
     let v = (f32(in.fill_lut_row) + 0.5) / dims.y;
-    let c = textureSample(gradient_tex, gradient_sampler, vec2<f32>(lut_u(t, dims.x), v));
+    // The LUT has one mip, so the level is 0, taken explicitly: the branch
+    // on the flat `fill_kind` is not uniform control flow.
+    let c = textureSampleLevel(gradient_tex, gradient_sampler, vec2<f32>(lut_u(t, dims.x), v), 0.0);
     // Texels are premultiplied, so the filter between two of them is too.
     // `in.fill` multiplies the straight sample, channel by channel. It is
     // white for every gradient, with its alpha scaled by a paint
@@ -1137,7 +1127,7 @@ fn lens_glint(lens: vec4<f32>, inward: f32, outward: vec2<f32>) -> f32 {
 // A pane over the pixels painted before it (`FillKind::BACKDROP`): its
 // blurred result, saturated, grained, held under its luminance ceiling and
 // tinted by `fill`, at the pane's opacity,
-// `fill_axis = (σ, saturation, noise, opacity)`. A paint
+// `fill_axis = (_, saturation, noise, opacity)`. A paint
 // animation's fade scaled the opacity and the tint's alpha alike, so the
 // tint's own share is its alpha over the opacity.
 //

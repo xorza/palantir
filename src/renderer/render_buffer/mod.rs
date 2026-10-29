@@ -105,6 +105,7 @@ impl RenderBuffer {
     /// Reset every per-frame column (capacity retained) and stamp viewport, scale and time from `stamp`.
     pub(crate) fn start_frame(&mut self, stamp: FrameStamp) {
         self.discard_scene();
+        self.backdrops.clear();
         self.clear_override = None;
         self.display = stamp.display;
         self.time = stamp.time;
@@ -152,7 +153,8 @@ impl RenderBuffer {
             .sum()
     }
 
-    /// Drop every scene column, leaving per-frame stamps; shared with the composer's clear fold.
+    /// Drop every scene column but the backdrop rows, leaving per-frame stamps; shared with the
+    /// composer's clear fold, which keeps the rows of the panes it hides.
     pub(crate) fn discard_scene(&mut self) {
         self.quads.clear();
         self.texts.clear();
@@ -167,6 +169,5 @@ impl RenderBuffer {
         self.icons.clear();
         self.curves.clear();
         self.rounded_clips.clear();
-        self.backdrops.clear();
     }
 }
