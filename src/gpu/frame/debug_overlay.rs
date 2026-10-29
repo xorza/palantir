@@ -16,7 +16,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_plan::RenderPlan;
 use glam::Vec2;
 use tinyvec::ArrayVec;
 
@@ -101,7 +100,7 @@ impl DebugOverlay {
     pub(crate) fn upload_damage_rects(
         &mut self,
         ctx: &mut GpuCtx<'_>,
-        plan: RenderPlan,
+        damage: Damage,
         buffer: &RenderBuffer,
     ) {
         let scale = buffer.display.scale_factor();
@@ -116,7 +115,7 @@ impl DebugOverlay {
             ..Default::default()
         };
         let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = ArrayVec::default();
-        match plan.damage {
+        match damage {
             Damage::Partial(damage) => {
                 // Outset, not inset: damage thinner than `2 * gap_px` (a 1px caret) would
                 // collapse to zero area. The pass is unscissored and the surface clips the
@@ -143,11 +142,6 @@ impl DebugOverlay {
     /// Forget the last upload, for a frame that draws no damage rects.
     pub(crate) const fn clear_damage_rects(&mut self) {
         self.damage_rect_count = 0;
-    }
-
-    /// Whether this frame uploaded outlines for [`Self::draw_damage_rects`].
-    pub(crate) const fn has_damage_rects(&self) -> bool {
-        self.damage_rect_count > 0
     }
 
     /// Draw this frame's damage-rect outlines in the post-copy overlay pass on the

@@ -1,6 +1,6 @@
 //! Surface format change mid-session (a window moved to an HDR output): the
 //! renderer forces a full repaint, the backend keys pipelines by swapchain
-//! format (`WgpuBackend::ensure_format`), and the uploaded image texture
+//! format (`WgpuBackend::prepare_format`), and the uploaded image texture
 //! survives with no re-upload.
 
 #![expect(

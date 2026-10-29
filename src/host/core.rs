@@ -3,12 +3,11 @@
 //! texture-dimension cap. It does not own the [`WindowDriver`]s; each host pairs its own.
 
 use crate::app::App;
-use crate::gpu::device::backend_config::BackendConfig;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
-use crate::gpu::wgpu_backend::WgpuBackend;
+use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
 use crate::host::host_options::HostOptions;
 use crate::host::window_driver::{
     CpuFrame, DriverConfig, FrameSpec, PresentPath, PresentStrategy, WindowDriver,
@@ -54,8 +53,10 @@ impl HostCore {
                 icons: resources.icons(),
                 gradient_atlas: resources.gradient_atlas(),
             },
-            BackendConfig {
-                collect_gpu_stats: options.collect_gpu_stats,
+            if options.collect_gpu_stats {
+                FrameTiming::On
+            } else {
+                FrameTiming::Off
             },
         );
         let frontend = Frontend::new(max_texture_dim, resources.gradient_atlas().clone());
@@ -82,16 +83,19 @@ impl HostCore {
         self.backend.gpu()
     }
 
-    /// A driver for the window `token`, presenting by `strategy`.
+    /// A driver for the window `token`, presenting by `strategy`, over a render stream of its own.
     pub(super) fn open(&self, token: WindowToken, strategy: PresentStrategy) -> WindowDriver {
+        let stream = self
+            .backend
+            .open_stream(self.resources.render_owners().reserve());
         WindowDriver::new(
             token,
             &self.resources,
             DriverConfig {
                 strategy,
                 pixel_snap: self.pixel_snap,
-                cutout_mode: self.backend.cutout_mode(),
             },
+            stream,
         )
     }
 
@@ -104,6 +108,7 @@ impl HostCore {
         app: &mut T,
     ) -> CpuFrame {
         driver.note_target(&spec);
+        self.backend.prepare_format(spec.format);
         driver.deliver_screenshot(&self.backend);
         driver.forget_evicted_panes(&mut self.backend);
         let stamp = driver.stamp(&spec);
@@ -120,9 +125,9 @@ impl HostCore {
         driver.render_to_texture(&self.frontend.buffer, &mut self.backend, target, mode);
     }
 
-    /// Close a window: its render stream retires, freeing its `GpuView` targets, which
-    /// owner-scoped eviction would otherwise hold until shutdown, and the driver's `Drop` retires
-    /// its directory entry.
+    /// Close a window: the backend drops what it keeps for its render owner, `GpuView` targets
+    /// that owner-scoped eviction would otherwise hold until shutdown, its render stream drops
+    /// with it, and the driver's `Drop` retires its directory entry.
     #[cfg_attr(
         not(feature = "winit"),
         expect(
@@ -131,7 +136,7 @@ impl HostCore {
         )
     )]
     pub(super) fn close(&mut self, driver: WindowDriver) {
-        self.backend.retire_render_owner(driver.render_owner);
+        self.backend.retire_render_owner(driver.render_owner());
         drop(driver);
     }
 }
@@ -151,8 +156,9 @@ mod tests {
     use glam::UVec2;
     use std::time::Duration;
 
-    /// Two windows on one host read their own GPU samples: a submit publishes into its own
-    /// window's handle, so a window that has not drawn reads nothing.
+    /// Two windows on one host render as two owners and read their own GPU samples: a submit
+    /// publishes into its own window's handle, so a window that has not drawn reads nothing. The
+    /// record of a frame builds its format's pipelines, ahead of its submit.
     #[test]
     fn each_window_reads_its_own_gpu_sample() {
         let gpu = headless_test_gpu();
@@ -167,6 +173,7 @@ mod tests {
         let mut core = HostCore::new(gpu.handles(), &options, TextShaper::test_mono());
         let mut drawn = core.open(WindowToken(0), PresentStrategy::BackbufferCopy);
         let idle = core.open(WindowToken(1), PresentStrategy::BackbufferCopy);
+        assert_ne!(drawn.render_owner(), idle.render_owner());
         let size = UVec2::splat(16);
         let target = OwnedTarget::window(
             &gpu.handles(),
@@ -183,6 +190,10 @@ mod tests {
             now: Duration::ZERO,
         };
         let CpuFrame { mode, .. } = core.record(&mut drawn, spec, &mut RecordApp::new(|_| {}));
+        assert!(
+            core.backend.has_format_pipelines(spec.format),
+            "the record built the target format's pipelines, so the submit compiles none"
+        );
         core.submit(&mut drawn, target.as_target(), mode);
         assert!(drawn.ui.gpu_pass_stats().last_main_pass_cpu().is_some());
         assert_eq!(idle.ui.gpu_pass_stats().last_main_pass_cpu(), None);

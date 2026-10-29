@@ -23,6 +23,11 @@ pub(crate) enum RepaintScissors {
 }
 
 impl RepaintScissors {
+    /// Whether the frame repaints inside rects, keeping the pixels around them.
+    pub(crate) const fn is_partial(&self) -> bool {
+        matches!(self, Self::Partial(_))
+    }
+
     /// The physical-px repaint shape of `damage`: `Full`, or `Partial` with the footprint of each pane that captures, as the target there still holds the last frame's pane, then the damage scissors after scaling, AA padding and clamping. Footprints go first, as a pane's damage, its own rect and what changed under it, lies inside its footprint and then adds no piece. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
     ///
     /// The scissors are disjoint: each keeps only the pixels the ones before it left, split into
