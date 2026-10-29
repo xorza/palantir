@@ -15,7 +15,6 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::{BackdropQuad, DrawQuadPayload};
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::PaneSource;
@@ -47,20 +46,17 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> PaneTicket {
 /// A pane at `rect` under `ticket`, faded by `alpha`; the ticket holds its plan, so its own σ is
 /// any.
 fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: PaneTicket, alpha: f32) {
-    let backdrop = LoweredBackdrop::from(BackdropFilter::blur(4.0));
-    let quad = DrawQuadPayload::backdrop(BackdropQuad {
-        kind: RectKind::Rounded,
-        rect,
-        corners: Corners::ZERO,
-        tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
-        stroke: ShapeStroke::NONE,
-        backdrop,
-    });
-    buf.draw_pane(
+    buf.draw(
         DrawPanePayload {
-            quad,
+            kind: RectKind::Rounded,
+            rect,
+            corners: Corners::ZERO,
+            spin: None,
+            tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
+            stroke: ShapeStroke::NONE,
+            backdrop: LoweredBackdrop::from(BackdropFilter::blur(4.0)),
+            opacity: 1.0,
             ticket,
-            backdrop,
         },
         alpha,
     );
@@ -166,6 +162,8 @@ fn a_fade_scales_the_panes_opacity() {
         |b, _| {
             pane(b, Rect::new(0.0, 0.0, 10.0, 10.0), 4.0, 0.5);
             pane(b, Rect::new(0.0, 0.0, 10.0, 10.0), 4.0, 0.0);
+            // Below `EPS`, as a paint animation's alpha is read: shows nothing, lists nothing.
+            pane(b, Rect::new(0.0, 0.0, 10.0, 10.0), 4.0, 1e-6);
         },
         &params(1.0, UVec2::new(100, 100)),
     );

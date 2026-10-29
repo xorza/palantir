@@ -19,7 +19,7 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
         for ep in [record.first, record.second] {
             let rect = scene.layout[ep.plane].rect[ep.node.idx()];
             let screen = scene.cascade.entry_at(ep).transform.apply_rect(rect);
-            out.draw_quad(
+            out.draw(
                 DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Rounded,
                     rect: screen,

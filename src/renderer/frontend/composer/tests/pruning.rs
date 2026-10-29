@@ -225,7 +225,7 @@ fn prune_keeps_shadow_under_opaque_cover() {
     let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::ZERO, 4.0);
     let buf = run(
         |b, _| {
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::shadow(
                     Rect::new(20.0, 20.0, 60.0, 60.0),
                     Corners::default(),
@@ -692,5 +692,5 @@ fn equal_cells_cost_one_tile_each() {
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(768, 768)));
     rig.compose(&recorded);
     assert_eq!(rig.out.quads.len(), 96 * 96, "no cell covers another");
-    assert_eq!(rig.composer.occlusion.contains_tests(), 144 * 2016);
+    assert_eq!(rig.composer.order.contains_tests(), 144 * 2016);
 }

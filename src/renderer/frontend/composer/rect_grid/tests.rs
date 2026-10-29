@@ -174,3 +174,26 @@ fn rect_grid_start_frame_is_grow_only() {
     g.start_frame(UVec2::new(256, 256));
     assert_eq!(g.tile_capacity(), big, "shrink must not deallocate tiles");
 }
+
+/// A rect over more than 256 tiles is listed once, in the large lane, not in each tile: a 4K
+/// viewport-wide rect over 60 × 34 = 2040 tiles leaves every tile empty, and a query anywhere,
+/// even one inside a tile no other rect touches, meets it; one past it does not. A rect of
+/// 16 × 16 = 256 tiles is still listed per tile.
+#[test]
+fn rect_grid_lists_a_rect_past_256_tiles_once() {
+    let mut g = RectGrid::default();
+    g.start_frame(UVec2::new(3840, 2160));
+    g.push(URect::new(0, 0, 3840, 2048));
+    assert!((0..2040).all(|tile| g.tile_load(tile) == [0, 0]));
+    assert!(g.any_overlap(URect::new(3800, 2000, 4, 4)));
+    assert!(!g.any_overlap(URect::new(100, 2050, 4, 4)));
+
+    g.clear();
+    assert!(
+        !g.any_overlap(URect::new(3800, 2000, 4, 4)),
+        "the lane clears"
+    );
+    g.push(URect::new(0, 0, 1024, 1024));
+    assert_eq!(g.tile_load(0), [1, 0], "256 tiles stay per tile");
+    assert_eq!(g.tile_load(15), [1, 0]);
+}

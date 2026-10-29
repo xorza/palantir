@@ -26,7 +26,7 @@ use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{
-    BackdropQuad, DrawQuadPayload, RectQuad, TriangleQuad,
+    DrawQuadPayload, RectQuad, TriangleQuad,
 };
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
@@ -86,58 +86,85 @@ pub(super) struct PlaneCtx<'a, 'g> {
     pub(super) now: Duration,
 }
 
-/// Paint `quad`, as a pane over the pixels painted before it when `pane` gives its backdrop
-/// filter and ticket. A pane's tint is solid: a gradient fill and the border over it draw as the
-/// rect above the pane.
-fn paint_rect(
+/// A rect as one paint call draws it: its quad, a paint animation's turn, and its opacity.
+#[derive(Clone, Copy, Debug)]
+struct RectPaint {
     quad: RectQuad,
-    pane: Option<(LoweredBackdrop, PaneTicket)>,
     spin: Option<Spin>,
     alpha: f32,
-    out: &mut impl PaintSink,
-) {
-    if let Some((backdrop, ticket)) = pane {
-        let tint = match quad.fill {
-            BrushSource::Solid(color) => Some(color),
-            BrushSource::Gradient(_) => None,
-        };
-        let pane = DrawQuadPayload::backdrop(BackdropQuad {
+}
+
+/// What makes a rect a pane: its backdrop filter, and the ticket the pane ledger wrote for it.
+#[derive(Clone, Copy, Debug)]
+struct PaneLook {
+    backdrop: LoweredBackdrop,
+    ticket: PaneTicket,
+}
+
+/// Where a pane is recorded: by its owner, as its chrome or its shape at `shape_idx`.
+#[derive(Clone, Copy, Debug)]
+struct PaneSite {
+    owner: NodeId,
+    origin: PaneOrigin,
+    shape_idx: u32,
+}
+
+/// Paint `paint` as an ordinary rect.
+fn paint_rect(paint: RectPaint, out: &mut impl PaintSink) {
+    let RectPaint { quad, spin, alpha } = paint;
+    out.draw(DrawQuadPayload::rect(quad).turned(spin), alpha);
+}
+
+/// Paint `paint` as a pane over the pixels painted before it, through `look`. A pane's tint is
+/// solid: a gradient fill and the border over it draw as the rect above the pane.
+fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
+    let RectPaint { quad, spin, alpha } = paint;
+    let tint = match quad.fill {
+        BrushSource::Solid(color) => Some(color),
+        BrushSource::Gradient(_) => None,
+    };
+    out.draw(
+        DrawPanePayload {
             kind: quad.kind,
             rect: quad.rect,
             corners: quad.corners,
+            spin,
             tint: tint.unwrap_or(RgbaF16::TRANSPARENT),
             stroke: if tint.is_some() {
-                quad.stroke
+                quad.stroke.normalized()
             } else {
                 ShapeStroke::NONE
             },
-            backdrop,
-        })
-        .turned(spin);
-        out.draw_pane(
-            DrawPanePayload {
-                quad: pane,
-                ticket,
-                backdrop,
-            },
-            alpha,
-        );
-        if tint.is_some() {
-            return;
-        }
+            backdrop: look.backdrop,
+            opacity: 1.0,
+            ticket: look.ticket,
+        },
+        alpha,
+    );
+    if tint.is_none() {
+        paint_rect(paint, out);
     }
-    out.draw_quad(DrawQuadPayload::rect(quad).turned(spin), alpha);
 }
 
 impl PlaneCtx<'_, '_> {
-    /// The ticket of the pane `owner` records from `origin` at shape `shape_idx`, as the tree
-    /// lists it; `None` for a pane the cascade lists not, whose rect lies outside every clip.
-    fn pane_ticket(
-        &mut self,
-        owner: NodeId,
-        origin: PaneOrigin,
-        shape_idx: u32,
-    ) -> Option<PaneTicket> {
+    /// What makes the rect recorded at `site` a pane: `backdrop` and its ticket; `None` for a
+    /// rect of no backdrop, or a pane the cascade lists not.
+    fn pane_look(&mut self, site: PaneSite, backdrop: LoweredBackdrop) -> Option<PaneLook> {
+        if backdrop.is_none() {
+            return None;
+        }
+        let ticket = self.pane_ticket(site)?;
+        Some(PaneLook { backdrop, ticket })
+    }
+
+    /// The ticket of the pane recorded at `site`, as the tree lists it; `None` for a pane the
+    /// cascade lists not, whose rect lies outside every clip.
+    fn pane_ticket(&mut self, site: PaneSite) -> Option<PaneTicket> {
+        let PaneSite {
+            owner,
+            origin,
+            shape_idx,
+        } = site;
         let entries = &self.tree.panes;
         let at = entries
             .binary_search_by_key(&(shape_idx, origin), |entry| {
@@ -221,13 +248,16 @@ impl PlaneCtx<'_, '_> {
                         fill: self.brush_source(*fill),
                         stroke: *border,
                     };
-                    let pane = if backdrop.is_none() {
-                        None
-                    } else {
-                        self.pane_ticket(id, PaneOrigin::Shape, shape_idx)
-                            .map(|ticket| (*backdrop, ticket))
+                    let paint = RectPaint { quad, spin, alpha };
+                    let site = PaneSite {
+                        owner: id,
+                        origin: PaneOrigin::Shape,
+                        shape_idx,
                     };
-                    paint_rect(quad, pane, spin, alpha, out);
+                    match self.pane_look(site, *backdrop) {
+                        Some(look) => paint_pane(paint, look, out),
+                        None => paint_rect(paint, out),
+                    }
                 }
                 QuadShape::Shadow {
                     local_rect,
@@ -237,7 +267,7 @@ impl PlaneCtx<'_, '_> {
                     // The composer grows a drop shadow from the source rect in physical pixels, so it lands on the same pixels as the fill.
                     let source = owner_rect.resolve_local(*local_rect);
                     if let Some(shadow) = DrawQuadPayload::shadow(source, *corners, *shadow) {
-                        out.draw_quad(shadow.turned(spin), alpha);
+                        out.draw(shadow.turned(spin), alpha);
                     }
                 }
                 QuadShape::Triangle {
@@ -257,7 +287,7 @@ impl PlaneCtx<'_, '_> {
                         let rotor = spin.rotor();
                         points = points.map(|q| rotor.apply(q));
                     }
-                    out.draw_quad(
+                    out.draw(
                         DrawQuadPayload::triangle(TriangleQuad {
                             origin: owner_rect.min,
                             points,
@@ -292,7 +322,7 @@ impl PlaneCtx<'_, '_> {
                     shaped.extent.size,
                 );
                 let rect = owner_rect.resolve_local(Some(local));
-                out.draw_text(
+                out.draw(
                     DrawTextPayload {
                         rect,
                         ink: shaped.extent.ink,
@@ -313,7 +343,7 @@ impl PlaneCtx<'_, '_> {
                 bbox,
                 content_hash: _,
             } => {
-                out.draw_polyline(
+                out.draw(
                     DrawPolylinePayload {
                         bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
                         origin: owner_rect.min,
@@ -337,7 +367,7 @@ impl PlaneCtx<'_, '_> {
                 content_hash: _,
             } => {
                 let origin = owner_rect.resolve_local(*local_rect).min;
-                out.draw_mesh(
+                out.draw(
                     DrawMeshPayload {
                         bbox: *bbox,
                         origin,
@@ -361,7 +391,7 @@ impl PlaneCtx<'_, '_> {
                     CurveRamp::None => None,
                     CurveRamp::Interned { id, hash: _ } => Some(self.gradient_row(id)),
                 };
-                out.draw_curve(
+                out.draw(
                     DrawCurvePayload {
                         basis: *basis,
                         bounds: StrokeBounds::new(owner_rect, *bbox, paint_mod.rotation),
@@ -381,7 +411,7 @@ impl PlaneCtx<'_, '_> {
                 desaturate,
             } => {
                 let base = owner_rect.resolve_local(*local_rect);
-                out.draw_icon(
+                out.draw(
                     DrawIconPayload {
                         rect: fit.resolve(base, handle.view_box()),
                         icon: handle.icon,
@@ -435,7 +465,7 @@ impl PlaneCtx<'_, '_> {
                     ImageDownsample::Mean => ImageFlags::TAPS_MEAN,
                     ImageDownsample::Peak => ImageFlags::TAPS_PEAK,
                 });
-                out.draw_image(
+                out.draw(
                     ImageDraw {
                         payload: DrawImagePayload {
                             rect,
@@ -488,15 +518,23 @@ impl PlaneCtx<'_, '_> {
                 fill: self.brush_source(chrome.fill),
                 stroke: chrome.border,
             };
-            let pane = if chrome.backdrop.is_none() {
-                None
-            } else {
-                let first_shape = self.tree.records.shape_span()[id.idx()].start;
-                self.pane_ticket(id, PaneOrigin::Chrome, first_shape)
-                    .map(|ticket| (chrome.backdrop, ticket))
+            let site = PaneSite {
+                owner: id,
+                origin: PaneOrigin::Chrome,
+                shape_idx: self.tree.records.shape_span()[id.idx()].start,
+            };
+            let pane = self.pane_look(site, chrome.backdrop);
+            let paint = RectPaint {
+                quad: fill,
+                spin: None,
+                alpha: 1.0,
+            };
+            let paint_fill = |out: &mut _| match pane {
+                Some(look) => paint_pane(paint, look, out),
+                None => paint_rect(paint, out),
             };
             if chrome.shadow.inset() {
-                paint_rect(fill, pane, None, 1.0, out);
+                paint_fill(out);
                 let width = chrome.border.width;
                 let padding_box = Rect {
                     min: Vec2::ZERO,
@@ -508,14 +546,14 @@ impl PlaneCtx<'_, '_> {
                     .corners
                     .inner(rect.size, Spacing::saturating([width; 4]));
                 if let Some(shadow) = DrawQuadPayload::shadow(source, corners, chrome.shadow) {
-                    out.draw_quad(shadow, 1.0);
+                    out.draw(shadow, 1.0);
                 }
             } else {
                 // The owner's rect, as `compute_paint_rect` mirrors.
                 if let Some(shadow) = DrawQuadPayload::shadow(rect, chrome.corners, chrome.shadow) {
-                    out.draw_quad(shadow, 1.0);
+                    out.draw(shadow, 1.0);
                 }
-                paint_rect(fill, pane, None, 1.0, out);
+                paint_fill(out);
             }
             if chrome.ring {
                 let ring = DrawQuadPayload::rect(RectQuad {
@@ -525,7 +563,7 @@ impl PlaneCtx<'_, '_> {
                     fill: self.brush_source(ShapeBrush::Solid(RgbaF16::TRANSPARENT)),
                     stroke: self.tree.focus_ring,
                 });
-                out.draw_quad(ring, 1.0);
+                out.draw(ring, 1.0);
             }
         }
 

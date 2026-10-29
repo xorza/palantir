@@ -71,7 +71,7 @@ fn windowed_rect_is_not_an_opaque_cover() {
     let buf = run(
         |b, _| {
             draw(b, Rect::new(10.0, 10.0, 50.0, 50.0));
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Windowed,
                     rect: Rect::new(0.0, 0.0, 200.0, 200.0),
@@ -169,7 +169,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
 fn compose_emits_image_batch_for_drawimage() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(
+            b.draw(
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(10.0, 20.0, 30.0, 40.0),
@@ -436,7 +436,7 @@ fn compose_gpu_view_caps_wide_and_tall_targets_uniformly() {
 fn compose_image_forwards_uv_crop_for_cover_fit() {
     let buf = run(
         |b, _arena| {
-            b.draw_image(
+            b.draw(
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 100.0, 100.0),
@@ -464,7 +464,7 @@ fn compose_forwards_flags_and_repeat_uv() {
     let buf = run(
         |b, _arena| {
             // Plain draw: no flags.
-            b.draw_image(
+            b.draw(
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
@@ -480,7 +480,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                 1.0,
             );
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
-            b.draw_image(
+            b.draw(
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
@@ -496,7 +496,7 @@ fn compose_forwards_flags_and_repeat_uv() {
                 1.0,
             );
             // The two nearest-filter bits ride through together.
-            b.draw_image(
+            b.draw(
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(0.0, 0.0, 50.0, 50.0),
@@ -577,7 +577,7 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     });
     let buf = run(
         |b, _| {
-            b.draw_image(
+            b.draw(
                 ImageDraw {
                     payload: DrawImagePayload {
                         rect: Rect::new(40.0, 40.0, 20.0, 10.0),
@@ -609,7 +609,7 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     let half_off = Rect::new(-10.0, 40.0, 20.0, 10.0);
     let buf = run(
         |b, _| {
-            b.draw_image(
+            b.draw(
                 ImageDraw {
                     payload: DrawImagePayload {
                         spin,

@@ -7,10 +7,10 @@ use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 use crate::shape::paint::lowered_shadow::{LoweredShadow, ShadowGeometry};
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
@@ -80,18 +80,6 @@ pub(crate) struct RectQuad {
     pub(crate) stroke: ShapeStroke,
 }
 
-/// What [`DrawQuadPayload::backdrop`] lowers: a pane of `kind` showing the pixels painted
-/// before it through `backdrop`, under a solid `tint` and a stroke.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct BackdropQuad {
-    pub(crate) kind: RectKind,
-    pub(crate) rect: Rect,
-    pub(crate) corners: Corners,
-    pub(crate) tint: RgbaF16,
-    pub(crate) stroke: ShapeStroke,
-    pub(crate) backdrop: LoweredBackdrop,
-}
-
 /// What [`DrawQuadPayload::triangle`] lowers: three owner-local `points`
 /// offset by `origin`, rounded by `radius`, with a solid fill and a stroke.
 #[derive(Clone, Copy, Debug)]
@@ -104,28 +92,6 @@ pub(crate) struct TriangleQuad {
 }
 
 impl DrawQuadPayload {
-    /// This draw with its alpha scaled by `by`, for
-    /// [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s gate.
-    #[inline]
-    pub(crate) fn faded(self, by: f32) -> Self {
-        if by == 1.0 {
-            return self;
-        }
-        // A pane's opacity rides its last lane: the tint fades with it, and the backdrop too.
-        let fill_axis = if self.fill.kind.is_backdrop() {
-            let [sigma, saturation, noise, opacity] = self.fill_axis.lanes();
-            FillAxis::from_lanes([sigma, saturation, noise, opacity * by])
-        } else {
-            self.fill_axis
-        };
-        Self {
-            fill: self.fill.faded(by),
-            stroke: self.stroke.faded(by),
-            fill_axis,
-            ..self
-        }
-    }
-
     /// A rect of `q.kind` with `q.fill` and `q.stroke`. The brush is lowered
     /// here because the GPU lanes it fills are this type's. A
     /// [`RectKind::Windowed`] rect's `FillKind` carries the window bit, so the
@@ -153,38 +119,6 @@ impl DrawQuadPayload {
             fill: lanes,
             stroke: stroke.normalized(),
             fill_axis: fill.fill_axis(),
-        }
-    }
-
-    /// A pane over the pixels painted before it, `FillKind::BACKDROP`, with `q.backdrop` in the
-    /// axis lanes. Not `NONE`: a rect with no backdrop is [`Self::rect`].
-    pub(crate) fn backdrop(q: BackdropQuad) -> Self {
-        let BackdropQuad {
-            kind,
-            rect,
-            corners,
-            tint,
-            stroke,
-            backdrop,
-        } = q;
-        debug_assert!(!backdrop.is_none(), "a pane with no backdrop is a rect");
-        let mut fill_kind = FillKind::BACKDROP;
-        if kind == RectKind::Windowed {
-            fill_kind = fill_kind.with_window();
-        }
-        Self {
-            geometry: QuadGeometry::Rect {
-                rect,
-                corners,
-                spin: None,
-            },
-            fill: GpuFill {
-                color: tint,
-                kind: fill_kind,
-                lut_row: LutRow::FALLBACK,
-            },
-            stroke: stroke.normalized(),
-            fill_axis: backdrop.fill_axis(),
         }
     }
 
@@ -258,23 +192,6 @@ impl DrawQuadPayload {
         }
     }
 
-    /// Paints nothing when the geometry covers no pixels, or neither fill nor
-    /// stroke can put down a texel.
-    ///
-    /// Shadow parameters are not gated: a zero-σ drop shadow still paints a
-    /// hard shifted rect, and `Shape::Shadow::is_noop` catches no-effect cases.
-    ///
-    /// A gradient fill is never a no-op here: [`BrushSource::gpu_fill`] sets
-    /// its color lane to white (the atlas row supplies the color), and
-    /// `Brush::is_noop` filters all-transparent stops before lowering.
-    #[inline]
-    pub(crate) fn is_noop(&self) -> bool {
-        if self.fill.kind.is_backdrop() {
-            return self.is_paint_empty() || self.fill_axis.lanes()[3] == 0.0;
-        }
-        self.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
-    }
-
     /// Whether the geometry covers no pixels. A drop shadow covers its source
     /// grown by the halo. A triangle is `false`: its covering rect exists only
     /// after transform, and `TriangleShape::is_noop` filters degenerates.
@@ -288,6 +205,44 @@ impl DrawQuadPayload {
             QuadGeometry::Rect { rect, .. } => rect.is_paint_empty(),
             QuadGeometry::Triangle { .. } => false,
         }
+    }
+}
+
+impl PaintPayload for DrawQuadPayload {
+    /// This draw with its alpha scaled by `by`, for
+    /// [`PaintSink`]'s gate.
+    #[inline]
+    fn faded(self, by: f32) -> Self {
+        if by == 1.0 {
+            return self;
+        }
+        debug_assert!(
+            !self.fill.kind.is_backdrop(),
+            "a pane fades as a `DrawPanePayload`"
+        );
+        Self {
+            fill: self.fill.faded(by),
+            stroke: self.stroke.faded(by),
+            ..self
+        }
+    }
+
+    /// Paints nothing when the geometry covers no pixels, or neither fill nor
+    /// stroke can put down a texel.
+    ///
+    /// Shadow parameters are not gated: a zero-σ drop shadow still paints a
+    /// hard shifted rect, and `Shape::Shadow::is_noop` catches no-effect cases.
+    ///
+    /// A gradient fill is never a no-op here: [`BrushSource::gpu_fill`] sets
+    /// its color lane to white (the atlas row supplies the color), and
+    /// `Brush::is_noop` filters all-transparent stops before lowering.
+    #[inline]
+    fn is_noop(&self) -> bool {
+        self.is_paint_empty() || (self.fill.is_noop() && self.stroke.is_noop())
+    }
+
+    fn paint(self, sink: &mut impl PaintSink) {
+        sink.quad(self);
     }
 }
 

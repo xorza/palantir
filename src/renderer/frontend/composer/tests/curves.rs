@@ -114,7 +114,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     let d0 = (pts[1] - pts[0]).normalize();
     let d1 = (pts[2] - pts[1]).normalize();
     let d2 = (pts[3] - pts[2]).normalize();
-    assert_eq!(rig.composer.polyline.directions, [d0, d1, d2]);
+    assert_eq!(rig.composer.polyline.directions(), [d0, d1, d2]);
     // First segment: cap at its start only; the start plane lane is zero and the
     // end lane carries the pre-oriented bisector normal.
     assert_eq!(segs[0].p0, pts[0]);
@@ -304,7 +304,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
     let buf = run(
         |b, _arena| {
             for offset in [0.0_f32, 50.0] {
-                b.draw_curve(
+                b.draw(
                     DrawCurvePayload {
                         bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                         origin: Vec2::ZERO,
@@ -352,7 +352,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
     use crate::shape::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
@@ -372,7 +372,7 @@ fn compose_splits_curve_batches_across_scissor_groups() {
                 1.0,
             );
             clip(b, Rect::new(0.0, 0.0, 50.0, 200.0));
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 50.0, 50.0)),
                     origin: Vec2::ZERO,
@@ -417,7 +417,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     let tint = RgbaF32::new(0.25, 0.5, 1.0, 0.75).to_f16();
     let buf = run(
         |b, _arena| {
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
@@ -470,7 +470,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     let sweep = 1.5 * PI;
     let buf = run(
         |b, _arena| {
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
@@ -520,7 +520,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
     // y-down) maps (+20, 0) to (0, +20), so it lands at (50, 70).
     let buf = run(
         |b, _arena| {
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Spun {
                         spin: Spin {
@@ -568,7 +568,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
     // Same 800 px span: a straight cubic collapses to one instance; a curved one
     // subdivides (⌈⌈800/1.5⌉/16⌉ = 34).
     let straight = |b: &mut PaintCapture| {
-        b.draw_curve(
+        b.draw(
             DrawCurvePayload {
                 bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 10.0)),
                 origin: Vec2::ZERO,
@@ -589,7 +589,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
         );
     };
     let curved = |b: &mut PaintCapture| {
-        b.draw_curve(
+        b.draw(
             DrawCurvePayload {
                 bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 400.0)),
                 origin: Vec2::ZERO,
@@ -631,7 +631,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     // 50) → (50, 70) and p3 (50, 30) → (70, 50).
     let buf = run(
         |b, _arena| {
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Spun {
                         spin: Spin {
@@ -674,7 +674,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     use crate::shape::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 40.0, 40.0)),
                     origin: Vec2::ZERO,
@@ -693,7 +693,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
                 },
                 1.0,
             );
-            b.draw_curve(
+            b.draw(
                 DrawCurvePayload {
                     bounds: StrokeBounds::Still(Rect::new(100.0, 0.0, 100.0, 100.0)),
                     origin: Vec2::ZERO,
@@ -785,7 +785,7 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
     }
 }
 
-/// `PaintSink::draw_polyline` *asserts* its no-op predicate rather than gating on
+/// The gate *asserts* a polyline's geometry (`PaintPayload::check`) rather than gating on
 /// it, which is only safe if a degenerate polyline slipping through in release
 /// degrades quietly. This test makes that true; fix it before restoring the gate.
 ///

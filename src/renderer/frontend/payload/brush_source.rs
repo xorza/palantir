@@ -15,9 +15,9 @@ pub(crate) enum BrushSource {
 }
 
 impl BrushSource {
-    /// Lower to the color lanes every draw payload carries. A `Gradient`'s color lane starts white, the identity of the multiply [`GpuFill::color`] applies, so [`DrawQuadPayload::faded`] fades it with no second uniform.
+    /// Lower to the color lanes every draw payload carries. A `Gradient`'s color lane starts white, the identity of the multiply [`GpuFill::color`] applies, so [`PaintPayload::faded`] fades it with no second uniform.
     ///
-    /// [`DrawQuadPayload::faded`]: crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload::faded
+    /// [`PaintPayload::faded`]: crate::renderer::frontend::paint_sink::PaintPayload::faded
     #[inline]
     pub(crate) const fn gpu_fill(self) -> GpuFill {
         match self {

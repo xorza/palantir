@@ -6,16 +6,12 @@
 
 use crate::display::frame_stamp::FrameStamp;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
-use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;
-use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
-use crate::renderer::frontend::composer::pane_break::PaneBreak;
-use crate::renderer::frontend::composer::rect_grid::RectGrid;
+use crate::renderer::frontend::composer::paint_order::PaintOrder;
+use crate::renderer::frontend::composer::polyline_scratch::PolylineScratch;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::record_store::RecordStore;
-use glam::{UVec2, Vec2};
 use std::num::NonZeroU32;
 
 #[cfg(feature = "internals")]
@@ -23,11 +19,16 @@ pub(crate) mod bench;
 mod clip_stack;
 #[cfg(feature = "internals")]
 pub(crate) mod compose_rig;
+mod curve_run;
 mod geometry;
 mod higher_kind_rects;
+mod lowering;
 mod occlusion_pruner;
+mod packed_quad;
+mod paint_order;
 mod pane_break;
 mod physical_map;
+mod polyline_scratch;
 mod rect_grid;
 pub(crate) mod session;
 mod stroke_bbox;
@@ -42,16 +43,6 @@ mod transform_stack;
 /// `RenderBuffer` being filled; the split is by lifetime. Nothing here takes
 /// an output buffer. [`Frontend`](crate::renderer::frontend::Frontend)
 /// orchestrates encode and compose.
-///
-/// Within a group the backend renders quads, then text, then every
-/// [`PaintTier`] in `PaintTier::ALL` order (`schedule::emit_group_body`;
-/// polylines ride the curve tier). That reorder is safe iff no overlapping
-/// pair of draws swaps record order, enforced by forcing a
-/// [`ComposeSession::flush`] when a lower-kind draw follows an overlapping
-/// higher-kind one in the group, or a higher-kind draw follows an overlapping
-/// draw of a later-replaying kind (a mesh after an overlapping image or
-/// curve). The checks use the batch state's open text grid and
-/// [`Self::higher_kinds`].
 #[derive(Debug)]
 pub(crate) struct Composer {
     /// The nested clips the walk has open: scissor plus rounded-mask chain per level.
@@ -59,78 +50,12 @@ pub(crate) struct Composer {
     /// The walk transform: live product plus the ancestors a pop restores.
     transform: TransformStack,
     polyline: PolylineScratch,
-    batch: BatchState,
-    /// Per-group AABBs partitioned by above-text replay tier. A lower-tier
-    /// draw checks only tiers that replay after it; text and quads use the
-    /// aggregate union first. Cleared per flush: the group just closed has
-    /// drained, so it can no longer reorder against a still-open batch.
-    higher_kinds: HigherKindRects,
-    /// `*_start` cursors where the open group's per-kind slices begin;
-    /// [`ComposeSession::flush`] closes each and advances it.
-    cursors: GroupCursors,
-    /// Per-group occlusion-prune scratch: solid-opaque occluders in the
-    /// in-flight group, and the sweep dropping earlier quads they cover.
-    occlusion: OcclusionPruner,
-    /// The last break the main pass takes for a pane, and what is painted after it.
-    pane_break: PaneBreak,
+    /// Which draws may reorder within a group, and where groups and text batches close.
+    order: PaintOrder,
     /// Device `max_texture_dimension_2d`: the composer downsamples any
     /// composited `GpuView` whose physical rect exceeds it. Fixed per device,
     /// so it rides the ctor.
     max_texture_dim: NonZeroU32,
-}
-
-#[derive(Debug, Default)]
-struct PolylineScratch {
-    points: Vec<Vec2>,
-    kept: Vec<u32>,
-    directions: Vec<Vec2>,
-}
-
-/// Allocation-owning state for text batching. The open grid may span groups;
-/// the closed grid and pending cursor reset at each group boundary.
-#[derive(Debug, Default)]
-struct BatchState {
-    open: Option<OpenBatch>,
-    open_grid: RectGrid,
-    closed_grid: RectGrid,
-    /// First finalized text batch not yet indexed in `closed_grid`.
-    pending_batch_cursor: usize,
-}
-
-/// Per-kind slice cursors for the in-flight group: where its slice begins in
-/// each output buffer. [`ComposeSession::flush`] closes the slices and
-/// advances every cursor. `texts` feeds only the did-anything-emit check, so a
-/// text-only group still pushes a `DrawGroup` and its batch's `last_group`
-/// resolves; run spans live on
-/// [`TextBatch`](crate::renderer::render_buffer::text_batch::TextBatch).
-#[derive(Default, Clone, Copy, Debug)]
-struct GroupCursors {
-    quads: u32,
-    texts: u32,
-    /// One per [`PaintTier`], indexed by `PaintTier::idx`.
-    higher: [u32; PaintTier::COUNT],
-}
-
-/// State carried while a text batch is mid-accumulation; pushed onto
-/// `out.text_batches` as a
-/// [`TextBatch`](crate::renderer::render_buffer::text_batch::TextBatch) by
-/// [`ComposeSession::close_batch`].
-#[derive(Clone, Copy, Debug)]
-struct OpenBatch {
-    /// Cursor into `out.texts` where this batch's run span begins. Recorded,
-    /// not derived from the previous span end (which it always equals), so
-    /// `close_batch` can assert they agree and catch a run pushed outside any
-    /// batch.
-    texts_start: u32,
-    /// Index (into `out.groups`) of the last group whose text contributed,
-    /// refreshed on every text push; tells the schedule where to emit the
-    /// merged render step.
-    last_group: u32,
-    /// `true` once a strict run has joined: one whose ancestor clip cuts its
-    /// full unclipped extent in X. The batch scissor (`open_grid.union`) must
-    /// then equal that bound, so later runs join only with matching `bounds`;
-    /// the text shader has no per-instance clip.
-    strict: bool,
 }
 
 impl Composer {
@@ -141,11 +66,7 @@ impl Composer {
             clip: ClipStack::default(),
             transform: TransformStack::default(),
             polyline: PolylineScratch::default(),
-            batch: BatchState::default(),
-            higher_kinds: HigherKindRects::default(),
-            cursors: GroupCursors::default(),
-            occlusion: OcclusionPruner::default(),
-            pane_break: PaneBreak::default(),
+            order: PaintOrder::default(),
             max_texture_dim,
         }
     }
@@ -161,7 +82,7 @@ impl Composer {
     ) -> ComposeSession<'a> {
         out.start_frame(stamp);
 
-        self.reset_group_scratch(stamp.display.physical);
+        self.order.start_frame(stamp.display.physical);
         self.clip.clear();
         self.transform.clear(stamp.display.scale_factor());
 
@@ -171,21 +92,6 @@ impl Composer {
             out,
         }
     }
-
-    /// Reset every piece of scratch describing composed scene output. Shared
-    /// by the per-compose prologue and [`ComposeSession::discard_composed`],
-    /// so a new field resets on both paths. Walk state (clip/transform stacks)
-    /// is untouched: the discard path must preserve it.
-    fn reset_group_scratch(&mut self, viewport_physical: UVec2) {
-        self.batch.open_grid.start_frame(viewport_physical);
-        self.batch.closed_grid.start_frame(viewport_physical);
-        self.batch.pending_batch_cursor = 0;
-        self.higher_kinds.start_frame(viewport_physical);
-        self.cursors = GroupCursors::default();
-        self.batch.open = None;
-        self.occlusion.start_frame(viewport_physical);
-        self.pane_break.open(0);
-    }
 }
 
 #[cfg(feature = "internals")]
@@ -194,10 +100,8 @@ pub(crate) mod internals {
 
     use crate::internals::paint_capture::PaintCapture;
     #[cfg(test)]
-    use crate::internals::scratch_report;
+    use crate::renderer::frontend::composer::Composer;
     use crate::renderer::frontend::composer::session::ComposeSession;
-    #[cfg(test)]
-    use crate::renderer::frontend::composer::{BatchState, Composer, PolylineScratch};
 
     impl ComposeSession<'_> {
         /// Replay a recorded paint stream into this session, closing it, so
@@ -213,34 +117,14 @@ pub(crate) mod internals {
             let Self {
                 clip,
                 transform,
-                polyline:
-                    PolylineScratch {
-                        points,
-                        kept,
-                        directions,
-                    },
-                batch:
-                    BatchState {
-                        open: _,
-                        open_grid,
-                        closed_grid,
-                        pending_batch_cursor: _,
-                    },
-                higher_kinds,
-                cursors: _,
-                occlusion,
-                pane_break: _,
+                polyline,
+                order,
                 max_texture_dim: _,
             } = self;
             clip.scratch_bytes()
                 + transform.scratch_bytes()
-                + scratch_report::vec_bytes(points)
-                + scratch_report::vec_bytes(kept)
-                + scratch_report::vec_bytes(directions)
-                + open_grid.scratch_bytes()
-                + closed_grid.scratch_bytes()
-                + higher_kinds.scratch_bytes()
-                + occlusion.scratch_bytes()
+                + polyline.scratch_bytes()
+                + order.scratch_bytes()
         }
     }
 }

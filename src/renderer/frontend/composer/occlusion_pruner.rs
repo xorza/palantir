@@ -26,9 +26,8 @@ struct Occluder {
 ///
 /// Up to [`LINEAR_OCCLUDERS`] occluders are scanned linearly. Beyond that a
 /// [`TileIndex`] is used: a cover containing a quad contains its top-left
-/// corner, so a query tests only that tile's covers, skipping those drawn
-/// beneath the quad. Covers spanning more than [`LARGE_COVER_TILES`] tiles are
-/// tested by every query instead.
+/// corner, so a query tests only that tile's covers and the index's large
+/// lane, skipping those drawn beneath the quad.
 ///
 /// Covers are clamped to the viewport's tiles; the clamp is monotonic, so a
 /// clamped corner still lands in range. An index miss only keeps a quad the GPU
@@ -39,16 +38,10 @@ pub(super) struct OcclusionPruner {
     drop_idxs: Vec<u32>,
     /// Each tile's covers, by position in `opaque_in_group`.
     tiles: TileIndex,
-    /// Positions in `opaque_in_group` of covers spanning more than
-    /// [`LARGE_COVER_TILES`] tiles, ascending.
-    large_covers: Vec<u32>,
     contains_tests: TestOnly<Cell<u32>>,
 }
 
 const LINEAR_OCCLUDERS: usize = 16;
-
-/// The most tiles a cover registers in before every query tests it instead.
-const LARGE_COVER_TILES: u32 = 256;
 
 const TILE: f32 = TILE_SIZE as f32;
 
@@ -133,29 +126,17 @@ impl OcclusionPruner {
 
     fn build_index(&mut self) {
         self.tiles.clear();
-        self.large_covers.clear();
         for (at, occluder) in self.opaque_in_group.iter().enumerate() {
             let span = self.span_of(occluder.cover);
-            let tiles = span.max - span.min + UVec2::ONE;
-            if tiles.x * tiles.y > LARGE_COVER_TILES {
-                self.large_covers.push(at as u32);
-                continue;
-            }
             self.tiles.insert(at as u32, span);
         }
     }
 
     fn indexed_covers(&self, rect: Rect, cursor: usize) -> bool {
         // A cover before `cursor` is drawn beneath the quad.
-        if self.tiles.any_in(self.tile_of(rect.min), |at| {
+        self.tiles.any_in(self.tile_of(rect.min), |at| {
             at as usize >= cursor && self.covers(at as usize, rect)
-        }) {
-            return true;
-        }
-        let first = self
-            .large_covers
-            .partition_point(|&at| (at as usize) < cursor);
-        (first..self.large_covers.len()).any(|at| self.covers(self.large_covers[at] as usize, rect))
+        })
     }
 
     fn covers(&self, at: usize, rect: Rect) -> bool {
@@ -204,13 +185,11 @@ pub(crate) mod internals {
                 opaque_in_group,
                 drop_idxs,
                 tiles,
-                large_covers,
                 contains_tests: _,
             } = self;
             scratch_report::vec_bytes(opaque_in_group)
                 + scratch_report::vec_bytes(drop_idxs)
                 + tiles.scratch_bytes()
-                + scratch_report::vec_bytes(large_covers)
         }
     }
 }

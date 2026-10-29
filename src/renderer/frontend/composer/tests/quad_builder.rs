@@ -50,7 +50,7 @@ impl QuadBuilder {
     }
 
     pub(super) fn draw(self, buf: &mut PaintCapture) {
-        buf.draw_quad(
+        buf.draw(
             DrawQuadPayload::rect(RectQuad {
                 kind: RectKind::Rounded,
                 rect: self.rect,

@@ -5,6 +5,7 @@ use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
+use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_image_payload::{
     DrawImagePayload, ImageDraw, ViewPaint,
@@ -125,7 +126,7 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
 
     for (label, rect, handle, has_paint, expect_call) in cases {
         let mut sink = PaintCapture::default();
-        sink.draw_image(
+        sink.draw(
             ImageDraw {
                 payload: DrawImagePayload {
                     rect,
@@ -188,7 +189,7 @@ fn the_gate_sees_the_faded_payload() {
     };
 
     let mut faded_out = PaintCapture::default();
-    faded_out.draw_image(draw(), 0.0);
+    faded_out.draw(draw(), 0.0);
     assert!(
         faded_out.calls.is_empty(),
         "a draw animated to nothing must not reach the sink: {:?}",
@@ -196,7 +197,7 @@ fn the_gate_sees_the_faded_payload() {
     );
 
     let mut half = PaintCapture::default();
-    half.draw_image(draw(), 0.5);
+    half.draw(draw(), 0.5);
     let [PaintCall::Image { payload, .. }] = half.calls.as_slice() else {
         panic!("expected one Image call, got {:?}", half.calls);
     };
@@ -212,14 +213,14 @@ fn the_gate_sees_the_faded_payload() {
         ..Default::default()
     };
     let mut faded_out = PaintCapture::default();
-    faded_out.draw_polyline(line, 0.0);
+    faded_out.draw(line, 0.0);
     assert!(
         faded_out.calls.is_empty(),
         "a polyline animated to nothing must not reach the sink: {:?}",
         faded_out.calls,
     );
     let mut half = PaintCapture::default();
-    half.draw_polyline(line, 0.5);
+    half.draw(line, 0.5);
     let [PaintCall::Polyline(payload)] = half.calls.as_slice() else {
         panic!("expected one Polyline call, got {:?}", half.calls);
     };

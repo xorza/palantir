@@ -3,6 +3,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::spin::Spin;
 
 /// One baked-icon draw, in logical px; physical box, raster size and atlas slot are decided downstream.
@@ -19,10 +20,10 @@ pub(crate) struct DrawIconPayload {
     pub(crate) spin: Option<Spin>,
 }
 
-impl DrawIconPayload {
-    /// This draw with alpha scaled by `by`, for the [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink) gate.
+impl PaintPayload for DrawIconPayload {
+    /// This draw with alpha scaled by `by`, for the [`PaintSink`] gate.
     #[inline]
-    pub(crate) fn faded(self, by: f32) -> Self {
+    fn faded(self, by: f32) -> Self {
         if by == 1.0 {
             return self;
         }
@@ -34,7 +35,11 @@ impl DrawIconPayload {
 
     /// Paints nothing for a zero-extent rect or fully transparent tint.
     #[inline]
-    pub(crate) const fn is_noop(&self) -> bool {
+    fn is_noop(&self) -> bool {
         self.rect.is_paint_empty() || self.tint.is_noop()
+    }
+
+    fn paint(self, sink: &mut impl PaintSink) {
+        sink.icon(self);
     }
 }

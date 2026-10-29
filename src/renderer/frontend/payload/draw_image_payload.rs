@@ -3,6 +3,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
@@ -43,9 +44,9 @@ pub(crate) struct ViewPaint<'a> {
     pub(crate) epoch: u64,
 }
 
-impl ImageDraw<'_> {
+impl PaintPayload for ImageDraw<'_> {
     #[inline]
-    pub(crate) fn faded(self, by: f32) -> Self {
+    fn faded(self, by: f32) -> Self {
         if by == 1.0 {
             return self;
         }
@@ -60,10 +61,14 @@ impl ImageDraw<'_> {
 
     /// Paints nothing: zero-extent rect, transparent tint, or a null handle with no callback.
     #[inline]
-    pub(crate) const fn is_noop(&self) -> bool {
+    fn is_noop(&self) -> bool {
         let Self { payload, view } = self;
         payload.rect.is_paint_empty()
             || payload.tint.is_noop()
             || (payload.handle.0 == 0 && view.is_none())
+    }
+
+    fn paint(self, sink: &mut impl PaintSink) {
+        sink.image(self);
     }
 }

@@ -51,48 +51,6 @@ test.
 
 ## Plan
 
-### Batch 7: one owner of paint order in the composer
-
-Files: `src/renderer/frontend/composer/` (`session.rs`, `mod.rs`, `rect_grid/`, `tile_index.rs`,
-`occlusion_pruner.rs`, `higher_kind_rects.rs`, `pane_break.rs`), `src/renderer/frontend/paint_sink/`,
-`src/renderer/frontend/payload/draw_quad_payload/`, `src/renderer/frontend/encoder/plane_ctx.rs`.
-The bugs these paths caused are fixed; this batch removes their cause.
-
-- [ ] `session.rs` (1281 lines).
-  - Defect: per-kind lowering is mixed with paint-order arbitration. Quad (806-815), text
-    (760-793) and the tiers (`admit_higher_kind`, 1147-1162) each hand-write cull, order and
-    register: `pane_break.paint` is called three times, and polyline clamps twice.
-  - Target: `PaintOrder` with one `admit(lane, bounds)`. Text's cross-group batch stays the one
-    documented exception. Per-kind lowering goes in its own files.
-- [ ] `draw_quad_payload/mod.rs:118-123,270-272`, `session.rs:288,296,799,858-866`,
-  `plane_ctx.rs:85-91`.
-  - Defect: backdrop branches leak into the generic quad code. `DrawPanePayload` holds the
-    backdrop twice (the `fill_axis` lanes and `backdrop`), and `faded` updates only the lanes.
-    `push_quad(_, Option<Pane>)` and `paint_rect(.., pane: Option<(LoweredBackdrop, PaneKey)>, ..)`
-    are `Option` parameters that select behavior, the second also a five-parameter fn with a tuple.
-  - Target: the pane is its own payload, lowered to a `Quad` once.
-- [ ] `tile_index.rs:110-131`, `rect_grid/mod.rs:43-51`.
-  - Defect: `RectGrid` inserts a rect into every tile it spans. A viewport-wide curve bbox at 4K
-    is 2040 inserts, and `OcclusionPruner` already bypasses large entries over the same
-    `TileIndex`.
-  - Target: the large-entry lane moves into `TileIndex` and serves both.
-- [ ] `composer/mod.rs:166-174`.
-  - Defect: four `BatchState` fields are reset one by one, and "`open_grid` non-empty ⇔
-    `open.is_some()`" is not encoded anywhere.
-  - Target: `BatchState::start_frame` and `close`.
-- [ ] `paint_sink/mod.rs:107-180`.
-  - Defect: eight identical fade → `is_noop` → forward gates. Polyline instances rely on a zeroed
-    `fill_kind` that matches `FillKind::SOLID` (`session.rs:692-705,719-730`).
-  - Target: one gate over a payload trait. Set `fill_kind` explicitly.
-- [ ] `session.rs:660-677,691,712-713`.
-  - Defect: `seg_colors` runs three times per segment (about 30k fades for a 10k-point polyline).
-  - Target: once per segment, into `PolylineScratch`.
-- [ ] Tests:
-  - order and cull of turned draws;
-  - a pane under an opaque quad;
-  - the AA-fringe overlap.
-  - `composer/bench.rs` gets quad, clip, rounded-clip, prune, polyline and pane cases.
-
 ### Batch 8: shader ownership and pipeline families
 
 Files: `src/gpu/pipeline/` (all families, `shader_body/`, `format_pipelines.rs`),

@@ -106,7 +106,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     // An opaque fill keeps the draw alive so the stroke lanes can be inspected.
     let buf = run(
         |b, _arena| {
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Rounded,
                     rect: Rect::new(10.0, 20.0, 30.0, 40.0),
@@ -127,7 +127,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
 
     let buf = run(
         |b, _arena| {
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
                     origin: Vec2::ZERO,
                     points: [
@@ -153,7 +153,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     // A NaN stroke on an otherwise unpainted shape is dropped.
     let buf = run(
         |b, _arena| {
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Rounded,
                     rect: Rect::new(10.0, 20.0, 30.0, 40.0),
@@ -434,7 +434,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
     ];
     let buf = run(
         |b, _arena| {
-            b.draw_quad(
+            b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
                     origin: Vec2::ZERO,
                     points,
@@ -527,7 +527,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     };
     let buf = run(
         |b, _| {
-            b.draw_quad(
+            b.draw(
                 drop(
                     Rect::new(10.25, 10.75, 20.5, 5.25),
                     4.0,
@@ -547,8 +547,8 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
     let point = Rect::new(50.0, 50.0, 0.0, 0.0);
     let buf = run(
         |b, _| {
-            b.draw_quad(drop(point, 0.0, [0.0, 0.0, 0.0, 2.0]), 1.0);
-            b.draw_quad(drop(point, 0.0, [0.0, 0.0, 0.0, 0.0]), 1.0);
+            b.draw(drop(point, 0.0, [0.0, 0.0, 0.0, 2.0]), 1.0);
+            b.draw(drop(point, 0.0, [0.0, 0.0, 0.0, 0.0]), 1.0);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -557,7 +557,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
 
     let buf = run(
         |b, _| {
-            b.draw_quad(
+            b.draw(
                 drop(
                     Rect::new(10.0, 10.0, 20.0, 20.0),
                     0.0,
@@ -585,7 +585,7 @@ fn a_turned_mesh_instance_turns_and_scales_at_once() {
     let instance = |spin: Option<Spin>| {
         let buf = run(
             |b, _| {
-                b.draw_mesh(
+                b.draw(
                     DrawMeshPayload {
                         bbox: Rect::new(0.0, 0.0, 12.0, 12.0),
                         origin: Vec2::new(4.0, 4.0),
@@ -641,8 +641,8 @@ fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
     };
     let buf = run(
         |b, _| {
-            b.draw_quad(opaque(Rect::new(62.0, 47.0, 1.0, 1.0)), 1.0);
-            b.draw_quad(
+            b.draw(opaque(Rect::new(62.0, 47.0, 1.0, 1.0)), 1.0);
+            b.draw(
                 opaque(Rect::new(40.0, 40.0, 20.0, 10.0)).turned(Some(Spin {
                     pivot: Vec2::new(50.0, 50.0),
                     angle: FRAC_PI_2,

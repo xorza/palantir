@@ -1,6 +1,7 @@
 //! One native GPU stroke — a cubic or an arc.
 
 use crate::primitives::math::domain::is_invisible;
+use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::shape::paint::curve_basis::CurveBasis;
@@ -21,10 +22,10 @@ pub(crate) struct DrawCurvePayload {
     pub(crate) cap: LineCap,
 }
 
-impl DrawCurvePayload {
-    /// This draw with alpha scaled by `by`, for [`PaintSink`](crate::renderer::frontend::paint_sink::PaintSink)'s gate.
+impl PaintPayload for DrawCurvePayload {
+    /// This draw with alpha scaled by `by`, for [`PaintSink`]'s gate.
     #[inline]
-    pub(crate) fn faded(self, by: f32) -> Self {
+    fn faded(self, by: f32) -> Self {
         if by == 1.0 {
             return self;
         }
@@ -36,7 +37,7 @@ impl DrawCurvePayload {
 
     /// Paints nothing for non-positive stroke width, a degenerate arc radius, or a transparent stroke color. An all-transparent ramp is caught earlier by `CurveShape`'s no-op test.
     #[inline]
-    pub(crate) const fn is_noop(&self) -> bool {
+    fn is_noop(&self) -> bool {
         if is_invisible(self.width) {
             return true;
         }
@@ -46,5 +47,9 @@ impl DrawCurvePayload {
             return true;
         }
         self.fill.is_noop()
+    }
+
+    fn paint(self, sink: &mut impl PaintSink) {
+        sink.curve(self);
     }
 }
