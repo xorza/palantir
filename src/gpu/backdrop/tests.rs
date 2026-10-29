@@ -4,10 +4,14 @@ use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::shadow::Shadow;
+use crate::primitives::paint::stroke::Stroke;
+use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::text::shaper::TextShaper;
@@ -15,7 +19,8 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
-use glam::UVec2;
+use crate::widgets::popup::Popup;
+use glam::{UVec2, Vec2};
 use image::RgbaImage;
 
 const SIZE: UVec2 = UVec2::new(64, 48);
@@ -119,7 +124,7 @@ fn a_pane_shows_the_pixels_before_it_blurred() {
         let got = frame(Some(sigma));
         let want: Vec<Vec<f64>> = (0..3).map(|c| reference(plan, &under, c)).collect();
         for (x, y, pixel) in got.enumerate_pixels() {
-            let inside = PANE.contains(glam::Vec2::new(x as f32 + 0.5, y as f32 + 0.5));
+            let inside = PANE.contains(Vec2::new(x as f32 + 0.5, y as f32 + 0.5));
             if !inside {
                 assert_eq!(
                     pixel,
@@ -391,4 +396,65 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
     });
     assert!(chrome == shape, "a chrome pane differs from a rect pane");
     assert!(chrome != whole(stripes), "the pane paints");
+}
+
+/// A frosted popup with a translucent border and a shadow that shrinks, then grows back, as a
+/// palette does while a search narrows and clears, on a kept window: each frame matches a whole
+/// repaint within one 8-bit step. Growing back captures the pane again, and its footprint holds
+/// the damage rect; were the two scissors to overlap, the walk past the pane's barrier would
+/// composite the border, and everything translucent after it, twice there.
+#[test]
+fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
+    let size = UVec2::new(1000, 700);
+    let scene = |h: f32, inner: RgbaF32| {
+        move |ui: &mut Ui| {
+            Panel::zstack()
+                .id_salt("backdrop-grow")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::canvas()
+                        .id_salt("backdrop-grow-stripes")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| scene(ui, None));
+                    let chrome =
+                        Chrome::rounded(RgbaF32::new(0.04, 0.04, 0.04, 0.72), Corners::all(8.0))
+                            .with_border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.12), 1.0))
+                            .with_shadow(Shadow::drop(
+                                RgbaF32::new(0.0, 0.0, 0.0, 0.5),
+                                Vec2::new(0.0, 8.0),
+                                16.0,
+                            ))
+                            .with_backdrop_filter(BackdropFilter::frosted(8.0));
+                    Popup::new(Anchor::at_point(Vec2::new(30.0, 20.0)))
+                        .id_salt("backdrop-grow-pane")
+                        .layer(Layer::Menu)
+                        .chrome(chrome)
+                        .size((Sizing::fixed(260.0), Sizing::fixed(h)))
+                        .show(ui, |ui, _| {
+                            Panel::canvas()
+                                .id_salt("backdrop-grow-row")
+                                .size((Sizing::fixed(30.0), Sizing::fixed(10.0)))
+                                .chrome(Chrome::fill(inner))
+                                .show(ui, |_| {});
+                        });
+                });
+        }
+    };
+    let gpu = headless_test_gpu();
+    let mut window = HeadlessWindow::builder(gpu.handles())
+        .shaper(TextShaper::test_mono())
+        .open(size, 1.0);
+    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    let red = RgbaF32::srgb(1.0, 0.2, 0.1);
+    let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
+    for (what, h, inner) in [
+        ("tall", 400.0, red),
+        ("short", 120.0, blue),
+        ("short again", 120.0, red),
+        ("tall again", 400.0, blue),
+        ("still tall", 400.0, red),
+    ] {
+        window.frame(&mut RecordApp::new(scene(h, inner)));
+        assert_within_a_step(&window.read_back(), &whole_at(size, scene(h, inner)), what);
+    }
 }

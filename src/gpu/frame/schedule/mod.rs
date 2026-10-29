@@ -154,8 +154,7 @@ impl Schedule<'_> {
     ///    draw of its outermost quad at ref 0 under the stamp-time scissor (a clear
     ///    under another scissor misses stamped pixels). Groups sharing the stamped
     ///    chain elide the clear and re-stamp. A walk never ends with a chain stamped:
-    ///    the pass clears the stencil once, and AA padding can make disjoint damage
-    ///    scissors overlap, so residue would leak into the next walk.
+    ///    the pass clears the stencil once, so residue would leak into the next walk.
     /// 4. Text renders after its group's quads. A batch drained past damage-skipped
     ///    groups establishes its own chain.
     /// 5. Groups with an empty effective scissor, or one missing `damage_scissor`,

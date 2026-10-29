@@ -12,6 +12,7 @@ use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::quad::Quad;
@@ -233,7 +234,7 @@ impl CutoutPlan {
             RepaintScissors::Full => None,
             RepaintScissors::Partial(rects) => Some(rects),
         };
-        // Only a shadow one scissor covers whole is redrawn; two scissors covering it together count as kept, which at worst repaints in full needlessly.
+        // A shadow the scissors cover whole is redrawn. They are disjoint, so the pixels it touches lie under them all exactly when their parts inside it add up to it.
         let reached = |shaded: Rect| match partial {
             None => true,
             Some(rects) => rects.iter().any(|rect| shaded.intersects(Rect::from(rect))),
@@ -241,9 +242,13 @@ impl CutoutPlan {
         let covered = |shaded: Rect| match partial {
             None => true,
             Some(rects) => shaded.intersect(viewport).is_none_or(|shown| {
+                let touched = URect::covering(shown);
                 rects
                     .iter()
-                    .any(|rect| Rect::from(rect).contains_rect(shown))
+                    .filter_map(|rect| rect.intersect(touched))
+                    .map(URect::area)
+                    .sum::<u64>()
+                    == touched.area()
             }),
         };
         self.next.clear();

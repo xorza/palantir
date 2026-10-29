@@ -286,6 +286,7 @@ impl WgpuBackend {
             stats,
             buffer,
             plan,
+            scissors: repaint_scissors,
             ..
         } = submission;
         if let Some(support) = self.timing {
@@ -310,7 +311,6 @@ impl WgpuBackend {
         self.ensure_format(format);
 
         let viewport = ViewportPush::for_buffer(buffer);
-        let repaint_scissors = RepaintScissors::new(plan.damage, buffer);
         let dim_undamaged = submission.dim_undamaged();
 
         // One encoder: the belt's copies must land before the passes that read them.
@@ -350,7 +350,7 @@ impl WgpuBackend {
                 .as_ref()
                 .expect("direct present builds the surface view"),
         };
-        if let RepaintScissors::Partial(rects) = &repaint_scissors {
+        if let RepaintScissors::Partial(rects) = repaint_scissors {
             tracing::trace!(rects = rects.len(), "wgpu_backend.submit.pass.partial");
         } else {
             tracing::trace!("wgpu_backend.submit.pass.full");
@@ -366,7 +366,7 @@ impl WgpuBackend {
                 color: via_backbuffer.map_or(surface_texture, Backbuffer::texture),
                 stencil_view,
                 clear: clear_color,
-                scissors: &repaint_scissors,
+                scissors: repaint_scissors,
             },
             &mut encoder,
         );
@@ -419,6 +419,7 @@ impl WgpuBackend {
             store,
             buffer,
             plan,
+            scissors: _,
             cutouts,
             debug_overlay,
         } = *sub;
@@ -546,13 +547,12 @@ impl WgpuBackend {
 
     /// The main pass, broken at the barrier of each pane that captures: the pass ends, the pane's
     /// footprint is copied out of the target into its capture and blurred, and the next pass
-    /// loads the target and paints on. Each pass walks the schedule once per damage rect (once,
-    /// unscissored, on Full), and only the first clears.
+    /// loads the target and paints on. Each pass walks the schedule once per repaint scissor
+    /// (once, unscissored, on Full), and only the first clears; the scissors are disjoint
+    /// ([`RepaintScissors::new`]), as a later pass paints over what the one before it left.
     ///
     /// Every walk leaves the stencil clean: one ending with a mask stamped emits a tail
-    /// clear under the stamp's scissor. That, not rect disjointness, keeps one rect's
-    /// stencil writes from a later rect's reads, since `RenderPlan::AA_PADDING` can make
-    /// disjoint rects' padded scissors overlap.
+    /// clear under the stamp's scissor, so no walk reads another's stencil writes.
     ///
     /// Host CPU time for all of it, including each pass's end-of-pass replay on drop, publishes
     /// to [`GpuPassStats::last_main_pass_cpu`]; it scales with draw-step count and is what the
