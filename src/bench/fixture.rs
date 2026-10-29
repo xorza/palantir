@@ -9,6 +9,7 @@ use std::time::Duration;
 /// draws are all a frame holds.
 pub(crate) fn plain_window(gpu: &BenchGpu, size: UVec2, collect_gpu_stats: bool) -> HeadlessWindow {
     let mut window = HeadlessWindow::builder(gpu.handles())
+        .swapchain_present()
         .collect_gpu_stats(collect_gpu_stats)
         .open(size, 1.0);
     window.ui().theme_mut().panel_chrome = None;

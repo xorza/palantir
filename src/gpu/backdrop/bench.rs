@@ -101,7 +101,7 @@ impl WholeFrames {
         Self {
             host: OffscreenHost::builder(gpu.handles())
                 .collect_gpu_stats(true)
-                .retained_target(true)
+                .swapchain_present()
                 .build(),
             odd: false,
         }
@@ -435,7 +435,7 @@ fn pane_frames(bencher: &mut Bencher<'_>, look: Look, arm: Arm) {
     let target = gpu.target("palantir.bench.backdrop_frame", FRAME_SURFACE);
     let mut host = OffscreenHost::builder(gpu.handles())
         .collect_gpu_stats(false)
-        .retained_target(true)
+        .swapchain_present()
         .build();
     let mut state = PaneFrame::default();
     let mut frame = || {
@@ -668,7 +668,7 @@ fn scenes(group: &mut CaseGroup<'_>, backend: Backend) {
             let target = gpu.target("palantir.bench.backdrop_scene", scene.surface);
             let mut host = OffscreenHost::builder(gpu.handles())
                 .collect_gpu_stats(false)
-                .retained_target(true)
+                .swapchain_present()
                 .build();
             let mut fixture = FrameFixture::default();
             let mut n = 0u32;

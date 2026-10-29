@@ -50,20 +50,6 @@ test.
 
 ## Plan
 
-### Batch 10: present strategies
-
-Files: `src/host/offscreen.rs:109-150`, `src/host/window_driver/mod.rs:197-216`,
-`src/host/headless_window/mod.rs:95`, `benches/AGENTS.md:51-57`.
-
-- [ ] Defect:
-  - `retained_target(true)` says "small damage repaints straight into the target", but it maps to
-    `DirectAdaptive`, which paints every partial frame below 0.4 coverage through the backbuffer
-    and copies the whole surface out: 179 µs per partial frame on the 680M (PERF.md).
-  - A direct full frame leaves the backbuffer stale, so the next partial frame becomes whole.
-  - `HeadlessWindow` always sets the flag. The benches rely on it to emulate the winit host.
-- [ ] Target: a retained strategy whose partial frame loads and paints the target itself, and an
-  internals knob for the benches' swapchain emulation.
-
 ### Batch 11: smaller items
 
 - [ ] `src/renderer/gradient_atlas/mod.rs:225-229` `grow`.

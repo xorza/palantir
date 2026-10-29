@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::error::GpuRequestError;
-use crate::gpu::surface::owned_target::OwnedTarget;
+use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 use crate::gpu::surface::render_target::TargetFormat;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
@@ -63,6 +63,20 @@ impl HeadlessTestGpuLease {
     /// validation errors.
     pub fn target(&self, label: &str, size: UVec2) -> OwnedTarget {
         OwnedTarget::window(&self.handles(), label, size, TargetFormat::RGBA8_SRGB)
+    }
+
+    /// A 2D `Rgba8UnormSrgb` target of `size` that takes copies but gives none, as a texture an
+    /// app renders into may be.
+    pub fn uncopied_target(&self, label: &str, size: UVec2) -> OwnedTarget {
+        OwnedTarget::new(
+            &self.handles(),
+            TargetSpec {
+                label,
+                size,
+                format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
+            },
+        )
     }
 
     /// Block until every submission on the device has finished.

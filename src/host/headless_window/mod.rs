@@ -92,7 +92,7 @@ impl HeadlessWindowBuilder {
         let system_scale = display::scale_factor(system_scale);
         let target = OwnedTarget::window(&self.gpu, LABEL, size, self.format);
         HeadlessWindow {
-            host: self.host.retained_target(true).build(),
+            host: self.host.build(),
             target,
             system_scale,
         }
@@ -103,7 +103,7 @@ impl HeadlessWindow {
     /// Start building a window on `gpu`.
     pub fn builder(gpu: Gpu) -> HeadlessWindowBuilder {
         HeadlessWindowBuilder {
-            host: OffscreenHost::builder(gpu.clone()),
+            host: OffscreenHost::builder(gpu.clone()).retained_target(true),
             gpu,
             format: TargetFormat::RGBA8_SRGB,
         }
@@ -183,8 +183,16 @@ impl HeadlessWindow {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::host::headless_window::HeadlessWindow;
+    use crate::host::headless_window::{HeadlessWindow, HeadlessWindowBuilder};
     use image::RgbaImage;
+
+    impl HeadlessWindowBuilder {
+        /// See `OffscreenHostBuilder::swapchain_present`.
+        pub(crate) fn swapchain_present(mut self) -> Self {
+            self.host = self.host.swapchain_present();
+            self
+        }
+    }
 
     impl HeadlessWindow {
         /// The window's pixels as the last frame left them, waited for. See

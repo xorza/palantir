@@ -51,7 +51,7 @@ cargo drive bench --test                  # each case once
 **The frame cases measure what the desktop pays.**
 
 - **The GPU frames present as the desktop does.** `bench_host` builds its
-  `OffscreenHost` with `retained_target(true)`, the winit host's
+  `OffscreenHost` with `swapchain_present`, the winit host's
   `DirectAdaptive`: a skip frame presents nothing, a full frame renders
   straight into the target, and a partial frame paints into palantir's
   backbuffer and copies all of it out. The default `BackbufferCopy` is the
