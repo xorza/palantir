@@ -34,10 +34,14 @@ fn primed_side(gpu: &BenchGpu, content: ContentType, size: u32, zeros: &[u8]) ->
         eager_growth_bytes: 16 << 20,
     };
     let side = Side::new(&gpu.gpu.device, content, config);
-    assert_eq!(side.size, size, "the device caps no side this bench builds");
+    assert_eq!(
+        side.atlas.edge(),
+        size,
+        "the device caps no side this bench builds"
+    );
     let bytes_per_row = size * content.bytes_per_pixel();
     gpu.gpu.queue.write_texture(
-        side.texture.as_image_copy(),
+        side.atlas.texture().as_image_copy(),
         &zeros[..(bytes_per_row * size) as usize],
         wgpu::TexelCopyBufferLayout {
             offset: 0,
@@ -89,10 +93,12 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                     .map(|_| {
                         let mut side = primed_side(gpu, content, from, &zeros);
                         let start = Instant::now();
-                        assert!(side.grow(&gpu.gpu.device), "a side below its ceiling grows");
-                        submit(gpu, |encoder| side.record_grow_blit(encoder));
+                        assert!(side.atlas.grow(), "a side below its ceiling grows");
+                        submit(gpu, |encoder| {
+                            side.atlas.commit(&gpu.gpu.device, encoder);
+                        });
                         let elapsed = start.elapsed();
-                        assert_eq!(side.size, from * 2, "the side doubled");
+                        assert_eq!(side.atlas.texture().width(), from * 2, "the side doubled");
                         elapsed
                     })
                     .sum::<Duration>()

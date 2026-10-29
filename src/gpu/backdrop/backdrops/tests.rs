@@ -77,8 +77,8 @@ fn prepare(
 
 /// The atlas slot of `owner`'s pane `i`, if its result is one.
 fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
-    match backdrops.cache.get(&(owner, key(i)))? {
-        Kept::Slot(slot) => Some(*slot),
+    match backdrops.cache.get(&(owner, key(i)))?.kept {
+        Kept::Slot(slot) => Some(slot),
         Kept::Clear(_) => None,
     }
 }
@@ -123,7 +123,7 @@ fn a_pane_of_the_clear_frees_its_slot() {
     assert_eq!(backdrops.blurs(), 0);
     let held = held_clear(CLEAR.to_f16(), TargetFormat::RGBA8_SRGB);
     assert!(matches!(
-        backdrops.cache[&(owner, key(0))],
+        backdrops.cache[&(owner, key(0))].kept,
         Kept::Clear(clear) if clear == held
     ));
     prepare(
@@ -133,7 +133,10 @@ fn a_pane_of_the_clear_frees_its_slot() {
         &[row(0, PaneSource::Held), captured(1)],
     );
     assert_eq!(backdrops.blurs(), 1);
-    assert!(matches!(backdrops.cache[&(owner, key(0))], Kept::Clear(_)));
+    assert!(matches!(
+        backdrops.cache[&(owner, key(0))].kept,
+        Kept::Clear(_)
+    ));
     assert_eq!(slot(&backdrops, owner, 1).map(|s| s.min), Some(first.min));
 }
 
@@ -173,4 +176,43 @@ fn a_backdrop_slot_lies_as_the_shader_reads_it() {
             ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
         ],
     );
+}
+
+/// At its ceiling the shared atlas evicts the least recently used result no pane of the frame
+/// reads, from any window, and lists it for that window's ledger. A 64² atlas holds four 32²
+/// slots (30² results rounded up): window a takes two, window b three, so b's third evicts one of
+/// a's. A result past the ceiling finds no room at all: its pane shows the clear, blurs nothing,
+/// and is listed for its own ledger, which then captures it again.
+#[test]
+fn a_full_atlas_evicts_the_least_recently_used_result() {
+    let gpu = headless_test_gpu();
+    let owners = RenderOwners::default();
+    let (a, b) = (owners.reserve(), owners.reserve());
+    let mut backdrops = Backdrops::with_ceiling(&gpu.device, 64);
+    prepare(&mut backdrops, &gpu, a, &[captured(0), captured(1)]);
+    assert_eq!(backdrops.evicted(a).count(), 0);
+    prepare(
+        &mut backdrops,
+        &gpu,
+        b,
+        &[captured(0), captured(1), captured(2)],
+    );
+    assert_eq!(backdrops.blurs(), 3);
+    assert_eq!(backdrops.evicted(a).count(), 1, "one of a's went");
+    assert_eq!(
+        backdrops.evicted(b).count(),
+        0,
+        "b's own frame keeps all of b's"
+    );
+    backdrops.forget_evicted(a);
+    assert_eq!(backdrops.evicted(a).count(), 0);
+
+    let huge = BackdropRow {
+        source: PaneSource::Capture { barrier: 1 },
+        ..BackdropRow::fixture(9, URect::new(0, 0, 100, 100), BlurPlan::new(2.0))
+    };
+    prepare(&mut backdrops, &gpu, b, &[huge]);
+    assert_eq!(backdrops.blurs(), 0);
+    assert_eq!(backdrops.slots[0].lattice, 0.0, "it shows the clear");
+    assert_eq!(backdrops.evicted(b).collect::<Vec<_>>(), [key(9)]);
 }

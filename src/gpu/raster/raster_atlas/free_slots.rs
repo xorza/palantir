@@ -1,10 +1,10 @@
 //! Slab indices no cache key names, awaiting the next insert.
 
-use crate::gpu::raster::raster_atlas::atlas_slot::AtlasSlot;
+use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotState};
 use crate::gpu::raster::raster_atlas::side::Side;
 
-/// Slab indices no cache key names. `release` is the only way in: a listed index has no
-/// [`AtlasSlot::placement`], which `ClockSweep` picks victims by, so it is never released twice.
+/// Slab indices no cache key names. `release` is the only way in: a listed index is
+/// [`SlotState::Free`], which `ClockSweep` never picks, so it is never released twice.
 #[derive(Debug, Default)]
 pub(super) struct FreeSlots(Vec<u32>);
 
@@ -14,17 +14,17 @@ impl FreeSlots {
     pub(super) fn release(&mut self, slots: &mut [AtlasSlot], sides: &mut [Side], idx: u32) {
         let slot = &mut slots[idx as usize];
         debug_assert!(
-            !slot.free,
+            slot.state != SlotState::Free,
             "slab index {idx} released twice; two keys would share one slot",
         );
-        slot.free = true;
-        if let Some(placement) = slot.placement.take() {
+        let state = std::mem::replace(&mut slot.state, SlotState::Free);
+        if let SlotState::Placed(placement) = state {
             slot.generation = slot
                 .generation
                 .checked_add(1)
                 .expect("glyph slot generation overflowed");
             sides[placement.content as usize]
-                .packer
+                .atlas
                 .deallocate(placement.origin, placement.size.x);
         }
         self.0.push(idx);

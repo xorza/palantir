@@ -183,7 +183,7 @@ fn the_clock_resumes_where_it_stopped_and_skips_ineligible_slots() {
         AtlasSlot::for_test(true, 2),
         AtlasSlot::for_test(false, 1), // never drew — nothing to deallocate
         AtlasSlot {
-            placement: Some(SlotPlacement {
+            state: SlotState::Placed(SlotPlacement {
                 content: ContentType::Color,
                 ..SlotPlacement::for_test()
             }),
@@ -475,7 +475,7 @@ mod gpu {
         let idx = atlas
             .insert(key(5000), tall)
             .expect("the bottom rows make room");
-        let placement = atlas.slots[idx as usize].placement.unwrap();
+        let placement = atlas.slots[idx as usize].placement().unwrap();
         assert_eq!(placement.origin, U16Vec2::new(0, 224));
         assert_eq!(atlas.counters.evictions.count(), 32);
         assert_eq!(*atlas.counters.worst_insert_evictions.get(), 32);

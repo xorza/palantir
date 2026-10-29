@@ -22,9 +22,17 @@
 //!   (m2: −8 % on `*/under`, −6 % on `*/moving`). A swapchain image is sampled by no pass, as a
 //!   group for it would be made each frame.
 //! - **A result is cached across frames.** It is kept per render owner and pane key (the owner's
-//!   `WidgetId` and its row in the owner's paint span) with its plan and region, in one atlas a
-//!   roster keeps alive, and dropped with the owner. A hover or a caret inside a frosted menu
-//!   repaints its rect and reads the cache: no capture, no blur.
+//!   `WidgetId` and its row in the owner's paint span) in one atlas a roster keeps alive, and
+//!   dropped with the owner; the window's pane ledger holds its plan and region. A hover or a
+//!   caret inside a frosted menu repaints its rect and reads the cache: no capture, no blur.
+//! - **A full atlas evicts the least recently used result, and tells its window.** Past the
+//!   device's largest texture, a result that finds no room evicts results no pane of the frame
+//!   reads, oldest first and from any window, as WebRender's texture cache evicts at a failed
+//!   allocation (Mozilla bugs 1641751, 1505639); each window's ledger drops the ones it held
+//!   before its next frame decides, so they capture again. One that finds no room even then
+//!   shows its tint over the clear for the frame. Refused: a release panic on data-driven
+//!   content; a standalone texture per result that misses the atlas, which splits the
+//!   composite's draw run.
 //! - **The composer infers sharing.** A pane whose footprint misses every draw since the last
 //!   break captures at that break, as it would see the same pixels at its own place; else it
 //!   opens a barrier, where groups and text batches end, so nothing prunes or coalesces across

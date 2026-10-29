@@ -17,7 +17,6 @@ pub(crate) mod counters;
 mod free_slots;
 pub(crate) mod packed_metadata;
 pub(crate) mod raster_quad;
-pub(crate) mod shelf_packer;
 mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
@@ -25,15 +24,15 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
-use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
+use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
 use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
 use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
 use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
 use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
-use crate::gpu::raster::raster_atlas::shelf_packer::ShelfPacker;
 use crate::gpu::raster::raster_atlas::side::Side;
 use crate::gpu::raster::raster_program::RasterProgram;
+use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
@@ -220,7 +219,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     }
 
     pub(super) const fn side_px(&self, content: ContentType) -> u32 {
-        self.sides[content as usize].size
+        self.sides[content as usize].atlas.edge()
     }
 
     pub(super) fn touch(&mut self, key: &K) -> Option<u32> {
@@ -240,7 +239,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.enqueue_upload(origin.as_uvec2(), raster);
 
         let slot = AtlasSlot {
-            placement: Some(SlotPlacement {
+            state: SlotState::Placed(SlotPlacement {
                 origin,
                 size: metadata.size,
                 bearing: metadata.bearing,
@@ -248,7 +247,6 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             }),
             generation: 0,
             last_use: self.cur_frame,
-            free: false,
         };
         Some(self.store(key, slot))
     }
@@ -295,13 +293,15 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// Not `queue.write_texture`: queue writes run before every command buffer in the
     /// submit, so they would land under the grow blit, and wgpu allocates per call.
     pub(super) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
-        // Grow blits first: the old-to-new copy must complete before new glyph writes.
-        if self.sides.iter().any(Side::has_pending_grow) {
+        // Grow blits first: the old-to-new copy must complete before new glyph writes. The
+        // binding follows the new textures here, before any pass samples them.
+        if self.sides.iter().any(|side| side.atlas.has_pending_grow()) {
             debug_marker::push_encoder(ctx.encoder, &self.labels.grow_blit);
             for side in &mut self.sides {
-                side.record_grow_blit(ctx.encoder);
+                side.atlas.commit(&self.device, ctx.encoder);
             }
             debug_marker::pop_encoder(ctx.encoder);
+            self.bound.rebind(&self.device, &self.sides);
         }
 
         if self.pending_copies.is_empty() {
@@ -340,7 +340,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                     },
                 },
                 wgpu::TexelCopyTextureInfo {
-                    texture: &self.sides[c.content as usize].texture,
+                    texture: self.sides[c.content as usize].atlas.texture(),
                     mip_level: 0,
                     origin: wgpu::Origin3d {
                         x: c.origin.x,
@@ -371,10 +371,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         self.unallocated_expiry
             .schedule(key, unallocated_dies_at(self.cur_frame));
         let slot = AtlasSlot {
-            placement: None,
+            state: SlotState::Unplaced,
             generation: 0,
             last_use: self.cur_frame,
-            free: false,
         };
         self.store(key, slot)
     }
@@ -405,19 +404,19 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// the loop would empty the atlas, every frame it stays on screen (the run is refused
     /// as a template; see `EncodedCache::settle`).
     fn allocate(&mut self, content: ContentType, size: U16Vec2) -> Option<U16Vec2> {
-        if !self.sides[content as usize].fits_ceiling(size) {
+        if !self.sides[content as usize].atlas.fits_ceiling(size) {
             self.counters.oversized.bump();
             return None;
         }
         let mut evictions = 0;
         let origin = loop {
-            if let Some(origin) = self.sides[content as usize].packer.allocate(size) {
+            if let Some(origin) = self.sides[content as usize].atlas.allocate(size) {
                 break Some(origin);
             }
             // Under budget, one grow (texture plus blit) is cheaper than an O(live glyphs)
             // eviction scan per waiting glyph. Too wide for the current edge, growing is the
             // only thing that works.
-            let must_grow = !self.sides[content as usize].fits_now(size);
+            let must_grow = !self.sides[content as usize].atlas.fits_now(size);
             let grew = (must_grow || self.eager_growth(content)) && self.grow(content);
             if grew {
                 continue;
@@ -435,9 +434,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     }
 
     fn eager_growth(&self, content: ContentType) -> bool {
-        let side = &self.sides[content as usize];
-        let bytes =
-            u64::from(side.size) * u64::from(side.size) * u64::from(content.bytes_per_pixel());
+        let edge = u64::from(self.sides[content as usize].atlas.edge());
+        let bytes = edge * edge * u64::from(content.bytes_per_pixel());
         bytes < self.eager_growth_bytes
     }
 
@@ -477,7 +475,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             );
             return 0;
         }
-        let packer = &self.sides[target as usize].packer;
+        let packer = self.sides[target as usize].atlas.packer();
         let sweep = self.sweep(target, |p| {
             ShelfPacker::takes(packer.shelf_height(p.origin.y), size.y)
         });
@@ -498,13 +496,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// the raster to reuse, else the bottom one, whose rows go back to the side. `0` when no
     /// shelf qualifies, as emptying one in the middle that is too short frees nothing usable.
     fn evict_shelf(&mut self, target: ContentType, h: u16) -> u32 {
-        let packer = &self.sides[target as usize].packer;
+        let packer = self.sides[target as usize].atlas.packer();
         let shelves = packer.shelf_count();
         let uses = &mut self.shelf_uses;
         uses.clear();
         uses.resize(shelves, ShelfUse::Empty);
         for slot in &self.slots {
-            let Some(placement) = slot.placement.filter(|p| p.content == target) else {
+            let Some(placement) = slot.placement().filter(|p| p.content == target) else {
                 continue;
             };
             let shelf_use = &mut uses[packer.shelf_at(placement.origin.y)];
@@ -530,7 +528,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         let mut evicted = 0;
         for idx in 0..self.slots.len() as u32 {
             let on_shelf = self.slots[idx as usize]
-                .placement
+                .placement()
                 .is_some_and(|p| p.content == target && p.origin.y == row.y);
             if on_shelf {
                 self.evict(idx);
@@ -596,14 +594,13 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         });
     }
 
+    /// Double `content`'s side, held to its ceiling; its texture follows at the next
+    /// [`Self::flush_pending_uploads`], before any pass samples it.
     fn grow(&mut self, content: ContentType) -> bool {
-        if !self.sides[content as usize].grow(&self.device) {
+        if !self.sides[content as usize].atlas.grow() {
             return false;
         }
         self.counters.grows.bump();
-        // Rebind now, not behind a dirty flag: the old texture is gone, so any frame between would
-        // sample a destroyed view.
-        self.bound.rebind(&self.device, &self.sides);
         true
     }
 }
@@ -629,7 +626,7 @@ impl<K: Copy + Eq + Hash + Debug> Slab<'_, K> {
         let slot = &self.slots[idx as usize];
         // Allocated entries are the clock's to reclaim. Defensive: every path allocating over a slab
         // index removes the old key first.
-        if slot.placement.is_some() {
+        if slot.placement().is_some() {
             return None;
         }
         let dies_at = unallocated_dies_at(slot.last_use);

@@ -100,7 +100,7 @@ impl TextEncoder {
                 }
             };
             let slot = pass.atlas.slots[idx as usize];
-            let Some(placement) = slot.placement else {
+            let Some(placement) = slot.placement() else {
                 continue;
             };
 
