@@ -338,6 +338,7 @@ mod tests {
     use super::*;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::wgpu_backend::render_stream::RenderStream;
     use crate::host::window_driver::DriverConfig;
     use crate::host::window_driver::PresentPath;
     use crate::internals::panic_probe;
@@ -354,7 +355,7 @@ mod tests {
     use glam::UVec2;
     use image::imageops;
 
-    /// A driver as this host opens its one window, over `shared`.
+    /// A driver as this host opens its one window, over `shared`, on a stream with no device.
     fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
         WindowDriver::new(
             token,
@@ -362,8 +363,8 @@ mod tests {
             DriverConfig {
                 strategy: PresentStrategy::BackbufferCopy,
                 pixel_snap: true,
-                cutout_mode: CutoutMode::Shade,
             },
+            RenderStream::detached(shared.render_owners().reserve(), CutoutMode::Shade),
         )
     }
 

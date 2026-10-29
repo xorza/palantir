@@ -66,7 +66,7 @@ fn prepare(
                 owner,
                 format: TargetFormat::RGBA8_SRGB,
                 clear: CLEAR.to_f16(),
-                target: None,
+                backbuffer: None,
             },
         );
     }

@@ -1,4 +1,4 @@
-//! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept per window.
+//! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept on each window's render stream.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
@@ -7,12 +7,14 @@ use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use pollster::FutureExt;
 use std::slice;
 
 /// The atlas, the bake pipeline and this frame's tables.
 #[derive(Debug)]
 pub(crate) struct CutoutTables {
-    /// [`CutoutMode::Shade`] on GL, where `R32Float` renders only with `EXT_color_buffer_float`: corners keep the shaded cutout and the atlas is a 1×1 stand-in.
+    /// [`CutoutMode::Shade`] on a device that cannot render into `R32Float` (GL without
+    /// `EXT_color_buffer_float`): corners keep the shaded cutout and the atlas is a 1×1 stand-in.
     mode: CutoutMode,
     atlas: wgpu::TextureView,
     layout: wgpu::BindGroupLayout,
@@ -28,10 +30,10 @@ impl CutoutTables {
 
     /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
     pub(crate) fn new(device: &wgpu::Device, shader: &wgpu::ShaderModule) -> Self {
-        let mode = if device.adapter_info().backend == wgpu::Backend::Gl {
-            CutoutMode::Shade
-        } else {
+        let mode = if Self::renders_atlas(device) {
             CutoutMode::Bake
+        } else {
+            CutoutMode::Shade
         };
         let (side, usage) = match mode {
             CutoutMode::Bake => (
@@ -109,6 +111,30 @@ impl CutoutTables {
         }
     }
 
+    /// Whether `device` renders into the atlas format. WebGPU guarantees it; on a downlevel device
+    /// wgpu checks a texture's usage against what the adapter reports (`wgpu-core`
+    /// `Device::describe_format_features`). A device does not report those features, and the
+    /// adapter of a device the app opened is not at hand, so a texture made under an error scope
+    /// asks.
+    fn renders_atlas(device: &wgpu::Device) -> bool {
+        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let _ = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("palantir.quad.cutouts.probe"),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: Self::FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        scope.pop().block_on().is_none()
+    }
+
     /// How this device cuts shadow corners; what every window's [`CutoutPlan`] is built with.
     pub(crate) const fn mode(&self) -> CutoutMode {
         self.mode
@@ -184,3 +210,19 @@ const _: () = {
     assert!(BAKE_ATTRS[3].offset == offset_of!(BakeTable, lo) as u64);
     assert!(BAKE_ATTRS[4].offset == offset_of!(BakeTable, hi) as u64);
 };
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
+    use crate::gpu::test_gpu::headless_test_gpu;
+
+    /// A device that meets WebGPU's formats renders into the atlas, so its shadows bake; the
+    /// probe leaves no error behind for the device's handler.
+    #[test]
+    fn a_webgpu_device_renders_the_atlas() {
+        let gpu = headless_test_gpu();
+        let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        assert!(CutoutTables::renders_atlas(&gpu.device));
+        assert!(pollster::block_on(scope.pop()).is_none());
+    }
+}

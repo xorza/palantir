@@ -51,56 +51,6 @@ test.
 
 ## Plan
 
-### Batch 5: a per-window render stream on the GPU side
-
-Files: `src/gpu/wgpu_backend/`, `src/gpu/frame/submission.rs`, `src/gpu/surface/`
-(`backbuffer.rs`, `stencil.rs`), `src/gpu/pipeline/quad_pipeline/cutout_plan/`,
-`src/host/window_driver/mod.rs`.
-
-- [ ] `window_driver/mod.rs:54-72,466-488,512-523`, `wgpu_backend/mod.rs:145,899-914`,
-  `surface/stencil.rs:92-105`.
-  - Defect: per-window GPU state has two owners. The host holds backbuffer, stencil,
-    `backbuffer_fresh`, scissors and cutouts. The backend holds owner-keyed maps. The two
-    `ensure`s have different shapes, and each submit threads 13 fields.
-  - Target: a `RenderStream` per owner in `gpu`, retired as one unit, and
-    `submit(owner, target, &FramePlan)`.
-- [ ] `backdrops/mod.rs:103,307-325`, `backdrop_blur/mod.rs:156`.
-  - Defect: `Backdrops.targets` holds a clone of each window's backbuffer. After a resize, the old
-    backbuffer stays alive until that window's next frame that blurs from the backbuffer, which is
-    never on the Direct path.
-  - Target: the stream's backbuffer owns its blur-source group, made and dropped with it.
-- [ ] `window_driver/mod.rs:16,69,388`, `quad_pipeline/cutout_tables.rs:31-35`.
-  - Defect: the host owns a quad pipeline's `CutoutPlan`. `CutoutMode` is kept per device and per
-    window with no check that the two agree, and it is chosen by `backend == Backend::Gl` inside a
-    pipeline.
-  - Target: the stream owns the plan and its mode comes from the tables. The tables decide by
-    capability (whether `R32Float` allows `RENDER_ATTACHMENT`).
-- [ ] `frame/submission.rs:38-64`, `wgpu_backend/mod.rs:429,475`.
-  - Defect: `Submission` carries `plan` and `scissors`, which both say Full or Partial, kept in
-    step by a `debug_assert`.
-  - Target: scissors and clear, partial derived from the scissors, and the overlay's region on its
-    own.
-- [ ] `wgpu_backend/mod.rs:250-268,311,940-943`.
-  - Defect: `ensure_format` compiles the whole `FormatPipelines` set inside the first submit of
-    each format, so the first frame of each window stalls. Also, `disable_shadow_grid` clears the
-    pipelines, and then `copy_backbuffer_to_surface`'s `expect` panics on a SkipCopy to a target
-    that gives no copy.
-  - Target: build the set at `note_target` or window open.
-- [ ] `wgpu_backend/mod.rs:189,223,297,314,340,398,405,426-427`.
-  - Defect: `new` takes the `Gpu` apart and builds it again. `Submission::clear()` and
-    `dim_undamaged()` run twice per submit, `gpu_timings` is looked up three times, and `device()`
-    repeats `gpu().device()`. `collect_gpu_stats` has three carriers, one of them the one-field
-    `BackendConfig` in its own file.
-  - Target: compute each once, and keep one carrier.
-- [ ] `surface/surface_manager/mod.rs:23-25,219`, `.notes/PERF.md` Open.
-  - Defect: PERF.md rejects a sampled swapchain image because it "turns off Metal's
-    framebuffer-only path". But wgpu-hal 30.0.1 `metal/surface.rs:260` keeps framebuffer-only
-    only when the usage is exactly `COLOR_TARGET`, and the surface already takes
-    `COPY_DST | COPY_SRC`. The premise is false today.
-  - Target: correct PERF.md. Spike a `TEXTURE_BINDING` surface whose stream caches one blur group
-    per swapchain image, then measure against the 5 to 12 % that PERF.md records for skipping the
-    copies on the M2.
-
 ### Batch 6: the backend's pass plan and one draw context
 
 Files: `src/gpu/wgpu_backend/`, `src/gpu/pipeline/quad_pipeline/`, `src/gpu/frame/schedule/`.

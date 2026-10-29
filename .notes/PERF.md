@@ -107,8 +107,13 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
 - **Every capturing frame through the backbuffer.** It saves each capture's copy, −6 % on the
   m2's `cards_apart`, but the copy onto the target costs more than two small footprints: the
   680M's `pair_near/scrolling` +12 %. Kept only where the captures add up to the surface.
-- **Sample the swapchain image in place of a capture.** It needs a sampled usage, which turns
-  off Metal's framebuffer-only path, and a group each frame, as each acquire is a new texture.
+- **Sample the swapchain image in place of a capture.** wgpu 30 offers a sampled usage on a
+  surface only on Vulkan, where the driver lists it: Metal's surfaces take render, copy and
+  storage usages, DX12's render and copy, GL's render alone (wgpu-hal 30.0.1
+  `metal/adapter.rs:474`, `dx12/adapter.rs:1360`, `gles/adapter.rs:1379`), so the m2 cannot
+  take it. Where it is offered it costs a group each frame, as each acquire is a new texture.
+  Metal's framebuffer-only path is not the obstacle: wgpu keeps it only for a usage of
+  `COLOR_TARGET` alone (`metal/surface.rs:260`), and the surface already takes the copies.
 - **A cheaper grain hash.** The grain costs the 680M 90 µs at 2048²; a hash without integer
   multiplies changes the grain, so it is a rendering change, not an optimization.
 - **A narrower results atlas** (`Rg11b10Ufloat`, `Rgb10a2Unorm`), for a B-spline read that is a
@@ -120,9 +125,9 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
 
 - **Skip the backdrop capture copy on a swapchain image.** A frame that paints the backbuffer
   copies nothing since run 5, and a frame whose captures would copy more than the surface paints
-  there. A direct frame still copies: the swapchain image would need a sampled usage, which
-  turns off Metal's framebuffer-only path, and a group each frame. Skipping every copy took the
-  m2 5 % to 12 % off the frames that capture (`modal` 7.5 %).
+  there. A direct frame still copies: wgpu offers no sampled usage on a Metal or DX12
+  swapchain (see Rejected). Skipping every copy took the m2 5 % to 12 % off the frames that
+  capture (`modal` 7.5 %).
 - **A pane's break test reads one bounding box** of what was painted since the break, so in an
   L-shaped layout a pane breaks anew though no single draw touches its footprint. A short list
   of rects would see it; no bench has such a layout.

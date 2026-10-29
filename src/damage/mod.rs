@@ -99,12 +99,6 @@ impl Damage {
         }
         Some(Self::Partial(damage))
     }
-
-    /// Whether the frame paints inside damage rects rather than over the whole
-    /// surface.
-    pub(crate) const fn is_partial(self) -> bool {
-        matches!(self, Self::Partial(_))
-    }
 }
 
 /// Push one screen rect into the raw-rect buffer, dropping paint-empty rects

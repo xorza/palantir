@@ -1,7 +1,7 @@
 //! `WindowDriver`: the target-agnostic state one host target owns around the
-//! shared renderer: its [`Ui`], the persistent [`Backbuffer`] and the shadow cutout
-//! plan. The host owns the time and hands it in with each [`FrameSpec`]. CPU scratch
-//! lives on the shared [`Frontend`], GPU resources on the shared `WgpuBackend`, so N
+//! shared renderer: its [`Ui`] and its [`RenderStream`], which keeps what its frames hold on the
+//! device. The host owns the time and hands it in with each [`FrameSpec`]. CPU scratch
+//! lives on the shared [`Frontend`], shared GPU resources on the `WgpuBackend`, so N
 //! windows share one renderer without sharing frame-local geometry.
 
 use crate::app::App;
@@ -11,14 +11,12 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::host_display::HostDisplay;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::frame::submission::Submission;
-use crate::gpu::frame::submission::SubmissionTargets;
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
-use crate::gpu::surface::backbuffer::Backbuffer;
+use crate::gpu::frame::submission::{FrameOverlay, Route, Submission};
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::Census;
 use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
-use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::wgpu_backend::WgpuBackend;
+use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::BuildPlan;
@@ -49,25 +47,16 @@ pub(super) struct WindowDriver {
     pub(super) ui: Ui,
     /// The layout / cascade / damage engines, held here out of authoring code's reach.
     engines: FrameEngines,
-    pub(super) render_owner: RenderOwnerId,
-    /// Off-screen target holding last frame's pixels for `LoadOp::Load` partial damage.
-    /// Created lazily; recreated on resize or format change.
-    backbuffer: Option<Backbuffer>,
-    /// `true` when [`Self::backbuffer`] mirrors the target. A direct full frame leaves
-    /// it stale; the next partial resyncs it with one full repaint.
-    backbuffer_fresh: bool,
+    /// What the window's frames keep on the device.
+    stream: RenderStream,
     /// Whether the last frame completed its presentation. Invalid while a paint/copy
     /// is pending or after target invalidation, so the next frame drops its damage
     /// baseline.
     output_valid: bool,
-    /// Rounded-clip stencil, allocated lazily; separate so direct present needs no
-    /// backbuffer.
-    stencil: Option<Stencil>,
     strategy: PresentStrategy,
     pixel_snap: bool,
     /// The target the last [`Self::note_target`] saw.
     target: Option<TargetKey>,
-    cutouts: CutoutPlan,
     /// The scissors the frame the CPU half built repaints inside, which its GPU half submits:
     /// worked out once, where an overflow can still make the frame whole.
     scissors: RepaintScissors,
@@ -154,8 +143,6 @@ pub(super) struct DriverConfig {
     pub(super) strategy: PresentStrategy,
     /// The host's, inherited by every driver it opens.
     pub(super) pixel_snap: bool,
-    /// How shadow corners are cut, as the backend allows ([`WgpuBackend::cutout_mode`]).
-    pub(super) cutout_mode: CutoutMode,
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
@@ -179,14 +166,6 @@ pub(super) enum PresentPath {
     SkipNoop,
     Direct(RenderPlan),
     ViaBackbuffer(RenderPlan),
-}
-
-impl PresentPath {
-    /// Whether a frame in this mode renders through the backbuffer (`SkipCopy` only
-    /// reads it).
-    const fn renders_via_backbuffer(self) -> bool {
-        matches!(self, Self::ViaBackbuffer(_))
-    }
 }
 
 /// Coverage above which [`PresentStrategy::DirectAdaptive`] promotes a `Partial`
@@ -246,28 +225,34 @@ impl Drop for WindowDriver {
 }
 
 impl WindowDriver {
-    /// A driver for `token` over the shared [`UiResources`]; registered in the window directory
-    /// here, as its `Drop` retires it.
-    pub(super) fn new(token: WindowToken, resources: &UiResources, config: DriverConfig) -> Self {
+    /// A driver for `token` over the shared [`UiResources`], drawing through `stream`; registered
+    /// in the window directory here, as its `Drop` retires it.
+    pub(super) fn new(
+        token: WindowToken,
+        resources: &UiResources,
+        config: DriverConfig,
+        stream: RenderStream,
+    ) -> Self {
         resources.windows().add(token);
         Self {
             token,
             engines: FrameEngines::new(resources),
             ui: Ui::new(resources.clone()),
-            render_owner: resources.render_owners().reserve(),
-            backbuffer: None,
-            backbuffer_fresh: false,
+            stream,
             output_valid: false,
-            stencil: None,
             strategy: config.strategy,
             pixel_snap: config.pixel_snap,
             target: None,
-            cutouts: CutoutPlan::new(config.cutout_mode),
             scissors: RepaintScissors::Full,
             pane_captures: PaneCaptures::default(),
             screenshot_requests: Vec::new(),
             captures: VecDeque::new(),
         }
+    }
+
+    /// The owner the window's frames render as.
+    pub(super) const fn render_owner(&self) -> RenderOwnerId {
+        self.stream.owner()
     }
 
     /// The stamp of the frame `spec` describes, as [`Self::cpu_frame`] takes it.
@@ -296,7 +281,7 @@ impl WindowDriver {
     /// swapchain rebuilds at the same key (new images: a lost, stale or repaced one).
     pub(super) const fn invalidate_target_contents(&mut self) {
         self.output_valid = false;
-        self.backbuffer_fresh = false;
+        self.stream.invalidate();
     }
 
     /// The shared CPU half: app lifecycle, record through damage, then the draw-list
@@ -339,7 +324,7 @@ impl WindowDriver {
     /// panes, so its next frame captures them again.
     pub(super) fn forget_evicted_panes(&mut self, backend: &mut WgpuBackend) {
         let ledger = &mut self.pane_captures;
-        backend.drain_evicted_panes(self.render_owner, |key| ledger.forget(key));
+        backend.drain_evicted_panes(self.stream.owner(), |key| ledger.forget(key));
     }
 
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
@@ -384,7 +369,7 @@ impl WindowDriver {
             Some(plan) if capturing => PresentPath::ViaBackbuffer(plan.to_full()),
             plan => present_path(plan, strategy, fresh),
         };
-        let mut mode = path(report.plan, self.backbuffer_fresh);
+        let mut mode = path(report.plan, self.stream.is_backbuffer_fresh());
         if !matches!(mode, PresentPath::SkipNoop) {
             self.output_valid = false;
         }
@@ -394,7 +379,7 @@ impl WindowDriver {
             let mut plan = plan;
             if self.decide_panes(plan) == Settled::Overflow {
                 plan = plan.to_full();
-                mode = path(Some(plan), self.backbuffer_fresh);
+                mode = path(Some(plan), self.stream.is_backbuffer_fresh());
             }
             self.build(frontend, plan);
             // The disjoint scissors outgrow their cap, or the pixels this partial frame keeps show
@@ -406,7 +391,7 @@ impl WindowDriver {
                 }
                 _ => {
                     let full = plan.to_full();
-                    mode = path(Some(full), self.backbuffer_fresh);
+                    mode = path(Some(full), self.stream.is_backbuffer_fresh());
                     self.decide_panes(full);
                     self.build(frontend, full);
                     let census = self.plan_cutouts(&frontend.buffer, &RepaintScissors::Full);
@@ -469,8 +454,7 @@ impl WindowDriver {
     }
 
     fn plan_cutouts(&mut self, buffer: &RenderBuffer, scissors: &RepaintScissors) -> Census {
-        self.cutouts
-            .build(&buffer.quads, scissors, buffer.display.physical)
+        self.stream.plan_cutouts(buffer, scissors)
     }
 
     /// [`Ui::drain_window_output`] bound to this driver's token; the offscreen
@@ -519,100 +503,78 @@ impl WindowDriver {
                 || target.gives_copy(),
             "a direct frame's captures copy out of the target"
         );
-        let debug_overlay = self.ui.debug_overlay();
-        // Shared by both paint paths. Gated: on a skip frame `buffer.rounded_clips` is
-        // stale.
-        let stencil = match mode {
-            PresentPath::Direct(_) | PresentPath::ViaBackbuffer(_)
-                if !buffer.rounded_clips.is_empty() =>
-            {
-                Some(Stencil::ensure(&mut self.stencil, backend.device(), size))
+        let (plan, route) = match mode {
+            PresentPath::SkipNoop => {
+                self.output_valid = true;
+                return;
             }
-            _ => None,
-        };
-        match mode {
-            PresentPath::SkipNoop => self.output_valid = true,
             PresentPath::SkipCopy => {
                 // A `Skip` implies the previous frame painted at this size and format, so the
                 // backbuffer exists and matches.
-                let bb = self
-                    .backbuffer
-                    .as_ref()
-                    .expect("SkipCopy implies a prior submitted paint frame");
-                backend.copy_backbuffer_to_surface(bb, target);
+                backend.copy_backbuffer_to_surface(&self.stream, target);
                 self.output_valid = true;
+                return;
             }
-            // A direct repaint leaves the mirror stale; one through the backbuffer matches
-            // the target.
-            PresentPath::Direct(plan) | PresentPath::ViaBackbuffer(plan) => {
-                debug_assert!(
-                    matches!(
-                        (plan.damage, &self.scissors),
-                        (Damage::Full, RepaintScissors::Full)
-                            | (Damage::Partial(_), RepaintScissors::Partial(_))
-                    ),
-                    "the scissors are the ones the CPU half fitted to this plan"
-                );
-                let backbuffer = mode.renders_via_backbuffer().then(|| {
-                    let ensured = backend.ensure_backbuffer(&mut self.backbuffer, target);
-                    // A Partial arrives un-escalated only when `backbuffer_fresh`, so a recreate
-                    // means that broke; the list was already Partial-culled, so escalating can't fix it.
-                    debug_assert!(
-                        !ensured.recreated || matches!(plan.damage, Damage::Full),
-                        "backbuffer (re)created under a Partial plan whose draw \
-                         list was culled for Partial"
-                    );
-                    ensured.backbuffer
-                });
-                self.backbuffer_fresh = backbuffer.is_some();
-                let store = self.ui.record_store();
-                backend.submit(Submission {
-                    owner: self.render_owner,
-                    stats: self.ui.gpu_pass_stats(),
-                    targets: SubmissionTargets {
-                        surface: target,
-                        backbuffer,
-                        stencil,
-                    },
-                    store,
-                    buffer,
-                    plan,
-                    scissors: &self.scissors,
-                    cutouts: &self.cutouts,
-                    debug_overlay,
-                });
-                self.output_valid = true;
-                let display = self.ui.display();
-                for request in self.screenshot_requests.drain(..) {
-                    let backbuffer = backbuffer
-                        .expect("a frame with a screenshot request paints through the backbuffer");
-                    let region = request.region.clamp_to(display.logical_rect());
-                    // An ask made between frames, before the window shrank past its region, has
-                    // no pixel left to copy: no image lands for it, as for an empty ask.
-                    if region.is_paint_empty() {
-                        continue;
-                    }
-                    self.captures.push_back(PendingScreenshot {
-                        capture: backend.capture(backbuffer, physical_region(region, display)),
-                        region,
-                        scale: display.scale_factor(),
-                        id: request.id,
-                    });
-                }
+            PresentPath::Direct(plan) => (plan, Route::Direct),
+            PresentPath::ViaBackbuffer(plan) => (plan, Route::ViaBackbuffer),
+        };
+        debug_assert!(
+            matches!(
+                (plan.damage, &self.scissors),
+                (Damage::Full, RepaintScissors::Full)
+                    | (Damage::Partial(_), RepaintScissors::Partial(_))
+            ),
+            "the scissors are the ones the CPU half fitted to this plan"
+        );
+        let debug_overlay = self.ui.debug_overlay();
+        backend.submit(
+            &mut self.stream,
+            target,
+            Submission {
+                stats: self.ui.gpu_pass_stats(),
+                store: self.ui.record_store(),
+                buffer,
+                clear: plan.clear,
+                scissors: &self.scissors,
+                route,
+                overlay: FrameOverlay {
+                    dim_undamaged: debug_overlay.dim_undamaged,
+                    damage: debug_overlay.damage_rect.then_some(plan.damage),
+                },
+            },
+        );
+        self.output_valid = true;
+        let display = self.ui.display();
+        for request in self.screenshot_requests.drain(..) {
+            debug_assert_eq!(
+                route,
+                Route::ViaBackbuffer,
+                "a frame with a screenshot request paints through the backbuffer"
+            );
+            let region = request.region.clamp_to(display.logical_rect());
+            // An ask made between frames, before the window shrank past its region, has
+            // no pixel left to copy: no image lands for it, as for an empty ask.
+            if region.is_paint_empty() {
+                continue;
             }
+            self.captures.push_back(PendingScreenshot {
+                capture: backend.capture(&self.stream, physical_region(region, display)),
+                region,
+                scale: display.scale_factor(),
+                id: request.id,
+            });
         }
     }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan};
     use crate::host::window_driver::WindowDriver;
 
     impl WindowDriver {
         /// Shade every shadow corner instead of baking tables: the visual suite's reference.
         pub(crate) fn disable_cutout_tables(&mut self) {
-            self.cutouts = CutoutPlan::new(CutoutMode::Shade);
+            self.stream.disable_cutout_tables();
         }
 
         /// Whether the target holds this driver's last output; read by offscreen tests.

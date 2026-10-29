@@ -8,12 +8,11 @@ use glam::UVec2;
 
 use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 
-/// Per-window stencil attachment for rounded-clip masking, created lazily and
-/// resized to the render target. Separate from
-/// [`Backbuffer`](crate::gpu::surface::backbuffer::Backbuffer); owned by `WindowDriver`.
+/// A window's stencil attachment for rounded-clip masking, sized to the render target; its
+/// [`RenderStream`](crate::gpu::wgpu_backend::render_stream::RenderStream) makes and keeps it.
 #[derive(Debug)]
 pub(crate) struct Stencil {
-    /// Held for its extent, which [`Self::ensure`] compares before reuse.
+    /// Held for its extent, which [`Self::fits`] compares before reuse.
     texture: wgpu::Texture,
     view: wgpu::TextureView,
 }
@@ -78,34 +77,21 @@ impl Stencil {
         )
     }
 
-    /// The window's stencil attachment at `size`, built if the slot is empty or
-    /// differently sized; returns it like
-    /// [`WgpuBackend::ensure_backbuffer`](crate::gpu::wgpu_backend::WgpuBackend::ensure_backbuffer).
-    pub(crate) fn ensure<'s>(
-        slot: &'s mut Option<Self>,
-        device: &wgpu::Device,
-        size: UVec2,
-    ) -> &'s Self {
-        let size = render_target::extent(size);
-        if slot
-            .as_ref()
-            .is_some_and(|held| held.texture.size() != size)
-        {
-            *slot = None;
-        }
-        slot.get_or_insert_with(|| Self::new(device, size))
-    }
-
     /// The attachment view, behind an accessor so a `&Stencil` holder cannot reach the texture.
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
     }
 
-    /// Private: [`Self::ensure`] is the only way to one.
-    fn new(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
+    /// Whether the attachment is `size` physical px.
+    pub(crate) fn fits(&self, size: UVec2) -> bool {
+        self.texture.size() == render_target::extent(size)
+    }
+
+    /// A stencil attachment of `size` physical px.
+    pub(crate) fn new(device: &wgpu::Device, size: UVec2) -> Self {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
-            size,
+            size: render_target::extent(size),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,

@@ -1,13 +1,12 @@
 //! A frame's panes on the device: their blurs, cached across frames, and the results their quads
 //! composite.
 
-use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, TargetSource,
-};
+use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
@@ -90,31 +89,16 @@ enum Kept {
 }
 
 /// What [`Backdrops::prepare`] reads of a frame.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub(crate) struct BackdropFrame<'a> {
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) owner: RenderOwnerId,
     pub(crate) format: TargetFormat,
     /// The color the frame clears to.
     pub(crate) clear: RgbaF16,
-    /// The texture the main pass paints, where a pass can sample it: the blurs then read it in
-    /// place of a capture.
-    pub(crate) target: Option<SampledTarget<'a>>,
-}
-
-/// A target the main pass paints that a pass can also sample.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct SampledTarget<'a> {
-    pub(crate) texture: &'a wgpu::Texture,
-    pub(crate) view: &'a wgpu::TextureView,
-}
-
-/// A window's last sampled target and the source its blurs read it through.
-#[derive(Debug)]
-struct OwnerTarget {
-    owner: RenderOwnerId,
-    texture: wgpu::Texture,
-    source: TargetSource,
+    /// The backbuffer the main pass paints, where the frame paints through one: a pass can
+    /// sample it, so the blurs read it in place of a capture.
+    pub(crate) backbuffer: Option<&'a mut Backbuffer>,
 }
 
 /// The panes that capture at one break of the main pass: the barrier it breaks at, and their
@@ -151,9 +135,6 @@ pub(crate) struct Backdrops {
     ceiling: u32,
     /// What the panes hold on the device, from the first frame with a pane.
     resources: Option<PaneResources>,
-    /// Each window's last sampled target, made again when the target is: one a window, so a
-    /// resize frees the old target.
-    targets: Vec<OwnerTarget>,
 }
 
 /// What [`Backdrops`] holds on the device once a frame has a pane: the blur, the results atlas, the
@@ -248,7 +229,6 @@ impl Backdrops {
             sampler,
             ceiling,
             resources: None,
-            targets: Vec::new(),
         }
     }
 
@@ -275,7 +255,7 @@ impl Backdrops {
             owner,
             format,
             clear,
-            target,
+            backbuffer,
         } = frame;
         self.evict(owner, &buffer.live_panes);
         self.prepared += 1;
@@ -368,9 +348,13 @@ impl Backdrops {
             };
             self.slots.push(BackdropSlot::of(row, kept));
         }
-        let target = target
+        let blur = &self.resources.as_ref().expect("made above").blur;
+        let target = backbuffer
             .filter(|_| !self.jobs.is_empty())
-            .map(|target| self.target_source(ctx.device, owner, target, format));
+            .map(|backbuffer| {
+                backbuffer
+                    .blur_source(|view, size| blur.target_source(ctx.device, view, format, size))
+            });
         let resources = self.resources.as_mut().expect("made above");
         resources.blur.prepare(
             ctx,
@@ -404,40 +388,10 @@ impl Backdrops {
         });
     }
 
-    /// Drop every result of `owner`, whose window closed, and its target's group.
+    /// Drop every result of `owner`, whose window closed.
     pub(crate) fn retire(&mut self, owner: RenderOwnerId) {
         self.evict(owner, &[]);
         self.forget_evicted(owner);
-        self.targets.retain(|target| target.owner != owner);
-    }
-
-    /// The source `owner`'s blurs read `target` through, made when the window's target is new.
-    fn target_source(
-        &mut self,
-        device: &wgpu::Device,
-        owner: RenderOwnerId,
-        target: SampledTarget<'_>,
-        format: TargetFormat,
-    ) -> TargetSource {
-        if let Some(held) = self.targets.iter().find(|held| held.owner == owner)
-            && held.texture == *target.texture
-        {
-            return held.source.clone();
-        }
-        let size = UVec2::new(target.texture.width(), target.texture.height());
-        let source = self
-            .resources
-            .as_ref()
-            .expect("a frame that blurs made the resources")
-            .blur
-            .target_source(device, target.view, format, size);
-        self.targets.retain(|held| held.owner != owner);
-        self.targets.push(OwnerTarget {
-            owner,
-            texture: target.texture.clone(),
-            source: source.clone(),
-        });
-        source
     }
 
     /// A slot of `size` for pane `at`: its cached one when that holds it, else a new one rounded

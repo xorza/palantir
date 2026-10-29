@@ -3,17 +3,26 @@
 
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::host::window_driver::{DriverConfig, FrameSpec, PresentStrategy};
+use crate::gpu::wgpu_backend::render_stream::RenderStream;
+use crate::host::window_driver::{DriverConfig, FrameSpec, PresentStrategy, WindowDriver};
+use crate::ui::resources::UiResources;
+use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::time::Duration;
 
-/// A driver's settings as a host opens it, shading every cutout.
+/// A driver's settings as a host opens it.
 const fn config(strategy: PresentStrategy, pixel_snap: bool) -> DriverConfig {
     DriverConfig {
         strategy,
         pixel_snap,
-        cutout_mode: CutoutMode::Shade,
     }
+}
+
+/// A driver for `token` over `shared`, set by `config`, on a stream with no device behind it that
+/// shades every cutout.
+fn new_driver(token: WindowToken, shared: &UiResources, config: DriverConfig) -> WindowDriver {
+    let stream = RenderStream::detached(shared.render_owners().reserve(), CutoutMode::Shade);
+    WindowDriver::new(token, shared, config, stream)
 }
 
 /// A texture frame of `physical` at `system_scale`, at time zero.
@@ -140,6 +149,7 @@ mod present_mode_tests {
 }
 
 mod output_validity_tests {
+    use crate::host::window_driver::tests::new_driver;
     use glam::UVec2;
 
     use crate::gpu::surface::capture::Capture;
@@ -165,7 +175,7 @@ mod output_validity_tests {
     use crate::window::window_token::WindowToken;
 
     fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
-        WindowDriver::new(token, shared, config(PresentStrategy::DirectAdaptive, true))
+        new_driver(token, shared, config(PresentStrategy::DirectAdaptive, true))
     }
 
     /// A close request reaches the recorder only from the winit host, so the veto
@@ -264,7 +274,7 @@ mod output_validity_tests {
     #[test]
     fn note_target_invalidates_once_per_size_or_format() {
         let shared = UiResources::isolated_mono();
-        let mut driver = WindowDriver::new(
+        let mut driver = new_driver(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -291,9 +301,9 @@ mod output_validity_tests {
         // Whether noting `spec` cleared what a kept target holds.
         let mut clears = |spec: &FrameSpec| {
             driver.output_valid = true;
-            driver.backbuffer_fresh = true;
+            driver.stream.assume_backbuffer_fresh();
             driver.note_target(spec);
-            assert_eq!(driver.output_valid, driver.backbuffer_fresh);
+            assert_eq!(driver.output_valid, driver.stream.is_backbuffer_fresh());
             !driver.output_valid
         };
         for (label, spec, want) in [
@@ -314,7 +324,7 @@ mod output_validity_tests {
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
-        let mut driver = WindowDriver::new(
+        let mut driver = new_driver(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -396,8 +406,9 @@ mod output_validity_tests {
 /// What a driver owns while it exists: its place in the app-global window directory
 /// and a render-owner id no sibling shares.
 mod lifecycle_tests {
+    use crate::host::window_driver::PresentStrategy;
     use crate::host::window_driver::tests::config;
-    use crate::host::window_driver::{PresentStrategy, WindowDriver};
+    use crate::host::window_driver::tests::new_driver;
     use crate::ui::resources::UiResources;
     use crate::window::window_token::WindowToken;
 
@@ -410,7 +421,7 @@ mod lifecycle_tests {
         let token = WindowToken(11);
         assert!(!shared.windows().contains(token));
 
-        let driver = WindowDriver::new(
+        let driver = new_driver(
             token,
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -422,26 +433,10 @@ mod lifecycle_tests {
             "the entry cannot outlive the driver",
         );
     }
-
-    #[test]
-    fn window_drivers_have_distinct_render_owners() {
-        let shared = UiResources::isolated_mono();
-        let first = WindowDriver::new(
-            WindowToken(1),
-            &shared,
-            config(PresentStrategy::DirectAdaptive, true),
-        );
-        let second = WindowDriver::new(
-            WindowToken(2),
-            &shared,
-            config(PresentStrategy::DirectAdaptive, true),
-        );
-
-        assert_ne!(first.render_owner, second.render_owner);
-    }
 }
 
 mod record_store_tests {
+    use crate::host::window_driver::tests::new_driver;
     use std::time::Duration;
 
     use glam::{UVec2, Vec2};
@@ -547,7 +542,7 @@ mod record_store_tests {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
         let token = WindowToken(17);
-        let mut window = WindowDriver::new(
+        let mut window = new_driver(
             token,
             &shared,
             config(PresentStrategy::DirectAdaptive, false),
@@ -579,12 +574,12 @@ mod record_store_tests {
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
-        let mut window_a = WindowDriver::new(
+        let mut window_a = new_driver(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
-        let mut window_b = WindowDriver::new(
+        let mut window_b = new_driver(
             WindowToken(2),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -677,11 +672,12 @@ mod record_store_tests {
 
 /// The one place both host-owned display settings reach a frame.
 mod display_tests {
+    use crate::host::window_driver::tests::new_driver;
     use glam::UVec2;
 
     use crate::display::user_scale::UserScale;
+    use crate::host::window_driver::PresentStrategy;
     use crate::host::window_driver::tests::{config, spec};
-    use crate::host::window_driver::{PresentStrategy, WindowDriver};
     use crate::primitives::geometry::size::Size;
 
     use crate::ui::resources::UiResources;
@@ -692,7 +688,7 @@ mod display_tests {
     #[test]
     fn the_mint_folds_in_the_app_scale_and_the_hosts_snap() {
         let shared = UiResources::isolated_mono();
-        let mut driver = WindowDriver::new(
+        let mut driver = new_driver(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, false),
@@ -718,12 +714,12 @@ mod display_tests {
     #[test]
     fn two_windows_mint_the_one_scale() {
         let shared = UiResources::isolated_mono();
-        let mut first = WindowDriver::new(
+        let mut first = new_driver(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
         );
-        let second = WindowDriver::new(
+        let second = new_driver(
             WindowToken(2),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
@@ -744,6 +740,7 @@ mod display_tests {
 
 /// A partial frame whose shadow cutout plan is stale repaints in full.
 mod cutout_census_tests {
+    use crate::gpu::wgpu_backend::render_stream::RenderStream;
     use std::cell::Cell;
     use std::time::Duration;
 
@@ -784,8 +781,8 @@ mod cutout_census_tests {
             DriverConfig {
                 strategy: PresentStrategy::BackbufferCopy,
                 pixel_snap: true,
-                cutout_mode: CutoutMode::Bake,
             },
+            RenderStream::detached(shared.render_owners().reserve(), CutoutMode::Bake),
         );
         let display = FrameStamp::new(
             Display::from_physical(UVec2::new(600, 200), 1.0),
@@ -833,9 +830,15 @@ mod cutout_census_tests {
             }
         };
         assert!(matches!(damage(3, false), Damage::Full), "the first frame");
-        assert!(damage(3, true).is_partial(), "a tick under 3 cards");
+        assert!(
+            matches!(damage(3, true), Damage::Partial(_)),
+            "a tick under 3 cards"
+        );
         assert!(matches!(damage(4, true), Damage::Full), "the fourth card");
-        assert!(damage(4, false).is_partial(), "a tick under 4 cards");
+        assert!(
+            matches!(damage(4, false), Damage::Partial(_)),
+            "a tick under 4 cards"
+        );
         assert!(
             matches!(damage(3, false), Damage::Full),
             "the fourth card gone"
@@ -1108,8 +1111,9 @@ mod screenshot_tests {
 }
 
 mod capture_path_tests {
+    use crate::host::window_driver::tests::new_driver;
     use crate::host::window_driver::tests::{config, spec};
-    use crate::host::window_driver::{FrameSpec, PresentPath, PresentStrategy, WindowDriver};
+    use crate::host::window_driver::{FrameSpec, PresentPath, PresentStrategy};
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
@@ -1129,7 +1133,7 @@ mod capture_path_tests {
     fn first_frame(pane: Rect, gives_copy: bool) -> PresentPath {
         let shared = UiResources::isolated_mono();
         let mut frontend = Frontend::new(TEST_MAX_TEXTURE_DIM, shared.gradient_atlas().clone());
-        let mut driver = WindowDriver::new(
+        let mut driver = new_driver(
             WindowToken(1),
             &shared,
             config(PresentStrategy::DirectAdaptive, true),
