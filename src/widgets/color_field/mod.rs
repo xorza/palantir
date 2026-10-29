@@ -166,14 +166,29 @@ impl AreaValue for Field<'_> {
     }
 }
 
-// Every texel shares the hue, so its gamut solve belongs outside the loop.
+/// Columns a [`fill`] solves before it walks their rows: one cache line of texels a row.
+const FILL_BLOCK: usize = 16;
+
+// Every texel shares the hue, so its gamut solve belongs outside the loop, and every texel of a
+// column its saturation, so that column's solve belongs outside the rows.
 fn fill(image: &mut Image, model: ColorModel, hue: f32) {
     let slice = model.slice(hue);
-    let size = image.size();
-    image.fill_with(|at| {
-        let share = (at.as_vec2() + 0.5) / size.as_vec2();
-        slice.color(share.x, 1.0 - share.y).to_srgba()
-    });
+    let size = image.size().as_vec2();
+    let width = image.size().x as usize;
+    let mut columns = [slice.column(0.0); FILL_BLOCK];
+    let texels = image.texels_mut();
+    for start in (0..width).step_by(FILL_BLOCK) {
+        let block = &mut columns[..FILL_BLOCK.min(width - start)];
+        for (i, column) in block.iter_mut().enumerate() {
+            *column = slice.column(((start + i) as f32 + 0.5) / size.x);
+        }
+        for (row, line) in texels.chunks_exact_mut(width).enumerate() {
+            let v = 1.0 - (row as f32 + 0.5) / size.y;
+            for (out, column) in line[start..start + block.len()].iter_mut().zip(&*block) {
+                *out = column.to_srgba(v);
+            }
+        }
+    }
 }
 
 #[cfg(feature = "internals")]

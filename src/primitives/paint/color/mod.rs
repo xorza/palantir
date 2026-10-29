@@ -325,7 +325,7 @@ impl RgbaF32 {
     }
 
     /// Encode to sRGB 8-bit bytes. Inverts [`Self::from_srgba`] exactly.
-    pub fn to_srgba(self) -> SrgbaU8 {
+    pub const fn to_srgba(self) -> SrgbaU8 {
         SrgbaU8 {
             r: srgb_transfer::encode_byte(self.r),
             g: srgb_transfer::encode_byte(self.g),

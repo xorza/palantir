@@ -1644,7 +1644,7 @@ RgbaF32
         pub const fn from_srgba(bytes: SrgbaU8) -> Self
         pub const fn hex(rgb: u32) -> Self
         pub const fn hexa(rgba: u32) -> Self
-        pub fn to_srgba(self) -> SrgbaU8
+        pub const fn to_srgba(self) -> SrgbaU8
         impl From<RgbaF32> for Brush
 
 Screenshot

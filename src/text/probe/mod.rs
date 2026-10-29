@@ -301,24 +301,32 @@ fn push_run_selection_rects(
         }
     };
 
+    let mut grapheme = |start: usize, end: usize, x: f32, width: f32| {
+        let is_selected = (cursor_start.line != run.line_i || end > cursor_start.index)
+            && (cursor_end.line != run.line_i || start < cursor_end.index);
+        if is_selected {
+            selected = Some(match selected {
+                Some((min, max)) => (min.min(x), max.max(x + width)),
+                None => (x, x + width),
+            });
+        } else {
+            flush(&mut selected);
+        }
+    };
     for glyph in run.glyphs {
         let cluster = &run.text[glyph.start..glyph.end];
+        // One `char` is one grapheme, the usual cluster: no segmenter to build.
+        let mut chars = cluster.chars();
+        if chars.next().is_some() && chars.next().is_none() {
+            grapheme(glyph.start, glyph.end, glyph.x, glyph.w);
+            continue;
+        }
         let total = cluster.grapheme_indices(true).count().max(1);
         let grapheme_width = glyph.w / total as f32;
         let mut x = glyph.x;
-        for (i, grapheme) in cluster.grapheme_indices(true) {
+        for (i, text) in cluster.grapheme_indices(true) {
             let start = glyph.start + i;
-            let end = start + grapheme.len();
-            let is_selected = (cursor_start.line != run.line_i || end > cursor_start.index)
-                && (cursor_end.line != run.line_i || start < cursor_end.index);
-            if is_selected {
-                selected = Some(match selected {
-                    Some((min, max)) => (min.min(x), max.max(x + grapheme_width)),
-                    None => (x, x + grapheme_width),
-                });
-            } else {
-                flush(&mut selected);
-            }
+            grapheme(start, start + text.len(), x, grapheme_width);
             x += grapheme_width;
         }
     }

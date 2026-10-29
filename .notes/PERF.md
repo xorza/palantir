@@ -1,216 +1,82 @@
-# Perf journal: backdrop and renderer (2026-10-28)
+# Perf journal
 
-Squash-merged onto master; the run started at `4c3066448` on branch `perf-backdrop`.
+What three optimization runs learned (2026-10-28 to 2026-10-29): how to measure on the two
+hosts, what was rejected and why, and what is still open. What was kept is in the commits.
 
-## Hosts
+## Measuring
 
-- **local** — AMD Ryzen with a Radeon 680M (RDNA2 iGPU), Vulkan, Linux. Runs pinned with
-  `taskset -c 2 setarch -R`; governor and EPP at `performance`.
-- **m5** — 192.168.0.6, Apple M5 MacBook Air, Metal, macOS 27. No core pinning on macOS.
-  Device time of a run of passes reads the wall clock there (no timestamps between passes), so
-  the `atomic/backdrop_blur` cases on the M5 hold a submit-to-callback latency.
+- **Hosts.** local: Ryzen 7 6800U with a Radeon 680M (RDNA2 iGPU), Vulkan (RADV), pinned with
+  `taskset -c 2 setarch -R`, governor and EPP at `performance`. m2: 192.168.0.7, an M2 MacBook
+  Air with 8 GB, Metal, no pinning; a bench build peaks at 2.8 GB there, so one build at a time.
+- **Noise floors** (A/A over every case): CPU cases within 2 % local and 4 % m2. GPU cases within
+  4 % on m2 but `gradient_upload` (13 %); local GPU cases up to 43 % (`gradient_upload`), 32 %
+  (`record_pass/images`), 12 to 16 % (`text_atlas`, `raster_atlas`), and 8 % on the frames.
+- **CPU A/B across binaries moves by code placement.** A change a case never runs can move it
+  4 % (`backdrop_frame/cpu/*/cached`), and a tight loop doubles when its branch crosses a
+  64-byte line (`half_simd/from_f32x4/runtime_simd`, 60 ↔ 114 ns). Judge a small CPU change
+  inside one binary, switched at run time, or read the moved case's code before believing it.
+- **The m2 drifts.** It has no fan: one ABBA read a base binary 16 % slow on both A runs. Confirm
+  a surprising m2 result with interleaved short runs.
+- **The m2 writes no timestamps between passes**, so `backdrop_blur`, `backdrop_capture` and
+  `backdrop_composite` read wall clock there, submit latency included.
+- **Local GPU benches pay RADV's round trip**: an empty submit and wait is 250 µs local, 19 µs
+  on m2.
+- **The 680M's GPU frames are the APU's.** With the iGPU busy the core runs at 2.0 GHz with an
+  IPC of 1.8 (3.2 idle), so `frame/gpu/partial` spends 1.1 ms in record against 0.18 ms in the
+  CPU harness. Not a C-state: a busy-poll wait changes nothing. Read CPU work off the CPU arms.
+- **Profiling.** DWARF call graphs do not unwind in the bench binaries; `perf record` flat
+  profiles with `addr2line -i` over the sample addresses give the inlined frames. On the 680M,
+  RADV's RGP capture (`MESA_VK_TRACE=rgp`) frames at a present, so capture from the showcase;
+  whether an offscreen bench triggers one is not tried.
 
-## Build RAM peaks
+## Where the time is
 
-The `bench` profile's whole process tree, one build alone:
-
-| host | peak | wall |
-|---|---|---|
-| local | 2.9 GB | 2 min 02 s |
-| m5 | 3.3 GB | 1 min 13 s |
-
-Two builds together peak at 4.2 GB local and 5.2 GB on the M5; they fit with margin.
-
-## Filter
-
-`backdrop|^atomic/(encode|composer|rect_grid|encoded_cache|frontend|schedule|record_pass|main_pass)/|^integration/frame/`
-
-## Noise floor
-
-A/A of the start binary, the whole filter, change of the second run against the first:
-
-- **local**: CPU cases within 2 %; `atomic/*/gpu` within 1 %; `integration/*/gpu` frames up to
-  8 % (`backdrop_frame/gpu/blur/hover` −8.4 %, `frame/gpu/resizing` −6.4 %). A frame change
-  counts only past 8 % and mirrored in ABBA.
-- **m5**: every case within 1 %. `atomic/backdrop_blur` reads the wall clock there and its
-  ABBA spread reaches 4 % on the 512² cases.
-
-## Numbers at the start (`4c3066448`)
-
-| case | local | m5 |
-|---|---|---|
-| atomic/backdrop_capture/gpu/1920x1080 | 106.0 µs | — (no timestamps between passes) |
-| atomic/backdrop_capture/gpu/3840x2160 | 411.8 µs | — |
-| atomic/backdrop_blur/gpu/1/2048 | 6.47 ms | 3.30 ms |
-| atomic/backdrop_blur/gpu/4/2048 | 20.67 ms | 10.34 ms |
-| atomic/backdrop_blur/gpu/16/2048 | 2.22 ms | 1.94 ms |
-| atomic/backdrop_blur/gpu/48/2048 | 1.08 ms | 1.43 ms |
-| atomic/backdrop_blur/gpu/160/2048 | 1.04 ms | 1.43 ms |
-| atomic/backdrop_composite/gpu/blur/2048 | 575.2 µs | — |
-| atomic/backdrop_composite/gpu/frosted/2048 | 665.4 µs | — |
-| atomic/backdrop_composite/gpu/glass/2048 | 468.5 µs | — |
-| atomic/damage/cpu/backdrop_walk/8/16 | 190.3 ns | 116.4 ns |
-| atomic/damage/cpu/backdrop_walk/64/256 | 19.37 µs | 10.84 µs |
-| atomic/encode/cpu/full | 13.07 µs | 8.35 µs |
-| atomic/main_pass/gpu/scrolling | 425.8 µs | 319.2 µs |
-| integration/backdrop_frame/cpu/blur/scrolling | 233.4 µs | 135.9 µs |
-| integration/backdrop_frame/gpu/blur/under | 3.11 ms | 1.68 ms |
-| integration/backdrop_frame/gpu/blur/scrolling | 3.60 ms | 2.00 ms |
-| integration/backdrop_frame/gpu/glass/under | 10.13 ms | 3.78 ms |
-| integration/backdrop_frame/gpu/glass/scrolling | 12.70 ms | 4.89 ms |
-| integration/backdrop_frame/gpu/modal/scrolling | 8.59 ms | 4.87 ms |
-| integration/frame/cpu/scrolling | 229.7 µs | 132.0 µs |
-| integration/frame/gpu/scrolling | 2.21 ms | 703.4 µs |
-
-The CPU cost of three panes is within the A/A noise of the frame without them
-(`backdrop_frame/cpu/blur/scrolling` against `frame/cpu/scrolling`).
-
-## Kept
-
-- **In-range blur reads skip the mirror.** A tent block inside its level reads
-  straight, else folds every read; the residual tests its window once and sums symmetric pairs.
-  `backdrop_blur/gpu/4/2048` 20.65 → 3.25 ms local, 10.77 → 3.67 ms m5; every case faster on
-  both hosts; `backdrop_frame/gpu/glass/scrolling` 12.70 → 3.65 ms local. Variants measured on
-  the way, mean of ABBA, change against base on `4/2048` and `160/2048`:
-  - a test per read in every pass (v1): −80 % / +7.5 % local, +1 % / +2.5 % m5.
-  - v1 with symmetric pairs (v5): −84 % / +7.2 % local, −26 % / +2.4 % m5.
-  - one test per tent block, mirror by remainder at the edge, plain residual (v8): +0.1 % /
-    −3.3 % local.
-  - per-fragment window test in the residual, remainder fallback (v16): −83 % / −0.1 % local.
-  - v8 with v16 (v24): −83 % / −3.3 % local, −66 % / −34 % m5.
-  - v24 with the unsigned-compare mirror everywhere (v32): −84 % / +3.1 % local: a test per read
-    in the tent's edge fallback costs more than the remainders it skips.
-  - v24 with the unsigned-compare mirror in the residual only (v72, kept): −84 % / −3.7 % local,
-    −66 % / −34 % m5; m5 within 1 % of v24.
-
-- **A tent inside its level is four bilinear fetches.** `[1 3 3 1] / 8` per axis is
-  half `[1 3] / 4` and half `[3 1] / 4`, each one fetch at a quarter phase that a 4-bit
-  sub-texel precision holds exactly. M5: `blur 48/2048` 939 → 382 µs, `160/2048` 983 → 415 µs,
-  `frame modal/scrolling` 3.61 → 2.79 ms, `frame blur/scrolling` 1.63 → 1.37 ms. Local: −4 % to
-  −6 % on every blur with a level; frames within noise. The M5 waits on texture reads in the
-  tents, the 680M does not. The goldens hold bit for bit on the 680M. A capture whose format does
-  not filter keeps sixteen loads through a second layout.
-
-- **A glass pane's bezel reads its result once.** The unbent read ran in the bezel
-  too and was discarded. Local `backdrop_composite` −0.5 % to −1.3 %; M5 frames within 1 %.
-
-- **A plan solves its taps only where a blur runs.** `BlurPlan::new` ran Newton
-  steps over `exp` twice per pane per frame (1 % in `BlurPlan::new` and 1.1 % in `exp` of
-  `backdrop_frame/cpu/frosted/scrolling` on the 680M) for the cascade and the composer, which read
-  no tap. M5 `backdrop_frame/cpu` −1.7 % to −2.5 %; 680M −0.3 % to −1.5 %, and `cached` +2.5 %,
-  where neither cascade nor plan runs (profiled): code placement.
-- **Only a rect is noted as a pane.** `Forest::note_pane` ran for every shape, 0.7 %
-  of a cached frame. M5 `frame/cpu` and `backdrop_frame/cpu` −0.4 % to −1.2 %.
+- **CPU frame**: record dominates every arm (`frame/cpu/cached` is almost all record). The profile
+  is flat at IPC 3.2: `open_node` 27 % (SoA push 4.6 %, chrome lowering 3.8 %), `widget_id`
+  5.8 %, `Button::show` 6.8 %, `Text::show` 5.3 %, nothing else past 3 %. Only fewer
+  instructions move it.
+- **An action frame records twice** (`typing`: two passes, and a full cascade rebuild as `""`
+  and `"x"` differ by one shape). That is the frame cycle's design.
+- **Main pass GPU**, `frame/gpu/scrolling` on the 680M with in-pass timestamps: quads 158 µs,
+  shadows 130 µs, text 7 µs of 313 µs.
 
 ## Rejected
 
-- **Dither by the sRGB slope**: one `pow` per channel for six; no change on either
-  host (local composite within 0.4 %, M5 frames within 0.6 %). The composite does not wait on
-  its transcendentals, and the exact encode-add-decode stays.
-
-- **`LoadOp::Clear` on the tent and first-axis passes** (v3 against v1): +8 % to +15 % on the
-  680M's 512² cases, as a clear writes the whole mip; no change on the M5, so a tile load of the
-  level is not what its passes pay.
-
-- **The residual as a compute pass over workgroup memory** (two spikes against the in-range
-  reads). A 16×16 workgroup reads its windows into workgroup memory once, then sums its
-  taps there. First cut: +298 % on `4/2048` local, as the vertical tile strode 224 dwords
-  between lanes, one LDS bank for a whole wave; +3000 % on the M5, where wgpu zero-fills
-  workgroup memory on every dispatch. With a lane-contiguous vertical tile and no zero fill:
-  local +15 % / +2.3 % / −1.9 % / −0.2 % on `1`, `4`, `16`, `160` at 2048; M5 +86 % / +23 % /
-  +3 % / −1.9 %, and −10 % on the 512² high-σ cases, where a compute pass saves a render pass's
-  fixed cost. Both GPUs serve the residual's reads from their texture caches as fast as from
-  workgroup memory; the extra barrier and fill lose. FidelityFX Blur's single-dispatch design
-  wins on hardware with a slower texture path.
-- **Halve at σ above 2 texels instead of 4.** The level-0 residual at σ 4 is the costliest blur,
-  and one more halving makes it a quarter of the texels. Probe of the impulse response against
-  the Gaussian: the worst deviation grows from 0.30 % to 3.5 % of the peak (σ 2.01 at one
-  level, residual radius 3), past the 0.4 % `blur_plan` promises. Skia's threshold of 4 holds.
-
-## Ideas
-
-- **Done: mirror by integer modulo in every blur read.** `mirror` runs two `i32` `%` per read, and
-  every tent read and residual tap mirrors both or one axis. `atomic/backdrop_blur/gpu/4/2048`
-  takes 20.7 ms on the 680M and 10.3 ms on the M5: a full-resolution residual of radius 16,
-  2048² × 66 reads. An in-range read needs one unsigned compare.
-- **Rejected: load of the whole level on every blur pass.** Each tent and the residual's first axis begin
-  their pass with `LoadOp::Load` over a mip as large as half the largest surface; a tiler loads it
-  whole. What lies outside the scissor is never read by the job, so `Clear` serves.
-- **Done: residual taps in symmetric pairs.** `tap(k) == tap(−k)`: summing the two reads first halves
-  the multiplies and the tap lookups.
-- **Rejected: the residual as a compute pass over workgroup memory.** At level 0 the residual is 33
-  texture reads a texel each way; a 16×16 workgroup reading its windows into workgroup memory
-  once reads (16 + 40) × 16 texels for 256 outputs. AMD FidelityFX Blur keeps the intermediate
-  in thread-group shared memory for the same reason
-  (<https://gpuopen.com/manuals/fidelityfx_sdk/techniques/blur/>).
-- **Skip the capture copy.** Tent 1 (or a level-0 residual) can read the target itself after
-  the pass breaks, where the target binds as a texture: −106 µs at 1080p, −412 µs at 4K on the
-  680M. A swapchain image is a new texture each frame, so its group is a per-frame allocation;
-  only the backbuffer path keeps one.
-- **Rejected: dither by the sRGB slope.** The composite encodes and decodes each channel (six `pow`) to add
-  one encoded step; one `pow` gives the slope. Changes the noise, not its size.
-- **Done: the tent as four bilinear fetches.** `[1 3 3 1] / 8` per axis is half `[1 3] / 4` and
-  half `[3 1] / 4`: one fetch each at a quarter-texel phase, which a sub-texel precision of 4
-  bits (Vulkan's minimum) holds exactly, so the research note's refusal of linear tap pairs does
-  not reach it. 16 loads become 4 fetches; tent 1 is most of a high-σ blur.
+- **Blur: `LoadOp::Clear` on the tent and first-axis passes.** +8 % to +15 % on the 680M's 512²
+  cases, as a clear writes the whole mip; no change on Apple GPUs.
+- **Blur: the residual as a compute pass over workgroup memory** (FidelityFX Blur's design).
+  Both GPUs serve the residual's reads from texture cache as fast as from workgroup memory;
+  the barrier and fill lose (680M +15 % on `1/2048`, m-series +86 %; wgpu also zero-fills
+  workgroup memory per dispatch on Metal). Wins only on 512² high-σ, where it saves a render
+  pass's fixed cost.
+- **Blur: halve at σ above 2 texels, or cut the residual at 3σ.** The impulse response leaves the
+  Gaussian by 3.5 % and 0.83 % of its peak, past the 0.4 % `blur_plan` promises.
+- **Blur: an unsigned-compare mirror in the tents' edge fallback.** A test per read costs more
+  than the remainders it skips (+3.1 % on `160/2048` local); it stays in the residual only.
+- **Composite: dither by the sRGB slope.** No change on either host; the composite does not wait
+  on its `pow`s.
+- **Share a pass break between panes whose footprints nothing since touches** (branch
+  `spike-share-barrier`). Seven breaks saved on `cards/scrolling` gave m2 −0.9 %; a break costs
+  the M2 about 6 µs at 1440p, too little to pay for a composer module and a grid push per draw.
+- **Mean and peak image taps** (`image_pipeline/minified_mean`, 39 ms on the 680M against 4 ms
+  for one tap): the bench reads a 5120² texture whole 24 times a frame, the 680M's memory
+  bandwidth. Only a mip chain reads less.
+- **Clip per instance in the shader** (GPUI's content mask) to merge clipped groups:
+  `record_pass/groups/per_item` pays 340 ns a group on Vulkan, but the frame fixture's main pass
+  records in 23 µs of a 2.1 ms frame.
+- **A hit-test rect column for SIMD**: a miss scans 0.5 ns a row local, 0.9 ns on m2; a few
+  hundred rows cost under 0.3 µs.
+- **A byte compare before `AnimatedLook::eq`**: the look holds padding.
+- **`is_finite() && v >= 0.0` in a value kind.** LLVM folds it into one class test that x86
+  lowers to 14 integer ops; the kinds bound by `f32::MAX` instead, two compares.
 
 ## Open
 
-Stopped here at the user's request; the loop is not finished.
-
-- **Share a pass break between panes whose footprints nothing between them touches.** A capture
-  needs only what paints under its footprint, so a pane can capture at the last barrier when
-  nothing painted since it touches its footprint; the toolbar, sidebar and popup of
-  `backdrop_frame` would break the pass twice, not three times, and a grid of separate frosted
-  cards once. Every break stores and loads the whole target on the M5. A timing hack that sends
-  every capture to the first barrier is written but not measured.
-- **Profile and read the assembly of the renderer's CPU hot paths** (`encode_node`,
-  `push_quad`, the schedule walk): not done.
-- **M5 drift.** The MacBook Air has no fan: one ABBA run read a base binary 16 % slow on both of
-  its A runs, and interleaved short runs then showed no difference. Confirm any surprising M5
-  result by alternating runs.
-
-# Run 2: rendering, from the backdrop (2026-10-28)
-
-Branch `perf-rendering` from `082303185`. Hosts: local (680M) and **m2**, 192.168.0.7, an Apple
-M2 MacBook Air with 8 GB, Metal, macOS 27; the M5 is no longer used.
-
-## Setup
-
-- **Build peaks:** local 2.6 GB, m2 3.15 GB (of 8 GB), one build at a time there.
-- **m2 noise floor** (A/A, four runs, the rendering filter): median change 0.2 %; CPU cases within
-  2.8 %, p90 1.4 %; GPU cases p90 3 %, with `text_atlas/gpu/zoom_smooth/frame` at 12 % and
-  `gradient_upload/gpu/split/gap48` at 8 %. The local floor is run 1's.
-- **CPU A/B across binaries moves by code placement.** A composer change that a cached frame never
-  runs read +4.4 % on `backdrop_frame/cpu/*/cached` between two binaries, and +0.1 % to +0.9 %
-  when one binary switched it at run time. Judge CPU candidates inside one binary.
-
-## Rejected
-
-- **Share the last pass break between panes whose footprints nothing since touches** (local
-  branch `spike-share-barrier`). The composer keeps the last barrier and a grid of what painted
-  since; a pane whose footprint misses all of it captures there. Measured in one binary, switched
-  at run time, against eight separate frosted cards (`cards/scrolling`, seven breaks saved):
-  m2 −0.9 % (4.71 → 4.67 ms), local −3.3 % inside the 8 % frame floor; the three-pane frames m2
-  −0.7 % to −1.5 %. A break costs the M2 about 6 µs at 2560 × 1440, not the whole-target store
-  and load run 1 assumed; the gain does not pay for a composer module and a grid push per draw
-  after a pane.
-- **Cut the residual at 3σ instead of 4σ.** Level-0 taps drop from 33 to 25, but the impulse
-  response leaves the Gaussian by up to 0.83 % of its peak (σ 4), past the 0.4 % `blur_plan`
-  promises.
-
-## Kept
-
-- **A bench of eight separate frosted cards** (`integration/backdrop_frame/gpu/cards/scrolling`):
-  the many-pane frame no other arm covers. Start: 5.26 ms local, 4.71 ms m2.
-
-## Open
-
-- **Renderer CPU.** `atomic/encode/cpu/full` (12 µs) spends 20 % in `encode_node`, 12 % in
-  `push_quad`, 9 % in `RectGrid::push`; `record_pass/gpu/groups/per_item` is 85 µs local against
-  6.8 µs on the M2, most of it inside `wgpu_core` per command. Not profiled to the assembly.
-- **Main pass GPU** (`main_pass/gpu/scrolling`: 426 µs local, 700 µs m2): no GPU profiler on
-  either host (RGP, Xcode capture), so any shader change is a blind A/B.
-- **`backdrop_frame/gpu/*/under` on the M2** spends 1.6 ms over `hover` for two captures; its
-  split between the footprints' repaint, the copies and the blurs is not measured, as the M2
-  writes no timestamps between passes.
+- **Skip the backdrop capture copy.** Tent 1 or a level-0 residual can read the target itself
+  after the pass breaks: −106 µs at 1080p, −412 µs at 4K on the 680M. Only the backbuffer path
+  keeps a stable texture; a swapchain image would need a bind group per frame.
+- **Okhsv fill in vector lanes.** A texel is 11 ns of scalar math and three table lookups; the
+  16-column block is the shape a vector loop over columns needs.
+- **Shader costs with a profiler.** RGP on the 680M and Xcode's Metal System Trace on the m2 can
+  now split the main pass (quads, shadows) and `backdrop_frame/gpu/*/under` on the m2, which
+  spends 1.6 ms over `hover` on two captures.
