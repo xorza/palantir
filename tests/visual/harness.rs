@@ -122,7 +122,7 @@ impl Harness {
             .physical
             .expect("set the surface with Harness::size before a frame");
         let target = OwnedTarget::new(
-            &self.gpu.handles(),
+            &self.gpu,
             TargetSpec {
                 label: "palantir.visual_test.target",
                 size: physical,

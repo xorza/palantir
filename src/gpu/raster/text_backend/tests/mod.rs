@@ -19,7 +19,7 @@ mod text_rig;
 
 /// A run that hits the encoded cache must still refresh the LRU `last_use` of every
 /// atlas slot it rides; otherwise a steadily-cached run's slots freeze and
-/// `evict_one` (under zoom's atlas pressure) reclaims a live slot and garbles the
+/// `evict_for` (under zoom's atlas pressure) reclaims a live slot and garbles the
 /// text.
 #[test]
 fn cached_run_keeps_its_atlas_slots_live() {

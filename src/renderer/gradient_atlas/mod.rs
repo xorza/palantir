@@ -212,8 +212,9 @@ impl CpuGradientAtlas {
     }
 
     /// Double the row count (capped at [`Self::max_rows`]), reporting whether it grew.
-    /// Resident rows keep their ids (draw payloads hold them); new rows join the MRU
-    /// list at the eviction end.
+    /// Resident rows keep their ids (draw payloads hold them), and the backend copies them into
+    /// its taller texture, so growth uploads nothing; new rows join the MRU list at the eviction
+    /// end.
     fn grow(&mut self) -> bool {
         let capacity = self.capacity();
         let grown = capacity.saturating_mul(2).min(self.max_rows);
@@ -222,9 +223,6 @@ impl CpuGradientAtlas {
         }
         self.resize_rows(grown);
         self.counters.growths.bump();
-        // The backend replaces its texture at the new height and wgpu zero-initializes
-        // it, so every row must re-upload.
-        self.dirty.mark_below(grown);
         debug_assert!(self.mru.is_well_formed(), "growth corrupted the MRU list");
         true
     }

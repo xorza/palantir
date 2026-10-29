@@ -12,7 +12,6 @@ use half::f16;
 use std::iter;
 use std::mem::offset_of;
 use std::ops::Range;
-use std::sync::mpsc;
 use wgpu::util::StagingBelt;
 
 /// Odd on one side, so a level's last texel straddles the surface's edge.
@@ -183,9 +182,8 @@ fn blur(
     let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
     let mut belt = StagingBelt::new(device.clone(), 1 << 12);
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    let handles = gpu.handles();
     {
-        let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
+        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
         engine.run(&mut ctx, jobs, &view);
     }
     belt.finish();
@@ -195,46 +193,14 @@ fn blur(
 }
 
 fn read_f16(gpu: &HeadlessTestGpuLease, texture: &wgpu::Texture) -> Vec<[f32; 4]> {
-    let (w, h) = (texture.width(), texture.height());
-    let row = w * 8;
-    let padded =
-        row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("test.backdrop.read"),
-        size: u64::from(padded * h),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut encoder = gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    encoder.copy_texture_to_buffer(
-        texture.as_image_copy(),
-        wgpu::TexelCopyBufferInfo {
-            buffer: &buffer,
-            layout: wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(padded),
-                rows_per_image: Some(h),
-            },
-        },
-        texture.size(),
-    );
-    gpu.queue.submit(iter::once(encoder.finish()));
-    let slice = buffer.slice(..);
-    let (tx, rx) = mpsc::channel();
-    slice.map_async(wgpu::MapMode::Read, move |mapped| {
-        tx.send(mapped).ok();
-    });
-    gpu.wait();
-    rx.recv().unwrap().unwrap();
-    let data = slice.get_mapped_range().unwrap();
-    let mut out = Vec::with_capacity((w * h) as usize);
-    for line in data.chunks_exact(padded as usize) {
-        let halves: &[f16] = bytemuck::cast_slice(&line[..row as usize]);
-        out.extend(halves.as_chunks::<4>().0.iter().map(|t| t.map(f16::to_f32)));
-    }
-    out
+    let bytes = gpu.read_texture(texture);
+    let halves: &[f16] = bytemuck::cast_slice(&bytes);
+    halves
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|t| t.map(f16::to_f32))
+        .collect()
 }
 
 /// The whole surface as one job, from a capture of `format`.
@@ -407,9 +373,8 @@ fn blur_batches(
     let mut engine = BackdropBlur::new(device);
     let mut belt = StagingBelt::new(device.clone(), 1 << 12);
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    let handles = gpu.handles();
     {
-        let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
+        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
         engine.prepare(&mut ctx, jobs, batches.iter().cloned(), None);
     }
     for batch in batches {

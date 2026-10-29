@@ -242,7 +242,7 @@ pub use gpu::device::power_preference::PowerPreference;
 pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
-pub use gpu::error::{DriverError, GpuRequestError, UnmetRequirements};
+pub use gpu::error::{GpuRequestError, UnmetRequirements};
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 #[cfg(feature = "winit")]
 pub use gpu::surface::surface_usages::SurfaceUsages;

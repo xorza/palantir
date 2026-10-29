@@ -37,7 +37,6 @@ use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::collections::VecDeque;
-use std::thread;
 use std::time::Duration;
 
 /// Per-window state driving the host's shared [`Frontend`] and [`WgpuBackend`].
@@ -154,10 +153,9 @@ pub(super) enum PresentStrategy {
     /// Prior contents can't be relied on (screenshots, visual harness): every frame
     /// renders into the backbuffer and copies out.
     BackbufferCopy,
-    /// Direct-present swapchain; the host owns skip frames. Full frames repaint into
-    /// the target, small partials go through the backbuffer, near-full partials are
-    /// promoted to a direct full repaint. A surface that can't be copied into gets the
-    /// backbuffer drawn onto it ([`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto)).
+    /// A swapchain, whose images hold nothing, and the host owns skip frames: each frame takes
+    /// the cheaper of a direct whole repaint and a partial one through the backbuffer
+    /// ([`present_path`]).
     DirectAdaptive,
     /// One texture that keeps its pixels between frames: a painted frame paints into it, a
     /// partial one loading what it holds, and a still frame presents nothing. A frame that takes
@@ -319,14 +317,8 @@ impl WindowDriver {
     /// after its own wait, and this one returns before they ran. So the wait repeats until no
     /// copy is pending.
     pub(super) fn wait_for_captures(&self, gpu: &Gpu) {
-        gpu.wait();
-        while self
-            .captures
-            .iter()
-            .any(|pending| pending.capture.is_pending())
-        {
-            thread::yield_now();
-            gpu.wait();
+        for pending in &self.captures {
+            pending.capture.wait_landed(gpu);
         }
     }
 

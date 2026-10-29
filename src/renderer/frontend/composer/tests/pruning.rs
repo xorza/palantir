@@ -1,5 +1,6 @@
 //! What the occlusion pass drops, and what it must not.
 
+use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -7,7 +8,6 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     clip, draw, draw_marked, params, params_unsnapped, run, survivor_calls, survivors, text,

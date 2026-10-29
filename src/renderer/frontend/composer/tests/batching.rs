@@ -1,6 +1,7 @@
 //! Which draws share a group and a batch, and what forces a split.
 
 use crate::common::span::Span;
+use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -12,7 +13,6 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
     TestPolyline, clip, clip_rounded, curve, draw, gpu_view_payload, icon, image, inked_text, mesh,

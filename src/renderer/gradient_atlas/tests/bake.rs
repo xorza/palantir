@@ -17,6 +17,29 @@ use crate::renderer::gradient_atlas::tests::support::fresh_row;
 use crate::renderer::gradient_atlas::*;
 use std::collections::HashSet;
 
+/// Under Oklab, the color [`ColorRamp::color_at`] gives at each texel's `t`, premultiplied, is
+/// the texel the bake writes, so a curve split at `t` paints what the whole one does.
+///
+/// [`ColorRamp::color_at`]: crate::primitives::paint::brush::gradient::color_ramp::ColorRamp::color_at
+#[test]
+fn a_ramps_color_at_t_is_what_its_bake_holds() {
+    let oklab = ColorRamp::new([
+        Stop::new(0.0, RgbaF32::hex(0xfa993b)),
+        Stop::new(0.5, RgbaF32::hex(0x44b5ff)),
+        Stop::new(1.0, RgbaF32::hex(0xbf5459).with_alpha(0.5)),
+    ]);
+    let mut row = fresh_row();
+    bake::row(&oklab, &mut row);
+    for (texel, baked) in row.iter().enumerate() {
+        let t = texel as f32 / (LUT_ROW_TEXELS - 1) as f32;
+        assert_eq!(
+            oklab.color_at(t).premultiplied().to_f16(),
+            *baked,
+            "texel {texel}"
+        );
+    }
+}
+
 /// `Interpolation::Linear`: the black-to-white midpoint is exactly linear 0.5,
 /// read directly from the f16 store. An sRGB-space lerp would give ~0.215.
 #[test]

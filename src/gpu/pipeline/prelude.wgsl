@@ -62,7 +62,7 @@ fn clip_from_px(px: vec2<f32>) -> vec4<f32> {
 
 // Straight alpha in, premultiplied out — the contract every fragment
 // entry point in this backend writes under, because the blend state is
-// `PREMULTIPLIED_ALPHA_BLENDING`. See AGENTS.md "Color pipeline".
+// `PREMULTIPLIED_ALPHA_BLENDING`.
 fn premultiply(rgb: vec3<f32>, alpha: f32) -> vec4<f32> {
     return vec4<f32>(rgb * alpha, alpha);
 }

@@ -81,7 +81,7 @@ use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
-use crate::gpu::surface::capture::{Capture, CaptureSource};
+use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource};
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
@@ -173,9 +173,8 @@ struct FrameDraw<'a> {
     backdrops: Option<&'a wgpu::BindGroup>,
     /// The stream's timestamp queries, when timing is on.
     timings: Option<&'a GpuTimings>,
-    /// Where the owner's samples publish. Record time is unconditional (two `Instant::now()`
-    /// calls and a `RefCell` write); making it opt-in would force the in-pass timestamp writes
-    /// that perturb the number.
+    /// Where the owner's samples publish. The CPU record time is written every frame, timing on
+    /// or off, as it costs two `Instant::now()` calls and a `RefCell` write.
     stats: &'a GpuPassStats,
 }
 
@@ -941,15 +940,15 @@ impl WgpuBackend {
             .backbuffer
             .as_ref()
             .expect("a frame with a screenshot request paints through the backbuffer");
-        let blit = Capture::needs_blit(backbuffer.texture().format()).then(|| {
-            &*self
+        let blit = Capture::needs_blit(backbuffer.texture().format()).then(|| CaptureBlit {
+            pipeline: &*self
                 .capture_blit
-                .get_or_insert_with(|| self.blit.build(&self.gpu.device, Capture::FORMAT))
+                .get_or_insert_with(|| self.blit.build(&self.gpu.device, Capture::FORMAT)),
+            binding: &self.texture_binding,
         });
         let source = CaptureSource {
-            backbuffer,
+            texture: backbuffer.texture(),
             blit,
-            binding: &self.texture_binding,
         };
         Capture::start(&self.gpu.device, &self.gpu.queue, source, region)
     }

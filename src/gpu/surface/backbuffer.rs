@@ -3,7 +3,7 @@
 use crate::gpu::backdrop::backdrop_blur::TargetSource;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::surface::render_target::{self, RenderTarget};
 use glam::UVec2;
 
 /// Persistent off-screen color target for the backbuffer-copy path; keeping
@@ -106,8 +106,7 @@ impl Backbuffer {
 
     /// Width and height in physical pixels.
     pub(crate) fn size(&self) -> UVec2 {
-        let size = self.texture.size();
-        UVec2::new(size.width, size.height)
+        render_target::texture_size(&self.texture)
     }
 
     /// Whether this backbuffer matches `target`'s size and format.

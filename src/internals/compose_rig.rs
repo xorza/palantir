@@ -4,10 +4,10 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::internals::paint_capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::frontend::internals::TEST_MAX_TEXTURE_DIM;
+use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::shape::record_store::RecordStore;
-use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// One composer, output buffer and record store reused by every [`Self::compose`], so
@@ -23,12 +23,12 @@ pub(crate) struct ComposeRig {
 impl ComposeRig {
     /// A rig at the deviceless test texture cap.
     pub(crate) fn new(display: Display) -> Self {
-        Self::with_texture_cap(display, TEST_MAX_TEXTURE_DIM)
+        Self::with_texture_limit(display, TEST_TEXTURE_LIMIT)
     }
 
-    pub(crate) fn with_texture_cap(display: Display, max_texture_dim: NonZeroU32) -> Self {
+    pub(crate) fn with_texture_limit(display: Display, texture_limit: TextureLimit) -> Self {
         Self {
-            composer: Composer::new(max_texture_dim),
+            composer: Composer::new(texture_limit),
             out: RenderBuffer::new(),
             store: RecordStore::default(),
             display,

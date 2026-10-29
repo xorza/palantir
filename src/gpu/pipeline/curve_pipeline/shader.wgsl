@@ -33,7 +33,7 @@
 // identical coverage on both sides.
 //
 // `SEGMENTS_PER_INSTANCE` is the const of the same name in
-// `renderer/render_buffer/curve.rs`: the composer derives the adaptive
+// `renderer/render_buffer/curve_instance.rs`: the composer derives the adaptive
 // sub-instance count assuming the shader subdivides each instance into
 // exactly this many chords.
 //

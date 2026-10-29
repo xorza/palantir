@@ -1,12 +1,5 @@
-//! Per-frame GPU handles bundled so callers thread one `&mut GpuCtx`.
-//!
-//! - `device`: lazy buffer / texture regrow.
-//! - `queue`: `write_texture` for image-registry and gradient atlas paths (the belt covers `write_buffer` only).
-//! - `belt`: sub-allocates mapped staging memory, for buffers through [`GpuCtx::write`] and for any
-//!   other copy through [`GpuCtx::stage`].
-//! - `encoder`: records staging-to-destination copies and the user's render passes.
-//!
-//! Built right after the main encoder; dropping it releases the borrows.
+//! Per-frame GPU handles bundled so callers thread one `&mut GpuCtx`, built right after the main
+//! encoder; dropping it releases the borrows.
 
 use crate::gpu::device::gpu::Gpu;
 use wgpu::util;

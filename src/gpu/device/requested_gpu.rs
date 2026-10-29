@@ -3,7 +3,7 @@
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
-use crate::gpu::error::{DriverError, GpuRequestError};
+use crate::gpu::error::GpuRequestError;
 use pollster::FutureExt;
 
 /// An adapter and the device opened on it, meeting [`DeviceRequirements`].
@@ -108,9 +108,7 @@ impl GpuRequest<'_> {
                 apply_limit_buckets: false,
             })
             .block_on()
-            .map_err(|source| GpuRequestError::RequestAdapter {
-                source: DriverError::new(source),
-            })?;
+            .map_err(|source| GpuRequestError::RequestAdapter { source })?;
 
         // Which GPU won the `power_preference` sort decides a session's frame
         // times (a hybrid laptop's wrong pick means cross-adapter copies), and
@@ -150,9 +148,7 @@ impl GpuRequest<'_> {
                 trace: wgpu::Trace::Off,
             })
             .block_on()
-            .map_err(|source| GpuRequestError::RequestDevice {
-                source: DriverError::new(source),
-            })?;
+            .map_err(|source| GpuRequestError::RequestDevice { source })?;
 
         Ok(RequestedGpu {
             adapter,

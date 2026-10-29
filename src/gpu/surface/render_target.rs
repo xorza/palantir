@@ -27,8 +27,7 @@ impl<'a> RenderTarget<'a> {
     }
 
     pub(crate) fn size(self) -> UVec2 {
-        let size = self.texture.size();
-        UVec2::new(size.width, size.height)
+        texture_size(self.texture)
     }
 
     pub(crate) fn format(self) -> TargetFormat {
@@ -88,6 +87,11 @@ impl TargetFormat {
     }
 }
 
+/// A texture's first-layer size, in texels.
+pub(crate) fn texture_size(texture: &wgpu::Texture) -> UVec2 {
+    UVec2::new(texture.width(), texture.height())
+}
+
 /// A render-target extent; depth is always one.
 pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
     wgpu::Extent3d {
@@ -136,7 +140,7 @@ mod tests {
                 format,
                 usage,
             };
-            OwnedTarget::new(&gpu.handles(), spec)
+            OwnedTarget::new(&gpu, spec)
         };
         let good = made(F::Rgba8UnormSrgb, U::RENDER_ATTACHMENT);
         assert_eq!(good.as_target().size(), UVec2::splat(4));

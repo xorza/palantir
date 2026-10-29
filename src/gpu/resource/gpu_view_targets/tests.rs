@@ -102,8 +102,8 @@ fn an_unchanged_stamp_skips_the_paint_and_a_bucket_keeps_the_texture() {
     for (at, (draw, painted, reallocated)) in submits.into_iter().enumerate() {
         let before = paints.get();
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let handles = gpu.handles();
-        let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
+        let handles = &*gpu;
+        let mut ctx = GpuCtx::new(handles, &mut belt, &mut encoder);
         targets.paint_gpu_views(
             &mut ctx,
             FrameViews {

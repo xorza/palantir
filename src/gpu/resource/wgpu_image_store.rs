@@ -3,7 +3,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::resource::texture_region::TextureRegion;
+use crate::gpu::surface::render_target;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
@@ -68,11 +68,7 @@ impl WgpuImageStore {
         let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&texture_label),
-            size: wgpu::Extent3d {
-                width: size.x,
-                height: size.y,
-                depth_or_array_layers: 1,
-            },
+            size: render_target::extent(size),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -98,26 +94,34 @@ impl ImageStore for WgpuImageStore {
             .entry(id)
             .or_insert_with(|| self.create(id, image.size));
         debug_assert_eq!(
-            UVec2::new(entry.texture.width(), entry.texture.height()),
+            render_target::texture_size(&entry.texture),
             image.size,
             "a write matches the texture it lands in",
         );
-        let region = TextureRegion {
-            texture: &entry.texture,
-            first_row: 0,
-            size: image.size,
-            bytes_per_row: image.size.x * 4,
+        // A pitch off `COPY_BYTES_PER_ROW_ALIGNMENT` is re-packed inside wgpu; padding the rows here
+        // would not save that, as wgpu copies the whole into staging either way.
+        let write = |data: &[u8]| {
+            self.queue.write_texture(
+                entry.texture.as_image_copy(),
+                data,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(image.size.x * 4),
+                    rows_per_image: Some(image.size.y),
+                },
+                render_target::extent(image.size),
+            );
         };
         // An image with no transparency is already premultiplied (scale by one), so
         // it is written as is rather than copied into a second buffer.
         let texels = image.texels();
         if texels.iter().all(|texel| texel.a == u8::MAX) {
-            region.write(&self.queue, &image.pixels);
+            write(&image.pixels);
             return;
         }
         let mut staged = self.staged.borrow_mut();
         premultiply_into(&self.premultiply, texels, &mut staged);
-        region.write(&self.queue, bytemuck::cast_slice(&staged));
+        write(bytemuck::cast_slice(&staged));
     }
 
     fn free(&self, id: TextureId) {
@@ -256,7 +260,7 @@ mod tests {
     #[test]
     fn a_gpu_texture_lives_exactly_as_long_as_its_handle() {
         let gpu = test_gpu::headless_test_gpu();
-        let store = Rc::new(WgpuImageStore::new(&gpu.handles()));
+        let store = Rc::new(WgpuImageStore::new(&gpu));
         let weak = Rc::downgrade(&store);
         let registry = ImageRegistry::new(Rc::clone(&store));
         assert!(!store.read().contains_key(&TextureId(1)));

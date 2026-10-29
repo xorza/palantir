@@ -2,12 +2,12 @@
 
 use crate::common::span::Span;
 use crate::display::frame_stamp::FrameStamp;
+use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::frontend::composer::compose_rig::ComposeRig;
 use crate::renderer::frontend::composer::tests::support::{
     clip, clip_rounded, curve, draw, draw_marked, image, mesh, params, push_distinct_rounded_clips,
     run, survivor_calls, text,

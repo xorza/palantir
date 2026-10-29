@@ -49,7 +49,9 @@ fn register_full_atlas_evicts_lru_and_preserves_row_zero() {
 
 /// A 256th distinct registration in the SAME epoch grows the atlas: every resident
 /// `LutRow` id is already captured in this frame's draw payloads, so evicting one
-/// would paint the wrong gradient.
+/// would paint the wrong gradient. The flush owes the rows baked, no more: the magenta
+/// row 0, the 255 filled and the overflow at 256, `0..257`, as the backend copies the rest
+/// into its taller texture.
 #[test]
 #[expect(
     clippy::single_range_in_vec_init,
@@ -75,7 +77,7 @@ fn full_atlas_same_epoch_overflow_grows() {
     );
     assert_real_row(&atlas, overflow);
     let flushed = atlas.flush().expect("growth must dirty the atlas");
-    assert_eq!(flushed.runs, [0..INITIAL_ATLAS_ROWS * 2]);
+    assert_eq!(flushed.runs, [0..INITIAL_ATLAS_ROWS + 1]);
     assert_eq!(flushed.total_rows, INITIAL_ATLAS_ROWS * 2);
 }
 

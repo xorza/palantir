@@ -128,7 +128,7 @@ impl EncodedCache {
     /// means no live template of `text` and the caller owes a full
     /// [`TextEncoder::encode_run`](super::encoder::TextEncoder::encode_run), whose settle
     /// replaces a row another text left under the key. Each instance refreshes its atlas
-    /// slot's LRU stamp, so `evict_one` can't reclaim a slot this frame draws.
+    /// slot's LRU stamp, so `evict_for` can't reclaim a slot this frame draws.
     pub(super) fn emit_cached(
         &mut self,
         pass: &mut RasterPass<GlyphRasterKey>,

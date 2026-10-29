@@ -17,7 +17,7 @@ fn a_cleared_texture_reads_back_in_rgba_order() {
         wgpu::TextureFormat::Bgra8Unorm,
     ] {
         let target = OwnedTarget::new(
-            &gpu.handles(),
+            &gpu,
             TargetSpec {
                 label: "palantir.read_back.test",
                 size: UVec2::new(3, 2),
@@ -43,7 +43,7 @@ fn a_cleared_texture_reads_back_in_rgba_order() {
 #[test]
 fn a_bad_extent_panics_with_its_rule() {
     let gpu = headless_test_gpu();
-    let handles = gpu.handles();
+    let handles = &*gpu;
     let max = handles.max_texture_dim().get();
     let rule = format!("a target's size is 1..={max} physical pixels per side");
     let spec = |size| TargetSpec {
@@ -53,9 +53,9 @@ fn a_bad_extent_panics_with_its_rule() {
         usage: OwnedTarget::USAGES,
     };
     for size in [UVec2::new(0, 4), UVec2::new(4, 0), UVec2::new(max + 1, 1)] {
-        panic_probe::assert_panics_with(&rule, || OwnedTarget::new(&handles, spec(size)));
+        panic_probe::assert_panics_with(&rule, || OwnedTarget::new(handles, spec(size)));
     }
-    let widest = OwnedTarget::new(&handles, spec(UVec2::new(max, 1)));
+    let widest = OwnedTarget::new(handles, spec(UVec2::new(max, 1)));
     assert_eq!(widest.size(), UVec2::new(max, 1));
     let small = widest.resized("palantir.owned_target.resized", UVec2::new(4, 2));
     assert_eq!(small.size(), UVec2::new(4, 2));

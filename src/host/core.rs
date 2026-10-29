@@ -36,12 +36,13 @@ impl HostCore {
     /// `options.pixel_snap` is the host's, inherited by every driver.
     pub(super) fn new(gpu: Gpu, options: &HostOptions, shaper: TextShaper) -> Self {
         let max_texture_dim = gpu.max_texture_dim();
+        let texture_limit = TextureLimit::from_device(max_texture_dim);
         let image_store = Rc::new(WgpuImageStore::new(&gpu));
         let resources = UiResources::new(
             shaper,
             options.clipboard(),
             UiDevice {
-                texture_limit: TextureLimit::from_device(max_texture_dim),
+                texture_limit,
                 images: ImageRegistry::new(Rc::clone(&image_store)),
             },
         );
@@ -59,7 +60,7 @@ impl HostCore {
                 FrameTiming::Off
             },
         );
-        let frontend = Frontend::new(max_texture_dim, resources.gradient_atlas().clone());
+        let frontend = Frontend::new(texture_limit, resources.gradient_atlas().clone());
         Self {
             resources,
             frontend,
@@ -175,12 +176,8 @@ mod tests {
         let idle = core.open(WindowToken(1), PresentStrategy::BackbufferCopy);
         assert_ne!(drawn.render_owner(), idle.render_owner());
         let size = UVec2::splat(16);
-        let target = OwnedTarget::window(
-            &gpu.handles(),
-            "palantir.test.core",
-            size,
-            TargetFormat::RGBA8_SRGB,
-        );
+        let target =
+            OwnedTarget::window(&gpu, "palantir.test.core", size, TargetFormat::RGBA8_SRGB);
         let spec = FrameSpec {
             physical: size,
             format: TargetFormat::RGBA8_SRGB,

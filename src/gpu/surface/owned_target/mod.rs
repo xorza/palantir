@@ -93,8 +93,7 @@ impl OwnedTarget {
 
     /// Physical pixels.
     pub fn size(&self) -> UVec2 {
-        let size = self.texture.size();
-        UVec2::new(size.width, size.height)
+        render_target::texture_size(&self.texture)
     }
 
     /// A target like this one, at `size`.
@@ -117,14 +116,10 @@ impl OwnedTarget {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::gpu::device::gpu::Gpu;
+    use crate::gpu::surface::capture::{Capture, CaptureSource};
     use crate::gpu::surface::owned_target::OwnedTarget;
-    use crate::gpu::surface::render_target;
+    use crate::primitives::geometry::urect::URect;
     use image::RgbaImage;
-    use std::iter;
-    use std::sync::mpsc;
-
-    const BYTES_PER_PIXEL: u32 = 4;
 
     impl OwnedTarget {
         /// The pixels, copied back from the device and waited for, in RGBA order: a BGRA texture is
@@ -136,76 +131,25 @@ pub(crate) mod internals {
         /// For a texture not in 8-bit RGBA or BGRA, or made without `COPY_SRC`, and when the device
         /// is lost before the copy maps.
         pub fn read_back(&self) -> RgbaImage {
-            let texture = &self.texture;
-            let swizzle = match texture.format() {
-                wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => false,
-                wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => true,
-                other => panic!("read_back takes an 8-bit RGBA or BGRA texture, got {other:?}"),
-            };
-            assert!(
-                texture.usage().contains(wgpu::TextureUsages::COPY_SRC),
-                "read_back needs a texture made with COPY_SRC"
-            );
             let size = self.size();
-            let row_bytes = size.x * BYTES_PER_PIXEL;
-            // The copy writes whole aligned rows; the padding is cut below.
-            let padded = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
-                * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-            let Gpu { device, queue } = &self.gpu;
-            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.read_back"),
-                size: u64::from(padded) * u64::from(size.y),
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
-            let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.read_back"),
-            });
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: &buffer,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(padded),
-                        rows_per_image: Some(size.y),
-                    },
-                },
-                render_target::extent(size),
+            let source = CaptureSource {
+                texture: &self.texture,
+                blit: None,
+            };
+            let capture = Capture::start(
+                &self.gpu.device,
+                &self.gpu.queue,
+                source,
+                URect::new(0, 0, size.x, size.y),
             );
-            queue.submit(iter::once(encoder.finish()));
-
-            let slice = buffer.slice(..);
-            let (tx, rx) = mpsc::channel();
-            slice.map_async(wgpu::MapMode::Read, move |mapped| {
-                tx.send(mapped).ok();
-            });
-            self.gpu.wait();
-            rx.recv()
-                .expect("the map callback runs once the device finishes")
-                .expect("the read-back buffer maps");
-
-            let data = slice
-                .get_mapped_range()
-                .expect("the mapped read-back range");
-            let mut out = Vec::with_capacity(row_bytes as usize * size.y as usize);
-            for row in data.chunks_exact(padded as usize) {
-                out.extend_from_slice(&row[..row_bytes as usize]);
-            }
-            drop(data);
-            buffer.unmap();
-            if swizzle {
-                for pixel in out.as_chunks_mut::<{ BYTES_PER_PIXEL as usize }>().0 {
-                    pixel.swap(0, 2);
-                }
-            }
-            RgbaImage::from_raw(size.x, size.y, out)
-                .expect("one RGBA pixel per texel of the texture")
+            capture.wait_landed(&self.gpu);
+            let image = capture.take();
+            RgbaImage::from_raw(
+                size.x,
+                size.y,
+                bytemuck::cast_slice(image.texels()).to_vec(),
+            )
+            .expect("one RGBA pixel per texel of the texture")
         }
 
         pub(crate) fn view(&self) -> wgpu::TextureView {
