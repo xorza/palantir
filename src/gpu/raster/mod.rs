@@ -4,5 +4,4 @@
 pub(crate) mod icon_backend;
 pub(crate) mod raster_atlas;
 mod raster_pass;
-pub(crate) mod raster_program;
 pub(crate) mod text_backend;

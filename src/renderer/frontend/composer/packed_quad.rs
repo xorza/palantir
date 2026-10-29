@@ -45,6 +45,8 @@ impl PackedQuad {
     }
 
     /// Reduce a quad-tier draw to physical space; everything past this is shape-blind.
+    // Always inlined into `quad` and `pane`: as a call, `repeated_chrome` ran 4 % slower.
+    #[inline(always)]
     pub(super) fn pack(p: &DrawQuadPayload, lowering: &Lowering<'_>) -> Self {
         let scale_physical = lowering.transform.physical_scale();
         match p.geometry {

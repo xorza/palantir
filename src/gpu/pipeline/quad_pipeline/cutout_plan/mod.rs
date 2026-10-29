@@ -453,37 +453,14 @@ impl CutoutPlan {
 
     /// A shadow quad's corners `(tl, tr, br, bl)` as the shader cuts them, or `None` if not a shadow or blurred below [`Self::MIN_SIGMA`].
     fn cutout_corners(quad: &Quad) -> Option<[CutoutCorner; 4]> {
-        let [x, y, sigma, spread] = quad.fill_axis.lanes();
+        let sigma = quad.fill_axis.lanes()[2];
         if !quad.fill_kind.is_shadow() || sigma.is_nan() || sigma < Self::MIN_SIGMA {
             return None;
         }
-        let half = Vec2::new(quad.rect.size.w, quad.rect.size.h) * 0.5;
-        let radius = quad.corners.to_array();
-        // A drop shadow's box is centered on its quad; an inset hole is `offset` from its source's center.
-        let (center, box_half, radii) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
-            let source = half - Vec2::splat(ShadowGeometry::REACH_SIGMAS * sigma + spread.max(0.0));
-            let shadow = (source + Vec2::splat(spread)).max(Vec2::ZERO);
-            (
-                quad.rect.center(),
-                shadow,
-                corners::fit(
-                    spread_radius(radius, spread),
-                    Size::new(2.0 * shadow.x, 2.0 * shadow.y),
-                ),
-            )
-        } else {
-            let hole = (half - Vec2::splat(spread)).max(Vec2::ZERO);
-            (
-                quad.rect.center() + Vec2::new(x, y),
-                hole,
-                corners::fit(
-                    spread_radius(radius, -spread),
-                    Size::new(2.0 * hole.x, 2.0 * hole.y),
-                ),
-            )
-        };
+        let shadow = ShadowBox::of(quad);
+        let center = quad.rect.center() + shadow.center;
         let reach = ShadowGeometry::REACH_SIGMAS * sigma + AA_HALF_WIDTH;
-        let (lo, hi) = (center - box_half, center + box_half);
+        let (lo, hi) = (center - shadow.half, center + shadow.half);
         // Each square runs `r + reach` inward and `reach` outward.
         let span = |edge: f32, r: f32, inward: f32| {
             let far = edge + inward * (r + reach);
@@ -492,7 +469,7 @@ impl CutoutPlan {
         };
         // The arc center is `r` inward; pixels reflect against the inward direction.
         let corner = |at: usize, x_edge: f32, x_in: f32, y_edge: f32, y_in: f32| {
-            let r = radii[at];
+            let r = shadow.radius[at];
             let (x0, x1) = span(x_edge, r, x_in);
             let (y0, y1) = span(y_edge, r, y_in);
             CutoutCorner {
@@ -508,6 +485,47 @@ impl CutoutPlan {
             corner(2, hi.x, -1.0, hi.y, -1.0),
             corner(3, lo.x, 1.0, hi.y, -1.0),
         ])
+    }
+}
+
+/// The box whose blur a shadow paints, relative to its quad's center, with the radii fitted to
+/// it: the shader's `shadow_box`, which `shadow_box_follows_the_shader` runs against this.
+#[derive(Clone, Copy, Debug)]
+struct ShadowBox {
+    center: Vec2,
+    half: Vec2,
+    radius: [f32; 4],
+}
+
+impl ShadowBox {
+    /// A drop shadow's box is its source grown by the spread, centered on the quad; an inset
+    /// shadow's is the hole, its source shrunk by the spread and moved by `offset`.
+    fn of(quad: &Quad) -> Self {
+        debug_assert!(quad.fill_kind.is_shadow(), "a shadow quad");
+        let [x, y, sigma, spread] = quad.fill_axis.lanes();
+        let half = Vec2::new(quad.rect.size.w, quad.rect.size.h) * 0.5;
+        let (center, half, spread) = if quad.fill_kind.tag() == FillKind::TAG_SHADOW_DROP {
+            let source = half - Vec2::splat(ShadowGeometry::REACH_SIGMAS * sigma + spread.max(0.0));
+            (
+                Vec2::ZERO,
+                (source + Vec2::splat(spread)).max(Vec2::ZERO),
+                spread,
+            )
+        } else {
+            (
+                Vec2::new(x, y),
+                (half - Vec2::splat(spread)).max(Vec2::ZERO),
+                -spread,
+            )
+        };
+        Self {
+            center,
+            half,
+            radius: corners::fit(
+                spread_radius(quad.corners.to_array(), spread),
+                Size::new(2.0 * half.x, 2.0 * half.y),
+            ),
+        }
     }
 }
 

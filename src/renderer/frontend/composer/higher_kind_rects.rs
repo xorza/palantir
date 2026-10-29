@@ -80,6 +80,7 @@ impl HigherKindRects {
         self.union = URect::ZERO;
     }
 
+    #[inline]
     pub(super) fn push(&mut self, tier: PaintTier, rect: URect) {
         self.tiers[tier.idx()].push(rect);
         self.union = self.union.union(rect);

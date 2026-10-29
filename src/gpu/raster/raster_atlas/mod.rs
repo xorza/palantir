@@ -16,7 +16,6 @@ mod clock_sweep;
 pub(crate) mod counters;
 mod free_slots;
 pub(crate) mod packed_metadata;
-pub(crate) mod raster_quad;
 mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
@@ -24,6 +23,7 @@ use crate::common::span::Span;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
+use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
 use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
 use crate::gpu::raster::raster_atlas::clock_sweep::{ClockSweep, Evictable};
@@ -31,7 +31,6 @@ use crate::gpu::raster::raster_atlas::counters::AtlasCounters;
 use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::side::Side;
-use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
@@ -202,7 +201,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
 
     /// Bind this atlas and draw `span` of `vbuf`'s quad instances, unturned or turned; text and
     /// icon share one bind-group shape (see
-    /// [`RasterQuad`](crate::gpu::raster::raster_atlas::raster_quad::RasterQuad)).
+    /// [`RasterQuad`](crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad)).
     pub(super) fn draw_span<'a>(
         &'a self,
         binder: &mut MainBinder<'a>,

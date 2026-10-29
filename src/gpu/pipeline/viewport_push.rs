@@ -40,7 +40,7 @@ const _: () = assert!(
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::pipeline::shader_body::ShaderBody;
+    use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
     use crate::gpu::pipeline::viewport_push::ViewportPush;
     use glam::Vec2;
     use std::mem::offset_of;
@@ -62,7 +62,7 @@ mod tests {
     #[test]
     fn the_viewport_push_lies_as_the_shader_reads_it() {
         assert_eq!(ViewportPush::OFFSET, 0);
-        ShaderBody::Quad.assert_struct_layout(
+        QuadPipeline::SHADER.assert_struct_layout(
             "Immediates",
             ViewportPush::BYTES,
             &[("viewport_size", offset_of!(ViewportPush, size))],

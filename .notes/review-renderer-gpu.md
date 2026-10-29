@@ -44,74 +44,11 @@ test.
 - **Pipeline families.**
   - Each family owns its shader source, its constants, and an instance layout derived from
     `offset_of!`.
-  - They share an `InstancedPipeline<T>` with one upload, bind and draw shape.
   - `RasterProgram` moves into `gpu::pipeline`.
   - Quad draws are keyed once per instance (`QuadDraw::{Form, Shadow}`), and the pipeline knows
     which groups each key binds. The backend does not branch on `QuadForm::Backdrop`.
 
 ## Plan
-
-### Batch 8: shader ownership and pipeline families
-
-Files: `src/gpu/pipeline/` (all families, `shader_body/`, `format_pipelines.rs`),
-`src/gpu/raster/raster_program.rs`, `raster_atlas/shader.wgsl`, `raster_quad.rs`,
-`src/gpu/backdrop/backdrop_blur/`. Needs batch 6.
-
-- [ ] `shader_body/mod.rs:3-18,36-129`.
-  - Defect: one hub holds every shader's path and constants, which gives the cycles
-    `quad_pipeline ⇄ shader_body`, `raster ⇄ shader_body` and `backdrop ⇄ shader_body`.
-  - Target: each family owns `const SHADER` and `constants()`. `shader_body` keeps the prelude
-    and `specialize_source`, and the list that the tests walk is one slice in
-    `gpu/pipeline/mod.rs`.
-- [ ] `format_pipelines.rs:9`, `raster_program.rs:185-188`.
-  - Defect: `gpu::pipeline` and `gpu::raster` import each other. `RasterProgram` is a pipeline
-    filed among the atlases.
-  - Target: move it, with `RasterQuad` and its shader, to `gpu/pipeline/raster_pipeline/`.
-- [ ] Each `*_ATTRS` (`quad_pipeline/mod.rs:437-463`, `curve_pipeline/mod.rs:137-168`,
-  `image_pipeline/mod.rs:150-172`, `mesh_pipeline/mod.rs:174-210`, `raster_quad.rs:94-132`,
-  `cutout_tables.rs:168-186`).
-  - Defect: offsets packed by `vertex_attr_array!`, then checked against `offset_of!` by about 40
-    hand asserts.
-  - Target: attributes built from `offset_of!` in a `const`.
-- [ ] `quad_pipeline/mod.rs:136-430`, `curve_pipeline/mod.rs:111-134`,
-  `mesh_pipeline/mod.rs:103-160`, `image_pipeline/mod.rs:110-147`, `raster_pass.rs:258-279`.
-  - Defect: five bind shapes and four upload shapes. The quad "upload" also records the cutout
-    bake render pass.
-  - Target: `InstancedPipeline<T: GpuInstance>`, and a `prepare_cutouts` step for the bake.
-- [ ] `quad_pipeline/shader.wgsl:1097-1101` against `prelude.wgsl:90-94`.
-  - Defect: `srgb_decode` is the prelude's `srgb_to_linear`.
-  - Target: delete it, and move `srgb_encode` to the prelude.
-- [ ] `shader.wgsl:1027-1045` against `1196-1215`.
-  - Defect: `fs_backdrop` copies `fs`'s tail.
-  - Target: one `shade_rect(in, fill, d)`.
-- [ ] `quad_pipeline/shader.wgsl:6-7,642-652` against `curve_pipeline/shader.wgsl:59-60,418-434`.
-  - Defect: the gradient bindings and the LUT read are written twice.
-  - Target: a shared include for the shaders that bind the gradient group.
-- [ ] `cutout_plan/mod.rs:428-475,520-532` against `shader.wgsl:519-529,1225-1250`.
-  - Defect: `spread_radius` and the shadow box exist in Rust and in WGSL. The comment at line 519
-    says "Only the shader applies it", which is false. `radius_rules_follow_the_shader` never runs
-    the shader.
-  - Target: fix the comment, and add a GPU cross-check of both copies on one table.
-- [ ] `cutout_plan/mod.rs:225-229,293-317`, `cutout_tables.rs:133`.
-  - Defect: one 16 B `CornerTables` per quad of the frame (+25 % over the 64 B quad stream) is
-    uploaded whenever any shadow exists. In `Shade` mode it is all `NONE` and still uploaded.
-  - Target: a compact per-shadow array indexed by the shadow's ordinal in `fill_lut_row`, and a
-    static `NONE` stream in `Shade` mode.
-- [ ] `shader.wgsl:436-454,607-631`, `quad_pipeline/mod.rs:417`, `pipeline_recipe.rs:89`.
-  - Defect: nine fields re-bound to locals, narrating comments, and receiver-less associated fns
-    that construct nothing.
-  - Target: trim them, and make the two fns free fns.
-- [ ] `blit_pipeline/mod.rs:64-65`.
-  - Defect: the blit writes every texel with blending off but loads with `Clear`.
-  - Target: `LoadOp::DontCare`, an invalidate on GLES.
-- [ ] Tests:
-  - the `QuadForm::of` table adds `Backdrop` and the shadow tags;
-  - `curve_indices_tile_adjacent_cross_sections` (`curve_pipeline/mod.rs:177-200`) checks hand
-    indices, not the generator's own formula;
-  - `shader_body/tests.rs` (`reachable_functions`, `strip_comments`) walks the WGSL call graph
-    by hand; naga, now a dev-dependency, gives the module's call graph;
-  - remove `a_span_past_the_keys_panics` (`runs.rs:80-85`, std's bounds check) and
-    `raster_quad_is_32_bytes` (already pinned by `hot_struct_sizes.rs:218`).
 
 ### Batch 9: the spin vocabulary
 
@@ -180,7 +117,7 @@ Files: `src/host/offscreen.rs:109-150`, `src/host/window_driver/mod.rs:197-216`,
   - the `FrameDraw.stats` doc (`wgpu_backend/mod.rs:167-170`) gives a reason that does not
     follow;
   - the `PresentStrategy` doc repeats `present_path`.
-- [ ] `src/gpu/raster/raster_atlas/shader.wgsl:150-171`.
+- [ ] `src/gpu/pipeline/raster_pipeline/shader.wgsl:150-171`.
   - Defect: the color side stores straight alpha and premultiplies per tap, while
     `WgpuImageStore` premultiplies at upload.
   - Target: premultiply at upload.

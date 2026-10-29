@@ -71,10 +71,10 @@ use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{QuadBinding, QuadPipeline, QuadRun};
+use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
-use crate::gpu::raster::raster_program::RasterProgram;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
@@ -567,6 +567,7 @@ impl WgpuBackend {
         }
 
         self.quad.upload(&mut ctx, &buffer.quads, stream.cutouts());
+        self.quad.prepare_cutouts(&mut ctx, stream.cutouts());
         self.mesh.upload(
             &mut ctx,
             MeshUpload {

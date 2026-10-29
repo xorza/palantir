@@ -10,7 +10,7 @@ use crate::primitives::paint::lut_row::LutRow;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 
-/// Per-instance quad data (64 B). Field order is constrained by `QUAD_INSTANCE_ATTRS` (backend); no tail padding, as vertex strides need only 4-byte alignment.
+/// Per-instance quad data (64 B), read through `QUAD_INSTANCE_ATTRS` (backend), which takes each field's offset; no tail padding, as vertex strides need only 4-byte alignment.
 ///
 /// **Solid fill:** `fill_kind` is [`FillKind::SOLID`], `fill` is the color, `fill_lut_row` / `fill_axis` ignored.
 ///
@@ -53,8 +53,6 @@ impl Quad {
         Rect::from_min_max(turned.min.floor(), turned.max().ceil())
     }
 }
-
-// Layout guards live where it is consumed: `offset_of!` asserts beside `QUAD_INSTANCE_ATTRS` and `hot_struct_sizes_are_pinned` in `lib.rs`.
 
 #[cfg(test)]
 mod tests {

@@ -1,11 +1,3 @@
-// Gradient LUT atlas: rows of baked 256-texel gradients, sampled at
-// fragment time for the gradient brushes. Format is `Rgba16Float` storing
-// premultiplied linear RGB, so the filter between two texels blends
-// premultiplied and `eval_fill` unpremultiplies the sample (f16 precision
-// keeps dark gradients band-free).
-@group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
-@group(0) @binding(1) var gradient_sampler: sampler;
-
 // Divide-by-zero guard on object-local axes (quad size, gradient
 // span, radial radius). Anything smaller than this rounds to "no
 // meaningful direction" — the gradient collapses to a fallback.
@@ -429,35 +421,20 @@ fn shaded_bounds(pos: vec2<f32>, size: vec2<f32>, fill_kind: u32, rotation: f32)
     return b;
 }
 
+// Four f16 lanes packed two to a `u32`, in lane order.
+fn unpack_f16x4(packed: vec2<u32>) -> vec4<f32> {
+    return vec4<f32>(unpack2x16float(packed.x), unpack2x16float(packed.y));
+}
+
 fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
-    let pos = quad.pos;
     let size = quad.size;
-    let fill_packed = quad.fill_packed;
-    let radius_packed = quad.radius_packed;
-    let stroke_color_packed = quad.stroke_color_packed;
-    let stroke_width = quad.stroke_width;
     let fill_kind = quad.fill_kind;
-    let fill_lut_row = quad.fill_lut_row;
-    let fill_axis_packed = quad.fill_axis_packed;
-    // Unpack 4x f16 (tl, tr, br, bl) — matches `Corners` lane order.
-    let r_lo = unpack2x16float(radius_packed.x);
-    let r_hi = unpack2x16float(radius_packed.y);
-    let radius = vec4<f32>(r_lo.x, r_lo.y, r_hi.x, r_hi.y);
-    // Same pattern for fill_axis — variant-dependent lane layout
-    // documented at the top of this file.
-    let fa_lo = unpack2x16float(fill_axis_packed.x);
-    let fa_hi = unpack2x16float(fill_axis_packed.y);
-    let fill_axis = vec4<f32>(fa_lo.x, fa_lo.y, fa_hi.x, fa_hi.y);
-    // Same pattern again for the two fill colors (linear-RGB).
-    let f_lo = unpack2x16float(fill_packed.x);
-    let f_hi = unpack2x16float(fill_packed.y);
-    let fill = vec4<f32>(f_lo.x, f_lo.y, f_hi.x, f_hi.y);
-    let s_lo = unpack2x16float(stroke_color_packed.x);
-    let s_hi = unpack2x16float(stroke_color_packed.y);
-    let stroke_color = vec4<f32>(s_lo.x, s_lo.y, s_hi.x, s_hi.y);
-    let bounds = shaded_bounds(pos, size, fill_kind, quad.rotation);
+    // `(tl, tr, br, bl)`, the `Corners` lane order; the axis lanes as the top of this file lays
+    // them out per fill kind.
+    let radius = unpack_f16x4(quad.radius_packed);
+    let fill_axis = unpack_f16x4(quad.fill_axis_packed);
+    let bounds = shaded_bounds(quad.pos, size, fill_kind, quad.rotation);
     let corner = select(bounds.lo, bounds.hi, CORNERS[vi] > vec2<f32>(0.5));
-    let local = corner - pos;
 
     var corner_lanes = radius;
     var axis_lanes = fill_axis;
@@ -466,23 +443,23 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
         // a whole pixel above 1024 px, a share of the quad steps
         // `size / 65535` at any size.
         corner_lanes = vec4<f32>(
-            unpack2x16unorm(radius_packed.x) * size,
-            unpack2x16unorm(radius_packed.y) * size,
+            unpack2x16unorm(quad.radius_packed.x) * size,
+            unpack2x16unorm(quad.radius_packed.y) * size,
         );
-        axis_lanes = vec4<f32>(unpack2x16unorm(fill_axis_packed.x) * size, fa_hi);
+        axis_lanes = vec4<f32>(unpack2x16unorm(quad.fill_axis_packed.x) * size, fill_axis.zw);
     }
 
     var out: VertexOut;
     // Only the drawn corner turns: `local` stays in the quad's own frame.
-    out.clip         = clip_from_px(turned(corner, pos + size * 0.5, quad.rotation));
-    out.local        = local;
+    out.clip         = clip_from_px(turned(corner, quad.pos + size * 0.5, quad.rotation));
+    out.local        = corner - quad.pos;
     out.size         = size;
-    out.fill         = fill;
+    out.fill         = unpack_f16x4(quad.fill_packed);
     out.radius       = corner_lanes;
-    out.stroke_color = stroke_color;
-    out.stroke_width = stroke_width;
+    out.stroke_color = unpack_f16x4(quad.stroke_color_packed);
+    out.stroke_width = quad.stroke_width;
     out.fill_kind    = fill_kind;
-    out.fill_lut_row = fill_lut_row;
+    out.fill_lut_row = quad.fill_lut_row;
     out.fill_axis    = axis_lanes;
     out.inv_size     = 1.0 / max(size, vec2<f32>(ZERO_EPS));
     out.core         = vec4<f32>(NO_SPAN, NO_SPAN, -NO_SPAN, -NO_SPAN);
@@ -492,7 +469,7 @@ fn quad_vertex(vi: u32, quad: QuadIn) -> VertexOut {
     // paints outside its shape, and a triangle's lanes are not radii.
     let windowed = (fill_kind & FILL_FLAG_WINDOW) != 0u;
     if (!windowed && (fill_kind & FILL_TAG_MASK) != BRUSH_KIND_TRIANGLE) {
-        let inset = max(max(max(radius.x, radius.y), max(radius.z, radius.w)), stroke_width + AA_HALF_WIDTH);
+        let inset = max(max(max(radius.x, radius.y), max(radius.z, radius.w)), quad.stroke_width + AA_HALF_WIDTH);
         out.core = vec4<f32>(vec2<f32>(inset), size - vec2<f32>(inset));
     }
     return out;
@@ -513,8 +490,8 @@ fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f3
 
 // CSS `box-shadow` spread on each radius: `max(r + s, 0)` for `s < 0`;
 // for `s ≥ 0`, `r + s` when `r ≥ s` and `r + s·(1 + (r/s − 1)³)` below, so
-// a sharp corner stays sharp, as CSS Backgrounds 3 §7.1 has it. Only
-// the shader applies it: the shadow boxes are sized here.
+// a sharp corner stays sharp, as CSS Backgrounds 3 §7.1 has it. The cutout
+// plan's copy (`ShadowBox`) sizes the corner tables from the same rule.
 // At `s = 0` the cubic arm divides by the floor and goes non-finite, and
 // the `r ≥ s` arm is the one selected.
 fn spread_radius(r: vec4<f32>, s: f32) -> vec4<f32> {
@@ -587,18 +564,13 @@ fn apply_spread(t: f32, mode: u32) -> f32 {
     return clamp(t, 0.0, 1.0);
 }
 
-// Resolve a gradient's fill color at a given fragment. Linear path
-// projects `in.local` onto `fill_axis.xy` (object-local 0..1 axis), maps
-// to 0..1 via `(t0, t1)`, applies spread, samples the LUT row at
-// `fill_lut_row`.
+// The gradient's color at the fragment, its axis in the quad's own 0..1 frame.
 fn eval_fill(in: VertexOut) -> vec4<f32> {
     let kind = in.fill_kind & FILL_TAG_MASK;
     let spread  = (in.fill_kind >> SPREAD_SHIFT) & SPREAD_MASK;
     let local01 = in.local * in.inv_size;
     var t01: f32 = 0.0;
     if (kind == BRUSH_KIND_LINEAR) {
-        // Linear: project local01 onto the gradient direction, remap
-        // (raw - t0) / (t1 - t0) → 0..1.
         let axis = in.fill_axis.xy;
         let t0   = in.fill_axis.z;
         let t1   = in.fill_axis.w;
@@ -607,8 +579,7 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         let span_safe = select(1.0, span, abs(span) > ZERO_EPS);
         t01 = (raw - t0) / span_safe;
     } else if (kind == BRUSH_KIND_RADIAL) {
-        // Radial: distance from `center` measured in `radius` units.
-        // `t = 1.0` at the elliptical edge of the radius vector.
+        // `t = 1` on the ellipse the radius vector spans.
         let center = in.fill_axis.xy;
         let radius = in.fill_axis.zw;
         let rx = select(1.0, radius.x, abs(radius.x) > ZERO_EPS);
@@ -616,10 +587,8 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         let d  = (local01 - center) / vec2<f32>(rx, ry);
         t01 = length(d);
     } else {
-        // Conic, the remaining gradient kind (`QuadForm::of`): sweep
-        // around `center`, starting at `start_angle` (radians, clockwise
-        // on screen: y points down). atan2 returns -π..π; the +1.0 then
-        // fract wraps to 0..1 in a single step regardless of sign.
+        // Conic, the remaining kind (`QuadForm::of`): clockwise on screen, as y points down.
+        // `+ 1.0` lifts atan2's negative half before `fract`.
         let center      = in.fill_axis.xy;
         let start_angle = in.fill_axis.z;
         let p           = local01 - center;
@@ -627,19 +596,10 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         t01 = fract((theta - start_angle) / TAU + 1.0);
     }
     let t = apply_spread(t01, spread);
-    // Row count is queried, not baked in as a const: the atlas texture
-    // grows when one frame registers more distinct gradients than it
-    // holds, and a query keeps this pipeline valid across that resize.
-    let dims = vec2<f32>(textureDimensions(gradient_tex));
-    let v = (f32(in.fill_lut_row) + 0.5) / dims.y;
-    // The LUT has one mip, so the level is 0, taken explicitly: the branch
-    // on the flat `fill_kind` is not uniform control flow.
-    let c = textureSampleLevel(gradient_tex, gradient_sampler, vec2<f32>(lut_u(t, dims.x), v), 0.0);
-    // Texels are premultiplied, so the filter between two of them is too.
     // `in.fill` multiplies the straight sample, channel by channel. It is
     // white for every gradient, with its alpha scaled by a paint
     // animation's fade. See `BrushSource::gpu_fill`.
-    return unpremultiply(c) * in.fill;
+    return gradient_lut(t, in.fill_lut_row) * in.fill;
 }
 
 // `erf` approximation (Abramowitz & Stegun 7.1.26 form, max error
@@ -1011,9 +971,13 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     if (QUAD_FORM == QUAD_FORM_GRADIENT) {
         fill = eval_fill(in);
     }
-    // `composite` of a point past `stroke_width + AA_HALF_WIDTH` inside the
-    // shape: both coverages are 1 and the stroke's share 0, so it is the
-    // fill, without the distance.
+    return shade_rect(in, fill);
+}
+
+// A rounded rect of `fill` under the instance's stroke. A point past
+// `stroke_width + AA_HALF_WIDTH` inside the shape is the fill, without the
+// distance: both coverages are 1 and the stroke's share 0.
+fn shade_rect(in: VertexOut, fill: vec4<f32>) -> vec4<f32> {
     if (all(in.local > in.core.xy) && all(in.local < in.core.zw)) {
         return premultiply(fill.rgb, fill.a);
     }
@@ -1078,18 +1042,6 @@ fn grain(local: vec2<f32>) -> f32 {
     return f32(h >> 8u) / 16777216.0;
 }
 
-fn srgb_encode(c: vec3<f32>) -> vec3<f32> {
-    let lo = c * 12.92;
-    let hi = 1.055 * pow(c, vec3<f32>(1.0 / 2.4)) - 0.055;
-    return select(hi, lo, c <= vec3<f32>(0.0031308));
-}
-
-fn srgb_decode(e: vec3<f32>) -> vec3<f32> {
-    let lo = e / 12.92;
-    let hi = pow((e + 0.055) / 1.055, vec3<f32>(2.4));
-    return select(hi, lo, e <= vec3<f32>(0.04045));
-}
-
 // How far in, px, a lens sends the sample `inward` px in from its edge for
 // light of index `index`: the squircle bezel's tilt, Snell's law in vector
 // form for light falling straight down, and the bent ray carried from the
@@ -1142,9 +1094,8 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     let slot = backdrop_slots[in.fill_lut_row];
     let lens = slot.lens;
     var c: vec3<f32>;
-    var d: f32;
     if (lens.x > 0.0) {
-        d = sdf_rounded_rect(in.local, in.size, in.radius);
+        let d = sdf_rounded_rect(in.local, in.size, in.radius);
         let gradient = vec2<f32>(dpdx(d), dpdy(d));
         let inward = -d;
         if (inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
@@ -1180,24 +1131,9 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
         // Interleaved gradient noise (Jimenez) of one encoded step, so a
         // smooth blur stores no band.
         let ign = fract(52.9829189 * fract(dot(floor(in.clip.xy), vec2<f32>(0.06711056, 0.00583715))));
-        c = srgb_decode(max(srgb_encode(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
+        c = srgb_to_linear(max(linear_to_srgb(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
     }
-    let fill = vec4<f32>(c, opacity);
-    if (all(in.local > in.core.xy) && all(in.local < in.core.zw)) {
-        return premultiply(fill.rgb, fill.a);
-    }
-    if (lens.x <= 0.0) {
-        d = sdf_rounded_rect(in.local, in.size, in.radius);
-    }
-    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
-        var window = composite_window(d, fill, in.stroke_color, in.stroke_width);
-        if (in.turned != 0u) {
-            let e = abs(in.local - in.size * 0.5) - in.size * 0.5;
-            window *= edge_coverage(e.x) * edge_coverage(e.y);
-        }
-        return window;
-    }
-    return composite(d, fill, in.stroke_color, in.stroke_width);
+    return shade_rect(in, vec4<f32>(c, opacity));
 }
 
 // The box whose blur a shadow paints, relative to its quad's center, with

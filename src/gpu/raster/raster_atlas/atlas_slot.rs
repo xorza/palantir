@@ -1,6 +1,6 @@
 //! One resident raster's placement and lifetime stamps, the atlas hit path's hot read.
 
-use crate::gpu::raster::raster_atlas::raster_quad::RasterQuad;
+use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{I16Vec2, IVec2, U16Vec2, UVec2};

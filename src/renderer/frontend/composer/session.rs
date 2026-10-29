@@ -67,7 +67,7 @@ impl ComposeSession<'_> {
     const fn lowering(&self) -> Lowering<'_> {
         Lowering {
             transform: &self.composer.transform,
-            display: self.out.display,
+            display: &self.out.display,
         }
     }
 

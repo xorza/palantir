@@ -1,6 +1,10 @@
-use super::*;
-use std::collections::{HashMap, HashSet};
-use strum::VariantArray;
+use crate::gpu::pipeline::internals::SHADERS;
+use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::pipeline::shader_body::{PRELUDE, ShaderConstant, specialize_source};
+use crate::primitives::paint::antialias::AA_HALF_WIDTH;
+use std::collections::HashSet;
+use std::fs;
+use std::path::PathBuf;
 
 #[test]
 fn specialization_replaces_every_typed_marker() {
@@ -24,17 +28,52 @@ fn specialization_rejects_missing_marker() {
     specialize_source("const A: u32 = 1u;", &[ShaderConstant::uint("A", 7)]);
 }
 
+/// Every WGSL file of the backend is a body, an include or the prelude of [`SHADERS`], so no shader
+/// skips the tests that walk the list.
+#[test]
+fn every_shader_file_is_walked() {
+    let walked: HashSet<&str> = SHADERS
+        .iter()
+        .flat_map(|body| body.includes.iter().copied().chain([body.wgsl]))
+        .chain([PRELUDE])
+        .collect();
+    let mut dirs = vec![PathBuf::from(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/gpu"
+    ))];
+    while let Some(dir) = dirs.pop() {
+        for entry in fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                dirs.push(path);
+            } else if path.extension().is_some_and(|ext| ext == "wgsl") {
+                let source = fs::read_to_string(&path).unwrap();
+                assert!(
+                    walked.contains(source.as_str()),
+                    "{} is in no shader of `SHADERS`",
+                    path.display(),
+                );
+            }
+        }
+    }
+}
+
 /// Every constant Rust substitutes must be read by its shader; an unread pin means the shader
 /// hard-codes the value and the two drift on renumbering. Unpin rather than exempt.
 #[test]
 fn every_pinned_shader_constant_is_read() {
-    for &body in ShaderBody::VARIANTS {
-        body.specialize();
+    for body in SHADERS {
+        body.parse();
     }
-    let sources = ShaderBody::VARIANTS
+    let sources = SHADERS
         .iter()
-        .map(|body| (format!("{body:?}"), body.wgsl()))
-        .chain([("prelude".to_owned(), PRELUDE)]);
+        .flat_map(|body| {
+            body.includes
+                .iter()
+                .chain([&body.wgsl])
+                .map(|&wgsl| (body.label, wgsl))
+        })
+        .chain([("prelude", PRELUDE)]);
     for (file, source) in sources {
         let code = strip_comments(source);
         assert_eq!(
@@ -60,8 +99,8 @@ fn every_pinned_shader_constant_is_read() {
 /// tabled form): reachable code costs registers (56 VGPRs and 50 KB vs 40 and 4 KB on RDNA2).
 #[test]
 fn only_the_shadow_entries_reach_the_blur_integral() {
-    let source = strip_comments(&ShaderBody::Quad.specialize());
-    let reaches = |entry: &str| reachable_functions(&source, entry);
+    let module = QuadPipeline::SHADER.parse();
+    let reaches = |entry: &str| reachable_functions(&module, entry);
     for heavy in [
         "blurred_box_coverage",
         "blurred_corner",
@@ -100,46 +139,36 @@ fn only_the_shadow_entries_reach_the_blur_integral() {
     );
 }
 
-fn reachable_functions(source: &str, entry: &str) -> HashSet<String> {
-    let bodies: HashMap<&str, &str> = source
-        .split("fn ")
-        .skip(1)
-        .filter_map(|def| {
-            let name = def.split('(').next()?.trim();
-            let open = def.find('{')?;
-            let mut depth = 0;
-            let close = def[open..].char_indices().find_map(|(i, c)| {
-                match c {
-                    '{' => depth += 1,
-                    '}' => depth -= 1,
-                    _ => {}
-                }
-                (depth == 0).then_some(open + i)
-            })?;
-            Some((name, &def[open..close]))
-        })
-        .collect();
+/// The functions entry point `entry` of `module` calls, directly or through others, as naga's
+/// call statements name them.
+fn reachable_functions(module: &naga::Module, entry: &str) -> HashSet<String> {
+    let entry = module
+        .entry_points
+        .iter()
+        .find(|point| point.name == entry)
+        .unwrap_or_else(|| panic!("no entry point `{entry}`"));
     let mut seen = HashSet::new();
-    let mut stack = vec![entry.to_owned()];
-    while let Some(name) = stack.pop() {
-        let body = bodies
-            .get(name.as_str())
-            .unwrap_or_else(|| panic!("no function `{name}`"));
-        let is_word = |c: char| c.is_ascii_alphanumeric() || c == '_';
-        let mut at = 0;
-        while let Some(start) = body[at..].find(|c: char| c.is_ascii_alphabetic() || c == '_') {
-            let start = at + start;
-            let end = body[start..]
-                .find(|c| !is_word(c))
-                .map_or(body.len(), |len| start + len);
-            let word = &body[start..end];
-            if bodies.contains_key(word)
-                && body[end..].trim_start().starts_with('(')
-                && seen.insert(word.to_owned())
-            {
-                stack.push(word.to_owned());
+    let mut stack = vec![&entry.function.body];
+    while let Some(block) = stack.pop() {
+        for statement in block {
+            match statement {
+                naga::Statement::Call { function, .. } => {
+                    let called = &module.functions[*function];
+                    let name = called.name.clone().expect("a named function");
+                    if seen.insert(name) {
+                        stack.push(&called.body);
+                    }
+                }
+                naga::Statement::Block(inner) => stack.push(inner),
+                naga::Statement::If { accept, reject, .. } => stack.extend([accept, reject]),
+                naga::Statement::Switch { cases, .. } => {
+                    stack.extend(cases.iter().map(|case| &case.body));
+                }
+                naga::Statement::Loop {
+                    body, continuing, ..
+                } => stack.extend([body, continuing]),
+                _ => {}
             }
-            at = end;
         }
     }
     seen

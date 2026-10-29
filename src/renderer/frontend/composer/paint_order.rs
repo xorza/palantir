@@ -138,6 +138,7 @@ pub(super) struct Ordering<'s> {
 impl Ordering<'_> {
     /// [`Self::cull`] `bounds`, then [`Self::order`] a draw of `lane` there: the pixels it paints,
     /// or `None` when it paints none, which then neither splits a batch nor registers a rect.
+    #[inline(always)]
     pub(super) fn admit(&mut self, lane: Lane, bounds: URect) -> Option<URect> {
         let visible = self.cull(bounds)?;
         self.order(lane, visible);
@@ -145,6 +146,7 @@ impl Ordering<'_> {
     }
 
     /// The part of `bounds` the clip in force leaves, `None` when it is empty.
+    #[inline(always)]
     pub(super) fn cull(&self, bounds: URect) -> Option<URect> {
         let visible = self.clip.clamped(bounds);
         (!visible.is_paint_empty()).then_some(visible)
@@ -160,6 +162,10 @@ impl Ordering<'_> {
     /// end of its last group and text recorded before this draw would paint over it; and the
     /// group where it overlaps a tier that replays after it. A close on every draw would cost one
     /// text batch per draw (one per toolbar button); either half alone is unsound.
+    // Always inlined: each caller's `lane` is a constant, so one arm remains and `visible` stays
+    // in registers. As a call it took `visible` through memory, and `same_tier_image` ran 5 %
+    // slower.
+    #[inline(always)]
     pub(super) fn order(&mut self, lane: Lane, visible: URect) {
         match lane {
             Lane::Quad => self.quad_forces_flush(visible),
@@ -349,6 +355,7 @@ impl Ordering<'_> {
     /// text cannot coalesce forward and re-cover the quad. A batch renders at the end of its last
     /// group, so one whose last group is already closed paints below the quad and needs no flush of
     /// its own; a higher-kind draw in the group still does.
+    #[inline]
     fn quad_forces_flush(&mut self, overlap: URect) {
         let mut renders_after = false;
         if self.order.batch.open_grid.any_overlap(overlap) {

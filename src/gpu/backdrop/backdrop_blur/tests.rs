@@ -2,7 +2,6 @@ use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, grown,
 };
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
@@ -335,7 +334,7 @@ fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
 /// taps start on the 16 bytes a `vec4` array aligns to, past the radius and its pad.
 #[test]
 fn blur_params_lie_as_the_shader_reads_them() {
-    ShaderBody::BackdropBlur.assert_struct_layout(
+    BackdropBlur::SHADER.assert_struct_layout(
         "BlurParams",
         size_of::<BlurParams>(),
         &[

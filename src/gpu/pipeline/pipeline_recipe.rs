@@ -83,17 +83,68 @@ impl<'a> PipelineRecipe<'a> {
             cache: None,
         })
     }
+}
 
-    /// Build the layout a recipe's [`Self::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by the prelude's `Immediates`.
-    pub(crate) fn pipeline_layout(
-        device: &wgpu::Device,
-        label: &'static str,
-        bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
-    ) -> wgpu::PipelineLayout {
-        device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some(label),
-            bind_group_layouts,
-            immediate_size: IMMEDIATES_BYTES,
-        })
+/// Build the layout a recipe's [`PipelineRecipe::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by the prelude's `Immediates`.
+pub(crate) fn pipeline_layout(
+    device: &wgpu::Device,
+    label: &'static str,
+    bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
+) -> wgpu::PipelineLayout {
+    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some(label),
+        bind_group_layouts,
+        immediate_size: IMMEDIATES_BYTES,
+    })
+}
+
+/// An attribute at shader `location` reading `format` at byte `offset` of its vertex: an
+/// `offset_of!`, so the attribute follows its field.
+pub(crate) const fn vertex_attr(
+    location: u32,
+    format: wgpu::VertexFormat,
+    offset: usize,
+) -> wgpu::VertexAttribute {
+    wgpu::VertexAttribute {
+        format,
+        offset: offset as u64,
+        shader_location: location,
     }
+}
+
+/// The layout of a buffer of `stride`-byte vertices that steps by `step_mode`, read through
+/// `attributes`. Built in a `const`, an attribute that overruns its field fails the build.
+pub(crate) const fn vertex_layout(
+    stride: usize,
+    step_mode: wgpu::VertexStepMode,
+    attributes: &'static [wgpu::VertexAttribute],
+) -> wgpu::VertexBufferLayout<'static> {
+    assert!(
+        attrs_fit(attributes, stride),
+        "an attribute overruns its field"
+    );
+    wgpu::VertexBufferLayout {
+        array_stride: stride as u64,
+        step_mode,
+        attributes,
+    }
+}
+
+/// Whether `attrs`, in ascending offset, each read inside a vertex of `stride` bytes and stop
+/// short of the next: the format of each fits its field.
+const fn attrs_fit(attrs: &[wgpu::VertexAttribute], stride: usize) -> bool {
+    let mut i = 0;
+    while i < attrs.len() {
+        let end = attrs[i].offset + attrs[i].format.size();
+        let bound = if i + 1 < attrs.len() {
+            attrs[i + 1].offset
+        } else {
+            stride as u64
+        };
+        if end > bound {
+            return false;
+        }
+        i += 1;
+    }
+    true
 }

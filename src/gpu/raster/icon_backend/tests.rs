@@ -1,8 +1,8 @@
 //! The unload path: what dropping an [`IconSet`] costs the backend to forget, and when. Needs a device.
 
 mod gpu {
+    use crate::gpu::pipeline::raster_pipeline::RasterProgram;
     use crate::gpu::raster::icon_backend::IconBackend;
-    use crate::gpu::raster::raster_program::RasterProgram;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::icons::icon_raster_key::IconRasterKey;
     use crate::icons::icon_registry::IconRegistry;

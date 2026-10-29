@@ -52,13 +52,8 @@
 // — same as mesh_pipeline/shader.wgsl / quad_pipeline/shader.wgsl. The pipeline uses
 // PREMULTIPLIED_ALPHA_BLENDING.
 
-// Gradient LUT atlas, shared with the quad pipeline. Sampled per
-// fragment for a ramp fill. Same premultiplied linear `Rgba16Float`
-// format + linear filter / clamp-to-edge sampler as
-// quad_pipeline/shader.wgsl — the curve's `t` is already in [0, 1] by
-// construction, so a ramp has no spread.
-@group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
-@group(0) @binding(1) var gradient_sampler: sampler;
+// A ramp fill reads the gradient LUT (`gradient.wgsl`); the curve's `t` is
+// already in [0, 1] by construction, so a ramp has no spread.
 
 const SEGMENTS_PER_INSTANCE: u32 = /*{SEGMENTS_PER_INSTANCE}*/;
 const INV_N: f32 = 1.0 / f32(SEGMENTS_PER_INSTANCE);
@@ -416,25 +411,10 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     }
     var rgba = unpremultiply(in.color);
     if ((in.flags & FLAG_RAMP_FILL) != 0u) {
-        // `curve_t` is in [0, 1] by construction and the sampler is
-        // clamp-to-edge, so no explicit clamp. Row count is queried,
-        // not baked in as a const: the atlas texture grows when one
-        // frame registers more distinct gradients than it holds, and a
-        // query keeps this pipeline valid across that resize.
-        let dims = vec2<f32>(textureDimensions(gradient_tex));
-        let lut_v = (f32(in.lut_row) + 0.5) / dims.y;
-        // The LUT has one mip, so the level is 0, taken explicitly: the
-        // branch on the flat `flags` is not uniform control flow.
-        let c = textureSampleLevel(
-            gradient_tex,
-            gradient_sampler,
-            vec2<f32>(lut_u(in.curve_t, dims.x), lut_v),
-            0.0,
-        );
         // The stroke color multiplies the sample, channel by channel —
         // the same rule as a mesh tint, on the straight colors. See
         // `GpuFill::curve`.
-        rgba = unpremultiply(c) * rgba;
+        rgba = gradient_lut(in.curve_t, in.lut_row) * rgba;
     }
     let a = rgba.a * coverage;
     return premultiply(rgba.rgb, a);

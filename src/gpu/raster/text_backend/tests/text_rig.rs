@@ -1,7 +1,7 @@
 //! A text backend on the shared test device, and the frames driving it.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::raster::raster_program::RasterProgram;
+use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;

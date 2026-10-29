@@ -1,160 +1,60 @@
-//! Assembly of a pipeline's WGSL: the shared prelude, then the body, with Rust-owned constants substituted.
+//! Assembly of a pipeline's WGSL: the shared prelude, then the body a pipeline family owns, with
+//! Rust-owned constants substituted.
 
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutPlan;
-use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
-use crate::gpu::raster::raster_atlas::raster_quad::{
-    FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, U_BITS, V_SHIFT,
-};
-use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
-use crate::primitives::paint::brush::gradient::Spread;
-use crate::renderer::render_buffer::curve_caps::CurveCaps;
-use crate::renderer::render_buffer::curve_instance::SEGMENTS_PER_INSTANCE;
-use crate::renderer::render_buffer::curve_kind::CurveKind;
-use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::shape::paint::blur_plan::BlurPlan;
-use crate::shape::paint::lowered_shadow::ShadowGeometry;
-use crate::shape::stroke_bounds::MITER_LIMIT;
-use crate::shape::style::LineCap;
 
 /// Concatenated ahead of every shader body, so shared vocabulary has one definition.
 const PRELUDE: &str = include_str!("../prelude.wgsl");
 
-/// The shader bodies the backend compiles, each with its label and Rust-owned constants. Pipelines build via [`Self::module`] and tests specialize every variant, so the matches below won't compile until a new shader names its file, label and constants.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, strum::VariantArray)]
-pub(crate) enum ShaderBody {
-    Quad,
-    Mesh,
-    Curve,
-    Image,
-    RasterAtlas,
-    Blit,
-    BackdropBlur,
+/// The gradient group's bindings and its LUT read, for the shaders that bind it.
+pub(crate) const GRADIENT: &str = include_str!("../gradient.wgsl");
+
+/// A shader body a pipeline family owns: its WGSL, its label, and the numbers it takes from the
+/// Rust types that own them. Every shader is built through [`Self::module`], so the prelude
+/// precedes all and an unsubstituted marker panics rather than compiling with a comment where a
+/// number belongs.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ShaderBody {
+    pub(crate) label: &'static str,
+    pub(crate) wgsl: &'static str,
+    /// Shared WGSL the body reads, put between the prelude and the body.
+    pub(crate) includes: &'static [&'static str],
+    /// The numbers the body declares as markers.
+    pub(crate) constants: fn() -> Vec<ShaderConstant>,
 }
 
 impl ShaderBody {
-    const fn wgsl(self) -> &'static str {
-        match self {
-            Self::Quad => include_str!("../quad_pipeline/shader.wgsl"),
-            Self::Mesh => include_str!("../mesh_pipeline/shader.wgsl"),
-            Self::Curve => include_str!("../curve_pipeline/shader.wgsl"),
-            Self::Image => include_str!("../image_pipeline/shader.wgsl"),
-            Self::RasterAtlas => include_str!("../../raster/raster_atlas/shader.wgsl"),
-            Self::Blit => include_str!("../blit_pipeline/shader.wgsl"),
-            Self::BackdropBlur => include_str!("../../backdrop/backdrop_blur/blur.wgsl"),
-        }
-    }
-
-    const fn label(self) -> &'static str {
-        match self {
-            Self::Quad => "palantir.quad.shader",
-            Self::Mesh => "palantir.mesh.shader",
-            Self::Curve => "palantir.curve.shader",
-            Self::Image => "palantir.image.shader",
-            Self::RasterAtlas => "palantir.raster.shader",
-            Self::Blit => "palantir.blit.shader",
-            Self::BackdropBlur => "palantir.backdrop.blur.shader",
-        }
-    }
-
-    /// The numbers this body declares as markers, from the Rust types that own them.
-    fn constants(self) -> Vec<ShaderConstant> {
-        match self {
-            Self::Quad => vec![
-                ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
-                ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
-                ShaderConstant::uint("SPREAD_MASK", FillKind::SPREAD_MASK),
-                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::TAG_LINEAR),
-                ShaderConstant::uint("BRUSH_KIND_RADIAL", FillKind::TAG_RADIAL),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_DROP", FillKind::TAG_SHADOW_DROP),
-                ShaderConstant::uint("BRUSH_KIND_SHADOW_INSET", FillKind::TAG_SHADOW_INSET),
-                ShaderConstant::uint("BRUSH_KIND_TRIANGLE", FillKind::TAG_TRIANGLE),
-                ShaderConstant::uint("FILL_FLAG_FAST", FillKind::FAST_BIT),
-                ShaderConstant::uint("FILL_FLAG_WINDOW", FillKind::WINDOW_BIT),
-                ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
-                ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
-                ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
-                // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
-                ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
-                ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
-                ShaderConstant::float("SHADOW_REACH_SIGMAS", ShadowGeometry::REACH_SIGMAS),
-                ShaderConstant::float("CUTOUT_MIN_SIGMA", CutoutPlan::MIN_SIGMA),
-                ShaderConstant::float("FILTER_SERIES_MIN_SIGMA", CutoutPlan::SERIES_MIN_SIGMA),
-                ShaderConstant::float("CUTOUT_TEXELS_PER_SIGMA", CutoutPlan::TEXELS_PER_SIGMA),
-                ShaderConstant::float("CUTOUT_ATLAS_SIZE", CutoutPlan::ATLAS_SIZE as f32),
-                ShaderConstant::uint("CUTOUT_CELL", CutoutPlan::CELL),
-                ShaderConstant::uint("NO_CUTOUT_TABLE", CutoutPlan::NONE),
-                ShaderConstant::uint("CUTOUT_NODES", CutoutPlan::SHADED_NODES),
-                ShaderConstant::uint("CUTOUT_BAKE_NODES", CutoutPlan::BAKED_NODES),
-            ],
-            Self::Curve => vec![
-                ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
-                ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
-                ShaderConstant::uint("CAP_MASK", CurveCaps::CAP_MASK),
-                ShaderConstant::uint("CAP_AT_START", CurveCaps::AT_START),
-                ShaderConstant::uint("CAP_AT_END", CurveCaps::AT_END),
-                ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
-                ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
-                ShaderConstant::uint("KIND_ARC", CurveKind::ARC.bits()),
-                ShaderConstant::uint("KIND_SEGMENT", CurveKind::SEGMENT.bits()),
-                ShaderConstant::uint("KIND_JOIN_ROUND", CurveKind::JOIN_ROUND.bits()),
-                ShaderConstant::uint("KIND_JOIN_BEVEL", CurveKind::JOIN_BEVEL.bits()),
-                ShaderConstant::uint("KIND_JOIN_MITER", CurveKind::JOIN_MITER.bits()),
-                ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
-                ShaderConstant::uint("BRUSH_KIND_RAMP", FillKind::TAG_RAMP),
-            ],
-            Self::Image => vec![
-                ShaderConstant::uint("IMG_FLAG_TILED", ImageFlags::TILED.bits()),
-                ShaderConstant::uint("IMG_FLAG_MIN_NEAREST", ImageFlags::MIN_NEAREST.bits()),
-                ShaderConstant::uint("IMG_FLAG_MAG_NEAREST", ImageFlags::MAG_NEAREST.bits()),
-                ShaderConstant::uint("IMG_FLAG_TAPS_MEAN", ImageFlags::TAPS_MEAN.bits()),
-                ShaderConstant::uint("IMG_FLAG_TAPS_PEAK", ImageFlags::TAPS_PEAK.bits()),
-                ShaderConstant::uint("IMG_FLAG_CLAMP_TO_UV", ImageFlags::CLAMP_TO_UV.bits()),
-            ],
-            Self::RasterAtlas => vec![
-                ShaderConstant::uint("U_BITS", U_BITS),
-                ShaderConstant::uint("V_SHIFT", V_SHIFT),
-                ShaderConstant::uint("FLAG_MASK", FLAG_MASK),
-                ShaderConstant::uint("FLAG_DESATURATE", FLAG_DESATURATE),
-                ShaderConstant::uint("FLAG_COLOR", FLAG_COLOR),
-            ],
-            Self::BackdropBlur => vec![ShaderConstant::uint(
-                "TAP_VEC4S",
-                BlurPlan::MAX_TAPS.div_ceil(4) as u32,
-            )],
-            Self::Mesh | Self::Blit => Vec::new(),
-        }
-    }
-
-    /// The complete source: [`PRELUDE`] in front, every constant substituted. **Every shader is built here**, constant-free ones too, so the prelude precedes all and an unsubstituted marker panics rather than compiling with a comment where a number belongs.
+    /// The complete source: [`PRELUDE`] in front, every constant substituted.
     fn specialize(self) -> String {
-        specialize_source(self.wgsl(), &self.constants())
+        let body: String = self.includes.iter().copied().chain([self.wgsl]).collect();
+        specialize_source(&body, &(self.constants)())
     }
 
     /// The shader module for this body.
     pub(crate) fn module(self, device: &wgpu::Device) -> wgpu::ShaderModule {
         device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(self.label()),
+            label: Some(self.label),
             source: wgpu::ShaderSource::Wgsl(self.specialize().into()),
         })
     }
 }
 
+/// A number substituted for its marker, `/*{MARKER}*/`, in a shader body.
 #[derive(Debug)]
-struct ShaderConstant {
+pub(crate) struct ShaderConstant {
     marker: &'static str,
     value: String,
 }
 
 impl ShaderConstant {
-    fn uint(marker: &'static str, value: u32) -> Self {
+    pub(crate) fn uint(marker: &'static str, value: u32) -> Self {
         Self {
             marker,
             value: format!("{value}u"),
         }
     }
 
-    fn float(marker: &'static str, value: f32) -> Self {
+    pub(crate) fn float(marker: &'static str, value: f32) -> Self {
         assert!(value.is_finite());
         Self {
             marker,
@@ -189,10 +89,93 @@ fn specialize_source(body: &str, constants: &[ShaderConstant]) -> String {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::pipeline::shader_body::ShaderBody;
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use bytemuck::Pod;
     use naga::front::wgsl;
     use naga::proc::Layouter;
+    use std::iter;
+    use std::sync::mpsc;
+    use wgpu::util::DeviceExt;
 
     impl ShaderBody {
+        /// Run `probe`, WGSL appended to this body, on the test GPU: its compute entry point
+        /// `probe` runs once per input, at `global_invocation_id.x`, and reads `array<I>` at
+        /// `@group(0) @binding(14)` and writes one `O` per input to `array<O>` at
+        /// `@group(0) @binding(15)`, so the body's functions run on the GPU as they draw.
+        pub(crate) fn probe<I: Pod, O: Pod>(self, probe: &str, inputs: &[I]) -> Vec<O> {
+            assert!(!inputs.is_empty(), "a probe runs on at least one input");
+            let gpu = headless_test_gpu();
+            let device = &gpu.device;
+            let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(self.label),
+                source: wgpu::ShaderSource::Wgsl((self.specialize() + probe).into()),
+            });
+            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+                label: Some("test.probe"),
+                layout: None,
+                module: &module,
+                entry_point: Some("probe"),
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                cache: None,
+            });
+            let input = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("test.probe.in"),
+                contents: bytemuck::cast_slice(inputs),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+            let size = inputs.len() * size_of::<O>();
+            let output = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("test.probe.out"),
+                size: size as u64,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+                mapped_at_creation: false,
+            });
+            let read = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("test.probe.read"),
+                size: size as u64,
+                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+                mapped_at_creation: false,
+            });
+            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("test.probe.bg"),
+                layout: &pipeline.get_bind_group_layout(0),
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 14,
+                        resource: input.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 15,
+                        resource: output.as_entire_binding(),
+                    },
+                ],
+            });
+            let mut encoder =
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            {
+                let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
+                pass.set_pipeline(&pipeline);
+                pass.set_bind_group(0, &bind_group, &[]);
+                pass.dispatch_workgroups(u32::try_from(inputs.len()).unwrap(), 1, 1);
+            }
+            encoder.copy_buffer_to_buffer(&output, 0, &read, 0, None);
+            gpu.queue.submit(iter::once(encoder.finish()));
+            let slice = read.slice(..);
+            let (tx, rx) = mpsc::channel();
+            slice.map_async(wgpu::MapMode::Read, move |mapped| {
+                tx.send(mapped).ok();
+            });
+            gpu.wait();
+            rx.recv().unwrap().unwrap();
+            bytemuck::cast_slice(&slice.get_mapped_range().unwrap()).to_vec()
+        }
+
+        /// The specialized source, parsed as wgpu parses it.
+        pub(crate) fn parse(self) -> naga::Module {
+            wgsl::parse_str(&self.specialize())
+                .unwrap_or_else(|err| panic!("{} parses: {err}", self.label))
+        }
+
         /// Assert that struct `name` of this shader, laid out as naga lays it out for wgpu, is
         /// `size` bytes with `members` in order, each a WGSL member's name and the offset of the
         /// Rust field that mirrors it.
@@ -203,17 +186,17 @@ pub(crate) mod internals {
             size: usize,
             members: &[(&str, usize)],
         ) {
-            let module = wgsl::parse_str(&self.specialize())
-                .unwrap_or_else(|err| panic!("{self:?} parses: {err}"));
+            let label = self.label;
+            let module = self.parse();
             let mut layouter = Layouter::default();
             layouter
                 .update(module.to_ctx())
-                .unwrap_or_else(|err| panic!("{self:?} lays out: {err}"));
+                .unwrap_or_else(|err| panic!("{label} lays out: {err}"));
             let (handle, ty) = module
                 .types
                 .iter()
                 .find(|(_, ty)| ty.name.as_deref() == Some(name))
-                .unwrap_or_else(|| panic!("{self:?} declares struct {name}"));
+                .unwrap_or_else(|| panic!("{label} declares struct {name}"));
             let naga::TypeInner::Struct {
                 members: declared, ..
             } = &ty.inner

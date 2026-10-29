@@ -1,6 +1,6 @@
 //! Drawing the retained backbuffer onto a target that cannot be copied into.
 
-use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
+use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::TextureBinding;
 
@@ -15,11 +15,19 @@ pub(crate) struct BlitPipeline {
 }
 
 impl BlitPipeline {
+    /// This family's shader body.
+    pub(crate) const SHADER: ShaderBody = ShaderBody {
+        label: "palantir.blit.shader",
+        wgsl: include_str!("shader.wgsl"),
+        includes: &[],
+        constants: Vec::new,
+    };
+
     pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
-        let shader = ShaderBody::Blit.module(device);
+        let shader = Self::SHADER.module(device);
         Self {
             shader,
-            pipeline_layout: PipelineRecipe::pipeline_layout(
+            pipeline_layout: pipeline_recipe::pipeline_layout(
                 device,
                 "palantir.blit.pl",
                 &[Some(textures.layout())],

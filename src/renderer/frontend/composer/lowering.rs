@@ -14,7 +14,7 @@ use glam::{UVec2, Vec2};
 #[derive(Clone, Copy, Debug)]
 pub(super) struct Lowering<'a> {
     pub(super) transform: &'a TransformStack,
-    pub(super) display: Display,
+    pub(super) display: &'a Display,
 }
 
 /// A rect in physical px, and the whole pixels it reaches.
