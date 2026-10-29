@@ -58,6 +58,45 @@ common → primitives → {animation, text, input, display, window, image_regist
   through `host`, `ui` and `widgets`, as the desktop does. Refused: moving
   such cases to `src/bench/`, away from the code they measure.
 
+## Swapchain
+
+What wgpu 30 allows on a window's swapchain, and the rules the renderer keeps
+to stay inside it. Facts and sources:
+`.notes/research/2026-10-29-swapchain.md`.
+
+- **An acquired image holds nothing.** wgpu marks it uninitialized: a load
+  reads zeros and a present of an unwritten image clears it. No frame reads
+  the last frame's pixels from the swapchain. A frame that keeps pixels
+  paints through the backbuffer; a direct frame is whole, and its first pass
+  clears.
+- **Inside one frame the image is an ordinary texture.** A pass may load what
+  an earlier pass of the frame stored, and a copy may read it where the
+  surface took `COPY_SRC`: a pane's capture, the damage overlay.
+- **Ask only for usages the surface offers.** `RENDER_ATTACHMENT` is
+  required; `COPY_DST` and `COPY_SRC` are taken where `caps.usages` holds
+  them, and every path that needs one checks it (`RenderTarget::takes_copy`,
+  `gives_copy`). A usage the surface lacks fails `configure`.
+- **Never sample a swapchain image.** Metal, DX12 and GL surfaces offer no
+  `TEXTURE_BINDING`; only some Vulkan drivers do. A pass that must sample
+  what the frame painted samples the backbuffer. Refused: a sampled path for
+  Vulkan alone, a second way to paint a frame that the m2 cannot run.
+- **Keep nothing of an image past its present.** Each acquire is a new
+  texture: no view, bind group or cache keyed by it outlives the frame, as
+  wgpu does not stop a stale view after a reconfigure. One image is acquired
+  at a time, and none lives when `configure` runs.
+- **Submit, then present.** The frame's work goes in `queue.submit`, then
+  `pre_present_notify`, then `queue.present`. A frame that paints nothing
+  acquires nothing.
+- **Configure as the surface lists.** A nonzero size inside the device's
+  largest texture, an sRGB format in the sRGB color space, `AutoVsync` or
+  `AutoNoVsync`, an alpha mode from the list. `configure` waits for the
+  device to idle, so it runs only when the configuration changed, and a
+  rebuild invalidates the target's contents.
+- **Handle each acquire outcome as wgpu documents it.** `Suboptimal`:
+  present, then reconfigure. `Outdated`: reconfigure. `Lost`: create the
+  surface again, as a lost surface does not configure. `Timeout`: paint
+  again. `Occluded`: skip. `Validation`: back off.
+
 ## Public API
 
 - **Never change it on your own.** Adding, renaming, removing or re-signing an
