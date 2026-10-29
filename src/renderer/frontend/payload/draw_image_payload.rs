@@ -22,7 +22,7 @@ pub(crate) struct DrawImagePayload {
     /// [`ImageInstance::flags`](crate::renderer::render_buffer::image_draw_row::ImageInstance).
     /// [`ImageFlags::NONE`] takes one bilinear tap.
     pub(crate) flags: ImageFlags,
-    /// A paint animation's turn, its pivot in the same logical frame as `rect`.
+    /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
 }
 

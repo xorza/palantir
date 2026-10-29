@@ -8,6 +8,7 @@ use crate::primitives::paint::antialias;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::row_spin::RowSpin;
 use glam::{UVec2, Vec2};
 
 /// The walk transform and the display one compose session lowers its draws under.
@@ -47,8 +48,8 @@ impl Lowering<'_> {
     }
 
     /// `spin`, its pivot in the encoder's logical frame, about the physical pivot it maps to.
-    pub(super) fn physical_spin(&self, spin: Spin) -> Spin {
-        Spin {
+    pub(super) fn physical_spin(&self, spin: Spin) -> RowSpin {
+        RowSpin {
             pivot: self.transform.physical_map(Vec2::ZERO).point(spin.pivot),
             angle: spin.angle,
         }
@@ -59,10 +60,11 @@ impl Lowering<'_> {
     /// rect about the pivot. Its pixels are those the shader shades:
     /// [`antialias::turned_reach`] of it, as the occlusion pruner reads them.
     pub(super) fn turned_rect(&self, physical: Rect, spin: Spin) -> ScaledRect {
-        let physical_spin = self.physical_spin(spin);
+        let pivot = self.physical_spin(spin).pivot;
         let center = physical.center();
+        let turned_center = Vec2::from_angle(spin.angle).rotate(center - pivot) + pivot;
         let moved = Rect {
-            min: physical.min + physical_spin.rotor().apply(center) - center,
+            min: physical.min + turned_center - center,
             size: physical.size,
         };
         let reach = antialias::turned_reach(moved, spin.angle);

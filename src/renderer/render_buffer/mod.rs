@@ -36,6 +36,7 @@ pub(crate) mod paint_tier;
 pub(crate) mod per_group_batch;
 pub(crate) mod render_target_draw;
 pub(crate) mod rounded_clip;
+pub(crate) mod row_spin;
 pub(crate) mod text_batch;
 pub(crate) mod text_draw_row;
 

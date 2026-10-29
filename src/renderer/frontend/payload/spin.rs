@@ -1,12 +1,14 @@
-//! A paint animation's turn as a payload and a draw row carry it: a pivot and an angle.
+//! A paint animation's turn as a payload carries it: a pivot and an angle.
 
 use crate::primitives::geometry::rect::Rect;
 use glam::Vec2;
 
+/// Logical px, as the encoder places a payload: the composer maps it to a draw row's
+/// [`RowSpin`](crate::renderer::render_buffer::row_spin::RowSpin).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Spin {
-    /// The owner box's center: in a payload, in the frame its points are placed in; in a draw
-    /// row, in physical px.
+    /// The owner box's center, relative to the payload's `origin`; in the encoder's logical frame
+    /// for a payload with no origin.
     pub(crate) pivot: Vec2,
     /// Radians, applied to each point before the ancestor transform.
     pub(crate) angle: f32,

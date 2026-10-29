@@ -141,6 +141,10 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   uploads 16 B of `CornerTables` (25 % over its 64 B), which only shadow instances read; in
   `CutoutMode::Shade` all of them are `NONE`. A stream per shadow needs the instance buffer bound
   at an offset for each shadow run, and the run's shadow ordinal. No bench shows the upload.
+- **`Ordering::order` inlined into the curve lowering on the m2.** Always inlined, as x86 needs
+  (as a call, `curves/alone` +20 % and `same_tier_mesh` +25 % on the local host), the m2's
+  `curves/alone` runs 21 % slower than with `order` a call, while its `same_tier_mesh` runs 23 %
+  faster. The curve function grows from 362 to 432 instructions; no profile says why.
 - **Shader costs with a profiler.** RGP on the 680M and Xcode's Metal System Trace on the m2 can
   now split the main pass (quads, shadows) and `backdrop_frame/gpu/*/under` on the m2, which
   spends 1.6 ms over `hover` on two captures.

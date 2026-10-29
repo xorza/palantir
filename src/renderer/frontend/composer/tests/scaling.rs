@@ -129,7 +129,6 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
         |b, _arena| {
             b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
-                    origin: Vec2::ZERO,
                     points: [
                         Vec2::new(0.0, 0.0),
                         Vec2::new(10.0, 0.0),
@@ -436,7 +435,6 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
         |b, _arena| {
             b.draw(
                 DrawQuadPayload::triangle(TriangleQuad {
-                    origin: Vec2::ZERO,
                     points,
                     radius: 2.0,
                     fill: RgbaF32::WHITE.to_f16(),
@@ -472,6 +470,51 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
         );
     }
     assert_eq!(half::f16::from_bits(radius).to_f32(), 2.0);
+}
+
+/// A triangle's turn is applied to its points: a quarter turn about (14, 14),
+/// `(x, y) ↦ (14 − (y − 14), 14 + (x − 14))`, takes (4, 4), (14, 4), (4, 14) to (24, 4),
+/// (24, 14), (14, 4). At scale 2 and radius 1 the covering quad is `2·(14, 4) − 2 = (26, 6)` to
+/// `2·(24, 14) + 2 = (50, 30)`; unturned it is (6, 6) to (30, 30). The tolerance is the f32 cosine
+/// of a quarter turn, −4.4e-8, not 0, times the lengths involved.
+#[test]
+fn a_turned_triangle_turns_its_points_about_its_pivot() {
+    const EPS: f32 = 1e-4;
+    let quad_rect = |spin: Option<Spin>| {
+        let buf = run(
+            |b, _| {
+                b.draw(
+                    DrawQuadPayload::triangle(TriangleQuad {
+                        points: [
+                            Vec2::new(4.0, 4.0),
+                            Vec2::new(14.0, 4.0),
+                            Vec2::new(4.0, 14.0),
+                        ],
+                        radius: 1.0,
+                        fill: RgbaF32::WHITE.to_f16(),
+                        stroke: Stroke::NONE.into(),
+                    })
+                    .turned(spin),
+                    1.0,
+                );
+            },
+            &params(2.0, UVec2::new(100, 100)),
+        );
+        buf.quads[0].rect
+    };
+    assert_eq!(
+        quad_rect(None),
+        Rect::from_min_max(Vec2::new(6.0, 6.0), Vec2::new(30.0, 30.0))
+    );
+    let turned = quad_rect(Some(Spin {
+        pivot: Vec2::new(14.0, 14.0),
+        angle: FRAC_PI_2,
+    }));
+    assert!(
+        turned.min.abs_diff_eq(Vec2::new(26.0, 6.0), EPS)
+            && turned.max().abs_diff_eq(Vec2::new(50.0, 30.0), EPS),
+        "{turned:?}"
+    );
 }
 
 /// The display's pixel snap reaches the composed quad: a fractional rect at

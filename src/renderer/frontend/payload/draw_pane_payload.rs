@@ -23,7 +23,7 @@ pub(crate) struct DrawPanePayload {
     pub(crate) kind: RectKind,
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
-    /// A paint animation's turn, its pivot in the same logical frame as `rect`.
+    /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
     pub(crate) tint: RgbaF16,
     /// Normalized by [`ShapeStroke::normalized`], so `NONE` means no stroke exactly.

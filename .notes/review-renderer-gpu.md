@@ -50,20 +50,6 @@ test.
 
 ## Plan
 
-### Batch 9: the spin vocabulary
-
-Files: `src/renderer/frontend/payload/spin.rs` and the payloads, `src/renderer/render_buffer/`
-(`text_draw_row.rs`, `icon_draw_row.rs`), `src/gpu/raster/raster_pass.rs:18`,
-`src/renderer/frontend/encoder/plane_ctx.rs:221-227`.
-
-- [ ] Defect:
-  - `render_buffer` and `gpu::raster` import `frontend::payload::spin::Spin`, which gives the cycle
-    `payload ⇄ render_buffer` (`draw_image_payload.rs:8` → `render_buffer::image_flags`).
-  - One type names a logical pivot in a payload and a physical pivot in a row.
-  - The payloads use four pivot conventions, and the triangle is turned on the CPU.
-- [ ] Target: one logical `Spin` (pivot relative to the payload origin) on every payload, the
-  triangle included, and a physical `RowSpin` owned by `render_buffer`.
-
 ### Batch 10: present strategies
 
 Files: `src/host/offscreen.rs:109-150`, `src/host/window_driver/mod.rs:197-216`,

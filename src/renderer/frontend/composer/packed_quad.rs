@@ -95,14 +95,21 @@ impl PackedQuad {
                 }
             }
             QuadGeometry::Triangle {
-                origin,
                 a,
                 b,
                 c,
                 radius,
+                spin,
             } => {
+                let [a, b, c] = match spin {
+                    None => [a, b, c],
+                    Some(spin) => {
+                        let rotor = spin.rotor();
+                        [a, b, c].map(|q| rotor.apply(q))
+                    }
+                };
                 // No snapping: the SDF handles sub-pixel placement.
-                let to_physical = lowering.transform.physical_map(origin);
+                let to_physical = lowering.transform.physical_map(Vec2::ZERO);
                 let (a, b, c) = (
                     to_physical.point(a),
                     to_physical.point(b),

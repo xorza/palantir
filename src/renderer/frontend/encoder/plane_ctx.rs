@@ -227,8 +227,8 @@ impl PlaneCtx<'_, '_> {
         }
         let alpha = paint_mod.alpha;
         let owner_rect = self.layout.rect[id.idx()];
-        // The turn for payloads placed in the encoder's logical frame; a payload whose points are
-        // relative to an origin of its own takes `Spin::about_owner` with that origin.
+        // The turn for payloads placed in the logical frame; a payload with an origin of its own
+        // takes `Spin::about_owner` with that origin.
         let spin = Spin::about_owner(owner_rect, Vec2::ZERO, paint_mod.rotation);
         match shape {
             ShapeRecord::Quad(shape) => match shape {
@@ -279,24 +279,14 @@ impl PlaneCtx<'_, '_> {
                     border,
                     bbox: _,
                 } => {
-                    // Owner-local corner points, turned here by a paint animation; the composer folds in `origin` and the transform. Solid fill only: the reused quad lanes have no room for a gradient.
-                    let mut points = [*a, *b, *c];
-                    if let Some(spin) =
-                        Spin::about_owner(owner_rect, owner_rect.min, paint_mod.rotation)
-                    {
-                        let rotor = spin.rotor();
-                        points = points.map(|q| rotor.apply(q));
-                    }
-                    out.draw(
-                        DrawQuadPayload::triangle(TriangleQuad {
-                            origin: owner_rect.min,
-                            points,
-                            radius: *radius,
-                            fill: *fill,
-                            stroke: *border,
-                        }),
-                        alpha,
-                    );
+                    // Placed in the logical frame, as a rect is. Solid fill only: the reused quad lanes have no room for a gradient.
+                    let triangle = DrawQuadPayload::triangle(TriangleQuad {
+                        points: [*a, *b, *c].map(|q| owner_rect.min + q),
+                        radius: *radius,
+                        fill: *fill,
+                        stroke: *border,
+                    });
+                    out.draw(triangle.turned(spin), alpha);
                 }
             },
             ShapeRecord::Text {

@@ -23,23 +23,22 @@ use glam::Vec2;
 pub(crate) enum QuadGeometry {
     /// A logical-px rect and corner radii; a shadow's are the source shape's
     /// (the composer grows a drop shadow's paint rect from it after snapping).
-    /// `spin` is a paint animation's turn, its pivot in the same logical frame
-    /// as `rect`.
+    /// `spin` is a paint animation's turn.
     Rect {
         rect: Rect,
         corners: Corners,
         spin: Option<Spin>,
     },
-    /// Owner-local corner points and rounding. The composer folds `origin`
-    /// and the push-transform, scales to physical px, derives the covering
-    /// AABB (points inflated by `radius + AA fringe`) and packs the points
-    /// into the `corners` / `fill_axis` lanes.
+    /// Logical-px corner points and rounding. The composer turns the points
+    /// by `spin`, folds the push-transform, scales to physical px, derives the
+    /// covering AABB (points inflated by `radius + AA fringe`) and packs the
+    /// points into the `corners` / `fill_axis` lanes.
     Triangle {
-        origin: Vec2,
         a: Vec2,
         b: Vec2,
         c: Vec2,
         radius: f32,
+        spin: Option<Spin>,
     },
 }
 
@@ -80,11 +79,10 @@ pub(crate) struct RectQuad {
     pub(crate) stroke: ShapeStroke,
 }
 
-/// What [`DrawQuadPayload::triangle`] lowers: three owner-local `points`
-/// offset by `origin`, rounded by `radius`, with a solid fill and a stroke.
+/// What [`DrawQuadPayload::triangle`] lowers: three logical-px `points`,
+/// rounded by `radius`, with a solid fill and a stroke.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TriangleQuad {
-    pub(crate) origin: Vec2,
     pub(crate) points: [Vec2; 3],
     pub(crate) radius: f32,
     pub(crate) fill: RgbaF16,
@@ -122,12 +120,11 @@ impl DrawQuadPayload {
         }
     }
 
-    /// This rect or shadow turned by `spin`. A triangle's points turn before it is built.
-    pub(crate) fn turned(mut self, spin: Option<Spin>) -> Self {
+    /// This draw turned by `spin`.
+    pub(crate) const fn turned(mut self, spin: Option<Spin>) -> Self {
         match &mut self.geometry {
-            QuadGeometry::Rect { spin: slot, .. } => *slot = spin,
-            QuadGeometry::Triangle { .. } => {
-                debug_assert!(spin.is_none(), "a triangle's points carry its turn");
+            QuadGeometry::Rect { spin: slot, .. } | QuadGeometry::Triangle { spin: slot, .. } => {
+                *slot = spin;
             }
         }
         self
@@ -163,11 +160,10 @@ impl DrawQuadPayload {
         })
     }
 
-    /// A rounded triangle from `q`'s three owner-local points offset by its
-    /// origin. Same tier and stroke normalization as [`Self::rect`].
+    /// A rounded triangle from `q`'s three points. Same tier and stroke
+    /// normalization as [`Self::rect`].
     pub(crate) const fn triangle(q: TriangleQuad) -> Self {
         let TriangleQuad {
-            origin,
             points: [a, b, c],
             radius,
             fill,
@@ -175,11 +171,11 @@ impl DrawQuadPayload {
         } = q;
         Self {
             geometry: QuadGeometry::Triangle {
-                origin,
                 a,
                 b,
                 c,
                 radius,
+                spin: None,
             },
             fill: GpuFill {
                 color: fill,

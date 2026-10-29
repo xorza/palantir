@@ -15,7 +15,7 @@ pub(crate) struct DrawTextPayload {
     pub(crate) ink: Spacing,
     pub(crate) color: RgbaF16,
     pub(crate) text: ShapedTextRef,
-    /// A paint animation's turn, its pivot in the same logical frame as `rect`.
+    /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
 }
 

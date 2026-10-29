@@ -203,7 +203,7 @@ const PINS: &[Pin] = &[
     pin::<CollapsedDamage>("damage::CollapsedDamage", 136, 4),
     pin::<NodeSnapshot>("damage::node_snapshot::NodeSnapshot", 40, 8),
     pin::<PushClipPayload>("payload::PushClipPayload", 24, 4),
-    pin::<DrawQuadPayload>("payload::DrawQuadPayload", 76, 4),
+    pin::<DrawQuadPayload>("payload::DrawQuadPayload", 80, 4),
     pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
     pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 56, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 64, 4),

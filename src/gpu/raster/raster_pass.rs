@@ -15,7 +15,7 @@ use crate::gpu::raster::raster_atlas::{PackedRaster, RasterAtlas, RasterAtlasCon
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
-use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::row_spin::RowSpin;
 use glam::Vec2;
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -189,9 +189,9 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
         self.cut_starts.push(self.cuts.len() as u32);
     }
 
-    /// Move the quads emitted from `start` on into the turned buffer, each turned by `spin`, a
-    /// physical pivot and angle. They keep their place in the batch's paint order.
-    pub(super) fn turn_since(&mut self, start: usize, spin: Spin) {
+    /// Move the quads emitted from `start` on into the turned buffer, each turned by `spin`. They
+    /// keep their place in the batch's paint order.
+    pub(super) fn turn_since(&mut self, start: usize, spin: RowSpin) {
         let rotor = Vec2::from_angle(spin.angle);
         let first = self.spun.len() as u32;
         self.spun
