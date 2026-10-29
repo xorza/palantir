@@ -335,6 +335,13 @@ impl WindowDriver {
         }
     }
 
+    /// Drop from the pane ledger the results the shared backdrop atlas evicted from this window's
+    /// panes, so its next frame captures them again.
+    pub(super) fn forget_evicted_panes(&mut self, backend: &mut WgpuBackend) {
+        let ledger = &mut self.pane_captures;
+        backend.drain_evicted_panes(self.render_owner, |key| ledger.forget(key));
+    }
+
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
     /// an edge of exactly that frame.
     pub(super) fn deliver_screenshot(&mut self, backend: &WgpuBackend) {

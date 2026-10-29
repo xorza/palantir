@@ -88,6 +88,7 @@ use crate::gpu::surface::capture::{Capture, CaptureSource};
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::geometry::urect::URect;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
@@ -960,6 +961,17 @@ impl WgpuBackend {
     /// Run the map callbacks of the copies the device has finished, without waiting for the rest.
     pub(crate) fn poll(&self) {
         self.gpu.device.poll(wgpu::PollType::Poll).ok();
+    }
+
+    /// Hand `owner`'s pane ledger, through `forget`, each pane whose backdrop result the shared
+    /// atlas evicted, before its next frame decides what its panes hold.
+    pub(crate) fn drain_evicted_panes(
+        &mut self,
+        owner: RenderOwnerId,
+        mut forget: impl FnMut(PaneKey),
+    ) {
+        self.backdrops.evicted(owner).for_each(&mut forget);
+        self.backdrops.forget_evicted(owner);
     }
 
     /// Release every `GpuView` target owned by a retired render stream (called as a

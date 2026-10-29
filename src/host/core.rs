@@ -105,6 +105,7 @@ impl HostCore {
     ) -> CpuFrame {
         driver.note_target(&spec);
         driver.deliver_screenshot(&self.backend);
+        driver.forget_evicted_panes(&mut self.backend);
         let stamp = driver.stamp(&spec);
         driver.cpu_frame(&mut self.frontend, stamp, app)
     }

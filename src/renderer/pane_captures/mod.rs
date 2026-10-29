@@ -181,6 +181,11 @@ impl PaneCaptures {
         }
     }
 
+    /// Stop holding pane `key`'s capture, whose result the device no longer keeps.
+    pub(crate) fn forget(&mut self, key: PaneKey) {
+        self.held.remove(&key);
+    }
+
     /// The tickets [`Self::decide`] wrote last.
     pub(crate) fn tickets(&self) -> &[Option<PaneTicket>] {
         &self.tickets

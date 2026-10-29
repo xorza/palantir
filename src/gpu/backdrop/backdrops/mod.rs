@@ -3,16 +3,16 @@
 
 use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, LEVEL_FORMAT, TargetSource};
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::raster::raster_atlas::shelf_packer::ShelfPacker;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target::{self, TargetFormat};
+use crate::gpu::surface::render_target::TargetFormat;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_buffer::backdrop_row::PaneSource;
+use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::render_owner_id::RenderOwnerId;
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
@@ -33,11 +33,52 @@ struct BackdropSlot {
     max_luminance: f32,
 }
 
+impl BackdropSlot {
+    /// How `row`'s quad finds `kept`, its result.
+    fn of(row: &BackdropRow, kept: Kept) -> Self {
+        let (offset, lattice, clear) = match kept {
+            Kept::Slot(slot) => {
+                let apron = UVec2::splat(row.plan.apron());
+                let offset = (slot.min + apron).as_vec2() - row.region.min.as_vec2();
+                (offset, row.plan.lattice() as f32, [0.0; 3])
+            }
+            Kept::Clear(clear) => (Vec2::ZERO, 0.0, clear),
+        };
+        let lens = row.lens.map_or([0.0; 4], |lens| {
+            [
+                lens.bezel,
+                lens.thickness,
+                lens.refractive_index,
+                lens.dispersion,
+            ]
+        });
+        Self {
+            offset,
+            lattice,
+            highlight: row.lens.map_or(0.0, |lens| lens.highlight),
+            lens,
+            clear,
+            max_luminance: row.max_luminance,
+        }
+    }
+}
+
+/// A new slot's edges round up to this many texels, so a pane that grows a few px a frame keeps
+/// its slot rather than taking a new one each frame.
+const SLOT_GRANULE: u32 = 16;
+
 /// The side the results atlas starts at; it doubles when a result finds no room.
 const FIRST_SIDE: u32 = 1024;
 
-/// A pane's result kept across frames, under the plan and region its row names: the pane ledger
-/// says what it blurred.
+/// A pane's result kept across frames, and the [`Backdrops::prepare`] call that last used it.
+#[derive(Clone, Copy, Debug)]
+struct Cached {
+    kept: Kept,
+    used: u64,
+}
+
+/// What a kept result holds, under the plan and region its row names: the pane ledger says what
+/// it blurred.
 #[derive(Clone, Copy, Debug)]
 enum Kept {
     /// The atlas texels the result and its apron hold.
@@ -70,13 +111,19 @@ pub(crate) struct BlurBreak {
 /// Every window's panes blurred into one atlas, a slot each, kept while a pane's backdrop holds,
 /// and the group their quads read it through. Buffers and textures grow to the largest frame seen
 /// and are kept.
+///
+/// At its ceiling the atlas evicts the least recently used results no pane of the frame reads,
+/// from any window, and lists them ([`Self::evicted`]) for each window's pane ledger to drop; a
+/// result that finds no room even then shows its tint over the clear and captures again.
 #[derive(Debug)]
 pub(crate) struct Backdrops {
     blur: BackdropBlur,
-    cache: FxHashMap<(RenderOwnerId, PaneKey), Kept>,
-    packer: ShelfPacker,
-    atlas: wgpu::Texture,
-    atlas_view: wgpu::TextureView,
+    cache: FxHashMap<(RenderOwnerId, PaneKey), Cached>,
+    /// How many times [`Self::prepare`] ran, the stamp of the results its frame reads.
+    prepared: u64,
+    /// The results evicted from a window's panes, until its pane ledger drops them.
+    evicted: Vec<(RenderOwnerId, PaneKey)>,
+    atlas: PackedAtlas,
     /// This frame's blurs, the footprint each copies, and the breaks they run at, in paint order.
     jobs: Vec<BlurJob>,
     footprints: Vec<URect>,
@@ -95,6 +142,15 @@ pub(crate) struct Backdrops {
 
 impl Backdrops {
     pub(crate) fn new(device: &wgpu::Device) -> Self {
+        let ceiling = device
+            .limits()
+            .max_texture_dimension_2d
+            .min(u32::from(u16::MAX));
+        Self::with_ceiling(device, ceiling)
+    }
+
+    /// [`Self::new`] with a results atlas that grows to an edge of `ceiling` texels.
+    fn with_ceiling(device: &wgpu::Device, ceiling: u32) -> Self {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.backdrop.composite.bgl"),
             entries: &[
@@ -124,16 +180,25 @@ impl Backdrops {
             ..Default::default()
         });
         let slot_buffer = DynamicBuffer::storage(device, "palantir.backdrop.slots", 4);
-        let atlas = atlas_texture(device, FIRST_SIDE);
-        let atlas_view = atlas.create_view(&wgpu::TextureViewDescriptor::default());
-        let group = composite_group(device, &layout, &atlas_view, &sampler, &slot_buffer);
+        let atlas = PackedAtlas::new(
+            device,
+            AtlasSpec {
+                label: "palantir.backdrop.results".to_owned(),
+                format: LEVEL_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                ceiling,
+            },
+            FIRST_SIDE,
+        );
+        let group = composite_group(device, &layout, atlas.view(), &sampler, &slot_buffer);
         let group_capacity = slot_buffer.capacity();
         Self {
             blur: BackdropBlur::new(device),
             cache: FxHashMap::default(),
-            packer: ShelfPacker::new(FIRST_SIDE as u16),
+            prepared: 0,
+            evicted: Vec::new(),
             atlas,
-            atlas_view,
             jobs: Vec::new(),
             footprints: Vec::new(),
             breaks: Vec::new(),
@@ -168,6 +233,14 @@ impl Backdrops {
             target,
         } = frame;
         self.evict(owner, &buffer.live_panes);
+        self.prepared += 1;
+        // Every result the frame reads is stamped first, so making room for one never evicts
+        // another.
+        for row in &buffer.backdrops {
+            if let Some(cached) = self.cache.get_mut(&(owner, row.key)) {
+                cached.used = self.prepared;
+            }
+        }
         self.jobs.clear();
         self.footprints.clear();
         self.breaks.clear();
@@ -181,7 +254,14 @@ impl Backdrops {
             let kept = match row.source {
                 PaneSource::Capture { barrier } => {
                     let size = row.region.size + UVec2::splat(2 * row.plan.apron());
-                    let slot = self.slot_for(ctx, at, size);
+                    let Some(slot) = self.slot_for(at, size) else {
+                        self.evicted.push(at);
+                        self.slots.push(BackdropSlot::of(
+                            row,
+                            Kept::Clear(held_clear(clear, format)),
+                        ));
+                        continue;
+                    };
                     let job = self.jobs.len();
                     match self.breaks.last_mut() {
                         Some(last) if last.barrier == barrier => last.jobs.end = job + 1,
@@ -207,67 +287,54 @@ impl Backdrops {
                     });
                     self.footprints.push(row.footprint);
                     scratch_row += row.region.size.y;
-                    self.cache.insert(at, Kept::Slot(slot));
-                    Kept::Slot(slot)
+                    self.keep(at, Kept::Slot(slot))
                 }
                 PaneSource::Clear => {
                     self.drop_result(at);
-                    let kept = Kept::Clear(held_clear(clear, format));
-                    self.cache.insert(at, kept);
-                    kept
+                    self.keep(at, Kept::Clear(held_clear(clear, format)))
                 }
                 PaneSource::Hidden => {
                     // Its quad was pruned, so no fragment reads its slot.
                     self.slots.push(BackdropSlot::default());
                     continue;
                 }
-                PaneSource::Held => *self
-                    .cache
-                    .get(&at)
-                    .expect("a pane that keeps its capture holds a result"),
-            };
-            let (offset, lattice, clear) = match kept {
-                Kept::Slot(slot) => {
-                    let apron = UVec2::splat(row.plan.apron());
-                    let offset = (slot.min + apron).as_vec2() - row.region.min.as_vec2();
-                    (offset, row.plan.lattice() as f32, [0.0; 3])
+                PaneSource::Held => {
+                    if let Some(cached) = self.cache.get(&at) {
+                        cached.kept
+                    } else {
+                        // Another window's frame evicted it after this one decided.
+                        debug_assert!(
+                            self.evicted.contains(&at),
+                            "a pane that keeps its capture holds a result"
+                        );
+                        self.slots.push(BackdropSlot::of(
+                            row,
+                            Kept::Clear(held_clear(clear, format)),
+                        ));
+                        continue;
+                    }
                 }
-                Kept::Clear(clear) => (Vec2::ZERO, 0.0, clear),
             };
-            let lens = row.lens.map_or([0.0; 4], |lens| {
-                [
-                    lens.bezel,
-                    lens.thickness,
-                    lens.refractive_index,
-                    lens.dispersion,
-                ]
-            });
-            self.slots.push(BackdropSlot {
-                offset,
-                lattice,
-                highlight: row.lens.map_or(0.0, |lens| lens.highlight),
-                lens,
-                clear,
-                max_luminance: row.max_luminance,
-            });
+            self.slots.push(BackdropSlot::of(row, kept));
         }
         let target = target
             .filter(|_| !self.jobs.is_empty())
             .map(|(texture, view)| self.target_source(ctx.device, owner, texture, view, format));
         self.blur.prepare(ctx, &self.jobs, target);
         self.slot_buffer.upload_instances(ctx, &self.slots);
-        if self.slot_buffer.capacity() != self.group_capacity {
+        let grew = self.atlas.commit(ctx.device, ctx.encoder);
+        if grew || self.slot_buffer.capacity() != self.group_capacity {
             self.rebind(ctx.device);
         }
     }
 
     /// Drop the results of `owner`'s panes not in `live`, the panes its frame painted or kept.
     fn evict(&mut self, owner: RenderOwnerId, live: &[PaneKey]) {
-        let packer = &mut self.packer;
-        self.cache.retain(|&(at, key), kept| {
+        let atlas = &mut self.atlas;
+        self.cache.retain(|&(at, key), cached| {
             let keep = at != owner || live.contains(&key);
-            if !keep && let Kept::Slot(slot) = *kept {
-                packer.deallocate(slot_origin(slot), slot.size.x as u16);
+            if !keep && let Kept::Slot(slot) = cached.kept {
+                atlas.deallocate(slot_origin(slot), slot.size.x as u16);
             }
             keep
         });
@@ -276,6 +343,7 @@ impl Backdrops {
     /// Drop every result of `owner`, whose window closed, and its target's group.
     pub(crate) fn retire(&mut self, owner: RenderOwnerId) {
         self.evict(owner, &[]);
+        self.forget_evicted(owner);
         self.targets.retain(|(at, ..)| *at != owner);
     }
 
@@ -305,75 +373,96 @@ impl Backdrops {
         self.blur.reads_target()
     }
 
-    /// A slot of `size` for pane `at`: its cached one when that holds it, else a new one, the
-    /// atlas grown until it has room.
-    fn slot_for(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        at: (RenderOwnerId, PaneKey),
-        size: UVec2,
-    ) -> URect {
-        if let Some(Kept::Slot(slot)) = self.cache.get(&at)
+    /// A slot of `size` for pane `at`: its cached one when that holds it, else a new one rounded
+    /// up to [`SLOT_GRANULE`], the atlas grown until it has room, and past its ceiling the least
+    /// recently used results no pane of this frame reads evicted; `None` when nothing more can go.
+    fn slot_for(&mut self, at: (RenderOwnerId, PaneKey), size: UVec2) -> Option<URect> {
+        if let Some(Cached {
+            kept: Kept::Slot(slot),
+            ..
+        }) = self.cache.get(&at)
             && slot.size.x >= size.x
             && slot.size.y >= size.y
         {
-            return *slot;
+            return Some(*slot);
         }
         self.drop_result(at);
-        let want = U16Vec2::new(
-            u16::try_from(size.x).expect("a result fits a texture"),
-            u16::try_from(size.y).expect("a result fits a texture"),
-        );
+        let size = size.map(|edge| edge.next_multiple_of(SLOT_GRANULE));
+        let want = U16Vec2::new(u16::try_from(size.x).ok()?, u16::try_from(size.y).ok()?);
+        if !self.atlas.fits_ceiling(want) {
+            return None;
+        }
         loop {
-            if let Some(origin) = self.packer.allocate(want) {
-                return URect {
+            if let Some(origin) = self.atlas.allocate(want) {
+                return Some(URect {
                     min: origin.as_uvec2(),
                     size,
-                };
+                });
             }
-            self.grow(ctx);
+            if !self.atlas.grow() && !self.evict_lru() {
+                return None;
+            }
         }
+    }
+
+    /// Keep `kept` as pane `at`'s result, read by this frame.
+    fn keep(&mut self, at: (RenderOwnerId, PaneKey), kept: Kept) -> Kept {
+        self.cache.insert(
+            at,
+            Cached {
+                kept,
+                used: self.prepared,
+            },
+        );
+        kept
+    }
+
+    /// Evict the least recently used result in a slot that no pane of this frame reads, and list
+    /// it for its window's ledger; `false` when there is none.
+    fn evict_lru(&mut self) -> bool {
+        let prepared = self.prepared;
+        let Some((&at, _)) = self
+            .cache
+            .iter()
+            .filter(|(_, cached)| cached.used != prepared && matches!(cached.kept, Kept::Slot(_)))
+            .min_by_key(|(_, cached)| cached.used)
+        else {
+            return false;
+        };
+        self.drop_result(at);
+        self.evicted.push(at);
+        true
+    }
+
+    /// The panes of `owner` whose results went, which its pane ledger must stop holding.
+    pub(crate) fn evicted(&self, owner: RenderOwnerId) -> impl Iterator<Item = PaneKey> {
+        self.evicted
+            .iter()
+            .filter(move |(at, _)| *at == owner)
+            .map(|&(_, key)| key)
+    }
+
+    /// Forget the evictions [`Self::evicted`] listed for `owner`, which its ledger took.
+    pub(crate) fn forget_evicted(&mut self, owner: RenderOwnerId) {
+        self.evicted.retain(|(at, _)| *at != owner);
     }
 
     /// Drop pane `at`'s cached result, freeing its slot of the atlas if it holds one.
     fn drop_result(&mut self, at: (RenderOwnerId, PaneKey)) {
-        if let Some(Kept::Slot(slot)) = self.cache.remove(&at) {
-            self.packer
-                .deallocate(slot_origin(slot), slot.size.x as u16);
+        if let Some(Cached {
+            kept: Kept::Slot(slot),
+            ..
+        }) = self.cache.remove(&at)
+        {
+            self.atlas.deallocate(slot_origin(slot), slot.size.x as u16);
         }
-    }
-
-    /// Double the atlas, copying every result over.
-    fn grow(&mut self, ctx: &mut GpuCtx<'_>) {
-        let side = self.atlas.width() * 2;
-        let max = ctx
-            .device
-            .limits()
-            .max_texture_dimension_2d
-            .min(u32::from(u16::MAX));
-        assert!(
-            side <= max,
-            "the backdrop results outgrow a {max} px texture"
-        );
-        let atlas = atlas_texture(ctx.device, side);
-        ctx.encoder.copy_texture_to_texture(
-            self.atlas.as_image_copy(),
-            atlas.as_image_copy(),
-            render_target::extent(UVec2::splat(self.atlas.width())),
-        );
-        self.packer.grow(side as u16);
-        self.atlas = atlas;
-        self.atlas_view = self
-            .atlas
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        self.rebind(ctx.device);
     }
 
     fn rebind(&mut self, device: &wgpu::Device) {
         self.group = composite_group(
             device,
             &self.layout,
-            &self.atlas_view,
+            self.atlas.view(),
             &self.sampler,
             &self.slot_buffer,
         );
@@ -398,7 +487,7 @@ impl Backdrops {
 
     /// Record blurs `jobs`, of one break, from their capture into their slots of the atlas.
     pub(crate) fn encode_blurs(&self, encoder: &mut wgpu::CommandEncoder, jobs: Range<usize>) {
-        self.blur.encode(encoder, jobs, &self.atlas_view);
+        self.blur.encode(encoder, jobs, self.atlas.view());
     }
 }
 
@@ -418,22 +507,6 @@ fn held_clear(clear: RgbaF16, format: TargetFormat) -> [f32; 3] {
 
 const fn slot_origin(slot: URect) -> U16Vec2 {
     U16Vec2::new(slot.min.x as u16, slot.min.y as u16)
-}
-
-fn atlas_texture(device: &wgpu::Device, side: u32) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.backdrop.results"),
-        size: render_target::extent(UVec2::splat(side)),
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: LEVEL_FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-            | wgpu::TextureUsages::TEXTURE_BINDING
-            | wgpu::TextureUsages::COPY_SRC
-            | wgpu::TextureUsages::COPY_DST,
-        view_formats: &[],
-    })
 }
 
 fn composite_group(

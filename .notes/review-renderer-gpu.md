@@ -18,10 +18,8 @@ test.
    register → pane break in its own shape. One of these paths misses a check (bug B1), and the
    reach rect of a turned quad is derived in two ways (bug B3).
 3. **Shared mechanics live inside one consumer or in a hub.**
-   - `ShelfPacker` sits in `raster_atlas`, and the backdrop atlas reaches into it.
    - `ShaderBody` holds every shader's path and constants, which gives `pipeline ⇄ raster` and
      `pipeline ⇄ shader_body` module cycles.
-   - Each atlas has its own growth and "full" contract, and the backdrop atlas panics.
    - Each pipeline hand-rolls the same scaffolding with a different bind and upload shape.
 4. **Rust and WGSL logic mirrors are not pinned.** The shadow spread rules and the shadow box are
    written twice, and no test compares the two copies. (The buffer structs are pinned by naga
@@ -32,7 +30,6 @@ test.
 - **`Backdrops` (gpu), now a slot allocator `(owner, key) → Kept` under the pane ledger.**
   - It is made on the first frame that has panes, not at backend start (8.4 MB atlas, 5 blur
     pipelines).
-  - Its atlas is a `PackedAtlas`. A full atlas degrades and does not panic.
   - Its work unit is the break (`BlurBreak`): timing, copies and blurs go one break at a time.
   - `BackdropBlur` borrows the jobs and does not copy them. `BlurJob` carries its own footprint.
 - **`RenderStream` (gpu, per owner).** It holds the backbuffer with its blur-source group, the
@@ -44,8 +41,6 @@ test.
   occlusion pruner and the pane break, with one `admit(lane, bounds)` over the total order
   Quad < Text < Mesh < Image < Icon < Curve. Each draw kind's lowering hands it the one reach rect
   that its instance type defines, the same rect the pruner uses.
-- **`gpu::resource::{shelf_packer, packed_atlas}`.** These are the one growable atlas, with one
-  `AtlasFull` result, for the raster sides and the backdrop results.
 - **Pipeline families.**
   - Each family owns its shader source, its constants, and an instance layout derived from
     `offset_of!`.
@@ -55,49 +50,6 @@ test.
     which groups each key binds. The backend does not branch on `QuadForm::Backdrop`.
 
 ## Plan
-
-### Batch 3: one packed atlas
-
-Files: `src/gpu/raster/raster_atlas/` (`shelf_packer.rs`, `side.rs`, `mod.rs`, `atlas_slot.rs`,
-`free_slots.rs`), `src/gpu/backdrop/backdrops/`, new `src/gpu/resource/{shelf_packer,
-packed_atlas}`.
-
-- [ ] `backdrops/mod.rs:6`, `raster_atlas/side.rs:133-182`, `backdrops/mod.rs:350-399`.
-  - Defect: one structure (packer, texture, view, grow by blit, rebind) is written twice. The
-    backdrop atlas reaches into raster internals for `ShelfPacker`.
-  - Target: `PackedAtlas { packer, texture, view, size, ceiling, pending_grow }` with
-    `allocate -> Result<_, AtlasFull>`, `grow_to(edge)` and `deallocate`, used by the raster sides
-    and `Backdrops`. The cutout plan keeps its own packer, and its doc says why.
-- [ ] `backdrops/mod.rs:383-388`.
-  - Defect: past `min(max_texture_dimension_2d, u16::MAX)` a release `assert!` panics on
-    data-driven content. A level-0 plan stores results at full resolution: a 4K full-screen pane
-    takes 66 MB, so about eight reach the limit on an 8192 device.
-  - Target: on `AtlasFull`, evict the results that no pane of this frame uses. If the frame's own
-    results do not fit, store a result one level down. Do not panic.
-- [ ] `raster_atlas/mod.rs:413-430`, `side.rs:133-156`, `backdrops/mod.rs` `grow`.
-  - Defect: a burst that needs several doublings creates a texture at each step (for example a
-    4 MiB mask texture that is never sampled). The backdrop atlas copies at each step.
-  - Target: compute the needed edge, then make one `grow_to`.
-- [ ] `shelf_packer.rs:91-96,136-144`.
-  - Defect: empty shelves in the middle never merge, and the fallback takes the first empty shelf,
-    not the best fit. So an insert can return `AtlasFull` while room can be evicted. Each eviction
-    round scans the whole slab twice.
-  - Target: merge adjacent empty shelves on deallocate, and pick the best-fit empty shelf, as
-    étagère does.
-- [ ] `shelf_packer.rs:84-88,134`, `backdrops/mod.rs` `slot_for`.
-  - Defect: a new shelf allocates `vec![row]`, so a raster miss allocates after warmup, and a pane
-    that animates its size reallocates its slot every frame.
-  - Target: one flat span `Vec` with per-shelf ranges, and slots rounded up with slack.
-- [ ] `atlas_slot.rs:279-286`, `free_slots.rs:14-31`.
-  - Defect: slot state is split over `placement: Option` and `free: bool`, where `(Some, true)`
-    cannot occur. `FreeSlots::release` mutates the slab.
-  - Target: `enum SlotState { Placed, Unplaced, Free }`, and `release` on `Slab`.
-- [ ] Tests:
-  - read back an atlas after a grow;
-  - two grows in one frame;
-  - backdrop atlas exhaustion.
-  - The eviction policy becomes device-free unit tests on the GPU-free core
-    (`raster_atlas/tests.rs:285-618`).
 
 ### Batch 4: backdrop GPU resources
 

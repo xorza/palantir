@@ -6,7 +6,7 @@ use crate::primitives::paint::content_type::ContentType;
 use glam::{I16Vec2, IVec2, U16Vec2, UVec2};
 
 /// Where a packed raster sits on its side, its bearing and its packer rectangle; a non-drawing entry owns none.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SlotPlacement {
     /// Top-left texel on its side.
     pub(crate) origin: U16Vec2,
@@ -45,22 +45,40 @@ impl SlotPlacement {
 /// One entry of [`RasterAtlas`](super::RasterAtlas)'s dense slab; narrow and `Copy` for the per-glyph hit path.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AtlasSlot {
-    /// Where this raster draws from, or `None` for a non-drawing entry
-    /// (whitespace, no pixels), which expires on a deadline. `Some` is what
-    /// lets the eviction clock reclaim it; [`FreeSlots::release`](super::free_slots::FreeSlots::release) clears it.
-    pub(crate) placement: Option<SlotPlacement>,
+    pub(crate) state: SlotState,
     /// Bumped when the index goes to another raster, so a stale encoded run is detected.
     pub(crate) generation: u32,
     /// Frame last drawn or looked up; the clock hand skips the current frame.
     pub(crate) last_use: u64,
-    /// On the free list. `placement` cannot say so (a live non-drawing entry is
-    /// also `None`) and the list is `O(n)`. Rides in existing padding.
-    pub(crate) free: bool,
+}
+
+/// What a slab entry holds. The enum's spare values ride in [`ContentType`]'s niche, so it is no
+/// wider than its placement.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum SlotState {
+    /// A raster drawn from its rectangle, which the eviction clock can reclaim.
+    Placed(SlotPlacement),
+    /// A live entry that draws nothing (whitespace, no pixels), which expires on a deadline.
+    Unplaced,
+    /// On the free list, named by no cache key; set by
+    /// [`FreeSlots::release`](super::free_slots::FreeSlots::release).
+    Free,
+}
+
+impl AtlasSlot {
+    /// Where the entry draws from, `None` for one that draws nothing or is free.
+    #[inline]
+    pub(crate) const fn placement(&self) -> Option<SlotPlacement> {
+        match self.state {
+            SlotState::Placed(placement) => Some(placement),
+            SlotState::Unplaced | SlotState::Free => None,
+        }
+    }
 }
 
 #[cfg(test)]
 pub(super) mod internals {
-    use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement};
+    use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
     use crate::primitives::paint::content_type::ContentType;
     use glam::{I16Vec2, U16Vec2};
 
@@ -80,10 +98,13 @@ pub(super) mod internals {
         /// A mask entry with a zero placement when `drawn`, none otherwise, and its stamps.
         pub(crate) fn for_test(drawn: bool, last_use: u64) -> Self {
             Self {
-                placement: drawn.then(SlotPlacement::for_test),
+                state: if drawn {
+                    SlotState::Placed(SlotPlacement::for_test())
+                } else {
+                    SlotState::Unplaced
+                },
                 generation: 0,
                 last_use,
-                free: false,
             }
         }
     }

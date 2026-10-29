@@ -1,25 +1,14 @@
-//! One per-content-type atlas texture: its allocator, growth by doubling, and
-//! the old texture preserved across a grow.
+//! One per-content-type atlas texture and the eviction latch its clock keeps.
 
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
-use crate::gpu::raster::raster_atlas::shelf_packer::ShelfPacker;
+use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
 use crate::primitives::paint::content_type::ContentType;
-use glam::U16Vec2;
-use std::mem;
 
-const ATLAS_GROWTH_FACTOR: u32 = 2;
-
-/// One per-content-type backing store, indexed by `ContentType as usize`; owns
-/// its texture through every doubling.
+/// One per-content-type backing store, indexed by `ContentType as usize`.
 #[derive(Debug)]
 pub(super) struct Side {
-    pub(super) texture: wgpu::Texture,
-    pub(super) view: wgpu::TextureView,
-    pub(super) size: u32,
-    /// Largest edge this side will reach ([`Side::growth_ceiling`]), resolved once
-    /// because `RasterAtlas::allocate` reads it per entry and recomputing cost a
-    /// `u64` divide and an `isqrt` per cache miss.
-    ceiling: u32,
+    /// The texture and its packer, grown by doubling up to [`Side::growth_ceiling`].
+    pub(super) atlas: PackedAtlas,
     /// The frame a full clock rotation over this side last came up empty on.
     ///
     /// A rotation is O(slab) and `allocate` asks for a victim per entry it can't
@@ -27,48 +16,6 @@ pub(super) struct Side {
     /// starving entry. Each walk is wasted: `last_use` never moves down within a
     /// frame, so once walked dry nothing is evictable until the clock advances.
     pub(super) dry_frame: Option<u64>,
-    pub(super) packer: ShelfPacker,
-    /// On grow, the previous-frame texture is moved here so the shared-encoder
-    /// flush can record the copy. `None` when no grow blit is pending.
-    pending_grow: Option<PendingGrow>,
-    texture_spec: TextureSpec,
-}
-
-/// What every texture of one side shares through its doublings.
-#[derive(Debug)]
-struct TextureSpec {
-    format: wgpu::TextureFormat,
-    /// GPU debug name, built once so a grow reuses it.
-    label: String,
-}
-
-impl TextureSpec {
-    fn create(&self, device: &wgpu::Device, size: u32) -> wgpu::Texture {
-        device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&self.label),
-            size: wgpu::Extent3d {
-                width: size,
-                height: size,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: self.format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        })
-    }
-}
-
-/// Old texture and its size (square edge length) preserved across the grow
-/// point; consumed by [`Side::record_grow_blit`].
-#[derive(Debug)]
-struct PendingGrow {
-    old_texture: wgpu::Texture,
-    old_size: u32,
 }
 
 impl Side {
@@ -83,22 +30,15 @@ impl Side {
             ContentType::Mask => config.initial_mask_px,
             ContentType::Color => config.initial_color_px,
         };
-        let size = initial.min(max);
-        let texture_spec = TextureSpec {
-            format: texture_format(content),
+        let spec = AtlasSpec {
             label: format!("{} {} atlas", config.label, content.side_name()),
-        };
-        let texture = texture_spec.create(device, size);
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        Self {
-            texture,
-            view,
-            size,
+            format: texture_format(content),
+            usage: wgpu::TextureUsages::TEXTURE_BINDING,
             ceiling: Self::growth_ceiling(max, content, config.max_bytes),
+        };
+        Self {
+            atlas: PackedAtlas::new(device, spec, initial),
             dry_frame: None,
-            packer: ShelfPacker::new(edge(size)),
-            pending_grow: None,
-            texture_spec,
         }
     }
 
@@ -113,83 +53,6 @@ impl Side {
         let by_bytes = (max_bytes / u64::from(content.bytes_per_pixel())).isqrt() as u32;
         max_texture_dimension_2d.min(by_bytes)
     }
-
-    /// Whether a rect of `size` can be placed as the side stands. Exact, so it can
-    /// gate: the packer's shelves span the side, so its reject is `w > edge || h > edge`,
-    /// matching this texel for texel.
-    pub(super) const fn fits_now(&self, size: U16Vec2) -> bool {
-        fits_edge(size, self.size)
-    }
-
-    /// Whether a rect of `size` could *ever* be placed here, asked before evicting
-    /// since freeing rectangles can't widen a texture.
-    pub(super) const fn fits_ceiling(&self, size: U16Vec2) -> bool {
-        fits_edge(size, self.ceiling)
-    }
-
-    /// Double this side's texture, stashing the old one for the grow blit. `false`
-    /// at the ceiling, where the atlas recycles rectangles. The packer keeps every
-    /// placement through a grow, so nothing re-rasterizes and no uv moves.
-    pub(super) fn grow(&mut self, device: &wgpu::Device) -> bool {
-        if self.size >= self.ceiling {
-            return false;
-        }
-        let new_size = (self.size * ATLAS_GROWTH_FACTOR).min(self.ceiling);
-        let new_texture = self.texture_spec.create(device, new_size);
-        let old_size = self.size;
-        let old_texture = mem::replace(&mut self.texture, new_texture);
-
-        // A pending grow this frame keeps the oldest texture: it holds the live pixels.
-        if self.pending_grow.is_none() {
-            self.pending_grow = Some(PendingGrow {
-                old_texture,
-                old_size,
-            });
-        }
-
-        self.view = self
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
-        self.size = new_size;
-        self.packer.grow(edge(new_size));
-        true
-    }
-
-    /// Whether a grow this frame still owes its blit.
-    pub(super) const fn has_pending_grow(&self) -> bool {
-        self.pending_grow.is_some()
-    }
-
-    /// Record the pending grow's copy of the old texture into the top-left of the new one, which
-    /// must precede any raster written this frame. A no-op with no grow pending.
-    pub(super) fn record_grow_blit(&mut self, encoder: &mut wgpu::CommandEncoder) {
-        let Some(PendingGrow {
-            old_texture,
-            old_size,
-        }) = self.pending_grow.take()
-        else {
-            return;
-        };
-        encoder.copy_texture_to_texture(
-            old_texture.as_image_copy(),
-            self.texture.as_image_copy(),
-            wgpu::Extent3d {
-                width: old_size,
-                height: old_size,
-                depth_or_array_layers: 1,
-            },
-        );
-    }
-}
-
-/// A side's edge as the packer counts it; a 2D texture is at most 16384 texels wide.
-fn edge(size: u32) -> u16 {
-    u16::try_from(size).expect("an atlas side fits a texture's 16-bit edge")
-}
-
-/// Whether a rect of `size` fits inside a square side of `edge` texels.
-const fn fits_edge(size: U16Vec2, edge: u32) -> bool {
-    size.x as u32 <= edge && size.y as u32 <= edge
 }
 
 /// The texture format an atlas side stores `content` in. Here rather than on

@@ -38,11 +38,11 @@ impl SidesLayout {
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&mask.view),
+                    resource: wgpu::BindingResource::TextureView(mask.atlas.view()),
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&color.view),
+                    resource: wgpu::BindingResource::TextureView(color.atlas.view()),
                 },
             ],
         })
