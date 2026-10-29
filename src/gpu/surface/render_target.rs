@@ -97,6 +97,15 @@ pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
     }
 }
 
+/// The texel at `at` of a texture's first layer, as a copy names it.
+pub(crate) const fn origin(at: UVec2) -> wgpu::Origin3d {
+    wgpu::Origin3d {
+        x: at.x,
+        y: at.y,
+        z: 0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};

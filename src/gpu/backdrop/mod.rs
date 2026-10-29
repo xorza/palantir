@@ -56,8 +56,12 @@
 //! - **No banding.** The levels are `Rgba16Float`; before an 8-bit target writes, the composite
 //!   adds interleaved gradient noise of one encoded step, scaled to linear by the sRGB curve's
 //!   slope. Grain (`noise`) is separate and fixed to the pane, so it moves and turns with it.
-//! - **A still pane costs nothing.** No allocation after warmup: the capture, the levels and the
-//!   atlas grow with the largest surface and result seen and are kept.
+//! - **A still pane costs nothing, and an app with none pays for nothing.** The blur's pipelines
+//!   and the atlas are made on the first frame with a pane. The capture and the levels hold one
+//!   break's footprints from the first texel the break reads, and grow by 256-texel steps to the
+//!   largest break seen, so a resize drag makes them again only now and then; the atlas grows with
+//!   the largest result. No allocation after warmup. Refused: a capture and levels of the whole
+//!   surface, 55 MB at 4K for a menu of a few hundred px.
 //!
 //! Out of scope: a filter on a subtree's own pixels (CSS `filter: blur`), which needs isolated
 //! offscreen groups and has no workload; a progressive blur; OS window materials (Mica,

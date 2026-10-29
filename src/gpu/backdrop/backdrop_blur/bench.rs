@@ -9,7 +9,7 @@
 
 use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
-use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, LEVEL_FORMAT};
+use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::primitives::geometry::urect::URect;
@@ -68,9 +68,11 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                     plan,
                     surface,
                     format: TARGET_FORMAT,
+                    footprint: URect::new(0, 0, side, side),
                     region,
                     dest_origin: UVec2::ZERO,
                     scratch_origin: UVec2::ZERO,
+                    layout: JobLayout::default(),
                 };
                 let mut blur = BackdropBlur::new(device);
                 fill_capture(gpu, &mut blur, side);
@@ -90,7 +92,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                     view_formats: &[],
                 });
                 let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
-                time_jobs(bencher, gpu, &mut blur, &[job], &view);
+                time_jobs(bencher, gpu, &mut blur, &mut [job], &view);
             });
         }
     }
@@ -101,14 +103,16 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
             let device = &gpu.gpu.device;
             let plan = BlurPlan::new(32.0);
             assert_eq!(plan.levels(), 3, "σ 32 px halves three times");
-            let jobs: Vec<BlurJob> = (0..n)
+            let mut jobs: Vec<BlurJob> = (0..n)
                 .map(|i| BlurJob {
                     plan,
                     surface: UVec2::splat(2048),
                     format: TARGET_FORMAT,
+                    footprint: URect::new(0, 0, 2048, 2048),
                     region: URect::new(16 * i, 8, 8, 8),
                     dest_origin: UVec2::new(16 * i, 0),
                     scratch_origin: UVec2::new(0, 8 * i),
+                    layout: JobLayout::default(),
                 })
                 .collect();
             let mut blur = BackdropBlur::new(device);
@@ -131,7 +135,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                 view_formats: &[],
             });
             let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
-            time_jobs(bencher, gpu, &mut blur, &jobs, &view);
+            time_jobs(bencher, gpu, &mut blur, &mut jobs, &view);
         });
     }
     group.finish();
@@ -142,7 +146,7 @@ fn time_jobs(
     bencher: &mut Bencher<'_>,
     gpu: &BenchGpu,
     blur: &mut BackdropBlur,
-    jobs: &[BlurJob],
+    jobs: &mut [BlurJob],
     dest: &wgpu::TextureView,
 ) {
     let mut timer = PassTimer::new(gpu);

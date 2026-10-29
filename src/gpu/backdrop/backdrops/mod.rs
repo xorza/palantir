@@ -1,7 +1,9 @@
 //! A frame's panes on the device: their blurs, cached across frames, and the results their quads
 //! composite.
 
-use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, LEVEL_FORMAT, TargetSource};
+use crate::gpu::backdrop::backdrop_blur::{
+    BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, TargetSource,
+};
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
@@ -95,9 +97,24 @@ pub(crate) struct BackdropFrame<'a> {
     pub(crate) format: TargetFormat,
     /// The color the frame clears to.
     pub(crate) clear: RgbaF16,
-    /// The texture the main pass paints and its view, where a pass can sample it: the blurs then
-    /// read it in place of a capture.
-    pub(crate) target: Option<(&'a wgpu::Texture, &'a wgpu::TextureView)>,
+    /// The texture the main pass paints, where a pass can sample it: the blurs then read it in
+    /// place of a capture.
+    pub(crate) target: Option<SampledTarget<'a>>,
+}
+
+/// A target the main pass paints that a pass can also sample.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SampledTarget<'a> {
+    pub(crate) texture: &'a wgpu::Texture,
+    pub(crate) view: &'a wgpu::TextureView,
+}
+
+/// A window's last sampled target and the source its blurs read it through.
+#[derive(Debug)]
+struct OwnerTarget {
+    owner: RenderOwnerId,
+    texture: wgpu::Texture,
+    source: TargetSource,
 }
 
 /// The panes that capture at one break of the main pass: the barrier it breaks at, and their
@@ -109,35 +126,76 @@ pub(crate) struct BlurBreak {
 }
 
 /// Every window's panes blurred into one atlas, a slot each, kept while a pane's backdrop holds,
-/// and the group their quads read it through. Buffers and textures grow to the largest frame seen
-/// and are kept.
+/// and the group their quads read it through. What the panes hold on the device is made on the
+/// first frame with a pane, so an app with none pays for no pipeline and no atlas; its buffers and
+/// textures grow to the largest frame seen and are kept.
 ///
 /// At its ceiling the atlas evicts the least recently used results no pane of the frame reads,
 /// from any window, and lists them ([`Self::evicted`]) for each window's pane ledger to drop; a
 /// result that finds no room even then shows its tint over the clear and captures again.
 #[derive(Debug)]
 pub(crate) struct Backdrops {
-    blur: BackdropBlur,
     cache: FxHashMap<(RenderOwnerId, PaneKey), Cached>,
     /// How many times [`Self::prepare`] ran, the stamp of the results its frame reads.
     prepared: u64,
     /// The results evicted from a window's panes, until its pane ledger drops them.
     evicted: Vec<(RenderOwnerId, PaneKey)>,
-    atlas: PackedAtlas,
-    /// This frame's blurs, the footprint each copies, and the breaks they run at, in paint order.
+    /// This frame's blurs and the breaks they run at, in paint order.
     jobs: Vec<BlurJob>,
-    footprints: Vec<URect>,
     breaks: Vec<BlurBreak>,
     slots: Vec<BackdropSlot>,
-    slot_buffer: DynamicBuffer<BackdropSlot>,
+    /// The layout the quad pipeline names at group 2, made with it.
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    /// The edge the results atlas grows to.
+    ceiling: u32,
+    /// What the panes hold on the device, from the first frame with a pane.
+    resources: Option<PaneResources>,
+    /// Each window's last sampled target, made again when the target is: one a window, so a
+    /// resize frees the old target.
+    targets: Vec<OwnerTarget>,
+}
+
+/// What [`Backdrops`] holds on the device once a frame has a pane: the blur, the results atlas, the
+/// slot table and the group their quads read them through.
+#[derive(Debug)]
+struct PaneResources {
+    blur: BackdropBlur,
+    atlas: PackedAtlas,
+    slot_buffer: DynamicBuffer<BackdropSlot>,
     group: wgpu::BindGroup,
     /// The `slot_buffer` capacity `group` binds.
     group_capacity: usize,
-    /// Each window's last sampled target and the group its blurs read it through, made again
-    /// when the target is: one a window, so a resize frees the old target.
-    targets: Vec<(RenderOwnerId, wgpu::Texture, TargetSource)>,
+}
+
+impl PaneResources {
+    fn new(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        sampler: &wgpu::Sampler,
+        ceiling: u32,
+    ) -> Self {
+        let slot_buffer = DynamicBuffer::storage(device, "palantir.backdrop.slots", 4);
+        let atlas = PackedAtlas::new(
+            device,
+            AtlasSpec {
+                label: "palantir.backdrop.results".to_owned(),
+                format: LEVEL_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                ceiling,
+            },
+            FIRST_SIDE,
+        );
+        let group = composite_group(device, layout, atlas.view(), sampler, &slot_buffer);
+        Self {
+            blur: BackdropBlur::new(device),
+            atlas,
+            group_capacity: slot_buffer.capacity(),
+            slot_buffer,
+            group,
+        }
+    }
 }
 
 impl Backdrops {
@@ -179,35 +237,17 @@ impl Backdrops {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let slot_buffer = DynamicBuffer::storage(device, "palantir.backdrop.slots", 4);
-        let atlas = PackedAtlas::new(
-            device,
-            AtlasSpec {
-                label: "palantir.backdrop.results".to_owned(),
-                format: LEVEL_FORMAT,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                ceiling,
-            },
-            FIRST_SIDE,
-        );
-        let group = composite_group(device, &layout, atlas.view(), &sampler, &slot_buffer);
-        let group_capacity = slot_buffer.capacity();
         Self {
-            blur: BackdropBlur::new(device),
             cache: FxHashMap::default(),
             prepared: 0,
             evicted: Vec::new(),
-            atlas,
             jobs: Vec::new(),
-            footprints: Vec::new(),
             breaks: Vec::new(),
             slots: Vec::new(),
-            slot_buffer,
             layout,
             sampler,
-            group,
-            group_capacity,
+            ceiling,
+            resources: None,
             targets: Vec::new(),
         }
     }
@@ -217,8 +257,13 @@ impl Backdrops {
         &self.layout
     }
 
+    /// The group of the last prepared frame with a pane; only such a frame draws a pane's quad.
     pub(crate) const fn group(&self) -> &wgpu::BindGroup {
-        &self.group
+        &self
+            .resources
+            .as_ref()
+            .expect("a frame with a pane prepared")
+            .group
     }
 
     /// Give each of the frame's panes its result: a blur into a slot of the atlas for one that
@@ -234,6 +279,15 @@ impl Backdrops {
         } = frame;
         self.evict(owner, &buffer.live_panes);
         self.prepared += 1;
+        self.jobs.clear();
+        self.breaks.clear();
+        self.slots.clear();
+        if buffer.backdrops.is_empty() && self.resources.is_none() {
+            return;
+        }
+        self.resources.get_or_insert_with(|| {
+            PaneResources::new(ctx.device, &self.layout, &self.sampler, self.ceiling)
+        });
         // Every result the frame reads is stamped first, so making room for one never evicts
         // another.
         for row in &buffer.backdrops {
@@ -241,10 +295,6 @@ impl Backdrops {
                 cached.used = self.prepared;
             }
         }
-        self.jobs.clear();
-        self.footprints.clear();
-        self.breaks.clear();
-        self.slots.clear();
         let surface = buffer.display.physical;
         // The jobs of one break blur in the same passes, so each takes rows of the scratch apart
         // from the others'.
@@ -281,11 +331,12 @@ impl Backdrops {
                         plan: row.plan,
                         surface,
                         format,
+                        footprint: row.footprint,
                         region: row.region,
                         dest_origin: slot.min,
                         scratch_origin: UVec2::new(0, scratch_row),
+                        layout: JobLayout::default(),
                     });
-                    self.footprints.push(row.footprint);
                     scratch_row += row.region.size.y;
                     self.keep(at, Kept::Slot(slot))
                 }
@@ -319,22 +370,35 @@ impl Backdrops {
         }
         let target = target
             .filter(|_| !self.jobs.is_empty())
-            .map(|(texture, view)| self.target_source(ctx.device, owner, texture, view, format));
-        self.blur.prepare(ctx, &self.jobs, target);
-        self.slot_buffer.upload_instances(ctx, &self.slots);
-        let grew = self.atlas.commit(ctx.device, ctx.encoder);
-        if grew || self.slot_buffer.capacity() != self.group_capacity {
-            self.rebind(ctx.device);
+            .map(|target| self.target_source(ctx.device, owner, target, format));
+        let resources = self.resources.as_mut().expect("made above");
+        resources.blur.prepare(
+            ctx,
+            &mut self.jobs,
+            self.breaks.iter().map(|at| at.jobs.clone()),
+            target,
+        );
+        resources.slot_buffer.upload_instances(ctx, &self.slots);
+        let grew = resources.atlas.commit(ctx.device, ctx.encoder);
+        if grew || resources.slot_buffer.capacity() != resources.group_capacity {
+            resources.group = composite_group(
+                ctx.device,
+                &self.layout,
+                resources.atlas.view(),
+                &self.sampler,
+                &resources.slot_buffer,
+            );
+            resources.group_capacity = resources.slot_buffer.capacity();
         }
     }
 
     /// Drop the results of `owner`'s panes not in `live`, the panes its frame painted or kept.
     fn evict(&mut self, owner: RenderOwnerId, live: &[PaneKey]) {
-        let atlas = &mut self.atlas;
+        let resources = &mut self.resources;
         self.cache.retain(|&(at, key), cached| {
             let keep = at != owner || live.contains(&key);
             if !keep && let Kept::Slot(slot) = cached.kept {
-                atlas.deallocate(slot_origin(slot), slot.size.x as u16);
+                release(resources, slot);
             }
             keep
         });
@@ -344,33 +408,36 @@ impl Backdrops {
     pub(crate) fn retire(&mut self, owner: RenderOwnerId) {
         self.evict(owner, &[]);
         self.forget_evicted(owner);
-        self.targets.retain(|(at, ..)| *at != owner);
+        self.targets.retain(|target| target.owner != owner);
     }
 
-    /// The source `owner`'s blurs read `texture` through, made when the window's target is new.
+    /// The source `owner`'s blurs read `target` through, made when the window's target is new.
     fn target_source(
         &mut self,
         device: &wgpu::Device,
         owner: RenderOwnerId,
-        texture: &wgpu::Texture,
-        view: &wgpu::TextureView,
+        target: SampledTarget<'_>,
         format: TargetFormat,
     ) -> TargetSource {
-        if let Some((_, held, source)) = self.targets.iter().find(|(at, ..)| *at == owner)
-            && held == texture
+        if let Some(held) = self.targets.iter().find(|held| held.owner == owner)
+            && held.texture == *target.texture
         {
-            return source.clone();
+            return held.source.clone();
         }
-        let size = UVec2::new(texture.width(), texture.height());
-        let source = self.blur.target_source(device, view, format, size);
-        self.targets.retain(|(at, ..)| *at != owner);
-        self.targets.push((owner, texture.clone(), source.clone()));
+        let size = UVec2::new(target.texture.width(), target.texture.height());
+        let source = self
+            .resources
+            .as_ref()
+            .expect("a frame that blurs made the resources")
+            .blur
+            .target_source(device, target.view, format, size);
+        self.targets.retain(|held| held.owner != owner);
+        self.targets.push(OwnerTarget {
+            owner,
+            texture: target.texture.clone(),
+            source: source.clone(),
+        });
         source
-    }
-
-    /// Whether this frame's blurs read the target itself, so no capture is copied.
-    pub(crate) const fn reads_target(&self) -> bool {
-        self.blur.reads_target()
     }
 
     /// A slot of `size` for pane `at`: its cached one when that holds it, else a new one rounded
@@ -389,17 +456,17 @@ impl Backdrops {
         self.drop_result(at);
         let size = size.map(|edge| edge.next_multiple_of(SLOT_GRANULE));
         let want = U16Vec2::new(u16::try_from(size.x).ok()?, u16::try_from(size.y).ok()?);
-        if !self.atlas.fits_ceiling(want) {
+        if !self.atlas().fits_ceiling(want) {
             return None;
         }
         loop {
-            if let Some(origin) = self.atlas.allocate(want) {
+            if let Some(origin) = self.atlas().allocate(want) {
                 return Some(URect {
                     min: origin.as_uvec2(),
                     size,
                 });
             }
-            if !self.atlas.grow() && !self.evict_lru() {
+            if !self.atlas().grow() && !self.evict_lru() {
                 return None;
             }
         }
@@ -454,19 +521,13 @@ impl Backdrops {
             ..
         }) = self.cache.remove(&at)
         {
-            self.atlas.deallocate(slot_origin(slot), slot.size.x as u16);
+            release(&mut self.resources, slot);
         }
     }
 
-    fn rebind(&mut self, device: &wgpu::Device) {
-        self.group = composite_group(
-            device,
-            &self.layout,
-            self.atlas.view(),
-            &self.sampler,
-            &self.slot_buffer,
-        );
-        self.group_capacity = self.slot_buffer.capacity();
+    /// The results atlas, made with the resources before any slot is asked of it.
+    const fn atlas(&mut self) -> &mut PackedAtlas {
+        &mut self.resources.as_mut().expect("a frame with a pane").atlas
     }
 
     /// The breaks of the main pass this frame's blurs run at, in paint order.
@@ -474,21 +535,36 @@ impl Backdrops {
         &self.breaks
     }
 
-    /// Copy blur `job`'s footprint out of `color`, the main pass's target, into its capture.
-    pub(crate) fn copy_capture(
+    /// Copy the footprints of break `at`'s panes out of `color`, the main pass's target, into
+    /// their capture; nothing where the blurs read the target itself.
+    pub(crate) fn copy_break(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        job: usize,
+        at: &BlurBreak,
         color: &wgpu::Texture,
     ) {
-        self.blur
-            .copy_capture(encoder, job, color, self.footprints[job]);
+        let blur = &self.resources.as_ref().expect("a frame that blurs").blur;
+        for job in &self.jobs[at.jobs.clone()] {
+            blur.copy_capture(encoder, job, color);
+        }
     }
 
-    /// Record blurs `jobs`, of one break, from their capture into their slots of the atlas.
-    pub(crate) fn encode_blurs(&self, encoder: &mut wgpu::CommandEncoder, jobs: Range<usize>) {
-        self.blur.encode(encoder, jobs, self.atlas.view());
+    /// Record the blurs of break `at` from their capture into their slots of the atlas.
+    pub(crate) fn blur_break(&self, encoder: &mut wgpu::CommandEncoder, at: &BlurBreak) {
+        let resources = self.resources.as_ref().expect("a frame that blurs");
+        resources
+            .blur
+            .encode(encoder, &self.jobs[at.jobs.clone()], resources.atlas.view());
     }
+}
+
+/// Free `slot` of the results atlas, which holds it.
+fn release(resources: &mut Option<PaneResources>, slot: URect) {
+    resources
+        .as_mut()
+        .expect("a slot lives in the atlas")
+        .atlas
+        .deallocate(slot_origin(slot), slot.size.x as u16);
 }
 
 /// The linear color a target of `format` holds where it is cleared to `clear`, as a pane's capture
