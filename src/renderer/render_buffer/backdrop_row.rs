@@ -22,7 +22,20 @@ pub(crate) struct BackdropRow {
     pub(crate) lens: Option<Lens>,
     /// The highest relative luminance the pane shows under its tint.
     pub(crate) max_luminance: f32,
-    /// Whether the pane captures this frame, which repaints its footprint; else its held result
-    /// serves. Set by [`PaneCaptures::settle`](crate::renderer::pane_captures::PaneCaptures::settle).
-    pub(crate) capture: bool,
+    /// Where the pane's result comes from this frame. Set by
+    /// [`PaneCaptures::settle`](crate::renderer::pane_captures::PaneCaptures::settle).
+    pub(crate) source: PaneSource,
+}
+
+/// Where a pane's result comes from on one frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PaneSource {
+    /// Its held result serves.
+    Held,
+    /// It captures the pixels painted before it out of the target and blurs them, which repaints
+    /// its footprint on a partial frame.
+    Capture,
+    /// Nothing is painted before it, so its backdrop is the clear, which a blur leaves as it is:
+    /// it shows the clear and neither captures nor blurs.
+    Clear,
 }

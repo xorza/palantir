@@ -7,7 +7,7 @@ use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::backdrop_row::BackdropRow;
+use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::group_batch::GroupBatch;
@@ -140,6 +140,16 @@ impl RenderBuffer {
             live: &self.live_targets,
             display_scale: self.display.scale_factor(),
         }
+    }
+
+    /// The physical px the frame's captures copy out of the target: the footprints of the panes
+    /// that capture, overlaps counted twice, as each copies its own.
+    pub(crate) fn captured_area(&self) -> u64 {
+        self.backdrops
+            .iter()
+            .filter(|row| row.source == PaneSource::Capture)
+            .map(|row| row.footprint.area())
+            .sum()
     }
 
     /// Drop every scene column, leaving per-frame stamps; shared with the composer's clear fold.

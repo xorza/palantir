@@ -6,6 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::renderer::pane_captures::{PaneCaptures, Settled};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::BackdropRow;
+use crate::renderer::render_buffer::backdrop_row::PaneSource::{self, Capture, Clear, Held};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 
@@ -18,15 +19,16 @@ fn key(i: u32) -> PaneKey {
     }
 }
 
+/// Pane `i`, after `i + 1` groups.
 fn row(i: u32, footprint: URect, sigma: f32) -> BackdropRow {
     BackdropRow {
         key: key(i),
         footprint,
         plan: BlurPlan::new(sigma),
-        barrier: i,
+        barrier: i + 1,
         lens: None,
         max_luminance: 65504.0,
-        capture: false,
+        source: Held,
     }
 }
 
@@ -39,21 +41,27 @@ fn buffer(rows: &[BackdropRow]) -> RenderBuffer {
     buffer
 }
 
-/// One frame of a sweep: its name, rows, whether it is whole, its dirty set, and the rows that
-/// should capture.
-type Step<'a> = (&'a str, &'a [BackdropRow], bool, DirtyPanes, &'a [bool]);
+/// One frame of a sweep: its name, rows, whether it is whole, its dirty set, and where each row
+/// should take its result.
+type Step<'a> = (
+    &'a str,
+    &'a [BackdropRow],
+    bool,
+    DirtyPanes,
+    &'a [PaneSource],
+);
 
-/// Settle `rows` on `captures` as a frame would; the rows that capture, and the outcome.
+/// Settle `rows` on `captures` as a frame would; where each row takes its result, and the outcome.
 fn settle(
     captures: &mut PaneCaptures,
     rows: &[BackdropRow],
     full: bool,
     dirty: &DirtyPanes,
-) -> (Vec<bool>, Settled) {
+) -> (Vec<PaneSource>, Settled) {
     let mut frame = buffer(rows);
     let settled = captures.settle(&mut frame, full, dirty);
     (
-        frame.backdrops.iter().map(|row| row.capture).collect(),
+        frame.backdrops.iter().map(|row| row.source).collect(),
         settled,
     )
 }
@@ -61,7 +69,8 @@ fn settle(
 /// A pane captures when it is new, dirty, on a whole frame, or when its held capture does not
 /// serve it: another plan, or a footprint that leaves the held region. At σ 10 the plan blurs
 /// two levels down, a 4 px lattice: a footprint over x 41..139 snaps to texels 10..35, one over
-/// 42..140 too, and one over 37..135 starts at texel 9, outside.
+/// 42..140 too, and one over 37..135 starts at texel 9, outside. A pane with nothing painted
+/// before it, at barrier 0, shows the clear where it would capture, and holds it after.
 #[test]
 fn a_pane_captures_when_its_held_capture_does_not_serve() {
     let none = DirtyPanes::default();
@@ -75,28 +84,35 @@ fn a_pane_captures_when_its_held_capture_does_not_serve() {
     assert_eq!(plan.region(at(42), SURFACE), plan.region(at(41), SURFACE));
     assert_eq!(plan.region(at(37), SURFACE), Some(URect::new(9, 5, 25, 20)));
 
+    let first = BackdropRow {
+        barrier: 0,
+        ..row(2, at(300), 10.0)
+    };
     let mut captures = PaneCaptures::default();
-    let steps: [Step<'_>; 8] = [
-        ("new", &[row(0, at(41), 10.0)], false, none, &[true]),
-        ("still", &[row(0, at(41), 10.0)], false, none, &[false]),
-        ("inside", &[row(0, at(42), 10.0)], false, none, &[false]),
-        ("outside", &[row(0, at(37), 10.0)], false, none, &[true]),
+    let steps: [Step<'_>; 11] = [
+        ("new", &[row(0, at(41), 10.0)], false, none, &[Capture]),
+        ("still", &[row(0, at(41), 10.0)], false, none, &[Held]),
+        ("inside", &[row(0, at(42), 10.0)], false, none, &[Held]),
+        ("outside", &[row(0, at(37), 10.0)], false, none, &[Capture]),
         (
             "dirty",
             &[row(0, at(37), 10.0)],
             false,
             [key(0)].into_iter().collect(),
-            &[true],
+            &[Capture],
         ),
-        ("plan", &[row(0, at(37), 12.0)], false, none, &[true]),
-        ("full", &[row(0, at(37), 12.0)], true, none, &[true]),
+        ("plan", &[row(0, at(37), 12.0)], false, none, &[Capture]),
+        ("full", &[row(0, at(37), 12.0)], true, none, &[Capture]),
         (
             "beside",
             &[row(0, at(37), 12.0), row(1, at(200), 12.0)],
             false,
             none,
-            &[false, true],
+            &[Held, Capture],
         ),
+        ("first", &[first], false, none, &[Clear]),
+        ("first still", &[first], false, none, &[Held]),
+        ("first whole", &[first], true, none, &[Clear]),
     ];
     for (what, rows, full, dirty, want) in steps {
         let (got, settled) = settle(&mut captures, rows, full, &dirty);
@@ -119,35 +135,67 @@ fn a_pane_off_screen_drops_its_capture() {
     captures.settle(&mut culled, false, &none);
     assert_eq!(
         settle(&mut captures, &[pane], false, &none).0,
-        [false],
+        [Held],
         "culled"
     );
 
     settle(&mut captures, &[], false, &none);
     assert_eq!(
         settle(&mut captures, &[pane], false, &none).0,
-        [true],
+        [Capture],
         "returned"
     );
 }
 
 /// A partial frame holds a footprint scissor for at most `PARTIAL_CAP` captures; one more makes
-/// it whole, which a whole frame already is.
+/// it whole, which a whole frame already is. A pane that shows the clear needs no scissor, so it
+/// counts toward none.
 #[test]
 fn more_captures_than_a_partial_frame_holds_overflow() {
     let none = DirtyPanes::default();
-    let rows = |n: u32| -> Vec<BackdropRow> {
+    let rows = |n: u32, first: u32| -> Vec<BackdropRow> {
         (0..n)
-            .map(|i| row(i, URect::new(10 * i, 0, 10, 10), 1.0))
+            .map(|i| BackdropRow {
+                barrier: if i < first { 0 } else { i + 1 },
+                ..row(i, URect::new(10 * i, 0, 10, 10), 1.0)
+            })
             .collect()
     };
     let cap = PaneCaptures::PARTIAL_CAP as u32;
-    for (n, full, want) in [
-        (cap, false, Settled::Fits),
-        (cap + 1, false, Settled::Overflow),
-        (cap + 1, true, Settled::Fits),
+    for (n, first, full, want) in [
+        (cap, 0, false, Settled::Fits),
+        (cap + 1, 0, false, Settled::Overflow),
+        (cap + 1, 0, true, Settled::Fits),
+        (cap + 1, 1, false, Settled::Fits),
     ] {
-        let (_, settled) = settle(&mut PaneCaptures::default(), &rows(n), full, &none);
-        assert_eq!(settled, want, "{n} panes, full {full}");
+        let (_, settled) = settle(&mut PaneCaptures::default(), &rows(n, first), full, &none);
+        assert_eq!(settled, want, "{n} panes, {first} first, full {full}");
     }
+}
+
+/// A frame's captured area sums the footprints of the panes that capture, an overlap twice, and
+/// leaves out a pane that keeps its result or shows the clear: 98 × 80 twice, overlapping, beside
+/// a held pane and one of the clear.
+#[test]
+fn the_captured_area_sums_the_capturing_footprints() {
+    let at = |x: u32| URect::new(x, 20, 98, 80);
+    let rows = [
+        BackdropRow {
+            source: Capture,
+            ..row(0, at(10), 10.0)
+        },
+        BackdropRow {
+            source: Capture,
+            ..row(1, at(50), 10.0)
+        },
+        BackdropRow {
+            source: Held,
+            ..row(2, at(200), 10.0)
+        },
+        BackdropRow {
+            source: Clear,
+            ..row(3, at(300), 10.0)
+        },
+    ];
+    assert_eq!(buffer(&rows).captured_area(), 2 * 98 * 80);
 }

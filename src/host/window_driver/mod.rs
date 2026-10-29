@@ -459,13 +459,19 @@ impl WindowDriver {
             target.format(),
             self.target,
         );
-        // A capture copies out of the target; a target that gives no copy paints a frame that
-        // captures through the backbuffer. A direct frame is whole, so the backbuffer may be new.
+        // A capture copies out of the target, which a target that gives no copy cannot do. A frame
+        // whose captures copy more than the surface holds paints through the backbuffer too: its
+        // blurs read the backbuffer, and the copy onto the target moves the surface once. A
+        // direct frame is whole, so the backbuffer may be new.
         let mode = match mode {
-            PresentPath::Direct(plan)
-                if !target.gives_copy() && buffer.backdrops.iter().any(|row| row.capture) =>
-            {
-                PresentPath::ViaBackbuffer(plan)
+            PresentPath::Direct(plan) => {
+                let captured = buffer.captured_area();
+                let surface = u64::from(size.x) * u64::from(size.y);
+                if captured > 0 && (!target.gives_copy() || captured >= surface) {
+                    PresentPath::ViaBackbuffer(plan)
+                } else {
+                    PresentPath::Direct(plan)
+                }
             }
             mode => mode,
         };

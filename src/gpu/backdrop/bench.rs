@@ -1,17 +1,17 @@
 //! The backdrop's device benches, each in device time between passes. Every frame moves the
 //! clear, so each paints whole and captures once.
 //!
-//! - `atomic/backdrop_capture/gpu/<size>`: the capture of a whole-surface pane over the frame
-//!   fixture, scrolled a pixel a frame: the copy of its footprint out of the target.
+//! - `atomic/backdrop_capture/gpu/<size>`: the capture of a pane over the left half of the frame
+//!   fixture, scrolled a pixel a frame: the copy of its footprint out of the target. A pane over
+//!   the whole surface would paint through the backbuffer and copy nothing.
 //! - `atomic/backdrop_composite/gpu/<look>/<side>`: the main pass of a `side`² surface holding one
 //!   rect and a pane over all of it, less the pane's capture and blur between its two passes: the
 //!   pane's composite, with the clear, the rect and the pass break beside it.
 //! - `integration/backdrop_frame/<backend>/<look>/<arm>`: whole frames under three panes; see
 //!   [`integration`].
-//! - `integration/backdrop_frame/gpu/modal/<arm>`: whole 4K frames under a pane over the window;
-//!   see [`modal`].
-//! - `integration/backdrop_frame/gpu/cards/scrolling`: whole frames under eight frosted cards apart
-//!   from each other; see [`cards`].
+//! - `integration/backdrop_frame/gpu/<scene>/<arm>`: whole frames of the panes' other
+//!   arrangements: a modal, cards, a first pane, a stacked pair, near and apart pairs, and more
+//!   stale panes than a partial frame holds; see [`scenes`].
 
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
@@ -43,8 +43,8 @@ const SIZES: [UVec2; 2] = [UVec2::new(1920, 1080), UVec2::new(3840, 2160)];
 /// The pane's σ in physical px: two levels down, so the blur after the capture stays small.
 const SIGMA: f32 = 10.0;
 
-/// What a frame records: the frame fixture, shifted by `scroll`, under a pane over the whole
-/// surface.
+/// What a frame records: the frame fixture, shifted by `scroll`, under a pane over the left half
+/// of the surface.
 #[derive(Debug, Default)]
 struct State {
     fixture: FrameFixture,
@@ -59,13 +59,23 @@ impl State {
             .show(ui, |ui| {
                 self.fixture.scroll_offset = Vec2::new(self.scroll, 0.0);
                 self.fixture.render(BENCH_SCALE, ui);
-                Panel::canvas()
-                    .id_salt("backdrop-capture-bench-pane")
+                Panel::hstack()
+                    .id_salt("backdrop-capture-bench-row")
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        ui.add_shape(
-                            Shape::owner_rect().backdrop_filter(BackdropFilter::blur(SIGMA)),
-                        );
+                        Panel::canvas()
+                            .id_salt("backdrop-capture-bench-pane")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                ui.add_shape(
+                                    Shape::owner_rect()
+                                        .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                                );
+                            });
+                        Panel::canvas()
+                            .id_salt("backdrop-capture-bench-rest")
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |_| {});
                     });
             });
     }
@@ -263,16 +273,20 @@ enum Arm {
     Under,
     /// The popup's pane steps a pixel and back inside the region it captured.
     Sliding,
+    /// The popup's pane moves 4 logical px a frame, out of the region it captured, as an
+    /// animated popup does.
+    Moving,
     /// The page scrolls under every pane: each captures again.
     Scrolling,
 }
 
 impl Arm {
-    const ALL: [Self; 5] = [
+    const ALL: [Self; 6] = [
         Self::Cached,
         Self::Hover,
         Self::Under,
         Self::Sliding,
+        Self::Moving,
         Self::Scrolling,
     ];
 
@@ -282,6 +296,7 @@ impl Arm {
             Self::Hover => "hover",
             Self::Under => "under",
             Self::Sliding => "sliding",
+            Self::Moving => "moving",
             Self::Scrolling => "scrolling",
         }
     }
@@ -295,6 +310,7 @@ impl Arm {
             Self::Cached => (FramePaint::Skip, 0),
             Self::Hover => (FramePaint::Partial, 0),
             Self::Sliding => (FramePaint::Partial, usize::from(!slides_inside)),
+            Self::Moving => (FramePaint::Partial, 1),
             Self::Under => (FramePaint::Partial, 2),
             Self::Scrolling => (FramePaint::Full, 3),
         }
@@ -331,13 +347,16 @@ impl PaneFrame {
         if arm == Arm::Scrolling {
             self.fixture.scroll_offset = Vec2::new(0.0, (self.n % 64) as f32);
         }
-        let popup = if arm == Arm::Sliding && odd {
-            Rect {
+        let popup = match arm {
+            Arm::Sliding if odd => Rect {
                 min: POPUP.min + Vec2::X,
                 ..POPUP
-            }
-        } else {
-            POPUP
+            },
+            Arm::Moving => Rect {
+                min: POPUP.min + Vec2::new(4.0 * (self.n % 32) as f32, 0.0),
+                ..POPUP
+            },
+            _ => POPUP,
         };
         Panel::zstack()
             .id_salt("backdrop-frame")
@@ -405,8 +424,7 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
         }
     }
     if let Some(backend) = backends.gpu() {
-        modal(&mut group, backend);
-        cards(&mut group, backend);
+        scenes(&mut group, backend);
     }
     group.finish();
 }
@@ -442,15 +460,212 @@ fn pane_frames(bencher: &mut Bencher<'_>, look: Look, arm: Arm) {
 /// The 4K surface of the modal arms, a 1920 × 1080 window at 2×.
 const MODAL_SURFACE: UVec2 = UVec2::new(3840, 2160);
 
-/// `integration/backdrop_frame/gpu/modal/<arm>`: one whole frame of the frame fixture at 4K under
-/// a frosted pane over the whole window, as a modal dialog's page sits; `cached` keeps every frame
-/// still, `scrolling` scrolls the page under the pane, which captures every frame.
-fn modal(group: &mut CaseGroup<'_>, backend: Backend) {
-    for arm in [Arm::Cached, Arm::Scrolling] {
-        let case = backend.case(&format!("modal/{}", arm.label()));
-        group.bench_function(case, |bencher| {
+/// One case of `integration/backdrop_frame/gpu` past the three panes: what its frames record,
+/// and what a settled frame paints and blurs.
+#[derive(Clone, Copy, Debug)]
+struct SceneCase {
+    name: &'static str,
+    surface: UVec2,
+    want: (FramePaint, usize),
+    /// Frame `n` over the frame fixture.
+    record: fn(&mut FrameFixture, u32, &mut Ui),
+}
+
+impl SceneCase {
+    /// Every scene case, in the order the bench runs them.
+    const ALL: [Self; 9] = [
+        Self {
+            name: "modal/cached",
+            surface: MODAL_SURFACE,
+            want: (FramePaint::Skip, 0),
+            record: |fixture, _, ui| modal(fixture, ui),
+        },
+        Self {
+            name: "modal/scrolling",
+            surface: MODAL_SURFACE,
+            want: (FramePaint::Full, 1),
+            record: |fixture, n, ui| {
+                scroll(fixture, n);
+                modal(fixture, ui);
+            },
+        },
+        Self {
+            name: "cards/scrolling",
+            surface: FRAME_SURFACE,
+            want: (FramePaint::Full, 8),
+            record: |fixture, n, ui| {
+                scroll(fixture, n);
+                over(fixture, ui, |ui| {
+                    for i in 0..8 {
+                        let at =
+                            Vec2::new(60.0 + (i % 4) as f32 * 300.0, 80.0 + (i / 4) as f32 * 260.0);
+                        ui.add_shape(Look::Frosted.pane_at(Rect::new(at.x, at.y, 240.0, 200.0)));
+                    }
+                });
+            },
+        },
+        Self {
+            name: "cards_apart/scrolling",
+            surface: FRAME_SURFACE,
+            want: (FramePaint::Full, 6),
+            record: |fixture, n, ui| {
+                scroll(fixture, n);
+                over(fixture, ui, |ui| {
+                    for i in 0..6 {
+                        let at =
+                            Vec2::new(40.0 + (i % 3) as f32 * 400.0, 60.0 + (i / 3) as f32 * 320.0);
+                        ui.add_shape(Look::Frosted.pane_at(Rect::new(at.x, at.y, 300.0, 220.0)));
+                    }
+                });
+            },
+        },
+        Self {
+            name: "first/scrolling",
+            surface: FRAME_SURFACE,
+            want: (FramePaint::Full, 0),
+            record: |fixture, n, ui| {
+                scroll(fixture, n);
+                first(fixture, ui);
+            },
+        },
+        Self {
+            name: "stacked/scrolling",
+            surface: FRAME_SURFACE,
+            want: (FramePaint::Full, 2),
+            record: |fixture, n, ui| {
+                scroll(fixture, n);
+                over(fixture, ui, |ui| {
+                    ui.add_shape(Look::Frosted.pane_at(SIDEBAR));
+                    ui.add_shape(Look::Glass.pane_at(Rect::new(160.0, 200.0, 320.0, 220.0)));
+                });
+            },
+        },
+        Self {
+            name: "pair_near/scrolling",
+            surface: FRAME_SURFACE,
+            want: (FramePaint::Full, 2),
+            record: |fixture, n, ui| {
+                scroll(fixture, n);
+                pair(fixture, ui, 8.0);
+            },
+        },
+        Self {
+            name: "pair_apart/scrolling",
+            surface: FRAME_SURFACE,
+            want: (FramePaint::Full, 2),
+            record: |fixture, n, ui| {
+                scroll(fixture, n);
+                pair(fixture, ui, 160.0);
+            },
+        },
+        Self {
+            name: "many/under",
+            surface: FRAME_SURFACE,
+            want: (FramePaint::Full, 12),
+            record: |fixture, n, ui| {
+                over(fixture, ui, |ui| {
+                    let color = if n % 2 == 1 {
+                        RgbaF32::srgb(1.0, 0.3, 0.1)
+                    } else {
+                        RgbaF32::srgb(0.1, 0.3, 1.0)
+                    };
+                    for y in [150.0, 400.0] {
+                        ui.add_shape(Shape::rect(Rect::new(40.0, y, 1200.0, 12.0)).fill(color));
+                    }
+                    for i in 0..12 {
+                        let at = Vec2::new(
+                            40.0 + (i % 6) as f32 * 205.0,
+                            100.0 + (i / 6) as f32 * 250.0,
+                        );
+                        ui.add_shape(Look::Frosted.pane_at(Rect::new(at.x, at.y, 160.0, 120.0)));
+                    }
+                });
+            },
+        },
+    ];
+}
+
+/// Scroll the page of `fixture` to frame `n`'s place.
+const fn scroll(fixture: &mut FrameFixture, n: u32) {
+    fixture.scroll_offset = Vec2::new(0.0, (n % 64) as f32);
+}
+
+/// The frame fixture, and `panes` on a canvas over it.
+fn over(fixture: &mut FrameFixture, ui: &mut Ui, panes: impl FnOnce(&mut Ui)) {
+    Panel::zstack()
+        .id_salt("backdrop-scene")
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            fixture.render(BENCH_SCALE, ui);
+            Panel::canvas()
+                .id_salt("backdrop-scene-panes")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, panes);
+        });
+}
+
+/// A frosted pane over the whole window, as a modal dialog's page sits.
+fn modal(fixture: &mut FrameFixture, ui: &mut Ui) {
+    over(fixture, ui, |ui| ui.add_shape(Look::Frosted.pane()));
+}
+
+/// Two frosted cards side by side, `gap` logical px apart: at 8 px the second's reach covers the
+/// first, at 160 px it covers nothing painted after the page.
+fn pair(fixture: &mut FrameFixture, ui: &mut Ui, gap: f32) {
+    over(fixture, ui, |ui| {
+        for i in 0..2 {
+            let x = 200.0 + i as f32 * (320.0 + gap);
+            ui.add_shape(Look::Frosted.pane_at(Rect::new(x, 160.0, 320.0, 240.0)));
+        }
+    });
+}
+
+/// A window background, which folds into the clear, then a frosted sidebar over it with nothing
+/// painted before it, then the page beside the sidebar.
+fn first(fixture: &mut FrameFixture, ui: &mut Ui) {
+    Panel::zstack()
+        .id_salt("backdrop-first")
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            Panel::canvas()
+                .id_salt("backdrop-first-background")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::owner_rect().fill(RgbaF32::srgb(0.12, 0.13, 0.16)));
+                });
+            Panel::hstack()
+                .id_salt("backdrop-first-row")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::canvas()
+                        .id_salt("backdrop-first-sidebar")
+                        .size((Sizing::fixed(240.0), Sizing::FILL))
+                        .show(ui, |ui| ui.add_shape(Look::Frosted.pane()));
+                    fixture.render(BENCH_SCALE, ui);
+                });
+        });
+}
+
+/// `integration/backdrop_frame/gpu/<scene>/<arm>`: one whole frame of each [`SceneCase`], wall
+/// time, at 2×, waited for. Each case checks its settled frame's paint and blurs.
+///
+/// - `modal`: the frame fixture at 4K under a frosted pane over the window; `cached` keeps every
+///   frame still, `scrolling` scrolls the page under the pane, which captures every frame.
+/// - `cards`: eight frosted cards in a 4 × 2 grid, 60 logical px apart, as a dashboard of glass
+///   tiles sits: inside the 77.5 logical px a σ of 16 reaches, so each card's footprint takes in
+///   its neighbors'.
+/// - `cards_apart`: six frosted cards in a 3 × 2 grid, 100 logical px apart, past that reach.
+/// - `first`: a frosted sidebar with nothing painted before it, which shows the clear, beside the
+///   scrolling page.
+/// - `stacked`: a glass popup over a frosted sidebar, which captures what the sidebar painted.
+/// - `pair_near` and `pair_apart`: two frosted cards whose gap the second's reach covers or not.
+/// - `many/under`: a strip under each row of twelve frosted cards flips color, staling more panes
+///   than a partial frame holds, so the frame paints whole.
+fn scenes(group: &mut CaseGroup<'_>, backend: Backend) {
+    for scene in SceneCase::ALL {
+        group.bench_function(backend.case(scene.name), |bencher| {
             let gpu = BenchGpu::shared(Timing::PassOnly);
-            let target = gpu.target("palantir.bench.backdrop_modal", MODAL_SURFACE);
+            let target = gpu.target("palantir.bench.backdrop_scene", scene.surface);
             let mut host = OffscreenHost::builder(gpu.handles())
                 .collect_gpu_stats(false)
                 .retained_target(true)
@@ -459,23 +674,7 @@ fn modal(group: &mut CaseGroup<'_>, backend: Backend) {
             let mut n = 0u32;
             let mut frame = || {
                 n += 1;
-                if arm == Arm::Scrolling {
-                    fixture.scroll_offset = Vec2::new(0.0, (n % 64) as f32);
-                }
-                let mut app = RecordApp::new(|ui: &mut Ui| {
-                    Panel::zstack()
-                        .id_salt("backdrop-modal")
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .show(ui, |ui| {
-                            fixture.render(BENCH_SCALE, ui);
-                            Panel::canvas()
-                                .id_salt("backdrop-modal-pane")
-                                .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui, |ui| {
-                                    ui.add_shape(Look::Frosted.pane());
-                                });
-                        });
-                });
+                let mut app = RecordApp::new(|ui: &mut Ui| (scene.record)(&mut fixture, n, ui));
                 let paint = host.frame(target.as_target(), FRAME_DPR, &mut app).paint();
                 gpu.wait();
                 (paint, host.backdrop_blurs())
@@ -484,65 +683,11 @@ fn modal(group: &mut CaseGroup<'_>, backend: Backend) {
                 frame();
             }
             let (paint, blurs) = frame();
-            match arm {
-                Arm::Cached => assert_eq!(paint, FramePaint::Skip, "a still modal skips"),
-                _ => assert_eq!((paint, blurs), (FramePaint::Full, 1), "the page scrolls"),
+            assert_eq!(paint, scene.want.0, "{}", scene.name);
+            if paint != FramePaint::Skip {
+                assert_eq!(blurs, scene.want.1, "{}: blurs", scene.name);
             }
             bencher.iter(&mut frame);
         });
     }
-}
-
-/// `integration/backdrop_frame/gpu/cards/scrolling`: whole frames of the frame fixture scrolling
-/// under eight frosted cards in a 4 × 2 grid, 60 logical px apart, past a blur's reach, as a
-/// dashboard of glass tiles sits. Every card captures every frame, and none paints under another's
-/// footprint.
-fn cards(group: &mut CaseGroup<'_>, backend: Backend) {
-    group.bench_function(backend.case("cards/scrolling"), |bencher| {
-        let gpu = BenchGpu::shared(Timing::PassOnly);
-        let target = gpu.target("palantir.bench.backdrop_cards", FRAME_SURFACE);
-        let mut host = OffscreenHost::builder(gpu.handles())
-            .collect_gpu_stats(false)
-            .retained_target(true)
-            .build();
-        let mut fixture = FrameFixture::default();
-        let mut n = 0u32;
-        let mut frame = || {
-            n += 1;
-            fixture.scroll_offset = Vec2::new(0.0, (n % 64) as f32);
-            let mut app = RecordApp::new(|ui: &mut Ui| {
-                Panel::zstack()
-                    .id_salt("backdrop-cards")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        fixture.render(BENCH_SCALE, ui);
-                        Panel::canvas()
-                            .id_salt("backdrop-cards-panes")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                for i in 0..8 {
-                                    let at = Vec2::new(
-                                        60.0 + (i % 4) as f32 * 300.0,
-                                        80.0 + (i / 4) as f32 * 260.0,
-                                    );
-                                    let rect = Rect::new(at.x, at.y, 240.0, 200.0);
-                                    ui.add_shape(Look::Frosted.pane_at(rect));
-                                }
-                            });
-                    });
-            });
-            let paint = host.frame(target.as_target(), FRAME_DPR, &mut app).paint();
-            gpu.wait();
-            (paint, host.backdrop_blurs())
-        };
-        for _ in 0..4 {
-            frame();
-        }
-        assert_eq!(
-            frame(),
-            (FramePaint::Full, 8),
-            "the page scrolls under every card"
-        );
-        bencher.iter(&mut frame);
-    });
 }

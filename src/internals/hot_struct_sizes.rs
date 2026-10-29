@@ -114,7 +114,7 @@ const UI_SIZE: usize = 2848;
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const FRAME_ENGINES_SIZE: usize = 2168;
+const FRAME_ENGINES_SIZE: usize = 2216;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)

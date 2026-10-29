@@ -8,6 +8,7 @@ use crate::gpu::surface::render_target::{self, TargetFormat};
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{IVec2, UVec2};
+use std::ops::Range;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -56,6 +57,9 @@ pub(crate) struct BlurJob {
     /// Where the result's first texel lands in the destination: the region grown by the plan's
     /// apron on every side.
     pub(crate) dest_origin: UVec2,
+    /// Where the residual's first axis writes the region's first texel in the scratch: apart from
+    /// every job encoded with it.
+    pub(crate) scratch_origin: UVec2,
 }
 
 impl BlurJob {
@@ -88,6 +92,22 @@ struct CaptureTarget {
     /// Whether the format filters, so the passes that read the capture fetch it bilinearly.
     filters: bool,
     target: Sampled,
+}
+
+/// A target the frame's blurs read their level 0 from where it is sampled, in place of a capture:
+/// the group a pass reads it through, its extent, and whether its format filters.
+#[derive(Clone, Debug)]
+pub(crate) struct TargetSource {
+    group: wgpu::BindGroup,
+    size: UVec2,
+    filters: bool,
+}
+
+/// What a pass reads as level 0: its group, and whether it filters.
+#[derive(Clone, Copy, Debug)]
+struct LevelZero<'a> {
+    group: &'a wgpu::BindGroup,
+    filters: bool,
 }
 
 /// The passes that read their source through one bind layout: a filtering one for the levels
@@ -132,6 +152,8 @@ pub(crate) struct BackdropBlur {
     /// The prepared jobs and the first parameter slot of each.
     jobs: Vec<BlurJob>,
     first_slots: Vec<usize>,
+    /// The target the prepared jobs read as level 0, or `None` for their captures.
+    target: Option<TargetSource>,
 }
 
 impl BackdropBlur {
@@ -237,6 +259,7 @@ impl BackdropBlur {
             scratch: None,
             jobs: Vec::new(),
             first_slots: Vec::new(),
+            target: None,
         }
     }
 
@@ -425,7 +448,13 @@ impl BackdropBlur {
 
     /// Make room for `jobs` and write their parameters, ahead of the copies that fill their
     /// captures and the passes [`Self::encode`] records.
-    pub(crate) fn prepare(&mut self, ctx: &mut GpuCtx<'_>, jobs: &[BlurJob]) {
+    pub(crate) fn prepare(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        jobs: &[BlurJob],
+        target: Option<TargetSource>,
+    ) {
+        self.target = target;
         self.jobs.clear();
         self.jobs.extend_from_slice(jobs);
         self.first_slots.clear();
@@ -434,9 +463,11 @@ impl BackdropBlur {
             return;
         }
         for job in jobs {
-            self.ensure_capture(ctx.device, job.format, job.surface);
+            if self.target.is_none() {
+                self.ensure_capture(ctx.device, job.format, job.surface);
+            }
             self.ensure_levels(ctx.device, job.surface, job.plan.levels());
-            self.ensure_scratch(ctx.device, job.region.size);
+            self.ensure_scratch(ctx.device, job.scratch_origin + job.region.size);
         }
         for job in jobs {
             self.first_slots.push(self.slots.len());
@@ -482,6 +513,48 @@ impl BackdropBlur {
         );
     }
 
+    /// What prepared job `job` reads as level 0: the target where the frame samples it, else
+    /// the capture of its format.
+    fn level_zero(&self, job: usize) -> LevelZero<'_> {
+        if let Some(target) = &self.target {
+            return LevelZero {
+                group: &target.group,
+                filters: target.filters,
+            };
+        }
+        let capture = self.capture_of(job);
+        LevelZero {
+            group: &capture.target.group,
+            filters: capture.filters,
+        }
+    }
+
+    /// The group `view`, a target of `format` the frame paints, is read through as level 0, in
+    /// place of a capture.
+    pub(crate) fn target_source(
+        &self,
+        device: &wgpu::Device,
+        view: &wgpu::TextureView,
+        format: TargetFormat,
+        size: UVec2,
+    ) -> TargetSource {
+        let filters = format
+            .get()
+            .guaranteed_format_features(device.features())
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
+        TargetSource {
+            group: self.source_group(device, view, filters),
+            size,
+            filters,
+        }
+    }
+
+    /// Whether the prepared jobs read the target itself, so no capture is copied.
+    pub(crate) const fn reads_target(&self) -> bool {
+        self.target.is_some()
+    }
+
     /// Prepared job `job`'s capture, the one of its format.
     fn capture_of(&self, job: usize) -> &CaptureTarget {
         let format = self.jobs[job].format;
@@ -491,70 +564,80 @@ impl BackdropBlur {
             .expect("a prepared job has its capture")
     }
 
-    /// Record prepared job `job`'s passes: its tents, then the residual across into the scratch
-    /// and down into its slot of `dest`.
+    /// Record prepared jobs `jobs`' passes, which read one capture: their tents a level to a pass,
+    /// then the residual across into the scratch and down into each job's slot of `dest`, a pass
+    /// each. Every pass draws each job under its own scissor, so the jobs pay one pass a stage.
     pub(crate) fn encode(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        job: usize,
+        jobs: Range<usize>,
         dest: &wgpu::TextureView,
     ) {
-        let mut slot = self.first_slots[job];
-        let capture = self.capture_of(job);
-        let job = &self.jobs[job];
-        let levels = job.plan.levels();
+        let first = &self.jobs[jobs.start];
+        debug_assert!(
+            self.jobs[jobs.clone()]
+                .iter()
+                .all(|job| job.format == first.format && job.surface == first.surface),
+            "jobs encoded together read one capture"
+        );
+        let zero = self.level_zero(jobs.start);
         let level_groups = self.levels.as_ref().map(|l| &*l.groups);
         let level_views = self.levels.as_ref().map(|l| &*l.views);
         // Level `k` reads from the capture at `k = 1`, and from mip `k − 2` above it.
         let source_of = |level: u8| match level {
-            0 => &capture.target.group,
+            0 => zero.group,
             k => &level_groups.expect("a blurred level has its levels")[usize::from(k) - 1],
         };
         let passes_of = |level: u8| {
-            if level == 0 && !capture.filters {
+            if level == 0 && !zero.filters {
                 &self.loaded
             } else {
                 &self.filtered
             }
         };
-        for k in 1..=levels {
+        let deepest = self.jobs[jobs.clone()]
+            .iter()
+            .map(|job| job.plan.levels())
+            .max()
+            .unwrap_or(0);
+        for k in 1..=deepest {
             let view = &level_views.expect("a blurred level has its levels")[usize::from(k) - 1];
-            self.pass(
-                encoder,
-                Pass {
-                    pipeline: &passes_of(k - 1).tent,
-                    target: view,
-                    source: source_of(k - 1),
-                    slot,
-                    scissor: level_region(job.region, levels, k, job.surface),
-                },
-            );
-            slot += 1;
+            let draws = jobs
+                .clone()
+                .filter(|&j| self.jobs[j].plan.levels() >= k)
+                .map(|j| {
+                    let job = &self.jobs[j];
+                    Draw {
+                        pipeline: &passes_of(k - 1).tent,
+                        source: source_of(k - 1),
+                        slot: self.first_slots[j] + usize::from(k) - 1,
+                        scissor: level_region(job.region, job.plan.levels(), k, job.surface),
+                    }
+                });
+            self.pass(encoder, view, draws);
         }
+        let residual = |j: usize| self.first_slots[j] + usize::from(self.jobs[j].plan.levels());
         let scratch = self.scratch.as_ref().expect("prepared");
-        self.pass(
-            encoder,
-            Pass {
-                pipeline: &passes_of(levels).horizontal,
-                target: &scratch.view,
-                source: source_of(levels),
-                slot,
+        let across = jobs.clone().map(|j| {
+            let job = &self.jobs[j];
+            Draw {
+                pipeline: &passes_of(job.plan.levels()).horizontal,
+                source: source_of(job.plan.levels()),
+                slot: residual(j),
                 scissor: URect {
-                    min: UVec2::ZERO,
+                    min: job.scratch_origin,
                     size: job.region.size,
                 },
-            },
-        );
-        self.pass(
-            encoder,
-            Pass {
-                pipeline: &self.vertical,
-                target: dest,
-                source: &scratch.group,
-                slot: slot + 1,
-                scissor: job.dest_rect(),
-            },
-        );
+            }
+        });
+        self.pass(encoder, &scratch.view, across);
+        let down = jobs.map(|j| Draw {
+            pipeline: &self.vertical,
+            source: &scratch.group,
+            slot: residual(j) + 1,
+            scissor: self.jobs[j].dest_rect(),
+        });
+        self.pass(encoder, dest, down);
     }
 
     /// The parameters of `job`'s passes, in the order [`Self::encode`] records them.
@@ -565,14 +648,20 @@ impl BackdropBlur {
             format,
             region,
             dest_origin,
+            scratch_origin,
         } = job;
         let levels = plan.levels();
-        let capture = self
-            .captures
-            .iter()
-            .find(|c| c.format == format)
-            .expect("ensured before the parameters");
-        let capture_max = extent_of(&capture.target.texture);
+        let capture_max = self.target.as_ref().map_or_else(
+            || {
+                let capture = self
+                    .captures
+                    .iter()
+                    .find(|c| c.format == format)
+                    .expect("ensured before the parameters");
+                extent_of(&capture.target.texture)
+            },
+            |target| target.size,
+        );
         let mip_max = |level: u8| {
             let levels = self
                 .levels
@@ -600,8 +689,9 @@ impl BackdropBlur {
         let taps = taps_of(plan);
         let radius = i32::from(plan.radius());
         let level_size = level_extent(surface, levels).as_ivec2();
+        let to_scratch = region.min.as_ivec2() - scratch_origin.as_ivec2();
         slot(BlurParams {
-            target_to_lattice: region.min.as_ivec2(),
+            target_to_lattice: to_scratch,
             level_size,
             source_max: last_texel(source_max(levels)),
             radius,
@@ -609,25 +699,26 @@ impl BackdropBlur {
             ..BlurParams::EMPTY
         });
         let apron = plan.apron() as i32;
+        // A read past the region lands in another job's rows of the scratch, outside the support
+        // of every texel the pane shows.
         slot(BlurParams {
             target_to_lattice: region.min.as_ivec2() - IVec2::splat(apron) - dest_origin.as_ivec2(),
             level_size,
-            source_origin: region.min.as_ivec2(),
-            source_max: last_texel(region.size),
+            source_origin: to_scratch,
+            source_max: last_texel(scratch_origin + region.size),
             radius,
             taps,
             pad: [0; 3],
         });
     }
 
-    fn pass(&self, encoder: &mut wgpu::CommandEncoder, pass: Pass<'_>) {
-        let Pass {
-            pipeline,
-            target,
-            source,
-            slot,
-            scissor,
-        } = pass;
+    /// One pass into `target` drawing each of `draws`.
+    fn pass<'a>(
+        &'a self,
+        encoder: &mut wgpu::CommandEncoder,
+        target: &wgpu::TextureView,
+        draws: impl Iterator<Item = Draw<'a>>,
+    ) {
         let mut rp = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.backdrop.blur"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -644,23 +735,30 @@ impl BackdropBlur {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        rp.set_pipeline(pipeline);
-        rp.set_bind_group(0, source, &[]);
-        rp.set_bind_group(
-            1,
-            &self.params_group,
-            &[(slot * PARAMS_SLOT_BYTES) as wgpu::DynamicOffset],
-        );
-        rp.set_scissor_rect(scissor.min.x, scissor.min.y, scissor.size.x, scissor.size.y);
-        rp.draw(0..3, 0..1);
+        for draw in draws {
+            let Draw {
+                pipeline,
+                source,
+                slot,
+                scissor,
+            } = draw;
+            rp.set_pipeline(pipeline);
+            rp.set_bind_group(0, source, &[]);
+            rp.set_bind_group(
+                1,
+                &self.params_group,
+                &[(slot * PARAMS_SLOT_BYTES) as wgpu::DynamicOffset],
+            );
+            rp.set_scissor_rect(scissor.min.x, scissor.min.y, scissor.size.x, scissor.size.y);
+            rp.draw(0..3, 0..1);
+        }
     }
 }
 
-/// One pass of a job.
+/// One job's draw in a pass.
 #[derive(Clone, Copy, Debug)]
-struct Pass<'a> {
+struct Draw<'a> {
     pipeline: &'a wgpu::RenderPipeline,
-    target: &'a wgpu::TextureView,
     source: &'a wgpu::BindGroup,
     slot: usize,
     scissor: URect,
@@ -765,10 +863,8 @@ pub(crate) mod internals {
             jobs: &[BlurJob],
             dest: &wgpu::TextureView,
         ) {
-            self.prepare(ctx, jobs);
-            for job in 0..jobs.len() {
-                self.encode(ctx.encoder, job, dest);
-            }
+            self.prepare(ctx, jobs, None);
+            self.encode(ctx.encoder, 0..jobs.len(), dest);
         }
     }
 }

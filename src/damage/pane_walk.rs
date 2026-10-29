@@ -9,13 +9,19 @@
 //!   counts as damage at the pane's place for the panes above it. The encode filter adds the
 //!   footprint of each pane the damage reaches, so a capturing pane's footprint has its draws.
 //!   Refused: Chromium's whole-surface rule, which repaints the surface for one pane.
+//! - **A pane the last frame did not hold is stale.** Its key is its row among its owner's, so
+//!   a row removed before it gives it a new key, and with it no held capture, while the row
+//!   matcher sees the same row and damages nothing. Stale, its rect joins the damage and its
+//!   footprint the encode filter, so the capture it takes reads every draw under it.
 
 use crate::cascade::Cascade;
 use crate::cascade::pane_row::PaneRow;
 use crate::common::span::Span;
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::identity::pane_key::PaneKey;
 use crate::scene::forest::Forest;
+use std::mem;
 
 /// Where raw rects stand in paint order: the rects from `start` up to the next mark came from
 /// paint at `position` or later.
@@ -31,6 +37,10 @@ struct RawMark {
 pub(super) struct PaneWalk {
     marks: Vec<RawMark>,
     on: bool,
+    /// The last frame's pane keys, in paint order.
+    held: Vec<PaneKey>,
+    /// This frame's pane keys, in paint order.
+    keys: Vec<PaneKey>,
 }
 
 impl PaneWalk {
@@ -51,13 +61,25 @@ impl PaneWalk {
         }
     }
 
-    /// Start a frame, marking from here on only if some plane of `cascade` has a pane.
+    /// Start a frame: hold the last frame's pane keys and take this frame's, and mark from here
+    /// on only if some plane of `cascade` has a pane. Every frame starts here, a whole one too,
+    /// so the keys held are the last frame's whatever it painted.
     pub(super) fn start_frame(&mut self, cascade: &Cascade, forest: &Forest) {
         self.marks.clear();
-        self.on = forest
-            .trees
-            .iter_paint_order()
-            .any(|(plane, _)| !cascade.planes[plane].panes.is_empty());
+        self.next_keys(
+            forest
+                .trees
+                .iter_paint_order()
+                .flat_map(|(plane, _)| cascade.planes[plane].panes.iter().map(|pane| pane.key)),
+        );
+        self.on = !self.keys.is_empty();
+    }
+
+    /// Hold the keys taken last and take `keys`, this frame's in paint order.
+    fn next_keys(&mut self, keys: impl Iterator<Item = PaneKey>) {
+        mem::swap(&mut self.held, &mut self.keys);
+        self.keys.clear();
+        self.keys.extend(keys);
     }
 
     /// The position of a row a node no longer paints: just before its first current row, as it
@@ -79,9 +101,10 @@ impl PaneWalk {
         }
     }
 
-    /// Walk the panes in paint order: a pane whose footprint a rect painted before it touches has
-    /// a stale capture, so its rect joins the damage, at its own position for the panes above it,
-    /// and its key joins `dirty`. Returns `false` when more panes went stale than `dirty` holds.
+    /// Walk the panes in paint order: a pane the last frame did not hold, or whose footprint a
+    /// rect painted before it touches, has a stale capture, so its rect joins the damage, at its
+    /// own position for the panes above it, and its key joins `dirty`. Returns `false` when more
+    /// panes went stale than `dirty` holds.
     pub(super) fn walk(
         &mut self,
         cascade: &Cascade,
@@ -113,8 +136,10 @@ impl PaneWalk {
         rects: &mut Vec<Rect>,
         dirty: &mut DirtyPanes,
     ) -> bool {
-        for (position, pane) in panes {
-            if !self.touched_before(rects, position, pane.footprint) {
+        for (i, (position, pane)) in panes.enumerate() {
+            // A pane mostly keeps its place among the panes, so its own slot answers first.
+            let held = self.held.get(i) == Some(&pane.key) || self.held.contains(&pane.key);
+            if held && !self.touched_before(rects, position, pane.footprint) {
                 continue;
             }
             self.mark(rects.len(), position);
@@ -159,6 +184,8 @@ pub(crate) mod internals {
         #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             scratch_report::vec_bytes(&self.marks)
+                + scratch_report::vec_bytes(&self.held)
+                + scratch_report::vec_bytes(&self.keys)
         }
 
         /// Clear the marks, keeping the walk on.
@@ -171,6 +198,8 @@ pub(crate) mod internals {
             Self {
                 marks: Vec::new(),
                 on: true,
+                held: Vec::new(),
+                keys: Vec::new(),
             }
         }
 
@@ -181,6 +210,8 @@ pub(crate) mod internals {
             rects: &mut Vec<Rect>,
             dirty: &mut DirtyPanes,
         ) -> bool {
+            dirty.clear();
+            self.next_keys(panes.iter().map(|(_, pane)| pane.key));
             self.walk_panes(panes.iter().map(|(at, pane)| (*at, pane)), rects, dirty)
         }
     }

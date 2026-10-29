@@ -8,6 +8,7 @@ use crate::display::frame_stamp::FrameStamp;
 use crate::renderer::frontend::composer::clip_stack::ClipStack;
 use crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects;
 use crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner;
+use crate::renderer::frontend::composer::pane_break::PaneBreak;
 use crate::renderer::frontend::composer::rect_grid::RectGrid;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
@@ -25,6 +26,7 @@ pub(crate) mod compose_rig;
 mod geometry;
 mod higher_kind_rects;
 mod occlusion_pruner;
+mod pane_break;
 mod physical_map;
 mod rect_grid;
 pub(crate) mod session;
@@ -69,6 +71,8 @@ pub(crate) struct Composer {
     /// Per-group occlusion-prune scratch: solid-opaque occluders in the
     /// in-flight group, and the sweep dropping earlier quads they cover.
     occlusion: OcclusionPruner,
+    /// The last break the main pass takes for a pane, and what is painted after it.
+    pane_break: PaneBreak,
     /// Device `max_texture_dimension_2d`: the composer downsamples any
     /// composited `GpuView` whose physical rect exceeds it. Fixed per device,
     /// so it rides the ctor.
@@ -141,6 +145,7 @@ impl Composer {
             higher_kinds: HigherKindRects::default(),
             cursors: GroupCursors::default(),
             occlusion: OcclusionPruner::default(),
+            pane_break: PaneBreak::default(),
             max_texture_dim,
         }
     }
@@ -179,6 +184,7 @@ impl Composer {
         self.cursors = GroupCursors::default();
         self.batch.open = None;
         self.occlusion.start_frame(viewport_physical);
+        self.pane_break.open(0);
     }
 }
 
@@ -223,6 +229,7 @@ pub(crate) mod internals {
                 higher_kinds,
                 cursors: _,
                 occlusion,
+                pane_break: _,
                 max_texture_dim: _,
             } = self;
             clip.scratch_bytes()

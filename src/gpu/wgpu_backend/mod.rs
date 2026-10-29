@@ -483,6 +483,8 @@ impl WgpuBackend {
                 buffer,
                 owner,
                 format: targets.surface.format(),
+                clear,
+                target: targets.backbuffer.map(|bb| (bb.texture(), bb.view())),
             },
         );
 
@@ -570,43 +572,36 @@ impl WgpuBackend {
             "the mask plan rides exactly the passes with a stencil attachment",
         );
         let started = Instant::now();
+        let breaks = self.backdrops.breaks();
         let mut from = 0;
-        let mut opened = false;
-        for (pane, row) in draw.buffer.backdrops.iter().enumerate() {
-            if !row.capture {
-                continue;
-            }
-            // Panes that share a barrier share the break.
-            if row.barrier > from || !opened {
-                let segment = if opened {
-                    MainSegment::Inner
-                } else {
-                    MainSegment::First
-                };
-                self.run_main_segment(draw, target, segment, (from, Some(row.barrier)), encoder);
-                opened = true;
-                from = row.barrier;
-            }
-            let job = self
-                .backdrops
-                .job(pane)
-                .expect("a pane that captures has a blur");
-            let mark = |encoder: &mut wgpu::CommandEncoder, phase| {
-                if let Some(t) = draw.timings {
-                    t.encoder_mark(encoder, Mark::Backdrop { pane: job, phase });
-                }
+        for (i, at) in breaks.iter().enumerate() {
+            let segment = if i == 0 {
+                MainSegment::First
+            } else {
+                MainSegment::Inner
             };
-            mark(encoder, BackdropPhase::CaptureStart);
-            self.backdrops
-                .copy_capture(encoder, job, target.color, row.footprint);
-            mark(encoder, BackdropPhase::BlurStart);
-            self.backdrops.encode_blur(encoder, job);
-            mark(encoder, BackdropPhase::BlurEnd);
+            self.run_main_segment(draw, target, segment, (from, Some(at.barrier)), encoder);
+            from = at.barrier;
+            let last = at.jobs.end - 1;
+            for job in at.jobs.clone() {
+                backdrop_mark(draw, encoder, job, BackdropPhase::CaptureStart);
+                if !self.backdrops.reads_target() {
+                    self.backdrops.copy_capture(encoder, job, target.color);
+                }
+                backdrop_mark(draw, encoder, job, BackdropPhase::BlurStart);
+                // A job blurs with the others of its break, so its own blur ends where it starts,
+                // and the break's blur time is the set's, once, on the last job.
+                if job != last {
+                    backdrop_mark(draw, encoder, job, BackdropPhase::BlurEnd);
+                }
+            }
+            self.backdrops.encode_blurs(encoder, at.jobs.clone());
+            backdrop_mark(draw, encoder, last, BackdropPhase::BlurEnd);
         }
-        let segment = if opened {
-            MainSegment::Last
-        } else {
+        let segment = if breaks.is_empty() {
             MainSegment::Whole
+        } else {
+            MainSegment::Last
         };
         self.run_main_segment(draw, target, segment, (from, None), encoder);
         draw.stats
@@ -986,6 +981,18 @@ impl WgpuBackend {
         self.gpu_view_targets.retire_owner(owner);
         self.backdrops.retire(owner);
         self.gpu_timings.remove(&owner);
+    }
+}
+
+/// Timestamp blur `job`'s `phase`, where the frame is timed.
+fn backdrop_mark(
+    draw: FrameDraw<'_>,
+    encoder: &mut wgpu::CommandEncoder,
+    job: usize,
+    phase: BackdropPhase,
+) {
+    if let Some(t) = draw.timings {
+        t.encoder_mark(encoder, Mark::Backdrop { pane: job, phase });
     }
 }
 

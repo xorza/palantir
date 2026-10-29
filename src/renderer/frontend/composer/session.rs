@@ -37,7 +37,7 @@ use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::backdrop_row::BackdropRow;
+use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
@@ -779,6 +779,7 @@ impl PaintSink for ComposeSession<'_> {
         // `open_batch` must run before the text push so `texts_start` captures this run's index.
         let b = self.open_batch();
         b.strict |= new_strict;
+        self.composer.pane_break.paint(bounds);
         self.out.texts.push(TextDrawRow {
             origin: physical_rect.min,
             bounds,
@@ -811,6 +812,7 @@ impl ComposeSession<'_> {
             None => p.fill.lut_row,
         };
         self.quad_forces_flush(visible);
+        self.composer.pane_break.paint(visible);
         // Fragment fast path: a solid, sharp, stroke-less, pixel-aligned quad has
         // coverage exactly 1.0, so the shader returns the fill directly. `SOLID` excludes
         // shadows and triangles.
@@ -931,13 +933,12 @@ impl ComposeSession<'_> {
         }
     }
 
-    /// End everything painted so far at a barrier before the pane `packed`, seen at `visible`, and
-    /// list the pane; its row is the quad's `fill_lut_row`. The text batch and the group close, so
-    /// nothing before the barrier coalesces, reorders or prunes against what follows: the main
-    /// pass can break there and read the pixels the groups before it painted.
+    /// List the pane `packed`, seen at `visible`, with the barrier its capture reads at; its row is
+    /// the quad's `fill_lut_row`. A pane whose footprint misses everything painted since the last
+    /// break shares it, `0` before any. Else the text batch and the group close at a new barrier,
+    /// so nothing before it coalesces, reorders or prunes against what follows: the main pass
+    /// can break there and read the pixels the groups before it painted.
     fn open_barrier(&mut self, packed: &PackedQuad, visible: URect, pane: Pane) -> LutRow {
-        self.close_batch();
-        self.flush();
         let plan = BlurPlan::new(packed.fill_axis.lanes()[0]);
         let scale = self.composer.transform.physical_scale();
         // A lens samples its blur up to its reach aside, and each sample reads the blur's.
@@ -950,19 +951,30 @@ impl ComposeSession<'_> {
                 .saturating_add(reach)
                 .min(self.out.display.physical),
         );
+        let barrier = self
+            .composer
+            .pane_break
+            .shared(footprint)
+            .unwrap_or_else(|| {
+                self.close_batch();
+                self.flush();
+                let barrier = self.out.groups.len() as u32;
+                self.composer.pane_break.open(barrier);
+                barrier
+            });
         let row = LutRow(self.out.backdrops.len() as u32);
         self.out.backdrops.push(BackdropRow {
             key: pane.key,
             footprint,
             plan,
-            barrier: self.out.groups.len() as u32,
+            barrier,
             lens: pane.backdrop.lens().map(|lens| Lens {
                 bezel: lens.bezel * scale,
                 thickness: lens.thickness * scale,
                 ..lens
             }),
             max_luminance: pane.backdrop.max_luminance(),
-            capture: false,
+            source: PaneSource::Held,
         });
         row
     }
@@ -1145,6 +1157,7 @@ impl ComposeSession<'_> {
             self.flush();
         }
         self.composer.higher_kinds.push(tier, bounds);
+        self.composer.pane_break.paint(bounds);
         true
     }
 

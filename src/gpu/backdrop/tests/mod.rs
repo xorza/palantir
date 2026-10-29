@@ -1,4 +1,7 @@
-use crate::gpu::test_gpu::headless_test_gpu;
+//! Backdrop panes painted end to end on a headless window, against reference arithmetic and
+//! against whole repaints.
+
+use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::host::headless_window::HeadlessWindow;
 use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::corners::Corners;
@@ -22,6 +25,9 @@ use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use glam::{UVec2, Vec2};
 use image::RgbaImage;
+
+mod clear;
+mod neighbors;
 
 const SIZE: UVec2 = UVec2::new(64, 48);
 const PANE: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);
@@ -112,6 +118,46 @@ fn reference(plan: BlurPlan, image: &RgbaImage, channel: usize) -> Vec<f64> {
     out
 }
 
+/// What a pixel of a frame with a pane holds against the same frame without it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Expect {
+    /// The pixels under it blurred, within one 8-bit step: the dither's half step and the `f16`
+    /// stages' rounding.
+    Blurred,
+    /// The pixel under it, bit for bit.
+    Same,
+    /// Neither: an edge's coverage.
+    Either,
+}
+
+/// Every pixel of `got` against `under`, as `at` classes its center: blurred by `plan` as the
+/// reference arithmetic blurs `under`, or equal to it.
+fn assert_blurred(
+    got: &RgbaImage,
+    under: &RgbaImage,
+    plan: BlurPlan,
+    at: impl Fn(Vec2) -> Expect,
+    what: &str,
+) {
+    let want: Vec<Vec<f64>> = (0..3).map(|c| reference(plan, under, c)).collect();
+    for (x, y, pixel) in got.enumerate_pixels() {
+        match at(Vec2::new(x as f32 + 0.5, y as f32 + 0.5)) {
+            Expect::Same => assert_eq!(pixel, under.get_pixel(x, y), "{what}: ({x}, {y})"),
+            Expect::Blurred => {
+                for (c, want) in want.iter().enumerate() {
+                    let w = encode(want[(y * got.width() + x) as usize]);
+                    let g = f64::from(pixel[c]);
+                    assert!(
+                        (g - w).abs() <= 1.0,
+                        "{what}: ({x}, {y}) channel {c} is {g}, want {w:.2}"
+                    );
+                }
+            }
+            Expect::Either => {}
+        }
+    }
+}
+
 /// A pane shows the pixels painted before it blurred, as the reference arithmetic blurs the same
 /// frame without it: every channel within one 8-bit step, the dither's half step and the `f16`
 /// stages' rounding. Outside the pane the frame is unchanged, bit for bit. σ 3 blurs at full
@@ -120,28 +166,21 @@ fn reference(plan: BlurPlan, image: &RgbaImage, channel: usize) -> Vec<f64> {
 fn a_pane_shows_the_pixels_before_it_blurred() {
     let under = frame(None);
     for sigma in [3.0f32, 6.0] {
-        let plan = BlurPlan::new(sigma);
-        let got = frame(Some(sigma));
-        let want: Vec<Vec<f64>> = (0..3).map(|c| reference(plan, &under, c)).collect();
-        for (x, y, pixel) in got.enumerate_pixels() {
-            let inside = PANE.contains(Vec2::new(x as f32 + 0.5, y as f32 + 0.5));
-            if !inside {
-                assert_eq!(
-                    pixel,
-                    under.get_pixel(x, y),
-                    "σ {sigma}: ({x}, {y}) outside"
-                );
-                continue;
+        let inside = |p: Vec2| {
+            if PANE.contains(p) {
+                Expect::Blurred
+            } else {
+                Expect::Same
             }
-            for c in 0..3 {
-                let w = encode(want[c][(y * SIZE.x + x) as usize]);
-                let g = f64::from(pixel[c]);
-                assert!(
-                    (g - w).abs() <= 1.0,
-                    "σ {sigma}: ({x}, {y}) channel {c} is {g}, want {w:.2}"
-                );
-            }
-        }
+        };
+        let what = format!("σ {sigma}");
+        assert_blurred(
+            &frame(Some(sigma)),
+            &under,
+            BlurPlan::new(sigma),
+            inside,
+            &what,
+        );
     }
 }
 
@@ -219,12 +258,18 @@ fn whole(scene: impl FnMut(&mut Ui)) -> RgbaImage {
 /// [`whole`] on a window of `size`.
 fn whole_at(size: UVec2, scene: impl FnMut(&mut Ui)) -> RgbaImage {
     let gpu = headless_test_gpu();
+    let mut window = window(&gpu, size, RgbaF32::BLACK);
+    window.frame(&mut RecordApp::new(scene));
+    window.read_back()
+}
+
+/// A fresh window on `gpu` of `size` at scale 1 that clears to `clear`.
+fn window(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> HeadlessWindow {
     let mut window = HeadlessWindow::builder(gpu.handles())
         .shaper(TextShaper::test_mono())
         .open(size, 1.0);
-    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
-    window.frame(&mut RecordApp::new(scene));
-    window.read_back()
+    window.ui().theme_mut().window_clear = clear;
+    window
 }
 
 /// Every channel of `got` within one 8-bit step of `want`, the dither's half step either way.

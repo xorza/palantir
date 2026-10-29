@@ -6,6 +6,7 @@ use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::pane_captures::PaneCaptures;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::renderer::render_plan::RenderPlan;
 use glam::Vec2;
 use std::{iter, slice};
@@ -22,7 +23,7 @@ pub(crate) enum RepaintScissors {
 }
 
 impl RepaintScissors {
-    /// The physical-px repaint shape of `damage`: `Full`, or `Partial` with scissors after scaling, AA padding and clamping, then the footprint of each pane that captures, as the target there still holds the last frame's pane. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
+    /// The physical-px repaint shape of `damage`: `Full`, or `Partial` with the footprint of each pane that captures, as the target there still holds the last frame's pane, then the damage scissors after scaling, AA padding and clamping. Footprints go first, as a pane's damage, its own rect and what changed under it, lies inside its footprint and then adds no piece. Regions arrive non-empty and the padding keeps scissors nonzero; an empty result means the plan and draw list disagree and must not degrade to a full clear.
     ///
     /// The scissors are disjoint: each keeps only the pixels the ones before it left, split into
     /// at most four rects. The main pass replays the groups once per scissor, and after a pane's
@@ -41,9 +42,9 @@ impl RepaintScissors {
                 let footprints = buffer
                     .backdrops
                     .iter()
-                    .filter(|row| row.capture)
+                    .filter(|row| row.source == PaneSource::Capture)
                     .map(|row| row.footprint);
-                for scissor in damage_rects.chain(footprints) {
+                for scissor in footprints.chain(damage_rects) {
                     let mut pieces: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
                     pieces.push(scissor);
                     for &kept in &rects {
@@ -181,7 +182,7 @@ mod tests {
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::render_buffer::RenderBuffer;
-    use crate::renderer::render_buffer::backdrop_row::BackdropRow;
+    use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
     use crate::shape::paint::blur_plan::BlurPlan;
     use glam::{UVec2, Vec2};
     use std::time::Duration;
@@ -201,8 +202,8 @@ mod tests {
         assert!(matches!(repaint, Some(RepaintScissors::Full)));
     }
 
-    /// Eight capturing footprints, each a band across eight damage strips, split into eight pieces
-    /// apiece: 8 + 8 × 8 = 72 scissors, past the cap of 40, so no partial repaint fits.
+    /// Eight capturing footprints, bands across eight damage strips, which they split into eight
+    /// pieces apiece: 8 + 8 × 8 = 72 scissors, past the cap of 40, so no partial repaint fits.
     #[test]
     fn scissors_past_the_cap_fit_no_partial_repaint() {
         let strips: Vec<Rect> = (0..8)
@@ -218,59 +219,64 @@ mod tests {
             },
             footprint: URect::new(0, 12 * j, 100, 6),
             plan: BlurPlan::new(2.0),
-            barrier: 0,
+            barrier: j + 1,
             lens: None,
             max_luminance: 65504.0,
-            capture: true,
+            source: PaneSource::Capture,
         }));
         assert!(RepaintScissors::new(Damage::Partial(damage), &buffer).is_none());
     }
 
-    /// A partial repaint keeps each damage rect, scaled, padded and clamped, and adds the footprint
-    /// of each pane that captures, as the target there holds the last frame's pane, less what the
-    /// damage rects already cover: no pixel lies under two scissors.
+    /// A partial repaint takes the footprint of each pane that captures, as the target there holds
+    /// the last frame's pane, then each damage rect, scaled, padded and clamped, less what the
+    /// footprints already cover: no pixel lies under two scissors, and damage inside a footprint
+    /// adds no piece. A pane that keeps its result or shows the clear reads no pixel of the target,
+    /// so its footprint adds none.
     #[test]
     fn partial_repaint_preserves_padded_physical_scissors() {
         let damage = DamageRegion::collapse_from(
             &[
                 Rect::new(5.0, 5.0, 5.0, 5.0),
                 Rect::new(30.0, 20.0, 10.0, 5.0),
+                Rect::new(20.0, 18.0, 4.0, 4.0),
             ],
             0.0,
             Rect::new(0.0, 0.0, 50.0, 50.0),
         );
-        // Two panes, one capturing: its footprint, already physical, joins the scissors last.
+        // Three panes, one capturing: its footprint, already physical, joins the scissors first.
         let mut buffer = buffer();
-        let pane = |shape, footprint, capture| BackdropRow {
+        let pane = |shape, footprint, source| BackdropRow {
             key: PaneKey {
                 owner: WidgetId::from_hash("pane"),
                 shape,
             },
             footprint,
             plan: BlurPlan::new(2.0),
-            barrier: 0,
+            barrier: shape,
             lens: None,
             max_luminance: 65504.0,
-            capture,
+            source,
         };
         buffer.backdrops.extend([
-            pane(0, URect::new(30, 30, 40, 20), true),
-            pane(1, URect::new(0, 60, 20, 20), false),
+            pane(0, URect::new(0, 80, 20, 20), PaneSource::Clear),
+            pane(1, URect::new(30, 30, 40, 20), PaneSource::Capture),
+            pane(2, URect::new(0, 60, 20, 20), PaneSource::Held),
         ]);
         let repaint = RepaintScissors::new(Damage::Partial(damage), &buffer);
         let Some(RepaintScissors::Partial(rects)) = repaint else {
             panic!("partial plan produced a full repaint");
         };
-        // At 2x the rects are (10,10)-(20,20) and (60,40)-(80,50); the 2px AA pad extends each
-        // edge. The footprint, (30,30)-(70,50), loses the corner (58,38)-(70,50) the second
-        // covers: the band above it, (30,30)-(70,38), and the part left of it, (30,38)-(58,50).
+        // At 2x the rects are (10,10)-(20,20), (60,40)-(80,50) and (40,36)-(48,44); the 2px AA pad
+        // extends each edge. The footprint, (30,30)-(70,50), holds the third whole, and of the
+        // second leaves the band below it, (58,50)-(82,52), and the part right of it,
+        // (70,38)-(82,50).
         assert_eq!(
             rects.iter().collect::<Vec<_>>(),
             [
+                URect::new(30, 30, 40, 20),
                 URect::new(8, 8, 14, 14),
-                URect::new(58, 38, 24, 14),
-                URect::new(30, 30, 40, 8),
-                URect::new(30, 38, 28, 12),
+                URect::new(58, 50, 24, 2),
+                URect::new(70, 38, 12, 12),
             ]
         );
         assert!(matches!(
