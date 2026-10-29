@@ -65,11 +65,12 @@ fn gpu() -> &'static BenchGpu {
 
 /// A host on the desktop's present strategy (`DirectAdaptive`, as the winit host
 /// runs). The default would measure the screenshot path, which copies the
-/// backbuffer out on skip and full frames.
+/// backbuffer out on skip and full frames, and a retained target paints a
+/// partial frame where the desktop cannot.
 fn bench_host(g: &BenchGpu) -> OffscreenHost {
     let mut host = OffscreenHost::builder(g.handles())
         .collect_gpu_stats(false)
-        .retained_target(true)
+        .swapchain_present()
         .build();
     host.ui().theme_mut().window_clear = WINDOW_CLEAR;
     host
@@ -272,7 +273,7 @@ fn main_pass_batch(c: &mut Criterion, backends: Backends) {
             let target = g.target("palantir.main_pass_batch_bench", BENCH_SURFACE);
             let mut host = OffscreenHost::builder(g.handles())
                 .collect_gpu_stats(true)
-                .retained_target(true)
+                .swapchain_present()
                 .build();
             host.ui().theme_mut().window_clear = WINDOW_CLEAR;
             let mut state = FrameFixture::default();
@@ -415,7 +416,7 @@ fn main_pass(c: &mut Criterion, backends: Backends) {
             let target = g.target("palantir.main_pass_bench", BENCH_SURFACE);
             let mut host = OffscreenHost::builder(g.handles())
                 .collect_gpu_stats(true)
-                .retained_target(true)
+                .swapchain_present()
                 .build();
             host.ui().theme_mut().window_clear = WINDOW_CLEAR;
             let mut state = FrameFixture::default();

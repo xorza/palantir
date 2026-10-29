@@ -41,7 +41,7 @@ mod present_mode_tests {
     use crate::damage::Damage;
     use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
     use crate::host::window_driver::PresentPath::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
-    use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive};
+    use crate::host::window_driver::PresentStrategy::{BackbufferCopy, DirectAdaptive, Retained};
     use crate::host::window_driver::{PresentPath, present_path};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
@@ -89,6 +89,19 @@ mod present_mode_tests {
                 ViaBackbuffer(partial(10.0, 10.0))
             );
             assert_eq!(present_path(None, BackbufferCopy, fresh), SkipCopy);
+        }
+    }
+
+    /// A retained target keeps its pixels, so every painted frame paints into it as planned,
+    /// however much it covers and whatever the backbuffer holds, and a still frame presents
+    /// nothing.
+    #[test]
+    fn retained_paints_every_frame_into_the_target() {
+        for fresh in [false, true] {
+            for plan in [full(), partial(10.0, 10.0), partial(90.0, 90.0)] {
+                assert_eq!(present_path(Some(plan), Retained, fresh), Direct(plan));
+            }
+            assert_eq!(present_path(None, Retained, fresh), SkipNoop);
         }
     }
 

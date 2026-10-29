@@ -75,7 +75,7 @@ impl HostTime {
 pub struct OffscreenHostBuilder {
     gpu: Gpu,
     options: HostOptions,
-    retained_target: bool,
+    strategy: PresentStrategy,
     time: OffscreenTime,
 }
 
@@ -108,11 +108,16 @@ impl OffscreenHostBuilder {
 
     /// Promises every frame renders into the *same* texture, so the target keeps the last frame's pixels. A texture of another size or format is a new target, which the next frame paints in full.
     ///
-    /// Off by default: otherwise a partial repaint would leave the rest undefined, so frames go through a retained backbuffer and are copied out. On, small damage repaints straight into the target.
+    /// Off by default: otherwise a partial repaint would leave the rest undefined, so frames go through a retained backbuffer and are copied out. On, a frame paints straight into the target, a partial one repainting only its damage, and a still frame leaves the target as it is; a frame that takes a screenshot, outlines its damage, or captures a backdrop from a target without `COPY_SRC` goes through the backbuffer.
     ///
     /// **Only say it if it is true:** with a fresh texture of the same size and format each call, everything outside the damage is whatever it contained.
     pub const fn retained_target(mut self, retained: bool) -> Self {
-        self.retained_target = retained;
+        self.strategy = if retained {
+            PresentStrategy::Retained
+        } else {
+            // The target's prior contents can't be relied on: fill it whole.
+            PresentStrategy::BackbufferCopy
+        };
         self
     }
 
@@ -143,13 +148,7 @@ impl OffscreenHostBuilder {
             .options
             .shaper_or_else(|| TextShaper::with_fonts(fonts));
         let core = HostCore::new(self.gpu, &self.options, shaper);
-        let strategy = if self.retained_target {
-            PresentStrategy::DirectAdaptive
-        } else {
-            // The target's prior contents can't be relied on: fill it whole.
-            PresentStrategy::BackbufferCopy
-        };
-        let driver = core.open(OffscreenHost::WINDOW, strategy);
+        let driver = core.open(OffscreenHost::WINDOW, self.strategy);
         let time = match self.time {
             OffscreenTime::Realtime => HostTime::Realtime(RealtimeClock::new()),
             OffscreenTime::Manual => HostTime::Manual(Duration::ZERO),
@@ -174,7 +173,7 @@ impl OffscreenHost {
                 #[cfg(feature = "system-clipboard")]
                 system_clipboard: false,
             },
-            retained_target: false,
+            strategy: PresentStrategy::BackbufferCopy,
             time: OffscreenTime::Realtime,
         }
     }
@@ -220,7 +219,7 @@ impl OffscreenHost {
         self.driver.wait_for_captures(self.core.gpu());
     }
 
-    /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged. The target may change between calls, unless the builder promised [`OffscreenHostBuilder::retained_target`]. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`].
+    /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged. The target may change between calls, unless the builder promised [`OffscreenHostBuilder::retained_target`], whose one target keeps what a still frame leaves in it. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`].
     ///
     /// `system_scale` stands in for the platform's device pixel ratio; the app's scale multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200% render).
     ///
@@ -286,12 +285,22 @@ fn deny_window_commands(driver: &mut WindowDriver) {
     }
 }
 
-/// Peepholes for the visual suite and the `record_pass` benchmark.
+/// Peepholes for the visual suite and the benches.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::surface::render_target::TargetFormat;
-    use crate::host::offscreen::OffscreenHost;
+    use crate::host::offscreen::{OffscreenHost, OffscreenHostBuilder};
+    use crate::host::window_driver::PresentStrategy;
     use crate::renderer::render_buffer::RenderBuffer;
+
+    impl OffscreenHostBuilder {
+        /// Present as the winit host does, through [`PresentStrategy::DirectAdaptive`], so a bench
+        /// measures what the desktop pays.
+        pub(crate) const fn swapchain_present(mut self) -> Self {
+            self.strategy = PresentStrategy::DirectAdaptive;
+            self
+        }
+    }
 
     impl OffscreenHost {
         /// Draw list the most recent [`OffscreenHost::frame`] composed; the benchmark replays it for exact step counts.
@@ -336,6 +345,8 @@ mod tests {
     use std::cell::Cell;
 
     use super::*;
+    use crate::damage::Damage;
+    use crate::diagnostics::DebugOverlayConfig;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::wgpu_backend::render_stream::RenderStream;
@@ -344,16 +355,21 @@ mod tests {
     use crate::internals::panic_probe;
     use crate::internals::record_app::RecordApp;
     use crate::primitives::geometry::rect::Rect;
+    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::paint::backdrop_filter::BackdropFilter;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
+    use crate::renderer::render_plan::RenderPlan;
+    use crate::shape::Shape;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
+    use crate::widgets::panel::Panel;
     use crate::window::cursor_icon::CursorIcon;
     use crate::window::vsync::Vsync;
     use crate::window::window_config::WindowConfig;
     use glam::UVec2;
-    use image::imageops;
+    use image::{Rgba, imageops};
 
     /// A driver as this host opens its one window, over `shared`, on a stream with no device.
     fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
@@ -446,6 +462,205 @@ mod tests {
         panic_probe::assert_panics_with("OffscreenTime::Manual", || {
             realtime.advance(Duration::from_secs(1));
         });
+    }
+
+    /// A retained target's partial frame paints into the target, loading what it holds: a pixel
+    /// the frame does not damage keeps what was written into the texture after the last frame,
+    /// so nothing cleared or copied over it, and the damaged 4 × 4 block takes its new color. A
+    /// still frame then presents nothing.
+    #[test]
+    fn a_retained_partial_frame_repaints_the_target_in_place() {
+        let gpu = headless_test_gpu();
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .shaper(TextShaper::test_mono())
+            .retained_target(true)
+            .build();
+        host.ui().theme_mut().window_clear = RgbaF32::BLACK;
+        let texture = gpu.target("palantir.offscreen.retained", UVec2::new(32, 8));
+        let color = Cell::new(RgbaF32::WHITE);
+        let mut app = RecordApp::new(|ui: &mut Ui| {
+            Block::new()
+                .id_salt("tile")
+                .size(4.0)
+                .chrome(Chrome::fill(color.get()))
+                .show(ui);
+        });
+        let mut frame = |host: &mut OffscreenHost| {
+            let target = texture.as_target();
+            let spec = host.spec(target, 1.0);
+            let CpuFrame { mode, .. } = host.core.record(&mut host.driver, spec, &mut app);
+            host.core.submit(&mut host.driver, target, mode);
+            mode
+        };
+        assert!(matches!(
+            frame(&mut host),
+            PresentPath::Direct(RenderPlan {
+                damage: Damage::Full,
+                ..
+            })
+        ));
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: texture.as_target().texture(),
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: 30, y: 6, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &[0, 255, 0, 255],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4),
+                rows_per_image: Some(1),
+            },
+            wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
+        );
+        color.set(RgbaF32::new(1.0, 0.0, 0.0, 1.0));
+        assert!(matches!(
+            frame(&mut host),
+            PresentPath::Direct(RenderPlan {
+                damage: Damage::Partial(_),
+                ..
+            })
+        ));
+        let image = texture.read_back();
+        assert_eq!(
+            *image.get_pixel(1, 1),
+            Rgba([255, 0, 0, 255]),
+            "the damaged block"
+        );
+        assert_eq!(
+            *image.get_pixel(30, 6),
+            Rgba([0, 255, 0, 255]),
+            "the kept marker"
+        );
+        assert_eq!(
+            *image.get_pixel(20, 2),
+            Rgba([0, 0, 0, 255]),
+            "the kept clear"
+        );
+        assert_eq!(frame(&mut host), PresentPath::SkipNoop, "a still frame");
+    }
+
+    /// A retained target never keeps a damage outline: with the outline on, a partial frame
+    /// paints through the backbuffer, whole after a direct frame and partial after one through
+    /// it, and the first partial frame after the outline goes off still does, as the target
+    /// holds the last outline. The frame after that paints in place, and the target then matches
+    /// a host that never outlined.
+    #[test]
+    fn a_retained_target_keeps_no_damage_outline() {
+        let gpu = headless_test_gpu();
+        let host = |retained: bool| {
+            let mut host = OffscreenHost::builder(gpu.handles())
+                .shaper(TextShaper::test_mono())
+                .retained_target(retained)
+                .build();
+            host.ui().theme_mut().window_clear = RgbaF32::BLACK;
+            host
+        };
+        let mut retained = host(true);
+        let texture = gpu.target("palantir.offscreen.outlined", UVec2::new(32, 16));
+        let scene = |red: bool| {
+            move |ui: &mut Ui| {
+                let color = if red {
+                    RgbaF32::new(1.0, 0.0, 0.0, 1.0)
+                } else {
+                    RgbaF32::WHITE
+                };
+                Block::new()
+                    .id_salt("tile")
+                    .size(4.0)
+                    .chrome(Chrome::fill(color))
+                    .show(ui);
+            }
+        };
+        for (frame, outline, via_backbuffer, partial) in [
+            (0, true, false, false),
+            (1, true, true, false),
+            (2, true, true, true),
+            (3, false, true, true),
+            (4, false, false, true),
+        ] {
+            retained.ui().set_debug_overlay(DebugOverlayConfig {
+                damage_rect: outline,
+                ..DebugOverlayConfig::default()
+            });
+            let target = texture.as_target();
+            let spec = retained.spec(target, 1.0);
+            let mut app = RecordApp::new(scene(frame % 2 == 1));
+            let CpuFrame { mode, .. } = retained.core.record(&mut retained.driver, spec, &mut app);
+            let what = format!("frame {frame}: {mode:?}");
+            let (route, plan) = match mode {
+                PresentPath::ViaBackbuffer(plan) => (true, plan),
+                PresentPath::Direct(plan) => (false, plan),
+                PresentPath::SkipCopy | PresentPath::SkipNoop => panic!("{what}"),
+            };
+            assert_eq!(route, via_backbuffer, "{what}");
+            assert_eq!(matches!(plan.damage, Damage::Partial(_)), partial, "{what}");
+            retained.core.submit(&mut retained.driver, target, mode);
+        }
+        let reference = gpu.target("palantir.offscreen.unoutlined", UVec2::new(32, 16));
+        host(false).frame(
+            reference.as_target(),
+            1.0,
+            &mut RecordApp::new(scene(false)),
+        );
+        assert_eq!(texture.read_back(), reference.read_back());
+    }
+
+    /// On a retained target that gives no copy, a partial frame whose pane captures paints
+    /// through the backbuffer, decided before it builds: as a partial frame over the backbuffer
+    /// the first frame left, then whole once a direct frame left the backbuffer behind. A partial
+    /// frame whose pane holds its result paints in place.
+    #[test]
+    fn a_retained_target_without_copies_captures_through_the_backbuffer() {
+        let gpu = headless_test_gpu();
+        let mut host = OffscreenHost::builder(gpu.handles())
+            .shaper(TextShaper::test_mono())
+            .retained_target(true)
+            .build();
+        let texture = gpu.uncopied_target("palantir.offscreen.uncopied", UVec2::new(64, 32));
+        let scene = |under: bool, away: bool| {
+            let color = |on: bool| if on { RgbaF32::WHITE } else { RgbaF32::BLACK };
+            move |ui: &mut Ui| {
+                Panel::canvas()
+                    .id_salt("uncopied")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        ui.add_shape(Shape::rect(Rect::new(8.0, 8.0, 4.0, 4.0)).fill(color(under)));
+                        ui.add_shape(
+                            Shape::rect(Rect::new(50.0, 20.0, 4.0, 4.0)).fill(color(away)),
+                        );
+                        ui.add_shape(
+                            Shape::rect(Rect::new(4.0, 4.0, 16.0, 12.0))
+                                .backdrop_filter(BackdropFilter::blur(1.0)),
+                        );
+                    });
+            }
+        };
+        for (under, away, via_backbuffer, partial) in [
+            (false, false, true, false),
+            (true, false, true, true),
+            (true, true, false, true),
+            (false, true, true, false),
+        ] {
+            let target = texture.as_target();
+            let spec = host.spec(target, 1.0);
+            let mut app = RecordApp::new(scene(under, away));
+            let CpuFrame { mode, .. } = host.core.record(&mut host.driver, spec, &mut app);
+            let what = format!("under {under}, away {away}: {mode:?}");
+            let (route, plan) = match mode {
+                PresentPath::ViaBackbuffer(plan) => (true, plan),
+                PresentPath::Direct(plan) => (false, plan),
+                PresentPath::SkipCopy | PresentPath::SkipNoop => panic!("{what}"),
+            };
+            assert_eq!(route, via_backbuffer, "{what}");
+            assert_eq!(matches!(plan.damage, Damage::Partial(_)), partial, "{what}");
+            host.core.submit(&mut host.driver, target, mode);
+        }
     }
 
     /// The CPU half leaves a frame's output pending and the GPU half completes it.

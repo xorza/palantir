@@ -53,6 +53,9 @@ pub(super) struct WindowDriver {
     /// is pending or after target invalidation, so the next frame drops its damage
     /// baseline.
     output_valid: bool,
+    /// Whether the target holds the damage outline the last painted frame drew onto it, which a
+    /// frame that keeps the target's pixels would keep too.
+    target_outlined: bool,
     strategy: PresentStrategy,
     pixel_snap: bool,
     /// The target the last [`Self::note_target`] saw.
@@ -156,6 +159,11 @@ pub(super) enum PresentStrategy {
     /// promoted to a direct full repaint. A surface that can't be copied into gets the
     /// backbuffer drawn onto it ([`Backbuffer::draw_onto`](crate::gpu::surface::backbuffer::Backbuffer::draw_onto)).
     DirectAdaptive,
+    /// One texture that keeps its pixels between frames: a painted frame paints into it, a
+    /// partial one loading what it holds, and a still frame presents nothing. A frame that takes
+    /// a screenshot, or a partial one that cannot keep the target's pixels as they are
+    /// (`WindowDriver::kept_target_path`), paints through the backbuffer.
+    Retained,
 }
 
 /// How a frame reaches the target, sealed in `cpu_frame` so the GPU half submits
@@ -204,6 +212,7 @@ fn present_path(
             None => PresentPath::SkipCopy,
             Some(p) => PresentPath::ViaBackbuffer(p),
         },
+        PresentStrategy::Retained => plan.map_or(PresentPath::SkipNoop, PresentPath::Direct),
     }
 }
 
@@ -240,6 +249,7 @@ impl WindowDriver {
             ui: Ui::new(resources.clone()),
             stream,
             output_valid: false,
+            target_outlined: false,
             strategy: config.strategy,
             pixel_snap: config.pixel_snap,
             target: None,
@@ -381,6 +391,15 @@ impl WindowDriver {
                 plan = plan.to_full();
                 mode = path(Some(plan), self.stream.is_backbuffer_fresh());
             }
+            if let Some(through) = self.kept_target_path(mode) {
+                mode = through;
+                if let PresentPath::ViaBackbuffer(through) = through
+                    && through != plan
+                {
+                    plan = through;
+                    self.decide_panes(plan);
+                }
+            }
             self.build(frontend, plan);
             // The disjoint scissors outgrow their cap, or the pixels this partial frame keeps show
             // a cutout form the frame no longer picks: it paints whole.
@@ -430,10 +449,33 @@ impl WindowDriver {
         );
     }
 
-    /// `mode` for a frame whose panes capture as `buffer` says: a direct frame paints through the
-    /// backbuffer when its captures cannot copy out of the target, which gives no copy, or would
-    /// copy more than the surface holds, where its blurs read the backbuffer and the copy onto
-    /// the target moves the surface once. A direct frame is whole, so the backbuffer may be new.
+    /// The path of a direct partial frame, which only a retained target takes, that cannot keep
+    /// the target's pixels as they are: the target holds the last frame's damage outline, or a
+    /// pane may capture from a target that gives no copy. Through the backbuffer, whole unless
+    /// the backbuffer holds the last frame. Decided before the frame builds, from the tickets, as
+    /// the partial draw list culls what a whole frame would paint.
+    fn kept_target_path(&self, mode: PresentPath) -> Option<PresentPath> {
+        let PresentPath::Direct(plan) = mode else {
+            return None;
+        };
+        let partial = matches!(plan.damage, Damage::Partial(_));
+        let gives_copy = self.target.is_some_and(|target| target.gives_copy);
+        let uncopied = !gives_copy && self.pane_captures.may_capture();
+        (partial && (self.target_outlined || uncopied)).then(|| {
+            if self.stream.is_backbuffer_fresh() {
+                PresentPath::ViaBackbuffer(plan)
+            } else {
+                PresentPath::ViaBackbuffer(plan.to_full())
+            }
+        })
+    }
+
+    /// `mode` for a frame whose panes capture as `buffer` says: a direct whole frame paints
+    /// through the backbuffer when its captures cannot copy out of the target, which gives no
+    /// copy, or would copy more than the surface holds, where its blurs read the backbuffer and
+    /// the copy onto the target moves the surface once; the backbuffer may be new, as the frame
+    /// is whole. A direct partial frame keeps its pixels in the target alone, so its captures copy
+    /// out of it ([`Self::kept_target_path`]).
     fn capture_path(&self, mode: PresentPath, buffer: &RenderBuffer) -> PresentPath {
         let PresentPath::Direct(plan) = mode else {
             return mode;
@@ -445,6 +487,13 @@ impl WindowDriver {
         let target = self
             .target
             .expect("a frame that captures has noted its target");
+        if matches!(plan.damage, Damage::Partial(_)) {
+            debug_assert!(
+                target.gives_copy,
+                "a partial frame's captures copy out of it"
+            );
+            return mode;
+        }
         let surface = u64::from(target.physical.x) * u64::from(target.physical.y);
         if !target.gives_copy || captured >= surface {
             PresentPath::ViaBackbuffer(plan)
@@ -503,6 +552,12 @@ impl WindowDriver {
                 || target.gives_copy(),
             "a direct frame's captures copy out of the target"
         );
+        debug_assert!(
+            self.strategy == PresentStrategy::Retained
+                || !matches!(mode, PresentPath::Direct(plan) if matches!(plan.damage, Damage::Partial(_))),
+            "a direct partial frame loads the target, which only a retained one keeps: a \
+             swapchain image holds nothing at acquire"
+        );
         let (plan, route) = match mode {
             PresentPath::SkipNoop => {
                 self.output_valid = true;
@@ -513,6 +568,7 @@ impl WindowDriver {
                 // backbuffer exists and matches.
                 backend.copy_backbuffer_to_surface(&self.stream, target);
                 self.output_valid = true;
+                self.target_outlined = false;
                 return;
             }
             PresentPath::Direct(plan) => (plan, Route::Direct),
@@ -527,6 +583,7 @@ impl WindowDriver {
             "the scissors are the ones the CPU half fitted to this plan"
         );
         let debug_overlay = self.ui.debug_overlay();
+        self.target_outlined = debug_overlay.damage_rect;
         backend.submit(
             &mut self.stream,
             target,

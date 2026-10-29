@@ -167,8 +167,7 @@ fn a_pane_inside_a_rounded_clip_blurs_inside_it() {
 /// Nine panes in a 3 × 3 grid, apart past σ 1's 4 px reach, each over a square of its own on a
 /// kept window. A change under one or two captures them alone; under all nine, one more than a
 /// partial frame holds, the frame paints whole. Each frame matches a whole repaint within one
-/// 8-bit step. The second frame paints whole whatever its plan, as the first painted straight
-/// into the target and left the backbuffer behind.
+/// 8-bit step.
 #[test]
 fn more_stale_panes_than_a_partial_frame_holds_paint_whole() {
     assert_eq!(PaneCaptures::PARTIAL_CAP, 8);
@@ -203,7 +202,7 @@ fn more_stale_panes_than_a_partial_frame_holds_paint_whole() {
     let mut window = window(&gpu, size, RgbaF32::BLACK);
     for (changed, want) in [
         (0, (FramePaint::Full, 9)),
-        (1, (FramePaint::Partial, 9)),
+        (1, (FramePaint::Partial, 1)),
         (0, (FramePaint::Partial, 1)),
         (1, (FramePaint::Partial, 1)),
         (0, (FramePaint::Partial, 1)),
@@ -222,7 +221,7 @@ fn more_stale_panes_than_a_partial_frame_holds_paint_whole() {
 /// small pane keeps its result through the frame that adds a pane 1060 px wide, its footprint
 /// past 1024 at σ 2, on a window tall enough that it stays a partial frame. Each frame matches a
 /// whole repaint within one 8-bit step. A dot painted after the panes flips on the second frame,
-/// which paints whole as the first left the backbuffer behind.
+/// which blurs nothing.
 #[test]
 fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
     let size = UVec2::new(1100, 200);
@@ -249,7 +248,7 @@ fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
     let mut window = window(&gpu, size, RgbaF32::BLACK);
     for (dot, wide, want, what) in [
         (false, false, (FramePaint::Full, 1), "first"),
-        (true, false, (FramePaint::Partial, 1), "dot"),
+        (true, false, (FramePaint::Partial, 0), "dot"),
         (true, true, (FramePaint::Partial, 1), "grown"),
     ] {
         let painted = window.frame(&mut RecordApp::new(scene(dot, wide))).paint();

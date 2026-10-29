@@ -330,7 +330,8 @@ impl WgpuBackend {
     ///
     /// [`Submission::route`] picks the path: [`Route::ViaBackbuffer`] renders into the stream's
     /// backbuffer and copies onto `target`, whose texture needs `COPY_DST` or draws it on;
-    /// [`Route::Direct`] renders straight into `target`. The scissors are the effective plan:
+    /// [`Route::Direct`] renders straight into `target`, a partial frame loading what it holds,
+    /// which only a target that keeps its pixels may take. The scissors are the effective plan:
     /// escalations were sealed before the draw list was built.
     pub(crate) fn submit(
         &mut self,
@@ -347,10 +348,6 @@ impl WgpuBackend {
             ..
         } = submission;
         let via_backbuffer = route == Route::ViaBackbuffer;
-        debug_assert!(
-            via_backbuffer || !repaint_scissors.is_partial(),
-            "a direct frame paints whole: a swapchain image holds nothing at acquire"
-        );
         if via_backbuffer {
             let made = stream.ensure_backbuffer(&self.gpu.device, &self.texture_binding, target);
             // A partial arrives un-escalated only onto a fresh backbuffer, so a new one means that

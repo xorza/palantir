@@ -191,6 +191,12 @@ impl PaneCaptures {
         &self.tickets
     }
 
+    /// Whether a pane of the last tickets may capture: the frame built from them captures at
+    /// most these.
+    pub(crate) fn may_capture(&self) -> bool {
+        self.tickets.iter().flatten().any(|ticket| ticket.captures)
+    }
+
     /// Record what the frame `buffer` holds, built from the last tickets, took: each pane that
     /// took a new result holds it, each capturing pane that took none holds nothing, and the
     /// panes [`Self::decide`] took no row for, no longer on screen, drop theirs.
