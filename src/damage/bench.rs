@@ -477,6 +477,9 @@ fn backdrop_walk(group: &mut CaseGroup<'_>) {
                         raw.push(Rect::new(r as f32, 500.0, 4.0, 4.0));
                     }
                 };
+                // The first walk holds no pane, so every one is new and stale.
+                fill(&mut walk, &mut raw);
+                let _ = walk.walk_over(&rows, &mut raw, &mut dirty);
                 fill(&mut walk, &mut raw);
                 assert!(walk.walk_over(&rows, &mut raw, &mut dirty));
                 assert_eq!(dirty, DirtyPanes::default(), "no pane goes stale");

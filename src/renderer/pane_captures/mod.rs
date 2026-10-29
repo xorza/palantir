@@ -6,14 +6,26 @@
 //!   it stale, or when its held capture does not serve: another plan, or a footprint outside the
 //!   held region. Deciding before the frame paints lets a partial frame repaint each capturing
 //!   footprint, which the repaint scissors and the cutout census both read, as the target there
-//!   still holds the last frame's pane; past eight captures the frame paints whole. A target
-//!   that gives no copy, a GLES swapchain image, paints a capturing frame through the
-//!   backbuffer. Refused: the backend deciding after the CPU built the scissors.
+//!   still holds the last frame's pane; past eight captures the frame paints whole. Refused: the
+//!   backend deciding after the CPU built the scissors.
+//! - **A capturing frame that would copy more than the surface paints through the backbuffer.**
+//!   The blurs then read the backbuffer in place, and the copy onto the target moves the surface
+//!   once, where the captures move each footprint: on the m2 `cards/scrolling` took 4.8 % off,
+//!   `cards_apart` 6.1 %. Every capturing frame through the backbuffer cost the 680M 12 % on
+//!   `pair_near/scrolling`, two small footprints. A target that gives no copy, a GLES swapchain
+//!   image, paints every capturing frame through it.
+//! - **A pane with nothing painted under it shows the clear.** The composer gives a pane whose
+//!   footprint no draw before it touches barrier 0, so its backdrop is the clear, which a blur
+//!   leaves unchanged: it neither breaks the pass nor blurs, and its footprint joins no scissor.
+//!   Only where it would capture: a partial frame keeps every draw under a capturing pane's
+//!   footprint, so a barrier of 0 there means nothing lies under it, where a held pane's barrier
+//!   counts only the draws the damage kept.
 
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
@@ -47,7 +59,7 @@ pub(crate) enum Settled {
 /// One window's held captures, so the CPU knows before a frame paints which panes capture again
 /// and repaints their footprints: the main pass reads a capture from the target, where the last
 /// frame's pane still lies under it. The backend keeps the results and follows each row's
-/// [`capture`](crate::renderer::render_buffer::backdrop_row::BackdropRow::capture).
+/// [`source`](crate::renderer::render_buffer::backdrop_row::BackdropRow::source).
 #[derive(Debug, Default)]
 pub(crate) struct PaneCaptures {
     held: FxHashMap<PaneKey, Held>,
@@ -57,8 +69,9 @@ impl PaneCaptures {
     /// The most panes a partial frame captures; past it the frame paints whole.
     pub(crate) const PARTIAL_CAP: usize = DirtyPanes::CAP;
 
-    /// Mark each of `buffer`'s panes that captures this frame: all of them on a `full` frame,
-    /// else those `dirty` holds and those whose held capture does not serve. Drops the captures
+    /// Mark where each of `buffer`'s panes takes its result this frame. On a `full` frame every
+    /// pane takes a new one, else each one `dirty` holds or whose held capture does not serve:
+    /// from the clear when nothing is painted before it, else from a capture. Drops the captures
     /// of panes no longer on screen.
     pub(crate) fn settle(
         &mut self,
@@ -81,9 +94,15 @@ impl PaneCaptures {
                     .held
                     .get(&row.key)
                     .is_some_and(|held| held.serves(row.plan, region, surface));
-            row.capture = !kept;
-            if row.capture {
+            row.source = if kept {
+                PaneSource::Held
+            } else if row.barrier == 0 {
+                PaneSource::Clear
+            } else {
                 captures += 1;
+                PaneSource::Capture
+            };
+            if !kept {
                 self.held.insert(
                     row.key,
                     Held {

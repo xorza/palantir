@@ -99,13 +99,16 @@ struct BackdropSlot {
     // The slot's texel coordinate, texel `j`'s center at `j`, of the
     // lattice's texel 0.
     offset: vec2<f32>,
-    // Physical px of one texel of the pane's last level.
+    // Physical px of one texel of the pane's last level, or 0 for a pane with
+    // nothing painted before it, which shows `clear`.
     lattice: f32,
     // The strength of the lamp's glint off the lens's bezel.
     highlight: f32,
     // The lens, `(bezel, thickness, refractive_index, dispersion)` in
     // physical px, zero for a pane of no glass (`LensOptics`).
     lens: vec4<f32>,
+    // The linear clear a pane of lattice 0 shows, as the target holds it.
+    clear: vec3<f32>,
     // The highest relative luminance the pane shows under its tint; 65504
     // for a pane with no ceiling.
     max_luminance: f32,
@@ -1040,8 +1043,12 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
 
 // The pane's result at screen position `p`: the B-spline over the slot's
 // texels through four bilinear fetches (Sigg and Hadwiger), whose weights
-// add the same variance at every phase, or the texel itself at level 0.
+// add the same variance at every phase, the texel itself at level 0, or the
+// clear the slot holds.
 fn backdrop_result(p: vec2<f32>, slot: BackdropSlot) -> vec3<f32> {
+    if (slot.lattice == 0.0) {
+        return slot.clear;
+    }
     let x = p / slot.lattice - vec2<f32>(0.5) + slot.offset;
     if (slot.lattice == 1.0) {
         // A lens reads between pixels, where the bilinear read is the
@@ -1133,26 +1140,35 @@ fn lens_glint(lens: vec4<f32>, inward: f32, outward: vec2<f32>) -> f32 {
 // `fill_axis = (σ, saturation, noise, opacity)`. A paint
 // animation's fade scaled the opacity and the tint's alpha alike, so the
 // tint's own share is its alpha over the opacity.
+//
+// A lens bends along the distance's screen gradient, the edge's outward
+// normal on the screen, turned with the pane. Every fragment of a quad reads
+// one slot, so all of a pane's fragments, helpers included, take the lens's
+// branch or none do, and the gradient holds inside it, which the uniformity
+// analysis cannot see. A pane of no glass measures no distance in its core.
 @fragment
+@diagnostic(off, derivative_uniformity)
 fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     let slot = backdrop_slots[in.fill_lut_row];
-    // The distance and its screen gradient, in uniform control flow: a lens
-    // bends along the gradient, which is the edge's outward normal on the
-    // screen, turned with the pane.
-    let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    let gradient = vec2<f32>(dpdx(d), dpdy(d));
     let lens = slot.lens;
-    let inward = -d;
     var c: vec3<f32>;
-    if (lens.x > 0.0 && inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
-        let outward = normalize(gradient);
-        let index = lens.z;
-        c = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index), slot);
-        if (lens.w > 0.0) {
-            c.r = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index - 0.5 * lens.w), slot).r;
-            c.b = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index + 0.5 * lens.w), slot).b;
+    var d: f32;
+    if (lens.x > 0.0) {
+        d = sdf_rounded_rect(in.local, in.size, in.radius);
+        let gradient = vec2<f32>(dpdx(d), dpdy(d));
+        let inward = -d;
+        if (inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
+            let outward = normalize(gradient);
+            let index = lens.z;
+            c = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index), slot);
+            if (lens.w > 0.0) {
+                c.r = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index - 0.5 * lens.w), slot).r;
+                c.b = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index + 0.5 * lens.w), slot).b;
+            }
+            c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
+        } else {
+            c = backdrop_result(in.clip.xy, slot);
         }
-        c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
     } else {
         c = backdrop_result(in.clip.xy, slot);
     }
@@ -1179,6 +1195,9 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     let fill = vec4<f32>(c, opacity);
     if (all(in.local > in.core.xy) && all(in.local < in.core.zw)) {
         return premultiply(fill.rgb, fill.a);
+    }
+    if (lens.x <= 0.0) {
+        d = sdf_rounded_rect(in.local, in.size, in.radius);
     }
     if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
         var window = composite_window(d, fill, in.stroke_color, in.stroke_width);

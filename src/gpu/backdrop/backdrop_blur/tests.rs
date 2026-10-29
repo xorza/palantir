@@ -238,6 +238,7 @@ fn whole(plan: BlurPlan, dest_origin: UVec2, format: TargetFormat) -> BlurJob {
             .region(URect::new(0, 0, SURFACE.x, SURFACE.y), SURFACE)
             .unwrap(),
         dest_origin,
+        scratch_origin: UVec2::ZERO,
     }
 }
 
@@ -280,8 +281,9 @@ fn the_passes_match_the_reference_arithmetic() {
 }
 
 /// A region inside another gives the texels of its own pane, the region shrunk by the reach, the
-/// same values bit for bit, wherever the two results land: every read lands on the lattice's
-/// texels at a fixed phase, so the arithmetic does not depend on where a pass's target sits.
+/// same values bit for bit, wherever the two results and their scratch rows land, the two drawn
+/// in the same passes: every read lands on the lattice's texels at a fixed phase, so the
+/// arithmetic does not depend on where a pass's target sits.
 #[test]
 fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
     let gpu = headless_test_gpu();
@@ -298,6 +300,7 @@ fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
                 pane.max() + UVec2::splat(reach),
             ),
             dest_origin: UVec2::new(1, big.dest_rect().max().y + 2),
+            scratch_origin: UVec2::new(3, big.region.size.y + 1),
             ..big
         };
         let dest = big.dest_rect().union(small.dest_rect());

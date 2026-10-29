@@ -17,16 +17,24 @@
 //!   attachment; the worst frame decides, and one path is kept. Refused: replaying the draws
 //!   below a pane into its own target, which draws them twice and grows with the scene; a split
 //!   for whole frames beside a replay for partial ones; last frame's pixels, which lag and hold
-//!   the pane itself.
+//!   the pane itself. A frame that paints the backbuffer, which a pass can sample, copies
+//!   nothing: its blurs read the backbuffer as their level 0, between the passes that write it
+//!   (m2: −8 % on `*/under`, −6 % on `*/moving`). A swapchain image is sampled by no pass, as a
+//!   group for it would be made each frame.
 //! - **A result is cached across frames.** It is kept per render owner and pane key (the owner's
 //!   `WidgetId` and its row in the owner's paint span) with its plan and region, in one atlas a
 //!   roster keeps alive, and dropped with the owner. A hover or a caret inside a frosted menu
 //!   repaints its rect and reads the cache: no capture, no blur.
-//! - **The composer infers sharing.** A pane opens a barrier, where groups and text batches end,
-//!   so nothing prunes or coalesces across it; panes that share a barrier share the pass break.
-//!   Refused: an explicit group, as Flutter's `BackdropGroup` and SwiftUI's
-//!   `GlassEffectContainer` ask for; merging captures, which no workload gained from, as
-//!   neighboring panes lie in each other's footprints.
+//! - **The composer infers sharing.** A pane whose footprint misses every draw since the last
+//!   break captures at that break, as it would see the same pixels at its own place; else it
+//!   opens a barrier, where groups and text batches end, so nothing prunes or coalesces across
+//!   it. The panes of one break blur in one set of passes, each pass drawing every pane under its
+//!   own scissor, their first-axis rows apart in the scratch: a pass costs the M2 about 48 µs
+//!   whatever it draws (`.notes/research/2026-10-29-backdrop-passes.md`), and on the M2 the
+//!   shared break took 8 % off two panes apart and 6 % off the three-pane frames. Refused: an
+//!   explicit group, as Flutter's `BackdropGroup` and SwiftUI's `GlassEffectContainer` ask for,
+//!   which lets a pane miss what another painted under it; one capture for the union of the
+//!   footprints, which copies and blurs the gap between them.
 //! - **The pane is a fourth quad form, `QuadForm::Backdrop`.** SDF, corners, border, AA, turn,
 //!   rounded clips and scissors hold as for any quad, and the form keeps the backdrop's reads and
 //!   lens math off the solid form's registers. The fill is the tint; a gradient tint draws as its

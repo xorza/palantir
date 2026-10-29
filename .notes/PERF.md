@@ -1,6 +1,6 @@
 # Perf journal
 
-What three optimization runs learned (2026-10-28 to 2026-10-29): how to measure on the two
+What five optimization runs learned (2026-10-28 to 2026-10-29): how to measure on the two
 hosts, what was rejected and why, and what is still open. What was kept is in the commits.
 
 ## Measuring
@@ -53,6 +53,15 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   once times the same, and blending off entirely saves 40 µs (27 %). They shade 4.1 M fragments
   over 1.12 screens; 0.4 M lie under a later opaque interior. The shadows are 79 µs of raster
   and 46 µs of coverage math (a trivial shader, before the edge cells were tightened).
+- **Backdrop passes** (run 5, `.notes/research/2026-10-29-backdrop-passes.md`): a blur pass costs
+  the M2 about 48 µs whatever it draws, five a pane, and the 680M about 6 µs; the panes of one
+  break now blur in one set of passes. On the 680M a whole frame's backdrop work is the main
+  pass's composite, then the blurs, then the captures (cards: 793, 610 and 248 µs).
+- **The pane composite** (run 5, a temporary diagnostic override that cut one part at a time):
+  on the m2's 4K `modal/scrolling`, 4.9 ms a frame, the composite costs 1.4 ms over a pane that
+  returns at once: the B-spline read 0.29 ms, grain and saturation 0.21 ms, the luminance ceiling
+  and tint 0.16 ms, the dither nothing. On the 680M at 2048² the B-spline is a third of it
+  (605 against 408 µs with one fetch) and the grain 90 µs.
 - **Shader statistics** (`RADV_DEBUG=shaderstats`): every fragment shader stays at 24 to 48 VGPRs
   and 20 to 32 waves a SIMD, with no spills; occupancy is not what bounds them.
 
@@ -71,9 +80,10 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   than the remainders it skips (+3.1 % on `160/2048` local); it stays in the residual only.
 - **Composite: dither by the sRGB slope.** No change on either host; the composite does not wait
   on its `pow`s.
-- **Share a pass break between panes whose footprints nothing since touches** (branch
-  `spike-share-barrier`). Seven breaks saved on `cards/scrolling` gave m2 −0.9 %; a break costs
-  the M2 about 6 µs at 1440p, too little to pay for a composer module and a grid push per draw.
+- **Blur: two tents in one pass** (branch `spike-two-tents`), `[1 3 6 10 12 12 10 6 3 1] / 64`
+  as five bilinear fetches an axis, exact at 1/16. It saves a pass, −11 % on
+  `backdrop_blur/jobs/*` on the m2, but reads 25 fetches a texel from the larger level: m2
+  `backdrop_blur/48/2048` +145 %, `backdrop_frame/gpu/*/scrolling` +17 %.
 - **Mean and peak image taps** (`image_pipeline/minified_mean`, 39 ms on the 680M against 4 ms
   for one tap): the bench reads a 5120² texture whole 24 times a frame, the 680M's memory
   bandwidth. Only a mip chain reads less.
@@ -94,14 +104,28 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   segments and its join test the interpolated `phys`, so the partition depends on the
   triangulation. Testing `@builtin(position)` would make it exact and free the triangulation, but
   it moves seam pixels against the goldens: a rendering change, not an optimization.
+- **Every capturing frame through the backbuffer.** It saves each capture's copy, −6 % on the
+  m2's `cards_apart`, but the copy onto the target costs more than two small footprints: the
+  680M's `pair_near/scrolling` +12 %. Kept only where the captures add up to the surface.
+- **Sample the swapchain image in place of a capture.** It needs a sampled usage, which turns
+  off Metal's framebuffer-only path, and a group each frame, as each acquire is a new texture.
+- **A cheaper grain hash.** The grain costs the 680M 90 µs at 2048²; a hash without integer
+  multiplies changes the grain, so it is a rendering change, not an optimization.
+- **A narrower results atlas** (`Rg11b10Ufloat`, `Rgb10a2Unorm`), for a B-spline read that is a
+  third of the composite: a 6-bit mantissa or 10-bit linear bands under an 8-bit sRGB step.
 - **`is_finite() && v >= 0.0` in a value kind.** LLVM folds it into one class test that x86
   lowers to 14 integer ops; the kinds bound by `f32::MAX` instead, two compares.
 
 ## Open
 
-- **Skip the backdrop capture copy.** Tent 1 or a level-0 residual can read the target itself
-  after the pass breaks: −106 µs at 1080p, −412 µs at 4K on the 680M. Only the backbuffer path
-  keeps a stable texture; a swapchain image would need a bind group per frame.
+- **Skip the backdrop capture copy on a swapchain image.** A frame that paints the backbuffer
+  copies nothing since run 5, and a frame whose captures would copy more than the surface paints
+  there. A direct frame still copies: the swapchain image would need a sampled usage, which
+  turns off Metal's framebuffer-only path, and a group each frame. Skipping every copy took the
+  m2 5 % to 12 % off the frames that capture (`modal` 7.5 %).
+- **A pane's break test reads one bounding box** of what was painted since the break, so in an
+  L-shaped layout a pane breaks anew though no single draw touches its footprint. A short list
+  of rects would see it; no bench has such a layout.
 - **Shadow coverage per instance**: `filter_cdf_series` takes `1 / σ` and `h²/6` per pixel,
   where the vertex stage could hand them on flat. The coverage math is about 40 µs of the
   shadows' 115 µs on the 680M.

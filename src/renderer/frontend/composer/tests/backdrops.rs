@@ -131,13 +131,13 @@ fn a_pane_past_every_plan_coerces_to_the_widest() {
 }
 
 /// A quad after a pane covering one before it leaves it alone: the pane's capture copies what it
-/// painted.
+/// painted. σ 4 at scale 1 reaches 16 px, so the pane's footprint takes in the first quad.
 #[test]
 fn no_prune_crosses_a_barrier() {
     let buf = run(
         |b, _| {
             draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            pane(b, Rect::new(150.0, 150.0, 10.0, 10.0), 4.0, 1.0);
+            pane(b, Rect::new(105.0, 105.0, 10.0, 10.0), 4.0, 1.0);
             draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0));
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -183,4 +183,48 @@ fn the_clear_fold_drops_the_panes_before_it() {
     );
     assert!(buf.backdrops.is_empty());
     assert!(buf.quads.is_empty());
+}
+
+/// A pane with nothing composed before it stands at barrier 0, which the backend reads as a
+/// backdrop of the clear: also after a quad over the whole surface folds into the clear. A pane
+/// right after it has the first pane's group before it, so it captures what the first painted.
+#[test]
+fn a_pane_first_in_the_frame_has_nothing_before_it() {
+    let buf = run(
+        |b, _| {
+            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            pane(b, Rect::new(10.0, 10.0, 20.0, 20.0), 4.0, 1.0);
+            pane(b, Rect::new(32.0, 10.0, 20.0, 20.0), 4.0, 1.0);
+        },
+        &params(1.0, UVec2::new(100, 100)),
+    );
+    assert!(
+        buf.clear_override.is_some(),
+        "the cover folds into the clear"
+    );
+    let barriers: Vec<u32> = buf.backdrops.iter().map(|row| row.barrier).collect();
+    assert_eq!(barriers, [0, 1]);
+}
+
+/// A pane whose footprint misses everything painted since the last break captures there: at 0,
+/// the clear, when it misses everything; at the last pane's barrier when it misses that pane and
+/// what followed. One that takes in the last pane breaks anew. σ 4 at scale 1 reaches 16 px.
+#[test]
+fn a_pane_shares_the_last_break_when_nothing_since_touches_it() {
+    let buf = run(
+        |b, _| {
+            draw(b, Rect::new(0.0, 0.0, 40.0, 40.0));
+            pane(b, Rect::new(100.0, 100.0, 20.0, 20.0), 4.0, 1.0);
+            pane(b, Rect::new(10.0, 10.0, 20.0, 20.0), 4.0, 1.0);
+            pane(b, Rect::new(10.0, 150.0, 20.0, 20.0), 4.0, 1.0);
+            pane(b, Rect::new(40.0, 150.0, 20.0, 20.0), 4.0, 1.0);
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    let barriers: Vec<u32> = buf.backdrops.iter().map(|row| row.barrier).collect();
+    assert_eq!(
+        barriers,
+        [0, 1, 1, 2],
+        "apart from the quad, on it, apart, beside the last"
+    );
 }

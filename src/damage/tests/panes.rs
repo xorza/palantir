@@ -219,3 +219,36 @@ fn a_chrome_pane_goes_stale_as_a_shape_pane() {
     assert!(h.engines.damage.dirty_panes().contains(key), "under");
     assert!(h.engines.damage.raw_rects().contains(&PANE));
 }
+
+/// A row removed before a pane on its canvas, outside the pane's footprint, gives the pane a new
+/// key, which no capture holds: the pane is stale and its rect joins the damage, though the row
+/// matcher sees the same pane row. The frame after, which changes nothing, leaves it.
+#[test]
+fn a_pane_whose_row_moves_is_stale() {
+    let far = Rect::new(0.0, 0.0, 4.0, 4.0);
+    assert!(!footprint(PANE).intersects(far));
+    let record = |lead: bool| {
+        move |ui: &mut Ui| {
+            Panel::canvas()
+                .id(WidgetId::from_hash("moved"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    if lead {
+                        ui.add_shape(Shape::rect(far).fill(BLUE));
+                    }
+                    ui.add_shape(Shape::rect(PANE).backdrop_filter(BackdropFilter::blur(SIGMA)));
+                });
+        }
+    };
+    let moved = PaneKey {
+        owner: WidgetId::from_hash("moved"),
+        shape: 0,
+    };
+    let mut h = UiHarness::new(DISPLAY.physical);
+    frame(&mut h, record(true));
+    frame(&mut h, record(false));
+    assert!(h.engines.damage.dirty_panes().contains(moved), "moved");
+    assert!(h.engines.damage.raw_rects().contains(&PANE));
+    frame(&mut h, record(false));
+    assert!(!h.engines.damage.dirty_panes().contains(moved), "still");
+}
