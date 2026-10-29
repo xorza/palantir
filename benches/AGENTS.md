@@ -20,7 +20,7 @@ stage alone over it, so a moved frame points at its stage.
 | damage | | `atomic/damage`, `integration/damage` |
 | encode + compose | `atomic/encode` | `atomic/composer`, `atomic/rect_grid` |
 | paint, CPU | | `atomic/record_pass`, `atomic/schedule` |
-| paint, GPU | `atomic/main_pass` | `atomic/*_pipeline`, `atomic/*_atlas`, `atomic/backdrop_*` |
+| paint, GPU | `atomic/main_pass`, `atomic/main_pass_batch` | `atomic/*_pipeline`, `atomic/*_atlas`, `atomic/backdrop_*` |
 | the frame | `integration/frame`, `integration/backdrop_frame` | |
 
 `integration/frame` arms: `cached` (a still frame), `partial` and

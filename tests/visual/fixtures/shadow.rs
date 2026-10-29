@@ -782,6 +782,7 @@ fn grid_sweep(ui: &mut Ui) {
 /// 8-bit level per channel: cells treat the Gaussian past `reach` as zero (at
 /// most 3.2e-5 coverage). A pixel shaded by two cells would blend twice and
 /// move the purple past a level, so the tolerance proves each is shaded once.
+/// Inside the source, short of its corners, the two agree exactly.
 #[test]
 fn a_shadow_grid_matches_the_full_form() {
     let cases = grid_cases();
@@ -799,19 +800,32 @@ fn a_shadow_grid_matches_the_full_form() {
     assert!(most <= 1, "a channel moved {most} levels");
     for (i, case) in cases.iter().enumerate().filter(|(_, case)| !case.inset) {
         let source = grid_case_rect(i, *case);
-        let inset = case.corners + 2.0;
-        let (x0, y0) = ((source.min.x + inset) as u32, (source.min.y + inset) as u32);
-        let (x1, y1) = (
-            (source.min.x + source.size.w - inset) as u32,
-            (source.min.y + source.size.h - inset) as u32,
-        );
-        for y in y0..y1 {
-            for x in x0..x1 {
-                assert_eq!(
-                    grid.get_pixel(x, y),
-                    full.get_pixel(x, y),
-                    "case {i} {case:?}: pixel ({x}, {y}) inside the source",
-                );
+        // The source less its corners, two pixels in from each straight edge: the hole and the
+        // bands the edge cells leave, where the full form clips to nothing.
+        let corner = case.corners + 2.0;
+        let across = [
+            Rect::new(
+                source.min.x + corner,
+                source.min.y + 2.0,
+                source.size.w - 2.0 * corner,
+                source.size.h - 4.0,
+            ),
+            Rect::new(
+                source.min.x + 2.0,
+                source.min.y + corner,
+                source.size.w - 4.0,
+                source.size.h - 2.0 * corner,
+            ),
+        ];
+        for band in across {
+            for y in band.min.y as u32..band.max().y as u32 {
+                for x in band.min.x as u32..band.max().x as u32 {
+                    assert_eq!(
+                        grid.get_pixel(x, y),
+                        full.get_pixel(x, y),
+                        "case {i} {case:?}: pixel ({x}, {y}) inside the source",
+                    );
+                }
             }
         }
     }
