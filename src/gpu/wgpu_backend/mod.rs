@@ -53,7 +53,7 @@
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
-use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
+use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops, SampledTarget};
 use crate::gpu::device::backend_config::BackendConfig;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
@@ -486,7 +486,10 @@ impl WgpuBackend {
                 owner,
                 format: targets.surface.format(),
                 clear,
-                target: targets.backbuffer.map(|bb| (bb.texture(), bb.view())),
+                target: targets.backbuffer.map(|bb| SampledTarget {
+                    texture: bb.texture(),
+                    view: bb.view(),
+                }),
             },
         );
 
@@ -585,13 +588,9 @@ impl WgpuBackend {
             self.run_main_segment(draw, target, segment, (from, Some(at.barrier)), encoder);
             from = at.barrier;
             backdrop_mark(draw, encoder, i, BackdropPhase::CaptureStart);
-            if !self.backdrops.reads_target() {
-                for job in at.jobs.clone() {
-                    self.backdrops.copy_capture(encoder, job, target.color);
-                }
-            }
+            self.backdrops.copy_break(encoder, at, target.color);
             backdrop_mark(draw, encoder, i, BackdropPhase::BlurStart);
-            self.backdrops.encode_blurs(encoder, at.jobs.clone());
+            self.backdrops.blur_break(encoder, at);
             backdrop_mark(draw, encoder, i, BackdropPhase::BlurEnd);
         }
         let segment = if breaks.is_empty() {

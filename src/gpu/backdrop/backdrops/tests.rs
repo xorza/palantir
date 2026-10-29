@@ -85,13 +85,17 @@ fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
 
 /// Two windows' panes under one key keep a result each, in slots apart: a frame of one leaves the
 /// other's, its panes leaving drops only its own, and retiring a window drops the rest of its.
+/// Frames with no pane make no resources; the first with one makes it, and it stays.
 #[test]
 fn each_window_keeps_its_own_results() {
     let gpu = headless_test_gpu();
     let owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
     let mut backdrops = Backdrops::new(&gpu.device);
+    prepare(&mut backdrops, &gpu, a, &[]);
+    assert!(backdrops.resources.is_none(), "no pane, no resources");
     prepare(&mut backdrops, &gpu, a, &[captured(0)]);
+    assert!(backdrops.resources.is_some());
     prepare(&mut backdrops, &gpu, b, &[captured(0)]);
     let (at_a, at_b) = (
         slot(&backdrops, a, 0).unwrap(),
@@ -108,6 +112,7 @@ fn each_window_keeps_its_own_results() {
     assert_eq!(slot(&backdrops, b, 0), Some(at_b), "the other window's");
     backdrops.retire(b);
     assert!(backdrops.cache.is_empty(), "retired");
+    assert!(backdrops.resources.is_some(), "kept for the next pane");
 }
 
 /// A pane that shows the clear holds the clear as the target holds it and frees its slot, which

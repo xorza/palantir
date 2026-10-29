@@ -51,36 +51,6 @@ test.
 
 ## Plan
 
-### Batch 4: backdrop GPU resources
-
-Files: `src/gpu/backdrop/`. Needs batch 3.
-
-- [ ] `backdrops/mod.rs:37,137-139`, `backdrop_blur/mod.rs:160-264`.
-  - Defect: every backend allocates the 1024² `Rgba16Float` results atlas (8.4 MB) and builds 5
-    blur pipelines with their groups, though no pane may ever appear.
-  - Target: make them on the first frame that has panes.
-- [ ] `backdrop_blur/mod.rs:266-360`.
-  - Defect: the capture is the whole surface in the surface format (33 MB Bgra8 or 66 MB f16 at
-    4K), and the levels are a full-surface mip chain (about 22 MB). Both are grow-only, and one
-    capture is kept per format. Each growing frame of a resize drag makes them again.
-  - Target: a capture and levels local to the footprint, at a lattice-aligned origin
-    (`BlurParams.source_origin` already takes an offset source), grown with slack.
-- [ ] `backdrop_blur/mod.rs:153-154,458-459`, `backdrops/mod.rs:91-94`.
-  - Defect: `Backdrops.jobs` is copied into `BackdropBlur.jobs` every frame. `footprints` and
-    `first_slots` are arrays parallel to `jobs`.
-  - Target: `BlurJob` carries its footprint. `BackdropBlur` borrows the jobs in `encode` and
-    `copy_capture`, and derives the slots.
-- [ ] `wgpu_backend/mod.rs` `run_main_pass`.
-  - Defect: the backend walks the breaks, calls `copy_capture` per job, and checks
-    `reads_target()`, which is state the last `prepare` left on the `Backdrops` that all windows
-    share.
-  - Target: `Backdrops::encode_break(encoder, break, color, timings)`. The backend knows only
-    "break at barrier b".
-- [ ] `backdrops/mod.rs:69,103`.
-  - Defect: tuples `Option<(&Texture, &TextureView)>` and
-    `Vec<(RenderOwnerId, Texture, TargetSource)>`.
-  - Target: named types. Batch 5 removes `targets`.
-
 ### Batch 5: a per-window render stream on the GPU side
 
 Files: `src/gpu/wgpu_backend/`, `src/gpu/frame/submission.rs`, `src/gpu/surface/`
