@@ -3,6 +3,8 @@
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::oklab::Oklab;
+use crate::primitives::paint::color::srgb_transfer;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use std::f32::consts::TAU;
 
 /// Hue, saturation and value in Björn Ottosson's Okhsv space
@@ -141,6 +143,28 @@ impl OkhsvSlice {
             scale: self.top_scale(l_v, c_v),
         }
     }
+
+    /// This hue at each saturation of `sats`, at most `N`, which clamp; the lanes past them are
+    /// black.
+    pub(crate) fn block<const N: usize>(
+        self,
+        sats: impl IntoIterator<Item = f32>,
+    ) -> OkhsvBlock<N> {
+        let mut block = OkhsvBlock {
+            cos: self.cos,
+            sin: self.sin,
+            l_v: [0.0; N],
+            c_v: [0.0; N],
+            scale: [0.0; N],
+        };
+        for (lane, s) in sats.into_iter().enumerate() {
+            let column = self.column(s);
+            block.l_v[lane] = column.l_v;
+            block.c_v[lane] = column.c_v;
+            block.scale[lane] = column.scale;
+        }
+        block
+    }
 }
 
 /// One hue and saturation of [`Okhsv`], ready to answer a run of values: the triangle's top and
@@ -158,8 +182,14 @@ impl OkhsvColumn {
     /// The opaque color at value `v`, which clamps.
     #[inline]
     pub(crate) fn color(self, v: f32) -> RgbaF32 {
-        let val = domain::fraction(v);
+        let [r, g, b] = self.rgb_at(domain::fraction(v));
+        RgbaF32::new(r, g, b, 1.0)
+    }
 
+    /// [`Self::color`]'s channels at the clamped value `val`; branch-free, so a loop over
+    /// lanes vectorizes.
+    #[inline(always)]
+    fn rgb_at(self, val: f32) -> [f32; 3] {
         let lightness = val * self.l_v;
         let chroma = val * self.c_v;
         let toed = toe_inv(lightness);
@@ -178,12 +208,58 @@ impl OkhsvColumn {
         .to_color();
         // The gamut edge lands a hair outside (the reference gives -1/255 on red);
         // clamping makes the whole cube in-gamut.
-        RgbaF32::new(
+        [
             rgb.r.clamp(0.0, 1.0),
             rgb.g.clamp(0.0, 1.0),
             rgb.b.clamp(0.0, 1.0),
-            1.0,
-        )
+        ]
+    }
+}
+
+/// `N` columns of one hue side by side, a lane each, so a row of them is one vectorized loop.
+/// Take one from [`OkhsvSlice::block`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct OkhsvBlock<const N: usize> {
+    cos: f32,
+    sin: f32,
+    l_v: [f32; N],
+    c_v: [f32; N],
+    scale: [f32; N],
+}
+
+impl<const N: usize> OkhsvBlock<N> {
+    /// Each lane's `OkhsvColumn::color(v).to_srgba()`, into `out`, a texel a lane from the
+    /// first.
+    pub(crate) fn row(&self, v: f32, out: &mut [SrgbaU8]) {
+        let [r, g, b] = self.rgb(domain::fraction(v));
+        for (lane, texel) in out.iter_mut().enumerate() {
+            *texel = SrgbaU8 {
+                r: srgb_transfer::encode_byte(r[lane]),
+                g: srgb_transfer::encode_byte(g[lane]),
+                b: srgb_transfer::encode_byte(b[lane]),
+                a: u8::MAX,
+            };
+        }
+    }
+
+    /// Every lane's channels at the clamped value `val`, as `[r, g, b]` lanes.
+    fn rgb(&self, val: f32) -> [[f32; N]; 3] {
+        let mut rgb = [[0.0; N]; 3];
+        let lanes = self.l_v.iter().zip(&self.c_v).zip(&self.scale);
+        for (lane, ((&l_v, &c_v), &scale)) in lanes.enumerate() {
+            let column = OkhsvColumn {
+                cos: self.cos,
+                sin: self.sin,
+                l_v,
+                c_v,
+                scale,
+            };
+            let [r, g, b] = column.rgb_at(val);
+            rgb[0][lane] = r;
+            rgb[1][lane] = g;
+            rgb[2][lane] = b;
+        }
+        rgb
     }
 }
 

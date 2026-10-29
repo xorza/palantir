@@ -29,6 +29,7 @@ use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
+use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::offscreen::OffscreenHost;
@@ -256,6 +257,51 @@ impl Arm {
     }
 }
 
+/// `atomic/main_pass_batch/gpu/<kind>`: the device time of one batch kind of a whole repaint of
+/// the frame fixture (the `scrolling` arm), from its in-pass timestamps: the quads, the shadows
+/// and the text, each pipeline's share of [`main_pass`]. Only where the adapter writes in-pass
+/// timestamps; a tiler splits its pass at each, so these cases do not sum to `main_pass`.
+fn main_pass_batch(c: &mut Criterion, backends: Backends) {
+    let Some(backend) = backends.batch_timed_gpu() else {
+        return;
+    };
+    let mut group = Kind::Atomic.group(c, "main_pass_batch", Scale::Frame);
+    for kind in [BatchKind::Quads, BatchKind::Shadows, BatchKind::Text] {
+        group.bench_function(backend.case(kind.label()), |b| {
+            let g = BenchGpu::shared(Timing::Instrumented);
+            let target = g.target("palantir.main_pass_batch_bench", BENCH_SURFACE);
+            let mut host = OffscreenHost::builder(g.handles())
+                .collect_gpu_stats(true)
+                .retained_target(true)
+                .build();
+            host.ui().theme_mut().window_clear = WINDOW_CLEAR;
+            let mut state = FrameFixture::default();
+            let mut n = 0u32;
+            let mut frame = || {
+                Arm::Scrolling.advance(&mut state, n);
+                n = n.wrapping_add(1);
+                let paint = gpu_frame(&mut host, &target, &mut state);
+                g.wait();
+                g.poll();
+                (paint, host.gpu_pass_stats().last_kind(kind))
+            };
+            for _ in 0..SETTLE_FRAMES {
+                frame();
+            }
+            assert_eq!(
+                frame().0,
+                FramePaint::Full,
+                "main_pass_batch/{}",
+                kind.label()
+            );
+            let mut time = || frame().1;
+            fixture::settle_timestamps(&mut time);
+            b.iter_custom(|iters| fixture::device_time(iters, &mut time));
+        });
+    }
+    group.finish();
+}
+
 /// Send through `send` the release of a key `event` presses, so the next press is not a repeat.
 fn release(event: InputEvent<'static>, send: impl FnOnce(InputEvent<'static>)) {
     if let InputEvent::KeyDown { key, .. } = event {
@@ -333,6 +379,7 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
 pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     record(c);
     main_pass(c, backends);
+    main_pass_batch(c, backends);
 }
 
 /// `atomic/record/cpu/frame`: one record pass of the frame fixture alone, its hashes finalized:

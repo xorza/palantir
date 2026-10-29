@@ -281,16 +281,21 @@ fn vs(@builtin(vertex_index) vi: u32, quad: QuadIn) -> VertexOut {
 // A drop shadow's hole is its source inset by its largest radius and
 // `AA_HALF_WIDTH`: at every pixel center there the source SDF is at most
 // `−AA_HALF_WIDTH`, so the clip in `shadow_pixel` zeroes it, and skipping it
-// changes no pixel. An inset shadow's hole is its core (`ShadowOut::core`),
-// where the blurred box covers everything and the shadow is zero by its
-// form. A hole that is empty, or a reference build (`SHADOW_GRID` off),
-// puts all four inner lines on the quad's far corner, which leaves one
-// cell: the whole quad.
+// changes no pixel. Its four edge cells stop short of the hole too, a pixel
+// past `AA_HALF_WIDTH` inside the source: between the corners the source's
+// edge is straight, so the same clip zeroes the band they leave. An inset
+// shadow's hole is its core (`ShadowOut::core`), where the blurred box
+// covers everything and the shadow is zero by its form. A hole that is
+// empty, or a reference build (`SHADOW_GRID` off), puts all four inner
+// lines on the quad's far corner, which leaves one cell: the whole quad.
 //
 // The inner lines are clamped into the quad. A clamp keeps the order of a
-// hole that is not empty, so the cells tile the quad less the hole. Every
-// vertex is a pair of these lines, so two cells that share an edge share
-// its vertices exactly and the rasterizer shades each pixel once.
+// hole that is not empty, so the cells tile the quad less the hole and the
+// edge cells' bands. Every vertex is a pair of these lines, so two cells
+// that share an edge share its line exactly and the rasterizer shades each
+// pixel once. An edge cell's short side ends partway along a corner cell's,
+// so a turned shadow, whose lines turn apart in float, keeps its edge cells
+// whole.
 @vertex
 fn vs_shadow(
     @builtin(vertex_index) vi: u32,
@@ -331,6 +336,13 @@ fn vs_shadow(
     let inner_hi = clamp(hole_hi, bounds.lo, bounds.hi);
     var xs = array<f32, 4>(bounds.lo.x, inner_lo.x, inner_hi.x, bounds.hi.x);
     var ys = array<f32, 4>(bounds.lo.y, inner_lo.y, inner_hi.y, bounds.hi.y);
+    var edge_lo = inner_lo;
+    var edge_hi = inner_hi;
+    if (kind == BRUSH_KIND_SHADOW_DROP && quad.rotation == 0.0) {
+        let deep = vec2<f32>(AA_HALF_WIDTH + 1.0);
+        edge_lo = clamp(source_center - source_half + deep, bounds.lo, inner_lo);
+        edge_hi = clamp(source_center + source_half - deep, inner_hi, bounds.hi);
+    }
 
     // The grid's cells in row order, past the center one: the hole.
     let draw_cell = vi / 6u;
@@ -338,8 +350,17 @@ fn vs_shadow(
     let cx = cell % 3u;
     let cy = cell / 3u;
     let unit = CORNERS[CELL_TRIANGLES[vi % 6u]];
+    let line = vec2<u32>(cx + u32(unit.x), cy + u32(unit.y));
+    var vertex = vec2<f32>(xs[line.x], ys[line.y]);
+    // An edge cell's inner side: the left and right cells sit in the middle row, the top and
+    // bottom ones in the middle column.
+    if (cy == 1u) {
+        vertex.x = select(select(vertex.x, edge_hi.x, line.x == 2u), edge_lo.x, line.x == 1u);
+    }
+    if (cx == 1u) {
+        vertex.y = select(select(vertex.y, edge_hi.y, line.y == 2u), edge_lo.y, line.y == 1u);
+    }
     var out: ShadowOut;
-    let vertex = vec2<f32>(xs[cx + u32(unit.x)], ys[cy + u32(unit.y)]);
     out.clip = clip_from_px(turned(vertex, center, quad.rotation));
     out.turn = vec4<f32>(center, cos(quad.rotation), sin(quad.rotation));
     out.fill = q.fill;

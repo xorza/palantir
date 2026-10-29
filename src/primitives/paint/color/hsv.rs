@@ -101,7 +101,12 @@ impl HsvColumn {
     /// The sRGB-encoded channels at value `v`, which clamps.
     #[inline]
     fn encoded(self, v: f32) -> [f32; 3] {
-        let val = domain::fraction(v);
+        self.encoded_at(domain::fraction(v))
+    }
+
+    /// [`Self::encoded`] at the clamped value `val`.
+    #[inline(always)]
+    fn encoded_at(self, val: f32) -> [f32; 3] {
         let down = val * self.down;
         let falling = val * self.falling;
         let rising = val * self.rising;
@@ -115,15 +120,61 @@ impl HsvColumn {
         }
     }
 
-    /// `Hsv::new(h, s, v).to_color().to_srgba()`, without the decode and encode between.
-    #[inline]
-    pub(crate) fn to_srgba(self, v: f32) -> SrgbaU8 {
-        let [r, g, b] = self.encoded(v);
+    /// The texel of `encoded` channels, without the decode and encode between.
+    #[inline(always)]
+    fn texel([r, g, b]: [f32; 3]) -> SrgbaU8 {
         SrgbaU8 {
             r: srgb_transfer::byte_of_encoded(r),
             g: srgb_transfer::byte_of_encoded(g),
             b: srgb_transfer::byte_of_encoded(b),
             a: u8::MAX,
+        }
+    }
+}
+
+/// `N` columns of one hue side by side, a lane each, so a row of them is one loop. The hue fixes
+/// the sector; only the factors vary along the row.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct HsvBlock<const N: usize> {
+    sector: u32,
+    down: [f32; N],
+    falling: [f32; N],
+    rising: [f32; N],
+}
+
+impl<const N: usize> HsvBlock<N> {
+    /// Hue `h` at each saturation of `sats`, at most `N`, as [`HsvColumn::new`] reads them; the
+    /// lanes past them hold saturation 0.
+    pub(crate) fn new(h: f32, sats: impl IntoIterator<Item = f32>) -> Self {
+        let gray = HsvColumn::new(h, 0.0);
+        let mut block = Self {
+            sector: gray.sector,
+            down: [gray.down; N],
+            falling: [gray.falling; N],
+            rising: [gray.rising; N],
+        };
+        for (lane, s) in sats.into_iter().enumerate() {
+            let column = HsvColumn::new(h, s);
+            block.down[lane] = column.down;
+            block.falling[lane] = column.falling;
+            block.rising[lane] = column.rising;
+        }
+        block
+    }
+
+    /// Each lane's `Hsv::new(h, s, v).to_color().to_srgba()`, into `out`, a texel a lane from
+    /// the first.
+    pub(crate) fn row(&self, v: f32, out: &mut [SrgbaU8]) {
+        let val = domain::fraction(v);
+        let lanes = self.down.iter().zip(&self.falling).zip(&self.rising);
+        for (texel, ((&down, &falling), &rising)) in out.iter_mut().zip(lanes) {
+            let column = HsvColumn {
+                sector: self.sector,
+                down,
+                falling,
+                rising,
+            };
+            *texel = HsvColumn::texel(column.encoded_at(val));
         }
     }
 }

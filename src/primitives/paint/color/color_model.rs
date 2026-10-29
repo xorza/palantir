@@ -1,8 +1,8 @@
 //! Which set of axes a picker drives.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::hsv::{Hsv, HsvColumn};
-use crate::primitives::paint::color::okhsv::{Okhsv, OkhsvColumn, OkhsvSlice};
+use crate::primitives::paint::color::hsv::{Hsv, HsvBlock};
+use crate::primitives::paint::color::okhsv::{Okhsv, OkhsvBlock, OkhsvSlice};
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
 /// The color model a picker's field and hue bar work in. [`Okhsv`] is the default for its perceptual axes; [`Hsv`] matches numbers from other tools. Serialized so a host can persist the pick.
@@ -60,34 +60,43 @@ impl HueSlice {
         }
     }
 
-    /// This hue at saturation `s`, which clamps, ready to answer a run of values.
-    pub(crate) fn column(self, s: f32) -> HueColumn {
-        HueColumn(match self.0 {
-            HueSliceKind::Okhsv(slice) => HueColumnKind::Okhsv(slice.column(s)),
-            HueSliceKind::Hsv(hue) => HueColumnKind::Hsv(HsvColumn::new(hue, s)),
+    /// This hue at each saturation of `sats`, at most [`HUE_BLOCK`], which clamp: what every
+    /// value of those columns shares, solved once.
+    pub(crate) fn block(self, sats: impl ExactSizeIterator<Item = f32>) -> HueBlock {
+        debug_assert!(sats.len() <= HUE_BLOCK, "{} columns in a block", sats.len());
+        HueBlock(match self.0 {
+            HueSliceKind::Okhsv(slice) => HueBlockKind::Okhsv(slice.block(sats)),
+            HueSliceKind::Hsv(hue) => HueBlockKind::Hsv(HsvBlock::new(hue, sats)),
         })
     }
 }
 
-/// One hue and saturation of one model, with what every value shares solved once. Take one
-/// from [`HueSlice::column`].
+/// Columns a [`HueBlock`] holds: a cache line of 8-bit texels.
+pub(crate) const HUE_BLOCK: usize = 16;
+
+/// Up to [`HUE_BLOCK`] columns of one hue, side by side, answering a row of them at once. Take
+/// one from [`HueSlice::block`].
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct HueColumn(HueColumnKind);
+pub(crate) struct HueBlock(HueBlockKind);
 
 #[derive(Clone, Copy, Debug)]
-enum HueColumnKind {
-    Okhsv(OkhsvColumn),
-    Hsv(HsvColumn),
+enum HueBlockKind {
+    Okhsv(OkhsvBlock<HUE_BLOCK>),
+    Hsv(HsvBlock<HUE_BLOCK>),
 }
 
-impl HueColumn {
-    /// `slice.color(s, v).to_srgba()` for the slice and saturation this column holds; `v`
-    /// clamps to `0..1`.
-    #[inline]
-    pub(crate) fn to_srgba(self, v: f32) -> SrgbaU8 {
-        match self.0 {
-            HueColumnKind::Okhsv(column) => column.color(v).to_srgba(),
-            HueColumnKind::Hsv(column) => column.to_srgba(v),
+impl HueBlock {
+    /// `slice.color(s, v).to_srgba()` for each column's saturation `s`, into `out`, a texel a
+    /// column from the first; `v` clamps to `0..1`.
+    pub(crate) fn row(&self, v: f32, out: &mut [SrgbaU8]) {
+        debug_assert!(
+            out.len() <= HUE_BLOCK,
+            "{} texels in a block's row",
+            out.len()
+        );
+        match &self.0 {
+            HueBlockKind::Okhsv(block) => block.row(v, out),
+            HueBlockKind::Hsv(block) => block.row(v, out),
         }
     }
 }
