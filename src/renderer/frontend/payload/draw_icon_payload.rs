@@ -16,7 +16,7 @@ pub(crate) struct DrawIconPayload {
     pub(crate) tint: RgbaF16,
     /// Draw a color icon as its own luminance.
     pub(crate) desaturate: bool,
-    /// A paint animation's turn, its pivot in the same logical frame as `rect`.
+    /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
 }
 

@@ -56,7 +56,6 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
         );
 
         let tp = DrawQuadPayload::triangle(TriangleQuad {
-            origin: Vec2::ZERO,
             points: [
                 Vec2::new(0.0, 0.0),
                 Vec2::new(10.0, 0.0),

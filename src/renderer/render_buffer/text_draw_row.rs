@@ -2,7 +2,7 @@
 
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::text::shaped_ref::ShapedTextRef;
 use glam::Vec2;
 
@@ -25,5 +25,5 @@ pub(crate) struct TextDrawRow {
     /// rasterization, so snapping keeps zoom gestures from re-rasterizing every frame.
     pub(crate) scale: f32,
     /// A paint animation's turn of the whole run, about a physical pivot.
-    pub(crate) spin: Option<Spin>,
+    pub(crate) spin: Option<RowSpin>,
 }

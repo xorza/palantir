@@ -91,11 +91,10 @@ fn a_turn_records_on_every_kind() {
     assert_eq!(turns, [true, true, true, true]);
 }
 
-/// A quarter turn about a 20×20 owner's center (10, 10) reaches the encoded draws. A triangle's
-/// owner-local points turn in the encoder: `(x, y) ↦ (10 − (y − 10), 10 + (x − 10))` takes
-/// (0, 0), (10, 0), (0, 10) to (20, 0), (20, 10), (10, 0). A mesh placed at (4, 4) carries the turn
-/// with its pivot in its own frame, (10, 10) − (4, 4) = (6, 6). The tolerance is the f32 cosine of
-/// a quarter turn, −4.4e-8, not 0, times the lengths involved.
+/// A quarter turn about a 20×20 owner's center (10, 10) reaches the encoded draws, each with its
+/// pivot relative to its own origin. A triangle, placed like a rect in the logical frame, keeps its
+/// points and carries the pivot (10, 10); a mesh placed at (4, 4) carries (10, 10) − (4, 4) =
+/// (6, 6).
 #[test]
 fn a_turn_reaches_a_triangle_and_a_mesh() {
     use crate::primitives::geometry::mesh::Mesh;
@@ -103,7 +102,6 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
     use crate::widgets::panel::Panel;
     use std::f32::consts::FRAC_PI_2;
 
-    const EPS: f32 = 1e-5;
     let mut mesh = Mesh::with_capacity(3, 3);
     let vertices =
         [Vec2::ZERO, Vec2::X * 8.0, Vec2::Y * 8.0].map(|pos| mesh.vertex(pos, RgbaF32::WHITE));
@@ -134,20 +132,22 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
         .iter()
         .find_map(|call| match call {
             PaintCall::Quad(p) => match p.geometry {
-                QuadGeometry::Triangle { a, b, c, .. } => Some([a, b, c]),
+                QuadGeometry::Triangle { a, b, c, spin, .. } => Some(([a, b, c], spin)),
                 QuadGeometry::Rect { .. } => None,
             },
             _ => None,
         })
         .expect("the triangle encodes");
-    let want = [
-        Vec2::new(20.0, 0.0),
-        Vec2::new(20.0, 10.0),
-        Vec2::new(10.0, 0.0),
-    ];
-    for (got, want) in triangle.into_iter().zip(want) {
-        assert!(got.abs_diff_eq(want, EPS), "{got:?} vs {want:?}");
-    }
+    assert_eq!(
+        triangle,
+        (
+            [Vec2::ZERO, Vec2::new(10.0, 0.0), Vec2::new(0.0, 10.0)],
+            Some(Spin {
+                pivot: Vec2::new(10.0, 10.0),
+                angle: FRAC_PI_2,
+            })
+        )
+    );
 
     let spin = cmds
         .calls

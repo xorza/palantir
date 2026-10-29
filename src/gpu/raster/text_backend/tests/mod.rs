@@ -9,7 +9,7 @@ use crate::gpu::raster::text_backend::TextBackend;
 use crate::gpu::raster::text_backend::tests::text_rig::{PHYSICAL, TextRig};
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
-use crate::renderer::frontend::payload::spin::Spin;
+use crate::renderer::render_buffer::row_spin::RowSpin;
 use crate::renderer::render_buffer::text_draw_row::TextDrawRow;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
 use glam::{IVec2, Vec2};
@@ -215,7 +215,7 @@ fn deferred_upload_keeps_batches_distinct() {
 fn a_turned_run_emits_its_unturned_quads_into_the_turned_buffer() {
     let mut rig = TextRig::new();
     let flat = rig.row("File", 16.8, Vec2::new(20.0, 20.0));
-    let spin = Spin {
+    let spin = RowSpin {
         pivot: Vec2::new(30.0, 25.0),
         angle: 0.5,
     };

@@ -18,7 +18,7 @@ pub(crate) struct DrawMeshPayload {
     pub(crate) tint: RgbaF16,
     pub(crate) vertices: Span,
     pub(crate) idxs: Span,
-    /// A paint animation's turn, its pivot relative to `origin`.
+    /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
 }
 
