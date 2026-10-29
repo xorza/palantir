@@ -10,59 +10,26 @@ test.
 
 ### Root causes
 
-1. **The backdrop capture set is decided last.** `PaneCaptures::settle` runs after compose, but
-   every stage before it needs the answer. So each stage approximates it:
-   - the damage walk marks the stale panes;
-   - the encoder keeps the footprint of every pane whose rect meets the damage, held or not;
-   - the composer closes a group and a text batch for every pane, held or not;
-   - the host mutates the renderer's output to finish each row;
-   - the GPU side keeps a second cache of the same plan and region, and computes the region
-     again.
-
-   The pane's plan, key and reach are also derived in more than one place, from σ values that are
-   rounded differently.
-2. **There is no per-window render stream on the GPU side.** Without it:
-   - the host holds GPU attachments (backbuffer, stencil, freshness, cutout plan) and makes GPU
-     capability calls;
+1. **There is no per-window render stream on the GPU side.** Without it:
+   - the host holds GPU attachments (backbuffer, stencil, freshness, cutout plan);
    - the backend keeps parallel owner-keyed maps (timings, backdrop cache, backdrop target
-     groups);
-   - CPU planning types (`RepaintScissors`) live in `gpu`;
-   - the present path is decided twice.
-3. **Paint-order arbitration has no single owner.** Each draw kind hand-writes cull → order →
+     groups).
+2. **Paint-order arbitration has no single owner.** Each draw kind hand-writes cull → order →
    register → pane break in its own shape. One of these paths misses a check (bug B1), and the
    reach rect of a turned quad is derived in two ways (bug B3).
-4. **Shared mechanics live inside one consumer or in a hub.**
+3. **Shared mechanics live inside one consumer or in a hub.**
    - `ShelfPacker` sits in `raster_atlas`, and the backdrop atlas reaches into it.
    - `ShaderBody` holds every shader's path and constants, which gives `pipeline ⇄ raster` and
      `pipeline ⇄ shader_body` module cycles.
    - Each atlas has its own growth and "full" contract, and the backdrop atlas panics.
    - Each pipeline hand-rolls the same scaffolding with a different bind and upload shape.
-5. **Rust and WGSL logic mirrors are not pinned.** The shadow spread rules and the shadow box are
+4. **Rust and WGSL logic mirrors are not pinned.** The shadow spread rules and the shadow box are
    written twice, and no test compares the two copies. (The buffer structs are pinned by naga
    reflection: `ShaderBody::assert_struct_layout`.)
 
 ### Target design
 
-- **The pane ledger (renderer, per window).** It replaces the split between `PaneCaptures.held`
-  and `Backdrops.cache`.
-  - It is the one record of what each pane holds: plan, surface and region.
-  - Before encode, it takes the cascade's `PaneRow`s, the dirty set and the frame kind, and gives
-    the capture candidates: full ∪ dirty ∪ held does not serve.
-  - The cascade computes key, plan and footprint once per row, with the f32 σ and one scale
-    source.
-  - The encoder adds exactly the candidates' footprints.
-  - The composer opens a barrier only for a candidate and writes the row's final source:
-    `Capture { region }`, `Clear` or `Held { region }`. No placeholder is written, and the host
-    does not mutate the buffer.
-  - The capture budget is checked once, before the build.
-  - The present path (Direct or through the backbuffer) is sealed in the CPU half, right after
-    the ledger settles, from `captured_area` and the target's copy capability.
-  - `RepaintScissors` moves beside the ledger in `renderer`.
-  - **Constraint to check first:** the composer's footprint starts from the clipped quad rect.
-    The cascade row must carry the same clipped footprint, or else the ledger's "serves" test
-    disagrees with the region that the composer captures.
-- **`Backdrops` (gpu) becomes a slot allocator: `(owner, key) → Kept`.**
-  - It reads the region from the row and does not compute it again.
+- **`Backdrops` (gpu), now a slot allocator `(owner, key) → Kept` under the pane ledger.**
   - It is made on the first frame that has panes, not at backend start (8.4 MB atlas, 5 blur
     pipelines).
   - Its atlas is a `PackedAtlas`. A full atlas degrades and does not panic.
@@ -88,75 +55,6 @@ test.
     which groups each key binds. The backend does not branch on `QuadForm::Backdrop`.
 
 ## Plan
-
-### Batch 2: the pane ledger decides the capture set once
-
-Files: `src/renderer/pane_captures/`, `src/renderer/render_buffer/backdrop_row.rs`,
-`src/renderer/frontend/` (encoder `mod.rs`, composer `session.rs`, `pane_break.rs`),
-`src/cascade/pane_row.rs` and `engine.rs`, `src/damage/pane_walk.rs`,
-`src/gpu/backdrop/backdrops/`, `src/gpu/surface/viewport.rs`, `src/host/window_driver/mod.rs`.
-
-- [ ] `encoder/mod.rs:52-73`.
-  - Defect: the encoder adds the footprint of every pane whose rect meets the damage. A caret
-    blink inside a 4K frosted modal then encodes and composes almost the whole frame, and the
-    scissors drop it on the GPU.
-  - Target: the ledger gives the candidates before encode, and the encoder adds only their
-    footprints.
-- [ ] `session.rs:954-964` `open_barrier`.
-  - Defect: a held pane still closes the batch and the group, for a break the backend never takes:
-    one more group and one more text draw per held pane on each partial frame.
-  - Target: a barrier only for a candidate. A held pane joins the open group.
-- [ ] `backdrop_row.rs:27`, `session.rs:977`, `window_driver/mod.rs:383,395`.
-  - Defect: the composer writes `PaneSource::Held` as a placeholder, and the host's `settle`
-    mutates the renderer's output. On overflow, `settle` runs twice and the frontend builds twice.
-  - Target: the composer writes the final source from the ledger's input to `Frontend::build`.
-    The budget is checked before the build, and `Settled` is the host's only read.
-- [ ] `pane_captures/mod.rs:65,87-114` against `backdrops/mod.rs:42-57,190-248`.
-  - Defect: two caches hold the same plan, surface and region, synced by hand.
-    `plan.region(footprint, surface)` is computed twice per row per frame, and each cache evicts
-    on its own. The only guard is the Held branch's `expect` / `debug_assert`, which panics in
-    release if a frame settles but never prepares.
-  - Target: `PaneSource::{Capture { region }, Held { region }, Clear}`. `Backdrops.cache` holds
-    `Kept` only.
-- [ ] `cascade/pane_row.rs`, `session.rs:942`, `encoder/plane_ctx.rs:127-138,460-466`,
-  `cascade/engine.rs:553-556`, `scene/tree/mod.rs:509`.
-  - Defect: the plan, the reach and the scale are derived in the cascade and again in the
-    composer, and `PaneKey` is built in three places, with the chrome row `0` hard-coded twice.
-  - Target: `PaneRow` carries key, plan and the clipped footprint. The composer and the encoder
-    read it. Check the clip constraint (Proposal) first.
-- [ ] `pane_walk.rs:41-43,67-76` against `frontend/mod.rs:64-72`.
-  - Defect: "this frame's pane keys in paint order" is built twice (`PaneWalk.keys` and
-    `RenderBuffer.live_panes`). Both evictions run a linear `live.contains`, O(P²) per frame per
-    window.
-  - Target: one key list, exported by damage. Rename `PaneWalk.held` to `listed`, since "held"
-    means three things today.
-- [ ] `window_driver/mod.rs:462-477` (merges two review reports).
-  - Defect: `render_to_texture` decides Direct → ViaBackbuffer again from `captured_area` and
-    `gives_copy`, although `PresentPath` says it is sealed in `cpu_frame`.
-  - Target: seal it after the ledger settles. `TargetKey` carries the copy capability, so
-    `note_target` also invalidates when the target's usage changes.
-- [ ] `src/gpu/surface/viewport.rs:3-81` (merges two review reports).
-  - Defect: `RepaintScissors` is CPU planning in `gpu::surface`, and it imports damage,
-    `pane_captures` and `backdrop_row`. `ViewportPush` shares the file against one major struct
-    per file.
-  - Target: move `RepaintScissors` to `renderer` beside the ledger. Move `ViewportPush` beside
-    `IMMEDIATES_BYTES` in `gpu/pipeline`.
-- [ ] `damage/dirty_panes.rs:233`, `pane_captures/mod.rs:70`.
-  - Defect: one budget (8 captures in a partial frame) is enforced twice.
-  - Target: one check in the ledger.
-- [ ] `scene/tree/pane_entry.rs:7` against `backdrop_row.rs:32`.
-  - Defect: two crate types are both named `PaneSource` (`{Chrome, Shape}` and
-    `{Held, Capture, Clear}`). `PaneKey`'s doc says "ordinal among the owner's shapes", but
-    `pane_walk` says "its row among its owner's".
-  - Target: rename the scene one to `PaneOrigin`, and give the key one wording.
-- [ ] Tests:
-  - one gated `BackdropRow` fixture in `render_buffer` internals, which replaces the copies in
-    `backdrops/tests.rs:23-60`, `pane_captures/tests.rs:15-42` and the `viewport.rs` tests;
-  - one shared `CLEAR` (`backdrops/tests.rs:21`, `tests/clear.rs:21`);
-  - `tests/mod.rs:296-300` uses `window()`.
-  - Add tests: a held pane on a partial frame neither breaks nor adds its footprint; the
-    Direct → backbuffer switch (`captured ≥ surface`, `!gives_copy`, also with a test target
-    without `COPY_SRC`); the cascade and composer footprints agree.
 
 ### Batch 3: one packed atlas
 

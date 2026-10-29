@@ -18,17 +18,17 @@ use std::cell::Cell;
 #[cfg(debug_assertions)]
 fn collision_outlines(ui: &Ui) -> Vec<Rect> {
     use crate::damage::Damage;
-    use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::{BuildPlan, Frontend};
     use crate::renderer::render_plan::RenderPlan;
 
     // Share Ui's record store so mesh/polyline bytes pushed at record time are visible at compose.
     let mut frontend = Frontend::for_test();
     frontend.build(
         ui.frame_scene(),
-        RenderPlan {
+        BuildPlan::without_panes(RenderPlan {
             clear: ui.theme.window_clear,
             damage: Damage::Full,
-        },
+        }),
     );
     frontend
         .buffer

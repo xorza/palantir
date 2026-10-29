@@ -296,6 +296,7 @@ impl Window {
             let spec = FrameSpec {
                 physical: self.surface.size(),
                 format: self.surface.format(),
+                gives_copy: self.surface.gives_copy(),
                 system_scale: self.system_scale,
                 refresh_millihertz: facts.refresh_millihertz,
                 now: self.clock.now(),

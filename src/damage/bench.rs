@@ -16,6 +16,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
+use crate::shape::paint::blur_plan::BlurPlan;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -461,6 +462,7 @@ fn backdrop_walk(group: &mut CaseGroup<'_>) {
                             },
                             row: 2 * i + 1,
                             rect,
+                            plan: BlurPlan::new(1.0),
                             footprint: rect.inflated(4.0),
                         };
                         (PaneWalk::position(0, pane.row), pane)

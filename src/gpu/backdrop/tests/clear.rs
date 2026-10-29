@@ -1,6 +1,6 @@
 //! A pane with nothing painted before it, whose backdrop is the clear.
 
-use crate::gpu::backdrop::tests::{SIZE, assert_within_a_step, window};
+use crate::gpu::backdrop::tests::{CLEAR, SIZE, assert_within_a_step, window};
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::rect::Rect;
@@ -15,10 +15,6 @@ use crate::widgets::panel::Panel;
 use glam::Vec2;
 use image::RgbaImage;
 
-/// A clear three tenths of a step past the sRGB bytes 51, 115 and 178, so a pane that showed it
-/// unrounded could miss the clear around it by a step, and far enough from the midpoints that
-/// the target rounds it as the CPU does.
-const CLEAR: RgbaF32 = RgbaF32::srgb(51.3 / 255.0, 115.3 / 255.0, 178.3 / 255.0);
 /// σ 2 reaches 8 px, so the pane's footprint spans x 8..56: a speck at the window's corner lies
 /// outside it, and a veil over x 4..60 covers it without covering the window.
 const PANE: Rect = Rect::new(16.0, 8.0, 32.0, 32.0);

@@ -1,6 +1,7 @@
 //! [`PlaneCtx`]: one plane's encode walk, built per tree by [`Encoder::encode`](crate::renderer::frontend::encoder::Encoder::encode).
 
 use crate::cascade::cascade_input_hash::CascadeInputHash;
+use crate::cascade::pane_row::PaneRow;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::layout::text::text_runs::TextRuns;
 use crate::primitives::geometry::rect::Rect;
@@ -33,12 +34,13 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
+use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::tree::Tree;
 use crate::scene::tree::iter::TreeItem;
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::paint_animations::PaintAnimationCursor;
-use crate::scene::tree::pane_entry::PaneSource;
+use crate::scene::tree::pane_entry::PaneOrigin;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::image_source::ImageSource;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
@@ -73,6 +75,11 @@ pub(super) struct PlaneCtx<'a, 'g> {
     /// Live `GpuView`s by owner `WidgetId`, one map across layers; an `ImageSource::GpuView` carries only its epoch.
     pub(super) gpu_views: &'a GpuViews,
     pub(super) damage_filter: Option<CullRegion<'a>>,
+    /// The plane's panes in paint order, and the ticket of each.
+    pub(super) panes: &'a [PaneRow],
+    pub(super) tickets: &'a [Option<PaneTicket>],
+    /// The first of `panes` not yet painted: panes paint in their order.
+    pub(super) next_pane: usize,
     /// Logical-px inflation of each `subtree_paint_rect` before the damage cull, covering the AA pad the backend PreClears.
     pub(super) damage_cull_margin: f32,
     pub(super) viewport: Rect,
@@ -80,16 +87,16 @@ pub(super) struct PlaneCtx<'a, 'g> {
 }
 
 /// Paint `quad`, as a pane over the pixels painted before it when `pane` gives its backdrop
-/// filter and key. A pane's tint is solid: a gradient fill and the border over it draw as the
+/// filter and ticket. A pane's tint is solid: a gradient fill and the border over it draw as the
 /// rect above the pane.
 fn paint_rect(
     quad: RectQuad,
-    pane: Option<(LoweredBackdrop, PaneKey)>,
+    pane: Option<(LoweredBackdrop, PaneTicket)>,
     spin: Option<Spin>,
     alpha: f32,
     out: &mut impl PaintSink,
 ) {
-    if let Some((backdrop, key)) = pane {
+    if let Some((backdrop, ticket)) = pane {
         let tint = match quad.fill {
             BrushSource::Solid(color) => Some(color),
             BrushSource::Gradient(_) => None,
@@ -110,7 +117,7 @@ fn paint_rect(
         out.draw_pane(
             DrawPanePayload {
                 quad: pane,
-                key,
+                ticket,
                 backdrop,
             },
             alpha,
@@ -123,18 +130,39 @@ fn paint_rect(
 }
 
 impl PlaneCtx<'_, '_> {
-    /// The key of the pane `owner` records as shape `shape_idx`, from the tree's pane list.
-    fn pane_key(&self, owner: NodeId, shape_idx: u32) -> PaneKey {
-        let panes = &self.tree.panes;
-        let at = panes
-            .binary_search_by_key(&(shape_idx, PaneSource::Shape), |entry| {
-                (entry.shape_idx, entry.source)
+    /// The ticket of the pane `owner` records from `origin` at shape `shape_idx`, as the tree
+    /// lists it; `None` for a pane the cascade lists not, whose rect lies outside every clip.
+    fn pane_ticket(
+        &mut self,
+        owner: NodeId,
+        origin: PaneOrigin,
+        shape_idx: u32,
+    ) -> Option<PaneTicket> {
+        let entries = &self.tree.panes;
+        let at = entries
+            .binary_search_by_key(&(shape_idx, origin), |entry| {
+                (entry.shape_idx, entry.origin)
             })
             .expect("a painted pane is listed");
-        PaneKey {
+        let key = PaneKey {
             owner: self.tree.records.widget_id()[owner.idx()],
-            shape: panes[at].row,
-        }
+            shape: entries[at].row,
+        };
+        let Some(ahead) = self.panes[self.next_pane..]
+            .iter()
+            .position(|pane| pane.key == key)
+        else {
+            debug_assert!(
+                !self.panes[..self.next_pane]
+                    .iter()
+                    .any(|pane| pane.key == key),
+                "panes paint in the cascade's order"
+            );
+            return None;
+        };
+        let at = self.next_pane + ahead;
+        self.next_pane = at + 1;
+        self.tickets[at]
     }
 
     #[inline]
@@ -193,8 +221,12 @@ impl PlaneCtx<'_, '_> {
                         fill: self.brush_source(*fill),
                         stroke: *border,
                     };
-                    let pane =
-                        (!backdrop.is_none()).then(|| (*backdrop, self.pane_key(id, shape_idx)));
+                    let pane = if backdrop.is_none() {
+                        None
+                    } else {
+                        self.pane_ticket(id, PaneOrigin::Shape, shape_idx)
+                            .map(|ticket| (*backdrop, ticket))
+                    };
                     paint_rect(quad, pane, spin, alpha, out);
                 }
                 QuadShape::Shadow {
@@ -456,14 +488,13 @@ impl PlaneCtx<'_, '_> {
                 fill: self.brush_source(chrome.fill),
                 stroke: chrome.border,
             };
-            // A chrome pane is its node's first paint row.
-            let pane = (!chrome.backdrop.is_none()).then(|| {
-                let key = PaneKey {
-                    owner: self.tree.records.widget_id()[id.idx()],
-                    shape: 0,
-                };
-                (chrome.backdrop, key)
-            });
+            let pane = if chrome.backdrop.is_none() {
+                None
+            } else {
+                let first_shape = self.tree.records.shape_span()[id.idx()].start;
+                self.pane_ticket(id, PaneOrigin::Chrome, first_shape)
+                    .map(|ticket| (chrome.backdrop, ticket))
+            };
             if chrome.shadow.inset() {
                 paint_rect(fill, pane, None, 1.0, out);
                 let width = chrome.border.width;

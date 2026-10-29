@@ -8,7 +8,6 @@
 //!
 //! A shadow whose shown corners all read tables draws through the cheaper `fs_shadow_tables` ([`ShadowEntry`]), else `fs_shadow`.
 
-use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -16,6 +15,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 use crate::renderer::quad::Quad;
+use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
 use bytemuck::{Pod, Zeroable};
 use glam::{U16Vec2, UVec2, Vec2};

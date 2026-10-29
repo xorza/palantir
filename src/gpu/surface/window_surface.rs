@@ -59,6 +59,11 @@ impl WindowSurface {
         TargetFormat::new(self.config.format)
     }
 
+    /// Whether pixels can be copied out of the swapchain's images, as a pane's capture is.
+    pub(crate) const fn gives_copy(&self) -> bool {
+        self.config.usage.contains(wgpu::TextureUsages::COPY_SRC)
+    }
+
     pub(crate) const fn vsync(&self) -> Vsync {
         vsync_of(self.config.present_mode)
     }

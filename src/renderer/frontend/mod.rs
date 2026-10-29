@@ -9,6 +9,7 @@ pub(crate) mod paint_sink;
 pub(crate) mod payload;
 
 use crate::cascade::Cascade;
+use crate::cascade::pane_row::PaneRow;
 use crate::common::tracy;
 use crate::display::frame_stamp::FrameStamp;
 use crate::layout::Layout;
@@ -16,10 +17,19 @@ use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
 use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::forest::Forest;
 use std::num::NonZeroU32;
+
+/// What a frame builds: the plan it paints by, and the ticket of each pane of its scene, planes
+/// and panes in paint order.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BuildPlan<'a> {
+    pub(crate) render: RenderPlan,
+    pub(crate) panes: &'a [Option<PaneTicket>],
+}
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameScene<'a> {
@@ -29,6 +39,16 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) gpu_views: &'a GpuViews,
     /// The display and time; the time drives backend `GpuView` frame deltas.
     pub(crate) stamp: FrameStamp,
+}
+
+impl FrameScene<'_> {
+    /// The scene's panes, planes and panes in paint order.
+    pub(crate) fn panes(&self) -> impl Iterator<Item = &PaneRow> {
+        self.forest
+            .trees
+            .iter_paint_order()
+            .flat_map(|(plane, _)| &self.cascade.planes[plane].panes)
+    }
 }
 
 /// CPU paint stage: tree to composed buffer, reused serially across window drivers.
@@ -49,7 +69,7 @@ impl Frontend {
         }
     }
 
-    pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: RenderPlan) {
+    pub(crate) fn build(&mut self, scene: FrameScene<'_>, plan: BuildPlan<'_>) {
         tracy::zone!();
         let mut sink =
             self.composer
@@ -75,12 +95,21 @@ impl Frontend {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::renderer::frontend::Frontend;
+    use crate::renderer::frontend::{BuildPlan, Frontend};
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
+    use crate::renderer::render_plan::RenderPlan;
     use std::num::NonZeroU32;
 
     /// No `wgpu::Device` to query; 8192 is the downlevel-default cap.
     pub(crate) const TEST_MAX_TEXTURE_DIM: NonZeroU32 = NonZeroU32::new(8192).unwrap();
+
+    impl BuildPlan<'static> {
+        /// A build of a scene that holds no pane, as a test or a bench drives one; the encoder
+        /// asserts a ticket for each pane.
+        pub(crate) const fn without_panes(render: RenderPlan) -> Self {
+            Self { render, panes: &[] }
+        }
+    }
 
     impl Frontend {
         pub(crate) fn for_test() -> Self {

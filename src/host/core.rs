@@ -176,6 +176,7 @@ mod tests {
         let spec = FrameSpec {
             physical: size,
             format: TargetFormat::RGBA8_SRGB,
+            gives_copy: target.as_target().gives_copy(),
             system_scale: 1.0,
             refresh_millihertz: None,
             now: Duration::ZERO,

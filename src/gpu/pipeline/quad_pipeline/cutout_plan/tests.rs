@@ -1,7 +1,6 @@
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, Census, CornerTables, CutoutMode, CutoutPlan, ShadowEntry, spread_radius,
 };
-use crate::gpu::surface::viewport::RepaintScissors;
 use crate::primitives::geometry::corners::{self, Corners};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -9,6 +8,7 @@ use crate::primitives::geometry::urect::URect;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::quad::Quad;
+use crate::renderer::repaint_scissors::RepaintScissors;
 use glam::{U16Vec2, UVec2, Vec2};
 
 /// A drop shadow over a `size` quad, every corner `radius`, blurred by `sigma`, no spread.

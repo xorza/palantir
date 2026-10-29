@@ -1,5 +1,6 @@
 use crate::display::Display;
 use crate::gpu::backdrop::backdrops::{BackdropFrame, BackdropSlot, Backdrops, Kept, held_clear};
+use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::surface::render_target::TargetFormat;
@@ -19,8 +20,6 @@ use std::mem::offset_of;
 use wgpu::util::StagingBelt;
 
 const SURFACE: UVec2 = UVec2::new(200, 100);
-/// Three tenths of a step past the sRGB bytes 51, 115 and 178.
-const CLEAR: RgbaF32 = RgbaF32::srgb(51.3 / 255.0, 115.3 / 255.0, 178.3 / 255.0);
 
 fn key(i: u32) -> PaneKey {
     PaneKey {
@@ -32,14 +31,14 @@ fn key(i: u32) -> PaneKey {
 /// Pane `i` over x `10 + 40 i ..`, at σ 2, taking its result from `source`.
 fn row(i: u32, source: PaneSource) -> BackdropRow {
     BackdropRow {
-        key: key(i),
-        footprint: URect::new(10 + 40 * i, 10, 30, 30),
-        plan: BlurPlan::new(2.0),
-        barrier: i + 1,
-        lens: None,
-        max_luminance: 65504.0,
         source,
+        ..BackdropRow::fixture(i, URect::new(10 + 40 * i, 10, 30, 30), BlurPlan::new(2.0))
     }
+}
+
+/// [`row`] capturing after `i + 1` groups.
+fn captured(i: u32) -> BackdropRow {
+    row(i, PaneSource::Capture { barrier: i + 1 })
 }
 
 /// Prepare one frame of `owner` holding `rows`.
@@ -78,8 +77,8 @@ fn prepare(
 
 /// The atlas slot of `owner`'s pane `i`, if its result is one.
 fn slot(backdrops: &Backdrops, owner: RenderOwnerId, i: u32) -> Option<URect> {
-    match backdrops.cache.get(&(owner, key(i)))?.result {
-        Kept::Slot(slot) => Some(slot),
+    match backdrops.cache.get(&(owner, key(i)))? {
+        Kept::Slot(slot) => Some(*slot),
         Kept::Clear(_) => None,
     }
 }
@@ -92,8 +91,8 @@ fn each_window_keeps_its_own_results() {
     let owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
     let mut backdrops = Backdrops::new(&gpu.device);
-    prepare(&mut backdrops, &gpu, a, &[row(0, PaneSource::Capture)]);
-    prepare(&mut backdrops, &gpu, b, &[row(0, PaneSource::Capture)]);
+    prepare(&mut backdrops, &gpu, a, &[captured(0)]);
+    prepare(&mut backdrops, &gpu, b, &[captured(0)]);
     let (at_a, at_b) = (
         slot(&backdrops, a, 0).unwrap(),
         slot(&backdrops, b, 0).unwrap(),
@@ -118,26 +117,23 @@ fn a_pane_of_the_clear_frees_its_slot() {
     let gpu = headless_test_gpu();
     let owner = RenderOwners::default().reserve();
     let mut backdrops = Backdrops::new(&gpu.device);
-    prepare(&mut backdrops, &gpu, owner, &[row(0, PaneSource::Capture)]);
+    prepare(&mut backdrops, &gpu, owner, &[captured(0)]);
     let first = slot(&backdrops, owner, 0).unwrap();
     prepare(&mut backdrops, &gpu, owner, &[row(0, PaneSource::Clear)]);
     assert_eq!(backdrops.blurs(), 0);
     let held = held_clear(CLEAR.to_f16(), TargetFormat::RGBA8_SRGB);
     assert!(matches!(
-        backdrops.cache[&(owner, key(0))].result,
+        backdrops.cache[&(owner, key(0))],
         Kept::Clear(clear) if clear == held
     ));
     prepare(
         &mut backdrops,
         &gpu,
         owner,
-        &[row(0, PaneSource::Held), row(1, PaneSource::Capture)],
+        &[row(0, PaneSource::Held), captured(1)],
     );
     assert_eq!(backdrops.blurs(), 1);
-    assert!(matches!(
-        backdrops.cache[&(owner, key(0))].result,
-        Kept::Clear(_)
-    ));
+    assert!(matches!(backdrops.cache[&(owner, key(0))], Kept::Clear(_)));
     assert_eq!(slot(&backdrops, owner, 1).map(|s| s.min), Some(first.min));
 }
 

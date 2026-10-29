@@ -247,6 +247,7 @@ impl OffscreenHost {
         FrameSpec {
             physical: target.size(),
             format: target.format(),
+            gives_copy: target.gives_copy(),
             system_scale: display::scale_factor(system_scale),
             refresh_millihertz: None,
             now: self.time.now(),

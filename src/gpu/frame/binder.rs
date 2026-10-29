@@ -1,6 +1,6 @@
 //! What a main pass has bound, so each draw sets only the state that changed.
 
-use crate::gpu::surface::viewport::ViewportPush;
+use crate::gpu::pipeline::viewport_push::ViewportPush;
 
 /// The state calls a pass takes. wgpu records every one and drivers do not dedupe, so the
 /// [`Binder`] elides repeats before they reach the pass. A trait so the elision is testable on a
@@ -148,7 +148,7 @@ fn same<T>(bound: Option<&T>, item: &T) -> bool {
 #[cfg(test)]
 mod tests {
     use crate::gpu::frame::binder::{Binder, PassState};
-    use crate::gpu::surface::viewport::ViewportPush;
+    use crate::gpu::pipeline::viewport_push::ViewportPush;
     use glam::Vec2;
 
     /// A state call as the pass would take it, by handle value.
