@@ -8,9 +8,11 @@ use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::Duration;
 
-/// How a value moves toward its target. Animation is opt-in: pass `None` to
-/// [`crate::Ui::animate`] (or omit the theme field) to snap. `AnimationSpec`
-/// only describes motion *when there is some*.
+/// How a value moves toward its target. Pass `None` to [`crate::Ui::animate`],
+/// or leave a theme slot's `animation` unset, to snap; the stock buttons,
+/// menu-bar titles, menu rows and tab chips take [`Metrics::transition`](crate::Metrics::transition),
+/// [`Self::FAST`] by default. `AnimationSpec` only describes
+/// motion *when there is some*.
 ///
 /// Wire format is internally tagged on `kind` (snake_case):
 ///

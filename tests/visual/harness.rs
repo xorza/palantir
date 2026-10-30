@@ -22,6 +22,7 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text_muted: RgbaF32::hex(0x9ad2a0),
     text_disabled: RgbaF32::hex(0xd9a05e),
     window_bg: RgbaF32::hex(0x14141a),
+    surround: RgbaF32::hex(0x3a1a14),
     element: RgbaF32::hex(0x2e1f38),
     element_mid: RgbaF32::hex(0x1e4048),
     element_strong: RgbaF32::hex(0x3d4f1e),

@@ -217,7 +217,9 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
             "{label}: look should return the matching slot",
         );
     }
-    // An unselected chip is a ghost: no fill at rest, `element_mid` under the pointer.
+    // The strip rides the `surround` band, and an unselected chip on it is a ghost: no fill at
+    // rest, `element_mid` under the pointer.
+    assert_eq!(theme.strip, Chrome::fill(Palette::DEFAULT.surround));
     assert_eq!(theme.unselected.normal.chrome.fill, Chrome::NONE.fill);
     assert_eq!(
         theme.unselected.hovered.chrome.fill,
@@ -265,14 +267,14 @@ fn the_picker_value_editor_is_its_chip() {
         value.chip.looks.normal.text,
         TextStyleOverrides {
             family: Some(FontFamily::MONO),
-            font_size: Some(13.0),
+            font_size: Some(12.0),
             ..TextStyleOverrides::NONE
         },
         "the face and size are the picker's, every other axis the theme's",
     );
 }
 
-/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 12 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
+/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 12 px; the picker's mono 12 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
 #[test]
 fn bundled_text_inherits_every_axis_but_color() {
     use crate::theme::{Theme, ThemeText};
@@ -282,7 +284,7 @@ fn bundled_text_inherits_every_axis_but_color() {
         ..TextStyleOverrides::NONE
     };
     let mut expected = vec![TextStyleOverrides::NONE.with_font_size(12.0)];
-    expected.extend([mono.with_font_size(13.0); 12]);
+    expected.extend([mono.with_font_size(12.0); 12]);
     expected.push(mono.with_font_size(10.0));
 
     let mut theme = Theme::default();

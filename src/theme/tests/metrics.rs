@@ -1,5 +1,7 @@
 use glam::Vec2;
 
+use crate::animation::animation_spec::AnimationSpec;
+
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
@@ -30,6 +32,7 @@ const DISTINCT: Metrics = Metrics {
         line: 0.75,
     },
     float_shadow: Shadow::drop(RgbaF32::hex(0x123456), Vec2::new(19.0, 21.0), 23.0),
+    transition: Some(AnimationSpec::MEDIUM),
 };
 
 #[test]
@@ -55,7 +58,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
             t.context_menu.separator.margin,
             Spacing::xy(0.0, 1.0),
         ),
-        ("tooltip", t.tooltip.padding, Spacing::xy(3.0, 1.0)),
+        ("tooltip", t.tooltip.padding, Spacing::xy(5.0, 1.0)),
         ("modal", t.modal.padding, Spacing::all(9.0)),
         ("tab chip", t.tabs.chip_padding, row),
         (
@@ -64,6 +67,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
             Spacing::new(3.0, 1.0, 3.0, 0.0),
         ),
         ("dock ghost", t.dock.ghost_padding, row),
+        ("menu bar", t.menu_bar.bar_padding, Spacing::xy(3.0, 1.0)),
         ("expander", t.expander.defaults.padding, Spacing::all(1.0)),
         (
             "expander body",
@@ -112,7 +116,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     assert_eq!(t.dock.ghost_offset, Vec2::new(5.0, 7.0));
     let chromes = [
         ("button", &t.button.looks.normal.chrome, 13.0, 0.25),
-        ("text edit", &t.text_edit.looks.normal.chrome, 13.0, 0.5),
+        ("text edit", &t.text_edit.looks.normal.chrome, 13.0, 0.25),
         ("checkbox", &t.checkbox.unchecked.normal.chrome, 13.0, 0.25),
         ("tooltip", &t.tooltip.panel, 13.0, 0.25),
         ("menu", &t.context_menu.panel, 17.0, 0.25),
@@ -130,6 +134,15 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     );
     assert_eq!(t.tabs.close.hovered.chrome.corners, Corners::all(13.0));
     assert_eq!(t.tabs.selected.normal.chrome.corners, Corners::top(15.0));
+    for (slot, animation) in [
+        ("button", t.button.defaults.animation),
+        ("menu bar title", t.menu_bar.defaults.animation),
+        ("menu item", t.context_menu.item.defaults.animation),
+        ("tab chip", t.tabs.defaults.animation),
+        ("drag value", t.drag_value.chip.defaults.animation),
+    ] {
+        assert_eq!(animation, DISTINCT.transition, "{slot} transition");
+    }
     for (slot, shadow) in [
         ("tooltip", t.tooltip.panel.shadow),
         ("menu", t.context_menu.panel.shadow),

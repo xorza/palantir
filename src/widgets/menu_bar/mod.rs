@@ -6,6 +6,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
@@ -15,7 +16,7 @@ use crate::theme::menu_bar::{MenuBarTheme, MenuState};
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
-use crate::widget_core::configure::Configure;
+use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::response::{InnerResponse, Response};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
@@ -51,7 +52,8 @@ use std::rc::Rc;
 /// # }
 /// ```
 ///
-/// Implements [`Configure`]: the bar is a horizontal stack of its titles.
+/// Implements [`Configure`]: the bar is a horizontal stack of its titles, as wide as its parent
+/// and on [`MenuBarTheme::bar`] unless set otherwise, as a window's menu bar spans it.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct MenuBar<'a> {
@@ -139,8 +141,12 @@ impl<'a> MenuBar<'a> {
 
         let theme = Rc::clone(ui.theme());
         let style = self.style.unwrap_or(&theme.menu_bar);
-        self.widget.configure().default_gap(style.gap);
-        let (inner, count, mut open, step) = self.widget.record(ui, None, |ui| {
+        self.widget = self.widget.default_size((Sizing::FILL, Sizing::HUG));
+        self.widget
+            .configure()
+            .default_gap(style.gap)
+            .default_padding(style.bar_padding);
+        let (inner, count, mut open, step) = self.widget.record(ui, Some(&style.bar), |ui| {
             let mut menus = MenuBarMenus {
                 ui,
                 bar,

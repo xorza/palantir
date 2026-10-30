@@ -89,9 +89,9 @@ fn fill_width_editor_shrinks_below_text_content() {
     let mut buf = LONG.to_string();
     let hug = sized_editor(&mut h, &mut buf, 2000.0, Sizing::HUG);
     let text_w = h.ui.arranged_rect(Layer::Main, hug).size.w;
-    // 43 mono glyphs of 8 px, 9.5 px padding and 1.5 px caret room each side:
+    // 43 mono glyphs of 8 px, 9 px padding and 1.5 px caret room each side:
     // wider than the narrow container.
-    assert_eq!(text_w, 43.0 * 8.0 + 2.0 * 9.5 + 2.0 * 1.5);
+    assert_eq!(text_w, 43.0 * 8.0 + 2.0 * 9.0 + 2.0 * 1.5);
 
     let mut buf = LONG.to_string();
     let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);

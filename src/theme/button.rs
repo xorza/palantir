@@ -29,7 +29,7 @@ pub struct ButtonTheme {
 }
 
 impl ButtonTheme {
-    /// The standard button recipe over `p` and `m`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`.
+    /// The standard button recipe over `p` and `m`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`. A state change runs under the metrics' `transition`.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let corners = Corners::all(m.radius.control);
         let chrome = |fill: RgbaF32| {
@@ -61,7 +61,7 @@ impl ButtonTheme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(m.space.md, m.space.xs),
                 margin: Spacing::ZERO,
-                animation: None,
+                animation: m.transition,
             },
         }
     }
@@ -93,7 +93,7 @@ impl ButtonTheme {
             defaults: SlotDefaults {
                 padding: m.row_padding(),
                 margin: Spacing::ZERO,
-                animation: None,
+                animation: m.transition,
             },
         }
     }

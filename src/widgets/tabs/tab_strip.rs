@@ -418,7 +418,13 @@ impl StripPass<'_> {
         }
     }
 
-    /// The chip at `slot`: cap-bearing outer box, filled inner box, and the content and close button inside.
+    /// The chip at `slot`: its filled box, the selection cap as a band across its top, clipped to
+    /// the box's corners, and the content and close button below the cap.
+    ///
+    /// The cap is a node of its own, the width of the box by layout, so it covers the top band
+    /// whatever the chip's width floor and fill. Refused: a cap-colored box under an inner fill
+    /// inset by the cap, which shows the cap down a side wherever the fill hugs narrower than the
+    /// chip's floor, and through a translucent fill.
     fn chip(&mut self, ui: &mut Ui, slot: usize, content: &mut impl FnMut(&mut Ui, &TabChip)) {
         let t = self.theme;
         let item = self.items[slot];
@@ -431,24 +437,20 @@ impl StripPass<'_> {
             Sense::CLICK
         };
         let cap = if selected { t.cap_thickness } else { 0.0 };
-        let mut widget = Widget::hstack()
+        let mut widget = Widget::vstack()
             .id(chip_id)
             .size((Sizing::HUG, Sizing::HUG))
             .min_size(Size::new(t.min_width, 0.0))
             .max_size(Size::new(t.max_width, f32::INFINITY))
-            .padding(Spacing::new(0.0, cap, 0.0, 0.0))
             .sense(sense);
+        if selected {
+            widget = widget.clip_rounded();
+        }
         let state = widget.response(ui);
-        // The look paints the inner box, so the widget wears the plan for spacing and animation while the chrome goes a level down (the `ToggleRow` shape).
         let plan = t.plan(&state, TabSelection::from(selected), self.ambient);
         let look = widget.wear(ui, plan);
-        let cap_chrome = if selected {
-            Chrome::rounded(t.cap(self.focus), Corners::top(t.radius))
-        } else {
-            Chrome::NONE
-        };
-        let inner_chrome = Chrome {
-            corners: Corners::top((t.radius - cap).max(0.0)),
+        let chip_chrome = Chrome {
+            corners: Corners::top(t.radius),
             ..look.chrome
         };
         // The selected chip lifts its inner top inset by the cap, so height is unchanged; a close button trades the right inset for its box (`TabsTheme::trailing_inset`).
@@ -484,14 +486,20 @@ impl StripPass<'_> {
         // Every chip is at least as tall as a close button, closable or not, so the strip keeps
         // its height as a closable tab comes and goes beside a pinned one.
         let inner = Widget::hstack()
-            .id(chip_id.with("fill"))
+            .id(chip_id.with("content"))
             .size((Sizing::HUG, Sizing::HUG))
             .min_size(Size::new(0.0, t.close_size + padding.sums().h))
             .padding(padding)
             .gap(t.label_gap)
             .child_align(Align::v(VAlign::Center));
-        widget.record(ui, Some(&cap_chrome), |ui| {
-            inner.record(ui, Some(&inner_chrome), |ui| {
+        widget.record(ui, Some(&chip_chrome), |ui| {
+            if selected {
+                Widget::leaf()
+                    .id(chip_id.with("cap"))
+                    .size((Sizing::FILL, Sizing::fixed(cap)))
+                    .record(ui, Some(&Chrome::fill(t.cap(self.focus))), |_| {});
+            }
+            inner.record(ui, None, |ui| {
                 content(ui, &chip);
                 if let Some(close) = &close {
                     let button = Widget::zstack()

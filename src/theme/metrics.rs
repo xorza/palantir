@@ -1,11 +1,12 @@
-//! The geometry roster every theme recipe draws from, beside the [`Palette`](crate::Palette)'s colors. [`Metrics::DEFAULT`] is a 4 px grid.
+//! The geometry and motion roster every theme recipe draws from, beside the [`Palette`](crate::Palette)'s colors. [`Metrics::DEFAULT`] is a 4 px grid.
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use glam::Vec2;
 
-/// The spacing, rounding, line and shadow steps of a theme, as [`Theme::from_parts`](crate::Theme::from_parts) reads them. Every padding, gap, radius, border and shadow a recipe sets is one of these steps, so an app that passes its own scale moves every widget onto it; a widget's intrinsic sizes (a toggle's box, a scrollbar's thickness, a tab's width bounds) stay in its recipe.
+/// The spacing, rounding, line, shadow and transition steps of a theme, as [`Theme::from_parts`](crate::Theme::from_parts) reads them. Every padding, gap, radius, border and shadow a recipe sets is one of these steps, so an app that passes its own scale moves every widget onto it; a widget's intrinsic sizes (a toggle's box, a scrollbar's thickness, a tab's width bounds) stay in its recipe.
 ///
 /// Kept beside the palette rather than in it, as egui keeps `Style::spacing` beside `Style::visuals`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -18,6 +19,10 @@ pub struct Metrics {
     pub stroke: StrokeSteps,
     /// The shadow a surface over the others casts: a menu, a popup, a tooltip, a modal.
     pub float_shadow: Shadow,
+    /// What a control's state change runs under: a button's, a menu-bar title's, a menu row's and
+    /// a tab chip's. `None` snaps, and a file that leaves it out reads `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transition: Option<AnimationSpec>,
 }
 
 /// The spacing steps, smallest first.
@@ -60,10 +65,10 @@ pub struct RadiusSteps {
 /// The line widths, by the kind of line.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StrokeSteps {
-    /// A rule or a border.
+    /// A rule or a border, a field's included.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub hairline: f32,
-    /// A field's border and caret, a drop preview, a small glyph's stroke.
+    /// A field's caret, a drop preview, a small glyph's stroke.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub fine: f32,
     /// The focus ring, a tab's cap and caret, a check mark.
@@ -101,6 +106,9 @@ impl Metrics {
         // Fluent's `shadow16`, 8 px down and 16 px of blur (https://fluent2.microsoft.design/elevation),
         // which its `MenuPopover` casts, in the half black a dark ground needs before a shadow reads.
         float_shadow: Shadow::drop(RgbaF32::BLACK.with_alpha8(128), Vec2::new(0.0, 8.0), 16.0),
+        // Fluent's button transitions its fill, border and ink over `durationFaster`, 100 ms:
+        // https://github.com/microsoft/fluentui/blob/master/packages/react-components/react-button/library/src/components/Button/useButtonStyles.styles.ts
+        transition: Some(AnimationSpec::FAST),
     };
 }
 

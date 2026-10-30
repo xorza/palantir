@@ -15,8 +15,12 @@ pub struct Palette {
     pub text_muted: RgbaF32,
     /// Disabled-state foreground.
     pub text_disabled: RgbaF32,
-    /// Window background (`Theme::window_clear`); also the active tab chip's fill.
+    /// Window background (`Theme::window_clear`); also the active tab chip's fill, so the chip
+    /// joins the content under its strip.
     pub window_bg: RgbaF32,
+    /// The band the window's controls sit on, a step off `window_bg`: a menu bar, a tab strip, and
+    /// the ghost a dragged tab leaves.
+    pub surround: RgbaF32,
     /// Resting surface tier (disabled fills, menu panels).
     pub element: RgbaF32,
     /// One step brighter — resting chrome for interactive surfaces.
@@ -32,8 +36,9 @@ pub struct Palette {
 impl Palette {
     /// Built-in neutral dark palette: the values `Theme::default` assembles from.
     ///
-    /// The semantic layer of Ayu Graphite, the palette darkroom paints with: the three `element`
-    /// rungs one neutral step apart, two steps over `window_bg`, and ink off white, as Material's dark theme keeps
+    /// The semantic layer of Ayu Graphite, the palette darkroom paints with: content on
+    /// `window_bg`, a ramp step under the `surround` band its menu bar and tab strips sit on, the
+    /// three `element` rungs one neutral step apart, and ink off white, as Material's dark theme keeps
     /// text off `#fff`, where it vibrates against a dark ground
     /// (<https://m2.material.io/design/color/dark-theme.html>). `border_focused` is the accent:
     /// on a field's `element_mid` fill it reads 4.25:1, past the 3:1 WCAG 1.4.11 asks of a focus
@@ -42,7 +47,8 @@ impl Palette {
         text: RgbaF32::hex(0xebebeb),
         text_muted: RgbaF32::hex(0xa4a4a4),
         text_disabled: RgbaF32::hex(0x797979),
-        window_bg: RgbaF32::hex(0x1f1f1f),
+        window_bg: RgbaF32::hex(0x141414),
+        surround: RgbaF32::hex(0x1f1f1f),
         element: RgbaF32::hex(0x383838),
         element_mid: RgbaF32::hex(0x454545),
         element_strong: RgbaF32::hex(0x525252),

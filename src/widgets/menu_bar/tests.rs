@@ -1,6 +1,8 @@
 use super::*;
 use crate::input::interaction::response_state::ResponseState;
 use crate::internals::ui_harness::UiHarness;
+use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::theme::palette::Palette;
 use crate::widgets::context_menu::menu_item::MenuItem;
 use glam::UVec2;
 
@@ -245,4 +247,26 @@ fn the_open_title_wears_the_open_look() {
     assert_eq!(theme.look(&rest, MenuState::Shut), &theme.title.normal);
     assert_eq!(theme.open, theme.title.hovered);
     assert_ne!(theme.open, theme.title.normal);
+}
+
+/// Unset, the bar spans its parent on the theme's band, its first title inset by the band's
+/// padding: on the 600 px surface, from x = 0 to 600, the first title at `bar_padding.left`.
+#[test]
+fn the_bar_spans_its_parent_on_the_band() {
+    let mut h = UiHarness::new(SURFACE);
+    frame(&mut h);
+    let theme = h.ui.theme().menu_bar.clone();
+    let band = h.rect(bar()).expect("the bar arranged");
+    assert_eq!((band.min.x, band.size.w), (0.0, 600.0));
+    let first = h.rect(title(0)).expect("the first title arranged");
+    let [left, top, ..] = theme.bar_padding.to_array();
+    assert_eq!((first.min.x, first.min.y), (left, top));
+    let chrome =
+        h.ui.tree(Layer::Main)
+            .chrome(h.node_for_widget_id(bar()))
+            .expect("the bar paints its band");
+    let ShapeBrush::Solid(fill) = chrome.fill else {
+        panic!("the band is a solid fill");
+    };
+    assert_eq!(fill, Palette::DEFAULT.surround.to_f16());
 }

@@ -1,6 +1,8 @@
 //! What a menu bar's titles wear, shut and open, and which of the two applies.
 
 use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::chrome::Chrome;
 use crate::theme::ThemeText;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::WidgetLook;
@@ -22,6 +24,12 @@ pub struct MenuBarTheme {
     pub title: StatefulLook,
     /// The title whose menu is open.
     pub open: WidgetLook,
+    /// The band behind the titles; the palette's `surround` by default, as a tab strip's.
+    pub bar: Chrome,
+    /// Inset between the band's edges and the titles; its sides match a tab strip's, so the first
+    /// title and the first tab line up.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    pub bar_padding: Spacing,
     /// Gutter between two titles.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
@@ -42,7 +50,8 @@ pub enum MenuState {
 
 impl MenuBarTheme {
     /// [`ButtonTheme::menu_button`]'s flat titles in the muted ink at rest, the open one wearing
-    /// the hovered look, an `xs` gutter apart, so two lit fills never touch.
+    /// the hovered look, an `xs` gutter apart, so two lit fills never touch, on the `surround`
+    /// band.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let ButtonTheme {
             mut looks,
@@ -52,6 +61,8 @@ impl MenuBarTheme {
         Self {
             open: looks.hovered.clone(),
             title: looks,
+            bar: Chrome::fill(p.surround),
+            bar_padding: Spacing::xy(m.space.sm, m.space.xs),
             gap: m.space.xs,
             defaults,
         }
@@ -62,6 +73,8 @@ impl MenuBarTheme {
         let Self {
             title,
             open,
+            bar: _,
+            bar_padding: _,
             gap: _,
             defaults: _,
         } = self;

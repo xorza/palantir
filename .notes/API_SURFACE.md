@@ -1265,6 +1265,8 @@ MenuBarTheme
     struct MenuBarTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub title: StatefulLook
         pub open: WidgetLook
+        pub bar: Chrome
+        pub bar_padding: Spacing
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
@@ -1302,6 +1304,7 @@ Metrics
         pub radius: RadiusSteps
         pub stroke: StrokeSteps
         pub float_shadow: Shadow
+        pub transition: Option<AnimationSpec>
         pub const DEFAULT: Self
 
 Modal
@@ -1406,6 +1409,7 @@ Palette
         pub text_muted: RgbaF32
         pub text_disabled: RgbaF32
         pub window_bg: RgbaF32
+        pub surround: RgbaF32
         pub element: RgbaF32
         pub element_mid: RgbaF32
         pub element_strong: RgbaF32

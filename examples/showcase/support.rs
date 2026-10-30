@@ -1,6 +1,6 @@
 //! Design tokens and page scaffolding: the one place the showcase's look is defined.
 //!
-//! Every scaffold color is a role of [`Palette::DEFAULT`], the palette `Theme::default` assembles from, so the tour shows the stock look: pages sit on the window's ground, demos in hairline-framed [`WELL`]s of the same ground ([`LIGHT_WELL`] when bright), raised chrome on [`RAISED`]. Ink: [`INK`], [`INK_DIM`], [`INK_FAINT`].
+//! Every scaffold color is a role of [`Palette::DEFAULT`], the palette `Theme::default` assembles from, so the tour shows the stock look: the nav rail rides the [`SURROUND`] band, pages sit on the window's ground, demos in hairline-framed [`WELL`]s of the same ground ([`LIGHT_WELL`] when bright), raised chrome on [`RAISED`]. Ink: [`INK`], [`INK_DIM`], [`INK_FAINT`].
 //!
 //! Pages never paint their own root or header; they emit [`Section`]s, with fixed [`TILE`]-square [`DemoCell`]s for paint demos.
 
@@ -19,6 +19,8 @@ const M: Metrics = Metrics::DEFAULT;
 /// A demo's surface: the ground itself, so a tab strip's selected chip, which wears the ground,
 /// joins the page under it as it does in an app. A hairline frames it.
 pub(crate) const WELL: RgbaF32 = P.window_bg;
+/// The band the nav rail rides, as a menu bar and a tab strip do.
+pub(crate) const SURROUND: RgbaF32 = P.surround;
 /// Bright demo surface, for drop shadows and dark strokes.
 pub(crate) const LIGHT_WELL: RgbaF32 = RgbaF32::hex(0xc8ccd2);
 /// Raised chrome — popup bodies, right-click targets, menu surfaces.

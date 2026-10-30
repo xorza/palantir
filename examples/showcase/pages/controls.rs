@@ -105,8 +105,8 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                 .show(ui, |ui| {
                     support::note(
                         ui,
-                        "A plain section. The reveal snaps, because the library leaves \
-                         animation opt-in.",
+                        "A plain section. The reveal snaps, as the stock expander theme \
+                         sets no animation.",
                     );
                 });
             Expander::new("Animated reveal")

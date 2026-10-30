@@ -1,4 +1,4 @@
-//! Tests for `TextEdit::text_align` and per-mode default alignment. Mono fallback: 8 px/char at 16 px font, line height 19.203125 (`round(19.2 × 64) / 64`). Editor 280×40, padding (8, 4) plus 1.5 px stroke folded in: effective (9.5, 5.5), inner rect 261×29.
+//! Tests for `TextEdit::text_align` and per-mode default alignment. Mono fallback: 8 px/char at 16 px font, line height 19.203125 (`round(19.2 × 64) / 64`). Editor 280×40, padding (8, 4) plus 1 px stroke folded in: effective (9, 5), inner rect 262×30.
 
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -10,14 +10,14 @@ use crate::widgets::text_edit::tests::*;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
-/// Theme padding (8, 4) plus chrome stroke (1.5), folded as the encoder's clip and TextEdit do.
-const PAD_L: f32 = 9.5;
-const PAD_T: f32 = 5.5;
+/// Theme padding (8, 4) plus chrome stroke (1), folded as the encoder's clip and TextEdit do.
+const PAD_L: f32 = 9.0;
+const PAD_T: f32 = 5.0;
 /// Default `TextEditTheme::caret_width`, reserved at each line's trailing edge.
 const CARET_W: f32 = 1.5;
-const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 261
-const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 29
-const ALIGN_W: f32 = INNER_W - CARET_W; // 259.5
+const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 262
+const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 30
+const ALIGN_W: f32 = INNER_W - CARET_W; // 260.5
 const LINE_H: f32 = 19.203_125;
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
@@ -296,7 +296,7 @@ fn click_compensates_for_right_align() {
 
 #[test]
 fn align_overflow_clamps_to_zero() {
-    // Text wider than the inner rect ("a" × 100 = 800 px > 261): offset clamps to zero, so x = padding.left.
+    // Text wider than the inner rect ("a" × 100 = 800 px > 262): offset clamps to zero, so x = padding.left.
     for align in [Align::LEFT, Align::RIGHT, Align::CENTER] {
         let mut h = UiHarness::new(NARROW);
         let mut buf = "a".repeat(100);
