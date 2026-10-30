@@ -29,8 +29,8 @@ declaration, good-looking and fast. I made it.
   between their min- and max-content widths as auto table columns do, Fill
   items share the rest as WPF star tracks do, and nothing shrinks below its
   min-content floor.
-- **Fast** — a full 2560×1440 app screen costs 66–107 µs of CPU per frame
-  when nothing changed and 175–290 µs while the window resizes, and a
+- **Fast** — a full 2560×1440 app screen costs 78–130 µs of CPU per frame
+  when nothing changed and 196–329 µs while the window resizes, and a
   steady-state frame allocates nothing. See [Performance](#performance).
 - **Widgets included** — buttons, text and text editing, sliders, checkboxes,
   combo boxes, scroll and pan-zoom views, grids, tabs, a dock, popups, modals,
@@ -133,15 +133,21 @@ drained before the next iteration.
 |                                    | Intel i9-13980HX<br>RTX 4090 Laptop | AMD Ryzen 7 6800U<br>Radeon 680M | Apple M5, MacBook Air<br>10-core GPU |
 | ---------------------------------- | ----------------------------------: | -------------------------------: | -----------------------------------: |
 | **CPU pipeline**                   |                                     |                                  |                                      |
-| `cached`                           |                               79 µs |                           107 µs |                                66 µs |
-| `partial`                          |                              113 µs |                           153 µs |                                93 µs |
-| `scrolling`                        |                              149 µs |                           196 µs |                               116 µs |
-| `resizing`                         |                              227 µs |                           290 µs |                               175 µs |
+| `cached`                           |                               79 µs |                           130 µs |                                78 µs |
+| `hovering`                         |                                   — |                           152 µs |                                87 µs |
+| `partial`                          |                              113 µs |                           181 µs |                               105 µs |
+| `alternating`                      |                                   — |                           203 µs |                               118 µs |
+| `scrolling`                        |                              149 µs |                           221 µs |                               130 µs |
+| `resizing`                         |                              227 µs |                           329 µs |                               196 µs |
+| `typing`                           |                                   — |                           392 µs |                               228 µs |
 | **CPU + GPU frame**                |                                     |                                  |                                      |
-| `cached`                           |                               80 µs |                           111 µs |                                66 µs |
-| `partial`                          |                              296 µs |                          1.53 ms |                               361 µs |
-| `scrolling`                        |                              414 µs |                          2.50 ms |                               866 µs |
-| `resizing`                         |                              572 µs |                          2.85 ms |                              1.00 ms |
+| `cached`                           |                               80 µs |                           135 µs |                                79 µs |
+| `hovering`                         |                                   — |                          1.55 ms |                               327 µs |
+| `partial`                          |                              296 µs |                          1.55 ms |                               346 µs |
+| `alternating`                      |                                   — |                          2.49 ms |                               681 µs |
+| `scrolling`                        |                              414 µs |                          2.28 ms |                               650 µs |
+| `resizing`                         |                              572 µs |                          2.25 ms |                               745 µs |
+| `typing`                           |                                   — |                          2.57 ms |                               785 µs |
 | **Per `cached` CPU frame**         |                                     |                                  |                                      |
 | instructions retired               |                              1.72 M |                           1.71 M |                               1.74 M |
 | cycles                             |                               403 K |                            490 K |                                285 K |
@@ -149,9 +155,12 @@ drained before the next iteration.
 | clock                              |                           ~5.07 GHz |                         4.58 GHz |                             4.32 GHz |
 
 - **Scenarios.** `cached` changes nothing, so layout hits its cache and
-  damage skips the paint. `partial` changes one counter, a small damage rect.
-  `scrolling` moves a transform. `resizing` changes the surface size every
-  frame, so every measure runs again.
+  damage skips the paint. `hovering` moves the pointer between two widgets,
+  one move a frame. `partial` changes one counter, a small damage rect.
+  `alternating` takes a scroll step, then a counter tick. `scrolling` moves a
+  transform. `resizing` changes the surface size every frame, so every
+  measure runs again. `typing` types a character into a focused field, then
+  deletes it.
 - **Counters.** The x86 counts come from `perf stat`, pinned to one core; the
   M5 counts from `/usr/bin/time -l`, unpinned, as macOS has no core affinity.
   Each count is the difference between two measurement windows, so process
