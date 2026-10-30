@@ -92,8 +92,9 @@ impl TextEditTheme {
         let radius = Corners::all(m.radius.control);
         // Constant stroke width across states: `Tree::open_node` folds it into
         // padding, so a change would shift the inner rect and jitter the text on
-        // focus. The fine step gives focus emphasis without the shift.
-        let stroke_w = m.stroke.fine;
+        // focus. The hairline a button wears, so a field and a button beside it
+        // share one height, and the edge lands on whole pixels at 1x.
+        let stroke_w = m.stroke.hairline;
         let normal_chrome = Chrome::rounded(p.element_mid, radius)
             .with_border(Stroke::new(p.border_soft(), stroke_w));
         let focused_chrome = Chrome::rounded(p.element_mid, radius)

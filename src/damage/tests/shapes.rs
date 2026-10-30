@@ -176,10 +176,11 @@ fn added_widget_contributes_curr_rect_to_damage() {
     assert!(!h.damage_region().is_empty());
 }
 
-/// Hovering a button dirties exactly the button; hit-test lags a frame, so frames settle before the transition is asserted.
+/// Hovering a button dirties exactly the button; hit-test lags a frame, so frames settle before the transition is asserted. The button's look snaps, so the hover lands in one frame.
 #[test]
 fn button_hover_damage_covers_only_the_button() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.ui.theme_mut().button.defaults.animation = None;
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |h: &mut UiHarness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
@@ -244,10 +245,11 @@ fn button_hover_damage_covers_only_the_button() {
     );
 }
 
-/// Un-hovering is symmetric: damage is the button rect.
+/// Un-hovering is symmetric: damage is the button rect. The look snaps, as above.
 #[test]
 fn button_unhover_damage_covers_only_the_button() {
     let mut h = UiHarness::new(UVec2::new(400, 400));
+    h.ui.theme_mut().button.defaults.animation = None;
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |h: &mut UiHarness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {

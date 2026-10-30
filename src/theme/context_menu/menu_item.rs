@@ -45,7 +45,8 @@ impl MenuItemTheme {
         looks.for_each_text(f);
     }
 
-    /// Rows transparent at rest, one surface step brighter on hover.
+    /// Rows transparent at rest, one surface step brighter on hover, under the metrics'
+    /// `transition` as a button is.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         // Hover is one surface step brighter (`element_mid`), as `ButtonTheme::menu_button`; `active` keeps it
         // since a click closes the menu. The chip radius stays under the panel's so it nests in the corner.
@@ -68,7 +69,7 @@ impl MenuItemTheme {
             defaults: SlotDefaults {
                 padding: m.row_padding(),
                 margin: Spacing::ZERO,
-                animation: None,
+                animation: m.transition,
             },
         }
     }

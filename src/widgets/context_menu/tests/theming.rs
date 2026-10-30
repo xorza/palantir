@@ -23,6 +23,7 @@ use crate::widgets::context_menu::tests::support::{
     MenuRow, SURFACE, menu_body, menu_rows, trigger_id,
 };
 use glam::Vec2;
+use std::time::Duration;
 
 /// Both menu gutters are theme knobs: `context_menu.gap` is the row pitch, `context_menu.item.gap` the label-to-shortcut floor; each moves only its own axis.
 #[test]
@@ -230,6 +231,12 @@ fn a_disabled_rows_hint_dims_with_its_label() {
     h.move_to(live);
     h.frame(menu);
     h.frame(menu);
+    // Two frames a 100 ms step apart, the most one frame steps an animation, pass the row's
+    // 120 ms hover ease, so the hint reads the settled look.
+    for _ in 0..2 {
+        h.advance(Duration::from_millis(100));
+        h.frame(menu);
+    }
     assert_eq!(
         hint_color(&h, rows[0]),
         RgbaF32::hex(0x0000ff).to_f16(),

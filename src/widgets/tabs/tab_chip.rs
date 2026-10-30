@@ -24,8 +24,8 @@ pub struct TabChip {
     /// The chip look's text, animated with its fill: content in this ink follows hover and selection.
     pub text: TextStyle,
     /// The chip's id, for the content's own ids, as `chip.id.with("icon")`. The strip takes
-    /// `chip.id.with("fill")` for the box the content records in, and [`Self::show_label`]
-    /// takes `chip.id.with("label")`.
+    /// `chip.id.with("content")` for the box the content records in and `chip.id.with("cap")`
+    /// for the selection cap, and [`Self::show_label`] takes `chip.id.with("label")`.
     pub id: WidgetId,
 }
 

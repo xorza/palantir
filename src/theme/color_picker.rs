@@ -87,9 +87,10 @@ pub struct ColorPickerTheme {
     pub label: TextStyleOverrides,
 }
 
-/// Font size of the channel values and hex field, under the ambient size: a dense
-/// grid of readouts, each of four columns (208 - 3 gaps) / 4 = 47.5 px wide.
-const VALUE_FONT_PX: f32 = 13.0;
+/// Font size of the channel values and hex field: the caption tier, two under the
+/// 14 px body, for a dense grid of readouts, each of four columns
+/// (208 - 3 gaps) / 4 = 47.5 px wide.
+const VALUE_FONT_PX: f32 = 12.0;
 
 const VALUE_PADDING: f32 = 5.0;
 

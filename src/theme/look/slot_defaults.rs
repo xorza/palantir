@@ -14,7 +14,9 @@ pub struct SlotDefaults {
     /// Margin when the builder set none.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::margin")]
     pub margin: Spacing,
-    /// Spec the state transitions run under; `None` (animation is opt-in) by default.
+    /// Spec the state transitions run under; `None` snaps, and a theme file that leaves it out
+    /// reads `None`. The stock buttons, menu-bar titles, menu rows and tab chips take
+    /// [`Metrics::transition`](crate::Metrics::transition).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub animation: Option<AnimationSpec>,
 }

@@ -3,7 +3,7 @@
 //! group, blurb, key hints, scrolling and builder.
 
 use palantir::{
-    Align, App, Axis, Button, ButtonTheme, Checkbox, Configure, FocusPolicy, FontFamily,
+    Align, App, Axis, Button, ButtonTheme, Checkbox, Chrome, Configure, FocusPolicy, FontFamily,
     FontWeight, Justify, Key, Metrics, Panel, Scroll, Separator, Shortcut, Sizing, SlotDefaults,
     Spacing, StatefulLook, Text, TextStyle, TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync,
     WindowConfig, WindowToken, fmt,
@@ -322,7 +322,6 @@ impl Shell {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 self.rail(ui);
-                Separator::vertical().show(ui);
                 self.card(ui);
             });
 
@@ -339,6 +338,7 @@ impl Shell {
             .size((Sizing::fixed(SIDEBAR_W), Sizing::FILL))
             .padding((M.space.md, M.space.lg, M.space.md, M.space.md))
             .gap(M.space.md)
+            .chrome(Chrome::fill(support::SURROUND))
             .show(ui, |ui| {
                 brand(ui);
                 Scroll::vertical()

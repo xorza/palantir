@@ -36,7 +36,7 @@ pub struct TabsTheme {
     /// Cap breadth in logical px; the selected chip lifts its top inset by the same amount.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub cap_thickness: f32,
-    /// The band behind the chips; [`Chrome::NONE`] by default.
+    /// The band behind the chips; the palette's `surround` by default.
     pub strip: Chrome,
     /// Inset between the band's edges and the chips.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
@@ -135,10 +135,11 @@ impl TabsTheme {
         }
     }
 
-    /// Chips card-rounded at the top only, inset as a menu row. An unselected chip is a ghost in
-    /// the muted ink that fills under the pointer as a menu-bar title does, and a close button
-    /// shows on the selected chip and the one under the pointer, as VS Code's and Zed's strips
-    /// show theirs: only the chip in use carries a fill and a control.
+    /// Chips card-rounded at the top only, inset as a menu row, on the `surround` band a menu bar
+    /// rides. The selected chip wears `window_bg`, so it joins the content under the strip. An
+    /// unselected chip is a ghost in the muted ink that fills under the pointer as a menu-bar title
+    /// does, and a close button shows on the selected chip and the one under the pointer, as VS
+    /// Code's and Zed's strips show theirs: only the chip in use carries a fill and a control.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let radius = m.radius.card;
         let top = Corners::top(radius);
@@ -164,7 +165,7 @@ impl TabsTheme {
             cap_focused: p.accent,
             cap_unfocused: p.element_strong,
             cap_thickness: m.stroke.line,
-            strip: Chrome::NONE,
+            strip: Chrome::fill(p.surround),
             strip_padding: Spacing::new(m.space.sm, m.space.xs, m.space.sm, 0.0),
             gap: m.space.xs,
             rule: p.border_soft(),
@@ -203,7 +204,7 @@ impl TabsTheme {
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
-                animation: None,
+                animation: m.transition,
             },
         }
     }

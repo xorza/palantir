@@ -46,14 +46,14 @@ impl DockTheme {
         ghost.for_each_text(f);
     }
 
-    /// Drop previews and the drag ghost, both drawn in the palette's accent. The ghost reads as a tab lifted off its strip: a tab's corners and inset.
+    /// Drop previews and the drag ghost, both drawn in the palette's accent. The ghost reads as a tab lifted off its strip: a tab's corners and inset, on the strip's `surround` band.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             preview_fill: p.accent.with_alpha8(46),
             preview_stroke: Stroke::new(p.accent, m.stroke.fine),
             preview_radius: m.radius.mark,
             ghost: WidgetLook {
-                chrome: Chrome::rounded(p.element, Corners::all(m.radius.card))
+                chrome: Chrome::rounded(p.surround, Corners::all(m.radius.card))
                     .with_border(Stroke::new(p.accent, m.stroke.hairline)),
                 text: TextStyleOverrides::NONE,
             },

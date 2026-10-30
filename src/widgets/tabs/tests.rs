@@ -12,9 +12,11 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::shape::paint::curve_basis::CurveBasis;
 use crate::shape::paint::quad_shape::QuadShape;
+use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
 use crate::shape::style::LineCap;
 use crate::theme::close_shown::CloseShown;
+use crate::theme::palette::Palette;
 use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -289,18 +291,45 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
     );
 }
 
-/// The selection cap adds no height.
+/// The selection cap adds no height, and is a band across the chip's top alone: on a chip held at
+/// a 160 px width floor, past what "alpha" and its close button take, the band is 160 wide and
+/// the cap's thickness tall at the chip's top, and the chip's box wears its own fill, so no cap
+/// color shows down a side.
 #[test]
-fn the_selection_cap_adds_no_height() {
+fn the_selection_cap_is_a_band_across_the_chip_top() {
     let mut h = UiHarness::new(SURFACE);
+    h.ui.theme_mut().tabs.min_width = 160.0;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
-    let selected = h.rect(TabStrip::chip_id(strip_id(), 10)).expect("arranged");
+    let chip = TabStrip::chip_id(strip_id(), 10);
+    let selected = h.rect(chip).expect("arranged");
     let plain = h.rect(TabStrip::chip_id(strip_id(), 20)).expect("arranged");
     assert_eq!(
         selected.size.h, plain.size.h,
         "the cap grew the selected chip: {selected:?} against {plain:?}",
     );
+
+    let t = h.ui.theme().tabs.clone();
+    assert_eq!(selected.size.w, 160.0, "premise: the floor holds the chip");
+    let fill = |id: WidgetId| {
+        let chrome =
+            h.ui.tree(Layer::Main)
+                .chrome(h.node_for_widget_id(id))
+                .expect("chrome recorded");
+        let ShapeBrush::Solid(fill) = chrome.fill else {
+            panic!("a solid fill");
+        };
+        fill
+    };
+    assert_eq!(
+        fill(chip),
+        Palette::DEFAULT.window_bg.to_f16(),
+        "the chip's whole box paints its fill, so no cap color shows past its label",
+    );
+    let band = h.rect(chip.with("cap")).expect("the cap arranged");
+    assert_eq!(band.min, selected.min);
+    assert_eq!((band.size.w, band.size.h), (160.0, t.cap_thickness));
+    assert_eq!(fill(chip.with("cap")), t.cap_focused.to_f16());
 }
 
 /// A pinned chip is as tall as a closable one when the close box is taller than the label, so

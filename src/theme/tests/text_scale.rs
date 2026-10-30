@@ -162,12 +162,12 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
         ),
         (
             "zero override font",
-            "font_size: Some(13.0)",
+            "font_size: Some(12.0)",
             "font_size: Some(0.0)",
         ),
         (
             "NaN override font",
-            "font_size: Some(13.0)",
+            "font_size: Some(12.0)",
             "font_size: Some(NaN)",
         ),
     ];
@@ -187,7 +187,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
     for (from, at, past) in [
         ("font_size: 14.0", "font_size: 8192.0", "font_size: 8192.5"),
         (
-            "font_size: Some(13.0)",
+            "font_size: Some(12.0)",
             "font_size: Some(8192.0)",
             "font_size: Some(8192.5)",
         ),
