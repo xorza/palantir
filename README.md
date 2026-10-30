@@ -133,25 +133,25 @@ drained before the next iteration.
 |                                    | Intel i9-13980HX<br>RTX 4090 Laptop | AMD Ryzen 7 6800U<br>Radeon 680M | Apple M5, MacBook Air<br>10-core GPU |
 | ---------------------------------- | ----------------------------------: | -------------------------------: | -----------------------------------: |
 | **CPU pipeline**                   |                                     |                                  |                                      |
-| `cached`                           |                               79 µs |                           130 µs |                                78 µs |
-| `hovering`                         |                                   — |                           152 µs |                                87 µs |
-| `partial`                          |                              113 µs |                           181 µs |                               105 µs |
-| `alternating`                      |                                   — |                           203 µs |                               118 µs |
-| `scrolling`                        |                              149 µs |                           221 µs |                               130 µs |
-| `resizing`                         |                              227 µs |                           329 µs |                               196 µs |
-| `typing`                           |                                   — |                           392 µs |                               228 µs |
+| `cached`                           |                               91 µs |                           130 µs |                                78 µs |
+| `hovering`                         |                              104 µs |                           152 µs |                                87 µs |
+| `partial`                          |                              125 µs |                           181 µs |                               105 µs |
+| `alternating`                      |                              145 µs |                           203 µs |                               118 µs |
+| `scrolling`                        |                              161 µs |                           221 µs |                               130 µs |
+| `resizing`                         |                              242 µs |                           329 µs |                               196 µs |
+| `typing`                           |                              283 µs |                           392 µs |                               228 µs |
 | **CPU + GPU frame**                |                                     |                                  |                                      |
-| `cached`                           |                               80 µs |                           135 µs |                                79 µs |
-| `hovering`                         |                                   — |                          1.55 ms |                               327 µs |
-| `partial`                          |                              296 µs |                          1.55 ms |                               346 µs |
-| `alternating`                      |                                   — |                          2.49 ms |                               681 µs |
-| `scrolling`                        |                              414 µs |                          2.28 ms |                               650 µs |
-| `resizing`                         |                              572 µs |                          2.25 ms |                               745 µs |
-| `typing`                           |                                   — |                          2.57 ms |                               785 µs |
+| `cached`                           |                               92 µs |                           135 µs |                                79 µs |
+| `hovering`                         |                              257 µs |                          1.55 ms |                               327 µs |
+| `partial`                          |                              299 µs |                          1.55 ms |                               346 µs |
+| `alternating`                      |                              394 µs |                          2.49 ms |                               681 µs |
+| `scrolling`                        |                              397 µs |                          2.28 ms |                               650 µs |
+| `resizing`                         |                              549 µs |                          2.25 ms |                               745 µs |
+| `typing`                           |                              649 µs |                          2.57 ms |                               785 µs |
 | **Per `cached` CPU frame**         |                                     |                                  |                                      |
-| instructions retired               |                              1.72 M |                           1.71 M |                               1.74 M |
-| cycles                             |                               403 K |                            490 K |                                285 K |
-| IPC                                |                                4.26 |                             3.49 |                                  6.1 |
+| instructions retired               |                              1.98 M |                           1.71 M |                               1.74 M |
+| cycles                             |                               453 K |                            490 K |                                285 K |
+| IPC                                |                                4.37 |                             3.49 |                                  6.1 |
 | clock                              |                           ~5.07 GHz |                         4.58 GHz |                             4.32 GHz |
 
 - **Scenarios.** `cached` changes nothing, so layout hits its cache and
