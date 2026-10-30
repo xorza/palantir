@@ -5,8 +5,8 @@
 use crate::support;
 use crate::support::{Section, api};
 use palantir::{
-    ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ColorSwatch,
-    Configure, Panel, RgbaF32, Sizing, Ui, WidgetId,
+    Align, Chrome, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
+    ColorSwatch, Configure, Panel, RgbaF32, Shadow, Sizing, Ui, VAlign, WidgetId,
 };
 
 #[derive(Debug)]
@@ -49,20 +49,24 @@ pub(crate) fn build(ui: &mut Ui) {
                      model switch, and a swatch row the picker keeps itself. The second panel \
                      shows an app-owned swatch row instead, filled by each commit of the first.",
                 );
-                support::row(ui, |ui| {
-                    let picked = ColorPicker::new(&mut state.picked)
-                        .alpha(true)
-                        .history(true)
-                        .show(ui);
-                    if picked.committed {
-                        if state.recent.len() == RECENT {
-                            state.recent.pop();
+                panels(ui, |ui| {
+                    panel(ui, |ui| {
+                        let picked = ColorPicker::new(&mut state.picked)
+                            .alpha(true)
+                            .history(true)
+                            .show(ui);
+                        if picked.committed {
+                            if state.recent.len() == RECENT {
+                                state.recent.pop();
+                            }
+                            state.recent.insert(0, state.picked);
                         }
-                        state.recent.insert(0, state.picked);
-                    }
-                    ColorPicker::new(&mut state.accent)
-                        .swatches(&state.recent)
-                        .show(ui);
+                    });
+                    panel(ui, |ui| {
+                        ColorPicker::new(&mut state.accent)
+                            .swatches(&state.recent)
+                            .show(ui);
+                    });
                 });
             });
 
@@ -77,23 +81,27 @@ pub(crate) fn build(ui: &mut Ui) {
                      bar share one set of color coordinates, so the bar's hue is the field's. The lower \
                      field has a texel size of 16, for the difference it makes.",
                 );
-                support::row(ui, |ui| {
-                    ColorField::new(&mut state.parts).show(ui);
-                    Panel::vstack()
-                        .gap(8.0)
-                        .size((Sizing::fixed(180.0), Sizing::HUG))
-                        .show(ui, |ui| {
-                            ColorStrip::for_hue(&mut state.parts)
-                                .size((Sizing::FILL, Sizing::fixed(14.0)))
-                                .show(ui);
-                            ColorSwatch::new(state.parts.to_color())
-                                .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                                .show(ui);
-                            ColorField::new(&mut state.parts)
-                                .texel_size(16)
-                                .size((Sizing::FILL, Sizing::fixed(80.0)))
-                                .show(ui);
-                        });
+                panels(ui, |ui| {
+                    panel(ui, |ui| {
+                        ColorField::new(&mut state.parts).show(ui);
+                    });
+                    panel(ui, |ui| {
+                        Panel::vstack()
+                            .gap(8.0)
+                            .size((Sizing::fixed(180.0), Sizing::HUG))
+                            .show(ui, |ui| {
+                                ColorStrip::for_hue(&mut state.parts)
+                                    .size((Sizing::FILL, Sizing::fixed(14.0)))
+                                    .show(ui);
+                                ColorSwatch::new(state.parts.to_color())
+                                    .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
+                                    .show(ui);
+                                ColorField::new(&mut state.parts)
+                                    .texel_size(16)
+                                    .size((Sizing::FILL, Sizing::fixed(80.0)))
+                                    .show(ui);
+                            });
+                    });
                 });
             });
 
@@ -110,4 +118,32 @@ pub(crate) fn build(ui: &mut Ui) {
             });
         });
     });
+}
+
+/// A row of [`panel`]s, top-aligned, so panels of different heights start on one line.
+#[track_caller]
+fn panels(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+    Panel::hstack()
+        .auto_id()
+        .gap(support::TILE_GAP)
+        .child_align(Align::v(VAlign::Top))
+        .show(ui, body);
+}
+
+/// The surface a picker sits on: the panel the chip's popup wears, less its shadow, as the picker
+/// lies on the page rather than floats over it. Without it a field's and a bar's colors run into
+/// the page's.
+#[track_caller]
+fn panel(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+    let theme = &ui.theme().color_picker;
+    let chrome = Chrome {
+        shadow: Shadow::NONE,
+        ..theme.popup.clone()
+    };
+    let padding = theme.popup_padding;
+    Panel::vstack()
+        .auto_id()
+        .padding(padding)
+        .chrome(chrome)
+        .show(ui, body);
 }
