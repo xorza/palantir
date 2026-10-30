@@ -1,6 +1,6 @@
 //! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that `Spacing`, `Corners`, `RgbaF16`, `FillAxis` and `LoweredShadow` wrap.
 //!
-//! Bypasses `half`'s slice converters, which pay a runtime `is_x86_feature_detected!("f16c")` and an out-of-line call per use. Each architecture's conversions are a file of their own, picked here and nowhere else: `x86_64` runs the F16C intrinsics, `portable` takes `half`'s slice path.
+//! Bypasses `half`'s slice converters, which pay a runtime `is_x86_feature_detected!("f16c")` and an out-of-line call per use. Each architecture's conversions are a file of their own, picked here and nowhere else: `x86_64` runs the F16C intrinsics, `aarch64` the base Advanced SIMD conversions inline, `portable` takes `half`'s slice path.
 //!
 //! # Decisions
 //!
@@ -21,12 +21,16 @@
 //! [`domain::gap`]: crate::primitives::math::domain::gap
 //! [`domain::color`]: crate::primitives::math::domain::color
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "aarch64")]
+mod aarch64;
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 mod portable;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
-#[cfg(not(target_arch = "x86_64"))]
+#[cfg(target_arch = "aarch64")]
+use crate::primitives::packed::half_simd::aarch64 as arch;
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
 use crate::primitives::packed::half_simd::portable as arch;
 #[cfg(target_arch = "x86_64")]
 use crate::primitives::packed::half_simd::x86_64 as arch;

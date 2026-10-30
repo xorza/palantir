@@ -18,6 +18,11 @@
 // Vectors of four the residual's taps fill: `BlurPlan::MAX_TAPS` of them.
 const TAP_VEC4S: u32 = /*{TAP_VEC4S}*/;
 
+// Whether the residual runs one loop that mirrors each read where its window crosses the
+// level's edge, rather than one loop for a window inside the level and one that mirrors every
+// read (`ResidualLoop`): V3D runs the one loop faster, Apple's GPUs the two.
+override ONE_LOOP: bool = false;
+
 struct BlurParams {
     // Added to the texel a fragment writes, gives its lattice texel.
     target_to_lattice: vec2<i32>,
@@ -74,11 +79,6 @@ fn mirrored(t: vec2<i32>) -> vec2<i32> {
 fn load(lattice: vec2<i32>) -> vec4<f32> {
     let t = clamp(lattice - params.source_origin, vec2<i32>(0), params.source_max);
     return textureLoad(source, t, 0);
-}
-
-fn tap(k: i32) -> f32 {
-    let i = u32(abs(k));
-    return params.taps[i / 4u][i % 4u];
 }
 
 fn lattice_texel(position: vec4<f32>) -> vec2<i32> {
@@ -145,42 +145,66 @@ fn tent_folded(base: vec2<i32>) -> vec4<f32> {
     return sum;
 }
 
-// The residual along x: the center, then each pair of taps `±k`, whose
-// weights match, summed before one multiply. A window inside the level reads
-// straight.
-@fragment
-fn fs_horizontal(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    let at = mirrored(lattice_texel(position));
-    let n = params.level_size.x;
-    var sum = tap(0) * load(at);
-    if (at.x - params.radius >= 0 && at.x + params.radius < n) {
-        for (var k = 1; k <= params.radius; k++) {
-            sum += tap(k) * (load(vec2<i32>(at.x - k, at.y)) + load(vec2<i32>(at.x + k, at.y)));
-        }
-        return sum;
+// The texels `±k` from `at` along `axis`, summed, mirrored past the edge of the level's `n`
+// texels where `folds`.
+fn pair(at: vec2<i32>, k: i32, axis: vec2<i32>, n: i32, folds: bool) -> vec4<f32> {
+    var lo = at - axis * k;
+    var hi = at + axis * k;
+    if (folds) {
+        lo = select(lo, vec2<i32>(mirror(lo.x, n), mirror(lo.y, n)), axis == vec2<i32>(1));
+        hi = select(hi, vec2<i32>(mirror(hi.x, n), mirror(hi.y, n)), axis == vec2<i32>(1));
     }
-    for (var k = 1; k <= params.radius; k++) {
-        let pair = load(vec2<i32>(mirror(at.x - k, n), at.y)) + load(vec2<i32>(mirror(at.x + k, n), at.y));
-        sum += tap(k) * pair;
+    return load(lo) + load(hi);
+}
+
+// The residual along `axis` of a level of `n` texels: the center, then each pair of taps `±k`,
+// whose weights match, summed before one multiply, `k` rising. The weights are read four at a
+// time, as an array a pass indexes at run time is read through memory.
+fn residual(at: vec2<i32>, axis: vec2<i32>, n: i32) -> vec4<f32> {
+    let r = params.radius;
+    let c = dot(at, axis);
+    let folds = c - r < 0 || c + r >= n;
+    if (ONE_LOOP) {
+        return residual_pairs(at, axis, n, folds);
+    }
+    // A window inside the level reads straight.
+    if (folds) {
+        return residual_pairs(at, axis, n, true);
+    }
+    return residual_pairs(at, axis, n, false);
+}
+
+fn residual_pairs(at: vec2<i32>, axis: vec2<i32>, n: i32, folds: bool) -> vec4<f32> {
+    let r = params.radius;
+    var sum = params.taps[0].x * load(at);
+    for (var j = 0; j * 4 <= r; j++) {
+        let w = params.taps[j];
+        let k = j * 4;
+        if (k > 0) {
+            sum += w.x * pair(at, k, axis, n, folds);
+        }
+        if (k + 1 > r) {
+            break;
+        }
+        sum += w.y * pair(at, k + 1, axis, n, folds);
+        if (k + 2 > r) {
+            break;
+        }
+        sum += w.z * pair(at, k + 2, axis, n, folds);
+        if (k + 3 > r) {
+            break;
+        }
+        sum += w.w * pair(at, k + 3, axis, n, folds);
     }
     return sum;
 }
 
-// The residual along y, as `fs_horizontal` runs it along x.
+@fragment
+fn fs_horizontal(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+    return residual(mirrored(lattice_texel(position)), vec2<i32>(1, 0), params.level_size.x);
+}
+
 @fragment
 fn fs_vertical(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    let at = mirrored(lattice_texel(position));
-    let n = params.level_size.y;
-    var sum = tap(0) * load(at);
-    if (at.y - params.radius >= 0 && at.y + params.radius < n) {
-        for (var k = 1; k <= params.radius; k++) {
-            sum += tap(k) * (load(vec2<i32>(at.x, at.y - k)) + load(vec2<i32>(at.x, at.y + k)));
-        }
-        return sum;
-    }
-    for (var k = 1; k <= params.radius; k++) {
-        let pair = load(vec2<i32>(at.x, mirror(at.y - k, n))) + load(vec2<i32>(at.x, mirror(at.y + k, n)));
-        sum += tap(k) * pair;
-    }
-    return sum;
+    return residual(mirrored(lattice_texel(position)), vec2<i32>(0, 1), params.level_size.y);
 }

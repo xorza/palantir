@@ -4,6 +4,7 @@ use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::backbuffer::Backbuffer;
+use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::stencil::Stencil;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -28,6 +29,9 @@ pub(crate) struct RenderStream {
     /// Rounded-clip stencil, made on the first frame with a rounded clip; apart from the
     /// backbuffer, so a direct frame needs none.
     pub(super) stencil: Option<Stencil>,
+    /// The damage canvases of the last two size classes the owner's partial frames painted,
+    /// the latest first: hovering from one widget to another alternates between two.
+    canvases: [Option<DamageCanvas>; 2],
     cutouts: CutoutPlan,
     /// The owner's timestamp queries, where the backend times frames: a frame publishes late, so
     /// one set shared by every owner would publish a frame of another.
@@ -45,6 +49,7 @@ impl RenderStream {
             backbuffer: None,
             backbuffer_fresh: false,
             stencil: None,
+            canvases: [None, None],
             cutouts: CutoutPlan::new(cutout_mode),
             timings,
         }
@@ -108,6 +113,41 @@ impl RenderStream {
         made
     }
 
+    /// Make [`Self::canvas`] `size` in `format`: the one before it when it is, else a new one,
+    /// which the oldest gives way to.
+    pub(super) fn ensure_canvas(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        size: UVec2,
+    ) {
+        let fits = |canvas: &Option<DamageCanvas>| {
+            canvas
+                .as_ref()
+                .is_some_and(|canvas| canvas.fits(size, format))
+        };
+        if fits(&self.canvases[0]) {
+            return;
+        }
+        self.canvases.swap(0, 1);
+        if !fits(&self.canvases[0]) {
+            self.canvases[0] = Some(DamageCanvas::new(device, format, size));
+        }
+    }
+
+    /// Give [`Self::canvas`] its stencil.
+    pub(super) fn ensure_canvas_stencil(&mut self, device: &wgpu::Device) {
+        self.canvases[0]
+            .as_mut()
+            .expect("a canvas made ready")
+            .ensure_stencil(device);
+    }
+
+    /// The canvas [`Self::ensure_canvas`] made ready last.
+    pub(super) const fn canvas(&self) -> Option<&DamageCanvas> {
+        self.canvases[0].as_ref()
+    }
+
     /// The stencil at `size`, made when there is none or it has another size.
     pub(super) fn ensure_stencil(&mut self, device: &wgpu::Device, size: UVec2) {
         if !self.stencil.as_ref().is_some_and(|held| held.fits(size)) {
@@ -127,10 +167,52 @@ pub(crate) mod internals {
             self.cutouts = CutoutPlan::new(CutoutMode::Shade);
         }
 
+        /// Whether a partial frame painted a damage canvas.
+        #[cfg(test)]
+        pub(crate) const fn holds_canvas(&self) -> bool {
+            self.canvases[0].is_some()
+        }
+
         /// Take the backbuffer as holding what the target shows, as a frame through it leaves it.
         #[cfg(test)]
         pub(crate) const fn assume_backbuffer_fresh(&mut self) {
             self.backbuffer_fresh = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
+    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::wgpu_backend::render_stream::RenderStream;
+    use crate::renderer::render_owner_id::RenderOwners;
+    use glam::UVec2;
+
+    /// A stream keeps the canvases of its last two size classes: a class it holds comes back as
+    /// the same texture, and a third class takes the place of the one used longest ago. After
+    /// `a`, `b`, `a`, `b` both are held; `c` drops `a`, so `b` comes back and `a` is new. A held
+    /// size in another format is a new canvas.
+    #[test]
+    fn a_stream_keeps_the_canvases_of_its_last_two_classes() {
+        let gpu = headless_test_gpu();
+        let mut stream =
+            RenderStream::detached(RenderOwners::default().reserve(), CutoutMode::Shade);
+        let (a, b, c) = (UVec2::new(64, 64), UVec2::new(128, 64), UVec2::new(64, 128));
+        let mut ready = |size, format| {
+            stream.ensure_canvas(&gpu.device, format, size);
+            stream.canvas().unwrap().texture().clone()
+        };
+        let srgb = wgpu::TextureFormat::Rgba8UnormSrgb;
+        let first_a = ready(a, srgb);
+        assert_eq!(ready(a, srgb), first_a);
+        let first_b = ready(b, srgb);
+        assert_ne!(first_b, first_a);
+        assert_eq!(ready(a, srgb), first_a);
+        assert_eq!(ready(b, srgb), first_b);
+        assert_ne!(ready(c, srgb), first_a);
+        assert_eq!(ready(b, srgb), first_b);
+        assert_ne!(ready(a, srgb), first_a, "c dropped a");
+        assert_ne!(ready(b, wgpu::TextureFormat::Bgra8UnormSrgb), first_b);
     }
 }

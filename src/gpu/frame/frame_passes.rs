@@ -18,6 +18,8 @@ pub(crate) enum PassStep {
     },
     /// Copy break `at`'s panes out of the color target and blur them, between two main passes.
     Break { at: usize },
+    /// Copy each damage rect of the damage canvas into the backbuffer.
+    CanvasOut,
     /// Copy the backbuffer onto the target.
     CopyOut,
     /// Draw the backbuffer onto a target that takes no copy.
@@ -44,6 +46,9 @@ pub(crate) struct FrameShape {
     pub(crate) takes_copy: bool,
     /// Whether the frame repaints inside rects and keeps the pixels around them.
     pub(crate) partial: bool,
+    /// Whether the partial frame paints into a damage canvas
+    /// ([`DamageCanvas`](crate::gpu::surface::damage_canvas::DamageCanvas)), from a clear.
+    pub(crate) canvas: bool,
     pub(crate) dims_undamaged: bool,
     pub(crate) outlines_damage: bool,
 }
@@ -60,6 +65,11 @@ impl FramePasses {
     /// outline.
     pub(crate) fn plan(&mut self, shape: FrameShape, barriers: impl IntoIterator<Item = u32>) {
         self.steps.clear();
+        debug_assert!(
+            !shape.canvas
+                || (shape.partial && shape.route == Route::ViaBackbuffer && !shape.dims_undamaged),
+            "a damage canvas holds a partial frame's damage on its way to the backbuffer",
+        );
         if shape.dims_undamaged {
             debug_assert!(shape.partial, "only a partial frame keeps pixels to dim");
             self.steps.push(PassStep::Dim);
@@ -83,6 +93,10 @@ impl FramePasses {
             MainSegment::Whole
         };
         self.push_main(shape, segment, from, None);
+        if shape.canvas {
+            debug_assert!(!broken, "a damage canvas holds no pane's capture");
+            self.steps.push(PassStep::CanvasOut);
+        }
         if shape.route == Route::ViaBackbuffer {
             self.steps.push(if shape.takes_copy {
                 PassStep::CopyOut
@@ -102,7 +116,7 @@ impl FramePasses {
         from: u32,
         barrier: Option<u32>,
     ) {
-        let load = if segment.opens() && !shape.partial {
+        let load = if segment.opens() && (!shape.partial || shape.canvas) {
             ColorLoad::Clear
         } else {
             ColorLoad::Load
@@ -124,7 +138,9 @@ impl FramePasses {
         self.steps.iter().any(|step| match step {
             PassStep::Main { .. } => route == Route::Direct,
             PassStep::DrawOut | PassStep::Overlay => true,
-            PassStep::Dim | PassStep::Break { .. } | PassStep::CopyOut => false,
+            PassStep::Dim | PassStep::Break { .. } | PassStep::CanvasOut | PassStep::CopyOut => {
+                false
+            }
         })
     }
 }
@@ -150,7 +166,8 @@ mod tests {
     }
 
     /// Each frame shape plans its passes in record order. A whole frame is one clearing pass;
-    /// a partial one loads, after its dim pass where it dims. Each barrier ends a pass and breaks,
+    /// a partial one loads, after its dim pass where it dims, but on a damage canvas, which it
+    /// clears and then copies into the backbuffer. Each barrier ends a pass and breaks,
     /// the next pass resuming at it and loading what the one before left. A frame through the
     /// backbuffer then copies it onto the target, or draws it on one that takes no copy, and the
     /// outline comes last. Only a direct main pass, a draw onto the target and the outline write
@@ -163,6 +180,7 @@ mod tests {
             route: Route::Direct,
             takes_copy: true,
             partial: false,
+            canvas: false,
             dims_undamaged: false,
             outlines_damage: false,
         };
@@ -185,6 +203,22 @@ mod tests {
                 &[],
                 &[main(Whole, 0, None, Load), PassStep::CopyOut],
                 false,
+            ),
+            (
+                "a partial frame on a damage canvas, outlined",
+                FrameShape {
+                    canvas: true,
+                    outlines_damage: true,
+                    ..partial
+                },
+                &[],
+                &[
+                    main(Whole, 0, None, Clear),
+                    PassStep::CanvasOut,
+                    PassStep::CopyOut,
+                    PassStep::Overlay,
+                ],
+                true,
             ),
             (
                 "dimmed and outlined",

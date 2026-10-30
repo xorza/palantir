@@ -3,6 +3,7 @@
 
 pub(crate) mod backbuffer;
 pub(crate) mod capture;
+pub(crate) mod damage_canvas;
 #[cfg_attr(
     not(feature = "internals"),
     expect(

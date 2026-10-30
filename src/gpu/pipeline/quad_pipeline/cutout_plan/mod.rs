@@ -1,6 +1,6 @@
 //! Which shadow corners get a baked cutout table this frame, and where in the atlas each goes.
 //!
-//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`; none survives the frame.
+//! From `CUTOUT_MIN_SIGMA` up, a blurred shadow is its sharp box less four corner cutouts (`cutout_box_coverage` in `shader.wgsl`), which depend only on radius `r` and blur `σ`. Each distinct `(r, σ)` can get a table baked by `fs_cutout_bake`; the plan places each frame's tables afresh, and the atlas keeps what it baked, so a table a frame needs again at the same place is not baked again (`CutoutTables`).
 //!
 //! A key gets a table only when its corners' shown area costs more to shade ([`CutoutPlan::SHADED_NODES`] per pixel) than to bake ([`CutoutPlan::BAKED_NODES`] per texel, `(10 / σ)²` texels per pixel). A frame bakes only the texels its repainted pixels read ([`BakeTable`]).
 //!
@@ -30,6 +30,34 @@ pub(crate) struct BakeTable {
     pub(crate) sigma: f32,
     pub(crate) lo: U16Vec2,
     pub(crate) hi: U16Vec2,
+}
+
+impl BakeTable {
+    /// Whether `other` is the same table at the same place: its code, radius and σ alike.
+    pub(crate) const fn is_at(self, other: Self) -> bool {
+        self.table == other.table
+            && self.r.to_bits() == other.r.to_bits()
+            && self.sigma.to_bits() == other.sigma.to_bits()
+    }
+
+    /// Whether this span holds `other`'s, a table [at](Self::is_at) this one's place.
+    pub(crate) fn holds(self, other: Self) -> bool {
+        self.lo.cmple(other.lo).all() && other.hi.cmple(self.hi).all()
+    }
+
+    /// This table with the least span that holds its own and `other`'s.
+    pub(crate) fn joined(self, other: Self) -> Self {
+        Self {
+            lo: self.lo.min(other.lo),
+            hi: self.hi.max(other.hi),
+            ..self
+        }
+    }
+
+    /// Whether the atlas cells of the two tables meet.
+    pub(crate) fn overlaps(self, other: Self) -> bool {
+        CutoutPlan::cells(self.table).intersects(CutoutPlan::cells(other.table))
+    }
 }
 
 #[repr(C)]
@@ -390,6 +418,13 @@ impl CutoutPlan {
 
     pub(crate) const fn code(cell: UVec2, side: u32) -> u32 {
         cell.x | (cell.y << 6) | (side << 12)
+    }
+
+    /// The atlas cells a table [`code`](Self::code) covers.
+    fn cells(table: u32) -> URect {
+        let side = (table >> 12).div_ceil(Self::CELL);
+        let min = UVec2::new(table & 63, (table >> 6) & 63);
+        URect::from_min_max(min, min + UVec2::splat(side))
     }
 
     /// A table's side for `(r, σ)`: a texel per `σ / TEXELS_PER_SIGMA` across the cutout square widened by `reach`, plus one for bilinear.

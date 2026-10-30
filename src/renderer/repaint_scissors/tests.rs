@@ -91,6 +91,8 @@ fn partial_repaint_preserves_padded_physical_scissors() {
             URect::new(70, 38, 12, 12),
         ]
     );
+    // Their bounds: x from 8 to 82, y from 8 to 52.
+    assert_eq!(rects.bounds(), URect::new(8, 8, 74, 44));
     assert!(matches!(
         RepaintScissors::new(Damage::Full, &buffer),
         Some(RepaintScissors::Full)

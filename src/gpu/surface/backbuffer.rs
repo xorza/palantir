@@ -58,8 +58,10 @@ impl Backbuffer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: target.texture().format(),
+            // `COPY_DST` takes a damage canvas's rects.
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT
                 | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST
                 | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });

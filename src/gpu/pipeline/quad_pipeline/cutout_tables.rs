@@ -24,6 +24,50 @@ pub(crate) struct CutoutTables {
     bake_pipeline: wgpu::RenderPipeline,
     tables: DynamicBuffer<BakeTable>,
     corners: DynamicBuffer<CornerTables>,
+    held: HeldTables,
+    /// This frame's bakes, retained.
+    bakes: Vec<BakeTable>,
+}
+
+/// What the atlas holds from earlier frames: tables, pairwise apart, each with every texel of its
+/// span baked. A frame bakes of its tables only what the atlas does not hold, so a table that the
+/// frames of any window go on reading at one place is baked once, and a frame that needs nothing
+/// new runs no bake pass.
+#[derive(Debug, Default)]
+struct HeldTables {
+    tables: Vec<BakeTable>,
+}
+
+impl HeldTables {
+    /// Write into `bakes` what of the frame's `tables` the atlas lacks, and hold them: a table
+    /// held at its place whole bakes nothing, one held there in part bakes the least span that
+    /// holds both, and one held nowhere bakes its span, dropping what it lands on. `true` when
+    /// the bakes must keep what the atlas holds around them.
+    fn plan(&mut self, tables: &[BakeTable], bakes: &mut Vec<BakeTable>) -> bool {
+        bakes.clear();
+        for &table in tables {
+            if let Some(held) = self.tables.iter_mut().find(|held| held.is_at(table)) {
+                if !held.holds(table) {
+                    *held = held.joined(table);
+                    bakes.push(*held);
+                }
+            } else {
+                bakes.push(table);
+            }
+        }
+        let landed = |held: &BakeTable| {
+            bakes
+                .iter()
+                .any(|bake| !bake.is_at(*held) && bake.overlaps(*held))
+        };
+        self.tables.retain(|held| !landed(held));
+        for &bake in bakes.iter() {
+            if !self.tables.iter().any(|held| held.is_at(bake)) {
+                self.tables.push(bake);
+            }
+        }
+        self.tables.iter().any(|held| !bakes.contains(held))
+    }
 }
 
 impl CutoutTables {
@@ -101,6 +145,8 @@ impl CutoutTables {
             bake_pipeline,
             tables: DynamicBuffer::vertex(device, "palantir.quad.cutouts.tables", 16),
             corners: DynamicBuffer::vertex(device, "palantir.quad.cutouts.corners", 256),
+            held: HeldTables::default(),
+            bakes: Vec::new(),
         }
     }
 
@@ -142,23 +188,29 @@ impl CutoutTables {
             &CORNER_ATTRS,
         );
 
-    /// Upload `plan`'s corner tables and bake its tables on `ctx`'s encoder before the shadow pass.
+    /// Upload `plan`'s corner tables and bake what of its tables the atlas does not hold, on
+    /// `ctx`'s encoder before the shadow pass.
     pub(crate) fn prepare(&mut self, ctx: &mut GpuCtx<'_>, plan: &CutoutPlan) {
         self.corners.upload_instances(ctx, plan.corners());
-        let tables = plan.tables();
-        if tables.is_empty() {
+        let keep = self.held.plan(plan.tables(), &mut self.bakes);
+        if self.bakes.is_empty() {
             return;
         }
-        self.tables.upload_instances(ctx, tables);
+        self.tables.upload_instances(ctx, &self.bakes);
         let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.quad.cutouts.bake"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &self.atlas,
                 depth_slice: None,
                 resolve_target: None,
-                // Every texel a repainted pixel reads is baked this frame, so keep nothing: a load would pull the atlas into tile memory.
+                // A load pulls the atlas into tile memory, so it runs only where the atlas holds
+                // tables the bakes leave.
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    load: if keep {
+                        wgpu::LoadOp::Load
+                    } else {
+                        wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT)
+                    },
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -169,7 +221,7 @@ impl CutoutTables {
         });
         pass.set_pipeline(&self.bake_pipeline);
         pass.set_vertex_buffer(0, self.tables.buffer.slice(..));
-        pass.draw(0..4, 0..tables.len() as u32);
+        pass.draw(0..4, 0..self.bakes.len() as u32);
     }
 
     /// Bind the atlas and the corner stream for a shadow draw.
@@ -200,9 +252,61 @@ const CORNER_ATTRS: [wgpu::VertexAttribute; 1] = [vertex_attr(
 )];
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
+
+    impl CutoutTables {
+        /// The tables the atlas holds.
+        pub(crate) fn held_len(&self) -> usize {
+            self.held.tables.len()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::gpu::pipeline::quad_pipeline::cutout_plan::{BakeTable, CutoutPlan};
+    use crate::gpu::pipeline::quad_pipeline::cutout_tables::{CutoutTables, HeldTables};
     use crate::gpu::test_gpu::headless_test_gpu;
+    use glam::{U16Vec2, UVec2};
+
+    /// A table of `side` texels at atlas cell `cell`, of radius `r`, its span `lo..hi`.
+    fn table(cell: (u32, u32), side: u32, r: f32, lo: (u16, u16), hi: (u16, u16)) -> BakeTable {
+        BakeTable {
+            table: CutoutPlan::code(UVec2::new(cell.0, cell.1), side),
+            r,
+            sigma: 2.0,
+            lo: U16Vec2::new(lo.0, lo.1),
+            hi: U16Vec2::new(hi.0, hi.1),
+        }
+    }
+
+    /// Frame by frame: the first bakes both its tables from a clear; the second needs nothing
+    /// new and bakes nothing; the third widens `a`, which bakes the span that holds both, keeping
+    /// `b` around it; the fourth puts `c`, a 32-texel table over `b`'s cell (1, 0), whose bake
+    /// drops `b`; the fifth needs `b` again, now held nowhere, so it bakes it whole and drops `c`.
+    #[test]
+    fn the_atlas_bakes_only_what_it_does_not_hold() {
+        let a = table((0, 0), 16, 4.0, (0, 0), (10, 10));
+        let b = table((1, 0), 16, 6.0, (2, 2), (16, 16));
+        let wide_a = table((0, 0), 16, 4.0, (4, 0), (16, 8));
+        let c = table((1, 0), 32, 8.0, (0, 0), (32, 32));
+        let mut held = HeldTables::default();
+        let mut bakes = Vec::new();
+        assert!(!held.plan(&[a, b], &mut bakes));
+        assert_eq!(bakes, [a, b]);
+        held.plan(&[a, b], &mut bakes);
+        assert_eq!(bakes, []);
+        assert!(held.plan(&[wide_a, b], &mut bakes));
+        let joined = table((0, 0), 16, 4.0, (0, 0), (16, 10));
+        assert_eq!(bakes, [joined]);
+        assert!(held.plan(&[c], &mut bakes));
+        assert_eq!(bakes, [c]);
+        assert_eq!(held.tables, [joined, c]);
+        assert!(held.plan(&[b], &mut bakes));
+        assert_eq!(bakes, [b]);
+        assert_eq!(held.tables, [joined, b]);
+    }
 
     /// A device that meets WebGPU's formats renders into the atlas, so its shadows bake; the
     /// probe leaves no error behind for the device's handler.

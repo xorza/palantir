@@ -504,6 +504,12 @@ pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 
     impl QuadPipeline {
+        /// The cutout tables the atlas holds from the frames before.
+        #[cfg(test)]
+        pub(crate) fn held_cutout_tables(&self) -> usize {
+            self.cutouts.held_len()
+        }
+
         /// Draw every shadow as one cell of the full form, the reference the grid is compared with. Affects variants built afterwards.
         pub(crate) const fn disable_shadow_grid(&mut self) {
             self.shadow_grid = false;
