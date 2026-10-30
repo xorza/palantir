@@ -124,12 +124,12 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 
     let valid = pretty(&Theme::default());
     let cases = [
-        ("zero font", "font_size: 16.0", "font_size: 0.0"),
-        ("negative font", "font_size: 16.0", "font_size: -1.0"),
-        ("sub-epsilon font", "font_size: 16.0", "font_size: 0.00005"),
-        ("epsilon font", "font_size: 16.0", "font_size: 0.0001"),
-        ("NaN font", "font_size: 16.0", "font_size: NaN"),
-        ("infinite font", "font_size: 16.0", "font_size: inf"),
+        ("zero font", "font_size: 14.0", "font_size: 0.0"),
+        ("negative font", "font_size: 14.0", "font_size: -1.0"),
+        ("sub-epsilon font", "font_size: 14.0", "font_size: 0.00005"),
+        ("epsilon font", "font_size: 14.0", "font_size: 0.0001"),
+        ("NaN font", "font_size: 14.0", "font_size: NaN"),
+        ("infinite font", "font_size: 14.0", "font_size: inf"),
         (
             "zero line height",
             "line_height_factor: 1.2",
@@ -185,7 +185,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
     // A font size in a file is a length there: 8192 loads, past it is refused, as the base size
     // and as an override.
     for (from, at, past) in [
-        ("font_size: 16.0", "font_size: 8192.0", "font_size: 8192.5"),
+        ("font_size: 14.0", "font_size: 8192.0", "font_size: 8192.5"),
         (
             "font_size: Some(13.0)",
             "font_size: Some(8192.0)",
@@ -209,7 +209,7 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     use crate::primitives::math::domain::EPS;
     const FACTOR: &str = "text scale factor must be finite and positive";
     const RESULT: &str = "text scale would make font size or line height invalid";
-    // A look's override is checked as the face it folds into. The first overflows alone (f32::MAX / 2 × 4 is inf; ambient 16 × 4 = 64 is fine). The second is valid alone and at 1× but at 1/1000 its leading 16 × 0.001 × 0.001 = 0.000016 px is under EPS = 0.0001, while the ambient 0.016 × 1.2 is above.
+    // A look's override is checked as the face it folds into. The first overflows alone (f32::MAX / 2 × 4 is inf; ambient 14 × 4 = 56 is fine). The second is valid alone and at 1× but at 1/1000 its leading 14 × 0.001 × 0.001 = 0.000014 px is under EPS = 0.0001, while the ambient 0.014 × 1.2 is above.
     let big_override = |theme: &mut Theme| {
         theme.button.looks.normal.text.font_size = Some(f32::MAX / 2.0);
     };

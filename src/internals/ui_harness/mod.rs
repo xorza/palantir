@@ -95,6 +95,12 @@ pub(crate) mod size_trio;
 /// Never framed; the value only has to be non-degenerate.
 const ARENA_SURFACE: UVec2 = UVec2::splat(1);
 
+/// The ambient font size this crate's unit tests frame at, pinned so the default text size can move
+/// without their hand-computed text metrics moving with it, as the visual suite pins its palette.
+/// A harness outside those tests keeps the stock theme, as a host does.
+#[cfg(test)]
+const FIXTURE_FONT_SIZE: f32 = 16.0;
+
 /// Drives a [`Ui`] through frames with synthetic input; see the module doc for the pass model.
 #[derive(Debug)]
 #[must_use]
@@ -642,6 +648,10 @@ impl UiHarness {
             time: Duration::ZERO,
             held: [None; PointerButton::COUNT],
         };
+        #[cfg(test)]
+        {
+            harness.ui.theme_mut().text.font_size = FIXTURE_FONT_SIZE;
+        }
         harness.sync_display();
         harness.mark_warm();
         harness

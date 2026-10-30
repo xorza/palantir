@@ -12,9 +12,10 @@ use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::MenuBar`]: its titles, by whether their menu is open. A title rests flat
-/// and fills under the pointer, from [`ButtonTheme::menu_button`]; the title whose menu is open
-/// rests lit as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus
-/// themselves wear [`Theme::context_menu`](crate::Theme::context_menu).
+/// in the muted ink, so it reads as a menu rather than as a button, and fills and takes the full
+/// ink under the pointer, from [`ButtonTheme::menu_button`]; the title whose menu is open rests lit
+/// as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus themselves
+/// wear [`Theme::context_menu`](crate::Theme::context_menu).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MenuBarTheme {
     /// A title whose menu is shut, in each state.
@@ -40,14 +41,18 @@ pub enum MenuState {
 }
 
 impl MenuBarTheme {
-    /// [`ButtonTheme::menu_button`]'s flat titles, the open one wearing its hovered look, with no
-    /// gutter: the titles' fills meet, as a native menu bar's do.
+    /// [`ButtonTheme::menu_button`]'s flat titles in the muted ink at rest, the open one wearing
+    /// the hovered look, an `xs` gutter apart, so two lit fills never touch.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        let ButtonTheme { looks, defaults } = ButtonTheme::menu_button(p, m);
+        let ButtonTheme {
+            mut looks,
+            defaults,
+        } = ButtonTheme::menu_button(p, m);
+        looks.normal.text = looks.normal.text.with_color(p.text_muted);
         Self {
             open: looks.hovered.clone(),
             title: looks,
-            gap: 0.0,
+            gap: m.space.xs,
             defaults,
         }
     }

@@ -19,6 +19,6 @@ fn main() -> Result<(), WinitHostError> {
 
     WinitHost::builder(shell::MAIN_WINDOW)
         .window(WindowConfig::new("palantir showcase").with_inner_size(UVec2::new(1600, 1000)))
-        .build(|ui, _handle| shell::Shell::new(ui))?
+        .build(|_ui, _handle| shell::Shell::new())?
         .run()
 }

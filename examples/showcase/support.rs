@@ -1,6 +1,6 @@
 //! Design tokens and page scaffolding: the one place the showcase's look is defined.
 //!
-//! Surfaces, darkest to lightest: [`WINDOW`], [`SIDEBAR`], [`CARD`]; demos recess into [`WELL`] ([`LIGHT_WELL`] when bright), raised chrome sits on [`RAISED`]. Ink: [`INK`], [`INK_DIM`], [`INK_FAINT`].
+//! Every scaffold color is a role of [`Palette::DEFAULT`], the palette `Theme::default` assembles from, so the tour shows the stock look: pages sit on the window's ground, demos in hairline-framed [`WELL`]s of the same ground ([`LIGHT_WELL`] when bright), raised chrome on [`RAISED`]. Ink: [`INK`], [`INK_DIM`], [`INK_FAINT`].
 //!
 //! Pages never paint their own root or header; they emit [`Section`]s, with fixed [`TILE`]-square [`DemoCell`]s for paint demos.
 
@@ -8,44 +8,41 @@ use palantir::internals::demo_swatches;
 use std::panic::Location;
 
 use palantir::{
-    Align, Block, Checkbox, Chrome, Configure, Corners, FontFamily, FontWeight, Panel, RgbaF32,
-    Sizing, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
+    Align, Block, Checkbox, Chrome, Configure, Corners, FontFamily, FontWeight, Metrics, Palette,
+    Panel, RgbaF32, Sizing, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
 };
 
-/// Window clear; the darkest tier.
-pub(crate) const WINDOW: RgbaF32 = RgbaF32::hex(0x131417);
-/// Nav rail fill.
-pub(crate) const SIDEBAR: RgbaF32 = RgbaF32::hex(0x1a1b1f);
-/// Page canvas, darker than [`ELEMENT`] so widgets read as raised.
-pub(crate) const CARD: RgbaF32 = RgbaF32::hex(0x212329);
-/// Recessed demo surface — one step below [`CARD`].
-pub(crate) const WELL: RgbaF32 = RgbaF32::hex(0x16171b);
+/// The stock palette and steps every token below reads.
+const P: Palette = Palette::DEFAULT;
+const M: Metrics = Metrics::DEFAULT;
+
+/// A demo's surface: the ground itself, so a tab strip's selected chip, which wears the ground,
+/// joins the page under it as it does in an app. A hairline frames it.
+pub(crate) const WELL: RgbaF32 = P.window_bg;
 /// Bright demo surface, for drop shadows and dark strokes.
 pub(crate) const LIGHT_WELL: RgbaF32 = RgbaF32::hex(0xc8ccd2);
 /// Raised chrome — popup bodies, right-click targets, menu surfaces.
-pub(crate) const RAISED: RgbaF32 = RgbaF32::hex(0x2a2c33);
-/// Border on raised surfaces and the card edge.
-pub(crate) const BORDER: RgbaF32 = RgbaF32::hex(0x30333c);
+pub(crate) const RAISED: RgbaF32 = P.element;
+/// Border on raised surfaces and around a well.
+pub(crate) const BORDER: RgbaF32 = P.border_mid();
 /// Divider rules — one step quieter than [`BORDER`].
-pub(crate) const HAIRLINE: RgbaF32 = RgbaF32::hex(0x272a31);
+pub(crate) const HAIRLINE: RgbaF32 = P.border_soft();
 
-/// Widget-chrome fill at rest; `shell`'s palette reads this rung and the three below, so chrome and page share one ladder.
-pub(crate) const ELEMENT: RgbaF32 = RgbaF32::hex(0x2b2e36);
+/// Widget-chrome fill at rest.
+pub(crate) const ELEMENT: RgbaF32 = P.element;
 /// Widget chrome under the pointer.
-pub(crate) const ELEM_MID: RgbaF32 = RgbaF32::hex(0x353942);
+pub(crate) const ELEM_MID: RgbaF32 = P.element_mid;
 /// Widget chrome while pressed.
-pub(crate) const ELEM_STRONG: RgbaF32 = RgbaF32::hex(0x434854);
-/// Focus ring on a widget border: dimmer than [`ACCENT`], so it reads as an edge.
-pub(crate) const BORDER_FOCUSED: RgbaF32 = RgbaF32::hex(0x2b6f8f);
+pub(crate) const ELEM_STRONG: RgbaF32 = P.element_strong;
 
 /// Primary ink.
-pub(crate) const INK: RgbaF32 = RgbaF32::hex(0xe8eaf0);
+pub(crate) const INK: RgbaF32 = P.text;
 /// Captions, readouts, secondary labels.
-pub(crate) const INK_DIM: RgbaF32 = RgbaF32::hex(0x949bab);
-pub(crate) const INK_FAINT: RgbaF32 = RgbaF32::hex(0x6d7482);
-pub(crate) const INK_DISABLED: RgbaF32 = RgbaF32::hex(0x5f6673);
-/// Selection / focus accent. *Is* swatch [`A`], not a re-typed hex, so the two cannot drift.
-pub(crate) const ACCENT: RgbaF32 = A;
+pub(crate) const INK_DIM: RgbaF32 = P.text_muted;
+/// Group headings and the quietest labels.
+pub(crate) const INK_FAINT: RgbaF32 = P.text_disabled;
+/// Selection / focus accent.
+pub(crate) const ACCENT: RgbaF32 = P.accent;
 
 // Aliased from `palantir::internals::demo_swatches`, shared with the benchmark fixture.
 pub(crate) const A: RgbaF32 = demo_swatches::TEAL;
@@ -54,16 +51,16 @@ pub(crate) const C: RgbaF32 = demo_swatches::LIME;
 pub(crate) const D: RgbaF32 = demo_swatches::VIOLET;
 pub(crate) const E: RgbaF32 = demo_swatches::RED;
 
-pub(crate) const PAGE_GAP: f32 = 28.0;
-const TITLE_GAP: f32 = 10.0;
-pub(crate) const ROW_GAP: f32 = 8.0;
-pub(crate) const TILE_GAP: f32 = 12.0;
+pub(crate) const PAGE_GAP: f32 = 2.0 * M.space.lg;
+const TITLE_GAP: f32 = M.space.md;
+pub(crate) const ROW_GAP: f32 = M.space.sm;
+pub(crate) const TILE_GAP: f32 = M.space.md;
 /// Edge of a square paint demo, a [`DemoCell`]'s default size.
 pub(crate) const TILE: f32 = 168.0;
 /// Height reserved for a tile caption; fixed so a two-line label doesn't misalign its tile.
 const CAPTION_H: f32 = 30.0;
-pub(crate) const CELL_PADDING: f32 = 8.0;
-pub(crate) const RADIUS: f32 = 6.0;
+pub(crate) const CELL_PADDING: f32 = M.space.sm;
+pub(crate) const RADIUS: f32 = M.radius.card;
 const MEASURE: f32 = 680.0;
 
 /// The checked spelling of an API a page demonstrates: expands to the path as text after the compiler resolves it, so a rename breaks the build.
@@ -90,40 +87,41 @@ macro_rules! api {
 }
 pub(crate) use api;
 
+/// The type ramp the scaffold reads, around the stock 14 px body: a caption two under it, a
+/// section's subtitle two over, a page's title.
+const CAPTION_PX: f32 = 12.0;
+const SUBTITLE_PX: f32 = 16.0;
+const TITLE_PX: f32 = 20.0;
+
 pub(crate) fn title_style() -> TextStyle {
     TextStyle::default()
-        .with_font_size(20.0)
+        .with_font_size(TITLE_PX)
         .with_weight(FontWeight::BOLD)
-        .with_color(INK)
 }
 
 pub(crate) fn blurb_style() -> TextStyle {
-    TextStyle::default()
-        .with_font_size(13.0)
-        .with_color(INK_DIM)
+    TextStyle::default().with_color(INK_DIM)
 }
 
 fn section_style() -> TextStyle {
     TextStyle::default()
-        .with_font_size(14.0)
+        .with_font_size(SUBTITLE_PX)
         .with_weight(FontWeight::BOLD)
-        .with_color(INK)
 }
 
 pub(crate) fn caption_style() -> TextStyle {
     TextStyle::default()
-        .with_font_size(11.0)
+        .with_font_size(CAPTION_PX)
         .with_color(INK_DIM)
 }
 
 pub(crate) fn note_style() -> TextStyle {
-    TextStyle::default()
-        .with_font_size(12.0)
-        .with_color(INK_DIM)
+    caption_style()
 }
 
+/// The stock ambient style, as an unstyled `Text` wears it.
 pub(crate) fn body_style() -> TextStyle {
-    TextStyle::default().with_font_size(13.0).with_color(INK)
+    TextStyle::default()
 }
 
 pub(crate) fn mono_style(size: f32, color: RgbaF32) -> TextStyle {
@@ -136,7 +134,7 @@ pub(crate) fn mono_style(size: f32, color: RgbaF32) -> TextStyle {
 /// Near-black ink on a bright swatch fill; a legibility requirement.
 pub(crate) fn on_swatch_style() -> TextStyle {
     TextStyle::default()
-        .with_font_size(12.0)
+        .with_font_size(CAPTION_PX)
         .with_color(RgbaF32::hex(0x14161a))
 }
 
@@ -151,11 +149,12 @@ pub(crate) const fn mix(a: RgbaF32, b: RgbaF32, t: f32) -> RgbaF32 {
 }
 
 pub(crate) fn swatch_chrome(c: RgbaF32) -> Chrome {
-    Chrome::rounded(c, Corners::all(4.0))
+    Chrome::rounded(c, Corners::all(M.radius.control))
 }
 
 pub(crate) fn well_chrome() -> Chrome {
     Chrome::rounded(WELL, Corners::all(RADIUS))
+        .with_border(Stroke::new(HAIRLINE, M.stroke.hairline))
 }
 
 pub(crate) fn light_well_chrome() -> Chrome {
@@ -163,7 +162,8 @@ pub(crate) fn light_well_chrome() -> Chrome {
 }
 
 pub(crate) fn raised_chrome() -> Chrome {
-    Chrome::rounded(RAISED, Corners::all(8.0)).with_border(Stroke::new(BORDER, 1.0))
+    Chrome::rounded(RAISED, Corners::all(RADIUS))
+        .with_border(Stroke::new(BORDER, M.stroke.hairline))
 }
 
 /// A titled block of demo content: a title, a chip per demonstrated API, then the body. A [`note`] may name an API only when one of the section's [`api!`] chips checks it.
@@ -263,8 +263,8 @@ pub(crate) fn well(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
-        .padding(14.0)
-        .gap(10.0)
+        .padding(M.space.lg)
+        .gap(M.space.md)
         .chrome(well_chrome())
         .show(ui, body);
 }
@@ -281,7 +281,9 @@ pub(crate) fn readout<'a>(ui: &mut Ui, label: &'static str, value: impl Into<Tex
                 .style(&note_style())
                 .min_size((READOUT_LABEL_W, 0.0))
                 .show(ui);
-            Text::new(value).style(&mono_style(12.0, INK)).show(ui);
+            Text::new(value)
+                .style(&mono_style(CAPTION_PX, INK))
+                .show(ui);
         });
 }
 
@@ -320,10 +322,11 @@ impl Chip {
     }
 
     fn chrome(self) -> Chrome {
+        let corners = Corners::all(M.radius.control);
         match self {
-            Self::Api => Chrome::rounded(RAISED, Corners::all(4.0)),
-            Self::Key => Chrome::rounded(ELEMENT, Corners::all(4.0))
-                .with_border(Stroke::new(ELEM_STRONG, 1.0)),
+            Self::Api => Chrome::rounded(RAISED, corners),
+            Self::Key => Chrome::rounded(ELEMENT, corners)
+                .with_border(Stroke::new(ELEM_STRONG, M.stroke.hairline)),
         }
     }
 }
@@ -335,7 +338,7 @@ fn chip(ui: &mut Ui, text: &'static str, kind: Chip) {
         .chrome(kind.chrome())
         .show(ui, |ui| {
             Text::new(text)
-                .style(&mono_style(11.0, kind.ink()))
+                .style(&mono_style(CAPTION_PX, kind.ink()))
                 .show(ui);
         });
 }
@@ -348,21 +351,14 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
     Panel::vstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
-        .padding(12.0)
-        .gap(6.0)
+        .padding(M.space.md)
+        .gap(M.space.sm)
         .chrome(
             Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(RADIUS))
-                .with_border(Stroke::new(BORDER, 1.0)),
+                .with_border(Stroke::new(BORDER, M.stroke.hairline)),
         )
         .show(ui, |ui| {
-            Text::new("CHECK BY HAND")
-                .style(
-                    &TextStyle::default()
-                        .with_font_size(10.0)
-                        .with_weight(FontWeight::BOLD)
-                        .with_color(INK_FAINT),
-                )
-                .show(ui);
+            Text::new("CHECK BY HAND").style(&heading_style()).show(ui);
             ui.with_state::<Ticks, _>(id, |ui, ticks| {
                 for (i, &item) in items.iter().enumerate() {
                     let bit = 1 << i;
@@ -376,6 +372,14 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
 
 #[derive(Default, Debug)]
 struct Ticks(u32);
+
+/// An all-caps group label: the caption size, bold, in the faint ink.
+pub(crate) fn heading_style() -> TextStyle {
+    TextStyle::default()
+        .with_font_size(CAPTION_PX)
+        .with_weight(FontWeight::BOLD)
+        .with_color(INK_FAINT)
+}
 
 /// A plain color swatch: a `Block` over [`swatch_chrome`], for the caller to key and size.
 pub(crate) fn swatch(c: RgbaF32) -> Block {

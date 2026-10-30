@@ -3,10 +3,9 @@
 //! group, blurb, key hints, scrolling and builder.
 
 use palantir::{
-    Align, AnimationSpec, App, Axis, Block, Button, ButtonTheme, Checkbox, Chrome, Configure,
-    Corners, FocusPolicy, FontFamily, FontWeight, Justify, Key, Metrics, Palette, Panel, RgbaF32,
-    Scroll, Shortcut, Sizing, SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyle,
-    TextStyleOverrides, TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WidgetLook,
+    Align, App, Axis, Button, ButtonTheme, Checkbox, Configure, FocusPolicy, FontFamily,
+    FontWeight, Justify, Key, Metrics, Panel, Scroll, Separator, Shortcut, Sizing, SlotDefaults,
+    Spacing, StatefulLook, Text, TextStyle, TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync,
     WindowConfig, WindowToken, fmt,
 };
 
@@ -27,7 +26,8 @@ pub(crate) fn toggle_inspector(ui: &mut Ui) {
     }
 }
 
-const SIDEBAR_W: f32 = 196.0;
+const SIDEBAR_W: f32 = 208.0;
+const M: Metrics = Metrics::DEFAULT;
 
 /// A nav rail heading; pages of one group are adjacent in [`PAGES`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -305,11 +305,8 @@ pub(crate) struct Shell {
 }
 
 impl Shell {
-    pub(crate) fn new(ui: &mut Ui) -> Self {
-        let mut theme = Theme::from_parts(&showcase_palette(), &Metrics::DEFAULT);
-        // The library default is no button animation; the showcase demos it.
-        theme.button.defaults.animation = Some(AnimationSpec::SPRING);
-        ui.set_theme(theme);
+    /// The tour wears the stock theme the `Ui` starts with, so every page shows the default look.
+    pub(crate) const fn new() -> Self {
         Self {
             active: 0,
             app: AppState { counter: 0 },
@@ -325,10 +322,7 @@ impl Shell {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 self.rail(ui);
-                Block::new()
-                    .size((Sizing::fixed(1.0), Sizing::FILL))
-                    .chrome(Chrome::fill(support::HAIRLINE))
-                    .show(ui);
+                Separator::vertical().show(ui);
                 self.card(ui);
             });
 
@@ -338,14 +332,13 @@ impl Shell {
     /// The nav rail: brand, grouped page list, debug-overlay footer. The list
     /// is an arrow group, so one Tab lands in it.
     fn rail(&mut self, ui: &mut Ui) {
-        let idle = nav_style(NavLook::Idle);
-        let quiet = nav_style(NavLook::Quiet);
-        let selected = nav_style(NavLook::Selected);
+        let idle = nav_style(ui.theme(), NavLook::Idle);
+        let quiet = nav_style(ui.theme(), NavLook::Quiet);
+        let selected = nav_style(ui.theme(), NavLook::Selected);
         Panel::vstack()
             .size((Sizing::fixed(SIDEBAR_W), Sizing::FILL))
-            .padding((12.0, 16.0, 12.0, 12.0))
-            .gap(14.0)
-            .chrome(Chrome::fill(support::SIDEBAR))
+            .padding((M.space.md, M.space.lg, M.space.md, M.space.md))
+            .gap(M.space.md)
             .show(ui, |ui| {
                 brand(ui);
                 Scroll::vertical()
@@ -356,7 +349,7 @@ impl Shell {
                     .show(ui, |ui| {
                         for (i, page) in PAGES.iter().enumerate() {
                             if i == 0 || PAGES[i - 1].group != page.group {
-                                let top = if i == 0 { 2.0 } else { 16.0 };
+                                let top = if i == 0 { M.space.xs } else { M.space.lg };
                                 group_heading(ui, page.group, top);
                             }
                             let style = if i == self.active {
@@ -383,45 +376,36 @@ impl Shell {
             });
     }
 
-    /// The page card: title, blurb, key hints, rule, then the active page's body.
+    /// The page, on the window's ground: title, blurb, key hints, rule, then the active page's body.
     fn card(&mut self, ui: &mut Ui) {
         let page = PAGES[self.active];
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
-            .padding(16.0)
+            .padding((M.space.xl, M.space.xl, M.space.sm, M.space.lg))
+            .gap(M.space.xl)
             .show(ui, |ui| {
-                Panel::vstack()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .padding(24.0)
-                    .gap(20.0)
-                    .chrome(
-                        Chrome::rounded(support::CARD, Corners::all(10.0))
-                            .with_border(Stroke::new(support::BORDER, 1.0)),
-                    )
-                    .clip_rounded()
-                    .show(ui, |ui| {
-                        page_header(ui, &page);
-                        // Keyed by page so scroll offsets don't carry over.
-                        match page.flow {
-                            Flow::Scroll => {
-                                Scroll::vertical()
-                                    .id_salt(page.label)
-                                    .size((Sizing::FILL, Sizing::FILL))
-                                    .overlay_bars()
-                                    .gap(support::PAGE_GAP)
-                                    // Keeps the overlay bar off the page's right edge.
-                                    .padding((0.0, 0.0, 14.0, 0.0))
-                                    .show(ui, |ui| (page.build)(ui, &mut self.app));
-                            }
-                            Flow::Fill => {
-                                Panel::vstack()
-                                    .id_salt(page.label)
-                                    .size((Sizing::FILL, Sizing::FILL))
-                                    .gap(support::PAGE_GAP)
-                                    .show(ui, |ui| (page.build)(ui, &mut self.app));
-                            }
-                        }
-                    });
+                page_header(ui, &page);
+                // Keyed by page so scroll offsets don't carry over.
+                match page.flow {
+                    Flow::Scroll => {
+                        Scroll::vertical()
+                            .id_salt(page.label)
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .overlay_bars()
+                            .gap(support::PAGE_GAP)
+                            // Keeps the overlay bar off the page's right edge.
+                            .padding((0.0, 0.0, M.space.lg, 0.0))
+                            .show(ui, |ui| (page.build)(ui, &mut self.app));
+                    }
+                    Flow::Fill => {
+                        Panel::vstack()
+                            .id_salt(page.label)
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .padding((0.0, 0.0, M.space.lg, 0.0))
+                            .gap(support::PAGE_GAP)
+                            .show(ui, |ui| (page.build)(ui, &mut self.app));
+                    }
+                }
             });
     }
 }
@@ -431,8 +415,8 @@ impl App for Shell {
         match win {
             INSPECTOR_WINDOW => {
                 Panel::vstack()
-                    .padding(16.0)
-                    .gap(12.0)
+                    .padding(M.space.lg)
+                    .gap(M.space.md)
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| pages::state::counter(ui, &mut self.app));
             }
@@ -444,56 +428,44 @@ impl App for Shell {
 fn brand(ui: &mut Ui) {
     Panel::vstack()
         .size((Sizing::FILL, Sizing::HUG))
-        .gap(1.0)
+        .padding((M.space.md, 0.0, 0.0, 0.0))
+        .gap(2.0)
         .show(ui, |ui| {
             Text::new("palantir")
                 .style(
                     &TextStyle::default()
-                        .with_font_size(17.0)
-                        .with_weight(FontWeight::BOLD)
-                        .with_color(support::INK),
+                        .with_font_size(16.0)
+                        .with_weight(FontWeight::BOLD),
                 )
                 .show(ui);
             Text::new("widget tour")
-                .style(
-                    &TextStyle::default()
-                        .with_font_size(11.0)
-                        .with_color(support::INK_FAINT),
-                )
+                .style(&support::caption_style())
                 .show(ui);
         });
 }
 
-/// `top`: the margin above the heading.
+/// `top`: the margin above the heading. A quiet group's heading is a step fainter still.
 fn group_heading(ui: &mut Ui, group: Group, top: f32) {
-    let ink = if group.is_quiet() {
-        support::INK_DISABLED
-    } else {
-        support::INK_FAINT
-    };
+    let mut style = support::heading_style();
+    if group.is_quiet() {
+        style = style.with_color(style.color.with_alpha(0.6));
+    }
     Text::new(group.heading())
         .id_salt(group.heading())
-        .style(
-            &TextStyle::default()
-                .with_font_size(10.0)
-                .with_weight(FontWeight::BOLD)
-                .with_color(ink),
-        )
-        .margin((10.0, top, 0.0, 4.0))
+        .style(&style)
+        .margin((M.space.md, top, 0.0, M.space.xs))
         .show(ui);
 }
 
 /// The rail footer; each control mirrors its shortcut.
 fn debug_toggles(ui: &mut Ui) {
-    Block::new()
-        .size((Sizing::FILL, Sizing::fixed(1.0)))
-        .chrome(Chrome::fill(support::HAIRLINE))
-        .show(ui);
+    Separator::horizontal().show(ui);
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;
     Panel::vstack()
         .size((Sizing::FILL, Sizing::HUG))
-        .gap(6.0)
+        .padding((M.space.md, 0.0, 0.0, 0.0))
+        .gap(M.space.sm)
         .show(ui, |ui| {
             Checkbox::new(&mut overlay.damage_rect)
                 .label("damage rects  F12")
@@ -516,15 +488,19 @@ fn debug_toggles(ui: &mut Ui) {
 /// scrubbable value would re-lay-out under the pointer mid-drag.
 fn ui_scale_row(ui: &mut Ui) {
     let scale = ui.user_scale();
-    let step = scale_step_style();
+    let bar = &ui.theme().menu_bar;
+    let step = ButtonTheme {
+        looks: bar.title.clone(),
+        defaults: bar.defaults,
+    };
 
     let mut next = scale;
     Panel::hstack()
         .size((Sizing::FILL, Sizing::HUG))
-        .margin(Spacing::new(0.0, 6.0, 0.0, 0.0))
+        .margin(Spacing::new(0.0, M.space.xs, 0.0, 0.0))
         .justify(Justify::Center)
         .child_align(Align::v(VAlign::Center))
-        .gap(4.0)
+        .gap(M.space.xs)
         .show(ui, |ui| {
             if Button::new().style(&step).label("−").show(ui).clicked() {
                 next = scale.stepped_down();
@@ -533,7 +509,6 @@ fn ui_scale_row(ui: &mut Ui) {
             Text::new(fmt!(ui, "{}%", scale.percent()))
                 .family(FontFamily::MONO)
                 .font_size(12.0)
-                .color(support::INK)
                 .size((Sizing::fixed(34.0), Sizing::HUG))
                 .text_align(Align::CENTER)
                 .show(ui);
@@ -548,24 +523,10 @@ fn ui_scale_row(ui: &mut Ui) {
     ui.set_user_scale(next);
 }
 
-/// The rail's flat button with a bigger glyph; `−` and `+` read as specks at
-/// label size.
-fn scale_step_style() -> ButtonTheme {
-    let mut style = nav_style(NavLook::Idle);
-    let grow = |look: &mut WidgetLook| {
-        look.text.font_size = Some(15.0);
-    };
-    grow(&mut style.looks.normal);
-    grow(&mut style.looks.hovered);
-    grow(&mut style.looks.active);
-    grow(&mut style.looks.disabled);
-    style
-}
-
 fn page_header(ui: &mut Ui, page: &Page) {
     Panel::vstack()
         .size((Sizing::FILL, Sizing::HUG))
-        .gap(6.0)
+        .gap(M.space.sm)
         .show(ui, |ui| {
             Text::new(page.label)
                 .style(&support::title_style())
@@ -578,27 +539,8 @@ fn page_header(ui: &mut Ui, page: &Page) {
             if !page.keys.is_empty() {
                 support::keys(ui, page.keys);
             }
-            Block::new()
-                .size((Sizing::FILL, Sizing::fixed(1.0)))
-                .margin((0.0, 10.0, 0.0, 0.0))
-                .chrome(Chrome::fill(support::HAIRLINE))
-                .show(ui);
         });
-}
-
-/// Cool-neutral recolor of the stock palette for chrome and surfaces.
-pub(crate) const fn showcase_palette() -> Palette {
-    Palette {
-        text: support::INK,
-        text_muted: support::INK_DIM,
-        text_disabled: support::INK_DISABLED,
-        window_bg: support::WINDOW,
-        element: support::ELEMENT,
-        element_mid: support::ELEM_MID,
-        element_strong: support::ELEM_STRONG,
-        border_focused: support::BORDER_FOCUSED,
-        accent: support::ACCENT,
-    }
+    Separator::horizontal().show(ui);
 }
 
 /// The three ways a rail item can look.
@@ -611,39 +553,33 @@ enum NavLook {
     Selected,
 }
 
-/// Flat rail button: transparent at rest, accent-washed when open. Used by
-/// nav items and the UI-scale stepper.
-fn nav_style(look: NavLook) -> ButtonTheme {
-    let label = |c: RgbaF32| TextStyleOverrides::NONE.with_font_size(12.0).with_color(c);
-    let wash = |alpha: f32, c: RgbaF32| Chrome::rounded(c.with_alpha(alpha), Corners::all(5.0));
-    let (rest, hover, press, ink, tint) = match look {
-        NavLook::Idle => (0.0, 0.06, 0.10, support::INK_DIM, RgbaF32::WHITE),
-        NavLook::Quiet => (0.0, 0.06, 0.10, support::INK_FAINT, RgbaF32::WHITE),
-        NavLook::Selected => (0.16, 0.22, 0.28, support::ACCENT, support::ACCENT),
-    };
+/// A rail item: the theme's menu-bar title, muted at rest and lit under the pointer, in the
+/// accent while its page is open, on an `xs` vertical inset rather than the title's `sm`, so the
+/// whole list fits a window.
+fn nav_style(theme: &Theme, look: NavLook) -> ButtonTheme {
+    let bar = &theme.menu_bar;
+    let mut looks = bar.title.clone();
+    match look {
+        NavLook::Idle => {}
+        NavLook::Quiet => looks.normal.text = looks.normal.text.with_color(support::INK_FAINT),
+        NavLook::Selected => {
+            let open = bar.open.clone();
+            looks = StatefulLook {
+                normal: open.clone(),
+                hovered: open,
+                active: looks.active,
+                disabled: looks.disabled,
+            };
+            for look in [&mut looks.normal, &mut looks.hovered, &mut looks.active] {
+                look.text = look.text.with_color(support::ACCENT);
+            }
+        }
+    }
     ButtonTheme {
-        looks: StatefulLook {
-            normal: WidgetLook {
-                chrome: wash(rest, tint),
-                text: label(ink),
-            },
-            hovered: WidgetLook {
-                chrome: wash(hover, tint),
-                text: label(support::INK),
-            },
-            active: WidgetLook {
-                chrome: wash(press, tint),
-                text: label(support::INK),
-            },
-            disabled: WidgetLook {
-                chrome: Chrome::NONE,
-                text: label(support::INK_FAINT),
-            },
-        },
+        looks,
         defaults: SlotDefaults {
-            padding: Spacing::xy(10.0, 5.0),
-            margin: Spacing::ZERO,
-            animation: Some(AnimationSpec::FAST),
+            padding: Spacing::xy(M.space.md, M.space.xs),
+            ..bar.defaults
         },
     }
 }
