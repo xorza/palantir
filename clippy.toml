@@ -125,4 +125,11 @@ disallowed-methods = [
     { path = "criterion::BenchmarkGroup::warm_up_time", reason = "set a group's sampling through `Scale`" },
     { path = "criterion::BenchmarkGroup::measurement_time", reason = "set a group's sampling through `Scale`" },
     { path = "criterion::BenchmarkGroup::sampling_mode", reason = "set a group's sampling through `Scale`" },
+    # wgpu 30 makes a poll fatal on a lost device: `Gpu::poll` runs the callbacks through a submit,
+    # whose error wgpu drops, and `Gpu::wait` is the one blocking poll, behind the health check.
+    { path = "wgpu::Device::poll", reason = "poll through `Gpu::poll` or `Gpu::wait`" },
+    { path = "wgpu::Instance::poll_all", reason = "poll through `Gpu::poll` or `Gpu::wait`" },
+    # A device has one of each, and `DeviceHealth` needs both to know of a loss.
+    { path = "wgpu::Device::set_device_lost_callback", reason = "`DeviceHealth::watch` owns the device's lost callback" },
+    { path = "wgpu::Device::on_uncaptured_error", reason = "`DeviceHealth::watch` owns the device's error handler" },
 ]

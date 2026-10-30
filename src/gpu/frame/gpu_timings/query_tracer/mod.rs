@@ -440,7 +440,6 @@ impl QueryTracer {
                 slot.map();
             }
         }
-        gpu.device.poll(wgpu::PollType::Poll).ok();
         let publisher = Publisher {
             period_ns: self.period_ns,
             sink,

@@ -790,7 +790,7 @@ FrameSummary  [features: winit]
 
 Gpu
     struct Gpu: Clone, Debug
-        pub const fn new(device: Device, queue: Queue) -> Self
+        pub fn new(device: Device, queue: Queue) -> Self
         pub const fn device(&self) -> &Device
         pub const fn queue(&self) -> &Queue
 
@@ -934,6 +934,8 @@ HeadlessWindow
         pub fn advance(&mut self, dt: Duration) -> &mut Self
         pub fn at(&mut self, time: Duration) -> &mut Self
         pub fn wait_for_gpu(&self)
+        pub fn is_device_lost(&self) -> bool
+        pub fn recover(&mut self, gpu: Gpu)
         pub const fn ui(&mut self) -> &mut Ui
         pub const fn host(&self) -> &OffscreenHost
         pub fn resize(&mut self, size: UVec2, system_scale: f32)
@@ -1349,6 +1351,8 @@ OffscreenHost
         pub fn advance(&mut self, dt: Duration) -> &mut Self
         pub fn at(&mut self, time: Duration) -> &mut Self
         pub fn wait_for_gpu(&self)
+        pub fn is_device_lost(&self) -> bool
+        pub fn recover(&mut self, gpu: Gpu)
         pub fn frame<T: App>(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut T) -> FrameReport
         pub const fn gpu_pass_stats(&self) -> &GpuPassStats
 
@@ -2376,7 +2380,8 @@ Ui
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
         pub fn has_font(&self, family: FontFamily) -> bool
         pub fn font_families(&self) -> Vec<FontFamily>
-        pub const fn max_image_dimension(&self) -> Option<NonZeroU32>
+        pub fn max_image_dimension(&self) -> Option<NonZeroU32>
+        pub const fn device_restored(&self) -> bool
         pub fn clipboard(&self) -> Clipboard
         pub fn fmt(&mut self, args: Arguments<'_>) -> InternedStr
         pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr
@@ -2537,6 +2542,7 @@ WinitHostError  [features: winit]
         RunEventLoop { source: EventLoopError }
         CreateWindow { token: WindowToken, source: OsError }
         Gpu { source: GpuRequestError }
+        DeviceLost { source: GpuRequestError }
         Surface { token: WindowToken, source: SurfaceError }
 
 ZoomConfig

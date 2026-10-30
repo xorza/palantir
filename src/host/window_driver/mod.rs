@@ -10,9 +10,8 @@ use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::host_display::HostDisplay;
-use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::submission::{FrameOverlay, Route, Submission};
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::Census;
+use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode};
 use crate::gpu::surface::capture::Capture;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::wgpu_backend::WgpuBackend;
@@ -31,7 +30,7 @@ use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::resources::UiResources;
-use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
+use crate::window::screenshot::{Screenshot, ScreenshotRequest};
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_token::WindowToken;
@@ -96,13 +95,13 @@ fn physical_region(region: Rect, display: Display) -> URect {
     URect::from_min_max(min, max.max(min))
 }
 
-/// A [`Capture`] with the request it answers.
+/// A [`Capture`] with the request it answers, its region clamped to the window it was taken
+/// from.
 #[derive(Debug)]
 struct PendingScreenshot {
     capture: Capture,
-    region: Rect,
+    request: ScreenshotRequest,
     scale: f32,
-    id: ScreenshotId,
 }
 
 /// Identity of the surface or texture a window renders into: the single gate on retained target
@@ -232,20 +231,16 @@ impl Drop for WindowDriver {
 }
 
 impl WindowDriver {
-    /// A driver for `token` over the shared [`UiResources`], drawing through `stream`; registered
-    /// in the window directory here, as its `Drop` retires it.
-    pub(super) fn new(
-        token: WindowToken,
-        resources: &UiResources,
-        config: DriverConfig,
-        stream: RenderStream,
-    ) -> Self {
+    /// A driver for `token` over the shared [`UiResources`], as a render owner of its own, on a
+    /// detached stream until the host [attaches](Self::attach) its device's; registered in the
+    /// window directory here, as its `Drop` retires it.
+    pub(super) fn new(token: WindowToken, resources: &UiResources, config: DriverConfig) -> Self {
         resources.windows().add(token);
         Self {
             token,
             engines: FrameEngines::new(resources),
             ui: Ui::new(resources.clone()),
-            stream,
+            stream: RenderStream::detached(resources.render_owners().reserve(), CutoutMode::Shade),
             output_valid: false,
             target_outlined: false,
             strategy: config.strategy,
@@ -261,6 +256,24 @@ impl WindowDriver {
     /// The owner the window's frames render as.
     pub(super) const fn render_owner(&self) -> RenderOwnerId {
         self.stream.owner()
+    }
+
+    /// Draw through `stream`, the window's on a device the host attached, at startup and after a
+    /// loss alike. What the window kept on an earlier device is gone with it: the pane ledger
+    /// starts over, the target's contents read invalid, and each screenshot on its way back from
+    /// that device goes back to the requests, ahead of the asks queued since. On a new driver
+    /// these hold nothing.
+    pub(super) fn attach(&mut self, stream: RenderStream) {
+        debug_assert_eq!(
+            stream.owner(),
+            self.stream.owner(),
+            "a window keeps its owner"
+        );
+        self.stream = stream;
+        self.pane_captures = PaneCaptures::default();
+        self.invalidate_target_contents();
+        self.screenshot_requests
+            .splice(0..0, self.captures.drain(..).map(|pending| pending.request));
     }
 
     /// The stamp of the frame `spec` describes, as [`Self::cpu_frame`] takes it.
@@ -310,18 +323,6 @@ impl WindowDriver {
         self.finish_cpu_frame(frontend, report)
     }
 
-    /// Block until every screenshot on its way back has mapped, so the next frames land them.
-    ///
-    /// A wait for the device runs the map callbacks of the copies it finished, unless another
-    /// thread's poll of the same device collected them first: wgpu then runs them on that thread,
-    /// after its own wait, and this one returns before they ran. So the wait repeats until no
-    /// copy is pending.
-    pub(super) fn wait_for_captures(&self, gpu: &Gpu) {
-        for pending in &self.captures {
-            pending.capture.wait_landed(gpu);
-        }
-    }
-
     /// Drop from the pane ledger the results the shared backdrop atlas evicted from this window's
     /// panes, so its next frame captures them again.
     pub(super) fn forget_evicted_panes(&mut self, backend: &mut WgpuBackend) {
@@ -330,24 +331,32 @@ impl WindowDriver {
     }
 
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
-    /// an edge of exactly that frame.
+    /// an edge of exactly that frame. A copy the device failed, as only a lost one does, goes
+    /// back to the requests, and the next frame that paints takes it again.
     pub(super) fn deliver_screenshot(&mut self, backend: &WgpuBackend) {
         if !self.captures.is_empty() {
             backend.poll();
         }
-        let landed = self
+        let mut landed = None;
+        // Each failed ask is older than the asks queued since, so it goes ahead of them, in order.
+        let mut requeued = 0;
+        while self
             .captures
             .front()
             .is_some_and(|pending| !pending.capture.is_pending())
-            .then(|| {
-                let pending = self.captures.pop_front().expect("the front one landed");
-                Screenshot::new(
-                    pending.capture.take(),
-                    pending.scale,
-                    pending.region,
-                    pending.id,
-                )
-            });
+        {
+            let PendingScreenshot {
+                capture,
+                request,
+                scale,
+            } = self.captures.pop_front().expect("the front one landed");
+            if let Some(image) = capture.take() {
+                landed = Some(Screenshot::new(image, scale, request.region, request.id));
+                break;
+            }
+            self.screenshot_requests.insert(requeued, request);
+            requeued += 1;
+        }
         self.ui.set_screenshot_taken(landed);
     }
 
@@ -608,9 +617,11 @@ impl WindowDriver {
             }
             self.captures.push_back(PendingScreenshot {
                 capture: backend.capture(&self.stream, physical_region(region, display)),
-                region,
+                request: ScreenshotRequest {
+                    region,
+                    id: request.id,
+                },
                 scale: display.scale_factor(),
-                id: request.id,
             });
         }
     }

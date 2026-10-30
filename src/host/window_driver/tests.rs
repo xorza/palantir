@@ -1,9 +1,7 @@
 //! Driver tests, grouped by the decision each pins: present-mode selection, output
 //! validity, record-store lifecycle.
 
-use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::host::window_driver::{DriverConfig, FrameSpec, PresentStrategy, WindowDriver};
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
@@ -21,8 +19,7 @@ const fn config(strategy: PresentStrategy, pixel_snap: bool) -> DriverConfig {
 /// A driver for `token` over `shared`, set by `config`, on a stream with no device behind it that
 /// shades every cutout.
 fn new_driver(token: WindowToken, shared: &UiResources, config: DriverConfig) -> WindowDriver {
-    let stream = RenderStream::detached(shared.render_owners().reserve(), CutoutMode::Shade);
-    WindowDriver::new(token, shared, config, stream)
+    WindowDriver::new(token, shared, config)
 }
 
 /// A texture frame of `physical` at `system_scale`, at time zero.
@@ -170,13 +167,14 @@ mod output_validity_tests {
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::window_driver::tests::{config, spec};
     use crate::host::window_driver::{
-        FrameSpec, PendingScreenshot, PresentPath, PresentStrategy, ScreenshotId, WindowDriver,
+        FrameSpec, PendingScreenshot, PresentPath, PresentStrategy, WindowDriver,
     };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
+    use crate::renderer::frontend::internals::test_device;
     use crate::renderer::render_plan::RenderPlan;
+    use crate::window::screenshot::{ScreenshotId, ScreenshotRequest};
     use std::time::Duration;
 
     use crate::damage::Damage;
@@ -336,7 +334,7 @@ mod output_validity_tests {
     #[test]
     fn output_validity_tracks_pending_and_completion() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
         let mut driver = new_driver(
             WindowToken(1),
             &shared,
@@ -377,9 +375,11 @@ mod output_validity_tests {
         // host when it lands; a still frame asks for nothing once it has.
         driver.captures.push_back(PendingScreenshot {
             capture: Capture::never_landing(&headless_test_gpu().device),
-            region: Rect::new(0.0, 0.0, 1.0, 1.0),
+            request: ScreenshotRequest {
+                region: Rect::new(0.0, 0.0, 1.0, 1.0),
+                id: ScreenshotId::FIRST,
+            },
             scale: 1.0,
-            id: ScreenshotId::FIRST,
         });
         let waiting = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(matches!(waiting.mode, PresentPath::SkipNoop));
@@ -390,21 +390,6 @@ mod output_validity_tests {
         driver.captures.clear();
         let landed = driver.finish_cpu_frame(&mut frontend, report(None));
         assert!(!landed.report.repaint_requested);
-
-        // A copy whose map callback another thread's poll collected runs on that thread, 20 ms
-        // later: the wait returns only once it ran, though the device was idle all along.
-        driver.captures.push_back(PendingScreenshot {
-            capture: Capture::mapped_elsewhere_after(
-                &headless_test_gpu().device,
-                Duration::from_millis(200),
-            ),
-            region: Rect::new(0.0, 0.0, 1.0, 1.0),
-            scale: 1.0,
-            id: ScreenshotId::FIRST,
-        });
-        driver.wait_for_captures(&headless_test_gpu().handles());
-        assert!(!driver.captures[0].capture.is_pending());
-        driver.captures.clear();
 
         driver.strategy = PresentStrategy::BackbufferCopy;
         let skip_copy = driver.finish_cpu_frame(&mut frontend, report(None));
@@ -466,7 +451,7 @@ mod record_store_tests {
     use crate::primitives::paint::color::rgba_f16::RgbaF16;
     use crate::primitives::paint::stroke::Stroke;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
+    use crate::renderer::frontend::internals::test_device;
 
     use crate::shape::Shape;
 
@@ -553,7 +538,7 @@ mod record_store_tests {
     #[test]
     fn cpu_frame_forwards_token_through_app_lifecycle() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
         let token = WindowToken(17);
         let mut window = new_driver(
             token,
@@ -586,7 +571,7 @@ mod record_store_tests {
     #[test]
     fn interleaved_window_paint_only_preserves_record_payloads() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
         let mut window_a = new_driver(
             WindowToken(1),
             &shared,
@@ -771,7 +756,7 @@ mod cutout_census_tests {
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::shadow::Shadow;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
+    use crate::renderer::frontend::internals::test_device;
     use crate::shape::Shape;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;
@@ -787,7 +772,7 @@ mod cutout_census_tests {
     #[test]
     fn a_partial_frame_that_moves_a_kept_table_repaints_in_full() {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
         let mut driver = WindowDriver::new(
             WindowToken(1),
             &shared,
@@ -795,8 +780,11 @@ mod cutout_census_tests {
                 strategy: PresentStrategy::BackbufferCopy,
                 pixel_snap: true,
             },
-            RenderStream::detached(shared.render_owners().reserve(), CutoutMode::Bake),
         );
+        driver.attach(RenderStream::detached(
+            driver.render_owner(),
+            CutoutMode::Bake,
+        ));
         let display = FrameStamp::new(
             Display::from_physical(UVec2::new(600, 200), 1.0),
             Duration::ZERO,
@@ -1133,7 +1121,7 @@ mod capture_path_tests {
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
     use crate::primitives::paint::color::RgbaF32;
     use crate::renderer::frontend::Frontend;
-    use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
+    use crate::renderer::frontend::internals::test_device;
     use crate::shape::Shape;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;
@@ -1145,7 +1133,7 @@ mod capture_path_tests {
     /// 100 × 80 target that gives a copy when `gives_copy` is.
     fn first_frame(pane: Rect, gives_copy: bool) -> PresentPath {
         let shared = UiResources::isolated_mono();
-        let mut frontend = Frontend::new(TEST_TEXTURE_LIMIT, shared.gradient_atlas().clone());
+        let mut frontend = Frontend::new(test_device(), shared.gradient_atlas().clone());
         let mut driver = new_driver(
             WindowToken(1),
             &shared,

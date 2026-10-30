@@ -24,6 +24,7 @@ use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use std::fmt;
 use std::mem;
+use std::num::NonZeroU32;
 
 pub(super) struct WinitRuntime<T> {
     /// The caller's app, created once the first window's `Ui` existed.
@@ -124,8 +125,16 @@ impl<T: App + 'static> WinitRuntime<T> {
         self.frames.set_hidden(win.driver.token, win.is_hidden());
     }
 
-    /// Paint one window; it drains its commands into the pending queue.
-    pub(super) fn draw(&mut self, slot: WindowSlot) {
+    /// Paint one window; it drains its commands into the pending queue. A lost device is replaced
+    /// first ([`Self::recover`]).
+    ///
+    /// # Errors
+    ///
+    /// The device was lost and no new one opened, or the window's new surface failed.
+    pub(super) fn draw(&mut self, slot: WindowSlot) -> Result<(), WinitHostError> {
+        if self.core.gpu().is_lost() {
+            self.recover()?;
+        }
         let single_window = self.windows.len() == 1;
         let win = self.windows.at(slot);
         if let Some(summary) = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)
@@ -133,17 +142,37 @@ impl<T: App + 'static> WinitRuntime<T> {
             self.frames.record(win.driver.token, summary);
         }
         if win.surface.is_lost() {
-            match self.surfaces.renew(&win.window, &win.surface) {
-                Ok(surface) => win.surface = surface,
-                // The window keeps its lost surface, and its next frame tries again after a pause.
-                Err(error) => {
-                    tracing::error!(token = ?win.driver.token, %error, "lost surface not made again");
-                }
-            }
+            renew_surface(&self.surfaces, win, self.core.max_texture_dim());
         }
         if single_window {
             tracy::mark_main_frame();
         }
+        Ok(())
+    }
+
+    /// Attach a new device in place of the lost one, through the steps startup took: the first
+    /// window's new surface picks the adapter ([`SurfaceManager::reopen`]), the host core builds its
+    /// device half on it and gives every window its stream there, and every other window gets a
+    /// new surface; then every window paints whole.
+    fn recover(&mut self) -> Result<(), WinitHostError> {
+        let first = self.windows.iter_mut().next().expect("a window draws");
+        let token = first.driver.token;
+        let gpu = self
+            .surfaces
+            .reopen(&first.window, &mut first.surface)
+            .map_err(|error| match error {
+                SurfaceStartError::Gpu { source } => WinitHostError::DeviceLost { source },
+                SurfaceStartError::Surface { source } => WinitHostError::Surface { token, source },
+            })?;
+        tracing::info!("graphics device lost: a new one is attached");
+        self.core
+            .attach(gpu, self.windows.iter_mut().map(|win| &mut win.driver));
+        let max_texture_dim = self.core.max_texture_dim();
+        for win in self.windows.iter_mut().skip(1) {
+            renew_surface(&self.surfaces, win, max_texture_dim);
+        }
+        self.repaint_all();
+        Ok(())
     }
 
     pub(super) fn repaint_all(&mut self) {
@@ -255,6 +284,14 @@ impl<T: App + 'static> WinitRuntime<T> {
             1,
             "a closed window's native window is shared past its close"
         );
+    }
+}
+
+/// Make `win` a new surface. On a failure the window keeps a lost one, and its next frame tries
+/// again after a pause.
+fn renew_surface(surfaces: &SurfaceManager, win: &mut Window, max_texture_dim: NonZeroU32) {
+    if let Err(error) = surfaces.renew(&win.window, &mut win.surface, max_texture_dim) {
+        tracing::error!(token = ?win.driver.token, %error, "window surface not made again");
     }
 }
 

@@ -141,20 +141,22 @@ impl HeadlessTestGpuLease {
             .collect()
     }
 
-    /// A new device on the process's one adapter.
+    /// A new device on the process's one adapter, whose `max_texture_dimension_2d` is the
+    /// adapter's, or `max_texture_dim` where that is below it.
     ///
     /// # Panics
     ///
     /// Panics if the process has no adapter or the device does not open.
-    fn request() -> Self {
-        static ADAPTER: OnceLock<Result<wgpu::Adapter, LeaseFailed>> = OnceLock::new();
-        let adapter = match ADAPTER.get_or_init(open_adapter) {
-            Ok(adapter) => adapter.clone(),
-            Err(why) => panic!("{why}"),
-        };
+    fn request(max_texture_dim: u32) -> Self {
+        let adapter = shared_adapter();
         let info = adapter.get_info();
-        let gpu = test_request()
-            .open_on(adapter)
+        let request = test_request();
+        let mut requirements = DeviceRequirements::negotiate(&adapter, request.optional)
+            .unwrap_or_else(|why| panic!("the test adapter runs Palantir: {why}"));
+        let limit = &mut requirements.limits.max_texture_dimension_2d;
+        *limit = (*limit).min(max_texture_dim);
+        let gpu = request
+            .open_with(adapter, requirements)
             .unwrap_or_else(|why| panic!("open headless test gpu: {why}"));
         Self {
             gpu: gpu.gpu,
@@ -166,6 +168,19 @@ impl HeadlessTestGpuLease {
 impl Drop for HeadlessTestGpuLease {
     fn drop(&mut self) {
         self.wait();
+    }
+}
+
+/// The process's one adapter, opened on first use.
+///
+/// # Panics
+///
+/// Panics if the process has no adapter.
+fn shared_adapter() -> wgpu::Adapter {
+    static ADAPTER: OnceLock<Result<wgpu::Adapter, LeaseFailed>> = OnceLock::new();
+    match ADAPTER.get_or_init(open_adapter) {
+        Ok(adapter) => adapter.clone(),
+        Err(why) => panic!("{why}"),
     }
 }
 
@@ -215,7 +230,7 @@ const fn test_request() -> GpuRequest<'static> {
 /// Without an adapter every lease panics, at once after the first.
 pub fn headless_test_gpu() -> HeadlessTestGpuLease {
     static GPU: OnceLock<HeadlessTestGpuLease> = OnceLock::new();
-    let gpu = GPU.get_or_init(HeadlessTestGpuLease::request);
+    let gpu = GPU.get_or_init(|| HeadlessTestGpuLease::request(u32::MAX));
     HeadlessTestGpuLease {
         gpu: gpu.gpu.clone(),
         adapter: gpu.adapter.clone(),
@@ -224,7 +239,18 @@ pub fn headless_test_gpu() -> HeadlessTestGpuLease {
 
 /// Lease a device no other test has touched, for tests whose numbers depend on device history (wgpu sizes per-submission allocation by every resource seen). Same lock and adapter as [`headless_test_gpu`].
 pub fn isolated_headless_test_gpu() -> HeadlessTestGpuLease {
-    HeadlessTestGpuLease::request()
+    HeadlessTestGpuLease::request(u32::MAX)
+}
+
+/// [`isolated_headless_test_gpu`] with its `max_texture_dimension_2d` capped at
+/// `max_texture_dim`, as a device on a smaller GPU has.
+///
+/// # Panics
+///
+/// Panics if the process has no adapter or the device does not open.
+#[cfg(test)]
+pub(crate) fn isolated_headless_test_gpu_capped(max_texture_dim: u32) -> HeadlessTestGpuLease {
+    HeadlessTestGpuLease::request(max_texture_dim)
 }
 
 /// `name (backend, driver driver_info)`, omitting driver fields the backend does not report.

@@ -312,16 +312,19 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             .iter()
             .map(|c| u64::from(c.padded_bytes_per_row()) * u64::from(c.size.y))
             .sum();
-        // Every raster covers at least one row, so the staging is never the empty one `stage`
-        // declines. Rows start on 256-byte boundaries, as the copies read them.
-        let Staged {
+        // Every raster covers at least one row, so only a lost device declines the staging.
+        // Rows start on 256-byte boundaries, as the copies read them.
+        let Some(Staged {
             mut view,
             buffer,
             offset,
             encoder,
-        } = ctx
-            .stage(bytes, u64::from(COPY_BYTES_PER_ROW_ALIGNMENT))
-            .expect("a queued raster stages at least one padded row");
+        }) = ctx.stage(bytes, u64::from(COPY_BYTES_PER_ROW_ALIGNMENT))
+        else {
+            self.pending_pixels.clear();
+            self.pending_copies.clear();
+            return;
+        };
 
         // One walk, so a row's staging offset and its copy's read offset are one number. Pad bytes
         // are left as the belt chunk held them.

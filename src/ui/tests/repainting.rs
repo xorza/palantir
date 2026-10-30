@@ -20,6 +20,7 @@ use crate::renderer::frontend::encoder;
 use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -31,6 +32,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::Vec2;
 use std::collections::HashSet;
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 /// Pin: enabling `frame_stats` records a Debug-layer readout, keeps damage `Partial` on a static scene, and updates `fps_ema` after two frames. The readout is a row, its chip and the text leaf, with the chip's fill as its one chrome row: a theme's panel chrome and rounded clip, which would add rows, do not reach it.
@@ -393,6 +395,49 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",
     );
+}
+
+/// A new device shows to each window once, on its next frame, which records though only an
+/// animation woke it, so the app's record can upload its images again; the frame after reads false.
+/// A window made on the new device reads false from its first frame. The limit is the new
+/// device's.
+#[test]
+fn a_new_device_restores_each_window_once_and_records() {
+    fn body(ui: &mut Ui, half: Duration) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            support::add_blink_shape(ui, half);
+        });
+    }
+
+    let shared = UiResources::isolated_mono();
+    let mut a = support::ui_with_shared(&shared);
+    let mut b = support::ui_with_shared(&shared);
+    let half = Duration::from_millis(500);
+    a.frame(|ui| body(ui, half));
+    b.frame(|ui| body(ui, half));
+    assert!(!a.ui.device_restored() && !b.ui.device_restored());
+    assert_eq!(
+        a.at(half).frame(|ui| body(ui, half)).processing,
+        FrameProcessing::PaintOnly
+    );
+
+    let limit = NonZeroU32::new(4096).unwrap();
+    shared.device().attach(TextureLimit::from_device(limit));
+    let report = a.at(half * 2).frame(|ui| body(ui, half));
+    assert_eq!(report.processing, FrameProcessing::SingleLayout);
+    assert!(a.ui.device_restored());
+    assert_eq!(a.ui.max_image_dimension(), Some(limit));
+    a.at(half * 3).frame(|ui| body(ui, half));
+    assert!(!a.ui.device_restored());
+
+    b.at(half * 2).frame(|ui| body(ui, half));
+    assert!(b.ui.device_restored());
+    b.at(half * 3).frame(|ui| body(ui, half));
+    assert!(!b.ui.device_restored());
+
+    let mut c = support::ui_with_shared(&shared);
+    c.frame(|ui| body(ui, half));
+    assert!(!c.ui.device_restored());
 }
 
 /// `request_repaint` co-firing with an anim wake gives `REAL | ANIMATION`, so the classifier picks Full.

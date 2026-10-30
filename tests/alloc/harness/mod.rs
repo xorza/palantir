@@ -159,43 +159,69 @@ impl Audit {
             UiHarness::new(SURFACE)
         };
         let mut recorded = false;
-        self.measure(Location::caller(), || {
-            recorded = false;
-            let _ = ui.frame(|ui| {
-                recorded = true;
-                scene(ui);
-            });
-            recorded
-        })
+        self.measure(
+            Location::caller(),
+            || {
+                recorded = false;
+                let _ = ui.frame(|ui| {
+                    recorded = true;
+                    scene(ui);
+                });
+                recorded
+            },
+            || {},
+        )
     }
 
     /// The same measured loop over a frame the caller renders itself; the caller
     /// asserts what its own frames ran.
     #[track_caller]
-    pub(crate) fn run_frames(self, mut frame: impl FnMut()) -> Report {
+    pub(crate) fn run_frames(self, frame: impl FnMut()) -> Report {
+        self.run_settled_frames(frame, || {})
+    }
+
+    /// [`Self::run_frames`], with `settle` run before each frame outside the measured window:
+    /// a device drained there leaves each frame the same queue, and the drain's own work, which
+    /// varies with how long the GPU takes, stays out of the count.
+    #[track_caller]
+    pub(crate) fn run_settled_frames(
+        self,
+        mut frame: impl FnMut(),
+        settle: impl FnMut(),
+    ) -> Report {
         assert!(
             !self.paint_only,
             "paint_only reads the scene's record passes, which run_frames never sees",
         );
-        self.measure(Location::caller(), || {
-            frame();
-            true
-        })
+        self.measure(
+            Location::caller(),
+            || {
+                frame();
+                true
+            },
+            settle,
+        )
     }
 
     /// `frame` returns whether it ran the scene, which only the measured window
-    /// checks.
-    fn measure(self, at: &'static Location<'static>, mut frame: impl FnMut() -> bool) -> Report {
+    /// checks; `settle` runs before each frame, unmeasured.
+    fn measure(
+        self,
+        at: &'static Location<'static>,
+        mut frame: impl FnMut() -> bool,
+        mut settle: impl FnMut(),
+    ) -> Report {
         assert!(self.frames > 0, "an audit must measure at least one frame");
 
         let warmup = match self.warmup {
             Warmup::Fixed(n) => {
                 for _ in 0..n {
+                    settle();
                     frame();
                 }
                 n
             }
-            Warmup::Probe => self.probe(&mut frame),
+            Warmup::Probe => self.probe(&mut frame, &mut settle),
         };
 
         let mut counts = Vec::with_capacity(self.frames);
@@ -207,6 +233,7 @@ impl Audit {
                 warmup,
             };
             let mut recorded = false;
+            settle();
             let result = allocator::with_audit(|| recorded = frame());
             if recorded == self.paint_only {
                 let what = if recorded {
@@ -245,12 +272,13 @@ impl Audit {
         Report { worst, mode }
     }
 
-    fn probe(self, frame: &mut impl FnMut() -> bool) -> usize {
+    fn probe(self, frame: &mut impl FnMut() -> bool, settle: &mut impl FnMut()) -> usize {
         const MAX_WARMUP: usize = 8;
         const STABLE_RUN: usize = 2;
         let mut warmup = 0;
         let mut stable = 0;
         while warmup < MAX_WARMUP {
+            settle();
             let result = allocator::with_audit(|| {
                 frame();
             });

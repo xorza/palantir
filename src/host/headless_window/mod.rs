@@ -147,6 +147,26 @@ impl HeadlessWindow {
         self.host.wait_for_gpu();
     }
 
+    /// See [`OffscreenHost::is_device_lost`].
+    pub fn is_device_lost(&self) -> bool {
+        self.host.is_device_lost()
+    }
+
+    /// Draw with `gpu` from now on, as [`OffscreenHost::recover`] does, into a new texture on it,
+    /// of the window's size held inside `gpu`'s largest 2D texture.
+    ///
+    /// # Panics
+    ///
+    /// As [`OffscreenHost::recover`].
+    pub fn recover(&mut self, gpu: Gpu) {
+        let size = self
+            .target
+            .size()
+            .min(UVec2::splat(gpu.max_texture_dim().get()));
+        self.target = OwnedTarget::window(&gpu, LABEL, size, self.target.as_target().format());
+        self.host.recover(gpu);
+    }
+
     /// The window's `Ui`.
     pub const fn ui(&mut self) -> &mut Ui {
         self.host.ui()

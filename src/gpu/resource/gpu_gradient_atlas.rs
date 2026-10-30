@@ -90,17 +90,19 @@ impl GpuGradientAtlas {
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 *bind_group = binding.bind_group(ctx.device, &view, "palantir.gradient.bg");
             }
-            let Staged {
+            // A flush holds at least one row, so only a lost device declines the staging.
+            let Some(Staged {
                 mut view,
                 buffer,
                 offset,
                 encoder,
-            } = ctx
-                .stage(
-                    rows.len_bytes() as u64,
-                    u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
-                )
-                .expect("a flush holds at least one row");
+            }) = ctx.stage(
+                rows.len_bytes() as u64,
+                u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
+            )
+            else {
+                return;
+            };
             let mut at = 0;
             for run in rows.runs {
                 let bytes = rows.bytes(run.clone());

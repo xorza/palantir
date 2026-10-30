@@ -29,15 +29,18 @@ pub(super) enum FramePlan {
     FullRecord { base: DamageBase },
 }
 
-/// What a recorded tree was built under besides its authoring: the theme the widgets read and the
-/// fonts its text shaped with. Neither moves a key a paint-only frame checks, so a move forces a
-/// record.
+/// What a recorded tree was built under besides its authoring: the theme the widgets read, the
+/// fonts its text shaped with, and the device its images live on. None moves a key a paint-only
+/// frame checks, so a move forces a record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct RecordBaseline {
     /// Bumped by every theme write (`Ui::set_theme`).
     pub(super) theme_epoch: u32,
     /// `TextShaper::font_epoch`, which a font load in any window sharing the shaper moves.
     pub(super) font_epoch: u32,
+    /// `SharedDevice::epoch`, which a new device moves: the app uploads its images again in the
+    /// record (`Ui::device_restored`).
+    pub(super) device_epoch: u32,
 }
 
 #[derive(Clone, Copy, Debug)]

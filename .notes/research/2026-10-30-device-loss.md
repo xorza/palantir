@@ -10,7 +10,9 @@ the cargo registry. Paths are relative to each crate's `src/`.
   ([Microsoft: TDR](https://learn.microsoft.com/windows-hardware/drivers/display/timeout-detection-and-recovery)).
   A long dispatch is the usual trigger; the advice is to split it
   ([Puget Systems](https://www.pugetsystems.com/labs/hpc/Working-around-TDR-in-Windows-for-a-better-GPU-computing-experience-777/)).
-- **A GPU reset on Linux.** amdgpu resets a ring that timed out; Vulkan apps then get
+- **A GPU reset on Linux.** amdgpu resets a ring whose job runs past `lockup_timeout`, 2000 ms
+  for every queue by default
+  ([amdgpu module parameters](https://docs.kernel.org/gpu/amdgpu/module-parameters.html)); Vulkan apps then get
   `VK_ERROR_DEVICE_LOST` and must recreate their contexts
   ([DRM reset RFC](https://lkml.rescloud.iu.edu/2306.2/04926.html),
   [Mesa #7181](https://gitlab.freedesktop.org/mesa/mesa/-/issues/7181)).
@@ -53,6 +55,21 @@ the cargo registry. Paths are relative to each crate's `src/`.
   (`api/buffer.rs:363`, `api/queue.rs:310`). wgpu-core runs `device.maintain(Poll)` after each
   submit (`device/queue.rs:1541`), an empty one included (`:1531`), and a submit's error goes to
   `handle_error` (`backend/wgpu_core.rs:2109-2115`), which drops a lost device's error.
+- **A destroyed device raises validation errors until its lost callback runs.** After
+  `Device::destroy` the device is invalid at once, but the callback waits for a maintain; a
+  resource made in between is invalid, and its use (an unmap of a staging buffer) is a
+  `Validation` error, which the uncaptured-error handler gets. A loss the HAL reports runs the
+  callback inside the call that found it, so no such window exists (wgpu-core
+  `device/resource.rs:5415`). Found by the recovery tests on 2026-10-30.
+- **A belt allocation on a lost device does not map.** `BufferSlice::get_mapped_range_mut`
+  returns `MapRangeError` for the invalid buffer, and `util::StagingBelt::write_buffer` panics on
+  it (wgpu `util/belt.rs:163`).
+- **A surface configured on a new device releases its old swapchain through that device.**
+  wgpu-core takes the old presentation and calls the HAL `configure` with the new device
+  (`device/resource.rs:5366-5380`); Vulkan's `Surface::configure` releases the old swapchain's
+  resources with the device it is given and passes the old swapchain to the new one
+  (wgpu-hal `vulkan/instance.rs:1004-1021`). A dropped surface unconfigures on the device of its
+  presentation.
 
 ## How others recover
 

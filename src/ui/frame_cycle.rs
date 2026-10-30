@@ -51,6 +51,9 @@ impl<'a> FrameCycle<'a> {
         );
 
         let first_frame = self.ui.frame_runtime.is_first_frame();
+        let device_epoch = self.ui.resources.device().epoch();
+        self.ui.device_restored = device_epoch != self.ui.device_epoch;
+        self.ui.device_epoch = device_epoch;
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui
             .frame_runtime
@@ -58,6 +61,7 @@ impl<'a> FrameCycle<'a> {
         let record_baseline = RecordBaseline {
             theme_epoch: self.ui.theme_epoch,
             font_epoch: self.ui.resources.text().font_epoch(),
+            device_epoch,
         };
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,

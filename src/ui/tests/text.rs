@@ -1,6 +1,7 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
 use crate::common::clipboard::Clipboard;
+use crate::image_registry::ImageRegistry;
 use crate::internals::panic_probe;
 use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -28,7 +29,7 @@ use crate::text::wrap::TextWrap;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
-use crate::ui::resources::{UiDevice, UiResources};
+use crate::ui::resources::UiResources;
 use crate::ui::tests::support::{self, SURFACE};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
@@ -659,7 +660,7 @@ fn the_text_clock_ticks_once_per_host_frame() {
 fn a_load_reaches_the_cascade_and_the_screen() {
     let shaper = TextShaper::with_no_fonts();
     let mut h = UiHarness::from_resources(
-        UiResources::new(shaper, Clipboard::memory(), UiDevice::default()),
+        UiResources::new(shaper, Clipboard::memory(), ImageRegistry::default()),
         UVec2::new(400, 300),
     );
     h.ui.load_font(INTER).expect("the bundled Inter loads");
@@ -714,7 +715,11 @@ fn every_window_keys_a_family_in_its_shapers_table() {
     let shaper = TextShaper::new();
     let window = || {
         UiHarness::from_resources(
-            UiResources::new(shaper.clone(), Clipboard::memory(), UiDevice::default()),
+            UiResources::new(
+                shaper.clone(),
+                Clipboard::memory(),
+                ImageRegistry::default(),
+            ),
             SURFACE,
         )
     };
