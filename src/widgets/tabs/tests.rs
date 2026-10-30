@@ -158,6 +158,7 @@ fn the_content_records_inside_the_chip_before_its_close_button() {
 #[test]
 fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
     let mut h = UiHarness::new(SURFACE);
+    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     let theme = h.ui.theme();
@@ -204,6 +205,7 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
     let close = TabStrip::close_id(strip_id(), 20);
     let slot = close.with("slot");
     let mut h = UiHarness::new(SURFACE);
+    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     let always = h.rect(beta).expect("arranged");
@@ -333,6 +335,7 @@ fn a_pinned_chip_is_as_tall_as_a_closable_one() {
 #[test]
 fn a_close_click_reports_a_close_and_not_a_click() {
     let mut h = UiHarness::new(SURFACE);
+    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
 
@@ -945,6 +948,7 @@ fn a_close_moves_the_binding_with_the_shown_page() {
         let mut pages = PAGES.to_vec();
         let mut drawn = "";
         let mut h = UiHarness::new(SURFACE);
+        h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
         h.prime(2, |ui| {
             record(ui, &mut bound, &mut pages, &mut drawn);
         });

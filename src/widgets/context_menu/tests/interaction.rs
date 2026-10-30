@@ -158,7 +158,7 @@ fn menu_body_width_does_not_span_surface() {
     // The rows are narrower than the theme's floor, so the body sits at
     // it: hugging, not spanning the 400 px surface.
     assert_eq!(rect.size.w, h.ui.theme().context_menu.min_width);
-    assert_eq!(rect.size.w, 160.0);
+    assert_eq!(rect.size.w, 208.0);
 }
 
 /// The scene, returning whether the Copy row clicked this pass.

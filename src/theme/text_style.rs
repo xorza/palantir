@@ -32,7 +32,10 @@ pub(crate) const LINE_HEIGHT_FACTOR: f32 = 1.2;
 #[must_use]
 pub struct TextStyle {
     /// Default font size in logical px; [`crate::Text`] and
-    /// [`crate::TextEdit`] fall back to it.
+    /// [`crate::TextEdit`] fall back to it. Default 14, the body size of the
+    /// Fluent 2 type ramp (<https://fluent2.microsoft.design/typography>): a
+    /// desktop control's label, where the web's 16 reads large beside a 4 px
+    /// grid's insets.
     #[animate(snap)]
     pub font_size: f32,
     /// Default ink for [`crate::Text`] and for every widget look state that
@@ -57,7 +60,7 @@ pub struct TextStyle {
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
-            font_size: 16.0,
+            font_size: 14.0,
             color: Palette::DEFAULT.text,
             line_height_factor: LINE_HEIGHT_FACTOR,
             family: FontFamily::SANS,

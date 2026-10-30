@@ -27,7 +27,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 pub struct TabsTheme {
     /// Look pack for the selected chip; its fill defaults to the window ground.
     pub selected: StatefulLook,
-    /// Look pack for every other chip.
+    /// Look pack for every other chip; a ghost by default, filled only under the pointer.
     pub unselected: StatefulLook,
     /// Selection cap on the focused strip.
     pub cap_focused: RgbaF32,
@@ -135,7 +135,10 @@ impl TabsTheme {
         }
     }
 
-    /// Chips card-rounded at the top only, inset as a menu row.
+    /// Chips card-rounded at the top only, inset as a menu row. An unselected chip is a ghost in
+    /// the muted ink that fills under the pointer as a menu-bar title does, and a close button
+    /// shows on the selected chip and the one under the pointer, as VS Code's and Zed's strips
+    /// show theirs: only the chip in use carries a fill and a control.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let radius = m.radius.card;
         let top = Corners::top(radius);
@@ -153,10 +156,10 @@ impl TabsTheme {
                 disabled: chip(p.window_bg, disabled_text),
             },
             unselected: StatefulLook {
-                normal: chip(p.element_mid, inactive_text),
-                hovered: chip(p.element_strong, inactive_text),
+                normal: chip(RgbaF32::TRANSPARENT, inactive_text),
+                hovered: chip(p.element_mid, TextStyleOverrides::NONE),
                 active: chip(p.element_strong, TextStyleOverrides::NONE),
-                disabled: chip(p.element, disabled_text),
+                disabled: chip(RgbaF32::TRANSPARENT, disabled_text),
             },
             cap_focused: p.accent,
             cap_unfocused: p.element_strong,
@@ -169,7 +172,7 @@ impl TabsTheme {
             radius,
             chip_padding: m.row_padding(),
             trailing_inset: m.space.xs,
-            min_width: 48.0,
+            min_width: 64.0,
             max_width: 200.0,
             close: StatefulLook {
                 normal: WidgetLook {
@@ -193,7 +196,7 @@ impl TabsTheme {
             close_size: 16.0,
             close_glyph: 8.0,
             close_stroke: m.stroke.fine,
-            close_shown: CloseShown::Always,
+            close_shown: CloseShown::SelectedOrHovered,
             caret: p.accent,
             caret_width: m.stroke.line,
             label_gap: m.space.sm,

@@ -98,7 +98,9 @@ impl Metrics {
             fine: 1.5,
             line: 2.0,
         },
-        float_shadow: Shadow::drop(RgbaF32::BLACK.with_alpha8(128), Vec2::new(0.0, 3.0), 6.0),
+        // Fluent's `shadow16`, 8 px down and 16 px of blur (https://fluent2.microsoft.design/elevation),
+        // which its `MenuPopover` casts, in the half black a dark ground needs before a shadow reads.
+        float_shadow: Shadow::drop(RgbaF32::BLACK.with_alpha8(128), Vec2::new(0.0, 8.0), 16.0),
     };
 }
 

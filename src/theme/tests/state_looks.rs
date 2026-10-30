@@ -217,6 +217,12 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
             "{label}: look should return the matching slot",
         );
     }
+    // An unselected chip is a ghost: no fill at rest, `element_mid` under the pointer.
+    assert_eq!(theme.unselected.normal.chrome.fill, Chrome::NONE.fill);
+    assert_eq!(
+        theme.unselected.hovered.chrome.fill,
+        Palette::DEFAULT.element_mid.into()
+    );
     assert_eq!(TabSelection::from(true), TabSelection::Selected);
     assert_eq!(TabSelection::from(false), TabSelection::Unselected);
 
@@ -266,7 +272,7 @@ fn the_picker_value_editor_is_its_chip() {
     );
 }
 
-/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 13 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
+/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 12 px; the picker's mono 13 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
 #[test]
 fn bundled_text_inherits_every_axis_but_color() {
     use crate::theme::{Theme, ThemeText};
@@ -275,7 +281,7 @@ fn bundled_text_inherits_every_axis_but_color() {
         family: Some(FontFamily::MONO),
         ..TextStyleOverrides::NONE
     };
-    let mut expected = vec![TextStyleOverrides::NONE.with_font_size(13.0)];
+    let mut expected = vec![TextStyleOverrides::NONE.with_font_size(12.0)];
     expected.extend([mono.with_font_size(13.0); 12]);
     expected.push(mono.with_font_size(10.0));
 
@@ -300,4 +306,16 @@ fn bundled_text_inherits_every_axis_but_color() {
     assert_eq!(rest, theme.text.with_color(p.text_muted));
     assert_eq!(pressed, theme.text);
     assert_eq!(disabled, theme.text.with_color(p.text_disabled));
+
+    // A menu-bar title rests in the muted ink and takes the full ink lit, hovered or open; a flat
+    // button's disabled label is the disabled ink, not the full one.
+    let shade = |look: &WidgetLook| look.to_animated(theme.text).text.color;
+    let bar = &theme.menu_bar;
+    assert_eq!(
+        [&bar.title.normal, &bar.title.hovered, &bar.open].map(shade),
+        [p.text_muted, p.text, p.text],
+    );
+    let flat = ButtonTheme::menu_button(&p, &Metrics::DEFAULT);
+    assert_eq!(shade(&flat.looks.disabled), p.text_disabled);
+    assert_eq!(shade(&flat.looks.normal), p.text);
 }

@@ -31,16 +31,23 @@ pub struct Palette {
 
 impl Palette {
     /// Built-in neutral dark palette: the values `Theme::default` assembles from.
+    ///
+    /// The semantic layer of Ayu Graphite, the palette darkroom paints with: the three `element`
+    /// rungs one neutral step apart, two steps over `window_bg`, and ink off white, as Material's dark theme keeps
+    /// text off `#fff`, where it vibrates against a dark ground
+    /// (<https://m2.material.io/design/color/dark-theme.html>). `border_focused` is the accent:
+    /// on a field's `element_mid` fill it reads 4.25:1, past the 3:1 WCAG 1.4.11 asks of a focus
+    /// indicator (<https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast>).
     pub const DEFAULT: Self = Self {
-        text: RgbaF32::hex(0xffffff),
-        text_muted: RgbaF32::hex(0xaaaaa8),
-        text_disabled: RgbaF32::hex(0x878a8d),
-        window_bg: RgbaF32::hex(0x1a1a1a),
-        element: RgbaF32::hex(0x343434),
-        element_mid: RgbaF32::hex(0x3e3e3e),
-        element_strong: RgbaF32::hex(0x4b4b4b),
-        border_focused: RgbaF32::hex(0x105577),
-        accent: RgbaF32::hex(0x9adbfb),
+        text: RgbaF32::hex(0xebebeb),
+        text_muted: RgbaF32::hex(0xa4a4a4),
+        text_disabled: RgbaF32::hex(0x797979),
+        window_bg: RgbaF32::hex(0x1f1f1f),
+        element: RgbaF32::hex(0x383838),
+        element_mid: RgbaF32::hex(0x454545),
+        element_strong: RgbaF32::hex(0x525252),
+        border_focused: RgbaF32::hex(0x44b5ff),
+        accent: RgbaF32::hex(0x44b5ff),
     };
 
     // Border ladder: TEXT_MUTED tints, since surface grays are too close to `element` to read as 1 px edges.

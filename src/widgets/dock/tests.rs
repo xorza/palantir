@@ -9,6 +9,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::interned_str::InternedStr;
+use crate::theme::close_shown::CloseShown;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::context_menu::ContextMenu;
@@ -1021,6 +1022,7 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
 fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut d = seeded();
     let mut h = UiHarness::new(SURFACE);
+    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
     let mut tabs = Labels;
     h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
 

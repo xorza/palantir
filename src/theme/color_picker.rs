@@ -87,9 +87,8 @@ pub struct ColorPickerTheme {
     pub label: TextStyleOverrides,
 }
 
-/// Font size of the channel values and hex field. Smaller than ambient: each
-/// of four columns is (208 - 3 gaps) / 4 = 47.5 px, too narrow for three digits
-/// of the 16 px default plus padding.
+/// Font size of the channel values and hex field, under the ambient size: a dense
+/// grid of readouts, each of four columns (208 - 3 gaps) / 4 = 47.5 px wide.
 const VALUE_FONT_PX: f32 = 13.0;
 
 const VALUE_PADDING: f32 = 5.0;

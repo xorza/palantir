@@ -72,7 +72,7 @@ impl ButtonTheme {
         looks.for_each_text(f);
     }
 
-    /// Flat "menu-trigger" preset: transparent at rest, hover-only fill, no border or shadow, inset as a menu row. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button outside a menu bar.
+    /// Flat "menu-trigger" preset: transparent at rest, hover-only fill, no border or shadow, inset as a menu row; disabled, its label takes `text_disabled`. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button outside a menu bar.
     ///
     /// [`Button::style`]: crate::Button::style
     pub fn menu_button(p: &Palette, m: &Metrics) -> Self {
@@ -85,7 +85,10 @@ impl ButtonTheme {
                 normal: flat(Brush::TRANSPARENT),
                 hovered: flat(p.element_mid.into()),
                 active: flat(p.element_strong.into()),
-                disabled: flat(Brush::TRANSPARENT),
+                disabled: WidgetLook {
+                    text: TextStyleOverrides::NONE.with_color(p.text_disabled),
+                    ..flat(Brush::TRANSPARENT)
+                },
             },
             defaults: SlotDefaults {
                 padding: m.row_padding(),

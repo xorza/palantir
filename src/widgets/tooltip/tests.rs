@@ -83,11 +83,11 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
 
     assert_eq!(small.max().y, above_edge);
     assert_eq!(large.max().y, above_edge);
-    // Mono at 13 px: 6.5 px a char, 15.59375 px a line (15.6 snapped to 1/64),
-    // inside 8 + 8 by 4 + 4 padding and a 1 px border. "tip" is one 19.5 px line;
-    // the long text wraps at 280 - 18 = 262 (40 chars) onto two lines.
-    assert_eq!(small.size, Size::new(19.5 + 18.0, 15.59375 + 10.0));
-    assert_eq!(large.size, Size::new(260.0 + 18.0, 2.0 * 15.59375 + 10.0));
+    // Mono at 12 px: 6 px a char, 14.40625 px a line (14.4 snapped to 1/64),
+    // inside 8 + 8 by 4 + 4 padding and a 1 px border. "tip" is one 18 px line;
+    // the long text wraps at 280 - 18 = 262 (43 chars) between words, onto two lines of 40.
+    assert_eq!(small.size, Size::new(18.0 + 18.0, 14.40625 + 10.0));
+    assert_eq!(large.size, Size::new(240.0 + 18.0, 2.0 * 14.40625 + 10.0));
     assert_eq!(large.max().x, SURFACE.x as f32);
     assert_eq!(
         shrunk, small,
@@ -109,9 +109,9 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         .text_shapes
         .first()
         .expect("tooltip text shaped");
-    // Forty 6.5 px chars a line, broken mid-token, inside 18 px of padding and border.
-    assert_eq!(shaped.extent.size, Size::new(260.0, 2.0 * 15.59375));
-    assert_eq!(bubble.size.w, 260.0 + 18.0);
+    // Forty-three 6 px chars a line, broken mid-token, inside 18 px of padding and border.
+    assert_eq!(shaped.extent.size, Size::new(258.0, 2.0 * 14.40625));
+    assert_eq!(bubble.size.w, 258.0 + 18.0);
     assert!(
         shaped.extent.size.w <= bubble.size.w - ui.ui.theme().tooltip.padding.sums().w,
         "text width {} must fit inside bubble width {}",
@@ -120,9 +120,9 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     );
 }
 
-/// The bubble's text names only its 13 px size, so the leading is
+/// The bubble's text names only its 12 px size, so the leading is
 /// `Theme::text`'s, set after the theme was built: "tip" at 2x leads at
-/// 13 * 2 = 26 px, not the stock 15.59375, and stays 3 * 6.5 wide.
+/// 12 * 2 = 24 px, not the stock 14.40625, and stays 3 * 6 wide.
 #[test]
 fn tooltip_text_inherits_the_ambient_leading() {
     let mut h = UiHarness::new(SURFACE);
@@ -143,7 +143,7 @@ fn tooltip_text_inherits_the_ambient_leading() {
             .text_shapes
             .first()
             .expect("tooltip text shaped");
-    assert_eq!(shaped.extent.size, Size::new(19.5, 26.0));
+    assert_eq!(shaped.extent.size, Size::new(18.0, 24.0));
 }
 
 /// The bubble takes its box from [`Configure`] like any widget (so it has
