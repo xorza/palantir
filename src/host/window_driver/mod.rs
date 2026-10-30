@@ -642,6 +642,12 @@ pub(crate) mod internals {
         pub(crate) const fn output_valid(&self) -> bool {
             self.output_valid
         }
+
+        /// Whether a partial frame of this driver painted a damage canvas.
+        #[cfg(test)]
+        pub(crate) const fn holds_canvas(&self) -> bool {
+            self.stream.holds_canvas()
+        }
     }
 }
 

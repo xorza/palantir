@@ -1,5 +1,5 @@
 use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, grown,
+    BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
 };
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::surface::render_target::TargetFormat;
@@ -130,8 +130,20 @@ fn blur(
     jobs: &mut [BlurJob],
     dest_size: UVec2,
 ) -> Vec<[f32; 4]> {
+    let residual = ResidualLoop::of(&gpu.device.adapter_info());
+    blur_with(gpu, residual, pixels, jobs, dest_size)
+}
+
+/// [`blur`] with the residual's loop shaped `residual`, whatever the device takes.
+fn blur_with(
+    gpu: &HeadlessTestGpuLease,
+    residual: ResidualLoop,
+    pixels: &[[u8; 4]],
+    jobs: &mut [BlurJob],
+    dest_size: UVec2,
+) -> Vec<[f32; 4]> {
     let device = &gpu.device;
-    let mut engine = BackdropBlur::new(device);
+    let mut engine = BackdropBlur::with_loop(device, residual);
     let format = jobs[0].format;
     engine.capture_view(device, format, SURFACE);
     let capture = &engine.captures[0].target.texture;
@@ -254,6 +266,40 @@ fn the_passes_match_the_reference_arithmetic() {
                 }
             }
         }
+    }
+}
+
+/// The residual's two loops write the same texels bit for bit, inside the level and across its
+/// mirrored edges, from a capture that filters and one that does not. Broadcom takes one loop,
+/// every other vendor two.
+#[test]
+fn the_residuals_loops_write_the_same_texels() {
+    let gpu = headless_test_gpu();
+    let pixels = capture_pixels();
+    for (format, sigma) in formats()
+        .into_iter()
+        .flat_map(|format| SIGMAS.map(|sigma| (format, sigma)))
+    {
+        let job = whole(BlurPlan::new(sigma), UVec2::new(3, 5), format);
+        let size = job.dest_rect().max();
+        let bits = |residual| {
+            blur_with(&gpu, residual, &pixels, &mut [job], size)
+                .into_iter()
+                .map(|texel| texel.map(f32::to_bits))
+                .collect::<Vec<_>>()
+        };
+        assert!(
+            bits(ResidualLoop::One) == bits(ResidualLoop::Windowed),
+            "{format:?} σ {sigma}"
+        );
+    }
+    let info = |vendor| wgpu::AdapterInfo {
+        vendor,
+        ..wgpu::AdapterInfo::new(wgpu::DeviceType::IntegratedGpu, wgpu::Backend::Vulkan)
+    };
+    assert_eq!(ResidualLoop::of(&info(0x14E4)), ResidualLoop::One);
+    for vendor in [0x1002, 0x10DE, 0x8086, 0x13B5, 0x5143, 0] {
+        assert_eq!(ResidualLoop::of(&info(vendor)), ResidualLoop::Windowed);
     }
 }
 

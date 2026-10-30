@@ -1,13 +1,23 @@
 # Perf journal
 
-What five optimization runs learned (2026-10-28 to 2026-10-29): how to measure on the two
-hosts, what was rejected and why, and what is still open. What was kept is in the commits.
+What six optimization runs learned (2026-10-28 to 2026-10-30): how to measure on the hosts,
+what was rejected and why, and what is still open. What was kept is in the commits.
 
 ## Measuring
 
 - **Hosts.** local: Ryzen 7 6800U with a Radeon 680M (RDNA2 iGPU), Vulkan (RADV), pinned with
   `taskset -c 2 setarch -R`, governor and EPP at `performance`. m2: 192.168.0.7, an M2 MacBook
   Air with 8 GB, Metal, no pinning; a bench build peaks at 2.8 GB there, so one build at a time.
+  m5: 192.168.0.6, an M5 Mac with 24 GB, Metal, no pinning, which replaced the m2 during run 6;
+  a bench build peaks at 4.1 GB there, through its `sccache`, which wants `/opt/homebrew/bin` on
+  the `PATH`. Its CPU cases move up to 10 % between A/A runs at `schedule/cpu/walk`, under 1 %
+  elsewhere.
+  pi: 192.168.0.35, a Raspberry Pi 5 (4 Cortex-A76 at 2.4 GHz, 8 GB, V3D 7.1 through V3DV
+  Mesa 26.2), Debian 13, pinned with `taskset -c 3 setarch -R`; its governor stays `ondemand`, as
+  the user has no password-free `sudo` there. It builds nothing: the bench and test binaries are
+  cross-built on local against a sysroot copied from it (glibc 2.41, `clang` and `lld`; a fat-LTO
+  bench build peaks at 4.7 GB), and run there from worktrees at local's paths, which
+  `CARGO_MANIFEST_DIR` names.
 - **Noise floors** (A/A over every case): CPU cases within 2 % local and 4 % m2. GPU cases within
   4 % on m2 but `gradient_upload` (13 %); local GPU cases up to 43 % (`gradient_upload`), 32 %
   (`record_pass/images`), 12 to 16 % (`text_atlas`, `raster_atlas`), and 8 % on the frames.
@@ -17,6 +27,8 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   GPU bench moved `layout/cached` +5 % and `hit_test/click_focus/topmost` +8 %. Judge a small
   CPU change inside one binary, switched at run time, or read the moved case's code before
   believing it.
+- **The pi barely drifts**: an A/A of the frame and main-pass cases moves 0.0 to 0.3 %, and
+  `record_pass` up to 5 %.
 - **The m2 drifts.** It has no fan: one ABBA read a base binary 16 % slow on both A runs. Confirm
   a surprising m2 result with interleaved short runs.
 - **The m2 writes no timestamps between passes**, so `backdrop_blur`, `backdrop_capture` and
@@ -30,6 +42,12 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
 - **The 680M's GPU frames are the APU's.** With the iGPU busy the core runs at 2.0 GHz with an
   IPC of 1.8 (3.2 idle), so `frame/gpu/partial` spends 1.1 ms in record against 0.18 ms in the
   CPU harness. Not a C-state: a busy-poll wait changes nothing. Read CPU work off the CPU arms.
+- **V3D tools** (run 6). `V3D_DEBUG=shaderdb` prints each pipeline's instructions, threads,
+  uniforms and spills, and `nir` the entry point of each (`decl_function … (entrypoint)`), which
+  names a stats line; `perf` names V3DV's slow paths, such as a render area off the tile
+  granularity, and `fs` the QPU code. A diagnostic build that swaps a shader module's body for a
+  file at run time (`PALANTIR_DIAG_BODY=blur:/path.wgsl`, local branch `diag-body`) times shader
+  variants on every host from one build each.
 - **GPU tools.** `atomic/main_pass_batch` times each pipeline of a whole repaint from in-pass
   timestamps (not on Apple GPUs). RADV prints each pipeline's registers and occupancy under
   `RADV_DEBUG=shaderstats`. A diagnostic build with a shader that returns at once, or with
@@ -41,6 +59,39 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   whether an offscreen bench triggers one is not tried.
 
 ## Where the time is
+
+- **Run 6, the branch tip against its start**, medians (pi one leg each, its A/A 0.0 to 0.3 %;
+  m5 and local ABBA):
+
+  | case | pi | m5 | local |
+  | --- | --- | --- | --- |
+  | `frame/gpu/scrolling` | 21.1 → 18.2 ms | 712 → 663 µs | 2.29 → 2.33 ms (floor) |
+  | `frame/gpu/partial` | 7.42 → 3.19 ms | 387 → 349 µs | 1.69 → 1.52 ms (floor) |
+  | `frame/gpu/hovering` | 7.25 → 2.87 ms | 369 → 330 µs | 1.77 → 1.69 ms |
+  | `frame/cpu/scrolling` | 586 → 545 µs | 131 → 131 µs | 224 → 225 µs |
+  | `backdrop_frame/gpu/glass/scrolling` | 174 → 142 ms | 2.35 → 1.93 ms | 4.29 → 4.15 ms |
+  | `backdrop_blur/gpu/4/2048` | 232 → 153 ms | 3.68 → 2.86 ms | 3.24 → 3.23 ms |
+  | `main_pass/gpu/partial` | 3.84 ms → 161 µs | 13.2 → 11.4 µs | 5.42 → 6.06 µs |
+
+  The partial main pass alone grows on local and m2 since the atlas holds its tables: with no
+  bake pass before it, it opens the frame's work; the frames it belongs to shrink.
+
+- **On the pi the GPU is the frame** (run 6): `frame/gpu/scrolling` 21 ms of which the CPU half
+  0.59 ms; the main pass of a whole 2560 × 1440 repaint 17.1 ms. Cutting one fragment entry at a
+  time (`PALANTIR_DIAG`, a diagnostic build that makes an entry return at once): the tabled
+  shadows 7.7 ms (their coverage 5.8, of it the cutout lookups 2.1 and the source clip 1.4), the
+  quads 4.6 ms, text 0.16 ms, meshes and curves 0.06 ms, and the pass with every fragment entry
+  trivial 4.8 ms. `V3D_DEBUG=shaderdb` gives `fs_shadow_tables` 564 to 698 instructions at 2
+  threads, `fs_shadow` 9612 with 12 loops, `vs_shadow` 461 and 420 (binning) at 2 threads.
+- **On the pi a partial pass moved the whole target**: `main_pass/gpu/partial` was 3.84 ms, a
+  load and a store of the 14.7 MB backbuffer, as V3DV runs the render area wgpu always sets to
+  the whole attachment. See Decisions.
+- **The pi's backdrop blur**: a full-resolution residual at 2048² took 98 ms at σ 1 and 232 ms
+  at σ 4 (the 680M 2.6 and 3.3 ms), as each tap is a `textureLoad` of `Rgba16Float`; 70 and
+  153 ms since the loop per device. In `backdrop_frame/gpu/blur/scrolling` (52 ms) the blur
+  passes take 8 ms, the composite 4.6, the shadows 7.2, the quads 4.7; the rest is the pass
+  breaks, each a load and a store of the whole target.
+- **The pi's cutout bake** took 2.5 ms of a 21 ms scrolling frame until the atlas held its tables.
 
 - **CPU frame**: record dominates every arm (`frame/cpu/cached` is almost all record). The profile
   is flat at IPC 3.2: `open_node` 27 % (SoA push 4.6 %, chrome lowering 3.8 %), `widget_id`
@@ -67,6 +118,16 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
 
 ## Rejected
 
+- **Shadows: the blur's reciprocals per instance** (run 6): `1 / σ`, the reach and the cutout
+  scale handed on flat from `vs_shadow` instead of worked out per pixel. Bit-exact on all three
+  hosts and nothing gained: the pi's main pass 17.11 → 17.08 ms, the m2's +2.0 %, local within
+  its floor. The SFU is not what bounds the tabled shadows on V3D.
+- **Blur residual: one loop that mirrors each read, everywhere** (run 6). V3D: σ 4 at 2048²
+  232 → 153 ms; the M2: 6.2 → 14.3 ms. **Two loops with the weights read four at a time,
+  everywhere**: the M2 −20 %, V3D +2 to +3 % at 512². So each device takes its own (Decisions).
+- **Shadows: fewer `vs_shadow` invocations** through an index buffer over the cells' 24 distinct
+  corners (run 6). The vertex stage costs nothing measurable on V3D: a main pass whose shadows
+  compute every output and land off screen times as one with no shadow draws.
 - **Blur: `LoadOp::Clear` on the tent and first-axis passes.** +8 % to +15 % on the 680M's 512²
   cases, as a clear writes the whole mip; no change on Apple GPUs.
 - **Blur: the residual as a compute pass over workgroup memory** (FidelityFX Blur's design).
@@ -124,6 +185,41 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
 - **`is_finite() && v >= 0.0` in a value kind.** LLVM folds it into one class test that x86
   lowers to 14 integer ops; the kinds bound by `f32::MAX` instead, two compares.
 
+## Decisions
+
+- **The blur residual's loop follows the device** (run 6). `ResidualLoop::One` on Broadcom's
+  VideoCore, one loop that mirrors each read where the window crosses the level's edge;
+  `Windowed` elsewhere, a loop for a window inside the level and one that mirrors every read;
+  both read the weights four at a time, and write the same texels bit for bit (a test). Chosen
+  by an `override` constant at pipeline creation. Refused: one form for all, as each loses 2 to
+  130 % on the other host (Rejected); a vendor list for Mali, Adreno and PowerVR, which nobody
+  measured. Pi: σ 4 at 2048² −34 %, `glass/scrolling` −17 %; m2: σ 4 −20 %, `glass` −13 %;
+  local within ±1.3 %.
+- **The cutout atlas keeps what it baked** (run 6). `CutoutTables` holds the tables of earlier
+  frames, pairwise apart, and bakes of a frame's tables only what it lacks; the plan still
+  places each frame's tables afresh, so a table the frames keep needing stays at its place.
+  Refused: a cache per window's plan, which another window's bake into the shared atlas would
+  void unseen; baking more tables now that a bake lasts, which changes which shadows read a
+  table and so their pixels. Pi frames −13 to −21 %, m2 −9 to −12 %.
+- **A partial frame paints a damage canvas where a pass moves its whole target** (run 6). On
+  Arm, Imagination, Qualcomm and Broadcom GPUs (`PassTraffic::WholeTarget`, ANGLE's tile-based
+  list less Apple) the main pass of a partial frame clears a `DamageCanvas` the size of its
+  scissors' bounds out to 64 px tiles, in power-of-two size classes of which the stream keeps
+  two, under the surface's viewport moved by the canvas's origin (wgpu 30 takes a viewport past
+  the target), and copies each scissor into the backbuffer. The fragment entries that read their
+  position add the origin (`frag_px`), so every pixel is the backbuffer path's: a test paints
+  both on one device and compares. Refused: Vulkan's render area, which wgpu does not expose
+  (Dawn has `render-pass-render-area` for it); the canvas on Apple GPUs, whose pass over the same
+  target takes the m2 32 µs, so it gains nothing there and costs 45 ns of encoding; shifting the
+  varyings by the origin in the vertex stage, which saves the add but is not exact for a center
+  left of half the origin; a canvas over half the surface, whose store and copies cost what the
+  load did. Pi: `frame/gpu/partial` 7.37 → 3.73 ms, `hovering` 7.24 → 3.62 ms,
+  `backdrop_frame/gpu/blur/hover` 6.38 → 2.71 ms; whole frames +0.2 to +0.3 %, the add in the
+  shadows' fragments. m2 and local within their floors. Spike branch `spike-damage-canvas`.
+  Sources: [Vulkan Guide, tile-based rendering](https://docs.vulkan.org/guide/latest/tile_based_rendering_best_practices.html),
+  [Dawn render-pass-render-area](https://dawn.googlesource.com/dawn.git/+/refs/heads/main/docs/dawn/features/render_pass_render_area.md),
+  ANGLE `vk_renderer.cpp` (`isTileBasedRenderer`), Mesa V3DV `v3dv_cmd_buffer.c`.
+
 ## Open
 
 - **Skip the backdrop capture copy on a swapchain image.** A frame that paints the backbuffer
@@ -145,6 +241,22 @@ hosts, what was rejected and why, and what is still open. What was kept is in th
   (as a call, `curves/alone` +20 % and `same_tier_mesh` +25 % on the local host), the m2's
   `curves/alone` runs 21 % slower than with `order` a call, while its `same_tier_mesh` runs 23 %
   faster. The curve function grows from 362 to 432 instructions; no profile says why.
+- **The pi's tabled shadows** (7.7 ms of a 17.1 ms main pass): the coverage math, not its
+  reciprocals (Rejected), and 2 threads where V3D runs 4 at 16 registers. A lean entry for the
+  edge cells, which take one span and no cutout, could run on 4; drawn per shadow, edge cells
+  then corner cells, it keeps the blending order but doubles the shadow draws. Its ceiling: the
+  pass without the cutout lookups takes 15.0 ms against 17.1.
+- **The pi's pass breaks**: each pane capture ends the main pass, a load and a store of the
+  whole target, 3.8 ms on V3D. Painting what lies under the panes into capture canvases first,
+  then the frame in one pass, trades the breaks for drawing each footprint twice, on a device
+  whose pass moves its whole target only.
+- **The cutout bake's cost model** assumes a bake a frame; with held tables more keys would pay,
+  but which shadows read a table is a rendering decision (Decisions).
+- **The pi's vertex floor**: the main pass with every fragment entry trivial still takes 4.8 ms;
+  `vs_shadow` runs once per vertex of 48 per shadow, binned and rendered.
+- **The pi's blur residual**: 98 to 232 ms at 2048². A pass's taps read a dynamically indexed
+  uniform array and a 64-bit texel each; the bilinear pair, which would halve the reads, is
+  refused for its 1/16 sub-texel weights (`blur.wgsl`).
 - **Shader costs with a profiler.** RGP on the 680M and Xcode's Metal System Trace on the m2 can
   now split the main pass (quads, shadows) and `backdrop_frame/gpu/*/under` on the m2, which
   spends 1.6 ms over `hover` on two captures.

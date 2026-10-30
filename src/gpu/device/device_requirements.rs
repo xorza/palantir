@@ -169,13 +169,13 @@ mod tests {
             unmet,
             UnmetRequirements::Limit {
                 name: "max_immediate_size",
-                required: 8,
-                available: 7,
+                required: 16,
+                available: 15,
             }
         );
         assert_eq!(
             unmet.to_string(),
-            "graphics device limit max_immediate_size is 7, but Palantir requires 8"
+            "graphics device limit max_immediate_size is 15, but Palantir requires 16"
         );
     }
 

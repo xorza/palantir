@@ -1101,17 +1101,17 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
         if (inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
             let outward = normalize(gradient);
             let index = lens.z;
-            c = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index), slot);
+            c = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, index), slot);
             if (lens.w > 0.0) {
-                c.r = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index - 0.5 * lens.w), slot).r;
-                c.b = backdrop_result(in.clip.xy - outward * lens_displacement(lens, inward, index + 0.5 * lens.w), slot).b;
+                c.r = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, index - 0.5 * lens.w), slot).r;
+                c.b = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, index + 0.5 * lens.w), slot).b;
             }
             c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
         } else {
-            c = backdrop_result(in.clip.xy, slot);
+            c = backdrop_result(frag_px(in.clip), slot);
         }
     } else {
-        c = backdrop_result(in.clip.xy, slot);
+        c = backdrop_result(frag_px(in.clip), slot);
     }
     let saturation = in.fill_axis.y;
     let noise = in.fill_axis.z;
@@ -1130,7 +1130,7 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     if (DITHER_SRGB8) {
         // Interleaved gradient noise (Jimenez) of one encoded step, so a
         // smooth blur stores no band.
-        let ign = fract(52.9829189 * fract(dot(floor(in.clip.xy), vec2<f32>(0.06711056, 0.00583715))));
+        let ign = fract(52.9829189 * fract(dot(floor(frag_px(in.clip)), vec2<f32>(0.06711056, 0.00583715))));
         c = srgb_to_linear(max(linear_to_srgb(c) + (ign - 0.5) / 255.0, vec3<f32>(0.0)));
     }
     return shade_rect(in, vec4<f32>(c, opacity));
@@ -1232,7 +1232,7 @@ struct ShadowPixel {
 };
 
 fn shadow_pixel(in: ShadowOut) -> ShadowPixel {
-    let frag = unturned(in.clip.xy, in.turn);
+    let frag = unturned(frag_px(in.clip), in.turn);
     var px = ShadowPixel(frag - in.box_center, 0.0);
     let s = frag - in.source_center;
     if (in.kind == BRUSH_KIND_SHADOW_DROP) {

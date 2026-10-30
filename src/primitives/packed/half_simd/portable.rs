@@ -1,4 +1,4 @@
-//! `half`'s slice path, for every architecture without its own file: `fcvtl` on aarch64-fp16, scalar elsewhere.
+//! `half`'s slice path, for every architecture without its own file.
 
 use half::slice::HalfFloatSliceExt as _;
 

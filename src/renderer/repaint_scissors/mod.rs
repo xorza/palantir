@@ -94,6 +94,11 @@ impl PartialScissors {
     pub(crate) fn iter(&self) -> iter::Copied<slice::Iter<'_, URect>> {
         self.rects.iter().copied()
     }
+
+    /// The least rect that holds every scissor.
+    pub(crate) fn bounds(&self) -> URect {
+        self.iter().fold(URect::ZERO, URect::union)
+    }
 }
 
 impl<'a> IntoIterator for &'a PartialScissors {

@@ -2,6 +2,7 @@
 
 use crate::gpu::device::device_health::DeviceHealth;
 use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::error::UnmetRequirements;
 use std::iter;
 use std::num::NonZeroU32;
@@ -28,6 +29,7 @@ pub struct Gpu {
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
     health: DeviceHealth,
+    pass_traffic: PassTraffic,
 }
 
 impl Gpu {
@@ -42,6 +44,7 @@ impl Gpu {
     pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         Self {
             health: DeviceHealth::watch(&device),
+            pass_traffic: PassTraffic::of(&device.adapter_info()),
             device,
             queue,
         }
@@ -69,6 +72,11 @@ impl Gpu {
     pub(crate) fn max_texture_dim(&self) -> NonZeroU32 {
         NonZeroU32::new(self.device.limits().max_texture_dimension_2d)
             .expect("device texture dimension limit is zero")
+    }
+
+    /// What a render pass on the device moves, which decides where a partial frame paints.
+    pub(crate) const fn pass_traffic(&self) -> PassTraffic {
+        self.pass_traffic
     }
 
     /// Whether the device is lost: it draws nothing more, and a host attaches a new one.

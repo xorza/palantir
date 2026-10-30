@@ -15,9 +15,13 @@
 //!
 //! - [`Damage::Full`](crate::damage::Damage::Full): one `LoadOp::Clear(clear)` pass
 //!   paints every group at its native scissor.
-//! - [`Damage::Partial(region)`](crate::damage::Damage::Partial): one render pass per
-//!   rect, `LoadOp::Load`ing the backbuffer, with each group's scissor narrowed to
-//!   the rect (scaled, padded for AA bleed, clamped; zero-area rects dropped).
+//! - [`Damage::Partial(region)`](crate::damage::Damage::Partial): one render pass that
+//!   `LoadOp::Load`s the backbuffer and replays the groups once per rect, each group's
+//!   scissor narrowed to the rect (scaled, padded for AA bleed, clamped; zero-area rects
+//!   dropped). On a device whose pass loads and stores its whole target
+//!   ([`PassTraffic::WholeTarget`]), the pass instead clears a [`DamageCanvas`] of the rects'
+//!   bounds under the surface's viewport moved onto it, and each rect is copied into the
+//!   backbuffer.
 //!
 //! A backdrop pane that captures breaks the main pass at its barrier: the pass ends, the pane's
 //! footprint is copied out of the target and blurred, and the next pass loads the target. On a
@@ -54,6 +58,7 @@ use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::debug_overlay::{DebugOverlay, OverlayDraw};
@@ -82,6 +87,7 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::backbuffer::Backbuffer;
 use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource};
+use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
@@ -93,6 +99,7 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::repaint_scissors::RepaintScissors;
+use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::iter;
 use std::rc::Rc;
@@ -139,6 +146,8 @@ pub(crate) struct WgpuBackend {
     mask_plan: MaskPlan,
     /// The passes of the frame being submitted, planned before any is recorded.
     passes: FramePasses,
+    /// The device's, which decides whether a partial frame paints a damage canvas.
+    pass_traffic: PassTraffic,
     /// Render pipelines keyed by swapchain color format, built by [`Self::prepare_format`] as a
     /// window notes a target. The surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<TargetFormat, FormatPipelines>,
@@ -166,7 +175,11 @@ struct TimingSupport {
 struct FrameDraw<'a> {
     fmt: &'a FormatPipelines,
     buffer: &'a RenderBuffer,
+    /// The surface's, which every pass but a main pass on a damage canvas pushes as it is.
     viewport: ViewportPush,
+    /// The surface pixel the main pass's target pixel 0 is: zero, but on a damage canvas, where
+    /// the viewport and every scissor move by it.
+    origin: UVec2,
     /// The frame's mask chains; `Some` exactly when the main pass has a stencil attachment.
     masks: Option<&'a MaskPlan>,
     /// The frame's backdrop results, which its panes read; `None` before the first pane.
@@ -188,6 +201,8 @@ struct MainPass<'a> {
     stencil_view: Option<&'a wgpu::TextureView>,
     clear: wgpu::Color,
     scissors: &'a RepaintScissors,
+    /// Whether `color` is a damage canvas, which the viewport moves the surface onto.
+    canvas: bool,
 }
 
 /// One pass of the main pass, as the frame's plan sets it ([`PassStep::Main`]).
@@ -268,6 +283,7 @@ impl WgpuBackend {
             },
         });
         Self {
+            pass_traffic: gpu.pass_traffic(),
             gpu,
             staging_belt,
             gradient,
@@ -395,6 +411,34 @@ impl WgpuBackend {
             },
         );
 
+        // Where a pass loads and stores its whole target, a partial frame paints a canvas the
+        // size of its damage, as a pass on the backbuffer would move the whole surface to keep
+        // what lies around it. A pane that captures reads the target where the canvas does not
+        // reach.
+        let canvas_rect = match repaint_scissors {
+            RepaintScissors::Partial(rects)
+                if via_backbuffer
+                    && !dims_undamaged
+                    && self.backdrops.breaks().is_empty()
+                    && self.pass_traffic == PassTraffic::WholeTarget =>
+            {
+                DamageCanvas::rect(rects.bounds(), target.size())
+            }
+            _ => None,
+        };
+        if let Some(rect) = canvas_rect {
+            stream.ensure_canvas(
+                &self.gpu.device,
+                surface_texture.format(),
+                DamageCanvas::class(rect, target.size()),
+            );
+            if stencil {
+                stream.ensure_canvas_stencil(&self.gpu.device);
+            }
+        }
+        let canvas = canvas_rect.map(|_| stream.canvas().expect("made for the frame"));
+        let origin = canvas_rect.map_or(UVec2::ZERO, |rect| rect.min);
+
         let clear = RgbaF32::from(clear);
         let clear_color = wgpu::Color {
             r: f64::from(clear.r),
@@ -418,6 +462,7 @@ impl WgpuBackend {
                 route,
                 takes_copy: target.takes_copy(),
                 partial: repaint_scissors.is_partial(),
+                canvas: canvas.is_some(),
                 dims_undamaged,
                 outlines_damage: submission.overlay.damage.is_some(),
             },
@@ -436,22 +481,33 @@ impl WgpuBackend {
                 .expect("a window notes its target's format before it records"),
             buffer,
             viewport: ViewportPush::for_buffer(buffer),
+            origin,
             masks: stencil.then_some(&self.mask_plan),
             backdrops: self.backdrops.group(),
             timings: stream.timings.as_ref(),
             stats,
         };
         let main = MainPass {
-            color_view: match backbuffer {
-                Some(bb) => bb.view(),
-                None => surface_view
+            color_view: match (canvas, backbuffer) {
+                (Some(canvas), _) => canvas.view(),
+                (None, Some(bb)) => bb.view(),
+                (None, None) => surface_view
                     .as_ref()
                     .expect("a direct frame writes the target"),
             },
-            color: backbuffer.map_or(surface_texture, Backbuffer::texture),
-            stencil_view,
+            color: match canvas {
+                Some(canvas) => canvas.texture(),
+                None => backbuffer.map_or(surface_texture, Backbuffer::texture),
+            },
+            stencil_view: match canvas {
+                Some(canvas) => {
+                    stencil.then(|| canvas.stencil().expect("made for the frame").view())
+                }
+                None => stencil_view,
+            },
             clear: clear_color,
             scissors: repaint_scissors,
+            canvas: canvas.is_some(),
         };
         let mut started = None;
         for &step in self.passes.steps() {
@@ -488,6 +544,16 @@ impl WgpuBackend {
                     backdrop_mark(draw, &mut encoder, at, BackdropPhase::BlurStart);
                     self.backdrops.blur_break(&mut encoder, breaks);
                     backdrop_mark(draw, &mut encoder, at, BackdropPhase::BlurEnd);
+                }
+                PassStep::CanvasOut => {
+                    let (Some(canvas), Some(bb), RepaintScissors::Partial(rects)) =
+                        (canvas, backbuffer, repaint_scissors)
+                    else {
+                        unreachable!("a canvas frame is a partial one through the backbuffer");
+                    };
+                    for rect in rects {
+                        canvas.copy_into(&mut encoder, bb.texture(), rect, origin);
+                    }
                 }
                 PassStep::CopyOut | PassStep::DrawOut => {
                     let bb = backbuffer.expect("a frame through the backbuffer has one");
@@ -691,6 +757,7 @@ impl WgpuBackend {
             stencil_view,
             clear,
             scissors,
+            canvas,
         } = main;
         debug_assert_eq!(
             stencil_view.is_some(),
@@ -733,8 +800,21 @@ impl WgpuBackend {
         if let Some(t) = draw.timings {
             t.segment_begin(&mut pass, segment);
         }
+        if canvas {
+            // The surface's viewport, moved so its `origin` lands on the canvas's pixel 0: the
+            // same clip space as on the backbuffer, a whole number of pixels away.
+            let size = draw.viewport.size;
+            pass.set_viewport(
+                -(draw.origin.x as f32),
+                -(draw.origin.y as f32),
+                size.x,
+                size.y,
+                0.0,
+                1.0,
+            );
+        }
         // One for the pass: what a scissor replay leaves bound stays bound for the next.
-        let mut binder = MainBinder::new(draw.viewport);
+        let mut binder = MainBinder::new(draw.viewport.with_origin(draw.origin));
         let stencil = if draw.masks.is_some() {
             StencilMode::Test
         } else {
@@ -792,8 +872,8 @@ impl WgpuBackend {
                 ctx.pass.draw(0..4, 0..1);
             }),
             RenderStep::SetScissor(r) => {
-                ctx.pass
-                    .set_scissor_rect(r.min.x, r.min.y, r.size.x, r.size.y);
+                let at = r.min - draw.origin;
+                ctx.pass.set_scissor_rect(at.x, at.y, r.size.x, r.size.y);
             }
             RenderStep::SetStencilRef(v) => ctx.pass.set_stencil_reference(v),
             RenderStep::MaskStamp(mi) => ctx.batch(BatchKind::Mask, |ctx| {
@@ -1040,6 +1120,8 @@ fn begin_load_pass<'e>(
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::gpu::device::pass_traffic::PassTraffic;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
 
@@ -1053,6 +1135,18 @@ pub(crate) mod internals {
             for format in formats {
                 self.prepare_format(format);
             }
+        }
+
+        /// The shadow cutout tables the atlas holds from the frames before.
+        #[cfg(test)]
+        pub(crate) fn held_cutout_tables(&self) -> usize {
+            self.quad.held_cutout_tables()
+        }
+
+        /// Paint as a device whose passes move `traffic` paints, whatever the device is.
+        #[cfg(test)]
+        pub(crate) const fn paint_as(&mut self, traffic: PassTraffic) {
+            self.pass_traffic = traffic;
         }
 
         pub(crate) fn has_format_pipelines(&self, format: TargetFormat) -> bool {

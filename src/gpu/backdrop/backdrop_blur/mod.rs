@@ -2,6 +2,7 @@
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::vendor;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::surface::render_target::{self, TargetFormat};
@@ -16,6 +17,28 @@ pub(crate) mod bench;
 /// The format of every level past the capture and of the blurred result: float, so a blur keeps
 /// the energy of bright detail and a 16-bit mantissa leaves no band an 8-bit target can show.
 pub(crate) const LEVEL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
+/// The shape of the residual's loop, which only speed tells apart: one loop that mirrors each
+/// read where the window crosses the level's edge, or one loop for a window inside the level and
+/// one that mirrors every read. At σ 4 over 2048² (`atomic/backdrop_blur/gpu/4/2048`) the Pi 5's
+/// V3D takes 153 ms on one loop and 189 ms on two, the M2 14.3 ms and 5.0 ms, and the 680M 3.24 ms
+/// either way.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ResidualLoop {
+    One,
+    Windowed,
+}
+
+impl ResidualLoop {
+    /// One loop on Broadcom's VideoCore, two on every other device.
+    pub(crate) const fn of(info: &wgpu::AdapterInfo) -> Self {
+        if info.vendor == vendor::BROADCOM {
+            Self::One
+        } else {
+            Self::Windowed
+        }
+    }
+}
 
 /// Vectors of four the residual's taps fill in [`BlurParams`].
 const TAP_VEC4S: usize = BlurPlan::MAX_TAPS.div_ceil(4);
@@ -193,6 +216,15 @@ impl BackdropBlur {
     };
 
     pub(crate) fn new(device: &wgpu::Device) -> Self {
+        Self::with_loop(device, ResidualLoop::of(&device.adapter_info()))
+    }
+
+    /// The blur on `device`, its residual's loop shaped `residual`.
+    pub(crate) fn with_loop(device: &wgpu::Device, residual: ResidualLoop) -> Self {
+        let one_loop = [(
+            "ONE_LOOP",
+            f64::from(u8::from(residual == ResidualLoop::One)),
+        )];
         let texture_entry = |filterable| wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::FRAGMENT,
@@ -239,17 +271,22 @@ impl BackdropBlur {
                 "palantir.backdrop.blur.pl",
                 &[Some(&source_layout), Some(&params_layout)],
             );
-            let pipeline = |label, fragment_entry| {
+            let pipeline = |label, fragment_entry, constants| {
                 PipelineRecipe {
                     fragment_entry,
+                    constants,
                     blend: None,
                     ..PipelineRecipe::color(label, &shader, &layout, LEVEL_FORMAT)
                 }
                 .build(device)
             };
             SourcePasses {
-                tent: pipeline("palantir.backdrop.blur.tent", tent_entry),
-                horizontal: pipeline("palantir.backdrop.blur.horizontal", "fs_horizontal"),
+                tent: pipeline("palantir.backdrop.blur.tent", tent_entry, &[]),
+                horizontal: pipeline(
+                    "palantir.backdrop.blur.horizontal",
+                    "fs_horizontal",
+                    &one_loop,
+                ),
                 layout: source_layout,
             }
         };
@@ -257,6 +294,7 @@ impl BackdropBlur {
         let loaded = passes(loaded_layout, "fs_tent_loads");
         let vertical = PipelineRecipe {
             fragment_entry: "fs_vertical",
+            constants: &one_loop,
             blend: None,
             ..PipelineRecipe::color(
                 "palantir.backdrop.blur.vertical",

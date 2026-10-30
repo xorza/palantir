@@ -3,9 +3,9 @@
 // compile in front of every one of them — nothing may declare a
 // binding, which is the one thing they disagree about.
 
-// The whole immediate region: the viewport size, which the backend
-// pushes after every pipeline bind. Every pipeline layout declares its
-// size, `IMMEDIATES_BYTES`.
+// The whole immediate region: the viewport size and the fragment origin,
+// which the backend pushes after every pipeline bind. Every pipeline
+// layout declares its size, `IMMEDIATES_BYTES`.
 //
 // **Flat members, no nested structs**, should it ever grow: HLSL
 // constant-buffer rules start a *struct* member on the next 16-byte
@@ -13,6 +13,9 @@
 // reads it back as zero. Vectors pack tightly inside one register.
 struct Immediates {
     viewport_size: vec2<f32>,
+    // The surface pixel the target's pixel 0 is: zero, but on a damage
+    // canvas, which holds a rect of the surface.
+    frag_origin: vec2<f32>,
 };
 var<immediate> imm: Immediates;
 
@@ -58,6 +61,12 @@ const CORNERS = array<vec2<f32>, 4>(
 fn clip_from_px(px: vec2<f32>) -> vec4<f32> {
     let ndc = px * (vec2<f32>(2.0, -2.0) / imm.viewport_size) + vec2<f32>(-1.0, 1.0);
     return vec4<f32>(ndc, 0.0, 1.0);
+}
+
+// A fragment's position in the surface's physical px, whatever target it
+// paints into: `@builtin(position)` counts from the target's pixel 0.
+fn frag_px(clip: vec4<f32>) -> vec2<f32> {
+    return clip.xy + imm.frag_origin;
 }
 
 // Straight alpha in, premultiplied out — the contract every fragment

@@ -203,6 +203,7 @@ mod tests {
         let mut pass = Recorder::default();
         let mut binder = Binder::<Recorder>::new(ViewportPush {
             size: Vec2::splat(100.0),
+            origin: Vec2::ZERO,
         });
         let take = |pass: &mut Recorder| std::mem::take(&mut pass.0);
 

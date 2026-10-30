@@ -240,7 +240,10 @@ impl Fixture {
             });
             // `render_batch` binds the pipeline a span needs, and the binder pushes the viewport
             // with the first.
-            let mut binder = MainBinder::new(ViewportPush { size: Vec2::ZERO });
+            let mut binder = MainBinder::new(ViewportPush {
+                size: Vec2::ZERO,
+                origin: Vec2::ZERO,
+            });
             let pipelines = RasterPipelines {
                 flat: self.pipelines.flat.select(StencilMode::Off),
                 spun: self.pipelines.spun.select(StencilMode::Off),

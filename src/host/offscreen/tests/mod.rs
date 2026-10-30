@@ -431,4 +431,6 @@ fn a_carried_request_the_window_shrank_past_lands_nothing() {
     assert!(host.ui().screenshot_taken(id).is_none());
 }
 
+mod canvas;
+mod held_cutouts;
 mod recovery;
