@@ -121,20 +121,44 @@ fn register_dedups_across_variants() {
 }
 
 /// The row ceiling is the *policy* cap, not the device's texture limit: growth never reverses, so a
-/// 16384-row adapter would let one pathological frame pin 32 MB for the life of the process.
+/// 16384-row adapter would let one pathological frame pin 32 MB for the life of the process. A
+/// clear starts every clone over as `new` builds the atlas under the new limit: a grown atlas is
+/// back at `INITIAL_ATLAS_ROWS`, its flush holds row 0 alone, and a ramp it held lands where a
+/// fresh atlas puts it.
 #[test]
 fn shared_atlas_clamps_device_limit_to_the_policy_cap() {
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use std::num::NonZeroU32;
 
-    let huge = SharedGradientAtlas::new(TextureLimit::from_device(NonZeroU32::new(16384).unwrap()));
+    let huge_limit = TextureLimit::from_device(NonZeroU32::new(16384).unwrap());
+    let small_limit = TextureLimit::from_device(NonZeroU32::new(1024).unwrap());
+    let huge = SharedGradientAtlas::new(huge_limit);
     assert_eq!(huge.max_rows(), MAX_ATLAS_ROWS);
     // A device below the cap still binds.
-    let small = SharedGradientAtlas::new(TextureLimit::from_device(NonZeroU32::new(1024).unwrap()));
+    let small = SharedGradientAtlas::new(small_limit);
     assert_eq!(small.max_rows(), 1024);
     // Deviceless keeps the conservative downlevel fallback.
     assert_eq!(
         SharedGradientAtlas::new(TextureLimit::default()).max_rows(),
         DEFAULT_MAX_ATLAS_ROWS,
     );
+
+    let clone = huge.clone();
+    for i in 0..INITIAL_ATLAS_ROWS {
+        let _ = huge.register(&distinct_grad(i).ramp);
+    }
+    assert_eq!(huge.rows(), INITIAL_ATLAS_ROWS * 2);
+    huge.flush_with(|_| {});
+    clone.clear(small_limit);
+    assert_eq!(huge.rows(), INITIAL_ATLAS_ROWS);
+    assert_eq!(huge.max_rows(), 1024);
+    let mut flushed = Vec::new();
+    huge.flush_with(|rows| flushed.extend(rows.runs.iter().map(|run| (run.start, run.end))));
+    assert_eq!(
+        flushed,
+        [(0, 1)],
+        "the cleared atlas uploads its fallback row alone"
+    );
+    let ramp = distinct_grad(0).ramp;
+    assert_eq!(huge.register(&ramp), small.register(&ramp));
 }

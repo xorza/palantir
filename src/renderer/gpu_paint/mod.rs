@@ -25,8 +25,10 @@ pub trait GpuPaint: 'static {
     /// Builds GPU resources. Called **once** per view; skipped paints and
     /// resizes do not re-run it, so recreate your depth/MSAA attachments in
     /// [`Self::paint`] when the size of [`GpuFrameCtx::target`]'s texture changes. It
-    /// runs again only after the view is gone (widget unrecorded or window
-    /// closed) and returns.
+    /// runs again after the view is gone (widget unrecorded or window
+    /// closed) and returns, and on a new device, after the host recovers from a
+    /// lost one: replace everything an earlier call built, as it belongs to the
+    /// old device.
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         let _ = ctx;
     }

@@ -38,9 +38,12 @@ fn device_frames(
         .warmup(WARMUP_FRAMES)
         .frames(MEASURE_FRAMES)
         .budget(u64::MAX)
-        .run_frames(|| {
-            let _ = target.frame(gpu, BENCH_DPR, &mut scene);
-        })
+        .run_settled_frames(
+            || {
+                let _ = target.frame(BENCH_DPR, &mut scene);
+            },
+            || gpu.wait(),
+        )
 }
 
 /// The adapter's per-frame floor on `target`: an empty scene's modal count.
@@ -151,30 +154,36 @@ fn scale_ramp_rasterizes_at_a_flat_cost_per_frame() {
         .warmup(WARMUP_FRAMES)
         .frames(RAMP_FRAMES)
         .budget(RAMP_BLOCKS_PER_FRAME_MAX)
-        .run_frames(|| {
-            zoom += TEXT_SCALE_STEP;
-            target.frame(&gpu, BENCH_DPR, |ui| {
-                let chip = icons.chip(ui);
-                Panel::vstack()
-                    .auto_id()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .transform(TranslateScale::from_scale(zoom))
-                    .show(ui, |ui| {
-                        Grid::new()
-                            .id_salt("icons")
-                            .cols([Track::HUG; RAMP_ICONS as usize])
-                            .rows([Track::HUG])
-                            .show(ui, |ui| {
-                                for c in 0..RAMP_ICONS {
-                                    Panel::zstack().id_salt(c).grid_cell((0, c)).show(ui, |ui| {
-                                        ui.add_shape(Shape::icon(chip));
-                                    });
-                                }
-                            });
-                        state.render(RENDER_NODE_SCALE, ui);
-                    });
-            });
-        });
+        .run_settled_frames(
+            || {
+                zoom += TEXT_SCALE_STEP;
+                target.frame(BENCH_DPR, |ui| {
+                    let chip = icons.chip(ui);
+                    Panel::vstack()
+                        .auto_id()
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .transform(TranslateScale::from_scale(zoom))
+                        .show(ui, |ui| {
+                            Grid::new()
+                                .id_salt("icons")
+                                .cols([Track::HUG; RAMP_ICONS as usize])
+                                .rows([Track::HUG])
+                                .show(ui, |ui| {
+                                    for c in 0..RAMP_ICONS {
+                                        Panel::zstack().id_salt(c).grid_cell((0, c)).show(
+                                            ui,
+                                            |ui| {
+                                                ui.add_shape(Shape::icon(chip));
+                                            },
+                                        );
+                                    }
+                                });
+                            state.render(RENDER_NODE_SCALE, ui);
+                        });
+                });
+            },
+            || gpu.wait(),
+        );
 
     // A ramp that stopped missing would cost what a still frame does.
     assert!(

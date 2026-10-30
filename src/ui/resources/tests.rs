@@ -1,26 +1,19 @@
-use crate::common::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
 use crate::renderer::texture_limit::TextureLimit;
-use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
-use crate::ui::resources::{UiDevice, UiResources};
+use crate::ui::resources::UiResources;
 use glam::UVec2;
 use std::num::NonZeroU32;
 
 #[test]
 fn the_bundle_ceiling_gates_registration_and_is_what_ui_reports() {
     let limit = TextureLimit::from_device(NonZeroU32::new(4).unwrap());
-    let resources = UiResources::new(
-        TextShaper::test_mono(),
-        Clipboard::memory(),
-        UiDevice {
-            texture_limit: limit,
-            ..UiDevice::default()
-        },
-    );
-    assert_eq!(resources.texture_limit(), limit);
+    let resources = UiResources::isolated_mono();
+    assert_eq!(resources.device().texture_limit(), TextureLimit::default());
+    resources.attach_device(limit);
+    assert_eq!(resources.device().texture_limit(), limit);
     let ui = Ui::new(resources);
     assert_eq!(ui.max_image_dimension(), NonZeroU32::new(4));
 

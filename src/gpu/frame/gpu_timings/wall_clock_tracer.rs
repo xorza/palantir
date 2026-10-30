@@ -103,7 +103,6 @@ impl WallClockTracer {
                 done.store(origin.elapsed().as_nanos() as u64, Release);
             });
         }
-        gpu.device.poll(wgpu::PollType::Poll).ok();
         for slot in self.slots.iter_mut().filter(|slot| slot.in_flight) {
             let done = slot.done.load(Acquire);
             if done == PENDING {

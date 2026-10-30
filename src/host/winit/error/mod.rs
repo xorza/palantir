@@ -50,6 +50,12 @@ pub enum WinitHostError {
         /// Which of the four ways the request failed.
         source: GpuRequestError,
     },
+    /// The graphics device was lost, as a GPU reset, a driver update or a removed GPU loses it,
+    /// and no new one opened in its place.
+    DeviceLost {
+        /// Why the new device did not open.
+        source: GpuRequestError,
+    },
     /// A native window has no surface Palantir can present through.
     Surface {
         /// The window whose surface failed.
@@ -68,6 +74,12 @@ impl Display for WinitHostError {
                 write!(f, "failed to create window {token:?}: {source}")
             }
             Self::Gpu { source } => Display::fmt(source, f),
+            Self::DeviceLost { source } => {
+                write!(
+                    f,
+                    "graphics device lost and none opened in its place: {source}"
+                )
+            }
             Self::Surface { token, source } => {
                 write!(f, "window {token:?} surface failed: {source}")
             }
@@ -82,6 +94,7 @@ impl Error for WinitHostError {
             Self::CreateWindow { source, .. } => Some(source),
             // Skips the request error itself, which adds no words to the `Display` it forwards.
             Self::Gpu { source } => source.source(),
+            Self::DeviceLost { source } => Some(source),
             Self::Surface { source, .. } => Some(source),
         }
     }

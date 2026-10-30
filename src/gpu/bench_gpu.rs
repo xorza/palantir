@@ -143,7 +143,7 @@ impl BenchGpu {
 
     /// Drains completed submissions without blocking; timing readback publishes on a poll.
     pub(crate) fn poll(&self) {
-        self.gpu.device.poll(wgpu::PollType::Poll).ok();
+        self.gpu.poll();
     }
 
     /// Blocks until all submissions drain, keeping GPU work inside the measured window.
@@ -185,7 +185,7 @@ pub(crate) struct PassTimer {
 
 impl PassTimer {
     pub(crate) fn new(gpu: &BenchGpu) -> Self {
-        let Gpu { device, queue } = &gpu.gpu;
+        let Gpu { device, queue, .. } = &gpu.gpu;
         let timings =
             GpuTimings::for_runs(device, queue.get_timestamp_period(), gpu.timing_features);
         Self { timings }
@@ -201,7 +201,7 @@ impl PassTimer {
         gpu: &BenchGpu,
         record: impl FnOnce(&mut wgpu::CommandEncoder),
     ) -> Duration {
-        let Gpu { device, queue } = &gpu.gpu;
+        let Gpu { device, queue, .. } = &gpu.gpu;
         let encoder = |label| {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some(label) })
         };

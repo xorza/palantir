@@ -34,16 +34,18 @@ impl<'a> GpuCtx<'a> {
     }
 
     /// `bytes` of mapped belt staging at an offset aligned to `alignment`, for a copy the caller
-    /// records itself, as into a texture, which [`Self::write`] cannot reach. `None` for no bytes;
-    /// `bytes` must be a multiple of `COPY_BUFFER_ALIGNMENT` (4) and `alignment` a power of two.
+    /// records itself, as into a texture, which [`Self::write`] cannot reach; `bytes` must be a
+    /// multiple of `COPY_BUFFER_ALIGNMENT` (4) and `alignment` a power of two.
+    ///
+    /// `None` for no bytes, and on a lost device, whose belt allocations do not map: the loss can
+    /// come inside the frame, before any call reports it, and the copy would be dropped as every
+    /// call on a lost device is.
     pub(crate) fn stage(&mut self, bytes: u64, alignment: u64) -> Option<Staged<'_>> {
         let size = wgpu::BufferSize::new(bytes)?;
         let alignment =
             wgpu::BufferSize::new(alignment).expect("a staging alignment is a power of two");
         let slice = self.belt.allocate(size, alignment);
-        let view = slice
-            .get_mapped_range_mut()
-            .expect("a fresh belt allocation is mapped");
+        let view = slice.get_mapped_range_mut().ok()?;
         Some(Staged {
             view,
             buffer: slice.buffer(),
@@ -52,15 +54,27 @@ impl<'a> GpuCtx<'a> {
         })
     }
 
-    /// [`Self::write`] without the source slice: the mapped staging bytes, for a caller composing in place (one memcpy, not two). Unwritten bytes keep the belt chunk's old contents and must never be read.
+    /// [`Self::write`] without the source slice: the mapped staging bytes, for a caller composing in place (one memcpy, not two). Unwritten bytes keep the belt chunk's old contents and must never be read. `None` as [`Self::stage`] gives it.
+    ///
+    /// Not `StagingBelt::write_buffer`, which panics where an allocation does not map.
     pub(crate) fn write_view(
         &mut self,
         dst: &wgpu::Buffer,
         offset: u64,
         bytes: u64,
     ) -> Option<wgpu::BufferViewMut> {
-        let size = wgpu::BufferSize::new(bytes)?;
-        Some(self.belt.write_buffer(self.encoder, dst, offset, size))
+        debug_assert!(
+            offset.is_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+            "a buffer copy starts on a multiple of `COPY_BUFFER_ALIGNMENT`"
+        );
+        let Staged {
+            view,
+            buffer,
+            offset: from,
+            encoder,
+        } = self.stage(bytes, wgpu::COPY_BUFFER_ALIGNMENT)?;
+        encoder.copy_buffer_to_buffer(buffer, from, dst, offset, bytes);
+        Some(view)
     }
 }
 

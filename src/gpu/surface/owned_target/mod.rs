@@ -142,8 +142,10 @@ pub(crate) mod internals {
                 source,
                 URect::new(0, 0, size.x, size.y),
             );
-            capture.wait_landed(&self.gpu);
-            let image = capture.take();
+            self.gpu.wait();
+            let image = capture
+                .take()
+                .expect("the read-back copy maps on a device that is not lost");
             RgbaImage::from_raw(
                 size.x,
                 size.y,

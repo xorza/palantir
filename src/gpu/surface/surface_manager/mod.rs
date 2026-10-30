@@ -11,7 +11,7 @@ use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
-use crate::gpu::error::{SurfaceError, SurfaceStartError};
+use crate::gpu::error::{GpuRequestError, SurfaceError, SurfaceStartError};
 use crate::gpu::surface::surface_usages::SurfaceUsages;
 use crate::gpu::surface::window_surface::WindowSurface;
 use crate::window::vsync::Vsync;
@@ -40,9 +40,11 @@ pub(crate) struct HostGpuConfig {
 #[derive(Debug)]
 pub(crate) struct SurfaceManager {
     instance: wgpu::Instance,
+    /// The adapter of the device the windows draw with now, which a recovery picks again.
     adapter: wgpu::Adapter,
-    /// App-global pacing; both states map to automatic policies every surface accepts.
-    vsync: Vsync,
+    /// Sealed at startup, and asked for again by a recovery. Its pacing is app-global; both
+    /// states map to automatic policies every surface accepts.
+    cfg: HostGpuConfig,
 }
 
 /// What [`SurfaceManager::start`] opens the device for: the first window and the display it lives
@@ -83,26 +85,11 @@ impl SurfaceManager {
         } = first;
         let instance = GpuRequest::windowed_instance(display)?;
         let surface = create_surface(&instance, window)?;
-
-        // Timing features are optional: `DeviceRequirements` drops those the
-        // adapter lacks rather than failing.
-        let timing_features = if cfg.collect_gpu_stats {
-            DeviceRequirements::GPU_TIMING_FEATURES
-        } else {
-            wgpu::Features::empty()
-        };
-        let RequestedGpu { adapter, gpu } = GpuRequest {
-            label: "palantir.device",
-            power_preference: cfg.power_preference,
-            optional: timing_features,
-            compatible_surface: Some(&surface),
-        }
-        .open(&instance)?;
-
+        let RequestedGpu { adapter, gpu } = open_device(&instance, cfg, &surface)?;
         let surfaces = Self {
             instance,
             adapter,
-            vsync: cfg.vsync,
+            cfg,
         };
         // Clamped here, before the host core that keeps the cap exists.
         let size = Self::clamp_extent(gpu.max_texture_dim(), size);
@@ -113,6 +100,48 @@ impl SurfaceManager {
             first_surface,
         })
     }
+
+    /// Open a new device in place of a lost one, as [`Self::start`] opened the first: on an
+    /// adapter picked again, which presents to `window`, whose `surface` is made again on it.
+    /// The old surface goes first, as it unconfigures on the device it was built for and a
+    /// platform may refuse a second surface on one window; configured on the new device, it would
+    /// release its old swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
+    pub(crate) fn reopen<W>(
+        &mut self,
+        window: &Arc<W>,
+        surface: &mut WindowSurface,
+    ) -> Result<Gpu, SurfaceStartError>
+    where
+        W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
+    {
+        surface.release();
+        let raw = create_surface(&self.instance, window)?;
+        let RequestedGpu { adapter, gpu } = open_device(&self.instance, self.cfg, &raw)?;
+        self.adapter = adapter;
+        *surface = self.rebuilt(raw, surface, gpu.max_texture_dim())?;
+        Ok(gpu)
+    }
+}
+
+/// Open a device on an adapter that presents to `surface`. Timing features are optional:
+/// `DeviceRequirements` drops those the adapter lacks rather than failing.
+fn open_device(
+    instance: &wgpu::Instance,
+    cfg: HostGpuConfig,
+    surface: &wgpu::Surface<'static>,
+) -> Result<RequestedGpu, GpuRequestError> {
+    let timing_features = if cfg.collect_gpu_stats {
+        DeviceRequirements::GPU_TIMING_FEATURES
+    } else {
+        wgpu::Features::empty()
+    };
+    GpuRequest {
+        label: "palantir.device",
+        power_preference: cfg.power_preference,
+        optional: timing_features,
+        compatible_surface: Some(surface),
+    }
+    .open(instance)
 }
 
 /// Create a native surface for `window`; free because the adapter is picked
@@ -152,19 +181,35 @@ impl SurfaceManager {
         self.build_window_surface(surface, size)
     }
 
-    /// A new surface for `window` in place of `lost`, which the platform lost: at its size and its
-    /// pacing, configured on its first [`WindowSurface::prepare`].
+    /// Make `window`'s `surface` again, at its size inside `max_texture_dim` and its pacing,
+    /// configured on its first [`WindowSurface::prepare`]: after the platform lost it, or on the
+    /// device a recovery attached. The old one goes first, as in [`Self::reopen`]; on a failure the
+    /// surface reads lost, and the host tries again.
     pub(crate) fn renew<W>(
         &self,
         window: &Arc<W>,
-        lost: &WindowSurface,
-    ) -> Result<WindowSurface, SurfaceError>
+        surface: &mut WindowSurface,
+        max_texture_dim: NonZeroU32,
+    ) -> Result<(), SurfaceError>
     where
         W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
-        debug_assert!(lost.is_lost(), "only a lost surface is replaced");
-        let mut surface = self.make_surface(window, lost.size())?;
-        let _ = surface.set_vsync(lost.vsync());
+        surface.release();
+        let raw = create_surface(&self.instance, window)?;
+        *surface = self.rebuilt(raw, surface, max_texture_dim)?;
+        Ok(())
+    }
+
+    /// `raw` configured as `old` was: its size inside `max_texture_dim`, and its pacing.
+    fn rebuilt(
+        &self,
+        raw: wgpu::Surface<'static>,
+        old: &WindowSurface,
+        max_texture_dim: NonZeroU32,
+    ) -> Result<WindowSurface, SurfaceError> {
+        let mut surface =
+            self.build_window_surface(raw, Self::clamp_extent(max_texture_dim, old.size()))?;
+        let _ = surface.set_vsync(old.vsync());
         Ok(surface)
     }
 
@@ -176,7 +221,7 @@ impl SurfaceManager {
         size: UVec2,
     ) -> Result<WindowSurface, SurfaceError> {
         let caps = surface.get_capabilities(&self.adapter);
-        let config = build_surface_config(&caps, size, self.vsync)?;
+        let config = build_surface_config(&caps, size, self.cfg.vsync)?;
         Ok(WindowSurface::new(surface, config))
     }
 }

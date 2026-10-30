@@ -12,20 +12,18 @@ use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::array;
-use std::cell::{Ref, RefCell};
+use std::cell::{Ref, RefCell, RefMut};
 
 /// The [`ImageStore`] a host's registry writes through and its backend draws
-/// from. They share one `Rc`, so the map sits behind a `RefCell`; a draw takes
+/// from. They share one `Rc`, so the device side sits behind a `RefCell`; a draw takes
 /// one [`Self::read`] per pass.
+///
+/// Built before any device, as the registry every recorder clones holds it from the start; the
+/// host [attaches](Self::attach) each device it draws with, before any image registers.
 #[derive(Debug)]
 pub(crate) struct WgpuImageStore {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
-    /// The group-0 layout and sampler every pipeline of the backend composes over. Built here
-    /// because the host builds this store before the backend, which takes its copy from
-    /// [`Self::binding`].
-    binding: TextureBinding,
-    textures: RefCell<FxHashMap<TextureId, ImageTexture>>,
+    /// `None` until the first attach.
+    attached: RefCell<Option<AttachedStore>>,
     /// Staging for [`premultiply_into`], reused across updates. Opaque images skip
     /// it ([`Self::write`]).
     staged: RefCell<Vec<SrgbaU8>>,
@@ -34,65 +32,126 @@ pub(crate) struct WgpuImageStore {
     premultiply: Box<[[u8; 256]; 256]>,
 }
 
+/// The store's side of one device: the textures it holds on it.
+#[derive(Debug)]
+struct AttachedStore {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    /// The device's `max_texture_dimension_2d`, which an image registered on an earlier device
+    /// can exceed.
+    max_texture_dim: u32,
+    /// The group-0 layout and sampler every pipeline of the backend composes over. Built here
+    /// because the host attaches this store before it builds the backend, which takes its copy
+    /// from [`WgpuImageStore::binding`].
+    binding: TextureBinding,
+    textures: FxHashMap<TextureId, ImageTexture>,
+}
+
 #[derive(Debug)]
 pub(crate) struct ImageTexture {
     texture: wgpu::Texture,
     pub(crate) bind_group: wgpu::BindGroup,
 }
 
-impl WgpuImageStore {
-    pub(crate) fn new(gpu: &Gpu) -> Self {
+const ATTACHED: &str = "the host attaches a device before it draws or registers an image";
+
+/// A store with no device yet.
+impl Default for WgpuImageStore {
+    fn default() -> Self {
         Self {
-            binding: TextureBinding::new(&gpu.device),
-            device: gpu.device.clone(),
-            queue: gpu.queue.clone(),
-            textures: RefCell::default(),
+            attached: RefCell::default(),
             staged: RefCell::default(),
             premultiply: premultiplied_bytes(),
         }
     }
+}
 
-    pub(crate) const fn binding(&self) -> &TextureBinding {
-        &self.binding
+impl WgpuImageStore {
+    /// Hold textures on `gpu` from now on. The textures of an earlier device drop: every image
+    /// paints nothing until its next write.
+    pub(crate) fn attach(&self, gpu: &Gpu) {
+        *self.attached.borrow_mut() = Some(AttachedStore {
+            device: gpu.device.clone(),
+            queue: gpu.queue.clone(),
+            max_texture_dim: gpu.max_texture_dim().get(),
+            binding: TextureBinding::new(&gpu.device),
+            textures: FxHashMap::default(),
+        });
+    }
+
+    /// The binding of the device attached now.
+    pub(crate) fn binding(&self) -> TextureBinding {
+        self.attached().binding.clone()
     }
 
     /// One borrow per render traversal, avoiding a `RefCell` probe per run.
     pub(crate) fn read(&self) -> Ref<'_, FxHashMap<TextureId, ImageTexture>> {
-        self.textures.borrow()
+        Ref::map(self.attached(), |attached| &attached.textures)
     }
 
-    /// An empty texture at `size` and its bind group; the write that follows fills it.
-    fn create(&self, id: TextureId, size: UVec2) -> ImageTexture {
-        let raw_id = id.0;
-        let texture_label = format!("palantir.image.tex.{raw_id:016x}");
-        let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
-        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some(&texture_label),
-            size: render_target::extent(size),
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = self
-            .binding
-            .bind_group(&self.device, &view, &bind_group_label);
-        ImageTexture {
-            texture,
-            bind_group,
-        }
+    fn attached(&self) -> Ref<'_, AttachedStore> {
+        Ref::map(self.attached.borrow(), |attached| {
+            attached.as_ref().expect(ATTACHED)
+        })
+    }
+
+    fn attached_mut(&self) -> RefMut<'_, AttachedStore> {
+        RefMut::map(self.attached.borrow_mut(), |attached| {
+            attached.as_mut().expect(ATTACHED)
+        })
+    }
+}
+
+/// An empty texture at `size` and its bind group; the write that follows fills it.
+fn create(
+    device: &wgpu::Device,
+    binding: &TextureBinding,
+    id: TextureId,
+    size: UVec2,
+) -> ImageTexture {
+    let raw_id = id.0;
+    let texture_label = format!("palantir.image.tex.{raw_id:016x}");
+    let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(&texture_label),
+        size: render_target::extent(size),
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let bind_group = binding.bind_group(device, &view, &bind_group_label);
+    ImageTexture {
+        texture,
+        bind_group,
     }
 }
 
 impl ImageStore for WgpuImageStore {
     fn write(&self, id: TextureId, image: &Image) {
-        let mut textures = self.textures.borrow_mut();
+        let mut attached = self.attached_mut();
+        // Registration checks the device it ran on; a later device can be smaller.
+        if image.size.max_element() > attached.max_texture_dim {
+            tracing::warn!(
+                size = ?image.size,
+                max_dimension = attached.max_texture_dim,
+                "an image exceeds this device's texture limit and paints nothing"
+            );
+            return;
+        }
+        let AttachedStore {
+            device,
+            queue,
+            binding,
+            textures,
+            ..
+        } = &mut *attached;
         let entry = textures
             .entry(id)
-            .or_insert_with(|| self.create(id, image.size));
+            .or_insert_with(|| create(device, binding, id, image.size));
         debug_assert_eq!(
             render_target::texture_size(&entry.texture),
             image.size,
@@ -101,7 +160,7 @@ impl ImageStore for WgpuImageStore {
         // A pitch off `COPY_BYTES_PER_ROW_ALIGNMENT` is re-packed inside wgpu; padding the rows here
         // would not save that, as wgpu copies the whole into staging either way.
         let write = |data: &[u8]| {
-            self.queue.write_texture(
+            queue.write_texture(
                 entry.texture.as_image_copy(),
                 data,
                 wgpu::TexelCopyBufferLayout {
@@ -125,7 +184,7 @@ impl ImageStore for WgpuImageStore {
     }
 
     fn free(&self, id: TextureId) {
-        self.textures.borrow_mut().remove(&id);
+        self.attached_mut().textures.remove(&id);
     }
 }
 
@@ -204,7 +263,7 @@ pub(crate) mod internals {
         /// Registered images resident on the GPU; surface-format-change tests assert
         /// it survives a pipeline rebuild.
         pub(crate) fn resident(&self) -> usize {
-            self.textures.borrow().len()
+            self.read().len()
         }
     }
 }
@@ -260,7 +319,8 @@ mod tests {
     #[test]
     fn a_gpu_texture_lives_exactly_as_long_as_its_handle() {
         let gpu = test_gpu::headless_test_gpu();
-        let store = Rc::new(WgpuImageStore::new(&gpu));
+        let store = Rc::new(WgpuImageStore::default());
+        store.attach(&gpu);
         let weak = Rc::downgrade(&store);
         let registry = ImageRegistry::new(Rc::clone(&store));
         assert!(!store.read().contains_key(&TextureId(1)));
@@ -286,9 +346,17 @@ mod tests {
         assert!(!store.read().contains_key(&TextureId(1)));
 
         let survivor = ImageHandle::new(TextureId(2), &image, registry);
+        store.attach(&test_gpu::headless_test_gpu());
+        assert_eq!(
+            store.resident(),
+            0,
+            "an attach drops the textures of the old device"
+        );
+        survivor.update(&image);
+        assert_eq!(store.resident(), 1, "a write fills the image again");
         drop(store);
         survivor.update(&image);
-        assert_eq!(survivor.generation(), 1);
+        assert_eq!(survivor.generation(), 2);
         assert_eq!(weak.upgrade().unwrap().resident(), 1);
         drop(survivor);
         assert!(

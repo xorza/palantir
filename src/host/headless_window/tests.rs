@@ -1,5 +1,5 @@
 use crate::display::SCALE_RULE;
-use crate::gpu::test_gpu::headless_test_gpu;
+use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::host::headless_window::HeadlessWindow;
 use crate::internals::panic_probe;
 use crate::internals::record_app::RecordApp;
@@ -54,4 +54,40 @@ fn a_resize_reads_back_the_new_size_and_scale() {
     panic_probe::assert_panics_with(SCALE_RULE, || {
         HeadlessWindow::builder(gpu.handles()).open(UVec2::splat(4), f32::NAN)
     });
+}
+
+/// A window whose device is lost reports it and recovers onto a new one, into a texture of its
+/// size there, which the next frame paints whole: the white block at x 0..2, y 0..1 on black.
+#[test]
+fn a_window_recovers_onto_a_new_device() {
+    let lost = isolated_headless_test_gpu();
+    let mut window = HeadlessWindow::builder(lost.handles())
+        .shaper(TextShaper::test_mono())
+        .open(UVec2::new(8, 6), 1.0);
+    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    let mut app = RecordApp::new(|ui: &mut Ui| {
+        Block::new()
+            .id_salt("white")
+            .size((2.0, 1.0))
+            .chrome(Chrome::fill(RgbaF32::WHITE))
+            .show(ui);
+    });
+    window.frame(&mut app);
+    lost.lose();
+    assert!(window.is_device_lost());
+
+    let gpu = headless_test_gpu();
+    window.recover(gpu.handles());
+    assert!(!window.is_device_lost());
+    window.frame(&mut app);
+    let image = window.read_back();
+    assert_eq!(image.dimensions(), (8, 6));
+    for (x, y, pixel) in image.enumerate_pixels() {
+        let want = if x < 2 && y < 1 {
+            Rgba([255; 4])
+        } else {
+            Rgba([0, 0, 0, 255])
+        };
+        assert_eq!(*pixel, want, "({x}, {y})");
+    }
 }

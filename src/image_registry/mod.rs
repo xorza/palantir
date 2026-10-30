@@ -26,8 +26,8 @@ use std::rc::Rc;
 /// Cheap to clone: every clone reaches the one store. `Default` is a deviceless recorder's.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct ImageRegistry {
-    /// Fixed at construction, as [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) is
-    /// for its ceiling: the host builds the store before any recorder exists.
+    /// Fixed at construction: the host builds the store before any recorder exists, and gives it
+    /// each device it attaches.
     store: Option<Rc<dyn ImageStore>>,
 }
 

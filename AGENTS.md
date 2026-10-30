@@ -97,6 +97,68 @@ to stay inside it. Facts and sources:
   surface again, as a lost surface does not configure. `Timeout`: paint
   again. `Occluded`: skip. `Validation`: back off.
 
+## Device loss
+
+What a host does when the device goes away: a GPU hang reset by the OS (TDR, amdgpu), a driver
+update, a removed GPU. Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
+
+- **Recover, do not panic.** On a loss the host opens a new device and rebuilds every GPU object
+  on it; the UI state stays and the next frame of every window paints whole. Refused: a panic,
+  which a TDR in a long image-processing shader turns into a crash. Source: MDN
+  `GPUDevice.lost`, Zed PR #50898.
+- **A recovery runs the first attach again.** Startup and a recovery attach a device through the
+  same calls: `HostCore::new` and `HostCore::attach` build the device half with one
+  `BackendSpec::open`, `HostCore::attach` gives every window its stream as `HostCore::open` gives
+  a new one, and `SurfaceManager` opens the device and builds a window's surface through the
+  functions `start` uses. Refused: a recovery path of its own, which drifts from the init.
+- **Device-bound state is rebuilt, not repaired.** The backend, the window streams and the view
+  targets are made again with their constructors; the CPU atlases the GPU mirrors (gradient
+  rows) clear and refill as frames register them, as Zed's atlas does. Only the image store
+  attaches in place, as every `ImageHandle` holds its `Rc`. Refused: a `reset` on each GPU type,
+  which a field added later can miss. Source: Zed PR #54349, DirectX DeviceResources.
+- **Registered images: the app uploads them again.** On the first frame after a recovery,
+  `Ui::device_restored()` is true, and the app calls `ImageHandle::update` for the images it
+  still shows; until then they paint nothing. Refused: a CPU copy of every image, which doubles
+  the RAM of darkroom's 64 MP images. Source: DirectX `IDeviceNotify::OnDeviceRestored`, Android
+  `onSurfaceCreated`.
+- **`GpuPaint::init` runs again on the new device,** as it does when a view comes back. Refused:
+  a separate `device_lost` hook, as Rust drops the old handles when `init` replaces them.
+- **`Gpu` owns the device's health.** `Gpu::new` sets the lost callback and the uncaptured-error
+  handler; the handler panics on an error while the device is healthy, as wgpu's default does,
+  and drops it once the device is lost. Refused: setting them in each host, which leaves a `Gpu`
+  without a health. Cost: a callback an app set on the device it wraps is replaced, and a device
+  its owner destroys reads lost only after the next `Gpu::wait`, as wgpu runs that callback from
+  a maintain (wgpu #9278).
+- **No poll on the frame path; wgpu's blocking wait where a caller blocks.** Each `queue.submit`
+  runs the map and work-done callbacks, so nothing polls per frame; `Gpu::poll` is an empty
+  submit, which a lost device cannot make panic, and `Gpu::wait` is `poll(Wait)` behind the
+  health check, then a wait for a work-done marker of its own. `clippy.toml` keeps `Device::poll`,
+  `Instance::poll_all` and both device callbacks inside `gpu::device`. Refused: a loop of empty
+  submits, which spins and never ends on a device its owner destroyed; `catch_unwind`, which
+  `panic = "abort"` makes useless. Cost: a loss found during a blocking wait ends the process, as
+  in Zed; the desktop host never waits.
+- **Nothing on the GPU half panics on a lost device.** A belt allocation that does not map
+  declines (`GpuCtx::stage`), and the upload skips: the loss can come inside a submit, after the
+  call that found it.
+- **The limits are shared state.** A new adapter can have another `max_texture_dimension_2d`, so
+  one `SharedDevice` cell holds the limit the recovery writes; the gradient atlas clears to it,
+  the surfaces clamp to it, and an image past it paints nothing, with a `tracing::warn`. Refused:
+  requesting the old limits, which fails a recovery onto a smaller GPU that could run the app.
+- **A recovery makes every window a new surface,** dropping the old one first, as a lost surface
+  is renewed. Refused: configuring the old surface on the new device, which releases its old
+  swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
+- **A capture the loss broke is taken again.** Every screenshot on its way back from the old
+  device goes back to the window's requests at the attach, and the next frame takes it.
+- **The hosts report and recover.** The winit host recovers before a window draws on a lost
+  device, and `run()` returns `WinitHostError::DeviceLost` when no new device opens.
+  `OffscreenHost` runs the CPU half and submits nothing while `is_device_lost()`, and
+  `recover(gpu)` attaches the device the app gives; `HeadlessWindow` forwards both and makes its
+  texture again. Refused: a new host, which loses the UI state.
+- **Tests lose a real device.** `Gpu::lose` destroys an isolated device and waits, as wgpu's own
+  device-loss tests do; the shared test device is never lost. A real hang can be checked by hand
+  with `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root while the showcase runs, which
+  resets the GPU for every app on the machine.
+
 ## Public API
 
 - **Never change it on your own.** Adding, renaming, removing or re-signing an

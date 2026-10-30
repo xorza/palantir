@@ -38,6 +38,22 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
         "the chain skips the request error, which added no words of its own",
     );
 
+    // A loss with no new device says so, and keeps the request error, whose words it adds to.
+    let lost = WinitHostError::DeviceLost {
+        source: GpuRequestError::NoBackend,
+    };
+    assert_eq!(
+        lost.to_string(),
+        format!(
+            "graphics device lost and none opened in its place: {}",
+            GpuRequestError::NoBackend
+        ),
+    );
+    assert_eq!(
+        lost.source().map(ToString::to_string),
+        Some(GpuRequestError::NoBackend.to_string()),
+    );
+
     let surface = WinitHostError::Surface {
         token: WindowToken(7),
         source: SurfaceError::MissingSrgb,

@@ -14,8 +14,8 @@ use crate::window::vsync::Vsync;
 /// idle (wgpu #7447: 100 ms+ stalls), and Wayland resends identical configures.
 #[derive(Debug)]
 pub(crate) struct WindowSurface {
-    /// `None` once the platform lost it: a lost surface does not configure, so the host makes the
-    /// window a new one ([`SurfaceManager::renew`](crate::gpu::surface::surface_manager::SurfaceManager::renew)),
+    /// `None` once the platform lost it or the host [released](Self::release) it: a lost surface
+    /// does not configure, so the host makes the window a new one ([`SurfaceManager::renew`](crate::gpu::surface::surface_manager::SurfaceManager::renew)),
     /// and the lost one goes first, as a platform may refuse a second surface on one window.
     surface: Option<wgpu::Surface<'static>>,
     config: wgpu::SurfaceConfiguration,
@@ -81,9 +81,17 @@ impl WindowSurface {
         true
     }
 
-    /// Whether the platform lost the surface, so the window needs a new one.
+    /// Whether the platform lost the surface, or the host let go of it, so the window needs a new
+    /// one.
     pub(crate) const fn is_lost(&self) -> bool {
         self.surface.is_none()
+    }
+
+    /// Let go of the surface, which unconfigures on the device it was built for, ahead of a new
+    /// one; it reads lost until then.
+    pub(crate) fn release(&mut self) {
+        self.surface = None;
+        self.applied = None;
     }
 
     /// Rebuild the swapchain when the configuration it was built with is not the one wanted. A
@@ -125,8 +133,7 @@ impl WindowSurface {
             }
             wgpu::CurrentSurfaceTexture::Outdated => Acquired::Outdated,
             wgpu::CurrentSurfaceTexture::Lost => {
-                self.surface = None;
-                self.applied = None;
+                self.release();
                 Acquired::Lost
             }
             wgpu::CurrentSurfaceTexture::Timeout => Acquired::Timeout,

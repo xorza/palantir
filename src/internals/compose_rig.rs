@@ -6,8 +6,10 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::shared_device::SharedDevice;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::shape::record_store::RecordStore;
+use std::rc::Rc;
 use std::time::Duration;
 
 /// One composer, output buffer and record store reused by every [`Self::compose`], so
@@ -28,7 +30,7 @@ impl ComposeRig {
 
     pub(crate) fn with_texture_limit(display: Display, texture_limit: TextureLimit) -> Self {
         Self {
-            composer: Composer::new(texture_limit),
+            composer: Composer::new(Rc::new(SharedDevice::attached(texture_limit))),
             out: RenderBuffer::new(),
             store: RecordStore::default(),
             display,

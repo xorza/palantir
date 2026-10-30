@@ -129,13 +129,18 @@ impl GpuRequest<'_> {
     /// Pick an adapter and open a device on it.
     pub(crate) fn open(self, instance: &wgpu::Instance) -> Result<RequestedGpu, GpuRequestError> {
         let adapter = self.adapter(instance)?;
-        self.open_on(adapter)
-    }
-
-    /// Open a device on `adapter`, which [`Self::adapter`] picked.
-    pub(crate) fn open_on(self, adapter: wgpu::Adapter) -> Result<RequestedGpu, GpuRequestError> {
         let requirements = DeviceRequirements::negotiate(&adapter, self.optional)
             .map_err(|source| GpuRequestError::Requirements { source })?;
+        self.open_with(adapter, requirements)
+    }
+
+    /// Open a device on `adapter` with `requirements`, which [`DeviceRequirements::negotiate`]
+    /// answered for it.
+    pub(crate) fn open_with(
+        self,
+        adapter: wgpu::Adapter,
+        requirements: DeviceRequirements,
+    ) -> Result<RequestedGpu, GpuRequestError> {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some(self.label),

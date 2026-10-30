@@ -11,8 +11,9 @@ use crate::renderer::frontend::composer::polyline_scratch::PolylineScratch;
 use crate::renderer::frontend::composer::session::ComposeSession;
 use crate::renderer::frontend::composer::transform_stack::TransformStack;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::texture_limit::TextureLimit;
+use crate::renderer::shared_device::SharedDevice;
 use crate::shape::record_store::RecordStore;
+use std::rc::Rc;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -50,20 +51,20 @@ pub(crate) struct Composer {
     polyline: PolylineScratch,
     /// Which draws may reorder within a group, and where groups and text batches close.
     order: PaintOrder,
-    /// The device ceiling: the composer downsamples any composited `GpuView` whose physical rect
-    /// exceeds it. Fixed per device, so it rides the ctor.
-    texture_limit: TextureLimit,
+    /// Holds the device ceiling: the composer downsamples any composited `GpuView` whose physical
+    /// rect exceeds it.
+    device: Rc<SharedDevice>,
 }
 
 impl Composer {
-    /// New composer under the device's `texture_limit`, all scratch empty.
-    pub(crate) fn new(texture_limit: TextureLimit) -> Self {
+    /// New composer under `device`'s texture limit, all scratch empty.
+    pub(crate) fn new(device: Rc<SharedDevice>) -> Self {
         Self {
             clip: ClipStack::default(),
             transform: TransformStack::default(),
             polyline: PolylineScratch::default(),
             order: PaintOrder::default(),
-            texture_limit,
+            device,
         }
     }
 
@@ -115,7 +116,7 @@ pub(crate) mod internals {
                 transform,
                 polyline,
                 order,
-                texture_limit: _,
+                device: _,
             } = self;
             clip.scratch_bytes()
                 + transform.scratch_bytes()

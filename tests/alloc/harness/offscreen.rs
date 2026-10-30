@@ -23,17 +23,10 @@ impl OffscreenTarget {
         Self { host, target }
     }
 
-    /// One frame, drained before it returns so GPU execution lands in the frame that submitted it.
-    pub(crate) fn frame(
-        &mut self,
-        gpu: &HeadlessTestGpuLease,
-        dpr: f32,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
-        let report = self
-            .host
-            .frame(self.target.as_target(), dpr, &mut RecordApp::new(record));
-        gpu.wait();
-        report
+    /// One frame; a caller drains the device after it, outside its count, so the next frame
+    /// starts on an idle queue.
+    pub(crate) fn frame(&mut self, dpr: f32, record: impl FnMut(&mut Ui)) -> FrameReport {
+        self.host
+            .frame(self.target.as_target(), dpr, &mut RecordApp::new(record))
     }
 }

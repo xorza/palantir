@@ -269,6 +269,10 @@ where
     /// Returns event-loop failures, and the first window's window, surface, adapter or device
     /// failures. A window [`Ui::open_window`](crate::Ui::open_window) opens later logs its failure
     /// and stays closed.
+    ///
+    /// A lost device is replaced before the next frame: every window keeps its UI state and paints
+    /// whole, and [`Ui::device_restored`] is true in that frame, as the textures of registered
+    /// images went with the old device. [`WinitHostError::DeviceLost`] when no new device opens.
     pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
         let event_loop_result = event_loop.run_app(&mut self);
@@ -373,7 +377,7 @@ where
         runtime.schedule(event_loop, now);
     }
 
-    fn window_event(&mut self, _event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         let Some(runtime) = self.running() else {
             return;
         };
@@ -389,7 +393,12 @@ where
         let was_hidden = win.is_hidden();
 
         match event {
-            WindowEvent::RedrawRequested => runtime.draw(slot),
+            WindowEvent::RedrawRequested => {
+                if let Err(error) = runtime.draw(slot) {
+                    self.fail(event_loop, error);
+                    return;
+                }
+            }
 
             WindowEvent::CloseRequested => {
                 // Flag it and force a frame instead of removing the window: `Window::frame` surfaces `Ui::close_requested` so the app can veto with `Ui::keep_open`.

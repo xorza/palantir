@@ -50,6 +50,12 @@ impl RenderStream {
         }
     }
 
+    /// A stream for `owner` with no device behind it, cutting shadow corners by `cutout_mode`,
+    /// untimed: a window's until a device attaches, and a CPU-only test's.
+    pub(crate) const fn detached(owner: RenderOwnerId, cutout_mode: CutoutMode) -> Self {
+        Self::new(owner, cutout_mode, None)
+    }
+
     pub(crate) const fn owner(&self) -> RenderOwnerId {
         self.owner
     }
@@ -114,20 +120,11 @@ impl RenderStream {
 pub(crate) mod internals {
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan};
     use crate::gpu::wgpu_backend::render_stream::RenderStream;
-    #[cfg(test)]
-    use crate::renderer::render_owner_id::RenderOwnerId;
 
     impl RenderStream {
         /// Shade every shadow corner instead of baking tables: the visual suite's reference.
         pub(crate) fn disable_cutout_tables(&mut self) {
             self.cutouts = CutoutPlan::new(CutoutMode::Shade);
-        }
-
-        /// A stream for `owner` with no device behind it, cutting shadow corners by `cutout_mode`,
-        /// untimed.
-        #[cfg(test)]
-        pub(crate) const fn detached(owner: RenderOwnerId, cutout_mode: CutoutMode) -> Self {
-            Self::new(owner, cutout_mode, None)
         }
 
         /// Take the backbuffer as holding what the target shows, as a frame through it leaves it.

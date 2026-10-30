@@ -3,6 +3,7 @@
 
 pub(crate) mod backend_resources;
 pub(crate) mod device_features;
+pub(crate) mod device_health;
 pub(crate) mod device_requirements;
 pub(crate) mod gpu;
 pub(crate) mod gpu_ctx;

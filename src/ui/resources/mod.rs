@@ -16,17 +16,10 @@ use crate::primitives::paint::image::Image;
 use crate::renderer::error::ImageTooLarge;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_owner_id::RenderOwners;
+use crate::renderer::shared_device::SharedDevice;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::window::window_directory::WindowDirectory;
-
-/// What the device gives the resources, both fixed at construction: the ceiling a registered image is
-/// measured against and the registry over its texture store. `Default` is a deviceless recorder's.
-#[derive(Debug, Default)]
-pub(crate) struct UiDevice {
-    pub(crate) texture_limit: TextureLimit,
-    pub(crate) images: ImageRegistry,
-}
 
 #[derive(Clone, Debug)]
 pub(crate) struct UiResources {
@@ -36,9 +29,9 @@ pub(crate) struct UiResources {
     /// The frontend bakes gradients into it and the backend uploads them; held here so this struct is the one
     /// list of handles a host shares.
     gradient_atlas: SharedGradientAtlas,
-    /// The device ceiling a registered image is measured against (`Ui::max_image_dimension`), an immutable
-    /// constant held beside the registry; the gradient atlas takes it from the same call site.
-    texture_limit: TextureLimit,
+    /// The ceiling a registered image is measured against (`Ui::max_image_dimension`) and the
+    /// attach epoch, shared with every clone and the frontend; no ceiling until a device attaches.
+    device: Rc<SharedDevice>,
     clipboard: Clipboard,
     diagnostics: Diagnostics,
     /// The one scale every window's `Display` is minted from; app-global because per-monitor scale is already
@@ -49,17 +42,15 @@ pub(crate) struct UiResources {
 }
 
 impl UiResources {
-    pub(crate) fn new(text: TextShaper, clipboard: Clipboard, device: UiDevice) -> Self {
-        let UiDevice {
-            texture_limit,
-            images,
-        } = device;
+    /// Resources whose images go to `images`, the registry over the host's texture store; the
+    /// default registry is a deviceless recorder's.
+    pub(crate) fn new(text: TextShaper, clipboard: Clipboard, images: ImageRegistry) -> Self {
         Self {
             text,
             images,
             icons: IconRegistry::default(),
-            gradient_atlas: SharedGradientAtlas::new(texture_limit),
-            texture_limit,
+            gradient_atlas: SharedGradientAtlas::default(),
+            device: Rc::default(),
             clipboard,
             diagnostics: Diagnostics::default(),
             user_scale: Rc::default(),
@@ -80,8 +71,16 @@ impl UiResources {
         &self.gradient_atlas
     }
 
-    pub(crate) const fn texture_limit(&self) -> TextureLimit {
-        self.texture_limit
+    pub(crate) const fn device(&self) -> &Rc<SharedDevice> {
+        &self.device
+    }
+
+    /// The CPU side of a device attach, at startup and after a loss alike: note the device's
+    /// `texture_limit` in a new epoch, and start the gradient atlas over, as the device's texture
+    /// holds none of its rows.
+    pub(crate) fn attach_device(&self, texture_limit: TextureLimit) {
+        self.device.attach(texture_limit);
+        self.gradient_atlas.clear(texture_limit);
     }
 
     pub(crate) const fn clipboard(&self) -> &Clipboard {
@@ -105,7 +104,7 @@ impl UiResources {
     }
 
     pub(super) fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge> {
-        self.texture_limit.accepts(image.size)?;
+        self.device.texture_limit().accepts(image.size)?;
         Ok(ImageHandle::new(
             TextureId::reserve(),
             image,
@@ -117,8 +116,9 @@ impl UiResources {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::common::clipboard::Clipboard;
+    use crate::image_registry::ImageRegistry;
     use crate::text::shaper::TextShaper;
-    use crate::ui::resources::{UiDevice, UiResources};
+    use crate::ui::resources::UiResources;
 
     impl UiResources {
         /// Recorder capabilities that share nothing with another recorder: a mono-fallback shaper (deterministic metrics),
@@ -127,13 +127,17 @@ pub(crate) mod internals {
             Self::new(
                 TextShaper::test_mono(),
                 Clipboard::memory(),
-                UiDevice::default(),
+                ImageRegistry::default(),
             )
         }
 
         /// [`Self::isolated_mono`] with real shaping over the bundled faces, for anything that sizes to its text.
         pub(crate) fn isolated_text() -> Self {
-            Self::new(TextShaper::new(), Clipboard::memory(), UiDevice::default())
+            Self::new(
+                TextShaper::new(),
+                Clipboard::memory(),
+                ImageRegistry::default(),
+            )
         }
     }
 }

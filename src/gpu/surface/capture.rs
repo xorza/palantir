@@ -1,6 +1,5 @@
 //! [`Capture`]: a region of a texture on its way back from the device.
 
-use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target;
@@ -10,7 +9,6 @@ use glam::UVec2;
 use std::iter;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
-use std::thread;
 
 const BYTES_PER_PIXEL: u32 = 4;
 
@@ -197,29 +195,18 @@ impl Capture {
         self.staging.state.load(Ordering::Acquire) == MAP_PENDING
     }
 
-    /// Block until the copy's map callback has run. A poll on another thread that shares `gpu`
-    /// may collect the callback and run it after this thread's wait returns, so the wait repeats
-    /// until the callback has run.
-    pub(crate) fn wait_landed(&self, gpu: &Gpu) {
-        gpu.wait();
-        while self.is_pending() {
-            thread::yield_now();
-            gpu.wait();
-        }
-    }
-
-    /// The pixels, once the device has finished the copy and a poll ran its map callback.
+    /// The pixels, once the device has finished the copy and a poll ran its map callback; `None`
+    /// when the copy failed to map, which only a lost device does.
     ///
     /// # Panics
     ///
-    /// While the copy [`is_pending`](Self::is_pending), and when it failed to map, which only a
-    /// lost device does.
-    pub(crate) fn take(self) -> Image {
+    /// While the copy [`is_pending`](Self::is_pending).
+    pub(crate) fn take(self) -> Option<Image> {
         let staging = &self.staging;
         match staging.state.load(Ordering::Acquire) {
             MAP_PENDING => panic!("a capture taken before its copy landed"),
             MAP_DONE => {}
-            _ => panic!("a capture's staging buffer failed to map: the device is lost"),
+            _ => return None,
         }
         let row_bytes = (self.size.x * BYTES_PER_PIXEL) as usize;
         let mut pixels = Vec::with_capacity(row_bytes * self.size.y as usize);
@@ -239,36 +226,24 @@ impl Capture {
                 texel.swap(0, 2);
             }
         }
-        Image::from_srgba8(self.size, pixels)
-            .expect("a copy of a non-empty region holds four bytes per pixel")
+        Some(
+            Image::from_srgba8(self.size, pixels)
+                .expect("a copy of a non-empty region holds four bytes per pixel"),
+        )
     }
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::surface::capture::{Capture, MAP_DONE, MAP_PENDING, Staging};
+    use crate::gpu::surface::capture::{Capture, MAP_PENDING, Staging};
     use glam::UVec2;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicU8, Ordering};
-    use std::thread;
-    use std::time::Duration;
+    use std::sync::atomic::AtomicU8;
 
     impl Capture {
         /// A capture whose copy never finishes, as one the device is still running.
         pub(crate) fn never_landing(device: &wgpu::Device) -> Self {
             Self::with_state(device, Arc::new(AtomicU8::new(MAP_PENDING)))
-        }
-
-        /// A capture whose map callback another thread runs `delay` from now, as one a poll on
-        /// that thread collected.
-        pub(crate) fn mapped_elsewhere_after(device: &wgpu::Device, delay: Duration) -> Self {
-            let state = Arc::new(AtomicU8::new(MAP_PENDING));
-            let mapped = Arc::clone(&state);
-            thread::spawn(move || {
-                thread::sleep(delay);
-                mapped.store(MAP_DONE, Ordering::Release);
-            });
-            Self::with_state(device, state)
         }
 
         fn with_state(device: &wgpu::Device, state: Arc<AtomicU8>) -> Self {

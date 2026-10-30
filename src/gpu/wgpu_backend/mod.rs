@@ -238,7 +238,7 @@ impl WgpuBackend {
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, timing: FrameTiming) -> Self {
         let device = &gpu.device;
         let image_store = Rc::clone(resources.image_store);
-        let texture_binding = image_store.binding().clone();
+        let texture_binding = image_store.binding();
         let gradient = GpuGradientAtlas::new(
             device,
             resources.gradient_atlas.clone(),
@@ -955,7 +955,7 @@ impl WgpuBackend {
 
     /// Run the map callbacks of the copies the device has finished, without waiting for the rest.
     pub(crate) fn poll(&self) {
-        self.gpu.device.poll(wgpu::PollType::Poll).ok();
+        self.gpu.poll();
     }
 
     /// Hand `owner`'s pane ledger, through `forget`, each pane whose backdrop result the shared
