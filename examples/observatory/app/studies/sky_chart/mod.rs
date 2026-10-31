@@ -20,11 +20,14 @@ use crate::app::model::Observatory;
 use crate::app::model::appearance::Preset;
 use crate::app::model::catalog::ObjectId;
 use crate::app::model::sky::{self, CHART, Dms, Hms};
-use crate::app::scaffold::{StudyHeader, Tokens, api};
+use crate::app::studies::Study;
 use crate::app::studies::sky_chart::backdrop::{SkyBackdrop, SkyUniform};
+use crate::scaffold::api;
+use crate::scaffold::header::Header;
+use crate::scaffold::tokens::Tokens;
 
 pub(crate) fn header(ui: &mut Ui, t: Tokens) {
-    StudyHeader {
+    Header {
         title: "Sky chart",
         blurb: "The generated sky as an atlas chart in RA and Dec, on palantir's own pan and \
                 zoom, over a sky drawn with raw wgpu. Click a star to select it; the chart slews \
@@ -38,13 +41,8 @@ pub(crate) fn header(ui: &mut Ui, t: Tokens) {
             api!(BackdropFilter::with_max_luminance_for),
             api!(type palantir::Popup),
         ],
-        showcase: &[
-            "pan & zoom",
-            "gpu view",
-            "gradients",
-            "materials",
-            "overlays",
-        ],
+        related_label: "showcase",
+        related: Study::SkyChart.showcase_pages(),
         source: "examples/observatory/app/studies/sky_chart/mod.rs",
     }
     .show(ui, t);

@@ -11,8 +11,9 @@ use palantir::{Configure, Panel, Sizing, Text, Ui, fmt};
 
 use crate::app::model::Observatory;
 use crate::app::model::sky::{Dms, Hms};
-use crate::app::scaffold::Tokens;
 use crate::app::studies::sky_chart::ChartRequest;
+use crate::scaffold::links::LINKS;
+use crate::scaffold::tokens::Tokens;
 
 /// A study the rail picks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -42,6 +43,14 @@ impl Study {
             Self::Workspace => "workspace",
             Self::Appearance => "appearance",
         }
+    }
+
+    /// The showcase pages that show this study's pieces alone, from the table both examples read.
+    pub(crate) fn showcase_pages(self) -> impl Iterator<Item = &'static str> {
+        LINKS
+            .iter()
+            .filter(move |link| link.study == self.label())
+            .map(|link| link.page)
     }
 
     pub(crate) fn header(self, ui: &mut Ui, t: Tokens) {

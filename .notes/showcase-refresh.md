@@ -63,25 +63,15 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 
 ## Unify
 
-- **One scaffold for both examples** in `examples/shared/scaffold`: `Tokens::of(&Palette)`, the
-  type ramp, `api!`, chips, the page header and the stage, as `examples/shared/shot` shares the
-  shot mode. The showcase's page header and the observatory's study header become one component:
-  title, blurb, keys, APIs, source path.
 - **Spacing from `Metrics` only.** Every gap, padding and radius reads `M.space`, `M.radius` or a
   named scaffold constant on the 4 px grid; a literal stays only as a specimen's subject (the gap
   page's 0, 8, 24).
 - **One page anatomy.** A section is a title row, a note held to 680 px, one stage, then the
   stage's knobs. Widgets stand on a stage, paint specimens in tiles with captions under them;
   nothing sits bare on the page but prose and knobs.
-- **Type from the Fluent 2 ramp.** Page title 24 semibold, section 16 semibold, body 14, caption
-  12 ([Fluent 2 typography](https://fluent2.microsoft.design/typography)); the variable Inter we
-  ship has the weight.
 - **Sentence case** for page names and titles ("Focus & keyboard"), as Fluent writes UI text
   ([Fluent 2 writing](https://fluent2.microsoft.design/content-design)); the rail's group headings
   stay small caps.
-- **Specimen colors from one categorical set per scheme**, solved to one perceived lightness and
-  3:1 on the stage, replacing `A`–`E` and the pages' hex colors; `demo_swatches` stays for the
-  frame bench.
 
 ## Look
 
@@ -103,8 +93,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 - **Appearance in the rail's footer:** System / Light / Dark, an accent row of seed hues, and
   the UI scale. The showcase owns one appearance and applies it to both schemes, so a focus-ring or
   accent edit survives a scheme switch; today the focus page writes the shown scheme's theme only.
-- **The custom widget reads the live theme**: its stepper wears `ui.theme().button`, so the page
-  shows how an outside widget follows a scheme switch.
 - **colors: "Use as accent"** sends the picked color to the appearance as a seed.
 - **The gpu view clears to transparent**, so the stage shows through and the page proves its
   compositing claim in both schemes.
@@ -117,7 +105,7 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 | colors | "Use as accent"; panel defaults from the specimen set. |
 | tabs | Chips reorder by drag and close; a "+" adds one; an operations log beside it. |
 | dock | Panes hold small live views (a picker, an operations log, the pane's size); Reset layout. |
-| custom widget | Range and step knobs; the call-site listing follows them; theme-driven looks. |
+| custom widget | Range and step knobs; the call-site listing follows them. |
 | overlays | Gains the modal. Edit ▾ holds `MenuItem` rows. An opaque / frosted toggle. Tooltips become one row with a delay slider and a max-width slider. |
 | text input | Gains `EditableLabel` and a clipboard copy / paste pair; knobs for max chars, multiline, alignment, select-all-on-focus. |
 | focus & keyboard | Ring width and color edit the appearance; checklists fold. |
@@ -142,8 +130,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 
 - **`showcase --page NAME`** opens a page in the window mode, as the shot header does.
 - **Alt+↑ / Alt+↓** step through the pages from anywhere, as Storybook binds them.
-- **Each page names its source file** in its header, as the observatory's studies do, and the
-  studies that use it, the reverse of the observatory's "showcase" chips.
 - **Shots in both schemes** in the shot tests, one per page, so a light-scheme regression fails.
 
 ## Costs and risks
@@ -152,8 +138,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
   after a look.
 - **Each open frosted float costs a backdrop capture**; the opaque / frosted toggle compares.
 - **Knobs add code to every page**; a page past about 400 lines becomes a folder.
-- **The shared scaffold changes the observatory's look slightly** (chips, card radius, mono size);
-  its ten goldens are rewritten after a look.
 
 ## Decisions
 
@@ -179,18 +163,25 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
   and 3:1 as the ring, as Material 3 derives tones from one seed. Refused: presets alone (GNOME
   47, macOS), which drop "Use as accent"; a color as given with its failed floors shown (Windows'
   custom accent), which can leave the tour unreadable.
+- **Specimens share one luminance per scheme.** Five hues at one Okhsv saturation, each value
+  bisected to the scheme's relative luminance (dark 0.35, light 0.25): WCAG reads contrast in
+  luminance, so every swatch meets the ground and the swatch ink alike, and Okhsv keeps the hue
+  and the gamut as the value moves. Refused: one Oklab lightness, which palantir keeps private and
+  which leaves the contrast per hue; hand-picked hex, which a palette change would leave behind.
+- **Pages take the kit as a parameter**, as the observatory's studies take `Tokens`. Refused: the
+  kit in a state row or a static, which hides what a page paints with; `TextStyle::default`,
+  whose ink is the stock dark one in either scheme.
 - **No density switch.** The observatory's Appearance study already edits `Metrics` live.
   Refused: compact / comfortable steps, a second demo of the same API that every shot and golden
   would depend on.
 
-## Plan
+## Changed
 
-### 1. Shared scaffold and live tokens
-- [ ] `examples/shared/scaffold`: `Tokens`, type ramp, `api!`, chips, page header, stage; both
-      examples use it.
-- [ ] Showcase tokens read the live palette; `pin_dark` and the dark constants go; whites become
-      ink roles.
-- [ ] Specimen set per scheme, tested to its floors.
+- **Scaffold and live tokens (batch 1).** The specimen set shares one relative luminance per
+  scheme rather than one perceived lightness (**Decisions**). The shared header also carries each
+  page's source and its observatory studies, from the "Also" list.
+
+## Plan
 
 ### 2. Remove and merge
 - [ ] Delete fixtures; merge pan & zoom into scroll & zoom; split dialogs into overlays and
@@ -210,7 +201,7 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 - [ ] Every popup has a surface; Edit ▾ holds menu rows; the modal as a dialog.
 
 ### 5. Grid and anatomy
-- [ ] Spacing, radii and type from `Metrics`; sentence case; stages; captions under tiles;
+- [ ] Spacing and radii from `Metrics`; sentence case; stages; captions under tiles;
       1 040 px column.
 
 ### 6. Knobs: widgets and input

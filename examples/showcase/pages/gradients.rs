@@ -1,7 +1,8 @@
 //! Gradient brushes. Each tile paints a `Block` whose `Chrome.fill` carries one gradient variant, exercising composer, atlas bake, shader sample and premultiplied blend every frame. Vivid stops make spread and interpolation differences read at a glance.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Section, api};
+use crate::support::{DemoCell, Kit, Section};
 use palantir::glam::Vec2;
 use palantir::{
     Block, Brush, Chrome, Configure, ConicGradient, Corners, Interpolation, LinearGradient,
@@ -16,54 +17,56 @@ const YELLOW: RgbaF32 = RgbaF32::hex(0xfacc15);
 const RED: RgbaF32 = RgbaF32::hex(0xff5e44);
 const GREEN: RgbaF32 = RgbaF32::hex(0x46c46c);
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Linear")
         .apis(&[api!(type LinearGradient), api!(LinearGradient::two_stop)])
-        .show(ui, |ui| {
-            support::note(ui, "The angle is in radians from the +x axis.");
+        .show(ui, k, |ui| {
+            support::note(ui, k, "The angle is in radians from the +x axis.");
             support::tiles(ui, |ui| {
-                DemoCell::new("horizontal").show(ui, horizontal);
-                DemoCell::new("vertical").show(ui, vertical);
-                DemoCell::new("45°").show(ui, diagonal);
+                DemoCell::new("horizontal").show(ui, k, horizontal);
+                DemoCell::new("vertical").show(ui, k, vertical);
+                DemoCell::new("45°").show(ui, k, diagonal);
             });
         });
 
     Section::new("Radial")
         .apis(&[api!(type RadialGradient)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A center and a radius per axis, in the unit square of the box.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("centered, circular").show(ui, radial_centered);
-                DemoCell::new("offset center, three stops").show(ui, radial_offset);
-                DemoCell::new("elliptical radius").show(ui, radial_ellipse);
+                DemoCell::new("centered, circular").show(ui, k, radial_centered);
+                DemoCell::new("offset center, three stops").show(ui, k, radial_offset);
+                DemoCell::new("elliptical radius").show(ui, k, radial_ellipse);
             });
         });
 
     Section::new("Conic")
         .apis(&[api!(type ConicGradient)])
-        .show(ui, |ui| {
-            support::note(ui, "A sweep about a center from a start angle.");
+        .show(ui, k, |ui| {
+            support::note(ui, k, "A sweep about a center from a start angle.");
             support::tiles(ui, |ui| {
-                DemoCell::new("color wheel").show(ui, conic_wheel);
-                DemoCell::new("rotated 90°").show(ui, conic_rotated);
+                DemoCell::new("color wheel").show(ui, k, conic_wheel);
+                DemoCell::new("rotated 90°").show(ui, k, conic_rotated);
             });
         });
 
     Section::new("Spread and interpolation")
         .apis(&[api!(type Spread), api!(type Interpolation)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "What happens outside the stop range, and the color space the stops \
                  blend in.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("Spread::Reflect — rings mirror out").show(ui, reflect);
-                DemoCell::new("Spread::Repeat — rings").show(ui, repeat);
-                DemoCell::new("Interpolation::Oklab — perceptual midpoint").show(ui, oklab);
+                DemoCell::new("Spread::Reflect — rings mirror out").show(ui, k, reflect);
+                DemoCell::new("Spread::Repeat — rings").show(ui, k, repeat);
+                DemoCell::new("Interpolation::Oklab — perceptual midpoint").show(ui, k, oklab);
             });
         });
 }

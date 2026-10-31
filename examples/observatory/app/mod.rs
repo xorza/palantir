@@ -2,7 +2,6 @@
 //! that picks among them, and the eyepiece window.
 
 pub(crate) mod model;
-pub(crate) mod scaffold;
 pub(crate) mod studies;
 
 use palantir::{
@@ -12,8 +11,8 @@ use palantir::{
 };
 
 use crate::app::model::Observatory;
-use crate::app::scaffold::Tokens;
 use crate::app::studies::Study;
+use crate::scaffold::tokens::Tokens;
 use crate::shot::ShotApp;
 
 /// The main window.

@@ -1,7 +1,8 @@
 //! Modal flows: a confirm Modal and close-request interception (`Ui::close_requested` / `Ui::keep_open`) behind an unsaved-changes toggle.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Section, api};
+use crate::support::{Kit, Section};
 use palantir::{
     Button, Checkbox, CloseHandle, Configure, Modal, OverlayResponse, Panel, Text, Ui, WidgetId,
     WindowToken,
@@ -37,17 +38,16 @@ fn dialog(
     })
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::dialogs::state");
     ui.with_state::<State, _>(state_id, |ui, state| {
-        ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| page(ui, state, exit));
+        ui.with_state::<ExitState, _>(exit_state_id(), |ui, exit| page(ui, k, state, exit));
     });
 }
 
-fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
-    Section::new("Modal").apis(&[api!(Modal::new), api!(CloseHandle::close)]).show(ui, |ui| {
-            support::note(
-                ui,
+fn page(ui: &mut Ui, k: Kit, state: &mut State, exit: &mut ExitState) {
+    Section::new("Modal").apis(&[api!(Modal::new), api!(CloseHandle::close)]).show(ui, k, |ui| {
+            support::note(ui, k,
                 "A modal dims the window and takes every pointer. Escape or a click on the \
              backdrop closes it, and Tab stays inside it — see the focus & keyboard page \
              for the focus side.",
@@ -56,10 +56,9 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
                 if Button::new().label("Delete all…").show(ui).clicked() {
                     state.modal_open = true;
                 }
-                support::readout(ui, "last answer", state.last.unwrap_or("—"));
+                support::readout(ui, k, "last answer", state.last.unwrap_or("—"));
             });
-            support::checklist(
-                ui,
+            support::checklist(ui, k,
                 &[
                     "The backdrop dims the page, and nothing under it reacts to the pointer",
                     "Escape and a backdrop click close the dialog, and leave the last answer as it was",
@@ -69,9 +68,10 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
 
     Section::new("Close interception")
         .apis(&[api!(Ui::close_requested), api!(Ui::keep_open)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Turn on the unsaved changes, then close the window: the app vetoes the OS \
                  request and asks first.",
             );
@@ -80,6 +80,7 @@ fn page(ui: &mut Ui, state: &mut State, exit: &mut ExitState) {
                 .show(ui);
             support::checklist(
                 ui,
+                k,
                 &[
                     "With no unsaved changes, closing the window closes it",
                     "With unsaved changes, closing the window shows the dialog instead",

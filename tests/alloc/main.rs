@@ -23,6 +23,9 @@ mod app;
 mod fixtures;
 mod gates;
 mod harness;
+/// The examples' shared scaffold, which the apps compiled in here name.
+#[path = "../../examples/shared/scaffold/mod.rs"]
+mod scaffold;
 /// The shared shot mode, which the observatory's app names through its `ShotApp` impl.
 #[expect(
     dead_code,

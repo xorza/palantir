@@ -11,13 +11,15 @@ use palantir::{
 
 use crate::app::model::Observatory;
 use crate::app::model::appearance::{Appearance, Preset};
-use crate::app::scaffold::{StudyHeader, Tokens, api};
 use crate::app::studies::sky_chart::{self, ChartRequest};
 use crate::app::studies::{Study, catalog, details};
 use crate::app::toggle_eyepiece;
+use crate::scaffold::api;
+use crate::scaffold::header::Header;
+use crate::scaffold::tokens::Tokens;
 
 pub(crate) fn header(ui: &mut Ui, t: Tokens) {
-    StudyHeader {
+    Header {
         title: "Workspace",
         blurb: "The chart, the catalog, the details and the log as dock panes: the same view \
                 functions the other studies call, moved into panes unchanged. Drag a tab onto a \
@@ -29,7 +31,8 @@ pub(crate) fn header(ui: &mut Ui, t: Tokens) {
             api!(MenuBar::new),
             api!(Ui::open_window),
         ],
-        showcase: &["dock", "tabs", "overlays", "state & windows"],
+        related_label: "showcase",
+        related: Study::Workspace.showcase_pages(),
         source: "examples/observatory/app/studies/workspace.rs",
     }
     .show(ui, t);

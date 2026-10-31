@@ -1,8 +1,9 @@
 //! Motion over time: `Ui::animate` value interpolation (easing bars), the drag lifecycle driving position (cards), and a paint animation's turn on every shape kind.
 
+use crate::scaffold::api;
 use crate::support;
 use crate::support::DemoCell;
-use crate::support::{Section, api};
+use crate::support::{Kit, Section, Swatches};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{
     AnimationRequest, GlyphFont, IconFit, LineCap, Mesh, PaintAnimation, PaintRepeat, RectShape,
@@ -29,24 +30,24 @@ const CARDS: [Card; 3] = [
     Card {
         key: "motion.card.a",
         initial: Vec2::new(40.0, 32.0),
-        accent: support::A,
+        accent: |s| s.teal,
     },
     Card {
         key: "motion.card.b",
         initial: Vec2::new(230.0, 112.0),
-        accent: support::B,
+        accent: |s| s.orange,
     },
     Card {
         key: "motion.card.c",
         initial: Vec2::new(120.0, 192.0),
-        accent: support::D,
+        accent: |s| s.violet,
     },
 ];
 
-pub(crate) fn build(ui: &mut Ui) {
-    easing(ui);
-    drag(ui);
-    turn(ui);
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
+    easing(ui, k);
+    drag(ui, k);
+    turn(ui, k);
 }
 
 const TURN_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
@@ -96,16 +97,17 @@ impl TurnSources {
     }
 }
 
-fn turn(ui: &mut Ui) {
+fn turn(ui: &mut Ui, k: Kit) {
     let sources = TurnSources::load(ui);
     Section::new("Turn")
         .apis(&[
             api!(Ui::add_shape_animated as fn(&mut Ui, RectShape, PaintAnimation)),
             api!(PaintAnimation::turn),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "One paint animation turns each shape kind about its box's center, at paint \
                  time: the widget records the same shape every frame, and layout and hit tests \
                  never see the angle.",
@@ -122,7 +124,7 @@ fn turn(ui: &mut Ui) {
             mesh.triangle(a, b, c);
             support::tiles(ui, |ui| {
                 let cell = |ui: &mut Ui, label: &'static str, body: &mut dyn FnMut(&mut Ui)| {
-                    DemoCell::new(label).size(120.0, 120.0).show(ui, |ui| {
+                    DemoCell::new(label).size(120.0, 120.0).show(ui, k, |ui| {
                         Panel::zstack()
                             .id_salt(label)
                             .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -133,7 +135,7 @@ fn turn(ui: &mut Ui) {
                     ui.add_shape_animated(
                         Shape::rect(source)
                             .corners(Corners::all(10.0))
-                            .fill(support::A)
+                            .fill(k.swatch.teal)
                             .border(Stroke::new(RgbaF32::WHITE, 2.0)),
                         spin,
                     );
@@ -148,7 +150,7 @@ fn turn(ui: &mut Ui) {
                     ui.add_shape_animated(
                         Shape::rect(source)
                             .corners(Corners::all(6.0))
-                            .fill(support::B),
+                            .fill(k.swatch.orange),
                         spin,
                     );
                 });
@@ -160,7 +162,7 @@ fn turn(ui: &mut Ui) {
                             Vec2::new(50.0, 15.0),
                         )
                         .radius(6.0_f32)
-                        .fill(support::D),
+                        .fill(k.swatch.violet),
                         spin,
                     );
                 });
@@ -172,7 +174,7 @@ fn turn(ui: &mut Ui) {
                         Shape::line(
                             Vec2::splat(50.0),
                             Vec2::splat(50.0),
-                            Stroke::new(support::A, 30.0),
+                            Stroke::new(k.swatch.teal, 30.0),
                         )
                         .cap(LineCap::Square),
                         spin,
@@ -190,7 +192,7 @@ fn turn(ui: &mut Ui) {
                     let label = ui.intern("Turning");
                     ui.add_shape_animated(
                         Shape::text(label, GlyphFont::new(18.0))
-                            .color(RgbaF32::WHITE)
+                            .color(k.t.ink)
                             .at_origin(Vec2::new(18.0, 40.0)),
                         spin,
                     );
@@ -207,16 +209,17 @@ fn turn(ui: &mut Ui) {
         });
 }
 
-fn easing(ui: &mut Ui) {
+fn easing(ui: &mut Ui, k: Kit) {
     let demo_id = WidgetId::from_hash("motion::bars");
     Section::new("Easing")
         .apis(&[
             api!(Ui::animate as fn(&mut Ui, AnimationRequest<f32>, Option<AnimationSpec>) -> f32),
             api!(AnimationSpec::duration),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Each bar retargets on the same frame through Ui::animate, with an \
                  AnimationSpec of its own. Click the button to send them all the \
                  other way.",
@@ -251,7 +254,7 @@ fn easing(ui: &mut Ui) {
                     spec: AnimationSpec::SPRING,
                 },
             ] {
-                bar.show(ui, target);
+                bar.show(ui, k, target);
             }
         });
 }
@@ -265,7 +268,7 @@ struct Bar {
 }
 
 impl Bar {
-    fn show(self, ui: &mut Ui, target_width: f32) {
+    fn show(self, ui: &mut Ui, k: Kit, target_width: f32) {
         let id = WidgetId::from_hash(("motion::bar", self.key));
         let width = ui.animate(
             AnimationRequest::new(id, "width", target_width),
@@ -279,39 +282,40 @@ impl Bar {
                 Block::new()
                     .id(id)
                     .size((Sizing::fixed(width), Sizing::fixed(18.0)))
-                    .chrome(support::swatch_chrome(support::A))
+                    .chrome(support::swatch_chrome(k.swatch.teal))
                     .show(ui);
-                Text::new(self.label).style(&support::note_style()).show(ui);
+                Text::new(self.label).style(&k.t.caption()).show(ui);
             });
     }
 }
 
 /// Three draggable cards on a Canvas; `drag.delta()` applies to the position latched at drag start, and the dragged card records last to paint on top.
-fn drag(ui: &mut Ui) {
+fn drag(ui: &mut Ui, k: Kit) {
     let dragging = CARDS.iter().position(|card| {
         ui.state::<CardState>(WidgetId::from_hash(card.key))
             .is_some_and(|st| st.dragging)
     });
 
-    Section::new("Drag").show(ui, |ui| {
+    Section::new("Drag").show(ui, k, |ui| {
         support::note(
             ui,
+            k,
             "Grab a card. Each card adds the drag delta to the position it had \
                  when the drag started, so the page tracks no pointer of its own. The \
                  card in hand records last, so it paints above the others.",
         );
         Panel::canvas()
             .size((Sizing::FILL, Sizing::fixed(CANVAS_H)))
-            .chrome(support::well_chrome())
+            .chrome(k.t.card())
             .clip_rounded()
             .show(ui, |ui| {
                 for (i, card) in CARDS.iter().enumerate() {
                     if Some(i) != dragging {
-                        card.show(ui);
+                        card.show(ui, k);
                     }
                 }
                 if let Some(i) = dragging {
-                    CARDS[i].show(ui);
+                    CARDS[i].show(ui, k);
                 }
             });
     });
@@ -330,11 +334,12 @@ struct CardState {
 struct Card {
     key: &'static str,
     initial: Vec2,
-    accent: RgbaF32,
+    /// The card's fill, of the shown scheme's swatches.
+    accent: fn(&Swatches) -> RgbaF32,
 }
 
 impl Card {
-    fn show(&self, ui: &mut Ui) {
+    fn show(&self, ui: &mut Ui, k: Kit) {
         let id = WidgetId::from_hash(self.key);
         ui.with_state::<CardState, _>(id, |ui, st| {
             let pos = st.pos.get_or_insert(self.initial);
@@ -344,8 +349,8 @@ impl Card {
                 .pos(*pos)
                 .sense(Sense::DRAG)
                 .chrome(
-                    Chrome::rounded(self.accent, Corners::all(6.0))
-                        .with_border(Stroke::new(RgbaF32::hex(0x14161a), 1.0)),
+                    Chrome::rounded((self.accent)(&k.swatch), Corners::all(6.0))
+                        .with_border(Stroke::new(k.t.border, 1.0)),
                 )
                 .show(ui);
             if r.left.drag.started() {

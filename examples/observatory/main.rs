@@ -13,6 +13,8 @@ mod app;
 /// once, with the example.
 #[cfg(test)]
 mod app_tests;
+#[path = "../shared/scaffold/mod.rs"]
+mod scaffold;
 #[path = "../shared/shot/mod.rs"]
 mod shot;
 

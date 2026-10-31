@@ -4,12 +4,13 @@
 
 use glam::UVec2;
 use palantir::widget::Shape;
-use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stop};
+use palantir::{ColorScheme, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stop};
 
 use crate::fixtures;
 use crate::fixtures::SRGB_ROUND_TRIP;
 use crate::golden_name::GoldenName;
 use crate::support;
+use crate::support::Kits;
 use crate::visual_rig::VisualRig;
 
 /// More distinct gradients than the atlas's 256 initial rows, forcing growth.
@@ -114,11 +115,12 @@ mod showcase_page;
 /// The showcase's gradients page as one golden.
 #[test]
 fn showcase_gradients_page_matches_golden() {
+    let k = Kits::new().kit(ColorScheme::Dark);
     GoldenName::ShowcaseGradientsPage.assert_scene(UVec2::new(560, 1180), |ui| {
         Panel::vstack()
             .auto_id()
             .gap(support::PAGE_GAP)
-            .show(ui, showcase_page::build);
+            .show(ui, |ui| showcase_page::build(ui, k));
     });
 }
 

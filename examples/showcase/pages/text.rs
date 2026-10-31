@@ -1,7 +1,8 @@
 //! Text measurement and wrapping. The left column is single-text wrapping in fixed-width containers (`TextWrap::WrapWithOverflow` and the intrinsic-min overflow rule); the right is composition: Grid Auto under constraint, a property grid, and a chat row whose Fill message column reflows live.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Col, Section, api};
+use crate::support::{Col, Kit, Section};
 use palantir::{
     Block, Chrome, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
 };
@@ -10,46 +11,47 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
     How vexingly quick daft zebras jump!";
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     support::cols(ui, |ui, col| match col {
-        Col::Left => wrapping(ui),
-        Col::Right => compositions(ui),
+        Col::Left => wrapping(ui, k),
+        Col::Right => compositions(ui, k),
     });
 }
 
-fn wrapping(ui: &mut Ui) {
+fn wrapping(ui: &mut Ui, k: Kit) {
     Section::new("Single line")
         .apis(&[api!(type Text)])
-        .show(ui, |ui| {
-            support::note(ui, "With no width to fit, text hugs its natural width.");
+        .show(ui, k, |ui| {
+            support::note(ui, k, "With no width to fit, text hugs its natural width.");
             Text::new("The quick brown fox jumps over the lazy dog")
-                .style(&support::body_style())
+                .style(&k.t.body())
                 .show(ui);
         });
 
     Section::new("Wrapping")
         .apis(&[api!(Text::text_wrap)])
-        .show(ui, |ui| {
-            support::note(ui, "The same paragraph at 360 and 140 px.");
+        .show(ui, k, |ui| {
+            support::note(ui, k, "The same paragraph at 360 and 140 px.");
             WrapPanel {
                 id: "wide-inner",
                 width: 360.0,
                 text: PARAGRAPH,
             }
-            .show(ui);
+            .show(ui, k);
             WrapPanel {
                 id: "narrow-inner",
                 width: 140.0,
                 text: PARAGRAPH,
             }
-            .show(ui);
+            .show(ui, k);
         });
 
     Section::new("Overflow")
         .apis(&[api!(type TextWrap)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Wrapping breaks only between words: a word wider than its 40 px slot \
                  spills out whole rather than breaking.",
             );
@@ -58,7 +60,7 @@ fn wrapping(ui: &mut Ui) {
                 width: 40.0,
                 text: "supercalifragilistic",
             }
-            .show(ui);
+            .show(ui, k);
         });
 }
 
@@ -71,27 +73,28 @@ struct WrapPanel {
 }
 
 impl WrapPanel {
-    fn show(self, ui: &mut Ui) {
+    fn show(self, ui: &mut Ui, k: Kit) {
         Panel::vstack()
             .id_salt(self.id)
             .size((Sizing::fixed(self.width), Sizing::HUG))
             .padding(8.0)
-            .chrome(support::well_chrome())
+            .chrome(k.t.card())
             .show(ui, |ui| {
                 Text::new(self.text)
-                    .style(&support::body_style())
+                    .style(&k.t.body())
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
             });
     }
 }
 
-fn compositions(ui: &mut Ui) {
+fn compositions(ui: &mut Ui, k: Kit) {
     Section::new("Two Hug columns")
         .apis(&[api!(Track::HUG)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Under a width limit the paragraph wraps to fit, and the label beside it keeps \
                  its natural width.",
             );
@@ -102,12 +105,12 @@ fn compositions(ui: &mut Ui) {
                 .gap(16.0)
                 .show(ui, |ui| {
                     Text::new(PARAGRAPH)
-                        .style(&support::body_style())
+                        .style(&k.t.body())
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui);
                     Text::new("right column")
-                        .style(&support::body_style())
+                        .style(&k.t.body())
                         .grid_cell((0, 1))
                         .show(ui);
                 });
@@ -115,8 +118,12 @@ fn compositions(ui: &mut Ui) {
 
     Section::new("Property grid")
         .apis(&[api!(Track::FILL)])
-        .show(ui, |ui| {
-            support::note(ui, "A Hug label column and a Fill value column that wraps.");
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "A Hug label column and a Fill value column that wraps.",
+            );
             Grid::new()
                 .size((Sizing::FILL, Sizing::HUG))
                 .cols([Track::HUG, Track::FILL])
@@ -136,12 +143,12 @@ fn compositions(ui: &mut Ui) {
                         let r = i as u16;
                         Text::new(label)
                             .id_salt((i, 0))
-                            .style(&support::body_style())
+                            .style(&k.t.body())
                             .grid_cell((r, 0))
                             .show(ui);
                         Text::new(value)
                             .id_salt((i, 1))
-                            .style(&support::body_style())
+                            .style(&k.t.body())
                             .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((r, 1))
                             .show(ui);
@@ -149,9 +156,10 @@ fn compositions(ui: &mut Ui) {
                 });
         });
 
-    Section::new("Chat").show(ui, |ui| {
+    Section::new("Chat").show(ui, k, |ui| {
         support::note(
             ui,
+            k,
             "A Fixed avatar and a Fill message. Resize the window and the messages wrap \
                  again.",
         );
@@ -161,23 +169,23 @@ fn compositions(ui: &mut Ui) {
             .show(ui, |ui| {
                 ChatRow {
                     key: "alice-1",
-                    avatar: support::A,
+                    avatar: k.swatch.teal,
                     message: "Hey! Did you finish reading src/layout/intrinsic.md last night?",
                 }
-                .show(ui);
+                .show(ui, k);
                 ChatRow {
                     key: "bob-1",
-                    avatar: support::B,
+                    avatar: k.swatch.orange,
                     message: "Yeah — it clicked once I saw the property grid above actually wrap. \
                          Resize the window and this column flows again, live.",
                 }
-                .show(ui);
+                .show(ui, k);
                 ChatRow {
                     key: "alice-2",
-                    avatar: support::A,
+                    avatar: k.swatch.teal,
                     message: "Right? layout is fun.",
                 }
-                .show(ui);
+                .show(ui, k);
             });
     });
 }
@@ -191,7 +199,7 @@ struct ChatRow {
 }
 
 impl ChatRow {
-    fn show(self, ui: &mut Ui) {
+    fn show(self, ui: &mut Ui, k: Kit) {
         let Self {
             key,
             avatar,
@@ -209,7 +217,7 @@ impl ChatRow {
                     .show(ui);
                 Text::new(message)
                     .id_salt(("message", key))
-                    .style(&support::body_style())
+                    .style(&k.t.body())
                     .size((Sizing::FILL, Sizing::HUG))
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);

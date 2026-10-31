@@ -2,8 +2,9 @@
 
 use std::time::Duration;
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Section, api};
+use crate::support::{Kit, Section};
 use palantir::{
     Align, Anchor, AnchorAlign, Block, Button, Checkbox, ClickOutside, Configure, ContextMenu,
     ContextMenuTheme, Justify, Key, MenuBar, MenuItem, MenuSeparator, Panel, Popup, PopupTrigger,
@@ -42,23 +43,24 @@ impl Default for State {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::overlays::state");
     ui.with_state::<State, _>(state_id, |ui, s| {
-        popup_section(ui, s);
-        anchor_section(ui, s);
-        tooltip_section(ui);
-        context_menu_section(ui, s);
-        menu_bar_section(ui, s);
+        popup_section(ui, k, s);
+        anchor_section(ui, k, s);
+        tooltip_section(ui, k);
+        context_menu_section(ui, k, s);
+        menu_bar_section(ui, k, s);
     });
 }
 
-fn popup_section(ui: &mut Ui, s: &mut State) {
+fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Popup")
         .apis(&[api!(PopupTrigger::on), api!(PopupTrigger::is_open)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A panel dropped below its trigger on the Popup layer, above and outside the \
                  main tree. A second click, an outside press or Escape closes it.",
             );
@@ -68,7 +70,7 @@ fn popup_section(ui: &mut Ui, s: &mut State) {
                     .padding(6.0)
                     .gap(4.0)
                     .min_size((180.0, 0.0))
-                    .chrome(support::raised_chrome())
+                    .chrome(support::raised_chrome(k))
                     .show(ui, |ui, close| {
                         for label in ["Copy", "Paste", "Delete"] {
                             if Button::new()
@@ -83,21 +85,22 @@ fn popup_section(ui: &mut Ui, s: &mut State) {
                             }
                         }
                     });
-                support::readout(ui, "picked", s.choice.unwrap_or("—"));
+                support::readout(ui, k, "picked", s.choice.unwrap_or("—"));
             });
         });
 }
 
-fn anchor_section(ui: &mut Ui, s: &mut State) {
+fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Anchors")
         .apis(&[
             api!(Anchor::below),
             api!(Anchor::with_align),
             api!(ClickOutside::PassThrough),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Where a popup sits against a rect: the side, and how it lines up along that \
                  side. This one lets outside clicks pass through, so it stays open while you \
                  change the controls.",
@@ -133,11 +136,11 @@ fn anchor_section(ui: &mut Ui, s: &mut State) {
                 .padding(8.0)
                 .justify(Justify::Center)
                 .child_align(Align::CENTER)
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .show(ui, |ui| {
                     let target = Block::new()
                         .size((Sizing::fixed(140.0), Sizing::fixed(48.0)))
-                        .chrome(support::swatch_chrome(support::A))
+                        .chrome(support::swatch_chrome(k.swatch.teal))
                         .show(ui);
                     if s.anchored
                         && let Some(rect) = target.rect
@@ -151,25 +154,26 @@ fn anchor_section(ui: &mut Ui, s: &mut State) {
                         Popup::new(anchor.with_align(s.align).with_gap(6.0))
                             .click_outside(ClickOutside::PassThrough)
                             .padding((10.0, 6.0))
-                            .chrome(support::raised_chrome())
+                            .chrome(support::raised_chrome(k))
                             .show(ui, |ui, _| {
-                                Text::new("popup").style(&support::note_style()).show(ui);
+                                Text::new("popup").style(&k.t.caption()).show(ui);
                             });
                     }
                 });
         });
 }
 
-fn tooltip_section(ui: &mut Ui) {
+fn tooltip_section(ui: &mut Ui, k: Kit) {
     Section::new("Tooltips")
         .apis(&[
             api!(Tooltip::on as fn(&'static ResponseSnapshot, &'static str) -> Tooltip<'static>),
             api!(Tooltip::delay),
             api!(Tooltip::when_disabled),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Hover for half a second. The bubble wraps at 280 px unless told otherwise, and \
                  a disabled widget shows none unless it opts in. Once one shows, the next \
                  within a second skips its delay — sweep along the lower row.",
@@ -237,12 +241,13 @@ fn tooltip_section(ui: &mut Ui) {
         });
 }
 
-fn context_menu_section(ui: &mut Ui, s: &mut State) {
+fn context_menu_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Context menu")
         .apis(&[api!(ContextMenu::on), api!(MenuItem::shortcut)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Right-click the button or either surface. An item click, an outside click or \
                  Escape closes the menu, and ↑ ↓ walk its items. The right surface's menu \
                  has a looser theme.",
@@ -254,7 +259,7 @@ fn context_menu_section(ui: &mut Ui, s: &mut State) {
                     style: None,
                 }
                 .show(ui, &mut s.action);
-                support::readout(ui, "last action", s.action.unwrap_or("—"));
+                support::readout(ui, k, "last action", s.action.unwrap_or("—"));
             });
             let roomy = s.roomy.get_or_insert_with(|| roomy_menu_theme(ui));
             support::tiles(ui, |ui| {
@@ -264,9 +269,9 @@ fn context_menu_section(ui: &mut Ui, s: &mut State) {
                         .size((Sizing::fixed(260.0), Sizing::fixed(90.0)))
                         .child_align(Align::CENTER)
                         .sense(Sense::CLICK)
-                        .chrome(support::raised_chrome())
+                        .chrome(support::raised_chrome(k))
                         .show(ui, |ui| {
-                            Text::new(label).style(&support::note_style()).show(ui);
+                            Text::new(label).style(&k.t.caption()).show(ui);
                         })
                         .response
                         .snapshot();
@@ -280,12 +285,13 @@ fn context_menu_section(ui: &mut Ui, s: &mut State) {
         });
 }
 
-fn menu_bar_section(ui: &mut Ui, s: &mut State) {
+fn menu_bar_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Menu bar")
         .apis(&[api!(MenuBar::new)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Click a title to open its menu. While one is open, moving onto another title \
                  opens that one, and ← → move between the menus.",
             );
@@ -305,7 +311,7 @@ fn menu_bar_section(ui: &mut Ui, s: &mut State) {
                         });
                     }
                 });
-                support::readout(ui, "last action", s.action.unwrap_or("—"));
+                support::readout(ui, k, "last action", s.action.unwrap_or("—"));
             });
         });
 }

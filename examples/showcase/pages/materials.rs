@@ -1,8 +1,9 @@
 //! Backdrop filters: the three looks over a page that keeps moving under them, and the same
 //! material on a popup's and a context menu's chrome.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Section, api};
+use crate::support::{DemoCell, Kit, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
@@ -21,16 +22,17 @@ pub(crate) fn popup_button() -> WidgetId {
 /// The pane inside a look's cell.
 const PANE: Rect = Rect::new(30.0, 50.0, 160.0, 100.0);
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Looks")
         .apis(&[
             api!(BackdropFilter::blur),
             api!(BackdropFilter::frosted),
             api!(BackdropFilter::glass),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Each pane shows the pixels painted before it, under its fill, which tints them. \
                  The page under it turns, so each pane blurs again every frame; a pane over a \
                  still page costs nothing.",
@@ -38,18 +40,21 @@ pub(crate) fn build(ui: &mut Ui) {
             support::tiles(ui, |ui| {
                 look(
                     ui,
+                    k,
                     "blur — σ 8",
                     BackdropFilter::blur(8.0),
                     RgbaF32::TRANSPARENT,
                 );
                 look(
                     ui,
+                    k,
                     "frosted — σ 16, tinted",
                     BackdropFilter::frosted(16.0),
                     RgbaF32::new(1.0, 1.0, 1.0, 0.18),
                 );
                 look(
                     ui,
+                    k,
                     "glass — a lens, σ 1",
                     BackdropFilter::glass(Lens::default()).with_blur(1.0),
                     RgbaF32::TRANSPARENT,
@@ -59,25 +64,26 @@ pub(crate) fn build(ui: &mut Ui) {
 
     Section::new("On chrome")
         .apis(&[api!(Chrome::with_backdrop_filter), api!(PopupTrigger::on)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A popup and a context menu whose chrome carries a frosted filter, over the \
                  turning page. Click the button for the popup; right-click the page for the \
                  menu.",
             );
-            chrome_demo(ui);
+            chrome_demo(ui, k);
         });
 }
 
 /// A cell of `label` holding the turning page and one pane of `filter` and `tint` over it.
-fn look(ui: &mut Ui, label: &'static str, filter: BackdropFilter, tint: RgbaF32) {
-    DemoCell::new(label).size(CELL, CELL).show(ui, |ui| {
+fn look(ui: &mut Ui, k: Kit, label: &'static str, filter: BackdropFilter, tint: RgbaF32) {
+    DemoCell::new(label).size(CELL, CELL).show(ui, k, |ui| {
         Panel::canvas()
             .id_salt(label)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                page(ui, Vec2::splat(CELL));
+                page(ui, k, Vec2::splat(CELL));
                 let corners = if filter.lens.is_some() { 50.0 } else { 14.0 };
                 ui.add_shape(
                     Shape::rect(PANE)
@@ -92,9 +98,8 @@ fn look(ui: &mut Ui, label: &'static str, filter: BackdropFilter, tint: RgbaF32)
 
 /// Colored bars and a turning cross filling `size`, so a pane over it has detail to blur and a
 /// reason to blur again each frame.
-fn page(ui: &mut Ui, size: Vec2) {
-    let colors = [support::A, support::B, support::C, support::D, support::E];
-    for (i, color) in (0..12).zip(colors.iter().cycle()) {
+fn page(ui: &mut Ui, k: Kit, size: Vec2) {
+    for (i, color) in (0..12).zip(k.swatch.all().iter().cycle()) {
         let x = i as f32 * size.x / 12.0;
         ui.add_shape(Shape::rect(Rect::new(x, 0.0, size.x / 24.0, size.y)).fill(*color));
     }
@@ -119,7 +124,7 @@ fn frosted_chrome() -> Chrome {
 
 /// A wide turning page with a button that opens a frosted popup, and a frosted context menu on
 /// the page.
-fn chrome_demo(ui: &mut Ui) {
+fn chrome_demo(ui: &mut Ui, k: Kit) {
     let size = Vec2::new(360.0, 220.0);
     let page = Panel::zstack()
         .id(WidgetId::from_hash("materials-chrome-page"))
@@ -128,7 +133,7 @@ fn chrome_demo(ui: &mut Ui) {
         .show(ui, |ui| {
             Panel::canvas()
                 .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| page(ui, size));
+                .show(ui, |ui| page(ui, k, size));
             let trigger = Button::new()
                 .id(popup_button())
                 .label("open popup")
@@ -138,9 +143,7 @@ fn chrome_demo(ui: &mut Ui) {
                 .padding((14.0, 10.0))
                 .chrome(frosted_chrome())
                 .show(ui, |ui, _| {
-                    Text::new("a frosted popup")
-                        .style(&support::body_style())
-                        .show(ui);
+                    Text::new("a frosted popup").style(&k.t.body()).show(ui);
                 });
         })
         .response

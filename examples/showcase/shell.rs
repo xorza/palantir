@@ -4,15 +4,17 @@
 
 use palantir::{
     Align, App, Axis, Button, ButtonTheme, Checkbox, Chrome, Configure, FocusPolicy, FontFamily,
-    FontWeight, Justify, Key, Metrics, Panel, SchemePreference, Scroll, Separator, Shortcut,
-    Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
-    UserScale, VAlign, Vsync, WindowConfig, WindowToken, fmt,
+    FontWeight, Justify, Key, Metrics, Panel, Scroll, Separator, Shortcut, Sizing, SlotDefaults,
+    Spacing, StatefulLook, Text, Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WindowConfig,
+    WindowToken, fmt,
 };
 
 use crate::pages;
 use crate::pages::state::AppState;
+use crate::scaffold::header::Header;
+use crate::scaffold::links::LINKS;
 use crate::shot::ShotApp;
-use crate::support;
+use crate::support::{Kit, Kits, PAGE_GAP};
 
 pub(crate) const MAIN_WINDOW: WindowToken = WindowToken(0);
 /// Optional second window mirroring the `state` page's counter.
@@ -25,12 +27,6 @@ pub(crate) fn toggle_inspector(ui: &mut Ui) {
     } else {
         ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
     }
-}
-
-/// Pin `ui` to the dark scheme, whatever the system reports: the scaffold reads constants of
-/// `Palette::DARK`, so the stock dark theme is the one look its pages show.
-pub(crate) fn pin_dark(ui: &mut Ui) {
-    ui.set_scheme_preference(SchemePreference::Dark);
 }
 
 const SIDEBAR_W: f32 = 208.0;
@@ -82,8 +78,19 @@ struct Page {
     /// Keys and gestures the page answers to, shown as keycaps.
     keys: &'static [&'static str],
     flow: Flow,
+    /// The page's file, from the repository's root.
+    source: &'static str,
     /// Every page takes the app state; pages that ignore it take `_`.
-    build: fn(&mut Ui, &mut AppState),
+    build: fn(&mut Ui, &mut AppState, Kit),
+}
+
+/// A page's file, from the repository's root, spelled from its module, which the expansion names,
+/// so a renamed module breaks the build rather than the header.
+macro_rules! source {
+    ($module:ident) => {{
+        let _ = pages::$module::build;
+        concat!("examples/showcase/pages/", stringify!($module), ".rs")
+    }};
 }
 
 const PAGES: &[Page] = &[
@@ -93,7 +100,8 @@ const PAGES: &[Page] = &[
         blurb: "Form controls wired together, button themes, and disclosure sections.",
         keys: &["click", "drag", "Space", "←→"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::controls::build(ui),
+        source: source!(controls),
+        build: |ui, _, k| pages::controls::build(ui, k),
     },
     Page {
         group: Group::Widgets,
@@ -101,7 +109,8 @@ const PAGES: &[Page] = &[
         blurb: "The color picker, its parts on their own, and the chip that opens it.",
         keys: &["drag", "Esc"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::colors::build(ui),
+        source: source!(colors),
+        build: |ui, _, k| pages::colors::build(ui, k),
     },
     Page {
         group: Group::Widgets,
@@ -109,7 +118,8 @@ const PAGES: &[Page] = &[
         blurb: "A page view bound to an index, the chip strip on its own, and overflow.",
         keys: &["←→", "Home", "End", "Ctrl+Tab", "wheel"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::tabs::build(ui),
+        source: source!(tabs),
+        build: |ui, _, k| pages::tabs::build(ui, k),
     },
     Page {
         group: Group::Widgets,
@@ -117,7 +127,8 @@ const PAGES: &[Page] = &[
         blurb: "Tabbed panes that split, join and resize by drag.",
         keys: &["drag chip", "drag divider", "right-click"],
         flow: Flow::Fill,
-        build: |ui, _| pages::dock::build(ui),
+        source: source!(dock),
+        build: |ui, _, k| pages::dock::build(ui, k),
     },
     Page {
         group: Group::Widgets,
@@ -125,7 +136,8 @@ const PAGES: &[Page] = &[
         blurb: "A widget written against the public authoring API and nothing else.",
         keys: &["click", "Tab", "↑↓"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::custom_widget::build(ui),
+        source: source!(custom_widget),
+        build: |ui, _, k| pages::custom_widget::build(ui, k),
     },
     Page {
         group: Group::Widgets,
@@ -133,7 +145,8 @@ const PAGES: &[Page] = &[
         blurb: "Modal dialogs, and a window close the app can veto.",
         keys: &["Esc", "Tab", "close window"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::dialogs::build(ui),
+        source: source!(dialogs),
+        build: |ui, _, k| pages::dialogs::build(ui, k),
     },
     Page {
         group: Group::Widgets,
@@ -141,7 +154,8 @@ const PAGES: &[Page] = &[
         blurb: "Popups, anchors, tooltips and context menus, above the main tree.",
         keys: &["click", "hover", "right-click", "Esc"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::overlays::build(ui),
+        source: source!(overlays),
+        build: |ui, _, k| pages::overlays::build(ui, k),
     },
     Page {
         group: Group::Input,
@@ -149,7 +163,8 @@ const PAGES: &[Page] = &[
         blurb: "Single- and multi-line editors, the edges they report, and IME composition.",
         keys: &["type", "Enter", "Esc", "Shift+arrows", "IME"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::text_input::build(ui),
+        source: source!(text_input),
+        build: |ui, _, k| pages::text_input::build(ui, k),
     },
     Page {
         group: Group::Input,
@@ -157,7 +172,8 @@ const PAGES: &[Page] = &[
         blurb: "Tab traversal, the focus ring, arrow groups, and focus that stays inside an overlay.",
         keys: &["Tab", "Shift+Tab", "←→↑↓", "Enter", "Space", "Esc"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::focus::build(ui),
+        source: source!(focus),
+        build: |ui, _, k| pages::focus::build(ui, k),
     },
     Page {
         group: Group::Layout,
@@ -165,7 +181,8 @@ const PAGES: &[Page] = &[
         blurb: "Sizing, justification, alignment, padding, margin, gap and visibility.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::sizing::build(ui),
+        source: source!(sizing),
+        build: |ui, _, k| pages::sizing::build(ui, k),
     },
     Page {
         group: Group::Layout,
@@ -173,7 +190,8 @@ const PAGES: &[Page] = &[
         blurb: "Stacks, wrapping flow, and grid tracks.",
         keys: &["resize window"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::containers::build(ui),
+        source: source!(containers),
+        build: |ui, _, k| pages::containers::build(ui, k),
     },
     Page {
         group: Group::Layout,
@@ -181,7 +199,8 @@ const PAGES: &[Page] = &[
         blurb: "Wrapping, and text inside Hug and Fill layouts.",
         keys: &["resize window"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::text::build(ui),
+        source: source!(text),
+        build: |ui, _, k| pages::text::build(ui, k),
     },
     Page {
         group: Group::Layout,
@@ -189,7 +208,8 @@ const PAGES: &[Page] = &[
         blurb: "Clip modes against an overflowing child, and transforms on whole subtrees.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::clip::build(ui),
+        source: source!(clip),
+        build: |ui, _, k| pages::clip::build(ui, k),
     },
     Page {
         group: Group::Layout,
@@ -197,7 +217,8 @@ const PAGES: &[Page] = &[
         blurb: "Scroll viewports on three axes, inside resizable splitter panes.",
         keys: &["wheel", "drag bar", "double-click bar"],
         flow: Flow::Fill,
-        build: |ui, _| pages::scroll::build(ui),
+        source: source!(scroll),
+        build: |ui, _, k| pages::scroll::build(ui, k),
     },
     Page {
         group: Group::Layout,
@@ -205,7 +226,8 @@ const PAGES: &[Page] = &[
         blurb: "A zoomable viewport: the point under the cursor stays put.",
         keys: &["wheel", "Ctrl+wheel", "pinch"],
         flow: Flow::Fill,
-        build: |ui, _| pages::pan_zoom::build(ui),
+        source: source!(pan_zoom),
+        build: |ui, _, k| pages::pan_zoom::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -213,7 +235,8 @@ const PAGES: &[Page] = &[
         blurb: "SDF triangles, raw meshes, and the windowed rect.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::shapes::build(ui),
+        source: source!(shapes),
+        build: |ui, _, k| pages::shapes::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -221,7 +244,8 @@ const PAGES: &[Page] = &[
         blurb: "Lines, polylines, béziers and arcs: widths, joins, caps and color.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::strokes::build(ui),
+        source: source!(strokes),
+        build: |ui, _, k| pages::strokes::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -229,7 +253,8 @@ const PAGES: &[Page] = &[
         blurb: "Linear, radial and conic brushes, spread modes and interpolation spaces.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::gradients::build(ui),
+        source: source!(gradients),
+        build: |ui, _, k| pages::gradients::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -237,7 +262,8 @@ const PAGES: &[Page] = &[
         blurb: "Drop and inset shadows, as shapes and as widget chrome.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::shadows::build(ui),
+        source: source!(shadows),
+        build: |ui, _, k| pages::shadows::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -245,7 +271,8 @@ const PAGES: &[Page] = &[
         blurb: "Backdrop filters: blur, frosted glass and glass, as shapes and as chrome.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::materials::build(ui),
+        source: source!(materials),
+        build: |ui, _, k| pages::materials::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -253,7 +280,8 @@ const PAGES: &[Page] = &[
         blurb: "SVG icons rasterized at the exact physical size they land on.",
         keys: &["Ctrl +", "Ctrl −"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::icons::build(ui),
+        source: source!(icons),
+        build: |ui, _, k| pages::icons::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -261,7 +289,8 @@ const PAGES: &[Page] = &[
         blurb: "Fit modes, tint, tiling, and sampling under magnification and minification.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::images::build(ui),
+        source: source!(images),
+        build: |ui, _, k| pages::images::build(ui, k),
     },
     Page {
         group: Group::Runtime,
@@ -269,7 +298,8 @@ const PAGES: &[Page] = &[
         blurb: "Easing curves, and drag handling with no tracking code.",
         keys: &["click", "drag"],
         flow: Flow::Scroll,
-        build: |ui, _| pages::motion::build(ui),
+        source: source!(motion),
+        build: |ui, _, k| pages::motion::build(ui, k),
     },
     Page {
         group: Group::Runtime,
@@ -277,7 +307,8 @@ const PAGES: &[Page] = &[
         blurb: "Raw wgpu inside a widget, composited as an ordinary image.",
         keys: &["drag"],
         flow: Flow::Fill,
-        build: |ui, _| pages::gpu_view::build(ui),
+        source: source!(gpu_view),
+        build: |ui, _, k| pages::gpu_view::build(ui, k),
     },
     Page {
         group: Group::Runtime,
@@ -285,7 +316,8 @@ const PAGES: &[Page] = &[
         blurb: "App state passed through the record closure, shared with a second OS window.",
         keys: &["F8"],
         flow: Flow::Scroll,
-        build: pages::state::build,
+        source: source!(state),
+        build: |ui, app, k| pages::state::build(ui, k, app),
     },
     Page {
         group: Group::Diagnostics,
@@ -293,7 +325,8 @@ const PAGES: &[Page] = &[
         blurb: "Deliberately ugly regression content: id collisions, z-order, alpha blending.",
         keys: &[],
         flow: Flow::Scroll,
-        build: |ui, _| pages::fixtures::build(ui),
+        source: source!(fixtures),
+        build: |ui, _, k| pages::fixtures::build(ui, k),
     },
     Page {
         group: Group::Diagnostics,
@@ -301,7 +334,8 @@ const PAGES: &[Page] = &[
         blurb: "The workload the frame benchmark records, drawn live. Nothing animates.",
         keys: &[],
         flow: Flow::Fill,
-        build: |ui, _| pages::frame_bench::build(ui),
+        source: source!(frame_bench),
+        build: |ui, _, _| pages::frame_bench::build(ui),
     },
 ];
 
@@ -309,14 +343,17 @@ const PAGES: &[Page] = &[
 pub(crate) struct Shell {
     active: usize,
     app: AppState,
+    kits: Kits,
 }
 
 impl Shell {
-    /// The tour wears the stock theme the `Ui` starts with, so every page shows the default look.
-    pub(crate) const fn new() -> Self {
+    /// The tour wears the stock theme the `Ui` starts with, in whichever scheme shows, so every
+    /// page shows the default look.
+    pub(crate) fn new() -> Self {
         Self {
             active: 0,
             app: AppState { counter: 0 },
+            kits: Kits::new(),
         }
     }
 
@@ -324,12 +361,13 @@ impl Shell {
         handle_shortcuts(ui);
         // The focus page sets its own policy; every other page gets the default.
         ui.set_focus_policy(FocusPolicy::default());
+        let k = self.kits.kit(ui.color_scheme());
 
         Panel::hstack()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                self.rail(ui);
-                self.card(ui);
+                self.rail(ui, k);
+                self.card(ui, k);
             });
 
         pages::dialogs::intercept(ui, MAIN_WINDOW);
@@ -337,17 +375,17 @@ impl Shell {
 
     /// The nav rail: brand, grouped page list, debug-overlay footer. The list
     /// is an arrow group, so one Tab lands in it.
-    fn rail(&mut self, ui: &mut Ui) {
-        let idle = nav_style(ui.theme(), NavLook::Idle);
-        let quiet = nav_style(ui.theme(), NavLook::Quiet);
-        let selected = nav_style(ui.theme(), NavLook::Selected);
+    fn rail(&mut self, ui: &mut Ui, k: Kit) {
+        let idle = nav_style(ui.theme(), k, NavLook::Idle);
+        let quiet = nav_style(ui.theme(), k, NavLook::Quiet);
+        let selected = nav_style(ui.theme(), k, NavLook::Selected);
         Panel::vstack()
             .size((Sizing::fixed(SIDEBAR_W), Sizing::FILL))
             .padding((M.space.md, M.space.lg, M.space.md, M.space.md))
             .gap(M.space.md)
-            .chrome(Chrome::fill(support::SURROUND))
+            .chrome(Chrome::fill(k.t.surround))
             .show(ui, |ui| {
-                brand(ui);
+                brand(ui, k);
                 Scroll::vertical()
                     .size((Sizing::FILL, Sizing::FILL))
                     .overlay_bars()
@@ -357,7 +395,7 @@ impl Shell {
                         for (i, page) in PAGES.iter().enumerate() {
                             if i == 0 || PAGES[i - 1].group != page.group {
                                 let top = if i == 0 { M.space.xs } else { M.space.lg };
-                                group_heading(ui, page.group, top);
+                                group_heading(ui, k, page.group, top);
                             }
                             let style = if i == self.active {
                                 &selected
@@ -383,15 +421,16 @@ impl Shell {
             });
     }
 
-    /// The page, on the window's ground: title, blurb, key hints, rule, then the active page's body.
-    fn card(&mut self, ui: &mut Ui) {
+    /// The page, on the window's ground: its header, a rule, then the active page's body.
+    fn card(&mut self, ui: &mut Ui, k: Kit) {
         let page = PAGES[self.active];
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
             .padding((M.space.xl, M.space.xl, M.space.sm, M.space.lg))
             .gap(M.space.xl)
             .show(ui, |ui| {
-                page_header(ui, &page);
+                page_header(ui, k, &page);
+                Separator::horizontal().show(ui);
                 // Keyed by page so scroll offsets don't carry over.
                 match page.flow {
                     Flow::Scroll => {
@@ -399,18 +438,18 @@ impl Shell {
                             .id_salt(page.label)
                             .size((Sizing::FILL, Sizing::FILL))
                             .overlay_bars()
-                            .gap(support::PAGE_GAP)
+                            .gap(PAGE_GAP)
                             // Keeps the overlay bar off the page's right edge.
                             .padding((0.0, 0.0, M.space.lg, 0.0))
-                            .show(ui, |ui| (page.build)(ui, &mut self.app));
+                            .show(ui, |ui| (page.build)(ui, &mut self.app, k));
                     }
                     Flow::Fill => {
                         Panel::vstack()
                             .id_salt(page.label)
                             .size((Sizing::FILL, Sizing::FILL))
                             .padding((0.0, 0.0, M.space.lg, 0.0))
-                            .gap(support::PAGE_GAP)
-                            .show(ui, |ui| (page.build)(ui, &mut self.app));
+                            .gap(PAGE_GAP)
+                            .show(ui, |ui| (page.build)(ui, &mut self.app, k));
                     }
                 }
             });
@@ -422,8 +461,7 @@ impl ShotApp for Shell {
         PAGES.iter().map(|page| page.label)
     }
 
-    fn open(page: usize, ui: &mut Ui) -> Self {
-        pin_dark(ui);
+    fn open(page: usize, _ui: &mut Ui) -> Self {
         Self {
             active: page,
             ..Self::new()
@@ -435,18 +473,19 @@ impl App for Shell {
     fn record(&mut self, win: WindowToken, ui: &mut Ui) {
         match win {
             INSPECTOR_WINDOW => {
+                let k = self.kits.kit(ui.color_scheme());
                 Panel::vstack()
                     .padding(M.space.lg)
                     .gap(M.space.md)
                     .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| pages::state::counter(ui, &mut self.app));
+                    .show(ui, |ui| pages::state::counter(ui, k, &mut self.app));
             }
             _ => self.build(ui),
         }
     }
 }
 
-fn brand(ui: &mut Ui) {
+fn brand(ui: &mut Ui, k: Kit) {
     Panel::vstack()
         .size((Sizing::FILL, Sizing::HUG))
         .padding((M.space.md, 0.0, 0.0, 0.0))
@@ -454,20 +493,18 @@ fn brand(ui: &mut Ui) {
         .show(ui, |ui| {
             Text::new("palantir")
                 .style(
-                    &TextStyle::default()
-                        .with_font_size(16.0)
+                    &k.t.body()
+                        .with_font_size(M.text.title)
                         .with_weight(FontWeight::BOLD),
                 )
                 .show(ui);
-            Text::new("widget tour")
-                .style(&support::caption_style())
-                .show(ui);
+            Text::new("widget tour").style(&k.t.caption()).show(ui);
         });
 }
 
 /// `top`: the margin above the heading. A quiet group's heading is a step fainter still.
-fn group_heading(ui: &mut Ui, group: Group, top: f32) {
-    let mut style = support::heading_style();
+fn group_heading(ui: &mut Ui, k: Kit, group: Group, top: f32) {
+    let mut style = k.t.heading();
     if group.is_quiet() {
         style = style.with_color(style.color.with_alpha(0.6));
     }
@@ -545,24 +582,20 @@ fn ui_scale_row(ui: &mut Ui) {
     ui.set_user_scale(next);
 }
 
-fn page_header(ui: &mut Ui, page: &Page) {
-    Panel::vstack()
-        .size((Sizing::FILL, Sizing::HUG))
-        .gap(M.space.sm)
-        .show(ui, |ui| {
-            Text::new(page.label)
-                .style(&support::title_style())
-                .show(ui);
-            Text::new(page.blurb)
-                .style(&support::blurb_style())
-                .size((Sizing::FILL, Sizing::HUG))
-                .text_wrap(TextWrap::WrapWithOverflow)
-                .show(ui);
-            if !page.keys.is_empty() {
-                support::keys(ui, page.keys);
-            }
-        });
-    Separator::horizontal().show(ui);
+fn page_header(ui: &mut Ui, k: Kit, page: &Page) {
+    Header {
+        title: page.label,
+        blurb: page.blurb,
+        keys: page.keys,
+        apis: &[],
+        related_label: "observatory",
+        related: LINKS
+            .iter()
+            .filter(|link| link.page == page.label)
+            .map(|link| link.study),
+        source: page.source,
+    }
+    .show(ui, k.t);
 }
 
 /// The three ways a rail item can look.
@@ -578,12 +611,12 @@ enum NavLook {
 /// A rail item: the theme's menu-bar title, muted at rest and lit under the pointer, in the
 /// accent while its page is open, on an `xs` vertical inset rather than the title's `sm`, so the
 /// whole list fits a window.
-fn nav_style(theme: &Theme, look: NavLook) -> ButtonTheme {
+fn nav_style(theme: &Theme, k: Kit, look: NavLook) -> ButtonTheme {
     let bar = &theme.menu_bar;
     let mut looks = bar.title.clone();
     match look {
         NavLook::Idle => {}
-        NavLook::Quiet => looks.normal.text = looks.normal.text.with_color(support::INK_FAINT),
+        NavLook::Quiet => looks.normal.text = looks.normal.text.with_color(k.t.ink_faint),
         NavLook::Selected => {
             let open = bar.open.clone();
             looks = StatefulLook {
@@ -593,7 +626,7 @@ fn nav_style(theme: &Theme, look: NavLook) -> ButtonTheme {
                 disabled: looks.disabled,
             };
             for look in [&mut looks.normal, &mut looks.hovered, &mut looks.active] {
-                look.text = look.text.with_color(support::ACCENT);
+                look.text = look.text.with_color(k.t.accent);
             }
         }
     }
@@ -641,4 +674,28 @@ fn handle_shortcuts(ui: &mut Ui) {
         scale = UserScale::ONE;
     }
     ui.set_user_scale(scale);
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use crate::scaffold::links::LINKS;
+    use crate::shell::PAGES;
+
+    /// Every page the shared links table names is a page of the tour, and every page's source is
+    /// a file of the repository, so neither header row names something that is gone.
+    #[test]
+    fn the_links_and_sources_name_real_pages_and_files() {
+        for link in LINKS {
+            assert!(
+                PAGES.iter().any(|page| page.label == link.page),
+                "{link:?} names no page"
+            );
+        }
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        for page in PAGES {
+            assert!(root.join(page.source).is_file(), "{}", page.source);
+        }
+    }
 }

@@ -8,13 +8,16 @@ use palantir::{
 use crate::app::model::Observatory;
 use crate::app::model::catalog::ObjectId;
 use crate::app::model::session::{Binning, CAMERAS, FILTERS};
-use crate::app::scaffold::{StudyHeader, Tokens, api};
+use crate::app::studies::Study;
+use crate::scaffold::api;
+use crate::scaffold::header::Header;
+use crate::scaffold::tokens::Tokens;
 
 /// Each plan row's height, which a handle's drag counts rows in.
 const ROW_HEIGHT: f32 = 32.0;
 
 pub(crate) fn header(ui: &mut Ui, t: Tokens) {
-    StudyHeader {
+    Header {
         title: "Session",
         blurb: "The night's settings as a form, and the plan in imaging order. Reorder an entry \
                 with Alt+↑/↓ or its handle; clearing the plan asks first.",
@@ -27,7 +30,8 @@ pub(crate) fn header(ui: &mut Ui, t: Tokens) {
             api!(type palantir::RadioButton),
             api!(type palantir::Modal),
         ],
-        showcase: &["controls", "dialogs", "focus & keyboard"],
+        related_label: "showcase",
+        related: Study::Session.showcase_pages(),
         source: "examples/observatory/app/studies/session.rs",
     }
     .show(ui, t);

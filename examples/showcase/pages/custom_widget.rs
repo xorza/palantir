@@ -2,14 +2,14 @@
 //!
 //! Nothing enforces that no crate internal is reached (the showcase builds with `internals`); the listing beside the demo is the check.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Col, Section, api};
-use palantir::BackdropFilter;
+use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Shadow,
-    Sizing, Stroke, Text, Ui, VAlign, WidgetId, fmt,
+    Align, Chrome, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Sizing,
+    Stroke, Text, Ui, VAlign, WidgetId, fmt,
 };
 
 const BUTTON: f32 = 28.0;
@@ -19,7 +19,6 @@ const VALUE_W: f32 = 34.0;
 const LABEL_W: f32 = 62.0;
 /// Sized to the longest entry in [`surface`]'s list, so descriptions start at one x.
 const ITEM_W: f32 = 146.0;
-const CODE_SIZE: f32 = 12.0;
 /// Room around the buttons for the focus ring, which paints inside the widget's rect.
 const RING_ROOM: f32 = 3.0;
 const GLYPH_INSET: f32 = 8.0;
@@ -46,43 +45,44 @@ impl Default for State {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::custom_widget::state");
-    ui.with_state::<State, _>(state_id, page);
+    ui.with_state::<State, _>(state_id, |ui, s| page(ui, k, s));
 }
 
-fn page(ui: &mut Ui, s: &mut State) {
+fn page(ui: &mut Ui, k: Kit, s: &mut State) {
     support::cols(ui, |ui, col| match col {
-        Col::Left => demo(ui, s),
-        Col::Right => surface(ui),
+        Col::Left => demo(ui, k, s),
+        Col::Right => surface(ui, k),
     });
 }
 
-fn demo(ui: &mut Ui, s: &mut State) {
+fn demo(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Stepper")
         .apis(&[api!(Widget::hstack), api!(Widget::key_pressed)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Two instances over separate values. Click a sign, or Tab to a stepper and \
                  use ↑ ↓ Home End.",
             );
-            support::well(ui, |ui| {
-                labeled(ui, "volume", |ui| {
+            support::well(ui, k, |ui| {
+                labeled(ui, k, "volume", |ui| {
                     Stepper::new(&mut s.volume).range(0, 100).step(5).show(ui);
                 });
-                labeled(ui, "count", |ui| {
+                labeled(ui, k, "count", |ui| {
                     Stepper::new(&mut s.count).range(-10, 10).show(ui);
                 });
             });
         });
 
-    Section::new("The call site").show(ui, |ui| {
-        support::well(ui, |ui| {
+    Section::new("The call site").show(ui, k, |ui| {
+        support::well(ui, k, |ui| {
             for (i, line) in CALL_SITE.iter().enumerate() {
                 Text::new(*line)
                     .id_salt(i)
-                    .style(&support::mono_style(CODE_SIZE, support::INK))
+                    .style(&k.t.mono(k.t.ink))
                     .show(ui);
             }
         });
@@ -93,7 +93,7 @@ fn demo(ui: &mut Ui, s: &mut State) {
 type Body = fn(&mut Ui);
 
 /// What an outside crate needs to write the same widget, each name checked by [`api!`].
-fn surface(ui: &mut Ui) {
+fn surface(ui: &mut Ui, k: Kit) {
     let surface = [
         (api!(type Widget), "what it records, built and configured"),
         (api!(type Configure), "every shared setter, from one method"),
@@ -125,22 +125,23 @@ fn surface(ui: &mut Ui) {
             api!(WidgetId::with as fn(WidgetId, &'static str) -> WidgetId),
             "key child nodes off the parent id",
         ),
+        (api!(Ui::theme), "the live theme its buttons wear"),
         (api!(type Response), "the value a caller chains on"),
     ];
-    Section::new("The authoring surface it uses").show(ui, |ui| {
-        support::well(ui, |ui| {
+    Section::new("The authoring surface it uses").show(ui, k, |ui| {
+        support::well(ui, k, |ui| {
             for (i, (item, what)) in surface.into_iter().enumerate() {
                 Panel::hstack()
                     .id_salt(i)
                     .size((Sizing::FILL, Sizing::HUG))
-                    .gap(support::ROW_GAP)
+                    .gap(ROW_GAP)
                     .child_align(Align::v(VAlign::Center))
                     .show(ui, |ui| {
                         Text::new(item)
-                            .style(&support::mono_style(CODE_SIZE, support::INK))
+                            .style(&k.t.mono(k.t.ink))
                             .min_size((ITEM_W, 0.0))
                             .show(ui);
-                        Text::new(what).style(&support::caption_style()).show(ui);
+                        Text::new(what).style(&k.t.caption()).show(ui);
                     });
             }
         });
@@ -148,15 +149,15 @@ fn surface(ui: &mut Ui) {
 }
 
 #[track_caller]
-fn labeled(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
+fn labeled(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::HUG))
-        .gap(support::ROW_GAP)
+        .gap(ROW_GAP)
         .child_align(Align::v(VAlign::Center))
         .show(ui, |ui| {
             Text::new(label)
-                .style(&support::note_style())
+                .style(&k.t.caption())
                 .min_size((LABEL_W, 0.0))
                 .show(ui);
             body(ui);
@@ -238,10 +239,7 @@ impl<'a> Stepper<'a> {
         let label = fmt!(ui, "{}", self.value);
 
         // No fill of its own: the corners serve the framework's focus ring.
-        let chrome = Chrome::rounded(
-            RgbaF32::TRANSPARENT,
-            Corners::all(support::RADIUS + RING_ROOM),
-        );
+        let chrome = Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(RADIUS + RING_ROOM));
         widget
             .show(ui, Some(&chrome), |ui| {
                 StepButton {
@@ -252,7 +250,6 @@ impl<'a> Stepper<'a> {
                 .show(ui);
                 Text::new(label)
                     .id(id.with("value"))
-                    .style(&support::body_style())
                     .text_align(Align::CENTER)
                     .min_size((VALUE_W, 0.0))
                     .show(ui);
@@ -292,20 +289,21 @@ struct StepButton {
 impl StepButton {
     fn show(self, ui: &mut Ui) {
         let Self { id, state, glyph } = self;
-        let fill = if state.pressed() {
-            support::ELEM_STRONG
+        // The theme's button looks, so the stepper follows a scheme switch as palantir's own
+        // widgets do; only the corners are the stepper's.
+        let looks = &ui.theme().button.unselected;
+        let look = if state.pressed() {
+            &looks.active
         } else if state.hovered() {
-            support::ELEM_MID
+            &looks.hovered
         } else {
-            support::ELEMENT
+            &looks.normal
         };
         let chrome = Chrome {
-            fill: fill.into(),
-            border: Stroke::NONE,
-            corners: Corners::all(support::RADIUS),
-            shadow: Shadow::NONE,
-            backdrop_filter: BackdropFilter::NONE,
+            corners: Corners::all(RADIUS),
+            ..look.chrome.clone()
         };
+        let ink = ui.theme().text.color;
         let widget = Widget::leaf()
             .id(id)
             .size((Sizing::fixed(BUTTON), Sizing::fixed(BUTTON)))
@@ -313,17 +311,17 @@ impl StepButton {
         widget.record(ui, Some(&chrome), |ui| {
             let mid = BUTTON / 2.0;
             let far = BUTTON - GLYPH_INSET;
-            paint_bar(ui, &[Vec2::new(GLYPH_INSET, mid), Vec2::new(far, mid)]);
+            paint_bar(ui, ink, &[Vec2::new(GLYPH_INSET, mid), Vec2::new(far, mid)]);
             if matches!(glyph, Glyph::Plus) {
-                paint_bar(ui, &[Vec2::new(mid, GLYPH_INSET), Vec2::new(mid, far)]);
+                paint_bar(ui, ink, &[Vec2::new(mid, GLYPH_INSET), Vec2::new(mid, far)]);
             }
         });
     }
 }
 
-fn paint_bar(ui: &mut Ui, points: &[Vec2]) {
+fn paint_bar(ui: &mut Ui, ink: RgbaF32, points: &[Vec2]) {
     ui.add_shape(
-        Shape::polyline(points, Stroke::new(support::INK, 2.0))
+        Shape::polyline(points, Stroke::new(ink, 2.0))
             .cap(LineCap::Round)
             .join(LineJoin::Round),
     );

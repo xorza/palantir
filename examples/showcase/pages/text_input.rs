@@ -2,8 +2,9 @@
 //!
 //! Buffers live in one [`Page`] row lent by `Ui::with_state`, so they survive page switches.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{INK, Section, api};
+use crate::support::{Kit, Section};
 use palantir::widget::Span;
 use palantir::{
     Align, Configure, EditEnd, HAlign, Sizing, Text, TextEdit, TextEditResponse, Ui, VAlign,
@@ -103,15 +104,15 @@ impl EventLog {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let page_id = WidgetId::from_hash("showcase::text_input::page");
-    ui.with_state::<Page, _>(page_id, page);
+    ui.with_state::<Page, _>(page_id, |ui, s| page(ui, k, s));
 }
 
-fn page(ui: &mut Ui, s: &mut Page) {
+fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("Single line")
         .apis(&[api!(TextEdit::new)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::row(ui, |ui| {
                 for (buf, hint) in [(&mut s.a, "first field"), (&mut s.b, "second field")] {
                     TextEdit::new(buf)
@@ -123,16 +124,17 @@ fn page(ui: &mut Ui, s: &mut Page) {
                 }
             });
             let a = fmt!(ui, "{:?} ({} bytes)", s.a, s.a.len());
-            support::readout(ui, "first", a);
+            support::readout(ui, k, "first", a);
             let b = fmt!(ui, "{:?} ({} bytes)", s.b, s.b.len());
-            support::readout(ui, "second", b);
+            support::readout(ui, k, "second", b);
         });
 
     Section::new("Edit events")
         .apis(&[api!(TextEdit::show)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "The edges one focus session reports. Enter submits and commits, Escape \
                  cancels and blurs without a commit, and a blur after an edit commits.",
             );
@@ -142,19 +144,19 @@ fn page(ui: &mut Ui, s: &mut Page) {
                     .show(ui);
                 s.events.record(&r);
             });
-            support::well(ui, |ui| {
+            support::well(ui, k, |ui| {
                 let mut any = false;
                 for (seq, edge) in s.events.iter() {
                     any = true;
                     let line = fmt!(ui, "#{seq:<4} {}", edge.name());
                     Text::new(line)
                         .id_salt(seq)
-                        .style(&support::mono_style(12.0, INK))
+                        .style(&k.t.mono(k.t.ink))
                         .show(ui);
                 }
                 if !any {
                     Text::new("no edges yet — click the field")
-                        .style(&support::note_style())
+                        .style(&k.t.caption())
                         .show(ui);
                 }
             });
@@ -162,9 +164,10 @@ fn page(ui: &mut Ui, s: &mut Page) {
 
     Section::new("Multi-line")
         .apis(&[api!(TextEdit::multiline)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Enter inserts a newline, ↑ and ↓ move by visual line, and a selection spans \
                  lines. A multi-line clipboard pastes as it is.",
             );
@@ -177,9 +180,10 @@ fn page(ui: &mut Ui, s: &mut Page) {
 
     Section::new("Alignment")
         .apis(&[api!(TextEdit::text_align)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "The text, and the caret with it, sit where text_align puts them in an editor \
                  taller and wider than its line.",
             );
@@ -199,15 +203,16 @@ fn page(ui: &mut Ui, s: &mut Page) {
             });
         });
 
-    ime(ui, s);
+    ime(ui, k, s);
 }
 
-fn ime(ui: &mut Ui, s: &mut Page) {
+fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("IME composition")
         .apis(&[api!(Ui::request_ime), api!(Ui::ime_preedit)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "An input method composes in place: the text so far is drawn underlined at \
                  the caret, the candidate window opens beside the caret, and the bound \
                  String changes only when the composition commits. On macOS: add the \
@@ -225,23 +230,24 @@ fn ime(ui: &mut Ui, s: &mut Page) {
                 s.preedit.push_str(p.text);
                 s.preedit_cursor = p.cursor;
             }
-            support::well(ui, |ui| {
+            support::well(ui, k, |ui| {
                 let preedit = if s.preedit.is_empty() {
                     ui.intern("none")
                 } else {
                     fmt!(ui, "{:?}", s.preedit)
                 };
-                support::readout(ui, "preedit", preedit);
+                support::readout(ui, k, "preedit", preedit);
                 let cursor = match s.preedit_cursor {
                     Some(cursor) => fmt!(ui, "bytes {:?}", cursor.range()),
                     None => ui.intern("none"),
                 };
-                support::readout(ui, "cursor", cursor);
+                support::readout(ui, k, "cursor", cursor);
                 let bound = fmt!(ui, "{:?}", s.ime);
-                support::readout(ui, "bound value", bound);
+                support::readout(ui, k, "bound value", bound);
             });
             support::checklist(
                 ui,
+                k,
                 &[
                     "While composing, the preedit shows underlined at the caret",
                     "The candidate window opens next to the caret, and follows it",
@@ -252,9 +258,10 @@ fn ime(ui: &mut Ui, s: &mut Page) {
             );
         });
 
-    Section::new("Plain keys with an input method on").show(ui, |ui| {
+    Section::new("Plain keys with an input method on").show(ui, k, |ui| {
         support::note(
             ui,
+            k,
             "On Windows and X11 an input method can pass a plain key through as a \
                  commit and as a key press both. Each key must type one character.",
         );
@@ -273,9 +280,10 @@ fn ime(ui: &mut Ui, s: &mut Page) {
             s.plain.chars().count(),
             s.plain_edits
         );
-        support::readout(ui, "typed", count);
+        support::readout(ui, k, "typed", count);
         support::checklist(
             ui,
+            k,
             &["With an input method on in its Latin mode, typing abc shows abc, once"],
         );
     });

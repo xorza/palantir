@@ -1,7 +1,8 @@
 //! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, spinner sizing, and echoes the live form state.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Col, Section, api};
+use crate::support::{Col, Kit, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
     Align, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure, Corners,
@@ -62,11 +63,11 @@ impl Default for State {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::controls::state");
     let themes = Themes {
-        outlined: outlined_style(),
-        danger: danger_style(),
+        outlined: outlined_style(k),
+        danger: danger_style(k),
     };
 
     ui.with_state::<State, _>(state_id, |ui, s| {
@@ -79,17 +80,17 @@ pub(crate) fn build(ui: &mut Ui) {
                             as fn(&mut Ui, AnimationRequest<f32>, Option<AnimationSpec>) -> f32
                     ),
                 ])
-                .show(ui, |ui| form(ui, s, &themes)),
-            Col::Right => side(ui, s, &themes),
+                .show(ui, k, |ui| form(ui, k, s, &themes)),
+            Col::Right => side(ui, k, s, &themes),
         });
         Section::new("Disclosure")
             .apis(&[api!(Expander::start_open), api!(Expander::keep_body)])
-            .show(ui, |ui| disclosure(ui, s));
+            .show(ui, k, |ui| disclosure(ui, k, s));
     });
 }
 
 /// The three things an [`Expander`] decides: whether it starts open, whether its reveal animates, and whether its body keeps recording while closed. In the second column, type into both fields, collapse and reopen: the upper resets because Palantir sweeps the state of unrecorded widgets, the lower doesn't because `keep_body` records it collapsed.
-fn disclosure(ui: &mut Ui, s: &mut State) {
+fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
     let base = ExpanderTheme::default();
     let animated = ExpanderTheme {
         defaults: SlotDefaults {
@@ -105,6 +106,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                 .show(ui, |ui| {
                     support::note(
                         ui,
+                        k,
                         "A plain section. The reveal snaps, as the stock expander theme \
                          sets no animation.",
                     );
@@ -114,6 +116,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                 .show(ui, |ui| {
                     support::note(
                         ui,
+                        k,
                         "The same widget with an animation on its theme. The first open \
                          snaps — there is no measured height to tween against yet — and every \
                          one after it animates.",
@@ -138,6 +141,7 @@ fn disclosure(ui: &mut Ui, s: &mut State) {
                 });
             support::note(
                 ui,
+                k,
                 "Click into both fields, collapse both, then reopen: the upper field's caret \
                  and selection are gone with its state row, and the lower one's are not.",
             );
@@ -152,14 +156,14 @@ struct Themes {
     danger: ButtonTheme,
 }
 
-fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
+fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
     Panel::vstack()
         .size((Sizing::fixed(360.0), Sizing::HUG))
         .padding(16.0)
         .gap(10.0)
-        .chrome(support::well_chrome())
+        .chrome(k.t.card())
         .show(ui, |ui| {
-            group(ui, "NETWORK");
+            group(ui, k, "NETWORK");
             Switch::new(&mut s.airplane).label("Airplane mode").show(ui);
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::HUG))
@@ -172,7 +176,7 @@ fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
                         .label("Treat as metered")
                         .show(ui);
                     support::row(ui, |ui| {
-                        Text::new("Region").style(&support::note_style()).show(ui);
+                        Text::new("Region").style(&k.t.caption()).show(ui);
                         ComboBox::new(&mut s.region, &REGIONS)
                             .size((Sizing::fixed(170.0), Sizing::HUG))
                             .show(ui);
@@ -180,7 +184,7 @@ fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
                 });
 
             Separator::horizontal().show(ui);
-            group(ui, "APPEARANCE");
+            group(ui, k, "APPEARANCE");
             Panel::hstack().gap(12.0).show(ui, |ui| {
                 for (value, label) in [
                     (Appearance::System, "System"),
@@ -200,16 +204,16 @@ fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
             // Thick tinted variant of Separator, in situ.
             Separator::horizontal()
                 .thickness(3.0)
-                .color(support::A)
+                .color(k.swatch.teal)
                 .show(ui);
-            group(ui, "AUDIO & VIDEO");
+            group(ui, k, "AUDIO & VIDEO");
             support::row(ui, |ui| {
                 Slider::new(&mut s.volume, 0.0..=1.0)
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .show(ui);
                 let vol = fmt!(ui, "{:.0}%", s.volume * 100.0);
                 Text::new(vol)
-                    .style(&support::note_style())
+                    .style(&k.t.caption())
                     .min_size((36.0, 0.0))
                     .show(ui);
             });
@@ -223,7 +227,7 @@ fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
                     .size((Sizing::fixed(110.0), Sizing::HUG))
                     .show(ui);
                 Text::new("drag to scrub, click to type")
-                    .style(&support::note_style())
+                    .style(&k.t.caption())
                     .show(ui);
             });
 
@@ -269,18 +273,19 @@ fn form(ui: &mut Ui, s: &mut State, themes: &Themes) {
                 support::row(ui, |ui| {
                     Spinner::new().diameter(16.0).show(ui);
                     let pct = fmt!(ui, "syncing {:.0}%", frac * 100.0);
-                    Text::new(pct).style(&support::note_style()).show(ui);
+                    Text::new(pct).style(&k.t.caption()).show(ui);
                 });
             }
         });
 }
 
-fn side(ui: &mut Ui, s: &State, themes: &Themes) {
+fn side(ui: &mut Ui, k: Kit, s: &State, themes: &Themes) {
     Section::new("Button themes")
         .apis(&[api!(type ButtonTheme)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "The default, an outlined and a danger ButtonTheme, each beside its disabled look.",
             );
             support::row(ui, |ui| {
@@ -310,9 +315,10 @@ fn side(ui: &mut Ui, s: &State, themes: &Themes) {
 
     Section::new("Label overflow")
         .apis(&[api!(Button::text_wrap)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A fixed-width button cuts a long label at its box. Single-line wrapping lets the \
              label run past the box; a Hug-width button grows to fit.",
             );
@@ -334,19 +340,22 @@ fn side(ui: &mut Ui, s: &State, themes: &Themes) {
 
     Section::new("Spinners")
         .apis(&[api!(Spinner::diameter)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             Panel::hstack()
                 .gap(20.0)
                 .child_align(Align::v(VAlign::Center))
                 .show(ui, |ui| {
                     Spinner::new().diameter(20.0).show(ui);
                     Spinner::new().diameter(32.0).show(ui);
-                    Spinner::new().diameter(48.0).color(support::B).show(ui);
+                    Spinner::new()
+                        .diameter(48.0)
+                        .color(k.swatch.orange)
+                        .show(ui);
                 });
         });
 
-    Section::new("Live state").show(ui, |ui| {
-        support::well(ui, |ui| {
+    Section::new("Live state").show(ui, k, |ui| {
+        support::well(ui, k, |ui| {
             let net = fmt!(
                 ui,
                 "airplane={} wifi={} bluetooth={} metered={}",
@@ -355,26 +364,26 @@ fn side(ui: &mut Ui, s: &State, themes: &Themes) {
                 s.bluetooth,
                 s.metered
             );
-            support::readout(ui, "network", net);
-            support::readout(ui, "region", REGIONS[s.region]);
+            support::readout(ui, k, "network", net);
+            support::readout(ui, k, "region", REGIONS[s.region]);
             let look = fmt!(ui, "{:?}, reduce_motion={}", s.appearance, s.reduce_motion);
-            support::readout(ui, "appearance", look);
+            support::readout(ui, k, "appearance", look);
             let av = fmt!(ui, "volume={:.2} fps={}", s.volume, s.fps);
-            support::readout(ui, "audio & video", av);
+            support::readout(ui, k, "audio & video", av);
         });
     });
 }
 
-fn group(ui: &mut Ui, label: &'static str) {
+fn group(ui: &mut Ui, k: Kit, label: &'static str) {
     Text::new(label)
         .id_salt(label)
-        .style(&support::caption_style())
+        .style(&k.t.caption())
         .show(ui);
 }
 
 /// Transparent fill, accent stroke: reads as a "selectable surface".
-fn outlined_style() -> ButtonTheme {
-    let accent = support::ACCENT;
+fn outlined_style(k: Kit) -> ButtonTheme {
+    let accent = k.t.accent;
     let stroke = Stroke::new(accent, 1.5);
     let chrome =
         |fill: RgbaF32, stroke| Chrome::rounded(fill, Corners::all(4.0)).with_border(stroke);
@@ -397,15 +406,15 @@ fn outlined_style() -> ButtonTheme {
                     RgbaF32::TRANSPARENT,
                     Stroke::new(accent.with_alpha(0.35), 1.5),
                 ),
-                text: TextStyleOverrides::NONE.with_color(support::INK_FAINT),
+                text: TextStyleOverrides::NONE.with_color(k.t.ink_faint),
             },
         },
         ..Default::default()
     }
 }
 
-fn danger_style() -> ButtonTheme {
-    let red = support::E;
+fn danger_style(k: Kit) -> ButtonTheme {
+    let red = k.swatch.red;
     let look = |fill: RgbaF32, ink: RgbaF32| WidgetLook {
         chrome: Chrome::rounded(fill, Corners::all(4.0)),
         text: TextStyleOverrides::NONE.with_color(ink),

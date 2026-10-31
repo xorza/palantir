@@ -21,6 +21,9 @@ mod fixtures;
 mod golden_name;
 mod goldens;
 mod kept_on_failure;
+/// The examples' shared scaffold, which the apps compiled in here name.
+#[path = "../../examples/shared/scaffold/mod.rs"]
+mod scaffold;
 /// The shared shot mode, which the observatory's app names through its `ShotApp` impl.
 #[expect(
     dead_code,
@@ -31,7 +34,6 @@ mod shot;
 /// The showcase's support module, compiled in so a golden renders a showcase page itself.
 #[expect(
     dead_code,
-    unused_macro_rules,
     reason = "the module is compiled whole, and only the part those pages call is used here"
 )]
 #[path = "../../examples/showcase/support.rs"]

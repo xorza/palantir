@@ -1,17 +1,22 @@
 //! The palantir widget tour. `main` wires the winit host, or with
 //! `--shot SCRIPT [--out DIR] [--against DIR]`
 //! plays a script on a window with no desktop ([`shot`]); chrome and page table are in [`shell`],
-//! pages in [`pages`], shared tokens in [`support`].
+//! pages in [`pages`], the look in [`support`] over the examples' shared [`scaffold`].
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod pages;
+#[path = "../shared/scaffold/mod.rs"]
+mod scaffold;
 mod shell;
 #[path = "../shared/shot/mod.rs"]
 mod shot;
 #[cfg(test)]
 mod shot_tests;
 mod support;
+/// Here and not in `support`, which the visual suite compiles whole, so these run once.
+#[cfg(test)]
+mod support_tests;
 
 use std::env;
 use std::io::{self, Write};
@@ -60,10 +65,7 @@ fn main() -> ExitCode {
 fn window() -> Result<(), String> {
     WinitHost::builder(shell::MAIN_WINDOW)
         .window(WindowConfig::new("palantir showcase").with_inner_size(UVec2::new(1600, 1000)))
-        .build(|ui, _handle| {
-            shell::pin_dark(ui);
-            Shell::new()
-        })
+        .build(|_ui, _handle| Shell::new())
         .and_then(WinitHost::run)
         .map_err(|error| error.to_string())
 }

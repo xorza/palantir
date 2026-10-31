@@ -1,6 +1,7 @@
 //! Scroll viewports in splitter panes. The outer horizontal splitter holds a vertical scroll list; its right half splits vertically into a horizontal strip and a two-axis grid.
 
 use crate::support;
+use crate::support::Kit;
 use palantir::{
     Configure, Panel, RgbaF32, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
 };
@@ -17,22 +18,22 @@ impl Default for State {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::scroll::state");
-    ui.with_state::<State, _>(state_id, split_panes);
+    ui.with_state::<State, _>(state_id, |ui, s| split_panes(ui, k, s));
 }
 
-fn split_panes(ui: &mut Ui, s: &mut State) {
+fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
     Splitter::row(&mut s.h)
         .min_pane(120.0)
         .show(ui, |ui, half| match half {
-            SplitHalf::First => pane(ui, "vertical", |ui| {
+            SplitHalf::First => pane(ui, k, "vertical", |ui| {
                 Scroll::vertical()
                     .size((Sizing::FILL, Sizing::FILL))
                     .gap(4.0)
                     .show(ui, |ui| {
                         for i in 0..40 {
-                            row(ui, i);
+                            row(ui, k, i);
                         }
                     });
             }),
@@ -40,68 +41,68 @@ fn split_panes(ui: &mut Ui, s: &mut State) {
                 Splitter::col(&mut s.v)
                     .min_pane(100.0)
                     .show(ui, |ui, half| match half {
-                        SplitHalf::First => pane(ui, "horizontal", |ui| {
+                        SplitHalf::First => pane(ui, k, "horizontal", |ui| {
                             Scroll::horizontal()
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .gap(4.0)
                                 .show(ui, |ui| {
                                     for i in 0..40 {
-                                        col(ui, i);
+                                        col(ui, k, i);
                                     }
                                 });
                         }),
-                        SplitHalf::Second => pane(ui, "two-axis", |ui| {
+                        SplitHalf::Second => pane(ui, k, "two-axis", |ui| {
                             Scroll::both()
                                 .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui, grid);
+                                .show(ui, |ui| grid(ui, k));
                         }),
                     });
             }
         });
 
     let line = fmt!(ui, "row {:.2}  column {:.2}", s.h, s.v);
-    support::readout(ui, "split ratios", line);
+    support::readout(ui, k, "split ratios", line);
 }
 
 #[track_caller]
-fn pane(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
+fn pane(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
         .gap(6.0)
-        .chrome(support::well_chrome())
+        .chrome(k.t.card())
         .show(ui, |ui| {
-            Text::new(label).style(&support::caption_style()).show(ui);
+            Text::new(label).style(&k.t.caption()).show(ui);
             body(ui);
         });
 }
 
-fn row(ui: &mut Ui, i: u32) {
+fn row(ui: &mut Ui, k: Kit, i: u32) {
     Panel::hstack()
         .id_salt(i)
         .size((Sizing::FILL, Sizing::fixed(28.0)))
         .padding((10.0, 6.0))
-        .chrome(support::swatch_chrome(ramp(i)))
+        .chrome(support::swatch_chrome(ramp(i, k)))
         .show(ui, |ui| {
             let label = fmt!(ui, "row {i:02}");
             Text::new(label).style(&support::on_swatch_style()).show(ui);
         });
 }
 
-fn col(ui: &mut Ui, i: u32) {
+fn col(ui: &mut Ui, k: Kit, i: u32) {
     Panel::vstack()
         .id_salt(i)
         .size((Sizing::fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
-        .chrome(support::swatch_chrome(ramp(i)))
+        .chrome(support::swatch_chrome(ramp(i, k)))
         .show(ui, |ui| {
             let label = fmt!(ui, "col {i:02}");
             Text::new(label).style(&support::on_swatch_style()).show(ui);
         });
 }
 
-fn grid(ui: &mut Ui) {
+fn grid(ui: &mut Ui, k: Kit) {
     // One Hug-sized child holding a 12×16 grid of nested stacks; both-axes Scroll measures with INF, so the stacks size to content and overflow both sides.
     Panel::vstack().gap(4.0).show(ui, |ui| {
         for r in 0..16u32 {
@@ -111,7 +112,7 @@ fn grid(ui: &mut Ui) {
                         .id_salt(c)
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .padding((6.0, 4.0))
-                        .chrome(support::swatch_chrome(ramp(r * 12 + c)))
+                        .chrome(support::swatch_chrome(ramp(r * 12 + c, k)))
                         .show(ui, |ui| {
                             let label = fmt!(ui, "{r},{c}");
                             Text::new(label)
@@ -125,12 +126,12 @@ fn grid(ui: &mut Ui) {
 }
 
 /// Teal → purple → orange sweep so panning shows progress; these colors are demo content, not theme, in the swatch palette's hues.
-fn ramp(i: u32) -> RgbaF32 {
+fn ramp(i: u32, k: Kit) -> RgbaF32 {
     let t = (i % 40) as f32 / 40.0;
     let (from, to, u) = if t < 0.5 {
-        (support::A, support::D, t * 2.0)
+        (k.swatch.teal, k.swatch.violet, t * 2.0)
     } else {
-        (support::D, support::B, (t - 0.5) * 2.0)
+        (k.swatch.violet, k.swatch.orange, (t - 0.5) * 2.0)
     };
     support::mix(from, to, u)
 }
