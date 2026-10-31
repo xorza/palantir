@@ -96,7 +96,7 @@ impl InputPass<'_> {
                 ed.select_all();
             }
         } else if !is_focused {
-            {}
+            ed.disarm_select_all_on_release();
         }
 
         // Click and drag-to-select. Gated on `held`, not `pressed`: a drag must
@@ -143,7 +143,7 @@ impl InputPass<'_> {
             }
             // A key taken mid-press acts on the caret the press placed; selecting all
             // on the release would discard it.
-            {}
+            ed.disarm_select_all_on_release();
             // Single-line Enter submits without editing the buffer.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
                 ended = Some(EditEnd::Submitted);
