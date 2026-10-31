@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use palantir::{ColorScheme, Metrics, Palette, RgbaF32, Theme, Ui};
+use palantir::{ColorScheme, Metrics, Palette, RgbaF32, Theme, Ui, WidgetId};
 
 /// A starting point for the palettes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,8 +40,9 @@ pub(crate) struct Appearance {
     dark: Palette,
     pub(crate) metrics: Metrics,
     preset: Preset,
-    /// Set by every edit; [`Self::apply`] builds the themes once and clears it.
-    stale: bool,
+    /// Moved by every edit; each window builds its themes once a generation, as each window's
+    /// `Ui` holds its own.
+    generation: u64,
 }
 
 impl Appearance {
@@ -52,7 +53,7 @@ impl Appearance {
             dark: Palette::DARK,
             metrics: Metrics::DEFAULT,
             preset: Preset::Stock,
-            stale: true,
+            generation: 1,
         }
     }
 
@@ -65,7 +66,7 @@ impl Appearance {
 
     /// The palette of `scheme`, for an edit; the themes rebuild on the next [`Self::apply`].
     pub(crate) const fn palette_mut(&mut self, scheme: ColorScheme) -> &mut Palette {
-        self.stale = true;
+        self.generation += 1;
         match scheme {
             ColorScheme::Light => &mut self.light,
             ColorScheme::Dark => &mut self.dark,
@@ -74,7 +75,7 @@ impl Appearance {
 
     /// The steps, for an edit; the themes rebuild on the next [`Self::apply`].
     pub(crate) const fn metrics_mut(&mut self) -> &mut Metrics {
-        self.stale = true;
+        self.generation += 1;
         &mut self.metrics
     }
 
@@ -91,22 +92,26 @@ impl Appearance {
             Preset::NightVision => NIGHT_VISION,
         };
         self.metrics = Metrics::DEFAULT;
-        self.stale = true;
+        self.generation += 1;
     }
 
-    /// Build both themes into `ui` when an edit made them stale; nothing on a frame with no edit,
-    /// so a theme is never built per frame.
-    pub(crate) fn apply(&mut self, ui: &mut Ui) {
-        if !self.stale {
-            return;
-        }
-        for scheme in [ColorScheme::Light, ColorScheme::Dark] {
-            ui.set_theme_for(
-                scheme,
-                Theme::from_parts(self.palette(scheme), &self.metrics),
-            );
-        }
-        self.stale = false;
+    /// Build both themes into `ui` when it has not seen this generation of edits; nothing on a
+    /// frame with no edit, so a theme is never built per frame. Each window applies its own, as
+    /// the main window and the eyepiece each hold their themes.
+    pub(crate) fn apply(&self, ui: &mut Ui) {
+        let id = WidgetId::from_hash("observatory::appearance::applied");
+        ui.with_state::<u64, _>(id, |ui, applied| {
+            if *applied == self.generation {
+                return;
+            }
+            for scheme in [ColorScheme::Light, ColorScheme::Dark] {
+                ui.set_theme_for(
+                    scheme,
+                    Theme::from_parts(self.palette(scheme), &self.metrics),
+                );
+            }
+            *applied = self.generation;
+        });
     }
 
     /// The palette of `scheme` and the steps as Rust source, for an app to paste.
@@ -157,7 +162,10 @@ impl Appearance {
 
 #[cfg(test)]
 mod tests {
-    use palantir::{ColorScheme, Metrics, Palette};
+    use std::rc::Rc;
+
+    use palantir::glam::UVec2;
+    use palantir::{ColorScheme, Harness, Metrics, Palette, RgbaF32, Theme};
 
     use crate::app::model::appearance::{Appearance, NIGHT_VISION, Preset};
 
@@ -205,5 +213,30 @@ mod tests {
             source.contains("    text: TextSteps { caption: 12.0, body: 14.0, title: 16.0 },\n")
         );
         assert!(source.ends_with("    ..Metrics::DEFAULT\n}\n"));
+    }
+
+    /// Each window builds the themes once a generation: a second apply with no edit rebuilds
+    /// nothing, and an edit reaches each window when that window applies.
+    #[test]
+    fn each_window_builds_the_themes_once_a_generation() {
+        let mut look = Appearance::new();
+        let (mut main, mut eyepiece) = (
+            Harness::new(UVec2::new(64, 64)),
+            Harness::new(UVec2::new(64, 64)),
+        );
+        look.apply(main.ui());
+        look.apply(eyepiece.ui());
+        let built = Rc::clone(main.ui().theme_for(ColorScheme::Dark));
+        look.apply(main.ui());
+        assert!(Rc::ptr_eq(&built, main.ui().theme_for(ColorScheme::Dark)));
+
+        let red = RgbaF32::hex(0xff0000);
+        look.palette_mut(ColorScheme::Dark).accent = red;
+        look.apply(main.ui());
+        let want = Theme::from_parts(look.palette(ColorScheme::Dark), &look.metrics);
+        assert_eq!(**main.ui().theme_for(ColorScheme::Dark), want);
+        assert_ne!(**eyepiece.ui().theme_for(ColorScheme::Dark), want);
+        look.apply(eyepiece.ui());
+        assert_eq!(**eyepiece.ui().theme_for(ColorScheme::Dark), want);
     }
 }
