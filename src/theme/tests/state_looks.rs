@@ -14,7 +14,7 @@ use crate::theme::look::engagement::Engagement;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
-use crate::theme::tab_selection::TabSelection;
+use crate::theme::selection::Selection;
 use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::tabs::TabsTheme;
 use crate::theme::text_edit::TextEditTheme;
@@ -40,38 +40,46 @@ fn response(pointer_over: bool, pressed: bool, disabled: bool) -> ResponseState 
     }
 }
 
+/// A button picks its resting or selected pack, then the pressed precedence inside it. The
+/// recipe's selected pack wears the pressed look in every live state, so it differs from the
+/// resting pack at rest and under the pointer.
 #[test]
 fn button_theme_pick_precedence() {
     let theme = ButtonTheme::default();
-    let cases: &[(ResponseState, &WidgetLook, &str)] = &[
-        (response(false, false, false), &theme.looks.normal, "normal"),
-        (
-            response(true, false, false),
-            &theme.looks.hovered,
-            "hovered",
-        ),
-        (
-            response(true, true, false),
-            &theme.looks.active,
-            "pressed > hovered",
-        ),
-        (
-            response(false, false, true),
-            &theme.looks.disabled,
-            "disabled (idle)",
-        ),
-        (
-            response(true, true, true),
-            &theme.looks.disabled,
-            "disabled wins all",
-        ),
-    ];
-    for (state, expected, label) in cases {
-        assert!(
-            ptr::eq(theme.look(state, ()), *expected),
-            "{label}: look should return the matching slot",
-        );
+    for (selection, pack) in [
+        (Selection::Unselected, &theme.looks),
+        (Selection::Selected, &theme.selected),
+    ] {
+        let cases: &[(ResponseState, &WidgetLook, &str)] = &[
+            (response(false, false, false), &pack.normal, "normal"),
+            (response(true, false, false), &pack.hovered, "hovered"),
+            (
+                response(true, true, false),
+                &pack.active,
+                "pressed > hovered",
+            ),
+            (
+                response(false, false, true),
+                &pack.disabled,
+                "disabled (idle)",
+            ),
+            (
+                response(true, true, true),
+                &pack.disabled,
+                "disabled wins all",
+            ),
+        ];
+        for (state, expected, label) in cases {
+            assert!(
+                ptr::eq(theme.look(state, selection), *expected),
+                "{selection:?} {label}: look should return the matching slot",
+            );
+        }
     }
+    assert_eq!(theme.selected.normal, theme.looks.active);
+    assert_eq!(theme.selected.hovered, theme.looks.active);
+    assert_ne!(theme.selected.normal, theme.looks.normal);
+    assert_ne!(theme.selected.hovered, theme.looks.hovered);
 }
 
 #[test]
@@ -191,22 +199,22 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     let theme = TabsTheme::default();
     let idle = ResponseState::default();
     let pressed = response(true, true, false);
-    let cases: &[(&ResponseState, TabSelection, &WidgetLook, &str)] = &[
+    let cases: &[(&ResponseState, Selection, &WidgetLook, &str)] = &[
         (
             &idle,
-            TabSelection::Selected,
+            Selection::Selected,
             &theme.selected.normal,
             "selected",
         ),
         (
             &idle,
-            TabSelection::Unselected,
+            Selection::Unselected,
             &theme.unselected.normal,
             "unselected",
         ),
         (
             &pressed,
-            TabSelection::Unselected,
+            Selection::Unselected,
             &theme.unselected.active,
             "unselected: pressed",
         ),
@@ -225,8 +233,8 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
         theme.unselected.hovered.chrome.fill,
         Palette::DEFAULT.element_mid.into()
     );
-    assert_eq!(TabSelection::from(true), TabSelection::Selected);
-    assert_eq!(TabSelection::from(false), TabSelection::Unselected);
+    assert_eq!(Selection::from(true), Selection::Selected);
+    assert_eq!(Selection::from(false), Selection::Unselected);
 
     assert_eq!(theme.cap(TabStripFocus::Focused), Palette::DEFAULT.accent);
     assert_eq!(

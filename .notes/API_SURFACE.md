@@ -163,7 +163,9 @@ Button
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
         pub const fn text_align(self, a: Align) -> Self
+        pub const fn selected(self, selected: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show_with<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &TextStyle) -> R) -> InnerResponse<'_, R>
 
 ButtonPhase
     enum ButtonPhase: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -186,6 +188,7 @@ ButtonState
 ButtonTheme
     struct ButtonTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
+        pub selected: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn menu_button(p: &Palette, m: &Metrics) -> Self
@@ -1829,6 +1832,11 @@ ScrollbarTheme
         pub thumb_active: RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
+Selection
+    enum Selection: Clone, Copy, Debug, Default, Eq, From<bool>, PartialEq
+        Unselected
+        Selected
+
 Sense
     struct Sense: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const HOVER: Self
@@ -2164,11 +2172,6 @@ TabOverflow
     enum TabOverflow: Clone, Copy, Debug, Default, Eq, PartialEq
         Scroll
         Menu
-
-TabSelection
-    enum TabSelection: Clone, Copy, Debug, Eq, From<bool>, PartialEq
-        Unselected
-        Selected
 
 TabStrip
     struct TabStrip<'a>: Configure, Debug, ThemeDefaults (blanket)

@@ -349,13 +349,15 @@ fn cell_theme() -> ButtonTheme {
         chrome: Chrome::NONE,
         text: label,
     };
+    let looks = StatefulLook {
+        normal: look(),
+        hovered: look(),
+        active: look(),
+        disabled: look(),
+    };
     ButtonTheme {
-        looks: StatefulLook {
-            normal: look(),
-            hovered: look(),
-            active: look(),
-            disabled: look(),
-        },
+        selected: looks.clone(),
+        looks,
         defaults: SlotDefaults {
             padding: Spacing::xy(6.0, 4.0),
             margin: Spacing::ZERO,
