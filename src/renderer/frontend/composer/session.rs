@@ -566,6 +566,7 @@ impl ComposeSession<'_> {
                 ..lens
             }),
             max_luminance: backdrop.max_luminance(),
+            min_luminance: backdrop.min_luminance(),
             source,
         });
         row

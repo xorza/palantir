@@ -1058,8 +1058,8 @@ impl Ui {
         endpoint.map(|endpoint| self.cascade.location(endpoint))
     }
 
-    /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored.
-    /// Creates nothing.
+    /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored or is lent
+    /// out to a [`Self::with_state`] body. Creates nothing.
     pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
         self.state.try_get::<S>(id)
     }
@@ -1082,17 +1082,19 @@ impl Ui {
     /// ```
     ///
     /// A row is dropped after a frame that recorded `id` is followed by one that does
-    /// not; a row under an id no node records lives as long as the `Ui`. Re-entering
-    /// the same `(id, S)` inside `body` sees a default row, overwritten on restore.
+    /// not; a row under an id no node records lives as long as the `Ui`. The row is lent, not
+    /// copied: `S::default()` is built only for a new row, and inside `body` the same `(id, S)`
+    /// reads `None` through [`Self::state`], and a re-entry sees a default row, overwritten on
+    /// restore.
     pub fn with_state<S: Default + 'static, R>(
         &mut self,
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = mem::take(self.state.get_or_insert_with(id, S::default));
+        let mut value = self.state.take::<S>(id).unwrap_or_default();
         let out = body(self, &mut value);
         // Re-probed: `body` may have inserted rows of the same `S`, reallocating the store.
-        *self.state.get_or_insert_with(id, S::default) = value;
+        self.state.put(id, value);
         out
     }
 

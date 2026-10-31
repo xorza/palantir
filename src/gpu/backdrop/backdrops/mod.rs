@@ -22,7 +22,8 @@ use std::ops::Range;
 /// How a pane's quad finds its result, as `quad_pipeline/shader.wgsl` declares `BackdropSlot`:
 /// the result's texel coordinate of the lattice's first texel, the physical px of a texel, or 0
 /// for a pane that shows `clear`, the pane's lens, `(bezel, thickness, refractive_index,
-/// dispersion)` with its highlight, zero for a pane of no glass, and its luminance ceiling.
+/// dispersion)` with its highlight, zero for a pane of no glass, and its luminance ceiling and
+/// floor.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct BackdropSlot {
@@ -32,6 +33,9 @@ struct BackdropSlot {
     lens: [f32; 4],
     clear: [f32; 3],
     max_luminance: f32,
+    min_luminance: f32,
+    /// Rounds the slot to WGSL's 16-byte stride for an array of structs.
+    pad: [f32; 3],
 }
 
 impl BackdropSlot {
@@ -60,6 +64,8 @@ impl BackdropSlot {
             lens,
             clear,
             max_luminance: row.max_luminance,
+            min_luminance: row.min_luminance,
+            pad: [0.0; 3],
         }
     }
 }

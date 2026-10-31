@@ -178,6 +178,10 @@ fn a_backdrop_slot_lies_as_the_shader_reads_it() {
             ("lens", offset_of!(BackdropSlot, lens)),
             ("clear", offset_of!(BackdropSlot, clear)),
             ("max_luminance", offset_of!(BackdropSlot, max_luminance)),
+            ("min_luminance", offset_of!(BackdropSlot, min_luminance)),
+            ("_pad0", offset_of!(BackdropSlot, pad)),
+            ("_pad1", offset_of!(BackdropSlot, pad) + 4),
+            ("_pad2", offset_of!(BackdropSlot, pad) + 8),
         ],
     );
 }

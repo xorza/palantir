@@ -5,7 +5,9 @@ use crate::theme::color_scheme::ColorScheme;
 /// The scheme a person picked: follow the system, or hold light or dark, as egui's
 /// `ThemePreference` and Zed's `theme.mode` offer the three
 /// (<https://docs.rs/egui/latest/egui/enum.ThemePreference.html>,
-/// <https://zed.dev/docs/appearance>).
+/// <https://zed.dev/docs/appearance>). Palantir resolves it against the system's report, so an
+/// app sets a theme per scheme once; refused: iced's shape, where each app subscribes to the
+/// system and swaps its own theme.
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]

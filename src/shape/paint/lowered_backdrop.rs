@@ -1,4 +1,4 @@
-//! A backdrop lowered to two four-lane words and a luminance ceiling.
+//! A backdrop lowered to two four-lane words and its luminance ceiling and floor.
 
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
@@ -12,12 +12,14 @@ use std::hash;
 /// `lens = (bezel, thickness, refractive_index, dispersion)`, lengths in logical px, which the
 /// composer scales to physical; a pane with no lens has a zero `lens`. `max_luminance` is the
 /// ceiling's f16 bits, rounded down so the pane never shows brighter than its author allowed, and
-/// 65504 for a pane with none.
+/// 65504 for a pane with none; `min_luminance` the floor's, rounded up so it never shows darker,
+/// and 0 for none.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct LoweredBackdrop {
     look: F16x4,
     lens: F16x4,
     max_luminance: u16,
+    min_luminance: u16,
 }
 
 impl LoweredBackdrop {
@@ -26,6 +28,7 @@ impl LoweredBackdrop {
         look: F16x4::ZERO,
         lens: F16x4::ZERO,
         max_luminance: 0,
+        min_luminance: 0,
     };
 
     /// Whether a rect with this backdrop draws as an ordinary rect.
@@ -48,6 +51,11 @@ impl LoweredBackdrop {
     /// The highest relative luminance the pane shows: its ceiling, or 65504 with none.
     pub(crate) fn max_luminance(self) -> f32 {
         half::f16::from_bits(self.max_luminance).to_f32()
+    }
+
+    /// The lowest relative luminance the pane shows: its floor, or 0 with none.
+    pub(crate) fn min_luminance(self) -> f32 {
+        half::f16::from_bits(self.min_luminance).to_f32()
     }
 
     /// The lens, `None` for a pane of no glass.
@@ -109,6 +117,7 @@ impl From<BackdropFilter> for LoweredBackdrop {
             max_luminance: backdrop
                 .max_luminance
                 .map_or(half::f16::MAX.to_bits(), f16_at_or_below),
+            min_luminance: backdrop.min_luminance.map_or(0, f16_at_or_above),
         }
     }
 }
@@ -126,11 +135,25 @@ fn f16_at_or_below(v: f32) -> u16 {
     }
 }
 
+/// The bits of the f16 nearest `v` at or above it, `v` a factor saturated at 65504: a floor that
+/// rounded down would let a pane show darker than its author derived.
+fn f16_at_or_above(v: f32) -> u16 {
+    debug_assert!(v >= 0.0, "a floor is a factor: {v}");
+    let v = F16x4::saturate_lane(v);
+    let nearest = half::f16::from_f32(v);
+    if nearest.to_f32() < v {
+        nearest.to_bits() + 1
+    } else {
+        nearest.to_bits()
+    }
+}
+
 impl hash::Hash for LoweredBackdrop {
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
         state.write_u64(self.look.as_u64());
         state.write_u64(self.lens.as_u64());
         state.write_u16(self.max_luminance);
+        state.write_u16(self.min_luminance);
     }
 }
 
@@ -139,5 +162,6 @@ impl NanCheck for LoweredBackdrop {
         self.look.has_nan()
             || self.lens.has_nan()
             || half::f16::from_bits(self.max_luminance).is_nan()
+            || half::f16::from_bits(self.min_luminance).is_nan()
     }
 }

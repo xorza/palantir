@@ -1,4 +1,6 @@
-//! Cross-frame widget state: dense `Vec<T>` stores indexed by `WidgetId` in a [`TypedStores`], one boxed store per distinct `T`. Allocation-free after warmup; no `Any` downcast on the hot path.
+//! Cross-frame widget state: dense `Vec<Option<T>>` stores indexed by `WidgetId` in a [`TypedStores`], one boxed store per distinct `T`. Allocation-free after warmup; no `Any` downcast on the hot path.
+//!
+//! A row is lent out by [`StateMap::take`] and returned by [`StateMap::put`], so a lend leaves no value behind: no `T::default()` is built per lend, as one whose default allocates would per frame.
 //!
 //! Reusing a `WidgetId` with two `T`s is a caller bug: the rows live in separate stores. Unchecked, to avoid a probe per call.
 //!
@@ -13,14 +15,14 @@ pub(crate) struct StateMap {
 }
 
 impl StateMap {
-    pub(super) fn get_or_insert_with<T, F>(&mut self, id: WidgetId, init: F) -> &mut T
-    where
-        T: 'static,
-        F: FnOnce() -> T,
-    {
-        self.stores
-            .get_or_default::<Store<T>>()
-            .get_or_insert_with(id, init)
+    /// Lend `id`'s value out, leaving its row empty; `None` for no row or one already lent.
+    pub(super) fn take<T: 'static>(&mut self, id: WidgetId) -> Option<T> {
+        self.stores.get_mut::<Store<T>>()?.take(id)
+    }
+
+    /// Store `value` as `id`'s, in its row or a new one.
+    pub(super) fn put<T: 'static>(&mut self, id: WidgetId, value: T) {
+        self.stores.get_or_default::<Store<T>>().put(id, value);
     }
 
     pub(super) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
@@ -36,7 +38,8 @@ impl StateMap {
 #[derive(Debug)]
 struct Store<T> {
     map: WidgetIdMap<u32>,
-    data: Vec<T>,
+    /// `None` while the row is lent out.
+    data: Vec<Option<T>>,
     owners: Vec<WidgetId>,
 }
 
@@ -57,21 +60,24 @@ impl<T> Store<T> {
     }
 
     fn try_get(&self, id: WidgetId) -> Option<&T> {
-        Some(&self.data[self.idx_of(id)?])
+        self.data[self.idx_of(id)?].as_ref()
     }
 
-    fn get_or_insert_with<F: FnOnce() -> T>(&mut self, id: WidgetId, init: F) -> &mut T {
-        let idx = if let Some(idx) = self.idx_of(id) {
-            idx
-        } else {
-            let idx = self.data.len();
-            debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");
-            self.data.push(init());
-            self.owners.push(id);
-            self.map.insert(id, idx as u32);
-            idx
-        };
-        &mut self.data[idx]
+    fn take(&mut self, id: WidgetId) -> Option<T> {
+        let idx = self.idx_of(id)?;
+        self.data[idx].take()
+    }
+
+    fn put(&mut self, id: WidgetId, value: T) {
+        if let Some(idx) = self.idx_of(id) {
+            self.data[idx] = Some(value);
+            return;
+        }
+        let idx = self.data.len();
+        debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");
+        self.data.push(Some(value));
+        self.owners.push(id);
+        self.map.insert(id, idx as u32);
     }
 }
 

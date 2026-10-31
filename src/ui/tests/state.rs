@@ -5,6 +5,24 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 
+/// Inside the body the row is lent, so `Ui::state` reads `None`; after it the value is back,
+/// carried across frames. `tests/alloc`'s observatory audit holds that no default is built per
+/// lend: its dock state allocates in `Default`.
+#[test]
+fn with_state_lends_the_row_out_and_back() {
+    let id = WidgetId::from_hash("with-state-lend");
+    let mut h = Harness::mono(SURFACE);
+    for frame in 1..=3_u32 {
+        h.frame(|ui| {
+            ui.with_state::<u32, _>(id, |ui, count| {
+                assert_eq!(ui.state::<u32>(id), None, "the row is lent");
+                *count += 1;
+            });
+            assert_eq!(ui.state::<u32>(id), Some(&frame));
+        });
+    }
+}
+
 /// `Ui::with_state` lends the row, live alongside the `Ui`.
 #[test]
 fn with_state_lends_a_row_across_widget_calls() {
