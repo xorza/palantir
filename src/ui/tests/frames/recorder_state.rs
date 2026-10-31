@@ -1,5 +1,7 @@
 //! Theme sharing, and a subtree disabled between frames.
 
+use crate::theme::color_scheme::ColorScheme;
+
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
@@ -44,7 +46,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);
-    let mut style = h.ui().theme.button.clone();
+    let mut style = h.ui().theme().button.clone();
     style.unselected.disabled.chrome = Chrome::fill(disabled_fill);
     let response = h.frame_value(|ui| {
         Button::new()
@@ -113,9 +115,9 @@ fn theme_reads_share_and_writes_copy_on_write() {
         "an unshared theme must be written in place, with no copy",
     );
 
-    // `set_theme` takes the handle, so swapping themes is a move.
+    // `set_theme_for` takes the handle, so swapping themes is a move.
     let swapped: Rc<Theme> = Rc::new(Theme::default());
     let swapped_ptr = Rc::as_ptr(&swapped);
-    h.ui().set_theme(swapped);
+    h.ui().set_theme_for(ColorScheme::Dark, swapped);
     assert_eq!(Rc::as_ptr(h.ui().theme()), swapped_ptr);
 }

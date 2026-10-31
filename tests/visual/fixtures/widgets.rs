@@ -4,10 +4,10 @@ use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
-    Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Metrics, Modal, Palette,
-    Panel, ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke,
-    Switch, Text, TextEdit, Theme, ToggleTheme, Ui,
+    Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorScheme,
+    ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Metrics, Modal,
+    Palette, Panel, ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8,
+    Stroke, Switch, Text, TextEdit, Theme, ToggleTheme, Ui,
 };
 
 use crate::fixtures;
@@ -256,8 +256,9 @@ fn toggle_switch_states_matches_golden() {
 }
 
 /// The light palette's still states: buttons, toggles on and off, a field with its placeholder,
-/// a slider and a progress bar, each on `Palette::LIGHT` as the stock recipes paint it. The
-/// palette is the subject here, so it is not pinned; transitions are off, so the frame is at rest.
+/// a slider and a progress bar, each on `Palette::LIGHT` as the stock recipes paint it, in the
+/// light slot a light system picks. The palette is the subject here, so it is not pinned;
+/// transitions are off, so the frame is at rest.
 #[test]
 fn light_palette_widgets_match_golden() {
     let mut theme = Theme::from_parts(
@@ -269,7 +270,8 @@ fn light_palette_widgets_match_golden() {
     );
     theme.switch.defaults.animation = None;
     let img = VisualRig::new()
-        .theme(theme)
+        .theme_for(ColorScheme::Light, theme)
+        .system_color_scheme(Some(ColorScheme::Light))
         .clear(Palette::LIGHT.window_bg)
         .size(UVec2::new(320, 260))
         .frame(|ui| {

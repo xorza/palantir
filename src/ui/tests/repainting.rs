@@ -338,7 +338,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     fn rows(ui: &Ui, atlas: &SharedGradientAtlas) -> Vec<LutRow> {
         let plan = RenderPlan {
-            clear: ui.theme.window_clear,
+            clear: ui.theme().window_clear,
             damage: Damage::Full,
         };
         encoder::internals::encode(ui.frame_scene(), atlas, plan)

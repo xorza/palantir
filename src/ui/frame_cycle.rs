@@ -54,6 +54,7 @@ impl<'a> FrameCycle<'a> {
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.device_restored = device_epoch != self.ui.device_epoch;
         self.ui.device_epoch = device_epoch;
+        self.ui.resolve_color_scheme();
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui
             .frame_runtime
@@ -123,7 +124,7 @@ impl<'a> FrameCycle<'a> {
         let surface = self.ui.frame_runtime.stamp().display.logical_rect();
         let prev_time = self.ui.frame_runtime.prev_stamp.map(|s| s.time);
         let baseline = FrameBaseline {
-            clear: self.ui.theme.window_clear,
+            clear: self.ui.theme().window_clear,
             font_epoch: self.ui.resources.text().font_epoch(),
         };
         let input = DamageInput {

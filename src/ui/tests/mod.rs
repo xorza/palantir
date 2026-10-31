@@ -1,5 +1,6 @@
 //! What a recorded frame makes of the widgets in it.
 
+mod color_scheme;
 mod frames;
 mod ids;
 mod oracle;

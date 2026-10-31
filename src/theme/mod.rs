@@ -20,6 +20,7 @@ pub(crate) mod metrics;
 pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;
+pub(crate) mod scheme_preference;
 pub(crate) mod scrollbar;
 pub(crate) mod selection;
 pub(crate) mod separator;

@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use palantir::glam::UVec2;
 use palantir::{Gpu, Harness, Image, PlayError, Rect};
 
-use crate::shell::{Shell, UnknownPage};
+use crate::shell::{self, Shell, UnknownPage};
 use crate::shot::report::Legend;
 use crate::shot::script::{ParseError, Region, Script, StepKind};
 
@@ -141,6 +141,7 @@ pub(crate) fn play(
         .scale(header.scale)
         .gpu(gpu)
         .build();
+    shell::pin_dark(h.ui());
     let failed = |line| move |error| ShotError::Play { line, error };
     h.settle(&mut shell).map_err(failed(0))?;
     let written = |path: &Path| {

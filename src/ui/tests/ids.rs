@@ -26,7 +26,7 @@ fn collision_outlines(ui: &Ui) -> Vec<Rect> {
     frontend.build(
         ui.frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: ui.theme.window_clear,
+            clear: ui.theme().window_clear,
             damage: Damage::Full,
         }),
     );

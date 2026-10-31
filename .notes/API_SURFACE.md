@@ -1013,6 +1013,7 @@ Harness
         pub fn advance_past_double_click(&mut self) -> &mut Self
         pub fn resize(&mut self, size: UVec2) -> &mut Self
         pub fn set_display(&mut self, display: Display) -> &mut Self
+        pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn hover(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn press(&mut self, at: impl Into<Locator>, button: PointerButton) -> InputDelta
@@ -1490,6 +1491,7 @@ OffscreenHost
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn advance(&mut self, dt: Duration) -> &mut Self
         pub fn at(&mut self, time: Duration) -> &mut Self
+        pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn wait_for_gpu(&self)
         pub fn is_device_lost(&self) -> bool
         pub fn recover(&mut self, gpu: Gpu)
@@ -1823,6 +1825,13 @@ RgbaF32
         pub const fn hexa(rgba: u32) -> Self
         pub const fn to_srgba8(self) -> SrgbaU8
         impl From<RgbaF32> for Brush
+
+SchemePreference
+    enum SchemePreference: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        System
+        Light
+        Dark
+        pub const FALLBACK: ColorScheme
 
 Screenshot
     struct Screenshot: Clone, Debug, PartialEq
@@ -2546,7 +2555,12 @@ Ui
     struct Ui: Debug
         pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
-        pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>)
+        pub const fn theme_for(&self, scheme: ColorScheme) -> &Rc<Theme>
+        pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>)
+        pub fn scheme_preference(&self) -> SchemePreference
+        pub fn set_scheme_preference(&mut self, preference: SchemePreference)
+        pub const fn color_scheme(&self) -> ColorScheme
+        pub fn system_color_scheme(&self) -> Option<ColorScheme>
         pub const fn watch_pointer(&mut self, flags: PointerWake)
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
         pub fn pointer_events(&self) -> &[PointerEvent]

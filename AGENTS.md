@@ -360,7 +360,7 @@ tree renders.
   form is `anchor(anchor)` (`Popup`, `LayerScope`).
 - **Getters.** The noun of what they return, never `get_*`. State on `Ui`
   reads through `x()` and writes through `set_x(v)`, and the pair shares its
-  noun (`theme` / `set_theme`, `focus` / `set_focus`); a value that mutates in
+  noun (`theme_for` / `set_theme_for`, `focus` / `set_focus`); a value that mutates in
   place pairs them the same way (`ColorCoords::hue` / `set_hue`,
   `Clipboard::text` / `set_text`). An action is a verb (`open_window`,
   `request_repaint`, `clear_focus`). A read that also wakes the next frame on
@@ -417,7 +417,7 @@ tree renders.
   or a gradient for `Brush`; text for `TextInput` (borrowed, owned, interned,
   or `fmt!` output) and for `String` where the text outlives the frame (window
   titles); `Option<T>` for an optional argument (`style`,
-  `TabStrip::selected`); `Rc<T>` for a shared value (`Ui::set_theme`,
+  `TabStrip::selected`); `Rc<T>` for a shared value (`Ui::set_theme_for`,
   `Ui::load_icons`); a pair or array for `Vec2` (`Configure::pos`);
   `SrgbaU8` where a color is stored as bytes, so a linear `RgbaF32` encodes
   once at the boundary (`Mesh` vertices); a `&'static str` for a name

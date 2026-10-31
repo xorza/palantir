@@ -9,9 +9,9 @@ use glam::{UVec2, Vec2};
 use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
-    AnimationSpec, DebugOverlayConfig, FramePaint, Metrics, OffscreenHost, OffscreenTime, Palette,
-    RadiusSteps, RgbaF32, ShadowGeometry, SpaceSteps, StrokeSteps, TextShaper, TextSteps, Theme,
-    Ui,
+    AnimationSpec, ColorScheme, DebugOverlayConfig, FramePaint, Metrics, OffscreenHost,
+    OffscreenTime, Palette, RadiusSteps, RgbaF32, ShadowGeometry, SpaceSteps, StrokeSteps,
+    TextShaper, TextSteps, Theme, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -117,7 +117,7 @@ impl VisualRig {
             .pixel_snap(pixel_snap)
             .time(OffscreenTime::Manual)
             .build();
-        host.ui().set_theme(fixture_theme());
+        host.ui().set_theme_for(ColorScheme::Dark, fixture_theme());
 
         Self {
             host,
@@ -157,9 +157,15 @@ impl VisualRig {
         self
     }
 
-    /// The theme every following frame wears, in place of [`fixture_theme`].
-    pub(crate) fn theme(&mut self, theme: Theme) -> &mut Self {
-        self.host.ui().set_theme(theme);
+    /// The window's theme for `scheme`, in place of [`fixture_theme`] in the dark slot.
+    pub(crate) fn theme_for(&mut self, scheme: ColorScheme, theme: Theme) -> &mut Self {
+        self.host.ui().set_theme_for(scheme, theme);
+        self
+    }
+
+    /// The scheme the host reports as the system's, which the next frame resolves.
+    pub(crate) fn system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
+        self.host.set_system_color_scheme(scheme);
         self
     }
 

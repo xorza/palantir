@@ -3,6 +3,8 @@
 //!
 //! Each numeric literal in the serialized default theme is replaced in turn with hostile values, and a document that still loads is rendered.
 
+use crate::theme::color_scheme::ColorScheme;
+
 use crate::host::harness::Harness;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::shortcut::Shortcut;
@@ -129,7 +131,7 @@ struct Scene {
 /// size reaches the shaper and the ink it measures.
 fn render(theme: Theme) -> Harness {
     let mut h = Harness::new(UVec2::new(640, 480));
-    h.ui().set_theme(theme);
+    h.ui().set_theme_for(ColorScheme::Dark, theme);
     ContextMenu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
         color: RgbaF32::srgb(0.2, 0.4, 0.6),

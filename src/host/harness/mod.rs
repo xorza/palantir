@@ -75,6 +75,7 @@ use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::input_state::capture::DRAG_THRESHOLD;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::inspected_widget::InspectedWidget;
@@ -336,6 +337,14 @@ impl Harness {
         self.driver.set_pixel_snap(display.pixel_snap);
         self.driver.ui.set_user_scale(display.user_scale);
         self.resize(display.physical)
+    }
+
+    /// Report `scheme` as the system's, as the winit host reports the desktop's; `None`, the
+    /// start, reports nothing, so [`SchemePreference::System`](crate::SchemePreference::System)
+    /// shows the fallback. The next frame shows the resolved scheme.
+    pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
+        self.driver.ui.set_system_color_scheme(scheme);
+        self
     }
 
     /// The raw input door, for an event no method below sends.

@@ -379,26 +379,23 @@ L1 is done. Where it differs from the proposal above:
 - **Light values:** `element_mid` `#e4e6e8`, `element_strong` `#d9dbdd`, so each rung clears
   1.10:1; `shadow` black at 14 %, Fluent's light `shadow16` key.
 
+L2 is done. Where it differs:
+
+- **A theme write applies at once; a scheme change waits for the next frame.** `set_theme_for`
+  on the shown scheme reaches the widgets recorded after it, as `set_theme` did (the showcase's
+  focus page edits its focus ring mid-record); only the scheme resolves at a frame's start.
+- **`SchemePreference::FALLBACK`** names the dark fallback, public, so a doc and an app can cite
+  it.
+- **The first window opens its decorations in the fallback**, as the host makes it before any
+  resources exist; its first frame moves them if the app picked another scheme. Later windows
+  open in the resolved scheme.
+- **The showcase pins dark** (`shell::pin_dark`), as its scaffold reads the dark palette's
+  constants.
+
 Order: L1 → L2 → L3, then 1 → 7; L4 when its go-ahead comes. Each batch ends green on
 `cargo drive gate`, regenerates `.notes/API_SURFACE.md` when the surface moves, and, for a change
 a person can see, ends with `cargo drive run shot` before and after. A batch that changes
 palantir's API also migrates darkroom (palantir is its submodule) and runs darkroom's gate.
-
-### L2. The scheme on `Ui` and the hosts
-- [ ] `ColorScheme`, `SchemePreference` (serde, default `System`).
-- [ ] `UiResources` holds the preference and the system scheme as `AppSetting`s; each `Ui`
-      holds a theme per scheme, both `Theme::stock` at first.
-- [ ] The resolution at frame start; the theme epoch bumps when the resolved scheme changes; a
-      setter requests a frame.
-- [ ] `theme_for`, `set_theme_for`, `scheme_preference`, `set_scheme_preference`,
-      `color_scheme`, `system_color_scheme`; `set_theme` removed and its callers moved.
-- [ ] winit host: each window's decorations follow the resolved scheme.
-- [ ] `Harness::set_system_color_scheme`, `OffscreenHost::set_system_color_scheme`.
-- [ ] Tests: the resolution table (3 preferences × 3 system answers → the scheme); a pick in one
-      window resolves in the other; a change during a record shows from the next frame, and
-      that frame repaints whole; the epoch does not move when the resolved scheme does not.
-- [ ] darkroom: `set_theme_for(Dark, …)` and `set_scheme_preference(Dark)` where it set the
-      theme.
 
 ### L3. System preferences through `mundy`
 - [ ] `mundy` (`color-scheme`, `double-click-interval`, `callback`, `async-io`; no default
