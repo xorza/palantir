@@ -244,6 +244,19 @@ update, a removed GPU. Facts and sources: `.notes/research/2026-10-30-device-los
 - **A remote waits on the frame log, not a poll,** a condition variable each frame signals, and a
   query that panics returns `PlayError::Panicked`, so the window goes on.
 
+## Rounded-clip stencil
+
+Facts and sources: `.notes/research/2026-10-31-shared-device-tile-loss.md`.
+
+- **`Stencil8`, its texels zeroed by a queue write when it is made.** On NVIDIA under Vulkan an
+  `S8_UINT` image bound to memory that held nonzero bytes keeps 4 × 4 blocks that no load clear
+  or stencil write resets, and a copy into the stencil aspect does reset them. Refused:
+  `Depth24PlusStencil8`, four times the memory; a copy from a zeroed buffer kept as large as the
+  largest stencil, memory held for a write that runs only when a stencil is made; `clear_texture`,
+  which wgpu runs as a render pass clear.
+- **The write runs per new stencil only:** the first frame with a rounded clip, a resize, a new
+  damage canvas. Cost: a zeroed allocation and an upload of width × height bytes on those frames.
+
 ## Public API
 
 - **Never change it on your own.** Adding, renaming, removing or re-signing an
