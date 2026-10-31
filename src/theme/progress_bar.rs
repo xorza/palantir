@@ -1,6 +1,7 @@
 //! What a progress bar wears: its track and the fill measuring the fraction.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::ProgressBar`]: a rounded `track` with an accent `fill` spanning the value; the pill radius is `thickness / 2`.
@@ -16,8 +17,8 @@ pub struct ProgressBarTheme {
 }
 
 impl ProgressBarTheme {
-    /// A muted track under an accent fill.
-    pub const fn from_palette(p: &Palette) -> Self {
+    /// A muted track under an accent fill. Its sizes are the widget's own, so it reads no metric.
+    pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self {
         Self {
             track: p.element_mid,
             fill: p.accent,
@@ -28,6 +29,6 @@ impl ProgressBarTheme {
 
 impl Default for ProgressBarTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

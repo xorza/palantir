@@ -1,6 +1,7 @@
 //! What a slider wears: the two-tone track, and the knob that rides it.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Slider`]: a two-tone track (`fill` left of the knob, `track` right) with a round `knob`.
@@ -21,8 +22,8 @@ pub struct SliderTheme {
 }
 
 impl SliderTheme {
-    /// A muted track, an accent fill and a text-color knob.
-    pub const fn from_palette(p: &Palette) -> Self {
+    /// A muted track, an accent fill and a text-color knob. Its sizes are the widget's own, so it reads no metric.
+    pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self {
         Self {
             track: p.element_mid,
             fill: p.accent,
@@ -35,6 +36,6 @@ impl SliderTheme {
 
 impl Default for SliderTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }
