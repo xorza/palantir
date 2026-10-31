@@ -546,11 +546,12 @@ CI runs `cargo drive gate --ci` on each OS.
 - **The plain clippy lints the build that ships**: every other target turns
   `internals` on through the self dev-dependency.
 - **A change to bench code** adds `cargo drive bench --test`, which runs each
-  case once; `benches/AGENTS.md` says how to run and measure.
+  case once, built under the test profile rather than the bench profile's LTO;
+  `benches/AGENTS.md` says how to run and measure.
 - **`--all-features` is clippy's alone**: under `profile-with-tracy` a test
-  binary opens the Tracy socket. The first test set is `--tests`: the
-  library, `alloc` and the showcase's shot mode (`test = true`), with
-  `visual` left out by its `test = false`; the second builds the library
+  binary opens the Tracy socket. The first test set names `alloc`, as
+  `--tests` with `golden` would pull in `visual`, and the showcase, whose
+  shot mode has tests (`test = true`); the second builds the library
   without `winit`, as a host that embeds the crate does.
 - **Rendering changes** (shaders, encoder/composer, atlases, color pipeline,
   layout that moves pixels) also run the golden suite, which no lane holds:
