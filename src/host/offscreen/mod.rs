@@ -12,6 +12,7 @@ use crate::gpu::surface::render_target::RenderTarget;
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
 use crate::host::host_options::HostOptions;
+use crate::host::wake_signal::WakeSignal;
 use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentStrategy, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
@@ -21,6 +22,7 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_token::WindowToken;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// The offscreen analog of `WinitHost`, rendering into a texture.
@@ -29,6 +31,8 @@ pub struct OffscreenHost {
     core: HostCore,
     driver: WindowDriver,
     time: HostTime,
+    /// The wakes the window's [`Waker`](crate::Waker) sends, which the next frame takes.
+    wake: Arc<WakeSignal>,
 }
 
 /// What an [`OffscreenHost`]'s frames and input are stamped with.
@@ -146,12 +150,19 @@ impl OffscreenHostBuilder {
             .options
             .shaper_or_else(|| TextShaper::with_fonts(fonts));
         let core = HostCore::new(self.gpu, &self.options, shaper);
-        let driver = core.open(OffscreenHost::WINDOW, self.strategy);
+        let mut driver = core.open(OffscreenHost::WINDOW, self.strategy);
+        let wake = Arc::<WakeSignal>::default();
+        driver.ui.set_waker(wake.waker());
         let time = match self.time {
             OffscreenTime::Realtime => HostTime::Realtime(RealtimeClock::new()),
             OffscreenTime::Manual => HostTime::Manual(Duration::ZERO),
         };
-        OffscreenHost { core, driver, time }
+        OffscreenHost {
+            core,
+            driver,
+            time,
+            wake,
+        }
     }
 }
 
@@ -255,6 +266,9 @@ impl OffscreenHost {
         system_scale: f32,
         app: &mut T,
     ) -> FrameReport {
+        if self.wake.take() {
+            self.driver.ui.request_repaint();
+        }
         let spec = self.spec(target, system_scale);
         let CpuFrame { report, mode } =
             self.core

@@ -62,6 +62,7 @@ use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::host::core::HostCore;
 use crate::host::harness::harness_builder::{HarnessBuilder, TARGET_LABEL};
+use crate::host::wake_signal::WakeSignal;
 use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
@@ -81,6 +82,7 @@ use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::any;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// The token of a harness's one window, as [`App::update`] and [`App::record`] receive it.
@@ -134,6 +136,10 @@ pub struct Harness {
     last_press: Option<Duration>,
     frame_dt: Duration,
     settle_frames: u32,
+    /// The real time a settle waits for a wake while the app is busy.
+    background_wait: Duration,
+    /// The wakes the window's [`Waker`](crate::Waker) sends, which the next frame takes.
+    wake: Arc<WakeSignal>,
     /// Every window command the frames recorded, oldest first.
     window_commands: Vec<WindowCommand>,
     /// One frame's commands, drained into `window_commands`.
@@ -153,6 +159,7 @@ struct Seal {
     refresh_millihertz: Option<u32>,
     frame_dt: Duration,
     settle_frames: u32,
+    background_wait: Duration,
 }
 
 /// Where a held button went down; `None` when the pointer was off the window.
@@ -187,11 +194,15 @@ impl Harness {
             last_press: None,
             frame_dt: seal.frame_dt,
             settle_frames: seal.settle_frames,
+            background_wait: seal.background_wait,
+            wake: Arc::default(),
             window_commands: Vec::new(),
             drained: WindowCommands::default(),
             frames: 0,
         };
         harness.driver.ui.set_user_scale(seal.user_scale);
+        let waker = harness.wake.waker();
+        harness.driver.ui.set_waker(waker);
         #[cfg(test)]
         {
             harness.driver.ui.theme_mut().text.font_size = FIXTURE_FONT_SIZE;
@@ -628,6 +639,9 @@ impl Harness {
     /// commands, and paint onto the target at [`Depth::Gpu`](crate::Depth::Gpu) while the device
     /// lives.
     fn drive(&mut self, app: &mut impl App) -> FrameReport {
+        if self.wake.take() {
+            self.driver.ui.request_repaint();
+        }
         let spec = self.spec();
         let CpuFrame { report, mode } = self.core.record(&mut self.driver, spec, app, self.depth);
         self.driver.drain_window_output(&mut self.drained);

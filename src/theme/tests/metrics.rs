@@ -7,13 +7,19 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::Theme;
-use crate::theme::metrics::{Metrics, RadiusSteps, SpaceSteps, StrokeSteps};
+use crate::theme::metrics::{Metrics, RadiusSteps, SpaceSteps, StrokeSteps, TextSteps};
 use crate::theme::palette::Palette;
 
 /// Steps no two of which are equal, and none equal to a default step, so each read below names
 /// the one step its field takes.
 const DISTINCT: Metrics = Metrics {
+    text: TextSteps {
+        caption: 25.0,
+        body: 27.0,
+        title: 29.0,
+    },
     space: SpaceSteps {
+        xxs: 0.125,
         xs: 1.0,
         sm: 3.0,
         md: 5.0,
@@ -114,6 +120,12 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(got, want, "{slot}");
     }
     assert_eq!(t.dock.ghost_offset, Vec2::new(5.0, 7.0));
+    assert_eq!(t.text.font_size, 27.0, "the ambient text is the body tier");
+    assert_eq!(
+        t.tooltip.text.font_size,
+        Some(25.0),
+        "a tooltip is the caption tier"
+    );
     let chromes = [
         ("button", &t.button.looks.normal.chrome, 13.0, 0.25),
         ("text edit", &t.text_edit.looks.normal.chrome, 13.0, 0.25),

@@ -95,6 +95,7 @@ use crate::ui::state::StateMap;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::vsync::Vsync;
+use crate::window::waker::Waker;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_directory::WindowDirectory;
@@ -151,6 +152,9 @@ pub struct Ui {
     /// that it was made under.
     device_epoch: u32,
     device_restored: bool,
+    /// Asks this window's host for a frame from any thread; the host sets it once the window
+    /// opens.
+    waker: Waker,
 }
 
 /// Widget- and host-facing authoring API; mostly one-line delegations to sealed subsystems.
@@ -193,7 +197,18 @@ impl Ui {
             gpu_pass_stats: GpuPassStats::default(),
             device_epoch,
             device_restored: false,
+            waker: Waker::new(|| {}),
         }
+    }
+
+    /// The window's host sets the waker its [`Self::waker`] hands out.
+    pub(crate) fn set_waker(&mut self, waker: Waker) {
+        self.waker = waker;
+    }
+
+    /// A handle that asks this window for a frame from any thread: see [`Waker`].
+    pub fn waker(&self) -> Waker {
+        self.waker.clone()
     }
 
     /// The active theme. `.clone()` is a refcount bump, so a style can outlive the
@@ -321,6 +336,10 @@ impl Ui {
 
     /// `true` if a press this frame matches `shortcut`, its modifiers exactly, and was granted
     /// to this record position's scope.
+    ///
+    /// The read also watches the chord, so an off-focus press of it wakes the next frame. A read
+    /// skipped behind a chord that fired, as the right side of `a || b` is, still watches: a
+    /// frame that receives a press records again with no input, and that pass reads it.
     #[inline]
     pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool {
         let reader = self.key_reader();

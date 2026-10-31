@@ -527,6 +527,7 @@ fn ui_scale_row(ui: &mut Ui) {
     let bar = &ui.theme().menu_bar;
     let step = ButtonTheme {
         looks: bar.title.clone(),
+        selected: bar.title.clone(),
         defaults: bar.defaults,
     };
 
@@ -612,6 +613,7 @@ fn nav_style(theme: &Theme, look: NavLook) -> ButtonTheme {
         }
     }
     ButtonTheme {
+        selected: looks.clone(),
         looks,
         defaults: SlotDefaults {
             padding: Spacing::xy(M.space.md, M.space.xs),

@@ -28,6 +28,9 @@ use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::convert::Infallible;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use std::time::Duration;
 
 fn tile(ui: &mut Ui) {
@@ -249,6 +252,74 @@ fn an_app_that_always_repaints_is_unsettled() {
         Err(PlayError::Unsettled {
             step: "the settle".to_owned(),
             frames: 600
+        })
+    );
+}
+
+/// An app busy with work on another thread, which wakes the window and ends the work when done.
+#[derive(Debug)]
+struct Worker {
+    busy: Arc<AtomicBool>,
+    frames: u32,
+}
+
+impl App for Worker {
+    fn record(&mut self, _window: WindowToken, ui: &mut Ui) {
+        self.frames += 1;
+        tile(ui);
+    }
+
+    fn is_busy(&self) -> bool {
+        self.busy.load(Ordering::Acquire)
+    }
+}
+
+/// A settle waits out a busy app: a worker ends its work and wakes the window after the settle
+/// began, and the settle runs the woken frame and returns. A wake waits until a frame takes it.
+/// A busy app that never wakes the window
+/// fails the settle once the builder's background wait passes.
+#[test]
+fn a_settle_waits_for_a_busy_apps_wake() {
+    let mut h = Harness::builder(UVec2::new(64, 32))
+        .mono()
+        .background_wait(Duration::from_secs(30))
+        .build();
+    let busy = Arc::new(AtomicBool::new(true));
+    let mut app = Worker {
+        busy: Arc::clone(&busy),
+        frames: 0,
+    };
+    h.frame_app(&mut app);
+    let waker = h.ui().waker();
+    let work = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(20));
+        busy.store(false, Ordering::Release);
+        waker.wake();
+    });
+    let before = app.frames;
+    h.settle(&mut app).unwrap();
+    work.join().unwrap();
+    assert!(!app.is_busy());
+    assert!(app.frames > before, "the woken frame recorded");
+    assert!(!h.has_pending_wake(), "the settle's frame took the wake");
+    h.ui().waker().wake();
+    assert!(h.has_pending_wake());
+    h.frame_app(&mut app);
+    assert!(!h.has_pending_wake());
+
+    let mut stuck = Harness::builder(UVec2::new(64, 32))
+        .mono()
+        .background_wait(Duration::from_millis(10))
+        .build();
+    let mut app = Worker {
+        busy: Arc::new(AtomicBool::new(true)),
+        frames: 0,
+    };
+    assert_eq!(
+        stuck.settle(&mut app),
+        Err(PlayError::Busy {
+            step: "the settle".to_owned(),
+            seconds: 0.01
         })
     );
 }

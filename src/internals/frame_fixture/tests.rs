@@ -13,6 +13,7 @@ const COVERED: &[&str] = &[
     "checkbox",
     "combo_box",
     "drag_value",
+    "editable_label",
     "expander",
     "grid",
     "panel",

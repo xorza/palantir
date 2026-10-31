@@ -20,11 +20,11 @@ pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;
 pub(crate) mod scrollbar;
+pub(crate) mod selection;
 pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod spinner;
 pub(crate) mod splitter;
-pub(crate) mod tab_selection;
 pub(crate) mod tab_strip_focus;
 pub(crate) mod tabs;
 pub(crate) mod text_edit;
@@ -260,7 +260,9 @@ impl Theme {
             dock: DockTheme::from_parts(p, m),
             expander: ExpanderTheme::from_parts(p, m),
             focus_ring: FocusRingTheme::from_parts(p, m),
-            text: TextStyle::default().with_color(p.text),
+            text: TextStyle::default()
+                .with_font_size(m.text.body)
+                .with_color(p.text),
             window_clear: p.window_bg,
             panel_chrome: None,
             panel_clip: ClipMode::None,

@@ -57,7 +57,7 @@ AllowedSplits
         pub fn allows(self, side: SplitSide) -> bool
 
 Anchor
-    struct Anchor: Clone, Copy, Debug
+    struct Anchor: Clone, Copy, Debug, PartialEq
         pub const fn at_point(point: Vec2) -> Self
         pub const fn above(rect: Rect) -> Self
         pub const fn below(rect: Rect) -> Self
@@ -91,6 +91,7 @@ App
     trait App
         fn update(&mut self, _window: WindowToken, _ui: &Ui) { .. }
         fn record(&mut self, window: WindowToken, ui: &mut Ui)
+        fn is_busy(&self) -> bool { .. }
         impl<F: FnMut(&mut Ui)> App for F
 
 Axis
@@ -113,6 +114,7 @@ BackdropFilter
         pub const fn with_saturation(self, saturation: f32) -> Self
         pub const fn with_noise(self, noise: f32) -> Self
         pub const fn with_max_luminance(self, luminance: f32) -> Self
+        pub fn with_max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self
         pub const fn with_lens(self, lens: Lens) -> Self
         pub const fn is_noop(&self) -> bool
         impl<'de> Deserialize<'de> where BackdropFilter: Default
@@ -163,7 +165,9 @@ Button
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
         pub const fn text_align(self, a: Align) -> Self
+        pub const fn selected(self, selected: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show_with<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &TextStyle) -> R) -> InnerResponse<'_, R>
 
 ButtonPhase
     enum ButtonPhase: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -186,6 +190,7 @@ ButtonState
 ButtonTheme
     struct ButtonTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
+        pub selected: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn menu_button(p: &Palette, m: &Metrics) -> Self
@@ -709,6 +714,21 @@ EditEnd
         Submitted
         Canceled
 
+EditableLabel
+    struct EditableLabel<'a>: Configure, Debug, ThemeDefaults (blanket)
+        pub fn new(text: impl Into<TextInput<'a>>) -> Self
+        pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
+        pub const fn editable(self, on: bool) -> Self
+        pub const fn max_chars(self, n: usize) -> Self
+        pub fn show(self, ui: &mut Ui) -> EditableLabelResponse<'_>
+        pub fn label_id(id: WidgetId) -> WidgetId
+
+EditableLabelResponse
+    struct EditableLabelResponse<'a>: Debug
+        pub response: Response<'a>
+        pub editing: bool
+        pub committed_text: Option<String>
+
 Engagement
     enum Engagement: Clone, Copy, Debug, Eq, PartialEq
         Pressed
@@ -824,6 +844,7 @@ FrameSummary  [features: winit]
         pub sent_inputs: u64
         pub repaint_requested: bool
         pub repaint_after: Option<Duration>
+        pub busy: bool
 
 Gpu
     struct Gpu: Clone, Debug
@@ -967,6 +988,8 @@ Harness
     struct Harness: Debug
         pub fn play<A: App, X: Locate<A>>(&mut self, app: &mut A, actions: &[Action<X>]) -> Result<u32, ActError>
         pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError>
+        pub fn wait_for_wake(&self, deadline: Instant) -> bool
+        pub fn has_pending_wake(&self) -> bool
         pub fn shot(&mut self, app: &mut impl App, region: Option<Rect>) -> Result<Screenshot, PlayError>
         pub fn new(size: UVec2) -> Self
         pub const fn builder(size: UVec2) -> HarnessBuilder
@@ -1021,6 +1044,7 @@ HarnessBuilder
         pub fn gpu(self, gpu: Gpu) -> Self
         pub const fn frame_dt(self, dt: Duration) -> Self
         pub const fn settle_frames(self, frames: u32) -> Self
+        pub const fn background_wait(self, wait: Duration) -> Self
         pub fn build(self) -> Harness
 
 HostDisconnected  [features: winit]
@@ -1082,6 +1106,7 @@ Image
         pub fn blank(size: UVec2) -> Self
         pub const fn size(&self) -> UVec2
         pub fn texels(&self) -> &[SrgbaU8]
+        pub fn as_srgba8(&self) -> &[u8]
         pub fn texels_mut(&mut self) -> &mut [SrgbaU8]
         pub fn fill_with(&mut self, texel: impl FnMut(UVec2) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
@@ -1403,6 +1428,7 @@ MenuState
 
 Metrics
     struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+        pub text: TextSteps
         pub space: SpaceSteps
         pub radius: RadiusSteps
         pub stroke: StrokeSteps
@@ -1490,6 +1516,7 @@ Okhsv
 OverlayResponse
     struct OverlayResponse<R>
         pub id: WidgetId
+        pub opened: bool
         pub dismissed: bool
         pub close_requested: bool
         pub inner: R
@@ -1574,6 +1601,8 @@ PlayError
         NoPixels
         Disconnected
         NoFrame { seconds: f32 }
+        Busy { step: String, seconds: f32 }
+        Panicked { message: String }
 
 PointerAction
     struct PointerAction: Clone, Copy, Debug, Eq, PartialEq
@@ -1713,6 +1742,7 @@ Remote  [features: winit]
     struct Remote<T: 'static>: Debug
         pub fn with_blocked(self, blocked: impl Fn() -> bool + Send + 'static) -> Self
         pub fn query<R: Send + 'static>(&self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
+        pub fn settle(&self) -> Result<u32, PlayError>
         pub fn play<X: Locate<T> + Clone + Send + 'static>(&self, actions: &[Action<X>]) -> Result<u32, ActError>
         pub fn shot(&self, region: Option<Rect>) -> Result<Screenshot, PlayError>
         pub fn widgets(&self, filter: Option<String>) -> Result<Vec<InspectedWidget>, PlayError>
@@ -1772,6 +1802,8 @@ RgbaF32
         pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self
         pub const fn srgb(r: f32, g: f32, b: f32) -> Self
         pub const fn srgba(r: f32, g: f32, b: f32, a: f32) -> Self
+        pub const fn luminance(self) -> f32
+        pub const fn contrast_ratio(self, other: Self) -> f32
         pub const fn with_alpha(self, a: f32) -> Self
         pub const fn from_srgba(bytes: SrgbaU8) -> Self
         pub const fn hex(rgb: u32) -> Self
@@ -1828,6 +1860,11 @@ ScrollbarTheme
         pub thumb_hovered: RgbaF32
         pub thumb_active: RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+
+Selection
+    enum Selection: Clone, Copy, Debug, Default, Eq, From<bool>, PartialEq
+        Unselected
+        Selected
 
 Sense
     struct Sense: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1967,6 +2004,7 @@ SlotDefaults
 
 SpaceSteps
     struct SpaceSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub xxs: f32
         pub xs: f32
         pub sm: f32
         pub md: f32
@@ -2165,11 +2203,6 @@ TabOverflow
         Scroll
         Menu
 
-TabSelection
-    enum TabSelection: Clone, Copy, Debug, Eq, From<bool>, PartialEq
-        Unselected
-        Selected
-
 TabStrip
     struct TabStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(items: &'a [TabItem]) -> Self
@@ -2276,6 +2309,7 @@ Text
 TextEdit
     struct TextEdit<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(text: &'a mut String) -> Self
+        pub fn buffered(current: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn font_size(self, px: f32) -> Self
@@ -2298,6 +2332,7 @@ TextEditResponse
         pub response: Response<'a>
         pub changed: bool
         pub committed: bool
+        pub committed_text: Option<String>
         pub ended: Option<EditEnd>
         pub focus_gained: bool
         pub focus_lost: bool
@@ -2312,6 +2347,7 @@ TextEditTheme
         pub defaults: SlotDefaults
         pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn flat(&self) -> Self
 
 TextInput
     enum TextInput<'a>: Debug, Default, From<Cow<'a, str>>, From<InternedStr>, From<String>
@@ -2328,6 +2364,12 @@ TextShaper
         pub fn has_font(&self, family: FontFamily) -> bool
         pub fn font_families(&self) -> Vec<FontFamily>
         pub fn glyphs(&self) -> TextGlyphs<'_>
+
+TextSteps
+    struct TextSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub caption: f32
+        pub body: f32
+        pub title: f32
 
 TextStyle
     struct TextStyle: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -2478,6 +2520,7 @@ TranslateScale
 
 Ui
     struct Ui: Debug
+        pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
         pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>)
         pub const fn watch_pointer(&mut self, flags: PointerWake)
@@ -2601,6 +2644,10 @@ Vsync
     enum Vsync: Clone, Copy, Debug, Default, Eq, PartialEq
         On
         Off
+
+Waker
+    struct Waker: Clone, Debug
+        pub fn wake(&self)
 
 WidgetId
     struct WidgetId: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq, Pod, Zeroable

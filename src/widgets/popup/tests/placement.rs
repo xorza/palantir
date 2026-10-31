@@ -345,3 +345,46 @@ fn body_rect(h: &Harness, id: WidgetId) -> Rect {
     assert_eq!(body.plane.layer, Layer::Popup);
     h.ui_ref().layout(Layer::Popup).rect[body.node.idx()]
 }
+
+/// An open popup stays where its first frame landed it: near the bottom edge a 200 px body in a
+/// 6 px margin flips above the anchor, its margin box at `280 − (200 + 2 × 6) = 68` and its body at
+/// `68 + 6 = 74`, and when it shrinks to 40 px it stays at 74 rather than dropping back below the
+/// anchor, where 40 px would fit. Asked to sit somewhere else, at (50, 100), it lands again, its
+/// body at (56, 106).
+#[test]
+fn an_open_popup_stays_where_it_landed() {
+    const SURF: UVec2 = UVec2::new(400, 300);
+    let id = WidgetId::from_hash("landed-popup");
+    let scene = |anchor: Vec2, height: f32| {
+        move |ui: &mut Ui| {
+            Popup::new(Anchor::at_point(anchor))
+                .id(id)
+                .padding(0.0)
+                .margin(6.0)
+                .show(ui, |ui, _popup| {
+                    Panel::vstack()
+                        .id(WidgetId::from_hash("landed-content"))
+                        .size((Sizing::fixed(120.0), Sizing::fixed(height)))
+                        .show(ui, |_| {});
+                });
+        }
+    };
+    let mut h = Harness::mono(SURF);
+    let anchor = Vec2::new(20.0, 280.0);
+    h.frame(scene(anchor, 200.0));
+    assert_eq!(
+        body_rect(&h, id).min,
+        Vec2::new(26.0, 74.0),
+        "flipped above"
+    );
+    for _ in 0..2 {
+        h.frame(scene(anchor, 40.0));
+        assert_eq!(body_rect(&h, id).min, Vec2::new(26.0, 74.0), "held");
+    }
+    h.frame(scene(Vec2::new(50.0, 100.0), 40.0));
+    assert_eq!(
+        body_rect(&h, id).min,
+        Vec2::new(56.0, 106.0),
+        "asked elsewhere"
+    );
+}

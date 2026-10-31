@@ -23,7 +23,7 @@ use crate::shape::style::LineCap;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::theme_slot::ThemeSlot;
-use crate::theme::tab_selection::TabSelection;
+use crate::theme::selection::Selection;
 use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::tabs::TabsTheme;
 use crate::theme::text_style::TextStyle;
@@ -447,7 +447,7 @@ impl StripPass<'_> {
             widget = widget.clip_rounded();
         }
         let state = widget.response(ui);
-        let plan = t.plan(&state, TabSelection::from(selected), self.ambient);
+        let plan = t.plan(&state, Selection::from(selected), self.ambient);
         let look = widget.wear(ui, plan);
         let chip_chrome = Chrome {
             corners: Corners::top(t.radius),

@@ -11,12 +11,12 @@ use crate::theme::text_style::TextStyle;
 /// themed widget makes:
 /// ```
 /// # use palantir::widget::{ThemeSlot, Widget};
-/// # use palantir::Ui;
+/// # use palantir::{Selection, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// let mut widget = Widget::leaf();
 /// let response = widget.response(ui);
 /// let theme = ui.theme();
-/// let plan = theme.button.plan(&response, (), theme.text);
+/// let plan = theme.button.plan(&response, Selection::Unselected, theme.text);
 /// let look = widget.wear(ui, plan);
 /// widget.record(ui, Some(&look.chrome), |_| {});
 /// # }
@@ -24,7 +24,7 @@ use crate::theme::text_style::TextStyle;
 ///
 /// A new box default goes in [`SlotDefaults`]; the compiler names every implementor.
 pub trait ThemeSlot {
-    /// What the state pick needs past the response: `()` normally, which look pack applies for toggles ([`CheckState`](crate::CheckState)) and tab chips ([`TabSelection`](crate::TabSelection)).
+    /// What the state pick needs past the response: `()` normally, which look pack applies for toggles ([`CheckState`](crate::CheckState)) and tab chips and buttons ([`Selection`](crate::Selection)).
     type Pick: Copy;
 
     /// The look for the response state and pick.

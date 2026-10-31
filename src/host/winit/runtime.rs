@@ -20,6 +20,7 @@ use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native, platform};
 use crate::text::font_scan::FontScan;
+use crate::window::waker::Waker;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
@@ -27,7 +28,7 @@ use std::fmt;
 use std::mem;
 use std::num::NonZeroU32;
 
-pub(super) struct WinitRuntime<T> {
+pub(super) struct WinitRuntime<T: 'static> {
     /// The caller's app, created once the first window's `Ui` existed.
     pub(super) app: T,
     pub(super) surfaces: SurfaceManager,
@@ -36,9 +37,11 @@ pub(super) struct WinitRuntime<T> {
     pending_commands: WindowCommands,
     /// Each window's last frame, which the [`HostHandle`]s read.
     frames: Arc<FrameLog>,
+    /// The handle each window's [`Waker`] asks for its frames through.
+    handle: HostHandle<T>,
 }
 
-impl<T> fmt::Debug for WinitRuntime<T> {
+impl<T: 'static> fmt::Debug for WinitRuntime<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("WinitRuntime")
             .field("surfaces", &self.surfaces)
@@ -83,6 +86,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             options.shaper_or_else(|| scan.expect("a scan runs when no shaper is set").join());
         let core = HostCore::new(gpu, options, shaper);
         let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
+        driver.ui.set_waker(Self::waker(&handle, token));
         let create_app = bootstrap
             .create_app
             .take()
@@ -90,6 +94,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         let pending_tasks = mem::take(&mut bootstrap.pending_tasks);
 
         let frames = Arc::clone(&handle.frames);
+        let own_handle = handle.clone();
         let mut app = create_app(&mut driver.ui, handle);
         for task in pending_tasks {
             task(&mut app);
@@ -104,9 +109,16 @@ impl<T: App + 'static> WinitRuntime<T> {
             windows,
             pending_commands: WindowCommands::default(),
             frames,
+            handle: own_handle,
         };
         runtime.read_platform_settings();
         Ok(runtime)
+    }
+
+    /// The waker of the window `token`: a frame of it, through `handle`.
+    fn waker(handle: &HostHandle<T>, token: WindowToken) -> Waker {
+        let handle = handle.clone();
+        Waker::new(move || handle.request_repaint(token))
     }
 
     /// Read the platform settings palantir follows, the double-click time: at startup, and each
@@ -275,7 +287,8 @@ impl<T: App + 'static> WinitRuntime<T> {
                 ),
             )
             .map_err(|source| WinitHostError::Surface { token, source })?;
-        let driver = self.core.open(token, PresentStrategy::DirectAdaptive);
+        let mut driver = self.core.open(token, PresentStrategy::DirectAdaptive);
+        driver.ui.set_waker(Self::waker(&self.handle, token));
         self.windows.push(Window::new(window, surface, driver));
         Ok(())
     }
