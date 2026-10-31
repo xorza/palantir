@@ -10,14 +10,14 @@ use palantir::{
 };
 
 use crate::pages;
-use crate::pages::state::AppState;
+use crate::pages::windows::AppState;
 use crate::scaffold::header::Header;
 use crate::scaffold::links::LINKS;
 use crate::shot::ShotApp;
 use crate::support::{Kit, Kits, PAGE_GAP};
 
 pub(crate) const MAIN_WINDOW: WindowToken = WindowToken(0);
-/// Optional second window mirroring the `state` page's counter.
+/// Optional second window mirroring the windows page's counter.
 pub(crate) const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
 
 /// Open the inspector, or close it if up; the live window set decides.
@@ -40,7 +40,7 @@ enum Group {
     Layout,
     Paint,
     Runtime,
-    /// Regression content and the bench viewer, drawn in quieter ink.
+    /// The bench viewer, drawn in quieter ink.
     Diagnostics,
 }
 
@@ -141,17 +141,8 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Widgets,
-        label: "dialogs",
-        blurb: "Modal dialogs, and a window close the app can veto.",
-        keys: &["Esc", "Tab", "close window"],
-        flow: Flow::Scroll,
-        source: source!(dialogs),
-        build: |ui, _, k| pages::dialogs::build(ui, k),
-    },
-    Page {
-        group: Group::Widgets,
         label: "overlays",
-        blurb: "Popups, anchors, tooltips and context menus, above the main tree.",
+        blurb: "Popups, anchors, a modal, tooltips, context menus and a menu bar, above the main tree.",
         keys: &["click", "hover", "right-click", "Esc"],
         flow: Flow::Scroll,
         source: source!(overlays),
@@ -213,21 +204,19 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Layout,
-        label: "scroll & split",
-        blurb: "Scroll viewports on three axes, inside resizable splitter panes.",
-        keys: &["wheel", "drag bar", "double-click bar"],
+        label: "scroll & zoom",
+        blurb: "Scroll viewports on three axes in resizable splitter panes; the two-axis one zooms \
+                about the pointer.",
+        keys: &[
+            "wheel",
+            "Ctrl+wheel",
+            "pinch",
+            "drag bar",
+            "double-click bar",
+        ],
         flow: Flow::Fill,
         source: source!(scroll),
         build: |ui, _, k| pages::scroll::build(ui, k),
-    },
-    Page {
-        group: Group::Layout,
-        label: "pan & zoom",
-        blurb: "A zoomable viewport: the point under the cursor stays put.",
-        keys: &["wheel", "Ctrl+wheel", "pinch"],
-        flow: Flow::Fill,
-        source: source!(pan_zoom),
-        build: |ui, _, k| pages::pan_zoom::build(ui, k),
     },
     Page {
         group: Group::Paint,
@@ -312,21 +301,13 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Runtime,
-        label: "state & windows",
-        blurb: "App state passed through the record closure, shared with a second OS window.",
-        keys: &["F8"],
+        label: "app & windows",
+        blurb: "App state passed through the record closure, a second OS window that shares it, \
+                and a window close the app can veto.",
+        keys: &["F8", "close window"],
         flow: Flow::Scroll,
-        source: source!(state),
-        build: |ui, app, k| pages::state::build(ui, k, app),
-    },
-    Page {
-        group: Group::Diagnostics,
-        label: "fixtures",
-        blurb: "Deliberately ugly regression content: id collisions, z-order, alpha blending.",
-        keys: &[],
-        flow: Flow::Scroll,
-        source: source!(fixtures),
-        build: |ui, _, k| pages::fixtures::build(ui, k),
+        source: source!(windows),
+        build: |ui, app, k| pages::windows::build(ui, k, app),
     },
     Page {
         group: Group::Diagnostics,
@@ -370,7 +351,7 @@ impl Shell {
                 self.card(ui, k);
             });
 
-        pages::dialogs::intercept(ui, MAIN_WINDOW);
+        pages::windows::intercept(ui, MAIN_WINDOW);
     }
 
     /// The nav rail: brand, grouped page list, debug-overlay footer. The list
@@ -478,7 +459,7 @@ impl App for Shell {
                     .padding(M.space.lg)
                     .gap(M.space.md)
                     .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| pages::state::counter(ui, k, &mut self.app));
+                    .show(ui, |ui| pages::windows::counter(ui, k, &mut self.app));
             }
             _ => self.build(ui),
         }

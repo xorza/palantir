@@ -1,4 +1,4 @@
-//! Side-layer widgets: popups (above the main tree, escaping clip), tooltips (delay with warmup), context menus (secondary-click) and a menu bar.
+//! Side-layer widgets: popups (above the main tree, escaping clip), a modal dialog, tooltips (delay with warmup), context menus (secondary-click) and a menu bar.
 
 use std::time::Duration;
 
@@ -6,9 +6,10 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
-    Align, Anchor, AnchorAlign, Block, Button, Checkbox, ClickOutside, Configure, ContextMenu,
-    ContextMenuTheme, Justify, Key, MenuBar, MenuItem, MenuSeparator, Panel, Popup, PopupTrigger,
-    RadioButton, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui, WidgetId,
+    Align, Anchor, AnchorAlign, Block, Button, Checkbox, ClickOutside, CloseHandle, Configure,
+    ContextMenu, ContextMenuTheme, Justify, Key, MenuBar, MenuItem, MenuSeparator, Modal, Panel,
+    Popup, PopupTrigger, RadioButton, ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text,
+    Tooltip, Ui, WidgetId,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -25,6 +26,8 @@ struct State {
     side: Side,
     align: AnchorAlign,
     anchored: bool,
+    asking: bool,
+    answer: Option<&'static str>,
     action: Option<&'static str>,
     /// The roomy menu's theme, built once on the first frame.
     roomy: Option<ContextMenuTheme>,
@@ -37,6 +40,8 @@ impl Default for State {
             side: Side::Below,
             align: AnchorAlign::Start,
             anchored: true,
+            asking: false,
+            answer: None,
             action: None,
             roomy: None,
         }
@@ -48,6 +53,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     ui.with_state::<State, _>(state_id, |ui, s| {
         popup_section(ui, k, s);
         anchor_section(ui, k, s);
+        modal_section(ui, k, s);
         tooltip_section(ui, k);
         context_menu_section(ui, k, s);
         menu_bar_section(ui, k, s);
@@ -161,6 +167,40 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
                     }
                 });
         });
+}
+
+fn modal_section(ui: &mut Ui, k: Kit, s: &mut State) {
+    Section::new("Modal")
+        .apis(&[api!(Modal::new), api!(CloseHandle::close)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "A modal dims the window and takes every pointer. Escape or a click on the \
+                 backdrop closes it, and Tab stays inside it — see the focus & keyboard page \
+                 for the focus side.",
+            );
+            support::row(ui, |ui| {
+                if Button::new().label("Delete all…").show(ui).clicked() {
+                    s.asking = true;
+                }
+                support::readout(ui, k, "last answer", s.answer.unwrap_or("—"));
+            });
+        });
+    if !s.asking {
+        return;
+    }
+    let response = support::dialog(ui, "Delete all the things?", |ui, close| {
+        for label in ["Cancel", "Delete"] {
+            if Button::new().id_salt(label).label(label).show(ui).clicked() {
+                s.answer = Some(label);
+                close.close();
+            }
+        }
+    });
+    if response.closed() {
+        s.asking = false;
+    }
 }
 
 fn tooltip_section(ui: &mut Ui, k: Kit) {

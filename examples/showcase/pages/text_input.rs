@@ -245,17 +245,6 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
                 let bound = fmt!(ui, "{:?}", s.ime);
                 support::readout(ui, k, "bound value", bound);
             });
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "While composing, the preedit shows underlined at the caret",
-                    "The candidate window opens next to the caret, and follows it",
-                    "'bound value' stays the same until the composition commits",
-                    "Enter commits the composition only; a second Enter submits the field",
-                    "Escape while composing cancels the composition and keeps focus",
-                ],
-            );
         });
 
     Section::new("Plain keys with an input method on").show(ui, k, |ui| {
@@ -281,10 +270,19 @@ fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
             s.plain_edits
         );
         support::readout(ui, k, "typed", count);
-        support::checklist(
-            ui,
-            k,
-            &["With an input method on in its Latin mode, typing abc shows abc, once"],
-        );
     });
+
+    // An input method's composition and its candidate window need a real one, which no harness
+    // drives.
+    support::checklist(
+        ui,
+        &[
+            "While composing, the preedit shows underlined at the caret",
+            "The candidate window opens next to the caret, and follows it",
+            "'bound value' stays the same until the composition commits",
+            "Enter commits the composition only; a second Enter submits the field",
+            "Escape while composing cancels the composition and keeps focus",
+            "With an input method on in its Latin mode, typing abc shows abc, once",
+        ],
+    );
 }

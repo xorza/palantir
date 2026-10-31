@@ -12,6 +12,7 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::button::Button;
 use crate::widgets::modal::Modal;
 use crate::widgets::popup::Popup;
 use glam::{UVec2, Vec2};
@@ -76,6 +77,37 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
             "explicit {explicit:?}: scrim {scrim:?}, want {want:?}",
         );
     }
+}
+
+/// What one frame of [`a_backdrop_click_dismisses_and_reaches_nothing_below`] reports.
+#[derive(Clone, Copy, Debug)]
+struct BackdropPass {
+    under_clicked: bool,
+    dismissed: bool,
+}
+
+/// A click on the backdrop dismisses the modal, and the button under it hears nothing: the
+/// backdrop covers the window and takes every pointer.
+#[test]
+fn a_backdrop_click_dismisses_and_reaches_nothing_below() {
+    let under = WidgetId::from_hash("under-the-modal");
+    let mut record = |ui: &mut Ui| BackdropPass {
+        under_clicked: Button::new().id(under).label("under").show(ui).clicked(),
+        dismissed: Modal::new()
+            .id(WidgetId::from_hash("modal"))
+            .show(ui, |_, _| {})
+            .dismissed,
+    };
+    let mut h = Harness::mono(UVec2::new(400, 300));
+    h.frame_value(&mut record);
+    let at = h.center_of(under);
+    h.click(at);
+    let pass = h.frame_value(&mut record);
+    assert!(pass.dismissed, "the backdrop click dismisses the modal");
+    assert!(
+        !pass.under_clicked,
+        "the button under the backdrop hears nothing"
+    );
 }
 
 /// A modal paints above every popup, so it must also hear Escape, which holds

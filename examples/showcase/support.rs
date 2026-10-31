@@ -11,9 +11,9 @@
 use std::panic::Location;
 
 use palantir::{
-    Align, Block, Checkbox, Chrome, ColorScheme, Configure, Corners, FontWeight, Metrics, Okhsv,
-    Palette, Panel, RgbaF32, Sizing, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign,
-    WidgetId,
+    Align, Block, Checkbox, Chrome, CloseHandle, ColorScheme, Configure, Corners, Expander,
+    FontWeight, Metrics, Modal, Okhsv, OverlayResponse, Palette, Panel, RgbaF32, Sizing, Stroke,
+    Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId, fmt,
 };
 
 use crate::scaffold::header::Chip;
@@ -170,16 +170,6 @@ pub(crate) fn on_swatch_style() -> TextStyle {
         .with_color(SWATCH_INK)
 }
 
-/// `a` moved toward `b` by `t`, per channel in linear RGB, alpha included.
-pub(crate) const fn mix(a: RgbaF32, b: RgbaF32, t: f32) -> RgbaF32 {
-    RgbaF32::new(
-        a.r + (b.r - a.r) * t,
-        a.g + (b.g - a.g) * t,
-        a.b + (b.b - a.b) * t,
-        a.a + (b.a - a.a) * t,
-    )
-}
-
 pub(crate) fn swatch_chrome(c: RgbaF32) -> Chrome {
     Chrome::rounded(c, Corners::all(M.radius.control))
 }
@@ -322,24 +312,19 @@ pub(crate) fn readout<'a>(
 
 const READOUT_LABEL_W: f32 = 96.0;
 
-/// Ticks for a hand check, keyed by call site and kept for the `Ui`'s life. At most 32 items (one
-/// bit each).
+/// The checks a page leaves to a person, as they need what no harness drives: folded under one
+/// "Check by hand (n)" disclosure, so they stay out of the demos' way. The ticks are keyed by call
+/// site and kept for the `Ui`'s life, folded or not. At most 32 items (one bit each).
 #[track_caller]
-pub(crate) fn checklist(ui: &mut Ui, k: Kit, items: &[&'static str]) {
+pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
     debug_assert!(items.len() <= 32, "a checklist holds at most 32 items");
-    let id = WidgetId::from_hash(("showcase::checklist", Location::caller()));
-    Panel::vstack()
-        .auto_id()
-        .size((Sizing::FILL, Sizing::HUG))
-        .padding(M.space.md)
-        .gap(M.space.sm)
-        .chrome(
-            Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(RADIUS))
-                .with_border(Stroke::new(k.t.border, M.stroke.hairline)),
-        )
+    let at = Location::caller();
+    let title = fmt!(ui, "Check by hand ({})", items.len());
+    Expander::new(title)
+        .id(WidgetId::from_hash(("showcase::checklist", at)))
         .show(ui, |ui| {
-            Text::new("CHECK BY HAND").style(&k.t.heading()).show(ui);
-            ui.with_state::<Ticks, _>(id, |ui, ticks| {
+            let ticks = WidgetId::from_hash(("showcase::checklist::ticks", at));
+            ui.with_state::<Ticks, _>(ticks, |ui, ticks| {
                 for (i, &item) in items.iter().enumerate() {
                     let bit = 1 << i;
                     let mut done = ticks.0 & bit != 0;
@@ -352,6 +337,24 @@ pub(crate) fn checklist(ui: &mut Ui, k: Kit, items: &[&'static str]) {
 
 #[derive(Default, Debug)]
 struct Ticks(u32);
+
+/// A modal of a question and a row of answers, the shape the overlays page's confirm and the
+/// windows page's close prompt share; `answers` records the buttons and closes through the handle.
+#[track_caller]
+pub(crate) fn dialog(
+    ui: &mut Ui,
+    question: &'static str,
+    answers: impl FnOnce(&mut Ui, &CloseHandle),
+) -> OverlayResponse<()> {
+    Modal::new().auto_id().show(ui, |ui, close| {
+        Panel::vstack().gap(M.space.lg).show(ui, |ui| {
+            Text::new(question).show(ui);
+            Panel::hstack()
+                .gap(M.space.sm)
+                .show(ui, |ui| answers(ui, close));
+        });
+    })
+}
 
 /// A plain color swatch: a `Block` over [`swatch_chrome`], for the caller to key and size.
 pub(crate) fn swatch(c: RgbaF32) -> Block {

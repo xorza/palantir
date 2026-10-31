@@ -14,22 +14,22 @@ const fn link(study: &'static str, page: &'static str) -> Link {
 }
 
 pub(crate) const LINKS: &[Link] = &[
-    link("sky chart", "pan & zoom"),
+    link("sky chart", "scroll & zoom"),
     link("sky chart", "gpu view"),
     link("sky chart", "gradients"),
     link("sky chart", "materials"),
     link("sky chart", "overlays"),
     link("catalog", "text input"),
-    link("catalog", "scroll & split"),
+    link("catalog", "scroll & zoom"),
     link("catalog", "overlays"),
     link("catalog", "focus & keyboard"),
     link("session", "controls"),
-    link("session", "dialogs"),
+    link("session", "overlays"),
     link("session", "focus & keyboard"),
     link("workspace", "dock"),
     link("workspace", "tabs"),
     link("workspace", "overlays"),
-    link("workspace", "state & windows"),
+    link("workspace", "app & windows"),
     link("appearance", "colors"),
     link("appearance", "controls"),
 ];

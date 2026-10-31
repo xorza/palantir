@@ -1,4 +1,4 @@
-//! Filled shape primitives: triangles, meshes (including a 2 500-vertex stress grid) and
+//! Filled shape primitives: triangles, meshes and
 //! `Shape::owner_windowed_rect`, the inverted-fill corner mask standing in for rounded clipping without a
 //! stencil pass.
 
@@ -42,7 +42,6 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 DemoCell::new("single triangle").show(ui, k, |ui| mesh_triangle(ui, k));
                 DemoCell::new("star — centroid fan").show(ui, k, |ui| polygon_star(ui, k));
                 DemoCell::new("per-vertex gradient").show(ui, k, |ui| gradient_quad(ui, k));
-                DemoCell::new("2 500-vertex stress grid").show(ui, k, stress);
             });
         });
 
@@ -112,7 +111,7 @@ fn radii(ui: &mut Ui, k: Kit) {
 }
 
 /// Builds a cell's geometry into a retained row once: a fresh `Mesh` per frame allocates and re-hashes (it
-/// memoizes its content hash), worst for the stress grid but true at three vertices too.
+/// memoizes its content hash), even at three vertices.
 fn retained_mesh(ui: &mut Ui, key: &'static str, build: impl FnOnce(&mut Mesh)) {
     let id = WidgetId::from_hash(("showcase::shapes::mesh", key));
     ui.with_state::<Option<Mesh>, _>(id, |ui, m| {
@@ -168,34 +167,6 @@ fn gradient_quad(ui: &mut Ui, k: Kit) {
         let bl = m.vertex(Vec2::new(16.0, 152.0), k.swatch.orange);
         m.triangle(tl, tr, br);
         m.triangle(tl, br, bl);
-    });
-}
-
-/// 2 500 vertices, 4 802 triangles: exercises the alloc-free claim and index-buffer growth.
-fn stress(ui: &mut Ui) {
-    const SIDE: u32 = 50;
-    const STEP: f32 = 3.0;
-    retained_mesh(ui, "stress-grid", |m| {
-        let teal = RgbaF32::hex(0x2fa8a8);
-        *m = Mesh::with_capacity((SIDE as usize).pow(2), (SIDE as usize - 1).pow(2) * 6);
-        for j in 0..SIDE {
-            for i in 0..SIDE {
-                m.vertex(
-                    Vec2::new(10.0 + i as f32 * STEP, 10.0 + j as f32 * STEP),
-                    teal,
-                );
-            }
-        }
-        for j in 0..SIDE - 1 {
-            for i in 0..SIDE - 1 {
-                let a = j * SIDE + i;
-                let b = a + 1;
-                let c = a + SIDE;
-                let d = c + 1;
-                m.triangle(a, b, d);
-                m.triangle(a, d, c);
-            }
-        }
     });
 }
 

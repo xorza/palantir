@@ -42,25 +42,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 - **Never settles.** The gpu view requests a repaint every frame and clears to a fixed near-black.
 - **Gaps.** `EditableLabel`, `Clipboard`, `CursorIcon` and `Waker` appear on no page.
 
-## Remove
-
-- **The fixtures page.** The golden suite holds blending, corners and occlusion
-  (`tests/visual/fixtures/{fade,corners,occlusion}.rs`) and `src/ui/tests/ids.rs` the id
-  collisions; a reader learns nothing from deliberately ugly content.
-- **pan & zoom as a page.** The zoomable viewport joins scroll & split as its two-axis pane; the
-  heavy document and auto-drive go, as the frame bench is the measured workload. The observatory's
-  sky chart lists the page, so its list follows.
-- **dialogs as a page.** Its modal joins overlays; window-close interception joins the windows
-  page, where it is a window's concern.
-- **The settings form's "Live state" well**, which repeats what the form shows, and its tinted
-  separator.
-- **The stress mesh and the 40-row rainbows**, kept only where they show a behavior.
-- **Checklist items a harness test can hold**: each moves into a test or, already held, goes. What
-  needs a real OS (IME, the OS close button) stays in one folded list per page.
-- **The rail's debug footer**, into a Diagnostics popover.
-
-27 pages become 24: 7 widgets, 2 input, 5 layout, 7 paint, 3 runtime and diagnostics.
-
 ## Unify
 
 - **Spacing from `Metrics` only.** Every gap, padding and radius reads `M.space`, `M.radius` or a
@@ -106,14 +87,14 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 | tabs | Chips reorder by drag and close; a "+" adds one; an operations log beside it. |
 | dock | Panes hold small live views (a picker, an operations log, the pane's size); Reset layout. |
 | custom widget | Range and step knobs; the call-site listing follows them. |
-| overlays | Gains the modal. Edit ▾ holds `MenuItem` rows. An opaque / frosted toggle. Tooltips become one row with a delay slider and a max-width slider. |
+| overlays | Edit ▾ holds `MenuItem` rows. An opaque / frosted toggle. Tooltips become one row with a delay slider and a max-width slider. |
 | text input | Gains `EditableLabel` and a clipboard copy / paste pair; knobs for max chars, multiline, alignment, select-all-on-focus. |
 | focus & keyboard | Ring width and color edit the appearance; checklists fold. |
 | sizing & spacing | One playground: three children, each with a `Sizing` combo, a weight and an align; padding, gap and justify on the parent. The fixed rows stay below as the reference. |
 | containers | Gap and line-gap sliders; a splitter resizes the wrap and the grid. |
 | text | A width slider replaces "resize window"; a font-size slider; label overflow. |
 | clip & transform | Translate and scale sliders (a `TranslateScale` has no rotation), a clip-mode radio, a padding slider. |
-| scroll & zoom | Vertical list, horizontal strip, zoomable two-axis pane; "reveal row N"; zoom readout and Reset view. |
+| scroll & zoom | "Reveal row N"; a zoom readout and Reset view. |
 | shapes | Corner radius and stroke width knobs on the triangle; the windowed rect over the stage. |
 | strokes | One live polyline: width, join and cap. Hairlines in the ink, not white. |
 | gradients | A stop editor: two color chips, an angle slider, an interpolation radio on a live tile. |
@@ -123,7 +104,7 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 | images | Fit radios and a sampling toggle on one image. |
 | motion | A curve plot per easing with a dot riding it; a duration slider; Replay; a reduced-motion line. |
 | gpu view | A Spin switch, off in the shot mode; transparent clear. |
-| app & windows | The shared state grows past a counter (a note and a color); window-close interception; a background job that wakes the UI through a `Waker`. |
+| app & windows | The shared state grows past a counter (a note and a color); a background job that wakes the UI through a `Waker`. |
 | frame bench | Unchanged. |
 
 ## Also
@@ -180,13 +161,13 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 - **Scaffold and live tokens (batch 1).** The specimen set shares one relative luminance per
   scheme rather than one perceived lightness (**Decisions**). The shared header also carries each
   page's source and its observatory studies, from the "Also" list.
+- **Remove and merge (batch 2).** Two checklist items had no harness test, so palantir gained
+  `a_backdrop_click_dismisses_and_reaches_nothing_below` (modal) and
+  `a_click_focuses_a_control_out_of_the_tab_order` (tab); every other focus and modal item was
+  already held, so the focus page and the modal carry no list. The nine items that need a real
+  input method or OS close button fold under one "Check by hand (n)" disclosure per page.
 
 ## Plan
-
-### 2. Remove and merge
-- [ ] Delete fixtures; merge pan & zoom into scroll & zoom; split dialogs into overlays and
-      windows; drop Live state, the tinted separator, the stress mesh, the rainbows.
-- [ ] Checklist items into harness tests or deleted; the rest folded.
 
 ### 3. Rail and appearance
 - [ ] Inset grid, 28 px rows, pill, scrollbar outside it; reveal on change.
