@@ -417,6 +417,7 @@ pub use widgets::dock::split_side::{SplitDirection, SplitSide};
 pub use widgets::dock::tab_group::{TabGroup, TabGroupId};
 pub use widgets::drag_num::DragNum;
 pub use widgets::drag_value::DragValue;
+pub use widgets::editable_label::{EditableLabel, EditableLabelResponse};
 pub use widgets::expander::Expander;
 pub use widgets::expander::ExpanderResponse;
 pub use widgets::gpu_view::GpuView;

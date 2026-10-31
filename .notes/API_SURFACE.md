@@ -712,6 +712,21 @@ EditEnd
         Submitted
         Canceled
 
+EditableLabel
+    struct EditableLabel<'a>: Configure, Debug, ThemeDefaults (blanket)
+        pub fn new(text: impl Into<TextInput<'a>>) -> Self
+        pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
+        pub const fn editable(self, on: bool) -> Self
+        pub const fn max_chars(self, n: usize) -> Self
+        pub fn show(self, ui: &mut Ui) -> EditableLabelResponse<'_>
+        pub fn label_id(id: WidgetId) -> WidgetId
+
+EditableLabelResponse
+    struct EditableLabelResponse<'a>: Debug
+        pub response: Response<'a>
+        pub editing: bool
+        pub committed_text: Option<String>
+
 Engagement
     enum Engagement: Clone, Copy, Debug, Eq, PartialEq
         Pressed

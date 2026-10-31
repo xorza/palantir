@@ -17,7 +17,7 @@ mod input_pass;
 mod paint_input;
 mod shape_ctx;
 mod text_geometry;
-mod text_layout;
+pub(crate) mod text_layout;
 mod text_nav;
 mod unicode;
 mod view_state;
@@ -153,11 +153,12 @@ impl<'a> TextEdit<'a> {
     }
 
     /// A single-line editor of a draft the field keeps under its id, for a value the caller
-    /// stores in another form or changes only on a whole edit. While the field is idle, focused
-    /// neither this frame nor the last, the draft takes `current`; Escape puts `current` back;
-    /// and the frame that commits, on Enter or on the blur that ends the session, hands the draft
-    /// over as [`TextEditResponse::committed_text`] when it differs from `current`. The frame
-    /// focus leaves is not idle, so the draft lives to commit. The id must be stable across
+    /// stores in another form or changes only on a whole edit. A frame after one the field was
+    /// not focused in starts with the draft at `current`: an idle field shows the value, and a
+    /// session starts from it. Escape puts `current` back, and the frame that commits, on Enter
+    /// or on the blur that ends the session, hands the draft over as
+    /// [`TextEditResponse::committed_text`] when it differs from `current`. The frame focus
+    /// leaves follows a focused one, so the draft lives to commit. The id must be stable across
     /// frames, as the draft is kept under it.
     #[track_caller]
     pub fn buffered(current: impl Into<TextInput<'a>>) -> Self {
@@ -359,8 +360,7 @@ impl<'a> TextEdit<'a> {
             TextInput::Owned(text) => text,
             TextInput::Interned(text) => ui.text(*text),
         });
-        let idle = ui.focus() != Some(id) && !state.view.was_focused();
-        if idle && draft != shown {
+        if !state.view.was_focused() && draft != shown {
             draft.clone_from(&shown);
         }
         let outcome = self.pass(ui, state, id, &mut draft);

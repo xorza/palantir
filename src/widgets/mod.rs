@@ -23,6 +23,7 @@ pub(crate) mod context_menu;
 pub(crate) mod dock;
 pub(crate) mod drag_num;
 pub(crate) mod drag_value;
+pub(crate) mod editable_label;
 pub(crate) mod expander;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
