@@ -34,6 +34,7 @@ pub(crate) mod handle;
 mod input;
 mod native;
 #[cfg_attr(target_os = "macos", path = "platform/macos.rs")]
+#[cfg_attr(target_os = "windows", path = "platform/windows.rs")]
 #[cfg_attr(
     any(
         target_os = "linux",
@@ -47,6 +48,7 @@ mod native;
 #[cfg_attr(
     not(any(
         target_os = "macos",
+        target_os = "windows",
         target_os = "linux",
         target_os = "dragonfly",
         target_os = "freebsd",
@@ -425,6 +427,7 @@ where
                 win.next = FramePresent::Immediate;
             }
             WindowEvent::Moved(_) => win.invalidate_system_facts(),
+            WindowEvent::Focused(true) => runtime.read_platform_settings(),
             // Windows reports a minimize as a zero-size resize and sends no `Occluded`; treat it as hidden.
             WindowEvent::Resized(new) if new.width == 0 || new.height == 0 => {
                 win.set_minimized(true);

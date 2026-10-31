@@ -111,6 +111,13 @@ unicode-segmentation = { version = "1.13", default-features = false }
 criterion = { version = "0.8", default-features = false, optional = true }
 tracy-client = { version = "0.19", default-features = false, features = ["enable"], optional = true }
 
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.62", optional = true, features = ["Win32_UI_Input_KeyboardAndMouse"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.2.2", optional = true, features = ["NSEvent"] }
+
 [dev-dependencies]
 palantir = { path = ".", default-features = false, features = ["internals"] }
 backtrace = { version = "0.3", default-features = false, features = ["std"] }
@@ -133,7 +140,7 @@ internals = ["dep:criterion", "dep:image"]
 golden = ["dep:image"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
-winit = ["dep:winit", "system-clipboard"]
+winit = ["dep:winit", "system-clipboard", "dep:windows", "dep:objc2-app-kit"]
 profile-with-tracy = ["dep:tracy-client"]
 
 

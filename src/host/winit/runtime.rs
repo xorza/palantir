@@ -18,7 +18,7 @@ use crate::host::winit::handle::HostHandle;
 use crate::host::winit::remote::QueryTask;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
-use crate::host::winit::{Bootstrap, native};
+use crate::host::winit::{Bootstrap, native, platform};
 use crate::text::font_scan::FontScan;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_config::WindowConfig;
@@ -97,14 +97,25 @@ impl<T: App + 'static> WinitRuntime<T> {
 
         let mut windows = WindowSet::default();
         windows.push(Window::new(window, first_surface, driver));
-        Ok(Self {
+        let runtime = Self {
             app,
             surfaces,
             core,
             windows,
             pending_commands: WindowCommands::default(),
             frames,
-        })
+        };
+        runtime.read_platform_settings();
+        Ok(runtime)
+    }
+
+    /// Read the platform settings palantir follows, the double-click time: at startup, and each
+    /// time a window gets the focus back. winit reports no change to them, and a person changes
+    /// them in the system's settings, with the app in the background.
+    pub(super) fn read_platform_settings(&self) {
+        if let Some(window) = platform::double_click_window() {
+            self.core.resources.double_click_window().set(window);
+        }
     }
 
     /// Resolve the window winit reports events for as `id`, once per event.

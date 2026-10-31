@@ -81,7 +81,7 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
             }),
             ..Capture::default()
         };
-        cap.begin_press(on, pos, now);
+        cap.begin_press(on, pos, now, DOUBLE_CLICK_WINDOW);
         let press = cap.press.expect("a press latched");
         assert_eq!(press.count, want, "{label}");
         let run = cap.run.expect("the run follows the press");
@@ -89,10 +89,38 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
     }
 }
 
+/// The window is the press's to read, as a platform setting moves it: a press 300 ms after the
+/// last chains under a 400 ms window, as GNOME's default, and starts over under a 200 ms one.
+#[test]
+fn the_window_a_press_reads_decides_the_chain() {
+    let gap = Duration::from_millis(300);
+    for (window, want) in [
+        (Duration::from_millis(400), 2),
+        (Duration::from_millis(200), 1),
+    ] {
+        let mut cap = Capture {
+            run: Some(PressRun {
+                at: Duration::ZERO,
+                target: target(),
+                pos: Vec2::ZERO,
+                count: 1,
+            }),
+            ..Capture::default()
+        };
+        cap.begin_press(target(), Vec2::ZERO, gap, window);
+        assert_eq!(cap.press.map(|press| press.count), Some(want), "{window:?}");
+    }
+}
+
 /// With no run, the first press is the first of a run.
 #[test]
 fn a_first_press_starts_a_run_at_one() {
     let mut cap = Capture::default();
-    cap.begin_press(target(), Vec2::ONE, Duration::from_secs(3));
+    cap.begin_press(
+        target(),
+        Vec2::ONE,
+        Duration::from_secs(3),
+        DOUBLE_CLICK_WINDOW,
+    );
     assert_eq!(cap.press.map(|press| press.count), Some(1));
 }

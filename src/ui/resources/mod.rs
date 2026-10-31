@@ -11,6 +11,7 @@ use crate::display::user_scale::UserScale;
 use crate::icons::icon_registry::IconRegistry;
 use crate::image_registry::ImageRegistry;
 use crate::image_registry::image_handle::ImageHandle;
+use crate::input_state::double_click_window::DoubleClickWindow;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
 use crate::renderer::error::ImageTooLarge;
@@ -37,6 +38,9 @@ pub(crate) struct UiResources {
     /// The one scale every window's `Display` is minted from; app-global because per-monitor scale is already
     /// `Display::system_scale`, leaving a preference windows should not disagree about.
     user_scale: Rc<AppSetting<UserScale>>,
+    /// The double-click time every window's input reads, which the winit host sets from the
+    /// platform's.
+    double_click_window: DoubleClickWindow,
     windows: WindowDirectory,
     render_owners: RenderOwners,
 }
@@ -54,6 +58,7 @@ impl UiResources {
             clipboard,
             diagnostics: Diagnostics::default(),
             user_scale: Rc::default(),
+            double_click_window: DoubleClickWindow::default(),
             windows: WindowDirectory::default(),
             render_owners: RenderOwners::default(),
         }
@@ -93,6 +98,10 @@ impl UiResources {
 
     pub(crate) fn user_scale(&self) -> &AppSetting<UserScale> {
         &self.user_scale
+    }
+
+    pub(crate) const fn double_click_window(&self) -> &DoubleClickWindow {
+        &self.double_click_window
     }
 
     pub(crate) const fn windows(&self) -> &WindowDirectory {
