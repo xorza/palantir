@@ -189,7 +189,12 @@ impl ScrollState {
     /// content point at the viewport's corner still. A zoom outlives the config it was
     /// set under: the caller can narrow the range or drop it between frames.
     pub(super) fn coerce_zoom(&mut self, config: Option<ZoomConfig>) {
-        let zoom = config.map_or(1.0, |config| config.clamp(self.zoom));
+        self.set_zoom(config.map_or(1.0, |config| config.clamp(self.zoom)));
+    }
+
+    /// Scale to `zoom`, holding the content point at the viewport's corner still.
+    pub(crate) fn set_zoom(&mut self, zoom: f32) {
+        debug_assert!(zoom > 0.0, "a zoom is positive: {zoom}");
         if zoom != self.zoom {
             self.offset *= zoom / self.zoom;
             self.zoom = zoom;
@@ -335,11 +340,6 @@ pub(crate) mod internals {
     impl ScrollState {
         pub(crate) fn drag_anchor_is_none(&self) -> bool {
             self.drag_anchor.is_none()
-        }
-
-        /// Park the zoom where no input put it.
-        pub(crate) const fn set_zoom(&mut self, zoom: f32) {
-            self.zoom = zoom;
         }
     }
 }

@@ -15,7 +15,6 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::scroll::tests::bars::support::{theme, thumb_rects};
 use crate::widgets::scroll::tests::support::fixed_block;
 use glam::UVec2;
@@ -322,8 +321,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
         .size
         .h;
 
-    h.ui()
-        .with_state::<ScrollState, _>(scroll_id, |_, s| s.set_zoom(2.0));
+    Scroll::set_zoom(h.ui(), scroll_id, 2.0);
     h.prime(2, build);
     let z2_thumbs = thumb_rects(h.ui_ref(), "scroll");
     assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");

@@ -132,22 +132,33 @@ fn unreadable_primary_answers_from_a_current_fallback() {
     assert_eq!(clipboard.text().unwrap(), "copied");
 }
 
-/// An image copy replaces the text: in memory, through a primary that takes it, and through one
-/// that refuses it, where the fallback answers empty until another application copies.
+/// An image copy replaces the text and reads back, and a text copy replaces the image: in
+/// memory, through a primary that takes it, and through one that refuses it, where the fallback
+/// answers until another application copies. The in-process buffer keeps a copy only where no
+/// primary took the image, so a primary that refuses a read fails an image read.
 #[test]
-fn an_image_copy_leaves_no_text() {
+fn an_image_copy_replaces_the_text_and_reads_back() {
     let image = Image::blank(UVec2::new(2, 3));
 
     let memory = Clipboard::memory();
+    assert_eq!(memory.image(), Ok(None), "empty");
     memory.set_text("text").unwrap();
     memory.set_image(&image).unwrap();
     assert_eq!(memory.text().unwrap(), "");
+    assert_eq!(memory.image(), Ok(Some(image.clone())));
+    assert!(memory.buffer_has_image());
+    memory.set_text("text").unwrap();
+    assert_eq!(memory.image(), Ok(None), "a text copy replaces it");
 
     let taking = primary("text");
     let clipboard = over(&taking);
     clipboard.set_image(&image).unwrap();
-    assert_eq!(taking.borrow().image, Some(UVec2::new(2, 3)));
+    assert_eq!(taking.borrow().image, Some(image.clone()));
+    assert!(!clipboard.buffer_has_image(), "the primary holds it");
     assert_eq!(clipboard.text().unwrap(), "");
+    assert_eq!(clipboard.image(), Ok(Some(image.clone())));
+    taking.borrow_mut().reject_reads = true;
+    assert_eq!(clipboard.image(), Err(ClipboardUnavailable));
 
     let refusing = primary("stale");
     let clipboard = over(&refusing);
@@ -155,7 +166,14 @@ fn an_image_copy_leaves_no_text() {
     refusing.borrow_mut().reject_writes = true;
     clipboard.set_image(&image).unwrap();
     assert_eq!(refusing.borrow().image, None);
+    assert!(clipboard.buffer_has_image(), "no primary took it");
     assert_eq!(clipboard.text().unwrap(), "");
+    assert_eq!(clipboard.image(), Ok(Some(image)), "the fallback holds it");
     refusing.borrow_mut().text = String::from("external");
+    assert_eq!(
+        clipboard.image(),
+        Ok(None),
+        "another application copied text"
+    );
     assert_eq!(clipboard.text().unwrap(), "external");
 }

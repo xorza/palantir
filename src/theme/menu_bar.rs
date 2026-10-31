@@ -48,6 +48,13 @@ pub enum MenuState {
     Open,
 }
 
+impl From<bool> for MenuState {
+    /// `true` is [`Self::Open`].
+    fn from(open: bool) -> Self {
+        if open { Self::Open } else { Self::Shut }
+    }
+}
+
 impl MenuBarTheme {
     /// [`ButtonTheme::menu_button`]'s flat titles in the muted ink at rest, the open one wearing
     /// the hovered look, an `xs` gutter apart, so two lit fills never touch, on the `surround`

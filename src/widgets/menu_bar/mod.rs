@@ -274,12 +274,11 @@ impl MenuBarMenus<'_> {
         let mut widget = Widget::leaf().id(title).sense(Sense::CLICK).focusable(true);
         let response = widget.activation_response(ui, Activation::Button);
         let here = self.open.filter(|open| open.idx == idx);
-        let state = if here.is_some() {
-            MenuState::Open
-        } else {
-            MenuState::Shut
-        };
-        let plan = self.style.plan(&response.state, state, self.theme.text);
+        let plan = self.style.plan(
+            &response.state,
+            MenuState::from(here.is_some()),
+            self.theme.text,
+        );
         let look = widget.wear(ui, plan);
         let label = ui.intern(label.into());
         widget.record(ui, Some(&look.chrome), |ui| {

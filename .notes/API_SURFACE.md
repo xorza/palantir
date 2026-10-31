@@ -239,6 +239,7 @@ Clipboard
     struct Clipboard: Clone, Debug
         pub fn text(&self) -> Result<String, ClipboardUnavailable>
         pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable>
+        pub fn image(&self) -> Result<Option<Image>, ClipboardUnavailable>
         pub fn set_image(&self, image: &Image) -> Result<(), ClipboardUnavailable>
 
 ClipboardUnavailable
@@ -722,6 +723,8 @@ EditableLabel
         pub const fn max_chars(self, n: usize) -> Self
         pub fn show(self, ui: &mut Ui) -> EditableLabelResponse<'_>
         pub fn label_id(editable_label: WidgetId) -> WidgetId
+        pub fn edit(ui: &mut Ui, id: WidgetId)
+        pub fn is_editing(ui: &Ui, id: WidgetId) -> bool
 
 EditableLabelResponse
     struct EditableLabelResponse<'a>: Debug
@@ -1422,7 +1425,7 @@ MenuSeparator
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 MenuState
-    enum MenuState: Clone, Copy, Debug, Eq, PartialEq
+    enum MenuState: Clone, Copy, Debug, Eq, From<bool>, PartialEq
         Shut
         Open
 
@@ -1842,6 +1845,7 @@ Scroll
         pub fn offset(ui: &Ui, id: WidgetId) -> Vec2
         pub fn set_offset(ui: &mut Ui, id: WidgetId, offset: Vec2)
         pub fn zoom(ui: &Ui, id: WidgetId) -> f32
+        pub fn set_zoom(ui: &mut Ui, id: WidgetId, zoom: f32)
 
 ScrollDelta
     struct ScrollDelta: Clone, Copy, Debug, Default, PartialEq
@@ -2220,7 +2224,7 @@ TabStrip
         pub fn show(self, ui: &mut Ui, content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse<'_>
 
 TabStripFocus
-    enum TabStripFocus: Clone, Copy, Debug, Eq, PartialEq
+    enum TabStripFocus: Clone, Copy, Debug, Eq, From<bool>, PartialEq
         Focused
         Unfocused
 

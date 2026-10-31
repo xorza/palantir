@@ -584,7 +584,8 @@ fn zoom_pivot_picks_the_point_a_step_holds() {
 /// Scroll state read and written from outside, and a stored zoom outliving the config it was set
 /// under: a narrowed range pulls it in and a scroll that stops zooming returns to 1, each holding
 /// the content point at the viewport's corner, so the offset scales with it: (120, 80) at zoom 2
-/// is (90, 60) at 1.5 and (60, 40) at 1.
+/// is (90, 60) at 1.5 and (60, 40) at 1. A zoom set from outside holds that point too: (60, 40)
+/// at 1 is (240, 160) at 4, which a 0.5..=3 range clamps to (180, 120) at 3.
 #[test]
 fn a_narrowed_or_dropped_config_coerces_the_stored_zoom() {
     let id = WidgetId::from_hash("scroll");
@@ -624,5 +625,18 @@ fn a_narrowed_or_dropped_config_coerces_the_stored_zoom() {
         (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
         (Vec2::new(60.0, 40.0), 1.0),
         "no config",
+    );
+
+    Scroll::set_zoom(h.ui(), id, 4.0);
+    assert_eq!(
+        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Vec2::new(240.0, 160.0), 4.0),
+        "set from outside",
+    );
+    h.frame(|ui| record(ui, Some(ZoomConfig::new(0.5..=3.0, 1.03))));
+    assert_eq!(
+        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Vec2::new(180.0, 120.0), 3.0),
+        "clamped by its range",
     );
 }

@@ -9,3 +9,14 @@ pub enum TabStripFocus {
     /// Focus is elsewhere: [`TabsTheme::cap_unfocused`](crate::TabsTheme::cap_unfocused).
     Unfocused,
 }
+
+impl From<bool> for TabStripFocus {
+    /// `true` is [`Self::Focused`].
+    fn from(focused: bool) -> Self {
+        if focused {
+            Self::Focused
+        } else {
+            Self::Unfocused
+        }
+    }
+}

@@ -142,6 +142,35 @@ fn a_double_click_opens_the_editor_and_enter_commits() {
     assert_eq!(h.ui().focus(), None, "the closed editor let the focus go");
 }
 
+/// A caller opens the editor without a double click, as a Rename command does: the next frame
+/// records it focused with the text selected, so a key replaces "Alpha", and Enter commits and
+/// closes it. A label that is not editable stays a label.
+#[test]
+fn a_caller_opens_the_editor() {
+    let id = WidgetId::from_hash("label-edit");
+    let mut h = harness();
+    h.frame(|ui| {
+        record(ui, id, true);
+    });
+    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    EditableLabel::edit(h.ui(), id);
+    assert!(EditableLabel::is_editing(h.ui_ref(), id));
+    assert!(h.frame_value(|ui| record(ui, id, true)).editing);
+    assert_eq!(h.ui().focus(), Some(id));
+    h.key(Key::Char('Z'));
+    h.frame(|ui| {
+        record(ui, id, true);
+    });
+    h.key(Key::Enter);
+    let committed = h.frame_value(|ui| record(ui, id, true));
+    assert_eq!(committed.committed_text.as_deref(), Some("Z"));
+    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+
+    EditableLabel::edit(h.ui(), id);
+    assert!(!h.frame_value(|ui| record(ui, id, false)).editing);
+    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+}
+
 /// Escape closes the editor and commits nothing, and the next session starts from the text again.
 #[test]
 fn escape_keeps_the_text() {

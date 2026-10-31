@@ -78,8 +78,8 @@ fn state_is_swept_when_scroll_disappears() {
         "the scroll stored its row"
     );
     h.ui().with_state::<ScrollState, _>(id, |_, state| {
-        state.set_offset(Vec2::new(12.0, 34.0));
         state.set_zoom(2.0);
+        state.set_offset(Vec2::new(12.0, 34.0));
     });
 
     h.frame(|_| {});
