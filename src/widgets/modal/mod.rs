@@ -94,6 +94,8 @@ impl<'a> Modal<'a> {
             backdrop: Backdrop::Root,
         };
         let scope = OverlayScope::claim(ui, spec, &mut root);
+        // A root with no rect from the last frame did not record then.
+        let opened = ui.response_for(root_id).rect.is_none();
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| {
             root.record(ui, Some(&dim), |ui| {
@@ -102,6 +104,7 @@ impl<'a> Modal<'a> {
         });
         let response = OverlayResponse {
             id: root_id,
+            opened,
             dismissed: turn.pressed_outside || turn.escape_pressed,
             close_requested: handle.requested(),
             inner: turn.inner,

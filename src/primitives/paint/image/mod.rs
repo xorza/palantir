@@ -145,6 +145,12 @@ impl Image {
         bytemuck::cast_slice(&self.pixels)
     }
 
+    /// The texels' bytes, row-major, four a texel in `r, g, b, a` order: the layout
+    /// [`Self::from_srgba8`] takes, for a codec or a clipboard that wants bytes.
+    pub fn as_srgba8(&self) -> &[u8] {
+        &self.pixels
+    }
+
     /// The texels for writing.
     pub fn texels_mut(&mut self) -> &mut [SrgbaU8] {
         bytemuck::cast_slice_mut(&mut self.pixels)

@@ -110,6 +110,8 @@ impl Popup {
             backdrop,
         };
         let scope = OverlayScope::claim(ui, spec, &mut widget);
+        // A body with no rect from the last frame did not record then.
+        let opened = ui.response_for(id).rect.is_none();
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
@@ -119,6 +121,7 @@ impl Popup {
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
         let response = OverlayResponse {
             id,
+            opened,
             // `Dismiss` also closes on Esc so hosts read one `closed()` signal.
             dismissed: dismiss_mode && (turn.pressed_outside || turn.escape_pressed),
             close_requested: handle.requested(),

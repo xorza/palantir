@@ -113,10 +113,9 @@ impl<'a> Editor<'a> {
                     ActionAvailability::Selection => has_selection,
                     ActionAvailability::Text => has_text,
                 };
-                let mut row = MenuItem::new(item.label).disabled(!enabled);
-                if let Some(shortcut) = item.action.shortcut() {
-                    row = row.shortcut_hint(shortcut);
-                }
+                let row = MenuItem::new(item.label)
+                    .disabled(!enabled)
+                    .shortcut_hint(item.action.shortcut());
                 if row.show(ui, popup).clicked() {
                     clicked_action = Some(item.action);
                 }

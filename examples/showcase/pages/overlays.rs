@@ -239,7 +239,10 @@ fn tooltip_section(ui: &mut Ui) {
 
 fn context_menu_section(ui: &mut Ui, s: &mut State) {
     Section::new("Context menu")
-        .apis(&[api!(ContextMenu::on), api!(MenuItem::shortcut)])
+        .apis(&[
+            api!(ContextMenu::on),
+            api!(MenuItem::shortcut as fn(MenuItem<'static>, Shortcut) -> MenuItem<'static>),
+        ])
         .show(ui, |ui| {
             support::note(
                 ui,

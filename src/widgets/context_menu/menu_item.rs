@@ -51,15 +51,17 @@ impl<'a> MenuItem<'a> {
         self
     }
 
-    /// Attach a keyboard shortcut: renders the platform-native hint (`⌘C` / `Ctrl+C`) and intercepts that keypress while the menu is open.
-    pub const fn shortcut(mut self, s: Shortcut) -> Self {
-        self.shortcut = MenuShortcut::Activate(s);
+    /// Attach a keyboard shortcut: renders the platform-native hint (`⌘C` / `Ctrl+C`) and intercepts that keypress while the menu is open. `None` attaches none, so a row whose chord is data takes it as it comes.
+    pub fn shortcut(mut self, s: impl Into<Option<Shortcut>>) -> Self {
+        self.shortcut = s.into().map_or(MenuShortcut::None, MenuShortcut::Activate);
         self
     }
 
-    /// Show `shortcut` as the hint without binding it, for a chord something else already handles.
-    pub const fn shortcut_hint(mut self, shortcut: Shortcut) -> Self {
-        self.shortcut = MenuShortcut::Hint(shortcut);
+    /// Show `shortcut` as the hint without binding it, for a chord something else already handles. `None` shows none.
+    pub fn shortcut_hint(mut self, shortcut: impl Into<Option<Shortcut>>) -> Self {
+        self.shortcut = shortcut
+            .into()
+            .map_or(MenuShortcut::None, MenuShortcut::Hint);
         self
     }
 

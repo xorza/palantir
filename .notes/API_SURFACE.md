@@ -1111,6 +1111,7 @@ Image
         pub fn blank(size: UVec2) -> Self
         pub const fn size(&self) -> UVec2
         pub fn texels(&self) -> &[SrgbaU8]
+        pub fn as_srgba8(&self) -> &[u8]
         pub fn texels_mut(&mut self) -> &mut [SrgbaU8]
         pub fn fill_with(&mut self, texel: impl FnMut(UVec2) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
@@ -1407,8 +1408,8 @@ MenuItem
     struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self
-        pub const fn shortcut(self, s: Shortcut) -> Self
-        pub const fn shortcut_hint(self, shortcut: Shortcut) -> Self
+        pub fn shortcut(self, s: impl Into<Option<Shortcut>>) -> Self
+        pub fn shortcut_hint(self, shortcut: impl Into<Option<Shortcut>>) -> Self
         pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui>
 
 MenuItemTheme
@@ -1520,6 +1521,7 @@ Okhsv
 OverlayResponse
     struct OverlayResponse<R>
         pub id: WidgetId
+        pub opened: bool
         pub dismissed: bool
         pub close_requested: bool
         pub inner: R
