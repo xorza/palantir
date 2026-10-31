@@ -2535,7 +2535,7 @@ Ui
         pub fn set_user_scale(&mut self, scale: UserScale)
         pub const fn frame_id(&self) -> u64
         pub fn inspect(&self, out: &mut Vec<InspectedWidget>)
-        pub const fn double_click_window(&self) -> Duration
+        pub fn double_click_window(&self) -> Duration
         pub const fn render_frame_id(&self) -> u64
         pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a>
         pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_

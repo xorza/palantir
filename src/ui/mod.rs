@@ -48,7 +48,6 @@ use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input_state::InputState;
 use crate::input_state::arranged_frame::ArrangedFrame;
-use crate::input_state::capture;
 use crate::input_state::key_reader::KeyReader;
 use crate::layout::Layout;
 use crate::primitives::geometry::rect::Rect;
@@ -175,6 +174,7 @@ impl Ui {
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
     pub(crate) fn new(resources: UiResources) -> Self {
         let device_epoch = resources.device().epoch();
+        let input = InputState::new(resources.double_click_window().clone());
         Self {
             forest: Forest::new(resources.text().family_keys()),
             resources,
@@ -185,7 +185,7 @@ impl Ui {
             gpu_views: GpuViews::default(),
             layout: Layout::default(),
             cascade: Cascade::default(),
-            input: InputState::default(),
+            input,
             animation: AnimationMap::default(),
             frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
@@ -1087,11 +1087,11 @@ impl Ui {
         InspectedWidget::collect(&self.forest, &self.cascade, out);
     }
 
-    /// How soon a second press on the same target makes a double click. A driver that sends
-    /// separate clicks spaces them past it.
+    /// How soon a second press on the same target makes a double click: what the winit host sets
+    /// for the platform, else 500 ms. A driver that sends separate clicks spaces them past it.
     #[inline]
-    pub const fn double_click_window(&self) -> Duration {
-        capture::DOUBLE_CLICK_WINDOW
+    pub fn double_click_window(&self) -> Duration {
+        self.input.double_click_window()
     }
 
     /// This frame's monotonic index among frames that reached the screen. Counts

@@ -2,6 +2,7 @@
 
 pub(crate) mod arranged_frame;
 pub(crate) mod capture;
+pub(crate) mod double_click_window;
 pub(crate) mod event_outcome;
 pub(crate) mod focus;
 pub(crate) mod input_queue;
@@ -36,6 +37,7 @@ use crate::input::watch::{KeyboardWake, PointerWake};
 use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::arranged_frame::ArrangedFrame;
 use crate::input_state::capture::{Capture, DRAG_THRESHOLD, PressDrag, ReleaseKind};
+use crate::input_state::double_click_window::DoubleClickWindow;
 use crate::input_state::event_outcome::EventOutcome;
 use crate::input_state::focus::{Focus, FocusCause};
 use crate::input_state::input_queue::InputQueue;
@@ -97,6 +99,8 @@ pub(crate) struct InputState {
     scopes: Scopes,
     focus_policy: FocusPolicy,
     input_policy: InputPolicy,
+    /// How soon a second press chains a run, shared with the host.
+    double_click: DoubleClickWindow,
     /// Whether any event this pass wrote state an earlier-recorded widget could have
     /// read (see [`EventOutcome::settles`]); taken by [`Self::take_action_flag`].
     frame_had_action: bool,
@@ -124,6 +128,19 @@ struct Traversal {
 }
 
 impl InputState {
+    /// The input of one window, chaining presses within `double_click`, which its host shares.
+    pub(crate) fn new(double_click: DoubleClickWindow) -> Self {
+        Self {
+            double_click,
+            ..Self::default()
+        }
+    }
+
+    /// How soon a second press on the same target chains a run.
+    pub(crate) fn double_click_window(&self) -> Duration {
+        self.double_click.get()
+    }
+
     /// Start a record pass: drop last pass's watches and resolve this pass's scope path once.
     pub(crate) fn pre_record(&mut self, cascade: &Cascade) {
         self.subs.clear();
@@ -618,6 +635,7 @@ impl InputState {
                         cap.run = None;
                     }
                 }
+                let double_click = self.double_click.get();
                 let cap = self.capture_mut(btn);
                 debug_assert!(
                     cap.press.is_none(),
@@ -625,7 +643,7 @@ impl InputState {
                 );
                 match hit.zip(pointer_pos) {
                     Some((target, pos)) => {
-                        cap.begin_press(target, pos, now);
+                        cap.begin_press(target, pos, now, double_click);
                         self.queue.note_capture(btn);
                     }
                     None => cap.run = None,

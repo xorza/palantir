@@ -4,6 +4,7 @@ use crate::host::harness::tests::support::{self, INSIDE, SURFACE};
 use crate::host::harness::*;
 use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
 use crate::internals::panic_probe;
+use crate::ui::resources::UiResources;
 use std::cell;
 
 #[test]
@@ -98,4 +99,39 @@ fn settle_counts_the_frames_a_motion_takes() {
     harness.frame(&mut record);
     assert_eq!(harness.settle(&mut record), Ok(4));
     assert_eq!(harness.time, tick * 4);
+}
+
+/// A host's double-click time reaches every window that shares its resources, and each press
+/// reads it: two clicks 300 ms apart are a double click under the 500 ms default and two clicks
+/// under a 200 ms platform setting, the one the winit host would set.
+#[test]
+fn every_window_reads_the_hosts_double_click_time() {
+    let gap = Duration::from_millis(300);
+    let double_after_gap = |harness: &mut Harness| {
+        harness.prime(2, support::button);
+        harness.click(INSIDE);
+        harness.frame(support::button);
+        harness.advance(gap);
+        harness.click(INSIDE);
+        harness
+            .response_in(support::target(), support::button)
+            .left
+            .double_clicked()
+    };
+
+    let mut stock = Harness::mono(SURFACE);
+    assert_eq!(stock.ui().double_click_window(), DOUBLE_CLICK_WINDOW);
+    assert!(double_after_gap(&mut stock), "300 ms is inside 500 ms");
+
+    let shared = UiResources::isolated_mono();
+    let mut first = Harness::from_resources(shared.clone(), SURFACE);
+    let mut second = Harness::from_resources(shared.clone(), SURFACE);
+    shared.double_click_window().set(Duration::from_millis(200));
+    for harness in [&mut first, &mut second] {
+        assert_eq!(
+            harness.ui().double_click_window(),
+            Duration::from_millis(200)
+        );
+    }
+    assert!(!double_after_gap(&mut first), "300 ms is past 200 ms");
 }

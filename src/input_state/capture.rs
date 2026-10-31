@@ -14,12 +14,15 @@ use std::time::Duration;
 /// as a drag. The latch holds for the press and the release emits no click.
 pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 
-/// Maximum interval between two clicks on the same widget for a double-click:
-/// the Windows and Chromium default. Refused: reading the platform setting, and
-/// an app-set option; the radius below is held the same way.
+/// Maximum interval between two clicks on the same widget for a double-click when no platform
+/// setting is read: the Windows and macOS default, and what a host with no desktop keeps, so a
+/// test repeats. The winit host reads the platform's own
+/// ([`DoubleClickWindow`](crate::input_state::double_click_window::DoubleClickWindow)).
 pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
-/// Maximum pointer travel (logical px) between two clicks for a double-click.
+/// Maximum pointer travel (logical px) between two clicks for a double-click. Held fixed: macOS and
+/// Wayland have no setting for it, Windows a rectangle in physical pixels (`SM_CXDOUBLECLK`), and
+/// X11's XSETTINGS `Net/DoubleClickDistance`.
 /// [`TextEdit`](crate::TextEdit)'s word and all-selection read the run it
 /// bounds rather than keeping a radius of their own.
 pub(super) const DOUBLE_CLICK_RADIUS: f32 = 5.0;
@@ -41,14 +44,20 @@ pub(super) struct Capture {
 
 impl Capture {
     /// Latch a press on `target` at `pos`, chaining the run when it lands on
-    /// the same target within [`DOUBLE_CLICK_WINDOW`] and
-    /// [`DOUBLE_CLICK_RADIUS`] of the previous press; any break restarts at
-    /// 1. `count` saturates instead of wrapping.
-    pub(super) fn begin_press(&mut self, target: WidgetId, pos: Vec2, now: Duration) {
+    /// the same target within `window` and [`DOUBLE_CLICK_RADIUS`] of the
+    /// previous press; any break restarts at 1. `count` saturates instead of
+    /// wrapping.
+    pub(super) fn begin_press(
+        &mut self,
+        target: WidgetId,
+        pos: Vec2,
+        now: Duration,
+        window: Duration,
+    ) {
         let count = match &self.run {
             Some(run)
                 if run.target == target
-                    && now.saturating_sub(run.at) <= DOUBLE_CLICK_WINDOW
+                    && now.saturating_sub(run.at) <= window
                     && pos.distance(run.pos) <= DOUBLE_CLICK_RADIUS =>
             {
                 run.count.saturating_add(1)
@@ -178,7 +187,7 @@ impl ReleaseKind {
 
 /// Multi-press run state: where, when and on what the last press landed. The
 /// next press chains (`count + 1`) on the same `target` within
-/// [`DOUBLE_CLICK_WINDOW`] and [`DOUBLE_CLICK_RADIUS`]; any break restarts at 1.
+/// the double-click window and [`DOUBLE_CLICK_RADIUS`]; any break restarts at 1.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct PressRun {
     pub(super) at: Duration,
