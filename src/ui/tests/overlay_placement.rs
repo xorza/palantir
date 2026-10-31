@@ -1,6 +1,6 @@
 //! Anchored side-layer placement through the published surface, as an outside widget would use it.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
@@ -24,15 +24,15 @@ fn body(ui: &mut Ui) {
 
 /// Record `place` under a full-surface main panel and report where the popup layer's root landed.
 fn placed(mut place: impl FnMut(&mut Ui)) -> Rect {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, &mut place);
     });
-    let root = h.ui.tree(Layer::Popup).roots[0].first_node.idx();
-    h.ui.layout(Layer::Popup).rect[root]
+    let root = h.ui().tree(Layer::Popup).roots[0].first_node.idx();
+    h.ui().layout(Layer::Popup).rect[root]
 }
 
 /// `Anchor`'s three answers for a 120x100 body on a 400x300 surface:
@@ -88,8 +88,8 @@ fn a_layer_raised_from_a_disabled_scope_is_disabled() {
     use crate::widgets::button::Button;
 
     for disabled in [true, false] {
-        let mut h = UiHarness::new(SURFACE);
-        let record = |h: &mut UiHarness| {
+        let mut h = Harness::mono(SURFACE);
+        let record = |h: &mut Harness| {
             h.frame_value(|ui| {
                 let mut read = false;
                 Panel::vstack()

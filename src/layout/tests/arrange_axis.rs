@@ -3,7 +3,7 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -83,7 +83,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
     let child = WidgetId::from_hash("arrange-axis-child");
     let parent_size = case.axis.compose_size(case.slot, 100.0);
     let surface = UVec2::new(parent_size.w as u32, parent_size.h as u32);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.frame(|ui| match driver {
         Driver::Root => add_child(ui, child, case),
         Driver::Canvas => {
@@ -262,7 +262,7 @@ fn an_empty_driver_hugs_its_padding() {
         Driver::ZStack,
         Driver::Grid,
     ] {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| {
             let hug = (Sizing::HUG, Sizing::HUG);
             let panel = match driver {
@@ -321,7 +321,7 @@ fn a_collapsed_child_takes_no_room() {
             child(ui, gone_id, (50.0, 50.0), (100.0, 100.0), 0);
             child(ui, b_id, (30.0, 20.0), (30.0, 0.0), 1);
         };
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         h.frame(|ui| {
             let hug = (Sizing::HUG, Sizing::HUG);
             let panel = match driver {
@@ -375,7 +375,7 @@ fn a_collapsed_child_takes_no_room() {
 #[test]
 fn a_hidden_child_keeps_its_slot() {
     let [a_id, hid_id, b_id] = ["a", "hid", "b"].map(WidgetId::from_hash);
-    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let mut h = Harness::mono(UVec2::new(400, 100));
     h.frame(|ui| {
         Panel::hstack().auto_id().gap(10.0).show(ui, |ui| {
             Block::new().id(a_id).size(40.0).show(ui);
@@ -392,7 +392,7 @@ fn a_hidden_child_keeps_its_slot() {
 #[test]
 fn a_collapsed_child_drops_its_fill_weight() {
     let [a_id, gone_id, b_id] = ["a", "gone", "b"].map(WidgetId::from_hash);
-    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let mut h = Harness::mono(UVec2::new(400, 100));
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()

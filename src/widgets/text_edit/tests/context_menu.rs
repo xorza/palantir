@@ -18,32 +18,32 @@ fn context_menu_cut_copy_paste_clear() {
         });
     }
 
-    fn open_menu_and_record(h: &mut UiHarness, buf: &mut String) {
-        ContextMenu::open(&mut h.ui, editor_id(), Vec2::new(20.0, 10.0));
+    fn open_menu_and_record(h: &mut Harness, buf: &mut String) {
+        ContextMenu::open(h.ui(), editor_id(), Vec2::new(20.0, 10.0));
         h.frame(|ui| body(ui, buf));
     }
 
     /// Click the center of the open menu's `row_idx`-th row (separators included) and run a frame; rects are read off the tree, not a fixed pitch.
-    fn click_menu_row(h: &mut UiHarness, buf: &mut String, row_idx: usize) {
+    fn click_menu_row(h: &mut Harness, buf: &mut String, row_idx: usize) {
         let menu = h
             .node_of(editor_id().with("body"))
             .expect("context menu body recorded");
-        let tree = h.ui.tree(menu.plane.layer);
+        let tree = h.ui().tree(menu.plane.layer);
         let row = tree
             .children(menu.node)
             .nth(row_idx)
             .unwrap_or_else(|| panic!("menu has no row {row_idx}"));
         let row_id = tree.records.widget_id()[row.id.idx()];
-        h.click_on(row_id);
+        h.click(row_id);
         h.frame(|ui| body(ui, buf));
     }
 
     // Seed: buffer with text, select "ell" (caret=4, anchor=1).
-    let mut h = UiHarness::new(SMALL);
+    let mut h = Harness::mono(SMALL);
     h.set_clipboard_text("");
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.with_state::<TextEditState, _>(editor_id(), |_, st| {
+    h.ui().with_state::<TextEditState, _>(editor_id(), |_, st| {
         st.edit.caret = 4;
         st.edit.selection = Some(1);
     });
@@ -54,12 +54,12 @@ fn context_menu_cut_copy_paste_clear() {
     assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
     assert_eq!(h.clipboard_text(), "ell");
     assert!(
-        !ContextMenu::is_open(&h.ui, editor_id()),
+        !ContextMenu::is_open(h.ui_ref(), editor_id()),
         "item click auto-closes menu",
     );
 
     // Cut → buffer drops "ell", caret collapses to selection start.
-    h.ui.with_state::<TextEditState, _>(editor_id(), |_, st| {
+    h.ui().with_state::<TextEditState, _>(editor_id(), |_, st| {
         st.edit.caret = 4;
         st.edit.selection = Some(1);
     });
@@ -102,7 +102,7 @@ fn context_menu_cut_copy_paste_clear() {
     let state = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(state.edit.selection_range(), Some(0..buf.len()));
     assert!(
-        !ContextMenu::is_open(&h.ui, editor_id()),
+        !ContextMenu::is_open(h.ui_ref(), editor_id()),
         "Select All shortcut closes the menu",
     );
 }
@@ -253,15 +253,15 @@ fn secondary_click_opens_text_edit_menu() {
     use crate::widgets::context_menu::ContextMenu;
     let editor_id = WidgetId::from_hash("ctx-ed-sec");
 
-    let mut h = UiHarness::new(SMALL);
+    let mut h = Harness::mono(SMALL);
     let mut buf = String::from("hi");
     h.frame(|ui| body(ui, &mut buf));
-    assert!(!ContextMenu::is_open(&h.ui, editor_id));
+    assert!(!ContextMenu::is_open(h.ui_ref(), editor_id));
 
-    h.right_click_at(Vec2::new(40.0, 20.0));
+    h.right_click(Vec2::new(40.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     assert!(
-        ContextMenu::is_open(&h.ui, editor_id),
+        ContextMenu::is_open(h.ui_ref(), editor_id),
         "secondary click on TextEdit opens its default menu",
     );
 }
@@ -272,7 +272,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
 
     let a_id = WidgetId::from_hash("focused-editor");
     let b_id = WidgetId::from_hash("menu-editor");
-    let mut h = UiHarness::new(UVec2::new(400, 120));
+    let mut h = Harness::mono(UVec2::new(400, 120));
     let mut a = String::from("focused");
     let mut b = String::from("menu");
     let body = |ui: &mut Ui, a: &mut String, b: &mut String| {
@@ -289,11 +289,11 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
     };
     h.frame(|ui| body(ui, &mut a, &mut b));
     h.set_focus(a_id);
-    h.ui.with_state::<TextEditState, _>(a_id, |_, state| {
+    h.ui().with_state::<TextEditState, _>(a_id, |_, state| {
         state.edit.caret = a.len();
         state.edit.selection = Some(0);
     });
-    ContextMenu::open(&mut h.ui, b_id, Vec2::new(200.0, 20.0));
+    ContextMenu::open(h.ui(), b_id, Vec2::new(200.0, 20.0));
     h.frame(|ui| {
         body(ui, &mut a, &mut b);
     });
@@ -312,5 +312,5 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
     );
     assert_eq!(b, "", "Select All then Cut must execute in arrival order");
     assert_eq!(h.clipboard_text(), "menu");
-    assert!(!ContextMenu::is_open(&h.ui, b_id));
+    assert!(!ContextMenu::is_open(h.ui_ref(), b_id));
 }

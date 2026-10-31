@@ -1,8 +1,8 @@
-//! A scene driven through one mutation per frame, each retained result checked against a cold one ([`Oracle`](crate::internals::ui_harness::oracle::Oracle)); one test per mutation.
+//! A scene driven through one mutation per frame, each retained result checked against a cold one ([`Oracle`](crate::internals::oracle::Oracle)); one test per mutation.
 
+use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::oracle::Oracle;
+use crate::internals::oracle::Oracle;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
@@ -190,7 +190,7 @@ fn overlay(ui: &mut Ui, name: &'static str, shift: f32, body: impl FnOnce(&mut U
 
 /// Run `script`, one knob set per frame, with every oracle after each; two primed frames warm the baselines.
 fn run(script: &[Knobs]) {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let picture = h
         .ui()
         .load_image(&Image::from_srgba8(UVec2::new(100, 100), vec![200; 100 * 100 * 4]).unwrap())
@@ -290,7 +290,7 @@ fn roots_swap_order() {
 
 #[test]
 fn resize_between_frames() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let picture = h
         .ui()
         .load_image(&Image::from_srgba8(UVec2::new(100, 100), vec![200; 100 * 100 * 4]).unwrap())

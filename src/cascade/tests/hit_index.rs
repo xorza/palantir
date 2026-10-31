@@ -1,8 +1,8 @@
 //! Which rows reach the hit index, in what order, carrying which rect.
 
+use crate::host::harness::Harness;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -21,7 +21,7 @@ fn tab_stops_are_live_focusable_stops_in_record_order() {
     let first = WidgetId::from_hash("first");
     let indexed = WidgetId::from_hash("indexed");
     let in_popup = WidgetId::from_hash("in-popup");
-    let mut h = UiHarness::new(UVec2::splat(100));
+    let mut h = Harness::mono(UVec2::splat(100));
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Block::new().auto_id().show(ui);
@@ -49,7 +49,7 @@ fn tab_stops_are_live_focusable_stops_in_record_order() {
     });
 
     // The frame records under the host's own `Main` root, so root ids are read back: one root per tree in record order, stops naming their own.
-    let cascade = h.ui.cascade();
+    let cascade = h.ui().cascade();
     let layers: Vec<Layer> = cascade.roots.iter().map(|row| row.plane.layer).collect();
     assert_eq!(layers, [Layer::Main, Layer::Popup]);
     let [main_root, popup_root] = [0, 1].map(|i| cascade.roots[i].id);
@@ -88,7 +88,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     let focus = WidgetId::from_hash("focus");
     let disabled = WidgetId::from_hash("disabled");
     let popup_scroll = WidgetId::from_hash("popup-scroll");
-    let mut h = UiHarness::new(UVec2::splat(100));
+    let mut h = Harness::mono(UVec2::splat(100));
     h.frame(|ui| {
         Panel::zstack()
             .auto_id()
@@ -124,7 +124,8 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
 
     // `hits` is interactive rows only, in paint order, with its own geometry. The disabled row is in it: disabling removes what a widget may do, not that the pointer rests on it.
     assert_eq!(
-        h.ui.cascade()
+        h.ui()
+            .cascade()
             .hits
             .iter()
             .map(|r| r.widget_id)
@@ -133,16 +134,22 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     );
     let pos = Vec2::splat(50.0);
     // Painted last of the four in `Main`, the disabled one takes the hover and press, keeps its declared sense and answers neither.
-    assert_eq!(h.ui.cascade().hit_test(pos, Sense::hovers), Some(disabled));
-    assert_eq!(h.ui.cascade().hit_test(pos, Sense::clicks), Some(disabled));
+    assert_eq!(
+        h.ui().cascade().hit_test(pos, Sense::hovers),
+        Some(disabled)
+    );
+    assert_eq!(
+        h.ui().cascade().hit_test(pos, Sense::clicks),
+        Some(disabled)
+    );
     // One walk must agree with the two separate filters (the press path resolves both from one scan). `focus` is empty: the press stopped at the disabled row.
-    let press = h.ui.cascade().hit_test_press(pos);
+    let press = h.ui().cascade().hit_test_press(pos);
     assert_eq!(press.click, Some(disabled));
     assert_eq!(
         press.focus, None,
         "a disabled press focuses nothing under it"
     );
-    let targets = h.ui.cascade().hit_test_targets(pos);
+    let targets = h.ui().cascade().hit_test_targets(pos);
     assert_eq!(targets.hover, Some(disabled));
     assert_eq!(targets.scroll, ScrollTargets::both(popup_scroll));
     assert_eq!(targets.pinch, None);
@@ -150,9 +157,9 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
     h.frame(|ui| {
         Block::new().id(inert).size(Sizing::FILL).show(ui);
     });
-    assert_eq!(h.ui.cascade().hits.len(), 0);
+    assert_eq!(h.ui().cascade().hits.len(), 0);
     assert_eq!(
-        h.ui.response_for(inert).layout_rect,
+        h.ui().response_for(inert).layout_rect,
         Some(Rect::new(0.0, 0.0, 100.0, 100.0)),
         "inert widgets remain addressable through the all-widget by-id snapshot",
     );
@@ -161,7 +168,7 @@ fn hits_track_only_sensing_or_focusable_rows_in_paint_order() {
 /// The interactive table is self-sufficient: every `HitRow` carries the same `rect` as the node's `EntryRow`, so the hit scan never reaches into `entries`; disagreement would use stale geometry.
 #[test]
 fn hit_rows_carry_the_entry_rect() {
-    let mut h = UiHarness::new(UVec2::splat(300));
+    let mut h = Harness::mono(UVec2::splat(300));
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -176,7 +183,7 @@ fn hit_rows_carry_the_entry_rect() {
             });
     });
 
-    let cascade = h.ui.cascade();
+    let cascade = h.ui().cascade();
     assert!(!cascade.hits.is_empty(), "expected interactive rows");
     for row in &cascade.hits {
         let entry_idx = cascade

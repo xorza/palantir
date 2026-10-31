@@ -3,7 +3,7 @@
 use crate::damage::Damage;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
@@ -20,15 +20,15 @@ use std::cell::RefCell;
 /// Pin: an empty frame draws nothing.
 #[test]
 fn empty_ui_drives_a_frame_safely() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|_| {});
 
     // Empty first frame has damage `None`; force `Full`.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        h.ui.frame_scene(),
+        h.ui_ref().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: h.ui.theme.window_clear,
+            clear: h.ui_ref().theme.window_clear,
             damage: Damage::Full,
         }),
     );
@@ -37,9 +37,9 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.texts.is_empty());
     assert!(buffer.groups.is_empty());
 
-    assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 1);
-    assert!(h.engines.damage.prev().is_empty());
-    assert!(h.engines.damage.counters().dirty().is_empty());
+    assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 1);
+    assert!(h.engines_mut().damage.prev().is_empty());
+    assert!(h.engines_mut().damage.counters().dirty().is_empty());
     assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
@@ -47,21 +47,24 @@ fn empty_ui_drives_a_frame_safely() {
 /// Pin: an empty frame then a populated one works.
 #[test]
 fn empty_then_populated_frame() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     h.frame(|_| {});
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
     });
-    assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 2);
+    assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 2);
     // The rowless user Panel gets no prev entry; the viewport root tracks it as a child marker.
-    assert_eq!(h.engines.damage.prev().len(), 1);
+    assert_eq!(h.engines_mut().damage.prev().len(), 1);
 }
 
 /// Pin: `Ui::frame` panics if `display.scale_factor()` is below `EPS`.
 #[test]
 #[should_panic(expected = "a scale factor must be finite and at least 1e-4")]
 fn frame_rejects_zero_scale_factor() {
-    let mut h = UiHarness::new(UVec2::new(800, 600)).scale(0.0);
+    let mut h = Harness::builder(UVec2::new(800, 600))
+        .mono()
+        .scale(0.0)
+        .build();
     let _ = h.frame(|_| {});
 }
 
@@ -99,7 +102,7 @@ fn cold_start_runs_record_closure_twice_on_first_frame() {
 #[test]
 fn cold_start_blacks_out_input_during_warmup_pass() {
     let mut h = support::cold_ui();
-    h.move_to(Vec2::new(40.0, 40.0));
+    h.hover(Vec2::new(40.0, 40.0));
 
     let observed: RefCell<Vec<Option<Vec2>>> = RefCell::default();
     h.frame(|ui| {
@@ -122,8 +125,12 @@ fn cold_start_blacks_out_input_during_warmup_pass() {
 #[test]
 fn cold_start_routes_held_pointer_against_warmup_cascade() {
     let mut h = support::cold_ui();
-    h.move_to(Vec2::new(20.0, 10.0));
-    assert_eq!(h.ui.input.hovered(), None, "pre-frame: no cascade, no hit");
+    h.hover(Vec2::new(20.0, 10.0));
+    assert_eq!(
+        h.ui().input.hovered(),
+        None,
+        "pre-frame: no cascade, no hit"
+    );
 
     let button_id = WidgetId::from_hash("btn");
     h.frame(|ui| {
@@ -135,7 +142,7 @@ fn cold_start_routes_held_pointer_against_warmup_cascade() {
     });
 
     assert_eq!(
-        h.ui.input.hovered(),
+        h.ui().input.hovered(),
         Some(button_id),
         "warmup builds cascade; refresh_pointer_targets routes held \
          pointer onto the button before the real record pass",
@@ -183,10 +190,10 @@ fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
     );
 }
 
-/// Warm `UiHarness` constructors fake `prev_stamp`, giving single-record semantics.
+/// Warm `Harness` constructors fake `prev_stamp`, giving single-record semantics.
 #[test]
 fn warm_constructors_skip_the_warmup_pass() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut calls = 0_u32;
     h.frame(|_| calls += 1);
     assert_eq!(
@@ -220,7 +227,7 @@ fn warmup_keeps_focus_requests() {
         });
         assert_eq!(records, 2, "warmup + real");
         assert_eq!(seen, [request, request], "{before:?} → {request:?}");
-        assert_eq!(h.ui.focus(), request, "{before:?} → {request:?}");
+        assert_eq!(h.ui().focus(), request, "{before:?} → {request:?}");
     }
 }
 

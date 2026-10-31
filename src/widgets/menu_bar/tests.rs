@@ -1,6 +1,6 @@
 use super::*;
+use crate::host::harness::Harness;
 use crate::input::interaction::response_state::ResponseState;
-use crate::internals::ui_harness::UiHarness;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::palette::Palette;
 use crate::widgets::context_menu::menu_item::MenuItem;
@@ -43,21 +43,23 @@ fn build_first(ui: &mut Ui, count: usize) -> Option<&'static str> {
     picked
 }
 
-fn frame(h: &mut UiHarness) {
+fn frame(h: &mut Harness) {
     h.frame(|ui| {
         build(ui);
     });
 }
 
-fn open(h: &UiHarness) -> Option<u16> {
-    h.ui.state::<MenuBarRow>(bar())
+fn open(h: &Harness) -> Option<u16> {
+    h.ui_ref()
+        .state::<MenuBarRow>(bar())
         .and_then(|row| row.open)
         .map(|open| open.idx)
 }
 
 /// Whether menu `idx` recorded this frame.
-fn recorded(h: &UiHarness, idx: u16) -> bool {
-    h.ui.tree(Layer::Menu)
+fn recorded(h: &Harness, idx: u16) -> bool {
+    h.ui_ref()
+        .tree(Layer::Menu)
         .records
         .widget_id()
         .contains(&menu_id(title(idx)))
@@ -67,19 +69,19 @@ fn recorded(h: &UiHarness, idx: u16) -> bool {
 /// the first, and one on the open title shuts it.
 #[test]
 fn a_click_opens_switches_and_shuts() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
     });
     assert_eq!(open(&h), None);
 
-    h.click_on(title(0));
+    h.click(title(0));
     frame(&mut h);
     assert_eq!(open(&h), Some(0), "a click opens File");
     assert!(recorded(&h, 0));
 
     // The open menu's click-eater lies over the titles, so aim by position.
-    h.click_at(h.center_of(title(2)));
+    h.click(h.center_of(title(2)));
     frame(&mut h);
     assert_eq!(open(&h), Some(2), "one click on View moves to it");
     assert!(
@@ -87,7 +89,7 @@ fn a_click_opens_switches_and_shuts() {
         "only View's menu records"
     );
 
-    h.click_at(h.center_of(title(2)));
+    h.click(h.center_of(title(2)));
     frame(&mut h);
     assert_eq!(open(&h), None, "a click on the open title shuts it");
 }
@@ -96,24 +98,24 @@ fn a_click_opens_switches_and_shuts() {
 /// none open, a move opens nothing.
 #[test]
 fn a_move_onto_a_title_switches_only_while_a_menu_is_open() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
     });
-    h.move_onto(title(1));
+    h.hover(title(1));
     frame(&mut h);
     assert_eq!(open(&h), None, "a hover opens nothing");
 
-    h.click_on(title(0));
+    h.click(title(0));
     frame(&mut h);
-    h.move_to(h.center_of(title(1)));
+    h.hover(h.center_of(title(1)));
     frame(&mut h);
     assert_eq!(open(&h), Some(1));
     assert!(
         recorded(&h, 1) && !recorded(&h, 0),
         "Edit's menu records at once"
     );
-    h.move_to(h.center_of(title(2)));
+    h.hover(h.center_of(title(2)));
     frame(&mut h);
     assert_eq!(open(&h), Some(2));
 }
@@ -121,13 +123,13 @@ fn a_move_onto_a_title_switches_only_while_a_menu_is_open() {
 /// A menu the keyboard opens under a resting pointer stays open: only a move switches it.
 #[test]
 fn a_resting_pointer_over_another_title_does_not_switch() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
     });
-    h.move_onto(title(1));
+    h.hover(title(1));
     frame(&mut h);
-    h.ui.set_focus(title(0));
+    h.ui().set_focus(title(0));
     frame(&mut h);
     h.key(Key::Enter);
     frame(&mut h);
@@ -144,23 +146,23 @@ fn a_resting_pointer_over_another_title_does_not_switch() {
 #[test]
 fn the_arrows_move_between_menus_and_wrap() {
     for opened_by in ["click", "keyboard"] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.prime(2, |ui| {
             build(ui);
         });
         if opened_by == "click" {
-            h.click_on(title(0));
+            h.click(title(0));
         } else {
             // Tab reaches the first title and shows the ring, so the menu takes focus.
             h.key(Key::Tab);
             frame(&mut h);
-            assert_eq!(h.ui.focus(), Some(title(0)));
+            assert_eq!(h.ui().focus(), Some(title(0)));
             h.key(Key::Enter);
         }
         frame(&mut h);
         frame(&mut h);
         assert_eq!(open(&h), Some(0), "{opened_by}");
-        let in_menu = h.ui.focus().is_some_and(|focus| focus != title(0));
+        let in_menu = h.ui().focus().is_some_and(|focus| focus != title(0));
         assert_eq!(
             in_menu,
             opened_by == "keyboard",
@@ -179,7 +181,7 @@ fn the_arrows_move_between_menus_and_wrap() {
             assert!(recorded(&h, want), "{opened_by} {key:?}: its menu records");
             if opened_by == "keyboard" {
                 assert!(
-                    h.ui.is_focus_within(menu_id(title(want))),
+                    h.ui().is_focus_within(menu_id(title(want))),
                     "{opened_by} {key:?}: the menu's row takes focus"
                 );
             }
@@ -190,30 +192,30 @@ fn the_arrows_move_between_menus_and_wrap() {
 /// A picked row reports and shuts the menu; Esc and a click outside shut it too.
 #[test]
 fn a_pick_escape_or_an_outside_click_shuts_the_menu() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
     });
-    h.click_on(title(1));
+    h.click(title(1));
     frame(&mut h);
     let mut listed = Vec::new();
-    h.ui.inspect(&mut listed);
+    h.ui().inspect(&mut listed);
     let redo = listed
         .iter()
         .find(|widget| widget.text == "Redo")
         .expect("Edit's menu shows Redo")
         .id;
-    h.click_on(redo);
+    h.click(redo);
     assert_eq!(h.frame_value(build), Some("Redo"));
     assert_eq!(open(&h), None, "a pick shuts the menu");
 
     for shut in ["escape", "outside"] {
-        h.click_on(title(1));
+        h.click(title(1));
         frame(&mut h);
         assert_eq!(open(&h), Some(1), "{shut}");
         match shut {
             "escape" => drop(h.key(Key::Escape)),
-            _ => h.click_at(Vec2::new(500.0, 350.0)),
+            _ => h.click(Vec2::new(500.0, 350.0)),
         }
         frame(&mut h);
         assert_eq!(open(&h), None, "{shut} shuts the menu");
@@ -224,11 +226,11 @@ fn a_pick_escape_or_an_outside_click_shuts_the_menu() {
 /// with no title to hang from.
 #[test]
 fn a_menu_the_bar_drops_shuts() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
     });
-    h.click_on(title(2));
+    h.click(title(2));
     frame(&mut h);
     assert_eq!(open(&h), Some(2));
     h.frame(|ui| {
@@ -253,18 +255,19 @@ fn the_open_title_wears_the_open_look() {
 /// padding: on the 600 px surface, from x = 0 to 600, the first title at `bar_padding.left`.
 #[test]
 fn the_bar_spans_its_parent_on_the_band() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame(&mut h);
-    let theme = h.ui.theme().menu_bar.clone();
+    let theme = h.ui().theme().menu_bar.clone();
     let band = h.rect(bar()).expect("the bar arranged");
     assert_eq!((band.min.x, band.size.w), (0.0, 600.0));
     let first = h.rect(title(0)).expect("the first title arranged");
     let [left, top, ..] = theme.bar_padding.to_array();
     assert_eq!((first.min.x, first.min.y), (left, top));
-    let chrome =
-        h.ui.tree(Layer::Main)
-            .chrome(h.node_for_widget_id(bar()))
-            .expect("the bar paints its band");
+    let chrome = h
+        .ui_ref()
+        .tree(Layer::Main)
+        .chrome(h.node_for_widget_id(bar()))
+        .expect("the bar paints its band");
     let ShapeBrush::Solid(fill) = chrome.fill else {
         panic!("the band is a solid fill");
     };

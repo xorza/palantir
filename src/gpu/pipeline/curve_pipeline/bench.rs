@@ -7,8 +7,7 @@ use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
-use crate::host::headless_window::HeadlessWindow;
-use crate::internals::record_app::RecordApp;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
@@ -101,7 +100,7 @@ fn record_joins(ui: &mut Ui, phase: bool) {
 /// A window and the toggle that keeps each frame repainting.
 #[derive(Debug)]
 struct Fixture {
-    window: HeadlessWindow,
+    window: Harness,
     phase: bool,
 }
 
@@ -116,7 +115,7 @@ impl Fixture {
     fn render(&mut self, gpu: &BenchGpu, workload: Workload) {
         self.phase = !self.phase;
         let phase = self.phase;
-        let mut app = RecordApp::new(|ui| record(ui, workload, phase));
+        let mut app = |ui: &mut Ui| record(ui, workload, phase);
         self.window.frame(&mut app);
         gpu.wait();
     }
@@ -140,7 +139,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                 gpu.poll();
                 fixture
                     .window
-                    .host()
+                    .ui_ref()
                     .gpu_pass_stats()
                     .last_kind(BatchKind::Curve)
                     .is_some()
@@ -156,7 +155,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                         gpu.poll();
                         fixture
                             .window
-                            .host()
+                            .ui_ref()
                             .gpu_pass_stats()
                             .last_kind(BatchKind::Curve)
                             .expect("a curve batch timestamp every frame once one arrived")

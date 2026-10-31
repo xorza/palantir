@@ -10,7 +10,7 @@ use palantir::{
 use crate::fixtures;
 use crate::fixtures::DARK_BG;
 use crate::golden_name::GoldenName;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// Pin `Shape::windowed_rect`'s inverted fill: the windowed rect over gradient content fills the corner wedges with the background and strokes the boundary. The golden must read as a rounded-clipped card.
 #[test]
@@ -189,7 +189,7 @@ fn polyline_round_join_matches_golden() {
 /// Pin: translucent polyline joints must not double-blend; an α=0.5 stroke stays α=0.5 through every joint.
 #[test]
 fn polyline_translucent_joins_have_uniform_coverage() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let img = h
         .size(UVec2::new(180, 160))
         .clear(RgbaF32::BLACK)
@@ -233,7 +233,7 @@ fn polyline_translucent_joins_have_uniform_coverage() {
 /// Pin: a translucent polyline blends correctly through `PREMULTIPLIED_ALPHA_BLENDING`. Green α=0.5 over magenta gives linear `(0.5, 0.5, 0.5)`, sRGB 188 gray; a straight-alpha source tints green (>220).
 #[test]
 fn polyline_translucent_premultiplies_in_stroke_shader() {
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(UVec2::new(120, 120))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
@@ -383,7 +383,7 @@ fn arc_shapes_match_golden() {
 /// The stadium runs (10, 20) to (90, 20), quad x 6..94, y 16..24; pixel (6, 16)'s center (6.5, 16.5) is 4.95 px from (10, 20), outside. The disc at (50, 50) has quad 44..56; pixel (44, 44)'s center is 7.8 px away.
 #[test]
 fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let img = h
         .size(UVec2::new(100, 70))
         .clear(RgbaF32::BLACK)
@@ -421,7 +421,7 @@ fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
 /// A rect off the pixel grid covers, per side, the pixel its edge crosses, even where that pixel's center is outside. With snap off, (40.75, 20.75)..(100.25, 60.25) covers column 40 and row 20 by 0.25 and column 100 and row 60 likewise; pixels just inside are full. Black over white leaves `1 − coverage`.
 #[test]
 fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
-    let mut h = Harness::unsnapped();
+    let mut h = VisualRig::unsnapped();
     let img = h
         .size(UVec2::new(140, 80))
         .clear(RgbaF32::WHITE)

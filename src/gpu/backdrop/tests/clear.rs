@@ -2,7 +2,6 @@
 
 use crate::gpu::backdrop::tests::{CLEAR, SIZE, assert_within_a_step, window};
 use crate::gpu::test_gpu::headless_test_gpu;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -70,11 +69,11 @@ fn scene(
 }
 
 /// What a fresh window that clears to `clear` paints of `scene`, and the blurs it ran.
-fn paint(clear: RgbaF32, scene: impl FnMut(&mut Ui)) -> (RgbaImage, usize) {
+fn paint(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> (RgbaImage, usize) {
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, SIZE, clear);
-    window.frame(&mut RecordApp::new(scene));
-    (window.read_back(), window.host().backdrop_blurs())
+    window.frame(&mut scene);
+    (window.read_back(), window.backdrop_blurs())
 }
 
 /// A pane with nothing painted under its footprint shows the clear without a capture or a blur,
@@ -134,9 +133,9 @@ fn a_pane_shows_the_clear_or_a_capture_as_what_lies_under_it_changes() {
         (Some(red), "back", (FramePaint::Partial, 1)),
     ] {
         let painted = window
-            .frame(&mut RecordApp::new(scene(None, Before::Nothing, under)))
+            .frame(&mut scene(None, Before::Nothing, under))
             .paint();
-        assert_eq!((painted, window.host().backdrop_blurs()), want, "{what}");
+        assert_eq!((painted, window.backdrop_blurs()), want, "{what}");
         let (whole, _) = paint(CLEAR, scene(None, Before::Nothing, under));
         assert_within_a_step(&window.read_back(), &whole, what);
     }

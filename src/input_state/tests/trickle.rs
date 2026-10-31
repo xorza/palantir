@@ -1,5 +1,6 @@
 //! Gestures fed between two frames are spread one change of a kind per frame by `InputQueue`; each case steps frame by frame.
 
+use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
@@ -11,7 +12,6 @@ use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::sense::Sense;
 use crate::input::watch::PointerWake;
 use crate::input_state::capture::DRAG_THRESHOLD;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
@@ -41,7 +41,7 @@ fn scene(ui: &mut Ui) {
 /// Step frames recording `record` while input owes one, keeping what `sample` read in each frame's
 /// first pass.
 fn sample_until_idle<T>(
-    h: &mut UiHarness,
+    h: &mut Harness,
     mut record: impl FnMut(&mut Ui),
     mut sample: impl FnMut(&mut Ui) -> T,
 ) -> Vec<T> {
@@ -62,7 +62,7 @@ fn sample_until_idle<T>(
 }
 
 /// The target's left-button state per frame, until input is idle.
-fn step_until_idle(h: &mut UiHarness) -> Vec<ButtonState> {
+fn step_until_idle(h: &mut Harness) -> Vec<ButtonState> {
     sample_until_idle(h, scene, |ui| ui.response_for(target()).left)
 }
 
@@ -78,22 +78,22 @@ fn up_click(count: u8) -> ButtonState {
 #[test]
 fn each_batch_lands_one_button_change_per_frame() {
     // [P]: one frame, held.
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     assert_eq!(step_until_idle(&mut h), [down(1)]);
 
     // [P, R]: press frame, then the click.
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.click_at(TARGET);
+    h.click(TARGET);
     assert_eq!(step_until_idle(&mut h), [down(1), up_click(1)]);
 
     // [P, R, P, R]: four frames; arrival times, not frames, decide the double-click.
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.click_at(TARGET);
-    h.click_at(TARGET);
+    h.click(TARGET);
+    h.click(TARGET);
     assert_eq!(
         step_until_idle(&mut h),
         [down(1), up_click(1), down(2), up_click(2)],
@@ -103,14 +103,14 @@ fn each_batch_lands_one_button_change_per_frame() {
 /// A drag stop and a fresh press fed together would break `ButtonState::new`'s invariant in one frame; spread, each state is a legal pair.
 #[test]
 fn a_drag_stop_and_a_new_press_never_share_a_frame() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     h.step(scene);
     h.drag_to(TARGET + Vec2::new(DRAG_THRESHOLD * 4.0, 0.0));
     h.step(scene);
-    h.release();
-    h.press_at(TARGET);
+    h.release(PointerButton::Left);
+    h.press(TARGET, PointerButton::Left);
     let frames = step_until_idle(&mut h);
     assert_eq!(frames.len(), 2, "the stop, then the press");
     assert!(
@@ -124,13 +124,13 @@ fn a_drag_stop_and_a_new_press_never_share_a_frame() {
 /// A click elsewhere between two clicks on one widget breaks the run, though the third press is inside the window and radius.
 #[test]
 fn a_press_elsewhere_breaks_the_click_run() {
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     h.prime(2, scene);
-    h.click_at(TARGET);
+    h.click(TARGET);
     h.advance(Duration::from_millis(100));
-    h.click_at(Vec2::new(300.0, 150.0));
+    h.click(Vec2::new(300.0, 150.0));
     h.advance(Duration::from_millis(100));
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     let frames = step_until_idle(&mut h);
     assert_eq!(frames.last(), Some(&down(1)), "{frames:?}");
 }
@@ -138,11 +138,12 @@ fn a_press_elsewhere_breaks_the_click_run() {
 /// A right-click between two left-clicks breaks the left run too.
 #[test]
 fn another_buttons_press_breaks_the_click_run() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.click_at(TARGET);
-    h.click_button_at(PointerButton::Right, TARGET);
-    h.press_at(TARGET);
+    h.click(TARGET);
+    h.press(TARGET, PointerButton::Right);
+    h.release(PointerButton::Right);
+    h.press(TARGET, PointerButton::Left);
     let frames = step_until_idle(&mut h);
     assert_eq!(frames.last(), Some(&down(1)), "{frames:?}");
 }
@@ -172,7 +173,7 @@ fn record_field(ui: &mut Ui, buffer: &mut String) -> FieldPass {
 /// `[Escape, 'a']`: Escape blurs the field in its frame, so `a` lands next frame unfocused and isn't typed in.
 #[test]
 fn a_key_after_escape_reaches_the_next_focus_owner() {
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut buffer = String::from("hello");
     h.prime(2, |ui| {
         record_field(ui, &mut buffer);
@@ -199,7 +200,7 @@ fn a_key_after_escape_reaches_the_next_focus_owner() {
 #[test]
 fn a_key_after_enter_is_typed_after_the_submit() {
     for commit in [false, true] {
-        let mut h = UiHarness::new(UVec2::new(300, 100));
+        let mut h = Harness::mono(UVec2::new(300, 100));
         let mut buffer = String::from("hello");
         h.prime(2, |ui| {
             record_field(ui, &mut buffer);
@@ -259,7 +260,7 @@ enum FocusMover {
 #[test]
 fn keys_typed_before_a_focus_move_stay_with_their_field() {
     for mover in [FocusMover::Tab, FocusMover::PressOnB] {
-        let mut h = UiHarness::new(UVec2::new(300, 100));
+        let mut h = Harness::mono(UVec2::new(300, 100));
         let (mut a, mut b) = (String::new(), String::new());
         h.prime(2, |ui| record_two_fields(ui, &mut a, &mut b));
         h.set_focus(field());
@@ -269,7 +270,7 @@ fn keys_typed_before_a_focus_move_stay_with_their_field() {
             FocusMover::Tab => {
                 h.key(Key::Tab);
             }
-            FocusMover::PressOnB => h.click_on(field_b()),
+            FocusMover::PressOnB => h.click(field_b()),
         }
         h.frame(|ui| record_two_fields(ui, &mut a, &mut b));
         assert_eq!((a.as_str(), b.as_str()), ("a", ""), "{mover:?}");
@@ -281,10 +282,10 @@ fn keys_typed_before_a_focus_move_stay_with_their_field() {
 /// frame, so the press frame still holds Shift.
 #[test]
 fn a_press_reads_the_modifiers_it_came_under() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
     h.set_modifiers(Modifiers::SHIFT);
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     h.set_modifiers(Modifiers::NONE);
     let seen = sample_until_idle(&mut h, scene, |ui| {
         (ui.response_for(target()).left, ui.peek_modifiers())
@@ -309,7 +310,7 @@ struct LeftFrame {
     ups: usize,
 }
 
-fn step_watched_until_idle(h: &mut UiHarness) -> Vec<LeftFrame> {
+fn step_watched_until_idle(h: &mut Harness) -> Vec<LeftFrame> {
     sample_until_idle(h, watched_scene, |ui| LeftFrame {
         state: ui.response_for(target()).left,
         ups: ui
@@ -324,11 +325,11 @@ fn step_watched_until_idle(h: &mut UiHarness) -> Vec<LeftFrame> {
 /// first already released by the time it applies, so no release is made up for it.
 #[test]
 fn a_fast_double_press_reports_each_edge_once() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, watched_scene);
-    h.press_at(TARGET);
-    h.release();
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
+    h.release(PointerButton::Left);
+    h.press(TARGET, PointerButton::Left);
     let frames = step_watched_until_idle(&mut h);
     let states: Vec<ButtonState> = frames.iter().map(|f| f.state).collect();
     assert_eq!(states, [down(1), up_click(1), down(2)]);
@@ -339,11 +340,11 @@ fn a_fast_double_press_reports_each_edge_once() {
 /// gesture, with no click, in its own frame, and the new press lands in the next.
 #[test]
 fn a_press_of_a_held_button_ends_the_lost_capture_without_a_click() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, watched_scene);
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     h.step(watched_scene);
-    h.ui.on_input(
+    h.ui().on_input(
         InputEvent::PointerPressed(PointerButton::Left),
         Duration::ZERO,
     );
@@ -367,9 +368,9 @@ fn a_press_of_a_held_button_ends_the_lost_capture_without_a_click() {
 /// ends it.
 #[test]
 fn focus_loss_after_a_press_ends_it_the_frame_after() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     h.on_input(InputEvent::SurfaceFocusLost);
     assert_eq!(
         step_until_idle(&mut h),
@@ -399,12 +400,12 @@ fn replaced_scene(ui: &mut Ui) {
 /// waits one more, so a stop and a fresh press of one button never share a frame.
 #[test]
 fn an_evicted_capture_and_a_held_press_never_share_a_frame() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     h.drag_to(TARGET + Vec2::new(DRAG_THRESHOLD * 4.0, 0.0));
-    h.release();
-    h.press_at(TARGET);
+    h.release(PointerButton::Left);
+    h.press(TARGET, PointerButton::Left);
     let frames = sample_until_idle(&mut h, replaced_scene, |ui| {
         ui.pointer_actions()
             .filter(|action| action.button == PointerButton::Left)
@@ -438,9 +439,9 @@ fn an_evicted_capture_and_a_held_press_never_share_a_frame() {
 /// A capture whose widget vanishes mid-drag ends with a stop edge; its frame records rather than paints from the retained tree.
 #[test]
 fn an_evicted_drag_asks_for_the_frame_that_reports_its_stop() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.press_at(TARGET);
+    h.press(TARGET, PointerButton::Left);
     h.step(scene);
     h.drag_to(TARGET + Vec2::new(DRAG_THRESHOLD * 4.0, 0.0));
     h.step(scene);

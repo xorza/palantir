@@ -1,6 +1,6 @@
 //! Theme sharing, and a subtree disabled between frames.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -15,8 +15,8 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     use crate::shape::paint::shape_brush::ShapeBrush;
 
     let target = WidgetId::from_hash("target");
-    let mut h = UiHarness::new(SURFACE);
-    let run = |h: &mut UiHarness, disabled: bool| {
+    let mut h = Harness::mono(SURFACE);
+    let run = |h: &mut Harness, disabled: bool| {
         h.frame_value(|ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("wrap"))
@@ -30,7 +30,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         })
     };
     run(&mut h, false);
-    h.move_to(Vec2::new(10.0, 10.0));
+    h.hover(Vec2::new(10.0, 10.0));
     let enabled = run(&mut h, false);
     assert!(enabled.hovered(), "sanity: pointer hovers the button");
     assert!(!enabled.disabled);
@@ -44,7 +44,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
 
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);
-    let mut style = h.ui.theme.button.clone();
+    let mut style = h.ui().theme.button.clone();
     style.looks.disabled.chrome = Chrome::fill(disabled_fill);
     let response = h.frame_value(|ui| {
         Button::new()
@@ -60,8 +60,8 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         "a self-disabled widget reports disabled on its own first frame, \
          before the cascade has seen it",
     );
-    let endpoint = h.ui.cascade.by_id[&self_id];
-    let chrome = h.ui.forest.trees[endpoint.plane]
+    let endpoint = h.ui().cascade.by_id[&self_id];
+    let chrome = h.ui().forest.trees[endpoint.plane]
         .chrome(endpoint.node)
         .expect("disabled button chrome");
     let ShapeBrush::Solid(actual_fill) = chrome.fill else {
@@ -80,35 +80,35 @@ fn theme_reads_share_and_writes_copy_on_write() {
     use crate::theme::Theme;
     use std::rc::Rc;
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let clear = RgbaF32::srgb(0.25, 0.5, 0.75);
-    h.ui.theme_mut().window_clear = clear;
+    h.ui().theme_mut().window_clear = clear;
 
-    let handle = Rc::clone(h.ui.theme());
+    let handle = Rc::clone(h.ui().theme());
     assert!(
-        Rc::ptr_eq(&handle, h.ui.theme()),
+        Rc::ptr_eq(&handle, h.ui().theme()),
         "a theme read must hand back the same allocation, not a copy",
     );
 
     // Write with the handle alive: the `Ui` moves, the handle doesn't.
     let recolored = RgbaF32::srgb(0.1, 0.2, 0.3);
-    h.ui.theme_mut().window_clear = recolored;
-    assert_eq!(h.ui.theme().window_clear, recolored);
+    h.ui().theme_mut().window_clear = recolored;
+    assert_eq!(h.ui().theme().window_clear, recolored);
     assert_eq!(
         handle.window_clear, clear,
         "an outstanding handle must keep the values it was taken with",
     );
     assert!(
-        !Rc::ptr_eq(&handle, h.ui.theme()),
+        !Rc::ptr_eq(&handle, h.ui().theme()),
         "the copy-on-write split must give the `Ui` a fresh allocation",
     );
 
     // With the handle dropped, the next write mutates in place.
     drop(handle);
-    let before = Rc::as_ptr(h.ui.theme());
-    h.ui.theme_mut().window_clear = clear;
+    let before = Rc::as_ptr(h.ui().theme());
+    h.ui().theme_mut().window_clear = clear;
     assert_eq!(
-        Rc::as_ptr(h.ui.theme()),
+        Rc::as_ptr(h.ui().theme()),
         before,
         "an unshared theme must be written in place, with no copy",
     );
@@ -116,6 +116,6 @@ fn theme_reads_share_and_writes_copy_on_write() {
     // `set_theme` takes the handle, so swapping themes is a move.
     let swapped: Rc<Theme> = Rc::new(Theme::default());
     let swapped_ptr = Rc::as_ptr(&swapped);
-    h.ui.set_theme(swapped);
-    assert_eq!(Rc::as_ptr(h.ui.theme()), swapped_ptr);
+    h.ui().set_theme(swapped);
+    assert_eq!(Rc::as_ptr(h.ui().theme()), swapped_ptr);
 }

@@ -31,28 +31,3 @@ impl HostDisplay {
         }
     }
 }
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::display::Display;
-    use crate::display::host_display::HostDisplay;
-
-    impl HostDisplay {
-        /// `display` without its user scale.
-        pub(crate) const fn from_display(display: Display) -> Self {
-            let Display {
-                physical,
-                system_scale,
-                user_scale: _,
-                pixel_snap,
-                refresh_millihertz,
-            } = display;
-            Self {
-                physical,
-                system_scale,
-                pixel_snap,
-                refresh_millihertz,
-            }
-        }
-    }
-}

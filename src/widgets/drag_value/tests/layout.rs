@@ -1,7 +1,7 @@
 //! The box the field keeps while editing, under scale and inside a caller's node.
 
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -39,7 +39,7 @@ fn editing_a_long_value_holds_the_field_width() {
             });
     };
 
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.frame(|ui| render(ui, &mut v));
     let display_w = h.arranged(id).size.w;
 
@@ -65,7 +65,7 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
 
     // A 0.5× parent halves the chip's rect to ~60 while `min_size` is 100: the
     // cap must read the logical width or `AxisSlot::resolve`'s `clamp(100, 60)` panics.
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let draw = |ui: &mut Ui, v: &mut f64| {
         Panel::zstack()
             .id(WidgetId::from_hash("dv-zoom-row"))
@@ -139,14 +139,14 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
             });
     };
 
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     h.frame(scene);
-    let chip = placement(&h.ui, id);
+    let chip = placement(h.ui_ref(), id);
 
     h.set_focus(id);
     h.key(Key::Enter);
     h.frame(scene);
-    let editor = placement(&h.ui, id);
+    let editor = placement(h.ui_ref(), id);
 
     assert_eq!(
         chip, editor,
@@ -187,7 +187,7 @@ fn entering_edit_mode_keeps_the_chips_box() {
             });
     };
 
-    let mut h = UiHarness::new(UVec2::new(400, 120));
+    let mut h = Harness::mono(UVec2::new(400, 120));
     h.frame(|ui| render(ui, &mut fps));
     let chip = h.arranged(id).size;
 
@@ -221,7 +221,7 @@ fn every_text_form_labels_the_same_suffix() {
     ];
     let id = WidgetId::from_hash("dv-suffix");
     let widths = forms.map(|(label, form)| {
-        let mut h = UiHarness::new(UVec2::new(400, 120));
+        let mut h = Harness::mono(UVec2::new(400, 120));
         let mut fps = 120_i64;
         for _ in 0..2 {
             h.frame(|ui| {
@@ -250,18 +250,18 @@ fn the_suffix_copy_leaves_with_the_chip() {
 
     let id = WidgetId::from_hash("dv-leaving-suffix");
     let mut fps = 120_i64;
-    let mut h = UiHarness::new(UVec2::new(400, 120));
+    let mut h = Harness::mono(UVec2::new(400, 120));
     h.frame(|ui| {
         let suffix = ui.intern(" fps");
         DragValue::new(&mut fps).suffix(suffix).id(id).show(ui);
     });
     assert!(
-        h.ui.state::<SuffixScratch>(id).is_some(),
+        h.ui().state::<SuffixScratch>(id).is_some(),
         "used while the chip records"
     );
     h.frame(|_| {});
     assert!(
-        h.ui.state::<SuffixScratch>(id).is_none(),
+        h.ui().state::<SuffixScratch>(id).is_none(),
         "swept with the chip"
     );
 }
@@ -271,7 +271,7 @@ fn the_suffix_copy_leaves_with_the_chip() {
 fn text_align_places_the_value_in_the_chip() {
     let id = WidgetId::from_hash("dv-align");
     let recorded = |align: Option<Align>| {
-        let mut h = UiHarness::new(UVec2::new(200, 60));
+        let mut h = Harness::mono(UVec2::new(200, 60));
         let mut v = 0.5_f64;
         h.frame(|ui| {
             let chip = DragValue::new(&mut v)
@@ -284,7 +284,8 @@ fn text_align_places_the_value_in_the_chip() {
             .show(ui);
         });
         let node = h.node_for_widget_id(id);
-        h.ui.tree(Layer::Main)
+        h.ui()
+            .tree(Layer::Main)
             .shapes_of(node)
             .find_map(|shape| match shape {
                 ShapeRecord::Text { align, .. } => Some(*align),

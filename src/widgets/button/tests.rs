@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
@@ -21,7 +21,7 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
     };
     theme.looks.normal.chrome = Chrome::NONE;
 
-    let mut h = UiHarness::new(UVec2::new(200, 120));
+    let mut h = Harness::mono(UVec2::new(200, 120));
     let [explicit, inherited] = h.frame_value(|ui| {
         [
             Button::new()
@@ -34,7 +34,7 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
         ]
     });
 
-    let layouts = h.ui.tree(Layer::Main).records.layout();
+    let layouts = h.ui().tree(Layer::Main).records.layout();
     let explicit = layouts[explicit.idx()];
     let inherited = layouts[inherited.idx()];
     assert_eq!(explicit.padding, Spacing::ZERO);
@@ -61,7 +61,7 @@ fn space_and_enter_click_a_focused_button() {
                 .clicked()
         }
     };
-    let mut h = UiHarness::new(UVec2::new(200, 80));
+    let mut h = Harness::mono(UVec2::new(200, 80));
     assert!(!h.frame_value(record(false)));
     h.key(Key::Char(' '));
     assert!(
@@ -70,7 +70,7 @@ fn space_and_enter_click_a_focused_button() {
     );
 
     let at = h.center_of(id);
-    h.click_at(at);
+    h.click(at);
     assert!(h.frame_value(record(false)), "the click itself");
     assert_eq!(h.focus(), Some(id), "a click focuses a button");
     for key in [Key::Char(' '), Key::Enter] {

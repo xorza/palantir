@@ -1,8 +1,9 @@
 //! The focused chip as a spin button.
 
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::internals::ui_harness::UiHarness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
@@ -16,14 +17,14 @@ const SURFACE: UVec2 = UVec2::new(300, 100);
 #[test]
 fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     let id = WidgetId::from_hash("dv-spin-scrub");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut canonical = 10.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    h.press_at(Vec2::new(50.0, 20.0));
+    h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    h.release();
+    h.release(PointerButton::Left);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     deferred_frame(&mut h, id, &mut canonical, true, false);
     assert_eq!(h.focus(), Some(id), "the press focused the chip");
@@ -41,9 +42,9 @@ fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
 #[test]
 fn the_arrows_step_a_focused_chip() {
     let id = WidgetId::from_hash("dv-spin-step");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut value = 5.0_f64;
-    let frame = |h: &mut UiHarness, value: &mut f64| {
+    let frame = |h: &mut Harness, value: &mut f64| {
         h.frame_value(|ui| {
             DragValue::new(&mut *value)
                 .range(0.0..=5.15)
@@ -72,7 +73,7 @@ fn the_arrows_step_a_focused_chip() {
     let int_id = WidgetId::from_hash("dv-spin-int");
     let mut count = 7_i64;
     h.set_modifiers(Modifiers::NONE);
-    let record = |h: &mut UiHarness, count: &mut i64| {
+    let record = |h: &mut Harness, count: &mut i64| {
         h.frame(|ui| {
             DragValue::new(&mut *count).id(int_id).size(40.0).show(ui);
         });
@@ -94,7 +95,7 @@ fn the_arrows_step_a_focused_chip() {
     // Decimals past what an `f64` holds are coerced to 15, so the step is `1e-15`.
     let fine_id = WidgetId::from_hash("dv-spin-fine");
     let mut fine = 0.5_f64;
-    let record = |h: &mut UiHarness, fine: &mut f64| {
+    let record = |h: &mut Harness, fine: &mut f64| {
         h.frame(|ui| {
             DragValue::new(&mut *fine)
                 .decimals(usize::MAX)
@@ -118,7 +119,7 @@ fn the_arrows_step_a_focused_chip() {
 #[test]
 fn typing_into_the_focused_chip_replaces_the_value() {
     let id = WidgetId::from_hash("dv-spin-type");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.set_focus(id);

@@ -1,6 +1,6 @@
 //! The `Ui` a test drives, and the frames it records into.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
@@ -15,8 +15,8 @@ use std::time::Duration;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(200, 200);
 
-pub(super) fn ui_with_shared(shared: &UiResources) -> UiHarness {
-    UiHarness::from_resources(shared.clone(), SURFACE)
+pub(super) fn ui_with_shared(shared: &UiResources) -> Harness {
+    Harness::from_resources(shared.clone(), SURFACE)
 }
 
 pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
@@ -46,6 +46,6 @@ pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {
 }
 
 /// A harness whose first frame runs the warmup pass, on [`SURFACE`].
-pub(super) fn cold_ui() -> UiHarness {
-    UiHarness::cold(SURFACE)
+pub(super) fn cold_ui() -> Harness {
+    Harness::cold(SURFACE)
 }

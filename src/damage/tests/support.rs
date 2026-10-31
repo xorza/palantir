@@ -3,7 +3,7 @@
 use crate::damage::Damage;
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
@@ -22,12 +22,12 @@ pub(super) const DISPLAY: Display = Display {
 };
 
 /// Run one frame of `f` and return its damage, or `None` when it skips; the previous output is told valid, so damage is incremental.
-pub(super) fn frame(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
+pub(super) fn frame(h: &mut Harness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
     h.frame(f).plan.map(|plan| plan.damage)
 }
 
 /// [`frame`] with the previous output lost, as after a failed present.
-pub(super) fn frame_without_baseline(h: &mut UiHarness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
+pub(super) fn frame_without_baseline(h: &mut Harness, f: impl FnMut(&mut Ui)) -> Option<Damage> {
     h.frame_without_baseline(f).plan.map(|plan| plan.damage)
 }
 

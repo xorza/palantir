@@ -10,9 +10,10 @@
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
+use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -103,11 +104,11 @@ fn build_ui(ui: &mut Ui) {
         });
 }
 
-fn warmed_ui() -> UiHarness {
-    let mut h = UiHarness::new(SIZE).scale(SCALE);
+fn warmed_ui() -> Harness {
+    let mut h = Harness::builder(SIZE).mono().scale(SCALE).build();
     // Two frames: the first builds the cascade, the second latches the scroll target.
     h.frame(build_ui);
-    h.move_to(Vec2::new(320.0, 200.0));
+    h.hover(Vec2::new(320.0, 200.0));
     h.frame(build_ui);
     h
 }
@@ -139,10 +140,10 @@ pub(crate) fn atomic(c: &mut Criterion) {
         let mut i: u32 = 0;
         b.iter(|| {
             // Each press lands on a different cell, so focus moves every click.
-            ui.press_at(pointer_at(i));
-            ui.ui.end_input_frame();
-            let d = ui.release();
-            ui.ui.end_input_frame();
+            ui.press(pointer_at(i), PointerButton::Left);
+            ui.ui().end_input_frame();
+            let d = ui.release(PointerButton::Left);
+            ui.ui().end_input_frame();
             i = i.wrapping_add(1);
             black_box(d);
         });
@@ -153,7 +154,10 @@ pub(crate) fn atomic(c: &mut Criterion) {
         let mut i: u32 = 0;
         b.iter(|| {
             let t = i as f32 * 0.05;
-            let d = ui.scroll_pixels(Vec2::new(t.cos() * 5.0, (t * 0.7).cos() * 5.0));
+            let d = ui.on_input(InputEvent::ScrollPixels(Vec2::new(
+                t.cos() * 5.0,
+                (t * 0.7).cos() * 5.0,
+            )));
             i = i.wrapping_add(1);
             black_box(d);
         });
@@ -164,15 +168,15 @@ pub(crate) fn atomic(c: &mut Criterion) {
         let mut i: u32 = 0;
         b.iter(|| {
             // A realistic burst between redraws: several moves, a scroll, an occasional click.
-            ui.move_to(pointer_at(i));
-            ui.move_to(pointer_at(i.wrapping_add(1)));
-            ui.scroll_pixels_at(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));
+            ui.hover(pointer_at(i));
+            ui.hover(pointer_at(i.wrapping_add(1)));
+            ui.scroll_pixels(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));
             if i.is_multiple_of(16) {
-                ui.press();
-                ui.ui.end_input_frame();
-                ui.release();
+                ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+                ui.ui().end_input_frame();
+                ui.release(PointerButton::Left);
             }
-            ui.ui.end_input_frame();
+            ui.ui().end_input_frame();
             i = i.wrapping_add(3);
             black_box(&ui);
         });

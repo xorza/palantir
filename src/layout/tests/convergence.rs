@@ -4,7 +4,7 @@
 //! a width range: no frame panics and every toolbar button stays in its toolbar.
 use crate::primitives::identity::widget_id::WidgetId;
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
@@ -20,7 +20,7 @@ use glam::UVec2;
 #[test]
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
-        let mut h = UiHarness::new(UVec2::new(outer_w, 400));
+        let mut h = Harness::mono(UVec2::new(outer_w, 400));
         let row_node = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -62,7 +62,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                 .node()
         });
 
-        let row = h.ui.arranged_rect(Layer::Main, row_node);
+        let row = h.ui().arranged_rect(Layer::Main, row_node);
         let left = h.arranged(WidgetId::from_hash("left"));
         let right = h.arranged(WidgetId::from_hash("right"));
 
@@ -109,7 +109,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
         "buttons",
     ];
     // Sweep ~620-700 wide plus a wider band in 1 px steps, on one harness so each step is a resize.
-    let mut h = UiHarness::new(UVec2::new(480, 600));
+    let mut h = Harness::mono(UVec2::new(480, 600));
     for w in (480u32..=900).step_by(1) {
         h.resize(UVec2::new(w, 600));
         h.frame(|ui| {

@@ -1,4 +1,3 @@
-use crate::input::keyboard::key_text::KeyText;
 use crate::input::shortcut::*;
 
 fn kp(mods: Modifiers, key: Key) -> KeyPress {
@@ -280,4 +279,119 @@ fn a_key_converts_to_its_bare_chord() {
     assert_eq!(enter, Shortcut::key(Key::Enter));
     assert!(enter.matches(kp(Modifiers::NONE, Key::Enter)));
     assert!(!enter.matches(kp(Modifiers::CTRL, Key::Enter)));
+}
+
+/// Each modifier by each of its names, every named key, one character in either case, and the
+/// plus key parse to their shortcut; text that names no key, an unknown modifier and an unknown
+/// word are refused with their case.
+#[test]
+fn shortcuts_parse_from_text() {
+    let parse = |text: &str| text.parse::<Shortcut>();
+    assert_eq!(parse("ctrl+z"), Ok(Shortcut::ctrl('z')));
+    assert_eq!(parse("Cmd+Shift+Z"), Ok(Shortcut::ctrl_shift('z')));
+    assert_eq!(
+        parse(" alt + meta + f2 "),
+        Ok(Shortcut::new(
+            ShortcutMods {
+                alt: true,
+                meta: true,
+                ..ShortcutMods::NONE
+            },
+            Key::F2
+        ))
+    );
+    assert_eq!(parse("super+a"), parse("win+a"));
+    assert_eq!(parse("ctrl++"), Ok(Shortcut::ctrl('+')));
+    assert_eq!(parse("+"), Ok(Shortcut::key(Key::Char('+'))));
+    assert_eq!(parse("A"), Ok(Shortcut::key(Key::Char('a'))));
+    assert_eq!(parse("é"), Ok(Shortcut::key(Key::Char('é'))));
+    for (text, key) in [
+        ("enter", Key::Enter),
+        ("return", Key::Enter),
+        ("escape", Key::Escape),
+        ("esc", Key::Escape),
+        ("tab", Key::Tab),
+        ("backspace", Key::Backspace),
+        ("delete", Key::Delete),
+        ("del", Key::Delete),
+        ("left", Key::ArrowLeft),
+        ("right", Key::ArrowRight),
+        ("up", Key::ArrowUp),
+        ("down", Key::ArrowDown),
+        ("home", Key::Home),
+        ("end", Key::End),
+        ("pageup", Key::PageUp),
+        ("pagedown", Key::PageDown),
+        ("space", Key::Char(' ')),
+        ("f1", Key::F1),
+        ("f12", Key::F12),
+    ] {
+        assert_eq!(parse(text), Ok(Shortcut::key(key)), "{text}");
+    }
+    assert_eq!(parse(""), Err(ParseShortcutError::NoKey));
+    assert_eq!(parse("ctrl+"), Err(ParseShortcutError::NoKey));
+    assert_eq!(parse("hyper+a"), Err(ParseShortcutError::Modifier));
+    assert_eq!(parse("ctrl+banana"), Err(ParseShortcutError::Key));
+}
+
+/// A Windows or Linux label parses back to its shortcut, for every key a label names and every
+/// modifier: the label and the parse speak one language.
+#[test]
+fn a_label_parses_back_to_its_shortcut() {
+    let keys = [
+        Key::ArrowLeft,
+        Key::ArrowRight,
+        Key::ArrowUp,
+        Key::ArrowDown,
+        Key::Backspace,
+        Key::Delete,
+        Key::Home,
+        Key::End,
+        Key::PageUp,
+        Key::PageDown,
+        Key::Enter,
+        Key::Tab,
+        Key::Escape,
+        Key::F1,
+        Key::F7,
+        Key::F12,
+        Key::Char('q'),
+        Key::Char('7'),
+    ];
+    let mods = [
+        ShortcutMods::NONE,
+        ShortcutMods::CTRL_SHIFT,
+        ShortcutMods {
+            alt: true,
+            meta: true,
+            ..ShortcutMods::NONE
+        },
+    ];
+    for platform in [Platform::Linux, Platform::Windows] {
+        for key in keys {
+            for mods in mods {
+                let shortcut = Shortcut::new(mods, key);
+                let label = shortcut.label(platform).to_string();
+                assert_eq!(label.parse(), Ok(shortcut), "{label} on {platform:?}");
+            }
+        }
+    }
+}
+
+/// A press types its character, upper case with Shift, and nothing with a command modifier or
+/// for a named key.
+#[test]
+fn a_shortcut_types_what_a_layout_gives() {
+    for (shortcut, text) in [
+        ("a", "a"),
+        ("shift+a", "A"),
+        ("shift+é", "É"),
+        ("space", " "),
+        ("ctrl+a", ""),
+        ("alt+shift+a", ""),
+        ("enter", ""),
+    ] {
+        let parsed: Shortcut = shortcut.parse().unwrap();
+        assert_eq!(parsed.typed(), KeyText::new(text), "{shortcut}");
+    }
 }

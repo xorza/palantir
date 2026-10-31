@@ -1,6 +1,6 @@
+use crate::host::harness::Harness;
 use crate::input::sense::Sense;
 use crate::internals::panic_probe;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -427,7 +427,7 @@ fn spacings_validate_their_kinds_authored_or_themed() {
 /// saturates, as do the inner corners and the cover the renderer derives from it.
 #[test]
 fn a_border_past_an_f16_lane_draws() {
-    let mut h = UiHarness::new(UVec2::new(64, 48));
+    let mut h = Harness::mono(UVec2::new(64, 48));
     h.frame(|ui| {
         Panel::vstack()
             .chrome(

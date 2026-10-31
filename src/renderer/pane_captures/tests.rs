@@ -1,8 +1,8 @@
 use crate::cascade::pane_row::PaneRow;
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::display::Display;
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::frontend_harness::FrontendHarness;
+use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
@@ -397,10 +397,12 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
     };
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
-    let mut h = FrontendHarness::new(UiHarness::new(UVec2::new(200, 200)));
-    let sources = |h: &FrontendHarness| -> Vec<(u32, PaneSource)> {
-        h.frontend
-            .buffer
+    let mut h = Harness::builder(UVec2::new(200, 200))
+        .mono()
+        .depth(Depth::Compose)
+        .build();
+    let sources = |h: &Harness| -> Vec<(u32, PaneSource)> {
+        h.render_buffer()
             .backdrops
             .iter()
             .map(|row| (row.key.shape, row.source))
@@ -414,7 +416,7 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
     h.frame(record(false, red));
     assert_eq!(sources(&h), [(0, Held)], "still");
     assert_eq!(
-        h.frontend.buffer.quads.len(),
+        h.render_buffer().quads.len(),
         2,
         "the pane and the square over it"
     );

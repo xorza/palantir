@@ -3,7 +3,6 @@
 
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -57,22 +56,14 @@ fn a_held_table_paints_what_a_fresh_bake_paints() {
     let mut across = host();
     for step in 0..5 {
         let x = 1.25 * step as f32;
-        across.frame(
-            held.as_target(),
-            1.0,
-            &mut RecordApp::new(|ui: &mut Ui| scene(ui, x)),
-        );
+        across.frame(held.as_target(), 1.0, &mut |ui: &mut Ui| scene(ui, x));
     }
     assert_eq!(
-        across.core.backend.held_cutout_tables(),
+        across.core.backend().held_cutout_tables(),
         2,
         "a table for each key the blocks' corners share"
     );
-    host().frame(
-        fresh.as_target(),
-        1.0,
-        &mut RecordApp::new(|ui: &mut Ui| scene(ui, 5.0)),
-    );
+    host().frame(fresh.as_target(), 1.0, &mut |ui: &mut Ui| scene(ui, 5.0));
     assert!(
         held.read_back() == fresh.read_back(),
         "the held tables paint other pixels"

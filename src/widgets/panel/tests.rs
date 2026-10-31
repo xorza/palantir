@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
@@ -16,7 +16,7 @@ use glam::{UVec2, Vec2};
 /// `Surface::apply_to` (from `Panel::show`) writes the clip bit and records chrome in `Tree::chrome_table`. One fixture sweeps: no surface, paint-only `From<Chrome>`, `scissor`, `clipped`, `rounded` with radius, `rounded` with zero-radius downgrade.
 #[test]
 fn surface_apply_to_sets_clip_bit_and_chrome() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let mut cases: Vec<(&str, NodeId, ClipMode, bool)> = Vec::new();
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -84,9 +84,9 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
         });
     });
     for (name, id, expected_clip, expects_chrome) in &cases {
-        let clip = h.ui.tree(Layer::Main).records.attrs()[id.idx()].clip_mode();
+        let clip = h.ui().tree(Layer::Main).records.attrs()[id.idx()].clip_mode();
         assert_eq!(clip, *expected_clip, "[{name}] clip mode");
-        let chrome = h.ui.tree(Layer::Main).chrome(*id);
+        let chrome = h.ui().tree(Layer::Main).chrome(*id);
         assert_eq!(
             chrome.is_some(),
             *expects_chrome,
@@ -97,9 +97,9 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
 #[test]
 fn explicit_no_chrome_and_no_clip_override_panel_theme() {
-    let mut h = UiHarness::new(UVec2::new(200, 120));
-    h.ui.theme_mut().panel_chrome = Some(Chrome::fill(RgbaF32::WHITE));
-    h.ui.theme_mut().panel_clip = ClipMode::Rect;
+    let mut h = Harness::mono(UVec2::new(200, 120));
+    h.ui().theme_mut().panel_chrome = Some(Chrome::fill(RgbaF32::WHITE));
+    h.ui().theme_mut().panel_clip = ClipMode::Rect;
     let [explicit, inherited] = h.frame_value(|ui| {
         [
             Panel::vstack()
@@ -112,7 +112,7 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
         ]
     });
 
-    let tree = h.ui.tree(Layer::Main);
+    let tree = h.ui().tree(Layer::Main);
     assert_eq!(
         tree.records.attrs()[explicit.idx()].clip_mode(),
         ClipMode::None,
@@ -127,7 +127,7 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
 
 #[test]
 fn panel_hugs_largest_child_and_layers_them() {
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     let [panel_node, a_node, b_node] = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -159,33 +159,34 @@ fn panel_hugs_largest_child_and_layers_them() {
             .inner
     });
     // Panel hugs to (max(80, 60) + 2*10, max(30, 50) + 2*10) = (100, 70).
-    let panel = h.ui.arranged_rect(Layer::Main, panel_node);
+    let panel = h.ui().arranged_rect(Layer::Main, panel_node);
     assert_eq!(panel.size.w, 100.0);
     assert_eq!(panel.size.h, 70.0);
 
-    let a = h.ui.arranged_rect(Layer::Main, a_node);
-    let b = h.ui.arranged_rect(Layer::Main, b_node);
+    let a = h.ui().arranged_rect(Layer::Main, a_node);
+    let b = h.ui().arranged_rect(Layer::Main, b_node);
     assert_eq!((a.min.x, a.min.y), (10.0, 10.0));
     assert_eq!((b.min.x, b.min.y), (10.0, 10.0));
     assert_eq!((a.size.w, a.size.h), (80.0, 30.0));
     assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
 
     assert!(
-        h.ui.tree(Layer::Main)
+        h.ui()
+            .tree(Layer::Main)
             .shapes_of(panel_node)
             .next()
             .is_none(),
         "panel chrome doesn't show up in the shape stream"
     );
     assert!(
-        h.ui.tree(Layer::Main).chrome(panel_node).is_some(),
+        h.ui().tree(Layer::Main).chrome(panel_node).is_some(),
         "panel chrome recorded in chrome table",
     );
 }
 
 #[test]
 fn panel_with_fill_child_grows_to_panel_inner() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let child_node = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -206,7 +207,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
             })
             .inner
     });
-    let child = h.ui.arranged_rect(Layer::Main, child_node);
+    let child = h.ui().arranged_rect(Layer::Main, child_node);
     // Panel = 200×100; inner (after padding 10) = 180×80, child fills it at (10, 10).
     assert_eq!(child.min.x, 10.0);
     assert_eq!(child.min.y, 10.0);
@@ -218,7 +219,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
 #[test]
 fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     use crate::primitives::identity::widget_id::WidgetId;
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let child_id = WidgetId::from_hash("child");
     let observed = h.frame_value(|ui| {
         Panel::vstack()
@@ -243,7 +244,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
     use glam::Vec2;
 
     for (disabled, clicks) in [(true, false), (false, true)] {
-        let mut h = UiHarness::new(UVec2::new(400, 200));
+        let mut h = Harness::mono(UVec2::new(400, 200));
         let body = |ui: &mut Ui| {
             let mut clicked = false;
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -267,7 +268,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
         h.frame(|ui| {
             body(ui);
         });
-        h.click_at(Vec2::new(40.0, 40.0));
+        h.click(Vec2::new(40.0, 40.0));
 
         let passes = h.frame_passes(body);
         assert_eq!(*passes.a(), clicks, "disabled = {disabled}");
@@ -277,7 +278,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
 
 #[test]
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let [canvas_node, a_node, b_node] = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -302,13 +303,13 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
             })
             .inner
     });
-    let c = h.ui.arranged_rect(Layer::Main, canvas_node);
+    let c = h.ui().arranged_rect(Layer::Main, canvas_node);
     // Hugs bbox: max(10+40, 80+30)=110, max(5+20, 40+60)=100.
     assert_eq!(c.size.w, 110.0);
     assert_eq!(c.size.h, 100.0);
 
-    let a = h.ui.arranged_rect(Layer::Main, a_node);
-    let b = h.ui.arranged_rect(Layer::Main, b_node);
+    let a = h.ui().arranged_rect(Layer::Main, a_node);
+    let b = h.ui().arranged_rect(Layer::Main, b_node);
     assert_eq!((a.min.x, a.min.y), (10.0, 5.0));
     assert_eq!((a.size.w, a.size.h), (40.0, 20.0));
     assert_eq!((b.min.x, b.min.y), (80.0, 40.0));
@@ -318,7 +319,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
 #[test]
 fn zstack_layers_children_without_painting_chrome() {
     // In an HStack so the ZStack's Hug size is honored (a root would expand to the surface).
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     let [z, bg_node, fg_node] = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -344,14 +345,14 @@ fn zstack_layers_children_without_painting_chrome() {
             })
             .inner
     });
-    assert!(h.ui.tree(Layer::Main).shapes_of(z).next().is_none());
+    assert!(h.ui().tree(Layer::Main).shapes_of(z).next().is_none());
 
-    let zr = h.ui.arranged_rect(Layer::Main, z);
+    let zr = h.ui().arranged_rect(Layer::Main, z);
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
-    let bg = h.ui.arranged_rect(Layer::Main, bg_node);
-    let fg = h.ui.arranged_rect(Layer::Main, fg_node);
+    let bg = h.ui().arranged_rect(Layer::Main, bg_node);
+    let fg = h.ui().arranged_rect(Layer::Main, fg_node);
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -370,7 +371,7 @@ fn zstack_aligns_child_per_axis() {
         ),
     ];
     for (label, align, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         let child_node = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -391,7 +392,7 @@ fn zstack_aligns_child_per_axis() {
                 })
                 .inner
         });
-        let r = h.ui.arranged_rect(Layer::Main, child_node);
+        let r = h.ui().arranged_rect(Layer::Main, child_node);
         assert_eq!((r.min.x, r.min.y), *expected, "case: {label}");
         assert_eq!(
             (r.size.w, r.size.h),

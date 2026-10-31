@@ -213,6 +213,18 @@ fn present_path(
     }
 }
 
+/// How far a frame's CPU half runs, chosen by the host.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum FrameDepth {
+    /// Record through damage, and build no draw list: a host with no device and no pixels, as a
+    /// unit test runs.
+    Record,
+    /// Build the draw list too, and submit nothing: the whole CPU pipeline, with no device.
+    Compose,
+    /// Build the draw list a target is painted by.
+    Paint,
+}
+
 /// The CPU half's result: the report plus the [`PresentPath`] sealed at
 /// draw-list-build time.
 #[derive(Debug)]
@@ -287,6 +299,16 @@ impl WindowDriver {
         self.ui.frame_stamp(host, spec.now)
     }
 
+    /// Snap paint edges to physical pixels from the next frame on, or not.
+    pub(super) const fn set_pixel_snap(&mut self, pixel_snap: bool) {
+        self.pixel_snap = pixel_snap;
+    }
+
+    /// Whether a screenshot is on its way back from the device, which a later frame lands.
+    pub(super) fn has_pending_screenshots(&self) -> bool {
+        !self.captures.is_empty()
+    }
+
     /// Declare the target of the frame `spec` describes. A change invalidates retained pixels and
     /// the damage baseline.
     pub(super) fn note_target(&mut self, spec: &FrameSpec) {
@@ -308,11 +330,16 @@ impl WindowDriver {
     /// The shared CPU half: app lifecycle, record through damage, then the draw-list
     /// build if the frame paints. Seals the [`PresentPath`] (a promoted or resynced
     /// Partial builds a Full list).
+    ///
+    /// A frame below [`FrameDepth::Paint`] presents nothing, so it keeps the damage baseline, as
+    /// no target exists to lose it, and drops the screenshots asked in it, as no device takes
+    /// them: no image lands for them, as for an empty ask.
     pub(super) fn cpu_frame<T: App>(
         &mut self,
         frontend: &mut Frontend,
         stamp: FrameStamp,
         app: &mut T,
+        depth: FrameDepth,
     ) -> CpuFrame {
         tracy::zone!();
         let report = self.ui.frame(
@@ -320,7 +347,35 @@ impl WindowDriver {
             FrameInput::new(stamp, self.output_valid, self.token),
             app,
         );
-        self.finish_cpu_frame(frontend, report)
+        match depth {
+            FrameDepth::Paint => self.finish_cpu_frame(frontend, report),
+            FrameDepth::Record | FrameDepth::Compose => {
+                self.ui
+                    .take_screenshot_requests(&mut self.screenshot_requests);
+                self.screenshot_requests.clear();
+                if depth == FrameDepth::Compose
+                    && let Some(plan) = report.plan
+                {
+                    self.compose(frontend, plan);
+                }
+                self.output_valid = true;
+                CpuFrame {
+                    report,
+                    mode: PresentPath::SkipNoop,
+                }
+            }
+        }
+    }
+
+    /// Build the draw list of `plan` under the panes it captures, as a painted frame builds it,
+    /// for no target: a partial frame whose captures overflow its scissors builds whole.
+    pub(super) fn compose(&mut self, frontend: &mut Frontend, plan: RenderPlan) {
+        let mut plan = plan;
+        if self.decide_panes(plan) == Settled::Overflow {
+            plan = plan.to_full();
+        }
+        self.build(frontend, plan);
+        self.pane_captures.settle(&frontend.buffer);
     }
 
     /// Drop from the pane ledger the results the shared backdrop atlas evicted from this window's
@@ -630,11 +685,50 @@ impl WindowDriver {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::host::window_driver::WindowDriver;
+    #[cfg(test)]
+    use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
+    #[cfg(test)]
+    use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
+    #[cfg(test)]
+    use crate::scene::tree::node_id::NodeId;
+    use crate::ui::Ui;
+    use crate::ui::frame_engines::FrameEngines;
+
+    /// A driver's `Ui` and engines, for a bench that runs one step of a frame on them.
+    #[derive(Debug)]
+    pub(crate) struct DriverParts<'a> {
+        pub(crate) ui: &'a mut Ui,
+        pub(crate) engines: &'a mut FrameEngines,
+    }
 
     impl WindowDriver {
         /// Shade every shadow corner instead of baking tables: the visual suite's reference.
         pub(crate) fn disable_cutout_tables(&mut self) {
             self.stream.disable_cutout_tables();
+        }
+
+        pub(crate) const fn engines(&self) -> &FrameEngines {
+            &self.engines
+        }
+
+        pub(crate) const fn engines_mut(&mut self) -> &mut FrameEngines {
+            &mut self.engines
+        }
+
+        /// The `Ui` and the engines its frames run on, borrowed at once.
+        pub(crate) const fn parts(&mut self) -> DriverParts<'_> {
+            DriverParts {
+                ui: &mut self.ui,
+                engines: &mut self.engines,
+            }
+        }
+
+        /// The main tree's intrinsic size at `node`, as the layout engine measures it.
+        #[cfg(test)]
+        pub(crate) fn intrinsic(&mut self, node: NodeId, query: IntrinsicQuery) -> IntrinsicRange {
+            self.engines
+                .layout
+                .main_intrinsic(self.ui.forest(), node, query)
         }
 
         /// Whether the target holds this driver's last output; read by offscreen tests.

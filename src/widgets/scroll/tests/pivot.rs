@@ -1,6 +1,6 @@
 //! One sweep: the point under the cursor stays under it at every scale.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -19,7 +19,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
     let logical_pointer = Vec2::new(50.0, 70.0);
 
     for (scale, padding) in [(0.5, 0.0), (1.0, 0.0), (2.0, 0.0), (1.0, 10.0), (2.0, 10.0)] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let build = |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scaled-scroll-parent"))
@@ -44,7 +44,7 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         h.frame(build);
 
         let pointer = h.point_in(id, logical_pointer);
-        h.pinch_at(pointer, 1.5);
+        h.pinch(pointer, 1.5);
         h.frame(build);
 
         let state = *h.state::<ScrollState>(id);

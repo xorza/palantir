@@ -7,7 +7,6 @@
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::internals::record_app::RecordApp;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
     DebugOverlayConfig, FramePaint, Metrics, OffscreenHost, OffscreenTime, Palette, RgbaF32,
@@ -41,7 +40,7 @@ pub(crate) struct Capture {
 
 /// A headless host plus the surface every frame renders at; settings persist until changed.
 #[derive(Debug)]
-pub(crate) struct Harness {
+pub(crate) struct VisualRig {
     pub(crate) host: OffscreenHost,
     gpu: HeadlessTestGpuLease,
     target_usages: wgpu::TextureUsages,
@@ -52,7 +51,7 @@ pub(crate) struct Harness {
     format: wgpu::TextureFormat,
 }
 
-impl Harness {
+impl VisualRig {
     pub(crate) fn new() -> Self {
         Self::raise(true)
     }
@@ -118,10 +117,10 @@ impl Harness {
     }
 
     /// Render one frame of `scene` into a fresh target and read it back.
-    pub(crate) fn frame(&mut self, scene: impl FnMut(&mut Ui)) -> Capture {
+    pub(crate) fn frame(&mut self, mut scene: impl FnMut(&mut Ui)) -> Capture {
         let physical = self
             .physical
-            .expect("set the surface with Harness::size before a frame");
+            .expect("set the surface with VisualRig::size before a frame");
         let target = OwnedTarget::new(
             &self.gpu,
             TargetSpec {
@@ -133,9 +132,7 @@ impl Harness {
         );
 
         self.host.ui().theme_mut().window_clear = self.clear;
-        let report = self
-            .host
-            .frame(target.as_target(), self.scale, &mut RecordApp::new(scene));
+        let report = self.host.frame(target.as_target(), self.scale, &mut scene);
 
         let image = target.read_back();
         Capture {
@@ -158,6 +155,6 @@ impl Harness {
     }
 }
 
-/// A GLES swapchain image: the default framebuffer, so nothing can be copied onto it; `COPY_SRC` is the harness's, for readback.
+/// A GLES swapchain image: the default framebuffer, so nothing can be copied onto it; `COPY_SRC` is the rig's, for readback.
 const NO_COPY_DST_USAGES: wgpu::TextureUsages =
     OwnedTarget::USAGES.difference(wgpu::TextureUsages::COPY_DST);

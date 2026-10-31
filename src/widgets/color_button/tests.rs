@@ -3,7 +3,8 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -16,20 +17,20 @@ use crate::widgets::color_button::ColorButton;
 use crate::widgets::color_picker::ColorPicker;
 use glam::{UVec2, Vec2};
 
-fn harness() -> UiHarness {
-    UiHarness::with_text(UVec2::new(420, 560))
+fn harness() -> Harness {
+    Harness::new(UVec2::new(420, 560))
 }
 
 /// Nodes the popup layer holds; zero while closed.
-fn panel_nodes(h: &UiHarness) -> usize {
-    h.ui.layout(Layer::Popup).rect.len()
+fn panel_nodes(h: &Harness) -> usize {
+    h.ui_ref().layout(Layer::Popup).rect.len()
 }
 
 /// One click on a chip at the surface's corner; press and release take a frame each.
-fn click_chip(h: &mut UiHarness, mut frame: impl FnMut(&mut UiHarness)) {
-    h.press_at(Vec2::new(10.0, 10.0));
+fn click_chip(h: &mut Harness, mut frame: impl FnMut(&mut Harness)) {
+    h.press(Vec2::new(10.0, 10.0), PointerButton::Left);
     frame(h);
-    h.release();
+    h.release(PointerButton::Left);
     frame(h);
 }
 
@@ -39,7 +40,7 @@ fn the_chip_toggles_its_panel() {
     let id = WidgetId::from_hash("color-button-toggle");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
-    let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
+    let frame = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame(|ui| {
             ColorButton::new(ColorPicker::new(color)).id(id).show(ui);
         });
@@ -102,7 +103,7 @@ fn panel_settings_reach_the_picker() {
     for (label, settings, swatch_row, texel, picker) in rows {
         let mut h = harness();
         let mut color = RgbaF32::hex(0x4cd3ff);
-        let mut frame = |h: &mut UiHarness| {
+        let mut frame = |h: &mut Harness| {
             h.frame(|ui| {
                 ColorButton::new(settings(ColorPicker::new(&mut color)))
                     .id(id)
@@ -118,10 +119,11 @@ fn panel_settings_reach_the_picker() {
             "{label}: the swatch row",
         );
         let field = h.rect(picker.with("field")).expect("the field").size;
-        let built =
-            h.ui.state::<ColorSurface<(ColorModel, f32)>>(picker.with("field"))
-                .and_then(ColorSurface::built_size)
-                .expect("the field built its texture");
+        let built = h
+            .ui()
+            .state::<ColorSurface<(ColorModel, f32)>>(picker.with("field"))
+            .and_then(ColorSurface::built_size)
+            .expect("the field built its texture");
         let want = UVec2::new(
             (field.w / texel as f32).ceil() as u32,
             (field.h / texel as f32).ceil() as u32,
@@ -147,8 +149,8 @@ fn opening_the_panel_is_not_an_edit() {
             })
             .count_where(|&changed| changed);
         assert_eq!(changes, 0, "round {round}");
-        h.press_at(Vec2::new(10.0, 10.0));
-        h.release();
+        h.press(Vec2::new(10.0, 10.0), PointerButton::Left);
+        h.release(PointerButton::Left);
     }
     assert_eq!(color, before);
 }
@@ -166,7 +168,7 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     let id = WidgetId::from_hash("color-button-theme");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
-    let mut frame = |h: &mut UiHarness| {
+    let mut frame = |h: &mut Harness| {
         h.frame(|ui| {
             ColorButton::new(ColorPicker::new(&mut color))
                 .style(style)
@@ -180,10 +182,11 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     let body_id = id.with("panel");
     let body = h.node_of(body_id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
-    let chrome =
-        h.ui.tree(body.plane.layer)
-            .chrome(body.node)
-            .expect("the popup body paints chrome");
+    let chrome = h
+        .ui_ref()
+        .tree(body.plane.layer)
+        .chrome(body.node)
+        .expect("the popup body paints chrome");
     let rect = |id: WidgetId| h.rect(id).expect("arranged");
     Opened {
         corners: chrome.corners,

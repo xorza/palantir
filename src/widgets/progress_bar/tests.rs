@@ -1,5 +1,5 @@
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::size_trio::SizeTrio;
+use crate::host::harness::Harness;
+use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 
 use crate::primitives::layout::sizing::Sizing;
@@ -38,7 +38,7 @@ fn endpoint_segments_collapse_without_invalid_fill_weights() {
         (-1.0, [0.0, 100.0]),
         (2.0, [100.0, 0.0]),
     ] {
-        let mut h = UiHarness::new(UVec2::new(100, 20));
+        let mut h = Harness::mono(UVec2::new(100, 20));
         let root = h.frame_value(|ui| {
             ProgressBar::new(fraction)
                 .size((Sizing::fixed(100.0), Sizing::fixed(10.0)))

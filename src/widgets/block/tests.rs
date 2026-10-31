@@ -1,5 +1,5 @@
+use crate::host::harness::Harness;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -13,7 +13,7 @@ use glam::UVec2;
 
 #[test]
 fn frame_paints_a_single_rounded_rect() {
-    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let mut h = Harness::mono(UVec2::new(200, 100));
     let frame_node = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -33,15 +33,17 @@ fn frame_paints_a_single_rounded_rect() {
     });
     // Chrome lives in `Tree::chrome_table`, not the shape stream.
     assert!(
-        h.ui.tree(Layer::Main)
+        h.ui()
+            .tree(Layer::Main)
             .shapes_of(frame_node)
             .next()
             .is_none()
     );
-    let chrome =
-        h.ui.tree(Layer::Main)
-            .chrome(frame_node)
-            .expect("frame chrome recorded in chrome table");
+    let chrome = h
+        .ui()
+        .tree(Layer::Main)
+        .chrome(frame_node)
+        .expect("frame chrome recorded in chrome table");
     let want = RgbaF32::srgb(0.2, 0.4, 0.8).to_f16();
     assert!(
         matches!(chrome.fill, ShapeBrush::Solid(fill) if fill == want),
@@ -55,7 +57,7 @@ fn frame_paints_a_single_rounded_rect() {
     );
 
     // Default sense is None — frame is not a hit-test target.
-    let r = h.ui.arranged_rect(Layer::Main, frame_node);
+    let r = h.ui().arranged_rect(Layer::Main, frame_node);
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -65,7 +67,7 @@ fn frame_with_sense_click_is_clickable() {
     use glam::Vec2;
 
     let surface = UVec2::new(200, 100);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Block::new()
@@ -75,7 +77,7 @@ fn frame_with_sense_click_is_clickable() {
                 .show(ui);
         });
     });
-    h.click_at(Vec2::new(50.0, 25.0));
+    h.click(Vec2::new(50.0, 25.0));
 
     let clicked = h.frame_value(|ui| {
         Panel::hstack()

@@ -1,7 +1,7 @@
 //! The panes the cascade lists: each one's plan and footprint, which every later stage reads.
 
 use crate::cascade::pane_row::PaneRow;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::layout::sizing::Sizing;
@@ -22,7 +22,10 @@ struct Listed {
 
 /// The one pane a frame of `filter` at `rect` lists, on a surface of 200² physical px at `scale`.
 fn listed(scale: f32, rect: Rect, filter: BackdropFilter) -> Listed {
-    let mut h = UiHarness::new(UVec2::splat(200)).scale(scale);
+    let mut h = Harness::builder(UVec2::splat(200))
+        .mono()
+        .scale(scale)
+        .build();
     h.frame(|ui: &mut Ui| {
         Panel::canvas()
             .id_salt("panes")
@@ -31,7 +34,7 @@ fn listed(scale: f32, rect: Rect, filter: BackdropFilter) -> Listed {
                 ui.add_shape(Shape::rect(rect).backdrop_filter(filter));
             });
     });
-    let scene = h.ui.frame_scene();
+    let scene = h.ui().frame_scene();
     let panes: Vec<PaneRow> = scene.panes().copied().collect();
     assert_eq!(panes.len(), 1);
     Listed {

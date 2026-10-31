@@ -3,11 +3,11 @@
 //!
 //! Each numeric literal in the serialized default theme is replaced in turn with hostile values, and a document that still loads is rendered.
 
+use crate::host::harness::Harness;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::shortcut::Shortcut;
 use crate::internals::dock_fixture::DockFixture;
 use crate::internals::frame_fixture::FrameFixture;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
@@ -127,8 +127,8 @@ struct Scene {
 
 /// One frame of [`probe`] under `theme`, with the menu opened before it. Real shaping, so a font
 /// size reaches the shaper and the ink it measures.
-fn render(theme: Theme) -> UiHarness {
-    let mut h = UiHarness::with_text(UVec2::new(640, 480));
+fn render(theme: Theme) -> Harness {
+    let mut h = Harness::new(UVec2::new(640, 480));
     h.ui().set_theme(theme);
     ContextMenu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
@@ -198,10 +198,10 @@ fn every_number_at_the_length_bound_at_once_renders() {
 /// their theme values.
 #[test]
 fn the_probe_draws_the_overlays() {
-    let h = render(Theme::default());
+    let mut h = render(Theme::default());
     for layer in [Layer::Popup, Layer::Tooltip] {
         assert!(
-            !h.ui.tree(layer).shapes.records.is_empty(),
+            !h.ui().tree(layer).shapes.records.is_empty(),
             "{layer:?} records nothing",
         );
     }

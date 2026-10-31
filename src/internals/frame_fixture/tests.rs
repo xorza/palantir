@@ -1,5 +1,5 @@
 use super::*;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::ui::frame_report::FramePaint;
 use crate::widgets::button::Button;
 use std::cell::RefCell;
@@ -182,7 +182,7 @@ fn covered_and_excluded_account_for_every_public_widget() {
 /// Nothing this tree records on an overlay layer may capture input aimed at a
 /// host beside it: `Popup::show` records a full-surface eater and the status
 /// bar's toast is recorded every frame, so routing it through `Popup` once
-/// left the window unclickable. `click_on` fails on the eater's rect.
+/// left the window unclickable. A click by id fails on the eater's rect.
 #[test]
 fn overlays_never_capture_input_aimed_at_a_host_beside_the_fixture() {
     let nav = WidgetId::from_hash("frame_fixture::tests::host-nav");
@@ -202,10 +202,10 @@ fn overlays_never_capture_input_aimed_at_a_host_beside_the_fixture() {
             });
     };
 
-    let mut h = UiHarness::new(UVec2::new(1280, 800));
+    let mut h = Harness::mono(UVec2::new(1280, 800));
     h.prime(2, scene);
 
-    h.click_on(nav);
+    h.click(nav);
     assert!(
         h.response_in(nav, scene).left.clicked(),
         "a host widget beside the fixture must stay clickable",
@@ -223,7 +223,7 @@ fn footer_counter_alone_yields_partial_damage() {
         (UVec2::new(2560, 1600), 6),
         (UVec2::new(3840, 4800), 32),
     ] {
-        let mut h = UiHarness::with_text(px).scale(2.0);
+        let mut h = Harness::builder(px).scale(2.0).build();
         let mut state = FrameFixture::default();
         let mut paint = FramePaint::Full;
         // Two frames settle the caches and the popup's anchor, which reads last frame's status-bar rect.

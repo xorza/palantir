@@ -1,6 +1,6 @@
 //! Push/pop balance, and when a rounded clip needs the stencil.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -16,7 +16,7 @@ use glam::UVec2;
 /// A clip-only Surface (no painted chrome) still emits a PushClip/PopClip pair so children are clipped, with zero rect quads of its own.
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -31,7 +31,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
 
 #[test]
 fn clip_emits_balanced_push_pop() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -53,7 +53,7 @@ fn clip_emits_balanced_push_pop() {
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
     use crate::primitives::geometry::corners::Corners;
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -91,7 +91,7 @@ fn clip_rounded_emits_push_clip_rounded_when_chrome_has_radius() {
 #[test]
 fn clip_rounded_fits_overflowing_radii_before_the_uneven_inset() {
     use crate::primitives::geometry::corners::Corners;
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -124,7 +124,7 @@ fn clip_rounded_fits_overflowing_radii_before_the_uneven_inset() {
 
 #[test]
 fn clip_rounded_falls_back_to_scissor_without_chrome() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -153,7 +153,7 @@ fn clip_rounded_falls_back_to_scissor_without_chrome() {
 
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()

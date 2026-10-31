@@ -1,7 +1,7 @@
 //! A paint animation from the record call to the encoded draw.
 
+use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
@@ -35,7 +35,7 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
         );
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let _ = h.at(Duration::from_millis(500)).frame(record);
     let cmds = h.encode_paint();
 
@@ -56,7 +56,7 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
 fn a_turn_records_on_every_kind() {
     let quarter = PaintAnimation::turn(0.25, 0.25);
     let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
-    let mut h = UiHarness::with_text(SURFACE);
+    let mut h = Harness::new(SURFACE);
     let _ = h.frame(|ui| {
         Block::new()
             .id(WidgetId::from_hash("spun"))
@@ -108,7 +108,7 @@ fn a_turn_reaches_a_triangle_and_a_mesh() {
     mesh.triangle(vertices[0], vertices[1], vertices[2]);
     let quarter = PaintAnimation::turn(0.25, 0.25);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let _ = h.frame(|ui| {
         Panel::zstack()
             .id(WidgetId::from_hash("spun"))

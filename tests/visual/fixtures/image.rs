@@ -14,7 +14,7 @@ use palantir::{
 };
 
 use crate::fixtures;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 const RED: [u8; 4] = [230, 60, 60, 255];
 const BLUE: [u8; 4] = [60, 120, 230, 255];
@@ -25,7 +25,7 @@ const STAR: [u8; 4] = [255, 255, 255, 255];
 const SKY: [u8; 4] = [0, 0, 0, 255];
 
 /// `texels` as one row, loaded into `h`'s host.
-fn load(h: &mut Harness, texels: &[[u8; 4]]) -> ImageHandle {
+fn load(h: &mut VisualRig, texels: &[[u8; 4]]) -> ImageHandle {
     let image = Image::from_srgba8(UVec2::new(texels.len() as u32, 1), texels.concat()).unwrap();
     h.host
         .ui()
@@ -34,7 +34,7 @@ fn load(h: &mut Harness, texels: &[[u8; 4]]) -> ImageHandle {
 }
 
 /// One frame on black, with `scene` on a full-surface canvas.
-fn render(h: &mut Harness, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
+fn render(h: &mut VisualRig, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
     h.size(size)
         .clear(RgbaF32::BLACK)
         .frame(|ui| fixtures::canvas(ui, &mut scene))
@@ -81,7 +81,7 @@ fn assert_blend(pixel: [u8; 4], label: &str) {
 
 #[test]
 fn image_updates_copy_pixels_and_repaint_every_clone() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let mut image = Image::from_srgba8(UVec2::new(2, 2), [RED, BLUE, BLUE, RED].concat()).unwrap();
     let handle = h.host.ui().load_image(&image).unwrap();
     let clone = handle.clone();
@@ -122,7 +122,7 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
 #[test]
 fn minification_and_magnification_filters_are_independent() {
     use ImageFilter::{Linear, Nearest};
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let two = load(&mut h, &[RED, BLUE]);
     let magnified = render(&mut h, UVec2::new(256, 64), |ui| {
         let size = Vec2::new(128.0, 64.0);
@@ -193,7 +193,7 @@ fn minification_and_magnification_filters_are_independent() {
 #[test]
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     use ImageFilter::{Linear, Nearest};
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let three = load(&mut h, &[RED, BLUE, RED]);
     let strips = render(&mut h, UVec2::new(200, 32), |ui| {
         let size = Vec2::new(100.0, 32.0);
@@ -294,7 +294,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
         (ImageDownsample::Peak, 225, "Peak"),
     ];
 
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let source = load(&mut h, &[[STAR, SKY, SKY]; 8].concat());
     let out = render(&mut h, UVec2::new(24, 16), |ui| {
         for (i, (mode, _, _)) in cases.iter().enumerate() {
@@ -355,7 +355,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
         ),
     ];
 
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let sources = cases.map(|(triple, _, _, _)| load(&mut h, &[triple; 8].concat()));
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
         for (i, (_, mode, _, _)) in cases.iter().enumerate() {
@@ -384,7 +384,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
     const CLEAR: [u8; 4] = [0, 0, 0, 0];
     const PURE_RED: [u8; 4] = [255, 0, 0, 255];
 
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let source = load(&mut h, &[PURE_RED, CLEAR]);
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
         pane(
@@ -411,7 +411,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
 /// - Clamped: `STAR STAR SKY SKY`, mean `0.5`, 188; 51 steps apart.
 #[test]
 fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let source = load(&mut h, &[STAR, SKY, SKY, SKY]);
     let out = render(&mut h, UVec2::new(8, 16), |ui| {
         let image = Shape::image(source.clone())
@@ -446,7 +446,7 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const SOURCES: [[u8; 4]; 3] = [RED, BLUE, GREEN];
     const PANE: f32 = 32.0;
 
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let handles = SOURCES.map(|texel| load(&mut h, &[texel]));
     let out = render(&mut h, UVec2::new(192, 32), |ui| {
         for (pane_idx, &source) in PATTERN.iter().enumerate() {

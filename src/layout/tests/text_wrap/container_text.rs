@@ -1,8 +1,8 @@
 //! Text owned by a container rather than a leaf: paint-only, ordered, and
 //! cached alongside its children.
 
+use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
-use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::Align;
@@ -24,9 +24,9 @@ use glam::UVec2;
 
 #[test]
 fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let scene = h.frame_value(build_wrapping_container_text);
-    let layout = h.ui.layout(Layer::Main);
+    let layout = h.ui().layout(Layer::Main);
     assert_eq!(layout.text_shapes.len(), 1);
     let container_rect = layout.rect[scene.container.idx()];
     let child_rect = layout.rect[scene.child.idx()];
@@ -50,7 +50,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         .collect();
     assert_eq!(draw_keys, [shaped.buffer_key()]);
     let leaf = h.frame_value(|ui| Text::new("leaf-only").show(ui).node());
-    let layout = h.ui.layout(Layer::Main);
+    let layout = h.ui().layout(Layer::Main);
     assert_eq!(layout.text_shapes.len(), 1);
     assert_eq!(layout.text_spans[leaf.idx()].len, 1);
 }
@@ -58,10 +58,10 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
 #[test]
 fn container_text_visibility_distinguishes_hidden_from_collapsed() {
     let surface = UVec2::new(400, 400);
-    let mut h = UiHarness::with_text(surface);
+    let mut h = Harness::new(surface);
     let hidden_node =
         h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Hidden));
-    let hidden_layout = h.ui.layout(Layer::Main);
+    let hidden_layout = h.ui().layout(Layer::Main);
     assert_eq!(
         hidden_layout.rect[hidden_node.idx()].size,
         Size::new(100.0, 100.0),
@@ -71,14 +71,14 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
 
     let collapsed_node =
         h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Collapsed));
-    let collapsed_layout = h.ui.layout(Layer::Main);
+    let collapsed_layout = h.ui().layout(Layer::Main);
     assert_eq!(collapsed_layout.rect[collapsed_node.idx()].size, Size::ZERO);
     assert_eq!(collapsed_layout.text_spans[collapsed_node.idx()].len, 0);
     assert!(collapsed_layout.text_shapes.is_empty());
 
     let visible_node =
         h.frame_value(|ui| build_container_text_with_visibility(ui, Visibility::Visible));
-    let visible_layout = h.ui.layout(Layer::Main);
+    let visible_layout = h.ui().layout(Layer::Main);
     assert_eq!(
         visible_layout.rect[visible_node.idx()].size,
         Size::new(100.0, 100.0),
@@ -106,7 +106,7 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
                 })
                 .inner
         });
-        let layout = h.ui.layout(Layer::Main);
+        let layout = h.ui().layout(Layer::Main);
         assert_eq!(
             layout.rect[owner.idx()].size,
             owner_size,
@@ -126,9 +126,9 @@ fn container_text_visibility_distinguishes_hidden_from_collapsed() {
 
 #[test]
 fn container_and_child_text_keep_independent_order_across_cache_hit() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let first_scene = h.frame_value(build_interleaved_container_text);
-    let first_layout = h.ui.layout(Layer::Main);
+    let first_layout = h.ui().layout(Layer::Main);
     assert_eq!(first_layout.text_shapes.len(), 3);
     let first_parent_span = first_layout.text_spans[first_scene.container.idx()];
     let first_child_span = first_layout.text_spans[first_scene.child.idx()];
@@ -154,13 +154,18 @@ fn container_and_child_text_keep_independent_order_across_cache_hit() {
         first_draw_keys,
         [first_parent_keys[0], first_child_key, first_parent_keys[1]],
     );
-    h.engines.layout.forget_last_run();
+    h.engines_mut().layout.forget_last_run();
     let second_scene = h.frame_value(build_interleaved_container_text);
     assert!(
-        !h.engines.layout.scratch.counters.cache_hits().is_empty(),
+        !h.engines_mut()
+            .layout
+            .scratch
+            .counters
+            .cache_hits()
+            .is_empty(),
         "second identical frame should exercise measure-cache replay",
     );
-    let second_layout = h.ui.layout(Layer::Main);
+    let second_layout = h.ui().layout(Layer::Main);
     assert_eq!(second_layout.text_shapes.len(), 3);
     let second_parent_span = second_layout.text_spans[second_scene.container.idx()];
     let second_child_span = second_layout.text_spans[second_scene.child.idx()];

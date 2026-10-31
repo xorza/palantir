@@ -7,7 +7,7 @@ use crate::text::font_scope::internals::INTER;
 use crate::text::key::TextShapeKey;
 use crate::text::wrap::TextWrap;
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -30,7 +30,7 @@ use glam::UVec2;
 
 /// Run `record` cold then warm and assert every captured node's rect matches. `record` pushes the nodes that matter into `capture`.
 fn assert_warm_rects_match_cold(
-    h: &mut UiHarness,
+    h: &mut Harness,
     msg: &str,
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
@@ -41,10 +41,10 @@ fn assert_warm_rects_match_cold(
     });
     let cold: Vec<_> = cold_nodes
         .iter()
-        .map(|&n| h.ui.arranged_rect(Layer::Main, n))
+        .map(|&n| h.ui().arranged_rect(Layer::Main, n))
         .collect();
 
-    h.engines.layout.forget_last_run();
+    h.engines_mut().layout.forget_last_run();
     let warm_nodes = h.frame_value(|ui| {
         let mut nodes = Vec::new();
         record(ui, &mut nodes);
@@ -52,12 +52,17 @@ fn assert_warm_rects_match_cold(
     });
     let warm: Vec<_> = warm_nodes
         .iter()
-        .map(|&n| h.ui.arranged_rect(Layer::Main, n))
+        .map(|&n| h.ui().arranged_rect(Layer::Main, n))
         .collect();
 
     // Guard against going inert: if hash stability regresses and the warm frame misses everywhere, cold == warm passes vacuously.
     assert!(
-        !h.engines.layout.scratch.counters.cache_hits().is_empty(),
+        !h.engines_mut()
+            .layout
+            .scratch
+            .counters
+            .cache_hits()
+            .is_empty(),
         "warm frame produced no measure-cache hits — {msg} pins nothing",
     );
     assert_eq!(cold, warm, "{msg}");
@@ -73,13 +78,13 @@ struct LaidOut {
 }
 
 impl LaidOut {
-    fn of(h: &UiHarness) -> Self {
+    fn of(h: &Harness) -> Self {
         Self {
-            rects: (0..h.ui.tree(Layer::Main).records.len() as u32)
-                .map(|i| h.ui.arranged_rect(Layer::Main, NodeId(i)))
+            rects: (0..h.ui_ref().tree(Layer::Main).records.len() as u32)
+                .map(|i| h.ui_ref().arranged_rect(Layer::Main, NodeId(i)))
                 .collect(),
             shapes: h
-                .ui
+                .ui_ref()
                 .layout(Layer::Main)
                 .text_shapes
                 .iter()
@@ -91,10 +96,10 @@ impl LaidOut {
 
 /// `warm`'s last frame against `record` laid out cold on the same surface: the measure cache and
 /// the last run forgotten first.
-fn assert_matches_cold(warm: &mut UiHarness, msg: &str, record: impl FnMut(&mut Ui)) {
+fn assert_matches_cold(warm: &mut Harness, msg: &str, record: impl FnMut(&mut Ui)) {
     let laid_out = LaidOut::of(warm);
-    warm.engines.layout.cache.forget_all();
-    warm.engines.layout.forget_last_run();
+    warm.engines_mut().layout.cache.forget_all();
+    warm.engines_mut().layout.forget_last_run();
     warm.frame(record);
     assert_eq!(
         laid_out,
@@ -246,11 +251,11 @@ fn cache_hit_preserves_grid_cell_rects() {
         }),
     ];
     for (label, record) in cases {
-        let mut h = UiHarness::with_text(UVec2::new(800, 600));
+        let mut h = Harness::new(UVec2::new(800, 600));
         assert_warm_rects_match_cold(&mut h, &format!("case: {label}"), *record);
         // The hit must land at the viewport root so grid measure is skipped and the hug-restore path runs.
         assert!(
-            h.engines
+            h.engines_mut()
                 .layout
                 .scratch
                 .counters
@@ -258,7 +263,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                 .contains(&WidgetId::VIEWPORT),
             "case {label}: warm cache hit didn't land at the viewport root — grid hug \
              restore not exercised. hits={:?}",
-            h.engines.layout.scratch.counters.cache_hits(),
+            h.engines_mut().layout.scratch.counters.cache_hits(),
         );
     }
 }
@@ -378,7 +383,7 @@ fn cache_hit_preserves_per_driver_rects() {
         }),
     ];
     for (label, record) in cases {
-        let mut h = UiHarness::with_text(UVec2::new(800, 600));
+        let mut h = Harness::new(UVec2::new(800, 600));
         assert_warm_rects_match_cold(&mut h, &format!("case: {label}"), *record);
     }
 }
@@ -450,7 +455,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
             });
     };
 
-    let mut h = UiHarness::with_text(UVec2::new(800, 600));
+    let mut h = Harness::new(UVec2::new(800, 600));
     h.frame(|ui| record(ui));
     let cold = h.encode_paint();
 
@@ -638,14 +643,14 @@ fn cache_rects_match_cold_oracle_across_resizes() {
         (600, 380),
         (900, 900),
     ];
-    let mut h = UiHarness::new(UVec2::new(sizes[0].0, sizes[0].1));
+    let mut h = Harness::mono(UVec2::new(sizes[0].0, sizes[0].1));
     for (i, &(w, ht)) in sizes.iter().enumerate() {
         h.resize(UVec2::new(w, ht));
         h.frame(record);
         if i > 0 {
             for held in ["blocks", "buttons"] {
                 assert!(
-                    h.engines
+                    h.engines_mut()
                         .layout
                         .scratch
                         .counters
@@ -662,13 +667,13 @@ fn cache_rects_match_cold_oracle_across_resizes() {
 /// Registering a font invalidates the measure-cache snapshot: it moves neither the subtree hash nor the width yet changes every measure, so `LayoutEngine::run` checks an epoch. Pinned on the shaper's dispatch count, which a replayed snapshot leaves flat.
 #[test]
 fn registering_a_font_forces_the_next_frame_to_remeasure() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 300));
+    let mut h = Harness::new(UVec2::new(400, 300));
     let record = |ui: &mut Ui| {
         Text::new("a label that sizes to its own text")
             .auto_id()
             .show(ui);
     };
-    let dispatches = |h: &UiHarness| h.engines.layout.text.shaper().measure_calls();
+    let dispatches = |h: &Harness| h.engines().layout.text.shaper().measure_calls();
 
     h.prime(2, record);
     let warm = dispatches(&h);
@@ -679,7 +684,7 @@ fn registering_a_font_forces_the_next_frame_to_remeasure() {
         "premise: an unchanged tree replays the snapshot and shapes nothing",
     );
 
-    h.ui.load_font(INTER).expect("the bundled Inter loads");
+    h.ui().load_font(INTER).expect("the bundled Inter loads");
     h.frame(record);
     assert_eq!(
         dispatches(&h),
@@ -713,12 +718,12 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     }
 
     let size = UVec2::new(400, 600);
-    let mut h = UiHarness::new(size);
+    let mut h = Harness::mono(size);
 
     h.frame(|ui| build(ui, 0));
     // Each of the three panels (the harness root, the outer stack, `heavy`) is walked once per
     // axis, and each of the 31 text leaves once for both: 3·2 + 31 = 37.
-    let cold = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
+    let cold = h.engines_mut().layout.scratch.counters.intrinsic_computes() as usize;
     assert_eq!(
         cold,
         3 * 2 + HEAVY + 1,
@@ -728,7 +733,7 @@ fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() 
     // `heavy` hits and its restored intrinsics skip a re-walk: the count is the changed chain,
     // the two panels above `tiny` once per axis and `tiny` once, 2·2 + 1 = 5, not ~2·HEAVY.
     h.frame(|ui| build(ui, 1));
-    let warm = h.engines.layout.scratch.counters.intrinsic_computes() as usize;
+    let warm = h.engines_mut().layout.scratch.counters.intrinsic_computes() as usize;
     assert_eq!(
         warm, 5,
         "localized change re-walked the unchanged sibling: {warm} intrinsic \
@@ -769,7 +774,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
             });
     };
 
-    let mut h = UiHarness::with_text(UVec2::new(800, 600));
+    let mut h = Harness::new(UVec2::new(800, 600));
     for tick in 0..2 {
         h.frame(|ui| build(ui, tick));
         assert_eq!(
@@ -778,7 +783,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
             "tick {tick}"
         );
     }
-    let hits = h.engines.layout.scratch.counters.cache_hits();
+    let hits = h.engines_mut().layout.scratch.counters.cache_hits();
     assert!(
         hits.contains(&WidgetId::from_hash("paragraph"))
             && !hits.contains(&WidgetId::from_hash("mid")),
@@ -832,17 +837,17 @@ fn moved_subtree_replays_translated_rects() {
             .collect()
     };
 
-    let mut h = UiHarness::new(size);
+    let mut h = Harness::mono(size);
     let mut before_nodes = Vec::new();
     h.frame(|ui| record(ui, 10.0, &mut before_nodes));
-    let before = rects(&h.ui, &before_nodes);
+    let before = rects(h.ui_ref(), &before_nodes);
 
     let mut after_nodes = Vec::new();
     h.frame(|ui| record(ui, 30.0, &mut after_nodes));
-    let after = rects(&h.ui, &after_nodes);
+    let after = rects(h.ui_ref(), &after_nodes);
 
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .scratch
             .counters
@@ -850,7 +855,7 @@ fn moved_subtree_replays_translated_rects() {
             .translated
             > 0,
         "no subtree replayed via translation — fixture pins nothing, got {:?}",
-        h.engines.layout.scratch.counters.arrange_replays(),
+        h.engines_mut().layout.scratch.counters.arrange_replays(),
     );
 
     // The header grew 10 → 30, so everything below shifts down exactly 20 with its size intact. Hand-computed, not a range check.
@@ -861,12 +866,12 @@ fn moved_subtree_replays_translated_rects() {
         assert_eq!(a.min.y, b.min.y + 20.0, "node {i} shifted by the wrong dy");
     }
 
-    h.engines.layout.cache.forget_all();
+    h.engines_mut().layout.cache.forget_all();
     let mut cold_nodes = Vec::new();
     h.frame(|ui| record(ui, 30.0, &mut cold_nodes));
     assert_eq!(
         after,
-        rects(&h.ui, &cold_nodes),
+        rects(h.ui_ref(), &cold_nodes),
         "translated replay diverged from a cold remeasure",
     );
 }
@@ -922,13 +927,13 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
             });
     };
     let size = UVec2::new(800, 2000);
-    let mut warm = UiHarness::new(size);
+    let mut warm = Harness::mono(size);
     warm.frame(|ui| record(ui, 7.0));
     for frame in 0..40u32 {
         let header_h = 0.37 + frame as f32 * 29.13;
         warm.frame(|ui| record(ui, header_h));
         assert!(
-            warm.engines
+            warm.engines_mut()
                 .layout
                 .scratch
                 .counters
@@ -989,12 +994,12 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
                     });
             });
     };
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     let mut nodes = Vec::new();
     h.frame(|ui| record(ui, 100.0, &mut nodes));
     h.frame(|ui| record(ui, 150.0, &mut nodes));
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .scratch
             .counters
@@ -1003,7 +1008,12 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
         "premise: the stable panel's measure hits the cache",
     );
     assert_eq!(
-        h.engines.layout.scratch.counters.arrange_replays().copied,
+        h.engines_mut()
+            .layout
+            .scratch
+            .counters
+            .arrange_replays()
+            .copied,
         ROWS as u32,
         "each row, arranged where it was, replays",
     );
@@ -1036,7 +1046,7 @@ fn fractional_offers_at_scale_one_and_a_half_match_cold() {
                 }
             });
     };
-    let mut h = UiHarness::with_text(UVec2::new(1501, 600)).scale(1.5);
+    let mut h = Harness::builder(UVec2::new(1501, 600)).scale(1.5).build();
     for (step, width) in [1501, 1502, 1501, 1503, 1502].into_iter().enumerate() {
         h.resize(UVec2::new(width, 600));
         h.frame(record);

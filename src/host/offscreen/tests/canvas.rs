@@ -5,7 +5,6 @@
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::OffscreenHost;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
@@ -87,7 +86,7 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
             .swapchain_present()
             .build();
         host.ui().theme_mut().window_clear = RgbaF32::BLACK;
-        host.core.backend.paint_as(traffic);
+        host.core.backend_mut().paint_as(traffic);
         host
     };
     let mut on_backbuffer = host(PassTraffic::Drawn);
@@ -97,7 +96,7 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
     let tile = Cell::new(RgbaF32::srgba(1.0, 0.0, 0.0, 0.5));
     for frame in 0..5 {
         tile.set(RgbaF32::srgba(1.0, 0.2 * frame as f32, 0.0, 0.5));
-        let mut app = RecordApp::new(|ui: &mut Ui| scene(ui, tile.get(), &mesh));
+        let mut app = |ui: &mut Ui| scene(ui, tile.get(), &mesh);
         let want = if frame == 0 {
             FramePaint::Full
         } else {

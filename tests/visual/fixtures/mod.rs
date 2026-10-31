@@ -29,9 +29,9 @@ use std::fmt;
 
 use palantir::{Configure, Panel, RgbaF32, Sizing, Ui};
 
-use crate::harness::FIXTURE_PALETTE;
+use crate::visual_rig::FIXTURE_PALETTE;
 
-/// The scene background: the suite palette's window color, `Harness::clear`'s default. Set `RgbaF32::BLACK` there for harder contrast.
+/// The scene background: the suite palette's window color, `VisualRig::clear`'s default. Set `RgbaF32::BLACK` there for harder contrast.
 pub(crate) const DARK_BG: RgbaF32 = FIXTURE_PALETTE.window_bg;
 
 /// Tolerance for a probed channel against its 8-bit sRGB value: linear `f32` through an `f16` tint into an 8-bit target errs only by the final rounding, within one step.

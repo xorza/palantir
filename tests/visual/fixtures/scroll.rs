@@ -8,7 +8,7 @@ use palantir::{
 
 use crate::golden_name::GoldenName;
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 const CARD: RgbaF32 = RgbaF32::srgb(0.16, 0.20, 0.28);
 const ROW: RgbaF32 = RgbaF32::srgb(0.42, 0.55, 0.78);
@@ -182,7 +182,7 @@ fn scroll_warm_cache_repaint_matches_the_cold_encode() {
             });
     }
 
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     // Both frames are pinned to `FramePaint::Full`: an unchanged scene would skip and compare a backbuffer to itself.
     let cold = h.size(UVec2::new(280, 200)).frame(scene);
     assert_eq!(cold.paint, FramePaint::Full);

@@ -1,17 +1,18 @@
 //! What GPU cases share: the window they draw into, and how they read device time back.
 
 use crate::gpu::bench_gpu::BenchGpu;
-use crate::host::headless_window::HeadlessWindow;
+use crate::host::harness::Harness;
 use glam::UVec2;
 use std::time::Duration;
 
 /// A window of `size` at scale 1 on `gpu` whose panels paint no theme chrome, so a GPU case's own
 /// draws are all a frame holds.
-pub(crate) fn plain_window(gpu: &BenchGpu, size: UVec2, collect_gpu_stats: bool) -> HeadlessWindow {
-    let mut window = HeadlessWindow::builder(gpu.handles())
+pub(crate) fn plain_window(gpu: &BenchGpu, size: UVec2, collect_gpu_stats: bool) -> Harness {
+    let mut window = Harness::builder(size)
         .swapchain_present()
         .collect_gpu_stats(collect_gpu_stats)
-        .open(size, 1.0);
+        .gpu(gpu.handles())
+        .build();
     window.ui().theme_mut().panel_chrome = None;
     window
 }

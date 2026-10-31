@@ -1,7 +1,7 @@
 //! A hugging grid: what an empty fill track collapses to, and what a nested
 //! floor pushes back.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -13,7 +13,7 @@ use glam::UVec2;
 
 #[test]
 fn grid_hug_grid_collapses_empty_fill_tracks() {
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()
@@ -43,7 +43,7 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
 
 #[test]
 fn hug_grid_fill_track_contributes_nested_rigid_floor() {
-    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let mut h = Harness::mono(UVec2::new(400, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -66,7 +66,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
             .node()
     });
 
-    let grid = h.ui.arranged_rect(Layer::Main, root);
+    let grid = h.ui().arranged_rect(Layer::Main, root);
     let cell = h.main_child_rects(root)[0];
     let rigid = h.arranged(WidgetId::from_hash("rigid"));
     assert_eq!(grid.size, Size::new(120.0, 20.0));
@@ -76,7 +76,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
 
 #[test]
 fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
-    let mut h = UiHarness::new(UVec2::new(300, 40));
+    let mut h = Harness::mono(UVec2::new(300, 40));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -124,7 +124,7 @@ fn hug_grid_fill_column_holds_its_wrapping_text() {
     use crate::text::wrap::TextWrap;
     use crate::widgets::text::Text;
 
-    let mut h = UiHarness::with_text(UVec2::new(600, 200));
+    let mut h = Harness::new(UVec2::new(600, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Grid::new()
@@ -143,7 +143,7 @@ fn hug_grid_fill_column_holds_its_wrapping_text() {
     });
     let grid = h.arranged(WidgetId::from_hash("hug-grid"));
     let label = h.arranged(WidgetId::from_hash("label"));
-    let shaped = h.ui.layout(Layer::Main).text_shapes[0].extent.size;
+    let shaped = h.ui().layout(Layer::Main).text_shapes[0].extent.size;
     assert_eq!(
         label.size.w, shaped.w,
         "the column is the label's one-line width"

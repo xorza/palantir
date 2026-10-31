@@ -2,10 +2,12 @@
 
 use glam::{UVec2, Vec2};
 
+use crate::host::harness::Harness;
+use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -48,7 +50,7 @@ fn items(ui: &mut Ui) -> Vec<TabItem> {
 }
 
 /// One frame of a three-chip strip, with `selected` capped.
-fn strip_frame(h: &mut UiHarness, selected: usize) {
+fn strip_frame(h: &mut Harness, selected: usize) {
     h.frame(|ui| {
         let items = items(ui);
         TabStrip::new(&items)
@@ -61,7 +63,7 @@ fn strip_frame(h: &mut UiHarness, selected: usize) {
 /// Chip ids come from the item key, not the slot, across reorders.
 #[test]
 fn chip_ids_follow_the_key_and_not_the_slot() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         let items = items(ui);
         TabStrip::new(&items)
@@ -107,7 +109,7 @@ fn chip_ids_follow_the_key_and_not_the_slot() {
 /// stands for in the ink the chip's look wears.
 #[test]
 fn the_content_records_inside_the_chip_before_its_close_button() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let alpha = TabStrip::chip_id(strip_id(), 10);
     let dot = alpha.with("dot");
     let mut handed = Vec::new();
@@ -142,7 +144,7 @@ fn the_content_records_inside_the_chip_before_its_close_button() {
         .rect(TabStrip::close_id(strip_id(), 10))
         .expect("the close button recorded");
     let chip = h.rect(alpha).expect("arranged");
-    let gap = h.ui.theme().tabs.label_gap;
+    let gap = h.ui().theme().tabs.label_gap;
     assert_eq!(
         (dot.min.x - label.max().x, close.min.x - dot.max().x),
         (gap, gap),
@@ -159,17 +161,17 @@ fn the_content_records_inside_the_chip_before_its_close_button() {
 /// from (12, 4) to (4, 12).
 #[test]
 fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
+    let mut h = Harness::mono(SURFACE);
+    h.ui().theme_mut().tabs.close_shown = CloseShown::Always;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
-    let theme = h.ui.theme();
+    let theme = h.ui().theme();
     let t = &theme.tabs;
     assert_eq!((t.close_size, t.close_glyph), (16.0, 8.0), "premise");
     let stroke = t.close_stroke;
     let ink = t.close.normal.text.apply(&theme.text).color.to_f16();
     let node = h.node_for_widget_id(TabStrip::close_id(strip_id(), 20));
-    let tree = h.ui.tree(Layer::Main);
+    let tree = h.ui().tree(Layer::Main);
     let mut lines = Vec::new();
     for shape in tree.shapes_of(node) {
         match shape {
@@ -206,8 +208,8 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
     let beta = TabStrip::chip_id(strip_id(), 20);
     let close = TabStrip::close_id(strip_id(), 20);
     let slot = close.with("slot");
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
+    let mut h = Harness::mono(SURFACE);
+    h.ui().theme_mut().tabs.close_shown = CloseShown::Always;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     let always = h.rect(beta).expect("arranged");
@@ -216,7 +218,7 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
         "premise: `Always` shows every button"
     );
 
-    h.ui.theme_mut().tabs.close_shown = CloseShown::SelectedOrHovered;
+    h.ui().theme_mut().tabs.close_shown = CloseShown::SelectedOrHovered;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     let rest = h.rect(beta).expect("arranged");
@@ -225,7 +227,7 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
         None,
         "no button on an unselected chip at rest"
     );
-    let close_size = h.ui.theme().tabs.close_size;
+    let close_size = h.ui().theme().tabs.close_size;
     let kept = h.rect(slot).expect("the button's box is kept");
     assert_eq!((kept.size.w, kept.size.h), (close_size, close_size));
     assert_eq!(
@@ -243,7 +245,7 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
         "the kept box senses nothing, so the pointer there reaches the chip",
     );
 
-    h.move_to(h.center_of(beta.with("label")));
+    h.hover(h.center_of(beta.with("label")));
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     assert_eq!(
@@ -257,7 +259,7 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
     // A widget of the content's that senses the pointer is within the chip, so the pointer on it
     // keeps the button.
     let pin = beta.with("pin");
-    let pinned = |h: &mut UiHarness| {
+    let pinned = |h: &mut Harness| {
         h.frame(|ui| {
             let items = items(ui);
             TabStrip::new(&items)
@@ -273,11 +275,11 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
                 });
         });
     };
-    h.move_to(Vec2::ZERO);
+    h.hover(Vec2::ZERO);
     pinned(&mut h);
     pinned(&mut h);
     assert_eq!(h.rect(close), None, "premise: the pointer left the chip");
-    h.move_to(h.center_of(pin));
+    h.hover(h.center_of(pin));
     pinned(&mut h);
     pinned(&mut h);
     assert_eq!(
@@ -297,8 +299,8 @@ fn a_hidden_close_keeps_its_box_until_the_pointer_shows_it() {
 /// color shows down a side.
 #[test]
 fn the_selection_cap_is_a_band_across_the_chip_top() {
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().tabs.min_width = 160.0;
+    let mut h = Harness::mono(SURFACE);
+    h.ui().theme_mut().tabs.min_width = 160.0;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     let chip = TabStrip::chip_id(strip_id(), 10);
@@ -309,13 +311,14 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
         "the cap grew the selected chip: {selected:?} against {plain:?}",
     );
 
-    let t = h.ui.theme().tabs.clone();
+    let t = h.ui().theme().tabs.clone();
     assert_eq!(selected.size.w, 160.0, "premise: the floor holds the chip");
     let fill = |id: WidgetId| {
-        let chrome =
-            h.ui.tree(Layer::Main)
-                .chrome(h.node_for_widget_id(id))
-                .expect("chrome recorded");
+        let chrome = h
+            .ui_ref()
+            .tree(Layer::Main)
+            .chrome(h.node_for_widget_id(id))
+            .expect("chrome recorded");
         let ShapeBrush::Solid(fill) = chrome.fill else {
             panic!("a solid fill");
         };
@@ -336,8 +339,8 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
 /// the strip keeps its height as closable tabs open and close beside it.
 #[test]
 fn a_pinned_chip_is_as_tall_as_a_closable_one() {
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().tabs.close_size = 30.0;
+    let mut h = Harness::mono(SURFACE);
+    h.ui().theme_mut().tabs.close_size = 30.0;
     for _ in 0..2 {
         h.frame(|ui| {
             let mut items = items(ui);
@@ -350,7 +353,7 @@ fn a_pinned_chip_is_as_tall_as_a_closable_one() {
     }
     let pinned = h.rect(TabStrip::chip_id(strip_id(), 10)).expect("arranged");
     let closable = h.rect(TabStrip::chip_id(strip_id(), 20)).expect("arranged");
-    let t = &h.ui.theme().tabs;
+    let t = &h.ui_ref().theme().tabs;
     let [_, pad_t, _, pad_b] = t.chip_padding.to_array();
     // The close box sets the height: its 30 px between the chip's top and bottom insets.
     assert_eq!(closable.size.h, 30.0 + pad_t + pad_b);
@@ -363,12 +366,12 @@ fn a_pinned_chip_is_as_tall_as_a_closable_one() {
 /// Close wins over activate when one press reaches both.
 #[test]
 fn a_close_click_reports_a_close_and_not_a_click() {
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
+    let mut h = Harness::mono(SURFACE);
+    h.ui().theme_mut().tabs.close_shown = CloseShown::Always;
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
 
-    h.click_on(TabStrip::close_id(strip_id(), 20));
+    h.click(TabStrip::close_id(strip_id(), 20));
     let hit = h.frame_value(|ui| {
         let items = items(ui);
         let r = TabStrip::new(&items)
@@ -387,11 +390,11 @@ fn a_close_click_reports_a_close_and_not_a_click() {
 /// A plain chip click reports its slot, and nothing else.
 #[test]
 fn a_chip_click_reports_its_slot() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
 
-    h.click_on(TabStrip::chip_id(strip_id(), 30));
+    h.click(TabStrip::chip_id(strip_id(), 30));
     let hit = h.frame_value(|ui| {
         let items = items(ui);
         let r = TabStrip::new(&items)
@@ -406,13 +409,13 @@ fn a_chip_click_reports_its_slot() {
 /// Keyboard travel (WAI-ARIA tabs), reported apart from a pointer click.
 #[test]
 fn arrows_home_and_end_travel_and_wrap() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     h.set_focus(strip_id());
     strip_frame(&mut h, 0);
 
-    let travel = |h: &mut UiHarness, key: Key, mods: Modifiers, selected: usize| {
+    let travel = |h: &mut Harness, key: Key, mods: Modifiers, selected: usize| {
         h.set_modifiers(mods);
         h.key(key);
         let hit = h.frame_value(|ui| {
@@ -494,7 +497,7 @@ fn arrows_home_and_end_travel_and_wrap() {
 fn a_keyboard_move_pans_the_band_to_the_chip() {
     use crate::primitives::math::domain::EPS;
 
-    let record = |h: &mut UiHarness, selected: usize| {
+    let record = |h: &mut Harness, selected: usize| {
         h.frame_value(|ui| {
             let items = items(ui);
             TabStrip::new(&items)
@@ -505,10 +508,10 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
                 .keyed
         })
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     record(&mut h, 0);
     record(&mut h, 0);
-    let in_clip = |h: &mut UiHarness| {
+    let in_clip = |h: &mut Harness| {
         let padding = h.ui().theme().tabs.strip_padding;
         let clip = h
             .rect(strip_id().with("band"))
@@ -557,11 +560,11 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
                         .show(ui);
                 });
         };
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.prime(2, build);
-        h.move_to(Vec2::new(40.0, 10.0));
+        h.hover(Vec2::new(40.0, 10.0));
 
-        h.scroll_pixels(Vec2::new(20.0, 0.0));
+        h.on_input(InputEvent::ScrollPixels(Vec2::new(20.0, 0.0)));
         h.frame(build);
         assert_eq!(
             h.state::<ScrollState>(band).offset().x,
@@ -569,7 +572,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
             "{label}: wheel x"
         );
         // What a Linux host makes of Shift+wheel y.
-        h.scroll_pixels(Vec2::new(10.0, 0.0));
+        h.on_input(InputEvent::ScrollPixels(Vec2::new(10.0, 0.0)));
         h.frame(build);
         assert_eq!(
             h.state::<ScrollState>(band).offset().x,
@@ -577,7 +580,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
             "{label}: Shift+wheel"
         );
 
-        h.scroll_pixels(Vec2::new(0.0, 25.0));
+        h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
         h.frame(build);
         assert_eq!(
             h.state::<ScrollState>(page).offset().y,
@@ -595,7 +598,7 @@ fn an_overflowing_strip_pans_sideways_and_chains_a_vertical_wheel() {
 /// Travel is scoped to focus.
 #[test]
 fn travel_needs_focus_inside_the_strip() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     strip_frame(&mut h, 0);
     strip_frame(&mut h, 0);
     h.clear_focus();
@@ -642,7 +645,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
         (ctrl, ShortcutMods::CTRL, (false, Some(1))),
     ] {
         let probe = Shortcut::new(probe_mods, Key::Tab);
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             scene(ui, probe);
         });
@@ -697,21 +700,21 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
                 .show(ui, |ui, chip| chip.show_label(ui));
         }
     };
-    let extent = |h: &UiHarness, key: u64| {
+    let extent = |h: &Harness, key: u64| {
         let chip = TabStrip::chip_id(strip_id(), key);
         h.transform(chip).apply_rect(h.arranged(chip))
     };
-    let clip = |h: &UiHarness| {
+    let clip = |h: &Harness| {
         h.rect(strip_id().with("band"))
             .expect("the band arranged")
             .deflated_by(theme.strip_padding)
     };
-    let mark = |h: &UiHarness, x: f32| {
+    let mark = |h: &Harness, x: f32| {
         let clip = clip(h);
         Rect::new(x - width * 0.5, clip.min.y, width, clip.size.h)
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, build(1));
     let gutter = extent(&h, 20).min.x - half_gap;
     assert!(
@@ -734,8 +737,8 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
         "the append, held at the band's right edge"
     );
 
-    h.move_to(Vec2::new(40.0, 10.0));
-    h.scroll_pixels(Vec2::new(30.0, 0.0));
+    h.hover(Vec2::new(40.0, 10.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(30.0, 0.0)));
     h.prime(2, build(0));
     let uncut = extent(&h, 10);
     let seen = h
@@ -751,7 +754,10 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
         0,
         "the cut rect has not been passed"
     );
-    assert_eq!(TabStrip::drop_slot(&h.ui, strip_id(), [10, 20, 30], x), 1);
+    assert_eq!(
+        TabStrip::drop_slot(h.ui_ref(), strip_id(), [10, 20, 30], x),
+        1
+    );
     assert_eq!(
         h.rect(caret),
         Some(mark(&h, clip(&h).min.x)),
@@ -764,7 +770,7 @@ const PAGES: [&str; 3] = ["Color", "Geometry", "Metadata"];
 /// Clicking a chip writes the bound index and records the page the same frame.
 #[test]
 fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let view = WidgetId::from_hash("test.view");
     let mut page = 0usize;
     let mut drawn = 0usize;
@@ -784,7 +790,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     assert_eq!((page, drawn), (0, 0));
 
     let strip = view.with("strip");
-    h.click_on(TabStrip::chip_id(strip, 2));
+    h.click(TabStrip::chip_id(strip, 2));
     let action = h.frame_value(|ui| record(ui, &mut page, &mut drawn));
     assert_eq!(action, Some(TabsAction::Activated { idx: 2 }));
     assert_eq!(
@@ -802,7 +808,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
 /// an empty list records a strip with no page.
 #[test]
 fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let view = WidgetId::from_hash("test.stale");
     let mut page = 7usize;
     let mut drawn = None;
@@ -830,14 +836,14 @@ fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
 /// A strip's selection is coerced the same way.
 #[test]
 fn a_stale_strip_selection_caps_the_last_chip() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     strip_frame(&mut h, 9);
     let capped = |key: u64| {
         let node = h
             .node_of(TabStrip::chip_id(strip_id(), key))
             .expect("chip")
             .node;
-        h.ui.tree(Layer::Main).chrome(node).is_some()
+        h.ui().tree(Layer::Main).chrome(node).is_some()
     };
     assert_eq!([10, 20, 30].map(capped), [false, false, true]);
 }
@@ -847,7 +853,7 @@ fn a_stale_strip_selection_caps_the_last_chip() {
 /// are no move, off-strip is no drop.
 #[test]
 fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
-    type Release = fn(&UiHarness, WidgetId) -> Vec2;
+    type Release = fn(&Harness, WidgetId) -> Vec2;
 
     let view = WidgetId::from_hash("test.reorder");
     let strip = view.with("strip");
@@ -893,17 +899,17 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
         ),
     ];
     for (label, release, want, page_after) in rows {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let mut page = 0usize;
         h.prime(2, |ui| {
             record(ui, &mut page);
         });
-        h.press_on(TabStrip::chip_id(strip, 0));
+        h.press(TabStrip::chip_id(strip, 0), PointerButton::Left);
         h.drag_to(release(&h, strip));
         h.frame(|ui| {
             record(ui, &mut page);
         });
-        h.release();
+        h.release(PointerButton::Left);
         let action = h.frame_value(|ui| record(ui, &mut page));
         assert_eq!(action, want, "{label}");
         assert_eq!(page, page_after, "{label}: the bound page");
@@ -924,12 +930,12 @@ fn an_escape_cancels_a_view_drag_and_its_caret() {
             .show(ui, |_, _| {})
             .action
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut page = 0usize;
     h.prime(2, |ui| {
         record(ui, &mut page);
     });
-    h.press_on(TabStrip::chip_id(strip, 0));
+    h.press(TabStrip::chip_id(strip, 0), PointerButton::Left);
     let onto = h.center_of(TabStrip::chip_id(strip, 2));
     h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
     h.prime(2, |ui| {
@@ -942,7 +948,7 @@ fn an_escape_cancels_a_view_drag_and_its_caret() {
         record(ui, &mut page);
     });
     assert!(h.rect(caret).is_none(), "Escape takes the caret away");
-    h.release();
+    h.release(PointerButton::Left);
     assert_eq!(h.frame_value(|ui| record(ui, &mut page)), None);
     assert_eq!(page, 0, "the cancelled drag moved nothing");
 }
@@ -976,12 +982,12 @@ fn a_close_moves_the_binding_with_the_shown_page() {
         let mut bound = page;
         let mut pages = PAGES.to_vec();
         let mut drawn = "";
-        let mut h = UiHarness::new(SURFACE);
-        h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
+        let mut h = Harness::mono(SURFACE);
+        h.ui().theme_mut().tabs.close_shown = CloseShown::Always;
         h.prime(2, |ui| {
             record(ui, &mut bound, &mut pages, &mut drawn);
         });
-        h.click_on(TabStrip::close_id(strip, u64::try_from(closed).unwrap()));
+        h.click(TabStrip::close_id(strip, u64::try_from(closed).unwrap()));
         let action = h.frame_value(|ui| record(ui, &mut bound, &mut pages, &mut drawn));
         assert_eq!(action, Some(TabsAction::Closed { idx: closed }));
         assert_eq!(bound, want, "showing {page}, closing {closed}");
@@ -1012,7 +1018,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
             .action
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut page = 0usize;
     h.prime(2, |ui| {
         record(ui, &mut page, &PAGES);
@@ -1033,18 +1039,18 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     );
     assert!(geometry_after.min.x < geometry_before.min.x);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut page = 0usize;
     h.prime(2, |ui| {
         record(ui, &mut page, &PAGES);
     });
-    h.press_on(chip("Color"));
+    h.press(chip("Color"), PointerButton::Left);
     let onto = h.center_of(chip("Metadata"));
     h.drag_to(Vec2::new(onto.x + 4.0, onto.y));
     h.frame(|ui| {
         record(ui, &mut page, &PAGES);
     });
-    h.release();
+    h.release(PointerButton::Left);
     let action = h.frame_value(|ui| record(ui, &mut page, &PAGES));
     assert_eq!(action, Some(TabsAction::Reordered { from: 0, to: 3 }));
     assert_eq!(page, 2, "the bound page followed Color to the end");
@@ -1103,7 +1109,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     let last = TabStrip::chip_id(strip_id(), 30);
 
     // Wide enough for all three: no chip is cut, and no chevron.
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, build(SURFACE.x as f32));
     let whole = h.arranged(last);
     let strip_left = h.arranged(strip_id()).min.x;
@@ -1114,7 +1120,7 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
 
     // Half of the last chip, measured from the strip's own left edge.
     let half_way = whole.min.x + whole.size.w * 0.5 - strip_left;
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, build(half_way));
     assert!(
         h.rect(chevron).is_some(),
@@ -1123,17 +1129,18 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     // Three dots in the cross's proportions: the stock 8 px cross at a 1.5 px stroke spaces them
     // 8 · 7 / 12 ≈ 4.67 apart about the 16 px button's center, each 2 · 1.5 = 3 across.
     let node = h.node_for_widget_id(chevron);
-    let dots: Vec<Rect> =
-        h.ui.tree(Layer::Main)
-            .shapes_of(node)
-            .filter_map(|shape| match shape {
-                ShapeRecord::Quad(QuadShape::Rect {
-                    local_rect: Some(rect),
-                    ..
-                }) => Some(*rect),
-                _ => None,
-            })
-            .collect();
+    let dots: Vec<Rect> = h
+        .ui()
+        .tree(Layer::Main)
+        .shapes_of(node)
+        .filter_map(|shape| match shape {
+            ShapeRecord::Quad(QuadShape::Rect {
+                local_rect: Some(rect),
+                ..
+            }) => Some(*rect),
+            _ => None,
+        })
+        .collect();
     let pitch = 8.0 * 7.0 / 12.0;
     assert_eq!(
         dots,
@@ -1141,9 +1148,9 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     );
 
     // The chevron opens the menu; its row reports a menu pick, which `activated` merges.
-    h.click_on(chevron);
+    h.click(chevron);
     h.frame(build(half_way));
-    h.click_on(strip_id().with("overflow").with(30u64));
+    h.click(strip_id().with("overflow").with(30u64));
     let picked = h.frame_value(|ui| {
         let items = items(ui);
         let r = TabStrip::new(&items)
@@ -1157,16 +1164,16 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     assert_eq!(picked, (Some(2), None, Some(2)));
 
     // Menu state is the chevron's: it comes back closed.
-    h.click_on(chevron);
+    h.click(chevron);
     h.frame(build(half_way));
     assert!(
-        PopupTrigger::is_open(&h.ui, chevron),
+        PopupTrigger::is_open(h.ui_ref(), chevron),
         "premise: the menu is open"
     );
     h.frame(|_| {});
     h.frame(build(half_way));
     assert!(
-        !PopupTrigger::is_open(&h.ui, chevron),
+        !PopupTrigger::is_open(h.ui_ref(), chevron),
         "the strip came back with its menu closed"
     );
 }

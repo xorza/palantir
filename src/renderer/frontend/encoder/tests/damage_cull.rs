@@ -1,7 +1,7 @@
 //! Which draws survive a partial frame's damage filter.
 
 use crate::damage::region::DamageRegion;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -26,7 +26,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
         ("inside_filter_kept", Rect::new(0.0, 0.0, 200.0, 200.0), 2),
     ];
     for (label, filter, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Block::new()
@@ -63,7 +63,7 @@ fn damage_filter_culls_subtree_outside_damage() {
         ),
     ];
     for (label, wrap, kept) in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let inner = |ui: &mut Ui| {
@@ -101,7 +101,7 @@ fn damage_filter_culls_subtree_outside_damage() {
 
 #[test]
 fn damage_filter_paints_leaves_in_any_rect() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
@@ -149,7 +149,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
 
     for cull in [Cull::Viewport, Cull::Damage] {
         let display = Display::from_physical(UVec2::new(100, 100), 1.0);
-        let mut h = UiHarness::new(display.physical);
+        let mut h = Harness::mono(display.physical);
         h.at(HALF).frame(|ui| {
             Panel::canvas()
                 .auto_id()
@@ -186,13 +186,14 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
                 });
         });
 
-        let animated: Vec<u32> =
-            h.ui.tree(Layer::Main)
-                .paint_animations
-                .entries
-                .iter()
-                .map(|entry| entry.shape_idx)
-                .collect();
+        let animated: Vec<u32> = h
+            .ui()
+            .tree(Layer::Main)
+            .paint_animations
+            .entries
+            .iter()
+            .map(|entry| entry.shape_idx)
+            .collect();
         assert_eq!(animated, [0, 1]);
         let cmds = match cull {
             Cull::Viewport => h.encode_paint(),
@@ -219,7 +220,7 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
 /// Soundness repro: the damage cull must test `PlaneCascade::subtree_paint_rects` (own extent rolled up with descendants'), or a descendant overflowing its parent is skipped though its pixels lie in damage (panning a node graph left stale trails). Parent Canvas Fixed 50×50, child Fixed 40×40 `.pos(60, 0)`, damage = the child's rect: the child must emit a rect quad.
 #[test]
 fn damage_filter_includes_descendant_overflowing_parent_rect() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
@@ -260,7 +261,7 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
         ("beyond_pad_gap_10", Rect::new(60.0, 100.0, 30.0, 20.0), 0),
     ];
     for (label, damage, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::canvas()
                 .auto_id()

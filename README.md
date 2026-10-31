@@ -50,8 +50,8 @@ declaration, good-looking and fast. I made it.
   image: it clips, rounds and z-orders with everything else.
 - **Embeddable** — the winit host owns the window by default; `OffscreenHost`
   renders into a `wgpu::Texture` you supply, inside an event loop you own.
-- **Headless UI tests** — `UiHarness` runs the real UI with no window and no
-  GPU. See [Testing](#testing).
+- **Headless UI tests** — `Harness` runs the real UI with no window, and a GPU
+  only when a test wants pixels. See [Testing](#testing).
 
 ## See it
 
@@ -205,29 +205,26 @@ set `-C target-feature=+f16c` instead, for an Ivy Bridge (2012) floor.
 
 ### Headless UI tests
 
-Turn on the `internals` feature and `UiHarness` drives your interface with
-no window, no GPU and no event loop. It records frames, feeds synthetic
-input, and reads the result back. A whole interaction test costs
-microseconds, so UI behavior stays a plain `cargo test`.
+`Harness` drives your interface with no window, no GPU and no event loop. It
+records frames, feeds synthetic input, and reads the result back. A whole
+interaction test costs microseconds, so UI behavior stays a plain `cargo test`.
 
-- **Act like a user** — `click_on(id)`, `right_click_at(pos)`, `drag_to`,
-  `scroll_lines`, `pinch`, `type_text("hi")`, `key`, `set_modifiers`.
-- **Ask what happened** — a widget's arranged rect, center and response,
-  the widget at a point, focus, and the clipboard.
+- **Act like a user** — `click("Save")` by text, `click(id)` by id or
+  `click(point)`, `right_click`, `drag_to`, `scroll_lines`, `pinch`,
+  `type_text("hi")`, `key("ctrl+z".parse()?)`, `set_modifiers`.
+- **Ask what happened** — a widget's arranged rect and response, the widget at
+  a point, the visible widgets and their text, and the clipboard.
 - **Own the clock** — step animations frame by frame, or move past the
   double-click window. Every run is deterministic.
 - **Pick the surface** — size, DPI scale, user scale, pixel snap, refresh
   rate. Test a 4K HiDPI layout on any machine.
-
-```toml
-[dev-dependencies]
-palantir = { version = "*", features = ["internals"] }
-```
+- **Play it as a person** — `play` runs a list of `Action`s, settling after
+  each, and with a GPU (`Harness::builder(size).gpu(gpu)`) `shot` returns the
+  window's pixels.
 
 ```rust
 use palantir::glam::UVec2;
-use palantir::internals::ui_harness::UiHarness;
-use palantir::{Button, Configure, Ui, WidgetId};
+use palantir::{Button, Configure, Harness, Ui, WidgetId};
 
 let inc = WidgetId::from_hash("inc");
 let mut clicks = 0_u32;
@@ -237,15 +234,13 @@ let mut screen = |ui: &mut Ui| {
     }
 };
 
-let mut h = UiHarness::new(UVec2::new(400, 200));
+let mut h = Harness::new(UVec2::new(400, 200));
 h.prime(2, &mut screen);
-h.click_on(inc);
+h.click("click me");
 h.frame(&mut screen);
 
 assert_eq!(clicks, 1);
 ```
-
-`internals` is not a supported API: it can change in any release.
 
 ### Golden images
 

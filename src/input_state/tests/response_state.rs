@@ -1,4 +1,5 @@
 use crate::cascade::Cascade;
+use crate::host::harness::Harness;
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
 use crate::input::interaction::drag::Drag;
@@ -12,7 +13,6 @@ use crate::input_state::arranged_frame::ArrangedFrame;
 use crate::input_state::capture::{Press, PressDrag, Release, ReleaseKind};
 use crate::input_state::target_scroll_delta::TargetScrollDelta;
 use crate::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -37,23 +37,23 @@ fn build_focusable_leaf(ui: &mut Ui) {
 
 #[test]
 fn focused_reflects_focused_id_synchronously() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(build_focusable_leaf);
-    assert!(!h.ui.response_for(focusable_id()).focused);
+    assert!(!h.ui().response_for(focusable_id()).focused);
 
     h.set_focus(focusable_id());
     assert!(
-        h.ui.response_for(focusable_id()).focused,
+        h.ui().response_for(focusable_id()).focused,
         "focused must be true the same frame as set_focus",
     );
 
     h.clear_focus();
-    assert!(!h.ui.response_for(focusable_id()).focused);
+    assert!(!h.ui().response_for(focusable_id()).focused);
 }
 
 #[test]
 fn disabled_reflects_cascaded_ancestor_flag() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("parent"))
@@ -67,8 +67,8 @@ fn disabled_reflects_cascaded_ancestor_flag() {
     };
     h.prime(2, build);
 
-    let parent_state = h.ui.response_for(WidgetId::from_hash("parent"));
-    let child_state = h.ui.response_for(WidgetId::from_hash("child"));
+    let parent_state = h.ui().response_for(WidgetId::from_hash("parent"));
+    let child_state = h.ui().response_for(WidgetId::from_hash("child"));
     assert!(parent_state.disabled);
     assert!(
         child_state.disabled,
@@ -124,7 +124,7 @@ fn folding_disabled_in_drops_the_interaction_half_at_every_fold() {
 
 #[test]
 fn disabled_false_when_chain_clean() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("parent"))
@@ -136,7 +136,7 @@ fn disabled_false_when_chain_clean() {
             });
     };
     h.prime(2, build);
-    assert!(!h.ui.response_for(WidgetId::from_hash("child")).disabled);
+    assert!(!h.ui().response_for(WidgetId::from_hash("child")).disabled);
 }
 
 /// A departed pointer clears every routed target, which lets `snapshot_frame_quiescent` test one field instead of four.
@@ -215,11 +215,11 @@ fn frame_quiescent_predicate() {
 /// On a quiescent frame `response_for` keeps the rect and defaults the interaction fields.
 #[test]
 fn quiescent_frame_keeps_geometry_defaults_interaction() {
-    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let mut h = Harness::mono(BUTTON_SURFACE);
     let id = WidgetId::from_hash("btn");
     h.frame(build_button(id));
 
-    let r = h.ui.response_for(id);
+    let r = h.ui().response_for(id);
     let placed = Rect::new(0.0, 0.0, 100.0, 40.0);
     assert_eq!(
         r.rect,
@@ -244,15 +244,15 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
 /// With the pointer over a widget the frame is non-quiescent and the widget-local pointer is computed.
 #[test]
 fn non_quiescent_frame_computes_interaction() {
-    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let mut h = Harness::mono(BUTTON_SURFACE);
     let id = WidgetId::from_hash("btn");
     h.frame(build_button(id));
 
     let pointer = Vec2::new(50.0, 20.0);
-    h.move_to(pointer);
+    h.hover(pointer);
     h.frame(build_button(id));
 
-    let r = h.ui.response_for(id);
+    let r = h.ui().response_for(id);
     let layout_rect = r.layout_rect.expect("arranged layout rect present");
     assert!(
         r.hovered(),
@@ -272,7 +272,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
     let local_delta = Vec2::new(12.0, -8.0);
 
     for scale in [0.5, 1.0, 2.0] {
-        let mut h = UiHarness::new(UVec2::new(300, 200));
+        let mut h = Harness::mono(UVec2::new(300, 200));
         let build = |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scaled-parent"))
@@ -284,17 +284,17 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
         };
         h.frame(build);
 
-        let arranged = h.ui.response_for(id);
+        let arranged = h.ui().response_for(id);
         let layout = arranged.layout_rect.expect("button arranged");
         let press = arranged.transform.apply_point(layout.min + local_pointer);
         let pointer = arranged
             .transform
             .apply_point(layout.min + local_pointer + local_delta);
-        h.press_at(press);
-        h.move_to(pointer);
+        h.press(press, PointerButton::Left);
+        h.hover(pointer);
         h.frame(build);
 
-        let response = h.ui.response_for(id);
+        let response = h.ui().response_for(id);
         assert_eq!(
             response.pointer_local,
             Some(local_pointer + local_delta),
@@ -310,7 +310,7 @@ fn pointer_and_drag_vectors_are_scale_invariant() {
 
 #[test]
 fn pointer_local_uses_unclipped_widget_origin() {
-    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let mut h = Harness::mono(BUTTON_SURFACE);
     let id = WidgetId::from_hash("clipped-child");
     let build = |ui: &mut Ui| {
         Panel::canvas()
@@ -327,7 +327,7 @@ fn pointer_local_uses_unclipped_widget_origin() {
     };
     h.frame(build);
 
-    let arranged = h.ui.response_for(id);
+    let arranged = h.ui().response_for(id);
     let visible = arranged.rect.expect("child visible through clip");
     let layout = arranged.layout_rect.expect("child arranged");
     let surface_origin = arranged.transform.apply_point(layout.min);
@@ -337,9 +337,9 @@ fn pointer_local_uses_unclipped_widget_origin() {
     );
 
     let pointer = visible.min + Vec2::new(10.0, 10.0);
-    h.move_to(pointer);
+    h.hover(pointer);
     h.frame(build);
-    let response = h.ui.response_for(id);
+    let response = h.ui().response_for(id);
     assert_eq!(
         response.pointer_local,
         Some(response.transform.inverse_vector(pointer - surface_origin)),
@@ -349,17 +349,17 @@ fn pointer_local_uses_unclipped_widget_origin() {
 /// The quiescent and non-quiescent paths must agree on every field they both own; toggles only `frame_quiescent`.
 #[test]
 fn quiescent_and_full_paths_agree_on_geometry() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(build_focusable_leaf);
 
     // Drives `InputState` directly against the frozen cascade, flipping only the quiescent bit.
     let mut s = InputState::default();
     s.set_focus(Some(focusable_id()));
 
-    let at = h.ui.cascade().locate(focusable_id());
+    let at = h.ui().cascade().locate(focusable_id());
     let frame = ArrangedFrame {
-        cascade: h.ui.cascade(),
-        layout: h.ui.layout_tables(),
+        cascade: h.ui_ref().cascade(),
+        layout: h.ui_ref().layout_tables(),
     };
     s.frame_quiescent = true;
     let quiet = s.response_for(focusable_id(), at, frame);

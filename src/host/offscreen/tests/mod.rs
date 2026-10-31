@@ -9,7 +9,6 @@ use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::window_driver::DriverConfig;
 use crate::host::window_driver::PresentPath;
 use crate::internals::panic_probe;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -97,7 +96,7 @@ fn a_manual_host_stamps_frames_with_the_time_it_was_moved_to() {
         .time(OffscreenTime::Manual)
         .build();
     let texture = gpu.target("palantir.offscreen.time", UVec2::new(8, 8));
-    let mut app = RecordApp::new(|ui: &mut Ui| ui.request_repaint_after(Duration::from_secs(1)));
+    let mut app = |ui: &mut Ui| ui.request_repaint_after(Duration::from_secs(1));
     let mut wake =
         |host: &mut OffscreenHost| host.frame(texture.as_target(), 1.0, &mut app).repaint_after;
     assert_eq!(
@@ -132,17 +131,19 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
     host.ui().theme_mut().window_clear = RgbaF32::BLACK;
     let texture = gpu.target("palantir.offscreen.retained", UVec2::new(32, 8));
     let color = Cell::new(RgbaF32::WHITE);
-    let mut app = RecordApp::new(|ui: &mut Ui| {
+    let mut app = |ui: &mut Ui| {
         Block::new()
             .id_salt("tile")
             .size(4.0)
             .chrome(Chrome::fill(color.get()))
             .show(ui);
-    });
+    };
     let mut frame = |host: &mut OffscreenHost| {
         let target = texture.as_target();
         let spec = host.spec(target, 1.0);
-        let CpuFrame { mode, .. } = host.core.record(&mut host.driver, spec, &mut app);
+        let CpuFrame { mode, .. } =
+            host.core
+                .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
         host.core.submit(&mut host.driver, target, mode);
         mode
     };
@@ -244,8 +245,11 @@ fn a_retained_target_keeps_no_damage_outline() {
         });
         let target = texture.as_target();
         let spec = retained.spec(target, 1.0);
-        let mut app = RecordApp::new(scene(frame % 2 == 1));
-        let CpuFrame { mode, .. } = retained.core.record(&mut retained.driver, spec, &mut app);
+        let mut app = scene(frame % 2 == 1);
+        let CpuFrame { mode, .. } =
+            retained
+                .core
+                .record(&mut retained.driver, spec, &mut app, FrameDepth::Paint);
         let what = format!("frame {frame}: {mode:?}");
         let (route, plan) = match mode {
             PresentPath::ViaBackbuffer(plan) => (true, plan),
@@ -257,11 +261,7 @@ fn a_retained_target_keeps_no_damage_outline() {
         retained.core.submit(&mut retained.driver, target, mode);
     }
     let reference = gpu.target("palantir.offscreen.unoutlined", UVec2::new(32, 16));
-    host(false).frame(
-        reference.as_target(),
-        1.0,
-        &mut RecordApp::new(scene(false)),
-    );
+    host(false).frame(reference.as_target(), 1.0, &mut scene(false));
     assert_eq!(texture.read_back(), reference.read_back());
 }
 
@@ -301,8 +301,10 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
     ] {
         let target = texture.as_target();
         let spec = host.spec(target, 1.0);
-        let mut app = RecordApp::new(scene(under, away));
-        let CpuFrame { mode, .. } = host.core.record(&mut host.driver, spec, &mut app);
+        let mut app = scene(under, away);
+        let CpuFrame { mode, .. } =
+            host.core
+                .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
         let what = format!("under {under}, away {away}: {mode:?}");
         let (route, plan) = match mode {
             PresentPath::ViaBackbuffer(plan) => (true, plan),
@@ -323,18 +325,20 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
         .shaper(TextShaper::test_mono())
         .build();
     let texture = gpu.target("palantir.offscreen.validity", UVec2::new(64, 48));
-    let mut app = RecordApp::new(|ui: &mut Ui| {
+    let mut app = |ui: &mut Ui| {
         Block::new()
             .id_salt("tile")
             .size(10.0)
             .chrome(Chrome::fill(RgbaF32::WHITE))
             .show(ui);
-    });
+    };
 
     for (frame, paints) in [(0, true), (1, false)] {
         let target = texture.as_target();
         let spec = host.spec(target, 1.0);
-        let CpuFrame { mode, .. } = host.core.record(&mut host.driver, spec, &mut app);
+        let CpuFrame { mode, .. } =
+            host.core
+                .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
         assert_eq!(
             matches!(mode, PresentPath::Direct(_) | PresentPath::ViaBackbuffer(_)),
             paints,
@@ -379,15 +383,17 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
 
     let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
     let spec = host.spec(large.as_target(), 1.0);
-    let mut asking = RecordApp::new(|ui: &mut Ui| scene(ui, true));
-    let CpuFrame { report, .. } = host.core.record(&mut host.driver, spec, &mut asking);
+    let mut asking = |ui: &mut Ui| scene(ui, true);
+    let CpuFrame { report, .. } =
+        host.core
+            .record(&mut host.driver, spec, &mut asking, FrameDepth::Paint);
     assert!(
         report.repaint_requested,
         "the unpainted request asks for a frame"
     );
 
     let small = gpu.target("palantir.offscreen.capture.small", UVec2::new(32, 24));
-    let mut still = RecordApp::new(|ui: &mut Ui| scene(ui, false));
+    let mut still = |ui: &mut Ui| scene(ui, false);
     host.frame(small.as_target(), 1.0, &mut still);
     let target = small.read_back();
     host.wait_for_gpu();
@@ -415,16 +421,18 @@ fn a_carried_request_the_window_shrank_past_lands_nothing() {
     let asked = Cell::new(None);
     let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
     let spec = host.spec(large.as_target(), 1.0);
-    let mut asking = RecordApp::new(|ui: &mut Ui| {
+    let mut asking = |ui: &mut Ui| {
         asked.set(ui.request_screenshot(Some(Rect::new(40.0, 30.0, 10.0, 10.0))));
-    });
-    let _ = host.core.record(&mut host.driver, spec, &mut asking);
+    };
+    let _ = host
+        .core
+        .record(&mut host.driver, spec, &mut asking, FrameDepth::Paint);
     let id = asked
         .get()
         .expect("the region has pixels in the large window");
 
     let small = gpu.target("palantir.offscreen.capture.small", UVec2::new(32, 24));
-    let mut still = RecordApp::new(|_: &mut Ui| {});
+    let mut still = |_: &mut Ui| {};
     host.frame(small.as_target(), 1.0, &mut still);
     host.wait_for_gpu();
     host.frame(small.as_target(), 1.0, &mut still);

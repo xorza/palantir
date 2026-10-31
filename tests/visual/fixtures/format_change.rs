@@ -17,7 +17,7 @@ use palantir::{
 use wgpu::TextureFormat;
 
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// A scene touching several format-dependent pipelines: a bordered rounded frame around a labeled button.
 fn scene(ui: &mut Ui) {
@@ -47,7 +47,7 @@ fn scene(ui: &mut Ui) {
 /// after BGRA reordering every render matches the first.
 #[test]
 fn format_changes_render_identically() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     h.size(UVec2::new(200, 120));
     let before = h.format(TextureFormat::Rgba8UnormSrgb).frame(scene).image;
 
@@ -98,7 +98,7 @@ fn image_scene(ui: &mut Ui, image: &ImageHandle) {
 /// texture (`Rgba8UnormSrgb`): no drop or re-upload, identical pixels.
 #[test]
 fn images_survive_format_change_without_reupload() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let image = h
         .host
         .ui()
@@ -139,7 +139,7 @@ fn images_survive_format_change_without_reupload() {
 #[test]
 #[should_panic(expected = "a render target's format must be sRGB or float")]
 fn a_unorm_target_is_refused() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let _ = h
         .size(UVec2::new(32, 32))
         .format(TextureFormat::Rgba8Unorm)

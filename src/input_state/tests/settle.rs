@@ -5,9 +5,10 @@ use std::time::Duration;
 
 use glam::{UVec2, Vec2};
 
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::input::watch::PointerWake;
 use crate::input_state::capture::DRAG_THRESHOLD;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -35,12 +36,12 @@ fn button_watching_buttons(ui: &mut Ui) {
 
 #[derive(Debug)]
 struct Warm {
-    h: UiHarness,
+    h: Harness,
     button: Rect,
 }
 
 fn warm(record: fn(&mut Ui)) -> Warm {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(record);
     let rect = h
         .rect(button_id())
@@ -49,7 +50,7 @@ fn warm(record: fn(&mut Ui)) -> Warm {
 }
 
 /// Record passes the next frame (16 ms on) runs: 1 for no settle, 2 for a settle.
-fn passes(h: &mut UiHarness, record: fn(&mut Ui)) -> usize {
+fn passes(h: &mut Harness, record: fn(&mut Ui)) -> usize {
     let mut n = 0;
     let _ = h.advance(Duration::from_millis(16)).frame(|ui| {
         n += 1;
@@ -64,7 +65,7 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
         mut h,
         button: rect,
     } = warm(button);
-    h.press_at(rect.center());
+    h.press(rect.center(), PointerButton::Left);
     assert_eq!(
         passes(&mut h, button),
         1,
@@ -76,7 +77,7 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
         mut h,
         button: rect,
     } = warm(button_watching_buttons);
-    h.press_at(rect.center());
+    h.press(rect.center(), PointerButton::Left);
     assert_eq!(
         passes(&mut h, button_watching_buttons),
         2,
@@ -84,7 +85,7 @@ fn a_bare_press_does_not_settle_but_a_watched_one_does() {
     );
 
     let Warm { mut h, .. } = warm(button);
-    h.press_at(Vec2::new(180.0, 180.0));
+    h.press(Vec2::new(180.0, 180.0), PointerButton::Left);
     assert_eq!(
         passes(&mut h, button),
         1,
@@ -99,9 +100,9 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
         mut h,
         button: rect,
     } = warm(button);
-    h.press_at(rect.center());
+    h.press(rect.center(), PointerButton::Left);
     h.frame(button);
-    h.release();
+    h.release(PointerButton::Left);
     assert_eq!(passes(&mut h, button), 2, "a click settles");
 
     // A miss stays under DRAG_THRESHOLD, else it would be a `DragStopped`.
@@ -115,10 +116,10 @@ fn a_missed_release_does_not_settle_but_a_click_does() {
         !rect.contains(off) && edge.distance(off) < DRAG_THRESHOLD,
         "the probe must leave the button without latching a drag: {rect:?} → {off:?}",
     );
-    h.press_at(edge);
-    h.move_to(off);
+    h.press(edge, PointerButton::Left);
+    h.hover(off);
     h.frame(button);
-    h.release();
+    h.release(PointerButton::Left);
     assert_eq!(
         passes(&mut h, button),
         1,
@@ -134,24 +135,24 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
         button: rect,
     } = warm(button);
     let origin = rect.center();
-    let (base_settles, base_records) = (h.ui.frame_runtime().settle_frames(), h.ui.frame_id());
+    let (base_settles, base_records) = (h.ui().frame_runtime().settle_frames(), h.ui().frame_id());
 
-    h.press_at(origin);
-    h.move_to(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
+    h.press(origin, PointerButton::Left);
+    h.hover(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     let _ = passes(&mut h, button);
 
     for step in 2..10 {
-        h.move_to(origin + Vec2::new(DRAG_THRESHOLD + step as f32, 0.0));
+        h.hover(origin + Vec2::new(DRAG_THRESHOLD + step as f32, 0.0));
         let _ = passes(&mut h, button);
     }
 
     assert_eq!(
-        h.ui.frame_id() - base_records,
+        h.ui().frame_id() - base_records,
         9,
         "nine full-record frames were driven",
     );
     assert_eq!(
-        h.ui.frame_runtime().settle_frames() - base_settles,
+        h.ui().frame_runtime().settle_frames() - base_settles,
         1,
         "only the threshold-crossing frame settles; the drag body is free",
     );
@@ -166,11 +167,11 @@ fn a_drag_settles_on_its_latch_and_again_on_its_stop() {
     let origin = rect.center();
 
     // Frame 1: crossing the threshold latches the drag, its own settle arm (`PointerMoved`).
-    h.press_at(origin);
-    h.move_to(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
+    h.press(origin, PointerButton::Left);
+    h.hover(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     assert_eq!(passes(&mut h, button), 2, "the latch settles");
 
     // Frame 2: the release is `DragStopped` with no latch in the batch to mask it.
-    h.release();
+    h.release(PointerButton::Left);
     assert_eq!(passes(&mut h, button), 2, "the drag stop settles");
 }

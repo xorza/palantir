@@ -2,9 +2,9 @@
 //!
 //! Leaves out text shaping's scratch, which the shared shaper uses both in layout and when the backend rasterizes glyphs, and the GPU backend's, as the harness opens no device.
 
+use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -29,12 +29,14 @@ struct Report {
 
 impl Report {
     fn run(scale: usize) -> Self {
-        let harness = UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR);
-        let mut h = FrontendHarness::new(harness);
+        let mut h = Harness::builder(BENCH_SURFACE)
+            .scale(BENCH_DPR)
+            .depth(Depth::Compose)
+            .build();
         let mut state = FrameFixture::default();
         let mut time = Duration::ZERO;
         for surface in SURFACES {
-            h.harness.resize(surface);
+            h.resize(surface);
             for n in 0..FRAMES_PER_SURFACE {
                 if n % 2 == 0 {
                     state.scroll_offset += Vec2::new(1.5, 0.7);
@@ -42,20 +44,20 @@ impl Report {
                     state.tick = state.tick.wrapping_add(1);
                 }
                 time += Duration::from_millis(16);
-                h.harness.at(time);
+                h.at(time);
                 h.frame(|ui| state.render(scale, ui));
             }
         }
-        let engines = &h.harness.engines;
+        let engines = h.engines();
         Self {
             scale,
-            nodes: h.harness.ui.forest().total_nodes(),
+            nodes: h.ui_ref().forest().total_nodes(),
             phases: [
-                ("record", h.harness.ui.forest().scratch_bytes()),
+                ("record", h.ui_ref().forest().scratch_bytes()),
                 ("layout", engines.layout.scratch.scratch_bytes()),
                 ("cascade", engines.cascade.scratch_bytes()),
                 ("damage", engines.damage.scratch_bytes()),
-                ("encode+compose", h.frontend.scratch_bytes()),
+                ("encode+compose", h.frontend().scratch_bytes()),
             ],
         }
     }

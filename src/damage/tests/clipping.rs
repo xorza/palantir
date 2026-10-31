@@ -1,7 +1,7 @@
 //! What a clip and an overhang do to the region that comes out.
 
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -24,11 +24,11 @@ use glam::{UVec2, Vec2};
 /// frame.
 #[test]
 fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let mut child_node = None;
     let viewport_size = 100.0;
     let child_size = 200.0;
-    let build = |fill: RgbaF32, h: &mut UiHarness, child: &mut Option<NodeId>| {
+    let build = |fill: RgbaF32, h: &mut Harness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
             // Root hstack so the inner zstack honors its `Fixed` size; root nodes are
             // stretched to the surface anchor, which would defeat the clip.
@@ -120,14 +120,14 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         }),
     ];
     for (label, build) in cases {
-        let mut h = UiHarness::new(DISPLAY.physical);
+        let mut h = Harness::mono(DISPLAY.physical);
         frame(&mut h, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, build);
         });
         let prev_rect = h
-            .engines
+            .engines()
             .damage
             .prev_paint_rect(WidgetId::from_hash("card"))
             .expect("card painted last frame");
@@ -166,8 +166,8 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     let card = 40.0;
     let blur = 8.0;
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
-    let build = |fill: RgbaF32, h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    let build = |fill: RgbaF32, h: &mut Harness| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("host"))
@@ -222,7 +222,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // WindowDriver panel: 80x40, padding 4 per side via chrome. The direct
     // shape extends to x=400; after the cascade walk `shape_rects[idx]` must be
     // clipped to the host's deflated mask.
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let host_id = WidgetId::from_hash("clip-host");
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -244,11 +244,11 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
 
     // Read the host node's first shape's cascaded screen rect: it must be clamped
     // to (host_width - padding-fold), not span 400 px.
-    let cascade = &h.ui.cascade();
+    let cascade = h.ui_ref().cascade();
     let host_ep = *cascade.by_id.get(&host_id).expect("host node recorded");
     let host_entry_idx = (cascade.planes[host_ep.plane].entries_base + host_ep.node.0) as usize;
     let host_rect = cascade.entries[host_entry_idx].rect;
-    let tree = h.ui.tree(Layer::Main);
+    let tree = h.ui_ref().tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert_eq!(shape_span.len, 1, "the fixture adds one shape to the host");
     // The host paints chrome (the BLUE fill), so row 0 is the chrome `Paint`,
@@ -296,7 +296,7 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
                 });
         });
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     frame(&mut h, |ui| build(ui, true));
 

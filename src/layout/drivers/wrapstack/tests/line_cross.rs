@@ -1,6 +1,6 @@
 //! A line's cross extent: its max, floors and caps.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -58,7 +58,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
     ];
 
     for case in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         let zero_size = match case.axis {
             Axis::X => Size::new(0.0, 30.0),
             Axis::Y => Size::new(30.0, 0.0),
@@ -96,7 +96,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
 /// Line height is the max child cross; later lines start at the previous bottom + `line_gap`.
 #[test]
 fn wrap_hstack_line_height_is_max_child_cross() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
@@ -120,7 +120,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
 /// Cross-axis `Sizing::fill` stretches to the tallest child, as in Stack.
 #[test]
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
@@ -174,7 +174,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
 
     for axis in [Axis::X, Axis::Y] {
         for case in &cases {
-            let mut h = UiHarness::new(UVec2::new(400, 400));
+            let mut h = Harness::mono(UVec2::new(400, 400));
             h.under_outer(|ui| {
                 let panel = Panel::wrap_stack_on(axis);
                 panel
@@ -245,7 +245,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
 #[test]
 fn fill_floor_can_establish_a_mixed_line_cross_extent() {
     for axis in [Axis::X, Axis::Y] {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         h.under_outer(|ui| {
             let panel = Panel::wrap_stack_on(axis);
             panel
@@ -281,7 +281,7 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
 #[test]
 fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     for axis in [Axis::X, Axis::Y] {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         h.under_outer(|ui| {
             let panel = Panel::wrap_stack_on(axis);
             panel

@@ -9,8 +9,8 @@ use palantir::{Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stop};
 use crate::fixtures;
 use crate::fixtures::SRGB_ROUND_TRIP;
 use crate::golden_name::GoldenName;
-use crate::harness::Harness;
 use crate::support;
+use crate::visual_rig::VisualRig;
 
 /// More distinct gradients than the atlas's 256 initial rows, forcing growth.
 const COLS: u32 = 20;
@@ -45,7 +45,7 @@ fn swatch_color(i: u32) -> RgbaF32 {
 /// covered.
 #[test]
 fn overflowing_gradient_atlas_paints_every_swatch() {
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(VIEWPORT)
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
@@ -88,7 +88,7 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
 fn a_gradient_samples_its_lut_at_texel_centers() {
     let red = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let img = h
         .size(UVec2::new(1024, 16))
         .clear(RgbaF32::BLACK)

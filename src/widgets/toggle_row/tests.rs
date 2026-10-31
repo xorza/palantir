@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
@@ -26,8 +26,8 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
             n + 8.0,
         )
     };
-    let mut h = UiHarness::new(UVec2::new(400, 300));
-    let theme = h.ui.theme_mut();
+    let mut h = Harness::mono(UVec2::new(400, 300));
+    let theme = h.ui().theme_mut();
     let kinds = [
         (Toggle::Checkbox, &mut theme.checkbox, spacing(7.0)),
         (Toggle::Radio, &mut theme.radio, spacing(23.0)),
@@ -52,8 +52,8 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
             } else {
                 (padding, margin, gap, true)
             };
-            let node = h.ui.forest().node_for_widget_id(Layer::Main, id);
-            let layout = h.ui.tree(Layer::Main).records.layout()[node.idx()];
+            let node = h.ui().forest().node_for_widget_id(Layer::Main, id);
+            let layout = h.ui().tree(Layer::Main).records.layout()[node.idx()];
             let label = format!("{kind:?} explicit {explicit}");
             assert_eq!(layout.padding, padding, "{label}: padding");
             assert_eq!(layout.margin, margin, "{label}: margin");
@@ -134,7 +134,7 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
     let at = Vec2::new(8.0, 8.0);
     for kind in [Toggle::Checkbox, Toggle::Switch, Toggle::Radio] {
         for disabled in [false, true] {
-            let mut h = UiHarness::new(UVec2::new(300, 100));
+            let mut h = Harness::mono(UVec2::new(300, 100));
             let mut value = false;
             h.frame(|ui| {
                 record_toggle(ui, kind, &mut value, disabled);
@@ -155,7 +155,7 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
                 ]
             };
             for (n, (edges, after)) in want.into_iter().enumerate() {
-                h.click_at(at);
+                h.click(at);
                 let got = h.frame_value(|ui| record_toggle(ui, kind, &mut value, disabled));
                 assert_eq!(got, edges, "{kind:?} disabled {disabled}: click {n} edges");
                 assert_eq!(
@@ -181,7 +181,7 @@ fn space_activates_a_focused_toggle() {
             (Key::Char(' '), false, false),
             (Key::Enter, true, false),
         ] {
-            let mut h = UiHarness::new(UVec2::new(300, 100));
+            let mut h = Harness::mono(UVec2::new(300, 100));
             let mut value = false;
             h.frame(|ui| {
                 record_toggle(ui, kind, &mut value, false);

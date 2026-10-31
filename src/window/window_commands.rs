@@ -4,14 +4,19 @@ use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use std::vec::Drain;
 
-/// One deferred window lifecycle step, applied by [`WinitHost`](crate::WinitHost) in
-/// `about_to_wait`.
+/// One window opened or closed by [`Ui::open_window`](crate::Ui::open_window) or
+/// [`Ui::close_window`](crate::Ui::close_window), which [`WinitHost`](crate::WinitHost) applies
+/// after the frame and a [`Harness`](crate::Harness) records.
 #[derive(Debug)]
-pub(crate) enum WindowCommand {
+pub enum WindowCommand {
+    /// Open the window `token`, or give the open one `config`.
     Open {
+        /// The window.
         token: WindowToken,
+        /// What it opens as.
         config: WindowConfig,
     },
+    /// Close the window.
     Close(WindowToken),
 }
 

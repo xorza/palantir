@@ -2,7 +2,8 @@
 
 use crate::app::App;
 use crate::common::time::MAX_ANIMATION_DT;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -25,7 +26,7 @@ fn cascade_visible_to_relayout_pass() {
     let pass_b_rect = Cell::new(None::<Rect>);
     let id_salt = "cascade-relayout-probe";
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         let probe_resp: RefCell<Option<ResponseSnapshot>> = RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -83,13 +84,13 @@ fn frame_pass_count_matches_action_trigger() {
             .show(ui, |_| {});
     }
 
-    type Prime = fn(&mut UiHarness);
+    type Prime = fn(&mut Harness);
     let cases: &[(&str, Prime, usize)] = &[
         ("idle", |_ui| {}, 1),
         (
             "hover only",
             |h| {
-                h.move_to(Vec2::new(10.0, 10.0));
+                h.hover(Vec2::new(10.0, 10.0));
             },
             1,
         ),
@@ -103,13 +104,13 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "routed click",
             |h| {
-                h.press_at(Vec2::new(10.0, 10.0));
+                h.press(Vec2::new(10.0, 10.0), PointerButton::Left);
                 h.frame(build_target);
-                h.release();
+                h.release(PointerButton::Left);
             },
             2,
         ),
-        ("unrouted click", |h| h.click_at(Vec2::new(150.0, 150.0)), 1),
+        ("unrouted click", |h| h.click(Vec2::new(150.0, 150.0)), 1),
         (
             "unrouted keydown",
             |h| {
@@ -128,19 +129,19 @@ fn frame_pass_count_matches_action_trigger() {
         (
             "scroll",
             |h| {
-                h.scroll_pixels(Vec2::new(0.0, 10.0));
+                h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
             },
             1,
         ),
     ];
 
     for (label, prime, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(100, 100));
+        let mut h = Harness::mono(UVec2::new(100, 100));
         h.frame(build_target);
         prime(&mut h);
 
         let count = Cell::new(0u32);
-        let render_frame_before = h.ui.frame_runtime.render_frame_id;
+        let render_frame_before = h.ui().frame_runtime.render_frame_id;
         let _ = h.frame(|ui| {
             count.set(count.get() + 1);
             build_target(ui);
@@ -153,7 +154,7 @@ fn frame_pass_count_matches_action_trigger() {
         );
         // The render frame id bumps once per `frame`, so pass B's anim ticks see pass A's id.
         assert_eq!(
-            h.ui.frame_runtime.render_frame_id,
+            h.ui().frame_runtime.render_frame_id,
             render_frame_before + 1,
             "{label}: render_frame_id must bump once per frame (passes: {expected})",
         );
@@ -164,7 +165,7 @@ fn frame_pass_count_matches_action_trigger() {
 #[test]
 fn action_effect_runs_once_across_record_replay() {
     let surface = UVec2::new(100, 100);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Button::new()
             .id(WidgetId::from_hash("action"))
@@ -178,11 +179,11 @@ fn action_effect_runs_once_across_record_replay() {
     h.frame(|ui| {
         let _ = build(ui);
     });
-    h.press_at(Vec2::new(10.0, 10.0));
+    h.press(Vec2::new(10.0, 10.0), PointerButton::Left);
     h.frame(|ui| {
         let _ = build(ui);
     });
-    h.release();
+    h.release(PointerButton::Left);
 
     let clicks = h.at(Duration::from_millis(16)).frame_passes(build);
     assert_eq!(clicks.len(), 2, "action input must request a replay pass");
@@ -196,7 +197,7 @@ fn action_effect_runs_once_across_record_replay() {
 /// A relayout request forces a second record pass; `frame_value` returns pass A's value, which observes one-frame edges.
 #[test]
 fn frame_value_records_both_relayout_passes_and_returns_the_first() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut calls = 0_u32;
 
     let captured = h.frame_value(|ui| {
@@ -214,7 +215,7 @@ fn frame_value_records_both_relayout_passes_and_returns_the_first() {
 /// `Ui::frame` plumbs `now`, `dt` (clamped to `MAX_ANIMATION_DT`) and the repaint-requested flag (reset every call) end-to-end to `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -233,9 +234,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         !repaint,
         "no animate-not-settled flag set — must stay false"
     );
-    assert_eq!(h.ui.frame_runtime.stamp().time, Duration::from_millis(16));
+    assert_eq!(h.ui().frame_runtime.stamp().time, Duration::from_millis(16));
     assert_eq!(
-        h.ui.frame_runtime.dt,
+        h.ui().frame_runtime.dt,
         Duration::from_millis(16).as_secs_f32(),
         "FrameRuntime::dt should be (now - prev) in seconds",
     );
@@ -254,9 +255,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         repaint,
         "repaint_requested set during recording must surface on FrameOutput",
     );
-    assert_eq!(h.ui.frame_runtime.stamp().time, Duration::from_millis(32));
+    assert_eq!(h.ui().frame_runtime.stamp().time, Duration::from_millis(32));
     assert_eq!(
-        h.ui.frame_runtime.dt,
+        h.ui().frame_runtime.dt,
         Duration::from_millis(16).as_secs_f32(),
         "FrameRuntime::dt should be next-frame delta",
     );
@@ -268,11 +269,12 @@ fn frame_plumbs_now_dt_and_repaint_request() {
             .show(ui, |_| {});
     });
     assert_eq!(
-        h.ui.frame_runtime.stamp().time,
+        h.ui().frame_runtime.stamp().time,
         Duration::from_millis(5_032)
     );
     assert_eq!(
-        h.ui.frame_runtime.dt, MAX_ANIMATION_DT,
+        h.ui().frame_runtime.dt,
+        MAX_ANIMATION_DT,
         "FrameRuntime::dt should clamp at MAX_ANIMATION_DT",
     );
 
@@ -314,7 +316,7 @@ fn update_sees_input_that_arrived_after_a_quiescent_pass() {
         }
     }
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut probe = Probe {
         id: WidgetId::from_hash("update-reads-press"),
         seen: Vec::new(),
@@ -322,7 +324,7 @@ fn update_sees_input_that_arrived_after_a_quiescent_pass() {
     h.frame_app(&mut probe);
     assert_eq!(probe.seen, [false], "nothing pressed yet");
 
-    h.press_at(Vec2::new(20.0, 20.0));
+    h.press(Vec2::new(20.0, 20.0), PointerButton::Left);
     h.frame_app(&mut probe);
     assert_eq!(probe.seen, [false, true], "the press reaches update");
 }
@@ -357,10 +359,10 @@ impl App for CountingApp {
 /// first frame and on a relayout, never on a paint-only frame.
 #[test]
 fn app_lifecycle_follows_frame_plan_and_record_replays() {
-    let mut h = UiHarness::cold(SURFACE);
+    let mut h = Harness::cold(SURFACE);
     let mut app = CountingApp::default();
     let pointer = Vec2::new(24.0, 12.0);
-    h.move_to(pointer);
+    h.hover(pointer);
     app.expected_pointer = Some(pointer);
 
     let processing = h.frame_app(&mut app).processing;
@@ -378,7 +380,8 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     assert_eq!(app.updates, 2, "relayout frame adds one update");
     assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
 
-    h.ui.frame_runtime
+    h.ui()
+        .frame_runtime
         .schedule_wake(Duration::from_millis(32), WakeReasons::ANIMATION, None);
     let processing = h
         .at(Duration::from_millis(32))
@@ -400,8 +403,8 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     use crate::ui::resources::UiResources;
 
     let resources = UiResources::isolated_text();
-    let mut h = UiHarness::from_resources(resources.clone(), SURFACE);
-    let mut other = UiHarness::from_resources(resources, SURFACE);
+    let mut h = Harness::from_resources(resources.clone(), SURFACE);
+    let mut other = Harness::from_resources(resources, SURFACE);
     let record = |ui: &mut Ui| {
         Button::new()
             .id(WidgetId::from_hash("b"))
@@ -411,10 +414,11 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
     h.prime(2, record);
     other.prime(2, record);
     let mut ms = 16;
-    let mut animation_frame = |h: &mut UiHarness| {
+    let mut animation_frame = |h: &mut Harness| {
         ms += 16;
         let at = Duration::from_millis(ms);
-        h.ui.frame_runtime
+        h.ui()
+            .frame_runtime
             .schedule_wake(at, WakeReasons::ANIMATION, None);
         h.at(at).frame(record).processing
     };
@@ -436,7 +440,10 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
         "recorded once, it paints again"
     );
 
-    other.ui.load_font(INTER).expect("the bundled Inter loads");
+    other
+        .ui()
+        .load_font(INTER)
+        .expect("the bundled Inter loads");
     assert_ne!(
         animation_frame(&mut h),
         FrameProcessing::PaintOnly,

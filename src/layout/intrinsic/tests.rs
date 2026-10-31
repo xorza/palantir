@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
@@ -22,7 +22,7 @@ use std::mem;
 /// triggers them (pass 2 of `Stack::measure`).
 #[test]
 fn intrinsic_cache_populated_after_run() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -38,16 +38,17 @@ fn intrinsic_cache_populated_after_run() {
             .node()
     });
 
-    let child =
-        h.ui.tree(Layer::Main)
-            .children(root)
-            .map(|c| c.id)
-            .next()
-            .expect("hstack has child");
+    let child = h
+        .ui()
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .next()
+        .expect("hstack has child");
     let slot = LenReq::MinContent.slot(Axis::X);
     // Mono's 8 px a char: the widest unbreakable word is five chars, 40.
     assert_eq!(
-        h.engines.layout.scratch.intrinsics[child.idx()][slot],
+        h.engines_mut().layout.scratch.intrinsics[child.idx()][slot],
         40.0,
         "MinContent X for the Fill+wrap child must be cached after run"
     );
@@ -58,7 +59,7 @@ fn intrinsic_cache_populated_after_run() {
 fn intrinsic_query_short_circuits_on_cache_hit() {
     const SENTINEL: f32 = 1234.5;
 
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -74,15 +75,16 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
             .node()
     });
 
-    let child =
-        h.ui.tree(Layer::Main)
-            .children(root)
-            .map(|c| c.id)
-            .next()
-            .unwrap();
+    let child = h
+        .ui()
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .next()
+        .unwrap();
     let slot = LenReq::MinContent.slot(Axis::X);
 
-    h.engines.layout.scratch.intrinsics[child.idx()][slot] = SENTINEL;
+    h.engines_mut().layout.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
     let v = h.intrinsic(child, Axis::X, LenReq::MinContent);
     assert_eq!(
@@ -92,15 +94,20 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
 
     let expected_max = h.intrinsic(child, Axis::X, LenReq::MaxContent);
     let max_slot = LenReq::MaxContent.slot(Axis::X);
-    h.engines.layout.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
-    h.engines.layout.scratch.counters.reset_intrinsic_computes();
-    let store = h.ui.record_store();
+    h.engines_mut().layout.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
+    h.engines_mut()
+        .layout
+        .scratch
+        .counters
+        .reset_intrinsic_computes();
+    let parts = h.parts();
+    let store = parts.ui.record_store();
     let interned_text = store.interned_text();
     let input = PlaneInput {
-        tree: h.ui.tree(Layer::Main),
+        tree: parts.ui.tree(Layer::Main),
         interned_text: &interned_text,
     };
-    let range = IntrinsicPass::new(&mut h.engines.layout, input).range(child, Axis::X);
+    let range = IntrinsicPass::new(&mut parts.engines.layout, input).range(child, Axis::X);
     assert_eq!(
         range,
         IntrinsicRange {
@@ -110,7 +117,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         "a partially cached range must preserve the populated side",
     );
     assert_eq!(
-        h.engines.layout.scratch.counters.intrinsic_computes(),
+        h.engines_mut().layout.scratch.counters.intrinsic_computes(),
         1,
         "only the missing max-content side should compute",
     );
@@ -119,7 +126,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
 /// Recursive intrinsic queries populate descendant slots too.
 #[test]
 fn parent_intrinsic_query_populates_descendant_cache() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -132,22 +139,23 @@ fn parent_intrinsic_query_populates_descendant_cache() {
             .node()
     });
     // Drop measure-cache snapshots so the root query takes the recursive compute path.
-    h.engines.layout.cache.forget_all();
+    h.engines_mut().layout.cache.forget_all();
     let slot = LenReq::MaxContent.slot(Axis::X);
-    for entry in &mut h.engines.layout.scratch.intrinsics {
+    for entry in &mut h.engines_mut().layout.scratch.intrinsics {
         entry[slot] = f32::NAN;
     }
 
     let _ = h.intrinsic(root, Axis::X, LenReq::MaxContent);
 
     // Mono's 8 px a char: "abc" is 24, "defgh" 40, side by side 64.
-    let cached = |node: NodeId| h.engines.layout.scratch.intrinsics[node.idx()][slot];
+    let cached = |node: NodeId| h.engines().layout.scratch.intrinsics[node.idx()][slot];
     assert_eq!(cached(root), 64.0, "root slot must be cached");
-    let children: Vec<_> =
-        h.ui.tree(Layer::Main)
-            .children(root)
-            .map(|c| c.id)
-            .collect();
+    let children: Vec<_> = h
+        .ui_ref()
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .collect();
     assert_eq!(
         children.iter().map(|&c| cached(c)).collect::<Vec<_>>(),
         [24.0, 40.0],
@@ -161,7 +169,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         Block::new().id_salt(id).size(size).show(ui);
     }
 
-    let mut h = UiHarness::new(UVec2::new(1200, 900));
+    let mut h = Harness::mono(UVec2::new(1200, 900));
     h.frame(|ui| {
         Panel::vstack().id_salt("range-root").show(ui, |ui| {
             Text::new("leaf alpha-beta")
@@ -217,7 +225,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
                 });
         });
     });
-    h.engines.layout.cache.forget_all();
+    h.engines_mut().layout.cache.forget_all();
 
     let expected_modes = [
         LayoutMode::Leaf,
@@ -230,7 +238,8 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         LayoutMode::Grid(GridDefId::from_idx(0)),
         LayoutMode::Scroll(ScrollAxes::VERTICAL),
     ];
-    let tree = h.ui.tree(Layer::Main);
+    let parts = h.parts();
+    let tree = parts.ui.tree(Layer::Main);
     for expected in expected_modes {
         assert!(
             tree.records.layout().iter().any(|layout| {
@@ -240,25 +249,26 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         );
     }
 
-    let store = h.ui.record_store();
+    let store = parts.ui.record_store();
     let interned_text = store.interned_text();
     let input = PlaneInput {
         tree,
         interned_text: &interned_text,
     };
+    let layout = &mut parts.engines.layout;
     for idx in 0..tree.records.len() {
         let node = NodeId(idx as u32);
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
         for axis in [Axis::X, Axis::Y] {
-            h.engines.layout.forget_intrinsics();
-            let mut pass = IntrinsicPass::new(&mut h.engines.layout, input);
+            layout.forget_intrinsics();
+            let mut pass = IntrinsicPass::new(layout, input);
             let min = pass.single(node, axis, LenReq::MinContent);
             let max = pass.single(node, axis, LenReq::MaxContent);
-            let separate_computes = h.engines.layout.scratch.counters.intrinsic_computes();
+            let separate_computes = layout.scratch.counters.intrinsic_computes();
 
-            h.engines.layout.forget_intrinsics();
-            let range = IntrinsicPass::new(&mut h.engines.layout, input).range(node, axis);
-            let range_computes = h.engines.layout.scratch.counters.intrinsic_computes();
+            layout.forget_intrinsics();
+            let range = IntrinsicPass::new(layout, input).range(node, axis);
+            let range_computes = layout.scratch.counters.intrinsic_computes();
 
             assert_eq!(range.min, min, "{mode:?} {axis:?} min-content");
             assert_eq!(range.max, max, "{mode:?} {axis:?} max-content");
@@ -281,7 +291,7 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
     const EXPECT_X: f32 = 48.0;
     const EXPECT_Y: f32 = 30.0;
 
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -304,14 +314,15 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
             .node()
     });
 
-    let leaf =
-        h.ui.tree(Layer::Main)
-            .children(root)
-            .map(|c| c.id)
-            .next()
-            .expect("hstack has child");
+    let leaf = h
+        .ui()
+        .tree(Layer::Main)
+        .children(root)
+        .map(|c| c.id)
+        .next()
+        .expect("hstack has child");
 
-    h.engines.layout.forget_intrinsics();
+    h.engines_mut().layout.forget_intrinsics();
     let x = h.intrinsic(leaf, Axis::X, LenReq::MinContent);
     assert_eq!(
         x, EXPECT_X,
@@ -319,20 +330,21 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
     );
 
     let recorded =
-        h.engines.layout.scratch.intrinsics[leaf.idx()][LenReq::MinContent.slot(Axis::Y)];
+        h.engines_mut().layout.scratch.intrinsics[leaf.idx()][LenReq::MinContent.slot(Axis::Y)];
     assert_eq!(
         recorded, EXPECT_Y,
         "the X walk must record Y's outer min-content, padding and margin folded in",
     );
     assert!(
-        h.engines.layout.scratch.intrinsics[leaf.idx()][LenReq::MaxContent.slot(Axis::Y)].is_nan(),
+        h.engines_mut().layout.scratch.intrinsics[leaf.idx()][LenReq::MaxContent.slot(Axis::Y)]
+            .is_nan(),
         "a min-content query may record only the half it asked for",
     );
 
     let y = h.intrinsic(leaf, Axis::Y, LenReq::MinContent);
     assert_eq!(y, EXPECT_Y, "the recorded lane is Y's own min-content");
     assert_eq!(
-        h.engines.layout.scratch.counters.intrinsic_computes(),
+        h.engines_mut().layout.scratch.counters.intrinsic_computes(),
         1,
         "the second axis must read the recorded lane, not shape the runs again",
     );

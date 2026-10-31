@@ -1,7 +1,7 @@
 //! Thumb size and offset against hand-computed cases, and what a traveling
 //! thumb keeps.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -222,18 +222,18 @@ fn a_traveling_thumb_keeps_its_snapped_length() {
             });
     };
     let surface = UVec2::new(400, 300);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.prime(2, build);
 
     let snapped = |r: Rect, scale: f32| (r.max().y * scale).round() - (r.min.y * scale).round();
-    let first = thumb_rects(&h.ui, "scroll")[0];
+    let first = thumb_rects(h.ui_ref(), "scroll")[0];
     let expected: Vec<f32> = [1.0, 2.0, 3.0].iter().map(|s| snapped(first, *s)).collect();
 
     let mut traveled = Vec::new();
     for _ in 0..8 {
-        h.scroll_pixels_at(Vec2::new(100.0, 100.0), Vec2::new(0.0, 37.0));
+        h.scroll_pixels(Vec2::new(100.0, 100.0), Vec2::new(0.0, 37.0));
         h.frame(build);
-        let r = thumb_rects(&h.ui, "scroll")[0];
+        let r = thumb_rects(h.ui_ref(), "scroll")[0];
         traveled.push(r.min.y);
         for (i, scale) in [1.0f32, 2.0, 3.0].iter().enumerate() {
             assert_eq!(
@@ -266,16 +266,16 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
             });
     };
     let surface = UVec2::new(400, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.prime(2, build);
-    let before = thumb_rects(&h.ui, "scroll");
+    let before = thumb_rects(h.ui_ref(), "scroll");
     assert_eq!(before.len(), 1, "one vertical thumb");
 
     let mut seen = Vec::new();
     for _ in 0..4 {
-        h.scroll_pixels_at(Vec2::new(100.0, 100.0), Vec2::new(0.0, 50.0));
+        h.scroll_pixels(Vec2::new(100.0, 100.0), Vec2::new(0.0, 50.0));
         h.frame(build);
-        let now = thumb_rects(&h.ui, "scroll");
+        let now = thumb_rects(h.ui_ref(), "scroll");
         assert_eq!(now.len(), 1, "thumb must not vanish mid-scroll");
         seen.push((now[0].min.y, now[0].size.h));
     }
@@ -297,7 +297,7 @@ fn scrolling_moves_the_thumb_without_resizing_it() {
 #[test]
 fn zoomed_content_shrinks_thumb_proportionally() {
     let surface = UVec2::new(400, 400);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -313,7 +313,7 @@ fn zoomed_content_shrinks_thumb_proportionally() {
     };
     h.prime(2, build);
     let scroll_id = WidgetId::from_hash("scroll");
-    let z1_thumbs = thumb_rects(&h.ui, "scroll");
+    let z1_thumbs = thumb_rects(h.ui_ref(), "scroll");
     assert_eq!(z1_thumbs.len(), 2, "z=1: V + H thumbs");
     let v1 = z1_thumbs
         .iter()
@@ -322,9 +322,10 @@ fn zoomed_content_shrinks_thumb_proportionally() {
         .size
         .h;
 
-    h.ui.with_state::<ScrollState, _>(scroll_id, |_, s| s.set_zoom(2.0));
+    h.ui()
+        .with_state::<ScrollState, _>(scroll_id, |_, s| s.set_zoom(2.0));
     h.prime(2, build);
-    let z2_thumbs = thumb_rects(&h.ui, "scroll");
+    let z2_thumbs = thumb_rects(h.ui_ref(), "scroll");
     assert_eq!(z2_thumbs.len(), 2, "z=2: V + H thumbs");
     let v2 = z2_thumbs
         .iter()

@@ -7,7 +7,7 @@ use palantir::{Configure, Panel, Rect, RgbaF32, Sizing, Ui};
 
 use crate::fixtures;
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 const VIEWPORT: UVec2 = UVec2::new(128, 128);
 const CLEAR: RgbaF32 = RgbaF32::WHITE;
@@ -27,7 +27,7 @@ enum Grouping {
 }
 
 fn render_fractional_layers(grouping: Grouping) -> RgbaImage {
-    Harness::unsnapped()
+    VisualRig::unsnapped()
         .size(VIEWPORT)
         .clear(CLEAR)
         .frame(|ui| {

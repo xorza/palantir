@@ -1014,30 +1014,27 @@ impl InputState {
     }
 }
 
-// Read by the frame harness to know what it already fed.
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::input::keyboard::modifiers::Modifiers;
-    #[cfg(test)]
-    use crate::input::scroll_targets::ScrollTargets;
-    use crate::input_state::InputState;
-    #[cfg(test)]
-    use crate::primitives::identity::widget_id::WidgetId;
-
-    impl InputState {
-        pub(crate) fn has_held_input(&self) -> bool {
-            !self.queue.is_empty()
-        }
-
-        /// The modifier set once every held event has landed; the live `modifiers` lags
-        /// what a feeder already sent.
-        pub(crate) fn modifiers_after_held_input(&self) -> Modifiers {
-            self.queue.last_held_modifiers().unwrap_or(self.modifiers)
-        }
+/// Read by a harness to know what it already fed.
+impl InputState {
+    /// Whether input waits for a later frame (one change of a kind per frame).
+    pub(crate) fn has_held_input(&self) -> bool {
+        !self.queue.is_empty()
     }
 
+    /// The modifier set once every held event has landed; the live `modifiers` lags what a
+    /// feeder already sent.
+    pub(crate) fn modifiers_after_held_input(&self) -> Modifiers {
+        self.queue.last_held_modifiers().unwrap_or(self.modifiers)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::input::scroll_targets::ScrollTargets;
+    use crate::input_state::InputState;
+    use crate::primitives::identity::widget_id::WidgetId;
+
     /// Routing state the widget suites assert on.
-    #[cfg(test)]
     impl InputState {
         pub(crate) const fn scroll_targets(&self) -> ScrollTargets {
             self.scroll_targets

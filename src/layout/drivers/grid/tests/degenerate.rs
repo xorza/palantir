@@ -1,6 +1,6 @@
 //! Zero extents, empty dimensions, and a track list long enough to test the inline cap.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -17,7 +17,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
     let empty: &[Track] = &[];
     let one: &[Track] = &[Track::fixed(50.0)];
     for (label, cols, rows) in [("no rows", one, empty), ("no cols", empty, one)] {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         h.frame(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -64,7 +64,7 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
             });
     }
 
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let mut frames = Vec::new();
     for _ in 0..2 {
         h.frame(build);
@@ -91,7 +91,7 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
 fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
     const COLS: usize = 64;
     let cols: [Track; COLS] = array::from_fn(|i| Track::fixed((i + 1) as f32));
-    let mut h = UiHarness::new(UVec2::new(3_000, 100));
+    let mut h = Harness::mono(UVec2::new(3_000, 100));
     h.frame(|ui| {
         Grid::new()
             .id(WidgetId::from_hash("large-grid"))

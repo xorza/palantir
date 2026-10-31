@@ -1,6 +1,6 @@
 //! The main bound a wrap inherits from its parent, and never overflowing it.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -62,9 +62,9 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
-        let mut h = UiHarness::new(UVec2::new(surface_w, 600));
+        let mut h = Harness::mono(UVec2::new(surface_w, 600));
         let wrap = h.frame_value(build);
-        let wrap_rect = h.ui.arranged_rect(Layer::Main, wrap);
+        let wrap_rect = h.ui().arranged_rect(Layer::Main, wrap);
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for label in LABELS {
             let r = h.arranged(WidgetId::from_hash(label));
@@ -171,7 +171,7 @@ fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
         },
     ];
     for case in cases {
-        let mut h = UiHarness::new(UVec2::new(800, 600));
+        let mut h = Harness::mono(UVec2::new(800, 600));
         h.frame(case.build);
         for i in 0..5u32 {
             let col = (i / 2) as f32;
@@ -195,7 +195,7 @@ fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
 /// A stack measures every non-`Fill` child against its whole main extent and shrinks none, so the Hug wrap under a 15 px header overflows the cap by 15. A `Fill` wrap gets the 85 px left: two cells no longer fit (90 > 85), so each takes a column and the wrap ends at 55.
 #[test]
 fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("cols"))
@@ -236,7 +236,7 @@ fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
 /// A Hug wrap offered less height than its lines keeps every line (floor = tallest child per line plus line gaps) and overflows its parent. Five 40 × 20 blocks, 10 px gap, 100 px width: lines of 2, 2, 1, so 3 × 20 + 2 × 5 = 70 in a 30 px parent.
 #[test]
 fn a_hug_wrap_stack_keeps_its_lines_under_a_short_parent() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()

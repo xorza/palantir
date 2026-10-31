@@ -56,6 +56,7 @@ mod native;
     path = "platform/other.rs"
 )]
 mod platform;
+pub(crate) mod remote;
 mod runtime;
 mod window;
 mod window_set;
@@ -77,7 +78,7 @@ use crate::gpu::surface::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;
-use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
+use crate::host::winit::handle::{EventSender, HostHandle, MainTask, UserEvent};
 use crate::host::winit::runtime::WinitRuntime;
 use crate::host::winit::window::FramePresent;
 use crate::text::font_scope::FontScope;
@@ -257,7 +258,7 @@ where
     /// A cheap-to-clone, `Send` handle for cross-thread repaint requests and run-on-main scheduling.
     pub fn handle(&self) -> HostHandle<T> {
         HostHandle {
-            proxy: self.proxy.clone(),
+            sender: EventSender::Proxy(self.proxy.clone()),
             frames: Arc::clone(&self.frames),
         }
     }
@@ -329,6 +330,18 @@ where
                     && let Some(win) = runtime.by_token(token)
                 {
                     win.on_sent_input(event.as_event());
+                }
+            }
+            UserEvent::Query(token, task) => {
+                if let Some(runtime) = self.running() {
+                    runtime.query(token, task);
+                }
+            }
+            UserEvent::Shot(token, ask) => {
+                if let Some(runtime) = self.running()
+                    && let Some(win) = runtime.by_token(token)
+                {
+                    win.ask_shot(ask);
                 }
             }
             UserEvent::RunOnMain(task) => match &mut self.phase {

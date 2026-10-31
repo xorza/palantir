@@ -97,12 +97,17 @@ impl Frontend {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::renderer::frontend::{BuildPlan, Frontend};
+    use crate::renderer::frontend::BuildPlan;
+    #[cfg(test)]
+    use crate::renderer::frontend::Frontend;
+    #[cfg(test)]
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
     use crate::renderer::render_plan::RenderPlan;
+    #[cfg(test)]
     use crate::renderer::shared_device::SharedDevice;
     use crate::renderer::texture_limit::TextureLimit;
     use std::num::NonZeroU32;
+    #[cfg(test)]
     use std::rc::Rc;
 
     /// No `wgpu::Device` to query; 8192 is `wgpu::Limits::default`'s `max_texture_dimension_2d`.
@@ -110,6 +115,7 @@ pub(crate) mod internals {
         TextureLimit::from_device(NonZeroU32::new(8192).unwrap());
 
     /// A device attached at [`TEST_TEXTURE_LIMIT`].
+    #[cfg(test)]
     pub(crate) fn test_device() -> Rc<SharedDevice> {
         Rc::new(SharedDevice::attached(TEST_TEXTURE_LIMIT))
     }
@@ -122,13 +128,13 @@ pub(crate) mod internals {
         }
     }
 
+    #[cfg(test)]
     impl Frontend {
         pub(crate) fn for_test() -> Self {
             Self::new(test_device(), SharedGradientAtlas::default())
         }
 
         /// Leaves out `buffer`, the composed frame the backend reads.
-        #[cfg(test)]
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 encoder,

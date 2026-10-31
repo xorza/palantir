@@ -4,7 +4,7 @@ use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::text::wrap::TextWrap;
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::tests::support;
 use crate::layout::tests::support::two_hug_cols_with_wrap;
 use crate::primitives::geometry::size::Size;
@@ -32,7 +32,7 @@ fn assert_wrapped_at_200(ui: &Ui, node: NodeId) {
 /// A constrained ZStack must pass its inner size to children, not `INFINITY`, or a nested grid falls back to max-content.
 #[test]
 fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
-    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let mut h = Harness::new(UVec2::new(200, 400));
     let mut node = None;
     h.frame(|ui| {
         Panel::zstack()
@@ -42,13 +42,13 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_at_200(&h.ui, node.unwrap());
+    assert_wrapped_at_200(h.ui_ref(), node.unwrap());
 }
 
 /// As above for Canvas, also a child-positioner layout.
 #[test]
 fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
-    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let mut h = Harness::new(UVec2::new(200, 400));
     let mut node = None;
     h.frame(|ui| {
         Panel::canvas()
@@ -58,13 +58,13 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_at_200(&h.ui, node.unwrap());
+    assert_wrapped_at_200(h.ui_ref(), node.unwrap());
 }
 
 /// A `Hug` ZStack containing a `Fill` child must not recursively size to it; Hug axes keep `INFINITY`.
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -92,7 +92,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
 #[test]
 fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
     fn measure(surface_w: u32) -> f32 {
-        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
+        let mut h = Harness::new(UVec2::new(surface_w, 400));
         let mut value_node = None;
         h.frame(|ui| {
             Grid::new()
@@ -116,7 +116,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                     );
                 });
         });
-        support::shaped_text(h.ui.layout(Layer::Main), value_node.unwrap())
+        support::shaped_text(h.ui().layout(Layer::Main), value_node.unwrap())
             .extent
             .size
             .h
@@ -129,7 +129,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
 /// A `Fill` grid with a `Fill` column wraps text in it: measure and arrange agree on its width.
 #[test]
 fn fill_grid_fill_col_wraps_text_under_constrained_width() {
-    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let mut h = Harness::new(UVec2::new(200, 400));
     let mut value_node = None;
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -156,7 +156,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
                 });
         });
     });
-    let shaped = support::shaped_text(h.ui.layout(Layer::Main), value_node.unwrap());
+    let shaped = support::shaped_text(h.ui().layout(Layer::Main), value_node.unwrap());
     assert_eq!(
         shaped.extent.size.h,
         support::lines_h(2, 14.0),
@@ -172,7 +172,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 /// A VStack section containing a `(Fill, Hug)` Grid with a wrapping Fill column sizes to the wrapped row heights.
 #[test]
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 600));
+    let mut h = Harness::new(UVec2::new(400, 600));
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
@@ -225,7 +225,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
 /// A Hug-axis ZStack containing a Hug Grid with wrapping Fill-column cells lets the grid measure under the constrained cross axis.
 #[test]
 fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 600));
+    let mut h = Harness::new(UVec2::new(400, 600));
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()

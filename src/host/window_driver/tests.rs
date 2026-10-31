@@ -440,11 +440,10 @@ mod record_store_tests {
     use glam::{UVec2, Vec2};
 
     use crate::app::App;
-    use crate::internals::record_app::RecordApp;
 
     use crate::display::frame_stamp::FrameStamp;
     use crate::host::window_driver::tests::config;
-    use crate::host::window_driver::{PresentStrategy, WindowDriver};
+    use crate::host::window_driver::{FrameDepth, PresentStrategy, WindowDriver};
     use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::paint::color::RgbaF32;
@@ -556,6 +555,7 @@ mod record_store_tests {
                 Duration::ZERO,
             ),
             &mut app,
+            FrameDepth::Paint,
         );
 
         assert_eq!(app.updates, [token], "update runs once");
@@ -642,8 +642,8 @@ mod record_store_tests {
             label: "retained A",
             id: "window-a",
         };
-        let mut app_a = RecordApp::new(|ui| scene_a.record(ui));
-        let _ = window_a.cpu_frame(&mut frontend, display, &mut app_a);
+        let mut app_a = |ui: &mut Ui| scene_a.record(ui);
+        let _ = window_a.cpu_frame(&mut frontend, display, &mut app_a, FrameDepth::Paint);
         window_a.output_valid = true;
         let retained = snapshot(&window_a);
         assert_eq!(retained.mesh_vertices.len(), 3);
@@ -657,12 +657,12 @@ mod record_store_tests {
             label: "window B has a much longer label",
             id: "window-b",
         };
-        let mut app_b = RecordApp::new(|ui| scene_b.record(ui));
-        let _ = window_b.cpu_frame(&mut frontend, display, &mut app_b);
+        let mut app_b = |ui: &mut Ui| scene_b.record(ui);
+        let _ = window_b.cpu_frame(&mut frontend, display, &mut app_b, FrameDepth::Paint);
         window_b.output_valid = true;
         assert_eq!(snapshot(&window_a), retained);
 
-        let paint_only = window_a.cpu_frame(&mut frontend, display, &mut app_a);
+        let paint_only = window_a.cpu_frame(&mut frontend, display, &mut app_a, FrameDepth::Paint);
         assert_eq!(paint_only.report.processing, FrameProcessing::PaintOnly);
         assert_eq!(snapshot(&window_a), retained);
     }
@@ -748,8 +748,9 @@ mod cutout_census_tests {
     use crate::display::Display;
     use crate::display::frame_stamp::FrameStamp;
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
-    use crate::host::window_driver::{DriverConfig, PresentPath, PresentStrategy, WindowDriver};
-    use crate::internals::record_app::RecordApp;
+    use crate::host::window_driver::{
+        DriverConfig, FrameDepth, PresentPath, PresentStrategy, WindowDriver,
+    };
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::chrome::Chrome;
@@ -758,6 +759,7 @@ mod cutout_census_tests {
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::internals::test_device;
     use crate::shape::Shape;
+    use crate::ui::Ui;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
@@ -791,7 +793,7 @@ mod cutout_census_tests {
         );
         let cards = Cell::new(3);
         let tick = Cell::new(false);
-        let mut app = RecordApp::new(|ui| {
+        let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("cards")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -819,11 +821,11 @@ mod cutout_census_tests {
                         .chrome(Chrome::fill(fill))
                         .show(ui);
                 });
-        });
+        };
         let mut damage = |cards_now: usize, tick_now: bool| {
             cards.set(cards_now);
             tick.set(tick_now);
-            let frame = driver.cpu_frame(&mut frontend, display, &mut app);
+            let frame = driver.cpu_frame(&mut frontend, display, &mut app, FrameDepth::Paint);
             driver.output_valid = true;
             match frame.mode {
                 PresentPath::ViaBackbuffer(plan) => plan.damage,
@@ -862,13 +864,11 @@ mod screenshot_tests {
 
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
-    use crate::host::headless_window::HeadlessWindow;
-    use crate::internals::record_app::RecordApp;
+    use crate::host::harness::Harness;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::size::Size;
     use crate::primitives::paint::chrome::Chrome;
     use crate::primitives::paint::color::RgbaF32;
-    use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
     use crate::widget_core::configure::Configure;
     use crate::widgets::block::Block;
@@ -896,7 +896,7 @@ mod screenshot_tests {
     /// A window in `format`, drawing two blocks of different colors so a crop or a swapped
     /// channel shows.
     struct Scene {
-        window: HeadlessWindow,
+        window: Harness,
         /// The id of the last ask, whose image a frame looks for.
         asked: Option<ScreenshotId>,
     }
@@ -904,10 +904,12 @@ mod screenshot_tests {
     impl Scene {
         fn new(format: wgpu::TextureFormat, scale: f32) -> Self {
             let gpu = headless_test_gpu();
-            let window = HeadlessWindow::builder(gpu.handles())
-                .shaper(TextShaper::test_mono())
+            let window = Harness::builder(PHYSICAL)
+                .scale(scale)
+                .mono()
                 .format(TargetFormat::new(format))
-                .open(PHYSICAL, scale);
+                .gpu(gpu.handles())
+                .build();
             Self {
                 window,
                 asked: None,
@@ -923,7 +925,7 @@ mod screenshot_tests {
         fn frame(&mut self, frame: Frame) -> FrameRun {
             let asked = Cell::new(self.asked);
             let seen = Cell::new(None);
-            let mut app = RecordApp::new(|ui: &mut Ui| {
+            let mut app = |ui: &mut Ui| {
                 if let Some(shot) = asked.get().and_then(|id| ui.screenshot_taken(id)) {
                     seen.set(Some(shot.clone()));
                 }
@@ -942,7 +944,7 @@ mod screenshot_tests {
                 if let Frame::Asking(region) = frame {
                     asked.set(ui.request_screenshot(region));
                 }
-            });
+            };
             let repaint = self.window.frame(&mut app).repaint_requested;
             self.asked = asked.get();
             FrameRun {
@@ -1082,7 +1084,7 @@ mod screenshot_tests {
             Rect::new(10.0, 0.0, 10.0, 10.0),
         );
         let ids = Cell::new(None);
-        let mut app = RecordApp::new(|ui: &mut Ui| {
+        let mut app = |ui: &mut Ui| {
             let mut ask = |region| {
                 ui.request_screenshot(Some(region))
                     .expect("a region with pixels")
@@ -1091,7 +1093,7 @@ mod screenshot_tests {
             let again = ask(left);
             let second = ask(right);
             ids.set(Some([first, again, second]));
-        });
+        };
         scene.window.frame(&mut app);
         let [first, again, second] = ids.get().unwrap();
         assert_eq!(first, again, "a region asked again in one frame is one ask");
@@ -1114,8 +1116,7 @@ mod screenshot_tests {
 mod capture_path_tests {
     use crate::host::window_driver::tests::new_driver;
     use crate::host::window_driver::tests::{config, spec};
-    use crate::host::window_driver::{FrameSpec, PresentPath, PresentStrategy};
-    use crate::internals::record_app::RecordApp;
+    use crate::host::window_driver::{FrameDepth, FrameSpec, PresentPath, PresentStrategy};
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::layout::sizing::Sizing;
     use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -1123,6 +1124,7 @@ mod capture_path_tests {
     use crate::renderer::frontend::Frontend;
     use crate::renderer::frontend::internals::test_device;
     use crate::shape::Shape;
+    use crate::ui::Ui;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;
     use crate::widgets::panel::Panel;
@@ -1144,7 +1146,7 @@ mod capture_path_tests {
             ..spec(UVec2::new(100, 80), 1.0)
         };
         driver.note_target(&spec);
-        let mut app = RecordApp::new(|ui| {
+        let mut app = |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("panes")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -1152,9 +1154,11 @@ mod capture_path_tests {
                     ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 4.0, 4.0)).fill(RgbaF32::WHITE));
                     ui.add_shape(Shape::rect(pane).backdrop_filter(BackdropFilter::blur(2.0)));
                 });
-        });
+        };
         let stamp = driver.stamp(&spec);
-        driver.cpu_frame(&mut frontend, stamp, &mut app).mode
+        driver
+            .cpu_frame(&mut frontend, stamp, &mut app, FrameDepth::Paint)
+            .mode
     }
 
     /// A whole frame paints straight into the target unless its captures cannot copy out of it,

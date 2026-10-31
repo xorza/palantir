@@ -1,7 +1,7 @@
 //! How a widget is named, and what happens when two ask for one name.
 
 use crate::common::span::Span;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -48,7 +48,7 @@ struct DuplicateIds {
 }
 
 /// Two buttons in one frame both claiming `"dup"`; the second is disambiguated.
-fn record_duplicate_ids(h: &mut UiHarness) -> DuplicateIds {
+fn record_duplicate_ids(h: &mut Harness) -> DuplicateIds {
     let button_node = Cell::new(NodeId(0));
     let duplicate_id = WidgetId::from_hash("dup");
     h.frame(|ui| {
@@ -66,7 +66,7 @@ fn record_duplicate_ids(h: &mut UiHarness) -> DuplicateIds {
 }
 
 /// One `"dup"` in `Main` and one in `Popup`.
-fn record_cross_layer_duplicate_ids(h: &mut UiHarness) {
+fn record_cross_layer_duplicate_ids(h: &mut Harness) {
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Button::new().id(WidgetId::from_hash("dup")).show(ui);
@@ -80,16 +80,16 @@ fn record_cross_layer_duplicate_ids(h: &mut UiHarness) {
 /// Two `.id(WidgetId::from_hash("dup"))` calls in one frame: `SeenIds::record` disambiguates the second and `Forest` pairs both nodes via `Forest.collisions` instead of panicking.
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     let duplicate_id = record_duplicate_ids(&mut h).id;
     // One collision pair is recorded and survives until the next `pre_record`.
     assert_eq!(
-        h.ui.forest.collisions.len(),
+        h.ui().forest.collisions.len(),
         1,
         "expected exactly one explicit collision recorded",
     );
     assert_eq!(
-        h.ui.cascade.hit_ids().collect::<Vec<_>>(),
+        h.ui().cascade.hit_ids().collect::<Vec<_>>(),
         [duplicate_id, duplicate_id.with(1)],
         "hit rows must retain both resolved IDs rather than the duplicated raw ID",
     );
@@ -99,10 +99,10 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 #[cfg(debug_assertions)]
 #[test]
 fn duplicate_explicit_widget_ids_are_outlined() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     let button_node = record_duplicate_ids(&mut h).first_node;
-    let button_rect = h.ui.layout[Plane::MAIN].rect[button_node.idx()];
-    let outlines = collision_outlines(&h.ui);
+    let button_rect = h.ui().layout[Plane::MAIN].rect[button_node.idx()];
+    let outlines = collision_outlines(h.ui_ref());
     assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
     let matched = outlines.iter().any(|rect| {
         (rect.min.x - button_rect.min.x).abs() < 1.0
@@ -123,7 +123,7 @@ fn a_collision_under_a_transform_is_outlined_where_it_paints() {
     use crate::primitives::geometry::translate_scale::TranslateScale;
     use crate::primitives::layout::sizing::Sizing;
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
@@ -139,7 +139,7 @@ fn a_collision_under_a_transform_is_outlined_where_it_paints() {
                 }
             });
     });
-    let mut outlines = collision_outlines(&h.ui);
+    let mut outlines = collision_outlines(h.ui_ref());
     outlines.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
     assert_eq!(
         outlines,
@@ -153,14 +153,14 @@ fn a_collision_under_a_transform_is_outlined_where_it_paints() {
 /// An explicit id is per-layer: `Main` and `Popup` keep their own ids and the pair records each endpoint's layer.
 #[test]
 fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     record_cross_layer_duplicate_ids(&mut h);
     assert_eq!(
-        h.ui.forest.collisions.len(),
+        h.ui().forest.collisions.len(),
         1,
         "expected one collision pair across Main + Popup",
     );
-    let pair = h.ui.forest.collisions[0];
+    let pair = h.ui().forest.collisions[0];
     assert_eq!(
         pair.first.plane.layer,
         Layer::Main,
@@ -179,12 +179,12 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
 #[cfg(debug_assertions)]
 #[test]
 fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     record_cross_layer_duplicate_ids(&mut h);
-    let pair = h.ui.forest.collisions[0];
-    let main_rect = h.ui.layout[Plane::MAIN].rect[pair.first.node.idx()];
-    let popup_rect = h.ui.layout[Plane::base(Layer::Popup)].rect[pair.second.node.idx()];
-    let outlines = collision_outlines(&h.ui);
+    let pair = h.ui().forest.collisions[0];
+    let main_rect = h.ui().layout[Plane::MAIN].rect[pair.first.node.idx()];
+    let popup_rect = h.ui().layout[Plane::base(Layer::Popup)].rect[pair.second.node.idx()];
+    let outlines = collision_outlines(h.ui_ref());
     assert_eq!(
         outlines,
         [main_rect, popup_rect],
@@ -194,7 +194,7 @@ fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
 
 #[test]
 fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
-    let mut h = UiHarness::with_text(SURFACE);
+    let mut h = Harness::new(SURFACE);
     let main_id = WidgetId::from_hash("layer-output-main");
     let popup_id = WidgetId::from_hash("layer-output-popup");
 
@@ -218,7 +218,7 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
                     .show(ui);
             });
     };
-    let node_for = |h: &UiHarness, layer: Layer, id: WidgetId| {
+    let node_for = |h: &Harness, layer: Layer, id: WidgetId| {
         let at = h.node_of(id).expect("recorded");
         assert_eq!(at.plane.layer, layer);
         at.node
@@ -227,41 +227,49 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
     h.frame(&mut record);
     let main_node = node_for(&h, Layer::Main, main_id);
     let popup_node = node_for(&h, Layer::Popup, popup_id);
-    let cold_main = h.ui.layout[Plane::MAIN].rect[main_node.idx()];
-    let cold_popup = h.ui.layout[Plane::base(Layer::Popup)].rect[popup_node.idx()];
+    let cold_main = h.ui().layout[Plane::MAIN].rect[main_node.idx()];
+    let cold_popup = h.ui().layout[Plane::base(Layer::Popup)].rect[popup_node.idx()];
     assert_eq!(cold_main, Rect::new(0.0, 0.0, 40.0, 20.0));
     assert_eq!(cold_popup, Rect::new(80.0, 60.0, 70.0, 30.0));
 
-    let main_span = h.ui.layout[Plane::MAIN].text_spans[main_node.idx()];
-    let popup_span = h.ui.layout[Plane::base(Layer::Popup)].text_spans[popup_node.idx()];
+    let main_span = h.ui().layout[Plane::MAIN].text_spans[main_node.idx()];
+    let popup_span = h.ui().layout[Plane::base(Layer::Popup)].text_spans[popup_node.idx()];
     assert_eq!(main_span, Span::new(0, 1));
     assert_eq!(popup_span, Span::new(0, 1));
-    assert_eq!(h.ui.layout[Plane::MAIN].text_shapes.len(), 1);
-    assert_eq!(h.ui.layout[Plane::base(Layer::Popup)].text_shapes.len(), 1);
-    let cold_main_key = h.ui.layout[Plane::MAIN].text_shapes[main_span.start as usize].key;
+    assert_eq!(h.ui().layout[Plane::MAIN].text_shapes.len(), 1);
+    assert_eq!(
+        h.ui().layout[Plane::base(Layer::Popup)].text_shapes.len(),
+        1
+    );
+    let cold_main_key = h.ui().layout[Plane::MAIN].text_shapes[main_span.start as usize].key;
     let cold_popup_key =
-        h.ui.layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key;
+        h.ui().layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key;
     assert_ne!(cold_main_key, cold_popup_key);
 
-    h.engines.layout.forget_last_run();
+    h.engines_mut().layout.forget_last_run();
     h.frame(&mut record);
     assert!(
-        !h.engines.layout.scratch.counters.cache_hits().is_empty(),
+        !h.engines_mut()
+            .layout
+            .scratch
+            .counters
+            .cache_hits()
+            .is_empty(),
         "warm frame must exercise measure-cache restoration",
     );
     let main_node = node_for(&h, Layer::Main, main_id);
     let popup_node = node_for(&h, Layer::Popup, popup_id);
-    assert_eq!(h.ui.layout[Plane::MAIN].rect[main_node.idx()], cold_main);
+    assert_eq!(h.ui().layout[Plane::MAIN].rect[main_node.idx()], cold_main);
     assert_eq!(
-        h.ui.layout[Plane::base(Layer::Popup)].rect[popup_node.idx()],
+        h.ui().layout[Plane::base(Layer::Popup)].rect[popup_node.idx()],
         cold_popup
     );
     assert_eq!(
-        h.ui.layout[Plane::MAIN].text_shapes[main_span.start as usize].key,
+        h.ui().layout[Plane::MAIN].text_shapes[main_span.start as usize].key,
         cold_main_key,
     );
     assert_eq!(
-        h.ui.layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key,
+        h.ui().layout[Plane::base(Layer::Popup)].text_shapes[popup_span.start as usize].key,
         cold_popup_key,
     );
 }
@@ -269,9 +277,9 @@ fn layout_outputs_stay_isolated_per_layer_across_cache_hits() {
 /// Pin: the encoder-direct overlay path leaves `Layer::Debug` empty.
 #[test]
 fn collisions_do_not_record_into_debug_layer() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     assert!(
-        !h.ui.resources.diagnostics().overlay.get().frame_stats,
+        !h.ui().resources.diagnostics().overlay.get().frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
     );
     h.frame(|ui| {
@@ -281,11 +289,11 @@ fn collisions_do_not_record_into_debug_layer() {
         });
     });
     assert!(
-        !h.ui.forest.collisions.is_empty(),
+        !h.ui().forest.collisions.is_empty(),
         "collision should have been recorded",
     );
     assert_eq!(
-        h.ui.forest.trees[Plane::base(Layer::Debug)].records.len(),
+        h.ui().forest.trees[Plane::base(Layer::Debug)].records.len(),
         0,
         "encoder-direct overlay path must not record nodes into Layer::Debug",
     );
@@ -297,7 +305,7 @@ fn auto_id_collisions_disambiguate() {
     fn chip(ui: &mut Ui) {
         Block::new().auto_id().show(ui);
     }
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             chip(ui);
@@ -306,12 +314,12 @@ fn auto_id_collisions_disambiguate() {
         });
     });
     // Synthetic viewport root + 1 panel + 3 chips = 5 distinct ids, no panic.
-    assert_eq!(h.ui.forest.trees[Plane::MAIN].records.len(), 5);
+    assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 5);
 }
 
 #[test]
 fn state_map_persists_and_evicts_with_recorded_ids() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     let id_a = WidgetId::from_hash("a");
     let id_b = WidgetId::from_hash("b");
 
@@ -342,7 +350,7 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
 fn two_widgets_resolved_before_recording_get_distinct_ids() {
     use crate::widget_core::widget::Widget;
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let ids = h.frame_value(|ui| {
         let make = || Widget::leaf().auto_id();
         let (mut a, mut b) = (make(), make());

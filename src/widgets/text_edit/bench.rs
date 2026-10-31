@@ -4,7 +4,7 @@
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
@@ -32,7 +32,7 @@ enum Selection {
     All,
 }
 
-fn run_frame(h: &mut UiHarness, text: &mut String, case: &Case) {
+fn run_frame(h: &mut Harness, text: &mut String, case: &Case) {
     black_box(h.frame(|ui| {
         TextEdit::new(text)
             .id(editor_id())
@@ -43,8 +43,8 @@ fn run_frame(h: &mut UiHarness, text: &mut String, case: &Case) {
 }
 
 /// A settled editor over `text`, selected as `case` says.
-fn settled(text: &mut String, case: &Case) -> UiHarness {
-    let mut h = UiHarness::with_text(UVec2::new(800, 300));
+fn settled(text: &mut String, case: &Case) -> Harness {
+    let mut h = Harness::new(UVec2::new(800, 300));
     for _ in 0..3 {
         run_frame(&mut h, text, case);
     }
@@ -52,10 +52,11 @@ fn settled(text: &mut String, case: &Case) -> UiHarness {
         Selection::Nothing => {}
         Selection::All => {
             h.set_focus(editor_id());
-            h.ui.with_state::<TextEditState, _>(editor_id(), |_, state| {
-                state.edit.selection = Some(0);
-                state.edit.caret = text.len();
-            });
+            h.ui()
+                .with_state::<TextEditState, _>(editor_id(), |_, state| {
+                    state.edit.selection = Some(0);
+                    state.edit.caret = text.len();
+                });
             run_frame(&mut h, text, case);
         }
     }

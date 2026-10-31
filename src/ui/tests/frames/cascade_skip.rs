@@ -1,6 +1,6 @@
 //! The `CascadeKey` that lets a frame reuse the previous cascade, and what moves it.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -25,35 +25,35 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
             .show(ui);
     }
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(ui, 50.0));
     assert!(
-        h.engines.cascade.counters.ran(),
+        h.engines_mut().cascade.counters.ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 50.0));
     assert!(
-        !h.engines.cascade.counters.ran(),
+        !h.engines_mut().cascade.counters.ran(),
         "unchanged frame skips the cascade"
     );
 
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        h.engines.cascade.counters.ran(),
+        h.engines_mut().cascade.counters.ran(),
         "authoring change re-runs the cascade"
     );
 
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        !h.engines.cascade.counters.ran(),
+        !h.engines_mut().cascade.counters.ran(),
         "settles back to skipping"
     );
 
     h.resize(UVec2::new(SURFACE.x + 1, SURFACE.y));
     h.frame(|ui| build(ui, 80.0));
     assert!(
-        h.engines.cascade.counters.ran(),
+        h.engines_mut().cascade.counters.ran(),
         "a surface change that moves a rect re-runs the cascade"
     );
 }
@@ -70,20 +70,20 @@ fn the_key_covers_authoring_input_classes() {
 
     // Settle `base` into the skip, then assert the one-attribute delta re-runs.
     fn assert_reruns(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| base(ui));
         assert!(
-            h.engines.cascade.counters.ran(),
+            h.engines_mut().cascade.counters.ran(),
             "{label}: first frame runs the cascade"
         );
         h.frame(|ui| base(ui));
         assert!(
-            !h.engines.cascade.counters.ran(),
+            !h.engines_mut().cascade.counters.ran(),
             "{label}: unchanged frame skips the cascade"
         );
         h.frame(|ui| changed(ui));
         assert!(
-            h.engines.cascade.counters.ran(),
+            h.engines_mut().cascade.counters.ran(),
             "{label}: toggling it must re-run the cascade — the input is \
              missing from the tree hashes the cascade key folds",
         );
@@ -123,7 +123,7 @@ fn the_key_covers_authoring_input_classes() {
 /// Key completeness for the one input that is not hashed: a font load can change a run's ink in a rect that doesn't move, so the epoch is folded in directly.
 #[test]
 fn the_key_covers_the_font_database() {
-    let mut h = UiHarness::with_text(SURFACE);
+    let mut h = Harness::new(SURFACE);
     let record = |ui: &mut Ui| {
         Text::new("a label that sizes to its own text")
             .id(WidgetId::from_hash("label"))
@@ -131,14 +131,14 @@ fn the_key_covers_the_font_database() {
     };
     h.prime(2, record);
     assert!(
-        !h.engines.cascade.counters.ran(),
+        !h.engines_mut().cascade.counters.ran(),
         "premise: an unchanged tree skips the cascade",
     );
 
-    h.ui.load_font(INTER).expect("the bundled Inter loads");
+    h.ui().load_font(INTER).expect("the bundled Inter loads");
     h.frame(record);
     assert!(
-        h.engines.cascade.counters.ran(),
+        h.engines_mut().cascade.counters.ran(),
         "a font load must re-run the cascade — the epoch is missing from \
          the key",
     );
@@ -161,15 +161,15 @@ fn the_key_covers_layer_and_root_identity() {
         });
     }
     let assert_reruns = |label: &str, base: &dyn Fn(&mut Ui), changed: &dyn Fn(&mut Ui)| {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.prime(2, |ui| base(ui));
         assert!(
-            !h.engines.cascade.counters.ran(),
+            !h.engines_mut().cascade.counters.ran(),
             "{label}: unchanged frame skips the cascade"
         );
         h.frame(|ui| changed(ui));
         assert!(
-            h.engines.cascade.counters.ran(),
+            h.engines_mut().cascade.counters.ran(),
             "{label}: identity change must re-run the cascade",
         );
     };

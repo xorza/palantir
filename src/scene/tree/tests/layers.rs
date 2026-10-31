@@ -5,8 +5,8 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
+use crate::host::harness::Harness;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::placement::{Origin, Placement};
@@ -27,7 +27,7 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn ui_layer_records_popup_into_separate_tree() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let popup_anchor = Vec2::new(50.0, 60.0);
     h.frame(|ui| {
         Panel::vstack()
@@ -53,8 +53,8 @@ fn ui_layer_records_popup_into_separate_tree() {
                 });
         });
     });
-    let main_tree = h.ui.tree(Layer::Main);
-    let popup_tree = h.ui.tree(Layer::Popup);
+    let main_tree = h.ui_ref().tree(Layer::Main);
+    let popup_tree = h.ui_ref().tree(Layer::Popup);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node.idx(), 0);
@@ -91,7 +91,7 @@ fn ui_layer_size_caps_overlay_available() {
         (Some(Size::new(9999.0, 9999.0)), Size::new(400.0, 300.0)),
         (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 300.0)),
     ];
-    let mut h = UiHarness::new(SURF);
+    let mut h = Harness::mono(SURF);
     for (cap, expected) in cases {
         h.frame(|ui| {
             Panel::vstack()
@@ -109,9 +109,9 @@ fn ui_layer_size_caps_overlay_available() {
                     .show(ui, |_| {});
             });
         });
-        let popup_tree = h.ui.tree(Layer::Popup);
+        let popup_tree = h.ui().tree(Layer::Popup);
         let root = popup_tree.roots[0].first_node.idx();
-        let rect = h.ui.layout(Layer::Popup).rect[root];
+        let rect = h.ui().layout(Layer::Popup).rect[root];
         assert_eq!(rect.min, anchor, "cap={cap:?}");
         assert_eq!(rect.size, *expected, "cap={cap:?}");
     }
@@ -119,7 +119,7 @@ fn ui_layer_size_caps_overlay_available() {
 
 #[test]
 fn empty_popup_body_leaves_popup_tree_empty() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("only-main"))
@@ -131,9 +131,9 @@ fn empty_popup_body_leaves_popup_tree_empty() {
             });
         ui.layer(Layer::Popup).show(|_| {});
     });
-    assert_eq!(h.ui.tree(Layer::Main).roots.len(), 1);
-    assert!(h.ui.tree(Layer::Popup).roots.is_empty());
-    assert!(h.ui.tree(Layer::Popup).records.is_empty());
+    assert_eq!(h.ui().tree(Layer::Main).roots.len(), 1);
+    assert!(h.ui().tree(Layer::Popup).roots.is_empty());
+    assert!(h.ui().tree(Layer::Popup).records.is_empty());
 }
 
 #[test]
@@ -161,20 +161,20 @@ fn forest_independence_across_recording_orders() {
                 });
         });
     };
-    let mut ui_p_first = UiHarness::new(UVec2::new(400, 400));
+    let mut ui_p_first = Harness::mono(UVec2::new(400, 400));
     ui_p_first.frame(|ui| {
         record_popup(ui);
         record_main(ui);
     });
-    let mut ui_m_first = UiHarness::new(UVec2::new(400, 400));
+    let mut ui_m_first = Harness::mono(UVec2::new(400, 400));
     ui_m_first.frame(|ui| {
         record_main(ui);
         record_popup(ui);
     });
     for layer in [Layer::Main, Layer::Popup] {
         assert_eq!(
-            ui_p_first.ui.tree(layer).records.len(),
-            ui_m_first.ui.tree(layer).records.len(),
+            ui_p_first.ui().tree(layer).records.len(),
+            ui_m_first.ui().tree(layer).records.len(),
             "{layer:?} record count independent of recording order",
         );
     }
@@ -182,7 +182,7 @@ fn forest_independence_across_recording_orders() {
 
 #[test]
 fn mid_recording_popup_with_text_renders_through_encoder() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let popup_anchor = Vec2::new(50.0, 100.0);
     h.frame(|ui| {
         Panel::vstack()
@@ -206,10 +206,10 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     });
     let _cmds = h.encode_paint();
 
-    let store = h.ui.record_store();
+    let store = h.ui_ref().record_store();
     let interned_text = store.interned_text();
-    let main_tree = h.ui.tree(Layer::Main);
-    let popup_tree = h.ui.tree(Layer::Popup);
+    let main_tree = h.ui_ref().tree(Layer::Main);
+    let popup_tree = h.ui_ref().tree(Layer::Popup);
 
     let outer_span = main_tree.records.shape_span()[0];
     let main_texts: Vec<&str> = main_tree.shapes.records
@@ -252,7 +252,7 @@ fn mid_recording_popup_keeps_trees_independent() {
         }
     }
 
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let popup_anchor = Vec2::new(50.0, 60.0);
     let parent = h.frame_value(|ui| {
         Panel::vstack()
@@ -299,8 +299,8 @@ fn mid_recording_popup_keeps_trees_independent() {
             .response
             .node()
     });
-    let main_tree = h.ui.tree(Layer::Main);
-    let popup_tree = h.ui.tree(Layer::Popup);
+    let main_tree = h.ui_ref().tree(Layer::Main);
+    let popup_tree = h.ui_ref().tree(Layer::Popup);
 
     assert_eq!(main_tree.records.len(), 6);
     assert_eq!(main_tree.roots.len(), 1);
@@ -388,9 +388,9 @@ fn a_nested_overlay_records_one_plane_above_its_opener() {
         ),
     ];
     for &(label, kinds, planes) in rows {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| nest(ui, kinds, 0));
-        let cascade = h.ui.cascade();
+        let cascade = h.ui_ref().cascade();
         for (depth, (&kind, &want)) in kinds.iter().zip(planes).enumerate() {
             let id = WidgetId::from_hash(("nested", depth));
             let at = cascade.endpoint(id).expect("recorded");
@@ -412,7 +412,7 @@ fn a_nested_overlay_records_one_plane_above_its_opener() {
             "{label}: the deepest overlay takes the press",
         );
         let mut paints = Vec::new();
-        cascade.owned_paints(h.ui.forest(), &mut paints);
+        cascade.owned_paints(h.ui_ref().forest(), &mut paints);
         let painted: Vec<WidgetId> = paints.iter().map(|paint| paint.owner).collect();
         let nested: Vec<WidgetId> = (0..kinds.len())
             .map(|depth| WidgetId::from_hash(("nested", depth)))
@@ -436,7 +436,7 @@ fn a_new_plane_with_no_root_reaches_every_table() {
             }
         });
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| record(ui, false));
     h.frame(|ui| record(ui, false));
     h.frame(|ui| record(ui, true));
@@ -445,5 +445,5 @@ fn a_new_plane_with_no_root_reaches_every_table() {
         layer: Layer::Popup,
         depth: 1,
     };
-    assert!(h.ui.tree(nested).records.is_empty());
+    assert!(h.ui().tree(nested).records.is_empty());
 }

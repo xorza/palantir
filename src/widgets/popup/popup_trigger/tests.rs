@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -24,22 +24,22 @@ fn scene(ui: &mut Ui, disabled: bool) -> OverlayResponse<Option<i32>> {
     PopupTrigger::on(&trigger).show(ui, |_, _| 7)
 }
 
-fn trigger_center(h: &UiHarness) -> Vec2 {
+fn trigger_center(h: &Harness) -> Vec2 {
     h.rect(trigger_id()).expect("trigger arranged").center()
 }
 
 /// A click opens the popup; a second lands outside and is a dismissal: the body runs once more, the response reports `closed()`, the next frame records nothing.
 #[test]
 fn a_click_toggles_and_the_body_runs_only_while_open() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
-    assert!(!PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
 
     let at = trigger_center(&h);
-    h.click_at(at);
+    h.click(at);
     let opened = h.frame_value(|ui| scene(ui, false));
     assert_eq!(opened.inner, Some(7), "the click opens it");
-    assert!(PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert!(PopupTrigger::is_open(h.ui_ref(), trigger_id()));
 
     assert_eq!(
         h.frame_value(|ui| scene(ui, false)).inner,
@@ -47,24 +47,24 @@ fn a_click_toggles_and_the_body_runs_only_while_open() {
         "it stays open"
     );
 
-    h.click_at(at);
+    h.click(at);
     assert!(
         h.frame_value(|ui| scene(ui, false)).closed(),
         "a second click closes it"
     );
-    assert!(!PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
 }
 
 /// A programmatic open records next frame; a disabled trigger closes an open popup without running its body.
 #[test]
 fn open_close_and_a_disabled_trigger() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         scene(ui, false);
     });
 
-    PopupTrigger::open(&mut h.ui, trigger_id());
+    PopupTrigger::open(h.ui(), trigger_id());
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, Some(7));
 
     assert_eq!(
@@ -72,15 +72,15 @@ fn open_close_and_a_disabled_trigger() {
         None,
         "disabled closes it"
     );
-    assert!(!PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
     assert_eq!(
         h.frame_value(|ui| scene(ui, false)).inner,
         None,
         "and it stays closed once enabled again",
     );
 
-    PopupTrigger::open(&mut h.ui, trigger_id());
-    PopupTrigger::close(&mut h.ui, trigger_id());
+    PopupTrigger::open(h.ui(), trigger_id());
+    PopupTrigger::close(h.ui(), trigger_id());
     assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
 }
 
@@ -102,27 +102,27 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
         });
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(record);
     h.key(Key::Tab);
     h.frame(record);
     assert_eq!(h.focus(), Some(trigger_id()));
     h.key(Key::Enter);
     h.frame(record);
-    assert!(PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert!(PopupTrigger::is_open(h.ui_ref(), trigger_id()));
     assert_eq!(h.focus(), Some(item), "the keyboard's open moves focus in");
     h.key(Key::Escape);
     h.frame(record);
     h.frame(record);
-    assert!(!PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
     assert_eq!(h.focus(), Some(trigger_id()), "closing gives it back");
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(record);
     let at = trigger_center(&h);
-    h.click_at(at);
+    h.click(at);
     h.frame(record);
-    assert!(PopupTrigger::is_open(&h.ui, trigger_id()));
+    assert!(PopupTrigger::is_open(h.ui_ref(), trigger_id()));
     h.frame(record);
     assert_eq!(h.focus(), Some(trigger_id()), "a click's open leaves focus");
 }
@@ -171,17 +171,17 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
 
     for (this, other) in [(popup, menu), (menu, popup)] {
         let name = this.name;
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             record(ui);
         });
-        (this.open)(&mut h.ui);
+        (this.open)(h.ui());
         h.frame(|ui| {
             record(ui);
         });
-        assert!((this.is_open)(&h.ui), "{name}: open");
+        assert!((this.is_open)(h.ui_ref()), "{name}: open");
         assert!(
-            !(other.is_open)(&h.ui),
+            !(other.is_open)(h.ui_ref()),
             "{name}: the other kind's row stays closed"
         );
 
@@ -191,8 +191,8 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
             "{name}: premise, the open overlay holds the keys"
         );
 
-        (this.close)(&mut h.ui);
-        assert!(!(this.is_open)(&h.ui), "{name}: closed");
+        (this.close)(h.ui());
+        assert!(!(this.is_open)(h.ui_ref()), "{name}: closed");
         h.key(Key::Char('x'));
         assert!(
             h.frame_value(record),

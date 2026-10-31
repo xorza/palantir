@@ -1,23 +1,23 @@
 //! The two clocks, and the step sizes that would silently clamp.
 
+use crate::host::harness::tests::support::{self, INSIDE, SURFACE};
+use crate::host::harness::*;
 use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
 use crate::internals::panic_probe;
-use crate::internals::ui_harness::tests::support::{self, INSIDE, SURFACE};
-use crate::internals::ui_harness::*;
 use std::cell;
 
 #[test]
 fn one_clock_stamps_both_frames_and_input() {
     // Time is frozen unless advanced, so two clicks at one point are a double-click until `advance` separates them.
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
 
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
     let first = harness.response_in(support::target(), support::button);
     assert!(first.left.clicked());
     assert!(!first.left.double_clicked(), "one click is not a double");
 
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
     let second = harness.response_in(support::target(), support::button);
     assert!(
         second.left.double_clicked(),
@@ -25,7 +25,7 @@ fn one_clock_stamps_both_frames_and_input() {
     );
 
     harness.advance_past_double_click();
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
     let third = harness.response_in(support::target(), support::button);
     assert!(third.left.clicked());
     assert!(
@@ -34,7 +34,7 @@ fn one_clock_stamps_both_frames_and_input() {
     );
 
     harness.advance(DOUBLE_CLICK_WINDOW * 2);
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
     let fourth = harness.response_in(support::target(), support::button);
     assert!(
         !fourth.left.double_clicked(),
@@ -44,7 +44,7 @@ fn one_clock_stamps_both_frames_and_input() {
     let parked = harness.time + DOUBLE_CLICK_WINDOW * 2;
     harness.at(parked).frame(support::button);
     assert_eq!(harness.time, parked, "at parks the clock absolutely");
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
     let fifth = harness.response_in(support::target(), support::button);
     assert!(fifth.left.clicked());
     assert!(
@@ -56,20 +56,22 @@ fn one_clock_stamps_both_frames_and_input() {
 #[test]
 fn advance_frames_rejects_a_step_that_would_be_clamped() {
     // Animation dt clamps to MAX_ANIMATION_DT per frame; a larger step silently under-integrates.
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.advance_frames(3, Duration::from_millis(16), support::button);
     assert_eq!(harness.time, Duration::from_millis(48));
 
-    panic_probe::assert_panics_with("exceeds MAX_ANIMATION_DT", || {
-        UiHarness::new(SURFACE).advance_frames(1, Duration::from_millis(500), support::button);
+    panic_probe::assert_panics_with("an animation integrates", || {
+        Harness::mono(SURFACE).advance_frames(1, Duration::from_millis(500), support::button);
     });
-    panic_probe::assert_panics_with("exceeds MAX_ANIMATION_DT", || {
-        UiHarness::new(SURFACE).frames_until_idle(1, Duration::from_millis(500), support::button);
+    panic_probe::assert_panics_with("an animation integrates", || {
+        Harness::builder(SURFACE)
+            .frame_dt(Duration::from_millis(500))
+            .build()
     });
 }
 
 #[test]
-fn frames_until_idle_counts_the_frames_a_motion_takes() {
+fn settle_counts_the_frames_a_motion_takes() {
     use crate::animation::animation_request::AnimationRequest;
     use crate::animation::animation_slot::AnimationSlot;
     use crate::animation::animation_spec::AnimationSpec;
@@ -81,7 +83,8 @@ fn frames_until_idle_counts_the_frames_a_motion_takes() {
         Duration::from_millis(50),
         Easing::Linear,
     ));
-    let mut harness = UiHarness::new(SURFACE);
+    let tick = Duration::from_millis(16);
+    let mut harness = Harness::builder(SURFACE).mono().frame_dt(tick).build();
     let to = cell::Cell::new(0.0_f32);
     let mut record = |ui: &mut Ui| {
         let _ = ui.animate(
@@ -93,11 +96,6 @@ fn frames_until_idle_counts_the_frames_a_motion_takes() {
     harness.frame(&mut record);
     to.set(1.0);
     harness.frame(&mut record);
-    let tick = Duration::from_millis(16);
-    assert_eq!(harness.frames_until_idle(10, tick, &mut record), Some(4));
+    assert_eq!(harness.settle(&mut record), Ok(4));
     assert_eq!(harness.time, tick * 4);
-
-    to.set(0.0);
-    harness.frame(&mut record);
-    assert_eq!(harness.frames_until_idle(2, tick, &mut record), None);
 }

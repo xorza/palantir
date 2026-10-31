@@ -1,4 +1,4 @@
-//! DamageEngine visualization: a static scene rendered twice into one Harness (so
+//! DamageEngine visualization: a static scene rendered twice into one VisualRig (so
 //! `DamageEngine.prev` carries over), the second with
 //! `DebugOverlayConfig::dim_undamaged`. Magenta is the clear color of **both**
 //! frames, so a pixel reads magenta only if the scene left it uncovered. A failing
@@ -13,8 +13,8 @@ use palantir::{
 
 use crate::fixtures;
 use crate::goldens;
-use crate::harness::Harness;
 use crate::kept_on_failure::KeptOnFailure;
+use crate::visual_rig::VisualRig;
 
 const VIS_CLEAR: RgbaF32 = RgbaF32::srgb(1.0, 0.0, 1.0);
 
@@ -149,7 +149,7 @@ fn corner_pair_scene(salt: &'static str) -> impl FnMut(&mut Ui) + Copy {
 /// scene covered every pixel.
 #[test]
 fn static_scene_repeats_clean() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let size = UVec2::new(160, 96);
     let scene = button_scene("hi", "hello");
 
@@ -171,7 +171,7 @@ fn static_scene_repeats_clean() {
 /// frame repaints partially (target loaded, not cleared).
 #[test]
 fn single_button_change_repaints_partially() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
 
     h.size(UVec2::new(160, 96))
         .clear(VIS_CLEAR)
@@ -192,7 +192,7 @@ fn single_button_change_repaints_partially() {
 /// swapchain; no other test exercises the post-copy pass.
 #[test]
 fn damage_rect_overlay_strokes_dirty_region() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     h.size(UVec2::new(160, 96)).frame(button_scene("c", "a"));
     let f2 = h.overlay(DAMAGE_RECT).frame(button_scene("c", "b")).image;
     let _kept = KeptOnFailure::new("damage_rect_overlay_strokes_dirty_region", &f2);
@@ -215,7 +215,7 @@ fn damage_rect_overlay_strokes_dirty_region() {
 /// color, and each corner reads its block's fill.
 #[test]
 fn corner_pair_change_keeps_center_unpainted() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let f1 = h
         .size(UVec2::new(200, 200))
         .clear(VIS_CLEAR)
@@ -258,7 +258,7 @@ fn corner_pair_change_keeps_center_unpainted() {
 /// rect: red in both corners, none in the center.
 #[test]
 fn corner_pair_overlay_strokes_each_rect() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     h.size(UVec2::new(200, 200)).frame(corner_pair_scene("a"));
     let f2 = h.overlay(DAMAGE_RECT).frame(corner_pair_scene("b")).image;
     let _kept = KeptOnFailure::new("damage_corner_pair_overlay_strokes_each_rect", &f2);
@@ -279,7 +279,7 @@ fn corner_pair_overlay_strokes_each_rect() {
 /// rect, and an inset would collapse it.
 #[test]
 fn damage_rect_overlay_outlines_thin_sliver() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let sliver = |on: bool| {
         move |ui: &mut Ui| {
             Panel::canvas()

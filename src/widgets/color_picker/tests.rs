@@ -1,4 +1,5 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
@@ -11,11 +12,11 @@ use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::color_picker::ColorPicker;
 use glam::{UVec2, Vec2};
 
-fn harness() -> UiHarness {
-    UiHarness::with_text(UVec2::new(320, 460))
+fn harness() -> Harness {
+    Harness::new(UVec2::new(320, 460))
 }
 
-fn frame(h: &mut UiHarness, id: WidgetId, color: &mut RgbaF32) -> ValueEdges {
+fn frame(h: &mut Harness, id: WidgetId, color: &mut RgbaF32) -> ValueEdges {
     h.frame_value(|ui| ColorPicker::new(color).alpha(true).id(id).show(ui).edges())
 }
 
@@ -28,7 +29,7 @@ fn the_hue_survives_black() {
     frame(&mut h, id, &mut color);
     let start = color;
 
-    h.press_at(Vec2::new(100.0, 80.0));
+    h.press(Vec2::new(100.0, 80.0), PointerButton::Left);
     frame(&mut h, id, &mut color);
     h.drag_to(Vec2::new(1.0, 300.0));
     frame(&mut h, id, &mut color);
@@ -37,7 +38,7 @@ fn the_hue_survives_black() {
 
     h.drag_to(Vec2::new(190.0, 4.0));
     frame(&mut h, id, &mut color);
-    h.release();
+    h.release(PointerButton::Left);
     frame(&mut h, id, &mut color);
     let started = Okhsv::from_color(start, 0.0).h;
     let ended = Okhsv::from_color(color, 0.0).h;
@@ -64,7 +65,7 @@ fn an_outside_edit_re_seeds_the_axes() {
     );
     assert_eq!(color.to_srgba().r, 0xff, "and it keeps the color intact");
 
-    h.press_at(Vec2::new(206.0, 1.0));
+    h.press(Vec2::new(206.0, 1.0), PointerButton::Left);
     frame(&mut h, id, &mut color);
     let picked = color.to_srgba();
     assert!(
@@ -82,7 +83,10 @@ fn opacity_leaves_the_color_alone() {
     frame(&mut h, id, &mut color);
     let before = color.to_srgba();
 
-    h.press_at(Vec2::new(120.0, 160.0 + 6.0 + 14.0 + 6.0 + 7.0));
+    h.press(
+        Vec2::new(120.0, 160.0 + 6.0 + 14.0 + 6.0 + 7.0),
+        PointerButton::Left,
+    );
     frame(&mut h, id, &mut color);
     let after = color.to_srgba();
     assert_eq!(
@@ -119,7 +123,7 @@ fn the_channel_boxes_are_one_fixed_width() {
     let id = WidgetId::from_hash("picker-fixed-values");
     let mut h = harness();
     let mut color = RgbaF32::from_srgba(SrgbaU8::rgb(9, 9, 9));
-    let widths = |h: &mut UiHarness, color: &mut RgbaF32| {
+    let widths = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
             ColorPicker::new(color).alpha(true).id(id).show(ui);
             ["R", "G", "B", "S"].map(|name| {
@@ -217,11 +221,11 @@ fn the_readouts_and_channel_edits_start_from_the_bound_color() {
     assert_eq!(h.state::<PickerState>(id).hex, "#0000FF");
 
     let r_value = h.center_of(id.with("R").with("value"));
-    h.press_on(id.with("R").with("value"));
+    h.press(id.with("R").with("value"), PointerButton::Left);
     frame(&mut h, id, &mut color);
     h.drag_to(r_value + Vec2::new(30.0, 0.0));
     frame(&mut h, id, &mut color);
-    h.release();
+    h.release(PointerButton::Left);
     frame(&mut h, id, &mut color);
     let got = color.to_srgba();
     assert!(got.r > 0, "R moved: {got:?}");
@@ -248,7 +252,7 @@ fn history_shows_the_preset_row_only_when_asked() {
         });
         let row = h
             .node_of(id.with("swatches"))
-            .map(|row| h.ui.tree(row.plane.layer).children(row.node).count());
+            .map(|row| h.ui().tree(row.plane.layer).children(row.node).count());
         assert_eq!(row, swatches, "{label}");
     }
 }
@@ -262,7 +266,7 @@ fn keyboard_nudges_leave_the_history_alone() {
     let id = WidgetId::from_hash("picker-nudges");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
-    let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
+    let frame = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
             ColorPicker::new(color)
                 .history(true)
@@ -273,7 +277,7 @@ fn keyboard_nudges_leave_the_history_alone() {
     };
     frame(&mut h, &mut color);
     frame(&mut h, &mut color);
-    h.click_at(Vec2::new(100.0, 60.0));
+    h.click(Vec2::new(100.0, 60.0));
     frame(&mut h, &mut color);
     let row = h.state::<PickerState>(id).history.peek().to_vec();
     assert_eq!(row[0], color, "the click is a pick");

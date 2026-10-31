@@ -1,6 +1,6 @@
 //! Justify within a line, and children that pack differently or not at all.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -19,7 +19,7 @@ fn wrap_hstack_justify_per_line() {
         ("space_around", Justify::SpaceAround, [17.5, 122.5]),
     ];
     for (label, justify, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         h.under_outer(|ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
@@ -44,7 +44,7 @@ fn wrap_hstack_justify_per_line() {
 /// Today's behavior: `Sizing::fill` on a child's main axis acts as `Hug` (measured at INF main, content size, no per-row leftover). Flex-style distribution should update this test, not slip in silently.
 #[test]
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))

@@ -1,7 +1,9 @@
 //! What moves the offset, and where it is clamped.
 
+use crate::host::harness::Harness;
+use crate::input::input_event::InputEvent;
+use crate::input::pointer::PointerButton;
 use crate::input::scroll_targets::ScrollTargets;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -46,12 +48,12 @@ fn wheel_delta_advances_offset_with_clamp() {
         ),
     ];
     for (label, viewport_h, content_h, pushes, expected) in cases {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| build(ui, *viewport_h, *content_h));
         // Checked aim: a missed wheel would also leave the non-overflowing rows at zero.
-        h.move_onto(WidgetId::from_hash("scroll"));
+        h.hover(WidgetId::from_hash("scroll"));
         for wheel_y in *pushes {
-            h.scroll_pixels(Vec2::new(0.0, *wheel_y));
+            h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, *wheel_y)));
             h.frame(|ui| build(ui, *viewport_h, *content_h));
         }
 
@@ -64,7 +66,7 @@ fn wheel_delta_advances_offset_with_clamp() {
 /// margin extends the upper bound by the same amount.
 #[test]
 fn content_margin_allows_negative_pan_into_left_top_band() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let m = 100.0;
     let build_m = |ui: &mut Ui| {
         Scroll::both()
@@ -77,13 +79,13 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
             });
     };
     h.frame(build_m);
-    h.move_to(Vec2::new(50.0, 50.0));
+    h.hover(Vec2::new(50.0, 50.0));
     // Pan left/up: a large negative delta clamps at `-m` on both axes.
-    h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
     h.frame(build_m);
     assert_eq!(read_state(&h).offset(), Vec2::new(-m, -m));
     // Pan back: clamp at `raw_slack + m` = (400 - 200) + 100 = 300.
-    h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
     h.frame(build_m);
     let raw_slack = 400.0 - 200.0;
     assert_eq!(
@@ -148,9 +150,9 @@ fn a_wheel_pans_only_the_scrolled_axes() {
                         });
                 });
         };
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| build(ui, false));
-        h.scroll_pixels_at(Vec2::new(50.0, 20.0), Vec2::new(75.0, 200.0));
+        h.scroll_pixels(Vec2::new(50.0, 20.0), Vec2::new(75.0, 200.0));
         h.frame(|ui| build(ui, case.disabled));
         assert_eq!(
             h.state::<ScrollState>(id).offset(),
@@ -158,7 +160,12 @@ fn a_wheel_pans_only_the_scrolled_axes() {
             "{}",
             case.label
         );
-        assert_eq!(scroll_viewport(&h.ui, id), case.viewport, "{}", case.label);
+        assert_eq!(
+            scroll_viewport(h.ui_ref(), id),
+            case.viewport,
+            "{}",
+            case.label
+        );
     }
 }
 
@@ -168,7 +175,7 @@ fn a_wheel_pans_only_the_scrolled_axes() {
 #[test]
 fn drag_thumb_pans_proportionally() {
     for scale in [0.5, 1.0, 2.0] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let build = |ui: &mut Ui| {
             Panel::zstack()
                 .id(WidgetId::from_hash("scaled-scrollbar-parent"))
@@ -189,8 +196,8 @@ fn drag_thumb_pans_proportionally() {
         let scroll_id = outer_id.with("viewport");
         let thumb_id = scroll_id.with("vthumb");
         let press = h.center_of(thumb_id);
-        h.press_on(thumb_id);
-        h.move_to(press + Vec2::new(0.0, 30.0 * scale));
+        h.press(thumb_id, PointerButton::Left);
+        h.hover(press + Vec2::new(0.0, 30.0 * scale));
         h.frame(build);
 
         // viewport = 200, content = 800 ⇒ max_offset = 600.
@@ -202,7 +209,7 @@ fn drag_thumb_pans_proportionally() {
             "30 logical px at {scale}× should produce offset 120, got {offset_y}"
         );
 
-        h.move_to(press + Vec2::new(0.0, 9_999.0 * scale));
+        h.hover(press + Vec2::new(0.0, 9_999.0 * scale));
         h.frame(build);
         assert_eq!(
             h.state::<ScrollState>(outer_id).offset().y,
@@ -228,7 +235,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
     ];
     for scale in [0.5, 1.0, 2.0] {
         for (label, axis, scroll_key, track_suffix, page_step) in cases {
-            let mut h = UiHarness::new(SURFACE);
+            let mut h = Harness::mono(SURFACE);
             let build_axis = |ui: &mut Ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("scaled-track-parent"))
@@ -266,8 +273,8 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             };
             let forward_press = h.point_in(track_id, forward_local);
 
-            h.press_at(forward_press);
-            h.release();
+            h.press(forward_press, PointerButton::Left);
+            h.release(PointerButton::Left);
             h.frame(build_axis);
             let offset = h.state::<ScrollState>(outer_id).offset();
             let forward = match axis {
@@ -281,8 +288,8 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
 
             // Aimed after the forward page; before it the thumb sat over this end.
             let back_press = h.point_in(track_id, back_local);
-            h.press_at(back_press);
-            h.release();
+            h.press(back_press, PointerButton::Left);
+            h.release(PointerButton::Left);
             h.frame(build_axis);
             let offset = h.state::<ScrollState>(outer_id).offset();
             let back = match axis {
@@ -304,9 +311,9 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
 /// to run only on nonzero pan input.
 #[test]
 fn shrinking_content_unstrands_offset_without_input() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 10_000.0));
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 10_000.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(
         read_state(&h).offset().y,
@@ -331,7 +338,7 @@ fn shrinking_content_unstrands_offset_without_input() {
 /// move content at rest.
 #[test]
 fn content_margin_does_not_shift_content_that_fits() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let m = 100.0;
     let build = |ui: &mut Ui| {
         Scroll::both()
@@ -356,15 +363,15 @@ fn content_margin_does_not_shift_content_that_fits() {
 
     // The margin still opens its band: the user can pan into it and back out to
     // rest.
-    h.move_to(Vec2::new(50.0, 50.0));
-    h.scroll_pixels(Vec2::new(-9_999.0, -9_999.0));
+    h.hover(Vec2::new(50.0, 50.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
     h.frame(build);
     assert_eq!(
         read_state(&h).offset(),
         Vec2::new(-m, -m),
         "the leading band is still reachable for content that fits",
     );
-    h.scroll_pixels(Vec2::new(9_999.0, 9_999.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
     h.frame(build);
     assert_eq!(
         read_state(&h).offset(),
@@ -379,7 +386,7 @@ fn content_margin_does_not_shift_content_that_fits() {
 #[test]
 fn pan_by_pans_without_a_pointer_and_clamps() {
     let drive = |ui: &mut Ui, delta: f32| driven(ui, 200.0, 800.0, Vec2::new(0.0, delta));
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| drive(ui, 0.0));
     assert_eq!(
         read_state(&h).offset().y,
@@ -409,11 +416,11 @@ fn pan_by_pans_without_a_pointer_and_clamps() {
 /// requests plus a wheel; none replaces another.
 #[test]
 fn pan_by_composes_with_a_wheel_and_with_itself() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| driven(ui, 200.0, 800.0, Vec2::ZERO));
-    h.move_to(Vec2::new(50.0, 50.0));
+    h.hover(Vec2::new(50.0, 50.0));
 
-    h.scroll_pixels(Vec2::new(0.0, 30.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 30.0)));
     h.frame(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -510,12 +517,16 @@ fn a_viewport_senses_the_wheel_only_on_the_axes_it_can_pan() {
                         });
                 });
         };
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(build);
-        h.move_to(Vec2::new(50.0, 50.0));
-        assert_eq!(h.ui.input().scroll_targets(), first, "{label}: first frame");
+        h.hover(Vec2::new(50.0, 50.0));
+        assert_eq!(
+            h.ui().input().scroll_targets(),
+            first,
+            "{label}: first frame"
+        );
         h.frame(build);
-        assert_eq!(h.ui.input().scroll_targets(), settled, "{label}: settled");
+        assert_eq!(h.ui().input().scroll_targets(), settled, "{label}: settled");
     }
 }
 
@@ -542,7 +553,7 @@ fn reveal_pans_the_least_that_shows_a_child() {
         });
     };
     let rows = [20.0; 10];
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| scene(ui, &rows, None));
     for (reveal, offset, why) in [
         (5, 70.0, "a row below lands at the bottom"),
@@ -554,7 +565,7 @@ fn reveal_pans_the_least_that_shows_a_child() {
     }
 
     let tall = [30.0, 80.0, 30.0];
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| scene(ui, &tall, None));
     h.frame(|ui| scene(ui, &tall, Some(1)));
     assert_eq!(

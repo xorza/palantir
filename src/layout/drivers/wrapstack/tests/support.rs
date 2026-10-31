@@ -11,7 +11,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 
 /// A fixed-size white cell keyed by `id`, so a test reads its geometry
-/// back with `UiHarness::arranged` instead of threading a `NodeId` out.
+/// back with `Harness::arranged` instead of threading a `NodeId` out.
 pub(super) fn cell(ui: &mut Ui, id: &'static str, size: Size) -> NodeId {
     Block::new()
         .id(WidgetId::from_hash(id))

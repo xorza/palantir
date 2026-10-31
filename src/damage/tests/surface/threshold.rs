@@ -4,13 +4,13 @@ use crate::damage::Damage;
 use crate::damage::engine::DamageEngine;
 use crate::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, TEST_SURFACE, frame, one_frame};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 
 /// A single-leaf fill flip stays partial: far below the full-repaint threshold.
 #[test]
 fn damage_filter_returns_partial_when_small() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });

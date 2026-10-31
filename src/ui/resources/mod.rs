@@ -113,7 +113,7 @@ impl UiResources {
     }
 }
 
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
     use crate::common::clipboard::Clipboard;
     use crate::image_registry::ImageRegistry;

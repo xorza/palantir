@@ -14,9 +14,8 @@ use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
-use crate::host::headless_window::HeadlessWindow;
+use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
@@ -161,7 +160,7 @@ impl Scene<'_> {
 
 #[derive(Debug)]
 struct Fixture {
-    window: HeadlessWindow,
+    window: Harness,
     handle: Option<ImageHandle>,
     phase: bool,
 }
@@ -192,7 +191,7 @@ impl Fixture {
             workload,
             tint,
         };
-        let mut app = RecordApp::new(|ui| scene.record(ui));
+        let mut app = |ui: &mut Ui| scene.record(ui);
         window.frame(&mut app);
         gpu.wait();
     }
@@ -216,7 +215,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                 gpu.poll();
                 fixture
                     .window
-                    .host()
+                    .ui_ref()
                     .gpu_pass_stats()
                     .last_kind(BatchKind::Image)
                     .is_some()
@@ -232,7 +231,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                         gpu.poll();
                         fixture
                             .window
-                            .host()
+                            .ui_ref()
                             .gpu_pass_stats()
                             .last_kind(BatchKind::Image)
                             .expect("an image batch timestamp every frame once one arrived")

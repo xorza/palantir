@@ -257,7 +257,7 @@ fn tooltip_bubble_alloc_free() {
     let _ = h.frame(|ui| {
         scene(ui);
     });
-    h.move_onto(host);
+    h.hover(host);
     Audit::new().run_frames(|| {
         let mut visible = false;
         let _ = h.frame(|ui| visible = scene(ui).visible);

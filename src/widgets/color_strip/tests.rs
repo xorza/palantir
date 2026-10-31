@@ -1,4 +1,5 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
@@ -10,8 +11,8 @@ use glam::{UVec2, Vec2};
 
 const BAR: UVec2 = UVec2::new(208, 14);
 
-fn harness() -> UiHarness {
-    UiHarness::new(BAR)
+fn harness() -> Harness {
+    Harness::mono(BAR)
 }
 
 /// The bar writes only its own axis; an alpha bar that wrote the color would undo picks.
@@ -24,7 +25,7 @@ fn the_alpha_bar_writes_only_alpha() {
     h.frame(|ui| {
         ColorStrip::for_alpha(&mut color).id(id).show(ui);
     });
-    h.press_at(Vec2::new(52.0, 7.0));
+    h.press(Vec2::new(52.0, 7.0), PointerButton::Left);
     h.frame(|ui| {
         ColorStrip::for_alpha(&mut color).id(id).show(ui);
     });
@@ -41,7 +42,7 @@ fn the_hue_bar_writes_only_the_hue() {
     h.frame(|ui| {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
-    h.press_at(Vec2::new(156.0, 7.0));
+    h.press(Vec2::new(156.0, 7.0), PointerButton::Left);
     h.frame(|ui| {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
@@ -103,17 +104,17 @@ fn a_click_commits_as_a_drag_does() {
     let id = WidgetId::from_hash("strip-click-commits");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(1.0);
-    let frame = |h: &mut UiHarness, color: &mut RgbaF32| {
+    let frame = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
             let r = ColorStrip::for_alpha(color).id(id).show(ui);
             (r.changed, r.committed)
         })
     };
     frame(&mut h, &mut color);
-    h.press_at(Vec2::new(52.0, 7.0));
+    h.press(Vec2::new(52.0, 7.0), PointerButton::Left);
     let (changed, committed) = frame(&mut h, &mut color);
     assert!(changed && !committed, "the press writes, not commits");
-    h.release();
+    h.release(PointerButton::Left);
     let (_, committed) = frame(&mut h, &mut color);
     assert!(committed, "the release is the edit");
 }
@@ -126,17 +127,17 @@ fn the_hue_bar_keeps_both_ends() {
     let id = WidgetId::from_hash("strip-hue-ends");
     let mut h = harness();
     let mut coords = ColorCoords::from_color(RgbaF32::hex(0x4cd3ff), ColorModel::Okhsv, 0.0);
-    let show = |h: &mut UiHarness, coords: &mut ColorCoords| {
+    let show = |h: &mut Harness, coords: &mut ColorCoords| {
         h.frame(|ui| {
             ColorStrip::for_hue(coords).id(id).show(ui);
         });
     };
     show(&mut h, &mut coords);
-    h.press_at(Vec2::new(BAR.x as f32 - 8.0, 7.0));
+    h.press(Vec2::new(BAR.x as f32 - 8.0, 7.0), PointerButton::Left);
     show(&mut h, &mut coords);
     h.drag_to(Vec2::new(BAR.x as f32 + 40.0, 7.0));
     show(&mut h, &mut coords);
-    h.release();
+    h.release(PointerButton::Left);
     show(&mut h, &mut coords);
     assert_eq!(coords.hue(), 1.0, "past the right edge");
 
@@ -167,7 +168,7 @@ fn page_keys_step_the_alpha_bar() {
     let id = WidgetId::from_hash("strip-alpha-page");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(0.5);
-    let show = |h: &mut UiHarness, color: &mut RgbaF32| {
+    let show = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame(|ui| {
             ColorStrip::for_alpha(color).id(id).show(ui);
         });
@@ -200,7 +201,7 @@ fn the_surface_leaves_with_the_bar() {
     h.frame(|ui| {
         ColorStrip::for_hue(&mut coords).id(id).show(ui);
     });
-    let surface = |h: &UiHarness| h.ui.state::<ColorSurface<StripPaint>>(id).is_some();
+    let surface = |h: &Harness| h.ui_ref().state::<ColorSurface<StripPaint>>(id).is_some();
     assert!(surface(&h), "built while the bar records");
     h.frame(|_| {});
     assert!(!surface(&h), "swept with the bar");

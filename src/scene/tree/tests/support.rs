@@ -1,7 +1,7 @@
 //! The surface a tree test records against, and the hashes it asserts on.
 
 use crate::common::content_hash::ContentHash;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::ui::Ui;
@@ -21,9 +21,9 @@ pub(super) struct Hashes {
 /// Record one frame of `f` on a fresh harness and read the hashes of the
 /// node it returns.
 pub(super) fn record(mut f: impl FnMut(&mut Ui) -> NodeId) -> Hashes {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let target = h.frame_value(|ui| f(ui));
-    let tree = h.ui.tree(Layer::Main);
+    let tree = h.ui().tree(Layer::Main);
     Hashes {
         node: tree.rollups.node[target.idx()],
         subtree: tree.rollups.subtree[target.idx()],

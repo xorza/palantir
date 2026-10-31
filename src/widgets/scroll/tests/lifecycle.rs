@@ -1,7 +1,7 @@
 //! What a scroll records while it lives, and what is swept when it goes.
 
+use crate::host::harness::Harness;
 use crate::input::interaction::drag::Drag;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
@@ -21,11 +21,11 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn scroll_layout_records_viewport_and_content_after_arrange() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
     let id = WidgetId::from_hash("scroll");
-    assert_eq!(scroll_viewport(&h.ui, id).h, 200.0);
-    assert_eq!(scroll_content(&h.ui, id).h, 800.0);
+    assert_eq!(scroll_viewport(h.ui_ref(), id).h, 200.0);
+    assert_eq!(scroll_content(h.ui_ref(), id).h, 800.0);
     assert_eq!(
         read_state(&h).offset(),
         Vec2::ZERO,
@@ -35,7 +35,7 @@ fn scroll_layout_records_viewport_and_content_after_arrange() {
 
 #[test]
 fn explicit_no_clip_overrides_scroll_default() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let unclipped_id = WidgetId::from_hash("unclipped-scroll");
     let clipped_id = WidgetId::from_hash("default-scroll");
     h.frame(|ui| {
@@ -54,7 +54,7 @@ fn explicit_no_clip_overrides_scroll_default() {
         let viewport = h
             .node_of(id.with("viewport"))
             .expect("scroll viewport node");
-        h.ui.tree(viewport.plane.layer).records.attrs()[viewport.node.idx()].clip_mode()
+        h.ui_ref().tree(viewport.plane.layer).records.attrs()[viewport.node.idx()].clip_mode()
     };
     assert_eq!(clip_for(unclipped_id), ClipMode::None);
     assert_eq!(clip_for(clipped_id), ClipMode::Rect);
@@ -62,7 +62,7 @@ fn explicit_no_clip_overrides_scroll_default() {
 
 #[test]
 fn state_is_swept_when_scroll_disappears() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let id = WidgetId::from_hash("scroll");
     let build = |ui: &mut Ui| {
         Scroll::both()
@@ -74,19 +74,19 @@ fn state_is_swept_when_scroll_disappears() {
 
     h.frame(build);
     assert!(
-        h.ui.state::<ScrollState>(id).is_some(),
+        h.ui().state::<ScrollState>(id).is_some(),
         "the scroll stored its row"
     );
-    h.ui.with_state::<ScrollState, _>(id, |_, state| {
+    h.ui().with_state::<ScrollState, _>(id, |_, state| {
         state.set_offset(Vec2::new(12.0, 34.0));
         state.set_zoom(2.0);
     });
 
     h.frame(|_| {});
-    assert!(h.ui.state::<ScrollState>(id).is_none());
+    assert!(h.ui().state::<ScrollState>(id).is_none());
 
     h.frame(build);
-    let state = h.ui.state::<ScrollState>(id).unwrap();
+    let state = h.ui().state::<ScrollState>(id).unwrap();
     assert_eq!(state.offset(), Vec2::ZERO);
     assert_eq!(state.zoom(), 1.0);
     assert!(state.drag_anchor_is_none());
@@ -185,7 +185,7 @@ fn scroll_records_content_extent() {
             Axis::H => UVec2::new(800, 200),
             Axis::XY => UVec2::new(400, 400),
         };
-        let mut h = UiHarness::new(surface);
+        let mut h = Harness::mono(surface);
         let scroll_node = h.under_outer(|ui| match axis {
             Axis::V => Scroll::vertical()
                 .id(WidgetId::from_hash("scroll"))
@@ -239,11 +239,11 @@ fn scroll_records_content_extent() {
         });
         let scroll_id = WidgetId::from_hash(scroll_key);
         assert_eq!(
-            scroll_content(&h.ui, scroll_id),
+            scroll_content(h.ui_ref(), scroll_id),
             *expected,
             "case: {label} content"
         );
-        let rect = h.ui.arranged_rect(Layer::Main, scroll_node);
+        let rect = h.ui().arranged_rect(Layer::Main, scroll_node);
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
             Axis::H => (200.0, 60.0),
@@ -280,20 +280,20 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
             });
     };
 
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     // Two frames: the first has no box to read overflow from so the viewport claims its wheel axis; the second drops it, which misses the measure cache.
     h.frame(build);
     h.frame(build);
     let scroll_id = WidgetId::from_hash("scroll");
-    let after_first = scroll_content(&h.ui, scroll_id);
-    let viewport_first = scroll_viewport(&h.ui, scroll_id);
+    let after_first = scroll_content(h.ui_ref(), scroll_id);
+    let viewport_first = scroll_viewport(h.ui_ref(), scroll_id);
     assert_eq!(after_first.h, 92.0);
 
-    h.engines.layout.forget_last_run();
+    h.engines_mut().layout.forget_last_run();
     h.frame(build);
-    let after_second = scroll_content(&h.ui, scroll_id);
+    let after_second = scroll_content(h.ui_ref(), scroll_id);
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .scratch
             .counters
@@ -305,30 +305,30 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
         after_second, after_first,
         "scroll content survives a measure-cache hit",
     );
-    assert_eq!(scroll_viewport(&h.ui, scroll_id), viewport_first);
+    assert_eq!(scroll_viewport(h.ui_ref(), scroll_id), viewport_first);
 }
 
 /// A scroll-offset change must bust the cascade skip through the subtree hash.
 #[test]
 fn cascade_skip_busts_on_scroll_offset_change() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        h.engines.cascade.counters.ran(),
+        h.engines_mut().cascade.counters.ran(),
         "first frame runs the cascade"
     );
 
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert!(
-        !h.engines.cascade.counters.ran(),
+        !h.engines_mut().cascade.counters.ran(),
         "unchanged scroll frame skips the cascade"
     );
 
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 50.0));
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 50.0));
     h.frame(|ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&h).offset().y, 50.0, "offset advanced");
     assert!(
-        h.engines.cascade.counters.ran(),
+        h.engines_mut().cascade.counters.ran(),
         "scroll offset change must re-run the cascade (it moves the arranged rects)",
     );
 }

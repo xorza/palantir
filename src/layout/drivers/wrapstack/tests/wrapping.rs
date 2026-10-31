@@ -1,6 +1,6 @@
 //! Where the break falls on each axis, and what an oversize child does to its line.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -28,7 +28,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
         ),
     ];
     for (label, count, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         h.under_outer(|ui| {
             Panel::wrap_hstack()
                 .id(WidgetId::from_hash("w"))
@@ -55,7 +55,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
 /// Pin: a child wider than the available main sits alone on its line.
 #[test]
 fn wrap_hstack_oversize_child_owns_its_line() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))
@@ -83,7 +83,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
 fn wrap_vstack_wraps_columns_when_main_overflows() {
     let makers: [fn() -> Panel; 2] = [Panel::wrap_vstack, || Panel::wrap_stack(Axis::Y)];
     for (n, make) in makers.into_iter().enumerate() {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         h.under_outer(|ui| {
             make()
                 .id(WidgetId::from_hash("w"))
@@ -109,7 +109,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
 /// Pin: a Fixed-width Hug-height WrapHStack hugs to its packed cross extent: 4 cells of 60×20 in 200 → 3 on line 0, 1 on line 1, h = 20+8+20 = 48. A fully-Hug WrapHStack collapses to one line (intrinsic measure runs at `INF` main), so some ancestor must commit a finite main size.
 #[test]
 fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let mut wrap_node = None;
     h.under_outer(|ui| {
         wrap_node = Some(
@@ -137,7 +137,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
 /// Pin: nested WrapStacks don't trample each other's per-line scratch; `LayoutEngine.wrap` is depth-stacked.
 #[test]
 fn nested_wrap_hstacks_do_not_trample_scratch() {
-    let mut h = UiHarness::new(UVec2::new(600, 400));
+    let mut h = Harness::mono(UVec2::new(600, 400));
     h.under_outer(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("outer"))
@@ -179,12 +179,18 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
                 cell(ui, "b", Size::new(50.0625, 20.0));
             });
     }
-    let height = |h: &UiHarness| h.arranged(WidgetId::from_hash("w")).size.h;
+    let height = |h: &Harness| h.arranged(WidgetId::from_hash("w")).size.h;
 
-    let mut cold = UiHarness::new(UVec2::new(401, 300)).scale(4.0);
+    let mut cold = Harness::builder(UVec2::new(401, 300))
+        .mono()
+        .scale(4.0)
+        .build();
     cold.frame(build);
 
-    let mut warm = UiHarness::new(UVec2::new(400, 300)).scale(4.0);
+    let mut warm = Harness::builder(UVec2::new(400, 300))
+        .mono()
+        .scale(4.0)
+        .build();
     warm.frame(build);
     warm.resize(UVec2::new(401, 300));
     warm.frame(build);
@@ -200,7 +206,7 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
         "a warm frame must answer what a cold one answers for the same surface",
     );
 
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     h.frame(|ui| {
         Panel::wrap_hstack()
             .id(WidgetId::from_hash("w"))

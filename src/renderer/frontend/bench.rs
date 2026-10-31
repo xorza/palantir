@@ -3,14 +3,13 @@
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
 use crate::damage::Damage;
+use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::BuildPlan;
 use crate::renderer::render_plan::RenderPlan;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -53,22 +52,25 @@ impl FillCase {
 
 #[derive(Debug)]
 struct ChromeBench {
-    frontend: FrontendHarness,
+    h: Harness,
     start: Instant,
 }
 
 impl ChromeBench {
     fn new() -> Self {
         Self {
-            frontend: FrontendHarness::new(UiHarness::new(PHYSICAL)),
+            h: Harness::builder(PHYSICAL)
+                .mono()
+                .depth(Depth::Compose)
+                .build(),
             start: Instant::now(),
         }
     }
 
     fn frame(&mut self, fill_case: FillCase) -> usize {
         let chrome = fill_case.chrome();
-        self.frontend.harness.at(self.start.elapsed());
-        let report = self.frontend.frame(|ui| {
+        self.h.at(self.start.elapsed());
+        let report = self.h.frame(|ui| {
             for row in 0..ROWS {
                 Block::new()
                     .id_salt(row)
@@ -78,9 +80,9 @@ impl ChromeBench {
             }
         });
         if report.plan.is_none() {
-            self.frontend.paint_full();
+            self.h.paint_full();
         }
-        self.frontend.frontend.buffer.quads.len()
+        self.h.render_buffer().quads.len()
     }
 }
 
@@ -101,15 +103,7 @@ pub(crate) fn integration(c: &mut Criterion) {
                 FillCase::Gradient => 1,
             };
             assert_eq!(
-                fixture
-                    .frontend
-                    .harness
-                    .ui
-                    .forest()
-                    .record_store
-                    .gradients
-                    .records
-                    .len(),
+                fixture.h.ui().forest().record_store.gradients.records.len(),
                 expected_gradients,
             );
             b.iter(|| black_box(fixture.frame(fill_case)));
@@ -126,7 +120,10 @@ pub(crate) fn atomic(c: &mut Criterion) {
     for (label, partial) in [("full", false), ("partial", true)] {
         group.bench_function(Backend::Cpu.case(label), |b| {
             let mut state = FrameFixture::default();
-            let mut h = FrontendHarness::new(UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR));
+            let mut h = Harness::builder(BENCH_SURFACE)
+                .scale(BENCH_DPR)
+                .depth(Depth::Compose)
+                .build();
             h.frame(|ui| state.render(BENCH_SCALE, ui));
             state.tick += 1;
             let report = h.frame(|ui| state.render(BENCH_SCALE, ui));
@@ -134,7 +131,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 report.plan.expect("a tick paints")
             } else {
                 RenderPlan {
-                    clear: h.harness.ui.theme().window_clear,
+                    clear: h.ui().theme().window_clear,
                     damage: Damage::Full,
                 }
             };
@@ -143,11 +140,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 partial,
                 "encode/{label}: the plan"
             );
-            let mut build = || {
-                h.frontend
-                    .build(h.harness.ui.frame_scene(), BuildPlan::without_panes(plan));
-                h.frontend.buffer.groups.len()
-            };
+            let mut build = || h.rebuild(plan).groups.len();
             let groups = build();
             assert!(groups > 0, "encode/{label}: no group built");
             b.iter(|| black_box(build()));

@@ -1,5 +1,6 @@
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
-use crate::internals::ui_harness::UiHarness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -17,7 +18,7 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn explicit_zero_padding_and_minimum_override_card_theme() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let root_id = WidgetId::from_hash("modal-explicit-zero");
     h.frame(|ui| {
         Modal::new()
@@ -31,7 +32,7 @@ fn explicit_zero_padding_and_minimum_override_card_theme() {
     let panel_id = root_id.with("panel");
     let panel = h.node_of(panel_id).expect("modal panel node");
     assert_eq!(panel.plane.layer, Layer::Modal);
-    let tree = h.ui.tree(Layer::Modal);
+    let tree = h.ui().tree(Layer::Modal);
     assert_eq!(
         tree.records.layout()[panel.node.idx()].padding,
         Spacing::ZERO
@@ -46,8 +47,8 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
     let id = WidgetId::from_hash("modal-full-surface");
     let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
     for explicit in [None, Some(custom)] {
-        let mut h = UiHarness::new(SURFACE);
-        let themed = h.ui.theme().modal.backdrop;
+        let mut h = Harness::mono(SURFACE);
+        let themed = h.ui().theme().modal.backdrop;
         h.frame(|ui| {
             let modal = Modal::new().id(id);
             match explicit {
@@ -60,14 +61,15 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
         let backdrop = h.node_of(id).expect("modal backdrop recorded");
         assert_eq!(backdrop.plane.layer, Layer::Modal);
         assert_eq!(
-            h.ui.layout(Layer::Modal).rect[backdrop.node.idx()],
+            h.ui().layout(Layer::Modal).rect[backdrop.node.idx()],
             Rect::new(0.0, 0.0, SURFACE.x as f32, SURFACE.y as f32),
         );
-        let scrim =
-            h.ui.tree(Layer::Modal)
-                .chrome(backdrop.node)
-                .expect("the backdrop paints a scrim")
-                .fill;
+        let scrim = h
+            .ui()
+            .tree(Layer::Modal)
+            .chrome(backdrop.node)
+            .expect("the backdrop paints a scrim")
+            .fill;
         let want = explicit.unwrap_or(themed).to_f16();
         assert!(
             matches!(scrim, ShapeBrush::Solid(fill) if fill == want),
@@ -96,7 +98,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
         };
 
         // Two frames: the wake-gate parks a press whose shortcut nobody watched yet.
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             scene(ui);
         });
@@ -134,7 +136,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
         }
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut open = true;
     h.frame(|ui| scene(ui, &mut open));
 
@@ -142,7 +144,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
     h.frame(|ui| scene(ui, &mut open));
     assert!(!open, "Escape must dismiss the modal");
 
-    h.press_at(Vec2::new(20.0, 20.0));
+    h.press(Vec2::new(20.0, 20.0), PointerButton::Left);
     h.key(Key::Char('a'));
     let [pointer, keyboard] = h.frame_value(|ui| {
         scene(ui, &mut open);
@@ -172,7 +174,7 @@ fn escape_closes_only_the_topmost_overlay() {
             .dismissed,
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         scene(ui);
     });
@@ -189,10 +191,10 @@ fn escape_closes_only_the_topmost_overlay() {
 /// The stock `modal.min_width` (280) is a default, so an authored `max_size` below it wins.
 #[test]
 fn an_authored_max_below_the_themed_min_width_wins() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let root_id = WidgetId::from_hash("narrow-modal");
     assert!(
-        h.ui.theme().modal.min_width > 240.0,
+        h.ui().theme().modal.min_width > 240.0,
         "fixture: the stock floor is above 240"
     );
     h.prime(2, |ui| {

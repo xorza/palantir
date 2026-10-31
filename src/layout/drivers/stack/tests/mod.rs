@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -15,7 +15,7 @@ mod sharing;
 
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -32,7 +32,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
             .node()
     });
     assert_eq!(
-        h.ui.arranged_rect(Layer::Main, root),
+        h.ui().arranged_rect(Layer::Main, root),
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
@@ -54,7 +54,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
 
 #[test]
 fn vstack_with_fill_distributes_remainder() {
-    let mut h = UiHarness::new(UVec2::new(200, 300));
+    let mut h = Harness::mono(UVec2::new(200, 300));
     let root = h.frame_value(|ui| {
         Panel::vstack()
             .auto_id()
@@ -96,7 +96,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
             widths: [200.0, 200.0],
         },
     ] {
-        let mut h = UiHarness::new(UVec2::new(400, 100));
+        let mut h = Harness::mono(UVec2::new(400, 100));
         let root = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -123,7 +123,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
-    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let mut h = Harness::mono(UVec2::new(400, 100));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -161,7 +161,7 @@ fn hstack_justify_distributes_leftover() {
         ("space_around", Justify::SpaceAround, &[30.0, 130.0]),
     ];
     for (label, justify, expected_xs) in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 100));
+        let mut h = Harness::mono(UVec2::new(200, 100));
         let root = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -187,7 +187,7 @@ fn hstack_justify_distributes_leftover() {
 
 #[test]
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
-    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let mut h = Harness::mono(UVec2::new(200, 100));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -219,7 +219,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 
 #[test]
 fn hstack_gap_inserts_space_between_children() {
-    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let mut h = Harness::mono(UVec2::new(400, 100));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -249,7 +249,7 @@ fn hstack_gap_inserts_space_between_children() {
 
 #[test]
 fn hstack_align_center_centers_child_on_cross_axis() {
-    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let mut h = Harness::mono(UVec2::new(200, 100));
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -271,7 +271,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
 
 #[test]
 fn negative_left_margin_spills_outside_slot() {
-    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let mut h = Harness::mono(UVec2::new(200, 100));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
@@ -294,7 +294,7 @@ fn negative_left_margin_spills_outside_slot() {
 /// Pass 2 must not double-count non-Fill children in `total_main` (a double-count gives ~242).
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
-    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let mut h = Harness::mono(UVec2::new(200, 100));
     let [button_node, root] = h.frame_value(|ui| {
         let panel = Panel::hstack().auto_id().show(ui, |ui| {
             let button = Button::new().auto_id().label("Hi").show(ui).node();
@@ -306,7 +306,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
         });
         [panel.inner, panel.response.node()]
     });
-    let desired = h.engines.layout.cache.captured_desired();
+    let desired = h.engines_mut().layout.cache.captured_desired();
     let button_w = desired[button_node.idx()].w;
     let root_w = desired[root.idx()].w;
     // No inflation from the Fill filler: "Hi" at mono's 8 px per char plus 12 px padding and 1 px border per side = 42.
@@ -334,7 +334,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
             viewport: UVec2::new(40, 200),
         },
     ] {
-        let mut h = UiHarness::new(case.viewport);
+        let mut h = Harness::mono(case.viewport);
         let root = h.frame_value(|ui| {
             let panel = Panel::stack(case.axis);
             panel
@@ -388,7 +388,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
         ];
         assert_eq!(actual, expected, "case: {}", case.label);
         assert!(
-            h.engines.layout.scratch.stack.is_empty(),
+            h.engines_mut().layout.scratch.stack.is_empty(),
             "case: {} must release its planning scratch",
             case.label,
         );
@@ -397,7 +397,7 @@ fn stack_mixed_sizing_modes_have_exact_axis_symmetric_layout() {
 
 #[test]
 fn hstack_fill_max_size_caps_arranged_share() {
-    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let mut h = Harness::mono(UVec2::new(400, 100));
     h.frame(|ui| {
         Panel::hstack()
             .auto_id()
@@ -423,7 +423,7 @@ fn hstack_fill_max_size_caps_arranged_share() {
 
 #[test]
 fn parent_max_size_clamps_children_available() {
-    let mut h = UiHarness::new(UVec2::new(1000, 200));
+    let mut h = Harness::mono(UVec2::new(1000, 200));
     let parent_node = h.under_outer(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("capped-parent"))
@@ -438,7 +438,7 @@ fn parent_max_size_clamps_children_available() {
             .response
             .node()
     });
-    let parent_rect = h.ui.arranged_rect(Layer::Main, parent_node);
+    let parent_rect = h.ui().arranged_rect(Layer::Main, parent_node);
     assert_eq!(
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
@@ -453,7 +453,7 @@ fn parent_max_size_clamps_children_available() {
 #[test]
 fn fill_cross_axis_stretches_regardless_of_align() {
     for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
-        let mut h = UiHarness::new(UVec2::new(400, 100));
+        let mut h = Harness::mono(UVec2::new(400, 100));
         let mut child = None;
         h.frame(|ui| {
             Panel::vstack()
@@ -470,7 +470,7 @@ fn fill_cross_axis_stretches_regardless_of_align() {
                     );
                 });
         });
-        let r = h.ui.arranged_rect(Layer::Main, child.unwrap());
+        let r = h.ui().arranged_rect(Layer::Main, child.unwrap());
         assert_eq!(
             r.size.w, 400.0,
             "Fill child with align={align:?} must still stretch to parent's full width \
@@ -498,7 +498,7 @@ fn hstack_child_align_per_axis_with_overrides() {
         ),
     ];
     for (label, second_override, second_y) in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 100));
+        let mut h = Harness::mono(UVec2::new(200, 100));
         let root = h.frame_value(|ui| {
             Panel::hstack()
                 .auto_id()

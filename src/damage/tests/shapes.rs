@@ -2,7 +2,7 @@
 
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -25,31 +25,31 @@ use glam::{UVec2, Vec2};
 /// The first frame has no `prev_frame`, so every painting node is added; the non-painting root stays out of `dirty`/`region`.
 #[test]
 fn first_frame_marks_every_painting_node_dirty() {
-    let mut h = UiHarness::cold(DISPLAY.physical);
+    let mut h = Harness::cold(DISPLAY.physical);
     frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = h.ui.cascade().planes[Plane::MAIN]
+    let painting = h.ui().cascade().planes[Plane::MAIN]
         .paint_arena
         .node_spans
         .iter()
         .filter(|s| s.len > 0)
         .count();
-    assert_eq!(h.engines.damage.counters.dirty().len(), painting);
-    assert!(h.engines.damage.raw_rects.is_empty());
+    assert_eq!(h.engines_mut().damage.counters.dirty().len(), painting);
+    assert!(h.engines_mut().damage.raw_rects.is_empty());
 }
 
 /// Re-recording identical authoring gives zero dirty nodes and no damage rect.
 #[test]
 fn unchanged_authoring_produces_no_damage() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         one_frame(ui, BLUE);
     };
     frame(&mut h, build);
     frame(&mut h, build);
 
-    assert!(h.engines.damage.counters.dirty().is_empty());
+    assert!(h.engines_mut().damage.counters.dirty().is_empty());
     assert!(h.damage_region().is_empty());
     assert_eq!(Damage::new(h.collapsed_damage()), None);
 }
@@ -57,7 +57,7 @@ fn unchanged_authoring_produces_no_damage() {
 /// An authoring change on one leaf dirties just that leaf; the unchanged parent stays clean.
 #[test]
 fn fill_change_marks_only_the_changed_leaf() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| {
         one_frame(ui, BLUE);
     });
@@ -65,22 +65,22 @@ fn fill_change_marks_only_the_changed_leaf() {
         one_frame(ui, RED);
     });
 
-    assert_eq!(h.engines.damage.counters.dirty().len(), 1);
-    let dirty_id = h.engines.damage.counters.dirty()[0];
+    assert_eq!(h.engines_mut().damage.counters.dirty().len(), 1);
+    let dirty_id = h.engines_mut().damage.counters.dirty()[0];
     assert_eq!(
-        h.ui.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
+        h.ui().tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
     );
     assert_eq!(
         h.damage_region().iter_rects().next(),
-        Some(h.ui.arranged_rect(Layer::Main, dirty_id))
+        Some(h.ui().arranged_rect(Layer::Main, dirty_id))
     );
 }
 
 /// A sibling reflow shifts downstream rects, so neighbors are dirty by rect comparison.
 #[test]
 fn sibling_reflow_marks_downstream_neighbor_dirty() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |a_size: f32, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -102,12 +102,12 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
 
     // `a` changed authoring; `b`'s x shifts 50 -> 80. Both are dirty.
     let dirty_ids: Vec<WidgetId> = h
-        .engines
+        .engines()
         .damage
         .counters
         .dirty()
         .iter()
-        .map(|n| h.ui.tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| h.ui_ref().tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
@@ -116,7 +116,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
 /// A widget that disappears contributes its previous rect to damage.
 #[test]
 fn removed_widget_contributes_prev_rect_to_damage() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -128,7 +128,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
             });
     });
     let prev_button_rect = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rect(WidgetId::from_hash("gone"))
         .expect("gone painted last frame");
@@ -146,7 +146,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
 /// An added widget contributes its current rect and lands in the dirty list.
 #[test]
 fn added_widget_contributes_curr_rect_to_damage() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -165,12 +165,12 @@ fn added_widget_contributes_curr_rect_to_damage() {
     });
 
     let dirty_ids: Vec<WidgetId> = h
-        .engines
+        .engines()
         .damage
         .counters
         .dirty()
         .iter()
-        .map(|n| h.ui.tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| h.ui_ref().tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
     assert!(!h.damage_region().is_empty());
@@ -179,11 +179,11 @@ fn added_widget_contributes_curr_rect_to_damage() {
 /// Hovering a button dirties exactly the button; hit-test lags a frame, so frames settle before the transition is asserted. The button's look snaps, so the hover lands in one frame.
 #[test]
 fn button_hover_damage_covers_only_the_button() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    h.ui.theme_mut().button.defaults.animation = None;
+    let mut h = Harness::mono(UVec2::new(400, 400));
+    h.ui().theme_mut().button.defaults.animation = None;
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |h: &mut UiHarness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
+    let build = |h: &mut Harness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -206,29 +206,29 @@ fn button_hover_damage_covers_only_the_button() {
         });
     };
 
-    h.move_to(Vec2::new(380.0, 380.0));
+    h.hover(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.engines.damage.counters.dirty().is_empty(),
+        h.engines_mut().damage.counters.dirty().is_empty(),
         "off-button pointer should reach a no-diff steady state"
     );
 
-    let hot_rect = h.ui.arranged_rect(Layer::Main, hot_node.unwrap());
+    let hot_rect = h.ui().arranged_rect(Layer::Main, hot_node.unwrap());
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
     // `on_input` recomputes hover against the existing hit_index, so the next recording emits the hovered fill.
-    h.move_to(target);
+    h.hover(target);
     build(&mut h, &mut hot_node, &mut cold_node);
 
     assert_eq!(
-        h.engines.damage.counters.dirty().len(),
+        h.engines_mut().damage.counters.dirty().len(),
         1,
         "only the hovered button should be dirty"
     );
-    let dirty_id = h.engines.damage.counters.dirty()[0];
+    let dirty_id = h.engines_mut().damage.counters.dirty()[0];
     assert_eq!(
-        h.ui.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
+        h.ui().tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
@@ -240,7 +240,7 @@ fn button_hover_damage_covers_only_the_button() {
 
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.engines.damage.counters.dirty().is_empty(),
+        h.engines_mut().damage.counters.dirty().is_empty(),
         "settled hover should produce no further damage"
     );
 }
@@ -248,11 +248,11 @@ fn button_hover_damage_covers_only_the_button() {
 /// Un-hovering is symmetric: damage is the button rect. The look snaps, as above.
 #[test]
 fn button_unhover_damage_covers_only_the_button() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    h.ui.theme_mut().button.defaults.animation = None;
+    let mut h = Harness::mono(UVec2::new(400, 400));
+    h.ui().theme_mut().button.defaults.animation = None;
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |h: &mut UiHarness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
+    let build = |h: &mut Harness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -276,20 +276,21 @@ fn button_unhover_damage_covers_only_the_button() {
     };
 
     build(&mut h, &mut hot_node, &mut cold_node);
-    let hot_rect = h.ui.arranged_rect(Layer::Main, hot_node.unwrap());
-    h.move_to(hot_rect.min + Vec2::new(5.0, 5.0));
+    let hot_rect = h.ui().arranged_rect(Layer::Main, hot_node.unwrap());
+    h.hover(hot_rect.min + Vec2::new(5.0, 5.0));
     build(&mut h, &mut hot_node, &mut cold_node);
     build(&mut h, &mut hot_node, &mut cold_node);
     assert!(
-        h.engines.damage.counters.dirty().is_empty(),
+        h.engines_mut().damage.counters.dirty().is_empty(),
         "settled hover"
     );
 
-    h.move_to(Vec2::new(380.0, 380.0));
+    h.hover(Vec2::new(380.0, 380.0));
     build(&mut h, &mut hot_node, &mut cold_node);
-    assert_eq!(h.engines.damage.counters.dirty().len(), 1);
+    assert_eq!(h.engines_mut().damage.counters.dirty().len(), 1);
     assert_eq!(
-        h.ui.tree(Layer::Main).records.widget_id()[h.engines.damage.counters.dirty()[0].idx()],
+        h.ui_ref().tree(Layer::Main).records.widget_id()
+            [h.engines().damage.counters.dirty()[0].idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
@@ -342,7 +343,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
         (Kind::Rect, 0.0),
         (Kind::Text, 2.0 * r * 0.0025),
     ] {
-        let mut h = UiHarness::cold(DISPLAY.physical);
+        let mut h = Harness::cold(DISPLAY.physical);
         frame(&mut h, |ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
@@ -383,13 +384,13 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
         });
 
         let owner = h.rect(owner_id).expect("the owner arranged");
-        let node_idx = h.ui.cascade().by_id[&owner_id].node.idx();
-        let span = h.ui.cascade().planes[Plane::MAIN].paint_arena.node_spans[node_idx];
+        let node_idx = h.ui().cascade().by_id[&owner_id].node.idx();
+        let span = h.ui().cascade().planes[Plane::MAIN].paint_arena.node_spans[node_idx];
         assert_eq!(
             span.len, 1,
             "{kind:?}: the owner paints the one animated shape"
         );
-        let row = h.ui.cascade().planes[Plane::MAIN].paint_arena.rows[span.start as usize].screen;
+        let row = h.ui().cascade().planes[Plane::MAIN].paint_arena.rows[span.start as usize].screen;
 
         let pivot = owner.min + Vec2::new(40.0, 20.0);
         let want = Rect::square_about(pivot, r).inflated(pad);
@@ -410,7 +411,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
     use crate::widget::Shape;
-    let mut h = UiHarness::cold(DISPLAY.physical);
+    let mut h = Harness::cold(DISPLAY.physical);
     frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("multi"))
@@ -430,11 +431,11 @@ fn node_snapshot_decomposition_matches_cascade() {
             });
     });
     let plane = Plane::MAIN;
-    let node_idx = h.ui.cascade().by_id[&WidgetId::from_hash("multi")]
+    let node_idx = h.ui().cascade().by_id[&WidgetId::from_hash("multi")]
         .node
         .idx();
-    let node_span = h.ui.cascade().planes[plane].paint_arena.node_spans[node_idx];
-    let layer_paints = &h.ui.cascade().planes[plane].paint_arena.rows;
+    let node_span = h.ui().cascade().planes[plane].paint_arena.node_spans[node_idx];
+    let layer_paints = &h.ui_ref().cascade().planes[plane].paint_arena.rows;
 
     let chrome_paint = layer_paints[node_span.start as usize];
     assert!(
@@ -443,7 +444,7 @@ fn node_snapshot_decomposition_matches_cascade() {
     );
 
     let snap_paints = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rows(WidgetId::from_hash("multi"));
     assert_eq!(snap_paints.len(), 3, "chrome + 2 direct shapes ⇒ 3 rows");
@@ -459,7 +460,7 @@ fn node_snapshot_decomposition_matches_cascade() {
         );
     }
 
-    assert!(h.engines.damage.raw_rects.is_empty());
+    assert!(h.engines_mut().damage.raw_rects.is_empty());
 
     let two_lines = |ui: &mut Ui| {
         ui.add_shape(Shape::line(
@@ -486,17 +487,17 @@ fn node_snapshot_decomposition_matches_cascade() {
             .show(ui, |ui| two_lines(ui));
     });
     let snap2_paints = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rows(WidgetId::from_hash("multi2"));
     assert_eq!(
-        h.engines.damage.raw_rects.len(),
+        h.engines().damage.raw_rects.len(),
         3,
         "incremental Vacant insert pushes one rect per paint row",
     );
-    assert_eq!(h.engines.damage.raw_rects[0], snap2_paints[0].screen);
-    assert_eq!(h.engines.damage.raw_rects[1], snap2_paints[1].screen);
-    assert_eq!(h.engines.damage.raw_rects[2], snap2_paints[2].screen);
+    assert_eq!(h.engines().damage.raw_rects[0], snap2_paints[0].screen);
+    assert_eq!(h.engines().damage.raw_rects[1], snap2_paints[1].screen);
+    assert_eq!(h.engines().damage.raw_rects[2], snap2_paints[2].screen);
 }
 
 /// A multi-shape owner with disjoint shapes pushes only the moved shape's rect pair (the darkroom graph pattern).
@@ -504,7 +505,7 @@ fn node_snapshot_decomposition_matches_cascade() {
 fn per_shape_damage_only_pushes_changed_shapes() {
     use crate::widget::Shape;
 
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |moving_y: f32, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
@@ -528,23 +529,23 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     frame(&mut h, |ui| build(120.0, ui));
     frame(&mut h, |ui| build(120.0, ui));
     assert!(
-        h.engines.damage.counters.dirty().is_empty(),
+        h.engines_mut().damage.counters.dirty().is_empty(),
         "steady frame must produce no diff"
     );
 
     // Frame 3 nudges shape 2's y: only its prev (y=120) and curr (y=140) rects enter damage.
-    let prev_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
-    let prev_arena_len = h.engines.damage.paints.slots.len();
+    let prev_snap = h.engines_mut().damage.prev[&WidgetId::from_hash("canvas")];
+    let prev_arena_len = h.engines_mut().damage.paints.slots.len();
     let prev_shape2_rect = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))[1 + 2]
         .screen;
     frame(&mut h, |ui| build(140.0, ui));
 
-    let canvas_snap = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
+    let canvas_snap = h.engines_mut().damage.prev[&WidgetId::from_hash("canvas")];
     let cur_shape2_rect = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))[1 + 2]
         .screen;
@@ -553,7 +554,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
         "same-count paint changes must refresh the existing arena span",
     );
     assert_eq!(
-        h.engines.damage.paints.slots.len(),
+        h.engines_mut().damage.paints.slots.len(),
         prev_arena_len,
         "an in-place refresh must not touch the allocator at all",
     );
@@ -583,7 +584,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
 /// A chrome authoring change (same rect) must push the chrome rect: it is row 0 and carries its own hash via `Paint.hash`.
 #[test]
 fn chrome_authoring_change_pushes_chrome_paint_row() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |fill: RgbaF32, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("c"))
@@ -593,7 +594,11 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     };
     frame(&mut h, |ui| build(BLUE, ui));
     frame(&mut h, |ui| build(BLUE, ui)); // settle
-    let snap_rect = h.engines.damage.prev_paint_rows(WidgetId::from_hash("c"))[0].screen;
+    let snap_rect = h
+        .engines_mut()
+        .damage
+        .prev_paint_rows(WidgetId::from_hash("c"))[0]
+        .screen;
 
     frame(&mut h, |ui| build(RED, ui));
     let region = h.damage_region();
@@ -612,7 +617,7 @@ fn a_focus_ring_damages_only_its_node() {
     use crate::widgets::block::Block;
 
     let [a, b] = ["a", "b"].map(WidgetId::from_hash);
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().gap(20.0).show(ui, |ui| {
             for id in [a, b] {
@@ -628,9 +633,9 @@ fn a_focus_ring_damages_only_its_node() {
     frame(&mut h, build); // settle
     h.key(Key::Tab);
     frame(&mut h, build);
-    assert_eq!(h.ui.focus(), Some(a));
-    let a_rect = h.engines.damage.prev_paint_rows(a)[0].screen;
-    let b_rect = h.ui.response_for(b).rect.expect("b arranged");
+    assert_eq!(h.ui().focus(), Some(a));
+    let a_rect = h.engines_mut().damage.prev_paint_rows(a)[0].screen;
+    let b_rect = h.ui().response_for(b).rect.expect("b arranged");
     let region = h.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     assert!(!rects.is_empty(), "the ring damages something");
@@ -647,7 +652,7 @@ fn a_focus_ring_damages_only_its_node() {
 /// Every `DamageEngine.prev` entry covers at least one Paint row (chrome is row 0), else `DamageEngine::compute`'s removal tail leaves pixels unrepainted.
 #[test]
 fn chrome_only_owner_has_nonzero_paint_span() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("chrome_only"))
@@ -659,14 +664,14 @@ fn chrome_only_owner_has_nonzero_paint_span() {
     frame(&mut h, build); // settle prev
 
     let widget_id = WidgetId::from_hash("chrome_only");
-    let snap = h.engines.damage.prev[&widget_id];
+    let snap = h.engines_mut().damage.prev[&widget_id];
     assert_eq!(
         snap.paint_span.len, 1,
         "chrome-only owner must contribute exactly one Paint row (chrome)",
     );
 
     #[expect(clippy::iter_over_hash_type, reason = "each entry is checked alone")]
-    for (k, s) in &h.engines.damage.prev {
+    for (k, s) in &h.engines().damage.prev {
         assert!(
             s.paint_span.len > 0,
             "prev entry {k:?} has zero-len paint_span, violating painting-only invariant",
@@ -687,7 +692,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     const FONT: f32 = 14.0;
     const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
 
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let leaf_id = WidgetId::from_hash("text-host");
     let build = |text: &'static str, ui: &mut Ui| {
         Panel::hstack()
@@ -718,13 +723,13 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     frame(&mut h, |ui| build("abc", ui));
     frame(&mut h, |ui| build("abc", ui));
     assert!(
-        h.engines.damage.counters.dirty().is_empty(),
+        h.engines_mut().damage.counters.dirty().is_empty(),
         "steady frame must produce no diff"
     );
 
     // Damage rects inflate by `TEXT_SCALE_STEP * measured` per axis (`STEP/2` per side; see the cascade's `inflate_text_damage`).
     let inflate = 1.0 + TEXT_SCALE_STEP;
-    let prev_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
+    let prev_text_rect = h.engines_mut().damage.prev_paint_rows(leaf_id)[0].screen;
     let prev_size_short = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
     assert_eq!(
         prev_text_rect.size, prev_size_short,
@@ -732,7 +737,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     );
 
     frame(&mut h, |ui| build("abcdef", ui));
-    let cur_text_rect = h.engines.damage.prev_paint_rows(leaf_id)[0].screen;
+    let cur_text_rect = h.engines_mut().damage.prev_paint_rows(leaf_id)[0].screen;
     let cur_size_long = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert_eq!(
         cur_text_rect.size, cur_size_long,
@@ -768,7 +773,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
     use crate::text::font_slant::FontSlant;
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
-    let mut h = UiHarness::with_text(DISPLAY.physical);
+    let mut h = Harness::new(DISPLAY.physical);
     let leaf_id = WidgetId::from_hash("text-host");
     frame(&mut h, |ui| {
         Panel::hstack()
@@ -795,7 +800,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
             });
     });
 
-    let shaped = h.ui.layout(Layer::Main).text_shapes[0];
+    let shaped = h.ui().layout(Layer::Main).text_shapes[0];
     let [left, top, right, bottom] = shaped.extent.ink.to_array();
     assert!(
         left > 0.0 && right > 0.0,
@@ -807,7 +812,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
     );
     let pad = Vec2::new(inked.w, inked.h) * (TEXT_SCALE_STEP * 0.5);
     assert_eq!(
-        h.engines.damage.prev_paint_rows(leaf_id)[0].screen,
+        h.engines_mut().damage.prev_paint_rows(leaf_id)[0].screen,
         Rect {
             min: ORIGIN - Vec2::new(left, top) - pad,
             size: Size::new(inked.w + 2.0 * pad.x, inked.h + 2.0 * pad.y),
@@ -841,7 +846,7 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
             );
         });
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| node(ui, false, BLUE));
     let damage = frame(&mut h, |ui| node(ui, true, RED));
     let region = Damage::expect_partial(damage);

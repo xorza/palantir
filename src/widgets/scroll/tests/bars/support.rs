@@ -1,6 +1,6 @@
 //! Recording a scroll twice and reading its bar rects back.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -13,8 +13,8 @@ pub(super) fn theme() -> ScrollbarTheme {
 }
 
 /// Build a scroll over two frames so the second settles `ScrollState`.
-pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> UiHarness {
-    let mut h = UiHarness::new(surface);
+pub(super) fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> Harness {
+    let mut h = Harness::mono(surface);
     h.prime(2, build);
     h
 }

@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -74,14 +74,18 @@ fn knob_floors_at_two() {
 /// The off knob is centered despite the border inset: `inset` (3 px) from every edge, offset (3, 3), 18 px of travel; clicked on, it rests 3 px from the right end.
 #[test]
 fn knob_rests_inset_from_the_end_it_sits_against() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::builder(UVec2::new(400, 400))
+        .mono()
+        .frame_dt(time::Duration::from_millis(16))
+        .settle_frames(120)
+        .build();
     let id = WidgetId::from_hash("wifi");
     let mut on = false;
     let mut record = |ui: &mut Ui| {
         Switch::new(&mut on).id(id).label("Wi-Fi").show(ui);
     };
     // `[left, top, right, bottom]`, the knob's margins in the track.
-    let margins = |h: &UiHarness| {
+    let margins = |h: &Harness| {
         let track = h.arranged(id.with("box"));
         let knob = h.arranged(id.with("knob"));
         [
@@ -98,10 +102,9 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
         "off, centered, at the left"
     );
 
-    h.click_on(id);
+    h.click(id);
     h.frame(&mut record);
-    let tick = time::Duration::from_millis(16);
-    h.frames_until_idle(120, tick, &mut record)
+    h.settle(&mut record)
         .expect("the knob and the look it rides settle inside 2 s");
     assert_eq!(margins(&h), [18.0, 3.0, 3.0, 3.0], "on, at the right");
 }

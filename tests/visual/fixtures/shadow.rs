@@ -10,7 +10,7 @@ use std::f64::consts::SQRT_2;
 
 use crate::fixtures;
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 const VIEWPORT: UVec2 = UVec2::new(220, 180);
 const CLEAR: RgbaF32 = RgbaF32::WHITE;
@@ -21,7 +21,7 @@ const INK: RgbaF32 = RgbaF32::srgba(0.0, 0.0, 0.0, 0.85);
 
 /// One frame over `clear`, with `scene` on a full-surface canvas.
 fn render(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
-    Harness::new()
+    VisualRig::new()
         .size(VIEWPORT)
         .clear(clear)
         .frame(|ui| fixtures::canvas(ui, &mut scene))
@@ -617,8 +617,8 @@ fn cutout_grid(ui: &mut Ui) {
 #[test]
 fn baked_cutout_tables_match_the_shaded_cutout() {
     let size = UVec2::new(800, 1840);
-    let mut baked = Harness::new();
-    let mut shaded = Harness::new();
+    let mut baked = VisualRig::new();
+    let mut shaded = VisualRig::new();
     shaded.host.disable_cutout_tables();
     let [baked, shaded] = [&mut baked, &mut shaded]
         .map(|harness| harness.size(size).clear(CLEAR).frame(cutout_grid).image);
@@ -791,8 +791,8 @@ fn a_shadow_grid_matches_the_full_form() {
         (GRID_COLS as f32 * GRID_CELL) as u32,
         (rows as f32 * GRID_CELL) as u32,
     );
-    let mut grid = Harness::new();
-    let mut full = Harness::new();
+    let mut grid = VisualRig::new();
+    let mut full = VisualRig::new();
     full.host.disable_shadow_grid();
     let [grid, full] = [&mut grid, &mut full]
         .map(|harness| harness.size(size).clear(CLEAR).frame(grid_sweep).image);

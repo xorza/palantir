@@ -16,7 +16,7 @@ use std::ops;
 use std::rc::Rc;
 
 use crate::fixtures;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// Fills its 8x8 viewBox with one color, so every covered pixel is opaque. Marked
 /// tintable, so the expected value is the tint alone.
@@ -75,7 +75,7 @@ fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
 /// One frame on black at `scale`, with `scene` on a full-surface canvas and the [`atlas`] loaded.
 fn render(size: UVec2, scale: f32, mut scene: impl FnMut(&mut Ui, &IconSet)) -> RgbaImage {
     let atlas = atlas();
-    Harness::new()
+    VisualRig::new()
         .size(size)
         .scale(scale)
         .clear(RgbaF32::BLACK)

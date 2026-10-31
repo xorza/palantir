@@ -301,30 +301,28 @@ impl FrameRuntime {
     }
 }
 
-#[cfg(feature = "internals")]
+impl FrameRuntime {
+    /// Set the last frame's stamp. `Some` makes the next frame warm (skips warmup); `None` is a
+    /// cold start.
+    pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
+        self.prev_stamp = stamp;
+    }
+
+    /// Replace the display the next frame lays out at, as the window driver does.
+    pub(crate) const fn set_display(&mut self, display: Display) {
+        self.stamp.display = display;
+    }
+}
+
+#[cfg(test)]
 pub(crate) mod internals {
-    use crate::display::Display;
-    use crate::display::frame_stamp::FrameStamp;
     use crate::ui::frame_runtime::FrameRuntime;
-    #[cfg(test)]
     use crate::ui::frame_runtime::wake::Wake;
 
     impl FrameRuntime {
         /// The pending wakes, earliest first.
-        #[cfg(test)]
         pub(crate) fn repaint_wakes(&self) -> &[Wake] {
             &self.repaint_wakes
-        }
-
-        /// Set the last frame's stamp. `Some` makes the next frame warm (skips warmup); `None`
-        /// is a cold start.
-        pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
-            self.prev_stamp = stamp;
-        }
-
-        /// Replace the display the next frame lays out at, as the window driver does.
-        pub(crate) const fn set_display(&mut self, display: Display) {
-            self.stamp.display = display;
         }
     }
 }

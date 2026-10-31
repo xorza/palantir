@@ -2,12 +2,12 @@ use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn multiline_enter_inserts_newline() {
-    let mut h = UiHarness::with_text(UVec2::new(300, 160));
+    let mut h = Harness::new(UVec2::new(300, 160));
     let mut buf = String::from("abc");
     let ed_id = WidgetId::from_hash("ml-ed");
     // Focus + caret after "abc".
     h.set_focus(ed_id);
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
+    h.ui().with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
     });
     h.frame(Field::MULTILINE.scene(&mut buf));
@@ -37,7 +37,7 @@ fn single_line_enter_does_not_insert_newline() {
 
 #[test]
 fn single_line_widget_normalizes_host_newlines() {
-    let mut h = UiHarness::with_text(UVec2::new(300, 80));
+    let mut h = Harness::new(UVec2::new(300, 80));
     let mut text = String::from("first\r\nsecond\nthird");
     let changed = h.frame_value(|ui| {
         TextEdit::new(&mut text)
@@ -53,7 +53,7 @@ fn single_line_widget_normalizes_host_newlines() {
 /// Paste in multi-line mode preserves clipboard newlines (sanitizing is single-line only).
 #[test]
 fn multiline_paste_keeps_newlines() {
-    let mut h = UiHarness::with_text(UVec2::new(300, 200));
+    let mut h = Harness::new(UVec2::new(300, 200));
     h.set_clipboard_text("line1\nline2\nline3");
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
@@ -70,12 +70,12 @@ fn multiline_paste_keeps_newlines() {
 /// Shift+Down across hard breaks: anchor at start, caret to the next line at the same x; the selection straddles the newline.
 #[test]
 fn multiline_selection_crosses_newline() {
-    let mut h = UiHarness::with_text(UVec2::new(300, 200));
+    let mut h = Harness::new(UVec2::new(300, 200));
     let mut buf = String::from("first\nsecond");
     let ed_id = WidgetId::from_hash("ml-ed");
     h.set_focus(ed_id);
     // Caret on line 1, column 3.
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
+    h.ui().with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
     });
     h.frame(Field::MULTILINE.scene(&mut buf));
@@ -114,10 +114,10 @@ fn soft_wrapped_motions_move_by_visual_row() {
         (Key::ArrowDown, 36, 47),
     ];
     for (key, before, after) in cases {
-        let mut h = UiHarness::with_text(UVec2::new(300, 200));
+        let mut h = Harness::new(UVec2::new(300, 200));
         let mut buf = text.clone();
         h.set_focus(ed_id);
-        h.ui.with_state::<TextEditState, _>(ed_id, |_, st| {
+        h.ui().with_state::<TextEditState, _>(ed_id, |_, st| {
             st.edit.caret = before;
         });
         h.frame(Field::MULTILINE.scene(&mut buf));

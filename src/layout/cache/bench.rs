@@ -17,8 +17,8 @@
 use crate::bench::backends::Backend;
 use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
+use crate::host::harness::Harness;
 use crate::internals::cache_fixture::{BroadChange, build_broad, build_broad_variant, build_deep};
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -106,13 +106,13 @@ fn build_list(ui: &mut Ui) {
 const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
 
 /// The surface every arm renders at, with mono-fallback text.
-fn mono() -> UiHarness {
-    UiHarness::new(SURFACE).scale(2.0)
+fn mono() -> Harness {
+    Harness::builder(SURFACE).mono().scale(2.0).build()
 }
 
 /// [`mono`] with real cosmic shaping.
-fn shaped() -> UiHarness {
-    UiHarness::with_text(SURFACE).scale(2.0)
+fn shaped() -> Harness {
+    Harness::builder(SURFACE).scale(2.0).build()
 }
 
 fn build_grid_intrinsics(ui: &mut Ui) {
@@ -140,14 +140,14 @@ fn build_grid_intrinsics(ui: &mut Ui) {
 fn bench_cache_pair(
     group: &mut CaseGroup<'_>,
     name: &str,
-    make_ui: fn() -> UiHarness,
+    make_ui: fn() -> Harness,
     build: fn(&mut Ui),
 ) {
     group.bench_function(Backend::Cpu.case(&format!("{name}/cached")), |b| {
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
-            h.engines.layout.forget_last_run();
+            h.engines_mut().layout.forget_last_run();
             black_box(h.frame(build));
         });
     });
@@ -156,7 +156,7 @@ fn bench_cache_pair(
         let mut h = make_ui();
         let _ = h.frame(build);
         b.iter(|| {
-            h.engines.layout.cache.forget_all();
+            h.engines_mut().layout.cache.forget_all();
             black_box(h.frame(build));
         });
     });
@@ -165,7 +165,7 @@ fn bench_cache_pair(
 fn bench_cache_workload(
     group: &mut CaseGroup<'_>,
     name: &str,
-    make_ui: fn() -> UiHarness,
+    make_ui: fn() -> Harness,
     build: fn(&mut Ui),
 ) {
     bench_cache_pair(group, name, make_ui, build);
@@ -185,7 +185,7 @@ fn bench_cache_workload(
 fn bench_broad_localized(
     group: &mut CaseGroup<'_>,
     name: &str,
-    harness: impl Fn() -> UiHarness,
+    harness: impl Fn() -> Harness,
     change: BroadChange,
 ) {
     let toggled = |changed: bool| changed.then_some(change);
@@ -239,12 +239,12 @@ fn bench_virtual_scroll(group: &mut CaseGroup<'_>) {
                 let _ = h.frame(|ui| build_scroll_window(ui, first));
                 first += stride;
             }
-            let before = h.engines.layout.cache.snapshot_rebuilds.count();
+            let before = h.engines_mut().layout.cache.snapshot_rebuilds.count();
             for _ in 0..FRAMES {
                 let _ = h.frame(|ui| build_scroll_window(ui, first));
                 first += stride;
             }
-            let rebuilds = h.engines.layout.cache.snapshot_rebuilds.count() - before;
+            let rebuilds = h.engines_mut().layout.cache.snapshot_rebuilds.count() - before;
             let expected = if stride == 0 { 0 } else { FRAMES };
             assert_eq!(
                 rebuilds, expected,
@@ -271,7 +271,7 @@ pub(crate) fn integration(c: &mut Criterion) {
     bench_broad_localized(
         &mut group,
         "broad/localized",
-        || UiHarness::new(SURFACE),
+        || Harness::builder(SURFACE).mono().build(),
         BroadChange::FillWeight,
     );
     bench_broad_localized(

@@ -1252,6 +1252,33 @@ impl Ui {
 }
 
 /// The doors past [`Ui`]'s private fields, for white-box suites and benches.
+/// What a host's harness reads and seeds.
+impl Ui {
+    /// The input machine, for tests asserting routing state the public surface hides.
+    pub(crate) const fn input(&self) -> &InputState {
+        &self.input
+    }
+
+    pub(crate) const fn cascade(&self) -> &Cascade {
+        &self.cascade
+    }
+
+    pub(crate) const fn frame_runtime(&self) -> &FrameRuntime {
+        &self.frame_runtime
+    }
+
+    /// Set the last frame's stamp. `Some` makes the next frame warm (skips warmup); `None` is a
+    /// cold start.
+    pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
+        self.frame_runtime.set_prev_stamp(stamp);
+    }
+
+    /// Replace the display the next frame lays out at, as the window driver does.
+    pub(crate) const fn set_display(&mut self, display: Display) {
+        self.frame_runtime.set_display(display);
+    }
+}
+
 /// No `#[inline]`: nothing here reaches an optimized build that would want it.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
@@ -1260,9 +1287,7 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     use crate::animation::AnimationMap;
-    use crate::cascade::Cascade;
-    use crate::display::Display;
-    use crate::display::frame_stamp::FrameStamp;
+    #[cfg(test)]
     use crate::input_state::InputState;
     use crate::layout::Layout;
     #[cfg(test)]
@@ -1281,38 +1306,10 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
-    use crate::ui::frame_runtime::FrameRuntime;
     #[cfg(all(test, feature = "winit"))]
     use crate::window::window_frame_state::WindowFrameState;
     #[cfg(test)]
     use crate::window::window_requests::WindowRequests;
-
-    /// What the frame harness reads and seeds.
-    impl Ui {
-        /// The input machine, for tests asserting routing state the public surface hides.
-        pub(crate) const fn input(&self) -> &InputState {
-            &self.input
-        }
-
-        pub(crate) const fn cascade(&self) -> &Cascade {
-            &self.cascade
-        }
-
-        pub(crate) const fn frame_runtime(&self) -> &FrameRuntime {
-            &self.frame_runtime
-        }
-
-        /// Set the last frame's stamp. `Some` makes the next frame warm (skips warmup); `None` is a
-        /// cold start.
-        pub(crate) const fn set_prev_stamp(&mut self, stamp: Option<FrameStamp>) {
-            self.frame_runtime.set_prev_stamp(stamp);
-        }
-
-        /// Replace the display the next frame lays out at, as the window driver does.
-        pub(crate) const fn set_display(&mut self, display: Display) {
-            self.frame_runtime.set_display(display);
-        }
-    }
 
     /// Read by benches as well as tests.
     impl Ui {

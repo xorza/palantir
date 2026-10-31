@@ -6,7 +6,7 @@ use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::GridDefId;
 
 use crate::common::span::Span;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -20,7 +20,7 @@ use glam::UVec2;
 
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -51,7 +51,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
 
 #[test]
 fn grid_hug_column_takes_max_span1_child_intrinsic() {
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     // Hug col 0: max(button widths); a button is label at 8px/char + 24 padding + 2 stroke = label_w + 26.
     let root = h.frame_value(|ui| {
         Grid::new()
@@ -82,13 +82,13 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let min_slot = LenReq::MinContent.slot(Axis::X);
     let max_slot = LenReq::MaxContent.slot(Axis::X);
     for node in &nodes[..2] {
-        let cached = h.engines.layout.scratch.intrinsics[node.idx()];
+        let cached = h.engines_mut().layout.scratch.intrinsics[node.idx()];
         assert!(
             !cached[min_slot].is_nan() && !cached[max_slot].is_nan(),
             "a Hug cell must populate both intrinsic slots in one query",
         );
     }
-    let fill_cached = h.engines.layout.scratch.intrinsics[nodes[2].idx()];
+    let fill_cached = h.engines_mut().layout.scratch.intrinsics[nodes[2].idx()];
     assert!(!fill_cached[min_slot].is_nan());
     assert!(
         fill_cached[max_slot].is_nan(),
@@ -107,7 +107,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
 /// A `Hug` column of `FILL`-width cells hugs to the widest cell's content and every cell stretches to it.
 #[test]
 fn hug_column_stretches_fill_cells_to_widest_content() {
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -156,7 +156,7 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
 fn hug_column_max_caps_shrinkable_and_rigid_content() {
     use crate::text::wrap::TextWrap;
 
-    let mut h = UiHarness::new(UVec2::new(600, 200));
+    let mut h = Harness::mono(UVec2::new(600, 200));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -226,7 +226,7 @@ fn grid_fill_weights_and_clamps() {
         ),
     ];
     for (label, c0, c1, want0, want1) in cases {
-        let mut h = UiHarness::new(UVec2::new(400, 100));
+        let mut h = Harness::mono(UVec2::new(400, 100));
         let root = h.frame_value(|ui| {
             Grid::new()
                 .auto_id()
@@ -262,7 +262,7 @@ fn grid_fill_weights_and_clamps() {
 fn grid_fill_col_floors_at_descendant_min_content() {
     // Two Fill cols in 300px; col 0 holds a Fixed 200 frame, its MinContent floor: without it they split
     // 150/150 and the frame overflows; with it col 0 clamps to 200, col 1 takes 100.
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -295,7 +295,7 @@ fn grid_fill_col_floors_at_descendant_min_content() {
 fn grid_fill_row_floors_at_descendant_min_content() {
     // Y twin: two Fill rows in 100px, row 0 holding a Fixed 60 frame; its Y min-content (Phase 2, hug_min)
     // floors row 0 at 60, leaving 40 for row 1, instead of a 50/50 split.
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -328,7 +328,7 @@ fn grid_fill_row_floors_at_descendant_min_content() {
 fn grid_hug_rows_floor_at_their_measured_height_when_cramped() {
     // Two Hug rows of Fixed 60 frames in a 100px grid: each range is `[60, 60]`, `hug_min_sum` 120 > 100,
     // so the cramped arm keeps both at 60 and the grid overflows by 20 (an unwritten min gave 50 per row).
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -398,7 +398,7 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 /// Each Hug row resolves to its own cells' max desired height, independent of other rows.
 #[test]
 fn grid_multi_row_hug_heights_resolve_independently() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let mut kids = Vec::new();
     h.frame(|ui| {
         Panel::hstack()
@@ -438,14 +438,14 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                     });
             });
     });
-    assert_eq!(h.ui.layout(Layer::Main).rect[kids[0].idx()].size.h, 10.0);
-    assert_eq!(h.ui.layout(Layer::Main).rect[kids[1].idx()].size.h, 80.0);
-    assert_eq!(h.ui.layout(Layer::Main).rect[kids[2].idx()].size.h, 30.0);
+    assert_eq!(h.ui().layout(Layer::Main).rect[kids[0].idx()].size.h, 10.0);
+    assert_eq!(h.ui().layout(Layer::Main).rect[kids[1].idx()].size.h, 80.0);
+    assert_eq!(h.ui().layout(Layer::Main).rect[kids[2].idx()].size.h, 30.0);
     assert_eq!(h.arranged(WidgetId::from_hash("multi-row")).size.h, 120.0);
 }
 
 fn rigid_first_col_rects(first: Track, surface_width: u32) -> Vec<Rect> {
-    let mut h = UiHarness::new(UVec2::new(surface_width, 100));
+    let mut h = Harness::mono(UVec2::new(surface_width, 100));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()

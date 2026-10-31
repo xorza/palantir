@@ -1,8 +1,8 @@
 //! Fixtures that push shape *count* and *variety* through a whole frame; the
 //! other widget fixtures push structure.
 //!
-//! **These encode and compose.** `Audit::run` drives a `UiHarness`, which stops
-//! at damage; these four use a [`FrontendHarness`], running the deviceless
+//! **These encode and compose.** `Audit::run` drives a `Harness`, which stops
+//! at damage; these four use a compose-depth `Harness`, running the deviceless
 //! frontend on every painting frame. They cover a shape's cost from `add_shape`
 //! to the render buffer: record-store copies, the shape arena, cascade paint
 //! rows, the encoder's command and the composer's scratch.
@@ -14,7 +14,6 @@ use crate::fixtures::parked_icons::ParkedIcons;
 use crate::harness;
 use crate::harness::Audit;
 use glam::Vec2;
-use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
 use palantir::widget::{Mesh, Shape};
 use palantir::{
     Block, Chrome, Configure, FramePaint, Grid, Panel, RgbaF32, Sizing, Stroke, Track,
@@ -38,7 +37,7 @@ const WARMUP_CYCLES: u32 = 4;
 /// measure cache misses and layout re-runs. These are whole-frame numbers.
 #[track_caller]
 fn frontend_audit(mut scene: impl FnMut(&mut Ui)) {
-    let mut frontend = FrontendHarness::new(harness::new_ui());
+    let mut frontend = harness::new_compose();
     let mut step = 0u32;
     Audit::new()
         .warmup((WARMUP_CYCLES * NUDGE_POSS) as usize)

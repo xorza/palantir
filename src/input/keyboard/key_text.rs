@@ -1,5 +1,6 @@
 //! The text one key press produced, as the input queue carries it.
 
+use crate::input::keyboard::key::Key;
 use std::fmt;
 use std::str;
 use tinyvec::ArrayVec;
@@ -77,17 +78,12 @@ impl fmt::Debug for KeyText {
     }
 }
 
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::input::keyboard::key::Key;
-    use crate::input::keyboard::key_text::KeyText;
-
-    impl KeyText {
-        pub(crate) fn of_key(key: Key) -> Self {
-            match key {
-                Key::Char(c) => Self::from_char(c),
-                _ => Self::EMPTY,
-            }
+impl KeyText {
+    /// What `key` types on a plain layout: its character, and nothing for a named key.
+    pub(crate) fn of_key(key: Key) -> Self {
+        match key {
+            Key::Char(c) => Self::from_char(c),
+            _ => Self::EMPTY,
         }
     }
 }

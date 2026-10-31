@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::primitives::layout::sizing::Sizing;
@@ -10,7 +10,7 @@ use glam::UVec2;
 
 #[test]
 fn canvas_places_child_at_position_within_inner_rect() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
@@ -26,7 +26,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .response
             .node()
     });
-    let panel_rect = h.ui.arranged_rect(Layer::Main, panel);
+    let panel_rect = h.ui().arranged_rect(Layer::Main, panel);
     let kids: Vec<_> = h.main_child_rects(panel);
     let a = kids[0];
     assert_eq!(a.min.x - panel_rect.min.x, 40.0);
@@ -37,7 +37,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
 
 #[test]
 fn canvas_hugs_to_bounding_box_of_placed_children() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
@@ -57,7 +57,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
             .response
             .node()
     });
-    let r = h.ui.arranged_rect(Layer::Main, panel);
+    let r = h.ui().arranged_rect(Layer::Main, panel);
     assert_eq!(r.size.w, 70.0);
     assert_eq!(r.size.h, 80.0);
 }
@@ -65,7 +65,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
 /// Sister pin: a Fill canvas with a child positioned past its available width must not grow to wrap it, or it overflows its parent and the chrome paint rect shift flickers `Damage::Full` while dragging. Hug is unchanged.
 #[test]
 fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
@@ -80,7 +80,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
             .response
             .node()
     });
-    let r = h.ui.arranged_rect(Layer::Main, panel);
+    let r = h.ui().arranged_rect(Layer::Main, panel);
     // Fill canvas in a 200×200 outer stays 200×200 regardless of the child's position.
     assert_eq!(
         r.size.w, 200.0,
@@ -99,7 +99,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
 /// the window, as a floor of the child's height would, to 350.
 #[test]
 fn canvas_fill_axis_has_no_floor() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let (column, canvas) = h.under_outer(|ui| {
         let mut canvas = None;
         let column = Panel::vstack()
@@ -129,8 +129,8 @@ fn canvas_fill_axis_has_no_floor() {
             .node();
         (column, canvas.unwrap())
     });
-    assert_eq!(h.ui.arranged_rect(Layer::Main, column).size.h, 200.0);
-    let canvas_rect = h.ui.arranged_rect(Layer::Main, canvas);
+    assert_eq!(h.ui().arranged_rect(Layer::Main, column).size.h, 200.0);
+    let canvas_rect = h.ui().arranged_rect(Layer::Main, canvas);
     assert_eq!((canvas_rect.min.y, canvas_rect.size.h), (50.0, 150.0));
     let tall = h.arranged(WidgetId::from_hash("tall"));
     assert_eq!((tall.min.y, tall.size.h), (70.0, 300.0));
@@ -139,7 +139,7 @@ fn canvas_fill_axis_has_no_floor() {
 #[test]
 fn canvas_negative_position_does_not_extend_bbox() {
     // Canvas measures `max(pos + desired)` from zero, so negative coords bleed past the top-left instead of growing it.
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let panel = h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()
@@ -154,7 +154,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
             .response
             .node()
     });
-    let r = h.ui.arranged_rect(Layer::Main, panel);
+    let r = h.ui().arranged_rect(Layer::Main, panel);
     assert_eq!(r.size.w, 15.0);
     assert_eq!(r.size.h, 15.0);
 
@@ -172,7 +172,7 @@ fn canvas_fill_child_fills_the_room_past_its_position() {
         ("hug_canvas_falls_back_to_intrinsic", None, 0.0),
     ];
     for (label, fixed_size, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         let panel = h.under_outer(|ui| {
             let mut canvas = Panel::canvas().auto_id();
             if let Some(s) = *fixed_size {
@@ -207,7 +207,7 @@ fn canvas_fill_child_fills_the_room_past_its_position() {
 #[test]
 fn canvas_measures_a_child_against_the_room_past_its_position() {
     let sized = |canvas_w: f32, at_x: f32| {
-        let mut h = UiHarness::new(UVec2::new(400, 400));
+        let mut h = Harness::mono(UVec2::new(400, 400));
         let panel = h.under_outer(|ui| {
             Panel::canvas()
                 .auto_id()
@@ -240,7 +240,7 @@ fn canvas_measures_a_child_against_the_room_past_its_position() {
 /// Pin: Canvas places children at their explicit `.pos(...)` and ignores `.align(...)`, unlike Stack/ZStack/Grid.
 #[test]
 fn canvas_ignores_child_align() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.under_outer(|ui| {
         Panel::canvas()
             .auto_id()

@@ -1,16 +1,17 @@
 use crate::cascade::Cascade;
+use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::pointer::PointerButton;
 use crate::input::policy::FocusPolicy;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input_state::InputState;
 use crate::input_state::tests::{
     BUTTON_SURFACE, Sample, Stream, fixed_button, forged_focus, sample_layers,
 };
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
@@ -62,7 +63,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 /// == None` keeps it working.
 #[test]
 fn a_tree_with_no_scopes_still_reads_every_chord() {
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let mut h = Harness::mono(glam::UVec2::new(200, 200));
     let bare = |ui: &mut Ui| {
         Block::new()
             .id(WidgetId::from_hash("plain"))
@@ -83,7 +84,7 @@ fn a_tree_with_no_scopes_still_reads_every_chord() {
 /// above keep reading.
 #[test]
 fn a_scope_silences_the_layers_strictly_below_it() {
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let mut h = Harness::mono(glam::UVec2::new(200, 200));
     // The scope is declared during the first record; its path resolves from the
     // cascade at the start of the next.
     h.frame(popup_with_scope);
@@ -109,7 +110,7 @@ fn a_nested_overlays_scope_silences_its_opener() {
         });
         seen
     };
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let mut h = Harness::mono(glam::UVec2::new(200, 200));
     h.frame(|ui| {
         record(ui);
     });
@@ -120,7 +121,7 @@ fn a_nested_overlays_scope_silences_its_opener() {
 /// A scope that stops being recorded stops owning input, with no release call.
 #[test]
 fn a_scope_that_stops_recording_reopens_the_stream() {
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let mut h = Harness::mono(glam::UVec2::new(200, 200));
     h.frame(popup_with_scope);
     press_escape(&mut h);
     assert_eq!(
@@ -141,7 +142,7 @@ fn a_scope_that_stops_recording_reopens_the_stream() {
 /// accelerators to a text field inside it and kill them mid-edit.
 #[test]
 fn the_layer_fallback_grant_is_the_outermost_scope() {
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let mut h = Harness::mono(glam::UVec2::new(200, 200));
     let nested = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -193,7 +194,7 @@ fn the_layer_fallback_grant_is_the_outermost_scope() {
 fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     for closed in ["first", "second"] {
         let survivor = if closed == "first" { "second" } else { "first" };
-        let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+        let mut h = Harness::mono(glam::UVec2::new(200, 200));
         let two = |ui: &mut Ui| {
             let mut read_by_survivor = false;
             for id in ["first", "second"] {
@@ -274,7 +275,7 @@ fn a_close_takes_effect_at_the_next_resolution() {
         reads
     };
     for focus_inside in [false, true] {
-        let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+        let mut h = Harness::mono(glam::UVec2::new(200, 200));
         // `closes` is false on the setup frame: a close outlives its frame.
         h.frame(|ui| {
             nested(ui, focus_inside, false);
@@ -332,13 +333,13 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
                 }
             });
     };
-    let mut h = UiHarness::new(glam::UVec2::new(200, 200));
+    let mut h = Harness::mono(glam::UVec2::new(200, 200));
     for _ in 0..3 {
         h.frame(|ui| scene(ui, false, 60.0, false));
     }
-    let rebuilds = |h: &UiHarness| h.ui.input().scopes.rebuilds();
+    let rebuilds = |h: &Harness| h.ui_ref().input().scopes.rebuilds();
     let mut last = rebuilds(&h);
-    let mut step = |h: &mut UiHarness, label: &str, want: u32, extra: bool, closes: bool| {
+    let mut step = |h: &mut Harness, label: &str, want: u32, extra: bool, closes: bool| {
         h.frame(|ui| scene(ui, extra, 80.0, closes));
         let now = rebuilds(h);
         assert_eq!(now - last, want, "{label}");
@@ -358,7 +359,7 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
 /// Feed an Escape the keyboard wake-gate will deliver, focused on the fixture's
 /// `editor` block: the gate drops an unsubscribed chord with nothing focused and
 /// `end_frame` evicts focus on unrecorded widgets.
-fn press_escape(h: &mut UiHarness) {
+fn press_escape(h: &mut Harness) {
     h.set_focus(WidgetId::from_hash("editor"));
     h.key(Key::Escape);
 }
@@ -393,22 +394,22 @@ fn focus_policy_routing() {
         });
     };
     for (label, policy, expect_focus) in cases {
-        let mut h = UiHarness::new(BUTTON_SURFACE);
-        h.ui.set_focus_policy(*policy);
+        let mut h = Harness::mono(BUTTON_SURFACE);
+        h.ui().set_focus_policy(*policy);
         h.frame(build);
-        h.click_on(editable_id);
+        h.click(editable_id);
         assert_eq!(h.focus(), Some(editable_id), "{label}: initial focus");
 
         h.frame(build);
         let miss = glam::Vec2::new(180.0, 5.0);
         assert_eq!(h.hit_at(miss), None, "{label}: the press misses everything");
-        h.press_at(miss);
-        h.release();
+        h.press(miss, PointerButton::Left);
+        h.release(PointerButton::Left);
         let expected = (*expect_focus).then_some(editable_id);
         assert_eq!(h.focus(), expected, "{label}: after outside press");
     }
     assert_eq!(
-        UiHarness::new(BUTTON_SURFACE).ui.focus_policy(),
+        Harness::mono(BUTTON_SURFACE).ui().focus_policy(),
         FocusPolicy::ClearOnMiss
     );
 }
@@ -416,8 +417,8 @@ fn focus_policy_routing() {
 #[test]
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     let surface = glam::UVec2::new(400, 80);
-    let mut h = UiHarness::new(surface);
-    h.ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
+    let mut h = Harness::mono(surface);
+    h.ui().set_focus_policy(FocusPolicy::PreserveOnMiss);
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             fixed_button(WidgetId::from_hash("editable"))
@@ -429,11 +430,11 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
         });
     };
     h.frame(build);
-    h.click_on(WidgetId::from_hash("editable"));
+    h.click(WidgetId::from_hash("editable"));
     assert_eq!(h.focus(), Some(WidgetId::from_hash("editable")));
 
     h.frame(build);
-    h.click_on(WidgetId::from_hash("plain"));
+    h.click(WidgetId::from_hash("plain"));
     assert_eq!(
         h.focus(),
         Some(WidgetId::from_hash("editable")),
@@ -443,7 +444,7 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
 
 #[test]
 fn focus_is_evicted_when_widget_disappears() {
-    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let mut h = Harness::mono(BUTTON_SURFACE);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             fixed_button(WidgetId::from_hash("editable"))
@@ -451,7 +452,7 @@ fn focus_is_evicted_when_widget_disappears() {
                 .show(ui);
         });
     });
-    h.click_at(glam::Vec2::new(50.0, 20.0));
+    h.click(glam::Vec2::new(50.0, 20.0));
     assert_eq!(h.focus(), Some(WidgetId::from_hash("editable")));
 
     h.frame(|ui| {
@@ -466,7 +467,7 @@ fn focus_is_evicted_when_widget_disappears() {
 
 #[test]
 fn set_focus_bypasses_policy() {
-    let mut h = UiHarness::new(BUTTON_SURFACE);
+    let mut h = Harness::mono(BUTTON_SURFACE);
     let id = WidgetId::from_hash("manual");
     h.set_focus(id);
     assert_eq!(h.focus(), Some(id));
@@ -502,15 +503,15 @@ fn invisible_or_disabled_focusable_refuses_focus() {
         });
     };
     for (label, mode, expected) in cases {
-        let mut h = UiHarness::new(BUTTON_SURFACE);
+        let mut h = Harness::mono(BUTTON_SURFACE);
         h.frame(|ui| record(ui, mode));
-        h.click_at(glam::Vec2::new(50.0, 20.0));
+        h.click(glam::Vec2::new(50.0, 20.0));
         assert_eq!(h.focus(), *expected, "case {label}");
 
         // A holder that turns hidden or disabled drops focus, so keys stop routing to it.
-        let mut h = UiHarness::new(BUTTON_SURFACE);
+        let mut h = Harness::mono(BUTTON_SURFACE);
         h.frame(|ui| record(ui, &Mode::Shown));
-        h.click_at(glam::Vec2::new(50.0, 20.0));
+        h.click(glam::Vec2::new(50.0, 20.0));
         h.frame(|ui| record(ui, mode));
         assert_eq!(h.focus(), *expected, "case {label}, after focus");
     }

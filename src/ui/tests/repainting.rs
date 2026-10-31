@@ -2,11 +2,11 @@
 
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::policy::InputPolicy;
 use crate::input::policy::InputSignal;
 use crate::internals::paint_capture::PaintCall;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::clip_mode::ClipMode;
@@ -38,13 +38,14 @@ use std::time::Duration;
 /// Pin: enabling `frame_stats` records a Debug-layer readout, keeps damage `Partial` on a static scene, and updates `fps_ema` after two frames. The readout is a row, its chip and the text leaf, with the chip's fill as its one chrome row: a theme's panel chrome and rounded clip, which would add rows, do not reach it.
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
-    let mut h = UiHarness::new(SURFACE);
-    let theme = h.ui.theme_mut();
+    let mut h = Harness::mono(SURFACE);
+    let theme = h.ui().theme_mut();
     theme.panel_chrome = Some(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
     theme.panel_clip = ClipMode::Rounded;
-    h.ui.set_debug_overlay(DebugOverlayConfig {
+    let overlay = h.ui_ref().debug_overlay();
+    h.ui().set_debug_overlay(DebugOverlayConfig {
         frame_stats: true,
-        ..h.ui.debug_overlay()
+        ..overlay
     });
 
     let mut body = |ui: &mut Ui| {
@@ -54,8 +55,8 @@ fn frame_stats_overlay_records_partial_damage() {
             .show(ui);
     };
     h.frame(&mut body);
-    assert_eq!(h.ui.frame_runtime.fps_ema, 0.0);
-    let debug = &h.ui.forest.trees[Plane::base(Layer::Debug)];
+    assert_eq!(h.ui().frame_runtime.fps_ema, 0.0);
+    let debug = &h.ui_ref().forest.trees[Plane::base(Layer::Debug)];
     assert_eq!(debug.records.len(), 3, "row, chip and text leaf");
     assert_eq!(debug.chrome_table.len(), 1, "the chip's fill alone");
 
@@ -72,18 +73,19 @@ fn frame_stats_overlay_records_partial_damage() {
         report.plan,
     );
     assert_eq!(
-        h.ui.frame_runtime.fps_ema,
+        h.ui().frame_runtime.fps_ema,
         1.0 / Duration::from_millis(16).as_secs_f32(),
         "the first reading seeds fps_ema with the instantaneous rate",
     );
 
-    h.ui.set_debug_overlay(DebugOverlayConfig {
+    let overlay = h.ui_ref().debug_overlay();
+    h.ui().set_debug_overlay(DebugOverlayConfig {
         frame_stats: false,
-        ..h.ui.debug_overlay()
+        ..overlay
     });
     h.at(Duration::from_millis(32)).frame(&mut body);
     assert!(
-        h.ui.forest.trees[Plane::base(Layer::Debug)]
+        h.ui().forest.trees[Plane::base(Layer::Debug)]
             .records
             .is_empty(),
         "Debug layer must clear once frame_stats is turned off",
@@ -93,7 +95,7 @@ fn frame_stats_overlay_records_partial_damage() {
 /// Distinct deadlines coexist in the queue, surface in ascending order, and each fires on a frame at or past it.
 #[test]
 fn request_repaint_after_queues_distinct_deadlines() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let report = h.frame(|ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
         ui.request_repaint_after(Duration::from_secs_f32(1.5));
@@ -104,7 +106,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
         "FrameReport must surface the earliest pending wake",
     );
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes().len(),
+        h.ui().frame_runtime.repaint_wakes().len(),
         2,
         "both distinct deadlines stay queued"
     );
@@ -115,17 +117,17 @@ fn request_repaint_after_queues_distinct_deadlines() {
         Some(Duration::from_secs_f32(1.5)),
         "second deadline survives the first frame's drain",
     );
-    assert_eq!(h.ui.frame_runtime.repaint_wakes().len(), 1);
+    assert_eq!(h.ui().frame_runtime.repaint_wakes().len(), 1);
 
     let report = h.at(Duration::from_secs_f32(1.5)).frame(|_| {});
     assert_eq!(report.repaint_after, None);
-    assert!(h.ui.frame_runtime.repaint_wakes().is_empty());
+    assert!(h.ui().frame_runtime.repaint_wakes().is_empty());
 }
 
 /// Re-requesting a queued deadline in one frame is a no-op. Near-duplicates within `DEFAULT_REPAINT_COALESCE_DT` (1/120 s) collapse onto the later wake; those beyond it stay distinct.
 #[test]
 fn request_repaint_after_dedups_within_frame() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         for _ in 0..10 {
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
@@ -133,12 +135,12 @@ fn request_repaint_after_dedups_within_frame() {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
     });
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes().len(),
+        h.ui().frame_runtime.repaint_wakes().len(),
         1,
         "exact duplicate deadlines collapse to one entry",
     );
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.500));
         ui.request_repaint_after(Duration::from_secs_f32(0.504));
@@ -146,12 +148,13 @@ fn request_repaint_after_dedups_within_frame() {
         ui.request_repaint_after(Duration::from_secs_f32(0.508));
         ui.request_repaint_after(Duration::from_secs_f32(0.600));
     });
-    let deadlines: Vec<Duration> =
-        h.ui.frame_runtime
-            .repaint_wakes()
-            .iter()
-            .map(|w| w.deadline)
-            .collect();
+    let deadlines: Vec<Duration> = h
+        .ui()
+        .frame_runtime
+        .repaint_wakes()
+        .iter()
+        .map(|w| w.deadline)
+        .collect();
     assert_eq!(
         deadlines,
         vec![
@@ -165,30 +168,33 @@ fn request_repaint_after_dedups_within_frame() {
 /// The coalesce floor tracks `Display::refresh_millihertz`: wakes 12 ms apart stay distinct at the 120 Hz fallback (8.33 ms) but collapse at 60 Hz (16.67 ms).
 #[test]
 fn coalesce_floor_follows_refresh_rate() {
-    let schedule_pair = |h: &mut UiHarness| {
+    let schedule_pair = |h: &mut Harness| {
         h.frame(|ui| {
             ui.request_repaint_after(Duration::from_millis(500));
             ui.request_repaint_after(Duration::from_millis(512));
         });
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     schedule_pair(&mut h);
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes().len(),
+        h.ui().frame_runtime.repaint_wakes().len(),
         2,
         "120 Hz fallback: 12 ms-apart wakes stay distinct",
     );
 
-    let mut h = UiHarness::new(SURFACE).refresh_millihertz(60_000);
+    let mut h = Harness::builder(SURFACE)
+        .mono()
+        .refresh_millihertz(60_000)
+        .build();
     schedule_pair(&mut h);
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes().len(),
+        h.ui().frame_runtime.repaint_wakes().len(),
         1,
         "60 Hz floor: 12 ms-apart wakes collapse",
     );
     assert_eq!(
-        h.ui.frame_runtime.repaint_wakes()[0].deadline,
+        h.ui().frame_runtime.repaint_wakes()[0].deadline,
         Duration::from_millis(512),
         "the later deadline survives the collapse",
     );
@@ -197,16 +203,16 @@ fn coalesce_floor_follows_refresh_rate() {
 /// Entries with `deadline <= now` drain at the top of the next frame; later ones survive.
 #[test]
 fn request_repaint_after_drains_fired_entries() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
         ui.request_repaint_after(Duration::from_secs_f32(1.0));
         ui.request_repaint_after(Duration::from_secs_f32(2.0));
     });
-    assert_eq!(h.ui.frame_runtime.repaint_wakes().len(), 3);
+    assert_eq!(h.ui().frame_runtime.repaint_wakes().len(), 3);
 
     let report = h.at(Duration::from_secs_f32(1.0)).frame(|_| {});
-    assert_eq!(h.ui.frame_runtime.repaint_wakes().len(), 1);
+    assert_eq!(h.ui().frame_runtime.repaint_wakes().len(), 1);
     assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
 
@@ -225,19 +231,19 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     let half = Duration::from_millis(500);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
 
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
-    let (rendered, recorded) = (h.ui.render_frame_id(), h.ui.frame_id());
+    let (rendered, recorded) = (h.ui().render_frame_id(), h.ui().frame_id());
 
     let r1 = h.at(half).frame(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // `frame_id` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
-    assert_eq!(h.ui.render_frame_id(), rendered + 1);
-    assert_eq!(h.ui.frame_id(), recorded);
+    assert_eq!(h.ui().render_frame_id(), rendered + 1);
+    assert_eq!(h.ui().frame_id(), recorded);
 
     match r1.plan {
         Some(RenderPlan {
@@ -260,15 +266,15 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
     // A pending close request vetoes the fast path: the app reads `close_requested` only during record.
-    h.ui.window_frame.close_requested = true;
+    h.ui().window_frame.close_requested = true;
     let r3 = h.at(half * 3).frame(|ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
-    h.ui.window_frame.close_requested = false;
+    h.ui().window_frame.close_requested = false;
     let r4 = h.at(half * 4).frame(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 
-    assert_eq!(h.ui.render_frame_id(), rendered + 4);
-    assert_eq!(h.ui.frame_id(), recorded + 1);
+    assert_eq!(h.ui().render_frame_id(), rendered + 4);
+    assert_eq!(h.ui().frame_id(), recorded + 1);
 }
 
 /// Regression: `Ui::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.
@@ -298,12 +304,12 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
 
     let half = Duration::from_millis(500);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
 
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
-        let store = &h.ui.forest.record_store;
+        let store = &h.ui_ref().forest.record_store;
         assert_eq!(store.interned_text().all(), "retained 7");
     }
 
@@ -311,13 +317,13 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     assert_eq!(
-        h.ui.forest.record_store.gradients.records.len(),
+        h.ui().forest.record_store.gradients.records.len(),
         1,
         "PaintOnly must preserve gradient payloads so retained \
          ShapeBrush::Gradient indices remain valid",
     );
     {
-        let store = &h.ui.forest.record_store;
+        let store = &h.ui_ref().forest.record_store;
         assert_eq!(
             store.interned_text().all(),
             "retained 7",
@@ -363,7 +369,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let half = Duration::from_millis(500);
 
     a.frame(|ui| window_a(ui, half));
-    let original_row = rows(&a.ui, &atlas)[0];
+    let original_row = rows(a.ui_ref(), &atlas)[0];
     atlas.flush_with(|_| ());
 
     b.frame(|ui| {
@@ -383,14 +389,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             }
         });
     });
-    let b_rows: HashSet<LutRow> = rows(&b.ui, &atlas).into_iter().collect();
+    let b_rows: HashSet<LutRow> = rows(b.ui_ref(), &atlas).into_iter().collect();
     assert_eq!(b_rows.len(), (INITIAL_ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
     atlas.flush_with(|_| ());
 
     let report = a.at(half).frame(|ui| window_a(ui, half));
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
-    let resolved_row = rows(&a.ui, &atlas)[0];
+    let resolved_row = rows(a.ui_ref(), &atlas)[0];
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",
@@ -415,7 +421,7 @@ fn a_new_device_restores_each_window_once_and_records() {
     let half = Duration::from_millis(500);
     a.frame(|ui| body(ui, half));
     b.frame(|ui| body(ui, half));
-    assert!(!a.ui.device_restored() && !b.ui.device_restored());
+    assert!(!a.ui().device_restored() && !b.ui().device_restored());
     assert_eq!(
         a.at(half).frame(|ui| body(ui, half)).processing,
         FrameProcessing::PaintOnly
@@ -425,19 +431,19 @@ fn a_new_device_restores_each_window_once_and_records() {
     shared.device().attach(TextureLimit::from_device(limit));
     let report = a.at(half * 2).frame(|ui| body(ui, half));
     assert_eq!(report.processing, FrameProcessing::SingleLayout);
-    assert!(a.ui.device_restored());
-    assert_eq!(a.ui.max_image_dimension(), Some(limit));
+    assert!(a.ui().device_restored());
+    assert_eq!(a.ui().max_image_dimension(), Some(limit));
     a.at(half * 3).frame(|ui| body(ui, half));
-    assert!(!a.ui.device_restored());
+    assert!(!a.ui().device_restored());
 
     b.at(half * 2).frame(|ui| body(ui, half));
-    assert!(b.ui.device_restored());
+    assert!(b.ui().device_restored());
     b.at(half * 3).frame(|ui| body(ui, half));
-    assert!(!b.ui.device_restored());
+    assert!(!b.ui().device_restored());
 
     let mut c = support::ui_with_shared(&shared);
     c.frame(|ui| body(ui, half));
-    assert!(!c.ui.device_restored());
+    assert!(!c.ui().device_restored());
 }
 
 /// `request_repaint` co-firing with an anim wake gives `REAL | ANIMATION`, so the classifier picks Full.
@@ -455,7 +461,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
     let half = Duration::from_millis(500);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
 
     let r0 = h.frame(|ui| {
         body(ui, half);
@@ -485,14 +491,14 @@ fn input_policy_routes_paint_only_gate() {
     let half = Duration::from_millis(500);
 
     {
-        let mut h = UiHarness::new(SURFACE);
-        h.ui.set_input_policy(InputPolicy::OnDelta);
+        let mut h = Harness::mono(SURFACE);
+        h.ui().set_input_policy(InputPolicy::OnDelta);
         let r0 = h.frame(|ui| body(ui, half));
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
-        h.move_to(Vec2::new(40.0, 40.0));
+        h.hover(Vec2::new(40.0, 40.0));
         assert_eq!(
-            h.ui.input.signal_since_last_frame(),
+            h.ui().input.signal_since_last_frame(),
             InputSignal::Inert,
             "an inert pointer move registers as Inert",
         );
@@ -504,15 +510,15 @@ fn input_policy_routes_paint_only_gate() {
             "OnDelta + inert pointer move + anim wake → PaintOnly",
         );
 
-        assert_eq!(h.ui.input.signal_since_last_frame(), InputSignal::None);
+        assert_eq!(h.ui().input.signal_since_last_frame(), InputSignal::None);
     }
 
     {
-        let mut h = UiHarness::new(SURFACE);
-        h.ui.set_input_policy(InputPolicy::Always);
+        let mut h = Harness::mono(SURFACE);
+        h.ui().set_input_policy(InputPolicy::Always);
         let _ = h.frame(|ui| body(ui, half));
 
-        h.move_to(Vec2::new(40.0, 40.0));
+        h.hover(Vec2::new(40.0, 40.0));
         let r1 = h.at(half).frame(|ui| body(ui, half));
         assert_eq!(
             r1.processing,
@@ -523,14 +529,14 @@ fn input_policy_routes_paint_only_gate() {
 
     {
         use crate::primitives::identity::widget_id::WidgetId;
-        let mut h = UiHarness::new(SURFACE);
-        h.ui.set_input_policy(InputPolicy::OnDelta);
+        let mut h = Harness::mono(SURFACE);
+        h.ui().set_input_policy(InputPolicy::OnDelta);
         let _ = h.frame(|ui| body(ui, half));
-        h.ui.input.set_focus(Some(WidgetId::from_hash("editor")));
+        h.ui().input.set_focus(Some(WidgetId::from_hash("editor")));
 
         h.key(Key::Enter);
         assert_eq!(
-            h.ui.input.signal_since_last_frame(),
+            h.ui().input.signal_since_last_frame(),
             InputSignal::Repaint,
             "KeyDown with focus held must raise the signal to Repaint",
         );
@@ -546,27 +552,27 @@ fn input_policy_routes_paint_only_gate() {
 /// The fps EMA reads the true frame delta; the MAX_DT clamp is for the animation integrator only. Hand-computed: sample 1 at 1 s → inst 1.0 seeds the EMA; sample 2 after a 2 s stall → inst 0.5, EMA = 1.0·0.9 + 0.5·0.1 = 0.95. The clamp would record both stalls as 10 fps (EMA 10.0).
 #[test]
 fn fps_ema_reads_unclamped_frame_delta() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut noop = |_: &mut Ui| {};
     h.frame(&mut noop);
     h.at(Duration::from_secs(1)).frame(&mut noop);
-    assert_eq!(h.ui.frame_runtime.fps_ema, 1.0);
+    assert_eq!(h.ui().frame_runtime.fps_ema, 1.0);
     h.at(Duration::from_secs(3)).frame(&mut noop);
-    assert_eq!(h.ui.frame_runtime.fps_ema, 1.0f32 * 0.9 + 0.5 * 0.1);
+    assert_eq!(h.ui().frame_runtime.fps_ema, 1.0f32 * 0.9 + 0.5 * 0.1);
 }
 
 /// `Ui::request_relayout` outside a record pass is a caller error, not a silently dropped no-op; inside a record it stays legal.
 #[test]
 #[should_panic(expected = "outside a record pass")]
 fn request_relayout_between_frames_is_a_caller_error() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|_| {});
-    h.ui.request_relayout();
+    h.ui().request_relayout();
 }
 
 #[test]
 fn request_relayout_during_record_is_honored() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut asked = false;
     let report = h.frame(|ui| {
         if !asked {
@@ -584,7 +590,7 @@ fn request_relayout_during_record_is_honored() {
 /// The record-pass gate is frame-level, not per-layer: `Ui::layer` pushes a layer without opening a node, which a per-layer gate wrongly rejected.
 #[test]
 fn request_relayout_is_legal_from_a_layer_scope_with_nothing_recorded_yet() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         ui.layer(Layer::Popup).show(|ui| {
             ui.request_relayout();

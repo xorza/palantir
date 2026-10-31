@@ -1,10 +1,9 @@
 //! Backdrop panes over the frame bench's tree add no allocation to a steady frame.
 
 use palantir::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
-use palantir::internals::ui_harness::UiHarness;
-use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
 use palantir::widget::Shape;
 use palantir::{BackdropFilter, Configure, FramePaint, Lens, Panel, Rect, RgbaF32, Sizing, Ui};
+use palantir::{Depth, Harness};
 
 use crate::gates::{MEASURE_FRAMES, WARMUP_FRAMES};
 use crate::harness::Audit;
@@ -60,8 +59,10 @@ fn backdrop_cpu_frames_alloc_free() {
     for look in [Look::Plain, Look::Frosted, Look::Glass] {
         for flips in [false, true] {
             let mut state = FrameFixture::default();
-            let mut frontend =
-                FrontendHarness::new(UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR));
+            let mut frontend = Harness::builder(BENCH_SURFACE)
+                .scale(BENCH_DPR)
+                .depth(Depth::Compose)
+                .build();
             let mut odd = false;
             Audit::new()
                 .warmup(WARMUP_FRAMES)

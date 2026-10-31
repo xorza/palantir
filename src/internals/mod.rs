@@ -13,13 +13,15 @@ pub mod dock_fixture;
 pub mod frame_fixture;
 #[cfg(test)]
 mod hot_struct_sizes;
+#[cfg(test)]
+pub(crate) mod oracle;
 pub(crate) mod paint_capture;
 #[cfg(test)]
 pub(crate) mod panic_probe;
-pub mod record_app;
 #[cfg(test)]
 pub(crate) mod scratch_report;
-pub mod ui_harness;
+#[cfg(test)]
+pub(crate) mod size_trio;
 
 use crate::text;
 
