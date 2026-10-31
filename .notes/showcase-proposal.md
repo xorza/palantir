@@ -392,24 +392,26 @@ L2 is done. Where it differs:
 - **The showcase pins dark** (`shell::pin_dark`), as its scaffold reads the dark palette's
   constants.
 
+L3 is done but for the checks by hand. Where it differs:
+
+- **The first window opens in the system's scheme**: the host reads `mundy` while the font scan
+  runs, before it makes the window, so the fallback shows only when the read fails.
+- **The host no longer reads the settings again on focus**; the subscription reports each change.
+- **Linux keeps 400 ms where the portal gives no double-click time**, a platform constant beside
+  `NO_PREFERENCE`, so a desktop with no portal keeps today's value.
+- **The shot header's `scheme light|dark`** sets the harness's system scheme; the showcase pins
+  dark, so it matters to the observatory.
+- **Timeout 100 ms**, five cold reads (`.notes/research/2026-10-31-system-preferences.md`).
+
 Order: L1 → L2 → L3, then 1 → 7; L4 when its go-ahead comes. Each batch ends green on
 `cargo drive gate`, regenerates `.notes/API_SURFACE.md` when the surface moves, and, for a change
 a person can see, ends with `cargo drive run shot` before and after. A batch that changes
 palantir's API also migrates darkroom (palantir is its submodule) and runs darkroom's gate.
 
-### L3. System preferences through `mundy`
-- [ ] `mundy` (`color-scheme`, `double-click-interval`, `callback`, `async-io`; no default
-      features) under the `winit` feature.
-- [ ] At start, on the main thread: `once_blocking` with a timeout, before the first window;
-      then `subscribe`, whose callback writes the shared cells and wakes the windows. The
-      timeout is set from a measured read on each OS.
-- [ ] Linux reads `NoPreference` as light; macOS and Windows map their two answers.
-- [ ] The double-click time from `mundy`; remove the platform files' reads and the `windows`
-      and `objc2-app-kit` dependencies; the platform files keep the event-loop and app-id code.
-- [ ] The shot mode's header line `scheme light|dark` sets the harness's system scheme.
-- [ ] Check on each OS by hand: a system switch with the example open repaints every window in
-      the new scheme within a frame; note the callback thread in the research file.
-- [ ] Measure the gate's time before and after; note it in the research file.
+### L3. Checks left
+- [ ] By hand on each OS (Linux, macOS, Windows): with `cargo run --example counter`, which
+      follows the system, switch the desktop's scheme; every window repaints in it within a
+      frame, title bar included.
 
 ### L4. Reduced motion (proposed; its own go-ahead)
 - [ ] `mundy`'s `reduced-motion`; `Ui::prefers_reduced_motion()`; `Theme::stock` and the

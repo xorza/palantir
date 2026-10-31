@@ -79,3 +79,15 @@ Facts for the light and dark proposal (`.notes/showcase-proposal.md`), 2026-10-3
   blue `#22A4E6` on `#EBEEF0` 2.40; ground `#FCFCFC` against `#F8F9FA` 1.03. Ayu's orange at its
   own hue and saturation clears 3:1 on `#e4e7ea` from `#ba710a`, and carries white at 4.5:1 from
   `#a66509` (4.68:1).
+
+## `mundy` in the winit host (measured 2026-10-31, this machine)
+
+- `Preferences::once_blocking(ColorScheme | DoubleClickInterval)` through the portal: 20.3 ms
+  for the first read of a process (the D-Bus connection), then 1.0–1.4 ms; answers `Dark` and
+  400 ms on this KDE desktop.
+- A clean release build of `mundy` with palantir's features, alone in a scratch crate: 16.7 s on
+  16 threads. palantir's `Cargo.lock` gains 46 package entries across the three targets.
+- `Preferences::subscribe` runs its future on a thread `mundy` spawns ("mundy subscription
+  thread", `src/async_rt.rs`) on every non-wasm target, so the callback is never on the main
+  thread; `once_blocking` and `subscribe` are called on the main thread, as `mundy`'s caveats
+  ask for macOS.

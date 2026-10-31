@@ -62,6 +62,7 @@ mod native;
 mod platform;
 pub(crate) mod remote;
 mod runtime;
+mod system_preferences;
 mod window;
 mod window_set;
 
@@ -318,6 +319,11 @@ where
 {
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent<T>) {
         match event {
+            UserEvent::SystemPreferences(preferences) => {
+                if let Some(runtime) = self.running() {
+                    runtime.apply_system_preferences(preferences);
+                }
+            }
             UserEvent::Quit => match self.running() {
                 Some(runtime) => runtime.close_all_windows(),
                 None => event_loop.exit(),
@@ -429,7 +435,6 @@ where
                 win.next = FramePresent::Immediate;
             }
             WindowEvent::Moved(_) => win.invalidate_system_facts(),
-            WindowEvent::Focused(true) => runtime.read_platform_settings(),
             // Windows reports a minimize as a zero-size resize and sends no `Occluded`; treat it as hidden.
             WindowEvent::Resized(new) if new.width == 0 || new.height == 0 => {
                 win.set_minimized(true);

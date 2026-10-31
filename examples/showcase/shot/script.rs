@@ -5,7 +5,7 @@ use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{Action, Locator, PointerButton, Rect, Shortcut, ShortcutMods};
+use palantir::{Action, ColorScheme, Locator, PointerButton, Rect, Shortcut, ShortcutMods};
 
 /// What a script sets before its first step; each has the default [`Header::default`] names.
 #[derive(Clone, Debug, PartialEq)]
@@ -18,16 +18,20 @@ pub(crate) struct Header {
     pub(crate) page: Option<String>,
     /// The longest side a picture is written at.
     pub(crate) max_side: u32,
+    /// The scheme the window reports as the system's; `None` reports nothing, so a page that
+    /// follows the system shows the fallback.
+    pub(crate) scheme: Option<ColorScheme>,
 }
 
 impl Default for Header {
-    /// 1600 × 1000 at scale 1, the first page, pictures up to 2576 px a side.
+    /// 1600 × 1000 at scale 1, the first page, pictures up to 2576 px a side, no system scheme.
     fn default() -> Self {
         Self {
             size: UVec2::new(1600, 1000),
             scale: 1.0,
             page: None,
             max_side: 2576,
+            scheme: None,
         }
     }
 }
@@ -114,7 +118,7 @@ impl Display for ParseError {
         match &self.kind {
             ParseErrorKind::Unknown(word) => write!(
                 f,
-                "unknown instruction `{word}`; expected size, scale, page, max-side, click, \
+                "unknown instruction `{word}`; expected size, scale, page, max-side, scheme, click, \
                  double-click, hover, drag, scroll, pinch, key, type, wait, shot, probe or widgets"
             ),
             ParseErrorKind::LateHeader(word) => {
@@ -147,7 +151,10 @@ impl Script {
             }
             let mut words = Words::of(trimmed).map_err(fail)?;
             let head = words.next_word("an instruction").map_err(fail)?;
-            let header_word = matches!(head.as_str(), "size" | "scale" | "page" | "max-side");
+            let header_word = matches!(
+                head.as_str(),
+                "size" | "scale" | "page" | "max-side" | "scheme"
+            );
             if header_word && !steps.is_empty() {
                 return Err(fail(ParseErrorKind::LateHeader(head)));
             }
@@ -166,6 +173,10 @@ impl Script {
                 }
                 "max-side" => {
                     header.max_side = words.count("a largest side in pixels").map_err(fail)?;
+                    None
+                }
+                "scheme" => {
+                    header.scheme = Some(words.color_scheme().map_err(fail)?);
                     None
                 }
                 _ => Some(step(&head, &mut words).map_err(fail)?),
@@ -319,6 +330,19 @@ impl Words {
                 expected: keyword,
                 found: word,
             })
+        }
+    }
+
+    /// `light` or `dark`.
+    fn color_scheme(&mut self) -> Result<ColorScheme, ParseErrorKind> {
+        const EXPECTED: &str = "`light` or `dark`";
+        match self.next_word(EXPECTED)?.as_str() {
+            "light" => Ok(ColorScheme::Light),
+            "dark" => Ok(ColorScheme::Dark),
+            found => Err(ParseErrorKind::Bad {
+                expected: EXPECTED,
+                found: found.to_owned(),
+            }),
         }
     }
 

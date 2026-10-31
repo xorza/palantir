@@ -11,6 +11,7 @@ use crate::host::winit::error::HostDisconnected;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::remote::{QueryTask, Remote, ShotAsk};
+use crate::host::winit::system_preferences::SystemPreferences;
 use crate::input::owned_input_event::OwnedInputEvent;
 use crate::window::window_token::WindowToken;
 
@@ -33,6 +34,8 @@ pub(crate) enum UserEvent<T> {
     Query(WindowToken, QueryTask<T>),
     /// Asks the named window for a screenshot, which its frame hands back when it lands.
     Shot(WindowToken, ShotAsk),
+    /// The system's settings moved, as `mundy`'s subscription reports them from its thread.
+    SystemPreferences(SystemPreferences),
     /// Asks the event loop to exit.
     Quit,
 }
@@ -45,6 +48,10 @@ impl<T> fmt::Debug for UserEvent<T> {
             Self::RunOnMain(_) => f.write_str("RunOnMain(..)"),
             Self::Query(token, _) => f.debug_tuple("Query").field(token).finish_non_exhaustive(),
             Self::Shot(token, ask) => f.debug_tuple("Shot").field(token).field(ask).finish(),
+            Self::SystemPreferences(preferences) => f
+                .debug_tuple("SystemPreferences")
+                .field(preferences)
+                .finish(),
             Self::Quit => f.write_str("Quit"),
         }
     }

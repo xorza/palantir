@@ -2,10 +2,11 @@
 
 use std::time::Duration;
 
-use objc2_app_kit::NSEvent;
 use winit::event_loop::EventLoopBuilder;
 use winit::platform::macos::EventLoopBuilderExtMacOS;
 use winit::window::WindowAttributes;
+
+use crate::theme::color_scheme::ColorScheme;
 
 /// Drops winit's default menu, which binds ⌘Q to `terminate:` and kills the process before the app
 /// can veto `CloseRequested`; ⌘Q then arrives as an ordinary key event.
@@ -21,31 +22,8 @@ pub(super) const fn with_app_id(
     attrs
 }
 
-/// The double-click time the person set in System Settings, `NSEvent.doubleClickInterval`
-/// (https://developer.apple.com/documentation/appkit/nsevent/doubleclickinterval), in seconds; a
-/// NaN, negative, zero or overflowing value keeps palantir's default.
-pub(super) fn double_click_window() -> Option<Duration> {
-    // SAFETY: a class property that reads the user's defaults, with no argument and no thread
-    // requirement.
-    let seconds = unsafe { NSEvent::doubleClickInterval() };
-    Duration::try_from_secs_f64(seconds)
-        .ok()
-        .filter(|window| !window.is_zero())
-}
+/// macOS always states light or dark, so `mundy`'s `NoPreference` is a failed read: nothing.
+pub(super) const NO_PREFERENCE: Option<ColorScheme> = None;
 
-#[cfg(test)]
-mod tests {
-    use crate::host::winit::platform;
-    use std::time::Duration;
-
-    /// The system answers a positive time no longer than the five seconds the Mouse settings'
-    /// slowest step allows.
-    #[test]
-    fn the_system_answers_a_double_click_time() {
-        let window = platform::double_click_window().expect("macOS sets a double-click time");
-        assert!(
-            window > Duration::ZERO && window <= Duration::from_secs(5),
-            "{window:?}"
-        );
-    }
-}
+/// macOS always holds a double-click time, so none is kept here.
+pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
