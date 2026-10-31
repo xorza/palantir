@@ -1,4 +1,4 @@
 // The catalog study in the dark scheme.
 scheme dark
-page "catalog"
+page "Catalog"
 shot catalog_dark

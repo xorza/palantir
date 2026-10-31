@@ -37,11 +37,11 @@ impl Study {
 
     pub(crate) const fn label(self) -> &'static str {
         match self {
-            Self::SkyChart => "sky chart",
-            Self::Catalog => "catalog",
-            Self::Session => "session",
-            Self::Workspace => "workspace",
-            Self::Appearance => "appearance",
+            Self::SkyChart => "Sky chart",
+            Self::Catalog => "Catalog",
+            Self::Session => "Session",
+            Self::Workspace => "Workspace",
+            Self::Appearance => "Appearance",
         }
     }
 

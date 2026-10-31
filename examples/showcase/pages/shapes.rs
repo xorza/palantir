@@ -4,13 +4,14 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Kit, Section};
+use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{Mesh, Shape};
 use palantir::{LinearGradient, RgbaF32, Stroke, Ui, WidgetId};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
+    live(ui, k);
     Section::new("Triangles")
         .apis(&[api!(Shape::triangle)])
         .show(ui, k, |ui| {
@@ -196,4 +197,60 @@ fn window_anatomy(ui: &mut Ui, k: Kit) {
             .fill(k.swatch.orange.with_alpha(0.75))
             .border(Stroke::new(k.swatch.lime, 4.0)),
     );
+}
+
+/// The live triangle's knobs.
+#[derive(Debug)]
+struct LiveTriangle {
+    radius: f64,
+    stroke: f64,
+}
+
+impl Default for LiveTriangle {
+    fn default() -> Self {
+        Self {
+            radius: 12.0,
+            stroke: 3.0,
+        }
+    }
+}
+
+/// One triangle, its corner radius and its border's width from the knobs, all from one SDF.
+fn live(ui: &mut Ui, k: Kit) {
+    Section::new("Live triangle")
+        .apis(&[api!(Shape::triangle)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Round the corners and widen the border: the same instanced quad draws every \
+                 value, its coverage from the signed distance field.",
+            );
+            let id = WidgetId::from_hash("showcase::shapes::live");
+            ui.with_state::<LiveTriangle, _>(id, |ui, l| {
+                Knob {
+                    label: "radius",
+                    range: 0.0..=40.0,
+                    step: 1.0,
+                    unit: " px",
+                }
+                .show(ui, k, &mut l.radius);
+                Knob {
+                    label: "border",
+                    range: 0.0..=12.0,
+                    step: 0.5,
+                    unit: " px",
+                }
+                .show(ui, k, &mut l.stroke);
+                let (radius, stroke) = (l.radius as f32, l.stroke as f32);
+                DemoCell::new("the knobs' triangle").show(ui, k, |ui| {
+                    ui.add_shape(
+                        Shape::triangle(A, B, C)
+                            .fill(k.swatch.violet)
+                            .border(Stroke::new(k.t.ink, stroke))
+                            .radius(radius),
+                    );
+                });
+            });
+        });
 }

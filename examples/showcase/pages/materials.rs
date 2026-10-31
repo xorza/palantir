@@ -3,9 +3,9 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Kit, Section};
+use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::glam::Vec2;
-use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
+use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
     Align, BackdropFilter, Button, Chrome, Configure, ContextMenu, ContextMenuTheme, Corners, Lens,
     MenuItem, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Text, Ui, WidgetId,
@@ -73,6 +73,82 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                  menu.",
             );
             chrome_demo(ui, k);
+        });
+
+    live(ui, k);
+}
+
+/// The live pane's knobs: the blur, and how much of the tint covers it.
+#[derive(Debug)]
+struct LivePane {
+    blur: f64,
+    tint: f64,
+}
+
+impl Default for LivePane {
+    fn default() -> Self {
+        Self {
+            blur: 16.0,
+            tint: 0.3,
+        }
+    }
+}
+
+/// One frosted pane over the turning page, its blur and its tint from the knobs, its text held to
+/// 4.5:1 by the floor its ink and tint call for.
+fn live(ui: &mut Ui, k: Kit) {
+    Section::new("Live pane")
+        .apis(&[api!(BackdropFilter::with_min_luminance_for)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Blur and tint one frosted pane. The floor its dark ink and light tint call for \
+                 lifts whatever shows through, so the label keeps 4.5:1 at any setting.",
+            );
+            let id = WidgetId::from_hash("showcase::materials::live");
+            ui.with_state::<LivePane, _>(id, |ui, l| {
+                Knob {
+                    label: "blur",
+                    range: 0.0..=40.0,
+                    step: 1.0,
+                    unit: " px",
+                }
+                .show(ui, k, &mut l.blur);
+                // The floor's derivation needs the tint, times its alpha, past the sRGB curve's linear toe.
+                Knob {
+                    label: "tint",
+                    range: 0.05..=0.9,
+                    step: 0.05,
+                    unit: "",
+                }
+                .show(ui, k, &mut l.tint);
+                let ink = RgbaF32::hex(0x14161a);
+                let tint = RgbaF32::WHITE.with_alpha(l.tint as f32);
+                let filter =
+                    BackdropFilter::frosted(l.blur as f32).with_min_luminance_for(ink, tint);
+                DemoCell::new("the knobs' pane")
+                    .size(CELL, CELL)
+                    .show(ui, k, |ui| {
+                        Panel::canvas()
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .show(ui, |ui| {
+                                page(ui, k, Vec2::splat(CELL));
+                                ui.add_shape(
+                                    Shape::rect(PANE)
+                                        .corners(Corners::all(14.0))
+                                        .fill(tint)
+                                        .backdrop_filter(filter),
+                                );
+                                let label = ui.intern("readable");
+                                ui.add_shape(
+                                    Shape::text(label, GlyphFont::new(18.0))
+                                        .color(ink)
+                                        .at_origin(Vec2::new(PANE.min.x + 16.0, PANE.min.y + 36.0)),
+                                );
+                            });
+                    });
+            });
         });
 }
 

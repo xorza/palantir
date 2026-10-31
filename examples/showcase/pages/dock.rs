@@ -4,9 +4,11 @@ use crate::support;
 use crate::support::Kit;
 use palantir::{
     Block, Button, Chrome, Configure, Corners, DockDrop, DockOperation, DockState, DockTabMenu,
-    DockTabs, DockView, InternedStr, MenuItem, Panel, Size, Sizing, SplitSide, TabChip, Text, Ui,
-    WidgetId, fmt,
+    DockTabs, DockView, InternedStr, MenuItem, Metrics, Panel, Size, Sizing, SplitSide, TabChip,
+    Text, Ui, WidgetId, fmt,
 };
+
+const M: Metrics = Metrics::DEFAULT;
 
 /// The showcase's tab key: a small `Copy` value.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -44,6 +46,18 @@ struct State {
     dock: DockState<Tab>,
     /// The frame's operation sink, reused so the page allocates once.
     operations: Vec<DockOperation<Tab>>,
+    /// The last operation a gesture asked of the arrangement, for the log.
+    last: Option<DockOperation<Tab>>,
+}
+
+impl State {
+    /// Run the frame's operations on the arrangement, keeping the last for the log.
+    fn apply_operations(&mut self) {
+        for operation in self.operations.drain(..) {
+            self.last = Some(operation);
+            self.dock.apply(operation);
+        }
+    }
 }
 
 impl Default for State {
@@ -64,6 +78,7 @@ impl Default for State {
         Self {
             dock,
             operations: Vec::new(),
+            last: None,
         }
     }
 }
@@ -84,8 +99,8 @@ impl DockTabs for Panes {
         let k = self.k;
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
-            .padding(14.0)
-            .gap(6.0)
+            .padding(M.space.md)
+            .gap(M.space.sm)
             .chrome(k.t.card())
             .show(ui, |ui| {
                 Text::new(tab.label()).style(&k.t.body()).show(ui);
@@ -148,15 +163,11 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
                 s.operations.clear();
                 DockView::scan(ui, &s.dock, &mut s.operations);
-                for operation in s.operations.drain(..) {
-                    s.dock.apply(operation);
-                }
+                s.apply_operations();
                 DockView::new(&s.dock, &mut s.operations)
                     .min_pane(140.0)
                     .show(ui, &mut panes);
-                for operation in s.operations.drain(..) {
-                    s.dock.apply(operation);
-                }
+                s.apply_operations();
             });
     });
 }
@@ -184,5 +195,25 @@ fn reopen_row(ui: &mut Ui, k: Kit, s: &mut State) {
                 s.dock.apply(DockOperation::OpenTab { tab });
             }
         }
+        if Button::new()
+            .id_salt("reset")
+            .label("Reset layout")
+            .show(ui)
+            .clicked()
+        {
+            *s = State::default();
+        }
+        let last = match s.last {
+            None => ui.intern("—"),
+            Some(DockOperation::ActivateTab { tab }) => fmt!(ui, "activated {}", tab.label()),
+            Some(DockOperation::OpenTab { tab }) => fmt!(ui, "opened {}", tab.label()),
+            Some(DockOperation::CloseTab { tab }) => fmt!(ui, "closed {}", tab.label()),
+            Some(DockOperation::MoveTab { tab, .. }) => fmt!(ui, "moved {}", tab.label()),
+            Some(DockOperation::SetRatio { ratio, .. }) => {
+                fmt!(ui, "resized a split to {ratio:.2}")
+            }
+            Some(_) => ui.intern("focused a pane"),
+        };
+        support::readout(ui, k, "last operation", last);
     });
 }

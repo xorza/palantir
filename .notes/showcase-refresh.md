@@ -42,61 +42,21 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 - **Never settles.** The gpu view requests a repaint every frame and clears to a fixed near-black.
 - **Gaps.** `EditableLabel`, `Clipboard`, `CursorIcon` and `Waker` appear on no page.
 
-## Unify
-
-- **Spacing from `Metrics` only.** Every gap, padding and radius reads `M.space`, `M.radius` or a
-  named scaffold constant on the 4 px grid; a literal stays only as a specimen's subject (the gap
-  page's 0, 8, 24).
-- **One page anatomy.** A section is a title row, a note held to 680 px, one stage, then the
-  stage's knobs. Widgets stand on a stage, paint specimens in tiles with captions under them;
-  nothing sits bare on the page but prose and knobs.
-- **Sentence case** for page names and titles ("Focus & keyboard"), as Fluent writes UI text
-  ([Fluent 2 writing](https://fluent2.microsoft.design/content-design)); the rail's group headings
-  stay small caps.
-
-## Look
-
-- **Frosted floating surfaces** through `Theme::frost_floats` (**Decisions**).
-- **The modal reads as a dialog.** A title, a body, buttons at the end with the confirming one
-  last in the accent look, over the stock dim scrim.
-- **Buttons by weight.** Apply, Clear and Delete wear `ButtonTheme::accent`; the danger theme
-  stays a custom-theme specimen on the controls page.
-- **The page content** keeps a 1 040 px column, so a wide window does not leave stages on the left
-  and prose stretched to the right.
-
-## Theme, live
-
-- **colors: "Use as accent"** sends the picked color to the appearance as a seed.
-- **The gpu view clears to transparent**, so the stage shows through and the page proves its
-  compositing claim in both schemes.
-
 ## Page by page
 
 | Page | Change |
 |---|---|
-| controls | The form's Appearance radios drive the real scheme; Reduce motion reads `is_motion_reduced`. Apply shows the progress only while it syncs. Spinners join a "Progress" row with the bar. Label overflow moves to text. |
-| colors | "Use as accent"; panel defaults from the specimen set. |
-| tabs | Chips reorder by drag and close; a "+" adds one; an operations log beside it. |
-| dock | Panes hold small live views (a picker, an operations log, the pane's size); Reset layout. |
-| custom widget | Range and step knobs; the call-site listing follows them. |
-| overlays | Edit ▾ holds `MenuItem` rows. An opaque / frosted toggle. Tooltips become one row with a delay slider and a max-width slider. |
-| text input | Gains `EditableLabel` and a clipboard copy / paste pair; knobs for max chars, multiline, alignment, select-all-on-focus. |
-| sizing & spacing | One playground: three children, each with a `Sizing` combo, a weight and an align; padding, gap and justify on the parent. The fixed rows stay below as the reference. |
-| containers | Gap and line-gap sliders; a splitter resizes the wrap and the grid. |
-| text | A width slider replaces "resize window"; a font-size slider; label overflow. |
-| clip & transform | Translate and scale sliders (a `TranslateScale` has no rotation), a clip-mode radio, a padding slider. |
-| scroll & zoom | "Reveal row N"; a zoom readout and Reset view. |
-| shapes | Corner radius and stroke width knobs on the triangle; the windowed rect over the stage. |
-| strokes | One live polyline: width, join and cap. Hairlines in the ink, not white. |
-| gradients | A stop editor: two color chips, an angle slider, an interpolation radio on a live tile. |
-| shadows | Offset, blur and spread sliders on one card; the stage follows the scheme. |
-| materials | Blur and tint sliders; "hold the ink" toggles the ceiling or floor, the ratio shown. |
-| icons | A size slider and a tint chip; a cursor-icon grid that sets `CursorIcon` on hover. |
+| controls | Spinners join a "Progress" row with the bar; label overflow moves to text. |
+| dock | Panes hold small live views (a picker, the operations log). |
+| text input | Knobs for max chars, multiline, alignment, select-all-on-focus. |
+| containers | A splitter resizes the wrap and the grid. |
+| clip & transform | A clip-mode radio and a padding slider on one card. |
+| scroll & zoom | "Reveal row N". |
+| materials | "Hold the ink" toggles the ceiling or the floor, the ratio shown. |
+| icons | A cursor-icon grid that sets `CursorIcon` on hover. |
 | images | Fit radios and a sampling toggle on one image. |
-| motion | A curve plot per easing with a dot riding it; a duration slider; Replay; a reduced-motion line. |
-| gpu view | A Spin switch, off in the shot mode; transparent clear. |
+| motion | A curve plot per easing with a dot riding it. |
 | app & windows | The shared state grows past a counter (a note and a color); a background job that wakes the UI through a `Waker`. |
-| frame bench | Unchanged. |
 
 ## Also
 
@@ -111,11 +71,14 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 
 ## Decisions
 
-- **Frosted floats are one `Theme` method.** `Theme::frost_floats(&mut self, sigma, tint_alpha)`
-  frosts every floating slot (context menu, combo list and menu bar through `context_menu.panel`,
-  `color_picker.popup`, `tooltip.panel`, `modal.panel`), each holding its ink by the ceiling or
-  floor its ink and tint call for, as `Theme::scale_text` visits every text slot; the stock themes
-  stay opaque. Refused: a showcase helper, which each app would copy and a new floating slot would
+- **Frosted floats are one `Theme` method.** `Theme::frost_floats(&mut self, p, sigma,
+  tint_alpha)` frosts every floating slot (context menu, combo list and menu bar through
+  `context_menu.panel`, `color_picker.popup`, `tooltip.panel`, `modal.panel`), each holding the
+  weakest ink its recipe paints by the ceiling or floor that ink and its tint call for, as
+  `Theme::scale_text` visits every text slot; the stock themes stay opaque. It takes the palette,
+  as a theme keeps no muted ink of its own: a menu's shortcut and the picker's channel names are
+  muted, a tooltip and the modal hold the full ink, and muted ink on the dark modal's
+  `element_mid` misses 4.5:1 once the target stores it in 8 bits. Refused: a showcase helper, which each app would copy and a new floating slot would
   silently miss. WinUI and macOS likewise make it one material: MenuFlyout, ComboBox and ToolTip
   wear acrylic ([Fluent acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)),
   NSMenu and NSPopover vibrancy.
@@ -141,6 +104,12 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 - **Pages take the kit as a parameter**, as the observatory's studies take `Tokens`. Refused: the
   kit in a state row or a static, which hides what a page paints with; `TextStyle::default`,
   whose ink is the stock dark one in either scheme.
+- **The accent button moves away from its label's ink.** Hovered and pressed,
+  `ButtonTheme::accent` moves 12 % and 24 % toward white under dark `on_accent` ink and toward
+  black under light, which only raises the label's contrast. Refused: Material 3's state layer of
+  `on_accent` (8 % hover), which drops the light palette's accent under 4.5:1; a move toward
+  `p.text`, which lowers it under an accent lighter than the ink, as the dark palette's lime is;
+  palantir's checked toggle's look, which shows no hover.
 - **No density switch.** The observatory's Appearance study already edits `Metrics` live.
   Refused: compact / comfortable steps, a second demo of the same API that every shot and golden
   would depend on.
@@ -162,27 +131,18 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
   opened item, as the field keeps Alt+arrows. The focus page's ring moved into the appearance
   with the accent, so either edit survives the other and a scheme switch.
 
+- **Floats, grid and knobs (batches 4–8).** `frost_floats` takes the palette (**Decisions**).
+  A bare `PopupTrigger` still wears no surface (`.notes/ISSUES.md`), so the showcase's popups pass
+  the theme's menu panel, frosted or not; Edit ▾ is a `PopupTrigger` of `MenuItem` rows, as
+  palantir has no menu button. Page names and study names are sentence case in both examples, and
+  the shot scripts with them. Spacing moved onto `Metrics` on the pages whose spacing is chrome;
+  the layout pages keep their literals, which are what they show. The custom danger and outlined
+  button themes build on the live button theme, so they read in light. The rows above are left.
+
 ## Plan
 
-### 4. Floating surfaces
-- [ ] palantir: `Theme::frost_floats` and `ButtonTheme::accent`, tested; darkroom's
-      `primary_button` calls it; API surface regenerated.
-- [ ] Frosted menus, combo list, picker, tooltip, modal; the toggle.
-- [ ] Every popup has a surface; Edit ▾ holds menu rows; the modal as a dialog.
-
-### 5. Grid and anatomy
-- [ ] Spacing and radii from `Metrics`; sentence case; stages; captions under tiles;
-      1 040 px column.
-
-### 6. Knobs: widgets and input
-- [ ] controls, colors, tabs, dock, custom widget, overlays, text input.
-
-### 7. Knobs: layout
-- [ ] sizing & spacing, containers, text, clip & transform, scroll & zoom.
-
-### 8. Knobs: paint and runtime
-- [ ] shapes, strokes, gradients, shadows, materials, icons, images, motion, gpu view, app &
-      windows.
+### 6–8. Knobs left
+- [ ] The rows of **Page by page** above.
 
 ### 9. Finish
-- [ ] Shots in both schemes; goldens rewritten after a look; README.
+- [ ] Shots in both schemes in the shot tests; README's recording note.

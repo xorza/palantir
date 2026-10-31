@@ -15,7 +15,7 @@ use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::MenuBar`]: its titles, by whether their menu is open. A title rests flat
 /// in the muted ink, so it reads as a menu rather than as a button, and fills and takes the full
-/// ink under the pointer, from [`ButtonTheme::menu_button`]; the title whose menu is open rests lit
+/// ink under the pointer, from [`ButtonTheme::subtle`]; the title whose menu is open rests lit
 /// as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus themselves
 /// wear [`Theme::context_menu`](crate::Theme::context_menu).
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -56,7 +56,7 @@ impl From<bool> for MenuState {
 }
 
 impl MenuBarTheme {
-    /// [`ButtonTheme::menu_button`]'s flat titles in the muted ink at rest, the open one wearing
+    /// [`ButtonTheme::subtle`]'s flat titles in the muted ink at rest, the open one wearing
     /// the hovered look, an `xs` gutter apart, so two lit fills never touch, on the `surround`
     /// band.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
@@ -64,7 +64,7 @@ impl MenuBarTheme {
             unselected: mut looks,
             selected: _,
             defaults,
-        } = ButtonTheme::menu_button(p, m);
+        } = ButtonTheme::subtle(p, m);
         looks.normal.text = looks.normal.text.with_color(p.text_muted);
         Self {
             open: looks.hovered.clone(),

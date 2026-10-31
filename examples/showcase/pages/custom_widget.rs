@@ -8,9 +8,11 @@ use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, Key, Panel, Response, ResponseState, RgbaF32, Sense, Sizing,
-    Stroke, Text, Ui, VAlign, WidgetId, fmt,
+    Align, Chrome, Configure, Corners, DragValue, Key, Metrics, Panel, Response, ResponseState,
+    RgbaF32, Sense, Sizing, Stroke, Text, Ui, VAlign, WidgetId, fmt,
 };
+
+const M: Metrics = Metrics::DEFAULT;
 
 const BUTTON: f32 = 28.0;
 /// Reserved, so the buttons hold still from one digit to three.
@@ -23,17 +25,14 @@ const ITEM_W: f32 = 146.0;
 const RING_ROOM: f32 = 3.0;
 const GLYPH_INSET: f32 = 8.0;
 
-const CALL_SITE: &[&str] = &[
-    "Stepper::new(&mut volume)",
-    "    .range(0, 100)",
-    "    .step(5)",
-    "    .show(ui);",
-];
-
 #[derive(Debug)]
 struct State {
     volume: i32,
     count: i32,
+    /// The volume stepper's range and step, which the knobs set and the call site prints.
+    lo: i64,
+    hi: i64,
+    step: i64,
 }
 
 impl Default for State {
@@ -41,6 +40,9 @@ impl Default for State {
         Self {
             volume: 50,
             count: 0,
+            lo: 0,
+            hi: 100,
+            step: 5,
         }
     }
 }
@@ -69,7 +71,10 @@ fn demo(ui: &mut Ui, k: Kit, s: &mut State) {
             );
             support::well(ui, k, |ui| {
                 labeled(ui, k, "volume", |ui| {
-                    Stepper::new(&mut s.volume).range(0, 100).step(5).show(ui);
+                    Stepper::new(&mut s.volume)
+                        .range(s.lo as i32, s.hi as i32)
+                        .step(s.step as i32)
+                        .show(ui);
                 });
                 labeled(ui, k, "count", |ui| {
                     Stepper::new(&mut s.count).range(-10, 10).show(ui);
@@ -78,9 +83,37 @@ fn demo(ui: &mut Ui, k: Kit, s: &mut State) {
         });
 
     Section::new("The call site").show(ui, k, |ui| {
+        support::note(
+            ui,
+            k,
+            "The volume stepper's range and step: drag a value, and the stepper and the call \
+             site below follow it.",
+        );
+        support::row(ui, |ui| {
+            for (label, value, range) in [
+                ("from", &mut s.lo, -100.0..=0.0),
+                ("to", &mut s.hi, 1.0..=200.0),
+                ("step", &mut s.step, 1.0..=25.0),
+            ] {
+                Text::new(label).style(&k.t.caption()).show(ui);
+                DragValue::new(value)
+                    .id_salt(label)
+                    .range(range)
+                    .size((Sizing::fixed(64.0), Sizing::HUG))
+                    .show(ui);
+            }
+        });
         support::well(ui, k, |ui| {
-            for (i, line) in CALL_SITE.iter().enumerate() {
-                Text::new(*line)
+            let range = fmt!(ui, "    .range({}, {})", s.lo, s.hi);
+            let step = fmt!(ui, "    .step({})", s.step);
+            let lines = [
+                ui.intern("Stepper::new(&mut volume)"),
+                range,
+                step,
+                ui.intern("    .show(ui);"),
+            ];
+            for (i, line) in lines.into_iter().enumerate() {
+                Text::new(line)
                     .id_salt(i)
                     .style(&k.t.mono(k.t.ink))
                     .show(ui);
@@ -184,7 +217,7 @@ impl<'a> Stepper<'a> {
             max: i32::MAX,
             step: 1,
         }
-        .gap(6.0)
+        .gap(M.space.sm)
         .padding(RING_ROOM)
         .child_align(Align::v(VAlign::Center))
         .focusable(true)

@@ -7,9 +7,11 @@ use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
-    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioButton, Sizing, Slider, Switch, Text,
-    TextEdit, Track, Ui, WidgetId,
+    FocusRingTheme, Grid, Metrics, Modal, Panel, PopupTrigger, RadioButton, Sizing, Slider, Switch,
+    Text, TextEdit, Track, Ui, WidgetId,
 };
+
+const M: Metrics = Metrics::DEFAULT;
 
 const PLANS: [&str; 3] = ["Free", "Pro", "Team"];
 const LIST: [&str; 5] = ["Inbox", "Drafts", "Sent", "Archive", "Trash"];
@@ -148,8 +150,8 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
         .id(form_id())
         .cols([Track::HUG.with_min(90.0), Track::FILL.with_max(320.0)])
         .rows([Track::HUG; LABELS.len() + 1])
-        .gap(16.0)
-        .line_gap(10.0)
+        .gap(M.space.lg)
+        .line_gap(M.space.md)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             for (row, label) in LABELS.iter().enumerate() {
@@ -186,7 +188,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 .show(ui);
             seen.note("Volume", r.response.focused);
             Panel::hstack()
-                .gap(12.0)
+                .gap(M.space.md)
                 .arrow_focus(Axis::X)
                 .grid_cell((5, 1))
                 .show(ui, |ui| {
@@ -215,12 +217,15 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 .size((Sizing::fixed(100.0), Sizing::HUG))
                 .show(ui);
             seen.note("Seats", r.response.focused);
-            Panel::hstack().gap(8.0).grid_cell((8, 1)).show(ui, |ui| {
-                let r = Button::new().label("Submit").show(ui);
-                seen.note("Submit", r.focused);
-                let r = Button::new().label("Cancel").show(ui);
-                seen.note("Cancel", r.focused);
-            });
+            Panel::hstack()
+                .gap(M.space.sm)
+                .grid_cell((8, 1))
+                .show(ui, |ui| {
+                    let r = Button::new().label("Submit").show(ui);
+                    seen.note("Submit", r.focused);
+                    let r = Button::new().label("Cancel").show(ui);
+                    seen.note("Cancel", r.focused);
+                });
         });
 }
 
@@ -266,8 +271,8 @@ fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                  each item. A control inside that claims an arrow keeps it.",
             );
             Panel::hstack()
-                .gap(6.0)
-                .padding(6.0)
+                .gap(M.space.sm)
+                .padding(M.space.sm)
                 .chrome(k.t.card())
                 .arrow_focus(Axis::X)
                 .show(ui, |ui| {
@@ -287,8 +292,8 @@ fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                     seen.note("Clear", r.focused);
                 });
             Panel::vstack()
-                .gap(2.0)
-                .padding(6.0)
+                .gap(M.space.xxs)
+                .padding(M.space.sm)
                 .size((Sizing::fixed(200.0), Sizing::HUG))
                 .chrome(k.t.card())
                 .arrow_focus(Axis::Y)
@@ -335,8 +340,9 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 seen.note("Filters ▾", trigger.focused);
                 let trigger = trigger.snapshot();
                 PopupTrigger::on(&trigger)
-                    .padding(10.0)
-                    .gap(6.0)
+                    .padding(M.space.md)
+                    .gap(M.space.sm)
+                    .chrome(support::float_chrome(ui))
                     .show(ui, |ui, close| {
                         for (i, label) in ["Unread", "Starred", "Has files"].into_iter().enumerate()
                         {
@@ -359,7 +365,7 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
 fn dialog(ui: &mut Ui, k: Kit, s: &mut State) {
     let resp = Modal::new().show(ui, |ui, close| {
         Panel::vstack()
-            .gap(12.0)
+            .gap(M.space.md)
             .size((Sizing::fixed(300.0), Sizing::HUG))
             .show(ui, |ui| {
                 Text::new("Rename layer").style(&k.t.body()).show(ui);

@@ -15,7 +15,7 @@ use crate::support::{Kit, Section};
 use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
 use palantir::{
-    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, Sizing, Ui, WidgetId,
+    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Sense, Sizing, Switch, Ui, WidgetId,
 };
 use wgpu::util::DeviceExt;
 
@@ -92,6 +92,8 @@ struct CubeGpu {
 #[derive(Debug)]
 struct Cube {
     gpu: Option<CubeGpu>,
+    /// Whether the cube turns on its own; off at first, so a view at rest asks for no frame.
+    spinning: bool,
     spin: f32,
     yaw: f32,
     pitch: f32,
@@ -101,6 +103,7 @@ impl Cube {
     const fn new() -> Self {
         Self {
             gpu: None,
+            spinning: false,
             spin: 0.0,
             yaw: 0.6,
             pitch: 0.5,
@@ -212,7 +215,9 @@ impl GpuPaint for Cube {
 
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
         // Slow auto-rotation (~34°/s), framerate-independent via real `dt` (ZERO on the first paint).
-        self.spin += 0.6 * ctx.dt.as_secs_f32();
+        if self.spinning {
+            self.spin += 0.6 * ctx.dt.as_secs_f32();
+        }
         let mvp = {
             // The projection frames the whole view, so the cube holds its shape and size while a
             // scroll slides part of it out; `crop` then zooms clip space onto the shown part.
@@ -265,12 +270,7 @@ impl GpuPaint for Cube {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: 0.04,
-                        g: 0.04,
-                        b: 0.06,
-                        a: 1.0,
-                    }),
+                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -308,8 +308,6 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 }
 
 fn view(ui: &mut Ui, k: Kit, cube: &Rc<RefCell<Cube>>) {
-    // A GpuView re-renders on every painted frame, so keep frames coming to animate the spin.
-    ui.request_repaint();
     Section::new("Cube")
         .apis(&[api!(type GpuView), api!(type GpuPaint)])
         .show(ui, k, |ui| {
@@ -318,9 +316,17 @@ fn view(ui: &mut Ui, k: Kit, cube: &Rc<RefCell<Cube>>) {
                 k,
                 "Drawn with raw wgpu into an off-screen texture the framework owns, then \
              composited as an ordinary image — so clipping, rounded corners, z-order and \
-             partial repaint all come for free. Drag inside the view to orbit it.",
+             partial repaint all come for free. It clears to transparent, so the page shows \
+             around the cube. Drag inside the view to orbit it.",
             );
+            let mut spinning = cube.borrow().spinning;
+            Switch::new(&mut spinning).label("Spin").show(ui);
+            cube.borrow_mut().spinning = spinning;
         });
+    if cube.borrow().spinning {
+        // A GpuView re-renders on every painted frame, so keep frames coming to animate the spin.
+        ui.request_repaint();
+    }
 
     // GpuView doesn't sense by default: opt into drag so `Response` reports the orbit delta.
     let resp = GpuView::new(cube)

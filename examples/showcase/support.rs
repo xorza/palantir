@@ -8,12 +8,13 @@
 //! Pages never paint their own root or header; they emit [`Section`]s, with fixed [`TILE`]-square
 //! [`DemoCell`]s for paint demos.
 
+use std::ops::RangeInclusive;
 use std::panic::Location;
 
 use palantir::{
     Align, Block, Checkbox, Chrome, CloseHandle, ColorScheme, Configure, Corners, Expander,
-    FontWeight, Metrics, Modal, Okhsv, OverlayResponse, Palette, Panel, RgbaF32, Sizing, Stroke,
-    Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId, fmt,
+    FontWeight, Justify, Metrics, Modal, Okhsv, OverlayResponse, Palette, Panel, RgbaF32, Sizing,
+    Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId, fmt,
 };
 
 use crate::scaffold::header::Chip;
@@ -341,23 +342,105 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
 #[derive(Default, Debug)]
 struct Ticks(u32);
 
-/// A modal of a question and a row of answers, the shape the overlays page's confirm and the
-/// windows page's close prompt share; `answers` records the buttons and closes through the handle.
-#[track_caller]
-pub(crate) fn dialog(
-    ui: &mut Ui,
-    question: &'static str,
-    answers: impl FnOnce(&mut Ui, &CloseHandle),
-) -> OverlayResponse<()> {
-    Modal::new().auto_id().show(ui, |ui, close| {
-        Panel::vstack().gap(M.space.lg).show(ui, |ui| {
-            Text::new(question).show(ui);
-            Panel::hstack()
-                .gap(M.space.sm)
-                .show(ui, |ui| answers(ui, close));
-        });
-    })
+/// The surface a floating panel wears: the theme's menu panel, frosted when the appearance frosts
+/// the floats, so a popup of the showcase's own reads as palantir's menus do.
+pub(crate) fn float_chrome(ui: &Ui) -> Chrome {
+    ui.theme().context_menu.panel.clone()
 }
+
+/// A modal dialog: a title, a line of why, and a row of answers at the end, the confirming one
+/// last, as macOS puts the default button at the trailing end.
+#[derive(Debug)]
+pub(crate) struct Dialog {
+    pub(crate) title: &'static str,
+    pub(crate) body: &'static str,
+}
+
+impl Dialog {
+    /// `answers` records the buttons and closes through the handle.
+    #[track_caller]
+    pub(crate) fn show(
+        self,
+        ui: &mut Ui,
+        k: Kit,
+        answers: impl FnOnce(&mut Ui, &CloseHandle),
+    ) -> OverlayResponse<()> {
+        Modal::new().auto_id().show(ui, |ui, close| {
+            Panel::vstack()
+                .size((Sizing::fixed(DIALOG_W), Sizing::HUG))
+                .gap(M.space.md)
+                .show(ui, |ui| {
+                    Text::new(self.title).style(&section_style(k)).show(ui);
+                    Text::new(self.body)
+                        .style(&k.t.dim())
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .show(ui);
+                    Panel::hstack()
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .margin((0.0, M.space.sm, 0.0, 0.0))
+                        .gap(M.space.sm)
+                        .justify(Justify::End)
+                        .show(ui, |ui| answers(ui, close));
+                });
+        })
+    }
+}
+
+/// A dialog's width: Fluent's ContentDialog keeps its body between 320 and 548 px.
+const DIALOG_W: f32 = 360.0;
+
+/// One knob of a stage: a label, a slider over `range` in `step`s, and the value in `unit`.
+#[derive(Debug)]
+pub(crate) struct Knob {
+    pub(crate) label: &'static str,
+    pub(crate) range: RangeInclusive<f64>,
+    pub(crate) step: f64,
+    /// Printed after the value, which shows with as many decimals as the step has.
+    pub(crate) unit: &'static str,
+}
+
+impl Knob {
+    #[track_caller]
+    pub(crate) fn show(self, ui: &mut Ui, k: Kit, value: &mut f64) {
+        let decimals = self.decimals();
+        Panel::hstack()
+            .auto_id()
+            .gap(M.space.sm)
+            .child_align(Align::v(VAlign::Center))
+            .show(ui, |ui| {
+                Text::new(self.label)
+                    .style(&k.t.caption())
+                    .min_size((KNOB_LABEL_W, 0.0))
+                    .show(ui);
+                Slider::new(&mut *value, self.range)
+                    .step(self.step)
+                    .size((Sizing::fixed(KNOB_W), Sizing::HUG))
+                    .show(ui);
+                let text = fmt!(ui, "{:.*}{}", decimals, *value, self.unit);
+                Text::new(text)
+                    .style(&k.t.mono(k.t.ink))
+                    .min_size((KNOB_VALUE_W, 0.0))
+                    .show(ui);
+            });
+    }
+
+    /// The decimals the step has, so the value never shows a digit the slider cannot move: the
+    /// fewest that make the step whole. The tolerance is f64's error in such a step, under 1e-15
+    /// of it, well inside 1e-9.
+    pub(crate) fn decimals(&self) -> usize {
+        (0_u8..=3)
+            .find(|&d| {
+                let scaled = self.step * 10_f64.powi(i32::from(d));
+                (scaled - scaled.round()).abs() < 1e-9
+            })
+            .map_or(3, usize::from)
+    }
+}
+
+const KNOB_LABEL_W: f32 = 64.0;
+const KNOB_W: f32 = 140.0;
+const KNOB_VALUE_W: f32 = 56.0;
 
 /// A plain color swatch: a `Block` over [`swatch_chrome`], for the caller to key and size.
 pub(crate) fn swatch(c: RgbaF32) -> Block {
@@ -385,8 +468,8 @@ pub(crate) enum Surface {
     Bare,
 }
 
-/// A captioned paint demo, [`TILE`] square on a [`Surface::Well`] unless set otherwise, so tiles
-/// line up across pages. Keyed by its label, so a page can draw cells in a loop; cells in one row
+/// A paint demo captioned under its tile, as a gallery labels a plate, [`TILE`] square on a
+/// [`Surface::Well`] unless set otherwise, so tiles line up across pages. Keyed by its label, so a page can draw cells in a loop; cells in one row
 /// need distinct labels.
 #[derive(Debug)]
 #[must_use]
@@ -423,13 +506,8 @@ impl DemoCell {
         Panel::vstack()
             .id_salt(self.label)
             .size((Sizing::fixed(self.w), Sizing::HUG))
-            .gap(M.space.xs + M.space.xxs)
+            .gap(M.space.sm)
             .show(ui, |ui| {
-                Text::new(self.label)
-                    .style(&k.t.caption())
-                    .size((Sizing::FILL, Sizing::fixed(CAPTION_H)))
-                    .text_wrap(TextWrap::WrapWithOverflow)
-                    .show(ui);
                 let cell = Panel::zstack().size((Sizing::FILL, Sizing::fixed(self.h)));
                 let cell = match self.surface {
                     Surface::Well => cell.padding(CELL_PADDING).chrome(k.t.card()),
@@ -437,6 +515,11 @@ impl DemoCell {
                     Surface::Bare => cell,
                 };
                 cell.show(ui, body);
+                Text::new(self.label)
+                    .style(&k.t.caption())
+                    .size((Sizing::FILL, Sizing::fixed(CAPTION_H)))
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .show(ui);
             });
     }
 }

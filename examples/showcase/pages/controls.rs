@@ -1,15 +1,19 @@
 //! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, and spinner sizing.
 
+use crate::appearance::Appearance;
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{Col, Kit, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
     Align, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure, Corners,
-    DragValue, Expander, ExpanderTheme, Panel, ProgressBar, RadioButton, RgbaF32, Separator,
-    Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke, Switch, Text, TextEdit,
-    TextStyleOverrides, TextWrap, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
+    DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar, RadioButton, RgbaF32,
+    SchemePreference, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
+    Switch, Text, TextEdit, TextStyleOverrides, TextWrap, Tooltip, Ui, VAlign, WidgetId,
+    WidgetLook, fmt,
 };
+
+const M: Metrics = Metrics::DEFAULT;
 
 const REGIONS: [&str; 5] = [
     "Europe",
@@ -19,14 +23,6 @@ const REGIONS: [&str; 5] = [
     "Oceania",
 ];
 
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-enum Appearance {
-    #[default]
-    System,
-    Light,
-    Dark,
-}
-
 #[derive(Debug)]
 struct State {
     airplane: bool,
@@ -34,8 +30,6 @@ struct State {
     bluetooth: bool,
     metered: bool,
     region: usize,
-    appearance: Appearance,
-    reduce_motion: bool,
     volume: f64,
     fps: i64,
     syncing: bool,
@@ -52,8 +46,6 @@ impl Default for State {
             bluetooth: false,
             metered: false,
             region: 0,
-            appearance: Appearance::System,
-            reduce_motion: false,
             volume: 0.6,
             fps: 120,
             syncing: false,
@@ -63,11 +55,12 @@ impl Default for State {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui, k: Kit) {
+pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
     let state_id = WidgetId::from_hash("showcase::controls::state");
     let themes = Themes {
-        outlined: outlined_style(k),
-        danger: danger_style(k),
+        accent: look.accent_button(ui.color_scheme()),
+        outlined: outlined_style(k, &ui.theme().button),
+        danger: danger_style(k, &ui.theme().button),
     };
 
     ui.with_state::<State, _>(state_id, |ui, s| {
@@ -149,9 +142,10 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
     });
 }
 
-/// The two button themes both columns show beside the default.
+/// The button themes the page shows beside the default: palantir's accent, and two of its own.
 #[derive(Debug)]
 struct Themes {
+    accent: ButtonTheme,
     outlined: ButtonTheme,
     danger: ButtonTheme,
 }
@@ -159,15 +153,15 @@ struct Themes {
 fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
     Panel::vstack()
         .size((Sizing::fixed(360.0), Sizing::HUG))
-        .padding(16.0)
-        .gap(10.0)
+        .padding(M.space.lg)
+        .gap(M.space.md)
         .chrome(k.t.card())
         .show(ui, |ui| {
             group(ui, k, "NETWORK");
             Switch::new(&mut s.airplane).label("Airplane mode").show(ui);
             Panel::vstack()
                 .size((Sizing::FILL, Sizing::HUG))
-                .gap(10.0)
+                .gap(M.space.md)
                 .disabled(s.airplane)
                 .show(ui, |ui| {
                     Switch::new(&mut s.wifi).label("Wi-Fi").show(ui);
@@ -185,20 +179,28 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
 
             Separator::horizontal().show(ui);
             group(ui, k, "APPEARANCE");
-            Panel::hstack().gap(12.0).show(ui, |ui| {
+            // The real preference: a pick here restyles the whole tour, as the rail's switch does.
+            let mut scheme = ui.scheme_preference();
+            Panel::hstack().gap(M.space.md).show(ui, |ui| {
                 for (value, label) in [
-                    (Appearance::System, "System"),
-                    (Appearance::Light, "Light"),
-                    (Appearance::Dark, "Dark"),
+                    (SchemePreference::System, "System"),
+                    (SchemePreference::Light, "Light"),
+                    (SchemePreference::Dark, "Dark"),
                 ] {
-                    RadioButton::new(&mut s.appearance, value)
+                    RadioButton::new(&mut scheme, value)
                         .id_salt(label)
                         .label(label)
                         .show(ui);
                 }
             });
-            Checkbox::new(&mut s.reduce_motion)
-                .label("Reduce motion")
+            if scheme != ui.scheme_preference() {
+                ui.set_scheme_preference(scheme);
+            }
+            // The system's own setting, which every animation snaps under; the app reads it.
+            let mut reduced = ui.is_motion_reduced();
+            Checkbox::new(&mut reduced)
+                .label("Reduce motion, as the system asks")
+                .disabled(true)
                 .show(ui);
 
             Separator::horizontal().show(ui);
@@ -228,8 +230,13 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             });
 
             Separator::horizontal().show(ui);
-            Panel::hstack().gap(8.0).show(ui, |ui| {
-                if Button::new().label("Apply").show(ui).clicked() {
+            Panel::hstack().gap(M.space.sm).show(ui, |ui| {
+                if Button::new()
+                    .label("Apply")
+                    .style(&themes.accent)
+                    .show(ui)
+                    .clicked()
+                {
                     s.syncing = true;
                 }
                 if Button::new()
@@ -264,8 +271,9 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             if s.syncing && frac > 0.995 {
                 s.syncing = false;
             }
-            ProgressBar::new(frac).show(ui);
+            // The bar shows only while a sync runs, so the form holds no empty track at rest.
             if s.syncing {
+                ProgressBar::new(frac).show(ui);
                 support::row(ui, |ui| {
                     Spinner::new().diameter(16.0).show(ui);
                     let pct = fmt!(ui, "syncing {:.0}%", frac * 100.0);
@@ -277,35 +285,46 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
 
 fn side(ui: &mut Ui, k: Kit, themes: &Themes) {
     Section::new("Button themes")
-        .apis(&[api!(type ButtonTheme)])
+        .apis(&[api!(type ButtonTheme), api!(ButtonTheme::accent)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "The default, an outlined and a danger ButtonTheme, each beside its disabled look.",
+                "The default and palantir's accent, then an outlined and a danger ButtonTheme of \
+                 the page's own, each beside its disabled look.",
             );
-            support::row(ui, |ui| {
-                Button::new().label("default").show(ui);
-                Button::new().label("disabled").disabled(true).show(ui);
-            });
-            support::row(ui, |ui| {
-                Button::new()
-                    .style(&themes.outlined)
-                    .label("outlined")
-                    .show(ui);
-                Button::new()
-                    .style(&themes.outlined)
-                    .label("disabled")
-                    .disabled(true)
-                    .show(ui);
-            });
-            support::row(ui, |ui| {
-                Button::new().style(&themes.danger).label("danger").show(ui);
-                Button::new()
-                    .style(&themes.danger)
-                    .label("disabled")
-                    .disabled(true)
-                    .show(ui);
+            support::well(ui, k, |ui| {
+                support::row(ui, |ui| {
+                    Button::new().label("default").show(ui);
+                    Button::new().label("disabled").disabled(true).show(ui);
+                });
+                support::row(ui, |ui| {
+                    Button::new().style(&themes.accent).label("accent").show(ui);
+                    Button::new()
+                        .style(&themes.accent)
+                        .label("disabled")
+                        .disabled(true)
+                        .show(ui);
+                });
+                support::row(ui, |ui| {
+                    Button::new()
+                        .style(&themes.outlined)
+                        .label("outlined")
+                        .show(ui);
+                    Button::new()
+                        .style(&themes.outlined)
+                        .label("disabled")
+                        .disabled(true)
+                        .show(ui);
+                });
+                support::row(ui, |ui| {
+                    Button::new().style(&themes.danger).label("danger").show(ui);
+                    Button::new()
+                        .style(&themes.danger)
+                        .label("disabled")
+                        .disabled(true)
+                        .show(ui);
+                });
             });
         });
 
@@ -318,36 +337,40 @@ fn side(ui: &mut Ui, k: Kit, themes: &Themes) {
                 "A fixed-width button cuts a long label at its box. Single-line wrapping lets the \
              label run past the box; a Hug-width button grows to fit.",
             );
-            support::row(ui, |ui| {
-                Button::new()
-                    .size((Sizing::fixed(140.0), Sizing::HUG))
-                    .label("Screenshot 2026-05-28 at 01.21.25.png")
-                    .show(ui);
-                Button::new().label("fits its content").show(ui);
-            });
-            support::row(ui, |ui| {
-                Button::new()
-                    .size((Sizing::fixed(140.0), Sizing::HUG))
-                    .text_wrap(TextWrap::SingleLine)
-                    .label("Screenshot 2026-05-28 at 01.21.25.png")
-                    .show(ui);
+            support::well(ui, k, |ui| {
+                support::row(ui, |ui| {
+                    Button::new()
+                        .size((Sizing::fixed(140.0), Sizing::HUG))
+                        .label("Screenshot 2026-05-28 at 01.21.25.png")
+                        .show(ui);
+                    Button::new().label("fits its content").show(ui);
+                });
+                support::row(ui, |ui| {
+                    Button::new()
+                        .size((Sizing::fixed(140.0), Sizing::HUG))
+                        .text_wrap(TextWrap::SingleLine)
+                        .label("Screenshot 2026-05-28 at 01.21.25.png")
+                        .show(ui);
+                });
             });
         });
 
     Section::new("Spinners")
         .apis(&[api!(Spinner::diameter)])
         .show(ui, k, |ui| {
-            Panel::hstack()
-                .gap(20.0)
-                .child_align(Align::v(VAlign::Center))
-                .show(ui, |ui| {
-                    Spinner::new().diameter(20.0).show(ui);
-                    Spinner::new().diameter(32.0).show(ui);
-                    Spinner::new()
-                        .diameter(48.0)
-                        .color(k.swatch.orange)
-                        .show(ui);
-                });
+            support::well(ui, k, |ui| {
+                Panel::hstack()
+                    .gap(M.space.lg)
+                    .child_align(Align::v(VAlign::Center))
+                    .show(ui, |ui| {
+                        Spinner::new().diameter(20.0).show(ui);
+                        Spinner::new().diameter(32.0).show(ui);
+                        Spinner::new()
+                            .diameter(48.0)
+                            .color(k.swatch.orange)
+                            .show(ui);
+                    });
+            });
         });
 }
 
@@ -359,11 +382,12 @@ fn group(ui: &mut Ui, k: Kit, label: &'static str) {
 }
 
 /// Transparent fill, accent stroke: reads as a "selectable surface".
-fn outlined_style(k: Kit) -> ButtonTheme {
+fn outlined_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     let accent = k.t.accent;
     let stroke = Stroke::new(accent, 1.5);
-    let chrome =
-        |fill: RgbaF32, stroke| Chrome::rounded(fill, Corners::all(4.0)).with_border(stroke);
+    let chrome = |fill: RgbaF32, stroke| {
+        Chrome::rounded(fill, Corners::all(M.radius.control)).with_border(stroke)
+    };
     ButtonTheme {
         unselected: StatefulLook {
             normal: WidgetLook {
@@ -386,23 +410,34 @@ fn outlined_style(k: Kit) -> ButtonTheme {
                 text: TextStyleOverrides::NONE.with_color(k.t.ink_faint),
             },
         },
-        ..Default::default()
+        ..base.clone()
     }
 }
 
-fn danger_style(k: Kit) -> ButtonTheme {
+/// The red swatch under the swatch ink, which it holds 4.5:1 against; hovered and pressed it
+/// moves toward white, which only raises that contrast; disabled, it is the theme's button.
+fn danger_style(k: Kit, base: &ButtonTheme) -> ButtonTheme {
     let red = k.swatch.red;
-    let look = |fill: RgbaF32, ink: RgbaF32| WidgetLook {
-        chrome: Chrome::rounded(fill, Corners::all(4.0)),
-        text: TextStyleOverrides::NONE.with_color(ink),
+    let ink = support::on_swatch_style().color;
+    let look = |toward_white: f32| {
+        let fill = RgbaF32::new(
+            red.r + (1.0 - red.r) * toward_white,
+            red.g + (1.0 - red.g) * toward_white,
+            red.b + (1.0 - red.b) * toward_white,
+            1.0,
+        );
+        WidgetLook {
+            chrome: Chrome::rounded(fill, Corners::all(M.radius.control)),
+            text: TextStyleOverrides::NONE.with_color(ink),
+        }
     };
     ButtonTheme {
         unselected: StatefulLook {
-            normal: look(red, RgbaF32::WHITE),
-            hovered: look(RgbaF32::hex(0xff7e6a), RgbaF32::WHITE),
-            active: look(RgbaF32::hex(0xc74734), RgbaF32::WHITE),
-            disabled: look(red.with_alpha(0.4), RgbaF32::WHITE.with_alpha(0.55)),
+            normal: look(0.0),
+            hovered: look(0.12),
+            active: look(0.24),
+            disabled: base.unselected.disabled.clone(),
         },
-        ..Default::default()
+        ..base.clone()
     }
 }

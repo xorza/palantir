@@ -36,6 +36,8 @@ pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
 use crate::primitives::layout::clip_mode::ClipMode;
+use crate::primitives::math::domain;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
@@ -186,6 +188,74 @@ impl Theme {
             ThemeText::Style(style) => style.font_size = scale(style.font_size),
             ThemeText::Overrides(o) => o.font_size = o.font_size.map(scale),
         });
+    }
+
+    /// Frost every floating surface: the panels of menus and combo lists, the color picker's
+    /// popup, tooltips and the modal's panel. Each keeps its fill's color at `tint_alpha` over
+    /// [`BackdropFilter::frosted`]`(sigma)`, held so the weakest ink its recipe paints reads at
+    /// WCAG 4.5:1 over any backdrop: `p`'s muted ink on a menu (a shortcut) and on the picker (a
+    /// channel's name), the full ink on a tooltip and on the modal, whose content is the app's. A
+    /// ceiling holds ink lighter than the tint, a floor darker. The stock themes stay opaque, as a
+    /// frosted float costs a capture under each open one; an app opts in here, as WinUI's flyouts,
+    /// menus and tooltips wear acrylic
+    /// (<https://learn.microsoft.com/windows/apps/design/style/acrylic>).
+    ///
+    /// # Panics
+    ///
+    /// Unless `sigma` is a [length](crate::widget::domain::length), `tint_alpha` a fraction under
+    /// 1, each surface's fill a solid color, and each ink holds 4.5:1 on its fill made opaque, as
+    /// [`BackdropFilter::with_max_luminance_for`] and its floor twin require.
+    #[track_caller]
+    pub fn frost_floats(&mut self, p: &Palette, sigma: f32, tint_alpha: f32) {
+        let sigma = domain::length(sigma);
+        let Self {
+            context_menu,
+            color_picker,
+            tooltip,
+            modal,
+            // Not floating: drawn in the tree, or a scalar.
+            text: _,
+            button: _,
+            checkbox: _,
+            radio: _,
+            switch: _,
+            scrollbar: _,
+            text_edit: _,
+            drag_value: _,
+            menu_bar: _,
+            combo_box: _,
+            progress_bar: _,
+            separator: _,
+            slider: _,
+            spinner: _,
+            splitter: _,
+            tabs: _,
+            dock: _,
+            expander: _,
+            focus_ring: _,
+            window_clear: _,
+            panel_chrome: _,
+            panel_clip: _,
+        } = self;
+        for (panel, ink) in [
+            (&mut context_menu.panel, p.text_muted),
+            (&mut color_picker.popup, p.text_muted),
+            (&mut tooltip.panel, p.text),
+            (&mut modal.panel, p.text),
+        ] {
+            let fill = panel
+                .fill
+                .as_solid()
+                .expect("a floating surface to frost has a solid fill");
+            let tint = fill.with_alpha(tint_alpha);
+            let frosted = BackdropFilter::frosted(sigma);
+            panel.backdrop_filter = if ink.luminance() > tint.luminance() {
+                frosted.with_max_luminance_for(ink, tint)
+            } else {
+                frosted.with_min_luminance_for(ink, tint)
+            };
+            panel.fill = tint.into();
+        }
     }
 
     /// Visit every text-bearing slot; [`Self::scale_text`] drives it.

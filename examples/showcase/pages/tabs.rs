@@ -5,19 +5,35 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
-    Block, Chrome, Configure, Corners, Panel, Sizing, TabChip, TabItem, TabOverflow, TabStrip,
-    TabbedView, Text, Ui, WidgetId, fmt,
+    Block, Button, Chrome, Configure, Corners, Metrics, Panel, Sizing, TabChip, TabItem, TabMove,
+    TabOverflow, TabStrip, TabbedView, Text, Ui, WidgetId, fmt,
 };
 
-const PAGES: [&str; 3] = ["Color", "Geometry", "Metadata"];
+const M: Metrics = Metrics::DEFAULT;
+
+/// The pages the view may hold; it opens on the first three, and "+" adds the next missing.
+const POOL: [&str; 6] = [
+    "Color", "Geometry", "Metadata", "History", "Notes", "Export",
+];
 
 const MANY: [&str; 9] = [
     "curves", "levels", "sharpen", "denoise", "rotate", "crop", "vignette", "grain", "export",
 ];
 
+/// The last change the view asked of its pages.
+#[derive(Clone, Copy, Debug)]
+enum Edit {
+    Added(&'static str),
+    Closed(&'static str),
+    Moved { page: &'static str, to: usize },
+}
+
 #[derive(Debug)]
 struct State {
     page: usize,
+    /// The view's pages, in their order, which a close, a drag and "+" change.
+    pages: Vec<&'static str>,
+    last: Option<Edit>,
     picked: usize,
     overflowing: usize,
     /// Chips the strip demo has closed, so a close reads as a real removal.
@@ -26,10 +42,31 @@ struct State {
     items: Vec<TabItem>,
 }
 
+impl State {
+    /// Apply what the view asked of the page list: a close, the last page excepted, and a move.
+    fn apply(&mut self, closed: Option<usize>, reordered: Option<TabMove>) {
+        if let Some(idx) = closed
+            && self.pages.len() > 1
+        {
+            let page = self.pages.remove(idx);
+            self.last = Some(Edit::Closed(page));
+        }
+        if let Some(TabMove { from, to }) = reordered {
+            let page = self.pages.remove(from);
+            // `to` names the slot before the move, so a page moved right lands one short of it.
+            let to = if to > from { to - 1 } else { to };
+            self.pages.insert(to, page);
+            self.last = Some(Edit::Moved { page, to });
+        }
+    }
+}
+
 impl Default for State {
     fn default() -> Self {
         Self {
             page: 0,
+            pages: POOL[..3].to_vec(),
+            last: None,
             picked: 1,
             overflowing: 0,
             open: (0..4).collect(),
@@ -48,28 +85,36 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     ui,
                     k,
                     "A strip over a content area, bound to a &mut usize as a combo box is. Click a \
-                 chip, or focus the strip and move with the arrow keys, Home and End.",
+                     chip, or focus the strip and move with the arrow keys, Home and End. Drag a \
+                     chip to reorder, close one with its button; the view names each change, and \
+                     the page applies it to its own list.",
                 );
                 Panel::vstack()
                     .size((Sizing::FILL, Sizing::fixed(180.0)))
-                    .padding(10.0)
+                    .padding(M.space.md)
                     .chrome(k.t.card())
-                    .show(ui, |ui| {
-                        TabbedView::new(&mut s.page, &PAGES).closable(false).show(
-                            ui,
-                            |ui, page| {
-                                Panel::vstack()
-                                    .size((Sizing::FILL, Sizing::FILL))
-                                    .padding(14.0)
-                                    .gap(6.0)
-                                    .show(ui, |ui| {
-                                        Text::new(PAGES[page]).style(&k.t.body()).show(ui);
-                                        let line = fmt!(ui, "page index {page}");
-                                        Text::new(line).style(&k.t.caption()).show(ui);
-                                    });
-                            },
-                        );
-                    });
+                    .show(ui, |ui| tabbed_view(ui, k, s));
+                support::row(ui, |ui| {
+                    let next = POOL.into_iter().find(|page| !s.pages.contains(page));
+                    if Button::new()
+                        .label("+ Add page")
+                        .disabled(next.is_none())
+                        .show(ui)
+                        .clicked()
+                        && let Some(page) = next
+                    {
+                        s.pages.push(page);
+                        s.page = s.pages.len() - 1;
+                        s.last = Some(Edit::Added(page));
+                    }
+                    let last = match s.last {
+                        None => ui.intern("—"),
+                        Some(Edit::Added(page)) => fmt!(ui, "added {page}"),
+                        Some(Edit::Closed(page)) => fmt!(ui, "closed {page}"),
+                        Some(Edit::Moved { page, to }) => fmt!(ui, "moved {page} to slot {to}"),
+                    };
+                    support::readout(ui, k, "last edit", last);
+                });
             });
 
         Section::new("The strip alone")
@@ -96,7 +141,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 );
                 Panel::vstack()
                     .size((Sizing::fixed(320.0), Sizing::HUG))
-                    .padding(10.0)
+                    .padding(M.space.md)
                     .chrome(k.t.card())
                     .show(ui, |ui| {
                         s.items.clear();
@@ -150,5 +195,46 @@ fn layer_chip(ui: &mut Ui, chip: &TabChip) {
             .size((Sizing::fixed(6.0), Sizing::fixed(6.0)))
             .chrome(Chrome::rounded(chip.text.color, Corners::all(3.0)))
             .show(ui);
+    }
+}
+
+/// The view over the page's own list, applying each close and move it reports; the last page
+/// stays, so the view is never empty.
+fn tabbed_view(ui: &mut Ui, k: Kit, s: &mut State) {
+    let response = TabbedView::new(&mut s.page, &s.pages).show(ui, |ui, page| {
+        Panel::vstack()
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(M.space.md)
+            .gap(M.space.sm)
+            .show(ui, |ui| {
+                Text::new(s.pages[page]).style(&k.t.body()).show(ui);
+                let line = fmt!(ui, "page index {page}");
+                Text::new(line).style(&k.t.caption()).show(ui);
+            });
+    });
+    let (closed, reordered) = (response.closed, response.reordered);
+    s.apply(closed, reordered);
+}
+
+#[cfg(test)]
+mod tests {
+    use palantir::TabMove;
+
+    use crate::pages::tabs::State;
+
+    /// A move addresses the list before it: "Color" from 0 to 2 passes "Geometry" and lands at
+    /// 1; "Metadata" from 2 to 0 lands first; a close removes its page; the last page stays.
+    #[test]
+    fn the_view_s_edits_apply_to_the_page_list() {
+        let mut s = State::default();
+        s.apply(None, Some(TabMove { from: 0, to: 2 }));
+        assert_eq!(s.pages, ["Geometry", "Color", "Metadata"]);
+        s.apply(None, Some(TabMove { from: 2, to: 0 }));
+        assert_eq!(s.pages, ["Metadata", "Geometry", "Color"]);
+        s.apply(Some(1), None);
+        assert_eq!(s.pages, ["Metadata", "Color"]);
+        s.apply(Some(0), None);
+        s.apply(Some(0), None);
+        assert_eq!(s.pages, ["Color"], "the last page stays");
     }
 }

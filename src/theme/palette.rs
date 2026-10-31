@@ -50,8 +50,9 @@ impl Palette {
     /// Ayu Graphite's `#a4a4a4`, as palantir rests a field on `element_mid` where Ayu Graphite rests
     /// it a rung lower: a placeholder there clears 4.5:1
     /// (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>). `border_focused` is the
-    /// accent: on a field's `element_mid` fill it reads 4.25:1, past the 3:1 WCAG 1.4.11 asks of a
-    /// focus indicator (<https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast>).
+    /// accent: on a field's `element_mid` fill it reads 8.23:1, past the 3:1 WCAG 1.4.11 asks of a
+    /// focus indicator
+    /// (<https://www.w3.org/WAI/WCAG22/Understanding/non-text-contrast>).
     /// `on_accent` is the ground's own ink, as Material 3 paints a selected switch handle
     /// `on-primary`, dark on a light accent (<https://material-web.dev/components/switch>). The
     /// shadow is half black, what a dark ground needs before a shadow reads.
@@ -64,8 +65,8 @@ impl Palette {
         element: RgbaF32::hex(0x383838),
         element_mid: RgbaF32::hex(0x454545),
         element_strong: RgbaF32::hex(0x525252),
-        border_focused: RgbaF32::hex(0x44b5ff),
-        accent: RgbaF32::hex(0x44b5ff),
+        border_focused: RgbaF32::hex(0xd1ff02),
+        accent: RgbaF32::hex(0xd1ff02),
         on_accent: RgbaF32::hex(0x141414),
         shadow: RgbaF32::BLACK.with_alpha8(128),
     };

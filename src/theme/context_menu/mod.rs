@@ -63,7 +63,7 @@ impl ContextMenuTheme {
             min_width: MIN_WIDTH,
             gap: 0.0,
             item: MenuItemTheme::from_parts(p, m),
-            separator: SeparatorTheme::menu_separator(p, m),
+            separator: SeparatorTheme::menu(p, m),
         }
     }
 }

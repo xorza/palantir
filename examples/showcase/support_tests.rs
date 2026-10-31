@@ -1,9 +1,9 @@
-//! The swatches, here and not in `support`, which the visual suite compiles whole, so these run
-//! once, with the example.
+//! The support module's swatches and knobs, here and not in `support`, which the visual suite
+//! compiles whole, so these run once, with the example.
 
 use palantir::{ColorScheme, Okhsv, Palette, RgbaF32, SrgbaU8};
 
-use crate::support::{Swatches, on_swatch_style};
+use crate::support::{Knob, Swatches, on_swatch_style};
 
 /// Each scheme's swatches land on its luminance (dark 0.35, light 0.25), keep their hue (teal
 /// 0.62, orange 0.18, lime 0.34, violet 0.87, red 0.09 turns) and their scheme's saturation (dark
@@ -76,4 +76,20 @@ fn the_swatches_hold_their_luminance_hue_and_floors() {
         "each scheme solves its own set"
     );
     assert_eq!(on_swatch_style().color, RgbaF32::hex(0x14161a));
+}
+
+/// A knob shows as many decimals as its step has, and no more: 1 and 50 none, 0.5 one, 0.05 and
+/// 0.25 two.
+#[test]
+fn a_knob_shows_its_step_s_decimals() {
+    let decimals = |step| {
+        Knob {
+            label: "",
+            range: 0.0..=1.0,
+            step,
+            unit: "",
+        }
+        .decimals()
+    };
+    assert_eq!([1.0, 50.0, 0.5, 0.05, 0.25].map(decimals), [0, 0, 1, 2, 2]);
 }

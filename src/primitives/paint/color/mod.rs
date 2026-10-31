@@ -165,6 +165,10 @@ impl FloatHash for RgbaF32 {
     }
 }
 
+/// The contrast WCAG 1.4.3 asks of text against its ground, as [`RgbaF32::contrast_ratio`]
+/// measures it (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>).
+pub(crate) const TEXT_CONTRAST: f32 = 4.5;
+
 impl RgbaF32 {
     /// Fully transparent black; [`Self::is_noop`] is `true`.
     pub const TRANSPARENT: Self = Self {

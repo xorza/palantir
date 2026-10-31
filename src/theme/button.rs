@@ -18,6 +18,11 @@ use crate::theme::palette::Palette;
 use crate::theme::selection::Selection;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
+/// How far [`ButtonTheme::accent`]'s fill moves away from its label's ink under the pointer.
+pub(crate) const ACCENT_HOVER: f32 = 0.12;
+/// How far it moves pressed.
+pub(crate) const ACCENT_PRESS: f32 = 0.24;
+
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed) for a button at rest and one
 /// for a [selected](crate::Button::selected) button, plus container knobs, picked via
 /// [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
@@ -80,6 +85,39 @@ impl ButtonTheme {
         }
     }
 
+    /// The filled call to action: the accent under `on_accent` ink, as WinUI's accent button and
+    /// Material's filled button carry a dialog's confirming choice. Hovered and pressed, the fill
+    /// moves 12 % and 24 % of the way, in linear light, to white under dark `on_accent` ink and to
+    /// black under light, away from the ink, so a state only raises the label's contrast:
+    /// Material's state layer of `on_accent` would lower it, under 4.5:1 on the light palette's
+    /// accent
+    /// (<https://m3.material.io/foundations/interaction/states/state-layers>). Disabled and
+    /// selected, it is [`Self::from_parts`]'s, as a disabled call to action no longer stands out.
+    pub fn accent(p: &Palette, m: &Metrics) -> Self {
+        let stock = Self::from_parts(p, m);
+        let corners = Corners::all(m.radius.control);
+        let filled = |fill: RgbaF32| WidgetLook {
+            chrome: Chrome::rounded(fill, corners)
+                .with_border(Stroke::new(fill, m.stroke.hairline)),
+            text: TextStyleOverrides::NONE.with_color(p.on_accent),
+        };
+        let away = if p.on_accent.luminance() < p.accent.luminance() {
+            RgbaF32::WHITE
+        } else {
+            RgbaF32::BLACK
+        };
+        Self {
+            unselected: StatefulLook {
+                normal: filled(p.accent),
+                hovered: filled(p.accent.mix(away, ACCENT_HOVER)),
+                active: filled(p.accent.mix(away, ACCENT_PRESS)),
+                disabled: stock.unselected.disabled,
+            },
+            selected: stock.selected,
+            defaults: stock.defaults,
+        }
+    }
+
     /// Visit every text slot this theme owns (drives `Theme::scale_text`); destructured so a new field fails to compile here.
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
@@ -91,10 +129,10 @@ impl ButtonTheme {
         selected.for_each_text(f);
     }
 
-    /// Flat "menu-trigger" preset: transparent at rest, hover-only fill, no border or shadow, inset as a menu row; disabled, its label takes `text_disabled`. Selected, it rests at the hovered fill, as an open menu's title does. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button outside a menu bar.
+    /// The subtle button, as Fluent 2's subtle appearance: transparent at rest, hover-only fill, no border or shadow, inset as a menu row; disabled, its label takes `text_disabled`. Selected, it rests at the hovered fill, as an open menu's title does. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button anywhere (<https://fluent2.microsoft.design/components/web/react/core/button/usage>).
     ///
     /// [`Button::style`]: crate::Button::style
-    pub fn menu_button(p: &Palette, m: &Metrics) -> Self {
+    pub fn subtle(p: &Palette, m: &Metrics) -> Self {
         let flat = |fill: Brush| WidgetLook {
             chrome: Chrome::rounded(fill, Corners::all(m.radius.control)),
             text: TextStyleOverrides::NONE,

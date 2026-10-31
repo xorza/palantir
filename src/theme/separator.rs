@@ -31,7 +31,7 @@ impl SeparatorTheme {
     }
 
     /// The [`crate::MenuSeparator`] recipe: the same rule, held off the rows around it.
-    pub fn menu_separator(p: &Palette, m: &Metrics) -> Self {
+    pub fn menu(p: &Palette, m: &Metrics) -> Self {
         Self {
             margin: Spacing::xy(0.0, m.space.xs),
             ..Self::from_parts(p, m)

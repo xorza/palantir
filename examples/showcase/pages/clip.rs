@@ -2,10 +2,10 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Kit, Section, Surface};
+use crate::support::{DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::{
-    Align, Block, Chrome, Configure, Corners, Panel, Sizing, Stroke, TranslateScale, Ui,
+    Align, Block, Chrome, Configure, Corners, Panel, Sizing, Stroke, TranslateScale, Ui, WidgetId,
 };
 
 const CARD: f32 = 200.0;
@@ -77,6 +77,31 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 "A TranslateScale on a container moves and scales everything under it, stroke \
                  widths included. Nested transforms compose.",
             );
+            let knobs = WidgetId::from_hash("showcase::clip::transform");
+            ui.with_state::<TransformKnobs, _>(knobs, |ui, t| {
+                for (label, value, range, step, unit) in [
+                    ("move x", &mut t.dx, -40.0..=80.0, 2.0, " px"),
+                    ("move y", &mut t.dy, -40.0..=80.0, 2.0, " px"),
+                    ("scale", &mut t.scale, 0.5..=2.0, 0.05, "×"),
+                ] {
+                    Knob {
+                        label,
+                        range,
+                        step,
+                        unit,
+                    }
+                    .show(ui, k, value);
+                }
+                let transform =
+                    TranslateScale::new(Vec2::new(t.dx as f32, t.dy as f32), t.scale as f32);
+                support::tiles(ui, |ui| {
+                    DemoCell::new("the knobs' transform").show(ui, k, |ui| {
+                        Panel::zstack()
+                            .transform(transform)
+                            .show(ui, |ui| tile(ui, k));
+                    });
+                });
+            });
             support::tiles(ui, |ui| {
                 DemoCell::new("translate (30, 24)").show(ui, k, |ui| {
                     Panel::zstack()
@@ -99,6 +124,24 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 });
             });
         });
+}
+
+/// The transform demo's knobs: a move and a scale.
+#[derive(Debug)]
+struct TransformKnobs {
+    dx: f64,
+    dy: f64,
+    scale: f64,
+}
+
+impl Default for TransformKnobs {
+    fn default() -> Self {
+        Self {
+            dx: 20.0,
+            dy: 20.0,
+            scale: 1.0,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

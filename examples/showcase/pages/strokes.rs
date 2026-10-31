@@ -2,12 +2,13 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Kit, Section};
+use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
-use palantir::{ColorRamp, RgbaF32, Stop, Stroke, Ui};
+use palantir::{ColorRamp, ComboBox, Configure, RgbaF32, Sizing, Stop, Stroke, Text, Ui, WidgetId};
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
+    live(ui, k);
     Section::new("Width")
         .apis(&[api!(type Stroke)])
         .show(ui, k, |ui| {
@@ -302,4 +303,74 @@ fn arcs(ui: &mut Ui, k: Kit) {
         },
         Stroke::new(k.swatch.red, 2.0),
     ));
+}
+
+const JOINS: [&str; 3] = ["Miter", "Bevel", "Round"];
+const CAPS: [&str; 3] = ["Butt", "Square", "Round"];
+
+/// The live stroke's knobs.
+#[derive(Debug)]
+struct LiveStroke {
+    width: f64,
+    join: usize,
+    cap: usize,
+}
+
+impl Default for LiveStroke {
+    fn default() -> Self {
+        Self {
+            width: 10.0,
+            join: 0,
+            cap: 2,
+        }
+    }
+}
+
+/// One polyline with sharp turns, its width, join and cap from the knobs.
+fn live(ui: &mut Ui, k: Kit) {
+    Section::new("Live stroke")
+        .apis(&[api!(type LineJoin), api!(type LineCap)])
+        .show(ui, k, |ui| {
+            support::note(ui, k, "Set the width, the join and the cap of one zigzag.");
+            let id = WidgetId::from_hash("showcase::strokes::live");
+            ui.with_state::<LiveStroke, _>(id, |ui, l| {
+                support::row(ui, |ui| {
+                    Knob {
+                        label: "width",
+                        range: 0.5..=24.0,
+                        step: 0.5,
+                        unit: " px",
+                    }
+                    .show(ui, k, &mut l.width);
+                    for (label, pick, options) in
+                        [("join", &mut l.join, &JOINS), ("cap", &mut l.cap, &CAPS)]
+                    {
+                        Text::new(label).style(&k.t.caption()).show(ui);
+                        ComboBox::new(pick, options)
+                            .id_salt(label)
+                            .size((Sizing::fixed(100.0), Sizing::HUG))
+                            .show(ui);
+                    }
+                });
+                let join = [LineJoin::Miter, LineJoin::Bevel, LineJoin::Round][l.join];
+                let cap = [LineCap::Butt, LineCap::Square, LineCap::Round][l.cap];
+                let width = l.width as f32;
+                DemoCell::new("the knobs' polyline")
+                    .size(480.0, 160.0)
+                    .show(ui, k, |ui| {
+                        let points = [
+                            Vec2::new(40.0, 120.0),
+                            Vec2::new(140.0, 30.0),
+                            Vec2::new(220.0, 120.0),
+                            Vec2::new(320.0, 40.0),
+                            Vec2::new(420.0, 110.0),
+                        ];
+                        ui.add_shape(
+                            Shape::polyline(&points, Stroke::new(k.swatch.teal, width))
+                                .join(join)
+                                .cap(cap),
+                        );
+                    });
+            });
+        });
 }

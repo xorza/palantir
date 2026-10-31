@@ -2,11 +2,11 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Kit, Section};
+use crate::support::{DemoCell, Kit, Knob, Section, TILE};
 use palantir::glam::Vec2;
 use palantir::{
-    Block, Brush, Chrome, Configure, ConicGradient, Corners, Interpolation, LinearGradient,
-    RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui,
+    Block, Brush, Chrome, ColorButton, ColorPicker, ComboBox, Configure, ConicGradient, Corners,
+    Interpolation, LinearGradient, RadialGradient, RgbaF32, Sizing, Spread, Stop, Ui, WidgetId,
 };
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
@@ -67,6 +67,71 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 DemoCell::new("Spread::Reflect — rings mirror out").show(ui, k, reflect);
                 DemoCell::new("Spread::Repeat — rings").show(ui, k, repeat);
                 DemoCell::new("Interpolation::Oklab — perceptual midpoint").show(ui, k, oklab);
+            });
+        });
+
+    live(ui, k);
+}
+
+const SPACES: [&str; 2] = ["linear RGB", "Oklab"];
+
+/// The live gradient's knobs: two stops, the angle and the space they blend in.
+#[derive(Debug)]
+struct LiveGradient {
+    from: RgbaF32,
+    to: RgbaF32,
+    angle: f64,
+    space: usize,
+}
+
+impl Default for LiveGradient {
+    fn default() -> Self {
+        Self {
+            from: RED,
+            to: GREEN,
+            angle: 0.0,
+            space: 1,
+        }
+    }
+}
+
+/// One linear brush from two picked stops, turned by the angle knob, blended in the picked space.
+fn live(ui: &mut Ui, k: Kit) {
+    Section::new("Live gradient")
+        .apis(&[api!(LinearGradient::with_interpolation)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Pick two stops, turn the axis and change the space they blend in: red to green \
+                 through linear RGB passes a muddy midpoint Oklab avoids.",
+            );
+            let id = WidgetId::from_hash("showcase::gradients::live");
+            ui.with_state::<LiveGradient, _>(id, |ui, l| {
+                support::row(ui, |ui| {
+                    ColorButton::new(ColorPicker::new(&mut l.from))
+                        .id_salt("from")
+                        .show(ui);
+                    ColorButton::new(ColorPicker::new(&mut l.to))
+                        .id_salt("to")
+                        .show(ui);
+                    ComboBox::new(&mut l.space, &SPACES)
+                        .size((Sizing::fixed(120.0), Sizing::HUG))
+                        .show(ui);
+                });
+                Knob {
+                    label: "angle",
+                    range: 0.0..=360.0,
+                    step: 5.0,
+                    unit: "°",
+                }
+                .show(ui, k, &mut l.angle);
+                let space = [Interpolation::Linear, Interpolation::Oklab][l.space];
+                let brush = LinearGradient::two_stop((l.angle as f32).to_radians(), l.from, l.to)
+                    .with_interpolation(space);
+                DemoCell::new("the knobs' brush")
+                    .size(360.0, TILE)
+                    .show(ui, k, |ui| gradient_frame(ui, filled(Brush::Linear(brush))));
             });
         });
 }

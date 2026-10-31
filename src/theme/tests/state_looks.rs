@@ -358,7 +358,48 @@ fn bundled_text_inherits_every_axis_but_color() {
         [&bar.title.normal, &bar.title.hovered, &bar.open].map(shade),
         [p.text_muted, p.text, p.text],
     );
-    let flat = ButtonTheme::menu_button(&p, &Metrics::DEFAULT);
+    let flat = ButtonTheme::subtle(&p, &Metrics::DEFAULT);
     assert_eq!(shade(&flat.unselected.disabled), p.text_disabled);
     assert_eq!(shade(&flat.unselected.normal), p.text);
+}
+
+/// The accent button rests on the accent under `on_accent`; hovered and pressed it moves 12 % and
+/// 24 % away from that ink, to white under the dark palette's dark `on_accent` and to black under
+/// the light palette's white, so its label's contrast only rises; disabled and selected it is the
+/// standard button's.
+#[test]
+fn the_accent_button_fills_with_the_accent_and_moves_away_from_its_ink() {
+    for p in [Palette::DARK, Palette::LIGHT] {
+        let stock = ButtonTheme::from_parts(&p, &Metrics::DEFAULT);
+        let accent = ButtonTheme::accent(&p, &Metrics::DEFAULT);
+        let looks = &accent.unselected;
+        let fill = |look: &WidgetLook| look.chrome.fill.as_solid().expect("a solid fill");
+        let away = if p == Palette::DARK { 1.0 } else { 0.0 };
+        let mixed = |t: f32| {
+            RgbaF32::new(
+                p.accent.r + (away - p.accent.r) * t,
+                p.accent.g + (away - p.accent.g) * t,
+                p.accent.b + (away - p.accent.b) * t,
+                1.0,
+            )
+        };
+        assert_eq!(
+            [&looks.normal, &looks.hovered, &looks.active].map(fill),
+            [p.accent, mixed(0.12), mixed(0.24)],
+        );
+        for look in [&looks.normal, &looks.hovered, &looks.active] {
+            assert_eq!(look.text.color, Some(p.on_accent));
+            assert_eq!(
+                look.chrome.border.color,
+                fill(look),
+                "no outline of another color"
+            );
+        }
+        let ratio = |look: &WidgetLook| p.on_accent.contrast_ratio(fill(look));
+        assert!(ratio(&looks.normal) < ratio(&looks.hovered));
+        assert!(ratio(&looks.hovered) < ratio(&looks.active));
+        assert_eq!(looks.disabled, stock.unselected.disabled);
+        assert_eq!(accent.selected, stock.selected);
+        assert_eq!(accent.defaults, stock.defaults);
+    }
 }

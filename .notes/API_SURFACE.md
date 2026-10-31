@@ -196,7 +196,8 @@ ButtonTheme
         pub selected: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn menu_button(p: &Palette, m: &Metrics) -> Self
+        pub fn accent(p: &Palette, m: &Metrics) -> Self
+        pub fn subtle(p: &Palette, m: &Metrics) -> Self
 
 CheckState
     enum CheckState: Clone, Copy, Debug, Eq, From<bool>, PartialEq
@@ -1930,7 +1931,7 @@ SeparatorTheme
         pub thickness: f32
         pub margin: Spacing
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
-        pub fn menu_separator(p: &Palette, m: &Metrics) -> Self
+        pub fn menu(p: &Palette, m: &Metrics) -> Self
 
 Shadow
     struct Shadow: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -2482,6 +2483,7 @@ Theme
         pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
+        pub fn frost_floats(&mut self, p: &Palette, sigma: f32, tint_alpha: f32)
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 

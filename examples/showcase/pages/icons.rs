@@ -8,9 +8,11 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Kit, Section};
+use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::widget::Shape;
-use palantir::{IconHandle, IconSet, IconTable, RgbaF32, Ui, WidgetId};
+use palantir::{
+    ColorButton, ColorPicker, IconHandle, IconSet, IconTable, RgbaF32, Text, Ui, WidgetId,
+};
 use std::rc::Rc;
 
 /// A diskette: several flat fills over a vertical gradient, inside a clip
@@ -112,6 +114,7 @@ impl Icons {
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let icons = Icons::load(ui);
+    live(ui, k, &icons);
 
     Section::new("Sizes")
         .apis(&[
@@ -220,3 +223,57 @@ const SIZES: [(f32, &str); 5] = [
     (48.0, "48 px"),
     (96.0, "96 px"),
 ];
+
+/// The live icon's knobs: its size and its tint.
+#[derive(Debug)]
+struct LiveIcon {
+    size: f64,
+    tint: Option<RgbaF32>,
+}
+
+impl Default for LiveIcon {
+    fn default() -> Self {
+        Self {
+            size: 48.0,
+            tint: None,
+        }
+    }
+}
+
+/// The tintable outline at the size and in the tint the knobs set, rasterized anew at each size.
+fn live(ui: &mut Ui, k: Kit, icons: &Icons) {
+    Section::new("Live icon")
+        .apis(&[api!(type IconSet)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Size the outline and tint it: each size is a raster of its own, never a scaled \
+                 copy, and a single-color icon takes the whole tint.",
+            );
+            let id = WidgetId::from_hash("showcase::icons::live");
+            ui.with_state::<LiveIcon, _>(id, |ui, l| {
+                let mut tint = l.tint.unwrap_or(k.t.ink);
+                support::row(ui, |ui| {
+                    Knob {
+                        label: "size",
+                        range: 12.0..=128.0,
+                        step: 1.0,
+                        unit: " px",
+                    }
+                    .show(ui, k, &mut l.size);
+                    Text::new("tint").style(&k.t.caption()).show(ui);
+                    ColorButton::new(ColorPicker::new(&mut tint)).show(ui);
+                });
+                if tint != l.tint.unwrap_or(k.t.ink) {
+                    l.tint = Some(tint);
+                }
+                let px = l.size as f32;
+                DemoCell::new("the knobs' icon")
+                    .size(px.max(96.0) + 24.0, px + 24.0)
+                    .show(ui, k, |ui| {
+                        Icons::draw(ui, icons.new_file, tint);
+                    });
+            });
+        });
+}

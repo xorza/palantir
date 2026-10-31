@@ -292,7 +292,7 @@ fn a_script_shoots_the_open_popup() {
     let refused = shot::play::<Shell>(gpu.handles(), &unknown, folders(&scratch), &mut Vec::new());
     assert!(matches!(refused, Err(ShotError::Page(_))));
     assert!(
-        refused.unwrap_err().to_string().contains("\"overlays\""),
+        refused.unwrap_err().to_string().contains("\"Overlays\""),
         "an unknown page lists the pages"
     );
 

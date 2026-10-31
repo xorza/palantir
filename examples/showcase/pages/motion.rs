@@ -3,7 +3,7 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::DemoCell;
-use crate::support::{Kit, Section, Swatches};
+use crate::support::{Kit, Knob, Section, Swatches};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{
     AnimationRequest, GlyphFont, IconFit, LineCap, Mesh, PaintAnimation, PaintRepeat, RectShape,
@@ -11,15 +11,28 @@ use palantir::widget::{
 };
 use palantir::{
     AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconHandle, IconSet,
-    IconTable, Image, ImageFit, ImageHandle, Panel, Rect, RgbaF32, Sense, Shadow, Sizing, Stroke,
-    Text, Ui, WidgetId,
+    IconTable, Image, ImageFit, ImageHandle, Metrics, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
+    Stroke, Text, Ui, WidgetId,
 };
 use std::rc::Rc;
 use std::time::Duration;
 
-#[derive(Default, Debug)]
+const M: Metrics = Metrics::DEFAULT;
+
+#[derive(Debug)]
 struct Bars {
     wide: bool,
+    /// The timed bars' duration in milliseconds, which the knob sets.
+    duration_ms: f64,
+}
+
+impl Default for Bars {
+    fn default() -> Self {
+        Self {
+            wide: false,
+            duration_ms: 300.0,
+        }
+    }
 }
 
 const CANVAS_H: f32 = 300.0;
@@ -221,41 +234,59 @@ fn easing(ui: &mut Ui, k: Kit) {
                 ui,
                 k,
                 "Each bar retargets on the same frame through Ui::animate, with an \
-                 AnimationSpec of its own. Click the button to send them all the \
-                 other way.",
+                 AnimationSpec of its own; the timed three share the knob's duration, the \
+                 spring keeps its own. Toggle to send them all the other way.",
             );
-            if Button::new().label("toggle").show(ui).clicked() {
-                ui.with_state::<Bars, _>(demo_id, |_, s| s.wide = !s.wide);
+            if ui.is_motion_reduced() {
+                support::note(
+                    ui,
+                    k,
+                    "The system asks for reduced motion, so every bar snaps to its end: \
+                     Ui::animate honors it for the whole app.",
+                );
             }
-            let target = if ui.state::<Bars>(demo_id).is_some_and(|s| s.wide) {
-                420.0
-            } else {
-                80.0
-            };
-            for bar in [
-                Bar {
-                    key: "linear-200",
-                    label: "linear 200 ms",
-                    spec: AnimationSpec::duration(Duration::from_millis(200), Easing::Linear),
-                },
-                Bar {
-                    key: "out-cubic-200",
-                    label: "out-cubic 200 ms",
-                    spec: AnimationSpec::duration(Duration::from_millis(200), Easing::OutCubic),
-                },
-                Bar {
-                    key: "out-back-300",
-                    label: "out-back 300 ms — overshoots",
-                    spec: AnimationSpec::duration(Duration::from_millis(300), Easing::OutBack),
-                },
-                Bar {
-                    key: "spring-soft",
-                    label: "soft spring",
-                    spec: AnimationSpec::SPRING,
-                },
-            ] {
-                bar.show(ui, k, target);
-            }
+            ui.with_state::<Bars, _>(demo_id, |ui, s| {
+                support::row(ui, |ui| {
+                    if Button::new().label("Toggle").show(ui).clicked() {
+                        s.wide = !s.wide;
+                    }
+                    Knob {
+                        label: "duration",
+                        range: 100.0..=2000.0,
+                        step: 50.0,
+                        unit: " ms",
+                    }
+                    .show(ui, k, &mut s.duration_ms);
+                });
+                let target = if s.wide { 420.0 } else { 80.0 };
+                let duration = Duration::from_secs_f64(s.duration_ms / 1000.0);
+                support::well(ui, k, |ui| {
+                    for bar in [
+                        Bar {
+                            key: "linear",
+                            label: "linear",
+                            spec: AnimationSpec::duration(duration, Easing::Linear),
+                        },
+                        Bar {
+                            key: "out-cubic",
+                            label: "out-cubic",
+                            spec: AnimationSpec::duration(duration, Easing::OutCubic),
+                        },
+                        Bar {
+                            key: "out-back",
+                            label: "out-back — overshoots",
+                            spec: AnimationSpec::duration(duration, Easing::OutBack),
+                        },
+                        Bar {
+                            key: "spring-soft",
+                            label: "soft spring",
+                            spec: AnimationSpec::SPRING,
+                        },
+                    ] {
+                        bar.show(ui, k, target);
+                    }
+                });
+            });
         });
 }
 
@@ -277,7 +308,7 @@ impl Bar {
         Panel::hstack()
             .id_salt(self.key)
             .size((Sizing::FILL, Sizing::HUG))
-            .gap(10.0)
+            .gap(M.space.md)
             .show(ui, |ui| {
                 Block::new()
                     .id(id)

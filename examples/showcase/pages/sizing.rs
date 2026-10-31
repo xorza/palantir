@@ -7,13 +7,16 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{Col, Kit, Section};
+use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Align, Block, Configure, HAlign, Justify, Panel, RgbaF32, Sizing, Spacing, Ui, VAlign,
-    Visibility,
+    Align, Block, ComboBox, Configure, HAlign, Justify, Metrics, Panel, RgbaF32, Sizing, Spacing,
+    Text, Ui, VAlign, Visibility, WidgetId,
 };
 
+const M: Metrics = Metrics::DEFAULT;
+
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
+    playground(ui, k);
     support::cols(ui, |ui, col| match col {
         Col::Left => {
             sizing(ui, k);
@@ -277,4 +280,112 @@ fn aligned_chip(c: RgbaF32, align: Align) -> Block {
     support::swatch(c)
         .size((Sizing::fixed(56.0), Sizing::fixed(24.0)))
         .align(align)
+}
+
+/// The sizings a playground child picks among.
+const SIZINGS: [&str; 3] = ["Fixed 80", "Hug", "Fill"];
+const JUSTIFIES: [&str; 5] = ["Start", "Center", "End", "SpaceBetween", "SpaceAround"];
+
+/// The playground's knobs: each child's sizing, and the row's padding, gap and justification.
+#[derive(Debug)]
+struct Playground {
+    sizing: [usize; 3],
+    padding: f64,
+    gap: f64,
+    justify: usize,
+}
+
+impl Default for Playground {
+    fn default() -> Self {
+        Self {
+            sizing: [0, 1, 2],
+            padding: 8.0,
+            gap: 8.0,
+            justify: 0,
+        }
+    }
+}
+
+/// Three children in one row, each with a sizing of its own, under the row's padding, gap and
+/// justification: every knob of the sections below on one stage.
+fn playground(ui: &mut Ui, k: Kit) {
+    Section::new("Playground")
+        .apis(&[api!(type Sizing), api!(Panel::justify)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Pick each child's sizing and the row's padding, gap and justification. Fill \
+                 children share what is left, so Justify moves only what Fill leaves unclaimed.",
+            );
+            let id = WidgetId::from_hash("showcase::sizing::playground");
+            ui.with_state::<Playground, _>(id, |ui, p| {
+                support::row(ui, |ui| {
+                    for (i, (sizing, name)) in p.sizing.iter_mut().zip(["A", "B", "C"]).enumerate()
+                    {
+                        Text::new(name).style(&k.t.caption()).show(ui);
+                        ComboBox::new(sizing, &SIZINGS)
+                            .id_salt(("sizing", i))
+                            .size((Sizing::fixed(110.0), Sizing::HUG))
+                            .show(ui);
+                    }
+                    Text::new("justify").style(&k.t.caption()).show(ui);
+                    ComboBox::new(&mut p.justify, &JUSTIFIES)
+                        .id_salt("justify")
+                        .size((Sizing::fixed(140.0), Sizing::HUG))
+                        .show(ui);
+                });
+                support::row(ui, |ui| {
+                    Knob {
+                        label: "padding",
+                        range: 0.0..=40.0,
+                        step: 2.0,
+                        unit: " px",
+                    }
+                    .show(ui, k, &mut p.padding);
+                    Knob {
+                        label: "gap",
+                        range: 0.0..=40.0,
+                        step: 2.0,
+                        unit: " px",
+                    }
+                    .show(ui, k, &mut p.gap);
+                });
+                let justify = [
+                    Justify::Start,
+                    Justify::Center,
+                    Justify::End,
+                    Justify::SpaceBetween,
+                    Justify::SpaceAround,
+                ][p.justify];
+                Panel::hstack()
+                    .id_salt("playground row")
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .padding(p.padding as f32)
+                    .gap(p.gap as f32)
+                    .justify(justify)
+                    .chrome(k.t.card())
+                    .show(ui, |ui| {
+                        let colors = [k.swatch.teal, k.swatch.orange, k.swatch.violet];
+                        for ((sizing, name), color) in
+                            p.sizing.iter().zip(["A", "B", "C"]).zip(colors)
+                        {
+                            let width = match sizing {
+                                0 => Sizing::fixed(80.0),
+                                1 => Sizing::HUG,
+                                _ => Sizing::FILL,
+                            };
+                            Panel::hstack()
+                                .id_salt(name)
+                                .size((width, Sizing::fixed(36.0)))
+                                .padding((M.space.md, M.space.sm))
+                                .child_align(Align::v(VAlign::Center))
+                                .chrome(support::swatch_chrome(color))
+                                .show(ui, |ui| {
+                                    Text::new(name).style(&support::on_swatch_style()).show(ui);
+                                });
+                        }
+                    });
+            });
+        });
 }

@@ -207,7 +207,7 @@ mod tests {
         let look = Appearance::new();
         let source = look.rust_source(ColorScheme::Dark);
         assert!(source.starts_with("Palette {\n    text: RgbaF32::hex(0xebebeb),\n"));
-        assert!(source.contains("    accent: RgbaF32::hex(0x44b5ff),\n"));
+        assert!(source.contains("    accent: RgbaF32::hex(0xd1ff02),\n"));
         assert!(source.contains("    shadow: RgbaF32::hexa(0x00000080),\n"));
         assert!(
             source.contains("    text: TextSteps { caption: 12.0, body: 14.0, title: 16.0 },\n")

@@ -2,10 +2,10 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Kit, Section};
+use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::{
     Align, Block, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
-    Stroke, Text, Track, Ui,
+    Stroke, Text, Track, Ui, WidgetId,
 };
 use std::hash::Hash;
 
@@ -62,15 +62,34 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 "Children flow along the main axis and wrap when the next one would not fit. \
                  The gap spaces siblings in a line, and the line gap spaces the lines.",
             );
-            Panel::wrap_hstack()
-                .size((Sizing::FILL, Sizing::HUG))
-                .gap(8.0)
-                .line_gap(8.0)
-                .show(ui, |ui| {
-                    for (i, t) in TAGS.iter().enumerate() {
-                        chip(ui, k, ("tag", i), t);
-                    }
+            let knobs = WidgetId::from_hash("showcase::containers::wrap");
+            ui.with_state::<WrapKnobs, _>(knobs, |ui, w| {
+                Knob {
+                    label: "gap",
+                    range: 0.0..=32.0,
+                    step: 2.0,
+                    unit: " px",
+                }
+                .show(ui, k, &mut w.gap);
+                Knob {
+                    label: "line gap",
+                    range: 0.0..=32.0,
+                    step: 2.0,
+                    unit: " px",
+                }
+                .show(ui, k, &mut w.line_gap);
+                support::well(ui, k, |ui| {
+                    Panel::wrap_hstack()
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .gap(w.gap as f32)
+                        .line_gap(w.line_gap as f32)
+                        .show(ui, |ui| {
+                            for (i, t) in TAGS.iter().enumerate() {
+                                chip(ui, k, ("tag", i), t);
+                            }
+                        });
                 });
+            });
         });
 
     Section::new("Wrap axis")
@@ -169,6 +188,22 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     });
             });
         });
+}
+
+/// The wrapping flow's knobs.
+#[derive(Debug)]
+struct WrapKnobs {
+    gap: f64,
+    line_gap: f64,
+}
+
+impl Default for WrapKnobs {
+    fn default() -> Self {
+        Self {
+            gap: 8.0,
+            line_gap: 8.0,
+        }
+    }
 }
 
 const TAGS: &[&str] = &[

@@ -1,4 +1,4 @@
 // The workspace study in the light scheme.
 scheme light
-page "workspace"
+page "Workspace"
 shot workspace_light

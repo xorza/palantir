@@ -4,6 +4,7 @@
 
 use crate::support;
 use crate::support::Kit;
+use palantir::glam::Vec2;
 use palantir::{
     Button, Chrome, Configure, Corners, Metrics, Panel, Scroll, Sizing, SplitHalf, Splitter,
     Stroke, Text, Ui, WidgetId, fmt,
@@ -30,6 +31,11 @@ impl Default for State {
             clicked: None,
         }
     }
+}
+
+/// The zoomable pane's id, which the zoom readout and Reset view address.
+fn grid_id() -> WidgetId {
+    WidgetId::from_hash("showcase::scroll::grid")
 }
 
 /// A button's place in the zoomable grid.
@@ -75,6 +81,7 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
                         }),
                         SplitHalf::Second => pane(ui, k, "two-axis, zoomable", |ui| {
                             Scroll::both()
+                                .id(grid_id())
                                 .zoomable()
                                 .size((Sizing::FILL, Sizing::FILL))
                                 .show(ui, |ui| grid(ui, &mut clicked));
@@ -94,6 +101,12 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
             None => ui.intern("— click a button to check hit-testing through the zoom"),
         };
         support::readout(ui, k, "last click", click);
+        let zoom = fmt!(ui, "{:.2}×", Scroll::zoom(ui, grid_id()));
+        support::readout(ui, k, "zoom", zoom);
+        if Button::new().label("Reset view").show(ui).clicked() {
+            Scroll::set_zoom(ui, grid_id(), 1.0);
+            Scroll::set_offset(ui, grid_id(), Vec2::ZERO);
+        }
     });
 }
 

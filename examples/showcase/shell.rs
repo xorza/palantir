@@ -38,6 +38,9 @@ const M: Metrics = Metrics::DEFAULT;
 const SEARCH: &str = "showcase::rail::search";
 /// The rail's scrolling list, which an item scrolls into view in.
 const LIST: &str = "showcase::rail::list";
+/// The widest a scrolling page's content runs, so a wide window does not strand its stages on
+/// the left and stretch its rows to the right.
+const COLUMN: f32 = 1040.0;
 /// The edge of an accent swatch in the rail's footer.
 const SWATCH: f32 = 20.0;
 
@@ -123,25 +126,25 @@ macro_rules! source {
 const PAGES: &[Page] = &[
     Page {
         group: Group::Widgets,
-        label: "controls",
+        label: "Controls",
         blurb: "Form controls wired together, button themes, and disclosure sections.",
         keys: &["click", "drag", "Space", "←→"],
         flow: Flow::Scroll,
         source: source!(controls),
-        build: |ui, _, k| pages::controls::build(ui, k),
+        build: |ui, app, k| pages::controls::build(ui, k, &app.appearance),
     },
     Page {
         group: Group::Widgets,
-        label: "colors",
+        label: "Colors",
         blurb: "The color picker, its parts on their own, and the chip that opens it.",
         keys: &["drag", "Esc"],
         flow: Flow::Scroll,
         source: source!(colors),
-        build: |ui, _, k| pages::colors::build(ui, k),
+        build: |ui, app, k| pages::colors::build(ui, k, &mut app.appearance),
     },
     Page {
         group: Group::Widgets,
-        label: "tabs",
+        label: "Tabs",
         blurb: "A page view bound to an index, the chip strip on its own, and overflow.",
         keys: &["←→", "Home", "End", "Ctrl+Tab", "wheel"],
         flow: Flow::Scroll,
@@ -150,7 +153,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Widgets,
-        label: "dock",
+        label: "Dock",
         blurb: "Tabbed panes that split, join and resize by drag.",
         keys: &["drag chip", "drag divider", "right-click"],
         flow: Flow::Fill,
@@ -159,7 +162,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Widgets,
-        label: "custom widget",
+        label: "Custom widget",
         blurb: "A widget written against the public authoring API and nothing else.",
         keys: &["click", "Tab", "↑↓"],
         flow: Flow::Scroll,
@@ -168,16 +171,16 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Widgets,
-        label: "overlays",
+        label: "Overlays",
         blurb: "Popups, anchors, a modal, tooltips, context menus and a menu bar, above the main tree.",
         keys: &["click", "hover", "right-click", "Esc"],
         flow: Flow::Scroll,
         source: source!(overlays),
-        build: |ui, _, k| pages::overlays::build(ui, k),
+        build: |ui, app, k| pages::overlays::build(ui, k, &mut app.appearance),
     },
     Page {
         group: Group::Input,
-        label: "text input",
+        label: "Text input",
         blurb: "Single- and multi-line editors, the edges they report, and IME composition.",
         keys: &["type", "Enter", "Esc", "Shift+arrows", "IME"],
         flow: Flow::Scroll,
@@ -186,7 +189,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Input,
-        label: "focus & keyboard",
+        label: "Focus & keyboard",
         blurb: "Tab traversal, the focus ring, arrow groups, and focus that stays inside an overlay.",
         keys: &["Tab", "Shift+Tab", "←→↑↓", "Enter", "Space", "Esc"],
         flow: Flow::Scroll,
@@ -195,7 +198,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Layout,
-        label: "sizing & spacing",
+        label: "Sizing & spacing",
         blurb: "Sizing, justification, alignment, padding, margin, gap and visibility.",
         keys: &[],
         flow: Flow::Scroll,
@@ -204,7 +207,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Layout,
-        label: "containers",
+        label: "Containers",
         blurb: "Stacks, wrapping flow, and grid tracks.",
         keys: &["resize window"],
         flow: Flow::Scroll,
@@ -213,16 +216,16 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Layout,
-        label: "text",
+        label: "Text",
         blurb: "Wrapping, and text inside Hug and Fill layouts.",
-        keys: &["resize window"],
+        keys: &["drag"],
         flow: Flow::Scroll,
         source: source!(text),
         build: |ui, _, k| pages::text::build(ui, k),
     },
     Page {
         group: Group::Layout,
-        label: "clip & transform",
+        label: "Clip & transform",
         blurb: "Clip modes against an overflowing child, and transforms on whole subtrees.",
         keys: &[],
         flow: Flow::Scroll,
@@ -231,7 +234,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Layout,
-        label: "scroll & zoom",
+        label: "Scroll & zoom",
         blurb: "Scroll viewports on three axes in resizable splitter panes; the two-axis one zooms \
                 about the pointer.",
         keys: &[
@@ -247,7 +250,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
-        label: "shapes",
+        label: "Shapes",
         blurb: "SDF triangles, raw meshes, and the windowed rect.",
         keys: &[],
         flow: Flow::Scroll,
@@ -256,7 +259,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
-        label: "strokes",
+        label: "Strokes",
         blurb: "Lines, polylines, béziers and arcs: widths, joins, caps and color.",
         keys: &[],
         flow: Flow::Scroll,
@@ -265,7 +268,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
-        label: "gradients",
+        label: "Gradients",
         blurb: "Linear, radial and conic brushes, spread modes and interpolation spaces.",
         keys: &[],
         flow: Flow::Scroll,
@@ -274,7 +277,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
-        label: "shadows",
+        label: "Shadows",
         blurb: "Drop and inset shadows, as shapes and as widget chrome.",
         keys: &[],
         flow: Flow::Scroll,
@@ -283,7 +286,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
-        label: "materials",
+        label: "Materials",
         blurb: "Backdrop filters: blur, frosted glass and glass, as shapes and as chrome.",
         keys: &[],
         flow: Flow::Scroll,
@@ -292,7 +295,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
-        label: "icons",
+        label: "Icons",
         blurb: "SVG icons rasterized at the exact physical size they land on.",
         keys: &["Ctrl +", "Ctrl −"],
         flow: Flow::Scroll,
@@ -301,7 +304,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Paint,
-        label: "images",
+        label: "Images",
         blurb: "Fit modes, tint, tiling, and sampling under magnification and minification.",
         keys: &[],
         flow: Flow::Scroll,
@@ -310,7 +313,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Runtime,
-        label: "motion",
+        label: "Motion",
         blurb: "Easing curves, and drag handling with no tracking code.",
         keys: &["click", "drag"],
         flow: Flow::Scroll,
@@ -319,7 +322,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Runtime,
-        label: "gpu view",
+        label: "GPU view",
         blurb: "Raw wgpu inside a widget, composited as an ordinary image.",
         keys: &["drag"],
         flow: Flow::Fill,
@@ -328,7 +331,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Runtime,
-        label: "app & windows",
+        label: "App & windows",
         blurb: "App state passed through the record closure, a second OS window that shares it, \
                 and a window close the app can veto.",
         keys: &["F8", "close window"],
@@ -338,7 +341,7 @@ const PAGES: &[Page] = &[
     },
     Page {
         group: Group::Diagnostics,
-        label: "frame bench",
+        label: "Frame bench",
         blurb: "The workload the frame benchmark records, drawn live. Nothing animates.",
         keys: &[],
         flow: Flow::Fill,
@@ -381,7 +384,7 @@ impl Shell {
                 self.card(ui, k);
             });
 
-        pages::windows::intercept(ui, MAIN_WINDOW);
+        pages::windows::intercept(ui, k, &self.app.appearance);
         // An edit made in this frame builds its theme now; palantir asks for the frame that
         // shows it, which no input may otherwise wake.
         self.app.appearance.apply(ui);
@@ -546,10 +549,15 @@ impl Shell {
                             .id_salt(page.label)
                             .size((Sizing::FILL, Sizing::FILL))
                             .overlay_bars()
-                            .gap(PAGE_GAP)
                             // Keeps the overlay bar off the page's right edge.
                             .padding((0.0, 0.0, M.space.lg, 0.0))
-                            .show(ui, |ui| (page.build)(ui, &mut self.app, k));
+                            .show(ui, |ui| {
+                                Panel::vstack()
+                                    .size((Sizing::FILL, Sizing::HUG))
+                                    .max_size((COLUMN, f32::INFINITY))
+                                    .gap(PAGE_GAP)
+                                    .show(ui, |ui| (page.build)(ui, &mut self.app, k));
+                            });
                     }
                     Flow::Fill => {
                         Panel::vstack()
@@ -807,8 +815,8 @@ mod tests {
     }
 
     /// A query finds a page by its label or its blurb, ASCII case ignored and other letters as
-    /// they are: "WINDOW" finds app & windows by its label and shapes by "windowed rect" in its
-    /// blurb; "béz" finds strokes' "béziers"; the empty query finds every page.
+    /// they are: "WINDOW" finds App & windows by its label and Shapes by "windowed rect" in its
+    /// blurb; "béz" finds Strokes' "béziers"; the empty query finds every page.
     #[test]
     fn a_query_finds_pages_by_label_or_blurb() {
         let found = |query: &str| -> Vec<&str> {
@@ -819,9 +827,9 @@ mod tests {
                 .collect()
         };
         assert_eq!(found("").len(), PAGES.len());
-        assert_eq!(found("WINDOW"), ["shapes", "app & windows"]);
-        assert_eq!(found("grad"), ["gradients"]);
-        assert_eq!(found("béz"), ["strokes"]);
+        assert_eq!(found("WINDOW"), ["Shapes", "App & windows"]);
+        assert_eq!(found("grad"), ["Gradients"]);
+        assert_eq!(found("béz"), ["Strokes"]);
         assert_eq!(found("BÉZ"), Vec::<&str>::new(), "only ASCII letters fold");
         assert_eq!(found("no such page"), Vec::<&str>::new());
     }
@@ -844,11 +852,11 @@ mod tests {
 
         h.key(alt(Key::ArrowDown));
         settle(&mut h, &mut shell);
-        assert_eq!(label(&shell), "colors");
+        assert_eq!(label(&shell), "Colors");
         h.key(alt(Key::ArrowUp));
         h.key(alt(Key::ArrowUp));
         settle(&mut h, &mut shell);
-        assert_eq!(label(&shell), "controls", "nothing before the first page");
+        assert_eq!(label(&shell), "Controls", "nothing before the first page");
 
         h.key(Shortcut::ctrl('K'));
         settle(&mut h, &mut shell);
@@ -856,7 +864,7 @@ mod tests {
         h.type_text("window");
         h.key(Key::Enter);
         settle(&mut h, &mut shell);
-        assert_eq!(label(&shell), "shapes", "Enter opens the first page found");
+        assert_eq!(label(&shell), "Shapes", "Enter opens the first page found");
         assert_eq!(
             h.ui().focus(),
             Some(PAGES[13].item_id()),
@@ -866,14 +874,14 @@ mod tests {
         settle(&mut h, &mut shell);
         assert_eq!(
             label(&shell),
-            "app & windows",
+            "App & windows",
             "the next found, past the rest"
         );
         h.key(alt(Key::ArrowDown));
         settle(&mut h, &mut shell);
         assert_eq!(
             label(&shell),
-            "app & windows",
+            "App & windows",
             "nothing past the last found"
         );
 
@@ -934,7 +942,7 @@ mod tests {
         let before = Scroll::offset(h.ui(), list).y;
         h.key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
         h.settle(&mut shell).expect("the frames settle");
-        assert_eq!(label(&shell), "frame bench");
+        assert_eq!(label(&shell), "Frame bench");
         assert!(Scroll::offset(h.ui(), list).y > before, "the list scrolled");
         assert_eq!(shown(&mut h), Some(28.0), "the whole item shows");
     }

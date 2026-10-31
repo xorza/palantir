@@ -1,8 +1,11 @@
 use std::fmt::Write as _;
 
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::Theme;
+use crate::theme::button::ButtonTheme;
 use crate::theme::color_scheme::ColorScheme;
+use crate::theme::look::WidgetLook;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
@@ -35,6 +38,8 @@ fn pairs(p: &Palette) -> Vec<Pair> {
         floor,
     };
     let selection = TextEditTheme::from_parts(p, &Metrics::DEFAULT).selection;
+    let accent_button = ButtonTheme::accent(p, &Metrics::DEFAULT).unselected;
+    let fill = |look: &WidgetLook| look.chrome.fill.as_solid().expect("a solid fill");
     let wash = p.element_mid.mix(selection.with_alpha(1.0), selection.a);
     vec![
         pair("text on window_bg", p.text, p.window_bg, TEXT),
@@ -56,6 +61,19 @@ fn pairs(p: &Palette) -> Vec<Pair> {
         ),
         // A check mark, a radio's dot, an on switch's knob.
         pair("on_accent on accent", p.on_accent, p.accent, TEXT),
+        // An accent button's label, hovered and pressed.
+        pair(
+            "on_accent on the hovered accent button",
+            p.on_accent,
+            fill(&accent_button.hovered),
+            TEXT,
+        ),
+        pair(
+            "on_accent on the pressed accent button",
+            p.on_accent,
+            fill(&accent_button.active),
+            TEXT,
+        ),
         pair(
             "border_focused on window_bg",
             p.border_focused,
@@ -149,4 +167,91 @@ fn stock_themes_wear_their_scheme_palette() {
     );
     assert_eq!(Theme::default(), Theme::stock(ColorScheme::Dark));
     assert_ne!(light, Theme::default());
+}
+
+/// `frost_floats` frosts exactly the four floating surfaces: each keeps its fill's color at the
+/// tint's alpha, over a frosted filter whose bound holds its weakest ink (muted on a menu and the
+/// picker, full on a tooltip and the modal), a ceiling under the dark palette's light inks and a
+/// floor under the light palette's dark ones; every other slot is as `from_parts` built it.
+#[test]
+fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
+    for scheme in [ColorScheme::Dark, ColorScheme::Light] {
+        let p = Palette::for_scheme(scheme);
+        let stock = Theme::from_parts(p, &Metrics::DEFAULT);
+        let mut frosted = stock.clone();
+        frosted.frost_floats(p, 20.0, 0.6);
+        let panels = |theme: &Theme| {
+            [
+                theme.context_menu.panel.clone(),
+                theme.color_picker.popup.clone(),
+                theme.tooltip.panel.clone(),
+                theme.modal.panel.clone(),
+            ]
+        };
+        let inks = [p.text_muted, p.text_muted, p.text, p.text];
+        for ((before, after), ink) in panels(&stock).into_iter().zip(panels(&frosted)).zip(inks) {
+            let tint = before
+                .fill
+                .as_solid()
+                .expect("a solid fill")
+                .with_alpha(0.6);
+            assert_eq!(after.fill.as_solid(), Some(tint), "{scheme:?}");
+            let filter = BackdropFilter::frosted(20.0);
+            let want = match scheme {
+                ColorScheme::Dark => filter.with_max_luminance_for(ink, tint),
+                ColorScheme::Light => filter.with_min_luminance_for(ink, tint),
+            };
+            assert_eq!(after.backdrop_filter, want, "{scheme:?}");
+            assert_eq!(after.border, before.border);
+            assert_eq!(after.shadow, before.shadow);
+        }
+        frosted.context_menu.panel = stock.context_menu.panel.clone();
+        frosted.color_picker.popup = stock.color_picker.popup.clone();
+        frosted.tooltip.panel = stock.tooltip.panel.clone();
+        frosted.modal.panel = stock.modal.panel.clone();
+        assert_eq!(frosted, stock, "{scheme:?}: nothing else moved");
+    }
+}
+
+/// A blur that is no length, and a tint the glass could not see through, are refused.
+#[test]
+fn frost_floats_refuses_a_bad_blur_or_tint() {
+    let p = &Palette::DARK;
+    for (sigma, alpha, rule) in [
+        (-1.0, 0.6, "a length must"),
+        (20.0, 1.0, "a fraction under 1"),
+    ] {
+        let panic = std::panic::catch_unwind(|| {
+            Theme::from_parts(p, &Metrics::DEFAULT).frost_floats(p, sigma, alpha);
+        })
+        .expect_err("refused");
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .unwrap_or_default();
+        assert!(message.contains(rule), "{sigma}, {alpha}: {message}");
+    }
+}
+
+/// The selection wash takes the most of the accent that keeps the text at 4.5:1 over a field, up
+/// to 61/255: the dark palette's lime takes 27 (the wash at 27 holds 4.557:1, at 28 4.485:1), the
+/// old blue `#44b5ff` all 61 (4.527:1; 62 would read 4.495:1).
+#[test]
+fn the_selection_wash_takes_what_the_text_allows() {
+    let alpha = |accent: RgbaF32| {
+        let p = Palette {
+            accent,
+            ..Palette::DARK
+        };
+        TextEditTheme::from_parts(&p, &Metrics::DEFAULT).selection
+    };
+    assert_eq!(
+        alpha(RgbaF32::hex(0xd1ff02)),
+        RgbaF32::hex(0xd1ff02).with_alpha8(27)
+    );
+    assert_eq!(
+        alpha(RgbaF32::hex(0x44b5ff)),
+        RgbaF32::hex(0x44b5ff).with_alpha8(61)
+    );
 }

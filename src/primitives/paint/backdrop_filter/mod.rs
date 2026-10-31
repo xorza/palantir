@@ -45,8 +45,8 @@
 
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 use palantir_anim_derive::Animatable;
 
 /// A pane's backdrop filter: the pixels painted before it in paint order, blurred, saturated and
@@ -377,10 +377,6 @@ impl Default for Lens {
         }
     }
 }
-
-/// The contrast WCAG 1.4.3 asks of text against its ground
-/// (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>).
-const TEXT_CONTRAST: f32 = 4.5;
 
 /// The linear level where the sRGB curve's linear toe ends and its power segment starts.
 const SRGB_TOE: f32 = 0.003_130_8;

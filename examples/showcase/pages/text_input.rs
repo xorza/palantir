@@ -7,13 +7,15 @@ use crate::support;
 use crate::support::{Kit, Section};
 use palantir::widget::Span;
 use palantir::{
-    Align, Configure, EditEnd, HAlign, Sizing, Text, TextEdit, TextEditResponse, Ui, VAlign,
-    WidgetId, fmt,
+    Align, Button, Configure, EditEnd, EditableLabel, HAlign, Sizing, Text, TextEdit,
+    TextEditResponse, Ui, VAlign, WidgetId, fmt,
 };
 
 #[derive(Debug)]
 struct Page {
     a: String,
+    /// The name the editable label shows and edits.
+    layer: String,
     b: String,
     events_field: String,
     events: EventLog,
@@ -31,6 +33,7 @@ impl Default for Page {
     fn default() -> Self {
         Self {
             a: String::new(),
+            layer: String::from("Layer 1"),
             b: String::new(),
             events_field: String::from("edit me"),
             events: EventLog::default(),
@@ -111,22 +114,70 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 
 fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("Single line")
-        .apis(&[api!(TextEdit::new)])
+        .apis(&[api!(TextEdit::new), api!(Ui::clipboard)])
         .show(ui, k, |ui| {
-            support::row(ui, |ui| {
-                for (buf, hint) in [(&mut s.a, "first field"), (&mut s.b, "second field")] {
-                    TextEdit::new(buf)
-                        .id_salt(hint)
-                        .placeholder(hint)
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .max_size((320.0, f32::INFINITY))
-                        .show(ui);
-                }
+            support::note(
+                ui,
+                k,
+                "Two fields over two Strings, and the app's clipboard between them: copy the \
+                 first, paste into the second.",
+            );
+            support::well(ui, k, |ui| {
+                support::row(ui, |ui| {
+                    for (buf, hint) in [(&mut s.a, "first field"), (&mut s.b, "second field")] {
+                        TextEdit::new(buf)
+                            .id_salt(hint)
+                            .placeholder(hint)
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .max_size((320.0, f32::INFINITY))
+                            .show(ui);
+                    }
+                });
+                support::row(ui, |ui| {
+                    if Button::new().label("Copy the first").show(ui).clicked() {
+                        ui.clipboard().set_text(&s.a).ok();
+                    }
+                    if Button::new()
+                        .label("Paste into the second")
+                        .show(ui)
+                        .clicked()
+                        && let Ok(text) = ui.clipboard().text()
+                    {
+                        s.b = text;
+                    }
+                });
+                let a = fmt!(ui, "{:?} ({} bytes)", s.a, s.a.len());
+                support::readout(ui, k, "first", a);
+                let b = fmt!(ui, "{:?} ({} bytes)", s.b, s.b.len());
+                support::readout(ui, k, "second", b);
             });
-            let a = fmt!(ui, "{:?} ({} bytes)", s.a, s.a.len());
-            support::readout(ui, k, "first", a);
-            let b = fmt!(ui, "{:?} ({} bytes)", s.b, s.b.len());
-            support::readout(ui, k, "second", b);
+        });
+
+    Section::new("Rename in place")
+        .apis(&[api!(type EditableLabel), api!(EditableLabel::edit)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "A label that turns into a field: double-click it, or press Rename. Enter keeps \
+                 the new name, Escape the old one.",
+            );
+            support::well(ui, k, |ui| {
+                support::row(ui, |ui| {
+                    let label = WidgetId::from_hash("showcase::text_input::rename");
+                    let renamed = EditableLabel::new(s.layer.as_str())
+                        .id(label)
+                        .size((Sizing::fixed(220.0), Sizing::HUG))
+                        .show(ui)
+                        .committed_text;
+                    if let Some(name) = renamed {
+                        s.layer = name;
+                    }
+                    if Button::new().label("Rename").show(ui).clicked() {
+                        EditableLabel::edit(ui, label);
+                    }
+                });
+            });
         });
 
     Section::new("Edit events")
@@ -187,19 +238,21 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                 "The text, and the caret with it, sit where text_align puts them in an editor \
                  taller and wider than its line.",
             );
-            support::row(ui, |ui| {
-                for (i, (buf, h)) in s
-                    .aligned
-                    .iter_mut()
-                    .zip([HAlign::Left, HAlign::Center, HAlign::Right])
-                    .enumerate()
-                {
-                    TextEdit::new(buf)
-                        .id_salt(i)
-                        .text_align(Align::new(h, VAlign::Center))
-                        .size((Sizing::fill(1.0), Sizing::fixed(56.0)))
-                        .show(ui);
-                }
+            support::well(ui, k, |ui| {
+                support::row(ui, |ui| {
+                    for (i, (buf, h)) in s
+                        .aligned
+                        .iter_mut()
+                        .zip([HAlign::Left, HAlign::Center, HAlign::Right])
+                        .enumerate()
+                    {
+                        TextEdit::new(buf)
+                            .id_salt(i)
+                            .text_align(Align::new(h, VAlign::Center))
+                            .size((Sizing::fill(1.0), Sizing::fixed(56.0)))
+                            .show(ui);
+                    }
+                });
             });
         });
 

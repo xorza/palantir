@@ -1,24 +1,46 @@
-//! Text measurement and wrapping. The left column is single-text wrapping in fixed-width containers (`TextWrap::WrapWithOverflow` and the intrinsic-min overflow rule); the right is composition: Grid Auto under constraint, a property grid, and a chat row whose Fill message column reflows live.
+//! Text measurement and wrapping. The left column is single-text wrapping in a box the knobs size (`TextWrap::WrapWithOverflow` and the intrinsic-min overflow rule); the right is composition: Grid Auto under constraint, a property grid, and a chat row whose Fill message column reflows live.
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{Col, Kit, Section};
+use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Block, Chrome, Configure, Corners, Grid, Panel, RgbaF32, Sizing, Text, TextWrap, Track, Ui,
+    Block, Chrome, Configure, Corners, Grid, Metrics, Panel, RgbaF32, Sizing, Text, TextWrap,
+    Track, Ui, WidgetId,
 };
+
+const M: Metrics = Metrics::DEFAULT;
 
 const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
     How vexingly quick daft zebras jump!";
 
+/// The wrapping demo's knobs.
+#[derive(Debug)]
+struct State {
+    width: f64,
+    font_size: f64,
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            width: 240.0,
+            font_size: f64::from(M.text.body),
+        }
+    }
+}
+
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
-    support::cols(ui, |ui, col| match col {
-        Col::Left => wrapping(ui, k),
-        Col::Right => compositions(ui, k),
+    let state_id = WidgetId::from_hash("showcase::text::state");
+    ui.with_state::<State, _>(state_id, |ui, s| {
+        support::cols(ui, |ui, col| match col {
+            Col::Left => wrapping(ui, k, s),
+            Col::Right => compositions(ui, k),
+        });
     });
 }
 
-fn wrapping(ui: &mut Ui, k: Kit) {
+fn wrapping(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Single line")
         .apis(&[api!(type Text)])
         .show(ui, k, |ui| {
@@ -31,16 +53,30 @@ fn wrapping(ui: &mut Ui, k: Kit) {
     Section::new("Wrapping")
         .apis(&[api!(Text::text_wrap)])
         .show(ui, k, |ui| {
-            support::note(ui, k, "The same paragraph at 360 and 140 px.");
-            WrapPanel {
-                id: "wide-inner",
-                width: 360.0,
-                text: PARAGRAPH,
+            support::note(
+                ui,
+                k,
+                "A paragraph in a box of the width and at the size the knobs set: it wraps \
+                 again between words as either moves.",
+            );
+            Knob {
+                label: "width",
+                range: 60.0..=480.0,
+                step: 10.0,
+                unit: " px",
             }
-            .show(ui, k);
+            .show(ui, k, &mut s.width);
+            Knob {
+                label: "font size",
+                range: 10.0..=24.0,
+                step: 1.0,
+                unit: " px",
+            }
+            .show(ui, k, &mut s.font_size);
             WrapPanel {
-                id: "narrow-inner",
-                width: 140.0,
+                id: "live",
+                width: s.width as f32,
+                font_size: s.font_size as f32,
                 text: PARAGRAPH,
             }
             .show(ui, k);
@@ -58,17 +94,19 @@ fn wrapping(ui: &mut Ui, k: Kit) {
             WrapPanel {
                 id: "overflow-inner",
                 width: 40.0,
+                font_size: M.text.body,
                 text: "supercalifragilistic",
             }
             .show(ui, k);
         });
 }
 
-/// `text` wrapping in a well `width` wide.
+/// `text` at `font_size` wrapping in a well `width` wide.
 #[derive(Debug)]
 struct WrapPanel {
     id: &'static str,
     width: f32,
+    font_size: f32,
     text: &'static str,
 }
 
@@ -77,11 +115,11 @@ impl WrapPanel {
         Panel::vstack()
             .id_salt(self.id)
             .size((Sizing::fixed(self.width), Sizing::HUG))
-            .padding(8.0)
+            .padding(M.space.sm)
             .chrome(k.t.card())
             .show(ui, |ui| {
                 Text::new(self.text)
-                    .style(&k.t.body())
+                    .style(&k.t.body().with_font_size(self.font_size))
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
             });

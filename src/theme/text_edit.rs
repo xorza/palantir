@@ -6,7 +6,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 use crate::primitives::paint::stroke::Stroke;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
@@ -101,9 +101,7 @@ impl TextEditTheme {
             .with_border(Stroke::new(p.border_focused, stroke_w));
         let disabled_chrome =
             Chrome::rounded(p.element, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
-        // Selection = accent at 61/255, the most the dark palette's field takes before text over
-        // the wash, blended in linear light, drops under 4.5:1 (`theme/tests/floors.rs`).
-        let selection = p.accent.with_alpha8(61);
+        let selection = selection_wash(p);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
         let normal = WidgetLook {
             chrome: normal_chrome,
@@ -174,4 +172,21 @@ impl Default for TextEditTheme {
     fn default() -> Self {
         Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
+}
+
+/// The most of the accent, in 255ths, a selection wash takes, so a wash stays a tint over the
+/// field under any accent.
+const SELECTION_MAX: u8 = 61;
+
+/// The selection wash: the accent at the most, in 255ths and at most [`SELECTION_MAX`], that keeps
+/// the text at WCAG 4.5:1 over a field's `element_mid` washed with it, blended in linear light as
+/// the composite blends (`theme/tests/floors.rs` holds every palette to it). A light accent
+/// under light ink takes less, as more of it would lift the wash toward the ink.
+fn selection_wash(p: &Palette) -> RgbaF32 {
+    let reads = |a8: u8| {
+        let a = p.accent.with_alpha8(a8).a;
+        p.text.contrast_ratio(p.element_mid.mix(p.accent, a)) >= TEXT_CONTRAST
+    };
+    let a8 = (0..=SELECTION_MAX).rev().find(|&a8| reads(a8)).unwrap_or(0);
+    p.accent.with_alpha8(a8)
 }

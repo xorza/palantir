@@ -4,10 +4,12 @@
 
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{CELL_PADDING, DemoCell, Kit, Section, Surface};
+use crate::support::{CELL_PADDING, DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::widget::{ShadowShape, Shape};
-use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui};
+use palantir::{
+    Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui, WidgetId,
+};
 
 const CARD: Rect = Rect::new(22.0, 28.0, 124.0, 86.0);
 const CARD_INK: RgbaF32 = RgbaF32::hex(0xf2f2f7);
@@ -17,6 +19,7 @@ fn card_corners() -> Corners {
 }
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
+    live(ui, k);
     Section::new("Elevation")
         .apis(&[api!(Shadow::drop)])
         .show(ui, k, |ui| {
@@ -213,4 +216,66 @@ fn chrome_translucent() -> Chrome {
         Vec2::new(0.0, 6.0),
         12.0,
     ))
+}
+
+/// The live shadow's knobs.
+#[derive(Debug)]
+struct LiveShadow {
+    offset: f64,
+    blur: f64,
+    spread: f64,
+    alpha: f64,
+}
+
+impl Default for LiveShadow {
+    fn default() -> Self {
+        Self {
+            offset: 6.0,
+            blur: 12.0,
+            spread: 0.0,
+            alpha: 0.3,
+        }
+    }
+}
+
+/// One card's drop shadow, each of its parameters from a knob.
+fn live(ui: &mut Ui, k: Kit) {
+    Section::new("Live shadow")
+        .apis(&[api!(Shadow::drop), api!(Shadow::with_spread)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Move the light: offset, blur, spread and darkness of one card's shadow.",
+            );
+            let id = WidgetId::from_hash("showcase::shadows::live");
+            ui.with_state::<LiveShadow, _>(id, |ui, l| {
+                for (label, value, range, step, unit) in [
+                    ("offset", &mut l.offset, 0.0..=24.0, 1.0, " px"),
+                    ("blur", &mut l.blur, 0.0..=32.0, 1.0, " px"),
+                    ("spread", &mut l.spread, -8.0..=8.0, 1.0, " px"),
+                    ("darkness", &mut l.alpha, 0.0..=1.0, 0.05, ""),
+                ] {
+                    Knob {
+                        label,
+                        range,
+                        step,
+                        unit,
+                    }
+                    .show(ui, k, value);
+                }
+                let shadow = Shadow::drop(
+                    RgbaF32::BLACK.with_alpha(l.alpha as f32),
+                    Vec2::new(0.0, l.offset as f32),
+                    l.blur as f32,
+                )
+                .with_spread(l.spread as f32);
+                DemoCell::new("the knobs' shadow")
+                    .surface(Surface::LightWell)
+                    .show(ui, k, |ui| {
+                        ui.add_shape(shadow_shape(shadow));
+                        card_fill(ui);
+                    });
+            });
+        });
 }

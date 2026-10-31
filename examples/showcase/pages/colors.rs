@@ -2,13 +2,17 @@
 //!
 //! The field and both bars are exact per texel, so the Okhsv square keeps one brightness across the hue circle where HSV does not; switch the model under the panel to compare.
 
+use crate::appearance::Appearance;
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{Kit, Section};
+use crate::support::{Kit, Section, Swatches};
 use palantir::{
-    Align, Chrome, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
-    ColorSwatch, Configure, Panel, RgbaF32, Shadow, Sizing, Ui, VAlign, WidgetId,
+    Align, Button, Chrome, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker,
+    ColorStrip, ColorSwatch, Configure, Metrics, Panel, RgbaF32, Shadow, Sizing, Ui, VAlign,
+    WidgetId,
 };
+
+const M: Metrics = Metrics::DEFAULT;
 
 #[derive(Debug)]
 struct State {
@@ -19,20 +23,15 @@ struct State {
     recent: Vec<RgbaF32>,
 }
 
-impl Default for State {
-    fn default() -> Self {
+impl State {
+    /// The pickers open on the tour's specimen colors, as the scheme that first shows solves them.
+    fn new(swatch: Swatches) -> Self {
         Self {
-            picked: RgbaF32::hex(0x4cd3ff),
-            port: RgbaF32::hex(0xffa63d),
-            accent: RgbaF32::hex(0xd897ff),
-            parts: ColorCoords::from_color(RgbaF32::hex(0xd9ff57), ColorModel::Okhsv, 0.0),
-            recent: vec![
-                RgbaF32::hex(0x4cd3ff),
-                RgbaF32::hex(0xffa63d),
-                RgbaF32::hex(0xd9ff57),
-                RgbaF32::hex(0xd897ff),
-                RgbaF32::hex(0xff5e44),
-            ],
+            picked: swatch.teal,
+            port: swatch.orange,
+            accent: swatch.violet,
+            parts: ColorCoords::from_color(swatch.lime, ColorModel::Okhsv, 0.0),
+            recent: swatch.all().to_vec(),
         }
     }
 }
@@ -40,9 +39,10 @@ impl Default for State {
 /// How many colors the app-owned swatch row keeps.
 const RECENT: usize = 12;
 
-pub(crate) fn build(ui: &mut Ui, k: Kit) {
+pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let state_id = WidgetId::from_hash("showcase::colors::state");
-    ui.with_state::<State, _>(state_id, |ui, state| {
+    ui.with_state::<Option<State>, _>(state_id, |ui, state| {
+        let state = state.get_or_insert_with(|| State::new(k.swatch));
         Section::new("Picker").apis(&[api!(ColorPicker::alpha), api!(ColorPicker::history)]).show(ui, k, |ui| {
                 support::note(ui, k,
                     "The whole panel: field, hue and alpha bars, preview, channel values, the \
@@ -68,6 +68,20 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                             .show(ui);
                     });
                 });
+                // The first panel's color as the tour's accent seed, solved per scheme.
+                support::row(ui, |ui| {
+                    if Button::new().label("Use as accent").show(ui).clicked() {
+                        look.set_seed(Some(state.picked));
+                    }
+                    if Button::new()
+                        .label("Stock accent")
+                        .disabled(look.seed().is_none())
+                        .show(ui)
+                        .clicked()
+                    {
+                        look.set_seed(None);
+                    }
+                });
             });
 
         Section::new("Parts").apis(&[
@@ -86,7 +100,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     });
                     panel(ui, |ui| {
                         Panel::vstack()
-                            .gap(8.0)
+                            .gap(M.space.sm)
                             .size((Sizing::fixed(180.0), Sizing::HUG))
                             .show(ui, |ui| {
                                 ColorStrip::for_hue(&mut state.parts)
