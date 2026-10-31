@@ -5,12 +5,12 @@
     reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
 )]
 
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
-    DebugOverlayConfig, FramePaint, Metrics, OffscreenHost, OffscreenTime, Palette, RgbaF32,
-    TextShaper, Theme, Ui,
+    AnimationSpec, DebugOverlayConfig, FramePaint, Metrics, OffscreenHost, OffscreenTime, Palette,
+    RadiusSteps, RgbaF32, Shadow, SpaceSteps, StrokeSteps, TextShaper, Theme, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -28,6 +28,46 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     border_focused: RgbaF32::hex(0x2f6fd0),
     accent: RgbaF32::hex(0xd23f7a),
 };
+
+/// The geometry and motion every fixture renders under, pinned as the palette is, so a retune of
+/// `Metrics::DEFAULT` moves no golden: `Metrics::DEFAULT` as the goldens were drawn under.
+pub(crate) const FIXTURE_METRICS: Metrics = Metrics {
+    space: SpaceSteps {
+        xs: 4.0,
+        sm: 8.0,
+        md: 12.0,
+        lg: 16.0,
+        xl: 24.0,
+    },
+    radius: RadiusSteps {
+        mark: 2.0,
+        control: 4.0,
+        card: 6.0,
+        float: 10.0,
+    },
+    stroke: StrokeSteps {
+        hairline: 1.0,
+        fine: 1.5,
+        line: 2.0,
+    },
+    float_shadow: Shadow::drop(
+        RgbaF32::BLACK.with_alpha(128.0 / 255.0),
+        Vec2::new(0.0, 8.0),
+        16.0,
+    ),
+    transition: Some(AnimationSpec::FAST),
+};
+
+/// The ambient text size every fixture renders at, pinned as the palette is.
+const FIXTURE_FONT_SIZE: f32 = 14.0;
+
+/// The theme every fixture renders under: the stock recipes over the pinned palette, metrics
+/// and text size.
+pub(crate) fn fixture_theme() -> Theme {
+    let mut theme = Theme::from_parts(&FIXTURE_PALETTE, &FIXTURE_METRICS);
+    theme.text.font_size = FIXTURE_FONT_SIZE;
+    theme
+}
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
@@ -69,8 +109,7 @@ impl VisualRig {
             .pixel_snap(pixel_snap)
             .time(OffscreenTime::Manual)
             .build();
-        host.ui()
-            .set_theme(Theme::from_parts(&FIXTURE_PALETTE, &Metrics::DEFAULT));
+        host.ui().set_theme(fixture_theme());
 
         Self {
             host,

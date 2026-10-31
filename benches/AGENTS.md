@@ -36,7 +36,7 @@ cargo drive bench '^atomic/hit_test/'
 cargo drive bench '/cpu/'                 # every case that opens no device
 cargo drive bench --exact integration/frame/gpu/cached
 cargo drive bench '^integration/frame/' --quick
-cargo drive bench --test                  # each case once
+cargo drive bench --test                  # each case once, built under the test profile
 ```
 
 - An id is `<kind>/<group>/<backend>/<rest…>`, and criterion's filter is a

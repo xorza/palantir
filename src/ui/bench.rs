@@ -39,6 +39,9 @@ use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::Theme;
+use crate::theme::metrics::Metrics;
+use crate::theme::palette::Palette;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::window::window_token::WindowToken;
@@ -49,6 +52,24 @@ use std::time::Instant;
 
 /// The window clear both backends render over.
 const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
+
+/// The stock look over [`WINDOW_CLEAR`], its state transitions snapped: an arm that changes a
+/// look each frame measures the repaint the change plans, where a transition starts each change
+/// from rest and paints nothing in its first frame, and the hovering arm, which moves every
+/// frame, would plan none.
+fn bench_theme() -> Theme {
+    Theme {
+        window_clear: WINDOW_CLEAR,
+        ..Theme::from_parts(
+            &Palette::DEFAULT,
+            &Metrics {
+                transition: None,
+                ..Metrics::DEFAULT
+            },
+        )
+    }
+}
+
 /// The surfaces the `resizing` scenario rotates through, proportioned against `BENCH_SURFACE`;
 /// multiples of 16 keep each tile-aligned.
 const RESIZE_POOL: [UVec2; 4] = [
@@ -71,7 +92,7 @@ fn bench_host(g: &BenchGpu) -> OffscreenHost {
         .collect_gpu_stats(false)
         .swapchain_present()
         .build();
-    host.ui().theme_mut().window_clear = WINDOW_CLEAR;
+    host.ui().set_theme(bench_theme());
     host
 }
 
@@ -91,7 +112,7 @@ impl CpuHarness {
             .scale(BENCH_DPR)
             .depth(Depth::Compose)
             .build();
-        h.ui().theme_mut().window_clear = WINDOW_CLEAR;
+        h.ui().set_theme(bench_theme());
         Self {
             h,
             start: Instant::now(),
@@ -277,7 +298,7 @@ fn main_pass_batch(c: &mut Criterion, backends: Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui().theme_mut().window_clear = WINDOW_CLEAR;
+            host.ui().set_theme(bench_theme());
             let mut state = FrameFixture::default();
             let mut n = 0u32;
             let mut frame = || {
@@ -425,7 +446,7 @@ fn main_pass(c: &mut Criterion, backends: Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui().theme_mut().window_clear = WINDOW_CLEAR;
+            host.ui().set_theme(bench_theme());
             let mut state = FrameFixture::default();
             let mut n = 0u32;
             let mut frame = || {
