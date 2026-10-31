@@ -3,5 +3,4 @@
 - wgpu features and limits request public api
 - mesh once registrations
 - flexbox
-- platform time doubleclick
 - mcp
