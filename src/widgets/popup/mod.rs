@@ -20,6 +20,7 @@ use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::click_outside::ClickOutside;
+use glam::Vec2;
 use std::rc::Rc;
 
 /// A side-layer container placed relative to a screen-space anchor, drawn
@@ -95,6 +96,7 @@ impl Popup {
         // Resolved before the layer switch so the body and eater ids are scoped
         // to the trigger's site, not the side layer's root.
         let id = widget.resolve(ui);
+        let anchor = Self::landed(ui, id, anchor);
         let eater_id = Self::eater_id(id);
         // Takes the pointer and the keys from lower layers together, or neither.
         let backdrop = if click_outside == ClickOutside::PassThrough {
@@ -126,7 +128,47 @@ impl Popup {
     }
 }
 
+/// Where an open popup asked to sit, and where its first frame landed it.
+#[derive(Clone, Copy, Debug)]
+struct Landing {
+    asked: Anchor,
+    landed: Option<Vec2>,
+}
+
 impl Popup {
+    /// The anchor the popup `id` records at. A popup asked to sit at a point, as a context menu
+    /// raised at the pointer is, sits at `asked` on its first frame there, then at the point that
+    /// frame landed it. The window shifts an anchored body to fit each frame it is placed, so one
+    /// whose body grows or shrinks would move under the pointer, as a list a query filters does;
+    /// held where it landed, it moves again only when it stops fitting there, or when it is asked
+    /// to sit somewhere else. Win32's `TrackPopupMenu` places a menu at a point once
+    /// (<https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-trackpopupmenu>). A
+    /// popup asked to sit beside a rect, a list under its button, is placed each frame, as it
+    /// keeps the rect clear: a body that grows past the space on one side flips to the other.
+    fn landed(ui: &mut Ui, id: WidgetId, asked: Anchor) -> Anchor {
+        if !asked.is_point() {
+            return asked;
+        }
+        let held = ui
+            .state::<Option<Landing>>(id)
+            .copied()
+            .flatten()
+            .filter(|landing| landing.asked == asked);
+        let landed = match held {
+            Some(Landing {
+                landed: Some(point),
+                ..
+            }) => Some(point),
+            // The popup recorded at `asked` last frame, so its rect is where that frame landed it.
+            Some(Landing { landed: None, .. }) => ui.response_for(id).rect.map(|rect| rect.min),
+            None => None,
+        };
+        ui.with_state::<Option<Landing>, _>(id, |_, landing| {
+            *landing = Some(Landing { asked, landed });
+        });
+        landed.map_or(asked, Anchor::at_point)
+    }
+
     /// The full-surface click-eater under the popup `id`, which takes a press outside its body.
     pub(crate) fn eater_id(id: WidgetId) -> WidgetId {
         id.with("eater")

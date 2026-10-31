@@ -57,7 +57,7 @@ AllowedSplits
         pub fn allows(self, side: SplitSide) -> bool
 
 Anchor
-    struct Anchor: Clone, Copy, Debug
+    struct Anchor: Clone, Copy, Debug, PartialEq
         pub const fn at_point(point: Vec2) -> Self
         pub const fn above(rect: Rect) -> Self
         pub const fn below(rect: Rect) -> Self
