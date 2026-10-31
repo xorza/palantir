@@ -6,8 +6,9 @@
 //! `IconTable::from_svgs` derives each icon's viewBox and tintability from the artwork, so a demo
 //! page states only its SVGs.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Section, api};
+use crate::support::{DemoCell, Kit, Section};
 use palantir::widget::Shape;
 use palantir::{IconHandle, IconSet, IconTable, RgbaF32, Ui, WidgetId};
 use std::rc::Rc;
@@ -109,7 +110,7 @@ impl Icons {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let icons = Icons::load(ui);
 
     Section::new("Sizes")
@@ -117,9 +118,10 @@ pub(crate) fn build(ui: &mut Ui) {
             api!(Ui::load_icons as fn(&Ui, IconTable) -> IconSet),
             api!(IconSet::by_name),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Each cell rasterizes the icon at its own physical size — not a \
                  scaled copy. Change the UI scale and every cell rasterizes again, so \
                  edges stay exact.",
@@ -128,7 +130,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 for (px, label) in SIZES {
                     DemoCell::new(label)
                         .size(px + 24.0, px + 24.0)
-                        .show(ui, |ui| {
+                        .show(ui, k, |ui| {
                             Icons::draw(ui, icons.save, RgbaF32::WHITE);
                         });
                 }
@@ -137,67 +139,69 @@ pub(crate) fn build(ui: &mut Ui) {
 
     Section::new("Artwork")
         .apis(&[api!(type IconTable)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Gradients, a clip path, a filter, a tintable outline, and a 2:1 \
                  aspect.",
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("save — gradient + clip path")
                     .size(120.0, 120.0)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         Icons::draw(ui, icons.save, RgbaF32::WHITE);
                     });
                 DemoCell::new("folder — radial + drop shadow")
                     .size(120.0, 120.0)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         Icons::draw(ui, icons.folder, RgbaF32::WHITE);
                     });
                 DemoCell::new("new-file — tintable outline")
                     .size(120.0, 120.0)
-                    .show(ui, |ui| {
-                        Icons::draw(ui, icons.new_file, RgbaF32::WHITE);
+                    .show(ui, k, |ui| {
+                        Icons::draw(ui, icons.new_file, k.t.ink);
                     });
                 DemoCell::new("wide — 2:1, Contain")
                     .size(160.0, 120.0)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         Icons::draw(ui, icons.wide, RgbaF32::WHITE);
                     });
             });
         });
 
-    Section::new("Tint").show(ui, |ui| {
+    Section::new("Tint").show(ui, k, |ui| {
         support::note(
             ui,
+            k,
             "A single-color icon takes the whole tint. A color icon takes only \
                  its alpha, and desaturate is the other half of a disabled look.",
         );
         support::tiles(ui, |ui| {
             for (label, tint) in [
-                ("tintable, white", RgbaF32::WHITE),
+                ("tintable, ink", k.t.ink),
                 ("tintable, amber", RgbaF32::srgb(0.98, 0.75, 0.15)),
                 ("tintable, teal", RgbaF32::srgb(0.30, 0.85, 0.78)),
             ] {
-                DemoCell::new(label).size(96.0, 96.0).show(ui, |ui| {
+                DemoCell::new(label).size(96.0, 96.0).show(ui, k, |ui| {
                     Icons::draw(ui, icons.new_file, tint);
                 });
             }
             // A color icon takes only the tint's alpha: fading, not recoloring.
             DemoCell::new("color icon at 40% alpha")
                 .size(96.0, 96.0)
-                .show(ui, |ui| {
+                .show(ui, k, |ui| {
                     Icons::draw(ui, icons.save, RgbaF32::srgba(1.0, 1.0, 1.0, 0.4));
                 });
             // …and `desaturate` is the other half of a disabled state: the artwork's own luminance, hue gone.
             DemoCell::new("color icon desaturated")
                 .size(96.0, 96.0)
-                .show(ui, |ui| {
+                .show(ui, k, |ui| {
                     ui.add_shape(Shape::icon(icons.save).desaturate(true));
                 });
             DemoCell::new("desaturated + 50% alpha")
                 .size(96.0, 96.0)
-                .show(ui, |ui| {
+                .show(ui, k, |ui| {
                     ui.add_shape(
                         Shape::icon(icons.save)
                             .desaturate(true)

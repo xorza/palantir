@@ -2,8 +2,9 @@
 //! the ugly visuals don't leak into widget pages: id collisions (the overlay outlines offenders), text z-order
 //! (draw groups split on text↔quad transitions), chrome concentricity, and premultiplied-alpha blending.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Section, Surface, api};
+use crate::support::{DemoCell, Kit, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::widget::Shape;
 use palantir::{
@@ -11,14 +12,15 @@ use palantir::{
     TextStyle, Ui,
 };
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Id collisions")
         .apis(&[api!(
             Button::id_salt as fn(Button<'static>, &'static str) -> Button<'static>
         )])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "The first row reuses one explicit id across siblings and gets the \
                  magenta outline. The second row is clean.",
             );
@@ -46,34 +48,37 @@ pub(crate) fn build(ui: &mut Ui) {
             });
         });
 
-    Section::new("Text z-order").show(ui, |ui| {
+    Section::new("Text z-order").show(ui, k, |ui| {
         support::note(
             ui,
+            k,
             "Record order decides what covers what, quads and text alike.",
         );
         support::tiles(ui, |ui| {
-            zorder_cell(ui, "text over an earlier quad", Order::TextOver);
+            zorder_cell(ui, k, "text over an earlier quad", Order::TextOver);
             zorder_cell(
                 ui,
+                k,
                 "quad recorded AFTER the text covers it",
                 Order::QuadOver,
             );
         });
     });
 
-    Section::new("Chrome and blending").show(ui, |ui| {
+    Section::new("Chrome and blending").show(ui, k, |ui| {
         support::note(
             ui,
+            k,
             "Concentric corners, and premultiplied-alpha repros over a magenta \
                  backdrop.",
         );
         support::tiles(ui, |ui| {
             DemoCell::new("chrome concentricity")
                 .surface(Surface::Bare)
-                .show(ui, concentricity);
-            DemoCell::new("premul — solid α 0.5, expect gray").show(ui, translucent_solid);
-            DemoCell::new("premul — per-point α 0.5").show(ui, translucent_per_point);
-            DemoCell::new("premul — α 0.25, expect slight tint").show(ui, translucent_quarter);
+                .show(ui, k, concentricity);
+            DemoCell::new("premul — solid α 0.5, expect gray").show(ui, k, translucent_solid);
+            DemoCell::new("premul — per-point α 0.5").show(ui, k, translucent_per_point);
+            DemoCell::new("premul — α 0.25, expect slight tint").show(ui, k, translucent_quarter);
         });
     });
 }
@@ -87,34 +92,36 @@ enum Order {
     QuadOver,
 }
 
-fn zorder_cell(ui: &mut Ui, label: &'static str, order: Order) {
-    DemoCell::new(label).surface(Surface::Bare).show(ui, |ui| {
-        Panel::zstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .padding(12.0)
-            .show(ui, |ui| {
-                Block::new()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .chrome(support::swatch_chrome(match order {
-                        Order::TextOver => support::A,
-                        Order::QuadOver => support::B,
-                    }))
-                    .show(ui);
-                Text::new("T-shirt")
-                    .style(
-                        &TextStyle::default()
-                            .with_font_size(28.0)
-                            .with_color(RgbaF32::hex(0x14161a)),
-                    )
-                    .show(ui);
-                if matches!(order, Order::QuadOver) {
+fn zorder_cell(ui: &mut Ui, k: Kit, label: &'static str, order: Order) {
+    DemoCell::new(label)
+        .surface(Surface::Bare)
+        .show(ui, k, |ui| {
+            Panel::zstack()
+                .size((Sizing::FILL, Sizing::FILL))
+                .padding(12.0)
+                .show(ui, |ui| {
                     Block::new()
-                        .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
-                        .chrome(support::swatch_chrome(RgbaF32::hex(0x14161a)))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .chrome(support::swatch_chrome(match order {
+                            Order::TextOver => k.swatch.teal,
+                            Order::QuadOver => k.swatch.orange,
+                        }))
                         .show(ui);
-                }
-            });
-    });
+                    Text::new("T-shirt")
+                        .style(
+                            &TextStyle::default()
+                                .with_font_size(28.0)
+                                .with_color(RgbaF32::hex(0x14161a)),
+                        )
+                        .show(ui);
+                    if matches!(order, Order::QuadOver) {
+                        Block::new()
+                            .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
+                            .chrome(support::swatch_chrome(RgbaF32::hex(0x14161a)))
+                            .show(ui);
+                    }
+                });
+        });
 }
 
 /// Red field, blue card with a thick green border and 40 px corners, black rect nested inside whose radius

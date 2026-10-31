@@ -1,6 +1,7 @@
 //! A live dock: drag a chip to another pane's edge to split, into its strip to join, onto a divider to resize.
 
 use crate::support;
+use crate::support::Kit;
 use palantir::{
     Block, Button, Chrome, Configure, Corners, DockDrop, DockOperation, DockState, DockTabMenu,
     DockTabs, DockView, InternedStr, MenuItem, Panel, Size, Sizing, SplitSide, TabChip, Text, Ui,
@@ -68,7 +69,9 @@ impl Default for State {
 }
 
 #[derive(Debug)]
-struct Panes;
+struct Panes {
+    k: Kit,
+}
 
 impl DockTabs for Panes {
     type Tab = Tab;
@@ -78,23 +81,20 @@ impl DockTabs for Panes {
     }
 
     fn content(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
+        let k = self.k;
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(14.0)
             .gap(6.0)
-            .chrome(support::well_chrome())
+            .chrome(k.t.card())
             .show(ui, |ui| {
-                Text::new(tab.label())
-                    .style(&support::body_style())
-                    .show(ui);
-                Text::new(tab.blurb())
-                    .style(&support::note_style())
-                    .show(ui);
+                Text::new(tab.label()).style(&k.t.body()).show(ui);
+                Text::new(tab.blurb()).style(&k.t.caption()).show(ui);
                 let measured = match size {
                     Some(s) => fmt!(ui, "content area {:.0} x {:.0}", s.w, s.h),
                     None => ui.intern("content area not laid out yet"),
                 };
-                Text::new(measured).style(&support::note_style()).show(ui);
+                Text::new(measured).style(&k.t.caption()).show(ui);
             });
     }
 
@@ -137,14 +137,14 @@ impl DockTabs for Panes {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::dock::state");
     ui.with_state::<State, _>(state_id, |ui, s| {
-        reopen_row(ui, s);
+        reopen_row(ui, k, s);
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let mut panes = Panes;
+                let mut panes = Panes { k };
                 // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
                 s.operations.clear();
                 DockView::scan(ui, &s.dock, &mut s.operations);
@@ -162,7 +162,7 @@ pub(crate) fn build(ui: &mut Ui) {
 }
 
 /// Re-open closed tabs so the demo can't be emptied down to the pinned pane.
-fn reopen_row(ui: &mut Ui, s: &mut State) {
+fn reopen_row(ui: &mut Ui, k: Kit, s: &mut State) {
     let all_open = OPENABLE.iter().all(|&t| s.dock.find_tab(t).is_some());
     let line = if all_open {
         "every tab is open — drag a chip onto a pane edge to split it"
@@ -170,7 +170,7 @@ fn reopen_row(ui: &mut Ui, s: &mut State) {
         "closed tabs reopen in the focused pane:"
     };
     support::row(ui, |ui| {
-        Text::new(line).style(&support::note_style()).show(ui);
+        Text::new(line).style(&k.t.caption()).show(ui);
         for tab in OPENABLE {
             if s.dock.find_tab(tab).is_some() {
                 continue;

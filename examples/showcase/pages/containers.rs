@@ -1,14 +1,15 @@
 //! Container drivers: stacks, Canvas, wrap stacks and Grid with fixed, fill, hug and clamped tracks plus spanning.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Section, api};
+use crate::support::{DemoCell, Kit, Section};
 use palantir::{
     Align, Block, Chrome, Configure, Corners, Grid, GridCell, Justify, Panel, RgbaF32, Sizing,
-    Stroke, Text, TextStyle, Track, Ui,
+    Stroke, Text, Track, Ui,
 };
 use std::hash::Hash;
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Stacks")
         .apis(&[
             api!(Panel::hstack),
@@ -16,35 +17,37 @@ pub(crate) fn build(ui: &mut Ui) {
             api!(Panel::zstack),
             api!(Panel::canvas),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::tiles(ui, |ui| {
-                DemoCell::new("HStack — left to right").show(ui, |ui| {
+                DemoCell::new("HStack — left to right").show(ui, k, |ui| {
                     Panel::hstack().gap(6.0).show(ui, |ui| {
-                        for k in ["h-a", "h-b", "h-c"] {
-                            sw(40.0, 40.0, support::A).id_salt(k).show(ui);
+                        for key in ["h-a", "h-b", "h-c"] {
+                            sw(40.0, 40.0, k.swatch.teal).id_salt(key).show(ui);
                         }
                     });
                 });
-                DemoCell::new("VStack — top to bottom").show(ui, |ui| {
+                DemoCell::new("VStack — top to bottom").show(ui, k, |ui| {
                     Panel::vstack().gap(6.0).show(ui, |ui| {
-                        for k in ["v-a", "v-b", "v-c"] {
-                            sw(60.0, 24.0, support::A).id_salt(k).show(ui);
+                        for key in ["v-a", "v-b", "v-c"] {
+                            sw(60.0, 24.0, k.swatch.teal).id_salt(key).show(ui);
                         }
                     });
                 });
-                DemoCell::new("ZStack — stacked in record order").show(ui, |ui| {
+                DemoCell::new("ZStack — stacked in record order").show(ui, k, |ui| {
                     Panel::zstack().child_align(Align::CENTER).show(ui, |ui| {
-                        sw(96.0, 96.0, support::A).id_salt("z-back").show(ui);
-                        sw(56.0, 56.0, support::B).id_salt("z-front").show(ui);
+                        sw(96.0, 96.0, k.swatch.teal).id_salt("z-back").show(ui);
+                        sw(56.0, 56.0, k.swatch.orange).id_salt("z-front").show(ui);
                     });
                 });
-                DemoCell::new("Canvas — positioned children").show(ui, |ui| {
+                DemoCell::new("Canvas — positioned children").show(ui, k, |ui| {
                     Panel::canvas()
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            positioned(8.0, 8.0, support::A).id_salt("p1").show(ui);
-                            positioned(64.0, 40.0, support::B).id_salt("p2").show(ui);
-                            positioned(30.0, 88.0, support::C).id_salt("p3").show(ui);
+                            positioned(8.0, 8.0, k.swatch.teal).id_salt("p1").show(ui);
+                            positioned(64.0, 40.0, k.swatch.orange)
+                                .id_salt("p2")
+                                .show(ui);
+                            positioned(30.0, 88.0, k.swatch.lime).id_salt("p3").show(ui);
                         });
                 });
             });
@@ -52,9 +55,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
     Section::new("Wrapping flow")
         .apis(&[api!(Panel::wrap_hstack), api!(Panel::line_gap)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Children flow along the main axis and wrap when the next one would not fit. \
                  The gap spaces siblings in a line, and the line gap spaces the lines.",
             );
@@ -64,36 +68,37 @@ pub(crate) fn build(ui: &mut Ui) {
                 .line_gap(8.0)
                 .show(ui, |ui| {
                     for (i, t) in TAGS.iter().enumerate() {
-                        chip(ui, ("tag", i), t);
+                        chip(ui, k, ("tag", i), t);
                     }
                 });
         });
 
     Section::new("Wrap axis")
         .apis(&[api!(Panel::wrap_vstack)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A vertical wrap stack starts a new column. Justification applies to each \
                  line, not to the block of lines.",
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("WrapVStack — wraps into columns")
                     .size(200.0, 200.0)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         Panel::wrap_vstack()
                             .size((Sizing::HUG, Sizing::FILL))
                             .gap(6.0)
                             .line_gap(12.0)
                             .show(ui, |ui| {
                                 for i in 0..12 {
-                                    badge(ui, ("v", i), 70.0);
+                                    badge(ui, k, ("v", i), 70.0);
                                 }
                             });
                     });
                 DemoCell::new("WrapHStack — Justify::Center per line")
                     .size(200.0, 200.0)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         Panel::wrap_hstack()
                             .size((Sizing::FILL, Sizing::HUG))
                             .gap(10.0)
@@ -101,7 +106,7 @@ pub(crate) fn build(ui: &mut Ui) {
                             .justify(Justify::Center)
                             .show(ui, |ui| {
                                 for i in 0..7 {
-                                    badge(ui, ("c", i), 52.0);
+                                    badge(ui, k, ("c", i), 52.0);
                                 }
                             });
                     });
@@ -110,9 +115,10 @@ pub(crate) fn build(ui: &mut Ui) {
 
     Section::new("Grid")
         .apis(&[api!(type Track), api!(type GridCell)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Two-axis tracks — fixed, Fill, Hug and clamped — and cells that span. Resize \
                  the window to see the Fill tracks divide the room again.",
             );
@@ -120,7 +126,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 // Three-column shell: fixed sidebar, flexible content, hugging right rail; the header spans all three.
                 DemoCell::new("app shell — fixed | fill | hug, header spans")
                     .size(280.0, 200.0)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         Grid::new()
                             .cols([Track::fixed(80.0), Track::FILL, Track::HUG])
                             .rows([Track::fixed(32.0), Track::FILL])
@@ -131,12 +137,13 @@ pub(crate) fn build(ui: &mut Ui) {
                                 GridTile::new(
                                     "header",
                                     GridCell::at(0, 0).with_span(1, 3),
-                                    support::B,
+                                    k.swatch.orange,
                                 )
                                 .show(ui);
-                                GridTile::new("nav", GridCell::at(1, 0), support::C).show(ui);
-                                GridTile::new("content", GridCell::at(1, 1), support::A).show(ui);
-                                GridTile::new("rail", GridCell::at(1, 2), support::D)
+                                GridTile::new("nav", GridCell::at(1, 0), k.swatch.lime).show(ui);
+                                GridTile::new("content", GridCell::at(1, 1), k.swatch.teal)
+                                    .show(ui);
+                                GridTile::new("rail", GridCell::at(1, 2), k.swatch.violet)
                                     .size((Sizing::fixed(56.0), Sizing::FILL))
                                     .show(ui);
                             });
@@ -144,7 +151,7 @@ pub(crate) fn build(ui: &mut Ui) {
                 // The left Fill is bounded [110, 160]; the right Fill absorbs the rest.
                 DemoCell::new("clamped track — Fill min 110 max 160 | Fill")
                     .size(280.0, 200.0)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         Grid::new()
                             .cols([
                                 Track::fill(1.0).with_min(110.0).with_max(160.0),
@@ -155,8 +162,9 @@ pub(crate) fn build(ui: &mut Ui) {
                             .gap(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                GridTile::new("sidebar", GridCell::at(0, 0), support::A).show(ui);
-                                GridTile::new("main", GridCell::at(0, 1), support::D).show(ui);
+                                GridTile::new("sidebar", GridCell::at(0, 0), k.swatch.teal)
+                                    .show(ui);
+                                GridTile::new("main", GridCell::at(0, 1), k.swatch.violet).show(ui);
                             });
                     });
             });
@@ -194,8 +202,8 @@ fn positioned(x: f32, y: f32, c: RgbaF32) -> Block {
     Block::new().pos((x, y)).size(44.0).chrome(Chrome::fill(c))
 }
 
-fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
-    let a = support::A;
+fn chip<H: Hash>(ui: &mut Ui, k: Kit, key: H, label: &'static str) {
+    let a = k.swatch.teal;
     Panel::hstack()
         .id_salt(("chip-row", &key))
         .padding((10.0, 4.0))
@@ -206,13 +214,13 @@ fn chip<H: Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .show(ui, |ui| {
             Text::new(label)
                 .id_salt(("chip-label", &key))
-                .style(&TextStyle::default().with_font_size(12.0))
+                .style(&k.t.body().with_font_size(12.0))
                 .show(ui);
         });
 }
 
-fn badge<H: Hash>(ui: &mut Ui, key: H, w: f32) {
-    support::swatch(support::A)
+fn badge<H: Hash>(ui: &mut Ui, k: Kit, key: H, w: f32) {
+    support::swatch(k.swatch.teal)
         .id_salt(("badge", &key))
         .size((Sizing::fixed(w), Sizing::fixed(24.0)))
         .show(ui);

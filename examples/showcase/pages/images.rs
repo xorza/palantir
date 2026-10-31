@@ -5,8 +5,9 @@
     reason = "the showcase casts non-negative sizes, ids and color channels"
 )]
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Section, api};
+use crate::support::{DemoCell, Kit, Section};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{ImageShape, Shape};
 use palantir::{Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, Ui, WidgetId};
@@ -132,13 +133,17 @@ impl Sources {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let src = Sources::load(ui);
 
     Section::new("Fit")
         .apis(&[api!(type ImageFit)])
-        .show(ui, |ui| {
-            support::note(ui, "How the source maps onto a rect that is not its shape.");
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "How the source maps onto a rect that is not its shape.",
+            );
             support::tiles(ui, |ui| {
                 for (label, fit) in [
                     ("Fill — stretch to the rect", ImageFit::Fill),
@@ -146,7 +151,7 @@ pub(crate) fn build(ui: &mut Ui) {
                     ("Cover — fill the rect, crop", ImageFit::Cover),
                     ("None — 1:1, centered", ImageFit::None),
                 ] {
-                    DemoCell::new(label).size(232.0, 132.0).show(ui, |ui| {
+                    DemoCell::new(label).size(232.0, 132.0).show(ui, k, |ui| {
                         ui.add_shape(fitted(&src.checker, fit));
                     });
                 }
@@ -155,16 +160,16 @@ pub(crate) fn build(ui: &mut Ui) {
 
     Section::new("Tint")
         .apis(&[api!(type ImageHandle)])
-        .show(ui, |ui| {
-            support::note(ui, "The tint multiplies each sampled texel.");
+        .show(ui, k, |ui| {
+            support::note(ui, k, "The tint multiplies each sampled texel.");
             support::tiles(ui, |ui| {
-                DemoCell::new("no tint").show(ui, |ui| {
+                DemoCell::new("no tint").show(ui, k, |ui| {
                     ui.add_shape(fitted(&src.gradient, ImageFit::Fill));
                 });
-                DemoCell::new("red tint").show(ui, |ui| {
-                    ui.add_shape(fitted(&src.gradient, ImageFit::Fill).tint(support::E));
+                DemoCell::new("red tint").show(ui, k, |ui| {
+                    ui.add_shape(fitted(&src.gradient, ImageFit::Fill).tint(k.swatch.red));
                 });
-                DemoCell::new("half alpha").show(ui, |ui| {
+                DemoCell::new("half alpha").show(ui, k, |ui| {
                     ui.add_shape(
                         fitted(&src.gradient, ImageFit::Fill).tint(RgbaF32::WHITE.with_alpha(0.5)),
                     );
@@ -172,17 +177,17 @@ pub(crate) fn build(ui: &mut Ui) {
             });
         });
 
-    Section::new("Tiling").show(ui, |ui| {
-        support::note(ui, "The UVs wrap, with a scale and an offset.");
+    Section::new("Tiling").show(ui, k, |ui| {
+        support::note(ui, k, "The UVs wrap, with a scale and an offset.");
         support::tiles(ui, |ui| {
-            DemoCell::new("tile 3×3").show(ui, |ui| {
+            DemoCell::new("tile 3×3").show(ui, k, |ui| {
                 let fit = ImageFit::Tile {
                     offset: Vec2::ZERO,
                     scale: Vec2::splat(3.0),
                 };
                 ui.add_shape(fitted(&src.checker, fit));
             });
-            DemoCell::new("tile 2×4, offset 0.25").show(ui, |ui| {
+            DemoCell::new("tile 2×4, offset 0.25").show(ui, k, |ui| {
                 let fit = ImageFit::Tile {
                     offset: Vec2::new(0.25, 0.0),
                     scale: Vec2::new(2.0, 4.0),
@@ -194,23 +199,24 @@ pub(crate) fn build(ui: &mut Ui) {
 
     Section::new("Filtering")
         .apis(&[api!(type ImageFilter)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Magnification on a 4×4 sprite, minification on a 64×64 checker tiled \
                  32 times.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("magnify — Linear").show(ui, |ui| {
+                DemoCell::new("magnify — Linear").show(ui, k, |ui| {
                     magnified(ui, &src.sprite, ImageFilter::Linear);
                 });
-                DemoCell::new("magnify — Nearest").show(ui, |ui| {
+                DemoCell::new("magnify — Nearest").show(ui, k, |ui| {
                     magnified(ui, &src.sprite, ImageFilter::Nearest);
                 });
-                DemoCell::new("minify — Linear").show(ui, |ui| {
+                DemoCell::new("minify — Linear").show(ui, k, |ui| {
                     minified(ui, &src.checker, ImageFilter::Linear);
                 });
-                DemoCell::new("minify — Nearest").show(ui, |ui| {
+                DemoCell::new("minify — Nearest").show(ui, k, |ui| {
                     minified(ui, &src.checker, ImageFilter::Nearest);
                 });
             });
@@ -218,21 +224,22 @@ pub(crate) fn build(ui: &mut Ui) {
 
     Section::new("Downsampling")
         .apis(&[api!(type ImageDownsample)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A 512×512 starfield shrunk about 5 times. Single keeps a shifting \
                  subset of the stars, Mean keeps all of them and dims each by its \
                  footprint, and Peak keeps them at their own brightness.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("Single (default)").show(ui, |ui| {
+                DemoCell::new("Single (default)").show(ui, k, |ui| {
                     downsampled(ui, &src.starfield, ImageDownsample::Single);
                 });
-                DemoCell::new("Mean").show(ui, |ui| {
+                DemoCell::new("Mean").show(ui, k, |ui| {
                     downsampled(ui, &src.starfield, ImageDownsample::Mean);
                 });
-                DemoCell::new("Peak").show(ui, |ui| {
+                DemoCell::new("Peak").show(ui, k, |ui| {
                     downsampled(ui, &src.starfield, ImageDownsample::Peak);
                 });
             });

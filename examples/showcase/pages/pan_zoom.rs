@@ -3,13 +3,14 @@
 //! benchmarking; auto-drive pans and zooms every frame through `Scroll::pan_by`/`zoom_by`, the same clamp a wheel takes.
 
 use crate::support;
+use crate::support::Kit;
 use palantir::SlotDefaults;
 use palantir::glam::Vec2;
 use palantir::widget::{LineCap, LineJoin, Shape};
 use palantir::{
     AnimationSpec, Block, Brush, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, Grid,
     LinearGradient, Panel, RadioButton, RgbaF32, Scroll, Sizing, Spacing, StatefulLook, Stroke,
-    Text, TextStyle, TextStyleOverrides, TextWrap, Track, Ui, WidgetId, WidgetLook, fmt,
+    Text, TextStyleOverrides, TextWrap, Track, Ui, WidgetId, WidgetLook, fmt,
 };
 use std::array;
 
@@ -48,12 +49,12 @@ impl CellPos {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::pan_zoom::state");
-    ui.with_state::<State, _>(state_id, page);
+    ui.with_state::<State, _>(state_id, |ui, s| page(ui, k, s));
 }
 
-fn page(ui: &mut Ui, s: &mut State) {
+fn page(ui: &mut Ui, k: Kit, s: &mut State) {
     let mut auto_pan = Vec2::ZERO;
     let mut auto_zoom = 1.0;
     if s.auto {
@@ -83,7 +84,7 @@ fn page(ui: &mut Ui, s: &mut State) {
             Some(CellPos { row, col }) => fmt!(ui, "row {row}, column {col}"),
             None => ui.intern("— click a cell to check hit-testing through the zoom"),
         };
-        support::readout(ui, "last click", click);
+        support::readout(ui, k, "last click", click);
     });
 
     let mut clicked = None;
@@ -99,17 +100,17 @@ fn page(ui: &mut Ui, s: &mut State) {
                 cols: 24,
             }
             .show(ui, &mut clicked),
-            Content::Document => document(ui, &mut clicked),
+            Content::Document => document(ui, k, &mut clicked),
         });
     if clicked.is_some() {
         s.last_click = clicked;
     }
 }
 
-fn document(ui: &mut Ui, clicked: &mut Option<CellPos>) {
+fn document(ui: &mut Ui, k: Kit, clicked: &mut Option<CellPos>) {
     Panel::vstack().gap(16.0).padding(8.0).show(ui, |ui| {
-        header_band(ui);
-        property_grid(ui);
+        header_band(ui, k);
+        property_grid(ui, k);
         gradient_strip(ui);
         CellGrid {
             salt: "cells-a",
@@ -117,8 +118,8 @@ fn document(ui: &mut Ui, clicked: &mut Option<CellPos>) {
             cols: 24,
         }
         .show(ui, clicked);
-        chat_messages(ui, 20);
-        canvas_polylines(ui);
+        chat_messages(ui, k, 20);
+        canvas_polylines(ui, k);
         CellGrid {
             salt: "cells-b",
             rows: 12,
@@ -128,13 +129,13 @@ fn document(ui: &mut Ui, clicked: &mut Option<CellPos>) {
     });
 }
 
-fn header_band(ui: &mut Ui) {
+fn header_band(ui: &mut Ui, k: Kit) {
     Panel::hstack()
         .gap(6.0)
         .size((Sizing::FILL, Sizing::HUG))
         .show(ui, |ui| {
             Text::new("Complex document")
-                .style(&TextStyle::default().with_font_size(18.0))
+                .style(&k.t.body().with_font_size(18.0))
                 .show(ui);
             Block::new()
                 .size((Sizing::FILL, Sizing::fixed(1.0)))
@@ -148,7 +149,7 @@ fn header_band(ui: &mut Ui) {
         });
 }
 
-fn property_grid(ui: &mut Ui) {
+fn property_grid(ui: &mut Ui, k: Kit) {
     const ROWS: usize = 12;
     Grid::new()
         .cols([Track::HUG.with_min(96.0), Track::FILL, Track::fixed(72.0)])
@@ -186,12 +187,12 @@ fn property_grid(ui: &mut Ui) {
                 let r = row as u16;
                 Text::new(labels[row % labels.len()])
                     .id_salt(("plbl", row))
-                    .style(&TextStyle::default().with_font_size(14.0))
+                    .style(&k.t.body().with_font_size(14.0))
                     .grid_cell((r, 0))
                     .show(ui);
                 Text::new(values[row % values.len()])
                     .id_salt(("pval", row))
-                    .style(&TextStyle::default().with_font_size(14.0))
+                    .style(&k.t.body().with_font_size(14.0))
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .grid_cell((r, 1))
                     .show(ui);
@@ -270,7 +271,7 @@ fn cell(ui: &mut Ui, pos: CellPos, style: &ButtonTheme) -> bool {
         .clicked()
 }
 
-fn chat_messages(ui: &mut Ui, count: u32) {
+fn chat_messages(ui: &mut Ui, k: Kit, count: u32) {
     Panel::vstack()
         .gap(8.0)
         .size((Sizing::FILL, Sizing::HUG))
@@ -293,13 +294,13 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                             .size((Sizing::FILL, Sizing::HUG))
                             .show(ui, |ui| {
                                 Text::new(fmt!(ui, "user_{i}"))
-                                    .style(&TextStyle::default().with_font_size(12.0))
+                                    .style(&k.t.body().with_font_size(12.0))
                                     .show(ui);
                                 Text::new(
                                     "Lorem ipsum dolor sit amet consectetur adipiscing elit sed \
                                      do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
                                 )
-                                .style(&TextStyle::default().with_font_size(13.0))
+                                .style(&k.t.body().with_font_size(13.0))
                                 .text_wrap(TextWrap::WrapWithOverflow)
                                 .size((Sizing::FILL, Sizing::HUG))
                                 .show(ui);
@@ -309,12 +310,12 @@ fn chat_messages(ui: &mut Ui, count: u32) {
         });
 }
 
-fn canvas_polylines(ui: &mut Ui) {
+fn canvas_polylines(ui: &mut Ui, k: Kit) {
     Panel::canvas()
         .size((Sizing::FILL, Sizing::fixed(120.0)))
         .chrome(
-            Chrome::rounded(support::WELL, Corners::all(4.0))
-                .with_border(Stroke::new(support::BORDER, 1.0)),
+            Chrome::rounded(k.t.ground, Corners::all(4.0))
+                .with_border(Stroke::new(k.t.border, 1.0)),
         )
         .show(ui, |ui| {
             Block::new().size((Sizing::FILL, Sizing::FILL)).show(ui);

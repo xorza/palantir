@@ -8,10 +8,13 @@ use palantir::{
 
 use crate::app::model::Observatory;
 use crate::app::model::appearance::Preset;
-use crate::app::scaffold::{StudyHeader, Tokens, api};
+use crate::app::studies::Study;
+use crate::scaffold::api;
+use crate::scaffold::header::Header;
+use crate::scaffold::tokens::Tokens;
 
 pub(crate) fn header(ui: &mut Ui, t: Tokens) {
-    StudyHeader {
+    Header {
         title: "Appearance",
         blurb: "The palette of the shown scheme and the main steps, applied to every study as you \
                 edit. Each color reads its contrast against the ground it sits on, against the \
@@ -24,7 +27,8 @@ pub(crate) fn header(ui: &mut Ui, t: Tokens) {
             api!(RgbaF32::contrast_ratio),
             api!(type palantir::ColorButton),
         ],
-        showcase: &["colors", "controls"],
+        related_label: "showcase",
+        related: Study::Appearance.showcase_pages(),
         source: "examples/observatory/app/studies/appearance.rs",
     }
     .show(ui, t);

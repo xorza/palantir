@@ -1,50 +1,54 @@
 //! Stroked geometry: sub-pixel hairlines to wide widths, joins, caps, per-point / per-segment polyline colors, cubic and quadratic béziers, and circular arcs in solid and ramped colors. Every tile pushes raw `Shape`s through `ui.add_shape` onto the GPU curve pipeline, with no CPU tessellation.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{DemoCell, Section, api};
+use crate::support::{DemoCell, Kit, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{CircularArc, CubicBezier, LineCap, LineJoin, QuadraticBezier, Shape};
 use palantir::{ColorRamp, RgbaF32, Stop, Stroke, Ui};
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Width")
         .apis(&[api!(type Stroke)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A float, not an integer: widths under a pixel fade instead of \
                  snapping to 1 px.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("widths 1–8 px").show(ui, widths);
-                DemoCell::new("hairlines 0.1–1 px").show(ui, hairlines);
+                DemoCell::new("widths 1–8 px").show(ui, k, |ui| widths(ui, k));
+                DemoCell::new("hairlines 0.1–1 px").show(ui, k, |ui| hairlines(ui, k));
             });
         });
 
     Section::new("Joins and caps")
         .apis(&[api!(type LineJoin), api!(type LineCap)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
-                "How a stroke turns a corner, and how it ends. The white rules mark \
+                k,
+                "How a stroke turns a corner, and how it ends. The thin rules mark \
                  the line ends.",
             );
             support::tiles(ui, |ui| {
-                DemoCell::new("joins — Miter / Bevel / Round").show(ui, joins);
-                DemoCell::new("line caps — Butt / Square / Round").show(ui, caps);
-                DemoCell::new("curve caps — Butt / Square / Round").show(ui, curve_caps);
+                DemoCell::new("joins — Miter / Bevel / Round").show(ui, k, |ui| joins(ui, k));
+                DemoCell::new("line caps — Butt / Square / Round").show(ui, k, |ui| caps(ui, k));
+                DemoCell::new("curve caps — Butt / Square / Round")
+                    .show(ui, k, |ui| curve_caps(ui, k));
             });
         });
 
     Section::new("Color along a stroke")
         .apis(&[api!(type ColorRamp)])
-        .show(ui, |ui| {
-            support::note(ui, "Per point, per segment, or a ramp along the curve.");
+        .show(ui, k, |ui| {
+            support::note(ui, k, "Per point, per segment, or a ramp along the curve.");
             support::tiles(ui, |ui| {
-                DemoCell::new("per-point colors").show(ui, per_point);
-                DemoCell::new("per-segment colors").show(ui, per_segment);
-                DemoCell::new("gradient along t").show(ui, gradient_cubic);
-                DemoCell::new("gradient, three stops").show(ui, gradient_multistop);
+                DemoCell::new("per-point colors").show(ui, k, |ui| per_point(ui, k));
+                DemoCell::new("per-segment colors").show(ui, k, |ui| per_segment(ui, k));
+                DemoCell::new("gradient along t").show(ui, k, |ui| gradient_cubic(ui, k));
+                DemoCell::new("gradient, three stops").show(ui, k, |ui| gradient_multistop(ui, k));
             });
         });
 
@@ -54,39 +58,39 @@ pub(crate) fn build(ui: &mut Ui) {
             api!(Shape::quadratic_bezier),
             api!(Shape::arc),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::tiles(ui, |ui| {
-                DemoCell::new("cubic bézier").show(ui, cubic);
-                DemoCell::new("quadratic bézier").show(ui, quadratic);
-                DemoCell::new("arcs & circles").show(ui, arcs);
+                DemoCell::new("cubic bézier").show(ui, k, |ui| cubic(ui, k));
+                DemoCell::new("quadratic bézier").show(ui, k, |ui| quadratic(ui, k));
+                DemoCell::new("arcs & circles").show(ui, k, |ui| arcs(ui, k));
             });
         });
 }
 
-fn widths(ui: &mut Ui) {
+fn widths(ui: &mut Ui, k: Kit) {
     for (i, w) in [1.0_f32, 2.0, 3.0, 5.0, 8.0].iter().enumerate() {
         let y = 20.0 + i as f32 * 26.0;
         ui.add_shape(Shape::line(
             Vec2::new(16.0, y),
             Vec2::new(150.0, y),
-            Stroke::new(support::A, *w),
+            Stroke::new(k.swatch.teal, *w),
         ));
     }
 }
 
-fn hairlines(ui: &mut Ui) {
+fn hairlines(ui: &mut Ui, k: Kit) {
     for (i, w) in [0.1_f32, 0.25, 0.5, 0.75, 1.0].iter().enumerate() {
         let y = 20.0 + i as f32 * 26.0;
         ui.add_shape(Shape::line(
             Vec2::new(16.0, y),
             Vec2::new(150.0, y),
-            Stroke::new(RgbaF32::WHITE, *w),
+            Stroke::new(k.t.ink, *w),
         ));
     }
 }
 
 /// The same 90° corner three times; a non-clamp angle, so Miter really mitres.
-fn joins(ui: &mut Ui) {
+fn joins(ui: &mut Ui, k: Kit) {
     for (y, join) in [
         (22.0_f32, LineJoin::Miter),
         (66.0, LineJoin::Bevel),
@@ -97,25 +101,25 @@ fn joins(ui: &mut Ui) {
             Vec2::new(84.0, y),
             Vec2::new(144.0, y + 28.0),
         ];
-        ui.add_shape(Shape::polyline(&pts, Stroke::new(support::A, 5.0)).join(join));
+        ui.add_shape(Shape::polyline(&pts, Stroke::new(k.swatch.teal, 5.0)).join(join));
     }
 }
 
-/// Three lines, one per cap style, sharing endpoints; white marker rules show Butt stopping at the marker, Square a half width past, Round a half-disc.
-fn caps(ui: &mut Ui) {
+/// Three lines, one per cap style, sharing endpoints; thin marker rules show Butt stopping at the marker, Square a half width past, Round a half-disc.
+fn caps(ui: &mut Ui, k: Kit) {
     for y in [32.0_f32, 80.0, 128.0] {
         for x in [40.0_f32, 128.0] {
             ui.add_shape(Shape::line(
                 Vec2::new(x, y - 14.0),
                 Vec2::new(x, y + 14.0),
-                Stroke::new(RgbaF32::WHITE, 1.0),
+                Stroke::new(k.t.ink, 1.0),
             ));
         }
     }
     for (y, color, cap) in [
-        (32.0_f32, support::E, LineCap::Butt),
-        (80.0, support::C, LineCap::Square),
-        (128.0, support::A, LineCap::Round),
+        (32.0_f32, k.swatch.red, LineCap::Butt),
+        (80.0, k.swatch.lime, LineCap::Square),
+        (128.0, k.swatch.teal, LineCap::Round),
     ] {
         ui.add_shape(
             Shape::line(
@@ -129,7 +133,7 @@ fn caps(ui: &mut Ui) {
 }
 
 /// Three identical curves, one per cap kind; the endpoint shape is the only delta.
-fn curve_caps(ui: &mut Ui) {
+fn curve_caps(ui: &mut Ui, k: Kit) {
     for (i, cap) in [LineCap::Butt, LineCap::Square, LineCap::Round]
         .iter()
         .enumerate()
@@ -143,25 +147,25 @@ fn curve_caps(ui: &mut Ui) {
                     p2: Vec2::new(114.0, 58.0 + dy),
                     p3: Vec2::new(150.0, 34.0 + dy),
                 },
-                Stroke::new(support::B, 8.0),
+                Stroke::new(k.swatch.orange, 8.0),
             )
             .cap(*cap),
         );
     }
 }
 
-fn per_point(ui: &mut Ui) {
+fn per_point(ui: &mut Ui, k: Kit) {
     let pts = [
         Vec2::new(16.0, 20.0),
         Vec2::new(58.0, 148.0),
         Vec2::new(104.0, 40.0),
         Vec2::new(150.0, 148.0),
     ];
-    let cols = [support::E, support::B, support::C, support::A];
+    let cols = [k.swatch.red, k.swatch.orange, k.swatch.lime, k.swatch.teal];
     ui.add_shape(Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 4.0)).per_point(&cols));
 }
 
-fn per_segment(ui: &mut Ui) {
+fn per_segment(ui: &mut Ui, k: Kit) {
     let pts = [
         Vec2::new(16.0, 84.0),
         Vec2::new(40.0, 34.0),
@@ -172,11 +176,11 @@ fn per_segment(ui: &mut Ui) {
         Vec2::new(150.0, 120.0),
     ];
     let cols = [
-        support::E,
-        support::B,
-        support::C,
-        support::A,
-        support::D,
+        k.swatch.red,
+        k.swatch.orange,
+        k.swatch.lime,
+        k.swatch.teal,
+        k.swatch.violet,
         RgbaF32::hex(0xff8fc8),
     ];
     ui.add_shape(Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 4.0)).per_segment(&cols));
@@ -191,7 +195,7 @@ const Q0: Vec2 = Vec2::new(16.0, 140.0);
 const Q1: Vec2 = Vec2::new(84.0, 14.0);
 const Q2: Vec2 = Vec2::new(150.0, 140.0);
 
-fn cubic(ui: &mut Ui) {
+fn cubic(ui: &mut Ui, k: Kit) {
     ui.add_shape(Shape::cubic_bezier(
         CubicBezier {
             p0: P0,
@@ -199,23 +203,23 @@ fn cubic(ui: &mut Ui) {
             p2: P2,
             p3: P3,
         },
-        Stroke::new(support::A, 4.0),
+        Stroke::new(k.swatch.teal, 4.0),
     ));
 }
 
-fn quadratic(ui: &mut Ui) {
+fn quadratic(ui: &mut Ui, k: Kit) {
     ui.add_shape(Shape::quadratic_bezier(
         QuadraticBezier {
             p0: Q0,
             p1: Q1,
             p2: Q2,
         },
-        Stroke::new(support::C, 4.0),
+        Stroke::new(k.swatch.lime, 4.0),
     ));
 }
 
 /// Two-stop ramp along the curve's t (p0 → p3) over a white stroke, so the ramp shows as authored.
-fn gradient_cubic(ui: &mut Ui) {
+fn gradient_cubic(ui: &mut Ui, k: Kit) {
     ui.add_shape(
         Shape::cubic_bezier(
             CubicBezier {
@@ -226,17 +230,17 @@ fn gradient_cubic(ui: &mut Ui) {
             },
             Stroke::new(RgbaF32::WHITE, 8.0),
         )
-        .ramp(ColorRamp::two_stop(support::E, support::A))
+        .ramp(ColorRamp::two_stop(k.swatch.red, k.swatch.teal))
         .cap(LineCap::Round),
     );
 }
 
 /// Three-stop ramp, through the same atlas and bake path as rounded-rect fills.
-fn gradient_multistop(ui: &mut Ui) {
+fn gradient_multistop(ui: &mut Ui, k: Kit) {
     let ramp = ColorRamp::new([
-        Stop::new(0.0, support::E),
-        Stop::new(0.5, support::B),
-        Stop::new(1.0, support::A),
+        Stop::new(0.0, k.swatch.red),
+        Stop::new(0.5, k.swatch.orange),
+        Stop::new(1.0, k.swatch.teal),
     ]);
     ui.add_shape(
         Shape::quadratic_bezier(
@@ -252,13 +256,13 @@ fn gradient_multistop(ui: &mut Ui) {
     );
 }
 
-fn arcs(ui: &mut Ui) {
+fn arcs(ui: &mut Ui, k: Kit) {
     use std::f32::consts::{FRAC_PI_2, PI, TAU};
     // Full circle: a ±2π sweep closes seamlessly under Butt caps.
     ui.add_shape(Shape::circle(
         Vec2::new(44.0, 40.0),
         28.0,
-        Stroke::new(support::A, 3.0),
+        Stroke::new(k.swatch.teal, 3.0),
     ));
     // 3/4 sweep with a ramp along the arc (the spinner's comet): transparent tail to full head, round caps; white ramp, stroke color sets the hue.
     let comet = ColorRamp::two_stop(RgbaF32::WHITE.with_alpha(0.0), RgbaF32::WHITE);
@@ -270,7 +274,7 @@ fn arcs(ui: &mut Ui) {
                 start_angle: -FRAC_PI_2,
                 sweep: 1.5 * PI,
             },
-            Stroke::new(support::B, 6.0),
+            Stroke::new(k.swatch.orange, 6.0),
         )
         .ramp(comet)
         .cap(LineCap::Round),
@@ -284,7 +288,7 @@ fn arcs(ui: &mut Ui) {
                 start_angle: PI,
                 sweep: PI,
             },
-            Stroke::new(support::C, 10.0),
+            Stroke::new(k.swatch.lime, 10.0),
         )
         .cap(LineCap::Round),
     );
@@ -296,6 +300,6 @@ fn arcs(ui: &mut Ui) {
             start_angle: 0.0,
             sweep: -TAU * 0.25,
         },
-        Stroke::new(support::E, 2.0),
+        Stroke::new(k.swatch.red, 2.0),
     ));
 }

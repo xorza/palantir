@@ -2,8 +2,9 @@
 //! (`Chrome { shadow }`), side by side. Tiles sit on a bright surface;
 //! black-on-dark shadows don't read.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{CELL_PADDING, DemoCell, Section, Surface, api};
+use crate::support::{CELL_PADDING, DemoCell, Kit, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::widget::{ShadowShape, Shape};
 use palantir::{Block, Chrome, Configure, Corners, Panel, Rect, RgbaF32, Shadow, Sizing, Ui};
@@ -15,54 +16,57 @@ fn card_corners() -> Corners {
     Corners::all(12.0)
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     Section::new("Elevation")
         .apis(&[api!(Shadow::drop)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A drop shadow pushed as a shape under a rounded card, from a button at rest up \
              to a floating panel, and the zero-blur case.",
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("tight — a button at rest")
                     .surface(Surface::LightWell)
-                    .show(ui, tight);
+                    .show(ui, k, tight);
                 DemoCell::new("soft — elevation 2")
                     .surface(Surface::LightWell)
-                    .show(ui, soft);
+                    .show(ui, k, soft);
                 DemoCell::new("elevated — offset 12, blur 20")
                     .surface(Surface::LightWell)
-                    .show(ui, elevated);
+                    .show(ui, k, elevated);
                 DemoCell::new("sharp — blur near 0")
                     .surface(Surface::LightWell)
-                    .show(ui, sharp);
+                    .show(ui, k, sharp);
             });
         });
 
     Section::new("Color and stacking")
         .apis(&[api!(Shadow::with_spread)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "A colored glow with no offset, and three shadows stacked in record order, \
                  as a CSS box-shadow list stacks them.",
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("glow — colored, spread 2")
                     .surface(Surface::LightWell)
-                    .show(ui, glow);
+                    .show(ui, k, glow);
                 DemoCell::new("stacked — three layers")
                     .surface(Surface::LightWell)
-                    .show(ui, stacked);
+                    .show(ui, k, stacked);
             });
         });
 
     Section::new("Shape or chrome")
         .apis(&[api!(Chrome::with_shadow), api!(Shadow::inset)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Each pair paints one shadow two ways: pushed as a shape with the card, and \
                  set on a widget's Chrome, which paints a drop shadow under its fill and \
                  an inset one over it, as CSS does. The two should match.",
@@ -70,23 +74,23 @@ pub(crate) fn build(ui: &mut Ui) {
             support::tiles(ui, |ui| {
                 DemoCell::new("soft — shape")
                     .surface(Surface::LightWell)
-                    .show(ui, soft);
+                    .show(ui, k, soft);
                 DemoCell::new("soft — chrome")
                     .surface(Surface::LightWell)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         chrome_card(ui, chrome(soft_shadow()));
                     });
                 DemoCell::new("inset — shape")
                     .surface(Surface::LightWell)
-                    .show(ui, inset);
+                    .show(ui, k, inset);
                 DemoCell::new("inset — chrome")
                     .surface(Surface::LightWell)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         chrome_card(ui, chrome(inset_shadow()));
                     });
                 DemoCell::new("translucent fill — chrome")
                     .surface(Surface::LightWell)
-                    .show(ui, |ui| {
+                    .show(ui, k, |ui| {
                         chrome_card(ui, chrome_translucent());
                     });
             });

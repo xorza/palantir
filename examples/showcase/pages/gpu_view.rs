@@ -9,8 +9,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Section, api};
+use crate::support::{Kit, Section};
 use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
 use palantir::{
@@ -298,22 +299,23 @@ impl GpuPaint for Cube {
 }
 
 /// Showcase page. The cube lives in a state row under an id no node records, so it lasts as long as the `Ui`.
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let id = WidgetId::from_hash("showcase::gpu_view::cube");
     ui.with_state::<Option<Rc<RefCell<Cube>>>, _>(id, |ui, cube| {
         let cube = cube.get_or_insert_with(|| Rc::new(RefCell::new(Cube::new())));
-        view(ui, cube);
+        view(ui, k, cube);
     });
 }
 
-fn view(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
+fn view(ui: &mut Ui, k: Kit, cube: &Rc<RefCell<Cube>>) {
     // A GpuView re-renders on every painted frame, so keep frames coming to animate the spin.
     ui.request_repaint();
     Section::new("Cube")
         .apis(&[api!(type GpuView), api!(type GpuPaint)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Drawn with raw wgpu into an off-screen texture the framework owns, then \
              composited as an ordinary image — so clipping, rounded corners, z-order and \
              partial repaint all come for free. Drag inside the view to orbit it.",

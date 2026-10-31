@@ -5,40 +5,42 @@
     reason = "the showcase casts non-negative sizes, ids and color channels"
 )]
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Col, Section, api};
+use crate::support::{Col, Kit, Section};
 use palantir::{
     Align, Block, Configure, HAlign, Justify, Panel, RgbaF32, Sizing, Spacing, Ui, VAlign,
     Visibility,
 };
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     support::cols(ui, |ui, col| match col {
         Col::Left => {
-            sizing(ui);
-            justify(ui);
-            visibility(ui);
+            sizing(ui, k);
+            justify(ui, k);
+            visibility(ui, k);
         }
         Col::Right => {
-            alignment(ui);
-            spacing(ui);
-            gap(ui);
+            alignment(ui, k);
+            spacing(ui, k);
+            gap(ui, k);
         }
     });
 }
 
-fn sizing(ui: &mut Ui) {
+fn sizing(ui: &mut Ui, k: Kit) {
     Section::new("Sizing")
         .apis(&[api!(Sizing::fixed), api!(Sizing::HUG), api!(Sizing::fill)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Fixed takes exact pixels, Hug takes its content's size — here only padding \
                  of 20 and 40 — and Fill shares the leftover by weight, 1 : 2 : 1.",
             );
             support::row(ui, |ui| {
                 for (i, w) in [50.0, 100.0, 200.0].into_iter().enumerate() {
-                    support::swatch(support::B)
+                    support::swatch(k.swatch.orange)
                         .id_salt(("fx", i))
                         .size((Sizing::fixed(w), Sizing::fixed(32.0)))
                         .show(ui);
@@ -50,13 +52,13 @@ fn sizing(ui: &mut Ui) {
                         .id_salt(i)
                         .size((Sizing::HUG, Sizing::fixed(32.0)))
                         .padding((pad, 0.0, pad, 0.0))
-                        .chrome(support::swatch_chrome(support::C))
+                        .chrome(support::swatch_chrome(k.swatch.lime))
                         .show(ui);
                 }
             });
             support::row(ui, |ui| {
                 for (i, weight) in [1.0, 2.0, 1.0].into_iter().enumerate() {
-                    support::swatch(support::A)
+                    support::swatch(k.swatch.teal)
                         .id_salt(("fill", i))
                         .size((Sizing::fill(weight), Sizing::fixed(32.0)))
                         .show(ui);
@@ -65,12 +67,13 @@ fn sizing(ui: &mut Ui) {
         });
 }
 
-fn justify(ui: &mut Ui) {
+fn justify(ui: &mut Ui, k: Kit) {
     Section::new("Justify")
         .apis(&[api!(Panel::justify)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Where a stack puts its leftover room along its axis: Start, Center, End, \
                  SpaceBetween and SpaceAround, top to bottom.",
             );
@@ -86,10 +89,10 @@ fn justify(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(32.0)))
                     .padding((6.0, 4.0, 6.0, 4.0))
                     .justify(j)
-                    .chrome(support::well_chrome())
+                    .chrome(k.t.card())
                     .show(ui, |ui| {
                         for i in 0..3 {
-                            support::swatch(support::A)
+                            support::swatch(k.swatch.teal)
                                 .id_salt((id, i))
                                 .size((Sizing::fixed(36.0), Sizing::fixed(22.0)))
                                 .show(ui);
@@ -99,12 +102,13 @@ fn justify(ui: &mut Ui) {
         });
 }
 
-fn visibility(ui: &mut Ui) {
+fn visibility(ui: &mut Ui, k: Kit) {
     Section::new("Visibility")
         .apis(&[api!(Block::visibility)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "The orange chip is Visible, then Hidden — it keeps its slot — then \
                  Collapsed, which gives the slot up.",
             );
@@ -118,12 +122,12 @@ fn visibility(ui: &mut Ui) {
                     .size((Sizing::FILL, Sizing::fixed(44.0)))
                     .padding(6.0)
                     .gap(12.0)
-                    .chrome(support::well_chrome())
+                    .chrome(k.t.card())
                     .show(ui, |ui| {
                         for (key, c, v) in [
-                            ("a", support::A, Visibility::Visible),
-                            ("mid", support::B, vis),
-                            ("c", support::C, Visibility::Visible),
+                            ("a", k.swatch.teal, Visibility::Visible),
+                            ("mid", k.swatch.orange, vis),
+                            ("c", k.swatch.lime, Visibility::Visible),
                         ] {
                             Block::new()
                                 .id_salt((id, key))
@@ -137,12 +141,13 @@ fn visibility(ui: &mut Ui) {
         });
 }
 
-fn alignment(ui: &mut Ui) {
+fn alignment(ui: &mut Ui, k: Kit) {
     Section::new("Alignment")
         .apis(&[api!(Panel::child_align), api!(Block::align)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "child_align places a container's children across its axis: centered in the \
                  row, right in the column. The orange chip overrides it with its own align.",
             );
@@ -151,18 +156,18 @@ fn alignment(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::v(VAlign::Center))
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .show(ui, |ui| {
-                    aligned_chip(support::A, Align::default())
+                    aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("a")
                         .show(ui);
-                    aligned_chip(support::A, Align::default())
+                    aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("b")
                         .show(ui);
-                    aligned_chip(support::B, Align::v(VAlign::Bottom))
+                    aligned_chip(k.swatch.orange, Align::v(VAlign::Bottom))
                         .id_salt("c-self-bot")
                         .show(ui);
-                    aligned_chip(support::A, Align::default())
+                    aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("d")
                         .show(ui);
                 });
@@ -171,27 +176,28 @@ fn alignment(ui: &mut Ui) {
                 .gap(8.0)
                 .padding(8.0)
                 .child_align(Align::h(HAlign::Right))
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .show(ui, |ui| {
-                    aligned_chip(support::A, Align::default())
+                    aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("a-vs")
                         .show(ui);
-                    aligned_chip(support::B, Align::h(HAlign::Left))
+                    aligned_chip(k.swatch.orange, Align::h(HAlign::Left))
                         .id_salt("b-self-left")
                         .show(ui);
-                    aligned_chip(support::A, Align::default())
+                    aligned_chip(k.swatch.teal, Align::default())
                         .id_salt("c-vs")
                         .show(ui);
                 });
         });
 }
 
-fn spacing(ui: &mut Ui) {
+fn spacing(ui: &mut Ui, k: Kit) {
     Section::new("Padding and margin")
         .apis(&[api!(type Spacing)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Padding reserves room inside the parent, a margin shrinks the child's slot, \
                  and a negative margin overlaps the neighbor.",
             );
@@ -199,10 +205,10 @@ fn spacing(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(20.0)
                 .gap(8.0)
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .show(ui, |ui| {
                     for i in 0..3 {
-                        support::swatch(support::A)
+                        support::swatch(k.swatch.teal)
                             .id_salt(("p", i))
                             .size((Sizing::fixed(40.0), Sizing::FILL))
                             .show(ui);
@@ -211,53 +217,53 @@ fn spacing(ui: &mut Ui) {
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .gap(8.0)
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .show(ui, |ui| {
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin(8.0)
-                        .chrome(support::swatch_chrome(support::A))
+                        .chrome(support::swatch_chrome(k.swatch.teal))
                         .show(ui);
                     Block::new()
                         .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
                         .margin((16.0, 16.0, 0.0, 0.0))
-                        .chrome(support::swatch_chrome(support::A))
+                        .chrome(support::swatch_chrome(k.swatch.teal))
                         .show(ui);
                 });
             // The orange box's left margin pulls it back 30 px so the two overlap.
             Panel::hstack()
                 .size((Sizing::FILL, Sizing::fixed(60.0)))
                 .padding(8.0)
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .show(ui, |ui| {
-                    support::swatch(support::A)
+                    support::swatch(k.swatch.teal)
                         .id_salt(("neg", "a"))
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .show(ui);
                     Block::new()
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .margin((-30.0, 0.0, 0.0, 0.0))
-                        .chrome(support::swatch_chrome(support::B))
+                        .chrome(support::swatch_chrome(k.swatch.orange))
                         .show(ui);
                 });
         });
 }
 
-fn gap(ui: &mut Ui) {
+fn gap(ui: &mut Ui, k: Kit) {
     Section::new("Gap")
         .apis(&[api!(Panel::gap)])
-        .show(ui, |ui| {
-            support::note(ui, "0, 8 and 24 px between siblings.");
+        .show(ui, k, |ui| {
+            support::note(ui, k, "0, 8 and 24 px between siblings.");
             for g in [0.0, 8.0, 24.0] {
                 Panel::hstack()
                     .id_salt(("gap", g as u32))
                     .size((Sizing::FILL, Sizing::fixed(40.0)))
                     .padding(6.0)
                     .gap(g)
-                    .chrome(support::well_chrome())
+                    .chrome(k.t.card())
                     .show(ui, |ui| {
                         for i in 0..5 {
-                            support::swatch(support::A)
+                            support::swatch(k.swatch.teal)
                                 .id_salt(("gap-tile", g as u32, i))
                                 .size((Sizing::fixed(32.0), Sizing::fixed(24.0)))
                                 .show(ui);

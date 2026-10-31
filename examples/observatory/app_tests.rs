@@ -16,6 +16,7 @@ use crate::app::model::catalog::ObjectId;
 use crate::app::model::sky;
 use crate::app::studies::Study;
 use crate::app::studies::catalog::{self, row_id, row_text};
+use crate::scaffold::links::LINKS;
 use crate::shot::script::Script;
 
 const SURFACE: UVec2 = UVec2::new(1600, 1000);
@@ -283,4 +284,22 @@ fn a_plan_handle_drags_its_entry() {
         .map(|e| e.object.0)
         .collect();
     assert_eq!(objects, [2, 3, 1]);
+}
+
+/// Every study the shared links table names is a study of the rail, and every study links at least
+/// one showcase page, so the header's showcase row is never empty.
+#[test]
+fn the_links_name_real_studies() {
+    for link in LINKS {
+        assert!(
+            Study::ALL.iter().any(|study| study.label() == link.study),
+            "{link:?} names no study"
+        );
+    }
+    for study in Study::ALL {
+        assert!(
+            study.showcase_pages().next().is_some(),
+            "{study:?} links no page"
+        );
+    }
 }

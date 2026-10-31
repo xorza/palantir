@@ -1,7 +1,8 @@
 //! Keyboard focus end to end; each section ends in a checklist, so the page doubles as the by-hand focus test.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Section, api};
+use crate::support::{Kit, Section};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
     FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioButton, RgbaF32, Sizing, Slider, Switch,
@@ -78,21 +79,21 @@ fn form_id() -> WidgetId {
     WidgetId::from_hash("showcase::focus::form")
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::focus::state");
-    ui.with_state::<State, _>(state_id, page);
+    ui.with_state::<State, _>(state_id, |ui, s| page(ui, k, s));
 }
 
-fn page(ui: &mut Ui, s: &mut State) {
+fn page(ui: &mut Ui, k: Kit, s: &mut State) {
     let mut seen = Seen::default();
 
-    tab_order(ui, s, &mut seen);
-    order_and_stops(ui, &mut seen);
-    arrow_groups(ui, s, &mut seen);
-    containment(ui, s, &mut seen);
-    programmatic(ui, s, &mut seen);
-    policy(ui, s);
-    ring(ui);
+    tab_order(ui, k, s, &mut seen);
+    order_and_stops(ui, k, &mut seen);
+    arrow_groups(ui, k, s, &mut seen);
+    containment(ui, k, s, &mut seen);
+    programmatic(ui, k, s, &mut seen);
+    policy(ui, k, s);
+    ring(ui, k);
 
     // Responses read last frame's focus, so a change shows one frame late.
     if seen.0 != s.focused {
@@ -101,33 +102,35 @@ fn page(ui: &mut Ui, s: &mut State) {
     }
 }
 
-fn tab_order(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
+fn tab_order(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
     Section::new("Tab order")
         .apis(&[api!(Ui::focus), api!(Ui::is_focus_visible)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Tab and Shift+Tab visit every enabled control in record order, wrapping \
                  at the ends of the window. The ring shows only when focus came from the \
                  keyboard, as CSS's :focus-visible does.",
             );
-            support::well(ui, |ui| {
+            support::well(ui, k, |ui| {
                 let focus = match (s.focused, ui.focus()) {
                     (Some(name), _) => name,
                     (None, Some(_)) => "a control outside this page's demos",
                     (None, None) => "nothing",
                 };
-                support::readout(ui, "focused", focus);
+                support::readout(ui, k, "focused", focus);
                 let via = match (ui.focus(), ui.is_focus_visible()) {
                     (None, _) => "—",
                     (Some(_), true) => "keyboard — the ring shows",
                     (Some(_), false) => "pointer — no ring",
                 };
-                support::readout(ui, "came from", via);
+                support::readout(ui, k, "came from", via);
             });
-            form(ui, s, seen);
+            form(ui, k, s, seen);
             support::checklist(
                 ui,
+                k,
                 &[
                     "Click the name field: it takes focus with no ring",
                     "Press Tab: the email field takes focus, and the ring shows",
@@ -139,7 +142,7 @@ fn tab_order(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
         });
 }
 
-fn form(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
+fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
     const LABELS: [&str; 8] = [
         "Name",
         "Email",
@@ -161,7 +164,7 @@ fn form(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
             for (row, label) in LABELS.iter().enumerate() {
                 Text::new(*label)
                     .id_salt(row)
-                    .style(&support::note_style())
+                    .style(&k.t.caption())
                     .grid_cell((row as u16, 0))
                     .show(ui);
             }
@@ -230,16 +233,17 @@ fn form(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
         });
 }
 
-fn order_and_stops(ui: &mut Ui, seen: &mut Seen) {
+fn order_and_stops(ui: &mut Ui, k: Kit, seen: &mut Seen) {
     Section::new("Order and stops")
         .apis(&[
             api!(Button::tab_idx),
             api!(Button::tab_stop),
             api!(Button::disabled),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Tab visits stops in ascending tab_idx, record order breaking ties, over \
                  the whole window: −1 goes ahead of every unindexed control, 1 behind them. \
                  A control out of the Tab order still takes focus from a click.",
@@ -258,6 +262,7 @@ fn order_and_stops(ui: &mut Ui, seen: &mut Seen) {
             });
             support::checklist(
                 ui,
+                k,
                 &[
                     "With nothing focused, Tab lands on 'tab_idx −1' before the nav rail",
                     "Shift+Tab from 'tab_idx −1' wraps to 'tab_idx 1', the last stop",
@@ -268,12 +273,13 @@ fn order_and_stops(ui: &mut Ui, seen: &mut Seen) {
         });
 }
 
-fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
+fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
     Section::new("Arrow groups")
         .apis(&[api!(Panel::arrow_focus)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "Inside a group the arrows along its axis move focus to the next or previous \
                  stop, wrapping — WAI-ARIA's toolbars, menus and lists. Tab still stops on \
                  each item. A control inside that claims an arrow keeps it.",
@@ -281,7 +287,7 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
             Panel::hstack()
                 .gap(6.0)
                 .padding(6.0)
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .arrow_focus(Axis::X)
                 .show(ui, |ui| {
                     for label in ["Bold", "Italic", "Underline"] {
@@ -303,7 +309,7 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
                 .gap(2.0)
                 .padding(6.0)
                 .size((Sizing::fixed(200.0), Sizing::HUG))
-                .chrome(support::well_chrome())
+                .chrome(k.t.card())
                 .arrow_focus(Axis::Y)
                 .show(ui, |ui| {
                     for (i, label) in LIST.iter().enumerate() {
@@ -318,9 +324,10 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
                         seen.note(label, r.focused);
                     }
                 });
-            support::readout(ui, "opened", LIST[s.picked]);
+            support::readout(ui, k, "opened", LIST[s.picked]);
             support::checklist(
                 ui,
+                k,
                 &[
                     "Tab onto 'Bold': → moves to 'Italic', 'Underline', then into the search field",
                     "In the search field ← and → move the caret; Tab moves on to 'Clear'",
@@ -331,16 +338,17 @@ fn arrow_groups(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
         });
 }
 
-fn containment(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
+fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
     Section::new("Focus inside overlays")
         .apis(&[
             api!(Modal::new),
             api!(PopupTrigger::on),
             api!(Ui::focus_first_within),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "An open dialog keeps Tab inside itself, and a popup does while it holds \
                  focus. When either closes, focus goes back to the control that opened it. \
                  A popup opened from the keyboard takes focus; one opened by a click does \
@@ -372,10 +380,11 @@ fn containment(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
                     });
             });
             if s.dialog_open {
-                dialog(ui, s);
+                dialog(ui, k, s);
             }
             support::checklist(
                 ui,
+                k,
                 &[
                     "Open the dialog: focus moves to its first field",
                     "Tab and Shift+Tab cycle inside the dialog only",
@@ -388,15 +397,13 @@ fn containment(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
         });
 }
 
-fn dialog(ui: &mut Ui, s: &mut State) {
+fn dialog(ui: &mut Ui, k: Kit, s: &mut State) {
     let resp = Modal::new().show(ui, |ui, close| {
         Panel::vstack()
             .gap(12.0)
             .size((Sizing::fixed(300.0), Sizing::HUG))
             .show(ui, |ui| {
-                Text::new("Rename layer")
-                    .style(&support::body_style())
-                    .show(ui);
+                Text::new("Rename layer").style(&k.t.body()).show(ui);
                 TextEdit::new(&mut s.dialog_note)
                     .placeholder("new name")
                     .size((Sizing::FILL, Sizing::HUG))
@@ -416,7 +423,7 @@ fn dialog(ui: &mut Ui, s: &mut State) {
     }
 }
 
-fn programmatic(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
+fn programmatic(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
     Section::new("Focus from code")
         .apis(&[
             api!(Ui::set_focus),
@@ -424,9 +431,10 @@ fn programmatic(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
             api!(Ui::focus_first_within),
             api!(TextEdit::select_all_on_focus),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "set_focus keeps whether the ring shows from the last input, so a button \
                  clicked with the pointer moves focus without a ring, and one pressed with \
                  Space moves it with one.",
@@ -450,6 +458,7 @@ fn programmatic(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
             });
             support::checklist(
                 ui,
+                k,
                 &[
                     "'Focus the field' focuses it with its text selected",
                     "'Focus the form' focuses the name field at the top of the page",
@@ -459,15 +468,16 @@ fn programmatic(ui: &mut Ui, s: &mut State, seen: &mut Seen) {
         });
 }
 
-fn policy(ui: &mut Ui, s: &mut State) {
+fn policy(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Focus policy")
         .apis(&[
             api!(Ui::set_focus_policy),
             api!(FocusPolicy::PreserveOnMiss),
         ])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "What a press on nothing focusable does to focus. The shell puts the default \
                  back on every other page, so the choice here stays on this page.",
             );
@@ -484,6 +494,7 @@ fn policy(ui: &mut Ui, s: &mut State) {
             });
             support::checklist(
                 ui,
+                k,
                 &[
                     "ClearOnMiss: focus a field, click empty card space: nothing is focused",
                     "PreserveOnMiss: the same click leaves the field focused",
@@ -494,12 +505,13 @@ fn policy(ui: &mut Ui, s: &mut State) {
 }
 
 /// Edits the live theme's ring, one slot for every widget.
-fn ring(ui: &mut Ui) {
+fn ring(ui: &mut Ui, k: Kit) {
     Section::new("Ring theme")
         .apis(&[api!(Ui::theme), api!(type FocusRingTheme)])
-        .show(ui, |ui| {
+        .show(ui, k, |ui| {
             support::note(
                 ui,
+                k,
                 "The framework draws the ring, not the widget, from one slot of the theme. \
                  The values below edit the theme in use, so every page shows the change.",
             );
@@ -507,12 +519,12 @@ fn ring(ui: &mut Ui) {
             let mut width = f64::from(ring.width);
             let mut color = ring.color;
             support::row(ui, |ui| {
-                Text::new("width").style(&support::note_style()).show(ui);
+                Text::new("width").style(&k.t.caption()).show(ui);
                 Slider::new(&mut width, 0.0..=4.0)
                     .step(0.5)
                     .size((Sizing::fixed(160.0), Sizing::HUG))
                     .show(ui);
-                Text::new("color").style(&support::note_style()).show(ui);
+                Text::new("color").style(&k.t.caption()).show(ui);
                 ColorButton::new(ColorPicker::new(&mut color)).show(ui);
                 if Button::new().label("Reset").show(ui).clicked() {
                     let default = FocusRingTheme::default();
@@ -523,6 +535,7 @@ fn ring(ui: &mut Ui) {
             set_ring(ui, width as f32, color);
             support::checklist(
                 ui,
+                k,
                 &[
                     "Tab to the width slider and press → : the ring around it grows",
                     "Width 0 draws no ring at all",

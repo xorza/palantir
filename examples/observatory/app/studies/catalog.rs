@@ -11,7 +11,10 @@ use crate::app::model::Observatory;
 use crate::app::model::catalog::{Catalog, ObjectId};
 use crate::app::model::sky::{Dms, Hms};
 use crate::app::model::view::Column;
-use crate::app::scaffold::{StudyHeader, Tokens, api};
+use crate::app::studies::Study;
+use crate::scaffold::api;
+use crate::scaffold::header::Header;
+use crate::scaffold::tokens::Tokens;
 
 /// Every row's height, so a scroll offset names the first visible row.
 pub(crate) const ROW_HEIGHT: f32 = 26.0;
@@ -38,7 +41,7 @@ const COLUMNS: [(Column, &str, f32, Align); 5] = [
 const CELL_GAP: f32 = 12.0;
 
 pub(crate) fn header(ui: &mut Ui, t: Tokens) {
-    StudyHeader {
+    Header {
         title: "Catalog",
         blurb: "Every object of the generated sky as a table: type to filter, click a header to \
                 sort, move with the keyboard. Only the rows in view record, so the 4,060 rows \
@@ -62,12 +65,8 @@ pub(crate) fn header(ui: &mut Ui, t: Tokens) {
             api!(type palantir::ContextMenu),
             api!(type palantir::Clipboard),
         ],
-        showcase: &[
-            "text input",
-            "scroll & split",
-            "overlays",
-            "focus & keyboard",
-        ],
+        related_label: "showcase",
+        related: Study::Catalog.showcase_pages(),
         source: "examples/observatory/app/studies/catalog.rs",
     }
     .show(ui, t);

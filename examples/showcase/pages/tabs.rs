@@ -1,8 +1,9 @@
 //! The two tab widgets: a page view bound to an index, and the strip on
 //! its own with content of the app's, close buttons and overflow.
 
+use crate::scaffold::api;
 use crate::support;
-use crate::support::{Section, api};
+use crate::support::{Kit, Section};
 use palantir::{
     Block, Chrome, Configure, Corners, Panel, Sizing, TabChip, TabItem, TabOverflow, TabStrip,
     TabbedView, Text, Ui, WidgetId, fmt,
@@ -37,21 +38,22 @@ impl Default for State {
     }
 }
 
-pub(crate) fn build(ui: &mut Ui) {
+pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let state_id = WidgetId::from_hash("showcase::tabs::state");
     ui.with_state::<State, _>(state_id, |ui, s| {
         Section::new("Tabbed view")
             .apis(&[api!(type TabbedView)])
-            .show(ui, |ui| {
+            .show(ui, k, |ui| {
                 support::note(
                     ui,
+                    k,
                     "A strip over a content area, bound to a &mut usize as a combo box is. Click a \
                  chip, or focus the strip and move with the arrow keys, Home and End.",
                 );
                 Panel::vstack()
                     .size((Sizing::FILL, Sizing::fixed(180.0)))
                     .padding(10.0)
-                    .chrome(support::well_chrome())
+                    .chrome(k.t.card())
                     .show(ui, |ui| {
                         TabbedView::new(&mut s.page, &PAGES).closable(false).show(
                             ui,
@@ -61,11 +63,9 @@ pub(crate) fn build(ui: &mut Ui) {
                                     .padding(14.0)
                                     .gap(6.0)
                                     .show(ui, |ui| {
-                                        Text::new(PAGES[page])
-                                            .style(&support::body_style())
-                                            .show(ui);
+                                        Text::new(PAGES[page]).style(&k.t.body()).show(ui);
                                         let line = fmt!(ui, "page index {page}");
-                                        Text::new(line).style(&support::note_style()).show(ui);
+                                        Text::new(line).style(&k.t.caption()).show(ui);
                                     });
                             },
                         );
@@ -74,28 +74,30 @@ pub(crate) fn build(ui: &mut Ui) {
 
         Section::new("The strip alone")
             .apis(&[api!(TabStrip::new), api!(TabChip::show_label)])
-            .show(ui, |ui| {
+            .show(ui, k, |ui| {
                 support::note(
                     ui,
+                    k,
                     "TabStrip draws each chip's frame and close button, and the app records what \
                      the chip shows: here the label and, on the even layers, a dot in the \
                      chip's ink. Close a chip with its button.",
                 );
-                strip_demo(ui, s);
+                strip_demo(ui, k, s);
             });
 
         Section::new("Overflow")
             .apis(&[api!(TabOverflow::Menu)])
-            .show(ui, |ui| {
+            .show(ui, k, |ui| {
                 support::note(
                     ui,
+                    k,
                     "More chips than room. They pan under the wheel, and the trailing button lists \
                  every tab so one that scrolled out is still reachable.",
                 );
                 Panel::vstack()
                     .size((Sizing::fixed(320.0), Sizing::HUG))
                     .padding(10.0)
-                    .chrome(support::well_chrome())
+                    .chrome(k.t.card())
                     .show(ui, |ui| {
                         s.items.clear();
                         for (i, label) in MANY.iter().enumerate() {
@@ -112,13 +114,13 @@ pub(crate) fn build(ui: &mut Ui) {
                             s.overflowing = i;
                         }
                     });
-                support::readout(ui, "showing", MANY[s.overflowing]);
+                support::readout(ui, k, "showing", MANY[s.overflowing]);
             });
     });
 }
 
-fn strip_demo(ui: &mut Ui, s: &mut State) {
-    support::well(ui, |ui| {
+fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
+    support::well(ui, k, |ui| {
         s.items.clear();
         for &key in &s.open {
             s.items.push(TabItem::new(key, fmt!(ui, "layer {key}")));
@@ -136,7 +138,7 @@ fn strip_demo(ui: &mut Ui, s: &mut State) {
         }
     });
     let line = fmt!(ui, "{} open, slot {} selected", s.open.len(), s.picked);
-    support::readout(ui, "chips", line);
+    support::readout(ui, k, "chips", line);
 }
 
 /// A layer's chip: its label, and a dot on the even layers in the chip's ink.

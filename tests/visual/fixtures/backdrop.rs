@@ -3,12 +3,13 @@
 use glam::UVec2;
 use palantir::widget::{PaintAnimation, Shape};
 use palantir::{
-    BackdropFilter, Configure, Corners, Lens, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke,
-    Text, Ui, WidgetId,
+    BackdropFilter, ColorScheme, Configure, Corners, Lens, Panel, PopupTrigger, Rect, RgbaF32,
+    Sizing, Stroke, Text, Ui, WidgetId,
 };
 
 use crate::golden_name::GoldenName;
 use crate::support;
+use crate::support::Kits;
 
 /// Stripes of three colors and widths, and two lines of text over them, filling `size`.
 fn backdrop_scene(ui: &mut Ui, size: UVec2) {
@@ -147,11 +148,12 @@ mod showcase_page;
 /// frosted popup open over the page.
 #[test]
 fn showcase_materials_page_matches_golden() {
+    let k = Kits::new().kit(ColorScheme::Dark);
     GoldenName::ShowcaseMaterialsPage.assert_settled_scene(UVec2::new(760, 760), 2, |ui| {
         PopupTrigger::open(ui, showcase_page::popup_button());
         Panel::vstack()
             .auto_id()
             .gap(support::PAGE_GAP)
-            .show(ui, showcase_page::build);
+            .show(ui, |ui| showcase_page::build(ui, k));
     });
 }
