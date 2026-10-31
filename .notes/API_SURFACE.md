@@ -1745,7 +1745,7 @@ Remote  [features: winit]
         pub fn settle(&self) -> Result<u32, PlayError>
         pub fn play<X: Locate<T> + Clone + Send + 'static>(&self, actions: &[Action<X>]) -> Result<u32, ActError>
         pub fn shot(&self, region: Option<Rect>) -> Result<Screenshot, PlayError>
-        pub fn widgets(&self, filter: Option<String>) -> Result<Vec<InspectedWidget>, PlayError>
+        pub fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>
 
 RenderTarget
     struct RenderTarget<'a>: Clone, Copy, Debug
@@ -2380,7 +2380,7 @@ TextStyle
         pub weight: FontWeight
         pub slant: FontSlant
         pub fn font(&self) -> GlyphFont
-        pub fn line_height_for(&self, font_size: f32) -> f32
+        pub fn line_height(&self) -> f32
         pub const fn with_font_size(self, px: f32) -> Self
         pub const fn with_color(self, c: RgbaF32) -> Self
         pub const fn with_line_height_factor(self, factor: f32) -> Self

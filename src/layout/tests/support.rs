@@ -17,7 +17,7 @@ pub(super) const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog"
 
 /// Measured height of `lines` lines of `font_px` text: the default line height per line on the shaper's 1/64-px grid, ceiled to whole pixels as the measurer does. Widths are the bundled faces' advances.
 pub(super) fn lines_h(lines: u32, font_px: f32) -> f32 {
-    (lines as f32 * TextStyle::default().line_height_for(font_px)).ceil()
+    (lines as f32 * TextStyle::default().with_font_size(font_px).line_height()).ceil()
 }
 
 /// The leaf's single shaped-text result; asserts the span holds exactly one entry (multi-text callers should index `result.text_shapes[span.range()]`).

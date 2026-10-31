@@ -7,20 +7,15 @@ Darkroom is one user; an item stays only if it is general.
 ## Proposal
 
 The surface is mostly consistent: builders, values, flag sets, theme slots, state drivers and
-responses each follow one shape. The defects fall into four root causes:
+responses each follow one shape. An item is judged by whether a general user needs it, not by
+whether darkroom calls it. The defects fall into two root causes:
 
-- **Surface that lost its caller.** `TextEditTheme::corner_centering` placed darkroom's old
-  inline rename; `EditableLabel` replaced it. `ColorPicker::color` is a builder getter for one
-  in-crate caller.
 - **One concept, two names.** The two-pack themes name the resting pack `looks` (button) and
   `unselected` (tabs). The same tab gesture is `draggable` (dock, `TabItem`) and `reorderable`
   (`TabbedView`). A byte color is `srgba` on `RgbaF32` and `srgba8` on `Image`, and `srgba` on
   `RgbaF32` also names its float constructor.
 - **One kind of event, two shapes.** `TabStripResponse` reports participles, as the Responses
   rule asks; `TabbedViewResponse` reports an action enum.
-- **Signatures that ask for what they already have.** `TextStyle::line_height_for(font_size)`
-  is always called with the style's own size. `Remote::widgets` takes `Option<String>` where
-  `Harness::widgets` takes `Option<&str>`.
 
 Nothing in the surface is specialized for darkroom. The items added for it in the last plan
 (`App::is_busy`, `Ui::waker`, `Harness::wait_for_wake` and `has_pending_wake`,
@@ -29,22 +24,6 @@ Nothing in the surface is specialized for darkroom. The items added for it in th
 a general need, with its source in `AGENTS.md`.
 
 ## Plan
-
-### Batch 1: dead surface and signatures
-
-Files: `src/theme/text_edit.rs`, `src/widgets/text_edit/tests/align.rs`,
-`src/primitives/paint/chrome.rs`, `src/widgets/color_picker/mod.rs`,
-`src/theme/text_style.rs` and its callers, `src/host/winit/remote/mod.rs`,
-darkroom `driver/window_backend.rs` and `widgets/zoom_range/mod.rs`.
-
-- [ ] `TextEditTheme::corner_centering`: no caller outside its own test. Remove it, its test,
-  and the mention in `Chrome`'s doc.
-- [ ] `ColorPicker::color(&self)`: a getter on a builder, read only by `ColorButton` in the
-  crate. Make it `pub(crate)`.
-- [ ] `TextStyle::line_height_for(font_size)`: every caller passes `self.font_size`. Replace it
-  with `line_height(&self)`.
-- [ ] `Remote::widgets(filter: Option<String>)`: take `Option<&str>`, as `Harness::widgets`
-  does, and own the text inside for the event loop's thread.
 
 ### Batch 2: one name per concept
 
@@ -98,6 +77,11 @@ Files: the items named.
 - **`TabStrip::selected(impl Into<Option<usize>>)`**: `None` is a state, a strip with no
   current tab, not the absence of a setting, as it was for `MenuItem::shortcut`.
 - **`Modifiers` beside `ShortcutMods`**: held keys, with `mac_ctrl`, against a chord.
+- **`TextEditTheme::corner_centering`**: it places a hugging single-line field so its glyphs
+  land on a point, as an app that draws text on a canvas needs to edit it in place.
+  `EditableLabel` covers the case inside a layout, not over drawn text.
+- **`ColorPicker::color`**: a wrapper outside the crate reads the color a picker shows through
+  it, as `ColorButton` does; the Wrappers rule keeps a wrapper on public API.
 - **`Palette::popup_panel`, `DockView::tab_key`**: shared by recipes, and the key a caller
   needs for `TabStrip::chip_id` of a docked tab.
 

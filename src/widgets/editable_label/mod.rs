@@ -100,7 +100,7 @@ impl<'a> EditableLabel<'a> {
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.text_edit);
         let text = slot.looks.normal.text.apply(&theme.text);
-        let min = self.floor(text.line_height_for(text.font_size));
+        let min = self.floor(text.line_height());
         let reserve =
             text_layout::single_line_caret_reserve(text_layout::caret_room(slot.caret_width));
         let padding = self
@@ -140,7 +140,7 @@ impl<'a> EditableLabel<'a> {
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.text_edit);
         let text = slot.looks.normal.text.apply(&theme.text);
-        let min = self.floor(text.line_height_for(text.font_size));
+        let min = self.floor(text.line_height());
         let extent = self.extent();
         let mut edit = TextEdit::buffered(self.text)
             .id(id)

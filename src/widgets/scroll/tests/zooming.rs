@@ -309,7 +309,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // 1.03^-2 ≈ 0.9426.
     h.hover(scroll_id);
     h.set_modifiers(Modifiers::CTRL);
-    let line_px = TextStyle::default().line_height_for(16.0);
+    let line_px = TextStyle::default().with_font_size(16.0).line_height();
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 2.0 * line_px)));
     h.frame(build_zoom);
 
