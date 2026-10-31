@@ -19,22 +19,9 @@ items grow as WPF star tracks do), **wgpu rendering**.
 
 ## Architecture
 
-Each frame rebuilds the tree and runs **record → layout (measure, arrange) →
-cascade → damage → encode + compose → paint**. Color is linear-RGB f32 on
-the CPU side; sRGB encoding happens on the GPU at swapchain write.
-
-Each step has one top-level module: `scene` holds what record writes, over
-the shapes, payload store and paint animations of `shape` below it, `layout`
-measures and arranges it, `cascade` derives the tables input and paint read,
-`damage` decides what repaints, `renderer` encodes and composes, and `gpu`
-paints. `layout`, `cascade` and `damage` each keep their result type in
-`mod.rs` and their engine in `engine.rs`.
-`primitives` is the value vocabulary below all of them, `widget_core` the
-framework the bundled `widgets` are written on, and `theme` the look they
-read. `input` holds the event vocabulary, and `input_state` the state
-machine that routes events over the cascade.
-
-### Layering
+Each frame rebuilds the tree and runs **record → layout (measure, arrange) → cascade → damage →
+encode + compose → paint**, one top-level module per step. Color is linear-RGB f32 on the CPU;
+the GPU encodes sRGB at the swapchain write.
 
 A top-level module imports only modules to its left:
 
@@ -44,258 +31,106 @@ common → primitives → {animation, text, input, display, window, image_regist
        → renderer ⇄ gpu → theme → ui ⇄ app → widget_core → widgets → driver → host
 ```
 
-- **`theme` is plain look data.** It holds the look vocabulary a theme file
-  serializes and knows no `Widget` or `Ui`; `Widget::wear` applies a look.
-- **`ui` records through `Node` and shapes**, never through `Widget` or a
-  bundled widget, so the recorder core sits below the authoring layer.
-- **`gpu` ⇄ `renderer` stays a cycle.** `GpuPaint` names `GpuFrameCtx` and
-  `GpuInitCtx`, which hold the `wgpu` types `clippy.toml` keeps in `gpu`;
-  moving the trait into `gpu` would make `ui` depend on `gpu` for `GpuViews`.
-- **`app` ⇄ `ui` stays a cycle.** `App` is the callback contract of the frame
-  cycle; the two are one concept.
-- **A bench may import modules to its right.** A `bench.rs` sits beside the
-  code it measures (**Non-shipping code**), and a whole-frame case drives it
-  through `host`, `ui` and `widgets`, as the desktop does. Refused: moving
-  such cases to `src/bench/`, away from the code they measure.
+- **`theme` is plain look data**: it knows no `Widget` or `Ui`, and `Widget::wear` applies a look.
+- **`ui` records through `Node` and shapes**, never through a widget, so the recorder sits below
+  the authoring layer.
+- **`gpu` ⇄ `renderer` stays a cycle.** `GpuPaint` names the wgpu types `clippy.toml` keeps in
+  `gpu`; moving it into `gpu` would make `ui` depend on `gpu`.
+- **`app` ⇄ `ui` stays a cycle**: `App` is the frame cycle's callback contract.
+- **A bench may import modules to its right**, so a whole-frame case sits beside the code it
+  measures. Refused: a `src/bench/` away from that code.
 
 ## Swapchain
 
-What wgpu 30 allows on a window's swapchain, and the rules the renderer keeps
-to stay inside it. Facts and sources:
-`.notes/research/2026-10-29-swapchain.md`.
+Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
 
-- **An acquired image holds nothing.** wgpu marks it uninitialized: a load
-  reads zeros and a present of an unwritten image clears it. No frame reads
-  the last frame's pixels from the swapchain. A frame that keeps pixels
-  paints through the backbuffer; a direct frame is whole, and its first pass
-  clears.
-- **Inside one frame the image is an ordinary texture.** A pass may load what
-  an earlier pass of the frame stored, and a copy may read it where the
-  surface took `COPY_SRC`: a pane's capture, the damage overlay.
-- **Ask only for usages the surface offers.** `RENDER_ATTACHMENT` is
-  required; `COPY_DST` and `COPY_SRC` are taken where `caps.usages` holds
-  them, and every path that needs one checks it (`RenderTarget::takes_copy`,
-  `gives_copy`). A usage the surface lacks fails `configure`.
-- **Never sample a swapchain image.** Metal, DX12 and GL surfaces offer no
-  `TEXTURE_BINDING`; only some Vulkan drivers do. A pass that must sample
-  what the frame painted samples the backbuffer. Refused: a sampled path for
-  Vulkan alone, a second way to paint a frame that the m2 cannot run.
-- **Keep nothing of an image past its present.** Each acquire is a new
-  texture: no view, bind group or cache keyed by it outlives the frame, as
-  wgpu does not stop a stale view after a reconfigure. One image is acquired
-  at a time, and none lives when `configure` runs.
-- **Submit, then present.** The frame's work goes in `queue.submit`, then
-  `pre_present_notify`, then `queue.present`. A frame that paints nothing
-  acquires nothing.
-- **Configure as the surface lists.** A nonzero size inside the device's
-  largest texture, an sRGB format in the sRGB color space, `AutoVsync` or
-  `AutoNoVsync`, an alpha mode from the list. `configure` waits for the
-  device to idle, so it runs only when the configuration changed, and a
-  rebuild invalidates the target's contents.
-- **Handle each acquire outcome as wgpu documents it.** `Suboptimal`:
-  present, then reconfigure. `Outdated`: reconfigure. `Lost`: create the
-  surface again, as a lost surface does not configure. `Timeout`: paint
-  again. `Occluded`: skip. `Validation`: back off.
+- **No frame reads the last frame from the swapchain.** wgpu hands out each image
+  uninitialized, so a frame that keeps pixels paints through the backbuffer.
+- **Never sample a swapchain image.** Metal, DX12 and GL offer no `TEXTURE_BINDING`; a pass that
+  samples the frame samples the backbuffer. Refused: a Vulkan-only sampled path the m2 cannot
+  run.
+- **Ask only for usages the surface offers.** `COPY_DST` and `COPY_SRC` are optional, and each
+  path that needs one checks it; a usage the surface lacks fails `configure`.
+- **Nothing is keyed by an acquired image**, as wgpu does not stop a stale view after a
+  reconfigure.
+- **`configure` runs only on a change**, as it waits for the device to idle.
 
 ## Device loss
 
-What a host does when the device goes away: a GPU hang reset by the OS (TDR, amdgpu), a driver
-update, a removed GPU. Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
+Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 
-- **Recover, do not panic.** On a loss the host opens a new device and rebuilds every GPU object
-  on it; the UI state stays and the next frame of every window paints whole. Refused: a panic,
-  which a TDR in a long image-processing shader turns into a crash. Source: MDN
-  `GPUDevice.lost`, Zed PR #50898.
-- **A recovery runs the first attach again.** Startup and a recovery attach a device through the
-  same calls: `HostCore::new` and `HostCore::attach` build the device half with one
-  `BackendSpec::open`, `HostCore::attach` gives every window its stream as `HostCore::open` gives
-  a new one, and `SurfaceManager` opens the device and builds a window's surface through the
-  functions `start` uses. Refused: a recovery path of its own, which drifts from the init.
-- **Device-bound state is rebuilt, not repaired.** The backend, the window streams and the view
-  targets are made again with their constructors; the CPU atlases the GPU mirrors (gradient
-  rows) clear and refill as frames register them, as Zed's atlas does. Only the image store
-  attaches in place, as every `ImageHandle` holds its `Rc`. Refused: a `reset` on each GPU type,
-  which a field added later can miss. Source: Zed PR #54349, DirectX DeviceResources.
-- **Registered images: the app uploads them again.** On the first frame after a recovery,
-  `Ui::device_restored()` is true, and the app calls `ImageHandle::update` for the images it
-  still shows; until then they paint nothing. Refused: a CPU copy of every image, which doubles
-  the RAM of darkroom's 64 MP images. Source: DirectX `IDeviceNotify::OnDeviceRestored`, Android
-  `onSurfaceCreated`.
-- **`GpuPaint::init` runs again on the new device,** as it does when a view comes back. Refused:
-  a separate `device_lost` hook, as Rust drops the old handles when `init` replaces them.
-- **`Gpu` owns the device's health.** `Gpu::new` sets the lost callback and the uncaptured-error
-  handler; the handler panics on an error while the device is healthy, as wgpu's default does,
-  and drops it once the device is lost. Refused: setting them in each host, which leaves a `Gpu`
-  without a health. Cost: a callback an app set on the device it wraps is replaced, and a device
-  its owner destroys reads lost only after the next `Gpu::wait`, as wgpu runs that callback from
-  a maintain (wgpu #9278).
-- **No poll on the frame path; wgpu's blocking wait where a caller blocks.** Each `queue.submit`
-  runs the map and work-done callbacks, so nothing polls per frame; `Gpu::poll` is an empty
-  submit, which a lost device cannot make panic, and `Gpu::wait` is `poll(Wait)` behind the
-  health check, then a wait for a work-done marker of its own. `clippy.toml` keeps `Device::poll`,
-  `Instance::poll_all` and both device callbacks inside `gpu::device`. Refused: a loop of empty
-  submits, which spins and never ends on a device its owner destroyed; `catch_unwind`, which
-  `panic = "abort"` makes useless. Cost: a loss found during a blocking wait ends the process, as
-  in Zed; the desktop host never waits.
-- **Nothing on the GPU half panics on a lost device.** A belt allocation that does not map
-  declines (`GpuCtx::stage`), and the upload skips: the loss can come inside a submit, after the
-  call that found it.
-- **The limits are shared state.** A new adapter can have another `max_texture_dimension_2d`, so
-  one `SharedDevice` cell holds the limit the recovery writes; the gradient atlas clears to it,
-  the surfaces clamp to it, and an image past it paints nothing, with a `tracing::warn`. Refused:
-  requesting the old limits, which fails a recovery onto a smaller GPU that could run the app.
-- **A recovery makes every window a new surface,** dropping the old one first, as a lost surface
-  is renewed. Refused: configuring the old surface on the new device, which releases its old
-  swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
-- **A capture the loss broke is taken again.** Every screenshot on its way back from the old
-  device goes back to the window's requests at the attach, and the next frame takes it.
-- **The hosts report and recover.** The winit host recovers before a window draws on a lost
-  device, and `run()` returns `WinitHostError::DeviceLost` when no new device opens.
-  `OffscreenHost` runs the CPU half and submits nothing while `is_device_lost()`, and
-  `recover(gpu)` attaches the device the app gives. A `Harness` runs the CPU half and paints
-  nothing while its device is lost, and recovers none: a test or an agent session that loses its
-  device opens a new one. Refused: a new host, which loses the UI state.
-- **Tests lose a real device.** `Gpu::lose` destroys an isolated device and waits, as wgpu's own
-  device-loss tests do; the shared test device is never lost. A real hang can be checked by hand
-  with `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root while the showcase runs, which
-  resets the GPU for every app on the machine.
+- **Recover, do not panic.** A loss opens a new device and rebuilds every GPU object; the UI
+  state stays. Refused: a panic, which a TDR in a long shader turns into a crash (MDN
+  `GPUDevice.lost`, Zed PR #50898).
+- **A recovery runs the first attach again**, through the calls startup makes. Refused: a
+  recovery path of its own, which drifts from the init.
+- **Rebuilt, not repaired**: device-bound state is made again by its constructors. Refused: a
+  `reset` on each GPU type, which a later field can miss (Zed PR #54349, DirectX
+  DeviceResources).
+- **The app uploads its images again** when `Ui::device_restored()` is true. Refused: a CPU copy
+  of every image, which doubles the RAM of darkroom's 64 MP images (DirectX `OnDeviceRestored`,
+  Android `onSurfaceCreated`).
+- **`GpuPaint::init` runs again.** Refused: a `device_lost` hook, as Rust drops the old handles.
+- **`Gpu` owns the device's health.** Refused: callbacks set in each host. Cost: a callback the
+  app set is replaced, and a destroyed device reads lost only after a `Gpu::wait` (wgpu #9278).
+- **No poll on the frame path**: each submit runs the callbacks. Refused: a loop of empty
+  submits, which never ends on a destroyed device; `catch_unwind`, useless under
+  `panic = "abort"`. Cost: a loss in a blocking wait ends the process, as in Zed.
+- **The texture limit is shared state**, as the new adapter's can be smaller. Refused: asking for
+  the old limits, which fails a recovery onto a smaller GPU.
+- **Every window gets a new surface.** Refused: the old surface on the new device, which
+  releases its swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
+- **Tests lose a real device**, an isolated one, through `Gpu::lose`, as wgpu's tests do. By
+  hand, `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root resets the GPU for every app.
 
 ## Harness
 
-`Harness` runs one window with no desktop for a unit test, an app's UI test and an agent alike;
-`Remote` plays a live window of the winit host with the same steps. Their rules of a frame are in
-`host/harness/mod.rs`'s module doc.
+`Harness` runs one window with no desktop for unit tests, UI tests and agents; `Remote` plays the
+same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s module doc.
 
-- **The harness is a host, not a `Ui` field.** A host owns the clock, the frame loop, the display
-  and the input door, and runs `HostCore` and `WindowDriver` as the other two hosts do, so a test
-  runs the stamp, damage and screenshot path the desktop runs. Flutter's `WidgetTester`, Slint's
-  testing backend, egui_kittest's `Harness`, masonry's `TestHarness` and iced_test's `Simulator`
-  sit at that level. Refused: a field on `Ui`, a second frame loop every app pays for; a separate
-  crate, which cannot reach the core; a frame path of the harness's own, which drifts
+- **The harness is a host**, on the core and window driver the desktop runs. Refused: a `Ui`
+  field, a frame loop every app pays for; a separate crate, which cannot reach the core; a
+  frame path of its own, which drifts
   ([egui_kittest](https://docs.rs/egui_kittest/latest/egui_kittest/struct.Harness.html),
   [masonry](https://docs.rs/masonry/latest/src/masonry/testing/harness.rs.html),
-  [Slint testing](https://docs.rs/i-slint-backend-testing/latest/i_slint_backend_testing/),
+  [Slint](https://docs.rs/i-slint-backend-testing/latest/i_slint_backend_testing/),
   [Flutter](https://api.flutter.dev/flutter/flutter_test/WidgetTester-class.html),
   [iced_test](https://docs.rs/iced_test)).
-- **Public, with no feature.** It brings no dependency palantir lacks, so a feature saves nothing
-  and adds a lint lane. Its test reach-ins sit at the end of `host/harness/mod.rs`, under
-  `internals` or `cfg(test)`. Refused: masonry's `testing` feature.
-- **Three depths, record by default.** `Depth::Record` stops after damage, at what a unit test
-  costs; `Depth::Compose` builds the draw list on the CPU; `Depth::Gpu` paints and shoots. A core
-  built with no device never attaches one, as its image registry holds no store. Refused: a GPU
-  for every test; a CPU rasterizer, a second renderer to keep equal to the GPU one.
-- **A stepped clock only, and a warm start.** Time moves on `advance`, `at`, `settle` and `play`,
-  so a run repeats, and frame 1 runs no warmup pass, so pass counts hold. Refused:
-  `OffscreenTime::Realtime`, which `OffscreenHost` keeps for embedding.
-- **The app goes in each call, and a closure is an app.** A test's closure borrows the test's
-  locals, which it reads between frames; `impl<F: FnMut(&mut Ui)> App for F`. Frames take
-  `impl FnMut(&mut Ui)`, as rustc infers a closure's argument types only from an `Fn` bound, and
-  `frame_app`, `settle`, `play` and `shot` take `&mut impl App`. Refused: egui_kittest's owned
-  state; one family on `&mut impl App`, which costs every unit test an annotation.
-- **Locators by text, by id and by point,** and an app's own places through `Locate`, as
-  Flutter's `find.text` and iced's `click "…"` name a widget. A widget must show and be reached by
-  the input it senses: a press goes to the topmost widget that clicks, a hover to the topmost that
-  hovers, as `Cascade::hit_test_press` routes them. Refused: `dyn` locators; a check against any
-  sensing widget, which calls a button covered by a label that only hovers.
-- **Methods are input; `play` is a person.** An input method queues events and returns, and a
-  locator that misses panics with the nearest matches, a test's mistake; `play` settles after each
-  step, spaces separate presses past the double-click window, moves before it presses, and returns
-  `ActError`, as its steps come from an agent. One set of rules, `driver::play`, plays a step on a
-  harness and on a remote. `Action::click`, `key` and `DRAG_STEPS` sit on `impl Action`, so a call
-  with no app places names no type, as `Vec::new` sits on `Vec<T, Global>`.
-- **`key` restores the modifiers.** A shortcut with modifiers holds them for its press and then
-  restores the ones held before, and a bare key presses under what `set_modifiers` holds. Refused:
-  a key that leaves its modifiers held for the next.
-- **Scroll names its event kind:** `scroll_pixels` and `scroll_lines`. Refused: `ScrollDelta`, a
-  response's reading, negated at ingest.
-- **One window; its commands are recorded** in `window_commands`. Refused: `OffscreenHost`'s
-  panic, which ends an agent's session on an app's second window.
-- **No recovery.** A harness paints nothing while its device is lost; a test or an agent session
-  opens a new one (**Device loss**).
-- **A live window takes the same steps through `Remote`.** A query runs between two frames with
-  `&mut` the app and the window's `Ui`, so locators and `inspect` need no request queue in the
-  app, as Flutter's driver extension and Slint's MCP server run inside the live app. A shot is a
-  host event the window's frame answers in the frame its image lands in, as a later frame replaces
-  the image. A query given up on never runs later, and `with_blocked` gives up at once while
-  something outside the host holds the window's thread. Its tests serve the handle's events on a
-  harness through a test-only channel, as a winit event loop needs a display and the main thread.
-- **No MCP server in palantir.** It carries no schema; an app's server converts its own JSON
-  types. Refused for now: Slint's `slint/mcp` feature, which brings rmcp and an async runtime into
-  the GUI crate; a second app with a server would argue for a `palantir-mcp` crate.
-- **A shot scales down in premultiplied linear light, in palantir** (`Image::fitted`), so the
-  shipped build needs no image crate and a transparent texel's color adds nothing. The showcase's
-  largest side is 2,576 px, the long edge Claude 4.7 and later models read with no downscale
+- **Public, with no feature**, as it adds no dependency. Refused: masonry's `testing` feature.
+- **Three depths, record by default.** Refused: a GPU for every test; a CPU rasterizer, a second
+  renderer to keep equal to the GPU one.
+- **A stepped clock and a warm start**, so a run repeats and pass counts hold.
+- **A closure is an app**, and frames take `impl FnMut(&mut Ui)`, as rustc infers a closure's
+  argument types only from an `Fn` bound. Refused: egui_kittest's owned state.
+- **A locator hits what the input reaches**: the topmost widget that senses it. Refused: `dyn`
+  locators; any sensing widget, which reaches a button a label covers.
+- **Methods are input; `play` is a person.** A method queues events and panics on a missed
+  locator; `play` settles, spaces presses and returns an error an agent reads.
+- **`key` restores the modifiers held before.** Refused: a key that leaves them held.
+- **Scroll names its kind** (`scroll_pixels`, `scroll_lines`). Refused: `ScrollDelta`, negated
+  at ingest.
+- **One window; its commands are recorded.** Refused: a panic, which ends an agent's session.
+- **`Remote` queries between two frames inside the app**, as Flutter's driver extension and
+  Slint's MCP server do.
+- **No MCP server in palantir.** Refused for now: Slint's `slint/mcp` feature, which brings rmcp
+  and an async runtime; a second app with a server would argue for a `palantir-mcp` crate.
+- **A shot scales down in palantir**, so the shipped build needs no image crate. The showcase's
+  long side is 2,576 px, which Claude reads with no downscale
   ([Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision)).
-- **The showcase's shot mode is a script of lines**, as iced's `.ice` tests, one process per
-  script, rebuilt by each call, so a shot never shows a stale binary; its legend lists the widgets
-  with text, which a locator names
-  ([iced_test `Ice`](https://docs.rs/iced_test/0.14.0/iced_test/ice/struct.Ice.html)).
-- **The visual suite stays on `OffscreenHost`**, as it tests presentation paths: fresh targets,
-  each format, a target with no `COPY_DST`. Its rig is `VisualRig`, so one name keeps one meaning.
-- **Every host gives a waker; a settle waits out a busy app.** `Ui::waker` hands out a `Waker`
-  any thread calls, a type-erased closure, as the host is chosen at run time and the winit handle
-  is generic over the app. `App::is_busy`, read after a frame, says work off the frame will wake
-  the window; `Harness::settle` waits for that wake in real time, bounded by `background_wait`,
-  and the winit host carries it in `FrameSummary::busy`, which `Remote::settle` waits on. Refused:
-  a `HostHandle` on the harness, which brings winit's `run_on_main` and `remote`; a flag the
-  record sets on `Ui`, stale when no frame records, the case a settle waits in. Source:
-  Playwright's auto-wait (<https://playwright.dev/docs/actionability>), egui's `Context`, which
-  any thread asks for a frame.
-- **A remote waits on the frame log, not a poll,** a condition variable each frame signals, and a
-  query that panics returns `PlayError::Panicked`, so the window goes on.
+- **The showcase's shot mode is a script**, as iced's `.ice` tests, rebuilt per call so a shot
+  never shows a stale binary.
+- **The visual suite stays on `OffscreenHost`**, as it tests presentation paths.
+- **A settle waits out a busy app** through `App::is_busy` and `Ui::waker`. Refused: a
+  `HostHandle` on the harness, which brings winit; a flag the record sets, stale when no frame
+  records ([Playwright auto-wait](https://playwright.dev/docs/actionability)).
 
 ## Rounded-clip stencil
 
-Facts and sources: `.notes/research/2026-10-31-shared-device-tile-loss.md`.
-
-- **`Stencil8`, its texels zeroed by a queue write when it is made.** On NVIDIA under Vulkan an
-  `S8_UINT` image bound to memory that held nonzero bytes keeps 4 × 4 blocks that no load clear
-  or stencil write resets, and a copy into the stencil aspect does reset them. Refused:
-  `Depth24PlusStencil8`, four times the memory; a copy from a zeroed buffer kept as large as the
-  largest stencil, memory held for a write that runs only when a stencil is made; `clear_texture`,
-  which wgpu runs as a render pass clear.
-- **The write runs per new stencil only:** the first frame with a rounded clip, a resize, a new
-  damage canvas. Cost: a zeroed allocation and an upload of width × height bytes on those frames.
-
-## Light and dark
-
-Facts and sources: `.notes/research/2026-10-31-system-preferences.md`.
-
-- **A theme per scheme, picked by palantir.** Each `Ui` holds a theme for `ColorScheme::Light`
-  and `Dark`; `SchemePreference` (System, Light, Dark) and the system's report are app-wide, and
-  palantir resolves them at a frame's start, so no frame mixes two. A pick by hand wins, then the
-  system, then dark. Refused: iced's shape, where each app subscribes and swaps its own theme
-  ([egui `ThemePreference`](https://docs.rs/egui/latest/egui/enum.ThemePreference.html),
-  [Zed appearance](https://zed.dev/docs/appearance)).
-- **No preference reads as dark, on every OS.** `mundy` answers `NoPreference` for the portal's
-  0, a desktop with no portal and a failed read alike; a portal that fails while the app runs
-  must not turn it light. Cost: GNOME's light users, whose Light setting writes 0, see dark until
-  they pick Light.
-- **`mundy` reads the system on every OS**, the scheme, the double-click time and reduced motion,
-  read once before the first window and then followed. Refused: winit's `ThemeChanged`, silent on
-  X11 and Wayland and on macOS while a window's appearance is pinned; `dark-light`, which reads
-  the scheme alone and polls macOS.
-- **Reduced motion snaps every `Ui::animate`**, as CSS `prefers-reduced-motion` and WCAG 2.3.3 ask
-  of motion a person's input starts; a spinner and a caret still run, as they show state.
-- **Each palette holds WCAG's floors on the pairs the recipes paint**: text 4.5:1, a focus ring or
-  an accent mark 3:1, stacked surfaces 1.10:1 apart; `theme/tests/floors.rs` computes each.
-  `Palette::LIGHT` is Ayu Light moved to the floors, its accent Ayu's orange darkened until white
-  on it clears 4.5:1; `on_accent` is the ink on an accent fill, dark in the dark palette, as
-  Material 3's `on-primary`.
-
-## Examples
-
-- **The showcase is the reference; the observatory is the use.** The showcase pins one parameter
-  a section, which its goldens and `api!` chips need; the observatory composes the widgets into
-  five studies of one fictional tool on one model, as Material's studies and Slint's `demos/`
-  sit beside a widget gallery. Refused: studies inside the showcase.
-- **The shot mode is shared**, in `examples/shared/shot/`, behind `ShotApp`; each example compiles
-  it through `#[path]`, and its tests run in the showcase.
-- **The observatory's data is generated**: SplitMix64 from a fixed seed, star colors from
-  Ballesteros' fit and the Planckian locus, no clock and no file, so a shot and a golden draw the
-  same each run. Refused: the `rand` crate, whose output a version may change.
-- **The night sky stays night in a light scheme**; it is content, as a photo is. The chrome around
-  it follows the scheme.
+- **`Stencil8`, zeroed by a queue write when it is made.** On NVIDIA under Vulkan an `S8_UINT`
+  image keeps 4 × 4 blocks of old memory that no clear resets, and a copy does. Refused:
+  `Depth24PlusStencil8`, four times the memory; a zeroed buffer kept for the write;
+  `clear_texture`, a render pass clear in wgpu. Facts:
+  `.notes/research/2026-10-31-shared-device-tile-loss.md`.
 
 ## Public API
 
@@ -309,402 +144,174 @@ Facts and sources: `.notes/research/2026-10-31-system-preferences.md`.
 
 ## Public API design
 
-An exported item that breaks a rule below is a bug. `cargo drive surface`
-renders every exported declaration, over every public feature, into
-`.notes/API_SURFACE.md`. Regenerate the file with any change to the surface,
-and audit against it: CI fails when the committed file differs from what the
-tree renders.
+An exported item that breaks a rule below is a bug. `cargo drive surface` writes the surface to
+`.notes/API_SURFACE.md`; regenerate it with each change, as CI compares it with the tree.
 
 ### Kinds of type
 
-- **Builder** — consumed once, by a terminal `show` or `build`, or by
-  `Ui::add_shape`: widgets, shapes, `LayerScope`, `GradientBuilder`, the host
-  builders. Its setters are bare (`.padding(4.0)`), take `self` and return
-  `Self`.
-- **Value** — stored, passed or compared. A chaining setter that takes an
-  argument is `with_*`. A shorthand that takes none keeps its adjective
-  (`TextStyle::bold`, `Shadow::inset`). A `with_*` with no `self` is a
-  constructor that takes one setting, as `Vec::with_capacity` is
-  (`Mesh::with_capacity`, `TextShaper::with_fonts`).
-- **Plain data** — public fields and no invariant: `Rect`, `Size`, `Spacing`,
-  `Span`, `Corners`, `RgbaF32`, `Stroke`, `Shadow`, `Chrome`, `Brush` and the
-  gradients, `GlyphFont`, `TextStyle`, `PaintAnimation`, the theme structs.
-  It is checked where it enters (**Input validation**, rule 3).
-- **Checked value** — a consumer relies on an invariant, so the fields are
-  private behind a checked constructor, and getters read them: `Sizing`,
-  `Track`, `GridCell`, `TranslateScale`, `Stop`, `DockSplit`, `ZoomConfig`. A
-  single-value newtype unwraps through `get()` (`UserScale`, `ZoomFactor`,
-  `FontWeight`), as `NonZeroU32` does.
-- **Flag set** — a `flag_set!` type: its named flags, `NONE`, `ALL`, the set
-  operations and `|`, and never its bits (`Sense`, `KeyFilter`,
-  `PointerWake`, `KeyboardWake`). A set of booleans a caller writes as a
-  struct literal is plain data with the same named constants (`Modifiers`,
-  `ShortcutMods`).
-- **Sealed trait** — a trait whose implementors the crate enumerates is a
-  public marker over a crate-private supertrait (`Lower`, `GradientGeometry`).
-- **Error** — an enum of the cases a caller can tell apart, named `*Error`. A
-  single condition is a struct named for the condition (`ClipboardUnavailable`,
-  `HostDisconnected`). Each implements `Display` and `Error`, and keeps a
-  foreign cause as its `source`.
+- **Builder** — consumed by `show`, `build` or `Ui::add_shape`. Setters are bare, take `self`,
+  return `Self`.
+- **Value** — stored, passed or compared. A chaining setter is `with_*`; a shorthand with no
+  argument keeps its adjective (`TextStyle::bold`); a `with_*` without `self` constructs, as
+  `Vec::with_capacity`.
+- **Plain data** — public fields, no invariant, checked where it enters.
+- **Checked value** — private fields behind a checked constructor; a newtype unwraps through
+  `get()`, as `NonZeroU32`.
+- **Flag set** — `flag_set!`: named flags, `NONE`, `ALL`, set operations, never its bits.
+- **Sealed trait** — a public marker over a crate-private supertrait.
+- **Error** — `*Error`, an enum of the cases a caller tells apart, or a struct for a single
+  condition; `Display`, `Error`, a foreign cause as `source`.
 
 ### Names
 
 `cargo drive vocabulary` lists every declared name and word for a review.
 
-- **Spelling.** American (`center`, `color`) and whole words
-  (`AnimationSpec`, `Interpolation`, `SplitDirection`, `saturation`). The
-  abbreviations allowed are the fixed short forms below and the ones
-  geometry, color and input already use: `id`, `x` `y` `w` `h`, `min` `max`,
-  `dt`, `bbox`, `eps`, `inf`, `rgb` `rgba` `srgb` `hsv` `okhsv` `oklab`
-  `hex`, `ctrl` `alt` `mods`, `vsync`, `gpu` `cpu`, `svg`, `fmt` after
-  `format_args!`, and the words `config`, `spec` and `stats`. Parameter names
-  follow the rule too (`press`, `shortcut`, `anchor`, `top_left`), except a
-  single letter for a setter's one argument when its type names it
-  (`padding(p)`, `style(s)`), and `px` for a length. A `bool` setter names its
-  argument after the setting (`editable(editable)`), as std's
-  `OpenOptions::read(read)` does, since `bool` says nothing of what it sets; a
-  color is `color`.
-- **Fixed short forms.** `idx`, `pos`, `ctx`/`Ctx`, `dir`, `bg`, `col`,
-  `exec`, `desc`, `cur`, `prev`, and their plurals with `s` (`idxs`, `poss`),
-  in every name; prose, strings and test names keep whole words. A name a
-  foreign API sets keeps its own form (`Iterator::position`,
-  `wgpu::TextureDescriptor`), and so does a term of another meaning: `idx` is
-  a position and `dir` a file-system directory, so a lookup index
-  (`GradientIndex`), a registry (`WindowDirectory`), a `direction` and a
-  `ContextMenu` keep the whole word.
-- **`Chrome` is what a node paints behind its content**: fill, border,
-  corner radii and shadow, set through `chrome` and `default_chrome`, and
-  recorded with the focus ring as `NodeChrome` and `ChromeRow`. `bg` is a
-  background color alone (`Palette::window_bg`). Refused: `bg` or
-  `background` for a `Chrome`, which holds more than the fill CSS and WPF
-  call a background; and "chrome" for a widget's scaffolding (`ToggleRow`)
-  or a stroke's join billboards.
-- **Constructors.** `new` is the primary one. A named constructor names the
-  kind or the arrangement it builds (`Panel::hstack`, `Sizing::fixed`,
-  `Anchor::below`, `Splitter::row`, `Shape::rect`, `Chrome::rounded`).
-  `from_*` converts another representation (`Image::from_srgba8`,
-  `Rect::from_min_max`, `ButtonTheme::from_parts`). `on(&snapshot)` attaches
-  an overlay to a trigger, with the snapshot first and required text second;
-  `for_id(id)` attaches by id. No widget constructor takes `ui`; a
-  `Response` borrows the `Ui`, so `Response::new` does.
-- **Setters.** Named for the setting, not the act (`padding`, not
-  `set_padding`). A boolean setting takes a `bool`, so a caller can bind it to
-  state. A setting with more than two values takes its enum or its config, and
-  a common value may get a shorthand that takes nothing beside it
-  (`visibility` / `hidden`, `bar_mode` / `hide_bars`, `zoom_config` /
-  `zoomable`, `weight` / `bold`). `default_*` is a fallback used only where the
-  caller set nothing (`ThemeDefaults`, `default_chrome`). `start_*` is a
-  first-frame state the widget owns after that (`Expander::start_open`).
-  Placement is the one setting named by a preposition: `at(rect)` on a shape,
-  `at_origin(point)` for text, `fixed_at(point)` on a layer; its anchored
-  form is `anchor(anchor)` (`Popup`, `LayerScope`).
-- **Getters.** The noun of what they return, never `get_*`. State on `Ui`
-  reads through `x()` and writes through `set_x(v)`, and the pair shares its
-  noun (`theme_for` / `set_theme_for`, `focus` / `set_focus`); a value that mutates in
-  place pairs them the same way (`ColorCoords::hue` / `set_hue`,
-  `Clipboard::text` / `set_text`). An action is a verb (`open_window`,
-  `request_repaint`, `clear_focus`). A read that also wakes the next frame on
-  a change has a `peek_*` twin that does not (`pointer_pos` /
-  `peek_pointer_pos`).
-- **Conversions** follow std: `as_*` is a free view (`as_str`, `as_solid`),
-  `to_*` computes a new value (`to_color`, `to_srgba8`, `to_animated`), and
-  `from_*` is the constructor that goes the other way.
-- **Predicates.** A property of a value, or of `Ui` state, is `is_*`, `has_*`
-  or `can_*` (`is_noop`, `is_approx_zero`, `is_window_open`,
-  `is_focus_within`, `has_font`, `can_split`). A relation to the argument is a
-  verb in the third person (`contains`, `intersects`, `matches`, `takes`,
-  `allows`, `passes`, `approx_eq`).
-- **Edges and derived values.** What happened this frame is a past participle:
-  response fields and methods (`clicked`, `changed`, `committed`, `dismissed`,
-  `repaint_requested`). The pointer's state on a widget reads the same way, as
-  a level (`hovered`, `held`, `pressed`, `focused`); a state with no
-  participle is a predicate (`Drag::is_live`). A value derived from another
-  is a past participle too (`inflated`, `scaled_by`, `stepped_up`,
-  `anchored_at`). Algebra on values is a verb, as std names it (`union`,
-  `intersect`, `min`, `max`, `clamp_to`, `compose`, `combine`).
-- **Ids.** A widget's derived ids are `*_id` associated functions on the
-  widget type (`TabStrip::chip_id`, `DockView::pane_id`). A part's id is its
-  owner's `id.with("part")`, documented on the owner.
-- **Sentinels.** `NONE` is a value that paints nothing or a set that holds
-  nothing (`Chrome::NONE`, `Stroke::NONE`, `Shadow::NONE`, `Sense::NONE`,
-  `Modifiers::NONE`, `TextStyleOverrides::NONE`). `ZERO` is a geometric zero
-  (`Rect`, `Size`, `Spacing`, `Corners`). `TRANSPARENT` is a color or a brush
-  that paints nothing. `ONE` and `IDENTITY` are the multiplicative identity.
-  `ALL` is a full set, and `EMPTY` is empty text.
-- **Units.** A length is in logical pixels, and its name carries no unit
-  (`font_size`, `thickness`, `min_thumb`). A device-pixel quantity says
-  `physical` (`Display::physical`, `GpuFrameCtx::physical_size`). An angle
-  is in radians. A fraction of a full circle is a _turn_, named `turn` or
-  `hue`.
-  Time is `std::time::Duration`, never a float of seconds or milliseconds. Any
-  other unit is named in full in the identifier (`refresh_millihertz`,
-  `percent`). A multiplier is a `factor` (`line_height_factor`,
-  `scaled_by(factor)`), and a share of a whole is a `ratio` or a `fraction`
-  (`DockSplit::ratio`, `width_ratio`, `ProgressBar::new(fraction)`). A
-  color is linear `RgbaF32`; `SrgbaU8` is for bytes in and out.
-- **Lines and corners.** The width of a line — a stroke, a border, a caret — is
-  `width` or `*_width` (`Stroke::width`, `border_width`, `caret_width`,
-  `arrow_width`). The cross size of a bar, a track or a band is `thickness` or
-  `*_thickness` (`Separator::thickness`, `track_thickness`,
-  `rule_thickness`). One corner rounding is `radius` or `*_radius`
-  (`TabsTheme::radius`, `preview_radius`), and four are `Corners`.
+- **Spelling.** American, whole words. Abbreviations: the fixed short forms, and `id`, `x` `y`
+  `w` `h`, `min` `max`, `dt`, `bbox`, `eps`, `inf`, `rgb` `rgba` `srgb` `hsv` `okhsv` `oklab`
+  `hex`, `ctrl` `alt` `mods`, `vsync`, `gpu` `cpu`, `svg`, `fmt`, `config`, `spec`, `stats`. A
+  setter's one argument may be a letter its type names (`padding(p)`), `px` for a length; a
+  `bool` is named for the setting (`editable(editable)`, as `OpenOptions::read`).
+- **Fixed short forms.** `idx`, `pos`, `ctx`/`Ctx`, `dir`, `bg`, `col`, `exec`, `desc`, `cur`,
+  `prev`, plurals with `s`; prose, strings and test names keep whole words. A foreign name and a
+  term of another meaning keep theirs (`GradientIndex`, `WindowDirectory`, `ContextMenu`).
+- **`Chrome` is what a node paints behind its content**: fill, border, radii, shadow. `bg` is a
+  background color alone. Refused: `bg` or `background` for a `Chrome`, which holds more than a
+  fill; "chrome" for a widget's scaffolding.
+- **Constructors.** `new` first; a named one names the kind or arrangement (`Panel::hstack`);
+  `from_*` converts; `on(&snapshot)` attaches an overlay, `for_id(id)` by id. No widget
+  constructor takes `ui`.
+- **Setters** name the setting, not the act (`padding`, not `set_padding`). A boolean takes a
+  `bool`; more values take an enum or config, with a shorthand for a common one (`visibility` /
+  `hidden`). `default_*` is a fallback, `start_*` a first-frame state. Placement alone is a
+  preposition: `at`, `at_origin`, `fixed_at`, `anchor`.
+- **Getters** are the noun, never `get_*`. `Ui` state pairs `x()` / `set_x(v)`; an action is a
+  verb; a read that wakes the next frame has a `peek_*` twin.
+- **Conversions** as std: `as_*` views, `to_*` computes, `from_*` goes back.
+- **Predicates.** `is_*`, `has_*`, `can_*` for a property; a third-person verb for a relation
+  (`contains`, `approx_eq`).
+- **Participles** for this frame's edges, the pointer's levels and derived values (`clicked`,
+  `hovered`, `scaled_by`); a predicate where there is none (`Drag::is_live`). Algebra is a verb,
+  as std names it (`union`, `clamp_to`).
+- **Ids.** A widget's derived ids are `*_id` associated functions; a part's id is
+  `id.with("part")`, documented on the owner.
+- **Sentinels.** `NONE` paints or holds nothing, `ZERO` is geometric, `TRANSPARENT` a color or
+  brush, `ONE`/`IDENTITY` multiplicative, `ALL` a full set, `EMPTY` empty text.
+- **Units.** Lengths are logical pixels with no unit in the name; device pixels say `physical`.
+  Angles are radians, a fraction of a circle a `turn` (or `hue`), time a `Duration`; other
+  units are named in full (`refresh_millihertz`). A multiplier is a `factor`, a share a `ratio`
+  or `fraction`. A color is linear `RgbaF32`; `SrgbaU8` is bytes in and out.
+- **Lines and corners.** A line's width is `width`, a bar's cross size `thickness`, one rounding
+  `radius`, four `Corners`.
 
 ### Argument shapes
 
-- **Concrete types**, so a setter can be `const`. `impl Into<T>` only where
-  `T` has shorthand spellings a call site wants: numbers and tuples for
-  `Spacing`, `Corners`, `Size`, `Sizing`, `SizeSpec` and `GridCell`; a color
-  or a gradient for `Brush`; text for `TextInput` (borrowed, owned, interned,
-  or `fmt!` output) and for `String` where the text outlives the frame (window
-  titles); `Option<T>` for an optional argument (`style`,
-  `TabStrip::selected`); `Rc<T>` for a shared value (`Ui::set_theme_for`,
-  `Ui::load_icons`); a pair or array for `Vec2` (`Configure::pos`);
-  `SrgbaU8` where a color is stored as bytes, so a linear `RgbaF32` encodes
-  once at the boundary (`Mesh` vertices); a `&'static str` for a name
-  (`AnimationSlot`); and a source enum (`FontSource`, `DragNum`, `PathBuf`).
-- **Required input goes in the constructor**: the bound value (`&'a mut T`),
-  the options, required text (`Text::new(text)`, `MenuItem::new(label)`,
-  `Tooltip::on(&snapshot, text)`). Optional input goes through setters:
-  optional text through `.label(..)`, an optional binding as `&'a mut T` in a
-  setter named for what it binds (`Expander::open`).
-- **Text.** Every text argument a widget reads during the frame takes
-  `impl Into<TextInput<'a>>`. `TabItem` holds an `InternedStr`, because it is
-  `Copy` data in a slice.
-- **Many results.** A call that can run every frame and yields many items
-  writes into the caller's `&mut Vec<T>`, or returns a borrowing slice or
-  iterator, never a fresh `Vec`. A cold query may return a `Vec`
-  (`Ui::font_families`).
-- **`const`** on every function whose body allows it.
+- **Concrete types**, so a setter can be `const`. `impl Into<T>` only where a call site wants
+  shorthand: numbers and tuples for geometry, a color for `Brush`, text, `Option<T>`, `Rc<T>`,
+  a pair for `Vec2`, `SrgbaU8` for stored bytes.
+- **Required input goes in the constructor**, optional input through setters.
+- **Text** a widget reads during the frame takes `impl Into<TextInput<'a>>`.
+- **Many results** from a per-frame call go into `&mut Vec<T>` or a borrowing slice or iterator;
+  a cold query may return a `Vec`.
 
 ### Widgets
 
-- **Lifecycle.** Constructor, then setters, then `show(self, ui)` or
-  `show(self, ui, body)`. `Configure` carries every node setting: identity,
-  size, spacing, placement, sense, focus, input scope, visibility, clip. A
-  widget does not repeat one as an inherent setter.
-- **Theme.** `style(s)` takes the widget's theme slot as
-  `impl Into<Option<&Theme>>`; a second slot is `<slot>_style`
-  (`ComboBox::button_style`). An override of one axis of the resolved slot is
-  a named setter (`color`, `thickness`, `font_size`). A widget with chrome has
-  `chrome(chrome)` and `default_chrome(chrome)`; no trait
-  holds them in step, a test in `widgets::tests` does.
-- **`Metrics` carries the type ramp.** `Metrics::text` holds the caption, body and title sizes,
-  the Fluent 2 ramp by default, and the recipes read them: the ambient text the body, a tooltip
-  the caption. Refused: a size a recipe sets by hand, which an app's own ramp could not reach; a
-  resting shadow, which no recipe casts
+- **Lifecycle.** Constructor, setters, `show(self, ui)` or `show(self, ui, body)`. `Configure`
+  carries every node setting; a widget does not repeat one.
+- **Theme.** `style(s)` takes the slot as `impl Into<Option<&Theme>>`, a second slot
+  `<slot>_style`; an override of one axis is a named setter. `chrome` and `default_chrome` are
+  held in step by a test in `widgets::tests`.
+- **Node values a widget supplies** go through `default_*` in `show`, so a caller's setter wins.
+- **`Metrics` carries the type ramp**, Fluent 2 by default. Refused: a size a recipe sets by
+  hand, which an app's ramp cannot reach
   ([Fluent 2 typography](https://fluent2.microsoft.design/typography)).
-- **Frosted glass holds its ink's contrast.** `BackdropFilter::with_max_luminance_for` caps what
-  the glass shows so the dimmest ink keeps WCAG's 4.5:1 under the pane's tint as an 8-bit target
-  stores the composite; palantir owns the math, as it depends on palantir's dither. `Chrome` sets
-  a filter through `with_backdrop_filter` alone. Refused: `Chrome::with_frost`, one look of three
-  with a setter of its own; a `Chrome` setter for each `BackdropFilter` constructor, which
-  repeats them
-  ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum),
-  [Fluent acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)).
-- **Node values a widget supplies** go through `default_*` (`default_gap`,
-  `default_child_align`, `default_size`), in `show`, so a caller's setter
-  always wins over the theme.
-- **Activation.** A focused widget reads Space and Enter through
-  `Widget::activation_response`, which folds them in as one left click, so
-  `clicked()` reads the same from the pointer and the keyboard. A toggle takes
-  Space alone, as WAI-ARIA leaves Enter to the form.
-- **Wrappers.** A wrapper holds the widget it wraps, forwards `Configure` to
-  it, and finishes it through that widget's public setters. It never reaches
-  past them through a hook only it calls.
-- **State between frames** lives in the state map under the widget's id. Code
-  that drives it from outside calls associated functions on the widget type
-  that take `ui` and the id: `open`, `close`, `is_open` (`ContextMenu`,
-  `PopupTrigger`).
-- **Responses.** `show` returns `Response`, or a `*Response` struct that holds
-  the widget's own `response` beside what the frame did, as participles. No
-  `*Response` derefs to `Response`. A widget that writes a bound value returns
-  `ValueResponse { response, changed, committed }`, and a discrete pick
-  commits at once (`committed == changed`). A text editor returns
-  `TextEditResponse`: the same `changed` and `committed`, beside the cancel,
-  submit and focus edges a scrub has no equivalent of. A tabbed view returns
-  `TabbedViewResponse`: the same pair, beside the `activated`, `closed` and `reordered` edges
-  its caller applies to the page list. An overlay records in another
-  layer and returns `OverlayResponse<R>`: the body's value as `inner`, and
-  `opened`, `dismissed` and `close_requested`. A tooltip senses nothing, so it returns
-  `TooltipResponse { visible }`.
-- **A `Response` borrows the `Ui` immutably,** and an overlay attaches through a
-  `ResponseSnapshot`. Refused: `Response::tooltip`, which needs `&mut Ui` and a `Response` that
-  names `Tooltip`, a widget above `widget_core` in the layering.
-- **A button holds shapes and shows a selected state.** `Button::show_with` records a body after
-  the label and hands it the text style its state resolved, so an icon takes the label's ink;
-  `Button::selected` picks `ButtonTheme::selected`, as `aria-pressed` reports a state. The button
-  stays a leaf, as its label measures as a leaf's text. `Selection` is the pick of every two-pack
-  theme, tabs and buttons. Refused: a container button; a toggle bound to `&mut bool`, as a
-  selected button shows a state a command changes; a `bool` pick
+- **Frosted glass holds its ink at WCAG 4.5:1**; palantir owns the math, as it depends on its
+  dither. Refused: `Chrome::with_frost` and a `Chrome` setter per `BackdropFilter` constructor
+  ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).
+- **Activation.** Space and Enter fold into one left click; a toggle takes Space alone, as
+  WAI-ARIA leaves Enter to the form.
+- **A wrapper finishes the widget it wraps through its public setters**, never a hook only the
+  wrapper calls.
+- **State between frames** lives in the state map under the widget's id, driven from outside by
+  associated functions that take `ui` and the id (`open`, `close`, `is_open`).
+- **Responses.** `show` returns `Response`, or a `*Response` that holds `response` beside the
+  frame's edges; none derefs to `Response`. A bound value returns `ValueResponse`, and a
+  discrete pick commits at once.
+- **A `Response` borrows the `Ui` immutably**; an overlay attaches through a `ResponseSnapshot`.
+  Refused: `Response::tooltip`, which needs `&mut Ui` and names a widget above `widget_core`.
+- **A button holds shapes and shows a selected state**, as `aria-pressed`. Refused: a container
+  button; a toggle bound to `&mut bool`; a `bool` pick
   ([WAI-ARIA button](https://www.w3.org/WAI/ARIA/apg/patterns/button/)).
-- **A field can edit a draft of its own.** `TextEdit::buffered` keeps the draft under its id,
-  starts each session from the current value, restores it on Escape and hands a changed draft
-  over as `committed_text`; `EditableLabel` opens one on a double click and reserves its caret
-  room, so the glyphs hold their place across the swap. `DragValue` keeps its own draft, as it
-  parses each keystroke live. Refused: a read-only field, which reaches typing, the edit menu,
-  undo and the input method for one caller
+- **A field can edit a draft of its own.** Refused: a read-only field, which reaches typing, the
+  edit menu, undo and the input method for one caller
   ([Qt `editingFinished`](https://doc.qt.io/qt-6/qlineedit.html#editingFinished),
   [GTK4 `EditableLabel`](https://docs.gtk.org/gtk4/class.EditableLabel.html)).
-- **A popup raised at a point stays where it landed.** The window shifts an anchored body to fit
-  each frame, so one whose body changed size moved under the pointer; a point anchor holds the
-  first landing until the body stops fitting or is asked elsewhere. One beside a rect is placed
-  each frame, as it keeps the rect clear
+- **A popup raised at a point stays where it landed** until it stops fitting; one beside a rect
+  is placed each frame
   ([`TrackPopupMenu`](https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-trackpopupmenu)).
-- **A chord read behind one that fired still watches.** A frame that receives a press records
-  again with no input, and that pass reads every chord, so `a || b` loses no wake. Refused: a
-  table read for that, a gap that does not exist.
 
 ### Input validation
 
-Every public input is asked two questions, as WPF asks them of a property
-value. _Validation_ is about the value alone: finite, not negative, a power of
-two. _Coercion_ is about the value against its context: inside a range, an
-index that exists, a `min` below its `max`.
+Every public input meets two questions, as WPF asks them: _validation_ of the value alone,
+_coercion_ against its context. The kinds and their table are in `primitives::math::domain`.
 
-1. **Coercion is total and silent.** It never asserts, because its context is
-   data: an option list shrinks, a saved ratio comes from an older layout. Its
-   result is documented on the API. A stale selection shows as the last option
-   and is not written back; reversed ranges are ordered; a min above its max
-   raises the max, as in CSS and WPF; a fraction is clamped to `0..=1`; a turn
-   wraps; a non-finite fraction or turn takes the kind's neutral. A range
-   keeps its order only where the direction is the meaning: a `Slider` over
-   `10.0..=0.0` runs from right to left.
-2. **Validation depends on where the value comes from.**
-    - _Per-frame authoring_ — builder setters and the value constructors a
-      record pass calls: a release `assert!` with `#[track_caller]`, whose
-      message is the kind's rule, under `# Panics`. **This is a deliberate
-      exception to the global guide's "`debug_assert!` on hot paths"**, for
-      public input validation only: a wrong value is never drawn quietly, and
-      the cost is one comparison per value. A value computed at run time goes
-      through the kind's `is_*` predicate or a coercing kind first.
-    - _Cold configuration_ — host builders, render targets, theme scaling,
-      dock configuration: a release `assert!` under `# Panics`.
-    - _Data from outside the program_ — files, persisted settings, decoded
-      images, icon sources, font names, typed numbers: `Option` when one rule
-      can fail, `Result` with an error enum when several can.
-3. **Plain data stays plain.** Its fields are public, because arithmetic
-   passes through invalid intermediate values. It is checked where it enters
-   a widget, a shape or a node. Shape geometry — rects, points, mesh vertices,
-   text origins — is checked as _offsets_: finite. A negative size is not an
-   error; it paints nothing.
-4. **Themes.** A theme file is checked when it loads, by the same predicates
-   as a call site, so the two cannot disagree. A theme built in code is plain
-   data, checked where its values enter: a value a widget hands to a checked
-   setter (`gap`, `padding`, a shape's color) panics there on a value outside
-   its kind, and a length the widget floors goes through `length_at_least`.
-   A font is how theme text reaches paint, so a face the shaper cannot use
-   shapes nothing, at `Shape::text` as in every text widget.
-5. **Indices and handles.** An index into a list that changes at run time
-   (options, pages, tabs) is coerced. A handle the crate minted
-   (`IconHandle`, `TabGroupId`) that names nothing is a caller bug and panics.
+1. **Coercion is total and silent**, and documented on the API, as its context is data: a list
+   shrinks, a saved ratio is old. A min above its max raises the max, as in CSS and WPF.
+2. **Validation depends on the source.** Per-frame authoring: a release `assert!` with
+   `#[track_caller]` — a deliberate exception to "`debug_assert!` on hot paths", as a wrong value
+   never draws quietly, at one comparison per value. Cold configuration: a release `assert!`.
+   Data from outside the program: `Option` for one rule, `Result` with an error enum for
+   several.
+3. **Plain data stays plain**, as arithmetic passes through invalid values; it is checked where
+   it enters a widget, a shape or a node. A negative size paints nothing.
+4. **A theme file is checked on load** by the same predicates as a call site.
+5. **An index into a list that changes is coerced**; a handle the crate minted that names
+   nothing panics.
 
-The kinds live in `widget::domain`, public because a widget outside the crate
-validates its setters the same way; `domain::vec2` and `domain::f64` hold the
-twins for `Vec2` and for the `f64` values `Slider` and `DragValue` bind. Each
-validating kind is an `is_*` predicate and a checker that returns its
-argument; each coercing kind is one total `const fn`. Every numeric
-parameter's doc names its kind ("`px`: a _length_"), and every setter that can
-panic says so under `# Panics`. The table is in the `domain` module doc.
+Every numeric parameter's doc names its kind, and every setter that can panic says so under
+`# Panics`.
 
 ## Verification
 
-`cargo drive` runs every check: the driver is `cargo-drive`, the same in every
-project, installed with `cargo install --locked --git
-https://github.com/xorza/drive`. The drive table's `version` names the driver
-the project needs, and an older or newer one refuses to run. Run it from the
-root.
+`cargo drive` runs every check, from the root; the drive table's `version` names the driver
+(`cargo install --locked --git https://github.com/xorza/drive`). Never run cargo by hand:
+another command shape builds another copy of the crates.
 
 ```
-cargo drive check          # after each change: fmt, then clippy --all-targets --all-features
-cargo drive test [args]    # the tests, each time; the runner's arguments pick some: a test name
+cargo drive check          # after each change: fmt, then clippy
+cargo drive test [args]    # the tests; a test name picks some
 cargo drive bench [args]   # the benches; a filter, or --test to run each case once
-cargo drive gate           # the full check: fmt, each lint set, ship, tests, docs; CI adds --ci
+cargo drive gate           # the full check; CI runs gate --ci on each OS
 ```
 
-`check` takes no arguments: each lane covers the whole workspace, and the
-workspace of each path dependency outside it, in its own folder. A step does
-not run again when no input changed since it passed; under nextest, the tests
-run only for the crates a change reaches and every crate that depends on them.
-Each step prints one line; a failure prints each diagnostic once and names its
-log, `target/drive/log/<step>.log`, which holds no passing test. A run ends on
-one verdict line: `ok`, or `FAIL` with the failed steps and the first error,
-and `target/drive/last-<command>.txt`, which holds all the run printed; above
-it, each failed step shows its first lines again. So `| tail -1` is enough: on
-a failure, read the file it names rather than run the command again. Never
-run cargo by hand: another shape of a cargo command builds another copy of
-the crates.
-`check` and `gate` format the code and end at the first failed step; `gate
---ci` formats nothing and runs every step.
+A run ends on one verdict line, so `| tail -1` is enough; on a failure, read the file it names
+rather than run it again.
 
-A root's flags are in its `Cargo.toml`, under `[workspace.metadata.drive]`,
-or `[package.metadata.drive]` in a root that is one package. `gate` lints with
-each set of the `lint` key and tests with each set of the `test` key, both
-`--all-features` by default; `check` lints with `--all-features` alone.
-`docs = true` adds rustdoc and the doc tests to `gate`, after the others; they
-are off by default. `test-runner` is `nextest` (the default) or `cargo-test`,
-which needs nothing installed but runs every test when a change reaches any
-crate. Every lane runs `--locked`: after a change to the dependencies,
-`cargo update --workspace` writes the lock.
-
-CI runs `cargo drive gate --ci` on each OS.
-
-- **Every test run needs a GPU adapter**, as `internals`, on in every test
-  build, brings GPU tests. A headless machine needs a software Vulkan driver
-  (Mesa lavapipe, `mesa-vulkan-drivers`), as CI installs.
-- **The plain clippy lints the build that ships**: every other target turns
-  `internals` on through the self dev-dependency.
-- **A change to bench code** adds `cargo drive bench --test`, which runs each
-  case once, built under the test profile rather than the bench profile's LTO;
-  `benches/AGENTS.md` says how to run and measure.
-- **`--all-features` is clippy's alone**: under `profile-with-tracy` a test
-  binary opens the Tracy socket. The first test set names `alloc`, as
-  `--tests` with `golden` would pull in `visual`, and the showcase, whose
-  shot mode has tests (`test = true`); the second builds the library
-  without `winit`, as a host that embeds the crate does.
-- **Rendering changes** (shaders, encoder/composer, atlases, color pipeline,
-  layout that moves pixels) also run the golden suite, which no lane holds:
-  `cargo drive run visual [filter]`, in the first test lane's shape so it
-  reuses that build. Its goldens in `tests/visual/golden/` are local and record their adapter in
-  `golden/adapter.txt`. Run the suite on the unchanged tree first, and
-  rewrite stale goldens, or another adapter's, with `UPDATE_GOLDEN=1` before
-  changing anything. A missing golden is written, then failed; a
-  failure leaves `actual.png`, `expected.png` and `diff.png` in
-  `tests/visual/output/<name>/`.
-- **A change a user can see** ends with a look through
-  `cargo drive run shot SCRIPT`: the showcase played from a script with no
-  desktop, each `shot` written to `target/shot/NAME.png` with a legend of the
-  widgets it shows; `examples/showcase/shot/script.rs` holds the language.
-  `--against DIR` compares each shot with an earlier run's at zero tolerance
-  and writes the marked difference, so a run before the change and one after
-  show what moved. Goldens are a test, never a viewer: `UPDATE_GOLDEN=1` rewrites a baseline
-  that a run then compares nothing against.
-- **Before measuring or reaching for `perf`**, read `benches/AGENTS.md`.
+- **Every test run needs a GPU adapter**; a headless machine needs a software Vulkan driver
+  (Mesa lavapipe).
+- **`--all-features` is clippy's alone**: under `profile-with-tracy` a test binary opens the
+  Tracy socket.
+- **A change to bench code** adds `cargo drive bench --test`. Before measuring or `perf`, read
+  `benches/AGENTS.md`.
+- **A rendering change** runs the golden suite, `cargo drive run visual [filter]`. Goldens are
+  local to an adapter: run the unchanged tree first and rewrite stale ones with
+  `UPDATE_GOLDEN=1`. A failure leaves the images in `tests/visual/output/<name>/`.
+- **A change a user can see** ends with `cargo drive run shot SCRIPT`
+  (`examples/showcase/shot/script.rs`); `--against DIR` marks what moved since an earlier run.
+  Goldens are a test, never a viewer.
 
 ## Non-shipping code
 
-`internals` is the one feature for what only tests and benches build; the
-crate's dev-dependency on itself turns it on in every test and bench build.
-Test and bench code has four homes beside a file's own `#[cfg(test)] mod
-tests`:
+`internals` is the one feature for tests and benches, on through the self dev-dependency.
+Homes beside a file's own `mod tests`:
 
-- **`internals` at the end of a file** — a reach-in to the file's private
-  items, the last item before `mod tests`. Its gate is exactly the builds its
-  callers exist in: `#[cfg(test)]` when only this crate's unit tests call it,
-  `#[cfg(feature = "internals")]` when a bench or an integration test does —
-  never `any(test, feature = "internals")`. An item whose callers exist in
-  fewer builds narrows with its own `cfg`; a wrong gate shows as dead code,
-  which no lint allow hides.
-- **`crate::internals`** (`src/internals/`) — the subsystems: the paint
-  capture, the panic probe, the damage oracle, the shared fixtures; public as
-  `palantir::internals`. The frame harness is public API, `Harness`, and its
-  test reach-ins sit at the end of `host/harness/mod.rs`.
-- **`bench.rs`** beside the code it measures, reached through the `bench`
-  facade in `src/lib.rs`.
-- **`crate::golden`** (`src/golden/`) — golden-image comparison, under
-  `feature = "golden"`; public API, as suites outside the crate use it.
+- **`internals` at the end of a file** — a reach-in to private items, gated `#[cfg(test)]` or
+  `#[cfg(feature = "internals")]` by its callers, never `any(…)`; a wrong gate shows as dead
+  code.
+- **`crate::internals`** — the subsystems and shared fixtures, public as `palantir::internals`.
+  `gpu::test_gpu` and `gpu::bench_gpu` sit in `gpu`, which `clippy.toml` keeps the wgpu types
+  in.
+- **`bench.rs`** beside the code it measures, reached through the `bench` facade.
+- **`crate::golden`** — golden-image comparison under `feature = "golden"`, public for suites
+  outside the crate.
 
-Items code outside the crate calls (`tests/visual`, `tests/alloc`, the
-showcase, `benches/`) are `pub`; the rest are `pub(crate)`. Two subsystems sit
-outside `src/internals/`: `gpu::test_gpu` and `gpu::bench_gpu` hold wgpu
-types, which `clippy.toml` keeps in `crate::gpu`, and `text::mono` is a
-measurement backend beside `cosmic`.
+Items code outside the crate calls are `pub`; the rest are `pub(crate)`.
