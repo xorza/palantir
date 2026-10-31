@@ -57,8 +57,8 @@ impl TooltipTheme {
             .with_shadow(m.float_shadow);
         Self {
             panel,
-            // The caption tier, a step under the 14 px body, as Fluent's tooltip sets its text.
-            text: TextStyleOverrides::NONE.with_font_size(12.0),
+            // The caption tier, a step under the body, as Fluent's tooltip sets its text.
+            text: TextStyleOverrides::NONE.with_font_size(m.text.caption),
             // Fluent's tooltip insets its text 12 px on each side.
             padding: Spacing::xy(m.space.md, m.space.xs),
             max_size: Size::new(280.0, f32::INFINITY),

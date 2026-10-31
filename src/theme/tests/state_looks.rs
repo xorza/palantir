@@ -1,6 +1,7 @@
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
 use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
@@ -128,6 +129,36 @@ fn text_edit_theme_pick_precedence() {
         theme.looks.pick(&pressed, Engagement::Pressed),
         &raw const theme.looks.active,
     ));
+}
+
+/// A flat field drops its padding, margin and every state's chrome, and keeps its caret,
+/// selection and every state's text.
+#[test]
+fn a_flat_text_edit_keeps_only_its_text_and_caret() {
+    let field = TextEditTheme::default();
+    let flat = field.flat();
+    assert_eq!(flat.defaults.padding, Spacing::ZERO);
+    assert_eq!(flat.defaults.margin, Spacing::ZERO);
+    assert_eq!(flat.defaults.animation, field.defaults.animation);
+    let (mut flat_looks, mut looks) = (flat.looks.clone(), field.looks.clone());
+    for (flat_look, look) in flat_looks.each_mut().into_iter().zip(looks.each_mut()) {
+        assert_eq!(flat_look.chrome, Chrome::NONE);
+        assert_eq!(flat_look.text, look.text);
+    }
+    assert_eq!(
+        (
+            flat.caret,
+            flat.caret_width,
+            flat.selection,
+            flat.placeholder
+        ),
+        (
+            field.caret,
+            field.caret_width,
+            field.selection,
+            field.placeholder
+        )
+    );
 }
 
 /// [`ToggleTheme`]'s pick needs an input the response can't supply: `Pick = CheckState` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on the check state, the precedence within each, and that the packs never resolve to the same slot (so `Pick` is load-bearing).

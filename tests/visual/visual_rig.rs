@@ -10,7 +10,7 @@ use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
     AnimationSpec, DebugOverlayConfig, FramePaint, Metrics, OffscreenHost, OffscreenTime, Palette,
-    RadiusSteps, RgbaF32, Shadow, SpaceSteps, StrokeSteps, TextShaper, Theme, Ui,
+    RadiusSteps, RgbaF32, Shadow, SpaceSteps, StrokeSteps, TextShaper, TextSteps, Theme, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -32,7 +32,13 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
 /// The geometry and motion every fixture renders under, pinned as the palette is, so a retune of
 /// `Metrics::DEFAULT` moves no golden: `Metrics::DEFAULT` as the goldens were drawn under.
 pub(crate) const FIXTURE_METRICS: Metrics = Metrics {
+    text: TextSteps {
+        caption: 12.0,
+        body: 14.0,
+        title: 16.0,
+    },
     space: SpaceSteps {
+        xxs: 2.0,
         xs: 4.0,
         sm: 8.0,
         md: 12.0,

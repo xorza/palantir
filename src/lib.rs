@@ -320,7 +320,7 @@ pub use primitives::paint::brush::gradient::radial_geometry::{
 };
 pub use primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interpolation, Spread};
-pub use primitives::paint::chrome::Chrome;
+pub use primitives::paint::chrome::{Chrome, Frost};
 pub use primitives::paint::color::RgbaF32;
 pub use primitives::paint::color::color_coords::ColorCoords;
 pub use primitives::paint::color::color_model::{ColorModel, HueSlice};
@@ -367,6 +367,7 @@ pub use theme::metrics::Metrics;
 pub use theme::metrics::RadiusSteps;
 pub use theme::metrics::SpaceSteps;
 pub use theme::metrics::StrokeSteps;
+pub use theme::metrics::TextSteps;
 pub use theme::modal::ModalTheme;
 pub use theme::palette::Palette;
 pub use theme::progress_bar::ProgressBarTheme;

@@ -268,6 +268,21 @@ impl RgbaF32 {
         self.with_alpha(alpha_of_byte(a))
     }
 
+    /// The relative luminance of the linear channels, as WCAG defines it
+    /// (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>): the weights of the
+    /// Rec. 709 primaries. Alpha does not count.
+    pub const fn luminance(self) -> f32 {
+        0.2126 * self.r + 0.7152 * self.g + 0.0722 * self.b
+    }
+
+    /// The WCAG contrast ratio of the two colors' [luminances](Self::luminance), the lighter's
+    /// over the darker's, each plus 0.05: from 1 for one color to 21 for black on white.
+    pub const fn contrast_ratio(self, other: Self) -> f32 {
+        let (a, b) = (self.luminance(), other.luminance());
+        let (light, dark) = if a > b { (a, b) } else { (b, a) };
+        (light + 0.05) / (dark + 0.05)
+    }
+
     /// Replace the alpha channel, preserving RGB (storage is straight alpha).
     pub const fn with_alpha(self, a: f32) -> Self {
         Self {

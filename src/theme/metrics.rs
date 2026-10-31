@@ -1,4 +1,4 @@
-//! The geometry and motion roster every theme recipe draws from, beside the [`Palette`](crate::Palette)'s colors. [`Metrics::DEFAULT`] is a 4 px grid.
+//! The type, geometry and motion roster every theme recipe draws from, beside the [`Palette`](crate::Palette)'s colors. [`Metrics::DEFAULT`] is a 4 px grid on the Fluent 2 type ramp.
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::spacing::Spacing;
@@ -6,11 +6,13 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use glam::Vec2;
 
-/// The spacing, rounding, line, shadow and transition steps of a theme, as [`Theme::from_parts`](crate::Theme::from_parts) reads them. Every padding, gap, radius, border and shadow a recipe sets is one of these steps, so an app that passes its own scale moves every widget onto it; a widget's intrinsic sizes (a toggle's box, a scrollbar's thickness, a tab's width bounds) stay in its recipe.
+/// The type, spacing, rounding, line, shadow and transition steps of a theme, as [`Theme::from_parts`](crate::Theme::from_parts) reads them. Every font size, padding, gap, radius, border and shadow a recipe sets is one of these steps, so an app that passes its own scale moves every widget onto it; a widget's intrinsic sizes (a toggle's box, a scrollbar's thickness, a tab's width bounds) stay in its recipe.
 ///
 /// Kept beside the palette rather than in it, as egui keeps `Style::spacing` beside `Style::visuals`.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Metrics {
+    /// Font sizes, by how loud the text is.
+    pub text: TextSteps,
     /// Paddings, gaps and margins.
     pub space: SpaceSteps,
     /// Corner radii, by what a surface is.
@@ -25,9 +27,27 @@ pub struct Metrics {
     pub transition: Option<AnimationSpec>,
 }
 
+/// The font sizes, by prominence rather than by the surface that uses one, so a new surface picks
+/// a tier by how loud its text is.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TextSteps {
+    /// Secondary text and dense surfaces: a tooltip, a caption over a group, a field's help.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub caption: f32,
+    /// The ambient text every widget reads: a button's label, a menu row, a field.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub body: f32,
+    /// A heading: a pane's or a dialog's title.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub title: f32,
+}
+
 /// The spacing steps, smallest first.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpaceSteps {
+    /// The densest rows: a subtitle under its title, a chip's vertical inset.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub xxs: f32,
     /// Inside a dense cluster: a control's vertical inset, a menu's padding, the gap between tabs.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub xs: f32,
@@ -83,9 +103,17 @@ impl Metrics {
         Spacing::xy(self.space.md, self.space.sm)
     }
 
-    /// A 4 px grid, the values `Theme::default` assembles from.
+    /// A 4 px grid with a 2 px step under it, and the Fluent 2 type ramp (Caption 12, Body 14,
+    /// Subtitle 16, https://fluent2.microsoft.design/typography): the values `Theme::default`
+    /// assembles from.
     pub const DEFAULT: Self = Self {
+        text: TextSteps {
+            caption: 12.0,
+            body: 14.0,
+            title: 16.0,
+        },
         space: SpaceSteps {
+            xxs: 2.0,
             xs: 4.0,
             sm: 8.0,
             md: 12.0,

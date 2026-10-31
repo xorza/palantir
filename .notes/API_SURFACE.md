@@ -220,6 +220,7 @@ Chrome
         pub const fn with_border(self, border: Stroke) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
         pub const fn with_backdrop_filter(self, filter: BackdropFilter) -> Self
+        pub fn with_frost(self, frost: Frost) -> Self
 
 ClickOutside
     enum ClickOutside: Clone, Copy, Debug, Eq, PartialEq
@@ -845,6 +846,12 @@ FrameSummary  [features: winit]
         pub repaint_after: Option<Duration>
         pub busy: bool
 
+Frost
+    struct Frost: Clone, Copy, Debug, PartialEq
+        pub blur: f32
+        pub tint_alpha: f32
+        pub ink: RgbaF32
+
 Gpu
     struct Gpu: Clone, Debug
         pub fn new(device: Device, queue: Queue) -> Self
@@ -1425,6 +1432,7 @@ MenuState
 
 Metrics
     struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+        pub text: TextSteps
         pub space: SpaceSteps
         pub radius: RadiusSteps
         pub stroke: StrokeSteps
@@ -1797,6 +1805,8 @@ RgbaF32
         pub const fn new(r: f32, g: f32, b: f32, a: f32) -> Self
         pub const fn srgb(r: f32, g: f32, b: f32) -> Self
         pub const fn srgba(r: f32, g: f32, b: f32, a: f32) -> Self
+        pub const fn luminance(self) -> f32
+        pub const fn contrast_ratio(self, other: Self) -> f32
         pub const fn with_alpha(self, a: f32) -> Self
         pub const fn from_srgba(bytes: SrgbaU8) -> Self
         pub const fn hex(rgb: u32) -> Self
@@ -1997,6 +2007,7 @@ SlotDefaults
 
 SpaceSteps
     struct SpaceSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub xxs: f32
         pub xs: f32
         pub sm: f32
         pub md: f32
@@ -2339,6 +2350,7 @@ TextEditTheme
         pub defaults: SlotDefaults
         pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn flat(&self) -> Self
 
 TextInput
     enum TextInput<'a>: Debug, Default, From<Cow<'a, str>>, From<InternedStr>, From<String>
@@ -2355,6 +2367,12 @@ TextShaper
         pub fn has_font(&self, family: FontFamily) -> bool
         pub fn font_families(&self) -> Vec<FontFamily>
         pub fn glyphs(&self) -> TextGlyphs<'_>
+
+TextSteps
+    struct TextSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub caption: f32
+        pub body: f32
+        pub title: f32
 
 TextStyle
     struct TextStyle: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
