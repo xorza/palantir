@@ -40,6 +40,8 @@ pub(crate) const CELL_PADDING: f32 = M.space.sm;
 pub(crate) const RADIUS: f32 = M.radius.card;
 
 /// What a page paints with this frame: the scaffold's tokens and the shown scheme's swatches.
+/// Pages take it as a parameter, as the observatory's studies take `Tokens`. Refused: a kit in a
+/// state row or a static, which hides what a page paints with.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Kit {
     pub(crate) t: Tokens,
@@ -142,7 +144,8 @@ impl Swatches {
     /// Each hue at the scheme's saturation, its value solved by bisection to the scheme's
     /// luminance: one luminance gives every swatch one contrast against the ground and under
     /// [`SWATCH_INK`], as WCAG measures contrast in luminance, and Okhsv keeps the hue and the
-    /// gamut as the value moves.
+    /// gamut as the value moves. Refused: one Oklab lightness, which leaves the contrast per hue;
+    /// hand-picked hex, which a palette change leaves behind.
     pub(crate) fn solve(scheme: ColorScheme) -> Self {
         let target = Target::of(scheme);
         let [teal, orange, lime, violet, red] = Self::HUES.map(|hue| target.color(hue));

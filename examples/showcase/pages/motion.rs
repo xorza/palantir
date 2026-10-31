@@ -6,14 +6,15 @@ use crate::support::DemoCell;
 use crate::support::{Kit, Knob, Section, Swatches};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{
-    AnimationRequest, GlyphFont, IconFit, LineCap, Mesh, PaintAnimation, PaintRepeat, RectShape,
-    Shape, curves,
+    AnimationRequest, GlyphFont, IconFit, LineCap, LineJoin, Mesh, PaintAnimation, PaintRepeat,
+    RectShape, Shape, curves,
 };
 use palantir::{
     AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconHandle, IconSet,
     IconTable, Image, ImageFit, ImageHandle, Metrics, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
     Stroke, Text, Ui, WidgetId,
 };
+use std::array;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -24,6 +25,8 @@ struct Bars {
     wide: bool,
     /// The timed bars' duration in milliseconds, which the knob sets.
     duration_ms: f64,
+    /// When the last toggle sent the bars off, which the plots' dots ride from.
+    started: Option<Duration>,
 }
 
 impl Default for Bars {
@@ -31,6 +34,7 @@ impl Default for Bars {
         Self {
             wide: false,
             duration_ms: 300.0,
+            started: None,
         }
     }
 }
@@ -249,6 +253,7 @@ fn easing(ui: &mut Ui, k: Kit) {
                 support::row(ui, |ui| {
                     if Button::new().label("Toggle").show(ui).clicked() {
                         s.wide = !s.wide;
+                        s.started = Some(ui.now());
                     }
                     Knob {
                         label: "duration",
@@ -260,6 +265,25 @@ fn easing(ui: &mut Ui, k: Kit) {
                 });
                 let target = if s.wide { 420.0 } else { 80.0 };
                 let duration = Duration::from_secs_f64(s.duration_ms / 1000.0);
+                // The share of the duration since the toggle, which each plot's dot sits at.
+                let t = s.started.map_or(1.0, |started| {
+                    (ui.now().saturating_sub(started).as_secs_f32() / duration.as_secs_f32())
+                        .min(1.0)
+                });
+                if t < 1.0 {
+                    ui.request_repaint();
+                }
+                support::tiles(ui, |ui| {
+                    for (label, easing) in [
+                        ("linear", Easing::Linear),
+                        ("out-cubic", Easing::OutCubic),
+                        ("out-back", Easing::OutBack),
+                    ] {
+                        DemoCell::new(label).size(160.0, 120.0).show(ui, k, |ui| {
+                            plot(ui, k, easing, t);
+                        });
+                    }
+                });
                 support::well(ui, k, |ui| {
                     for bar in [
                         Bar {
@@ -395,4 +419,27 @@ impl Card {
             }
         });
     }
+}
+
+/// The plot's frame inside its cell: room above the top for out-back's overshoot.
+const PLOT: Rect = Rect::new(8.0, 24.0, 128.0, 72.0);
+/// Points along a plotted curve, enough that a curve's polyline reads smooth at the plot's size.
+const PLOT_POINTS: usize = 33;
+
+/// `easing` as a curve, time across and value up, and a dot at `t` riding it.
+fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
+    let at = |t: f32| {
+        Vec2::new(
+            PLOT.min.x + t * PLOT.size.w,
+            PLOT.min.y + (1.0 - easing.apply(t)) * PLOT.size.h,
+        )
+    };
+    let points: [Vec2; PLOT_POINTS] = array::from_fn(|i| at(i as f32 / (PLOT_POINTS - 1) as f32));
+    ui.add_shape(Shape::polyline(&points, Stroke::new(k.t.ink_dim, 1.5)).join(LineJoin::Round));
+    let dot = at(t);
+    ui.add_shape(
+        Shape::rect(Rect::new(dot.x - 5.0, dot.y - 5.0, 10.0, 10.0))
+            .corners(Corners::all(5.0))
+            .fill(k.swatch.orange),
+    );
 }

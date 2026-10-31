@@ -4,8 +4,8 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::{
-    Block, Chrome, Configure, Corners, Grid, Metrics, Panel, RgbaF32, Sizing, Text, TextWrap,
-    Track, Ui, WidgetId,
+    Block, Button, Chrome, Configure, Corners, Grid, Metrics, Panel, RgbaF32, Sizing, Text,
+    TextWrap, Track, Ui, WidgetId,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -98,6 +98,33 @@ fn wrapping(ui: &mut Ui, k: Kit, s: &mut State) {
                 text: "supercalifragilistic",
             }
             .show(ui, k);
+        });
+
+    Section::new("Label overflow")
+        .apis(&[api!(Button::text_wrap)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "A fixed-width button cuts a long label at its box. Single-line wrapping lets the \
+                 label run past the box; a Hug-width button grows to fit.",
+            );
+            support::well(ui, k, |ui| {
+                support::row(ui, |ui| {
+                    Button::new()
+                        .size((Sizing::fixed(140.0), Sizing::HUG))
+                        .label("Screenshot 2026-05-28 at 01.21.25.png")
+                        .show(ui);
+                    Button::new().label("fits its content").show(ui);
+                });
+                support::row(ui, |ui| {
+                    Button::new()
+                        .size((Sizing::fixed(140.0), Sizing::HUG))
+                        .text_wrap(TextWrap::SingleLine)
+                        .label("Screenshot 2026-05-28 at 01.21.25.png")
+                        .show(ui);
+                });
+            });
         });
 }
 

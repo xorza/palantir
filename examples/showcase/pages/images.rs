@@ -10,7 +10,10 @@ use crate::support;
 use crate::support::{DemoCell, Kit, Section};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{ImageShape, Shape};
-use palantir::{Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32, Ui, WidgetId};
+use palantir::{
+    ComboBox, Configure, Image, ImageDownsample, ImageFilter, ImageFit, ImageHandle, RgbaF32,
+    Sizing, Switch, Text, Ui, WidgetId,
+};
 
 fn checker() -> Image {
     const N: u32 = 64;
@@ -135,6 +138,7 @@ impl Sources {
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let src = Sources::load(ui);
+    live(ui, k, &src);
 
     Section::new("Fit")
         .apis(&[api!(type ImageFit)])
@@ -275,4 +279,60 @@ fn minified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
             })
             .min_filter(filter),
     );
+}
+
+const FITS: [(&str, ImageFit); 5] = [
+    ("Fill", ImageFit::Fill),
+    ("Contain", ImageFit::Contain),
+    ("Cover", ImageFit::Cover),
+    ("None", ImageFit::None),
+    (
+        "Tile 3×3",
+        ImageFit::Tile {
+            offset: Vec2::ZERO,
+            scale: Vec2::splat(3.0),
+        },
+    ),
+];
+
+/// The live image's knobs: its fit, and whether a magnified texel shows as a block.
+#[derive(Debug, Default)]
+struct LiveImage {
+    fit: usize,
+    nearest: bool,
+}
+
+/// The 4×4 sprite in a wide rect, its fit and its sampling from the knobs.
+fn live(ui: &mut Ui, k: Kit, src: &Sources) {
+    Section::new("Live image")
+        .apis(&[api!(type ImageFit), api!(type ImageFilter)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Fit a 4×4 sprite to a wide rect and pick how a magnified texel samples: Linear \
+                 blends its neighbors, Nearest keeps it a block.",
+            );
+            let id = WidgetId::from_hash("showcase::images::live");
+            ui.with_state::<LiveImage, _>(id, |ui, l| {
+                support::row(ui, |ui| {
+                    Text::new("fit").style(&k.t.caption()).show(ui);
+                    ComboBox::labeled(&mut l.fit, &FITS, |fit| fit.0)
+                        .size((Sizing::fixed(120.0), Sizing::HUG))
+                        .show(ui);
+                    Switch::new(&mut l.nearest).label("Nearest").show(ui);
+                });
+                let fit = FITS[l.fit].1;
+                let filter = if l.nearest {
+                    ImageFilter::Nearest
+                } else {
+                    ImageFilter::Linear
+                };
+                DemoCell::new("the knobs' image")
+                    .size(360.0, 160.0)
+                    .show(ui, k, |ui| {
+                        ui.add_shape(fitted(&src.sprite, fit).mag_filter(filter));
+                    });
+            });
+        });
 }

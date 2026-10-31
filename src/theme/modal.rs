@@ -13,7 +13,9 @@ use crate::theme::palette::Palette;
 pub struct ModalTheme {
     /// Dialog panel chrome.
     pub panel: Chrome,
-    /// Dimming scrim; straight-alpha linear.
+    /// Dimming scrim; straight-alpha linear. A color, as Fluent's ContentDialog smoke layer,
+    /// Material 3's scrim, Apple's alerts and libadwaita's `AdwDialog` all dim; a frosted panel
+    /// shows the page through itself. Refused: a blurred scrim, which captures the whole window.
     pub backdrop: RgbaF32,
     /// Padding inside the panel, applied when the builder leaves it unset.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]

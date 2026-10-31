@@ -8,7 +8,7 @@ use palantir::glam::Vec2;
 use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
     Align, BackdropFilter, Button, Chrome, Configure, ContextMenu, ContextMenuTheme, Corners, Lens,
-    MenuItem, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Text, Ui, WidgetId,
+    MenuItem, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Switch, Text, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -83,6 +83,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 struct LivePane {
     blur: f64,
     tint: f64,
+    /// Whether the floor holds the ink; off, the label reads only as well as the page under it.
+    hold: bool,
 }
 
 impl Default for LivePane {
@@ -90,6 +92,7 @@ impl Default for LivePane {
         Self {
             blur: 16.0,
             tint: 0.3,
+            hold: true,
         }
     }
 }
@@ -104,7 +107,8 @@ fn live(ui: &mut Ui, k: Kit) {
                 ui,
                 k,
                 "Blur and tint one frosted pane. The floor its dark ink and light tint call for \
-                 lifts whatever shows through, so the label keeps 4.5:1 at any setting.",
+                 lifts whatever shows through, so the label keeps 4.5:1 at any setting; switch it \
+                 off to see the label sink into the dark stripes.",
             );
             let id = WidgetId::from_hash("showcase::materials::live");
             ui.with_state::<LivePane, _>(id, |ui, l| {
@@ -125,8 +129,20 @@ fn live(ui: &mut Ui, k: Kit) {
                 .show(ui, k, &mut l.tint);
                 let ink = RgbaF32::hex(0x14161a);
                 let tint = RgbaF32::WHITE.with_alpha(l.tint as f32);
-                let filter =
-                    BackdropFilter::frosted(l.blur as f32).with_min_luminance_for(ink, tint);
+                support::row(ui, |ui| {
+                    Switch::new(&mut l.hold).label("Hold the ink").show(ui);
+                });
+                let frosted = BackdropFilter::frosted(l.blur as f32);
+                let filter = if l.hold {
+                    frosted.with_min_luminance_for(ink, tint)
+                } else {
+                    frosted
+                };
+                let floor = match filter.min_luminance {
+                    Some(floor) => fmt!(ui, "the backdrop shows at luminance {floor:.3} or more"),
+                    None => ui.intern("no floor: a dark stripe behind the label shows as dark"),
+                };
+                support::readout(ui, k, "floor", floor);
                 DemoCell::new("the knobs' pane")
                     .size(CELL, CELL)
                     .show(ui, k, |ui| {

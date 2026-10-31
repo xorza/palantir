@@ -3,9 +3,9 @@
 use crate::support;
 use crate::support::Kit;
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, DockDrop, DockOperation, DockState, DockTabMenu,
-    DockTabs, DockView, InternedStr, MenuItem, Metrics, Panel, Size, Sizing, SplitSide, TabChip,
-    Text, Ui, WidgetId, fmt,
+    Block, Button, Chrome, ColorPicker, Configure, Corners, DockDrop, DockOperation, DockState,
+    DockTabMenu, DockTabs, DockView, InternedStr, MenuItem, Metrics, Panel, RgbaF32, Size, Sizing,
+    SplitSide, TabChip, Text, Ui, WidgetId, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -33,9 +33,11 @@ impl Tab {
 
     const fn blurb(self) -> &'static str {
         match self {
-            Self::Canvas => "The pinned tab. It refuses to close, so the tree is never empty.",
-            Self::Layers => "Drag this chip onto another pane's edge to split it.",
-            Self::History => "Drop a chip into a strip to join that pane instead.",
+            Self::Canvas => "The pinned tab, showing the color Layers picks. It refuses to close.",
+            Self::Layers => {
+                "Pick the canvas color here; drag this chip onto a pane's edge to split."
+            }
+            Self::History => "The last operation a gesture asked of the arrangement.",
             Self::Console => "Right-click a chip for the split menu.",
         }
     }
@@ -48,6 +50,8 @@ struct State {
     operations: Vec<DockOperation<Tab>>,
     /// The last operation a gesture asked of the arrangement, for the log.
     last: Option<DockOperation<Tab>>,
+    /// The canvas's color, which the layers pane picks.
+    color: RgbaF32,
 }
 
 impl State {
@@ -79,16 +83,20 @@ impl Default for State {
             dock,
             operations: Vec::new(),
             last: None,
+            color: RgbaF32::hex(0x3b82f6),
         }
     }
 }
 
+/// What the panes show: the canvas's color, which the layers pane picks, and the last operation.
 #[derive(Debug)]
-struct Panes {
+struct Panes<'a> {
     k: Kit,
+    color: &'a mut RgbaF32,
+    last: Option<DockOperation<Tab>>,
 }
 
-impl DockTabs for Panes {
+impl DockTabs for Panes<'_> {
     type Tab = Tab;
 
     fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
@@ -105,6 +113,22 @@ impl DockTabs for Panes {
             .show(ui, |ui| {
                 Text::new(tab.label()).style(&k.t.body()).show(ui);
                 Text::new(tab.blurb()).style(&k.t.caption()).show(ui);
+                match tab {
+                    Tab::Canvas => {
+                        Block::new()
+                            .size((Sizing::FILL, Sizing::FILL))
+                            .chrome(Chrome::rounded(*self.color, Corners::all(M.radius.card)))
+                            .show(ui);
+                    }
+                    Tab::Layers => {
+                        ColorPicker::new(self.color).show(ui);
+                    }
+                    Tab::History => {
+                        let last = describe(ui, self.last);
+                        Text::new(last).style(&k.t.mono(k.t.ink)).show(ui);
+                    }
+                    Tab::Console => {}
+                }
                 let measured = match size {
                     Some(s) => fmt!(ui, "content area {:.0} x {:.0}", s.w, s.h),
                     None => ui.intern("content area not laid out yet"),
@@ -159,11 +183,15 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let mut panes = Panes { k };
                 // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
                 s.operations.clear();
                 DockView::scan(ui, &s.dock, &mut s.operations);
                 s.apply_operations();
+                let mut panes = Panes {
+                    k,
+                    color: &mut s.color,
+                    last: s.last,
+                };
                 DockView::new(&s.dock, &mut s.operations)
                     .min_pane(140.0)
                     .show(ui, &mut panes);
@@ -203,17 +231,18 @@ fn reopen_row(ui: &mut Ui, k: Kit, s: &mut State) {
         {
             *s = State::default();
         }
-        let last = match s.last {
-            None => ui.intern("—"),
-            Some(DockOperation::ActivateTab { tab }) => fmt!(ui, "activated {}", tab.label()),
-            Some(DockOperation::OpenTab { tab }) => fmt!(ui, "opened {}", tab.label()),
-            Some(DockOperation::CloseTab { tab }) => fmt!(ui, "closed {}", tab.label()),
-            Some(DockOperation::MoveTab { tab, .. }) => fmt!(ui, "moved {}", tab.label()),
-            Some(DockOperation::SetRatio { ratio, .. }) => {
-                fmt!(ui, "resized a split to {ratio:.2}")
-            }
-            Some(_) => ui.intern("focused a pane"),
-        };
-        support::readout(ui, k, "last operation", last);
     });
+}
+
+/// `operation` in words, for the log.
+fn describe(ui: &mut Ui, operation: Option<DockOperation<Tab>>) -> InternedStr {
+    match operation {
+        None => ui.intern("—"),
+        Some(DockOperation::ActivateTab { tab }) => fmt!(ui, "activated {}", tab.label()),
+        Some(DockOperation::OpenTab { tab }) => fmt!(ui, "opened {}", tab.label()),
+        Some(DockOperation::CloseTab { tab }) => fmt!(ui, "closed {}", tab.label()),
+        Some(DockOperation::MoveTab { tab, .. }) => fmt!(ui, "moved {}", tab.label()),
+        Some(DockOperation::SetRatio { ratio, .. }) => fmt!(ui, "resized a split to {ratio:.2}"),
+        Some(_) => ui.intern("focused a pane"),
+    }
 }

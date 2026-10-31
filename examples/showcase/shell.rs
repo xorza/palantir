@@ -12,6 +12,7 @@ use palantir::{
 
 use crate::app_state::AppState;
 use crate::appearance::{Appearance, SEEDS};
+use crate::job::Job;
 use crate::pages;
 use crate::scaffold::header::Header;
 use crate::scaffold::links::LINKS;
@@ -209,7 +210,7 @@ const PAGES: &[Page] = &[
         group: Group::Layout,
         label: "Containers",
         blurb: "Stacks, wrapping flow, and grid tracks.",
-        keys: &["resize window"],
+        keys: &["drag", "resize window"],
         flow: Flow::Scroll,
         source: source!(containers),
         build: |ui, _, k| pages::containers::build(ui, k),
@@ -599,10 +600,15 @@ impl App for Shell {
                     .padding(M.space.lg)
                     .gap(M.space.md)
                     .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| pages::windows::counter(ui, k, &mut self.app));
+                    .show(ui, |ui| pages::windows::shared(ui, k, &mut self.app));
             }
             _ => self.build(ui),
         }
+    }
+
+    /// A background job runs off the frame and wakes the window as it steps.
+    fn is_busy(&self) -> bool {
+        self.app.job.as_ref().is_some_and(Job::is_running)
     }
 }
 

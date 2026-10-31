@@ -4,12 +4,15 @@ use std::{env, fs, process};
 
 use palantir::glam::{UVec2, Vec2};
 use palantir::internals::headless_test_gpu;
-use palantir::{Action, ColorScheme, Key, Locator, PointerButton, Rect, Shortcut, ShortcutMods};
+use palantir::{
+    Action, ColorScheme, Harness, Key, Locator, Palette, PointerButton, Rect, Shortcut,
+    ShortcutMods,
+};
 
 use crate::shell::Shell;
 use crate::shot;
 use crate::shot::script::{Header, ParseError, ParseErrorKind, Region, Script, StepKind};
-use crate::shot::{Folders, Mode, ShotError};
+use crate::shot::{Folders, Mode, ShotApp, ShotError};
 
 fn steps(text: &str) -> Vec<StepKind> {
     Script::parse(text)
@@ -382,4 +385,34 @@ fn page_opens_the_window_on_a_page() {
     assert!(bare.starts_with("usage: "), "{bare}");
     let extra = mode(&["--page", "tabs", "more"]).expect_err("one page");
     assert!(extra.starts_with("usage: "), "{extra}");
+}
+
+/// Every page settles and draws in `scheme`, over the rail's surround at the top-left texel and
+/// the page's ground at the top-right one, so a regression of one scheme fails on its own.
+fn draws_every_page(scheme: ColorScheme) {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(480, 320))
+        .gpu(gpu.handles())
+        .build();
+    h.set_system_color_scheme(Some(scheme));
+    let palette = Palette::for_scheme(scheme);
+    for (page, label) in Shell::page_labels().enumerate() {
+        let mut shell = Shell::open(page, h.ui());
+        h.settle(&mut shell).unwrap();
+        let shot = h.shot(&mut shell, None).unwrap();
+        let texels = shot.image().texels();
+        let w = usize::try_from(shot.image().size().x).unwrap();
+        assert_eq!(texels[0], palette.surround.to_srgba8(), "{label}");
+        assert_eq!(texels[w - 1], palette.window_bg.to_srgba8(), "{label}");
+    }
+}
+
+#[test]
+fn every_page_draws_in_light() {
+    draws_every_page(ColorScheme::Light);
+}
+
+#[test]
+fn every_page_draws_in_dark() {
+    draws_every_page(ColorScheme::Dark);
 }

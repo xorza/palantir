@@ -198,7 +198,9 @@ impl Theme {
     /// ceiling holds ink lighter than the tint, a floor darker. The stock themes stay opaque, as a
     /// frosted float costs a capture under each open one; an app opts in here, as WinUI's flyouts,
     /// menus and tooltips wear acrylic
-    /// (<https://learn.microsoft.com/windows/apps/design/style/acrylic>).
+    /// (<https://learn.microsoft.com/windows/apps/design/style/acrylic>) and macOS's menus and
+    /// popovers vibrancy, one material for every float. Refused: a helper in each app, which a new
+    /// floating slot would miss with no error.
     ///
     /// # Panics
     ///

@@ -1,11 +1,15 @@
 //! The palantir widget tour. `main` wires the winit host, open on the first page or on
-//! `--page PAGE`, or with `--shot SCRIPT [--out DIR] [--against DIR]` plays a script on a window with no desktop ([`shot`]); chrome and page table are in [`shell`],
-//! pages in [`pages`], the look in [`support`] over the examples' shared [`scaffold`].
+//! `--page PAGE`, or with `--shot SCRIPT [--out DIR] [--against DIR]` plays a script on a window
+//! with no desktop ([`shot`]); the rail and the page table are in [`shell`], pages in [`pages`],
+//! the look in [`support`] over the examples' shared [`scaffold`]. The tour has no density
+//! switch: the observatory's Appearance study edits `Metrics` live, and a second demo of it
+//! would move every shot and golden.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod app_state;
 mod appearance;
+mod job;
 mod pages;
 #[path = "../shared/scaffold/mod.rs"]
 mod scaffold;

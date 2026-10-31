@@ -93,6 +93,8 @@ impl ButtonTheme {
     /// accent
     /// (<https://m3.material.io/foundations/interaction/states/state-layers>). Disabled and
     /// selected, it is [`Self::from_parts`]'s, as a disabled call to action no longer stands out.
+    /// Refused: a danger button and a danger role on [`Palette`], which Fluent 2's appearances,
+    /// Material 3 and Apple's HIG do not ship; an app builds its own on [`Self::from_parts`].
     pub fn accent(p: &Palette, m: &Metrics) -> Self {
         let stock = Self::from_parts(p, m);
         let corners = Corners::all(m.radius.control);

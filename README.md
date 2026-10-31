@@ -56,7 +56,8 @@ declaration, good-looking and fast. I made it.
 ## See it
 
 A short screen recording of the
-[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase) tabs:
+[showcase](https://github.com/xorza/palantir/tree/master/examples/showcase), a tour of every
+widget:
 
 https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
 

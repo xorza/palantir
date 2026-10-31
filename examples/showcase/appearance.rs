@@ -180,7 +180,9 @@ impl Appearance {
 /// accent, so any seed sits where palantir's tuned accent sits against the ground and under
 /// `on_accent`, the contrast the stock palettes already hold. A hue too dark to reach that
 /// luminance at its saturation, as a deep blue in the dark scheme, gives up saturation instead,
-/// toward white.
+/// toward white. Material 3 derives its tones from one seed in the same way. Refused: presets
+/// alone, as GNOME and macOS offer, which drop "Use as accent"; a seed as given, as Windows'
+/// custom accent, which can leave the tour unreadable.
 pub(crate) fn accent_for(seed: RgbaF32, scheme: ColorScheme) -> RgbaF32 {
     let luminance = Palette::for_scheme(scheme).accent.luminance();
     let Okhsv { h, s, .. } = Okhsv::from_color(seed, 0.0);

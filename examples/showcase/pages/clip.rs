@@ -5,7 +5,8 @@ use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section, Surface};
 use palantir::glam::Vec2;
 use palantir::{
-    Align, Block, Chrome, Configure, Corners, Panel, Sizing, Stroke, TranslateScale, Ui, WidgetId,
+    Align, Block, Chrome, ComboBox, Configure, Corners, Panel, Sizing, Stroke, Text,
+    TranslateScale, Ui, WidgetId,
 };
 
 const CARD: f32 = 200.0;
@@ -14,6 +15,7 @@ const SPILL: f32 = 18.0;
 const CELL: f32 = CARD + 2.0 * SPILL;
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
+    live(ui, k);
     Section::new("Clip modes")
         .apis(&[api!(Panel::clip_rect), api!(Panel::clip_rounded)])
         .show(ui, k, |ui| {
@@ -211,4 +213,62 @@ fn tile(ui: &mut Ui, k: Kit) {
         .size((Sizing::fixed(56.0), Sizing::fixed(56.0)))
         .chrome(support::swatch_chrome(k.swatch.teal))
         .show(ui);
+}
+
+const MODES: [(&str, Mode); 3] = [
+    ("None", Mode::None),
+    ("Rect", Mode::Rect),
+    ("Rounded", Mode::Rounded),
+];
+
+/// The live card's knobs: its clip mode and its padding.
+#[derive(Debug)]
+struct LiveClip {
+    mode: usize,
+    padding: f64,
+}
+
+impl Default for LiveClip {
+    fn default() -> Self {
+        Self {
+            mode: 2,
+            padding: 0.0,
+        }
+    }
+}
+
+/// One card, its clip mode and its padding from the knobs, its child overflowing on every side.
+fn live(ui: &mut Ui, k: Kit) {
+    Section::new("Live clip")
+        .apis(&[api!(Panel::clip_rounded)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Pick a clip mode and pad the card: the clip follows the content rect, and the \
+                 rounded mask its corners.",
+            );
+            let id = WidgetId::from_hash("showcase::clip::live");
+            ui.with_state::<LiveClip, _>(id, |ui, l| {
+                support::row(ui, |ui| {
+                    Text::new("clip").style(&k.t.caption()).show(ui);
+                    ComboBox::labeled(&mut l.mode, &MODES, |mode| mode.0)
+                        .size((Sizing::fixed(120.0), Sizing::HUG))
+                        .show(ui);
+                    Knob {
+                        label: "padding",
+                        range: 0.0..=48.0,
+                        step: 2.0,
+                        unit: " px",
+                    }
+                    .show(ui, k, &mut l.padding);
+                });
+                ClipCard {
+                    label: "the knobs' card",
+                    mode: MODES[l.mode].1,
+                    padding: l.padding as f32,
+                }
+                .show(ui, k);
+            });
+        });
 }

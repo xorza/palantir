@@ -5,11 +5,15 @@
 
 use crate::app_state::AppState;
 use crate::appearance::Appearance;
+use crate::job::Job;
 use crate::scaffold::api;
 use crate::shell;
 use crate::support;
 use crate::support::{Dialog, Kit, Section};
-use palantir::{Align, App, Button, Checkbox, Configure, Text, Ui, WidgetId, fmt};
+use palantir::{
+    Align, App, Button, Checkbox, ColorButton, ColorPicker, Configure, ProgressBar, Sizing, Text,
+    TextEdit, Ui, Waker, WidgetId, fmt,
+};
 
 /// The close interception's state, in a row the page and [`intercept`] both reach.
 #[derive(Clone, Copy, Debug, Default)]
@@ -23,18 +27,16 @@ fn exit_state_id() -> WidgetId {
 }
 
 pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
-    Section::new("Counter")
+    Section::new("Shared state")
         .apis(&[api!(type App)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "The app owns this value and passes &mut AppState into the record call beside \
-             &mut Ui, so any depth of widgets can read and write it without a global.",
+                "The app owns these values and passes &mut AppState into the record call beside \
+                 &mut Ui, so any depth of widgets can read and write them without a global.",
             );
-            support::well(ui, k, |ui| {
-                counter(ui, k, app);
-            });
+            support::well(ui, k, |ui| shared(ui, k, app));
         });
 
     Section::new("Second window")
@@ -43,8 +45,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
             support::note(
                 ui,
                 k,
-                "The inspector records its own tree from this same &mut AppState: change the \
-                 counter in either window and both move. The live window set is the source of \
+                "The inspector records its own tree from this same &mut AppState: change a \
+                 value in either window and both show it. The live window set is the source of \
                  truth for whether it is open, so closing it from its title bar needs no bool \
                  kept in step. F8 toggles it too.",
             );
@@ -58,6 +60,41 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, app: &mut AppState) {
                 if Button::new().label(label).show(ui).clicked() {
                     shell::toggle_inspector(ui);
                 }
+            });
+        });
+
+    Section::new("Background job")
+        .apis(&[api!(Ui::waker), api!(Waker::wake)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "A worker thread counts through its steps and wakes the window after each: the \
+                 bar moves with no frame spent polling, and an idle window draws nothing.",
+            );
+            support::well(ui, k, |ui| {
+                if let Some(job) = &mut app.job {
+                    job.reap();
+                }
+                let running = app.job.as_ref().is_some_and(Job::is_running);
+                let done = app.job.as_ref().map_or(0, Job::done);
+                support::row(ui, |ui| {
+                    if Button::new()
+                        .label("Start job")
+                        .disabled(running)
+                        .show(ui)
+                        .clicked()
+                    {
+                        app.job = Some(Job::start(ui.waker()));
+                    }
+                    let line = match &app.job {
+                        None => ui.intern("not started"),
+                        Some(_) if running => fmt!(ui, "step {done} of {}", Job::STEPS),
+                        Some(_) => ui.intern("done"),
+                    };
+                    support::readout(ui, k, "worker", line);
+                });
+                ProgressBar::new(f32::from(done) / f32::from(Job::STEPS)).show(ui);
             });
         });
 
@@ -130,8 +167,19 @@ pub(crate) fn intercept(ui: &mut Ui, k: Kit, look: &Appearance) {
     });
 }
 
-/// The counter, recorded by this page and the inspector window.
-pub(crate) fn counter(ui: &mut Ui, k: Kit, app: &mut AppState) {
+/// The shared values, recorded by this page and the inspector window.
+pub(crate) fn shared(ui: &mut Ui, k: Kit, app: &mut AppState) {
+    counter(ui, k, app);
+    support::row(ui, |ui| {
+        TextEdit::new(&mut app.note)
+            .size((Sizing::FILL, Sizing::HUG))
+            .max_size((320.0, f32::INFINITY))
+            .show(ui);
+        ColorButton::new(ColorPicker::new(&mut app.color)).show(ui);
+    });
+}
+
+fn counter(ui: &mut Ui, k: Kit, app: &mut AppState) {
     support::row(ui, |ui| {
         if Button::new()
             .label("−")

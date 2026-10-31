@@ -1,16 +1,15 @@
-//! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, and spinner sizing.
+//! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, and a progress bar beside spinners.
 
 use crate::appearance::Appearance;
 use crate::scaffold::api;
 use crate::support;
-use crate::support::{Col, Kit, Section};
+use crate::support::{Col, Kit, Knob, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
     Align, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure, Corners,
     DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar, RadioButton, RgbaF32,
     SchemePreference, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
-    Switch, Text, TextEdit, TextStyleOverrides, TextWrap, Tooltip, Ui, VAlign, WidgetId,
-    WidgetLook, fmt,
+    Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -33,6 +32,8 @@ struct State {
     volume: f64,
     fps: i64,
     syncing: bool,
+    /// The progress bar's share, which the knob sets.
+    progress: f64,
     /// Each disclosure demo holds one, so the state a collapsed body keeps or loses is visible.
     skipped_note: String,
     kept_note: String,
@@ -49,6 +50,7 @@ impl Default for State {
             volume: 0.6,
             fps: 120,
             syncing: false,
+            progress: 0.4,
             skipped_note: String::from("type here"),
             kept_note: String::from("type here"),
         }
@@ -74,7 +76,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
                     ),
                 ])
                 .show(ui, k, |ui| form(ui, k, s, &themes)),
-            Col::Right => side(ui, k, &themes),
+            Col::Right => side(ui, k, s, &themes),
         });
         Section::new("Disclosure")
             .apis(&[api!(Expander::start_open), api!(Expander::keep_body)])
@@ -283,7 +285,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
         });
 }
 
-fn side(ui: &mut Ui, k: Kit, themes: &Themes) {
+fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
     Section::new("Button themes")
         .apis(&[api!(type ButtonTheme), api!(ButtonTheme::accent)])
         .show(ui, k, |ui| {
@@ -328,37 +330,24 @@ fn side(ui: &mut Ui, k: Kit, themes: &Themes) {
             });
         });
 
-    Section::new("Label overflow")
-        .apis(&[api!(Button::text_wrap)])
+    Section::new("Progress")
+        .apis(&[api!(ProgressBar::new), api!(Spinner::diameter)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
-                "A fixed-width button cuts a long label at its box. Single-line wrapping lets the \
-             label run past the box; a Hug-width button grows to fit.",
+                "A bar for work whose share is known, set here by hand, and spinners for work \
+                 whose share is not.",
             );
             support::well(ui, k, |ui| {
-                support::row(ui, |ui| {
-                    Button::new()
-                        .size((Sizing::fixed(140.0), Sizing::HUG))
-                        .label("Screenshot 2026-05-28 at 01.21.25.png")
-                        .show(ui);
-                    Button::new().label("fits its content").show(ui);
-                });
-                support::row(ui, |ui| {
-                    Button::new()
-                        .size((Sizing::fixed(140.0), Sizing::HUG))
-                        .text_wrap(TextWrap::SingleLine)
-                        .label("Screenshot 2026-05-28 at 01.21.25.png")
-                        .show(ui);
-                });
-            });
-        });
-
-    Section::new("Spinners")
-        .apis(&[api!(Spinner::diameter)])
-        .show(ui, k, |ui| {
-            support::well(ui, k, |ui| {
+                Knob {
+                    label: "done",
+                    range: 0.0..=1.0,
+                    step: 0.01,
+                    unit: "",
+                }
+                .show(ui, k, &mut s.progress);
+                ProgressBar::new(s.progress as f32).show(ui);
                 Panel::hstack()
                     .gap(M.space.lg)
                     .child_align(Align::v(VAlign::Center))

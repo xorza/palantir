@@ -11,7 +11,8 @@ use crate::support;
 use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::widget::Shape;
 use palantir::{
-    ColorButton, ColorPicker, IconHandle, IconSet, IconTable, RgbaF32, Text, Ui, WidgetId,
+    Align, ColorButton, ColorPicker, Configure, CursorIcon, IconHandle, IconSet, IconTable, Panel,
+    RgbaF32, Sense, Sizing, Text, Ui, WidgetId,
 };
 use std::rc::Rc;
 
@@ -115,6 +116,7 @@ impl Icons {
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
     let icons = Icons::load(ui);
     live(ui, k, &icons);
+    cursors(ui, k);
 
     Section::new("Sizes")
         .apis(&[
@@ -274,6 +276,52 @@ fn live(ui: &mut Ui, k: Kit, icons: &Icons) {
                     .show(ui, k, |ui| {
                         Icons::draw(ui, icons.new_file, tint);
                     });
+            });
+        });
+}
+
+/// Each pointer shape palantir asks the platform for, by name.
+const CURSORS: [(CursorIcon, &str); 10] = [
+    (CursorIcon::Default, "Default"),
+    (CursorIcon::Pointer, "Pointer"),
+    (CursorIcon::Text, "Text"),
+    (CursorIcon::Grab, "Grab"),
+    (CursorIcon::Grabbing, "Grabbing"),
+    (CursorIcon::Move, "Move"),
+    (CursorIcon::Crosshair, "Crosshair"),
+    (CursorIcon::EwResize, "EwResize"),
+    (CursorIcon::NsResize, "NsResize"),
+    (CursorIcon::NotAllowed, "NotAllowed"),
+];
+
+/// A cell per pointer shape, each setting it while the pointer is over the cell.
+fn cursors(ui: &mut Ui, k: Kit) {
+    Section::new("Cursors")
+        .apis(&[api!(Ui::set_cursor), api!(type CursorIcon)])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Hover a cell: it asks for its pointer shape on each frame the pointer is over \
+                 it, and the platform draws its own.",
+            );
+            support::tiles(ui, |ui| {
+                for (icon, name) in CURSORS {
+                    let hovered = Panel::zstack()
+                        .id_salt(name)
+                        .size((Sizing::fixed(120.0), Sizing::fixed(48.0)))
+                        .child_align(Align::CENTER)
+                        .sense(Sense::HOVER)
+                        .chrome(k.t.card())
+                        .show(ui, |ui| {
+                            Text::new(name).style(&k.t.caption()).show(ui);
+                        })
+                        .response
+                        .hovered();
+                    if hovered {
+                        ui.set_cursor(icon);
+                    }
+                }
             });
         });
 }

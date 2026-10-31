@@ -7,13 +7,14 @@ use crate::support;
 use crate::support::{Kit, Section};
 use palantir::widget::Span;
 use palantir::{
-    Align, Button, Configure, EditEnd, EditableLabel, HAlign, Sizing, Text, TextEdit,
-    TextEditResponse, Ui, VAlign, WidgetId, fmt,
+    Align, Button, ComboBox, Configure, DragValue, EditEnd, EditableLabel, HAlign, Sizing, Switch,
+    Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
 };
 
 #[derive(Debug)]
 struct Page {
     a: String,
+    live: LiveField,
     /// The name the editable label shows and edits.
     layer: String,
     b: String,
@@ -33,6 +34,7 @@ impl Default for Page {
     fn default() -> Self {
         Self {
             a: String::new(),
+            live: LiveField::default(),
             layer: String::from("Layer 1"),
             b: String::new(),
             events_field: String::from("edit me"),
@@ -256,7 +258,91 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
             });
         });
 
+    live(ui, k, &mut s.live);
     ime(ui, k, s);
+}
+
+const ALIGNS: [(&str, HAlign); 3] = [
+    ("left", HAlign::Left),
+    ("center", HAlign::Center),
+    ("right", HAlign::Right),
+];
+
+/// The live field's text and the knobs that set it up.
+#[derive(Debug)]
+struct LiveField {
+    text: String,
+    max_chars: i64,
+    multiline: bool,
+    align: usize,
+    select_all: bool,
+}
+
+impl Default for LiveField {
+    fn default() -> Self {
+        Self {
+            text: String::from("Edit me"),
+            max_chars: 40,
+            multiline: false,
+            align: 0,
+            select_all: false,
+        }
+    }
+}
+
+/// One field whose limits and modes the knobs set: its length cap, multi-line, alignment, and
+/// whether focus selects all.
+fn live(ui: &mut Ui, k: Kit, l: &mut LiveField) {
+    Section::new("Live field")
+        .apis(&[
+            api!(TextEdit::max_chars),
+            api!(TextEdit::multiline),
+            api!(TextEdit::select_all_on_focus),
+        ])
+        .show(ui, k, |ui| {
+            support::note(
+                ui,
+                k,
+                "Cap the length, let Enter break lines, align the text, and pick what a click into \
+                 the field selects; the field takes each setting on the next frame.",
+            );
+            support::well(ui, k, |ui| {
+                support::row(ui, |ui| {
+                    Text::new("max chars").style(&k.t.caption()).show(ui);
+                    DragValue::new(&mut l.max_chars)
+                        .range(1.0..=80.0)
+                        .size((Sizing::fixed(64.0), Sizing::HUG))
+                        .show(ui);
+                    Text::new("align").style(&k.t.caption()).show(ui);
+                    ComboBox::labeled(&mut l.align, &ALIGNS, |align| align.0)
+                        .size((Sizing::fixed(100.0), Sizing::HUG))
+                        .show(ui);
+                });
+                support::row(ui, |ui| {
+                    Switch::new(&mut l.multiline).label("Multi-line").show(ui);
+                    Switch::new(&mut l.select_all)
+                        .label("Select all on focus")
+                        .show(ui);
+                });
+                let max = usize::try_from(l.max_chars).expect("the drag keeps the cap positive");
+                let align = ALIGNS[l.align].1;
+                let height = if l.multiline {
+                    Sizing::fixed(96.0)
+                } else {
+                    Sizing::HUG
+                };
+                TextEdit::new(&mut l.text)
+                    .max_chars(max)
+                    .multiline(l.multiline)
+                    .text_align(Align::new(align, VAlign::Top))
+                    .select_all_on_focus(l.select_all)
+                    .size((Sizing::FILL, height))
+                    .max_size((420.0, f32::INFINITY))
+                    .show(ui);
+                let count = fmt!(ui, "{} of {max}", l.text.chars().count());
+                support::readout(ui, k, "characters", count);
+            });
+        });
 }
 
 fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
