@@ -1,4 +1,4 @@
-//! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, spinner sizing, and echoes the live form state.
+//! Form controls in one composition. The left column is a settings form (switches, checkboxes, radios, combo box, slider, DragValue, themed buttons): "Airplane mode" cascade-disables the network group, and Apply drives a fake sync through `Ui::animate` (ProgressBar + Spinner). The right column demos ButtonTheme styling, label eliding, and spinner sizing.
 
 use crate::scaffold::api;
 use crate::support;
@@ -81,7 +81,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     ),
                 ])
                 .show(ui, k, |ui| form(ui, k, s, &themes)),
-            Col::Right => side(ui, k, s, &themes),
+            Col::Right => side(ui, k, &themes),
         });
         Section::new("Disclosure")
             .apis(&[api!(Expander::start_open), api!(Expander::keep_body)])
@@ -201,11 +201,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                 .label("Reduce motion")
                 .show(ui);
 
-            // Thick tinted variant of Separator, in situ.
-            Separator::horizontal()
-                .thickness(3.0)
-                .color(k.swatch.teal)
-                .show(ui);
+            Separator::horizontal().show(ui);
             group(ui, k, "AUDIO & VIDEO");
             support::row(ui, |ui| {
                 Slider::new(&mut s.volume, 0.0..=1.0)
@@ -279,7 +275,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
         });
 }
 
-fn side(ui: &mut Ui, k: Kit, s: &State, themes: &Themes) {
+fn side(ui: &mut Ui, k: Kit, themes: &Themes) {
     Section::new("Button themes")
         .apis(&[api!(type ButtonTheme)])
         .show(ui, k, |ui| {
@@ -353,25 +349,6 @@ fn side(ui: &mut Ui, k: Kit, s: &State, themes: &Themes) {
                         .show(ui);
                 });
         });
-
-    Section::new("Live state").show(ui, k, |ui| {
-        support::well(ui, k, |ui| {
-            let net = fmt!(
-                ui,
-                "airplane={} wifi={} bluetooth={} metered={}",
-                s.airplane,
-                s.wifi,
-                s.bluetooth,
-                s.metered
-            );
-            support::readout(ui, k, "network", net);
-            support::readout(ui, k, "region", REGIONS[s.region]);
-            let look = fmt!(ui, "{:?}, reduce_motion={}", s.appearance, s.reduce_motion);
-            support::readout(ui, k, "appearance", look);
-            let av = fmt!(ui, "volume={:.2} fps={}", s.volume, s.fps);
-            support::readout(ui, k, "audio & video", av);
-        });
-    });
 }
 
 fn group(ui: &mut Ui, k: Kit, label: &'static str) {

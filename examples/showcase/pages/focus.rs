@@ -1,4 +1,5 @@
-//! Keyboard focus end to end; each section ends in a checklist, so the page doubles as the by-hand focus test.
+//! Keyboard focus end to end. Palantir's harness tests hold each behavior a section shows, so the
+//! page carries no list to check by hand.
 
 use crate::scaffold::api;
 use crate::support;
@@ -128,17 +129,6 @@ fn tab_order(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 support::readout(ui, k, "came from", via);
             });
             form(ui, k, s, seen);
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "Click the name field: it takes focus with no ring",
-                    "Press Tab: the email field takes focus, and the ring shows",
-                    "Tab on: every control below gets the ring in turn, top to bottom",
-                    "Shift+Tab walks back the same way",
-                    "Click anywhere in a control: the ring goes away",
-                ],
-            );
         });
 }
 
@@ -260,16 +250,6 @@ fn order_and_stops(ui: &mut Ui, k: Kit, seen: &mut Seen) {
                 seen.note("tab_stop(false)", r.focused);
                 Button::new().label("disabled").disabled(true).show(ui);
             });
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "With nothing focused, Tab lands on 'tab_idx −1' before the nav rail",
-                    "Shift+Tab from 'tab_idx −1' wraps to 'tab_idx 1', the last stop",
-                    "Tab never stops on 'tab_stop(false)', but a click focuses it",
-                    "Tab never stops on 'disabled'",
-                ],
-            );
         });
 }
 
@@ -325,16 +305,6 @@ fn arrow_groups(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                     }
                 });
             support::readout(ui, k, "opened", LIST[s.picked]);
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "Tab onto 'Bold': → moves to 'Italic', 'Underline', then into the search field",
-                    "In the search field ← and → move the caret; Tab moves on to 'Clear'",
-                    "→ on 'Clear' wraps to 'Bold', and ← on 'Bold' wraps to 'Clear'",
-                    "↑ and ↓ walk the list and wrap at both ends; Enter opens the item",
-                ],
-            );
         });
 }
 
@@ -382,18 +352,6 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
             if s.dialog_open {
                 dialog(ui, k, s);
             }
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "Open the dialog: focus moves to its first field",
-                    "Tab and Shift+Tab cycle inside the dialog only",
-                    "Esc or Cancel closes it, and 'Open dialog' has focus again",
-                    "Tab to 'Filters ▾' and press Space: the popup opens with focus inside",
-                    "Click 'Filters ▾': the popup opens and focus stays on the button",
-                    "Esc in the popup closes it and focus returns to 'Filters ▾'",
-                ],
-            );
         });
 }
 
@@ -456,15 +414,6 @@ fn programmatic(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                     ui.clear_focus();
                 }
             });
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "'Focus the field' focuses it with its text selected",
-                    "'Focus the form' focuses the name field at the top of the page",
-                    "'Clear focus' leaves nothing focused",
-                ],
-            );
         });
 }
 
@@ -492,14 +441,6 @@ fn policy(ui: &mut Ui, k: Kit, s: &mut State) {
                         .show(ui);
                 }
             });
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "ClearOnMiss: focus a field, click empty card space: nothing is focused",
-                    "PreserveOnMiss: the same click leaves the field focused",
-                ],
-            );
         });
     ui.set_focus_policy(s.policy);
 }
@@ -533,16 +474,6 @@ fn ring(ui: &mut Ui, k: Kit) {
                 }
             });
             set_ring(ui, width as f32, color);
-            support::checklist(
-                ui,
-                k,
-                &[
-                    "Tab to the width slider and press → : the ring around it grows",
-                    "Width 0 draws no ring at all",
-                    "Open another page and press Tab: its ring has the same width and color",
-                    "Reset puts the ring back to 2 px teal",
-                ],
-            );
         });
 }
 

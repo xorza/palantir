@@ -193,6 +193,35 @@ fn tab_walks_the_stops_of_its_domain_in_order() {
     }
 }
 
+/// A control out of the Tab order still takes focus from a press, as `tab_stop(false)` promises:
+/// Tab passes it by, and a click on it lands.
+#[test]
+fn a_click_focuses_a_control_out_of_the_tab_order() {
+    let mut record = |ui: &mut Ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            stop(ui, "a");
+            Block::new()
+                .id(id("aside"))
+                .size((40.0, 20.0))
+                .sense(Sense::CLICK)
+                .focusable(true)
+                .tab_stop(false)
+                .show(ui);
+            stop(ui, "b");
+        });
+    };
+    let mut h = Harness::mono(SURFACE);
+    h.frame(&mut record);
+    h.set_focus(id("a"));
+    h.frame(&mut record);
+    press(&mut h, false, &mut record);
+    assert_eq!(h.focus(), Some(id("b")), "Tab passes the control by");
+    let at = h.center_of(id("aside"));
+    h.click(at);
+    h.frame(&mut record);
+    assert_eq!(h.focus(), Some(id("aside")), "a click focuses it");
+}
+
 /// A scope on the focus path that takes `FOCUS` keeps Tab; one that does not (`ACCEL` alone) leaves it to traversal.
 #[test]
 fn a_scope_that_takes_focus_keeps_tab() {

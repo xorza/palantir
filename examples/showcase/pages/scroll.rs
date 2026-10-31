@@ -1,21 +1,42 @@
-//! Scroll viewports in splitter panes. The outer horizontal splitter holds a vertical scroll list; its right half splits vertically into a horizontal strip and a two-axis grid.
+//! Scroll viewports in splitter panes. The outer horizontal splitter holds a vertical list; its
+//! right half splits vertically into a horizontal strip and a two-axis grid of buttons that zooms
+//! about the pointer, `Scroll::both().zoomable()`, its clicks hit-tested through the zoom.
 
 use crate::support;
 use crate::support::Kit;
 use palantir::{
-    Configure, Panel, RgbaF32, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId, fmt,
+    Button, Chrome, Configure, Corners, Metrics, Panel, Scroll, Sizing, SplitHalf, Splitter,
+    Stroke, Text, Ui, WidgetId, fmt,
 };
+
+const M: Metrics = Metrics::DEFAULT;
+/// Items in the vertical list and the horizontal strip, enough to overflow either pane.
+const ITEMS: u32 = 40;
+/// The zoomable grid's side, in buttons.
+const SIDE: u32 = 24;
 
 #[derive(Debug)]
 struct State {
     h: f32,
     v: f32,
+    clicked: Option<Cell>,
 }
 
 impl Default for State {
     fn default() -> Self {
-        Self { h: 0.45, v: 0.5 }
+        Self {
+            h: 0.45,
+            v: 0.5,
+            clicked: None,
+        }
     }
+}
+
+/// A button's place in the zoomable grid.
+#[derive(Clone, Copy, Debug)]
+struct Cell {
+    row: u32,
+    col: u32,
 }
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
@@ -24,16 +45,17 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 }
 
 fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
+    let mut clicked = None;
     Splitter::row(&mut s.h)
         .min_pane(120.0)
         .show(ui, |ui, half| match half {
             SplitHalf::First => pane(ui, k, "vertical", |ui| {
                 Scroll::vertical()
                     .size((Sizing::FILL, Sizing::FILL))
-                    .gap(4.0)
+                    .gap(M.space.xs)
                     .show(ui, |ui| {
-                        for i in 0..40 {
-                            row(ui, k, i);
+                        for i in 0..ITEMS {
+                            item(ui, k, i, (Sizing::FILL, Sizing::fixed(28.0)));
                         }
                     });
             }),
@@ -44,24 +66,35 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
                         SplitHalf::First => pane(ui, k, "horizontal", |ui| {
                             Scroll::horizontal()
                                 .size((Sizing::FILL, Sizing::FILL))
-                                .gap(4.0)
+                                .gap(M.space.xs)
                                 .show(ui, |ui| {
-                                    for i in 0..40 {
-                                        col(ui, k, i);
+                                    for i in 0..ITEMS {
+                                        item(ui, k, i, (Sizing::fixed(60.0), Sizing::FILL));
                                     }
                                 });
                         }),
-                        SplitHalf::Second => pane(ui, k, "two-axis", |ui| {
+                        SplitHalf::Second => pane(ui, k, "two-axis, zoomable", |ui| {
                             Scroll::both()
+                                .zoomable()
                                 .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui, |ui| grid(ui, k));
+                                .show(ui, |ui| grid(ui, &mut clicked));
                         }),
                     });
             }
         });
+    if clicked.is_some() {
+        s.clicked = clicked;
+    }
 
-    let line = fmt!(ui, "row {:.2}  column {:.2}", s.h, s.v);
-    support::readout(ui, k, "split ratios", line);
+    support::row(ui, |ui| {
+        let ratios = fmt!(ui, "row {:.2}  column {:.2}", s.h, s.v);
+        support::readout(ui, k, "split ratios", ratios);
+        let click = match s.clicked {
+            Some(Cell { row, col }) => fmt!(ui, "row {row}, column {col}"),
+            None => ui.intern("— click a button to check hit-testing through the zoom"),
+        };
+        support::readout(ui, k, "last click", click);
+    });
 }
 
 #[track_caller]
@@ -69,8 +102,8 @@ fn pane(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
-        .padding(8.0)
-        .gap(6.0)
+        .padding(M.space.sm)
+        .gap(M.space.xs)
         .chrome(k.t.card())
         .show(ui, |ui| {
             Text::new(label).style(&k.t.caption()).show(ui);
@@ -78,60 +111,43 @@ fn pane(ui: &mut Ui, k: Kit, label: &'static str, body: impl FnOnce(&mut Ui)) {
         });
 }
 
-fn row(ui: &mut Ui, k: Kit, i: u32) {
+/// One numbered item of the list or the strip, on the raised surface; the hairline keeps it apart
+/// from a light ground, which the raised white matches.
+fn item(ui: &mut Ui, k: Kit, i: u32, size: (Sizing, Sizing)) {
     Panel::hstack()
         .id_salt(i)
-        .size((Sizing::FILL, Sizing::fixed(28.0)))
-        .padding((10.0, 6.0))
-        .chrome(support::swatch_chrome(ramp(i, k)))
+        .size(size)
+        .padding((M.space.md, M.space.xs))
+        .chrome(
+            Chrome::rounded(k.t.raised, Corners::all(M.radius.control))
+                .with_border(Stroke::new(k.t.hairline, M.stroke.hairline)),
+        )
         .show(ui, |ui| {
-            let label = fmt!(ui, "row {i:02}");
-            Text::new(label).style(&support::on_swatch_style()).show(ui);
+            Text::new(fmt!(ui, "{i:02}")).style(&k.t.body()).show(ui);
         });
 }
 
-fn col(ui: &mut Ui, k: Kit, i: u32) {
-    Panel::vstack()
-        .id_salt(i)
-        .size((Sizing::fixed(60.0), Sizing::FILL))
-        .padding((6.0, 10.0))
-        .chrome(support::swatch_chrome(ramp(i, k)))
-        .show(ui, |ui| {
-            let label = fmt!(ui, "col {i:02}");
-            Text::new(label).style(&support::on_swatch_style()).show(ui);
-        });
-}
-
-fn grid(ui: &mut Ui, k: Kit) {
-    // One Hug-sized child holding a 12×16 grid of nested stacks; both-axes Scroll measures with INF, so the stacks size to content and overflow both sides.
-    Panel::vstack().gap(4.0).show(ui, |ui| {
-        for r in 0..16u32 {
-            Panel::hstack().id_salt(r).gap(4.0).show(ui, |ui| {
-                for c in 0..12u32 {
-                    Panel::hstack()
-                        .id_salt(c)
-                        .size((Sizing::fixed(60.0), Sizing::fixed(40.0)))
-                        .padding((6.0, 4.0))
-                        .chrome(support::swatch_chrome(ramp(r * 12 + c, k)))
-                        .show(ui, |ui| {
-                            let label = fmt!(ui, "{r},{c}");
-                            Text::new(label)
-                                .style(&support::on_swatch_style().with_font_size(11.0))
-                                .show(ui);
-                        });
+/// A grid of stock buttons, wider and taller than the pane, so it pans on both axes and a zoom
+/// shows the hit test following the scale.
+fn grid(ui: &mut Ui, clicked: &mut Option<Cell>) {
+    Panel::vstack().gap(M.space.xs).show(ui, |ui| {
+        for row in 0..SIDE {
+            Panel::hstack().id_salt(row).gap(M.space.xs).show(ui, |ui| {
+                for col in 0..SIDE {
+                    // Formatted into the record arena, not a `String`: this runs for every button
+                    // every frame.
+                    let label = fmt!(ui, "{row},{col}");
+                    if Button::new()
+                        .id_salt(col)
+                        .label(label)
+                        .size((Sizing::fixed(56.0), Sizing::fixed(32.0)))
+                        .show(ui)
+                        .clicked()
+                    {
+                        *clicked = Some(Cell { row, col });
+                    }
                 }
             });
         }
     });
-}
-
-/// Teal → purple → orange sweep so panning shows progress; these colors are demo content, not theme, in the swatch palette's hues.
-fn ramp(i: u32, k: Kit) -> RgbaF32 {
-    let t = (i % 40) as f32 / 40.0;
-    let (from, to, u) = if t < 0.5 {
-        (k.swatch.teal, k.swatch.violet, t * 2.0)
-    } else {
-        (k.swatch.violet, k.swatch.orange, (t - 0.5) * 2.0)
-    };
-    support::mix(from, to, u)
 }
