@@ -110,6 +110,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("dock preview", t.dock.preview_stroke.width, 0.5),
         ("tab close", t.tabs.close_glyph_width, 0.5),
         ("combo arrow", t.combo_box.arrow_width, 0.5),
+        ("spinner floor", t.spinner.min_width, 0.5),
         ("picker handle", t.color_picker.handle_width, 0.5),
         ("focus ring", t.focus_ring.width, 0.75),
         ("tab cap", t.tabs.cap_thickness, 0.75),

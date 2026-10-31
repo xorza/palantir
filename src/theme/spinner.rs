@@ -1,6 +1,7 @@
 //! What a spinner wears, and how fast it turns.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use std::f32::consts;
 use std::time::Duration;
@@ -28,21 +29,21 @@ pub struct SpinnerTheme {
 }
 
 impl SpinnerTheme {
-    /// An accent arc sweeping three quarters of the circle.
-    pub const fn from_palette(p: &Palette) -> Self {
+    /// An accent arc sweeping three quarters of the circle, its stroke floored at the fine step.
+    pub const fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             color: p.accent,
             diameter: 24.0,
             sweep: 1.5 * consts::PI,
             period: Duration::from_millis(1400),
             width_ratio: 0.12,
-            min_width: 1.5,
+            min_width: m.stroke.fine,
         }
     }
 }
 
 impl Default for SpinnerTheme {
     fn default() -> Self {
-        Self::from_palette(&Palette::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }

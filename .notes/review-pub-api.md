@@ -8,10 +8,8 @@ Darkroom is one user; an item stays only if it is general.
 
 The surface is mostly consistent: builders, values, flag sets, theme slots, state drivers and
 responses each follow one shape. An item is judged by whether a general user needs it, not by
-whether darkroom calls it. The defects fall into two root causes:
+whether darkroom calls it. The defects fall into one root cause:
 
-- **One kind of constructor, three names.** The sub-theme recipes are `from_parts`,
-  `from_palette` or `from_metrics` by the inputs each reads today.
 - **One kind of parameter, two spellings.** Setters name their one argument differently, and
   some generic arguments are named type parameters where their siblings take `impl Trait`.
 
@@ -22,16 +20,6 @@ Nothing in the surface is specialized for darkroom. The items added for it in th
 a general need, with its source in `AGENTS.md`.
 
 ## Plan
-
-### Batch 4: theme recipe constructors
-
-Files: `src/theme/{progress_bar,slider,spinner,combo_box}.rs`, `src/theme/mod.rs`.
-
-- [ ] `ProgressBarTheme`, `SliderTheme` and `SpinnerTheme` take `from_palette(p)`, and
-  `ComboBoxTheme` takes `from_metrics(m)`; every other sub-theme takes `from_parts(p, m)`. Give
-  all of them `from_parts(p, m)`, so an app that rebuilds one slot calls the same constructor
-  for each, and a recipe that later reads a metric changes no signature. Cost: three recipes
-  ignore `m` and one ignores `p`.
 
 ### Batch 5: spelling
 

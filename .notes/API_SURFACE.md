@@ -370,7 +370,7 @@ ComboBoxTheme
         pub gap: f32
         pub arrow_size: Vec2
         pub arrow_width: f32
-        pub const fn from_metrics(m: &Metrics) -> Self
+        pub const fn from_parts(_p: &Palette, m: &Metrics) -> Self
 
 Configure
     trait Configure: Sized
@@ -1686,7 +1686,7 @@ ProgressBarTheme
         pub track: RgbaF32
         pub fill: RgbaF32
         pub thickness: f32
-        pub const fn from_palette(p: &Palette) -> Self
+        pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
 
 RadialGeometry
     struct RadialGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
@@ -1994,7 +1994,7 @@ SliderTheme
         pub knob: RgbaF32
         pub knob_size: f32
         pub track_thickness: f32
-        pub const fn from_palette(p: &Palette) -> Self
+        pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
 
 SlotDefaults
     struct SlotDefaults: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -2041,7 +2041,7 @@ SpinnerTheme
         pub period: Duration
         pub width_ratio: f32
         pub min_width: f32
-        pub const fn from_palette(p: &Palette) -> Self
+        pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 SplitDirection
     enum SplitDirection: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize

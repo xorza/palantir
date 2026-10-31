@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::arrow::Arrow;
 use crate::theme::metrics::Metrics;
+use crate::theme::palette::Palette;
 use glam::Vec2;
 
 /// Geometry for [`crate::ComboBox`]. Colors and chrome read `Theme::button` and `Theme::context_menu` (trigger as button, dropdown as context menu), so restyling either moves the combo. Left: the label-to-arrow gutter and the chevron.
@@ -20,7 +21,7 @@ pub struct ComboBoxTheme {
 
 impl ComboBoxTheme {
     /// Geometry only; colors come from [`ButtonTheme`](crate::ButtonTheme) and [`ContextMenuTheme`](crate::ContextMenuTheme), so it reads no palette.
-    pub const fn from_metrics(m: &Metrics) -> Self {
+    pub const fn from_parts(_p: &Palette, m: &Metrics) -> Self {
         Self {
             gap: m.space.md,
             arrow_size: Vec2::new(10.0, 6.0),
@@ -39,6 +40,6 @@ impl ComboBoxTheme {
 
 impl Default for ComboBoxTheme {
     fn default() -> Self {
-        Self::from_metrics(&Metrics::DEFAULT)
+        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
     }
 }
