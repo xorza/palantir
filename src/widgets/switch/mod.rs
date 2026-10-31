@@ -102,7 +102,16 @@ impl ToggleKind for Knob<'_> {
             AnimationRequest::new(knob_id, "x", target_x),
             slot.defaults.animation,
         );
-        let knob_chrome = Chrome::rounded(slot.indicator, Corners::all(geometry.knob * 0.5));
+        let target_color = if checked {
+            slot.indicator
+        } else {
+            slot.unchecked_indicator
+        };
+        let knob_color = ui.animate(
+            AnimationRequest::new(knob_id, "color", target_color),
+            slot.defaults.animation,
+        );
+        let knob_chrome = Chrome::rounded(knob_color, Corners::all(geometry.knob * 0.5));
         Widget::leaf()
             .id(knob_id)
             .size((Sizing::fixed(geometry.knob), Sizing::fixed(geometry.knob)))

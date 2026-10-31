@@ -10,12 +10,13 @@ use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
     AnimationSpec, DebugOverlayConfig, FramePaint, Metrics, OffscreenHost, OffscreenTime, Palette,
-    RadiusSteps, RgbaF32, Shadow, SpaceSteps, StrokeSteps, TextShaper, TextSteps, Theme, Ui,
+    RadiusSteps, RgbaF32, ShadowGeometry, SpaceSteps, StrokeSteps, TextShaper, TextSteps, Theme,
+    Ui,
 };
 
 use crate::fixtures::DARK_BG;
 
-/// The palette every fixture renders under, pinned so `Palette::DEFAULT` can move without ten goldens depending on it; hue-coded so a wrong rung shows as a hue in the diff.
+/// The palette every fixture renders under, pinned so `Palette::DARK` can move without ten goldens depending on it; hue-coded so a wrong rung shows as a hue in the diff.
 pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text: RgbaF32::hex(0xf2f2f2),
     text_muted: RgbaF32::hex(0x9ad2a0),
@@ -27,6 +28,8 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     element_strong: RgbaF32::hex(0x3d4f1e),
     border_focused: RgbaF32::hex(0x2f6fd0),
     accent: RgbaF32::hex(0xd23f7a),
+    on_accent: RgbaF32::hex(0x14141a),
+    shadow: RgbaF32::BLACK.with_alpha(128.0 / 255.0),
 };
 
 /// The geometry and motion every fixture renders under, pinned as the palette is, so a retune of
@@ -56,11 +59,10 @@ pub(crate) const FIXTURE_METRICS: Metrics = Metrics {
         fine: 1.5,
         line: 2.0,
     },
-    float_shadow: Shadow::drop(
-        RgbaF32::BLACK.with_alpha(128.0 / 255.0),
-        Vec2::new(0.0, 8.0),
-        16.0,
-    ),
+    float_shadow: ShadowGeometry {
+        offset: Vec2::new(0.0, 8.0),
+        blur: 16.0,
+    },
     transition: Some(AnimationSpec::FAST),
 };
 
@@ -152,6 +154,12 @@ impl VisualRig {
     /// The target format, `Rgba8UnormSrgb` until set; pixels come back in RGBA order either way.
     pub(crate) const fn format(&mut self, format: wgpu::TextureFormat) -> &mut Self {
         self.format = format;
+        self
+    }
+
+    /// The theme every following frame wears, in place of [`fixture_theme`].
+    pub(crate) fn theme(&mut self, theme: Theme) -> &mut Self {
+        self.host.ui().set_theme(theme);
         self
     }
 

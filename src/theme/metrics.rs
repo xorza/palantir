@@ -2,8 +2,6 @@
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::shadow::Shadow;
 use glam::Vec2;
 
 /// The type, spacing, rounding, line, shadow and transition steps of a theme, as [`Theme::from_parts`](crate::Theme::from_parts) reads them. Every font size, padding, gap, radius, border and shadow a recipe sets is one of these steps, so an app that passes its own scale moves every widget onto it; a widget's intrinsic sizes (a toggle's box, a scrollbar's thickness, a tab's width bounds) stay in its recipe.
@@ -19,8 +17,10 @@ pub struct Metrics {
     pub radius: RadiusSteps,
     /// Line widths, by what a line is.
     pub stroke: StrokeSteps,
-    /// The shadow a surface over the others casts: a menu, a popup, a tooltip, a modal.
-    pub float_shadow: Shadow,
+    /// Where the shadow a surface over the others casts falls, and how soft it is: a menu, a
+    /// popup, a tooltip, a modal. Its color is the palette's
+    /// [`shadow`](crate::Palette::shadow), as a light ground wants a fainter one.
+    pub float_shadow: ShadowGeometry,
     /// What a control's state change runs under: a button's, a menu-bar title's, a menu row's and
     /// a tab chip's. `None` snaps, and a file that leaves it out reads `None`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,6 +96,18 @@ pub struct StrokeSteps {
     pub line: f32,
 }
 
+/// A shadow's shape without its color: [`Palette::float_shadow`](crate::Palette::float_shadow)
+/// casts it in the palette's shadow color.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ShadowGeometry {
+    /// Shift in logical pixels.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
+    pub offset: Vec2,
+    /// Gaussian σ in logical pixels, half CSS's `blur-radius`.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub blur: f32,
+}
+
 impl Metrics {
     /// The inset of a row a pointer picks from: a menu item, a menu-bar title, a tab and the ghost
     /// a dragged tab leaves are one row.
@@ -132,8 +144,11 @@ impl Metrics {
             line: 2.0,
         },
         // Fluent's `shadow16`, 8 px down and 16 px of blur (https://fluent2.microsoft.design/elevation),
-        // which its `MenuPopover` casts, in the half black a dark ground needs before a shadow reads.
-        float_shadow: Shadow::drop(RgbaF32::BLACK.with_alpha8(128), Vec2::new(0.0, 8.0), 16.0),
+        // which its `MenuPopover` casts.
+        float_shadow: ShadowGeometry {
+            offset: Vec2::new(0.0, 8.0),
+            blur: 16.0,
+        },
         // Fluent's button transitions its fill, border and ink over `durationFaster`, 100 ms:
         // https://github.com/microsoft/fluentui/blob/master/packages/react-components/react-button/library/src/components/Button/useButtonStyles.styles.ts
         transition: Some(AnimationSpec::FAST),

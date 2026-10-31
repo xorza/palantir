@@ -1,6 +1,6 @@
 //! Design tokens and page scaffolding: the one place the showcase's look is defined.
 //!
-//! Every scaffold color is a role of [`Palette::DEFAULT`], the palette `Theme::default` assembles from, so the tour shows the stock look: the nav rail rides the [`SURROUND`] band, pages sit on the window's ground, demos in hairline-framed [`WELL`]s of the same ground ([`LIGHT_WELL`] when bright), raised chrome on [`RAISED`]. Ink: [`INK`], [`INK_DIM`], [`INK_FAINT`].
+//! Every scaffold color is a role of [`Palette::DARK`], the palette `Theme::default` assembles from, so the tour shows the stock look: the nav rail rides the [`SURROUND`] band, pages sit on the window's ground, demos in hairline-framed [`WELL`]s of the same ground ([`LIGHT_WELL`] when bright), raised chrome on [`RAISED`]. Ink: [`INK`], [`INK_DIM`], [`INK_FAINT`].
 //!
 //! Pages never paint their own root or header; they emit [`Section`]s, with fixed [`TILE`]-square [`DemoCell`]s for paint demos.
 
@@ -13,7 +13,7 @@ use palantir::{
 };
 
 /// The stock palette and steps every token below reads.
-const P: Palette = Palette::DEFAULT;
+const P: Palette = Palette::DARK;
 const M: Metrics = Metrics::DEFAULT;
 
 /// A demo's surface: the ground itself, so a tab strip's selected chip, which wears the ground,

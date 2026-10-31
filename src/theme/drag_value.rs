@@ -53,6 +53,6 @@ impl DragValueTheme {
 
 impl Default for DragValueTheme {
     fn default() -> Self {
-        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
+        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

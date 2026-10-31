@@ -273,5 +273,5 @@ fn the_bar_spans_its_parent_on_the_band() {
     let ShapeBrush::Solid(fill) = chrome.fill else {
         panic!("the band is a solid fill");
     };
-    assert_eq!(fill, Palette::DEFAULT.surround.to_f16());
+    assert_eq!(fill, Palette::DARK.surround.to_f16());
 }

@@ -6,6 +6,7 @@ pub(crate) mod button;
 pub(crate) mod check_state;
 pub(crate) mod close_shown;
 pub(crate) mod color_picker;
+pub(crate) mod color_scheme;
 pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod dock;
@@ -38,6 +39,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
 use crate::theme::color_picker::ColorPickerTheme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::combo_box::ComboBoxTheme;
 use crate::theme::context_menu::ContextMenuTheme;
 use crate::theme::dock::DockTheme;
@@ -235,7 +237,7 @@ impl Theme {
         color_picker.for_each_text(f);
     }
 
-    /// Assemble a full theme from a [`Palette`]'s colors and a [`Metrics`]' steps. The single source of the recipes: `Theme::default()` is `from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)`.
+    /// Assemble a full theme from a [`Palette`]'s colors and a [`Metrics`]' steps. The single source of the recipes: [`Self::stock`] is `from_parts` over a built-in palette and `Metrics::DEFAULT`.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
             button: ButtonTheme::from_parts(p, m),
@@ -268,11 +270,17 @@ impl Theme {
             panel_clip: ClipMode::None,
         }
     }
+
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
+    }
 }
 
 impl Default for Theme {
+    /// The dark stock look, [`Self::stock`] of [`ColorScheme::Dark`].
     fn default() -> Self {
-        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
+        Self::stock(ColorScheme::Dark)
     }
 }
 

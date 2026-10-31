@@ -365,27 +365,24 @@ impl OffscreenHost { pub fn set_system_color_scheme(&mut self, scheme: Option<Co
 
 ## Plan
 
+L1 is done. Where it differs from the proposal above:
+
+- **`ShadowGeometry`** holds `Metrics::float_shadow`'s offset and blur; `Palette::float_shadow(m)`
+  casts it in the palette's `shadow`. **`Palette::for_scheme`** hands out a built-in palette by
+  `ColorScheme`, which `Theme::stock` and an app's own colors read.
+- **`ToggleTheme::unchecked_indicator`**: one knob color cannot serve both states once the on
+  knob is dark, so an off knob wears `text`, as before, and the knob's color animates with its
+  slide.
+- **The selection wash is 61/255, not 64.** The floor test blends in linear light, as the
+  renderer does, and text on the dark wash read 4.43:1; the proposal's 5.48 came from an sRGB
+  blend.
+- **Light values:** `element_mid` `#e4e6e8`, `element_strong` `#d9dbdd`, so each rung clears
+  1.10:1; `shadow` black at 14 %, Fluent's light `shadow16` key.
+
 Order: L1 → L2 → L3, then 1 → 7; L4 when its go-ahead comes. Each batch ends green on
 `cargo drive gate`, regenerates `.notes/API_SURFACE.md` when the surface moves, and, for a change
 a person can see, ends with `cargo drive run shot` before and after. A batch that changes
 palantir's API also migrates darkroom (palantir is its submodule) and runs darkroom's gate.
-
-### L1. Palette roles and the light palette
-- [ ] `Palette::DEFAULT` → `Palette::DARK` at its 40 uses; `Palette` keeps no `Default`.
-- [ ] Roles `on_accent` and `shadow`; `Metrics::float_shadow` becomes offset and blur; the
-      switch knob, the check mark and every float shadow read the roles; role docs say "further
-      from `window_bg`".
-- [ ] `Palette::DARK`: `text_muted` `#b2b2b2`, `on_accent` `#141414`, `shadow` black at 50 %
-      (today's value).
-- [ ] `Palette::LIGHT`, tuned until the floor test passes; its doc comment cites Ayu Light.
-- [ ] The floor test (`theme/tests/floors.rs`): one table of ink, ground and floor per palette,
-      each ratio computed; it names each failed pair.
-- [ ] `Theme::stock(ColorScheme)`; `Theme::default()` is `stock(Dark)`.
-- [ ] Goldens: the visual suite on the old tree first, then the changed knob and shadows
-      rewritten; a light golden of the widgets' still states (`Theme::stock(Light)`).
-- [ ] darkroom: `palantir_bridge` fills `on_accent` and `shadow` (darkroom's palette has a
-      `shadow` role); its metrics set the float shadow's geometry.
-- [ ] `.notes/TODO.md`: frosted glass with dark ink has no contrast floor.
 
 ### L2. The scheme on `Ui` and the hosts
 - [ ] `ColorScheme`, `SchemePreference` (serde, default `System`).

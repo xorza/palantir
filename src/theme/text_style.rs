@@ -61,7 +61,7 @@ impl Default for TextStyle {
     fn default() -> Self {
         Self {
             font_size: 14.0,
-            color: Palette::DEFAULT.text,
+            color: Palette::DARK.text,
             line_height_factor: LINE_HEIGHT_FACTOR,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,

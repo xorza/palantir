@@ -1,6 +1,9 @@
 use crate::host::harness::Harness;
 
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::scene::layer::Layer;
+use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::theme::palette::Palette;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::switch::{Switch, SwitchTrack};
@@ -107,4 +110,40 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
     h.settle(&mut record)
         .expect("the knob and the look it rides settle inside 2 s");
     assert_eq!(margins(&h), [18.0, 3.0, 3.0, 3.0], "on, at the right");
+}
+
+/// The knob wears the theme's off ink while off and, once a click settles, its ink on the accent:
+/// the stock dark theme's `text` and `on_accent`, which differ.
+#[test]
+fn the_knob_wears_the_ink_of_its_state() {
+    let mut h = Harness::builder(UVec2::new(400, 400))
+        .mono()
+        .frame_dt(time::Duration::from_millis(16))
+        .settle_frames(120)
+        .build();
+    let id = WidgetId::from_hash("wifi");
+    let mut on = false;
+    let mut record = |ui: &mut Ui| {
+        Switch::new(&mut on).id(id).label("Wi-Fi").show(ui);
+    };
+    let knob_fill = |h: &Harness| {
+        let chrome = h
+            .ui_ref()
+            .tree(Layer::Main)
+            .chrome(h.node_for_widget_id(id.with("knob")))
+            .expect("the knob paints a fill");
+        let ShapeBrush::Solid(fill) = chrome.fill else {
+            panic!("the knob is a solid fill");
+        };
+        fill
+    };
+    h.frame(&mut record);
+    assert_eq!(knob_fill(&h), Palette::DARK.text.to_f16(), "off");
+
+    h.click(id);
+    h.frame(&mut record);
+    h.settle(&mut record)
+        .expect("the knob's slide and ink settle inside 2 s");
+    assert_eq!(knob_fill(&h), Palette::DARK.on_accent.to_f16(), "on");
+    assert_ne!(Palette::DARK.text, Palette::DARK.on_accent);
 }

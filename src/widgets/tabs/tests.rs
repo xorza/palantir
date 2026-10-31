@@ -326,7 +326,7 @@ fn the_selection_cap_is_a_band_across_the_chip_top() {
     };
     assert_eq!(
         fill(chip),
-        Palette::DEFAULT.window_bg.to_f16(),
+        Palette::DARK.window_bg.to_f16(),
         "the chip's whole box paints its fill, so no cap color shows past its label",
     );
     let band = h.rect(chip.with("cap")).expect("the cap arranged");

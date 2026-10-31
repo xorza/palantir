@@ -164,7 +164,7 @@ fn a_flat_text_edit_keeps_only_its_text_and_caret() {
 /// [`ToggleTheme`]'s pick needs an input the response can't supply: `Pick = CheckState` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on the check state, the precedence within each, and that the packs never resolve to the same slot (so `Pick` is load-bearing).
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
-    let theme = ToggleTheme::checkbox(&Palette::DEFAULT, &Metrics::DEFAULT);
+    let theme = ToggleTheme::checkbox(&Palette::DARK, &Metrics::DEFAULT);
     let cases: &[(ResponseState, CheckState, &WidgetLook, &str)] = &[
         (
             response(false, false, false),
@@ -258,23 +258,23 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     }
     // The strip rides the `surround` band, and an unselected chip on it is a ghost: no fill at
     // rest, `element_mid` under the pointer.
-    assert_eq!(theme.strip, Chrome::fill(Palette::DEFAULT.surround));
+    assert_eq!(theme.strip, Chrome::fill(Palette::DARK.surround));
     assert_eq!(theme.unselected.normal.chrome.fill, Chrome::NONE.fill);
     assert_eq!(
         theme.unselected.hovered.chrome.fill,
-        Palette::DEFAULT.element_mid.into()
+        Palette::DARK.element_mid.into()
     );
     assert_eq!(Selection::from(true), Selection::Selected);
     assert_eq!(Selection::from(false), Selection::Unselected);
     assert_eq!(TabStripFocus::from(true), TabStripFocus::Focused);
     assert_eq!(TabStripFocus::from(false), TabStripFocus::Unfocused);
 
-    assert_eq!(theme.cap(TabStripFocus::Focused), Palette::DEFAULT.accent);
+    assert_eq!(theme.cap(TabStripFocus::Focused), Palette::DARK.accent);
     assert_eq!(
         theme.cap(TabStripFocus::Unfocused),
-        Palette::DEFAULT.element_strong
+        Palette::DARK.element_strong
     );
-    assert_ne!(Palette::DEFAULT.accent, Palette::DEFAULT.element_strong);
+    assert_ne!(Palette::DARK.accent, Palette::DARK.element_strong);
 }
 
 #[test]
@@ -298,7 +298,7 @@ fn animated_look_line_height_delegates_to_text_style() {
 fn the_picker_value_editor_is_its_chip() {
     use crate::theme::Theme;
 
-    let theme = Theme::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT);
+    let theme = Theme::from_parts(&Palette::DARK, &Metrics::DEFAULT);
     let value = &theme.color_picker.value;
     assert_eq!(value.editor.looks.normal, value.chip.unselected.normal);
     assert_eq!(value.editor.looks.hovered, value.chip.unselected.hovered);
@@ -342,7 +342,7 @@ fn bundled_text_inherits_every_axis_but_color() {
 
     // The reported case: an app at 13 px. An inactive tab names a muted color at rest and none when pressed; both shape at 13 px.
     theme.text = theme.text.with_font_size(13.0);
-    let p = Palette::DEFAULT;
+    let p = Palette::DARK;
     let rest = theme.tabs.unselected.normal.to_animated(theme.text).text;
     let pressed = theme.tabs.unselected.active.to_animated(theme.text).text;
     let disabled = theme.text_edit.looks.disabled.to_animated(theme.text).text;

@@ -337,6 +337,11 @@ ColorRamp
         pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
 
+ColorScheme
+    enum ColorScheme: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        Light
+        Dark
+
 ColorStrip
     struct ColorStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn for_hue(coords: &'a mut ColorCoords) -> Self
@@ -1435,7 +1440,7 @@ Metrics
         pub space: SpaceSteps
         pub radius: RadiusSteps
         pub stroke: StrokeSteps
-        pub float_shadow: Shadow
+        pub float_shadow: ShadowGeometry
         pub transition: Option<AnimationSpec>
         pub const DEFAULT: Self
 
@@ -1537,7 +1542,7 @@ PLATFORM
     const PLATFORM: Platform
 
 Palette
-    struct Palette: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct Palette: Clone, Debug, Deserialize<'de>, PartialEq, Serialize
         pub text: RgbaF32
         pub text_muted: RgbaF32
         pub text_disabled: RgbaF32
@@ -1548,10 +1553,15 @@ Palette
         pub element_strong: RgbaF32
         pub border_focused: RgbaF32
         pub accent: RgbaF32
-        pub const DEFAULT: Self
+        pub on_accent: RgbaF32
+        pub shadow: RgbaF32
+        pub const DARK: Self
+        pub const LIGHT: Self
+        pub const fn for_scheme(scheme: ColorScheme) -> &'static Self
         pub const fn border_soft(&self) -> RgbaF32
         pub const fn border_mid(&self) -> RgbaF32
         pub const fn border_strong(&self) -> RgbaF32
+        pub const fn float_shadow(&self, m: &Metrics) -> Shadow
         pub fn popup_panel(&self, m: &Metrics) -> Chrome
 
 Panel
@@ -1920,6 +1930,11 @@ Shadow
         pub const fn with_spread(self, spread: f32) -> Self
         pub const fn inset(self) -> Self
         pub const fn is_noop(&self) -> bool
+
+ShadowGeometry
+    struct ShadowGeometry: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub offset: Vec2
+        pub blur: f32
 
 Shortcut
     struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, From<Key>, FromStr, Hash, PartialEq
@@ -2454,12 +2469,14 @@ Theme
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 ToggleTheme
     struct ToggleTheme: Clone, Debug, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
         pub unchecked: StatefulLook
         pub checked: StatefulLook
         pub indicator: RgbaF32
+        pub unchecked_indicator: RgbaF32
         pub box_size: f32
         pub indicator_width: f32
         pub check_points: [Vec2; 3]

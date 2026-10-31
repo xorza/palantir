@@ -61,7 +61,7 @@ fn bench_theme() -> Theme {
     Theme {
         window_clear: WINDOW_CLEAR,
         ..Theme::from_parts(
-            &Palette::DEFAULT,
+            &Palette::DARK,
             &Metrics {
                 transition: None,
                 ..Metrics::DEFAULT
