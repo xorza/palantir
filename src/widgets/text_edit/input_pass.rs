@@ -34,7 +34,7 @@ pub(super) struct InputResult {
 #[derive(Clone, Copy, Debug)]
 pub(super) struct AcceptPolicy {
     pub(super) rules: EditRules,
-    /// Select everything when focus lands without a same-frame press.
+    /// Select everything when focus lands; a focusing press defers it to its release.
     pub(super) select_all_on_focus: bool,
     /// The key classes this field consumes: the value its scope declares, so
     /// the two cannot drift.
@@ -86,9 +86,17 @@ impl InputPass<'_> {
         let mut ed = Editor::new(text, edit, rules);
         ed.enforce_single_line();
 
-        // Select all on the frame focus lands, unless a press places the caret.
-        if select_all_on_focus && is_focused && !was_focused && !resp_state.left.held() {
-            ed.select_all();
+        // A press that lands focus places the caret first, so its release selects all; a
+        // drag or a double click keeps what it selected, as Chrome's address bar and
+        // Godot's `LineEdit::select_all_on_focus` do.
+        if select_all_on_focus && is_focused && !was_focused {
+            if resp_state.left.held() {
+                ed.arm_select_all_on_release();
+            } else {
+                ed.select_all();
+            }
+        } else if !is_focused {
+            {}
         }
 
         // Click and drag-to-select. Gated on `held`, not `pressed`: a drag must
@@ -115,7 +123,7 @@ impl InputPass<'_> {
                 ed.drag_to(hit);
             }
         } else if !resp_state.left.held() {
-            ed.end_drag();
+            ed.release();
         }
 
         if !is_focused {
@@ -133,6 +141,9 @@ impl InputPass<'_> {
             if !filter.takes_press(kp) {
                 continue;
             }
+            // A key taken mid-press acts on the caret the press placed; selecting all
+            // on the release would discard it.
+            {}
             // Single-line Enter submits without editing the buffer.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
                 ended = Some(EditEnd::Submitted);

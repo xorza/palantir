@@ -16,6 +16,9 @@ pub(super) struct EditState {
     /// Byte the in-flight drag-select started from. Lives here so `normalize`
     /// repairs it with `caret` and `selection`.
     pub(super) drag_anchor: Option<usize>,
+    /// The press that focused the field selects everything on its release, unless it
+    /// selected something itself (a drag, a double click).
+    pub(super) select_all_on_release: bool,
     pub(super) history: History,
     pub(super) expected_hash: Option<NonZeroU64>,
     pub(super) local_edit_pending: bool,

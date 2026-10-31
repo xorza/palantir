@@ -267,8 +267,9 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Select the whole buffer when the field gains focus without a same-frame
-    /// pointer press (e.g. via `set_focus`). Default off.
+    /// Select the whole buffer when the field gains focus. Focus from a click selects on
+    /// the release, unless the press dragged a selection or double-clicked a word.
+    /// Default off.
     pub const fn select_all_on_focus(mut self, select_all_on_focus: bool) -> Self {
         self.select_all_on_focus = select_all_on_focus;
         self

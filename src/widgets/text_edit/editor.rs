@@ -18,6 +18,7 @@ use crate::widgets::text_edit::unicode::{
     sanitize_single_line, word_range_at,
 };
 use std::borrow::Cow;
+use std::mem;
 use std::ops;
 
 /// What the builder configured about the buffer an [`Editor`] edits.
@@ -190,8 +191,13 @@ impl<'a> Editor<'a> {
         }
     }
 
-    pub(super) const fn end_drag(&mut self) {
+    /// End the press: disarm the drag, and select everything if the press focused a
+    /// select-all-on-focus field and left no selection of its own.
+    pub(super) fn release(&mut self) {
         self.state.drag_anchor = None;
+        if mem::take(&mut self.state.select_all_on_release) && !self.has_selection() {
+            self.select_all();
+        }
     }
 
     fn arm_drag(&mut self, at: usize) {
@@ -372,6 +378,14 @@ impl<'a> Editor<'a> {
         }
         self.mark_local_edit();
         self.edited = true;
+    }
+
+    pub(super) const fn arm_select_all_on_release(&mut self) {
+        self.state.select_all_on_release = true;
+    }
+
+    pub(super) const fn disarm_select_all_on_release(&mut self) {
+        self.state.select_all_on_release = false;
     }
 
     pub(super) fn select_all(&mut self) {

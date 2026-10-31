@@ -452,6 +452,90 @@ fn select_all_on_focus_gates_on_the_flag() {
         None,
         "flag off: focus leaves the selection untouched"
     );
+
+    // A click past the text: the press puts a bare caret at the end, the release selects all.
+    let selection = |h: &Harness| {
+        let st = &h.state::<TextEditState>(on_id).edit;
+        (st.selection, st.caret)
+    };
+    h.press(
+        h.point_in(on_id, Vec2::new(110.0, 20.0)),
+        PointerButton::Left,
+    );
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    assert_eq!(h.focus(), Some(on_id));
+    assert_eq!(selection(&h), (None, 5), "the press places a bare caret");
+    h.release(PointerButton::Left);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    assert_eq!(selection(&h), (Some(0), 5), "the release selects all");
+
+    // A drag from the end to the start keeps its anchor at 5, where select-all's is 0.
+    h.set_focus(off_id);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.advance_past_double_click();
+    h.press(
+        h.point_in(on_id, Vec2::new(110.0, 20.0)),
+        PointerButton::Left,
+    );
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.drag_to(h.point_in(on_id, Vec2::new(2.0, 20.0)));
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.release(PointerButton::Left);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    assert_eq!(
+        selection(&h),
+        (Some(5), 0),
+        "the drag into the left padding keeps its own 5..0"
+    );
+
+    // A key taken mid-press acts on the press's caret, and the release keeps the result.
+    h.set_focus(off_id);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.advance_past_double_click();
+    h.press(
+        h.point_in(on_id, Vec2::new(110.0, 20.0)),
+        PointerButton::Left,
+    );
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.key(Key::Char('7'));
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.release(PointerButton::Left);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    assert_eq!(on, "1.9857", "the key typed at the press's caret");
+    assert_eq!(selection(&h), (None, 6), "the release selected nothing");
+
+    // Focus moved away mid-press: the release selects nothing in the field it left.
+    h.set_focus(off_id);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.advance_past_double_click();
+    h.press(
+        h.point_in(on_id, Vec2::new(110.0, 20.0)),
+        PointerButton::Left,
+    );
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.set_focus(off_id);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.release(PointerButton::Left);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    assert_eq!(
+        selection(&h),
+        (None, 6),
+        "the unfocused field selected nothing"
+    );
+
+    // The flag off: the same click leaves the bare caret the press placed.
+    h.set_focus(on_id);
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.advance_past_double_click();
+    h.click(h.point_in(off_id, Vec2::new(110.0, 20.0)));
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    h.frame(|ui| render(ui, &mut on, &mut off));
+    let st = &h.state::<TextEditState>(off_id).edit;
+    assert_eq!(
+        (st.selection, st.caret),
+        (None, 4),
+        "flag off: a click selects nothing"
+    );
 }
 
 #[test]
