@@ -108,8 +108,8 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("tab trailing inset", t.tabs.trailing_inset, 1.0),
         ("checkbox gap", t.checkbox.gap, 3.0),
         ("expander gap", t.expander.gap, 3.0),
-        // The body lines up under the label: the arrow's 9 px and the gap.
-        ("expander indent", t.expander.indent, 9.0 + 3.0),
+        // The body lines up under the label: the arrow's 11 px and the gap.
+        ("expander indent", t.expander.indent, 11.0 + 3.0),
         ("combo gap", t.combo_box.gap, 5.0),
         ("scrollbar gap", t.scrollbar.gap, 1.0),
         ("dock preview radius", t.dock.preview_radius, 11.0),

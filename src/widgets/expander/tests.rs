@@ -76,7 +76,7 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     let body_rect = h.rect(body()).expect("an open section records its body");
     let header_rect = h.rect(header()).expect("the header");
     let indent = h.ui().theme().expander.indent;
-    assert_eq!(indent, 17.0);
+    assert_eq!(indent, 19.0, "the 11 px arrow plus the 8 px gap");
     assert_eq!(
         body_rect,
         Rect::new(
