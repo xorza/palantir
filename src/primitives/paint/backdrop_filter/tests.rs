@@ -1,4 +1,4 @@
-use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
+use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens, bend_root, ceiling_bend};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -272,4 +272,122 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
     let thick = RgbaF32::hex(0xe4e6e8).with_alpha(0.72);
     let clear = BackdropFilter::frosted(20.0).with_min_luminance_for(ink, thick);
     assert_eq!(clear.min_luminance, Some(0.0));
+}
+
+/// IEC 61966-2-1 in `f64`, written out here as a reference apart from palantir's own.
+fn srgb_encode(c: f64) -> f64 {
+    if c <= 0.003_130_8 {
+        12.92 * c
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+fn srgb_decode(e: f64) -> f64 {
+    let e = e.clamp(0.0, 1.0);
+    if e <= 0.040_45 {
+        e / 12.92
+    } else {
+        ((e + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+/// A saturated tint, whose zero channels sit in the sRGB curve's linear toe, takes a ceiling and
+/// a floor, and each holds the ink at 4.5:1: a backdrop of each primary, secondary and white,
+/// scaled to the bound, mixed under the tint and stored a whole encoded step off on every
+/// channel toward the ink, as the dither and the rounding may move it, still stores a ground the
+/// ink reads 4.5:1 on.
+#[test]
+fn a_saturated_tint_holds_the_ink_at_the_text_contrast() {
+    const WEIGHTS: [f64; 3] = [0.2126, 0.7152, 0.0722];
+    const HUES: [[f64; 3]; 7] = [
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [0.0, 1.0, 1.0],
+        [1.0, 0.0, 1.0],
+        [1.0, 1.0, 0.0],
+        [1.0, 1.0, 1.0],
+    ];
+    // The bends, against the tangency the hull of each curve finds when sampled: the ceiling's at
+    // 0.012923650, the floor's at 0.013640802, the floor's under the 0.175 a floor's ground is.
+    assert!(
+        (ceiling_bend() - 0.012_923_65).abs() < 1e-7,
+        "{}",
+        ceiling_bend()
+    );
+    let floor_bend = bend_root().powf(2.4);
+    assert!((floor_bend - 0.013_640_8).abs() < 1e-7, "{floor_bend}");
+    assert!(floor_bend < 4.5 * 0.05 - 0.05);
+    let channels = |c: RgbaF32| [f64::from(c.r), f64::from(c.g), f64::from(c.b)];
+    let luminance = |c: [f64; 3]| c.iter().zip(WEIGHTS).map(|(c, w)| c * w).sum::<f64>();
+    // Each hue at `bound`, where its brightest channel can reach it.
+    let backdrops = |bound: f64| {
+        HUES.into_iter().filter_map(move |hue| {
+            let scale = bound / luminance(hue);
+            (scale <= 1.0).then(|| hue.map(|c| c * scale))
+        })
+    };
+    let stored = |backdrop: [f64; 3], tint: RgbaF32, step: f64| {
+        let alpha = f64::from(tint.a);
+        let mixed: [f64; 3] =
+            std::array::from_fn(|i| (1.0 - alpha) * backdrop[i] + alpha * channels(tint)[i]);
+        luminance(mixed.map(|c| srgb_decode(srgb_encode(c) + step)))
+    };
+
+    let light = RgbaF32::hex(0xebebeb);
+    let light_y = f64::from(light.luminance());
+    for tint in [0x800000, 0x005000, 0x000080] {
+        let tint = RgbaF32::hex(tint).with_alpha(0.6);
+        let ceiling = BackdropFilter::frosted(20.0)
+            .with_max_luminance_for(light, tint)
+            .max_luminance
+            .expect("a ceiling");
+        let mut seen = 0;
+        for backdrop in backdrops(f64::from(ceiling)) {
+            let ground = stored(backdrop, tint, 1.0 / 255.0);
+            assert!(
+                (light_y + 0.05) / (ground + 0.05) >= 4.5,
+                "{tint:?} {backdrop:?}"
+            );
+            seen += 1;
+        }
+        assert!(seen > 0, "{tint:?}: some hue reaches the ceiling");
+    }
+
+    let dark = RgbaF32::hex(0x3d4248);
+    let dark_y = f64::from(dark.luminance());
+    for tint in [0xffff00, 0x00ffff, 0x00ff00] {
+        let tint = RgbaF32::hex(tint).with_alpha(0.3);
+        let floor = BackdropFilter::frosted(20.0)
+            .with_min_luminance_for(dark, tint)
+            .min_luminance
+            .expect("a floor");
+        let mut seen = 0;
+        for backdrop in backdrops(f64::from(floor)) {
+            let ground = stored(backdrop, tint, -1.0 / 255.0);
+            assert!(
+                (ground + 0.05) / (dark_y + 0.05) >= 4.5,
+                "{tint:?} {backdrop:?}"
+            );
+            seen += 1;
+        }
+        assert!(seen > 0, "{tint:?}: some hue reaches the floor");
+    }
+}
+
+/// An ink too dark for its ground to store where the bound is exact takes no ceiling: `#868686`,
+/// the darkest grey that does, takes one; `#858585`, a step under it, panics.
+#[test]
+fn a_ceiling_refuses_an_ink_too_dark_for_an_exact_bound() {
+    let tint = RgbaF32::hex(0x000000).with_alpha(0.5);
+    let ceiling =
+        |ink| BackdropFilter::frosted(20.0).with_max_luminance_for(RgbaF32::hex(ink), tint);
+    assert!(ceiling(0x868686).max_luminance.is_some());
+    let panic = std::panic::catch_unwind(|| ceiling(0x858585)).expect_err("#858585 is too dark");
+    let message = panic.downcast_ref::<String>().map_or("", String::as_str);
+    assert!(
+        message.starts_with("the ink is too dark for a ceiling"),
+        "{message}"
+    );
 }

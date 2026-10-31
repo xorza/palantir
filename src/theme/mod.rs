@@ -210,7 +210,8 @@ impl Theme {
     /// # Panics
     ///
     /// Unless `sigma` is a [length](crate::widget::domain::length), `tint_alpha` a fraction under
-    /// 1, each surface's fill a solid color, and each ink holds 4.5:1 on its fill made opaque, as
+    /// 1, each surface's fill a solid color, each ink holds 4.5:1 on its fill made opaque, and an
+    /// ink lighter than its fill is light enough for a ceiling, as
     /// [`BackdropFilter::with_max_luminance_for`] and its floor twin require.
     #[track_caller]
     pub fn frost_floats(&mut self, p: &Palette, sigma: f32, tint_alpha: f32) {
