@@ -15,10 +15,10 @@ mod watch;
 mod zoom;
 
 use crate::cascade::Cascade;
+use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input_state::InputState;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -65,7 +65,7 @@ struct Sample<R> {
 
 /// Per-layer event counts of `stream`, read inside pass A's record, the only place they are live (`end_frame` drains the queues).
 fn sample_layers<R>(
-    h: &mut UiHarness,
+    h: &mut Harness,
     stream: Stream,
     mut record: impl FnMut(&mut Ui) -> R,
 ) -> Sample<R> {

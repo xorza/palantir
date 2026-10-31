@@ -2,7 +2,7 @@
 
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -48,7 +48,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
             });
     };
 
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| canvas(ui, 2));
     frame(&mut h, |ui| canvas(ui, 1));
 
@@ -89,7 +89,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
 
     let a = ("a", (10.0, 10.0));
     let b = ("b", (120.0, 120.0));
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| canvas(ui, [a, b]));
     frame(&mut h, |ui| canvas(ui, [b, a]));
 
@@ -146,7 +146,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
     let arrangements: [(&str, Record<'_>); 2] =
         [("canvas children", &canvas), ("layer roots", &roots)];
     for (label, record) in arrangements {
-        let mut h = UiHarness::new(DISPLAY.physical);
+        let mut h = Harness::mono(DISPLAY.physical);
         frame(&mut h, |ui| record(ui, [a, b, c]));
         frame(&mut h, |ui| record(ui, [b, c, a]));
 
@@ -198,7 +198,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
 
     let a = ("a", 40.0);
     let b = ("b", 44.0);
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| canvas(ui, [a, b]));
     frame(&mut h, |ui| canvas(ui, [b, a]));
 
@@ -232,7 +232,7 @@ fn reordering_a_stack_is_damaged_by_the_position_diff() {
 
     let a = ("a", BLUE);
     let b = ("b", RED);
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| stack(ui, [a, b])); // a in the top slot, b below
     frame(&mut h, |ui| stack(ui, [b, a])); // swapped
 
@@ -288,7 +288,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
             });
     };
 
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, over);
     frame(&mut h, under);
 
@@ -328,7 +328,7 @@ fn overlapping_direct_shape_swap_is_redamaged() {
                 line(ui, second);
             });
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| canvas(ui, BLUE, RED));
     frame(&mut h, |ui| canvas(ui, RED, BLUE));
 
@@ -374,7 +374,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                 );
             });
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| canvas(ui, false));
     frame(&mut h, |ui| canvas(ui, true));
 
@@ -417,7 +417,7 @@ fn rekeying_a_child_damages_only_the_child() {
                 );
             });
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| canvas(ui, "k1"));
     frame(&mut h, |ui| canvas(ui, "k2"));
 
@@ -438,7 +438,7 @@ fn rekeying_a_child_damages_only_the_child() {
 fn shape_removed_from_middle_evicts_trailing_ordinals() {
     use crate::widget::Shape;
 
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |include_middle: bool, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("canvas"))
@@ -464,7 +464,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     frame(&mut h, |ui| build(true, ui)); // settle
 
     let prev_shapes = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"));
     assert_eq!(prev_shapes.len(), 3);
@@ -473,7 +473,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 
     frame(&mut h, |ui| build(false, ui));
 
-    let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
+    let post = h.engines_mut().damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(
         post.paint_span.len, 2,
         "snapshot tail must be trimmed to the new paint count",
@@ -500,7 +500,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 fn shape_added_in_middle_damages_only_new() {
     use crate::widget::Shape;
 
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let red_rect = Rect::new(0.0, 0.0, 20.0, 20.0);
     let green_rect = Rect::new(60.0, 0.0, 20.0, 20.0);
     let blue_rect = Rect::new(120.0, 0.0, 20.0, 20.0);
@@ -521,7 +521,7 @@ fn shape_added_in_middle_damages_only_new() {
     frame(&mut h, |ui| build(false, ui)); // settle
 
     let prev_shapes: Vec<_> = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))
         .to_vec();
@@ -531,11 +531,11 @@ fn shape_added_in_middle_damages_only_new() {
 
     frame(&mut h, |ui| build(true, ui)); // insert green between
 
-    let post = h.engines.damage.prev[&WidgetId::from_hash("canvas")];
+    let post = h.engines_mut().damage.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(post.paint_span.len, 3);
 
     let cur_shapes: Vec<_> = h
-        .engines
+        .engines()
         .damage
         .prev_paint_rows(WidgetId::from_hash("canvas"))
         .to_vec();
@@ -599,7 +599,7 @@ fn reparent_fixture(ui: &mut Ui, under_b: bool, hidden: bool) {
 fn reparent_at_same_rect_damages_moved_subtree() {
     const LEAF_PROBE: Rect = Rect::new(10.0, 10.0, 2.0, 2.0);
     let build = |ui: &mut Ui, under_b: bool| reparent_fixture(ui, under_b, false);
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     let damage = frame(&mut h, |ui| build(ui, true));
     let region = Damage::expect_partial(damage);
@@ -615,7 +615,7 @@ fn reparent_at_same_rect_damages_moved_subtree() {
 #[test]
 fn reparenting_a_hidden_subtree_damages_nothing() {
     let build = |ui: &mut Ui, under_b: bool| reparent_fixture(ui, under_b, true);
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     assert_eq!(
         frame(&mut h, |ui| build(ui, true)),
@@ -659,7 +659,7 @@ fn front_insert_damages_only_the_new_shape() {
                 line(ui, 40.0);
             });
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| build(ui, false));
     let damage = frame(&mut h, |ui| build(ui, true));
     let region = Damage::expect_partial(damage);
@@ -679,7 +679,7 @@ fn a_hidden_container_takes_no_snapshot() {
     let hidden = WidgetId::from_hash("hidden-box");
     let hidden_child = WidgetId::from_hash("hidden-child");
     let shown = WidgetId::from_hash("shown-box");
-    let mut h = UiHarness::cold(DISPLAY.physical);
+    let mut h = Harness::cold(DISPLAY.physical);
     frame(&mut h, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -699,15 +699,15 @@ fn a_hidden_container_takes_no_snapshot() {
             });
     });
     assert!(
-        h.engines.damage.prev.contains_key(&shown),
+        h.engines_mut().damage.prev.contains_key(&shown),
         "a painting sibling is in the map, so the frame filled it",
     );
     assert!(
-        !h.engines.damage.prev.contains_key(&hidden),
+        !h.engines_mut().damage.prev.contains_key(&hidden),
         "a rowless container must not take a snapshot",
     );
     assert!(
-        !h.engines.damage.prev.contains_key(&hidden_child),
+        !h.engines_mut().damage.prev.contains_key(&hidden_child),
         "a `Visible` child under it is rowless for the same reason",
     );
 }
@@ -743,7 +743,7 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
             });
     };
     for vis in [Visibility::Hidden, Visibility::Collapsed] {
-        let mut h = UiHarness::new(DISPLAY.physical);
+        let mut h = Harness::mono(DISPLAY.physical);
         frame(&mut h, |ui| build(ui, Visibility::Visible));
         let hide = Damage::expect_partial(frame(&mut h, |ui| build(ui, vis)));
         for (probe, what) in [(CHILD_PROBE, "child"), (GRANDCHILD_PROBE, "grandchild")] {
@@ -754,7 +754,7 @@ fn hiding_a_chromeless_container_evicts_its_painted_descendants() {
         }
         for (widget_id, what) in [(child, "child"), (grandchild, "grandchild")] {
             assert!(
-                !h.engines.damage.prev.contains_key(&widget_id),
+                !h.engines_mut().damage.prev.contains_key(&widget_id),
                 "{vis:?}: the {what} paints nothing now, so its snapshot must go",
             );
         }
@@ -788,10 +788,10 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
                 }
             });
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| deck(ui, false));
     frame(&mut h, |ui| deck(ui, true));
-    let raw = &h.engines.damage.raw_rects;
+    let raw = &h.engines().damage.raw_rects;
     assert_eq!(raw.len(), 199, "{raw:?}");
     assert!(raw.iter().all(|&r| r == CARD));
 }

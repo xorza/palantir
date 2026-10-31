@@ -10,9 +10,9 @@ use crate::cascade::engine::CascadeEngine;
 use crate::cascade::rows::entry_row::EntryRow;
 use crate::cascade::rows::hit_row::HitRow;
 use crate::display::Display;
+use crate::host::harness::Harness;
 use crate::input::sense::Sense;
 use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -92,8 +92,8 @@ enum RunMutation {
 
 #[derive(Debug)]
 struct CascadeRunFixture {
-    first: UiHarness,
-    second: UiHarness,
+    first: Harness,
+    second: Harness,
     engine: CascadeEngine,
     cascade: Cascade,
     display: Display,
@@ -149,17 +149,17 @@ impl CascadeRunFixture {
 }
 
 /// What the frame hands each run; the run builds its key from it, so the cost is what a frame pays.
-fn source_of(h: &UiHarness, display: Display) -> CascadeSource<'_> {
+fn source_of(h: &Harness, display: Display) -> CascadeSource<'_> {
     CascadeSource {
-        forest: h.ui.forest(),
-        layout: h.ui.layout_tables(),
+        forest: h.ui_ref().forest(),
+        layout: h.ui_ref().layout_tables(),
         display,
-        font_epoch: h.ui.font_epoch(),
+        font_epoch: h.ui_ref().font_epoch(),
     }
 }
 
-fn record_fixture(mut state: FrameFixture) -> UiHarness {
-    let mut h = UiHarness::with_text(FRAME_SIZE).scale(DISPLAY_SCALE);
+fn record_fixture(mut state: FrameFixture) -> Harness {
+    let mut h = Harness::builder(FRAME_SIZE).scale(DISPLAY_SCALE).build();
     let _ = h.frame(|ui| {
         state.render(BENCH_SCALE, ui);
     });

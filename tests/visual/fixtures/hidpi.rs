@@ -7,12 +7,12 @@ use palantir::{
 };
 
 use crate::golden_name::GoldenName;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// Complex multi-region scene at scale 2.0 (physical 800×600 = logical 400×300): header/sidebar/content/footer grid, nested stacks with mixed sizing, text at several sizes, rounded-rect AA and strokes on physical half-pixels, and the renderer's pixel_snap path.
 #[test]
 fn dashboard_matches_golden() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let img = h
         .size(UVec2::new(800, 600))
         .scale(2.0)

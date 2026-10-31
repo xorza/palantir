@@ -16,8 +16,7 @@ mod on_gpu;
 
 use palantir::FramePaint;
 use palantir::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
-use palantir::internals::ui_harness::UiHarness;
-use palantir::internals::ui_harness::frontend_harness::FrontendHarness;
+use palantir::{Depth, Harness};
 
 use crate::harness::Audit;
 
@@ -32,7 +31,10 @@ const MEASURE_FRAMES: usize = 256;
 #[test]
 fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();
-    let mut frontend = FrontendHarness::new(UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR));
+    let mut frontend = Harness::builder(BENCH_SURFACE)
+        .scale(BENCH_DPR)
+        .depth(Depth::Compose)
+        .build();
     Audit::new()
         .warmup(WARMUP_FRAMES)
         .frames(MEASURE_FRAMES)

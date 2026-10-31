@@ -1,3 +1,5 @@
+use crate::input::input_event::InputEvent;
+use crate::input::pointer::PointerButton;
 use crate::input::scroll_targets::ScrollTargets;
 use crate::widgets::block::Block;
 use crate::widgets::scroll::Scroll;
@@ -23,11 +25,12 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
 
     let ed_id = WidgetId::from_hash("scroll-ed");
 
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
 
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 5);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 5);
     h.frame(|ui| body(ui, &mut buf));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset();
     assert_eq!(scroll, Vec2::ZERO, "text fits — no scroll");
@@ -36,14 +39,16 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // caret-width sliver: scroll.x = (800 + 1.5) - (262 - 1.5) = 541.
     let mut long = "a".repeat(100);
     h.frame(|ui| body(ui, &mut long));
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut long));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset();
     assert_eq!(scroll.x, 541.0, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
 
     // Caret home: scroll.x snaps back to show the text start.
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
     h.frame(|ui| body(ui, &mut long));
     let scroll = h.state::<TextEditState>(ed_id).view.scroll.offset();
     assert_eq!(scroll.x, 0.0, "scroll snaps to 0 when caret moves home");
@@ -67,17 +72,19 @@ fn hug_width_editor_shows_full_text_after_growth() {
 
     let ed_id = WidgetId::from_hash("hug-ed");
 
-    let mut h = UiHarness::new(WIDE);
+    let mut h = Harness::mono(WIDE);
 
     let mut buf = String::from("1");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
     h.frame(|ui| body(ui, &mut buf));
 
     // Grow the buffer with the caret pinned at the end. The first frame sees last
     // frame's narrower rect and scrolls left chasing the caret: the transient.
     buf.push_str("2345");
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = buf.len());
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = buf.len());
     h.frame(|ui| body(ui, &mut buf));
     // Settle: the widened rect is now visible to update_scroll.
     h.frame(|ui| body(ui, &mut buf));
@@ -106,11 +113,12 @@ fn click_hit_test_compensates_for_scroll() {
 
     let ed_id = WidgetId::from_hash("hit-ed");
 
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = "a".repeat(100);
 
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 100);
     h.frame(|ui| body(ui, &mut buf));
     // Scrolled to the end: 100 mono glyphs of 8 px plus the 1.5 px caret room
     // at each end, past the 280 - 2 × 9 = 262 px inner rect.
@@ -119,9 +127,9 @@ fn click_hit_test_compensates_for_scroll() {
 
     // Click 11 px in, 2 px into the inner rect. With scroll compensation the
     // hit-test sees the nearest glyph boundary to (541 + 2) / 8 = 67.9, 68; without, byte 0.
-    h.press_at(Vec2::new(11.0, 20.0));
+    h.press(Vec2::new(11.0, 20.0), PointerButton::Left);
     h.frame(|ui| body(ui, &mut buf));
-    h.release();
+    h.release(PointerButton::Left);
     h.frame(|ui| body(ui, &mut buf));
 
     let caret = h.state::<TextEditState>(ed_id).edit.caret;
@@ -150,7 +158,7 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
 
     let ed_id = WidgetId::from_hash("wheel-ed");
 
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = String::new();
     for i in 0..100 {
         writeln!(buf, "line{i}").unwrap();
@@ -159,7 +167,8 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     // Caret at the top, so a caret-follow would pull the view to zero and the
     // assertions couldn't pass by accident.
     h.frame(|ui| body(ui, &mut buf));
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
         h.state::<TextEditState>(ed_id).view.scroll.offset().y,
@@ -168,7 +177,7 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     );
 
     // One wheel gesture over the editor.
-    h.scroll_pixels_at(Vec2::new(140.0, 50.0), Vec2::new(0.0, 48.0));
+    h.scroll_pixels(Vec2::new(140.0, 50.0), Vec2::new(0.0, 48.0));
     h.frame(|ui| body(ui, &mut buf));
     let scrolled = h.state::<TextEditState>(ed_id).view.scroll.offset().y;
     assert!(
@@ -186,8 +195,10 @@ fn wheel_pans_a_multiline_editor_and_the_caret_does_not_snap_it_back() {
     );
 
     // Moving the caret *does* pull the view back: the wheel didn't disable it.
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
-    h.ui.with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 0);
+    h.ui()
+        .with_state::<TextEditState, _>(ed_id, |_, s| s.edit.caret = 1);
     h.frame(|ui| body(ui, &mut buf));
     assert_eq!(
         h.state::<TextEditState>(ed_id).view.scroll.offset().y,
@@ -220,20 +231,20 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
                 });
         });
     };
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     // 100 glyphs at 8 px overflow the 267 px inner width.
     let mut long = "a".repeat(100);
     h.prime(2, |ui| body(ui, &mut long));
-    h.move_to(Vec2::new(50.0, 20.0));
+    h.hover(Vec2::new(50.0, 20.0));
     assert_eq!(
-        h.ui.input().scroll_targets(),
+        h.ui().input().scroll_targets(),
         ScrollTargets {
             x: Some(ed_id),
             y: Some(page),
         },
     );
 
-    h.scroll_pixels(Vec2::new(0.0, 10.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10.0)));
     h.frame(|ui| body(ui, &mut long));
     assert_eq!(h.state::<ScrollState>(page).offset(), Vec2::new(0.0, 10.0));
     assert_eq!(
@@ -242,7 +253,7 @@ fn a_vertical_wheel_over_a_field_scrolls_the_page_behind_it() {
     );
 
     // The page moved the field up 10 px, to y -10..30, so (50, 20) is still on it.
-    h.scroll_pixels(Vec2::new(30.0, 0.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(30.0, 0.0)));
     h.frame(|ui| body(ui, &mut long));
     assert_eq!(h.state::<ScrollState>(page).offset(), Vec2::new(0.0, 10.0));
     assert_eq!(
@@ -265,12 +276,12 @@ fn a_lone_field_with_overflowing_text_pans_on_a_vertical_wheel() {
                 .show(ui);
         });
     };
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut short = String::from("hello");
     h.prime(2, |ui| body(ui, &mut short));
-    h.move_to(Vec2::new(50.0, 20.0));
+    h.hover(Vec2::new(50.0, 20.0));
     assert_eq!(
-        h.ui.input().scroll_targets(),
+        h.ui().input().scroll_targets(),
         ScrollTargets::default(),
         "five glyphs fit, so the field leaves the wheel to what is behind it",
     );
@@ -278,13 +289,13 @@ fn a_lone_field_with_overflowing_text_pans_on_a_vertical_wheel() {
     let mut long = "a".repeat(100);
     h.prime(2, |ui| body(ui, &mut long));
     assert_eq!(
-        h.ui.input().scroll_targets(),
+        h.ui().input().scroll_targets(),
         ScrollTargets {
             x: Some(ed_id),
             y: None,
         },
     );
-    h.scroll_pixels(Vec2::new(0.0, 50.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
     h.frame(|ui| body(ui, &mut long));
     assert_eq!(
         h.state::<TextEditState>(ed_id).view.scroll.offset(),

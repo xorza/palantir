@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -28,12 +28,12 @@ fn a_chip_is_a_themed_square_with_a_checker_behind_translucency() {
             1 + 4 * 2 + 1,
         ),
     ] {
-        let mut h = UiHarness::new(UVec2::new(100, 100));
+        let mut h = Harness::mono(UVec2::new(100, 100));
         let node = h.frame_value(|ui| ColorSwatch::new(color).id(id).style(style).show(ui).node());
         let rect = h.arranged(id);
         assert_eq!((rect.size.w, rect.size.h), (side, side), "{color:?}");
         assert_eq!(
-            h.ui.tree(Layer::Main).shapes_of(node).count(),
+            h.ui().tree(Layer::Main).shapes_of(node).count(),
             shapes,
             "{color:?}: shapes recorded",
         );
@@ -44,8 +44,8 @@ fn a_chip_is_a_themed_square_with_a_checker_behind_translucency() {
 #[test]
 fn a_chip_reports_its_click() {
     let id = WidgetId::from_hash("chip-click");
-    let mut h = UiHarness::new(UVec2::new(100, 100));
-    let record = |h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let record = |h: &mut Harness| {
         h.frame_value(|ui| {
             ColorSwatch::new(RgbaF32::WHITE)
                 .id(id)
@@ -55,7 +55,7 @@ fn a_chip_reports_its_click() {
         })
     };
     assert!(!record(&mut h));
-    h.click_on(id);
+    h.click(id);
     assert!(record(&mut h), "the click lands");
     assert!(!record(&mut h), "and is one-shot");
 }

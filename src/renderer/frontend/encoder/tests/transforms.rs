@@ -1,6 +1,6 @@
 //! Shapes under a transformed ancestor, and the bounds they claim.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -46,7 +46,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
         (Spun::Arc, 20.0_f32.hypot(10.0)),
     ] {
         let display = Display::from_physical(UVec2::new(200, 200), 1.0);
-        let mut h = UiHarness::new(display.physical);
+        let mut h = Harness::mono(display.physical);
         // 1 s at 1 rad/s samples a rotation of 1 rad, so the encoder takes the spin branch.
         h.at(Duration::from_secs(1)).frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -117,7 +117,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
     // Shape 30×30 at (0, 0), child 40×40 at (50, 60); under `transform` the screen rects are:
     //   shape: min = (10, 20), size = (60, 60)
     //   child: min = (10 + 50*2, 20 + 60*2) = (110, 140), size = (80, 80)
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
@@ -154,7 +154,7 @@ fn transformed_panel_chrome_stays_in_parent_space() {
     let chrome_color = RgbaF32::srgb(0.1, 0.1, 0.1);
     let transform = TranslateScale::new(Vec2::new(50.0, 50.0), 2.0);
 
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()

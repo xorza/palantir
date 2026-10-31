@@ -3,7 +3,7 @@
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
 use crate::damage::tests::support::{BLUE, RED};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -23,9 +23,9 @@ use glam::{UVec2, Vec2};
 #[test]
 fn child_under_transformed_parent_damage_in_screen_space() {
     let translate = Vec2::new(100.0, 0.0);
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let mut child_node = None;
-    let build = |fill: RgbaF32, h: &mut UiHarness, child: &mut Option<NodeId>| {
+    let build = |fill: RgbaF32, h: &mut Harness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
@@ -48,7 +48,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
 
     // The child's layout rect is at (0, 0); its screen rect after the parent's
     // translate is (100, 0), where the GPU paints. Damage must cover that.
-    let child_layout_rect = h.ui.arranged_rect(Layer::Main, child_node.unwrap());
+    let child_layout_rect = h.ui().arranged_rect(Layer::Main, child_node.unwrap());
     let expected_screen_rect = Rect {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
@@ -70,9 +70,9 @@ fn child_under_transformed_parent_damage_in_screen_space() {
 /// streak through `LoadOp::Load`.
 #[test]
 fn animated_parent_transform_unions_old_and_new_positions() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let mut child_node = None;
-    let build = |dx: f32, h: &mut UiHarness, child: &mut Option<NodeId>| {
+    let build = |dx: f32, h: &mut Harness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
@@ -110,12 +110,12 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // emits nothing: its only row (the child marker) and `cascade_input` are
     // unchanged, so all damage comes from the child.
     let dirty_widget_ids: Vec<WidgetId> = h
-        .engines
+        .engines()
         .damage
         .counters
         .dirty()
         .iter()
-        .map(|n| h.ui.tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| h.ui_ref().tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert_eq!(
         dirty_widget_ids,
@@ -128,9 +128,9 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 /// tweak flipping behavior silently.
 #[test]
 fn transform_animation_keeps_far_positions_split() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     let mut child_node = None;
-    let build = |dx: f32, h: &mut UiHarness, child: &mut Option<NodeId>| {
+    let build = |dx: f32, h: &mut Harness, child: &mut Option<NodeId>| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
@@ -155,9 +155,9 @@ fn transform_animation_keeps_far_positions_split() {
     // 9600, SAH cost 6400 would merge under the default 20 000 budget; a budget
     // of 0 pins the strict-overlap-only branch.
     let rects: Vec<Rect> = DamageRegion::collapse_from(
-        &h.engines.damage.raw_rects,
+        &h.engines().damage.raw_rects,
         0.0,
-        h.ui.display().logical_rect(),
+        h.ui_ref().display().logical_rect(),
     )
     .region
     .iter_rects()
@@ -180,8 +180,8 @@ fn transform_animation_keeps_far_positions_split() {
 /// pan frame.
 #[test]
 fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_damage() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
-    let build = |dx: f32, h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let build = |dx: f32, h: &mut Harness| {
         h.frame(|ui| {
             // The outermost clip pins descendants to the surface; without it
             // `parent_clip = None` and the inner rect translates freely.
@@ -233,8 +233,8 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
 /// step's damage stays `Partial` and bounded to the inner clipped area.
 #[test]
 fn pan_with_invariant_clipped_paint_rect_stays_partial() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
-    let build = |dx: f32, h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let build = |dx: f32, h: &mut Harness| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("clip"))
@@ -283,8 +283,8 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
 /// guard fails and the Occupied arm pushes both prev and curr rects.
 #[test]
 fn self_transform_shift_damages_direct_shapes() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
-    let build = |dx: f32, h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    let build = |dx: f32, h: &mut Harness| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("root"))
@@ -330,8 +330,8 @@ fn self_transform_shift_damages_direct_shapes() {
 ///   `cascade_input` lets tier 1 skip at the subtree root).
 #[test]
 fn moved_subtree_damages_extents_and_refreshes_snapshots() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let build = |dx: f32, h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(400, 400));
+    let build = |dx: f32, h: &mut Harness| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))
@@ -381,7 +381,7 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
     // clean Skip. Fails if the bulk refresh corrupted a snapshot field.
     build(60.0, &mut h);
     assert!(
-        h.engines.damage.counters.dirty().is_empty(),
+        h.engines_mut().damage.counters.dirty().is_empty(),
         "still frame after motion must not dirty any node",
     );
     assert_eq!(
@@ -395,8 +395,8 @@ fn moved_subtree_damages_extents_and_refreshes_snapshots() {
 /// tier (`subtree_hash` differs): the per-row diff gives leaf-tight damage.
 #[test]
 fn content_change_under_constant_transform_stays_row_tight() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
-    let build = |fill: RgbaF32, h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(400, 400));
+    let build = |fill: RgbaF32, h: &mut Harness| {
         h.frame(|ui| {
             Panel::hstack()
                 .id(WidgetId::from_hash("outer"))

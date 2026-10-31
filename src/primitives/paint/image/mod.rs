@@ -8,6 +8,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
 use glam::{UVec2, Vec2};
@@ -186,6 +187,101 @@ impl Image {
             texels.copy_within(source..source + width, target * width);
         }
     }
+
+    /// The image scaled down so that its longer side is `max_side` texels, each side rounded to
+    /// the nearest texel and at least one; a copy when it fits already. A tent filter widened by
+    /// the ratio weighs every source texel and adds no ringing at the hard edges a UI is made of;
+    /// it averages premultiplied linear light, as the frame blends, since an average of encoded
+    /// bytes darkens every edge between light and dark.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `max_side` is 0.
+    #[must_use]
+    pub fn fitted(&self, max_side: u32) -> Self {
+        assert!(max_side > 0, "a fitted image has at least one texel a side");
+        let size = fitted_size(self.size, max_side);
+        if size == self.size {
+            return self.clone();
+        }
+        let linear: Vec<[f32; 4]> = self
+            .texels()
+            .iter()
+            .map(|texel| {
+                let RgbaF32 { r, g, b, a } = RgbaF32::from_srgba(*texel);
+                [r * a, g * a, b * a, a]
+            })
+            .collect();
+        let (from_w, from_h) = (self.size.x as usize, self.size.y as usize);
+        let (to_w, to_h) = (size.x as usize, size.y as usize);
+        let mut rows = vec![[0.0; 4]; to_w * from_h];
+        let mut taps = Vec::new();
+        for x in 0..to_w {
+            tent_taps(x, from_w, to_w, &mut taps);
+            for y in 0..from_h {
+                rows[y * to_w + x] = weighed(&taps, |i| linear[y * from_w + i]);
+            }
+        }
+        let mut fitted = Self::blank(size);
+        let texels = fitted.texels_mut();
+        for y in 0..to_h {
+            tent_taps(y, from_h, to_h, &mut taps);
+            for x in 0..to_w {
+                let [r, g, b, a] = weighed(&taps, |i| rows[i * to_w + x]);
+                let straight = if a > 0.0 { a.recip() } else { 0.0 };
+                texels[y * to_w + x] =
+                    RgbaF32::new(r * straight, g * straight, b * straight, a).to_srgba();
+            }
+        }
+        fitted
+    }
+}
+
+/// `size` scaled so that its longer side is `max_side`, each side rounded to the nearest and at
+/// least 1, or `size` when it fits.
+fn fitted_size(size: UVec2, max_side: u32) -> UVec2 {
+    let longer = size.x.max(size.y);
+    if longer <= max_side {
+        return size;
+    }
+    let side = |len: u32| {
+        let scaled =
+            (u64::from(len) * u64::from(max_side) + u64::from(longer) / 2) / u64::from(longer);
+        u32::try_from(scaled.max(1)).expect("a scaled side is at most `max_side`")
+    };
+    UVec2::new(side(size.x), side(size.y))
+}
+
+/// The source texels output texel `at` of `to` reads from `from` along one axis, with their
+/// normalized weights: a tent on the output texel's center, as wide as the ratio.
+#[expect(
+    clippy::cast_sign_loss,
+    reason = "each bound is floored at zero first, and `as` saturates the far side"
+)]
+fn tent_taps(at: usize, from: usize, to: usize, taps: &mut Vec<(usize, f32)>) {
+    taps.clear();
+    let ratio = from as f32 / to as f32;
+    let center = (at as f32 + 0.5) * ratio;
+    let first = (center - ratio).floor().max(0.0) as usize;
+    let last = ((center + ratio).ceil().max(0.0) as usize).min(from);
+    taps.extend((first..last).filter_map(|i| {
+        let weight = 1.0 - ((i as f32 + 0.5 - center) / ratio).abs();
+        (weight > 0.0).then_some((i, weight))
+    }));
+    let total: f32 = taps.iter().map(|(_, weight)| weight).sum();
+    for (_, weight) in taps.iter_mut() {
+        *weight /= total;
+    }
+}
+
+/// The sum of `texel(i)` over `taps`, each by its weight.
+fn weighed(taps: &[(usize, f32)], texel: impl Fn(usize) -> [f32; 4]) -> [f32; 4] {
+    taps.iter().fold([0.0; 4], |mut sum, &(i, weight)| {
+        for (out, channel) in sum.iter_mut().zip(texel(i)) {
+            *out += channel * weight;
+        }
+        sum
+    })
 }
 
 fn rgba8_len(size: UVec2) -> Result<usize, ImageDataError> {

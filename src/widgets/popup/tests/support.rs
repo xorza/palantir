@@ -1,7 +1,7 @@
 //! The anchored body a popup test records, and the main-panel probe under it.
 
+use crate::host::harness::Harness;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -57,6 +57,6 @@ pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
 }
 
 /// One frame of [`record_body`], pass A's observation.
-pub(super) fn frame_body(h: &mut UiHarness, config: ClickOutside) -> BodyPass {
+pub(super) fn frame_body(h: &mut Harness, config: ClickOutside) -> BodyPass {
     *h.frame_passes(|ui| record_body(ui, config)).a()
 }

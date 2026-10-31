@@ -16,9 +16,8 @@ use crate::bench::backends::Backends;
 use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
-use crate::host::headless_window::HeadlessWindow;
+use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
@@ -195,7 +194,7 @@ struct Counts {
 
 #[derive(Debug)]
 struct Fixture {
-    window: HeadlessWindow,
+    window: Harness,
     handles: Vec<ImageHandle>,
     workload: Workload,
     phase: bool,
@@ -235,7 +234,7 @@ impl Fixture {
             workload: *workload,
             color: tint(*phase),
         };
-        let mut app = RecordApp::new(|ui| scene.record(ui));
+        let mut app = |ui: &mut Ui| scene.record(ui);
         let report = window.frame(&mut app);
         // A `Partial` frame walks the schedule once per damage rect, which would make the numbers incomparable.
         assert_eq!(
@@ -250,7 +249,7 @@ impl Fixture {
 
     /// The composed frame's draw-list shape.
     const fn counts(&self) -> Counts {
-        let buffer = self.window.host().last_render_buffer();
+        let buffer = self.window.render_buffer();
         Counts {
             groups: buffer.groups.len(),
             text_batches: buffer.text_batches.len(),
@@ -259,7 +258,7 @@ impl Fixture {
 
     fn record_time(&self) -> Duration {
         self.window
-            .host()
+            .ui_ref()
             .gpu_pass_stats()
             .last_main_pass_cpu()
             .expect("the main pass publishes its CPU time on every submitted frame")

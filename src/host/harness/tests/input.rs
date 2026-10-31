@@ -1,8 +1,8 @@
 //! The gestures the harness synthesizes, and the routing each depends on.
 
+use crate::host::harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
+use crate::host::harness::*;
 use crate::internals::panic_probe;
-use crate::internals::ui_harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
-use crate::internals::ui_harness::*;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::widget_core::configure::Configure;
@@ -10,10 +10,10 @@ use crate::widgets::panel::Panel;
 
 #[test]
 fn drag_to_latches_past_the_threshold_and_panics_under_it() {
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
 
-    harness.press_at(INSIDE);
+    harness.press(INSIDE, PointerButton::Left);
     let latch = harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
     // The move helpers return `on_input`'s own `InputDelta`, so the repaint hint needs no raw door;
     // a latching drag is the "state the next frame has to show" case.
@@ -29,39 +29,39 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
             .started(),
         "travel past DRAG_THRESHOLD latches a drag",
     );
-    harness.release();
+    harness.release(PointerButton::Left);
 
     // The value is the event's, not a stub: leaving the button crosses a hover boundary and repaints,
     // a second move over bare surface crosses nothing and doesn't.
     assert!(
-        harness.move_to(OUTSIDE).repaint_requested,
+        harness.hover(OUTSIDE).repaint_requested,
         "leaving the button is a hover crossing",
     );
     assert!(
-        !harness
-            .move_to(OUTSIDE + Vec2::splat(1.0))
-            .repaint_requested,
+        !harness.hover(OUTSIDE + Vec2::splat(1.0)).repaint_requested,
         "a second move over bare surface crosses nothing",
     );
 
     // Sub-threshold travel must panic, not quietly fail to latch.
-    panic_probe::assert_panics_with("DRAG_THRESHOLD — no drag would latch", || {
-        let mut harness = UiHarness::new(SURFACE);
+    panic_probe::assert_panics_with("drag threshold; no drag would start", || {
+        let mut harness = Harness::mono(SURFACE);
         harness.prime(2, support::button);
-        harness.press_at(INSIDE);
+        harness.press(INSIDE, PointerButton::Left);
         harness.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD - 1.0, 0.0));
     });
     panic_probe::assert_panics_with("drag_to needs a press first", || {
-        UiHarness::new(SURFACE).drag_to(INSIDE);
+        Harness::mono(SURFACE).drag_to(INSIDE);
     });
 
-    // `press` latches the same origin as `press_at` (it reads the pointer back out of `InputState`), so a
-    // press separated from its move still arms the threshold check.
-    let mut split = UiHarness::new(SURFACE);
+    // A raw press latches the same origin as `press` (it reads the pointer back out of
+    // `InputState`), so a press separated from its move still arms the threshold check.
+    let mut split = Harness::mono(SURFACE);
     split.prime(2, support::button);
-    split.move_to(INSIDE);
+    split.hover(INSIDE);
     assert!(
-        split.press().repaint_requested,
+        split
+            .on_input(InputEvent::PointerPressed(PointerButton::Left))
+            .repaint_requested,
         "a press latching on the button is a repaint",
     );
     split.drag_to(INSIDE + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
@@ -71,15 +71,15 @@ fn drag_to_latches_past_the_threshold_and_panics_under_it() {
             .left
             .drag
             .started(),
-        "move-then-press arms drag_to exactly as press_at does",
+        "move-then-press arms drag_to exactly as press does",
     );
 
     // Without a pointer position there is no origin to measure from, so
     // the threshold check must refuse rather than invent one.
-    panic_probe::assert_panics_with("drag_to needs a press on the surface", || {
-        let mut harness = UiHarness::new(SURFACE);
+    panic_probe::assert_panics_with("drag_to needs a press on the window", || {
+        let mut harness = Harness::mono(SURFACE);
         harness.prime(2, support::button);
-        harness.press();
+        harness.on_input(InputEvent::PointerPressed(PointerButton::Left));
         harness.drag_to(INSIDE);
     });
 }
@@ -89,14 +89,14 @@ fn modifiers_are_sticky_until_set_back() {
     // Rule 13. `ModifiersChanged` carries a snapshot that persists, so
     // every later key inherits it until something sets it back.
     let ctrl = Modifiers::CTRL;
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
 
     // The set under test is `InputState`'s, not a harness copy: a copy desyncs once one modifier goes
     // through `on_input`, and `set_modifiers` would then suppress the emit that clears it.
     harness.set_modifiers(ctrl);
     harness.key(Key::Char('b'));
     assert_eq!(
-        harness.ui.input().modifiers(),
+        harness.ui().input().modifiers(),
         ctrl,
         "the key does not consume the chord",
     );
@@ -104,7 +104,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.set_modifiers(Modifiers::NONE);
     harness.key(Key::Char('c'));
     assert_eq!(
-        harness.ui.input().modifiers(),
+        harness.ui().input().modifiers(),
         Modifiers::NONE,
         "…and it stays cleared once set back",
     );
@@ -114,7 +114,7 @@ fn modifiers_are_sticky_until_set_back() {
     harness.on_input(InputEvent::ModifiersChanged(ctrl));
     harness.set_modifiers(Modifiers::NONE);
     assert_eq!(
-        harness.ui.input().modifiers(),
+        harness.ui().input().modifiers(),
         Modifiers::NONE,
         "set_modifiers clears a set the raw door installed",
     );
@@ -124,7 +124,7 @@ fn modifiers_are_sticky_until_set_back() {
 fn typed_text_arrives_as_one_press_per_char() {
     // Rule 14. `type_text` emits the `KeyDown { Key::Char }` a real
     // window produces, which is the only path a field inserts from.
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     // Keyboard events are dropped at *ingress* when nothing holds focus and no subscriber matches, so a
     // keyboard test has to establish focus before it drives anything.
     harness.ui().set_focus(support::target());
@@ -132,7 +132,7 @@ fn typed_text_arrives_as_one_press_per_char() {
     harness.type_text("hi");
 
     let keys: Vec<_> = harness
-        .ui
+        .ui()
         .input()
         .keyboard_events(Layer::Main.into())
         .iter()
@@ -154,14 +154,14 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
             .show(ui, |_| {});
     };
 
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, build);
 
-    harness.scroll_lines_at(INSIDE, Vec2::new(0.0, 3.0));
+    harness.scroll_lines(INSIDE, Vec2::new(0.0, 3.0));
     let hit = harness.response_in(scroller, build);
     assert_eq!(hit.scroll.lines.y, 3.0, "the hovered widget got the delta");
 
-    harness.scroll_lines_at(OUTSIDE, Vec2::new(0.0, 3.0));
+    harness.scroll_lines(OUTSIDE, Vec2::new(0.0, 3.0));
     let missed = harness.response_in(scroller, build);
     assert_eq!(
         missed.scroll.lines.y, 0.0,
@@ -170,15 +170,15 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
 
     // `scroll_lines_at` is `move_to` + `scroll_lines`, so the bare form aims at wherever the pointer was
     // left, still OUTSIDE; only a separate `move_to` re-aims it.
-    harness.scroll_lines(Vec2::new(0.0, 3.0));
+    harness.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
     assert_eq!(
         harness.response_in(scroller, build).scroll.lines.y,
         0.0,
         "a bare scroll inherits the last position, it does not re-aim",
     );
 
-    harness.move_to(INSIDE);
-    harness.scroll_lines(Vec2::new(0.0, 3.0));
+    harness.hover(INSIDE);
+    harness.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
     assert_eq!(
         harness.response_in(scroller, build).scroll.lines.y,
         3.0,
@@ -195,10 +195,10 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
             .sense(Sense::PINCH)
             .show(ui, |_| {});
     };
-    let mut pinched = UiHarness::new(SURFACE);
+    let mut pinched = Harness::mono(SURFACE);
     pinched.prime(2, zoom_build);
     assert!(
-        pinched.pinch_at(INSIDE, 1.5).repaint_requested,
+        pinched.pinch(INSIDE, 1.5).repaint_requested,
         "a pinch that lands on a zoom target wakes the next frame",
     );
     assert_eq!(

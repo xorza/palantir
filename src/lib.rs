@@ -79,7 +79,7 @@
 //! | `system-clipboard` | via `winit` | Backs [`Clipboard`] with the OS clipboard; [`OffscreenHost`] opts in via [`OffscreenHostBuilder::system_clipboard`], and [`WinitHost`] opts out via [`WinitHostBuilder::system_clipboard`]. Otherwise an in-process buffer. |
 //! | `gpu-debug-markers` | no | GPU debug groups around every draw step for RenderDoc / Xcode captures; costs two commands and a label copy per step. |
 //! | `profile-with-tracy` | no | A Tracy zone per frame pass and a frame set per window. Needs the Tracy viewer. |
-//! | `internals` | no | The `internals` module (frame harness, fixtures, headless test GPU), and the benchmark drivers with the facade `benches/` calls. Every test and bench build of this crate turns it on. **Not a supported API.** |
+//! | `internals` | no | The `internals` module (fixtures, the headless test GPU, the reach-ins tests and benches read), and the benchmark drivers with the facade `benches/` calls. Every test and bench build of this crate turns it on. **Not a supported API.** |
 //! | `golden` | no | The `golden` module for golden-image tests of suites that draw through Palantir; costs an image codec. |
 //!
 //! # Color
@@ -111,6 +111,7 @@ pub(crate) mod damage;
 pub(crate) mod diagnostics;
 /// Per-output display state shared by host and renderer.
 pub(crate) mod display;
+pub(crate) mod driver;
 pub(crate) mod gpu;
 pub(crate) mod host;
 pub(crate) mod icons;
@@ -233,6 +234,9 @@ pub use common::platform::{PLATFORM, Platform};
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 pub use display::user_scale::UserScale;
+pub use driver::action::Action;
+pub use driver::error::{ActError, LocateError, PlayError};
+pub use driver::locator::{Found, Locate, Locator};
 pub use gpu::device::device_features::DeviceFeatures;
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;
@@ -246,7 +250,8 @@ pub use gpu::error::{GpuRequestError, UnmetRequirements};
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 #[cfg(feature = "winit")]
 pub use gpu::surface::surface_usages::SurfaceUsages;
-pub use host::headless_window::{HeadlessWindow, HeadlessWindowBuilder};
+pub use host::harness::Harness;
+pub use host::harness::harness_builder::{Depth, HarnessBuilder};
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 #[cfg(feature = "winit")]
 pub use host::winit::{
@@ -254,6 +259,7 @@ pub use host::winit::{
     error::{HostDisconnected, WinitHostError},
     frame_summary::FrameSummary,
     handle::HostHandle,
+    remote::Remote,
 };
 pub use icons::error::{IconTableError, SvgParseError};
 pub use icons::icon_set::IconSet;
@@ -278,6 +284,7 @@ pub use input::owned_input_event::OwnedInputEvent;
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::{FocusPolicy, InputPolicy};
 pub use input::sense::Sense;
+pub use input::shortcut::error::ParseShortcutError;
 pub use input::shortcut::{Shortcut, ShortcutMods};
 pub use input::watch::{KeyboardWake, PointerWake};
 pub use input::zoom_factor::ZoomFactor;
@@ -443,6 +450,7 @@ pub use widgets::tooltip::TooltipResponse;
 pub use window::cursor_icon::CursorIcon;
 pub use window::screenshot::{Screenshot, ScreenshotId};
 pub use window::vsync::Vsync;
+pub use window::window_commands::WindowCommand;
 pub use window::window_config::WindowConfig;
 pub use window::window_geometry::WindowGeometry;
 pub use window::window_placement::WindowPlacement;

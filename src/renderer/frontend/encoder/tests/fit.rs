@@ -1,7 +1,7 @@
 //! How an image or icon resolves its destination rect and UVs.
 
 use crate::damage::region::DamageRegion;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
@@ -21,7 +21,7 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
         ("Peak", ImageDownsample::Peak, ImageFlags::TAPS_PEAK),
     ];
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let handle = h
         .ui()
         .load_image(&Image::from_srgba8(UVec2::new(2, 2), vec![255; 16]).unwrap())
@@ -78,7 +78,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
         Rect::new(-10.0, 40.0, 200.0, 100.0),
         node,
     ];
-    let mut h = UiHarness::new(UVec2::new(300, 300));
+    let mut h = Harness::mono(UVec2::new(300, 300));
     let handle = h
         .ui()
         .load_image(&Image::from_srgba8(UVec2::new(200, 100), vec![255; 200 * 100 * 4]).unwrap())
@@ -106,7 +106,9 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
             "{fit:?} draw"
         );
         let mut rows = Vec::new();
-        h.ui.cascade().owned_paints(h.ui.forest(), &mut rows);
+        h.ui_ref()
+            .cascade()
+            .owned_paints(h.ui_ref().forest(), &mut rows);
         let screens: Vec<Rect> = rows
             .iter()
             .filter(|row| row.owner == WidgetId::from_hash("frame"))

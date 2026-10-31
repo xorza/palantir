@@ -5,7 +5,7 @@ use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, frame_without_baseline, one_frame};
 use crate::display::Display;
 use crate::display::user_scale::UserScale;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
@@ -63,7 +63,7 @@ fn display_change_forces_full_repaint() {
         ),
     ];
     for (label, mutated) in cases {
-        let mut h = UiHarness::new(DISPLAY.physical);
+        let mut h = Harness::mono(DISPLAY.physical);
         let mut build = |ui: &mut Ui| {
             one_frame(ui, BLUE);
         };
@@ -73,7 +73,7 @@ fn display_change_forces_full_repaint() {
         let f2 = frame(&mut h, &mut build);
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(
-            h.engines.damage.counters.dirty().is_empty(),
+            h.engines_mut().damage.counters.dirty().is_empty(),
             "case: {label} steady"
         );
         let mutated_plan = frame(h.set_display(*mutated), &mut build);
@@ -82,7 +82,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} display change"
         );
         assert!(
-            !h.engines.damage.counters.dirty().is_empty(),
+            !h.engines_mut().damage.counters.dirty().is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
         );
 
@@ -92,7 +92,7 @@ fn display_change_forces_full_repaint() {
             "case: {label} post-mutation steady must Skip",
         );
         assert!(
-            h.engines.damage.counters.dirty().is_empty(),
+            h.engines_mut().damage.counters.dirty().is_empty(),
             "case: {label} post-mutation dirty empty"
         );
     }
@@ -104,7 +104,7 @@ fn display_change_forces_full_repaint() {
 /// descendant rects stable, so the `prev` nudge is the only damage.
 #[test]
 fn small_damage_with_surface_change_forces_full_repaint() {
-    let mut h = UiHarness::new(UVec2::new(2000, 2000));
+    let mut h = Harness::mono(UVec2::new(2000, 2000));
     // Two Fixed children in a Fixed VStack, both inside the 2000×2000 surface
     // (the Vacant arm skips off-surface widgets). "small" ends at (0, 60, 50, 60).
     let mut scene = |ui: &mut Ui| {
@@ -126,12 +126,12 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     };
 
     h.prime(2, &mut scene);
-    assert!(h.engines.damage.counters.dirty().is_empty());
+    assert!(h.engines_mut().damage.counters.dirty().is_empty());
 
     // Flip "small"'s prev `cascade_input`: 3000 of 4M area, far below the full-repaint threshold.
     let target_widget_id = WidgetId::from_hash("small");
     let snap = h
-        .engines
+        .engines_mut()
         .damage
         .prev
         .get_mut(&target_widget_id)
@@ -152,7 +152,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
 /// repaint would never apply.
 #[test]
 fn stable_surface_does_not_short_circuit() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |ui: &mut Ui, color: RgbaF32| {
         one_frame(ui, color);
     };
@@ -160,7 +160,7 @@ fn stable_surface_does_not_short_circuit() {
     h.frame(|ui| build(ui, BLUE));
     let warm = frame(&mut h, |ui| build(ui, BLUE));
     assert!(warm.is_none(), "warm steady-state must Skip");
-    assert!(h.engines.damage.counters.dirty().is_empty());
+    assert!(h.engines_mut().damage.counters.dirty().is_empty());
     // Frame 3: one leaf changes color; `Partial` proves the short-circuit didn't fire.
     let changed = frame(&mut h, |ui| build(ui, RED));
     let Some(Damage::Partial(damage)) = changed else {
@@ -179,7 +179,7 @@ fn stable_surface_does_not_short_circuit() {
 /// partial frame only pre-fills scissors, so a new color escalates once.
 #[test]
 fn a_new_clear_color_forces_full_damage() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     h.frame(|ui| one_frame(ui, BLUE));
     assert!(
         frame(&mut h, |ui| one_frame(ui, BLUE)).is_none(),
@@ -205,7 +205,7 @@ fn a_new_clear_color_forces_full_damage() {
 
 #[test]
 fn invalid_prior_output_forces_full_damage() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     h.frame(|ui| one_frame(ui, BLUE));
 
     let next = frame_without_baseline(&mut h, |ui| one_frame(ui, RED));
@@ -217,7 +217,7 @@ fn invalid_prior_output_forces_full_damage() {
 
 #[test]
 fn valid_skip_preserves_incremental_damage_baseline() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let first = frame_without_baseline(&mut h, |ui| one_frame(ui, BLUE));
     assert!(matches!(first, Some(Damage::Full)));
     let skip = frame(&mut h, |ui| one_frame(ui, BLUE));

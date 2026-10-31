@@ -1,6 +1,6 @@
 //! Placing a child in its resolved cell, and the depth stack bracketing the walk.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::track::Track;
 use crate::widget_core::configure::Configure;
@@ -11,7 +11,7 @@ use glam::UVec2;
 fn grid_cell_alignment_override_pins_child_to_corner() {
     use crate::primitives::layout::align::{Align, HAlign, VAlign};
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let root = h.frame_value(|ui| {
         Grid::new()
             .auto_id()
@@ -53,7 +53,7 @@ fn a_cell_past_the_tracks_is_held_inside_them() {
     use crate::primitives::layout::grid_cell::GridCell;
     use crate::primitives::layout::sizing::Sizing;
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Grid::new()
             .id(WidgetId::from_hash("grid"))

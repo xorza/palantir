@@ -2,7 +2,8 @@
 
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
@@ -20,7 +21,7 @@ use glam::Vec2;
 /// jump *fires*, else the path silently degrades to a per-node walk with correct damage.
 #[test]
 fn stable_painting_subtree_triggers_skip_jump() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     // A painting parent wrapping painting children: root and children land in `prev` with matching
     // snapshots on the second frame, so the root's Occupied-equal arm sees a span > 1 and the skip
     // counter increments.
@@ -48,18 +49,18 @@ fn stable_painting_subtree_triggers_skip_jump() {
     };
     frame(&mut h, build);
     assert_eq!(
-        h.engines.damage.counters.subtree_skips(),
+        h.engines_mut().damage.counters.subtree_skips(),
         0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
     frame(&mut h, build);
     assert!(
-        h.engines.damage.counters.subtree_skips() >= 1,
+        h.engines_mut().damage.counters.subtree_skips() >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        h.engines.damage.counters.subtree_skips(),
+        h.engines_mut().damage.counters.subtree_skips(),
     );
-    assert!(h.engines.damage.counters.dirty().is_empty());
+    assert!(h.engines_mut().damage.counters.dirty().is_empty());
 }
 
 /// A widget that loses its chrome flips from painting to non-painting. The diff must (a) add its
@@ -67,7 +68,7 @@ fn stable_painting_subtree_triggers_skip_jump() {
 /// sees it as absent, and (c) add no curr rect.
 #[test]
 fn paints_to_non_paints_transition_evicts_and_clears() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let with_chrome = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -91,11 +92,11 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
     };
     frame(&mut h, with_chrome);
     let id = WidgetId::from_hash("a");
-    assert!(h.engines.damage.prev.contains_key(&id));
+    assert!(h.engines_mut().damage.prev.contains_key(&id));
 
     frame(&mut h, no_chrome);
     assert!(
-        !h.engines.damage.prev.contains_key(&id),
+        !h.engines_mut().damage.prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
     );
     let rects: Vec<_> = h.damage_region().iter_rects().collect();
@@ -111,7 +112,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
 /// is that the filter stays `Partial`: no full-surface rect lands in `region`.
 #[test]
 fn popup_eater_does_not_force_full_repaint() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let anchor = Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut h, |ui| {
@@ -152,7 +153,7 @@ fn popup_eater_does_not_force_full_repaint() {
 /// pre-pass, and force the next paint to `Full` through the dropped-frame recovery path.
 #[test]
 fn click_on_empty_bg_does_not_force_full() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -171,8 +172,8 @@ fn click_on_empty_bg_does_not_force_full() {
     assert!(warm.is_none(), "warm frame must Skip");
 
     // Click on empty background (far from the 50×50 frame at origin).
-    h.press_at(Vec2::new(180.0, 180.0));
-    h.release();
+    h.press(Vec2::new(180.0, 180.0), PointerButton::Left);
+    h.release(PointerButton::Left);
     let click_plan = frame(&mut h, build);
     assert!(
         !matches!(click_plan, Some(Damage::Full)),

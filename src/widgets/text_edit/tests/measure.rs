@@ -6,7 +6,7 @@ use crate::widgets::text_edit::tests::*;
 const SIZE: UVec2 = UVec2::new(400, 80);
 const PLACEHOLDER: &str = "type something here";
 
-fn frame(h: &mut UiHarness, buf: &mut String) -> NodeId {
+fn frame(h: &mut Harness, buf: &mut String) -> NodeId {
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
         Panel::hstack()
@@ -31,18 +31,18 @@ fn frame(h: &mut UiHarness, buf: &mut String) -> NodeId {
 /// An empty-buffer editor in a `Hug` parent has the same width focused and unfocused.
 #[test]
 fn empty_editor_width_is_stable_across_focus() {
-    let mut h = UiHarness::new(SIZE);
+    let mut h = Harness::mono(SIZE);
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
     frame(&mut h, &mut buf);
     let node = frame(&mut h, &mut buf);
-    let w_unfocused = h.ui.arranged_rect(Layer::Main, node).size.w;
+    let w_unfocused = h.ui().arranged_rect(Layer::Main, node).size.w;
 
     h.set_focus(id);
     frame(&mut h, &mut buf);
     let node = frame(&mut h, &mut buf);
-    let w_focused = h.ui.arranged_rect(Layer::Main, node).size.w;
+    let w_focused = h.ui().arranged_rect(Layer::Main, node).size.w;
 
     assert!(
         w_unfocused > 0.0,
@@ -57,7 +57,7 @@ fn empty_editor_width_is_stable_across_focus() {
 const LONG: &str = "the quick brown fox jumps over the lazy dog";
 
 /// A `container_w`-wide `Fixed` hstack holding a single-line editor sized `editor_w`, primed two frames.
-fn sized_editor(h: &mut UiHarness, buf: &mut String, container_w: f32, editor_w: Sizing) -> NodeId {
+fn sized_editor(h: &mut Harness, buf: &mut String, container_w: f32, editor_w: Sizing) -> NodeId {
     let mut node: Option<NodeId> = None;
     let mut record = |ui: &mut Ui| {
         Panel::hstack()
@@ -84,18 +84,18 @@ fn sized_editor(h: &mut UiHarness, buf: &mut String, container_w: f32, editor_w:
 #[test]
 fn fill_width_editor_shrinks_below_text_content() {
     const NARROW_W: f32 = 120.0;
-    let mut h = UiHarness::new(UVec2::new(2100, 200));
+    let mut h = Harness::mono(UVec2::new(2100, 200));
 
     let mut buf = LONG.to_string();
     let hug = sized_editor(&mut h, &mut buf, 2000.0, Sizing::HUG);
-    let text_w = h.ui.arranged_rect(Layer::Main, hug).size.w;
+    let text_w = h.ui().arranged_rect(Layer::Main, hug).size.w;
     // 43 mono glyphs of 8 px, 9 px padding and 1.5 px caret room each side:
     // wider than the narrow container.
     assert_eq!(text_w, 43.0 * 8.0 + 2.0 * 9.0 + 2.0 * 1.5);
 
     let mut buf = LONG.to_string();
     let fill = sized_editor(&mut h, &mut buf, NARROW_W, Sizing::FILL);
-    let fill_w = h.ui.arranged_rect(Layer::Main, fill).size.w;
+    let fill_w = h.ui().arranged_rect(Layer::Main, fill).size.w;
     assert_eq!(
         fill_w, NARROW_W,
         "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}"
@@ -105,7 +105,7 @@ fn fill_width_editor_shrinks_below_text_content() {
 #[test]
 fn stable_editor_uses_one_direct_layout_probe() {
     for (multiline, selected) in [(false, false), (true, true)] {
-        let mut h = UiHarness::with_text(SIZE);
+        let mut h = Harness::new(SIZE);
         let id = WidgetId::from_hash((multiline, selected));
         let mut text = String::from("editable text across two lines\nwith a selection");
         let text_len = text.len();
@@ -119,16 +119,16 @@ fn stable_editor_uses_one_direct_layout_probe() {
         h.prime(2, &mut record);
         if selected {
             h.set_focus(id);
-            h.ui.with_state::<TextEditState, _>(id, |_, state| {
+            h.ui().with_state::<TextEditState, _>(id, |_, state| {
                 state.edit.selection = Some(0);
                 state.edit.caret = text_len;
             });
             h.frame(&mut record);
         }
-        let before = h.ui.shaper().measure_calls();
+        let before = h.ui().shaper().measure_calls();
         h.frame(&mut record);
         assert_eq!(
-            h.ui.shaper().measure_calls() - before,
+            h.ui().shaper().measure_calls() - before,
             1,
             "multiline={multiline}, selected={selected}: measurement, caret, and selection must share one direct layout probe",
         );
@@ -151,7 +151,7 @@ fn every_text_form_measures_the_same_placeholder() {
     ];
     let mut widths = Vec::new();
     for (label, form) in forms {
-        let mut h = UiHarness::new(SIZE);
+        let mut h = Harness::mono(SIZE);
         let mut buf = String::new();
         let mut node = None;
         for _ in 0..2 {
@@ -173,7 +173,10 @@ fn every_text_form_measures_the_same_placeholder() {
                     });
             });
         }
-        widths.push((label, h.ui.arranged_rect(Layer::Main, node.unwrap()).size.w));
+        widths.push((
+            label,
+            h.ui().arranged_rect(Layer::Main, node.unwrap()).size.w,
+        ));
     }
     let borrowed = widths[0].1;
     assert!(borrowed > 0.0, "premise: the placeholder has width");

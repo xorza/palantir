@@ -1,7 +1,7 @@
 //! Non-wrapping labels in hug columns, which must never shrink below their
 //! full width.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -96,9 +96,9 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     }
 
     fn widths_at(surface_w: u32) -> Section<f32> {
-        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
+        let mut h = Harness::new(UVec2::new(surface_w, 400));
         let nodes = h.frame_value(build);
-        let width = |node| h.ui.arranged_rect(Layer::Main, node).size.w;
+        let width = |node| h.ui_ref().arranged_rect(Layer::Main, node).size.w;
         Section {
             grid: width(nodes.grid),
             section: width(nodes.section),
@@ -121,7 +121,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
 /// Pin: a non-wrapping `Text` reports MinContent on X equal to its full width; wrapping text reports the longest word. A Hug+Hug grid must floor the label column there, or slack distribution shrinks it and the paint overflows its cell.
 #[test]
 fn nonwrapping_text_minconent_equals_full_width() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 200));
+    let mut h = Harness::new(UVec2::new(400, 200));
     let label_node = h.frame_value(|ui| {
         Text::new("right column")
             .auto_id()
@@ -169,16 +169,16 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         label_node.unwrap()
     }
 
-    let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
+    let mut probe = Harness::new(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(build);
     let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
     // Between the grid's floor and the paragraph's max-content, slack distribution applies; the label cell still gets its full natural width.
     for surface_w in [400u32, 300, 250, 200] {
-        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
+        let mut h = Harness::new(UVec2::new(surface_w, 400));
         let label = h.frame_value(build);
-        let label_rect_w = h.ui.arranged_rect(Layer::Main, label).size.w;
+        let label_rect_w = h.ui().arranged_rect(Layer::Main, label).size.w;
         assert_eq!(
             label_rect_w, label_full,
             "label cell shrank below the label's natural width — \
@@ -214,16 +214,16 @@ fn two_hug_cols_default_label_hugs_full_width() {
           .inner
     }
 
-    let mut probe = UiHarness::with_text(UVec2::new(2000, 400));
+    let mut probe = Harness::new(UVec2::new(2000, 400));
     let probe_label = probe.frame_value(build);
     let label_full = probe.intrinsic(probe_label, Axis::X, LenReq::MaxContent);
     assert!(label_full > 0.0);
 
     // The paragraph's max-content dwarfs these surfaces (slack regime); the default label must still occupy its full width.
     for surface_w in [600u32, 500, 400, 300] {
-        let mut h = UiHarness::with_text(UVec2::new(surface_w, 400));
+        let mut h = Harness::new(UVec2::new(surface_w, 400));
         let label = h.frame_value(build);
-        let label_rect_w = h.ui.arranged_rect(Layer::Main, label).size.w;
+        let label_rect_w = h.ui().arranged_rect(Layer::Main, label).size.w;
         assert_eq!(
             label_rect_w, label_full,
             "default-wrap label shrank below its natural width — it would clip. \

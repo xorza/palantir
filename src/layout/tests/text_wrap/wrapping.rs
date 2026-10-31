@@ -1,6 +1,6 @@
 //! A wrapping leaf's height, its truncating peer, and the intrinsics both report.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::tests::support;
 use crate::layout::tests::support::PARAGRAPH;
@@ -19,8 +19,9 @@ use crate::widgets::{button::Button, panel::Panel, text::Text};
 use glam::UVec2;
 
 /// The wrap mode `node`'s first text shape records.
-fn text_wrap_of(h: &UiHarness, node: NodeId) -> TextWrap {
-    h.ui.tree(Layer::Main)
+fn text_wrap_of(h: &Harness, node: NodeId) -> TextWrap {
+    h.ui_ref()
+        .tree(Layer::Main)
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::Text { wrap, .. } => Some(*wrap),
@@ -31,7 +32,7 @@ fn text_wrap_of(h: &UiHarness, node: NodeId) -> TextWrap {
 
 #[test]
 fn wrapping_text_grows_height_in_narrow_frame() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let mut text_node = None;
     h.frame(|ui| {
         Panel::vstack()
@@ -49,21 +50,21 @@ fn wrapping_text_grows_height_in_narrow_frame() {
             });
     });
     let node = text_node.unwrap();
-    let r = h.ui.arranged_rect(Layer::Main, node);
+    let r = h.ui().arranged_rect(Layer::Main, node);
     assert_eq!(
         r.size,
         Size::new(60.0, lines_h(8, 16.0)),
         "eight lines in 60 px"
     );
     assert_eq!(text_wrap_of(&h, node), TextWrap::WrapWithOverflow);
-    let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
+    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
     assert_eq!(shaped.extent.size, r.size);
 }
 
 /// A `Button` with a label wider than its `Fixed` width elides to one line (`TextWrap::SingleLine`) rather than overflow or wrap.
 #[test]
 fn button_label_truncates_one_line_in_narrow_frame_by_default() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let mut node = None;
     h.frame(|ui| {
         Panel::vstack()
@@ -82,23 +83,23 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     );
 
     // Cut to the 80 px box less 2 × 12 padding and 2 × 1 border: 54 px of room.
-    let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
+    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
     assert_eq!(shaped.extent.size, Size::new(52.0, lines_h(1, 16.0)));
 }
 
 /// A wrapping `Text` in a `Grid` `Hug` column reshapes to the column's committed width, resolved in measure against `inner_avail` (200 px).
 #[test]
 fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
-    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let mut h = Harness::new(UVec2::new(200, 400));
     let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
-    let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
+    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
     assert_eq!(shaped.extent.size, Size::new(93.0, lines_h(4, 16.0)));
 }
 
 /// `Ui::intrinsic` returns sane values for a wrapping text leaf in a Grid `Auto` cell.
 #[test]
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
-    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let mut h = Harness::new(UVec2::new(200, 400));
     let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
     let max_w = h.intrinsic(node, Axis::X, LenReq::MaxContent);
     let min_w = h.intrinsic(node, Axis::X, LenReq::MinContent);
@@ -171,9 +172,9 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
     ];
     for (label, inner_kind) in inners {
         for h in [800u32, 400, 300, 200, 150, 100, 50] {
-            let mut harness = UiHarness::with_text(UVec2::new(800, h));
+            let mut harness = Harness::new(UVec2::new(800, h));
             let [chrome, inner, text] = harness.frame_value(|ui| build(ui, inner_kind));
-            let height = |node| harness.ui.arranged_rect(Layer::Main, node).size.h;
+            let height = |node| harness.ui_ref().arranged_rect(Layer::Main, node).size.h;
             // Three 14 px lines plus 2 × 8 padding at every surface height; the chrome grows past the surface to its inner container plus 2 × 16 padding.
             assert_eq!(height(text), lines_h(3, 14.0), "{label} surface_h={h}");
             assert_eq!(
@@ -196,7 +197,7 @@ fn a_hug_scroll_wraps_its_text_at_the_column_width() {
     use crate::widgets::scroll::Scroll;
 
     let paragraph = [PARAGRAPH; 4].join(" ");
-    let mut h = UiHarness::with_text(UVec2::new(600, 400));
+    let mut h = Harness::new(UVec2::new(600, 400));
     let mut text_node = None;
     h.frame(|ui| {
         Panel::vstack()
@@ -216,7 +217,7 @@ fn a_hug_scroll_wraps_its_text_at_the_column_width() {
             });
     });
     let node = text_node.unwrap();
-    let shaped = support::shaped_text(h.ui.layout(Layer::Main), node);
+    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
     // Five 19.203125 px lines end at 96.015625, which ceils to 97.
     assert_eq!(shaped.extent.size, Size::new(285.0, lines_h(5, 16.0)));
     assert_eq!(lines_h(5, 16.0), 97.0);

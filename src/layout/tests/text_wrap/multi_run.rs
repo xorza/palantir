@@ -1,7 +1,7 @@
 //! Several runs on one leaf: shaped apart, emitted apart, and cached apart.
 
+use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
-use crate::internals::ui_harness::UiHarness;
 use crate::layout::tests::support::ChatMessage;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::geometry::corners::Corners;
@@ -28,15 +28,15 @@ use glam::UVec2;
 /// Pin: two `ShapeRecord::Text` on one node are both shaped (`text_spans[node].len == 2`) at distinct `TextShapeKey`s.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let leaf = h.frame_value(build_multi_text_leaf);
-    let span = h.ui.layout(Layer::Main).text_spans[leaf.idx()];
+    let span = h.ui().layout(Layer::Main).text_spans[leaf.idx()];
     assert_eq!(
         span.len, 2,
         "leaf with two ShapeRecord::Text should record two text-shape entries"
     );
-    let first = h.ui.layout(Layer::Main).text_shapes[span.start as usize];
-    let second = h.ui.layout(Layer::Main).text_shapes[(span.start + 1) as usize];
+    let first = h.ui().layout(Layer::Main).text_shapes[span.start as usize];
+    let second = h.ui().layout(Layer::Main).text_shapes[(span.start + 1) as usize];
     assert_eq!(first.extent.size, Size::new(26.0, 16.0), "`first` at 14 px");
     assert_eq!(
         second.extent.size,
@@ -53,9 +53,9 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
 /// Pin: the encoder emits one `DrawText` per `ShapeRecord::Text` in record order, and `local_rect: Some(lr)` shifts the rect by `lr.min`.
 #[test]
 fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let leaf = h.frame_value(build_multi_text_leaf);
-    let owner_min = h.ui.arranged_rect(Layer::Main, leaf).min;
+    let owner_min = h.ui().arranged_rect(Layer::Main, leaf).min;
     let cmds = h.encode_paint();
     let mut drawn: Vec<glam::Vec2> = cmds
         .calls
@@ -88,16 +88,16 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
 /// Pin: the cross-frame measure cache replays multi-text leaves: frame 2 hits and must rebase the snapshot's subtree-local spans and text-shapes into the per-frame buffer.
 #[test]
 fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let f1_leaf = h.frame_value(build_multi_text_leaf);
-    let f1_span = h.ui.layout(Layer::Main).text_spans[f1_leaf.idx()];
-    let f1_first = h.ui.layout(Layer::Main).text_shapes[f1_span.start as usize];
-    let f1_second = h.ui.layout(Layer::Main).text_shapes[(f1_span.start + 1) as usize];
+    let f1_span = h.ui().layout(Layer::Main).text_spans[f1_leaf.idx()];
+    let f1_first = h.ui().layout(Layer::Main).text_shapes[f1_span.start as usize];
+    let f1_second = h.ui().layout(Layer::Main).text_shapes[(f1_span.start + 1) as usize];
     let f2_leaf = h.frame_value(build_multi_text_leaf);
-    let f2_span = h.ui.layout(Layer::Main).text_spans[f2_leaf.idx()];
+    let f2_span = h.ui().layout(Layer::Main).text_spans[f2_leaf.idx()];
     assert_eq!(f2_span.len, 2, "frame 2 must restore both text-shape slots");
-    let f2_first = h.ui.layout(Layer::Main).text_shapes[f2_span.start as usize];
-    let f2_second = h.ui.layout(Layer::Main).text_shapes[(f2_span.start + 1) as usize];
+    let f2_first = h.ui().layout(Layer::Main).text_shapes[f2_span.start as usize];
+    let f2_second = h.ui().layout(Layer::Main).text_shapes[(f2_span.start + 1) as usize];
 
     assert_eq!(
         (f1_first.key, f1_second.key),
@@ -120,7 +120,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
 #[test]
 fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     const FRAMES: u32 = 12;
-    let mut h = UiHarness::with_text(UVec2::new(200, 400));
+    let mut h = Harness::new(UVec2::new(200, 400));
     // Frame 0 shapes the unbounded root and the first bounded resolve.
     h.frame_value(|ui| {
         ChatMessage {
@@ -132,7 +132,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     });
 
     // Redrawing at the same width reshapes nothing: the measure cache short-circuits the subtree.
-    let before = h.ui.shaper().cache_counts();
+    let before = h.ui().shaper().cache_counts();
     h.frame_value(|ui| {
         ChatMessage {
             avatar_w: 40.0,
@@ -141,7 +141,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
         }
         .show(ui)
     });
-    let steady = h.ui.shaper().cache_counts() - before;
+    let steady = h.ui().shaper().cache_counts() - before;
     assert_eq!(steady.shapes, 0, "a steady frame must not reshape");
     assert_eq!(steady.supersedes, 0, "nor demote the buffer still in use");
 
@@ -149,7 +149,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     let mut shapes = 0;
     let mut supersedes = 0;
     for frame in 1..=FRAMES {
-        let before = h.ui.shaper().cache_counts();
+        let before = h.ui().shaper().cache_counts();
         h.frame_value(|ui| {
             ChatMessage {
                 avatar_w: 40.0 + frame as f32 * 3.0,
@@ -158,7 +158,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
             }
             .show(ui)
         });
-        let d = h.ui.shaper().cache_counts() - before;
+        let d = h.ui().shaper().cache_counts() - before;
         // The unbounded root is shaped once for the whole drag; more than one means a driver measured this node at two widths in a frame.
         assert_eq!(
             (d.shapes, d.supersedes),
@@ -174,7 +174,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     // layout-only frame promotes nothing, so what stays is the widths shaped in
     // its last `PROBATION_KEEP_FRAMES + 1` frames, the root long gone.
     assert_eq!(
-        h.ui.shaper().cosmic_cache_len(),
+        h.ui().shaper().cosmic_cache_len(),
         usize::try_from(PROBATION_KEEP_FRAMES + 1).unwrap(),
         "supersession is not reaching the drag's buffers through the layout stack",
     );

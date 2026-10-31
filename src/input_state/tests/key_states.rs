@@ -1,16 +1,16 @@
 //! A key's three states, whatever the modifiers, beside the exact chord.
 
+use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::shortcut::Shortcut;
-use crate::internals::ui_harness::UiHarness;
 use crate::ui::Ui;
 use glam::UVec2;
 
 /// What a frame reads of `key`: pressed, held, released.
-fn states(h: &mut UiHarness, key: Key) -> [bool; 3] {
+fn states(h: &mut Harness, key: Key) -> [bool; 3] {
     h.frame_value(|ui: &mut Ui| [ui.key_pressed(key), ui.key_held(key), ui.key_released(key)])
 }
 
@@ -18,7 +18,7 @@ fn states(h: &mut UiHarness, key: Key) -> [bool; 3] {
 /// held alone; its release reads released alone, once.
 #[test]
 fn a_key_reads_pressed_held_and_released_whatever_the_modifiers() {
-    let mut h = UiHarness::new(UVec2::new(64, 48));
+    let mut h = Harness::mono(UVec2::new(64, 48));
     states(&mut h, Key::Escape);
     h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Escape);
@@ -49,7 +49,7 @@ fn a_key_reads_pressed_held_and_released_whatever_the_modifiers() {
 /// release and holds nothing more; a release of a key never down reads nothing.
 #[test]
 fn a_hold_counts_each_press_once() {
-    let mut h = UiHarness::new(UVec2::new(64, 48));
+    let mut h = Harness::mono(UVec2::new(64, 48));
     let space = Key::Char(' ');
     states(&mut h, space);
     h.key(space);
@@ -106,7 +106,7 @@ fn a_hold_counts_each_press_once() {
 /// chord's letter does.
 #[test]
 fn a_letter_reads_whatever_shift_does_to_it() {
-    let mut h = UiHarness::new(UVec2::new(64, 48));
+    let mut h = Harness::mono(UVec2::new(64, 48));
     let w = Key::Char('w');
     states(&mut h, w);
     h.set_modifiers(Modifiers::SHIFT);
@@ -120,8 +120,8 @@ fn a_letter_reads_whatever_shift_does_to_it() {
 /// The surface losing the keyboard ends every hold, with its release edge.
 #[test]
 fn focus_loss_releases_every_held_key() {
-    let mut h = UiHarness::new(UVec2::new(64, 48));
-    let both = |h: &mut UiHarness| {
+    let mut h = Harness::mono(UVec2::new(64, 48));
+    let both = |h: &mut Harness| {
         h.frame_value(|ui: &mut Ui| {
             [
                 ui.key_held(Key::Char('w')),
@@ -143,7 +143,7 @@ fn focus_loss_releases_every_held_key() {
 /// key's release wakes nothing.
 #[test]
 fn a_read_key_wakes_on_its_press_and_release() {
-    let mut h = UiHarness::new(UVec2::new(64, 48));
+    let mut h = Harness::mono(UVec2::new(64, 48));
     let space = Key::Char(' ');
     states(&mut h, space);
     assert!(h.key(space).repaint_requested, "the press");

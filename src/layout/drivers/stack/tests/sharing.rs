@@ -1,6 +1,6 @@
 //! How a stack shares its main axis between children that do not all fit: each gives way from what it wants toward its floor.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -13,7 +13,7 @@ use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(800, 600);
 
-fn rect(h: &UiHarness, name: &'static str) -> Rect {
+fn rect(h: &Harness, name: &'static str) -> Rect {
     h.arranged(WidgetId::from_hash(name))
 }
 
@@ -58,7 +58,7 @@ fn a_scroll_gives_way_to_its_rigid_sibling() {
         ("hug, fill", Sizing::HUG, Sizing::FILL, 30.0, 0.0),
     ];
     for (label, middle, pan, middle_h, scroll_h) in cases {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             bounded(ui, |ui| {
                 Panel::vstack()
@@ -79,7 +79,7 @@ fn a_scroll_gives_way_to_its_rigid_sibling() {
 /// Each Hug stack in a chain gives its header 30 px of what its parent placed it at: 100, 70, 40, leaving 10 for the scroll.
 #[test]
 fn nested_stacks_share_down_the_chain() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         bounded(ui, |ui| {
             Panel::vstack().id(WidgetId::from_hash("a")).show(ui, |ui| {
@@ -102,7 +102,7 @@ fn nested_stacks_share_down_the_chain() {
 /// Children that can both give way share the slack in proportion to how far each can give: in 150 px, scrolls wanting 100 and 150 split 60 and 90. Children that cannot (two fixed 60 px blocks in 100) keep their extents and overflow.
 #[test]
 fn siblings_give_way_in_proportion_to_what_they_can_give() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
@@ -125,7 +125,7 @@ fn siblings_give_way_in_proportion_to_what_they_can_give() {
     assert_eq!(rect(&h, "short").size.h, 60.0);
     assert_eq!(rect(&h, "long").size.h, 90.0);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         bounded(ui, |ui| {
             for name in ["first", "second"] {
@@ -143,7 +143,7 @@ fn siblings_give_way_in_proportion_to_what_they_can_give() {
 /// The share reaches a scroll through any container that hands a smaller slot down (zstack, grid): the scroll ends at the 70 its header leaves.
 #[test]
 fn a_share_reaches_through_a_zstack_and_a_grid() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         bounded(ui, |ui| {
             header(ui, "header");
@@ -155,7 +155,7 @@ fn a_share_reaches_through_a_zstack_and_a_grid() {
     assert_eq!(rect(&h, "zstack").size.h, 70.0);
     assert_eq!(rect(&h, "scroll").size.h, 70.0);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         bounded(ui, |ui| {
             header(ui, "header");
@@ -183,7 +183,7 @@ fn an_hstack_shares_its_width_before_its_children_measure() {
         }
     };
     let pair = |first: &dyn Fn(&mut Ui, &'static str), second: &dyn Fn(&mut Ui, &'static str)| {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -229,7 +229,7 @@ fn scroll_content_does_not_give_way_on_its_panned_axis() {
     let scrolls: [(&str, Scrolling); 2] =
         [("horizontal", Scroll::horizontal), ("both", Scroll::both)];
     for (label, scroll) in scrolls {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             Panel::vstack()
                 .auto_id()
@@ -254,7 +254,7 @@ fn scroll_content_does_not_give_way_on_its_panned_axis() {
 /// A width is not taken back at arrange: a child keeps the width its text was shaped to and overflows. A Hug grid measures a Fill-column cell at unbounded width, so ten 4-letter words shape as one 343 px line (49 chars at 7 px); in a 200 px stack the cell still takes 343 though its floor is 28.
 #[test]
 fn arrange_does_not_take_a_width_back() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()

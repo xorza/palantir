@@ -1,16 +1,17 @@
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key_text::KeyText;
+use crate::input::pointer::PointerButton;
 use crate::input::policy::FocusPolicy;
 use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn typing_inserts_text_when_focused() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id));
 
     h.type_text("hi");
@@ -22,12 +23,12 @@ fn typing_inserts_text_when_focused() {
 /// A field types what the press produced, not the key it names.
 #[test]
 fn a_field_types_the_text_a_press_produced() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id));
 
     h.on_input(InputEvent::KeyDown {
@@ -52,12 +53,12 @@ fn a_field_types_the_text_a_press_produced() {
 /// A command chord types nothing, though macOS reports Cmd+A as text `"a"`.
 #[test]
 fn a_command_chord_types_nothing_it_reports() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::from("seed");
     let id = WidgetId::from_hash("editor");
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id));
 
     h.set_modifiers(Modifiers::CTRL);
@@ -73,7 +74,7 @@ fn a_command_chord_types_nothing_it_reports() {
 
 #[test]
 fn keystrokes_ignored_when_not_focused() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::new();
 
     h.key(Key::Char('x'));
@@ -85,7 +86,7 @@ fn keystrokes_ignored_when_not_focused() {
 
 #[test]
 fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::from("seed");
     let id = WidgetId::from_hash("editor");
 
@@ -94,7 +95,7 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
     assert!(!h.key(Key::Escape).repaint_requested);
     assert!(!h.key(Key::Char('s')).repaint_requested);
 
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id));
     h.frame(Field::EDITOR.scene(&mut buf));
 
@@ -108,12 +109,12 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
 
 #[test]
 fn escape_blurs_focus() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::from("text");
     let id = WidgetId::from_hash("editor");
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id));
 
     h.key(Key::Escape);
@@ -124,11 +125,11 @@ fn escape_blurs_focus() {
 #[test]
 fn caret_clamps_after_external_buffer_shrink() {
     // The buffer can shrink between frames; `show()` must clamp a stale caret.
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::from("hello");
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     h.key(Key::End);
     h.frame(Field::EDITOR.scene(&mut buf));
 
@@ -143,11 +144,11 @@ fn caret_clamps_after_external_buffer_shrink() {
 
 #[test]
 fn typed_text_inserts_at_caret_when_focused() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::new();
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
 
     h.type_text("héllo");
     h.frame(Field::EDITOR.scene(&mut buf));
@@ -156,11 +157,11 @@ fn typed_text_inserts_at_caret_when_focused() {
 
 #[test]
 fn pointer_state_respects_pointer_left() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::new();
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     h.pointer_left();
     h.key(Key::Char('z'));
 
@@ -170,15 +171,15 @@ fn pointer_state_respects_pointer_left() {
 
 #[test]
 fn pressed_button_does_not_route_to_textedit_under_default_policy() {
-    let mut h = UiHarness::with_text(WIDE);
+    let mut h = Harness::new(WIDE);
     let mut buf = String::new();
 
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(WidgetId::from_hash("editor")));
 
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
-    h.click_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0)));
     assert_eq!(
         h.focus(),
         None,
@@ -192,14 +193,14 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
 
 #[test]
 fn pressed_button_under_preserve_policy_keeps_focus() {
-    let mut h = UiHarness::with_text(WIDE);
-    h.ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
+    let mut h = Harness::new(WIDE);
+    h.ui().set_focus_policy(FocusPolicy::PreserveOnMiss);
     let mut buf = String::new();
 
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
-    h.click_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("plain"), Vec2::new(20.0, 20.0)));
 
     h.key(Key::Char('x'));
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
@@ -209,15 +210,15 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
 #[test]
 fn pressed_button_pointer_jitter_does_not_steal_caret() {
     // Pointer movement while not pressed must not reset the caret.
-    let mut h = UiHarness::with_text(WIDE);
+    let mut h = Harness::new(WIDE);
     let mut buf = String::from("ab");
 
     h.frame(Field::EDITOR.scene(&mut buf));
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     h.key(Key::End);
     h.frame(Field::EDITOR.scene(&mut buf));
 
-    h.move_to(Vec2::new(10.0, 20.0));
+    h.hover(Vec2::new(10.0, 20.0));
     h.key(Key::Char('!'));
 
     h.frame(Field::EDITOR.scene(&mut buf));
@@ -227,16 +228,19 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
 #[test]
 fn click_lands_caret_at_pressed_position() {
     // Mono fallback: 8 px per char plus the default 8 px left padding, so x=32 is caret 3.
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = String::from("hello world");
 
     h.frame(Field::PADDED.scene(&mut buf));
-    h.press_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0));
+    h.press(
+        h.point_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0)),
+        PointerButton::Left,
+    );
 
     h.frame(Field::PADDED.scene(&mut buf));
     h.key(Key::Char('X'));
     h.frame(Field::PADDED.scene(&mut buf));
-    h.release();
+    h.release(PointerButton::Left);
 
     assert_eq!(buf, "helXlo world");
 }
@@ -244,16 +248,19 @@ fn click_lands_caret_at_pressed_position() {
 #[test]
 fn click_uses_overridden_padding() {
     let pad = Some(Spacing::xy(24.0, 6.0));
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = String::from("hello world");
 
     h.frame(Field::PADDED.with_padding(pad).scene(&mut buf));
-    h.press_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0));
+    h.press(
+        h.point_in(WidgetId::from_hash("ed"), Vec2::new(32.0, 20.0)),
+        PointerButton::Left,
+    );
 
     h.frame(Field::PADDED.with_padding(pad).scene(&mut buf));
     h.key(Key::Char('X'));
     h.frame(Field::PADDED.with_padding(pad).scene(&mut buf));
-    h.release();
+    h.release(PointerButton::Left);
 
     assert_eq!(buf, "hXello world");
 }
@@ -273,12 +280,15 @@ fn drag_select_continues_past_editor_bounds() {
     // the anchor; it gates on capture-based `held`, not hover-gated `pressed`.
     let ed_id = WidgetId::from_hash("drag-ed");
 
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = String::from("hello world"); // 11 bytes
 
     h.frame(|ui| body(ui, &mut buf));
 
-    h.press_in(ed_id, Vec2::new(22.0, 20.0));
+    h.press(
+        h.point_in(ed_id, Vec2::new(22.0, 20.0)),
+        PointerButton::Left,
+    );
     h.frame(|ui| body(ui, &mut buf));
     let anchor = h.state::<TextEditState>(ed_id).edit.caret;
     assert!(
@@ -343,7 +353,7 @@ fn drag_select_continues_past_editor_bounds() {
         );
     }
 
-    h.release();
+    h.release(PointerButton::Left);
     h.frame(|ui| body(ui, &mut buf));
     {
         let st = h.state::<TextEditState>(ed_id);
@@ -358,7 +368,7 @@ fn drag_select_continues_past_editor_bounds() {
 
 #[test]
 fn two_textedits_only_one_focused_at_a_time() {
-    let mut h = UiHarness::with_text(WIDE);
+    let mut h = Harness::new(WIDE);
     let mut a = String::new();
     let mut b = String::new();
     let id_a = WidgetId::from_hash("a");
@@ -378,7 +388,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     };
 
     h.frame(|ui| body(ui, &mut a, &mut b));
-    h.click_in(id_a, Vec2::new(50.0, 20.0));
+    h.click(h.point_in(id_a, Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id_a));
 
     h.key(Key::Char('1'));
@@ -386,7 +396,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     assert_eq!(a, "1");
     assert_eq!(b, "");
 
-    h.click_in(id_b, Vec2::new(70.0, 20.0));
+    h.click(h.point_in(id_b, Vec2::new(70.0, 20.0)));
     assert_eq!(h.focus(), Some(id_b));
 
     h.key(Key::Char('2'));
@@ -398,7 +408,7 @@ fn two_textedits_only_one_focused_at_a_time() {
 #[test]
 fn select_all_on_focus_gates_on_the_flag() {
     // Programmatic focus (DragValue click-to-edit): the flag selects the buffer.
-    let mut h = UiHarness::with_text(WIDE);
+    let mut h = Harness::new(WIDE);
     let mut on = String::from("1.985");
     let mut off = String::from("42.0");
     let on_id = WidgetId::from_hash("sa-on");
@@ -450,7 +460,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
 
     // The same field fraction must hit the same glyph at any zoom; the click arrives post-transform.
     fn caret_at_scale(scale: f32) -> usize {
-        let mut h = UiHarness::with_text(WIDE);
+        let mut h = Harness::new(WIDE);
         let mut buf = String::from("abcdefghij");
         let id = WidgetId::from_hash("scaled-ed");
         let render = |ui: &mut Ui, buf: &mut String| {
@@ -466,7 +476,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
                 });
         };
         h.frame(|ui| render(ui, &mut buf));
-        h.press_in(id, Vec2::new(80.0, 20.0));
+        h.press(h.point_in(id, Vec2::new(80.0, 20.0)), PointerButton::Left);
         h.frame(|ui| render(ui, &mut buf));
         h.state::<TextEditState>(id).edit.caret
     }
@@ -488,7 +498,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
 /// Focus and hover each answer "within" by the same ancestry walk; the pointer leaving ends hover but keeps focus.
 #[test]
 fn focus_and_hover_within_follow_their_targets_ancestry() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let mut buf = String::new();
     let editor = WidgetId::from_hash("editor");
     let holder = WidgetId::from_hash("holder");
@@ -514,21 +524,24 @@ fn focus_and_hover_within_follow_their_targets_ancestry() {
         "nothing focused → no ancestor owns focus"
     );
 
-    h.click_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0));
+    h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(editor));
     assert!(h.is_focus_within(editor), "self-inclusive");
     assert!(h.is_focus_within(holder));
     assert!(!h.is_focus_within(bystander));
     assert!(!h.is_focus_within(WidgetId::from_hash("unrecorded")));
-    assert!(h.ui.is_hover_within(editor), "self-inclusive");
-    assert!(h.ui.is_hover_within(holder));
-    assert!(!h.ui.is_hover_within(bystander));
+    assert!(h.ui().is_hover_within(editor), "self-inclusive");
+    assert!(h.ui().is_hover_within(holder));
+    assert!(!h.ui().is_hover_within(bystander));
 
-    h.move_to(Vec2::new(120.0, 20.0));
+    h.hover(Vec2::new(120.0, 20.0));
     h.frame(&mut record);
-    assert!(!h.ui.is_hover_within(holder), "the pointer left the holder");
     assert!(
-        !h.ui.is_hover_within(bystander),
+        !h.ui().is_hover_within(holder),
+        "the pointer left the holder"
+    );
+    assert!(
+        !h.ui().is_hover_within(bystander),
         "nothing sensed is hovered"
     );
     assert!(h.is_focus_within(holder), "focus stays where it was");
@@ -537,7 +550,7 @@ fn focus_and_hover_within_follow_their_targets_ancestry() {
 /// A tap (press and release fed together) places the caret; the press lands a frame before its release.
 #[test]
 fn a_tap_places_the_caret() {
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = String::from("hello");
     let ed_id = WidgetId::from_hash("ed");
     h.prime(2, Field::PADDED.scene(&mut buf));
@@ -548,15 +561,15 @@ fn a_tap_places_the_caret() {
 
     // Mono, 8 px per char: x = inner.min + 14 is 1.75 glyphs in, so caret 2.
     let rect = h.arranged(ed_id);
-    let inner_left = h.ui.theme().text_edit.defaults.padding.to_array()[0];
+    let inner_left = h.ui().theme().text_edit.defaults.padding.to_array()[0];
     let mid = rect.size.h * 0.5;
-    h.click_in(ed_id, Vec2::new(inner_left + 14.0, mid));
+    h.click(h.point_in(ed_id, Vec2::new(inner_left + 14.0, mid)));
     h.frame(Field::PADDED.scene(&mut buf));
     assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
 
     // Shift held, a tap at inner.min + 30 extends from 2: selection 2..4.
     h.set_modifiers(Modifiers::SHIFT);
-    h.click_in(ed_id, Vec2::new(inner_left + 30.0, mid));
+    h.click(h.point_in(ed_id, Vec2::new(inner_left + 30.0, mid)));
     h.frame(Field::PADDED.scene(&mut buf));
     let edit = &h.state::<TextEditState>(ed_id).edit;
     assert_eq!(

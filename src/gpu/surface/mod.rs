@@ -8,8 +8,7 @@ pub(crate) mod damage_canvas;
     not(feature = "internals"),
     expect(
         unreachable_pub,
-        reason = "`pub` for the `internals` re-export; a build without it reaches the type only \
-                  through `HeadlessWindow`"
+        reason = "`pub` for the `internals` re-export, which a build without it lacks"
     )
 )]
 pub(crate) mod owned_target;

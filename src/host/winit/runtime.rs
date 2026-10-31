@@ -15,6 +15,7 @@ use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::HostHandle;
+use crate::host::winit::remote::QueryTask;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
@@ -117,6 +118,15 @@ impl<T: App + 'static> WinitRuntime<T> {
 
     pub(super) fn by_token(&mut self, token: WindowToken) -> Option<&mut Window> {
         self.windows.by_token(token)
+    }
+
+    /// Run `task` with `&mut` the app and the `Ui` of `token`'s window, between two of its frames,
+    /// and ask that window for a frame; a window that is gone drops the task unrun.
+    pub(super) fn query(&mut self, token: WindowToken, task: QueryTask<T>) {
+        if let Some(win) = self.windows.by_token(token) {
+            task(&mut self.app, &mut win.driver.ui);
+            win.next = FramePresent::Immediate;
+        }
     }
 
     /// Publish whether the window at `slot` is hidden, for the handles to read.

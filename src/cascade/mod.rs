@@ -156,6 +156,13 @@ impl Cascade {
             .filter(move |row| row.rect.contains(pos))
     }
 
+    /// Topmost entry under `pos` whose `Sense` passes `filter`.
+    pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
+        self.hits_under(pos)
+            .find(|row| filter(row.sense))
+            .map(|row| row.widget_id)
+    }
+
     /// One reverse walk finding the topmost hover, scroll and pinch targets; [`Self::hit_test_press`] is the press twin. Slots are independent, and the walk stops once all are filled.
     pub(crate) fn hit_test_targets(&self, pos: Vec2) -> HitTargets {
         let mut targets = HitTargets::default();
@@ -331,13 +338,12 @@ pub(crate) mod internals {
     use crate::cascade::Cascade;
     #[cfg(test)]
     use crate::common::content_hash::ContentHash;
-    use crate::input::sense::Sense;
     #[cfg(test)]
     use crate::primitives::geometry::rect::Rect;
+    #[cfg(test)]
     use crate::primitives::identity::widget_id::WidgetId;
     #[cfg(test)]
     use crate::scene::forest::Forest;
-    use glam::Vec2;
 
     /// One paint row with its owning widget; what the damage oracle diffs.
     #[cfg(test)]
@@ -425,17 +431,6 @@ pub(crate) mod internals {
                     );
                 }
             }
-        }
-
-        /// Topmost entry under `pos` whose `Sense` passes `filter`.
-        pub(crate) fn hit_test(
-            &self,
-            pos: Vec2,
-            filter: impl Fn(Sense) -> bool,
-        ) -> Option<WidgetId> {
-            self.hits_under(pos)
-                .find(|row| filter(row.sense))
-                .map(|row| row.widget_id)
         }
     }
 }

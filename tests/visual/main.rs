@@ -2,7 +2,7 @@
 //!
 //! Both directories are gitignored, so baselines are local. A fresh checkout has none: the first run writes each golden and fails it, so someone looks before it becomes the reference.
 //!
-//! `harness` raises the UI, `palantir::golden` compares, `fixtures/` holds the scenes. Name each new golden in `golden_name`.
+//! `visual_rig` raises the UI, `palantir::golden` compares, `fixtures/` holds the scenes. Name each new golden in `golden_name`.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -12,7 +12,6 @@
 mod fixtures;
 mod golden_name;
 mod goldens;
-mod harness;
 mod kept_on_failure;
 /// The showcase's support module, compiled in so a golden renders a showcase page itself.
 #[expect(
@@ -22,16 +21,17 @@ mod kept_on_failure;
 )]
 #[path = "../../examples/showcase/support.rs"]
 mod support;
+mod visual_rig;
 
 use glam::UVec2;
 use palantir::{FramePaint, RgbaF32, Ui, WindowConfig, WindowToken};
 
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
-/// Harness smoke test: an empty scene reads back as the clear color, and a replayed record pass reproduces it pixel-for-pixel.
+/// VisualRig smoke test: an empty scene reads back as the clear color, and a replayed record pass reproduces it pixel-for-pixel.
 #[test]
 fn readback_returns_clear_color_for_empty_scene() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let size = UVec2::new(16, 16);
     let (sr, sg, sb) = (0.5, 0.25, 0.75);
     let clear = RgbaF32::srgb(sr, sg, sb);
@@ -67,7 +67,7 @@ fn readback_returns_clear_color_for_empty_scene() {
 #[test]
 #[should_panic(expected = "Ui::open_window(WindowToken(1))")]
 fn opening_a_window_offscreen_panics() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     h.size(UVec2::new(16, 16))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
@@ -79,7 +79,7 @@ fn opening_a_window_offscreen_panics() {
 #[test]
 #[should_panic(expected = "Ui::close_window(WindowToken(2))")]
 fn closing_a_window_offscreen_panics() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     h.size(UVec2::new(16, 16))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {

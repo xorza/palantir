@@ -16,12 +16,11 @@ use crate::gpu::test_gpu::{
     isolated_headless_test_gpu_capped,
 };
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
-use crate::host::window_driver::CpuFrame;
+use crate::host::window_driver::{CpuFrame, FrameDepth};
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::icons::internals::{ONE_COLOR, TWO_COLORS};
 use crate::image_registry::image_handle::ImageHandle;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
@@ -343,7 +342,9 @@ fn a_host_recovers_from_a_second_loss_inside_a_frame() {
     host.recover(second.handles());
     let lost = second.target("palantir.test.recovery.second", SIZE);
     let spec = host.spec(lost.as_target(), 1.0);
-    let CpuFrame { mode, .. } = host.core.record(&mut host.driver, spec, &mut scene);
+    let CpuFrame { mode, .. } =
+        host.core
+            .record(&mut host.driver, spec, &mut scene, FrameDepth::Paint);
     second.lose();
     host.core.submit(&mut host.driver, lost.as_target(), mode);
     assert!(host.is_device_lost());
@@ -364,7 +365,7 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
         .build();
     let region = Rect::new(2.0, 2.0, 8.0, 6.0);
     let asked = RefCell::new(None);
-    let mut app = RecordApp::new(|ui: &mut Ui| {
+    let mut app = |ui: &mut Ui| {
         Block::new()
             .id_salt("tile")
             .pos((4.0, 4.0))
@@ -374,7 +375,7 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
         if asked.borrow().is_none() {
             *asked.borrow_mut() = ui.request_screenshot(Some(region));
         }
-    });
+    };
     let size = UVec2::new(16, 12);
     host.frame(
         first

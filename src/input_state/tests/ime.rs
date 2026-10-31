@@ -1,11 +1,11 @@
 //! IME text: commits typed in place among key presses, split between characters, and the preedit a focused widget reads.
 
 use crate::common::span::Span;
+use crate::host::harness::Harness;
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -21,12 +21,12 @@ fn field() -> WidgetId {
 /// A focused, empty field, settled: the harness and the field's bound text.
 #[derive(Debug)]
 struct FocusedField {
-    h: UiHarness,
+    h: Harness,
     buf: String,
 }
 
 fn focused_field() -> FocusedField {
-    let mut h = UiHarness::with_text(SURFACE);
+    let mut h = Harness::new(SURFACE);
     let mut buf = String::new();
     h.frame(|ui| record(ui, &mut buf));
     h.set_focus(field());
@@ -79,7 +79,7 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
         cursor: Some(Span::new(3, 3)),
     }));
     h.frame(|ui| record(ui, &mut buf));
-    let preedit = h.ui.ime_preedit().expect("a live composition");
+    let preedit = h.ui().ime_preedit().expect("a live composition");
     assert_eq!(
         (preedit.text, preedit.cursor),
         ("かな", Some(Span::new(3, 3)))
@@ -88,7 +88,7 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
 
     h.on_input(InputEvent::ImeCommit("仮名"));
     h.frame(|ui| record(ui, &mut buf));
-    assert_eq!(h.ui.ime_preedit(), None, "a commit ends it");
+    assert_eq!(h.ui().ime_preedit(), None, "a commit ends it");
     assert_eq!(buf, "仮名");
 
     h.on_input(InputEvent::ImePreedit(ImePreedit {
@@ -96,13 +96,17 @@ fn the_preedit_is_a_level_for_the_focused_widget() {
         cursor: None,
     }));
     h.frame(|ui| record(ui, &mut buf));
-    assert!(h.ui.ime_preedit().is_some());
+    assert!(h.ui().ime_preedit().is_some());
     h.clear_focus();
     h.frame(|ui| record(ui, &mut buf));
-    assert_eq!(h.ui.ime_preedit(), None, "it is the focused widget's alone");
+    assert_eq!(
+        h.ui().ime_preedit(),
+        None,
+        "it is the focused widget's alone"
+    );
     h.set_focus(field());
     h.frame(|ui| record(ui, &mut buf));
-    assert_eq!(h.ui.ime_preedit(), None, "focus that left retired it");
+    assert_eq!(h.ui().ime_preedit(), None, "focus that left retired it");
 }
 
 /// A commit behind a held key waits with it, keeping its text (the queue copied it, the host's string being gone), and types after the key.

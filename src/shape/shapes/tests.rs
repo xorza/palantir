@@ -161,8 +161,8 @@ fn image_dimensions_above_u16_survive_lowering() {
 /// `GradientId` the gate cannot see.
 #[test]
 fn builders_refuse_what_they_check() {
+    use crate::host::harness::Harness;
     use crate::internals::panic_probe;
-    use crate::internals::ui_harness::UiHarness;
     use crate::primitives::geometry::corners::Corners;
     use crate::primitives::geometry::cubic_bezier::CubicBezier;
     use crate::primitives::geometry::mesh::Mesh;
@@ -397,7 +397,7 @@ fn builders_refuse_what_they_check() {
         },
         || drop(Shape::shadow(Shadow::NONE).at(Rect::new(0.0, 0.0, N, 8.0))),
         || {
-            let mut h = UiHarness::arena();
+            let mut h = Harness::mono(UVec2::ONE);
             let text = h.ui().intern("t");
             drop(Shape::text(text, GlyphFont::new(16.0)).at_origin(Vec2::new(N, 0.0)));
         },

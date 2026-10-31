@@ -1,11 +1,11 @@
 //! Keyboard focus: where Tab and Shift+Tab land and in which domain, scopes that keep the press, the focus ring, overlays.
 
+use crate::host::harness::Harness;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::sense::Sense;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
@@ -86,7 +86,7 @@ enum Press {
 }
 
 /// One Tab (or Shift+Tab) press and a recorded frame; the trickle queue admits one command key per frame.
-fn press(h: &mut UiHarness, back: bool, record: &mut impl FnMut(&mut Ui)) {
+fn press(h: &mut Harness, back: bool, record: &mut impl FnMut(&mut Ui)) {
     h.set_modifiers(if back {
         Modifiers::SHIFT
     } else {
@@ -175,7 +175,7 @@ fn tab_walks_the_stops_of_its_domain_in_order() {
         },
     ];
     for walk in walks {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let mut record = scene(walk.overlays);
         h.frame(&mut record);
         if let Some(from) = walk.from {
@@ -200,7 +200,7 @@ fn a_scope_that_takes_focus_keeps_tab() {
         (KeyFilter::ACCEL | KeyFilter::FOCUS, true),
         (KeyFilter::ACCEL, false),
     ] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let mut record = |ui: &mut Ui| {
             Panel::vstack()
                 .id(id("root"))
@@ -254,34 +254,35 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
                 .show(ui);
         });
     };
-    let rings = |h: &UiHarness| {
+    let rings = |h: &Harness| {
         ["a", "b"].map(|name| {
             let node = h.node_of(id(name)).expect("recorded").node;
-            h.ui.tree(Layer::Main)
+            h.ui_ref()
+                .tree(Layer::Main)
                 .chrome(node)
                 .is_some_and(|row| row.ring)
         })
     };
-    let padding = |h: &UiHarness| {
+    let padding = |h: &Harness| {
         let node = h.node_of(id("a")).expect("recorded").node;
-        h.ui.tree(Layer::Main).records.layout()[node.idx()].padding
+        h.ui_ref().tree(Layer::Main).records.layout()[node.idx()].padding
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(&mut record);
     let unringed = padding(&h);
 
     press(&mut h, false, &mut record);
     assert_eq!(rings(&h), [true, false], "Tab rings the stop it reaches");
-    let theme = &h.ui.theme().focus_ring;
+    let theme = &h.ui_ref().theme().focus_ring;
     assert_eq!(
-        h.ui.tree(Layer::Main).focus_ring,
+        h.ui_ref().tree(Layer::Main).focus_ring,
         ShapeStroke::from(Stroke::new(theme.color, theme.width)),
     );
     assert_eq!(padding(&h), unringed, "the ring moves no layout");
 
     let b = h.center_of(id("b"));
-    h.click_at(b);
+    h.click(b);
     h.frame(&mut record);
     assert_eq!(h.focus(), Some(id("b")));
     assert_eq!(
@@ -323,7 +324,7 @@ fn dialog_scene(open: bool, stops: bool) -> impl FnMut(&mut Ui) {
 /// stays there, and a dialog with no stop moves nothing.
 #[test]
 fn a_dialog_takes_focus_as_it_opens_and_gives_it_back() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(dialog_scene(false, true));
     h.set_focus(id("a"));
     h.frame(dialog_scene(false, true));
@@ -409,12 +410,12 @@ enum Entry {
 #[test]
 fn focus_entering_an_overlay_by_any_path_returns_as_it_closes() {
     for entry in [Entry::Pointer, Entry::Program] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(popup_scene(false));
         h.set_focus(id("a"));
         h.frame(popup_scene(true));
         match entry {
-            Entry::Pointer => h.click_on(id("p1")),
+            Entry::Pointer => h.click(id("p1")),
             Entry::Program => h.set_focus(id("p1")),
         }
         h.frame(popup_scene(true));
@@ -447,14 +448,14 @@ fn arrows_walk_an_arrow_group() {
                 });
         }
     };
-    let arrow = |h: &mut UiHarness, mods: Modifiers, key: Key, record: &mut dyn FnMut(&mut Ui)| {
+    let arrow = |h: &mut Harness, mods: Modifiers, key: Key, record: &mut dyn FnMut(&mut Ui)| {
         h.set_modifiers(mods);
         h.key(key);
         h.frame(&mut *record);
     };
     for own in [KeyFilter::NONE, KeyFilter::ALL.difference(KeyFilter::FOCUS)] {
         let mut record = group(own);
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(&mut record);
         h.set_focus(id("a"));
         h.frame(&mut record);
@@ -490,7 +491,7 @@ fn a_popup_nested_in_a_dialog_traps_tab() {
             });
         });
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(record);
     h.set_focus(id("p1"));
     h.frame(record);
@@ -523,7 +524,7 @@ fn a_dialog_in_a_dialog_takes_focus_and_gives_it_back() {
             });
         }
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(record(false));
     h.frame(record(false));
     assert_eq!(h.focus(), Some(id("m1")), "the outer dialog took focus");

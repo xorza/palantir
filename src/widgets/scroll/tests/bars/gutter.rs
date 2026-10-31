@@ -1,6 +1,6 @@
 //! The width a bar reserves from the viewport, and the padding it lands in.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -16,7 +16,7 @@ use glam::UVec2;
 #[test]
 fn vertical_overflow_reserves_bar_thickness_on_inner() {
     let surface = UVec2::new(400, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -31,7 +31,7 @@ fn vertical_overflow_reserves_bar_thickness_on_inner() {
     };
     h.prime(2, build);
     assert_eq!(
-        scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
+        scroll_viewport(h.ui_ref(), WidgetId::from_hash("scroll")),
         Size::new(188.0, 200.0),
         "V overflow reserves theme.thickness + theme.gap = 12px on the right; H axis untouched"
     );
@@ -40,7 +40,7 @@ fn vertical_overflow_reserves_bar_thickness_on_inner() {
 #[test]
 fn user_padding_is_preserved_when_bar_reserves() {
     let surface = UVec2::new(400, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -56,7 +56,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
     };
     h.prime(2, build);
     assert_eq!(
-        scroll_viewport(&h.ui, WidgetId::from_hash("scroll")),
+        scroll_viewport(h.ui_ref(), WidgetId::from_hash("scroll")),
         Size::new(156.0, 168.0)
     );
 }
@@ -79,7 +79,7 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
     });
     let theme = theme();
     let expected_x = 200.0 - theme.thickness;
-    let overlays = thumb_rects(&ui.ui, "scroll");
+    let overlays = thumb_rects(ui.ui_ref(), "scroll");
     assert_eq!(overlays.len(), 1, "one vertical thumb");
     for r in &overlays {
         assert_eq!(
@@ -114,17 +114,17 @@ fn bar_reservation_stays_constant_across_overflow_toggle() {
             });
     };
 
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.prime(2, |ui| build(ui, 800.0));
     assert_eq!(
-        read_viewport(&mut h.ui),
+        read_viewport(h.ui()),
         Size::new(188.0, 200.0),
         "viewport = 200 - (width + gap) when content overflows",
     );
 
     h.prime(2, |ui| build(ui, 50.0));
     assert_eq!(
-        read_viewport(&mut h.ui),
+        read_viewport(h.ui()),
         Size::new(188.0, 200.0),
         "viewport stays the same when content fits — gutter is constant",
     );
@@ -135,7 +135,7 @@ fn bar_reservation_stays_constant_across_overflow_toggle() {
 fn overlay_mode_skips_gutter_reservation() {
     use crate::widgets::scroll::bars::BarMode;
     let surface = UVec2::new(400, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let scroll_id = WidgetId::from_hash("scroll");
     let scene = |ui: &mut Ui| {
         Panel::vstack()
@@ -152,13 +152,13 @@ fn overlay_mode_skips_gutter_reservation() {
     };
     h.prime(2, scene);
     assert_eq!(
-        scroll_viewport(&h.ui, scroll_id),
+        scroll_viewport(h.ui_ref(), scroll_id),
         Size::new(200.0, 200.0),
         "Overlay: viewport = full outer (no gutter reservation), \
          even when content overflows and the bar is drawn",
     );
     assert_eq!(
-        scroll_content(&h.ui, scroll_id),
+        scroll_content(h.ui_ref(), scroll_id),
         Size::new(180.0, 800.0),
         "the content overflows the viewport on Y, so the bar is drawn"
     );

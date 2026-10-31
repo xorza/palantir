@@ -1,5 +1,5 @@
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::size_trio::SizeTrio;
+use crate::host::harness::Harness;
+use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 
 use crate::primitives::geometry::spacing::Spacing;
@@ -20,10 +20,10 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
         margin: Spacing::xy(0.0, 5.0),
         ..SeparatorTheme::default()
     };
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     // Loudly different global slot; a styled rule must not reach it.
-    h.ui.theme_mut().separator.thickness = 11.0;
-    h.ui.theme_mut().separator.margin = Spacing::all(9.0);
+    h.ui().theme_mut().separator.thickness = 11.0;
+    h.ui().theme_mut().separator.margin = Spacing::all(9.0);
 
     let [inherited, explicit, global, thick] = h.frame_value(|ui| {
         let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
@@ -46,8 +46,8 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
         .inner
     });
 
-    let layouts = h.ui.tree(Layer::Main).records.layout();
-    let rects = &h.ui.layout(Layer::Main).rect;
+    let layouts = h.ui_ref().tree(Layer::Main).records.layout();
+    let rects = &h.ui_ref().layout(Layer::Main).rect;
     assert_eq!(
         layouts[inherited.idx()].margin,
         Spacing::xy(0.0, 5.0),
@@ -98,7 +98,7 @@ fn explicit_size_overrides_stretch_default() {
 /// The `Hug + Stretch` default is per-axis: in a 400x300 `ZStack` untouched, the rule stretches to 400 at thickness 1. `HAlign::Center` keeps width at `Hug`'s 0, centered at `(400 - 0) / 2`. `VAlign::Bottom` leaves the horizontal axis `Auto`, still stretched, and pins the top at `300 - 1`.
 #[test]
 fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
-    let mut h = UiHarness::new(UVec2::new(400, 300));
+    let mut h = Harness::mono(UVec2::new(400, 300));
     let [default, centered, bottom] = h.frame_value(|ui| {
         let layers = Panel::zstack().auto_id().size((Sizing::FILL, Sizing::FILL));
         layers
@@ -117,7 +117,7 @@ fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
             })
             .inner
     });
-    let rects = &h.ui.layout(Layer::Main).rect;
+    let rects = &h.ui_ref().layout(Layer::Main).rect;
     let d = rects[default.idx()];
     assert_eq!(
         (d.min.x, d.size.w),

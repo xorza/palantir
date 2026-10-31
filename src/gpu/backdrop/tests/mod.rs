@@ -2,8 +2,7 @@
 //! against whole repaints.
 
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
-use crate::host::headless_window::HeadlessWindow;
-use crate::internals::record_app::RecordApp;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -17,7 +16,6 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
-use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
@@ -62,11 +60,9 @@ fn scene(ui: &mut Ui, sigma: Option<f32>) {
 
 fn frame(sigma: Option<f32>) -> RgbaImage {
     let gpu = headless_test_gpu();
-    let mut window = HeadlessWindow::builder(gpu.handles())
-        .shaper(TextShaper::test_mono())
-        .open(SIZE, 1.0);
+    let mut window = Harness::builder(SIZE).mono().gpu(gpu.handles()).build();
     window.ui().theme_mut().window_clear = RgbaF32::BLACK;
-    let mut app = RecordApp::new(|ui: &mut Ui| scene(ui, sigma));
+    let mut app = |ui: &mut Ui| scene(ui, sigma);
     window.frame(&mut app);
     window.read_back()
 }
@@ -260,18 +256,16 @@ fn whole(scene: impl FnMut(&mut Ui)) -> RgbaImage {
 }
 
 /// [`whole`] on a window of `size`.
-fn whole_at(size: UVec2, scene: impl FnMut(&mut Ui)) -> RgbaImage {
+fn whole_at(size: UVec2, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, size, RgbaF32::BLACK);
-    window.frame(&mut RecordApp::new(scene));
+    window.frame(&mut scene);
     window.read_back()
 }
 
 /// A fresh window on `gpu` of `size` at scale 1 that clears to `clear`.
-fn window(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> HeadlessWindow {
-    let mut window = HeadlessWindow::builder(gpu.handles())
-        .shaper(TextShaper::test_mono())
-        .open(size, 1.0);
+fn window(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> Harness {
+    let mut window = Harness::builder(size).mono().gpu(gpu.handles()).build();
     window.ui().theme_mut().window_clear = clear;
     window
 }
@@ -322,9 +316,9 @@ fn a_partial_frame_recaptures_only_a_stale_pane() {
         (red, slid, red, "slid", Some(0)),
     ];
     for (under, rect, over, what, blurs) in steps {
-        let scene = |ui: &mut Ui| layered(ui, under, rect, sigma, over);
-        window.frame(&mut RecordApp::new(scene));
-        assert_eq!(Some(window.host().backdrop_blurs()), blurs, "{what}: blurs");
+        let mut scene = |ui: &mut Ui| layered(ui, under, rect, sigma, over);
+        window.frame(&mut scene);
+        assert_eq!(Some(window.backdrop_blurs()), blurs, "{what}: blurs");
         assert_within_a_step(&window.read_back(), &whole(scene), what);
     }
 }
@@ -369,9 +363,7 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
     };
     let size = UVec2::new(128, 96);
     let gpu = headless_test_gpu();
-    let mut window = HeadlessWindow::builder(gpu.handles())
-        .shaper(TextShaper::test_mono())
-        .open(size, 1.0);
+    let mut window = Harness::builder(size).mono().gpu(gpu.handles()).build();
     window.ui().theme_mut().window_clear = RgbaF32::BLACK;
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
     let green = RgbaF32::srgb(0.1, 0.9, 0.2);
@@ -380,11 +372,9 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
         (green, blue, "under the first", FramePaint::Partial, 2),
         (green, green, "over the second", FramePaint::Partial, 0),
     ] {
-        let paint = window
-            .frame(&mut RecordApp::new(scene(under, over)))
-            .paint();
+        let paint = window.frame(&mut scene(under, over)).paint();
         assert_eq!(
-            (paint, window.host().backdrop_blurs()),
+            (paint, window.backdrop_blurs()),
             (want_paint, blurs),
             "{what}"
         );
@@ -487,9 +477,7 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
         }
     };
     let gpu = headless_test_gpu();
-    let mut window = HeadlessWindow::builder(gpu.handles())
-        .shaper(TextShaper::test_mono())
-        .open(size, 1.0);
+    let mut window = Harness::builder(size).mono().gpu(gpu.handles()).build();
     window.ui().theme_mut().window_clear = RgbaF32::BLACK;
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
@@ -500,7 +488,7 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
         ("tall again", 400.0, blue),
         ("still tall", 400.0, red),
     ] {
-        window.frame(&mut RecordApp::new(scene(h, inner)));
+        window.frame(&mut scene(h, inner));
         assert_within_a_step(&window.read_back(), &whole_at(size, scene(h, inner)), what);
     }
 }

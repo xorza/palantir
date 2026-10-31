@@ -1,7 +1,7 @@
 //! Which panes a frame's damage reaches from below.
 
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -93,14 +93,14 @@ fn key(i: usize) -> PaneKey {
 
 /// Two frames of `before` then `after`; the panes the second found stale, and its raw rects.
 fn second(before: Scene, after: Scene) -> (Vec<PaneKey>, Vec<Rect>) {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| before.record(ui));
     frame(&mut h, |ui| after.record(ui));
     let dirty = (0..after.panes.len())
         .map(key)
-        .filter(|&k| h.engines.damage.dirty_panes().contains(k))
+        .filter(|&k| h.engines_mut().damage.dirty_panes().contains(k))
         .collect();
-    (dirty, h.engines.damage.raw_rects().to_vec())
+    (dirty, h.engines_mut().damage.raw_rects().to_vec())
 }
 
 const ONE: Scene = Scene {
@@ -179,12 +179,12 @@ fn stacked_panes_go_stale_in_one_walk() {
 #[test]
 fn a_blink_inside_a_pane_leaves_it() {
     let scene = Scene { blink: true, ..ONE };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| scene.record(ui));
     h.advance(Duration::from_millis(600));
     let damage = frame(&mut h, |ui| scene.record(ui));
     assert!(damage.is_some(), "the blink flipped");
-    assert!(!h.engines.damage.dirty_panes().contains(key(0)));
+    assert!(!h.engines_mut().damage.dirty_panes().contains(key(0)));
 }
 
 /// A chrome with a backdrop filter is a pane too, keyed by its node's first row: a change under it,
@@ -211,13 +211,13 @@ fn a_chrome_pane_goes_stale_as_a_shape_pane() {
         owner: WidgetId::from_hash("chrome-pane"),
         shape: 0,
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, record(BLUE));
     frame(&mut h, record(BLUE));
-    assert!(!h.engines.damage.dirty_panes().contains(key), "still");
+    assert!(!h.engines_mut().damage.dirty_panes().contains(key), "still");
     frame(&mut h, record(RED));
-    assert!(h.engines.damage.dirty_panes().contains(key), "under");
-    assert!(h.engines.damage.raw_rects().contains(&PANE));
+    assert!(h.engines_mut().damage.dirty_panes().contains(key), "under");
+    assert!(h.engines_mut().damage.raw_rects().contains(&PANE));
 }
 
 /// A row removed before a pane on its canvas, outside the pane's footprint, gives the pane a new
@@ -244,11 +244,17 @@ fn a_pane_whose_row_moves_is_stale() {
         owner: WidgetId::from_hash("moved"),
         shape: 0,
     };
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, record(true));
     frame(&mut h, record(false));
-    assert!(h.engines.damage.dirty_panes().contains(moved), "moved");
-    assert!(h.engines.damage.raw_rects().contains(&PANE));
+    assert!(
+        h.engines_mut().damage.dirty_panes().contains(moved),
+        "moved"
+    );
+    assert!(h.engines_mut().damage.raw_rects().contains(&PANE));
     frame(&mut h, record(false));
-    assert!(!h.engines.damage.dirty_panes().contains(moved), "still");
+    assert!(
+        !h.engines_mut().damage.dirty_panes().contains(moved),
+        "still"
+    );
 }

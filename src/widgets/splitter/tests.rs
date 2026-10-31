@@ -1,7 +1,8 @@
 //! Splitter divider drag: pointer→ratio mapping, clamping at stops, pane re-layout, and the resize cursor.
 
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::passes::Passes;
+use crate::host::harness::Harness;
+use crate::host::harness::unit::Passes;
+use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -35,7 +36,7 @@ const CHANGED: ValueEdges = ValueEdges {
     committed: false,
 };
 
-fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Passes<ValueEdges> {
+fn frame_with(h: &mut Harness, ratio: &mut f32) -> Passes<ValueEdges> {
     h.frame_passes(|ui| {
         Splitter::row(ratio)
             .id(split_id())
@@ -48,13 +49,13 @@ fn frame_with(h: &mut UiHarness, ratio: &mut f32) -> Passes<ValueEdges> {
 
 #[test]
 fn divider_drag_maps_pointer_to_ratio_without_relayout() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut ratio = 0.5;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
 
     // Ratio 0.5: grab bar [197.5, 203.5). Drag 100 px right: pointer 300.5 → first = 300 → 0.75.
-    h.press_at(Vec2::new(200.5, 50.0));
+    h.press(Vec2::new(200.5, 50.0), PointerButton::Left);
     h.drag_to(Vec2::new(300.5, 50.0));
     let moved = frame_with(&mut h, &mut ratio);
     assert_eq!(
@@ -91,8 +92,8 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     assert_eq!(*caught_up.a(), CHANGED);
 
     // Release commits the held ratio.
-    h.release();
-    h.move_to(Vec2::new(100.0, 50.0));
+    h.release(PointerButton::Left);
+    h.hover(Vec2::new(100.0, 50.0));
     let released = frame_with(&mut h, &mut ratio);
     assert_eq!(ratio, 0.875, "ratio holds after release, got {ratio}");
     assert_eq!(
@@ -109,13 +110,13 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
 
     // Double-click (seam at 350.5) resets to the center: layout takes 0.5 on pass A, the binding commits on pass B.
     let seam = Vec2::new(350.5, 50.0);
-    h.press_at(seam);
+    h.press(seam, PointerButton::Left);
     frame_with(&mut h, &mut ratio);
-    h.release();
+    h.release(PointerButton::Left);
     frame_with(&mut h, &mut ratio);
-    h.press_at(seam);
+    h.press(seam, PointerButton::Left);
     frame_with(&mut h, &mut ratio);
-    h.release();
+    h.release(PointerButton::Left);
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.len(), 2, "premise: a double-click records twice");
     assert_eq!(ratio, 0.5, "the reset writes the center, got {ratio}");
@@ -135,9 +136,9 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
 #[test]
 fn divider_drag_is_scale_invariant() {
     for scale in [0.5, 1.0, 2.0] {
-        let mut h = UiHarness::new(UVec2::new(1_000, 400));
+        let mut h = Harness::mono(UVec2::new(1_000, 400));
         let mut ratio = 0.5;
-        let frame = |h: &mut UiHarness, ratio: &mut f32| {
+        let frame = |h: &mut Harness, ratio: &mut f32| {
             h.frame(|ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("scaled-split-parent"))
@@ -155,12 +156,12 @@ fn divider_drag_is_scale_invariant() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        h.press_on(split_id().with("divider"));
+        h.press(split_id().with("divider"), PointerButton::Left);
         // Drag targets along the splitter's x, read before the drag.
         let layout = h.arranged(split_id());
         let transform = h.transform(split_id());
         let target = |x: f32| transform.apply_point(layout.min + Vec2::new(x, 50.0));
-        h.move_to(target(300.5));
+        h.hover(target(300.5));
         frame(&mut h, &mut ratio);
 
         assert_eq!(
@@ -168,7 +169,7 @@ fn divider_drag_is_scale_invariant() {
             "logical pointer 300.5 over span 400 at {scale}× produced {ratio}"
         );
 
-        h.move_to(target(380.0));
+        h.hover(target(380.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
             h.arranged(split_id().with("first")).size.w,
@@ -176,7 +177,7 @@ fn divider_drag_is_scale_invariant() {
             "50 px second-pane minimum at {scale}×",
         );
 
-        h.move_to(target(381.0));
+        h.hover(target(381.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
             ratio, 0.875,
@@ -193,9 +194,9 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         (false, SplitHalf::First, 0.45),
         (false, SplitHalf::Second, 0.55),
     ] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let mut ratio = 0.5;
-        let frame = |h: &mut UiHarness, ratio: &mut f32| {
+        let frame = |h: &mut Harness, ratio: &mut f32| {
             h.frame(|ui| {
                 let splitter = if row {
                     Splitter::row(ratio)
@@ -228,13 +229,16 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         frame(&mut h, &mut ratio);
         frame(&mut h, &mut ratio);
 
-        h.press_at(if row {
-            Vec2::new(200.5, 50.0)
-        } else {
-            Vec2::new(50.0, 200.5)
-        });
+        h.press(
+            if row {
+                Vec2::new(200.5, 50.0)
+            } else {
+                Vec2::new(50.0, 200.5)
+            },
+            PointerButton::Left,
+        );
         let activation_main = 210.5;
-        h.move_to(if row {
+        h.hover(if row {
             Vec2::new(activation_main, 50.0)
         } else {
             Vec2::new(50.0, activation_main)
@@ -246,7 +250,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             500.0
         };
-        h.move_to(if row {
+        h.hover(if row {
             Vec2::new(pointer_main, 50.0)
         } else {
             Vec2::new(50.0, pointer_main)
@@ -265,7 +269,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             SplitHalf::First => "first",
             SplitHalf::Second => "second",
         }));
-        let shrinking_rect = h.ui.arranged_rect(Layer::Main, shrinking);
+        let shrinking_rect = h.ui().arranged_rect(Layer::Main, shrinking);
         assert_eq!(
             if row {
                 shrinking_rect.size.w
@@ -310,7 +314,7 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         } else {
             501.0
         };
-        h.move_to(if row {
+        h.hover(if row {
             Vec2::new(next_pointer, 50.0)
         } else {
             Vec2::new(50.0, next_pointer)
@@ -325,49 +329,49 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
 
 #[test]
 fn divider_requests_the_resize_cursor() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut ratio = 0.5;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests().levels.cursor,
+        h.ui().window_requests().levels.cursor,
         CursorIcon::Default,
         "idle frame keeps the arrow"
     );
 
     // Hovering the grab bar requests the horizontal-resize cursor.
-    h.move_onto(split_id().with("divider"));
+    h.hover(split_id().with("divider"));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests().levels.cursor,
+        h.ui().window_requests().levels.cursor,
         CursorIcon::EwResize,
         "hover shows resize"
     );
 
     // Mid-drag the cursor holds after the pointer leaves the bar.
-    h.press_on(split_id().with("divider"));
+    h.press(split_id().with("divider"), PointerButton::Left);
     h.drag_to(Vec2::new(320.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests().levels.cursor,
+        h.ui().window_requests().levels.cursor,
         CursorIcon::EwResize,
         "drag holds resize off-bar"
     );
 
     // Release over a pane resets the cursor to the arrow.
-    h.release();
-    h.move_to(Vec2::new(50.0, 50.0));
+    h.release(PointerButton::Left);
+    h.hover(Vec2::new(50.0, 50.0));
     frame_with(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests().levels.cursor,
+        h.ui().window_requests().levels.cursor,
         CursorIcon::Default,
         "leave resets to the arrow"
     );
 
     // A vertical splitter's divider asks for the other axis.
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut ratio = 0.5;
-    let frame = |h: &mut UiHarness, ratio: &mut f32| {
+    let frame = |h: &mut Harness, ratio: &mut f32| {
         h.frame(|ui| {
             Splitter::col(ratio)
                 .id(split_id())
@@ -378,18 +382,18 @@ fn divider_requests_the_resize_cursor() {
     frame(&mut h, &mut ratio);
     frame(&mut h, &mut ratio);
     // Free span 200 at ratio 0.5 → grab bar rows [97.5, 103.5).
-    h.move_onto(split_id().with("divider"));
+    h.hover(split_id().with("divider"));
     frame(&mut h, &mut ratio);
     assert_eq!(
-        h.ui.window_requests().levels.cursor,
+        h.ui().window_requests().levels.cursor,
         CursorIcon::NsResize,
         "column split resizes vertically"
     );
 
     for (grab_thickness, rule_thickness) in [(3.0, 9.0), (6.0, 0.0)] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let mut ratio = 0.5;
-        let frame = |h: &mut UiHarness, ratio: &mut f32| {
+        let frame = |h: &mut Harness, ratio: &mut f32| {
             h.frame(|ui| {
                 let style = SplitterTheme {
                     grab_thickness,
@@ -424,7 +428,7 @@ fn divider_requests_the_resize_cursor() {
 /// release commits nothing.
 #[test]
 fn a_splitter_disabled_mid_drag_lets_go() {
-    let frame = |h: &mut UiHarness, ratio: &mut f32, disabled: bool| {
+    let frame = |h: &mut Harness, ratio: &mut f32, disabled: bool| {
         h.frame_passes(|ui| {
             Splitter::row(ratio)
                 .id(split_id())
@@ -435,15 +439,15 @@ fn a_splitter_disabled_mid_drag_lets_go() {
         })
     };
     let divider = split_id().with("divider");
-    let fill = |h: &UiHarness| {
+    let fill = |h: &Harness| {
         let node = h.node_of(divider).expect("the divider records").node;
-        h.ui.tree(Layer::Main).chrome(node).is_some()
+        h.ui_ref().tree(Layer::Main).chrome(node).is_some()
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut ratio = 0.5;
     frame(&mut h, &mut ratio, false);
     frame(&mut h, &mut ratio, false);
-    h.press_at(Vec2::new(200.5, 50.0));
+    h.press(Vec2::new(200.5, 50.0), PointerButton::Left);
     h.drag_to(Vec2::new(300.5, 50.0));
     frame(&mut h, &mut ratio, false);
     assert_eq!(ratio, 0.75);
@@ -452,12 +456,12 @@ fn a_splitter_disabled_mid_drag_lets_go() {
     h.drag_to(Vec2::new(350.5, 50.0));
     let disabled = frame(&mut h, &mut ratio, true);
     assert!(!fill(&h), "a disabled divider paints no drag fill");
-    assert_eq!(h.ui.window_requests().levels.cursor, CursorIcon::Default);
+    assert_eq!(h.ui().window_requests().levels.cursor, CursorIcon::Default);
     assert_eq!(ratio, 0.75, "the pointer no longer steers");
     assert_eq!(h.arranged(split_id().with("first")).size.w, 300.0);
     assert_eq!(disabled.count_where(|e| *e != QUIET), 0, "{disabled:?}");
 
-    h.release();
+    h.release(PointerButton::Left);
     let released = frame(&mut h, &mut ratio, true);
     assert_eq!(
         released.count_where(|e| *e != QUIET),
@@ -513,7 +517,7 @@ fn sanitize_ratio_clamps_and_pins_non_finite() {
 #[test]
 fn endpoint_ratios_collapse_exactly_one_pane() {
     for (ratio, expected) in [(0.0, [0.0, 400.0]), (1.0, [400.0, 0.0])] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let mut ratio = ratio;
         h.frame(|ui| {
             Splitter::row(&mut ratio)
@@ -523,7 +527,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
         });
         let first = h.node_for_widget_id(split_id().with("first"));
         let second = h.node_for_widget_id(split_id().with("second"));
-        let rects = &h.ui.layout(Layer::Main).rect;
+        let rects = &h.ui_ref().layout(Layer::Main).rect;
         assert_eq!(
             [rects[first.idx()].size.w, rects[second.idx()].size.w],
             expected,
@@ -539,7 +543,7 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
     use crate::input::keyboard::modifiers::Modifiers;
     use crate::primitives::math::domain;
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut ratio = 0.5;
     frame_with(&mut h, &mut ratio);
     frame_with(&mut h, &mut ratio);

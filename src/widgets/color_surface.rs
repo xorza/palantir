@@ -108,12 +108,12 @@ pub(crate) mod internals {
 mod tests {
     use super::*;
     use crate::display::Display;
-    use crate::internals::ui_harness::UiHarness;
+    use crate::host::harness::Harness;
     use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
     #[test]
     fn cached_surface_reuses_pixels_and_handle_until_resize() {
-        let mut h = UiHarness::new(UVec2::new(8, 8));
+        let mut h = Harness::mono(UVec2::new(8, 8));
         let mut surface = ColorSurface::default();
         let red = SrgbaU8::rgb(255, 0, 0);
         let blue = SrgbaU8::rgb(0, 0, 255);
@@ -155,7 +155,7 @@ mod tests {
     #[test]
     fn a_surface_is_no_finer_than_the_window_shows_it() {
         for scale in [1.0, 2.0] {
-            let mut h = UiHarness::new(UVec2::new(800, 600));
+            let mut h = Harness::mono(UVec2::new(800, 600));
             h.set_display(Display::from_physical(UVec2::new(800, 600), scale));
             for huge in [1e6, 1e30, f32::INFINITY] {
                 assert_eq!(
@@ -165,7 +165,7 @@ mod tests {
                 );
             }
         }
-        let mut h = UiHarness::new(UVec2::new(800, 600));
+        let mut h = Harness::mono(UVec2::new(800, 600));
         h.set_display(Display::from_physical(UVec2::new(800, 600), 2.0));
         assert_eq!(
             texture_size(Size::new(10.0, 1e30), 4, h.ui()),

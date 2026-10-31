@@ -31,8 +31,9 @@ exclude = [
 all-features = false
 
 # `--all-features` is clippy's alone: under `profile-with-tracy` a test binary opens the Tracy
-# socket. The first test set names `alloc`, as `--tests` with `golden` would pull in `visual`,
-# whose goldens are local; the second builds the crate without `winit`, as a host embeds it.
+# socket. The first test set is `--tests`: the library, `alloc`, and the showcase, whose shot mode
+# has tests (`test = true`); `visual` sets `test = false`, as its goldens are local. The second
+# builds the crate without `winit`, as a host embeds it.
 # `cargo test` ran the first in 2.1 s where nextest took 4.9 s, as a GPU test under nextest opens
 # a device in a process of its own.
 [workspace.metadata.drive]
@@ -40,7 +41,10 @@ version = "0.2"
 # The second set lints the build without winit, as the second test lane builds it: CI builds that
 # lane under `-D warnings`, so a warning only it shows would fail CI and nothing here.
 lint = ["--all-features", "--no-default-features"]
-test = ["--lib --test alloc --features golden,gpu-debug-markers", "--lib --no-default-features"]
+test = [
+    "--tests --features golden,gpu-debug-markers",
+    "--lib --no-default-features",
+]
 test-runner = "cargo-test"
 docs = true
 
@@ -48,6 +52,16 @@ docs = true
 # build. It joins no lane, as its goldens are local to each machine's adapter.
 [workspace.metadata.drive.commands.visual]
 steps = [{ cargo = "test --workspace --locked --features golden,gpu-debug-markers --test visual", args = true }]
+
+# The showcase played from a script with no desktop: `cargo drive run shot SCRIPT [--out DIR]
+# [--against DIR]` writes the script's shots as PNGs and prints a report of each, comparing each
+# with an earlier run's through `golden`.
+[workspace.metadata.drive.commands.shot]
+# The driver puts `--` before a cargo step's arguments, so the binary runs as a program step.
+steps = [
+    { build = "build --example showcase --features golden" },
+    { program = ["{target}/debug/examples/showcase{exe}", "--shot"], args = true },
+]
 
 [workspace]
 members = ["palantir-anim-derive"]
@@ -100,6 +114,8 @@ tracy-client = { version = "0.19", default-features = false, features = ["enable
 [dev-dependencies]
 palantir = { path = ".", default-features = false, features = ["internals"] }
 backtrace = { version = "0.3", default-features = false, features = ["std"] }
+# The showcase's shot mode writes PNGs.
+image = { version = "0.25", default-features = false, features = ["png"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = [
     "std",
     "fmt",
@@ -158,6 +174,9 @@ debug = "line-tables-only"
 name = "visual"
 path = "tests/visual/main.rs"
 required-features = ["golden"]
+# Its goldens are local to each machine's adapter, so `--tests` leaves it out; the `visual`
+# command names it.
+test = false
 
 [[test]]
 name = "alloc"
@@ -171,6 +190,8 @@ required-features = ["winit"]
 name = "showcase"
 path = "examples/showcase/main.rs"
 required-features = ["winit"]
+# The shot mode's tests run with the first test lane.
+test = true
 
 [lib]
 bench = false

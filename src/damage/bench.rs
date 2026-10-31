@@ -8,7 +8,7 @@ use crate::damage::Damage;
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::damage::pane_walk::PaneWalk;
 use crate::damage::region::DamageRegion;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -70,7 +70,7 @@ fn build_hot(ui: &mut Ui, row_bg: Option<RgbaF32>, hot: &[usize], hot_color: Rgb
     });
 }
 
-fn damage_kind(h: &UiHarness) -> &'static str {
+fn damage_kind(h: &Harness) -> &'static str {
     match Damage::new(h.collapsed_damage()) {
         None => "skip",
         Some(Damage::Full) => "full",
@@ -80,7 +80,7 @@ fn damage_kind(h: &UiHarness) -> &'static str {
 
 /// Warms two frames so iterations land on the intended `Damage` path (the same closure twice for `skip`, two variants for `partial`/`full`); otherwise the first iter is always `Full`.
 fn warm_and_assert(
-    h: &mut UiHarness,
+    h: &mut Harness,
     frame1: impl Fn(&mut Ui),
     frame2: impl Fn(&mut Ui),
     expect_kind: &str,
@@ -93,7 +93,7 @@ fn warm_and_assert(
 
 /// Runs frames until the paint-snapshot arena stops growing and returns the size it settled at. A churn workload recycles blocks, so storage is flat after warm-up; warming on that makes the arms measure a settled arena, and the post-bench assertion guards against tail-appending returning.
 fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
-    h: &mut UiHarness,
+    h: &mut Harness,
     build: impl Fn(u32) -> B,
     from_frame: u32,
 ) -> ArenaSettle {
@@ -101,12 +101,12 @@ fn warm_until_arena_settles<B: FnMut(&mut Ui)>(
     const MAX_FRAMES: u32 = 4096;
 
     let mut frame = from_frame;
-    let mut settled_at = h.engines.damage.paints.slots.len();
+    let mut settled_at = h.engines_mut().damage.paints.slots.len();
     let mut flat = 0;
     while flat < FLAT_FRAMES && frame - from_frame < MAX_FRAMES {
         let _ = h.frame(build(frame));
         frame += 1;
-        let now = h.engines.damage.paints.slots.len();
+        let now = h.engines_mut().damage.paints.slots.len();
         flat = if now == settled_at { flat + 1 } else { 0 };
         settled_at = now;
     }
@@ -133,7 +133,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
 
     // Skip path: nothing dirty; non-painting rows, so the diff walks every painting leaf.
     group.bench_function(Backend::Cpu.case("skip"), |b| {
-        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
         warm_and_assert(
             &mut h,
             |ui| build_hot(ui, None, &[], cold),
@@ -148,7 +148,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
 
     // Skip path with painting rows: the subtree-skip fires at every row; compare against `skip` to isolate its win.
     group.bench_function(Backend::Cpu.case("skip_painted_rows"), |b| {
-        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
         warm_and_assert(
             &mut h,
             |ui| build_hot(ui, Some(ROW_BG), &[], cold),
@@ -156,7 +156,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             "skip",
         );
         assert!(
-            h.engines.damage.counters.subtree_skips() > 0,
+            h.engines_mut().damage.counters.subtree_skips() > 0,
             "no subtree skips at all — fixture is broken",
         );
         b.iter(|| {
@@ -166,7 +166,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
     });
 
     group.bench_function(Backend::Cpu.case("single_button_change"), |b| {
-        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
         let cell = [42usize];
         warm_and_assert(
             &mut h,
@@ -185,7 +185,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
 
     // Partial multi-rect: two distant cells flip; the LVGL merge rule rejects (huge bbox waste), driving the multi-pass path.
     group.bench_function(Backend::Cpu.case("two_corner_change"), |b| {
-        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
             &mut h,
@@ -204,7 +204,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
     });
 
     group.bench_function(Backend::Cpu.case("full_repaint"), |b| {
-        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
         let varying = |frame_n: u32| {
             move |ui: &mut Ui| {
                 build_grid(ui, None, |i| {
@@ -284,7 +284,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             }
         };
 
-        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
         let settled = warm_until_arena_settles(&mut h, build, 0);
         assert!(
             settled.entries >= CANVASES * (STABLE_COUNT as usize - 1),
@@ -300,7 +300,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
         });
         // The regression guard: thousands of churn frames must not add one entry.
         assert_eq!(
-            h.engines.damage.paints.slots.len(),
+            h.engines_mut().damage.paints.slots.len(),
             settled.entries,
             "[shape_churn_partial] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
@@ -323,7 +323,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             }
         };
 
-        let mut h = UiHarness::new(SURFACE).scale(2.0);
+        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
         let settled = warm_until_arena_settles(&mut h, build, 0);
         assert!(
             settled.entries >= CANVASES * BASE_SHAPES as usize,
@@ -338,7 +338,7 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             black_box(&h);
         });
         assert_eq!(
-            h.engines.damage.paints.slots.len(),
+            h.engines_mut().damage.paints.slots.len(),
             settled.entries,
             "[shape_churn_full] the arena grew over {} measured frames",
             frame_n - settled.next_frame,
@@ -416,7 +416,7 @@ fn bench_paint_order_inversion(group: &mut CaseGroup<'_>) {
             let last = raised.pop().expect("fanout is non-empty");
             raised.insert(0, last);
 
-            let mut h = UiHarness::new(SURFACE);
+            let mut h = Harness::builder(SURFACE).mono().build();
             warm_and_assert(
                 &mut h,
                 |ui| build_ordered_siblings(ui, &flat),

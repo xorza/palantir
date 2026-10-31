@@ -4,16 +4,16 @@
 
 use crate::fixtures::expander;
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// The expander scene's text and disclosure arrows: antialiased edges expose a nearly-right blit (sampling through the linear group-0 sampler once lifted dark background from 16 to 26).
 #[test]
 fn a_target_that_takes_no_copy_presents_the_same_pixels() {
-    let copied = Harness::new()
+    let copied = VisualRig::new()
         .size(expander::SURFACE)
         .settled_frame(2, expander::scene)
         .image;
-    let drawn = Harness::new()
+    let drawn = VisualRig::new()
         .without_copy_dst()
         .size(expander::SURFACE)
         .settled_frame(2, expander::scene)

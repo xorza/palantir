@@ -1,7 +1,7 @@
 //! Row pitch, the shortcut gutter, separators, radius, and per-instance overrides of each.
 
+use crate::host::harness::Harness;
 use crate::input::shortcut::Shortcut;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -37,16 +37,16 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
         });
     }
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     // Hug the content, or the theme's 160 px floor absorbs the widened gutter.
-    h.ui.theme_mut().context_menu.min_width = 0.0;
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
+    h.ui().theme_mut().context_menu.min_width = 0.0;
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     let before = menu_rows(&h, trigger_id());
     assert_eq!(before.len(), 2, "two rows recorded");
 
-    h.ui.theme_mut().context_menu.gap += 6.0;
-    h.ui.theme_mut().context_menu.item.gap += 10.0;
+    h.ui().theme_mut().context_menu.gap += 6.0;
+    h.ui().theme_mut().context_menu.item.gap += 10.0;
     h.frame(menu);
     let after = menu_rows(&h, trigger_id());
 
@@ -72,7 +72,7 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
         });
     });
     let flush = menu_rows(&h, trigger_id());
-    let item_gap = h.ui.theme().context_menu.item.gap;
+    let item_gap = h.ui().theme().context_menu.item.gap;
     assert_eq!(
         after[0].rect.size.w - flush[0].rect.size.w,
         item_gap,
@@ -83,7 +83,7 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
 /// An explicit `.gap(0.0)` differs from never setting one: flush rows at `0.0`, the theme gap otherwise.
 #[test]
 fn an_explicit_zero_gap_beats_the_theme_default() {
-    fn rows(h: &mut UiHarness, gap: Option<f32>) -> Vec<MenuRow> {
+    fn rows(h: &mut Harness, gap: Option<f32>) -> Vec<MenuRow> {
         h.frame(|ui| {
             let mut menu = ContextMenu::for_id(trigger_id());
             if let Some(g) = gap {
@@ -97,9 +97,9 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
         menu_rows(h, trigger_id())
     }
 
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().context_menu.gap = 7.0;
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
+    let mut h = Harness::mono(SURFACE);
+    h.ui().theme_mut().context_menu.gap = 7.0;
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
 
     let unset = rows(&mut h, None);
     assert_eq!(unset.len(), 2);
@@ -131,17 +131,17 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
         });
     }
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let rule = RgbaF32::hex(0xff00ff);
-    h.ui.theme_mut().context_menu.separator = SeparatorTheme {
+    h.ui().theme_mut().context_menu.separator = SeparatorTheme {
         color: rule,
         thickness: 3.0,
         margin: Spacing::xy(0.0, 7.0),
     };
-    h.ui.theme_mut().separator.thickness = 11.0;
-    h.ui.theme_mut().separator.color = RgbaF32::hex(0x00ff00);
+    h.ui().theme_mut().separator.thickness = 11.0;
+    h.ui().theme_mut().separator.color = RgbaF32::hex(0x00ff00);
 
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     let rows = menu_rows(&h, trigger_id());
     assert_eq!(rows.len(), 3, "two rows plus the separator between them");
@@ -159,10 +159,11 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
         "margin.bottom clears the row below",
     );
 
-    let chrome =
-        h.ui.tree(Layer::Menu)
-            .chrome(sep.node)
-            .expect("separator chrome");
+    let chrome = h
+        .ui()
+        .tree(Layer::Menu)
+        .chrome(sep.node)
+        .expect("separator chrome");
     let ShapeBrush::Solid(fill) = chrome.fill else {
         panic!("the menu rule paints a solid fill");
     };
@@ -185,8 +186,8 @@ fn a_disabled_rows_hint_dims_with_its_label() {
             }
         });
     };
-    let mut h = UiHarness::new(SURFACE);
-    let theme = h.ui.theme_mut();
+    let mut h = Harness::mono(SURFACE);
+    let theme = h.ui().theme_mut();
     theme.context_menu.item.shortcut = RgbaF32::hex(0x00ff00);
     theme.context_menu.item.looks.disabled.text = theme
         .context_menu
@@ -202,14 +203,16 @@ fn a_disabled_rows_hint_dims_with_its_label() {
         .hovered
         .text
         .with_color(RgbaF32::hex(0x0000ff));
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     h.frame(menu);
-    let hint_color = |h: &UiHarness, id: WidgetId| {
-        let node =
-            h.ui.forest()
-                .node_for_widget_id(Layer::Menu, id.with("shortcut"));
-        h.ui.tree(Layer::Menu)
+    let hint_color = |h: &Harness, id: WidgetId| {
+        let node = h
+            .ui_ref()
+            .forest()
+            .node_for_widget_id(Layer::Menu, id.with("shortcut"));
+        h.ui_ref()
+            .tree(Layer::Menu)
             .shapes_of(node)
             .find_map(|shape| match shape {
                 ShapeRecord::Text { color, .. } => Some(*color),
@@ -228,7 +231,7 @@ fn a_disabled_rows_hint_dims_with_its_label() {
         "disabled"
     );
     let live = h.rect(rows[0]).expect("the live row arranged").center();
-    h.move_to(live);
+    h.hover(live);
     h.frame(menu);
     h.frame(menu);
     // Two frames a 100 ms step apart, the most one frame steps an animation, pass the row's
@@ -265,8 +268,8 @@ fn per_instance_style_overrides_global_menu_theme() {
         ..ContextMenuTheme::default()
     };
 
-    let mut h = UiHarness::new(SURFACE);
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(20.0, 20.0));
+    let mut h = Harness::mono(SURFACE);
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(|ui| {
         ContextMenu::for_id(trigger_id())
             .style(&custom)
@@ -283,7 +286,7 @@ fn per_instance_style_overrides_global_menu_theme() {
 
     let body = menu_body(&h, trigger_id());
     let rows = menu_rows(&h, trigger_id());
-    let tree = h.ui.tree(Layer::Menu);
+    let tree = h.ui().tree(Layer::Menu);
     let layout = tree.records.layout();
     // Recorded padding is the styled 13 plus the panel's 1 px stroke, which `Tree` folds in.
     assert_eq!(
@@ -319,7 +322,7 @@ fn per_instance_style_overrides_global_menu_theme() {
     );
 
     let default = ContextMenuTheme::default();
-    let global = &h.ui.theme().context_menu;
+    let global = &h.ui_ref().theme().context_menu;
     assert_eq!(global.padding, default.padding);
     assert_eq!(global.min_width, default.min_width);
     assert_eq!(global.item.defaults.padding, default.item.defaults.padding);
@@ -329,8 +332,8 @@ fn per_instance_style_overrides_global_menu_theme() {
 /// The menu body takes its box from [`Configure`] (including `margin`); the id derives from the trigger, but an explicit `.id(...)` must win.
 #[test]
 fn explicit_zero_padding_and_minimum_override_menu_theme() {
-    let mut h = UiHarness::new(SURFACE);
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    let mut h = Harness::mono(SURFACE);
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         ContextMenu::for_id(trigger_id())
             .chrome(Chrome::NONE)
@@ -343,15 +346,15 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
     let derived = trigger_id().with("body");
     let menu = h.node_of(derived).expect("context menu body node");
     assert_eq!(menu.plane.layer, Layer::Menu);
-    let tree = h.ui.tree(Layer::Menu);
+    let tree = h.ui().tree(Layer::Menu);
     let idx = menu.node.idx();
     assert_eq!(tree.records.layout()[idx].padding, Spacing::ZERO);
     assert_eq!(tree.records.layout()[idx].margin, Spacing::all(5.0));
     assert_eq!(tree.bounds(menu.node).min_size, Size::ZERO);
 
     let explicit = WidgetId::from_hash("my-own-menu-body");
-    let mut h = UiHarness::new(SURFACE);
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    let mut h = Harness::mono(SURFACE);
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         ContextMenu::for_id(trigger_id())
             .id(explicit)
@@ -374,7 +377,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
 fn separators_take_their_call_site_ids() {
     use crate::widgets::panel::Panel;
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let ids = h.frame_value(|ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("seps"))

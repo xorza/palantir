@@ -1,6 +1,6 @@
 //! The arranged sizes a widget's "explicit size beats the default" test reads.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::scene::layer::Layer;
@@ -26,7 +26,7 @@ impl SizeTrio {
         mut show: impl FnMut(&mut Ui, Option<SizeSpec>) -> NodeId,
     ) -> Self {
         let explicit = explicit.into();
-        let mut h = UiHarness::new(UVec2::new(400, 300));
+        let mut h = Harness::mono(UVec2::new(400, 300));
         let nodes = h.frame_value(|ui| {
             Panel::vstack()
                 .auto_id()
@@ -41,7 +41,7 @@ impl SizeTrio {
                 })
                 .inner
         });
-        let size = |node: NodeId| h.ui.arranged_rect(Layer::Main, node).size;
+        let size = |node: NodeId| h.ui_ref().arranged_rect(Layer::Main, node).size;
         Self {
             sized: size(nodes[0]),
             hug: size(nodes[1]),

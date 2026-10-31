@@ -19,11 +19,10 @@ use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
+use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::host::offscreen::OffscreenHost;
 use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
-use crate::internals::record_app::RecordApp;
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
@@ -115,7 +114,7 @@ impl WholeFrames {
         } else {
             RgbaF32::srgb(0.0, 0.0, 0.01)
         };
-        let mut app = RecordApp::new(record);
+        let mut app = record;
         let paint = self.host.frame(target.as_target(), 1.0, &mut app).paint();
         assert_eq!(
             paint,
@@ -402,14 +401,15 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                 let case = backend.case(&format!("{}/{}", look.label(), arm.label()));
                 group.bench_function(case, |bencher| match backend {
                     Backend::Cpu => {
-                        let mut h = FrontendHarness::new(
-                            UiHarness::with_text(FRAME_SURFACE).scale(FRAME_DPR),
-                        );
+                        let mut h = Harness::builder(FRAME_SURFACE)
+                            .scale(FRAME_DPR)
+                            .depth(Depth::Compose)
+                            .build();
                         let start = Instant::now();
                         let mut state = PaneFrame::default();
                         let mut frame = || {
                             state.n += 1;
-                            h.harness().at(start.elapsed());
+                            h.at(start.elapsed());
                             h.frame(|ui| state.record(look, arm, ui)).paint()
                         };
                         for _ in 0..4 {
@@ -440,7 +440,7 @@ fn pane_frames(bencher: &mut Bencher<'_>, look: Look, arm: Arm) {
     let mut state = PaneFrame::default();
     let mut frame = || {
         state.n += 1;
-        let mut app = RecordApp::new(|ui| state.record(look, arm, ui));
+        let mut app = |ui: &mut Ui| state.record(look, arm, ui);
         let paint = host.frame(target.as_target(), FRAME_DPR, &mut app).paint();
         gpu.wait();
         (paint, host.backdrop_blurs())
@@ -674,7 +674,7 @@ fn scenes(group: &mut CaseGroup<'_>, backend: Backend) {
             let mut n = 0u32;
             let mut frame = || {
                 n += 1;
-                let mut app = RecordApp::new(|ui: &mut Ui| (scene.record)(&mut fixture, n, ui));
+                let mut app = |ui: &mut Ui| (scene.record)(&mut fixture, n, ui);
                 let paint = host.frame(target.as_target(), FRAME_DPR, &mut app).paint();
                 gpu.wait();
                 (paint, host.backdrop_blurs())

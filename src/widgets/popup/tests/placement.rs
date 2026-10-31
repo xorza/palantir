@@ -3,7 +3,7 @@
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::frame_report::FrameProcessing;
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -37,7 +37,7 @@ fn popup_body_sizing_matches_sizing_mode() {
         ),
     ];
     for &(sw, sh, expected_size, expected_min) in cases {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
@@ -75,7 +75,7 @@ fn popup_near_bottom_flips_upward() {
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0); // 20 px of room below.
     let content = Size::new(120.0, 200.0); // Body wants ~200 tall.
-    let mut h = UiHarness::new(SURF);
+    let mut h = Harness::mono(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -115,7 +115,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     let anchor = Vec2::new(20.0, 280.0); // near the bottom → must flip.
     let content = Size::new(120.0, 200.0);
     let body_id = WidgetId::from_hash("cascade-flip-popup");
-    let mut h = UiHarness::new(SURF);
+    let mut h = Harness::mono(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -158,7 +158,7 @@ fn popup_with_scroll_settles_in_one_frame() {
     const SURF: UVec2 = UVec2::new(400, 400);
     // Anchor near the right edge so any body-width change between passes would drift.
     let anchor = Vec2::new(380.0, 20.0);
-    let mut h = UiHarness::new(SURF);
+    let mut h = Harness::mono(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -189,20 +189,21 @@ fn popup_with_scroll_settles_in_one_frame() {
             .expect("popup body has a rect")
     };
     h.frame(scene);
-    let first = body_rect(&h.ui);
+    let first = body_rect(h.ui_ref());
     let viewport_id = WidgetId::from_hash("popup-scroll").with("viewport");
-    let viewport =
-        h.ui.cascade()
-            .endpoint(viewport_id)
-            .expect("popup scroll viewport endpoint");
+    let viewport = h
+        .ui()
+        .cascade()
+        .endpoint(viewport_id)
+        .expect("popup scroll viewport endpoint");
     assert_eq!(viewport.plane.layer, Layer::Popup);
-    assert_eq!(h.ui.scroll_content(viewport_id), Size::new(80.0, 300.0));
+    assert_eq!(h.ui().scroll_content(viewport_id), Size::new(80.0, 300.0));
     // Later input frames must hit the same rect.
     for _ in 0..3 {
-        h.move_to(Vec2::new(50.0, 50.0));
+        h.hover(Vec2::new(50.0, 50.0));
         h.frame(scene);
         assert_eq!(
-            body_rect(&h.ui),
+            body_rect(h.ui_ref()),
             first,
             "popup must hold its settled position from the opening frame on",
         );
@@ -215,7 +216,7 @@ fn popup_placement_is_stable_across_frames() {
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = Vec2::new(20.0, 280.0);
     let content = Size::new(120.0, 200.0);
-    let mut h = UiHarness::new(SURF);
+    let mut h = Harness::mono(SURF);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -237,7 +238,7 @@ fn popup_placement_is_stable_across_frames() {
     h.frame(scene);
     let first = body_rect(&h, body_id);
     // Simulate input arriving (cursor move over the popup).
-    h.move_to(Vec2::new(50.0, 100.0));
+    h.hover(Vec2::new(50.0, 100.0));
     h.frame(scene);
     let second = body_rect(&h, body_id);
     assert_eq!(
@@ -286,9 +287,9 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
     ];
 
     for (edge, anchor, small_min, large_min) in cases {
-        let mut h = UiHarness::new(EDGE_SURFACE);
+        let mut h = Harness::mono(EDGE_SURFACE);
         let body_id = WidgetId::from_hash("dynamic-popup");
-        let frame = |h: &mut UiHarness, size: Size| {
+        let frame = |h: &mut Harness, size: Size| {
             let report = h.frame(|ui| {
                 let popup = match edge {
                     Edge::Top => Popup::new(Anchor::above(anchor)),
@@ -339,8 +340,8 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
 }
 
 /// The arranged rect of the popup body recorded under `id`.
-fn body_rect(h: &UiHarness, id: WidgetId) -> Rect {
+fn body_rect(h: &Harness, id: WidgetId) -> Rect {
     let body = h.node_of(id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
-    h.ui.layout(Layer::Popup).rect[body.node.idx()]
+    h.ui_ref().layout(Layer::Popup).rect[body.node.idx()]
 }

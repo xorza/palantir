@@ -1,6 +1,6 @@
 //! The pixel damage oracle: a frame repainted only where damaged must equal the same frame painted in full, bit for bit.
 //!
-//! Complements the CPU oracle (`internals::ui_harness::oracle`), which checks damage covers changed paint rows; this checks pixels, so it sees what no row describes. Each script runs through two renderers: one repaints damage only, the other is told its target is lost each frame and paints everything.
+//! Complements the CPU oracle (`internals::oracle`), which checks damage covers changed paint rows; this checks pixels, so it sees what no row describes. Each script runs through two renderers: one repaints damage only, the other is told its target is lost each frame and paints everything.
 
 use std::time::Duration;
 
@@ -12,7 +12,7 @@ use palantir::{
 };
 
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 const SURFACE: UVec2 = UVec2::new(320, 240);
 
@@ -184,7 +184,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
 }
 
 /// A 60 px checker, so an image drawn past its node shows.
-fn picture(h: &mut Harness) -> ImageHandle {
+fn picture(h: &mut VisualRig) -> ImageHandle {
     let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]).unwrap();
     image.fill_with(|at| {
         let cell = at / 10;
@@ -196,8 +196,8 @@ fn picture(h: &mut Harness) -> ImageHandle {
 
 /// Run `script` after two primed frames, comparing every frame.
 fn run(name: &str, script: &[Knobs]) {
-    let mut partial = Harness::new();
-    let mut full = Harness::new();
+    let mut partial = VisualRig::new();
+    let mut full = VisualRig::new();
     partial.size(SURFACE);
     full.size(SURFACE);
     let (partial_picture, full_picture) = (picture(&mut partial), picture(&mut full));

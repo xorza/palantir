@@ -5,7 +5,7 @@ use image::{Rgba, RgbaImage};
 use palantir::{Block, Chrome, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
 
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 const SURFACE: UVec2 = UVec2::new(200, 160);
 
@@ -38,7 +38,7 @@ fn painted_extent(img: &RgbaImage, bg: Rgba<u8>) -> UVec2 {
 /// The two scale halves are interchangeable: dpr 2 with no user scale paints the same pixels as dpr 1 at 200%, which lets user scale reuse the hi-dpi path.
 #[test]
 fn the_two_halves_of_the_scale_factor_are_interchangeable() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
 
     let system = h.size(SURFACE).scale(2.0).frame(block).image;
     h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
@@ -50,7 +50,7 @@ fn the_two_halves_of_the_scale_factor_are_interchangeable() {
 /// Scaling up paints up: 40×24 physical at 100%, 80×48 at 200%.
 #[test]
 fn a_larger_user_scale_paints_a_larger_block() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     // Read back, not converted: `DARK_BG` is linear and the target sRGB, so use what an empty render says.
     let bg = {
         let empty = h.size(SURFACE).frame(|_: &mut Ui| {}).image;

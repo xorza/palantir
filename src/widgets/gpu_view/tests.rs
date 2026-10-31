@@ -1,5 +1,5 @@
 use super::*;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
@@ -25,7 +25,7 @@ fn scene() -> Rc<RefCell<NoopPaint>> {
 /// Records exactly one `GpuView` shape on its node at the committed size: the GPU-free layout half.
 #[test]
 fn records_one_gpu_view_shape_at_committed_size() {
-    let mut h = UiHarness::new(UVec2::new(200, 120));
+    let mut h = Harness::mono(UVec2::new(200, 120));
     let node = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
@@ -37,7 +37,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
             })
             .inner
     });
-    let tree = h.ui.tree(Layer::Main);
+    let tree = h.ui_ref().tree(Layer::Main);
     let mut shapes = tree.shapes_of(node);
     assert!(
         matches!(
@@ -50,7 +50,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
         "records exactly one view-sourced image shape",
     );
     assert!(shapes.next().is_none());
-    let r = h.ui.arranged_rect(Layer::Main, node);
+    let r = h.ui_ref().arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (150.0, 90.0));
 }
 
@@ -59,21 +59,22 @@ fn records_one_gpu_view_shape_at_committed_size() {
 fn repaint_false_holds_the_epoch_of_the_last_paint() {
     let paint = scene();
     for (repaint, want_second) in [(true, 2), (false, 1)] {
-        let mut h = UiHarness::new(UVec2::new(200, 120));
+        let mut h = Harness::mono(UVec2::new(200, 120));
         let mut epochs = Vec::new();
         for _ in 0..2 {
             let node = h.frame_value(|ui| GpuView::new(&paint).repaint(repaint).show(ui).node());
-            let epoch =
-                h.ui.tree(Layer::Main)
-                    .shapes_of(node)
-                    .find_map(|shape| match shape {
-                        ShapeRecord::Image {
-                            source: ImageSource::GpuView { epoch },
-                            ..
-                        } => Some(*epoch),
-                        _ => None,
-                    })
-                    .expect("the view records its shape");
+            let epoch = h
+                .ui()
+                .tree(Layer::Main)
+                .shapes_of(node)
+                .find_map(|shape| match shape {
+                    ShapeRecord::Image {
+                        source: ImageSource::GpuView { epoch },
+                        ..
+                    } => Some(*epoch),
+                    _ => None,
+                })
+                .expect("the view records its shape");
             epochs.push(epoch);
         }
         assert_eq!(epochs, [1, want_second], "repaint {repaint}");
@@ -84,20 +85,20 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
 /// `default_size` replaces it.
 #[test]
 fn default_fills_parent() {
-    let mut h = UiHarness::new(UVec2::new(160, 100));
+    let mut h = Harness::mono(UVec2::new(160, 100));
     let node = h.frame_value(|ui| GpuView::new(&scene()).show(ui).node());
-    let r = h.ui.arranged_rect(Layer::Main, node);
+    let r = h.ui().arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
 
     let node = h.frame_value(|ui| GpuView::new(&scene()).default_size(50.0).show(ui).node());
-    let r = h.ui.arranged_rect(Layer::Main, node);
+    let r = h.ui().arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }
 
 /// Retention keys on what the frame recorded, painting on what it damaged: a view culled from a partial repaint keeps its target and `GpuPaint::init` doesn't re-run. One recorded frame composed twice (a `Full` plan draws it, a distant `Partial` doesn't) must give the same live roster.
 #[test]
 fn the_live_roster_lists_a_view_the_damage_plan_culls() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         GpuView::new(&scene())
             .id(WidgetId::from_hash("gpu_view_retained"))
@@ -108,12 +109,12 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 
     let mut frontend = Frontend::for_test();
     let plan = |damage| RenderPlan {
-        clear: h.ui.theme().window_clear,
+        clear: h.ui_ref().theme().window_clear,
         damage,
     };
 
     frontend.build(
-        h.ui.frame_scene(),
+        h.ui_ref().frame_scene(),
         BuildPlan::without_panes(plan(Damage::Full)),
     );
     assert_eq!(
@@ -131,7 +132,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     // Damage confined to the corner opposite the bottom-right view.
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
     frontend.build(
-        h.ui.frame_scene(),
+        h.ui_ref().frame_scene(),
         BuildPlan::without_panes(plan(Damage::Partial(elsewhere))),
     );
     assert!(
@@ -149,7 +150,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 fn senses_click_when_opted_in() {
     let id = WidgetId::from_hash("gpu_view_hitbox");
     let surface = UVec2::new(200, 100);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let scene = scene();
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -160,7 +161,7 @@ fn senses_click_when_opted_in() {
                 .show(ui);
         });
     });
-    h.click_at(Vec2::new(50.0, 25.0));
+    h.click(Vec2::new(50.0, 25.0));
     let clicked = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()

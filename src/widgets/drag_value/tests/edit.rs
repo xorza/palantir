@@ -1,7 +1,8 @@
 //! Click-to-edit: the draft buffer, and every way it can end.
 
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
-use crate::internals::ui_harness::UiHarness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
@@ -13,18 +14,18 @@ use glam::{UVec2, Vec2};
 #[test]
 fn click_to_edit_types_and_commits_on_enter() {
     let id = WidgetId::from_hash("dv-click-edit");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    h.press_at(Vec2::new(50.0, 20.0));
-    h.release();
+    h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
+    h.release(PointerButton::Left);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.a().committed, "the click itself commits nothing");
 
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(!s.a().committed);
-    assert_eq!(edit_buffer(&h.ui, id), "5.0", "seeded on entry");
+    assert_eq!(edit_buffer(h.ui_ref(), id), "5.0", "seeded on entry");
 
     h.key(Key::Char('7'));
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -48,7 +49,7 @@ fn click_to_edit_types_and_commits_on_enter() {
 #[test]
 fn escape_reverts_the_draft_without_a_commit() {
     let id = WidgetId::from_hash("dv-escape-revert");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.set_focus(id);
@@ -67,12 +68,12 @@ fn escape_reverts_the_draft_without_a_commit() {
         );
     }
     assert_eq!(canonical, 5.0);
-    assert_eq!(h.ui.focus(), Some(id), "Escape leaves the chip focused");
+    assert_eq!(h.ui().focus(), Some(id), "Escape leaves the chip focused");
 
     let live_id = WidgetId::from_hash("dv-escape-live");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut value = 5.0_f64;
-    let live = |h: &mut UiHarness, value: &mut f64| {
+    let live = |h: &mut Harness, value: &mut f64| {
         h.frame_value(|ui| {
             let r = DragValue::new(&mut *value)
                 .editable(true)
@@ -101,7 +102,7 @@ fn escape_reverts_the_draft_without_a_commit() {
 fn a_new_edit_seeds_a_fresh_buffer() {
     // Regression: a keyboard entry re-opened stale buffer text and committed it over an externally-changed value.
     let id = WidgetId::from_hash("dv-fresh-seed");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
@@ -120,7 +121,7 @@ fn a_new_edit_seeds_a_fresh_buffer() {
     h.set_focus(id);
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
-    assert_eq!(edit_buffer(&h.ui, id), "99.0");
+    assert_eq!(edit_buffer(h.ui_ref(), id), "99.0");
 
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, true, false);
@@ -131,11 +132,11 @@ fn a_new_edit_seeds_a_fresh_buffer() {
 fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     // Edit entry must replace the scrub state, or its release overwrites the typed value.
     let id = WidgetId::from_hash("dv-latch-vs-edit");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 10.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
-    h.press_at(Vec2::new(50.0, 20.0));
+    h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
     h.drag_to(Vec2::new(70.0, 20.0));
     deferred_frame(&mut h, id, &mut canonical, true, false);
     h.set_focus(id);
@@ -146,7 +147,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
         DragValueState::Editing { .. }
     ));
 
-    h.release();
+    h.release(PointerButton::Left);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(
         !s.a().committed,
@@ -154,7 +155,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     );
 
     // A hand-set draft + Enter commits exactly once; the stale scrubbed 30 must not overwrite it.
-    set_edit_buffer(&mut h.ui, id, "42");
+    set_edit_buffer(h.ui(), id, "42");
     h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, true, false);
     assert!(s.a().committed && s.count_where(|e| e.committed) == 1);
@@ -171,7 +172,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
 #[test]
 fn unparseable_and_non_finite_drafts_commit_without_writing() {
     let id = WidgetId::from_hash("dv-bad-drafts");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 42.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
@@ -180,7 +181,7 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
         h.set_focus(id);
         h.key(Key::Enter);
         deferred_frame(&mut h, id, &mut canonical, true, false);
-        set_edit_buffer(&mut h.ui, id, bad);
+        set_edit_buffer(h.ui(), id, bad);
         h.clear_focus();
         let s = deferred_frame(&mut h, id, &mut canonical, true, false);
         assert!(
@@ -194,7 +195,7 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
 #[test]
 fn disabling_mid_edit_discards_the_draft() {
     let id = WidgetId::from_hash("dv-disable-mid-edit");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
@@ -224,7 +225,7 @@ fn disabling_mid_edit_discards_the_draft() {
 fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     // A pending draft must not replay after a read-only frame.
     let id = WidgetId::from_hash("dv-editable-toggle");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut canonical = 5.0_f64;
     deferred_frame(&mut h, id, &mut canonical, true, false);
 
@@ -257,10 +258,10 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
 #[test]
 fn click_to_edit_reports_focus_on_the_same_frame() {
     let id = WidgetId::from_hash("dv-focus-sync");
-    let mut h = UiHarness::new(UVec2::new(300, 100));
+    let mut h = Harness::mono(UVec2::new(300, 100));
     let mut value = 5.0_f64;
 
-    let focused_of = |h: &mut UiHarness, value: &mut f64| -> bool {
+    let focused_of = |h: &mut Harness, value: &mut f64| -> bool {
         h.frame_value(|ui| {
             let mut draft = *value;
             DragValue::new(&mut draft)
@@ -276,8 +277,8 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
 
     assert!(!focused_of(&mut h, &mut value), "at rest: not focused");
 
-    h.press_at(Vec2::new(50.0, 20.0));
-    h.release();
+    h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
+    h.release(PointerButton::Left);
     assert!(
         focused_of(&mut h, &mut value),
         "the response must report the focus the click just took",

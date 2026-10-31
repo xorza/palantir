@@ -2,7 +2,7 @@
 //! the invalidations that must miss.
 
 use crate::common::span::Span;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::cache::measure_snapshot::ArenaSnapshot;
 use crate::layout::counters::ReplayCounts;
 use crate::primitives::geometry::rect::Rect;
@@ -19,15 +19,15 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::{UVec2, Vec2};
 
-fn run_frame(h: &mut UiHarness, record: impl FnMut(&mut Ui)) {
+fn run_frame(h: &mut Harness, record: impl FnMut(&mut Ui)) {
     run_frame_at(h, UVec2::new(200, 200), record);
 }
 
-fn run_frame_at(h: &mut UiHarness, size: UVec2, mut record: impl FnMut(&mut Ui)) {
+fn run_frame_at(h: &mut Harness, size: UVec2, mut record: impl FnMut(&mut Ui)) {
     // The surface lives on the harness, so a per-frame size must be applied: available changes here.
     h.resize(size);
     // Drives the snapshot restore, which a run that keeps the last output never reaches.
-    h.engines.layout.forget_last_run();
+    h.engines_mut().layout.forget_last_run();
     h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -42,8 +42,8 @@ struct SnapView<'a> {
     avail: Size,
 }
 
-fn snap_for(h: &UiHarness, widget_id: WidgetId) -> Option<SnapView<'_>> {
-    let snapshot = &h.engines.layout.cache.prev;
+fn snap_for(h: &Harness, widget_id: WidgetId) -> Option<SnapView<'_>> {
+    let snapshot = &h.engines().layout.cache.prev;
     let snap = *snapshot.desc(widget_id)?;
     Some(SnapView {
         snap,
@@ -52,8 +52,8 @@ fn snap_for(h: &UiHarness, widget_id: WidgetId) -> Option<SnapView<'_>> {
     })
 }
 
-fn assert_snapshot_is_linear(h: &UiHarness) {
-    let snapshot = &h.engines.layout.cache.prev;
+fn assert_snapshot_is_linear(h: &Harness) {
+    let snapshot = &h.engines().layout.cache.prev;
     let len = snapshot.nodes.desired.len();
     assert_eq!(snapshot.nodes.scroll_content.len(), len);
     assert_eq!(snapshot.nodes.text_spans.len(), len);
@@ -61,7 +61,7 @@ fn assert_snapshot_is_linear(h: &UiHarness) {
     assert_eq!(snapshot.nodes.available.len(), len);
     let recorded = Layer::PAINT_ORDER
         .iter()
-        .map(|layer| h.ui.tree(*layer).records.len())
+        .map(|layer| h.ui_ref().tree(*layer).records.len())
         .sum::<usize>();
     assert_eq!(
         len, recorded,
@@ -93,7 +93,7 @@ impl WrappedLeaf {
 
 #[test]
 fn whole_tree_snapshot_populates_subtree_ranges_once() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("group"))
@@ -120,7 +120,7 @@ fn whole_tree_snapshot_populates_subtree_ranges_once() {
 
 #[test]
 fn unchanged_subtree_hits_and_replays_exact_output() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let build = |ui: &mut Ui| {
         WrappedLeaf {
             id: "a",
@@ -135,24 +135,27 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
         .unwrap()
         .snap
         .subtree_hash;
-    let first_desired = h.engines.layout.cache.prev.nodes.desired.clone();
-    let first_rects = h.ui.layout(Layer::Main).rect.clone();
+    let first_desired = h.engines_mut().layout.cache.prev.nodes.desired.clone();
+    let first_rects = h.ui().layout(Layer::Main).rect.clone();
 
     run_frame(&mut h, build);
     let second = snap_for(&h, WidgetId::from_hash("a")).unwrap();
 
     assert_eq!(first_hash, second.snap.subtree_hash);
-    assert_eq!(first_desired, h.engines.layout.cache.prev.nodes.desired);
-    assert_eq!(first_rects, h.ui.layout(Layer::Main).rect);
     assert_eq!(
-        h.engines.layout.scratch.counters.cache_hits().len(),
+        first_desired,
+        h.engines_mut().layout.cache.prev.nodes.desired
+    );
+    assert_eq!(first_rects, h.ui().layout(Layer::Main).rect);
+    assert_eq!(
+        h.engines_mut().layout.scratch.counters.cache_hits().len(),
         1,
         "the highest unchanged subtree must short-circuit the frame"
     );
     // The rects must come from the replay, not from arrange re-deriving them: the output is identical
     // either way, so only this assertion says which path ran.
     assert_eq!(
-        h.engines.layout.scratch.counters.arrange_replays(),
+        h.engines_mut().layout.scratch.counters.arrange_replays(),
         ReplayCounts {
             copied: 1,
             translated: 0,
@@ -166,7 +169,7 @@ fn unchanged_subtree_hits_and_replays_exact_output() {
 /// fill-only change hits at the root even though the full subtree hash changed.
 #[test]
 fn a_recolor_hits_the_measure_cache_at_the_root() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
         WrappedLeaf {
             id: "a",
@@ -175,7 +178,7 @@ fn a_recolor_hits_the_measure_cache_at_the_root() {
         }
         .show(ui);
     });
-    let full_before = h.ui.tree(Layer::Main).rollups.subtree.clone();
+    let full_before = h.ui().tree(Layer::Main).rollups.subtree.clone();
     run_frame(&mut h, |ui| {
         WrappedLeaf {
             id: "a",
@@ -186,11 +189,11 @@ fn a_recolor_hits_the_measure_cache_at_the_root() {
     });
     assert_ne!(
         full_before,
-        h.ui.tree(Layer::Main).rollups.subtree,
+        h.ui().tree(Layer::Main).rollups.subtree,
         "control: the paint did change",
     );
     assert_eq!(
-        h.engines.layout.scratch.counters.cache_hits().len(),
+        h.engines_mut().layout.scratch.counters.cache_hits().len(),
         1,
         "the whole tree replays from one hit",
     );
@@ -198,7 +201,7 @@ fn a_recolor_hits_the_measure_cache_at_the_root() {
 
 #[test]
 fn changing_descendant_hash_replaces_ancestor_descriptor() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
         WrappedLeaf {
             id: "a",
@@ -231,7 +234,7 @@ fn changing_descendant_hash_replaces_ancestor_descriptor() {
 
 #[test]
 fn removed_widget_is_absent_from_next_snapshot() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     run_frame(&mut h, |ui| {
         WrappedLeaf {
             id: "gone",
@@ -247,7 +250,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
         .show(ui);
     });
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .cache
             .prev
@@ -265,7 +268,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
     });
 
     assert!(
-        !h.engines
+        !h.engines_mut()
             .layout
             .cache
             .prev
@@ -273,7 +276,7 @@ fn removed_widget_is_absent_from_next_snapshot() {
             .contains_key(&WidgetId::from_hash("gone"))
     );
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .cache
             .prev
@@ -303,7 +306,7 @@ fn reordered_widgets_rebuild_the_dense_descriptor_index() {
         }
     }
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     run_frame(&mut h, |ui| build(ui, false));
     run_frame(&mut h, |ui| build(ui, false));
     run_frame(&mut h, |ui| build(ui, true));
@@ -319,7 +322,7 @@ fn reordered_widgets_rebuild_the_dense_descriptor_index() {
 
 #[test]
 fn changing_available_remeasures_wrapping_text() {
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("inner"))
@@ -374,36 +377,36 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
             });
     }
 
-    let mut h = UiHarness::with_text(UVec2::new(400, 200));
+    let mut h = Harness::new(UVec2::new(400, 200));
     let mut nodes = Vec::new();
     run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let cold_fill = h.ui.layout(Layer::Main).text_spans[nodes[0].idx()];
-    let cold_hug = h.ui.layout(Layer::Main).text_spans[nodes[1].idx()];
+    let cold_fill = h.ui().layout(Layer::Main).text_spans[nodes[0].idx()];
+    let cold_hug = h.ui().layout(Layer::Main).text_spans[nodes[1].idx()];
     assert_eq!(cold_hug, Span::new(0, 1));
     assert_eq!(cold_fill, Span::new(1, 1));
     let inner = snap_for(&h, WidgetId::from_hash("solver-order")).unwrap();
     assert_eq!(inner.snap.text_shapes, Span::new(0, 2));
-    let cold_fill_key = h.ui.layout(Layer::Main).text_shapes[cold_fill.start as usize].key;
-    let cold_hug_key = h.ui.layout(Layer::Main).text_shapes[cold_hug.start as usize].key;
+    let cold_fill_key = h.ui().layout(Layer::Main).text_shapes[cold_fill.start as usize].key;
+    let cold_hug_key = h.ui().layout(Layer::Main).text_shapes[cold_hug.start as usize].key;
     assert_ne!(cold_fill_key, cold_hug_key);
 
     run_frame_at(&mut h, UVec2::new(400, 200), |ui| build(ui, &mut nodes));
 
-    let warm_fill = h.ui.layout(Layer::Main).text_spans[nodes[0].idx()];
-    let warm_hug = h.ui.layout(Layer::Main).text_spans[nodes[1].idx()];
+    let warm_fill = h.ui().layout(Layer::Main).text_spans[nodes[0].idx()];
+    let warm_hug = h.ui().layout(Layer::Main).text_spans[nodes[1].idx()];
     assert_eq!(warm_fill, cold_fill);
     assert_eq!(warm_hug, cold_hug);
     assert_eq!(
-        h.ui.layout(Layer::Main).text_shapes[warm_fill.start as usize].key,
+        h.ui().layout(Layer::Main).text_shapes[warm_fill.start as usize].key,
         cold_fill_key
     );
     assert_eq!(
-        h.ui.layout(Layer::Main).text_shapes[warm_hug.start as usize].key,
+        h.ui().layout(Layer::Main).text_shapes[warm_hug.start as usize].key,
         cold_hug_key
     );
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .scratch
             .counters
@@ -436,7 +439,7 @@ fn localized_change_hits_unchanged_sibling() {
                     });
             });
     };
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     run_frame(&mut h, |ui| build(ui, 20.0));
     let stable_hash = snap_for(&h, WidgetId::from_hash("stable"))
         .unwrap()
@@ -446,7 +449,7 @@ fn localized_change_hits_unchanged_sibling() {
     run_frame(&mut h, |ui| build(ui, 25.0));
 
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .scratch
             .counters
@@ -454,7 +457,7 @@ fn localized_change_hits_unchanged_sibling() {
             .contains(&WidgetId::from_hash("stable"))
     );
     assert!(
-        !h.engines
+        !h.engines_mut()
             .layout
             .scratch
             .counters
@@ -487,7 +490,7 @@ fn widget_reappearance_matches_cold_snapshot() {
                     });
             });
     };
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let blip = WidgetId::from_hash("blip");
 
     run_frame(&mut h, with_widget);
@@ -501,7 +504,7 @@ fn widget_reappearance_matches_cold_snapshot() {
     run_frame(&mut h, with_widget);
     let warm = snap_for(&h, blip).unwrap().desired.to_vec();
 
-    h.engines.layout.cache.forget_all();
+    h.engines_mut().layout.cache.forget_all();
     run_frame(&mut h, with_widget);
     let cold = snap_for(&h, blip).unwrap().desired.to_vec();
 
@@ -511,7 +514,7 @@ fn widget_reappearance_matches_cold_snapshot() {
 
 #[test]
 fn oscillating_tree_size_reuses_both_snapshot_buffers() {
-    fn render(h: &mut UiHarness, extra: bool) {
+    fn render(h: &mut Harness, extra: bool) {
         run_frame(h, |ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("oscillating"))
@@ -532,7 +535,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         });
     }
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     for frame in 0..8 {
         render(&mut h, frame % 2 == 0);
     }
@@ -540,16 +543,16 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
     // its `desc_identity`, the same every frame. Steady-state oscillation must reuse the retained
     // map, not refill it. Counted because the `debug_assert` in the reuse branch is vacuous on a frame
     // that rebuilt instead.
-    let rebuilds_after_warmup = h.engines.layout.cache.snapshot_rebuilds.count();
+    let rebuilds_after_warmup = h.engines_mut().layout.cache.snapshot_rebuilds.count();
     let mut node_capacities = [
-        h.engines.layout.cache.prev.nodes.desired.capacity(),
-        h.engines.layout.cache.cur.nodes.desired.capacity(),
-        h.engines.layout.scratch.desired.capacity(),
+        h.engines_mut().layout.cache.prev.nodes.desired.capacity(),
+        h.engines_mut().layout.cache.cur.nodes.desired.capacity(),
+        h.engines_mut().layout.scratch.desired.capacity(),
     ];
     node_capacities.sort_unstable();
     let mut desc_capacities = [
-        h.engines.layout.cache.prev.snapshots.capacity(),
-        h.engines.layout.cache.cur.snapshots.capacity(),
+        h.engines_mut().layout.cache.prev.snapshots.capacity(),
+        h.engines_mut().layout.cache.cur.snapshots.capacity(),
     ];
     desc_capacities.sort_unstable();
 
@@ -557,14 +560,14 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         render(&mut h, frame % 2 == 0);
         assert_snapshot_is_linear(&h);
         let mut cur_node_capacities = [
-            h.engines.layout.cache.prev.nodes.desired.capacity(),
-            h.engines.layout.cache.cur.nodes.desired.capacity(),
-            h.engines.layout.scratch.desired.capacity(),
+            h.engines_mut().layout.cache.prev.nodes.desired.capacity(),
+            h.engines_mut().layout.cache.cur.nodes.desired.capacity(),
+            h.engines_mut().layout.scratch.desired.capacity(),
         ];
         cur_node_capacities.sort_unstable();
         let mut cur_desc_capacities = [
-            h.engines.layout.cache.prev.snapshots.capacity(),
-            h.engines.layout.cache.cur.snapshots.capacity(),
+            h.engines_mut().layout.cache.prev.snapshots.capacity(),
+            h.engines_mut().layout.cache.cur.snapshots.capacity(),
         ];
         cur_desc_capacities.sort_unstable();
         assert_eq!(
@@ -574,7 +577,7 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
         assert_eq!(desc_capacities, cur_desc_capacities);
     }
     assert_eq!(
-        h.engines.layout.cache.snapshot_rebuilds.count(),
+        h.engines_mut().layout.cache.snapshot_rebuilds.count(),
         rebuilds_after_warmup,
         "steady-state oscillation must reuse each buffer's descriptor map",
     );
@@ -593,12 +596,12 @@ fn oscillating_tree_size_reuses_both_snapshot_buffers() {
             });
     });
     assert_eq!(
-        h.engines.layout.cache.snapshot_rebuilds.count(),
+        h.engines_mut().layout.cache.snapshot_rebuilds.count(),
         rebuilds_after_warmup + 1,
         "an unseen descriptor sequence must rebuild the map",
     );
     assert!(
-        h.engines
+        h.engines_mut()
             .layout
             .cache
             .prev
@@ -631,11 +634,11 @@ fn offers_match_bit_for_bit() {
 /// `(25, 35) + 5 = (30, 40)`.
 #[test]
 fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     let mut color = RgbaF32::srgb(0.2, 0.4, 0.8);
     let mut popup_at = Vec2::new(20.0, 30.0);
-    let kept = |h: &mut UiHarness, color: RgbaF32, popup_at: Vec2| {
-        let before = h.engines.layout.scratch.counters.kept_runs();
+    let kept = |h: &mut Harness, color: RgbaF32, popup_at: Vec2| {
+        let before = h.engines_mut().layout.scratch.counters.kept_runs();
         h.frame(|ui| {
             WrappedLeaf {
                 id: "a",
@@ -651,17 +654,24 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
                     .show(ui);
             });
         });
-        h.engines.layout.scratch.counters.kept_runs() - before
+        h.engines_mut().layout.scratch.counters.kept_runs() - before
     };
     assert_eq!(kept(&mut h, color, popup_at), 0, "the first frame runs");
-    let rects = h.ui.layout(Layer::Main).rect.clone();
-    let popup = h.ui.layout(Layer::Popup).rect.clone();
+    let rects = h.ui().layout(Layer::Main).rect.clone();
+    let popup = h.ui().layout(Layer::Popup).rect.clone();
     assert_eq!(kept(&mut h, color, popup_at), 1, "an unchanged frame keeps");
     color = RgbaF32::srgb(0.9, 0.4, 0.8);
     assert_eq!(kept(&mut h, color, popup_at), 1, "a recolor keeps");
-    assert!(h.engines.layout.scratch.counters.cache_hits().is_empty());
-    assert_eq!(h.ui.layout(Layer::Main).rect, rects);
-    assert_eq!(h.ui.layout(Layer::Popup).rect, popup);
+    assert!(
+        h.engines_mut()
+            .layout
+            .scratch
+            .counters
+            .cache_hits()
+            .is_empty()
+    );
+    assert_eq!(h.ui().layout(Layer::Main).rect, rects);
+    assert_eq!(h.ui().layout(Layer::Popup).rect, popup);
 
     h.resize(UVec2::new(240, 200));
     assert_eq!(kept(&mut h, color, popup_at), 0, "a resize runs");
@@ -671,7 +681,7 @@ fn a_run_keeps_the_last_output_only_while_its_inputs_hold() {
     popup_at = Vec2::new(25.0, 35.0);
     assert_eq!(kept(&mut h, color, popup_at), 0, "a moved overlay runs");
     assert_eq!(
-        h.ui.layout(Layer::Popup).rect[0],
+        h.ui().layout(Layer::Popup).rect[0],
         Rect::new(30.0, 40.0, 30.0, 10.0),
     );
     assert_eq!(kept(&mut h, color, popup_at), 1);

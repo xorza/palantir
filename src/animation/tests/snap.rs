@@ -5,10 +5,11 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::spring::Spring;
 use crate::animation::tests::support::{self, AnimationUi, Release, SLOT};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use std::time::Duration;
@@ -162,7 +163,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         text: TextStyle::default().with_color(RgbaF32::WHITE),
     };
 
-    let frame = |h: &mut UiHarness, look: &AnimatedLook| {
+    let frame = |h: &mut Harness, look: &AnimatedLook| {
         h.frame_passes(|ui| {
             let cur = ui.animate(
                 AnimationRequest::new(id, SLOT, look.clone()),
@@ -186,7 +187,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     assert!(retarget.report().repaint_requested);
 
     let mut last = None;
-    let frames = h.frames_until_idle(600, tick, |ui| {
+    let frames = h.settled(&mut |ui: &mut Ui| {
         let cur = ui.animate(
             AnimationRequest::new(id, SLOT, target.clone()),
             Some(AnimationSpec::SPRING),
@@ -205,7 +206,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     };
     let step = release.settle_step(|_| 0.016);
     assert_eq!(step, 56);
-    assert_eq!(frames, Some(step), "the look's color spring settles");
+    assert_eq!(frames, step, "the look's color spring settles");
     assert_eq!(last, Some(target.clone()));
 
     let after_settle = frame(h.advance(tick), &target);

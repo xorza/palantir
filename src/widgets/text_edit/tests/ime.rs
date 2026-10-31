@@ -1,11 +1,11 @@
 //! IME composition in a field, and the field asking for IME text while focused.
 
 use crate::common::span::Span;
+use crate::host::harness::Harness;
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -26,13 +26,13 @@ fn record(ui: &mut Ui, buf: &mut String) {
     TextEdit::new(buf).id(field()).show(ui);
 }
 
-fn painted(h: &UiHarness, caret_width: f32) -> (String, usize) {
+fn painted(h: &Harness, caret_width: f32) -> (String, usize) {
     let node = h.node_of(field()).expect("recorded").node;
-    let block = block_of(&h.ui, node);
-    let text = h.ui.record_store().interned_text();
+    let block = block_of(h.ui_ref(), node);
+    let text = h.ui_ref().record_store().interned_text();
     let mut shown = String::new();
     let mut underlines = 0;
-    for shape in h.ui.tree(Layer::Main).shapes_of(block) {
+    for shape in h.ui_ref().tree(Layer::Main).shapes_of(block) {
         match shape {
             ShapeRecord::Text { text: run, .. } => shown.push_str(text.resolve(run.span)),
             ShapeRecord::Quad(QuadShape::Rect {
@@ -45,8 +45,8 @@ fn painted(h: &UiHarness, caret_width: f32) -> (String, usize) {
     (shown, underlines)
 }
 
-fn focused_at(text: &str, back: usize) -> (UiHarness, String) {
-    let mut h = UiHarness::with_text(SMALL);
+fn focused_at(text: &str, back: usize) -> (Harness, String) {
+    let mut h = Harness::new(SMALL);
     let mut buf = String::from(text);
     h.frame(|ui| record(ui, &mut buf));
     h.set_focus(field());
@@ -100,8 +100,8 @@ fn a_focused_field_asks_for_ime_at_its_caret() {
     let caret_width = TextEditTheme::default().caret_width;
     let (mut h, mut buf) = focused_at("abcd", 0);
     h.frame(|ui| record(ui, &mut buf));
-    let area = h.ui.ime_area().expect("a focused field asks");
-    let field_rect: Rect = h.ui.response_for(field()).rect.expect("arranged");
+    let area = h.ui().ime_area().expect("a focused field asks");
+    let field_rect: Rect = h.ui().response_for(field()).rect.expect("arranged");
     assert!(
         field_rect.contains_rect(area),
         "{area:?} inside {field_rect:?}"
@@ -122,8 +122,8 @@ fn a_focused_field_asks_for_ime_at_its_caret() {
     h.frame(|ui| narrow(ui, &mut buf));
     buf.truncate(2);
     h.frame(|ui| narrow(ui, &mut buf));
-    let area = h.ui.ime_area().expect("a focused field asks");
-    let field_rect: Rect = h.ui.response_for(field()).rect.expect("arranged");
+    let area = h.ui().ime_area().expect("a focused field asks");
+    let field_rect: Rect = h.ui().response_for(field()).rect.expect("arranged");
     assert!(
         field_rect.contains_rect(area),
         "{area:?} inside {field_rect:?}"
@@ -131,5 +131,9 @@ fn a_focused_field_asks_for_ime_at_its_caret() {
 
     h.clear_focus();
     h.frame(|ui| record(ui, &mut buf));
-    assert_eq!(h.ui.ime_area(), None, "an unfocused field asks for nothing");
+    assert_eq!(
+        h.ui().ime_area(),
+        None,
+        "an unfocused field asks for nothing"
+    );
 }

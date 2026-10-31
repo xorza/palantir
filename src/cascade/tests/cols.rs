@@ -1,6 +1,6 @@
 //! The per-node rows the walk fills, and what each covers.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -18,7 +18,7 @@ use glam::UVec2;
 fn node_spans_rows_mirror_chrome_and_children() {
     use crate::primitives::paint::chrome::Chrome;
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
@@ -43,7 +43,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
     });
 
     let plane = Plane::MAIN;
-    let cascade = h.ui.cascade();
+    let cascade = h.ui().cascade();
     let arena = &cascade.planes[plane].paint_arena;
     let chrome_idx = cascade.by_id[&WidgetId::from_hash("chrome")].node.idx();
     let bare_idx = cascade.by_id[&WidgetId::from_hash("bare")].node.idx();
@@ -93,7 +93,7 @@ fn node_spans_rows_mirror_chrome_and_children() {
 /// retained slot is overwritten with a valid row for the current tree.
 #[test]
 fn per_node_columns_track_tree_size() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     for child_count in [3usize, 1, 4] {
         h.frame(|ui| {
             Panel::hstack()
@@ -107,8 +107,8 @@ fn per_node_columns_track_tree_size() {
                 });
         });
         let plane = Plane::MAIN;
-        let nodes = h.ui.tree(plane).records.len();
-        let cascade = &h.ui.cascade().planes[plane];
+        let nodes = h.ui().tree(plane).records.len();
+        let cascade = &h.ui_ref().cascade().planes[plane];
         assert_eq!(cascade.cascade_inputs.len(), nodes);
         assert_eq!(cascade.subtree_paint_rects.len(), nodes);
         assert_eq!(cascade.subtree_ends.len(), nodes);
@@ -132,7 +132,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     use crate::widgets::block::Block;
     use crate::widgets::panel::Panel;
     let row = WidgetId::from_hash("row");
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().id(row).show(ui, |ui| {
             // Layout-only spacer: 50 px, paints nothing.
@@ -147,8 +147,8 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
                 .show(ui);
         });
     });
-    let ep = h.ui.cascade().by_id[&row];
-    let rollup = h.ui.cascade().planes[ep.plane].subtree_paint_rects[ep.node.idx()];
+    let ep = h.ui().cascade().by_id[&row];
+    let rollup = h.ui().cascade().planes[ep.plane].subtree_paint_rects[ep.node.idx()];
     assert_eq!(
         rollup,
         Rect::new(50.0, 0.0, 50.0, 50.0),
@@ -174,14 +174,14 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
         }
     }
 
-    let mut h = UiHarness::new(UVec2::splat(300));
+    let mut h = Harness::mono(UVec2::splat(300));
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
-    let base = h.ui.layout(Layer::Main).rect_hash();
+    let base = h.ui().layout(Layer::Main).rect_hash();
 
     // Same geometry, same paint.
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
-        h.ui.layout(Layer::Main).rect_hash(),
+        h.ui().layout(Layer::Main).rect_hash(),
         base,
         "an identical frame must hash equal, or the cascade walks every node",
     );
@@ -189,14 +189,14 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     // Same geometry, different paint: clean subtrees must still skip.
     h.frame(build(50.0, RgbaF32::srgb(0.0, 1.0, 0.0)));
     assert_eq!(
-        h.ui.layout(Layer::Main).rect_hash(),
+        h.ui().layout(Layer::Main).rect_hash(),
         base,
         "a paint-only change must not move the rect hash",
     );
 
     // Geometry moved: must invalidate.
     h.frame(build(80.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
-    let moved = h.ui.layout(Layer::Main).rect_hash();
+    let moved = h.ui().layout(Layer::Main).rect_hash();
     assert_ne!(
         moved, base,
         "a resized child must move the rect hash, or its rows go stale under a clean ancestor",
@@ -205,7 +205,7 @@ fn rect_hash_tracks_geometry_and_ignores_paint() {
     // A function of geometry, not a counter: the original size returns the original hash.
     h.frame(build(50.0, RgbaF32::srgb(1.0, 0.0, 0.0)));
     assert_eq!(
-        h.ui.layout(Layer::Main).rect_hash(),
+        h.ui().layout(Layer::Main).rect_hash(),
         base,
         "the hash must be a pure function of the arranged rects",
     );

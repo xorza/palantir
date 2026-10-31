@@ -1,3 +1,4 @@
+use crate::input::pointer::PointerButton;
 use crate::widgets::text_edit::tests::*;
 
 #[derive(Debug)]
@@ -178,15 +179,15 @@ fn selection_state_transitions() {
 #[test]
 fn drag_select_extends_selection() {
     // Press at offset 1, drag to 4 selects [1..4]. Mono 8 px/char, pad-left 8: offset N is at x = 8 + 8N.
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = String::from("hello");
 
     h.frame(Field::PADDED.scene(&mut buf));
-    h.press_at(Vec2::new(16.0, 20.0));
+    h.press(Vec2::new(16.0, 20.0), PointerButton::Left);
     h.frame(Field::PADDED.scene(&mut buf));
     h.drag_to(Vec2::new(40.0, 20.0));
     h.frame(Field::PADDED.scene(&mut buf));
-    h.release();
+    h.release(PointerButton::Left);
 
     h.key(Key::Char('X'));
     h.frame(Field::PADDED.scene(&mut buf));
@@ -199,19 +200,19 @@ fn drag_select_extends_selection() {
 #[test]
 fn click_without_drag_clears_prior_selection() {
     // Ctrl+A then a press elsewhere collapses the selection. The focusing click is beyond DOUBLE_CLICK_RADIUS of the later press, since every press counts toward a multi-press run.
-    let mut h = UiHarness::new(NARROW);
+    let mut h = Harness::mono(NARROW);
     let mut buf = String::from("hello");
 
     h.frame(Field::PADDED.scene(&mut buf));
-    h.click_at(Vec2::new(60.0, 20.0));
+    h.click(Vec2::new(60.0, 20.0));
     h.set_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.set_modifiers(Modifiers::NONE);
     h.frame(Field::PADDED.scene(&mut buf));
 
-    h.press_at(Vec2::new(24.0, 20.0));
+    h.press(Vec2::new(24.0, 20.0), PointerButton::Left);
     h.frame(Field::PADDED.scene(&mut buf));
-    h.release();
+    h.release(PointerButton::Left);
 
     h.key(Key::Char('Z'));
     h.frame(Field::PADDED.scene(&mut buf));

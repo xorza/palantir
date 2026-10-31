@@ -1,6 +1,6 @@
 //! Which chrome a popup body paints.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
@@ -29,18 +29,19 @@ fn the_theme_panel_is_the_last_resort() {
         ),
     ];
     for (label, build, want) in cases {
-        let mut h = UiHarness::new(SURFACE);
-        h.ui.theme_mut().panel_chrome = Some(Chrome::fill(theme_fill));
+        let mut h = Harness::mono(SURFACE);
+        h.ui().theme_mut().panel_chrome = Some(Chrome::fill(theme_fill));
         h.frame(|ui| {
             build(Popup::new(Anchor::at_point(ANCHOR)).id(id)).show(ui, |_, _| {});
         });
         let body = h.node_of(id).expect("popup body recorded");
         assert_eq!(body.plane.layer, Layer::Popup);
-        let fill =
-            h.ui.tree(Layer::Popup)
-                .chrome(body.node)
-                .expect("the body paints chrome")
-                .fill;
+        let fill = h
+            .ui()
+            .tree(Layer::Popup)
+            .chrome(body.node)
+            .expect("the body paints chrome")
+            .fill;
         let want = want.to_f16();
         assert!(
             matches!(fill, ShapeBrush::Solid(got) if got == want),

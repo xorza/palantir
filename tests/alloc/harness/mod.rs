@@ -1,6 +1,6 @@
 //! Frame-loop drivers around `Ui` that measure heap allocations attributable to one
 //! scene's per-frame work. [`Audit`] is the single way in: warmup length, measured
-//! frame count and per-frame budget. [`Audit::run`] raises a `UiHarness`; anything
+//! frame count and per-frame budget. [`Audit::run`] raises a `Harness`; anything
 //! rendering frames its own way (renderer fixtures, the full-tree gate, device
 //! gates through [`offscreen::OffscreenTarget`]) drives [`Audit::run_frames`].
 //!
@@ -23,20 +23,28 @@ use std::panic::Location;
 use glam::UVec2;
 use palantir::Ui;
 use palantir::internals::SHAPED_BUFFER_RING_FRAMES;
-use palantir::internals::ui_harness::UiHarness;
+use palantir::{Depth, Harness};
 
 use crate::allocator;
 use crate::allocator::AuditResult;
 
-/// Logical display every fixture renders at: `UiHarness`'s defaults (scale 1.0,
+/// Logical display every fixture renders at: `Harness`'s defaults (scale 1.0,
 /// pixel-snapped, no refresh rate) at 800×600, shared by [`Audit::run`] and
 /// [`new_ui`].
 const SURFACE: UVec2 = UVec2::new(800, 600);
 
 /// Mono-fallback harness for the alloc audits: private arena, fresh caches, no font
 /// loading.
-pub(crate) fn new_ui() -> UiHarness {
-    UiHarness::new(SURFACE)
+pub(crate) fn new_ui() -> Harness {
+    Harness::builder(SURFACE).mono().build()
+}
+
+/// [`new_ui`] that composes each frame's draw list too.
+pub(crate) fn new_compose() -> Harness {
+    Harness::builder(SURFACE)
+        .mono()
+        .depth(Depth::Compose)
+        .build()
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -149,14 +157,14 @@ impl Audit {
         self
     }
 
-    /// Drive `scene` through a `UiHarness` raised from [`Self::text`], every
+    /// Drive `scene` through a `Harness` raised from [`Self::text`], every
     /// measured frame checked against [`Self::paint_only`].
     #[track_caller]
     pub(crate) fn run(self, mut scene: impl FnMut(&mut Ui)) -> Report {
         let mut ui = if self.text {
-            UiHarness::with_text(SURFACE)
+            Harness::new(SURFACE)
         } else {
-            UiHarness::new(SURFACE)
+            Harness::builder(SURFACE).mono().build()
         };
         let mut recorded = false;
         self.measure(

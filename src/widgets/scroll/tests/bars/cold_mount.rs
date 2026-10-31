@@ -1,6 +1,6 @@
 //! The first frame a scroll is recorded on: bars must be right before any settle.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -32,7 +32,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
                     });
             });
     };
-    let mut h = UiHarness::new(UVec2::new(400, 600));
+    let mut h = Harness::mono(UVec2::new(400, 600));
     assert_eq!(
         h.at(Duration::from_millis(16)).frame(build).processing,
         FrameProcessing::SingleLayout,
@@ -44,7 +44,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
     let track: f32 = 200.0;
     let expected = (track / 800.0 * track).max(theme.min_thumb);
     assert_eq!(expected, 50.0, "arithmetic guard on the expectation");
-    let thumbs = thumb_rects(&h.ui, "scroll");
+    let thumbs = thumb_rects(h.ui_ref(), "scroll");
     assert_eq!(thumbs.len(), 1, "one vertical thumb, no collapsed peers");
     assert_eq!(
         thumbs[0].size.h, expected,
@@ -59,7 +59,7 @@ fn cold_mount_places_the_thumb_in_one_record_pass() {
 #[test]
 fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
     let surface = UVec2::new(400, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let theme = theme();
     let scroll_id = WidgetId::from_hash("scroll");
     let scene = |ui: &mut Ui| {
@@ -77,14 +77,14 @@ fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
     h.frame(scene);
     let expected = Size::new(200.0 - theme.thickness - theme.gap, 200.0);
     assert_eq!(
-        scroll_viewport(&h.ui, scroll_id),
+        scroll_viewport(h.ui_ref(), scroll_id),
         expected,
         "cold-mount overflowing scroll: gutter reservation must be \
          active on the first painted frame; viewport should already \
          be deflated by `theme.thickness + theme.gap` on the cross axis",
     );
     assert!(
-        scroll_content(&h.ui, scroll_id).h > scroll_viewport(&h.ui, scroll_id).h,
+        scroll_content(h.ui_ref(), scroll_id).h > scroll_viewport(h.ui_ref(), scroll_id).h,
         "overflow flag must reflect post-relayout measurement (Y \
          overflows, X doesn't)",
     );
@@ -95,7 +95,7 @@ fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
 fn cold_mount_bar_geometry_matches_frame_two() {
     use crate::primitives::geometry::rect::Rect;
     let surface = UVec2::new(400, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let scene = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -120,11 +120,11 @@ fn cold_mount_bar_geometry_matches_frame_two() {
     };
 
     h.frame(scene);
-    let f1 = bar_rects(&h.ui);
+    let f1 = bar_rects(h.ui_ref());
     assert_eq!(f1.len(), 2, "cold-mount must emit both V + H thumbs");
 
     h.frame(scene);
-    let f2 = bar_rects(&h.ui);
+    let f2 = bar_rects(h.ui_ref());
 
     assert_eq!(
         f1, f2,
@@ -138,7 +138,7 @@ fn cold_mount_bar_geometry_matches_frame_two() {
 #[test]
 fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
     let surface = UVec2::new(400, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let scroll_id = WidgetId::from_hash("scroll");
     let scene = |ui: &mut Ui| {
         Panel::vstack()
@@ -154,14 +154,17 @@ fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
     };
     h.frame(scene);
     assert_eq!(
-        scroll_viewport(&h.ui, scroll_id),
+        scroll_viewport(h.ui_ref(), scroll_id),
         Size::new(188.0, 200.0),
         "gutter is constant — viewport = outer - (width + gap) even with no overflow",
     );
-    assert_eq!(scroll_content(&h.ui, scroll_id), Size::new(180.0, 50.0));
+    assert_eq!(
+        scroll_content(h.ui_ref(), scroll_id),
+        Size::new(180.0, 50.0)
+    );
     assert!(
-        scroll_content(&h.ui, scroll_id).w <= scroll_viewport(&h.ui, scroll_id).w
-            && scroll_content(&h.ui, scroll_id).h <= scroll_viewport(&h.ui, scroll_id).h
+        scroll_content(h.ui_ref(), scroll_id).w <= scroll_viewport(h.ui_ref(), scroll_id).w
+            && scroll_content(h.ui_ref(), scroll_id).h <= scroll_viewport(h.ui_ref(), scroll_id).h
     );
 }
 
@@ -169,7 +172,7 @@ fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
 #[test]
 fn scroll_with_bars_composes_through_warm_cache() {
     let surface = UVec2::new(400, 300);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
@@ -194,7 +197,7 @@ fn scroll_with_bars_composes_through_warm_cache() {
 #[test]
 fn nested_clipped_scrolls_compose_through_warm_cache() {
     let surface = UVec2::new(800, 600);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))

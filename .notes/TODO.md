@@ -1,8 +1,7 @@
 - widget-authoring surface
 - custom panels
-- custom renderer backends
 - wgpu features and limits request public api
 - mesh once registrations
 - flexbox
 - platform time doubleclick
-- screenshot tool
+- mcp

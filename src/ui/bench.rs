@@ -32,13 +32,12 @@ use crate::bench::kind::{Kind, Scale};
 use crate::diagnostics::gpu_pass_stats::BatchKind;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
+use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::host::offscreen::OffscreenHost;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
-use crate::internals::record_app::RecordApp;
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::frontend_harness::FrontendHarness;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
@@ -82,24 +81,27 @@ fn bench_host(g: &BenchGpu) -> OffscreenHost {
 /// skip the record closure.
 #[derive(Debug)]
 struct CpuHarness {
-    frontend: FrontendHarness,
+    h: Harness,
     start: Instant,
 }
 
 impl CpuHarness {
     fn new() -> Self {
-        let mut harness = UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR);
-        harness.ui.theme_mut().window_clear = WINDOW_CLEAR;
+        let mut h = Harness::builder(BENCH_SURFACE)
+            .scale(BENCH_DPR)
+            .depth(Depth::Compose)
+            .build();
+        h.ui().theme_mut().window_clear = WINDOW_CLEAR;
         Self {
-            frontend: FrontendHarness::new(harness),
+            h,
             start: Instant::now(),
         }
     }
 
     /// Drive one full CPU frame and ack the present, so `cached` settles into `Skip`.
     fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FramePaint {
-        self.frontend.harness.at(self.start.elapsed());
-        self.frontend.frame(record).paint()
+        self.h.at(self.start.elapsed());
+        self.h.frame(record).paint()
     }
 }
 
@@ -326,7 +328,7 @@ fn gpu_frame(
     target: &OwnedTarget,
     state: &mut FrameFixture,
 ) -> FramePaint {
-    let mut app = RecordApp::new(|ui| state.render(BENCH_SCALE, ui));
+    let mut app = |ui: &mut Ui| state.render(BENCH_SCALE, ui);
     host.frame(target.as_target(), BENCH_DPR, &mut app).paint()
 }
 
@@ -341,10 +343,10 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                     let sizes = arm.sizes();
                     move |state: &mut FrameFixture, n: u32| {
                         if arm == Arm::Resizing {
-                            h.frontend.harness.resize(sizes[n as usize % sizes.len()]);
+                            h.h.resize(sizes[n as usize % sizes.len()]);
                         }
-                        let harness = &mut h.frontend.harness;
-                        if let Some(event) = arm.input(state, &mut harness.ui, n) {
+                        let harness = &mut h.h;
+                        if let Some(event) = arm.input(state, harness.ui(), n) {
                             harness.on_input(event);
                             release(event, |up| {
                                 harness.on_input(up);
@@ -389,10 +391,15 @@ fn record(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "record", Scale::Sample);
     group.bench_function(Backend::Cpu.case("frame"), |b| {
         let mut state = FrameFixture::default();
-        let mut h = UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR);
+        let mut h = Harness::builder(BENCH_SURFACE).scale(BENCH_DPR).build();
         h.frame(|ui| state.render(BENCH_SCALE, ui));
-        let mut app = RecordApp::new(|ui: &mut Ui| state.render(BENCH_SCALE, ui));
-        let mut pass = || h.ui.record_alone(&mut h.engines, WindowToken(0), &mut app);
+        let mut app = |ui: &mut Ui| state.render(BENCH_SCALE, ui);
+        let mut pass = || {
+            let parts = h.parts();
+            parts
+                .ui
+                .record_alone(parts.engines, WindowToken(0), &mut app);
+        };
         pass();
         b.iter(&mut pass);
     });

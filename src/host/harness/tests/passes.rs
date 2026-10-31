@@ -1,7 +1,7 @@
 //! Which record pass a read observes, warm against cold.
 
-use crate::internals::ui_harness::tests::support::{self, INSIDE, SURFACE};
-use crate::internals::ui_harness::*;
+use crate::host::harness::tests::support::{self, INSIDE, SURFACE};
+use crate::host::harness::*;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
 use std::mem;
 
@@ -10,7 +10,7 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
     // Rule 1. `cold` leaves `prev_stamp` unseeded so frame 1 adds the blackout warmup pass; `FrameProcessing` can't report it, so a wrong count would silently read the input-blind pass.
     let mut passes = PassCounter::default();
 
-    let mut warm = UiHarness::new(SURFACE);
+    let mut warm = Harness::mono(SURFACE);
     let report = warm.frame(|ui| {
         passes.0 += 1;
         support::button(ui);
@@ -18,7 +18,7 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
     assert_eq!(passes.take(), 1, "a warm frame 1 records once");
     assert_eq!(report.processing, FrameProcessing::SingleLayout);
 
-    let mut cold = UiHarness::cold(SURFACE);
+    let mut cold = Harness::cold(SURFACE);
     cold.frame(|ui| {
         passes.0 += 1;
         support::button(ui);
@@ -33,7 +33,8 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
     assert_eq!(passes.take(), 1);
 
     // A builder on a cold harness keeps it cold.
-    let mut scaled = UiHarness::cold(SURFACE).scale(2.0);
+    let mut scaled = Harness::builder(SURFACE).mono().scale(2.0).build();
+    scaled.ui().set_prev_stamp(None);
     scaled.frame(|ui| {
         passes.0 += 1;
         support::button(ui);
@@ -44,9 +45,9 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
 #[test]
 fn frame_value_returns_pass_a_not_the_drained_second_pass() {
     // Rules 4 and 5. A click double-records; pass B runs after `drain_per_frame_queues` and sees `clicked() == false`, so reading the last pass loses the edge.
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
     // The press frame; the click is the next frame's release.
     harness.step(support::button);
 
@@ -65,7 +66,7 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
     );
 
     // Same click through `frame_value`: both passes record, the value comes from the one that saw the edge.
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
     harness.step(support::button);
     let mut passes = 0;
     let clicked = harness.frame_value(|ui| {
@@ -81,11 +82,11 @@ fn frame_value_returns_pass_a_not_the_drained_second_pass() {
 #[test]
 fn response_in_sees_the_click_that_a_between_frames_read_misses() {
     // Rule 3. `frame_quiescent` is snapshotted at record-pass start, so a read between frames reflects the previous frame's input.
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
-    harness.click_at(INSIDE);
+    harness.click(INSIDE);
 
-    let stale = harness.ui.response_for(support::target()).left.clicked();
+    let stale = harness.ui().response_for(support::target()).left.clicked();
     assert!(!stale, "a between-frames read cannot see input fed since");
 
     let inside = harness.response_in(support::target(), support::button);
@@ -94,7 +95,7 @@ fn response_in_sees_the_click_that_a_between_frames_read_misses() {
 
 #[test]
 fn frame_without_baseline_forces_a_full_repaint() {
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
 
     // A steady frame with no input has nothing to repaint.

@@ -3,9 +3,10 @@
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{self, AnimationUi, SLOT};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use std::cell;
@@ -43,14 +44,14 @@ fn animate_drives_repaint_until_settle() {
     assert!(repaint, "in-flight animation must request repaint");
 
     // FAST is 120 ms; frame `n` after the retarget has spent n × 16 ms: 112 at 7, 128 at 8.
-    let frames = h.frames_until_idle(100, Duration::from_millis(16), |ui| {
+    let frames = h.settled(&mut |ui: &mut Ui| {
         let _ = ui.animate(
             AnimationRequest::new(id, SLOT, 1.0_f32),
             Some(AnimationSpec::FAST),
         );
         Block::new().id(id).show(ui);
     });
-    assert_eq!(frames, Some(8), "the 8th 16 ms frame passes 120 ms");
+    assert_eq!(frames, 8, "the 8th 16 ms frame passes 120 ms");
 }
 
 /// `Ui::animate(..., None)` returns `target`, allocates no row and requests
@@ -228,7 +229,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
 fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     use crate::animation::easing::Easing;
     let AnimationUi { mut h, id } = support::setup_animation_ui("from-rest");
-    let record = |h: &mut UiHarness, at: Duration, target: f32| {
+    let record = |h: &mut Harness, at: Duration, target: f32| {
         let value = cell::Cell::new(f32::NAN);
         h.at(at).frame(|ui| {
             value.set(ui.animate(

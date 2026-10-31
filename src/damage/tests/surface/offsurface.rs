@@ -5,7 +5,7 @@ use crate::cascade::paint::PaintRows;
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame};
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -86,7 +86,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
         "the union can cross the surface even though no paint row does",
     );
 
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     frame(&mut h, |ui| {
         // `Panel::transform` applies to the body, so the chrome lands wholly off a 200×200 surface.
         Panel::canvas()
@@ -103,7 +103,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     });
 
     assert!(
-        !h.engines
+        !h.engines_mut()
             .damage
             .prev
             .contains_key(&WidgetId::from_hash("off")),
@@ -126,7 +126,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
 /// rect, and removal clears its pixels. The last two regress without the insert.
 #[test]
 fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
-    let mut h = UiHarness::new(DISPLAY.physical);
+    let mut h = Harness::mono(DISPLAY.physical);
     // "c" starts at x = 200, exactly off-surface (edge-touching rects don't intersect).
     let build = |dx: f32, c_fill: Option<RgbaF32>, ui: &mut Ui| {
         Panel::hstack()

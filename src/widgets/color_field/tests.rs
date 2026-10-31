@@ -4,7 +4,8 @@
 )]
 
 use crate::damage::Damage;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::paint::color::RgbaF32;
@@ -21,8 +22,8 @@ use std::thread;
 
 const FIELD: UVec2 = UVec2::new(208, 160);
 
-fn harness() -> UiHarness {
-    UiHarness::new(FIELD)
+fn harness() -> Harness {
+    Harness::mono(FIELD)
 }
 
 fn coords(hue: f32, sat: f32, val: f32) -> ColorCoords {
@@ -39,7 +40,7 @@ struct EditEdges {
     committed: bool,
 }
 
-fn frame(h: &mut UiHarness, id: WidgetId, state: &mut ColorCoords) -> EditEdges {
+fn frame(h: &mut Harness, id: WidgetId, state: &mut ColorCoords) -> EditEdges {
     h.frame_value(|ui| {
         let r = ColorField::new(state).id(id).show(ui);
         EditEdges {
@@ -61,7 +62,7 @@ fn the_pointer_maps_onto_the_axes() {
         let mut h = harness();
         let mut state = coords(0.3, 0.9, 0.1);
         frame(&mut h, id, &mut state);
-        h.press_at(at);
+        h.press(at, PointerButton::Left);
         frame(&mut h, id, &mut state);
         assert_eq!(state.saturation(), sat, "saturation at {at:?}");
         assert_eq!(state.value(), val, "value at {at:?}");
@@ -75,7 +76,7 @@ fn a_drag_past_the_edge_clamps_to_it() {
     let mut h = harness();
     let mut state = coords(0.3, 0.5, 0.5);
     frame(&mut h, id, &mut state);
-    h.press_at(Vec2::new(104.0, 80.0));
+    h.press(Vec2::new(104.0, 80.0), PointerButton::Left);
     frame(&mut h, id, &mut state);
     h.drag_to(Vec2::new(400.0, 400.0));
     frame(&mut h, id, &mut state);
@@ -90,7 +91,7 @@ fn changed_and_committed_are_edges() {
     let mut state = coords(0.3, 0.2, 0.2);
     frame(&mut h, id, &mut state);
 
-    h.press_at(Vec2::new(104.0, 80.0));
+    h.press(Vec2::new(104.0, 80.0), PointerButton::Left);
     let EditEdges { changed, committed } = frame(&mut h, id, &mut state);
     assert!(changed, "the press moved the value");
     assert!(!committed, "a press is not the end of a gesture");
@@ -99,7 +100,7 @@ fn changed_and_committed_are_edges() {
     assert!(!changed, "a held pointer that has not moved writes nothing");
     assert!(!committed);
 
-    h.release();
+    h.release(PointerButton::Left);
     let EditEdges { committed, .. } = frame(&mut h, id, &mut state);
     assert!(committed, "the release frame is the one edit");
 
@@ -180,7 +181,7 @@ fn the_fill_matches_the_color_of_every_texel() {
 #[test]
 fn a_hue_change_repaints_the_whole_field() {
     let id = WidgetId::from_hash("field-repaint");
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     let mut state = coords(0.3, 0.5, 0.5);
     frame(&mut h, id, &mut state);
     frame(&mut h, id, &mut state);
@@ -353,11 +354,15 @@ fn the_surface_leaves_with_the_field() {
 
     let id = WidgetId::from_hash("leaving-field");
     let mut coords = ColorCoords::default();
-    let mut h = UiHarness::new(UVec2::new(300, 300));
+    let mut h = Harness::mono(UVec2::new(300, 300));
     h.frame(|ui| {
         ColorField::new(&mut coords).id(id).show(ui);
     });
-    let surface = |h: &UiHarness| h.ui.state::<ColorSurface<(ColorModel, f32)>>(id).is_some();
+    let surface = |h: &Harness| {
+        h.ui_ref()
+            .state::<ColorSurface<(ColorModel, f32)>>(id)
+            .is_some()
+    };
     assert!(surface(&h), "built while the field records");
     h.frame(|_| {});
     assert!(!surface(&h), "swept with the field");

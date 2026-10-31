@@ -12,7 +12,7 @@ use std::rc::Rc;
 
 use crate::fixtures::icon;
 use crate::golden_name::GoldenName;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// A twelfth of a turn, 30°, from the first frame on.
 fn thirty_degrees() -> PaintAnimation {
@@ -148,7 +148,7 @@ fn turned_images_match_golden() {
         [80, 200, 110, 255],
     ];
     let image = Image::from_srgba8(UVec2::new(2, 2), texels.concat()).unwrap();
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let handle = h.host.ui().load_image(&image).unwrap();
     let source = Rect::new(20.0, 30.0, 60.0, 40.0);
     let capture = h.size(UVec2::new(230, 120)).settled_frame(0, |ui| {

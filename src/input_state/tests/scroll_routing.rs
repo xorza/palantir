@@ -1,7 +1,8 @@
+use crate::host::harness::Harness;
+use crate::input::input_event::InputEvent;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::sense::Sense;
 use crate::input::zoom_factor::ZoomFactor;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
@@ -25,13 +26,13 @@ fn build_two_gesture_targets(ui: &mut Ui) {
 
 fn route_across_two_targets(second_delta: bool) -> [ScrollDelta; 2] {
     let surface = UVec2::new(200, 100);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.frame(build_two_gesture_targets);
 
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(2.0, 3.0));
-    h.move_to(Vec2::new(150.0, 50.0));
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(2.0, 3.0));
+    h.hover(Vec2::new(150.0, 50.0));
     if second_delta {
-        h.scroll_lines(Vec2::new(4.0, 5.0));
+        h.on_input(InputEvent::ScrollLines(Vec2::new(4.0, 5.0)));
     }
 
     h.frame_value(|ui| {
@@ -78,9 +79,9 @@ fn scroll_deltas_stay_with_their_event_time_targets() {
 #[test]
 fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
     let surface = UVec2::new(200, 100);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.frame(build_two_gesture_targets);
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(7.0, 11.0));
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(7.0, 11.0));
     h.pointer_left();
 
     let observed = h.frame_value(|ui| {
@@ -99,11 +100,11 @@ fn pointer_leave_after_scroll_keeps_the_pending_target_delta() {
 #[test]
 fn pinch_products_accumulate_independently_per_event_time_target() {
     let surface = UVec2::new(200, 100);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.frame(build_two_gesture_targets);
-    h.pinch_at(Vec2::new(50.0, 50.0), 1.1);
-    h.pinch(1.05);
-    h.pinch_at(Vec2::new(150.0, 50.0), 0.5);
+    h.pinch(Vec2::new(50.0, 50.0), 1.1);
+    h.on_input(InputEvent::Zoom(1.05));
+    h.pinch(Vec2::new(150.0, 50.0), 0.5);
 
     let [a, b] = h.frame_value(|ui| {
         build_two_gesture_targets(ui);
@@ -124,7 +125,7 @@ fn pinch_products_accumulate_independently_per_event_time_target() {
 #[test]
 fn nested_scroll_panels_route_to_innermost_under_pointer() {
     let surface = UVec2::new(300, 300);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(WidgetId::from_hash("outer"))
@@ -139,7 +140,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
             });
     };
     h.frame(build);
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     let inner_id = WidgetId::from_hash("inner");
     let outer_id = WidgetId::from_hash("outer");
     let [inner_d, outer_d] = h.frame_value(|ui| {
@@ -156,7 +157,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
 #[test]
 fn scroll_delta_zero_for_non_target() {
     let surface = UVec2::new(200, 200);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let scroller = WidgetId::from_hash("scroller");
     let other = WidgetId::from_hash("other");
     let build = |ui: &mut Ui| {
@@ -171,7 +172,7 @@ fn scroll_delta_zero_for_non_target() {
         });
     };
     h.frame(build);
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
     let [target, bystander] = h.frame_value(|ui| {
         build(ui);
         [
@@ -186,7 +187,7 @@ fn scroll_delta_zero_for_non_target() {
 #[test]
 fn pointer_left_clears_scroll_target() {
     let surface = UVec2::new(200, 200);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let build = |ui: &mut Ui| {
         Panel::zstack()
             .id(WidgetId::from_hash("scroller"))
@@ -195,9 +196,9 @@ fn pointer_left_clears_scroll_target() {
             .show(ui, |_| {});
     };
     h.frame(build);
-    h.move_to(Vec2::new(50.0, 50.0));
+    h.hover(Vec2::new(50.0, 50.0));
     h.pointer_left();
-    h.scroll_pixels(Vec2::new(0.0, 5.0));
+    h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     let id = WidgetId::from_hash("scroller");
     let d = h.frame_value(|ui| {
         build(ui);
@@ -213,7 +214,7 @@ fn pointer_left_clears_scroll_target() {
 #[test]
 fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     let surface = UVec2::new(200, 200);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let id = WidgetId::from_hash("scroller");
     let build = |ui: &mut Ui| {
         Panel::zstack()
@@ -224,12 +225,12 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
     };
     h.frame(build);
 
-    let scroll = h.scroll_pixels_at(Vec2::new(150.0, 150.0), Vec2::new(0.0, 12.0));
+    let scroll = h.scroll_pixels(Vec2::new(150.0, 150.0), Vec2::new(0.0, 12.0));
     assert!(
         !scroll.repaint_requested,
         "scroll with no current target must be discarded",
     );
-    h.move_to(Vec2::new(50.0, 50.0));
+    h.hover(Vec2::new(50.0, 50.0));
 
     let delivered = h.frame_value(|ui| {
         build(ui);
@@ -246,7 +247,7 @@ fn scroll_over_inert_area_is_not_delivered_to_a_later_target() {
 #[test]
 fn sense_scroll_routes_scroll_but_not_pinch() {
     let surface = UVec2::new(200, 200);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let id = WidgetId::from_hash("scroll_only");
     let build = |ui: &mut Ui| {
         Panel::zstack()
@@ -256,8 +257,8 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
             .show(ui, |_| {});
     };
     h.frame(build);
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
-    h.pinch(1.5);
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
+    h.on_input(InputEvent::Zoom(1.5));
     let scroll = h.frame_value(|ui| {
         build(ui);
         ui.response_for(id).scroll
@@ -278,7 +279,7 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
 #[test]
 fn sense_pinch_routes_pinch_but_not_scroll() {
     let surface = UVec2::new(200, 200);
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     let id = WidgetId::from_hash("pinch_only");
     let build = |ui: &mut Ui| {
         Panel::zstack()
@@ -288,8 +289,8 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
             .show(ui, |_| {});
     };
     h.frame(build);
-    h.scroll_pixels_at(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
-    h.pinch(1.5);
+    h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
+    h.on_input(InputEvent::Zoom(1.5));
     let scroll = h.frame_value(|ui| {
         build(ui);
         ui.response_for(id).scroll

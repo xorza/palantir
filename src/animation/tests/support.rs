@@ -5,7 +5,7 @@ use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::animatable::Animatable;
 use crate::widget_core::configure::Configure;
@@ -52,12 +52,15 @@ pub(super) fn spring_velocity<T: Animatable>(row: &AnimationRow<T>) -> &T {
 /// Prelude: pre-records the widget so its state row exists; per-frame bodies re-record it so state survives sweeps.
 #[derive(Debug)]
 pub(super) struct AnimationUi {
-    pub(super) h: UiHarness,
+    pub(super) h: Harness,
     pub(super) id: WidgetId,
 }
 
 pub(super) fn setup_animation_ui(salt: &'static str) -> AnimationUi {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::builder(SURFACE)
+        .mono()
+        .frame_dt(Duration::from_millis(16))
+        .build();
     let id = widget_id(salt);
     h.frame(|ui| {
         Block::new().id(id).show(ui);

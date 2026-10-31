@@ -1,5 +1,5 @@
+use crate::host::harness::unit::Passes;
 use crate::input::keyboard::key_text::KeyText;
-use crate::internals::ui_harness::passes::Passes;
 use crate::widgets::text_edit::EditEdges;
 use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::tests::*;
@@ -8,7 +8,7 @@ const EDITOR: &str = "response-editor";
 
 /// Drives one frame and keeps each record pass's edges: `Ui::frame` re-records on relayout, so a per-frame edge
 /// shows only in pass A.
-fn frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
+fn frame(h: &mut Harness, buf: &mut String) -> Passes<EditEdges> {
     h.frame_passes(|ui| {
         Panel::hstack()
             .auto_id()
@@ -25,7 +25,7 @@ fn frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
 
 #[test]
 fn reports_focus_gained_as_a_one_frame_edge() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
@@ -46,7 +46,7 @@ fn reports_focus_gained_as_a_one_frame_edge() {
 
 #[test]
 fn reports_changed_on_edit_but_not_submit() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
@@ -63,7 +63,7 @@ fn reports_changed_on_edit_but_not_submit() {
 
 #[test]
 fn reports_submitted_on_single_line_enter() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("hi");
 
@@ -115,7 +115,7 @@ fn committed_fires_once_per_finished_edit() {
         ),
     ];
     for (label, steps, want) in cases {
-        let mut h = UiHarness::with_text(SMALL);
+        let mut h = Harness::new(SMALL);
         let mut buf = String::new();
         h.set_focus(WidgetId::from_hash(EDITOR));
         assert!(
@@ -139,7 +139,7 @@ fn committed_fires_once_per_finished_edit() {
 
 #[test]
 fn reports_focus_lost_on_blur() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
@@ -154,7 +154,7 @@ fn reports_focus_lost_on_blur() {
 
 #[test]
 fn escape_reports_focus_lost_on_the_blur_frame() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
@@ -176,7 +176,7 @@ fn escape_reports_focus_lost_on_the_blur_frame() {
 /// A same-length overwrite must still report `changed`: the signal comes from the mutation choke points, not a length delta.
 #[test]
 fn reports_changed_on_same_length_overwrite() {
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::from("a");
 
@@ -195,7 +195,7 @@ fn reports_changed_on_same_length_overwrite() {
 /// Disabling a focused editor kicks focus out on the disable frame and drops that frame's keystrokes.
 #[test]
 fn disabling_a_focused_editor_blurs_and_drops_input() {
-    fn disabled_frame(h: &mut UiHarness, buf: &mut String) -> Passes<EditEdges> {
+    fn disabled_frame(h: &mut Harness, buf: &mut String) -> Passes<EditEdges> {
         h.frame_passes(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -211,7 +211,7 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
         })
     }
 
-    let mut h = UiHarness::with_text(SMALL);
+    let mut h = Harness::new(SMALL);
     let id = WidgetId::from_hash(EDITOR);
     let mut buf = String::new();
 
@@ -306,7 +306,7 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
         (Key::Tab, ctrl, ShortcutMods::CTRL, true),
     ] {
         let probe = Shortcut::new(probe_mods, key);
-        let mut h = UiHarness::with_text(SMALL);
+        let mut h = Harness::new(SMALL);
         let mut buf = String::from("hello");
         h.frame(|ui| {
             scene(ui, &mut buf, probe);

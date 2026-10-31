@@ -5,7 +5,6 @@ use crate::gpu::backdrop::tests::{
     Expect, SIZE, assert_blurred, assert_within_a_step, whole, whole_at, window,
 };
 use crate::gpu::test_gpu::headless_test_gpu;
-use crate::internals::record_app::RecordApp;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -91,15 +90,15 @@ fn panes_apart_blur_together() {
     let under = whole(|ui: &mut Ui| canvas(ui, |ui| stripes(ui, 64)));
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, SIZE, RgbaF32::BLACK);
-    window.frame(&mut RecordApp::new(|ui: &mut Ui| {
+    window.frame(&mut |ui: &mut Ui| {
         canvas(ui, |ui| {
             stripes(ui, 64);
             for rect in [left, right] {
                 ui.add_shape(Shape::rect(rect).backdrop_filter(BackdropFilter::blur(sigma)));
             }
         });
-    }));
-    assert_eq!(window.host().backdrop_blurs(), 2);
+    });
+    assert_eq!(window.backdrop_blurs(), 2);
     let at = |p: Vec2| {
         if left.contains(p) || right.contains(p) {
             Expect::Blurred
@@ -210,9 +209,9 @@ fn more_stale_panes_than_a_partial_frame_holds_paint_whole() {
         (0, (FramePaint::Partial, 2)),
         (9, (FramePaint::Full, 9)),
     ] {
-        let paint = window.frame(&mut RecordApp::new(scene(changed))).paint();
+        let paint = window.frame(&mut scene(changed)).paint();
         let what = format!("{changed} changed");
-        assert_eq!((paint, window.host().backdrop_blurs()), want, "{what}");
+        assert_eq!((paint, window.backdrop_blurs()), want, "{what}");
         assert_within_a_step(&window.read_back(), &whole_at(size, scene(changed)), &what);
     }
 }
@@ -251,8 +250,8 @@ fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
         (true, false, (FramePaint::Partial, 0), "dot"),
         (true, true, (FramePaint::Partial, 1), "grown"),
     ] {
-        let painted = window.frame(&mut RecordApp::new(scene(dot, wide))).paint();
-        assert_eq!((painted, window.host().backdrop_blurs()), want, "{what}");
+        let painted = window.frame(&mut scene(dot, wide)).paint();
+        assert_eq!((painted, window.backdrop_blurs()), want, "{what}");
         assert_within_a_step(&window.read_back(), &whole_at(size, scene(dot, wide)), what);
     }
 }

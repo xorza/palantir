@@ -1,7 +1,7 @@
 //! What moves a single node's hash, and what deliberately does not.
 
 use crate::common::content_hash::ContentHash;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
@@ -20,11 +20,11 @@ use glam::Vec2;
 
 #[test]
 fn empty_tree_has_no_hashes() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|_| {});
-    assert_eq!(h.ui.tree(Layer::Main).records.len(), 1);
-    assert_eq!(h.ui.tree(Layer::Main).rollups.node.len(), 1);
-    assert_eq!(h.ui.tree(Layer::Main).rollups.subtree.len(), 1);
+    assert_eq!(h.ui().tree(Layer::Main).records.len(), 1);
+    assert_eq!(h.ui().tree(Layer::Main).rollups.node.len(), 1);
+    assert_eq!(h.ui().tree(Layer::Main).rollups.subtree.len(), 1);
 }
 
 #[test]
@@ -333,7 +333,7 @@ fn child_hash_does_not_affect_parent_hash() {
 /// `Tree.shapes.hashes` is parallel to `Tree.shapes.records` after `post_record`, filled by the `compute_rollups` walk.
 #[test]
 fn shape_hashes_column_sized_to_shape_records() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("f"))
@@ -352,7 +352,7 @@ fn shape_hashes_column_sized_to_shape_records() {
                 ));
             });
     });
-    let tree = h.ui.tree(Layer::Main);
+    let tree = h.ui().tree(Layer::Main);
     assert_eq!(
         tree.shapes.hashes.len(),
         tree.shapes.records.len(),
@@ -389,11 +389,11 @@ fn shape_hash_stable_across_frames() {
                 ));
             });
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(build);
-    let h0 = h.ui.tree(Layer::Main).shapes.hashes[0];
+    let h0 = h.ui().tree(Layer::Main).shapes.hashes[0];
     h.frame(build);
-    let h1 = h.ui.tree(Layer::Main).shapes.hashes[0];
+    let h1 = h.ui().tree(Layer::Main).shapes.hashes[0];
     assert_eq!(
         h0, h1,
         "same shape authoring must hash identically across frames",
@@ -421,13 +421,13 @@ fn one_shape_change_only_flips_its_own_hash() {
                 ));
             });
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(Vec2::new(20.0, 20.0), ui));
-    let h0_a = h.ui.tree(Layer::Main).shapes.hashes[0];
-    let h0_b = h.ui.tree(Layer::Main).shapes.hashes[1];
+    let h0_a = h.ui().tree(Layer::Main).shapes.hashes[0];
+    let h0_b = h.ui().tree(Layer::Main).shapes.hashes[1];
     h.frame(|ui| build(Vec2::new(30.0, 30.0), ui));
-    let h1_a = h.ui.tree(Layer::Main).shapes.hashes[0];
-    let h1_b = h.ui.tree(Layer::Main).shapes.hashes[1];
+    let h1_a = h.ui().tree(Layer::Main).shapes.hashes[0];
+    let h1_b = h.ui().tree(Layer::Main).shapes.hashes[1];
     assert_eq!(h0_a, h1_a, "unchanged shape 0 must keep its hash");
     assert_ne!(h0_b, h1_b, "changed shape 1 must flip its hash");
 }
@@ -527,7 +527,7 @@ fn each_edit_moves_the_half_it_belongs_to() {
         padding: 4.0,
     };
     let hashes = |edit: Edit| {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let node = h.frame_value(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -541,7 +541,7 @@ fn each_edit_moves_the_half_it_belongs_to() {
                 .response
                 .node()
         });
-        let rollups = &h.ui.tree(Layer::Main).rollups;
+        let rollups = &h.ui_ref().tree(Layer::Main).rollups;
         (
             rollups.subtree[node.idx()],
             rollups.layout_subtree[node.idx()],

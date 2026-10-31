@@ -1,8 +1,8 @@
 //! Reaching a widget by id: the rect that answers and the occlusion that refuses.
 
+use crate::host::harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
+use crate::host::harness::*;
 use crate::internals::panic_probe;
-use crate::internals::ui_harness::tests::support::{self, INSIDE, OUTSIDE, SURFACE};
-use crate::internals::ui_harness::*;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -12,9 +12,9 @@ use crate::widgets::panel::Panel;
 
 #[test]
 fn a_press_outside_the_widget_does_not_click_it() {
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
-    harness.click_at(OUTSIDE);
+    harness.click(OUTSIDE);
     assert!(
         !harness
             .response_in(support::target(), support::button)
@@ -25,7 +25,7 @@ fn a_press_outside_the_widget_does_not_click_it() {
 
 #[test]
 fn hit_at_reports_what_the_pointer_would_reach() {
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
 
     assert_eq!(
@@ -42,7 +42,7 @@ fn hit_at_reports_what_the_pointer_would_reach() {
 
 #[test]
 fn center_of_matches_the_arranged_rect() {
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
 
     let rect = harness
@@ -58,7 +58,7 @@ fn center_of_matches_the_arranged_rect() {
     );
 
     // Addressing the widget lands the same click as the hand-computed `INSIDE`.
-    harness.click_on(support::target());
+    harness.click(support::target());
     assert!(
         harness
             .response_in(support::target(), support::button)
@@ -69,7 +69,8 @@ fn center_of_matches_the_arranged_rect() {
 
 #[test]
 fn addressing_a_widget_refuses_to_click_through_something_on_top() {
-    // The `_on` helpers check rather than aim: a covered widget's center belongs to whatever is over it, so an unchecked `click_on` would report success while the event went elsewhere.
+    // A click by id checks rather than aims: a covered widget's center belongs to whatever is
+    // over it, so an unchecked click would report success while the event went elsewhere.
     let under = WidgetId::from_hash("under");
     let over = WidgetId::from_hash("over");
     let stacked = |ui: &mut Ui| {
@@ -87,23 +88,23 @@ fn addressing_a_widget_refuses_to_click_through_something_on_top() {
         });
     };
 
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, stacked);
 
     // Same rect, so centers coincide; geometry alone can't tell them apart.
     assert_eq!(harness.center_of(under), harness.center_of(over));
 
-    harness.click_on(over);
+    harness.click(over);
     assert!(
         harness.response_in(over, stacked).left.clicked(),
         "the topmost widget is reachable by id",
     );
 
     // A covered widget must refuse, not click the cover.
-    panic_probe::assert_panics_with("does not receive the pointer at", || {
-        let mut harness = UiHarness::new(SURFACE);
+    panic_probe::assert_panics_with("lies under another widget", || {
+        let mut harness = Harness::mono(SURFACE);
         harness.prime(2, stacked);
-        harness.click_on(under);
+        harness.click(under);
     });
 }
 
@@ -126,7 +127,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
                     .show(ui);
             });
     };
-    let mut harness = UiHarness::new(SURFACE);
+    let mut harness = Harness::mono(SURFACE);
     harness.prime(2, scaled);
 
     let arranged = harness.arranged(inner);
@@ -146,12 +147,12 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     let node = harness.node_for_widget_id(inner);
     assert_eq!(
         arranged,
-        harness.ui.layout(Layer::Main).rect[node.idx()],
+        harness.ui().layout(Layer::Main).rect[node.idx()],
         "layout_rect == the arrange output for that widget's node",
     );
 
     // Untransformed, the distinction vanishes, hiding a wrong pick in most of the suite.
-    let mut plain = UiHarness::new(SURFACE);
+    let mut plain = Harness::mono(SURFACE);
     plain.prime(2, support::button);
     assert_eq!(
         plain.layout_rect(support::target()),

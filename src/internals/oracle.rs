@@ -5,7 +5,7 @@ use crate::cascade::cascade_source::CascadeSource;
 use crate::cascade::engine::CascadeEngine;
 use crate::cascade::internals::OwnedPaint;
 use crate::damage::Damage;
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::plane_layout::PlaneLayout;
@@ -32,19 +32,21 @@ impl Oracle {
     ///
     /// Panics, naming the node or row, when a retained result differs
     /// from its cold counterpart or the damage misses a changed row.
-    pub(crate) fn check_frame(&mut self, h: &UiHarness, report: &FrameReport) {
+    pub(crate) fn check_frame(&mut self, h: &Harness, report: &FrameReport) {
         assert_layout_matches_cold(h);
         assert_cascade_matches_cold(h);
         self.check_damage(h, report);
     }
 
     /// Rows in one frame and not the other, and overlaps whose paint order flipped, must sit inside the painted damage; compared per owner as a multiset of `(hash, screen)`.
-    fn check_damage(&mut self, h: &UiHarness, report: &FrameReport) {
+    fn check_damage(&mut self, h: &Harness, report: &FrameReport) {
         self.cur.clear();
-        h.ui.cascade().owned_paints(h.ui.forest(), &mut self.cur);
+        h.ui_ref()
+            .cascade()
+            .owned_paints(h.ui_ref().forest(), &mut self.cur);
         if self.primed {
-            let surface = h.ui.display().logical_rect();
-            let margin = RenderPlan::cull_margin(h.ui.display().scale_factor());
+            let surface = h.ui_ref().display().logical_rect();
+            let margin = RenderPlan::cull_margin(h.ui_ref().display().scale_factor());
             let damage: Vec<Rect> = match report.plan.as_ref().map(|plan| &plan.damage) {
                 None => Vec::new(),
                 Some(Damage::Full) => vec![surface],
@@ -98,12 +100,16 @@ impl Oracle {
 }
 
 /// Lay the forest out again with a cold engine and assert every node's result equals the frame's.
-fn assert_layout_matches_cold(h: &UiHarness) {
-    let mut engine = LayoutEngine::new(h.ui.shaper().clone());
+fn assert_layout_matches_cold(h: &Harness) {
+    let mut engine = LayoutEngine::new(h.ui_ref().shaper().clone());
     let mut cold = Layout::default();
-    engine.run(h.ui.forest(), h.ui.display().logical_rect(), &mut cold);
-    for (plane, tree) in h.ui.forest().trees.iter_paint_order() {
-        let (warm, cold) = (h.ui.layout(plane), &cold[plane]);
+    engine.run(
+        h.ui_ref().forest(),
+        h.ui_ref().display().logical_rect(),
+        &mut cold,
+    );
+    for (plane, tree) in h.ui_ref().forest().trees.iter_paint_order() {
+        let (warm, cold) = (h.ui_ref().layout(plane), &cold[plane]);
         for (node, id) in tree.records.widget_id().iter().enumerate() {
             let at = || format!("{plane:?} node {node} ({id:?})");
             assert_eq!(warm.rect[node], cold.rect[node], "rect of {}", at());
@@ -125,26 +131,28 @@ fn assert_layout_matches_cold(h: &UiHarness) {
 }
 
 /// Rebuild the cascade in full over the frame's layout and assert the retained one equals it; the layout oracle reports layout disagreements.
-fn assert_cascade_matches_cold(h: &UiHarness) {
+fn assert_cascade_matches_cold(h: &Harness) {
     let mut cold = Cascade::default();
     CascadeEngine::default().run(
         CascadeSource {
-            forest: h.ui.forest(),
-            layout: h.ui.layout_tables(),
-            display: h.ui.display(),
-            font_epoch: h.ui.font_epoch(),
+            forest: h.ui_ref().forest(),
+            layout: h.ui_ref().layout_tables(),
+            display: h.ui_ref().display(),
+            font_epoch: h.ui_ref().font_epoch(),
         },
         &mut cold,
     );
     assert_eq!(
-        h.ui.cascade().key,
+        h.ui_ref().cascade().key,
         cold.key,
         "the key the cascade was built from"
     );
-    h.ui.cascade().assert_same_as(&cold, h.ui.forest());
+    h.ui_ref()
+        .cascade()
+        .assert_same_as(&cold, h.ui_ref().forest());
     assert_eq!(
-        h.ui.cascade().by_id,
-        h.ui.forest().ids.last_frame(),
+        h.ui_ref().cascade().by_id,
+        h.ui_ref().forest().ids.last_frame(),
         "id lookup"
     );
 }

@@ -1,6 +1,6 @@
 //! Cross-frame state rows and the scope that lends them.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
@@ -15,7 +15,7 @@ fn with_state_lends_a_row_across_widget_calls() {
     }
 
     let id = WidgetId::from_hash("with-state-page");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         ui.with_state::<Page, _>(id, |ui, page| {
             Panel::vstack().show(ui, |ui| {
@@ -29,7 +29,7 @@ fn with_state_lends_a_row_across_widget_calls() {
     });
 
     assert_eq!(
-        h.ui.state::<Page>(id),
+        h.ui().state::<Page>(id),
         Some(&Page {
             clicks: 11,
             note: "x".into(),
@@ -42,7 +42,7 @@ fn with_state_lends_a_row_across_widget_calls() {
 #[test]
 fn with_state_survives_the_body_growing_its_own_store() {
     let outer = WidgetId::from_hash("grow-outer");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         ui.with_state::<u32, _>(outer, |ui, value| {
             *value = 7;
@@ -51,7 +51,7 @@ fn with_state_survives_the_body_growing_its_own_store() {
             }
         });
     });
-    assert_eq!(h.ui.state::<u32>(outer), Some(&7));
+    assert_eq!(h.ui().state::<u32>(outer), Some(&7));
 }
 
 /// Rows of different types nest.
@@ -64,7 +64,7 @@ fn with_state_scopes_nest_by_type() {
 
     let app_id = WidgetId::from_hash("nest-app");
     let page_id = WidgetId::from_hash("nest-page");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         ui.with_state::<App, _>(app_id, |ui, app| {
             app.0 = 1;
@@ -74,14 +74,14 @@ fn with_state_scopes_nest_by_type() {
             app.0 += 10;
         });
     });
-    assert_eq!(h.ui.state::<App>(app_id).map(|a| a.0), Some(11));
-    assert_eq!(h.ui.state::<Page>(page_id).map(|p| p.0), Some(2));
+    assert_eq!(h.ui().state::<App>(app_id).map(|a| a.0), Some(11));
+    assert_eq!(h.ui().state::<Page>(page_id).map(|p| p.0), Some(2));
 }
 
 #[test]
 fn with_state_returns_the_body_value() {
     let id = WidgetId::from_hash("with-state-return");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let out = h.frame_value(|ui| {
         ui.with_state::<u32, _>(id, |_ui, v| {
             *v = 5;
@@ -89,7 +89,7 @@ fn with_state_returns_the_body_value() {
         })
     });
     assert_eq!(out, 15);
-    assert_eq!(h.ui.state::<u32>(id), Some(&5));
+    assert_eq!(h.ui().state::<u32>(id), Some(&5));
 }
 
 /// A singleton is one value per type for the `Ui`'s life, never swept as no id owns it.
@@ -98,7 +98,7 @@ fn a_singleton_is_lent_across_widget_calls_and_kept() {
     #[derive(Default, Debug, PartialEq)]
     struct Shared(u32);
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         assert_eq!(ui.singleton::<Shared>(), None, "nothing stored yet");
         ui.with_singleton::<Shared, _>(|ui, shared| {
@@ -107,12 +107,13 @@ fn a_singleton_is_lent_across_widget_calls_and_kept() {
             shared.0 += 10;
         });
     });
-    assert_eq!(h.ui.singleton::<Shared>(), Some(&Shared(11)));
+    assert_eq!(h.ui().singleton::<Shared>(), Some(&Shared(11)));
     h.frame(|_| {});
     h.frame(|_| {});
-    h.ui.with_singleton::<Shared, _>(|_, shared| shared.0 += 100);
+    h.ui()
+        .with_singleton::<Shared, _>(|_, shared| shared.0 += 100);
     assert_eq!(
-        h.ui.singleton::<Shared>(),
+        h.ui().singleton::<Shared>(),
         Some(&Shared(111)),
         "kept across frames"
     );

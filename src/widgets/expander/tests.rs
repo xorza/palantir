@@ -3,8 +3,8 @@
 use glam::{UVec2, Vec2};
 
 use crate::animation::animation_spec::AnimationSpec;
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::arrow::Arrow;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -39,7 +39,7 @@ fn label() -> WidgetId {
 }
 
 /// One frame of a plain expander over a single label; whether its header reports a click.
-fn frame(h: &mut UiHarness, start_open: bool) -> bool {
+fn frame(h: &mut Harness, start_open: bool) -> bool {
     h.frame_value(|ui| {
         Expander::new("section")
             .id(root())
@@ -55,7 +55,7 @@ fn frame(h: &mut UiHarness, start_open: bool) -> bool {
 /// A closed section records nothing below its header.
 #[test]
 fn a_closed_body_is_not_recorded_and_an_open_one_is() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         Expander::new("section").id(root()).show(ui, |ui| {
             Text::new("body").id(label()).show(ui);
@@ -106,7 +106,7 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
 /// A section nobody has touched keeps no cross-frame row.
 #[test]
 fn an_untouched_section_mints_no_state_row() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame(&mut h, false);
     frame(&mut h, false);
     assert!(
@@ -114,7 +114,7 @@ fn an_untouched_section_mints_no_state_row() {
         "a closed default wrote a row it did not need",
     );
 
-    h.click_on(header());
+    h.click(header());
     frame(&mut h, false);
     let row = h
         .ui()
@@ -127,12 +127,12 @@ fn an_untouched_section_mints_no_state_row() {
 /// A click toggles and the revealed body records on the same frame.
 #[test]
 fn a_click_toggles_and_reveals_on_the_same_frame() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame(&mut h, false);
     frame(&mut h, false);
     assert!(h.rect(body()).is_none());
 
-    h.click_on(header());
+    h.click(header());
     let open = h.frame_value(|ui| {
         Expander::new("section")
             .id(root())
@@ -151,7 +151,7 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
     h.frame(|ui| {
         Expander::new("section").id(root()).show(ui, |_| {});
     });
-    h.click_on(header());
+    h.click(header());
     frame(&mut h, false);
     frame(&mut h, false);
     assert!(h.rect(body()).is_none(), "a second click closed it again");
@@ -160,10 +160,10 @@ fn a_click_toggles_and_reveals_on_the_same_frame() {
 /// An Expander disabled on the frame a click lands does not toggle.
 #[test]
 fn a_click_on_the_frame_it_is_disabled_does_not_toggle() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame(&mut h, false);
     frame(&mut h, false);
-    h.click_on(header());
+    h.click(header());
     let open = h.frame_value(|ui| {
         Expander::new("section")
             .id(root())
@@ -180,7 +180,7 @@ fn a_click_on_the_frame_it_is_disabled_does_not_toggle() {
 /// `keep_body` keeps a collapsed body's ids live (and its `TextEdit` text) at a record per frame.
 #[test]
 fn keep_body_records_a_collapsed_body_and_holds_its_state() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut text = String::from("draft");
     let record = |ui: &mut Ui, text: &mut String, open: bool| {
         Expander::new("section")
@@ -214,7 +214,7 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
 /// The binding wins over the default, and every toggle is written back.
 #[test]
 fn a_bound_flag_is_read_and_written() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut open = true;
     let record = |ui: &mut Ui, open: &mut bool| {
         Expander::new("section")
@@ -231,7 +231,7 @@ fn a_bound_flag_is_read_and_written() {
         "the binding won over start_open(false)",
     );
 
-    h.click_on(header());
+    h.click(header());
     h.frame(|ui| record(ui, &mut open));
     assert!(!open, "the toggle was written back through the binding");
 
@@ -251,7 +251,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         },
         ..base
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut record = |ui: &mut Ui| {
         Expander::new("section")
             .id(root())
@@ -265,7 +265,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
         record(ui);
     });
 
-    h.click_on(header());
+    h.click(header());
     assert_eq!(
         h.frame_value(&mut record),
         1.0,
@@ -279,7 +279,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     h.frame(|ui| {
         record(ui);
     });
-    h.click_on(header());
+    h.click(header());
     // The click frame has no elapsed time; the next shows the tween.
     assert_eq!(h.frame_value(&mut record), 1.0);
     h.advance(time::Duration::from_millis(16));
@@ -292,7 +292,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
 #[test]
 fn space_and_enter_toggle_a_focused_header() {
     for key in [Key::Char(' '), Key::Enter] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         frame(&mut h, false);
         frame(&mut h, false);
 
@@ -378,7 +378,7 @@ fn a_settling_reveal_stores_the_whole_height() {
         },
         ..base
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut record = |ui: &mut Ui| {
         Expander::new("section")
             .id(root())
@@ -392,12 +392,12 @@ fn a_settling_reveal_stores_the_whole_height() {
         record(ui);
     });
     let tick = time::Duration::from_millis(16);
-    let toggle = |h: &mut UiHarness, record: &mut dyn FnMut(&mut Ui) -> f32| {
+    let toggle = |h: &mut Harness, record: &mut dyn FnMut(&mut Ui) -> f32| {
         h.advance_past_double_click();
         h.frame(|ui| {
             record(ui);
         });
-        h.click_on(header());
+        h.click(header());
         h.frame_value(&mut *record);
     };
 

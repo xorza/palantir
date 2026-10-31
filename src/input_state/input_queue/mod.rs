@@ -5,6 +5,7 @@ use crate::common::span::Span;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
+use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -149,20 +150,13 @@ impl InputQueue {
     }
 }
 
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::input::input_event::InputEvent;
-    use crate::input::keyboard::modifiers::Modifiers;
-    use crate::input_state::input_queue::InputQueue;
-
-    impl InputQueue {
-        /// The modifier set of the last held `ModifiersChanged`, if any.
-        pub(crate) fn last_held_modifiers(&self) -> Option<Modifiers> {
-            self.pending.iter().rev().find_map(|held| match held.event {
-                InputEvent::ModifiersChanged(mods) => Some(mods),
-                _ => None,
-            })
-        }
+impl InputQueue {
+    /// The modifier set of the last held `ModifiersChanged`, if any.
+    pub(crate) fn last_held_modifiers(&self) -> Option<Modifiers> {
+        self.pending.iter().rev().find_map(|held| match held.event {
+            InputEvent::ModifiersChanged(mods) => Some(mods),
+            _ => None,
+        })
     }
 }
 

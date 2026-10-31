@@ -18,8 +18,8 @@ use crate::widgets::text_edit::tests::*;
 const FS: f32 = 16.0;
 const LH: f32 = 19.2;
 
-fn cosmic_ui() -> UiHarness {
-    UiHarness::with_text(UVec2::new(800, 200))
+fn cosmic_ui() -> Harness {
+    Harness::new(UVec2::new(800, 200))
 }
 
 fn shape(wrap: f32, halign: HAlign) -> TestShape {
@@ -40,12 +40,12 @@ const ALL: [HAlign; 3] = [HAlign::Left, HAlign::Center, HAlign::Right];
 /// under every halign.
 #[test]
 fn a_single_line_caret_is_halign_independent() {
-    let ui = cosmic_ui();
+    let mut ui = cosmic_ui();
     let text = "hi";
     let xs: Vec<f32> = ALL
         .iter()
         .map(|&halign| {
-            ui.ui
+            ui.ui()
                 .shaper()
                 .cursor_xy(text, text.len(), shape(300.0, halign))
                 .x
@@ -58,7 +58,7 @@ fn a_single_line_caret_is_halign_independent() {
             xs[0]
         );
     }
-    let measured = ui.ui.shaper().measure(text, shape(300.0, HAlign::Right));
+    let measured = ui.ui().shaper().measure(text, shape(300.0, HAlign::Right));
     // The caret sits at the glyphs' own extent (h 9.4609375 + i 3.875), not the 300
     // px wrap target.
     assert_eq!(xs[0], 9.4609375 + 3.875);
@@ -69,18 +69,18 @@ fn a_single_line_caret_is_halign_independent() {
 /// to the block's right edge, Center to half the slack, Left not at all.
 #[test]
 fn a_narrow_line_shifts_within_the_block() {
-    let ui = cosmic_ui();
+    let mut ui = cosmic_ui();
     let text = "wwwwww\ni";
     let wrap = 300.0;
     let block = ui
-        .ui
+        .ui()
         .shaper()
         .measure(text, shape(wrap, HAlign::Right))
         .extent
         .size
         .w;
     let caret = |halign| {
-        ui.ui
+        ui.ui_ref()
             .shaper()
             .cursor_xy(text, text.len(), shape(wrap, halign))
             .x
@@ -124,9 +124,9 @@ fn measured_width_is_the_content_extent_not_the_wrap_target() {
 
 #[test]
 fn an_empty_buffer_caret_is_at_the_block_origin() {
-    let ui = cosmic_ui();
+    let mut ui = cosmic_ui();
     for halign in ALL {
-        let x = ui.ui.shaper().cursor_xy("", 0, shape(300.0, halign)).x;
+        let x = ui.ui().shaper().cursor_xy("", 0, shape(300.0, halign)).x;
         assert_eq!(x, 0.0, "{halign:?} empty caret");
     }
 }
@@ -249,8 +249,8 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     let node = h.frame_value(&mut record);
     // `text_spans[node]` has one entry per `ShapeRecord::Text`: a single text
     // shape, on the block child carrying the alignment.
-    let node = block_of(&h.ui, node);
-    let main = h.ui.layout(Layer::Main);
+    let node = block_of(h.ui_ref(), node);
+    let main = h.ui().layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
     let key = main.text_shapes[span.start as usize].buffer_key();
@@ -286,14 +286,14 @@ fn stable_multiline_holds_constant_per_frame_cost() {
         });
     };
     h.prime(2, &mut record);
-    let a = h.ui.shaper().measure_calls();
+    let a = h.ui().shaper().measure_calls();
     h.frame(&mut record);
-    let b = h.ui.shaper().measure_calls();
+    let b = h.ui().shaper().measure_calls();
     let per_frame = b - a;
     for i in 0..5 {
-        let before = h.ui.shaper().measure_calls();
+        let before = h.ui().shaper().measure_calls();
         h.frame(&mut record);
-        let after = h.ui.shaper().measure_calls();
+        let after = h.ui().shaper().measure_calls();
         assert_eq!(
             after - before,
             per_frame,
@@ -332,10 +332,10 @@ fn placeholder_per_line_aligns_under_wrap() {
     };
     h.frame_value(&mut record);
     let node = h.frame_value(&mut record);
-    let store = h.ui.record_store();
+    let store = h.ui_ref().record_store();
     let interned_text = store.interned_text();
-    let node = block_of(&h.ui, node);
-    let tree = h.ui.tree(Layer::Main);
+    let node = block_of(h.ui_ref(), node);
+    let tree = h.ui_ref().tree(Layer::Main);
     let shape_align = tree.shapes_of(node).find_map(|s| match s {
         ShapeRecord::Text { align, text, .. } => {
             Some((*align, interned_text.resolve(text.span).to_owned()))
@@ -348,7 +348,7 @@ fn placeholder_per_line_aligns_under_wrap() {
         shape_text.contains("type a paragraph"),
         "rendered text must be the placeholder, got {shape_text:?}",
     );
-    let main = h.ui.layout(Layer::Main);
+    let main = h.ui().layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
     let key = main.text_shapes[span.start as usize].buffer_key();
@@ -381,19 +381,22 @@ fn multiline_widget_right_aligns_each_line() {
         });
     };
     h.frame(&mut record);
-    h.ui.with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 5);
+    h.ui()
+        .with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 5);
     h.frame(&mut record);
     let wrap = 290.0;
-    let block =
-        h.ui.shaper()
-            .measure(&buf, shape(wrap, HAlign::Right))
-            .extent
-            .size
-            .w;
-    let caret_short =
-        h.ui.shaper()
-            .cursor_xy(&buf, 5, shape(wrap, HAlign::Right))
-            .x;
+    let block = h
+        .ui()
+        .shaper()
+        .measure(&buf, shape(wrap, HAlign::Right))
+        .extent
+        .size
+        .w;
+    let caret_short = h
+        .ui()
+        .shaper()
+        .cursor_xy(&buf, 5, shape(wrap, HAlign::Right))
+        .x;
     // "short" is the narrow line, so right-align carries its caret to the block's
     // right edge: the long line's extent, 22727/128 px, ceiled to 178.
     assert_eq!(caret_short, 22727.0 / 128.0);

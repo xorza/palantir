@@ -2,7 +2,7 @@
 
 use crate::primitives::layout::axis::Axis;
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::grid_cell::GridCell;
@@ -27,7 +27,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
         } else {
             UVec2::new(400, 200)
         };
-        let mut h = UiHarness::new(surface);
+        let mut h = Harness::mono(surface);
         let root = h.frame_value(|ui| {
             let primary = [
                 Track::fixed(100.0),
@@ -86,7 +86,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
 #[test]
 fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
     for case in KNOWN_SPAN_CASES {
-        let mut h = UiHarness::new(UVec2::new(400, 200));
+        let mut h = Harness::mono(UVec2::new(400, 200));
         let mut grid_node = None;
         let mut text_node = None;
         h.frame(|ui| {
@@ -119,7 +119,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
         });
 
         let text = text_node.unwrap();
-        let desired = h.engines.layout.cache.captured_desired()[text.idx()];
+        let desired = h.engines_mut().layout.cache.captured_desired()[text.idx()];
         assert_eq!(
             desired,
             Size::new(case.text.len() as f32 * 8.0, 16.0),
@@ -127,13 +127,13 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
             case.label,
         );
         assert_eq!(
-            h.ui.arranged_rect(Layer::Main, text).size,
+            h.ui().arranged_rect(Layer::Main, text).size,
             Size::new(case.slot, 16.0),
             "{} arranged text",
             case.label,
         );
         assert_eq!(
-            h.ui.arranged_rect(Layer::Main, grid_node.unwrap()).size,
+            h.ui().arranged_rect(Layer::Main, grid_node.unwrap()).size,
             Size::new(case.slot, 16.0),
             "{} grid extent",
             case.label,
@@ -145,7 +145,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
 fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
     for axis in [Axis::X, Axis::Y] {
         for case in KNOWN_SPAN_CASES {
-            let mut h = UiHarness::new(UVec2::new(400, 400));
+            let mut h = Harness::mono(UVec2::new(400, 400));
             let mut panel_node = None;
             let mut second_node = None;
             h.frame(|ui| {
@@ -194,18 +194,18 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
             let panel = panel_node.unwrap();
             let expected_desired = axis.compose_size(case.child_main * 2.0, 20.0);
             assert_eq!(
-                h.engines.layout.cache.captured_desired()[panel.idx()],
+                h.engines_mut().layout.cache.captured_desired()[panel.idx()],
                 expected_desired,
                 "{axis:?} {} measured panel",
                 case.label,
             );
             assert_eq!(
-                h.ui.arranged_rect(Layer::Main, panel).size,
+                h.ui().arranged_rect(Layer::Main, panel).size,
                 axis.compose_size(case.slot, 20.0),
                 "{axis:?} {} arranged panel",
                 case.label,
             );
-            let second = h.ui.arranged_rect(Layer::Main, second_node.unwrap());
+            let second = h.ui().arranged_rect(Layer::Main, second_node.unwrap());
             assert_eq!(
                 axis.main_v(second.min),
                 case.child_main,
@@ -230,7 +230,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
 
 #[test]
 fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     // 3×3 of fixed-50 cells with gap=10. 2×2 cell at (0,0): w/h = 110.
     let root = h.frame_value(|ui| {
         Grid::new()
@@ -304,7 +304,7 @@ fn fixed_tracks(case: KnownSpanCase) -> Vec<Track> {
 /// 55. The grid then holds the spanning cell, where it hugged to 90 and 50 before.
 #[test]
 fn a_spanning_cell_grows_the_hug_tracks_it_crosses() {
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Grid::new()
@@ -367,7 +367,7 @@ fn a_spanning_cell_grows_the_hug_tracks_it_crosses() {
 /// the second the other 100, to 150, so the grid still holds the 200 header.
 #[test]
 fn a_spanning_share_stops_at_the_track_max() {
-    let mut h = UiHarness::new(UVec2::new(400, 200));
+    let mut h = Harness::mono(UVec2::new(400, 200));
     h.frame(|ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Grid::new()
@@ -457,7 +457,7 @@ fn a_span_over_a_fill_column_grows_only_its_fill_columns() {
         },
     ];
     for case in cases {
-        let mut h = UiHarness::new(UVec2::new(600, 200));
+        let mut h = Harness::mono(UVec2::new(600, 200));
         h.frame(|ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Grid::new()

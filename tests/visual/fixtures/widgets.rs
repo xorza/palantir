@@ -13,7 +13,7 @@ use crate::fixtures;
 use crate::fixtures::DARK_BG;
 use crate::golden_name::GoldenName;
 
-use crate::harness::{FIXTURE_PALETTE, Harness};
+use crate::visual_rig::{FIXTURE_PALETTE, VisualRig};
 
 /// A well padded by `p` and filling the surface around `body`.
 fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
@@ -75,7 +75,7 @@ fn frame_filled_with_border_matches_golden() {
 /// exactly 0 or 1, so the middle row reads: clear, border for its width, fill.
 #[test]
 fn a_border_paints_inside_the_rect() {
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(UVec2::new(20, 20))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
@@ -131,7 +131,7 @@ fn surface_rounded_clips_full_fill_child() {
 /// corners must be solid black; a clamped mask notches them.
 #[test]
 fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(UVec2::new(120, 90))
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
@@ -185,7 +185,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
 /// at different sizes, probed where the clip decides the pixel.
 #[test]
 fn rounded_clip_survives_surface_resize() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let scene = |ui: &mut Ui| {
         padded(ui, 10.0, |ui| {
             Panel::zstack()
@@ -369,7 +369,7 @@ fn color_picker_panel_matches_golden() {
 /// ring would paint.
 #[test]
 fn focus_ring_matches_golden() {
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let scene = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()

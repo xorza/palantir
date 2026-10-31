@@ -1,7 +1,7 @@
 //! Disabled and hidden subtrees, against the hit index that mirrors them.
 
+use crate::host::harness::Harness;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -68,7 +68,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
             .inner
     };
 
-    let mut h = UiHarness::new(surface);
+    let mut h = Harness::mono(surface);
     h.frame(|ui| {
         build(ui);
     });
@@ -109,14 +109,14 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
             "a hidden widget does not click (visibility cascade)",
         ),
     ] {
-        h.click_at(target.min + Vec2::new(target.size.w, target.size.h) * 0.5);
+        h.click(target.min + Vec2::new(target.size.w, target.size.h) * 0.5);
         assert_eq!(h.frame_value(build), expected, "{why}");
     }
 }
 
 #[test]
 fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
     let child = h.frame_value(|ui| {
         Panel::vstack()
             .auto_id()
@@ -131,7 +131,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             })
             .inner
     });
-    let cascade = &h.ui.cascade();
+    let cascade = h.ui_ref().cascade();
     // Main is first in `PAINT_ORDER`, so node index equals entry index.
     assert!(
         cascade.entries[child.idx()].disabled,

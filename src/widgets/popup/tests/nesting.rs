@@ -1,7 +1,7 @@
 //! An overlay opened inside another overlay's body records above it and works there: the
 //! dropdown in a dialog, in a popup and in a context menu, and a dialog in a dialog.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -76,7 +76,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         Opener::ModalInModal,
     ] {
         let mut selected = 0;
-        let mut h = UiHarness::new(UVec2::new(400, 300));
+        let mut h = Harness::mono(UVec2::new(400, 300));
         h.frame(|ui| {
             if matches!(opener, Opener::ContextMenu) {
                 ContextMenu::open(ui, menu_trigger(), Vec2::new(20.0, 20.0));
@@ -84,14 +84,14 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
             record(ui, opener, &mut selected);
         });
         h.frame(|ui| record(ui, opener, &mut selected));
-        h.click_on(combo());
+        h.click(combo());
         h.frame(|ui| record(ui, opener, &mut selected));
 
         let list = combo().with("list");
         let rows = h
             .rect(list)
             .unwrap_or_else(|| panic!("{opener:?}: the list opened"));
-        let cascade = h.ui.cascade();
+        let cascade = h.ui().cascade();
         let (trigger_at, list_at) = (
             cascade.endpoint(combo()).expect("the trigger recorded"),
             cascade.endpoint(list).expect("the list recorded"),
@@ -107,7 +107,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
             rows.min.x + rows.size.w * 0.5,
             rows.min.y + rows.size.h * 0.8,
         );
-        h.click_at(last_row);
+        h.click(last_row);
         h.frame(|ui| record(ui, opener, &mut selected));
         assert_eq!(selected, 2, "{opener:?}: the last row was picked");
         assert!(

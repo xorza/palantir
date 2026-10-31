@@ -1,6 +1,6 @@
 //! What every widget's `style` setter is: the `Option`-taking setter naming a theme slot.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
@@ -48,8 +48,8 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
     let styled_id = WidgetId::from_hash("style-override-styled");
     let plain_id = WidgetId::from_hash("style-override-plain");
 
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.set_theme(theme);
+    let mut h = Harness::mono(SURFACE);
+    h.ui().set_theme(theme);
     h.frame(|ui| {
         for (id, style) in [(styled_id, Some(&wide)), (plain_id, None)] {
             Button::new().id(id).label("x").style(style).show(ui);
@@ -58,7 +58,7 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
 
     let widths = |id: WidgetId| {
         let node = h.node_for_widget_id(id);
-        h.ui.arranged_rect(Layer::Main, node).size.w
+        h.ui_ref().arranged_rect(Layer::Main, node).size.w
     };
     // 20 px padding a side against 4: the styled button is 2 × (20 − 4) = 32 px wider.
     assert_eq!(
@@ -82,8 +82,8 @@ fn text_style_none_inherits_the_ambient_text_style() {
     let plain_id = WidgetId::from_hash("style-text-plain");
     let styled_id = WidgetId::from_hash("style-text-styled");
 
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.set_theme(theme);
+    let mut h = Harness::mono(SURFACE);
+    h.ui().set_theme(theme);
     h.frame(|ui| {
         Text::new("m").id(plain_id).style(None).show(ui);
         Text::new("m").id(styled_id).style(Some(&big)).show(ui);
@@ -91,7 +91,7 @@ fn text_style_none_inherits_the_ambient_text_style() {
 
     let height = |id: WidgetId| {
         let node = h.node_for_widget_id(id);
-        h.ui.arranged_rect(Layer::Main, node).size.h
+        h.ui_ref().arranged_rect(Layer::Main, node).size.h
     };
     // Twice the font size, twice the line height.
     assert_eq!(height(styled_id), height(plain_id) * 2.0);
@@ -119,8 +119,8 @@ fn per_axis_setters_outrank_the_style_bundle() {
     let edit_plain = WidgetId::from_hash("axis-edit-plain");
     let edit_axes = WidgetId::from_hash("axis-edit-set");
 
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.set_theme(theme);
+    let mut h = Harness::mono(SURFACE);
+    h.ui().set_theme(theme);
     let mut plain_buf = String::from("m");
     let mut axes_buf = String::from("m");
     h.frame(|ui| {
@@ -197,9 +197,10 @@ fn with_family_sets_only_the_family_axis() {
     assert_eq!(applied.font_size, base.font_size);
 }
 
-fn face_of(h: &UiHarness, id: WidgetId) -> RecordedFace {
+fn face_of(h: &Harness, id: WidgetId) -> RecordedFace {
     let node = h.node_for_widget_id(id);
-    h.ui.tree(Layer::Main)
+    h.ui_ref()
+        .tree(Layer::Main)
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::Text { font, color, .. } => Some(RecordedFace {

@@ -1,5 +1,5 @@
 //! Pin: `Sizing::fill` is a WPF Stretch: content size at measure, fills its slot at arrange.
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
@@ -11,7 +11,7 @@ use glam::{UVec2, Vec2};
 /// A Hug container holding Fill children sizes to its content, not the grandparent's allocation.
 #[test]
 fn hug_parent_with_fill_children_hugs_to_content() {
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     let node_id = WidgetId::from_hash("hug-parent");
     let button_id = WidgetId::from_hash("button");
     h.frame(|ui| {
@@ -43,7 +43,7 @@ fn hug_parent_with_fill_children_hugs_to_content() {
 /// **Pin:** a Fill child inside a Fixed-width parent stretches to the full inner width at arrange.
 #[test]
 fn fill_child_stretches_to_fixed_parent() {
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     let child_id = WidgetId::from_hash("child");
     h.frame(|ui| {
         Panel::vstack()
@@ -63,7 +63,7 @@ fn fill_child_stretches_to_fixed_parent() {
 /// Two equal-weight Fill siblings in a Fixed-width HStack each get half the inner width at arrange.
 #[test]
 fn equal_weight_fill_siblings_split_fixed_parent_equally() {
-    let mut h = UiHarness::new(UVec2::new(800, 600));
+    let mut h = Harness::mono(UVec2::new(800, 600));
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
     h.frame(|ui| {
@@ -91,7 +91,7 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
 #[test]
 fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     let surface = UVec2::new(1600, 800);
-    let mut h = UiHarness::with_text(surface);
+    let mut h = Harness::new(surface);
     let node_id = WidgetId::from_hash("node");
     let row_id = WidgetId::from_hash("row");
     h.frame(|ui| {
@@ -125,7 +125,7 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
 /// A Hug HStack with a Hug button and a Fill spacer sizes to the button only: the spacer has zero leftover.
 #[test]
 fn hug_hstack_with_fill_spacer_hugs_to_button() {
-    let mut h = UiHarness::new(UVec2::new(400, 100));
+    let mut h = Harness::mono(UVec2::new(400, 100));
     let root = WidgetId::from_hash("root");
     let button = WidgetId::from_hash("button");
     let spacer = WidgetId::from_hash("spacer");

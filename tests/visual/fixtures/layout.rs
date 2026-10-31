@@ -9,7 +9,7 @@ use palantir::{
 
 use crate::golden_name::GoldenName;
 
-use crate::harness::FIXTURE_PALETTE;
+use crate::visual_rig::FIXTURE_PALETTE;
 
 /// `Fill(1)`/`Fill(2)`/`Fill(1)` rows split the height 25/50/25.
 #[test]

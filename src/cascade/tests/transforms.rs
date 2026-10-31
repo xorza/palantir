@@ -11,7 +11,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::{BuildPlan, Frontend};
 use crate::renderer::render_plan::RenderPlan;
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -29,7 +29,7 @@ fn shape_rect_composes_self_transform() {
     let translate = Vec2::new(10.0, 20.0);
     let transform = TranslateScale::new(translate, scale);
 
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
@@ -45,7 +45,7 @@ fn shape_rect_composes_self_transform() {
         });
     });
 
-    let shape_rect = first_paint_screen(&h.ui, "xpanel");
+    let shape_rect = first_paint_screen(h.ui_ref(), "xpanel");
     // Shape (0, 0, 30, 30) under parent ∘ self: min = (0,0)*3 + (10,20), size = 30*3 = 90.
     assert_eq!(shape_rect, Rect::new(10.0, 20.0, 90.0, 90.0));
 }
@@ -97,7 +97,10 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
     ];
 
     for case in cases {
-        let mut h = UiHarness::new(UVec2::splat(400)).scale(case.display_scale);
+        let mut h = Harness::builder(UVec2::splat(400))
+            .mono()
+            .scale(case.display_scale)
+            .build();
         h.frame(|ui| {
             let mut panel = Panel::canvas()
                 .id(WidgetId::from_hash("stroke"))
@@ -120,7 +123,7 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
         });
 
         assert_eq!(
-            first_paint_screen(&h.ui, "stroke"),
+            first_paint_screen(h.ui_ref(), "stroke"),
             case.expected,
             "{case:?}"
         );
@@ -134,7 +137,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
     let zoom = 2.0;
     let transform = TranslateScale::from_scale(zoom);
 
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
@@ -154,7 +157,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
         });
     });
 
-    let shape_rect = first_paint_screen(&h.ui, "xpanel");
+    let shape_rect = first_paint_screen(h.ui_ref(), "xpanel");
     // The panel's top-left is the fixed point of its scale: shape at (50, 0),
     // size 10 * 2 = 20. Unanchored it would be (100, 0).
     assert_eq!(
@@ -171,7 +174,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
 fn cascade_screen_rect_matches_composed_quad_under_transform() {
     let transform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
 
-    let mut h = UiHarness::new(UVec2::new(400, 400));
+    let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
@@ -188,14 +191,14 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
         });
     });
 
-    let cascade_rect = first_paint_screen(&h.ui, "xpanel");
+    let cascade_rect = first_paint_screen(h.ui_ref(), "xpanel");
 
     // Surface scale 1, so physical equals logical; the child's rounded rect is the only quad.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        h.ui.frame_scene(),
+        h.ui_ref().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: h.ui.theme().window_clear,
+            clear: h.ui_ref().theme().window_clear,
             damage: Damage::Full,
         }),
     );

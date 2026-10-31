@@ -300,12 +300,13 @@ fn max_chars_caps_typing_and_paste_through_show() {
             .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
             .show(ui);
     };
-    let mut h = UiHarness::new(SMALL);
+    let mut h = Harness::mono(SMALL);
     let mut buf = String::from("ab");
     h.frame(|ui| record(ui, &mut buf));
-    h.click_on(id);
+    h.click(id);
     h.frame(|ui| record(ui, &mut buf));
-    h.ui.with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 2);
+    h.ui()
+        .with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 2);
 
     for c in ['c', 'd'] {
         h.key(Key::Char(c));

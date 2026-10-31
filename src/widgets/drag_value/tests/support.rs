@@ -1,7 +1,7 @@
 //! The deferred-commit frame a drag test drives, and the signals it counts.
 
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::passes::Passes;
+use crate::host::harness::Harness;
+use crate::host::harness::unit::Passes;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
@@ -10,7 +10,7 @@ use crate::widgets::drag_value::DragValue;
 
 /// Drive one frame of a `DragValue` through a commit-deferring caller: the draft re-seeds from `canonical` every record pass and is adopted only on `committed` (the undo-aware pattern). One snapshot per record pass: edges show in pass A, and a commit must fire in exactly one pass or a per-pass consumer double-applies.
 pub(super) fn deferred_frame(
-    h: &mut UiHarness,
+    h: &mut Harness,
     id: WidgetId,
     canonical: &mut f64,
     editable: bool,

@@ -5,7 +5,7 @@ use palantir::widget::{Mesh, Shape};
 use palantir::{LinearGradient, Rect, RgbaF32, Stroke};
 
 use crate::fixtures;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// White fading to transparent black across 200 px over black, on every color-interpolating path (mesh vertices, polyline points, gradient stops). Premultiplied, the midpoint is white at half alpha (0.5 linear, sRGB 188); straight, it was half-gray (0.25 linear, sRGB 137). Pixel 99 sits at t = 99.5 / 200.
 #[test]
@@ -22,7 +22,7 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
     mesh.triangle(v[1], v[3], v[2]);
     let line = [Vec2::new(0.0, 60.0), Vec2::new(200.0, 60.0)];
 
-    let mut h = Harness::new();
+    let mut h = VisualRig::new();
     let img = h
         .size(UVec2::new(200, 120))
         .clear(RgbaF32::BLACK)

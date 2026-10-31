@@ -12,7 +12,7 @@ use crate::gpu::surface::render_target::RenderTarget;
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
 use crate::host::host_options::HostOptions;
-use crate::host::window_driver::{CpuFrame, FrameSpec, PresentStrategy, WindowDriver};
+use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentStrategy, WindowDriver};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::text::font_scope::FontScope;
@@ -256,7 +256,9 @@ impl OffscreenHost {
         app: &mut T,
     ) -> FrameReport {
         let spec = self.spec(target, system_scale);
-        let CpuFrame { report, mode } = self.core.record(&mut self.driver, spec, app);
+        let CpuFrame { report, mode } =
+            self.core
+                .record(&mut self.driver, spec, app, FrameDepth::Paint);
         // Before submitting, so the failure leaves the target untouched.
         deny_window_commands(&mut self.driver);
         if !self.is_device_lost() {
@@ -287,7 +289,7 @@ impl OffscreenHost {
 /// # Panics
 ///
 /// Panics if `gpu` cannot run Palantir's pipelines.
-fn assert_runs_palantir(gpu: &Gpu) {
+pub(super) fn assert_runs_palantir(gpu: &Gpu) {
     if let Err(unmet) = gpu.requirements_met() {
         panic!("offscreen host device cannot run Palantir: {unmet}");
     }
@@ -349,22 +351,22 @@ pub(crate) mod internals {
 
         /// Draws every shadow as one cell instead of its grid; the visual suite's reference.
         pub fn disable_shadow_grid(&mut self) {
-            self.core.backend.disable_shadow_grid();
+            self.core.backend_mut().disable_shadow_grid();
         }
 
         /// Whether the shared backend has built a pipeline set for `format`.
         pub fn has_format_pipelines(&self, format: TargetFormat) -> bool {
-            self.core.backend.has_format_pipelines(format)
+            self.core.backend().has_format_pipelines(format)
         }
 
         /// Images resident in the GPU texture cache.
         pub fn gpu_image_cache_len(&self) -> usize {
-            self.core.backend.gpu_image_cache_len()
+            self.core.backend().gpu_image_cache_len()
         }
 
         /// The blurs the last frame ran, one per pane whose cached result went stale.
         pub(crate) const fn backdrop_blurs(&self) -> usize {
-            self.core.backend.backdrop_blurs()
+            self.core.backend().backdrop_blurs()
         }
 
         /// Paints the next frame in full, as after a swapchain reconfigure.

@@ -1,10 +1,10 @@
 //! What opens the menu, what dismisses it, and what an item reports.
 
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
@@ -20,71 +20,76 @@ use crate::widgets::context_menu::tests::support::{SURFACE, menu_rows, trigger_i
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::TriggerState;
+use glam::UVec2;
 use glam::Vec2;
 
 #[test]
 fn close_before_open_does_not_create_state() {
-    let mut h = UiHarness::arena();
+    let mut h = Harness::mono(UVec2::ONE);
     ContextMenu::close(h.ui(), trigger_id());
     assert!(
-        h.ui.state::<TriggerState<ContextMenu<'static>>>(trigger_id())
+        h.ui()
+            .state::<TriggerState<ContextMenu<'static>>>(trigger_id())
             .is_none()
     );
 }
 
 #[test]
 fn secondary_click_opens_menu_at_pointer() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         build(ui);
     });
-    assert!(!menu_open(&h.ui), "menu starts closed");
+    assert!(!menu_open(h.ui_ref()), "menu starts closed");
 
-    h.right_click_at(Vec2::new(60.0, 20.0));
+    h.right_click(Vec2::new(60.0, 20.0));
     h.frame(|ui| {
         build(ui);
     });
-    assert!(menu_open(&h.ui), "secondary click on trigger opens menu");
+    assert!(
+        menu_open(h.ui_ref()),
+        "secondary click on trigger opens menu"
+    );
 }
 
 #[test]
 fn outside_click_dismisses_menu() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         build(ui);
     });
-    h.right_click_at(Vec2::new(60.0, 20.0));
+    h.right_click(Vec2::new(60.0, 20.0));
     h.frame(|ui| {
         build(ui);
     });
-    assert!(menu_open(&h.ui));
+    assert!(menu_open(h.ui_ref()));
 
     // Click far from both trigger and any plausible menu body location.
-    h.click_at(Vec2::new(380.0, 380.0));
+    h.click(Vec2::new(380.0, 380.0));
     h.frame(|ui| {
         build(ui);
     });
-    assert!(!menu_open(&h.ui), "outside click closes the menu");
+    assert!(!menu_open(h.ui_ref()), "outside click closes the menu");
 }
 
 #[test]
 fn item_click_dismisses_and_reports_clicked() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         build(ui);
     });
     // Open the menu at a known anchor.
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
-    assert!(menu_open(&h.ui));
+    assert!(menu_open(h.ui_ref()));
 
     let copy_row = menu_rows(&h, trigger_id())[0].id;
-    h.click_on(copy_row);
+    h.click(copy_row);
     let copied = h.frame_value(build);
     assert!(copied, "clicking the Copy row reports clicked()");
-    assert!(!menu_open(&h.ui), "item click auto-closes the menu");
+    assert!(!menu_open(h.ui_ref()), "item click auto-closes the menu");
 }
 
 /// Pressing a `MenuItem`'s shortcut while the menu is open fires the item (`Response::clicked` is
@@ -93,13 +98,13 @@ fn item_click_dismisses_and_reports_clicked() {
 #[test]
 fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
     for hint in [false, true] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             build_copy(ui, hint);
         });
-        ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+        ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
         let row = h.frame_value(|ui| build_copy(ui, hint));
-        assert!(menu_open(&h.ui));
+        assert!(menu_open(h.ui_ref()));
         assert!(
             h.node_of(row.id.with("shortcut")).is_some(),
             "hint {hint}: the chord shows on the row",
@@ -111,53 +116,58 @@ fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
         h.key(Key::Char('C'));
         let row = h.frame_value(|ui| build_copy(ui, hint));
         assert_eq!(row.clicked, !hint, "hint {hint}: the press clicks the row");
-        assert_eq!(menu_open(&h.ui), hint, "hint {hint}: the menu stays open");
+        assert_eq!(
+            menu_open(h.ui_ref()),
+            hint,
+            "hint {hint}: the menu stays open"
+        );
     }
 }
 
 #[test]
 fn escape_dismisses_menu() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         build(ui);
     });
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
-    assert!(menu_open(&h.ui));
+    assert!(menu_open(h.ui_ref()));
 
     // Inject an Escape press.
     h.key(Key::Escape);
     h.frame(|ui| {
         build(ui);
     });
-    assert!(!menu_open(&h.ui), "Esc closes the menu");
+    assert!(!menu_open(h.ui_ref()), "Esc closes the menu");
 }
 
 /// The menu body hugs its content width (`theme.min_width` floor) instead of spanning the surface;
 /// guards `Fill` cross-axis on inner cells leaking `INF` up through the Hug menu container.
 #[test]
 fn menu_body_width_does_not_span_surface() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         build(ui);
     });
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
 
     let body_id = trigger_id().with("body");
-    let rect =
-        h.ui.cascade()
-            .locate(body_id)
-            .map(|l| l.entry_idx)
-            .map(|i| h.ui.cascade().entries[i as usize].rect)
-            .expect("menu body recorded");
+    let rect = h
+        .ui()
+        .cascade()
+        .locate(body_id)
+        .map(|l| l.entry_idx)
+        .map(|i| h.ui().cascade().entries[i as usize].rect)
+        .expect("menu body recorded");
     // The rows are narrower than the theme's floor, so the body sits at
     // it: hugging, not spanning the 400 px surface.
-    assert_eq!(rect.size.w, h.ui.theme().context_menu.min_width);
+    assert_eq!(rect.size.w, h.ui().theme().context_menu.min_width);
     assert_eq!(rect.size.w, 208.0);
 }
 
@@ -223,14 +233,17 @@ fn menu_open(ui: &Ui) -> bool {
 /// layer would still be open, and only the layer says which side of its parent it is on.
 #[test]
 fn a_menu_raised_inside_a_popup_lands_above_it() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(nested);
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(nested);
 
-    assert!(menu_open(&h.ui), "the menu did not open inside the popup");
+    assert!(
+        menu_open(h.ui_ref()),
+        "the menu did not open inside the popup"
+    );
     let body = trigger_id().with("body");
-    let held = |layer| h.ui.tree(layer).records.widget_id().contains(&body);
+    let held = |layer| h.ui_ref().tree(layer).records.widget_id().contains(&body);
     assert!(held(Layer::Menu), "the menu body is not on the menu layer");
     assert!(
         !held(Layer::Popup),
@@ -281,7 +294,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
             .inner
             .is_some()
     };
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         scene(ui, false);
     });
@@ -295,7 +308,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
         "premise: Tab focuses the trigger"
     );
 
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(h.frame_value(|ui| scene(ui, false)));
     assert_eq!(
         h.focus(),
@@ -309,15 +322,15 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
     h.frame(|ui| {
         scene(ui, false);
     });
-    assert!(!menu_open(&h.ui));
+    assert!(!menu_open(h.ui_ref()));
     assert_eq!(h.focus(), Some(trigger_id()), "closing gives focus back");
 
-    ContextMenu::open(&mut h.ui, trigger_id(), Vec2::new(60.0, 60.0));
+    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(
         !h.frame_value(|ui| scene(ui, true)),
         "the body does not run under a disabled trigger"
     );
-    assert!(!menu_open(&h.ui), "a disabled trigger closes its menu");
+    assert!(!menu_open(h.ui_ref()), "a disabled trigger closes its menu");
     assert!(
         !h.frame_value(|ui| scene(ui, false)),
         "and it stays closed once enabled again"

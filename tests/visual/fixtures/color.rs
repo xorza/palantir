@@ -13,7 +13,7 @@ use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Tex
 
 use crate::fixtures;
 use crate::fixtures::icon;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 use palantir::Stroke;
 
 const RAMP: [u8; 7] = [5, 8, 10, 16, 26, 32, 48];
@@ -74,7 +74,7 @@ fn ramp(ui: &mut Ui) {
 
 #[test]
 fn a_dark_ramp_reads_back_as_authored() {
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(SURFACE)
         .clear(RgbaF32::BLACK)
         .frame(ramp)

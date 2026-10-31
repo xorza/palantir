@@ -1,9 +1,9 @@
 //! What closes a popup, and how long it takes to settle.
 
+use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -18,10 +18,10 @@ use glam::Vec2;
 
 #[test]
 fn click_inside_popup_does_not_dismiss() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame_body(&mut h, ClickOutside::Dismiss);
     let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
-    h.click_at(inside);
+    h.click(inside);
 
     let pass = frame_body(&mut h, ClickOutside::Dismiss);
     assert!(
@@ -38,9 +38,10 @@ fn click_inside_popup_does_not_dismiss() {
 #[test]
 fn outside_click_dismisses_on_any_button_and_blocks_main() {
     for button in PointerButton::ALL {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         frame_body(&mut h, ClickOutside::Dismiss);
-        h.click_button_at(button, Vec2::new(300.0, 300.0));
+        h.press(Vec2::new(300.0, 300.0), button);
+        h.release(button);
 
         let pass = frame_body(&mut h, ClickOutside::Dismiss);
         assert!(
@@ -57,7 +58,7 @@ fn outside_click_dismisses_on_any_button_and_blocks_main() {
 #[test]
 fn escape_dismisses_dismiss_popup_but_not_block() {
     // `Dismiss`: Esc folds into `dismissed`.
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame_body(&mut h, ClickOutside::Dismiss);
     h.key(Key::Escape);
     assert!(
@@ -66,7 +67,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     );
 
     // `Block`: Esc is ignored.
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame_body(&mut h, ClickOutside::Block);
     h.key(Key::Escape);
     assert!(
@@ -78,7 +79,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
 /// `Ui::frame` settles dismissal in one host call: pass 1 sees the eater click and sets `dismissed`, the host flips `open`, pass 2 records no popup, so no stale frame reaches submit.
 #[test]
 fn run_frame_settles_popup_dismissal_in_one_call() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut open = true;
     let scene = |ui: &mut Ui, open: &mut bool| {
         Panel::vstack()
@@ -102,11 +103,11 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
             });
     };
     h.frame(|ui| scene(ui, &mut open));
-    h.click_at(Vec2::new(300.0, 300.0));
+    h.click(Vec2::new(300.0, 300.0));
     h.frame(|ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        h.ui.tree(Layer::Popup).records.len(),
+        h.ui().tree(Layer::Popup).records.len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );
@@ -118,7 +119,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     use crate::scene::layer::Layer;
 
     let content = WidgetId::from_hash("popup-content");
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let build = |ui: &mut Ui, open: bool| {
         Panel::vstack()
             .id(WidgetId::from_hash("main-bg"))
@@ -144,7 +145,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     });
 
     // Escape dismisses it; focus makes the wake-gate deliver the chord.
-    h.ui.input_mut().set_focus(Some(content));
+    h.ui().input_mut().set_focus(Some(content));
     h.key(Key::Escape);
     assert!(
         h.frame_value(|ui| build(ui, true)),
@@ -152,7 +153,8 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     );
 
     // Host stops showing it. `Main` must read again at once, though the popup is still in last frame's cascade; counted inside the record, the only place the queue is live.
-    h.ui.input_mut()
+    h.ui()
+        .input_mut()
         .set_focus(Some(WidgetId::from_hash("main-bg")));
     h.key(Key::Escape);
     let seen = h.frame_value(|ui| {

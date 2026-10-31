@@ -2,12 +2,15 @@
 
 use std::fmt;
 use std::sync::Arc;
+#[cfg(test)]
+use std::sync::mpsc;
 
 use winit::event_loop::EventLoopProxy;
 
 use crate::host::winit::error::HostDisconnected;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
+use crate::host::winit::remote::{QueryTask, Remote, ShotAsk};
 use crate::input::owned_input_event::OwnedInputEvent;
 use crate::window::window_token::WindowToken;
 
@@ -25,6 +28,11 @@ pub(crate) enum UserEvent<T> {
     Input(WindowToken, OwnedInputEvent),
     /// Runs a closure on the main thread with `&mut` the app, then repaints every window if it returns `true`.
     RunOnMain(MainTask<T>),
+    /// Runs a closure with `&mut` the app and the named window's `Ui` between two of its frames,
+    /// then runs a frame; dropped unrun when the window is gone.
+    Query(WindowToken, QueryTask<T>),
+    /// Asks the named window for a screenshot, which its frame hands back when it lands.
+    Shot(WindowToken, ShotAsk),
     /// Asks the event loop to exit.
     Quit,
 }
@@ -35,6 +43,8 @@ impl<T> fmt::Debug for UserEvent<T> {
             Self::Repaint(token) => f.debug_tuple("Repaint").field(token).finish(),
             Self::Input(token, event) => f.debug_tuple("Input").field(token).field(event).finish(),
             Self::RunOnMain(_) => f.write_str("RunOnMain(..)"),
+            Self::Query(token, _) => f.debug_tuple("Query").field(token).finish_non_exhaustive(),
+            Self::Shot(token, ask) => f.debug_tuple("Shot").field(token).field(ask).finish(),
             Self::Quit => f.write_str("Quit"),
         }
     }
@@ -44,15 +54,38 @@ impl<T> fmt::Debug for UserEvent<T> {
 /// [`WinitHost<T>`](super::WinitHost); obtain one via
 /// [`WinitHost::handle`](super::WinitHost::handle) before `run`.
 pub struct HostHandle<T: 'static> {
-    pub(super) proxy: EventLoopProxy<UserEvent<T>>,
+    pub(super) sender: EventSender<T>,
     pub(super) frames: Arc<FrameLog>,
+}
+
+/// Where a handle's events go: the event loop, or in this crate's tests a channel a loop of
+/// their own serves.
+pub(super) enum EventSender<T: 'static> {
+    Proxy(EventLoopProxy<UserEvent<T>>),
+    #[cfg(test)]
+    Channel(mpsc::Sender<UserEvent<T>>),
+}
+
+impl<T: 'static> EventSender<T> {
+    fn send(&self, event: UserEvent<T>) -> Result<(), HostDisconnected> {
+        match self {
+            Self::Proxy(proxy) => proxy.send_event(event).map_err(|_| HostDisconnected),
+            #[cfg(test)]
+            Self::Channel(sender) => sender.send(event).map_err(|_| HostDisconnected),
+        }
+    }
 }
 
 // Hand-written to avoid a spurious `T: Clone`/`T: Debug` bound; the handle stores no `T`.
 impl<T: 'static> Clone for HostHandle<T> {
     fn clone(&self) -> Self {
+        let sender = match &self.sender {
+            EventSender::Proxy(proxy) => EventSender::Proxy(proxy.clone()),
+            #[cfg(test)]
+            EventSender::Channel(sender) => EventSender::Channel(sender.clone()),
+        };
         Self {
-            proxy: self.proxy.clone(),
+            sender,
             frames: Arc::clone(&self.frames),
         }
     }
@@ -67,7 +100,7 @@ impl<T: 'static> fmt::Debug for HostHandle<T> {
 impl<T: 'static> HostHandle<T> {
     /// Requests one frame of `window`. Lock-free; dropped silently if the loop or window is gone.
     pub fn request_repaint(&self, window: WindowToken) {
-        self.proxy.send_event(UserEvent::Repaint(window)).ok();
+        self.send(UserEvent::Repaint(window)).ok();
     }
 
     /// Delivers `event` to `window` before its next frame, as the window's OS input is, stamped
@@ -75,7 +108,7 @@ impl<T: 'static> HostHandle<T> {
     /// event. Events reach the window in the order they are sent. Dropped silently unless the
     /// window is open.
     pub fn send_input(&self, window: WindowToken, event: OwnedInputEvent) {
-        self.proxy.send_event(UserEvent::Input(window, event)).ok();
+        self.send(UserEvent::Input(window, event)).ok();
     }
 
     /// The last frame `window` ran, or `None` before its first frame, after it closes, and
@@ -102,15 +135,22 @@ impl<T: 'static> HostHandle<T> {
         &self,
         f: impl FnOnce(&mut T) -> bool + Send + 'static,
     ) -> Result<(), HostDisconnected> {
-        self.proxy
-            .send_event(UserEvent::RunOnMain(Box::new(f)))
-            .map_err(|_| HostDisconnected)
+        self.send(UserEvent::RunOnMain(Box::new(f)))
     }
 
     /// Asks the host to close every window and then end the event loop; the current frame
     /// finishes. The windows leave the screen before the app drops.
     pub fn quit(&self) {
-        self.proxy.send_event(UserEvent::Quit).ok();
+        self.send(UserEvent::Quit).ok();
+    }
+
+    /// The window `window` of this host, played and read from this thread.
+    pub fn remote(&self, window: WindowToken) -> Remote<T> {
+        Remote::new(self.clone(), window)
+    }
+
+    pub(crate) fn send(&self, event: UserEvent<T>) -> Result<(), HostDisconnected> {
+        self.sender.send(event)
     }
 }
 

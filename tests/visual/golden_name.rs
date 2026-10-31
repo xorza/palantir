@@ -8,7 +8,7 @@ use image::RgbaImage;
 use palantir::Ui;
 
 use crate::goldens;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// Declares [`GoldenName`] from one `Variant => "file_stem"` list, so the variants, [`GoldenName::ALL`] and [`GoldenName::name`] cannot drift apart.
 macro_rules! golden_names {
@@ -40,7 +40,7 @@ impl GoldenName {
         goldens::suite().assert_matches(self.name(), &goldens::to_image(actual));
     }
 
-    /// One frame of `scene` at `size` on a fresh [`Harness`] matches this golden.
+    /// One frame of `scene` at `size` on a fresh [`VisualRig`] matches this golden.
     #[track_caller]
     pub(crate) fn assert_scene(self, size: UVec2, scene: impl FnMut(&mut Ui)) {
         self.assert_settled_scene(size, 0, scene);
@@ -49,7 +49,10 @@ impl GoldenName {
     /// [`Self::assert_scene`] on the frame after `settle` discarded ones, for state that builds over frames.
     #[track_caller]
     pub(crate) fn assert_settled_scene(self, size: UVec2, settle: u32, scene: impl FnMut(&mut Ui)) {
-        let img = Harness::new().size(size).settled_frame(settle, scene).image;
+        let img = VisualRig::new()
+            .size(size)
+            .settled_frame(settle, scene)
+            .image;
         self.assert_matches(&img);
     }
 }

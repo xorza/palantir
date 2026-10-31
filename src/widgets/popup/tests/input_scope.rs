@@ -1,9 +1,10 @@
 //! What the layers below see while a popup is open, per click-outside mode.
 
+use crate::host::harness::Harness;
+use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -23,7 +24,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         (ClickOutside::Block, false),
         (ClickOutside::PassThrough, true),
     ] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let bg_id = WidgetId::from_hash("scroll-bg");
         let scene = |ui: &mut Ui| {
             Panel::vstack()
@@ -46,11 +47,11 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         h.frame(scene);
 
         let outside = Vec2::new(300.0, 300.0);
-        h.scroll_pixels_at(outside, Vec2::new(0.0, 25.0));
-        h.scroll_lines(Vec2::new(0.0, 3.0));
-        h.pinch(1.4);
-        h.press_button(PointerButton::Middle);
-        h.move_to(outside + Vec2::new(40.0, 0.0));
+        h.scroll_pixels(outside, Vec2::new(0.0, 25.0));
+        h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
+        h.on_input(InputEvent::Zoom(1.4));
+        h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
+        h.hover(outside + Vec2::new(40.0, 0.0));
 
         let bg = h.response_in(bg_id, scene);
         assert_eq!(
@@ -65,15 +66,15 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         );
         assert_eq!(bg.scroll.zoom.get() != 1.0, leaks, "{mode:?}: pinch zoom");
         assert_eq!(bg.middle.drag.is_live(), leaks, "{mode:?}: middle drag");
-        h.release_button(PointerButton::Middle);
+        h.release(PointerButton::Middle);
     }
 }
 
 #[test]
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     frame_body(&mut h, ClickOutside::Block);
-    h.click_at(Vec2::new(300.0, 300.0));
+    h.click(Vec2::new(300.0, 300.0));
 
     let pass = frame_body(&mut h, ClickOutside::Block);
     assert!(!pass.dismissed, "`Block` mode must not signal dismissal");
@@ -91,9 +92,9 @@ fn each_click_outside_mode_decides_whether_main_sees_the_press() {
         (ClickOutside::Dismiss, false, true),
         (ClickOutside::PassThrough, true, false),
     ] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         frame_body(&mut h, mode);
-        h.click_at(Vec2::new(300.0, 300.0));
+        h.click(Vec2::new(300.0, 300.0));
 
         let pass = frame_body(&mut h, mode);
         assert_eq!(
@@ -116,7 +117,7 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
         (ClickOutside::Dismiss, false),
         (ClickOutside::PassThrough, true),
     ] {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         let scene = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("main-bg"))
@@ -168,7 +169,7 @@ fn text_edit_inside_a_popup_receives_typing() {
             });
     };
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| scene(ui, &mut buf));
     h.set_focus(field);
     h.frame(|ui| scene(ui, &mut buf));
@@ -218,7 +219,7 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                 .inner
         };
 
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             scene(ui, &mut buf);
         });

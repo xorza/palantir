@@ -16,8 +16,13 @@
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::shortcut::error::ParseShortcutError;
 use std::fmt::{self, Write as _};
+use std::str::FromStr;
+
+pub(crate) mod error;
 
 /// Modifier set for declaring shortcuts: `ctrl` is the primary command key (Cmd on
 /// macOS, Ctrl elsewhere), `shift` and `alt` are literal. Distinct from event-state
@@ -75,6 +80,24 @@ impl ShortcutMods {
                 ..self
             },
             Platform::Windows | Platform::Linux => self,
+        }
+    }
+
+    /// The modifiers a person holds on this platform to press this chord, as a host reports
+    /// them.
+    pub(crate) const fn held(self) -> Modifiers {
+        let Self {
+            ctrl,
+            shift,
+            alt,
+            meta,
+        } = self.held_on(PLATFORM);
+        Modifiers {
+            ctrl,
+            shift,
+            alt,
+            mac_ctrl: false,
+            meta,
         }
     }
 
@@ -187,6 +210,16 @@ impl Shortcut {
         }
     }
 
+    /// What a press of this shortcut types, as a layout gives it: its character, upper case with
+    /// Shift, and nothing for a named key or with a command modifier held.
+    pub(crate) fn typed(self) -> KeyText {
+        match self.key {
+            Key::Char(_) if self.mods.has_command() => KeyText::EMPTY,
+            Key::Char(c) if self.mods.shift => KeyText::new(&c.to_uppercase().to_string()),
+            key => KeyText::of_key(key),
+        }
+    }
+
     /// Logical-key match with **no** layout fallback; [`Self::matches`] layers that
     /// on.
     fn matches_key(self, key: Key, mods: Modifiers) -> bool {
@@ -200,6 +233,79 @@ impl From<Key> for Shortcut {
     fn from(key: Key) -> Self {
         Self::key(key)
     }
+}
+
+/// Modifiers and one key joined by `+`, case-blind, as a Windows or Linux label writes them:
+/// `ctrl+shift+z`, `Ctrl+PgUp`, `alt+f4`, `ctrl++` for the plus key. `ctrl` and `cmd` are the
+/// primary command key, `meta`, `super` and `win` the Super key. A key is a named key or one
+/// character, which a shortcut holds in ASCII lower case, as its matching ignores the case.
+impl FromStr for Shortcut {
+    type Err = ParseShortcutError;
+
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        if text.trim() == "+" {
+            return Ok(Self::key(Key::Char('+')));
+        }
+        // `ctrl++` names the plus key: the last `+` after a separator is the key itself.
+        let (mods_text, key_text) = match text.strip_suffix("++") {
+            Some(mods) => (Some(mods), "+"),
+            None => match text.rsplit_once('+') {
+                Some((mods, key)) => (Some(mods), key),
+                None => (None, text),
+            },
+        };
+        let mut mods = ShortcutMods::NONE;
+        for named in mods_text.into_iter().flat_map(|mods| mods.split('+')) {
+            match named.trim().to_ascii_lowercase().as_str() {
+                "ctrl" | "cmd" => mods.ctrl = true,
+                "shift" => mods.shift = true,
+                "alt" => mods.alt = true,
+                "meta" | "super" | "win" => mods.meta = true,
+                _ => return Err(ParseShortcutError::Modifier),
+            }
+        }
+        Ok(Self::new(mods, parse_key(key_text.trim())?))
+    }
+}
+
+/// A named key, as a lower-case word or a Windows or Linux label writes it, or one character.
+fn parse_key(text: &str) -> Result<Key, ParseShortcutError> {
+    Ok(match text.to_ascii_lowercase().as_str() {
+        "" => return Err(ParseShortcutError::NoKey),
+        "enter" | "return" => Key::Enter,
+        "escape" | "esc" => Key::Escape,
+        "tab" => Key::Tab,
+        "backspace" => Key::Backspace,
+        "delete" | "del" => Key::Delete,
+        "left" | "←" => Key::ArrowLeft,
+        "right" | "→" => Key::ArrowRight,
+        "up" | "↑" => Key::ArrowUp,
+        "down" | "↓" => Key::ArrowDown,
+        "home" => Key::Home,
+        "end" => Key::End,
+        "pageup" | "pgup" => Key::PageUp,
+        "pagedown" | "pgdn" => Key::PageDown,
+        "space" => Key::Char(' '),
+        "f1" => Key::F1,
+        "f2" => Key::F2,
+        "f3" => Key::F3,
+        "f4" => Key::F4,
+        "f5" => Key::F5,
+        "f6" => Key::F6,
+        "f7" => Key::F7,
+        "f8" => Key::F8,
+        "f9" => Key::F9,
+        "f10" => Key::F10,
+        "f11" => Key::F11,
+        "f12" => Key::F12,
+        _ => {
+            let mut chars = text.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Key::Char(c.to_ascii_lowercase()),
+                _ => return Err(ParseShortcutError::Key),
+            }
+        }
+    })
 }
 
 /// Platform-native label for the platform this build targets: macOS glyphs (`⌥⇧⌘<key>`), else

@@ -4,8 +4,8 @@ use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 
+use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -65,7 +65,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
     let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
                      with five dozen liquor jugs. How vexingly quick daft zebras jump!";
     for (label_id, grid_main, cols, gaps) in cases {
-        let mut h = UiHarness::new(UVec2::new(800, 600));
+        let mut h = Harness::mono(UVec2::new(800, 600));
         let mut left = None;
         let mut right = None;
         h.frame(|ui| {
@@ -104,7 +104,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
         });
 
         // Mono at 14 px is 7 px a char: "right column" is 12 × 7 = 84.
-        let layout = h.ui.layout(Layer::Main);
+        let layout = h.ui().layout(Layer::Main);
         let lr = layout.rect[left.unwrap().idx()];
         let rr = layout.rect[right.unwrap().idx()];
         assert_eq!(rr.size.w, 84.0, "case: {label_id}");
@@ -120,7 +120,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
 
 #[test]
 fn text_layouts_two_sections_back_to_back_no_overlap() {
-    let mut h = UiHarness::new(UVec2::new(1500, 900));
+    let mut h = Harness::mono(UVec2::new(1500, 900));
 
     let mut hug_left = None;
     let mut hug_right = None;
@@ -194,7 +194,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
             });
     });
 
-    let layout = h.ui.layout(Layer::Main);
+    let layout = h.ui().layout(Layer::Main);
     let l1 = layout.rect[hug_left.unwrap().idx()];
     let r1 = layout.rect[hug_right.unwrap().idx()];
     let l2 = layout.rect[prop_label.unwrap().idx()];
@@ -218,7 +218,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 /// Render-pass repro: the property-grid pattern, inspecting emitted `DrawText` commands.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
-    let mut h = UiHarness::with_text(UVec2::new(1500, 900));
+    let mut h = Harness::new(UVec2::new(1500, 900));
     h.frame(|ui| {
         Panel::vstack()
             .auto_id()
@@ -274,7 +274,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 /// Diagnostic full-showcase repro for the bug where two texts emit `DrawText` at the same (x, y).
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
-    let mut h = UiHarness::new(UVec2::new(1620, 980));
+    let mut h = Harness::mono(UVec2::new(1620, 980));
     h.frame(|ui| {
         Panel::vstack().auto_id()
         .padding(12.0)

@@ -3,7 +3,8 @@
 
 use glam::{UVec2, Vec2};
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
+use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -872,7 +873,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
     let right = d.focused();
 
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     h.prime(3, |ui| {
         DockView::run(ui, &mut d, &mut tabs);
@@ -935,20 +936,23 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Right);
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
-    let mut run = |h: &mut UiHarness, d: &mut DockState<Tab>| {
+    let mut run = |h: &mut Harness, d: &mut DockState<Tab>| {
         h.frame(|ui| DockView::run(ui, d, &mut tabs));
         h.arranged(DockView::pane_id(d, primary)).size.w
     };
     for _ in 0..3 {
         run(&mut h, &mut d);
     }
-    h.press_on(DockView::splitter_id(&d, DockPath::ROOT).with("divider"));
+    h.press(
+        DockView::splitter_id(&d, DockPath::ROOT).with("divider"),
+        PointerButton::Left,
+    );
     run(&mut h, &mut d);
     h.drag_to(Vec2::new(5.0, 200.0));
     let mut widths = vec![run(&mut h, &mut d), run(&mut h, &mut d)];
-    h.release();
+    h.release(PointerButton::Left);
     widths.extend([run(&mut h, &mut d), run(&mut h, &mut d)]);
 
     let floor = DockState::<Tab>::RATIO_MIN * 599.0;
@@ -969,13 +973,16 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
 fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
     let mut d = seeded();
     let mut tabs = Labels;
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
     let strip = DockView::strip_id(&d, d.primary().id);
     let caret = strip.with("caret");
     let wash = DockView::dock_id(&d).with("preview");
 
-    h.press_on(TabStrip::chip_id(strip, DockView::tab_key(Tab::Main)));
+    h.press(
+        TabStrip::chip_id(strip, DockView::tab_key(Tab::Main)),
+        PointerButton::Left,
+    );
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
     let last = h.center_of(TabStrip::chip_id(strip, DockView::tab_key(viewer(1))));
     h.drag_to(last + Vec2::new(4.0, 0.0));
@@ -994,7 +1001,7 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
 #[test]
 fn a_chip_click_switches_the_pane_on_the_same_frame() {
     let mut d = seeded();
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
     assert_eq!(d.primary().active_tab(), Tab::Main);
@@ -1003,7 +1010,7 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
         DockView::strip_id(&d, d.primary().id),
         DockView::tab_key(Tab::Prefs),
     );
-    h.click_on(chip);
+    h.click(chip);
     let content = h.frame_value(|ui| {
         DockView::run(ui, &mut d, &mut tabs);
         ui.response_for(DockView::content_id(&d, d.primary().id))
@@ -1021,14 +1028,14 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
 #[test]
 fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut d = seeded();
-    let mut h = UiHarness::new(SURFACE);
-    h.ui.theme_mut().tabs.close_shown = CloseShown::Always;
+    let mut h = Harness::mono(SURFACE);
+    h.ui().theme_mut().tabs.close_shown = CloseShown::Always;
     let mut tabs = Labels;
     h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
 
     let strip = DockView::strip_id(&d, d.primary().id);
     let close = TabStrip::close_id(strip, DockView::tab_key(Tab::Prefs));
-    h.click_on(close);
+    h.click(close);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
 
     assert_eq!(
@@ -1049,7 +1056,7 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
 /// has none, so the pick must arrive through the strip's own report.
 #[test]
 fn a_pick_from_the_overflow_menu_activates_its_tab() {
-    fn frame(h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels) {
+    fn frame(h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels) {
         h.frame(|ui| {
             let mut operations = Vec::new();
             DockView::scan(ui, d, &mut operations);
@@ -1070,7 +1077,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     d.apply(DockOperation::ActivateTab { tab: Tab::Main });
     let mut tabs = Labels;
     // Narrow enough that three chips cannot all show, putting the chevron on.
-    let mut h = UiHarness::new(UVec2::new(120, 200));
+    let mut h = Harness::mono(UVec2::new(120, 200));
     for _ in 0..3 {
         frame(&mut h, &mut d, &mut tabs);
     }
@@ -1083,12 +1090,12 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     );
     assert_eq!(d.primary().active_tab(), Tab::Main);
 
-    h.click_on(chevron);
+    h.click(chevron);
     frame(&mut h, &mut d, &mut tabs);
 
     let entry = strip.with("overflow").with(DockView::tab_key(viewer(1)));
     assert!(h.rect(entry).is_some(), "the menu lists every tab");
-    h.click_on(entry);
+    h.click(entry);
     frame(&mut h, &mut d, &mut tabs);
 
     assert_eq!(
@@ -1142,7 +1149,7 @@ impl DockTabs for MenuOn {
 fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     let mut d = seeded();
     let mut tabs = MenuOn(Tab::Prefs);
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
     let strip = DockView::strip_id(&d, d.primary().id);
     let chip = |tab| TabStrip::chip_id(strip, DockView::tab_key(tab));
@@ -1151,24 +1158,24 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .rect(chip(Tab::Main))
         .expect("the Main chip arranged")
         .center();
-    h.right_click_at(at);
+    h.right_click(at);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(!ContextMenu::is_open(&h.ui, chip(Tab::Main)));
+    assert!(!ContextMenu::is_open(h.ui_ref(), chip(Tab::Main)));
     assert!(h.rect(MenuOn::item_id()).is_none(), "Main has no menu");
 
     let at = h
         .rect(chip(Tab::Prefs))
         .expect("the Prefs chip arranged")
         .center();
-    h.right_click_at(at);
+    h.right_click(at);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(ContextMenu::is_open(&h.ui, chip(Tab::Prefs)));
+    assert!(ContextMenu::is_open(h.ui_ref(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_some(),
         "Prefs's menu shows its item"
     );
 
-    h.click_on(MenuOn::item_id());
+    h.click(MenuOn::item_id());
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
     assert_eq!(
@@ -1176,7 +1183,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         [Tab::Main, viewer(1)],
         "the item closed the right-clicked tab"
     );
-    assert!(!ContextMenu::is_open(&h.ui, chip(Tab::Prefs)));
+    assert!(!ContextMenu::is_open(h.ui_ref(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
         "the menu closed with its pick"
@@ -1187,12 +1194,12 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .rect(chip(viewer(1)))
         .expect("the viewer chip arranged")
         .center();
-    h.right_click_at(at);
+    h.right_click(at);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(ContextMenu::is_open(&h.ui, chip(viewer(1))));
+    assert!(ContextMenu::is_open(h.ui_ref(), chip(viewer(1))));
     d.retain_tabs(|tab| tab != viewer(1));
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(!ContextMenu::is_open(&h.ui, chip(viewer(1))));
+    assert!(!ContextMenu::is_open(h.ui_ref(), chip(viewer(1))));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
         "a menu whose tab the app removed closes"
@@ -1232,8 +1239,8 @@ fn a_carried_tab_leaves_with_the_dock() {
 
     let mut d = seeded();
     let mut tabs = Labels;
-    let mut h = UiHarness::new(UVec2::new(400, 200));
-    let record = |h: &mut UiHarness, d: &mut DockState<Tab>, tabs: &mut Labels| {
+    let mut h = Harness::mono(UVec2::new(400, 200));
+    let record = |h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels| {
         h.frame(|ui| DockView::run(ui, d, tabs));
     };
     for _ in 0..2 {
@@ -1243,12 +1250,12 @@ fn a_carried_tab_leaves_with_the_dock() {
     let strip = DockView::strip_id(&d, d.primary().id);
     let chip = TabStrip::chip_id(strip, DockView::tab_key(Tab::Prefs));
     let at = h.center_of(chip);
-    h.press_at(at);
+    h.press(at, PointerButton::Left);
     record(&mut h, &mut d, &mut tabs);
     h.drag_to(at + Vec2::new(0.0, 60.0));
     record(&mut h, &mut d, &mut tabs);
-    let carried = |h: &UiHarness| {
-        let drag = h.ui.state::<TabDrag<Tab>>(dock)?;
+    let carried = |h: &Harness| {
+        let drag = h.ui_ref().state::<TabDrag<Tab>>(dock)?;
         drag.tab
     };
     assert_eq!(carried(&h), Some(Tab::Prefs), "the drag carries the tab");

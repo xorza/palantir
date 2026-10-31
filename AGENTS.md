@@ -41,7 +41,7 @@ A top-level module imports only modules to its left:
 ```text
 common → primitives → {animation, text, input, display, window, image_registry, diagnostics}
        → shape → icons → scene → layout → cascade → {damage, input_state}
-       → renderer ⇄ gpu → theme → ui ⇄ app → widget_core → widgets → host
+       → renderer ⇄ gpu → theme → ui ⇄ app → widget_core → widgets → driver → host
 ```
 
 - **`theme` is plain look data.** It holds the look vocabulary a theme file
@@ -152,12 +152,86 @@ update, a removed GPU. Facts and sources: `.notes/research/2026-10-30-device-los
 - **The hosts report and recover.** The winit host recovers before a window draws on a lost
   device, and `run()` returns `WinitHostError::DeviceLost` when no new device opens.
   `OffscreenHost` runs the CPU half and submits nothing while `is_device_lost()`, and
-  `recover(gpu)` attaches the device the app gives; `HeadlessWindow` forwards both and makes its
-  texture again. Refused: a new host, which loses the UI state.
+  `recover(gpu)` attaches the device the app gives. A `Harness` runs the CPU half and paints
+  nothing while its device is lost, and recovers none: a test or an agent session that loses its
+  device opens a new one. Refused: a new host, which loses the UI state.
 - **Tests lose a real device.** `Gpu::lose` destroys an isolated device and waits, as wgpu's own
   device-loss tests do; the shared test device is never lost. A real hang can be checked by hand
   with `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root while the showcase runs, which
   resets the GPU for every app on the machine.
+
+## Harness
+
+`Harness` runs one window with no desktop for a unit test, an app's UI test and an agent alike;
+`Remote` plays a live window of the winit host with the same steps. Their rules of a frame are in
+`host/harness/mod.rs`'s module doc.
+
+- **The harness is a host, not a `Ui` field.** A host owns the clock, the frame loop, the display
+  and the input door, and runs `HostCore` and `WindowDriver` as the other two hosts do, so a test
+  runs the stamp, damage and screenshot path the desktop runs. Flutter's `WidgetTester`, Slint's
+  testing backend, egui_kittest's `Harness`, masonry's `TestHarness` and iced_test's `Simulator`
+  sit at that level. Refused: a field on `Ui`, a second frame loop every app pays for; a separate
+  crate, which cannot reach the core; a frame path of the harness's own, which drifts
+  ([egui_kittest](https://docs.rs/egui_kittest/latest/egui_kittest/struct.Harness.html),
+  [masonry](https://docs.rs/masonry/latest/src/masonry/testing/harness.rs.html),
+  [Slint testing](https://docs.rs/i-slint-backend-testing/latest/i_slint_backend_testing/),
+  [Flutter](https://api.flutter.dev/flutter/flutter_test/WidgetTester-class.html),
+  [iced_test](https://docs.rs/iced_test)).
+- **Public, with no feature.** It brings no dependency palantir lacks, so a feature saves nothing
+  and adds a lint lane. Its test reach-ins sit at the end of `host/harness/mod.rs`, under
+  `internals` or `cfg(test)`. Refused: masonry's `testing` feature.
+- **Three depths, record by default.** `Depth::Record` stops after damage, at what a unit test
+  costs; `Depth::Compose` builds the draw list on the CPU; `Depth::Gpu` paints and shoots. A core
+  built with no device never attaches one, as its image registry holds no store. Refused: a GPU
+  for every test; a CPU rasterizer, a second renderer to keep equal to the GPU one.
+- **A stepped clock only, and a warm start.** Time moves on `advance`, `at`, `settle` and `play`,
+  so a run repeats, and frame 1 runs no warmup pass, so pass counts hold. Refused:
+  `OffscreenTime::Realtime`, which `OffscreenHost` keeps for embedding.
+- **The app goes in each call, and a closure is an app.** A test's closure borrows the test's
+  locals, which it reads between frames; `impl<F: FnMut(&mut Ui)> App for F`. Frames take
+  `impl FnMut(&mut Ui)`, as rustc infers a closure's argument types only from an `Fn` bound, and
+  `frame_app`, `settle`, `play` and `shot` take `&mut impl App`. Refused: egui_kittest's owned
+  state; one family on `&mut impl App`, which costs every unit test an annotation.
+- **Locators by text, by id and by point,** and an app's own places through `Locate`, as
+  Flutter's `find.text` and iced's `click "…"` name a widget. A widget must show and be reached by
+  the input it senses: a press goes to the topmost widget that clicks, a hover to the topmost that
+  hovers, as `Cascade::hit_test_press` routes them. Refused: `dyn` locators; a check against any
+  sensing widget, which calls a button covered by a label that only hovers.
+- **Methods are input; `play` is a person.** An input method queues events and returns, and a
+  locator that misses panics with the nearest matches, a test's mistake; `play` settles after each
+  step, spaces separate presses past the double-click window, moves before it presses, and returns
+  `ActError`, as its steps come from an agent. One set of rules, `driver::play`, plays a step on a
+  harness and on a remote. `Action::click`, `key` and `DRAG_STEPS` sit on `impl Action`, so a call
+  with no app places names no type, as `Vec::new` sits on `Vec<T, Global>`.
+- **`key` restores the modifiers.** A shortcut with modifiers holds them for its press and then
+  restores the ones held before, and a bare key presses under what `set_modifiers` holds. Refused:
+  a key that leaves its modifiers held for the next.
+- **Scroll names its event kind:** `scroll_pixels` and `scroll_lines`. Refused: `ScrollDelta`, a
+  response's reading, negated at ingest.
+- **One window; its commands are recorded** in `window_commands`. Refused: `OffscreenHost`'s
+  panic, which ends an agent's session on an app's second window.
+- **No recovery.** A harness paints nothing while its device is lost; a test or an agent session
+  opens a new one (**Device loss**).
+- **A live window takes the same steps through `Remote`.** A query runs between two frames with
+  `&mut` the app and the window's `Ui`, so locators and `inspect` need no request queue in the
+  app, as Flutter's driver extension and Slint's MCP server run inside the live app. A shot is a
+  host event the window's frame answers in the frame its image lands in, as a later frame replaces
+  the image. A query given up on never runs later, and `with_blocked` gives up at once while
+  something outside the host holds the window's thread. Its tests serve the handle's events on a
+  harness through a test-only channel, as a winit event loop needs a display and the main thread.
+- **No MCP server in palantir.** It carries no schema; an app's server converts its own JSON
+  types. Refused for now: Slint's `slint/mcp` feature, which brings rmcp and an async runtime into
+  the GUI crate; a second app with a server would argue for a `palantir-mcp` crate.
+- **A shot scales down in premultiplied linear light, in palantir** (`Image::fitted`), so the
+  shipped build needs no image crate and a transparent texel's color adds nothing. The showcase's
+  largest side is 2,576 px, the long edge Claude 4.7 and later models read with no downscale
+  ([Claude vision](https://platform.claude.com/docs/en/build-with-claude/vision)).
+- **The showcase's shot mode is a script of lines**, as iced's `.ice` tests, one process per
+  script, rebuilt by each call, so a shot never shows a stale binary; its legend lists the widgets
+  with text, which a locator names
+  ([iced_test `Ice`](https://docs.rs/iced_test/0.14.0/iced_test/ice/struct.Ice.html)).
+- **The visual suite stays on `OffscreenHost`**, as it tests presentation paths: fresh targets,
+  each format, a target with no `COPY_DST`. Its rig is `VisualRig`, so one name keeps one meaning.
 
 ## Public API
 
@@ -474,9 +548,10 @@ CI runs `cargo drive gate --ci` on each OS.
 - **A change to bench code** adds `cargo drive bench --test`, which runs each
   case once; `benches/AGENTS.md` says how to run and measure.
 - **`--all-features` is clippy's alone**: under `profile-with-tracy` a test
-  binary opens the Tracy socket. The first test set names `alloc`, as
-  `--tests` with `golden` would pull in `visual`; the second builds the
-  library without `winit`, as a host that embeds the crate does.
+  binary opens the Tracy socket. The first test set is `--tests`: the
+  library, `alloc` and the showcase's shot mode (`test = true`), with
+  `visual` left out by its `test = false`; the second builds the library
+  without `winit`, as a host that embeds the crate does.
 - **Rendering changes** (shaders, encoder/composer, atlases, color pipeline,
   layout that moves pixels) also run the golden suite, which no lane holds:
   `cargo drive run visual [filter]`, in the first test lane's shape so it
@@ -486,8 +561,14 @@ CI runs `cargo drive gate --ci` on each OS.
   changing anything. A missing golden is written, then failed; a
   failure leaves `actual.png`, `expected.png` and `diff.png` in
   `tests/visual/output/<name>/`.
-- **A change a user can see** ends with a look at
-  `cargo run --example showcase`.
+- **A change a user can see** ends with a look through
+  `cargo drive run shot SCRIPT`: the showcase played from a script with no
+  desktop, each `shot` written to `target/shot/NAME.png` with a legend of the
+  widgets it shows; `examples/showcase/shot/script.rs` holds the language.
+  `--against DIR` compares each shot with an earlier run's at zero tolerance
+  and writes the marked difference, so a run before the change and one after
+  show what moved. Goldens are a test, never a viewer: `UPDATE_GOLDEN=1` rewrites a baseline
+  that a run then compares nothing against.
 - **Before measuring or reaching for `perf`**, read `benches/AGENTS.md`.
 
 ## Non-shipping code
@@ -504,9 +585,10 @@ tests`:
   never `any(test, feature = "internals")`. An item whose callers exist in
   fewer builds narrows with its own `cfg`; a wrong gate shows as dead code,
   which no lint allow hides.
-- **`crate::internals`** (`src/internals/`) — the subsystems: the frame
-  harness, the paint capture, the panic probe, the shared fixtures; public as
-  `palantir::internals`.
+- **`crate::internals`** (`src/internals/`) — the subsystems: the paint
+  capture, the panic probe, the damage oracle, the shared fixtures; public as
+  `palantir::internals`. The frame harness is public API, `Harness`, and its
+  test reach-ins sit at the end of `host/harness/mod.rs`.
 - **`bench.rs`** beside the code it measures, reached through the `bench`
   facade in `src/lib.rs`.
 - **`crate::golden`** (`src/golden/`) — golden-image comparison, under

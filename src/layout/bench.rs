@@ -5,8 +5,8 @@
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::host::harness::Harness;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
-use crate::internals::ui_harness::UiHarness;
 use crate::layout::Layout;
 use crate::scene::plane::Plane;
 use criterion::Criterion;
@@ -17,17 +17,18 @@ pub(crate) fn atomic(c: &mut Criterion) {
     for (label, miss) in [("cached", false), ("forced_miss", true)] {
         group.bench_function(Backend::Cpu.case(label), |b| {
             let mut state = FrameFixture::default();
-            let mut h = UiHarness::with_text(BENCH_SURFACE).scale(BENCH_DPR);
+            let mut h = Harness::builder(BENCH_SURFACE).scale(BENCH_DPR).build();
             h.frame(|ui| state.render(BENCH_SCALE, ui));
-            let surface = h.ui.display().logical_rect();
+            let surface = h.ui().display().logical_rect();
             let mut out = Layout::default();
-            let run = |h: &mut UiHarness, out: &mut Layout| {
+            let run = |h: &mut Harness, out: &mut Layout| {
                 if miss {
-                    h.engines.layout.cache.forget_all();
+                    h.engines_mut().layout.cache.forget_all();
                 } else {
-                    h.engines.layout.forget_last_run();
+                    h.engines_mut().layout.forget_last_run();
                 }
-                h.engines.layout.run(h.ui.forest(), surface, out);
+                let parts = h.parts();
+                parts.engines.layout.run(parts.ui.forest(), surface, out);
             };
             run(&mut h, &mut out);
             let rects = &out[Plane::MAIN].rect;
@@ -38,7 +39,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
             );
             assert_eq!(
                 *rects,
-                h.ui.layout_tables()[Plane::MAIN].rect,
+                h.ui().layout_tables()[Plane::MAIN].rect,
                 "the frame's own layout"
             );
             b.iter(|| {

@@ -6,6 +6,30 @@ no features and one build per public feature; a tag names the builds an item or 
 line needs or loses. `internals` is the crate's own test surface and is left out.
 
 ```text
+ActError
+    struct ActError: Clone, Debug, Display, Error, PartialEq
+        pub ran: usize
+        pub error: PlayError
+
+Action
+    enum Action<X = Infallible>
+        Move(Locator<X>)
+        Click { at: Locator<X>, button: PointerButton, mods: ShortcutMods }
+        DoubleClick(Locator<X>)
+        Drag { from: Locator<X>, to: Locator<X>, button: PointerButton, mods: ShortcutMods, steps: u32 }
+        Scroll { at: Locator<X>, delta: Vec2 }
+        Pinch { at: Locator<X>, factor: f32 }
+        Key(Shortcut)
+        Type(String)
+        Wait(Duration)
+        impl Action
+            pub const DRAG_STEPS: u32
+            pub fn click(at: impl Into<Locator>) -> Self
+            pub const fn key(shortcut: Shortcut) -> Self
+        impl<X: Clone> Clone for Action<X>
+        impl<X: Debug> Debug for Action<X>
+        impl<X: PartialEq> PartialEq for Action<X>
+
 Align
     struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const fn new(h: HAlign, v: VAlign) -> Self
@@ -67,6 +91,7 @@ App
     trait App
         fn update(&mut self, _window: WindowToken, _ui: &Ui) { .. }
         fn record(&mut self, window: WindowToken, ui: &mut Ui)
+        impl<F: FnMut(&mut Ui)> App for F
 
 Axis
     enum Axis: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -445,6 +470,12 @@ DebugOverlayConfig
         pub dim_undamaged: bool
         pub frame_stats: bool
 
+Depth
+    enum Depth: Debug
+        Record
+        Compose
+        Gpu(Gpu)
+
 DeviceFeatures
     struct DeviceFeatures: BitOr, Clone, Copy, Debug, Default, Display, DockTab (blanket), Eq, Hash, PartialEq
         pub const IMMEDIATES: Self
@@ -769,6 +800,12 @@ FontWeight
         pub const fn new(weight: u16) -> Self
         pub const fn get(self) -> u16
 
+Found
+    struct Found: Clone, Copy, Debug, PartialEq
+        pub rect: Rect
+        pub point: Vec2
+        pub const fn rect(rect: Rect) -> Self
+
 FramePaint
     enum FramePaint: Clone, Copy, Debug, Eq, PartialEq
         Skip
@@ -926,32 +963,65 @@ HAlign
         Right = 3
         Stretch = 4
 
-HeadlessWindow
-    struct HeadlessWindow: Debug
-        pub fn builder(gpu: Gpu) -> HeadlessWindowBuilder
-        pub fn frame<T: App>(&mut self, app: &mut T) -> FrameReport
-        pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
+Harness
+    struct Harness: Debug
+        pub fn play<A: App, X: Locate<A>>(&mut self, app: &mut A, actions: &[Action<X>]) -> Result<u32, ActError>
+        pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError>
+        pub fn shot(&mut self, app: &mut impl App, region: Option<Rect>) -> Result<Screenshot, PlayError>
+        pub fn new(size: UVec2) -> Self
+        pub const fn builder(size: UVec2) -> HarnessBuilder
+        pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport
+        pub fn frame_app(&mut self, app: &mut impl App) -> FrameReport
+        pub fn step(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport
+        pub fn frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> R
+        pub fn response_in(&mut self, id: WidgetId, record: impl FnMut(&mut Ui)) -> ResponseState
+        pub fn prime(&mut self, frames: u32, record: impl FnMut(&mut Ui))
         pub fn advance(&mut self, dt: Duration) -> &mut Self
-        pub fn at(&mut self, time: Duration) -> &mut Self
+        pub const fn at(&mut self, time: Duration) -> &mut Self
+        pub fn advance_frames(&mut self, frames: u32, dt: Duration, record: impl FnMut(&mut Ui))
+        pub fn advance_past_double_click(&mut self) -> &mut Self
+        pub fn resize(&mut self, size: UVec2) -> &mut Self
+        pub fn set_display(&mut self, display: Display) -> &mut Self
+        pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
+        pub fn hover(&mut self, at: impl Into<Locator>) -> InputDelta
+        pub fn press(&mut self, at: impl Into<Locator>, button: PointerButton) -> InputDelta
+        pub fn release(&mut self, button: PointerButton) -> InputDelta
+        pub fn click(&mut self, at: impl Into<Locator>)
+        pub fn right_click(&mut self, at: impl Into<Locator>)
+        pub fn drag_to(&mut self, at: impl Into<Locator>) -> InputDelta
+        pub fn scroll_pixels(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta
+        pub fn scroll_lines(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta
+        pub fn pinch(&mut self, at: impl Into<Locator>, factor: f32) -> InputDelta
+        pub fn key(&mut self, key: impl Into<Shortcut>) -> InputDelta
+        pub fn key_up(&mut self, key: Key) -> InputDelta
+        pub fn set_modifiers(&mut self, mods: Modifiers)
+        pub fn type_text(&mut self, text: &str)
+        pub fn find<A, X: Locate<A>>(&self, app: &A, at: &Locator<X>) -> Result<Found, LocateError>
+        pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget>
+        pub fn rect(&self, id: WidgetId) -> Option<Rect>
+        pub fn arranged(&self, id: WidgetId) -> Rect
+        pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2
+        pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId>
+        pub fn state<S: 'static>(&self, id: WidgetId) -> &S
+        pub fn window_commands(&self) -> &[WindowCommand]
+        pub fn clipboard_text(&self) -> String
+        pub fn set_clipboard_text(&mut self, text: &str)
         pub fn wait_for_gpu(&self)
-        pub fn is_device_lost(&self) -> bool
-        pub fn recover(&mut self, gpu: Gpu)
         pub const fn ui(&mut self) -> &mut Ui
-        pub const fn host(&self) -> &OffscreenHost
-        pub fn resize(&mut self, size: UVec2, system_scale: f32)
-        pub fn size(&self) -> UVec2
-        pub const fn system_scale(&self) -> f32
 
-HeadlessWindowBuilder
-    struct HeadlessWindowBuilder: Debug
-        pub fn fonts(self, scope: FontScope) -> Self
+HarnessBuilder
+    struct HarnessBuilder: Debug
+        pub const fn scale(self, scale: f32) -> Self
+        pub const fn user_scale(self, scale: UserScale) -> Self
+        pub const fn refresh_millihertz(self, millihertz: u32) -> Self
+        pub const fn pixel_snap(self, pixel_snap: bool) -> Self
+        pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
-        pub fn collect_gpu_stats(self, collect: bool) -> Self
-        pub fn time(self, time: OffscreenTime) -> Self
-        pub fn pixel_snap(self, pixel_snap: bool) -> Self
-        pub fn system_clipboard(self, system: bool) -> Self  [features: system-clipboard or winit]
-        pub const fn format(self, format: TargetFormat) -> Self
-        pub fn open(self, size: UVec2, system_scale: f32) -> HeadlessWindow
+        pub fn depth(self, depth: Depth) -> Self
+        pub fn gpu(self, gpu: Gpu) -> Self
+        pub const fn frame_dt(self, dt: Duration) -> Self
+        pub const fn settle_frames(self, frames: u32) -> Self
+        pub fn build(self) -> Harness
 
 HostDisconnected  [features: winit]
     struct HostDisconnected: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -964,6 +1034,7 @@ HostHandle  [features: winit]
         pub fn is_hidden(&self, window: WindowToken) -> bool
         pub fn run_on_main(&self, f: impl FnOnce(&mut T) -> bool + Send + 'static) -> Result<(), HostDisconnected>
         pub fn quit(&self)
+        pub fn remote(&self, window: WindowToken) -> Remote<T>
 
 Hsv
     struct Hsv: Clone, Copy, Debug, Default, PartialEq
@@ -1015,6 +1086,7 @@ Image
         pub fn fill_with(&mut self, texel: impl FnMut(UVec2) -> SrgbaU8)
         pub fn row_mut(&mut self, row: u32) -> &mut [SrgbaU8]
         pub fn repeat_row(&mut self, row: u32)
+        pub fn fitted(&self, max_side: u32) -> Self
 
 ImageDataError
     enum ImageDataError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -1251,6 +1323,37 @@ LinearGradient
 LinearGradientBuilder
     type LinearGradientBuilder = GradientBuilder<LinearGeometry>
 
+Locate
+    trait Locate<A>: Debug
+        fn find_all(&self, app: &A, ui: &Ui, out: &mut Vec<Found>) -> Result<(), LocateError>
+
+LocateError
+    enum LocateError: Clone, Debug, Display, Error, PartialEq
+        NotFound { locator: String, nearest: Vec<String> }
+        Ambiguous { locator: String, matches: Vec<String> }
+        OffScreen { locator: String }
+        Covered { locator: String, point: Vec2 }
+        NoNth { locator: String, count: usize }
+        impl From<LocateError> for PlayError
+
+Locator
+    enum Locator<X = Infallible>
+        Text(String)
+        Id(WidgetId)
+        Point(Vec2)
+        Offset(Box<Self>, Vec2)
+        Nth(Box<Self>, usize)
+        App(X)
+        impl<X> Locator<X>
+            pub fn find<A>(&self, app: &A, ui: &Ui) -> Result<Found, LocateError> where X: Locate<A>
+        impl<X: Clone> Clone for Locator<X>
+        impl<X: Debug> Debug for Locator<X>
+        impl<X: PartialEq> PartialEq for Locator<X>
+        impl<X> From<&str> for Locator<X>
+        impl<X> From<String> for Locator<X>
+        impl<X> From<Vec2> for Locator<X>
+        impl<X> From<WidgetId> for Locator<X>
+
 MenuBar
     struct MenuBar<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
@@ -1442,6 +1545,12 @@ ParseColorError
         LinearForm
         Channel
 
+ParseShortcutError
+    enum ParseShortcutError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+        NoKey
+        Modifier
+        Key
+
 PipelineStats
     struct PipelineStats: Clone, Copy, Debug, Default, Eq, PartialEq
         pub vertex_shader_invocations: u64
@@ -1455,6 +1564,16 @@ Platform
         Mac
         Windows
         Linux
+
+PlayError
+    enum PlayError: Clone, Debug, Display, Error, From<LocateError>, PartialEq
+        Locate(LocateError)
+        Unsettled { step: String, frames: u32 }
+        BadPinch { factor: f32 }
+        EmptyRegion
+        NoPixels
+        Disconnected
+        NoFrame { seconds: f32 }
 
 PointerAction
     struct PointerAction: Clone, Copy, Debug, Eq, PartialEq
@@ -1590,6 +1709,14 @@ Rect
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
 
+Remote  [features: winit]
+    struct Remote<T: 'static>: Debug
+        pub fn with_blocked(self, blocked: impl Fn() -> bool + Send + 'static) -> Self
+        pub fn query<R: Send + 'static>(&self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
+        pub fn play<X: Locate<T> + Clone + Send + 'static>(&self, actions: &[Action<X>]) -> Result<u32, ActError>
+        pub fn shot(&self, region: Option<Rect>) -> Result<Screenshot, PlayError>
+        pub fn widgets(&self, filter: Option<String>) -> Result<Vec<InspectedWidget>, PlayError>
+
 RenderTarget
     struct RenderTarget<'a>: Clone, Copy, Debug
         pub fn new(texture: &'a Texture) -> Self
@@ -1657,6 +1784,7 @@ Screenshot
         pub const fn image(&self) -> &Image
         pub const fn scale(&self) -> f32
         pub const fn region(&self) -> Rect
+        pub fn place(&self, rect: Rect, picture: UVec2) -> Option<Rect>
 
 ScreenshotId
     struct ScreenshotId: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -1753,7 +1881,7 @@ Shadow
         pub const fn is_noop(&self) -> bool
 
 Shortcut
-    struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, From<Key>, Hash, PartialEq
+    struct Shortcut: Clone, Copy, Debug, Display, DockTab (blanket), Eq, From<Key>, FromStr, Hash, PartialEq
         pub mods: ShortcutMods
         pub key: Key
         pub const fn new(mods: ShortcutMods, key: Key) -> Self
@@ -2479,12 +2607,18 @@ WidgetId
         pub fn from_hash(h: impl Hash) -> Self
         pub fn with(self, h: impl Hash) -> Self
         pub fn auto() -> Self
+        impl<X> From<WidgetId> for Locator<X>
 
 WidgetLook
     struct WidgetLook: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub chrome: Chrome
         pub text: TextStyleOverrides
         pub fn to_animated(&self, ambient_text: TextStyle) -> AnimatedLook
+
+WindowCommand
+    enum WindowCommand: Debug
+        Open { token: WindowToken, config: WindowConfig }
+        Close(WindowToken)
 
 WindowConfig
     struct WindowConfig: Clone, Debug, Default

@@ -9,6 +9,7 @@ use crate::scene::forest::Forest;
 use crate::scene::tree::Tree;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
+use crate::ui::Ui;
 
 /// One widget of the last frame that senses the pointer or takes focus: where it is, what it
 /// reacts to, and the text it shows.
@@ -33,6 +34,20 @@ pub struct InspectedWidget {
 }
 
 impl InspectedWidget {
+    /// The visible interactive widgets of `ui`'s last frame whose text holds `filter`, ignoring
+    /// case, in paint order: what a person or an agent picks a locator from.
+    pub(crate) fn visible(ui: &Ui, filter: Option<&str>) -> Vec<Self> {
+        let mut widgets = Vec::new();
+        ui.inspect(&mut widgets);
+        let filter = filter.map(str::to_lowercase);
+        widgets.retain(|widget| {
+            !widget.clipped
+                && filter
+                    .as_deref()
+                    .is_none_or(|filter| widget.text.to_lowercase().contains(filter))
+        });
+        widgets
+    }
     /// Every interactive widget of the frame `cascade` was built from, in paint order, into `out`.
     pub(crate) fn collect(forest: &Forest, cascade: &Cascade, out: &mut Vec<Self>) {
         out.clear();
@@ -96,8 +111,8 @@ fn own_text(tree: &Tree, store: &RecordStore, root: usize, listed: &WidgetIdSet)
 
 #[cfg(test)]
 mod tests {
+    use crate::host::harness::Harness;
     use crate::input::sense::Sense;
-    use crate::internals::ui_harness::UiHarness;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::layout::sizing::Sizing;
     use crate::ui::Ui;
@@ -145,7 +160,7 @@ mod tests {
                     });
             });
         };
-        let mut h = UiHarness::with_text(UVec2::new(400, 300));
+        let mut h = Harness::new(UVec2::new(400, 300));
         h.prime(2, &mut scene);
 
         let mut out = Vec::new();

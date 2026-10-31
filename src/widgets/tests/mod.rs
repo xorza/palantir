@@ -4,8 +4,8 @@
 mod style_override;
 mod theme_file_values;
 
+use crate::host::harness::Harness;
 use crate::input::interaction::response_state::ResponseState;
-use crate::internals::ui_harness::UiHarness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
@@ -215,8 +215,8 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
     ];
     for kind in &kinds {
         for case in cases {
-            let mut h = UiHarness::new(SURFACE);
-            ContextMenu::open(&mut h.ui, own_id(), Vec2::new(20.0, 20.0));
+            let mut h = Harness::mono(SURFACE);
+            ContextMenu::open(h.ui(), own_id(), Vec2::new(20.0, 20.0));
             // Two frames: the tooltip turns visible the frame after the pointer settles.
             h.frame(|ui| (kind.record)(ui, case));
             h.frame(|ui| (kind.record)(ui, case));
@@ -224,11 +224,12 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
                 .node_of((kind.chrome_node)())
                 .unwrap_or_else(|| panic!("{}: chrome node recorded", kind.name));
             assert_eq!(node.plane.layer, kind.layer, "{}", kind.name);
-            let fill =
-                h.ui.tree(kind.layer)
-                    .chrome(node.node)
-                    .unwrap_or_else(|| panic!("{} {case:?}: paints chrome", kind.name))
-                    .fill;
+            let fill = h
+                .ui()
+                .tree(kind.layer)
+                .chrome(node.node)
+                .unwrap_or_else(|| panic!("{} {case:?}: paints chrome", kind.name))
+                .fill;
             let want = case.want().to_f16();
             assert!(
                 matches!(fill, ShapeBrush::Solid(got) if got == want),
@@ -417,12 +418,8 @@ fn widget_setters_check_their_kinds() {
     let offset: [fn(); 5] = [
         || drop(Scroll::both().pan_by(Vec2::new(f32::NAN, 0.0))),
         || {
-            let mut h = UiHarness::new(SURFACE);
-            Scroll::set_offset(
-                &mut h.ui,
-                WidgetId::from_hash("s"),
-                Vec2::new(0.0, f32::NAN),
-            );
+            let mut h = Harness::mono(SURFACE);
+            Scroll::set_offset(h.ui(), WidgetId::from_hash("s"), Vec2::new(0.0, f32::NAN));
         },
         || {
             let _ = Anchor::at_point(Vec2::new(0.0, f32::INFINITY));
@@ -431,19 +428,15 @@ fn widget_setters_check_their_kinds() {
             let _ = Anchor::below(Rect::new(f32::NAN, 0.0, 4.0, 4.0));
         },
         || {
-            let mut h = UiHarness::new(SURFACE);
-            ContextMenu::open(
-                &mut h.ui,
-                WidgetId::from_hash("m"),
-                Vec2::new(f32::NAN, 0.0),
-            );
+            let mut h = Harness::mono(SURFACE);
+            ContextMenu::open(h.ui(), WidgetId::from_hash("m"), Vec2::new(f32::NAN, 0.0));
         },
     ];
     for set in offset {
         panic_probe::assert_panics_with(domain::OFFSET_RULE, set);
     }
     panic_probe::assert_panics_with("a `Scroll` owns its descendants' transform", || {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(|ui| {
             Scroll::vertical()
                 .transform(TranslateScale::from_scale(2.0))
@@ -451,14 +444,18 @@ fn widget_setters_check_their_kinds() {
         });
     });
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
-        let mut h = UiHarness::new(SURFACE);
-        h.ui.layer(Layer::Popup)
+        let mut h = Harness::mono(SURFACE);
+        h.ui()
+            .layer(Layer::Popup)
             .fixed_at(Vec2::new(f32::NAN, 0.0))
             .show(|_| {});
     });
     panic_probe::assert_panics_with(domain::EXTENT_RULE, || {
-        let mut h = UiHarness::new(SURFACE);
-        h.ui.layer(Layer::Popup).max_size((-1.0, 10.0)).show(|_| {});
+        let mut h = Harness::mono(SURFACE);
+        h.ui()
+            .layer(Layer::Popup)
+            .max_size((-1.0, 10.0))
+            .show(|_| {});
     });
     for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
         panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
@@ -493,7 +490,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     use crate::widgets::text::Text;
 
     const OPTIONS: [&str; 2] = ["a", "b"];
-    let mut h = UiHarness::new(UVec2::new(800, 1200));
+    let mut h = Harness::mono(UVec2::new(800, 1200));
     let mut ratio = f32::NAN;
     let (mut stale, mut empty, mut page, mut no_page) = (9_usize, 3_usize, 9_usize, 0_usize);
     let mut slid = f64::NAN;
@@ -553,7 +550,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     h.frame(&mut scene);
 
     for layer in Layer::PAINT_ORDER {
-        for rect in &h.ui.layout(layer).rect {
+        for rect in &h.ui_ref().layout(layer).rect {
             assert!(
                 rect.min.is_finite() && rect.size.w.is_finite() && rect.size.h.is_finite(),
                 "{layer:?}: {rect:?}",
@@ -610,7 +607,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     }
     /// Settle, focus `focus`, settle, press `key`, record two frames (a splitter's ratio lands a frame later).
     fn press(focus: WidgetId, key: Key, mut record: impl FnMut(&mut Ui)) {
-        let mut h = UiHarness::new(SURFACE);
+        let mut h = Harness::mono(SURFACE);
         h.frame(&mut record);
         h.set_focus(focus);
         h.frame(&mut record);

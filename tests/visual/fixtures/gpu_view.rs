@@ -18,7 +18,7 @@ use palantir::{
 };
 
 use crate::fixtures;
-use crate::harness::Harness;
+use crate::visual_rig::VisualRig;
 
 /// A `GpuPaint` with a real pipeline, depth attachment and draw (as the `cube` showcase), so wgpu validation sees what an app's paint does.
 #[derive(Debug)]
@@ -174,7 +174,7 @@ impl GpuPaint for DepthTriangle {
 #[test]
 fn gpu_view_pipeline_depth_and_capacity_crop() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(None)));
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(UVec2::new(64, 50))
         .frame(|ui| {
             GpuView::new(&paint)
@@ -199,7 +199,7 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
 #[test]
 fn gpu_view_magnified_composite_reads_no_slack() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(None)));
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(UVec2::new(64, 64))
         .frame(|ui| {
             GpuView::new(&paint)
@@ -224,7 +224,7 @@ fn gpu_view_magnified_composite_reads_no_slack() {
 #[test]
 fn gpu_view_callback_receives_composed_raster_factor() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(Some(16.0))));
-    let img = Harness::new()
+    let img = VisualRig::new()
         .size(UVec2::new(96, 96))
         .scale(2.0)
         .frame(|ui| {

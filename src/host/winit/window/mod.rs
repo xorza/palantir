@@ -19,10 +19,11 @@ use crate::display;
 use crate::gpu::surface::window_surface::{Acquired, Prepared, WindowSurface};
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
-use crate::host::window_driver::{CpuFrame, FrameSpec, PresentPath, WindowDriver};
+use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentPath, WindowDriver};
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
+use crate::host::winit::remote::{RemoteShots, ShotAsk};
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
 use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
 use crate::host::winit::window::visibility::Visibility;
@@ -101,6 +102,8 @@ pub(super) struct Window {
     pointer: Option<PointerAnchor>,
     /// How many events [`HostHandle::send_input`](crate::HostHandle::send_input) delivered.
     sent_inputs: u64,
+    /// The screenshots remotes asked that have not landed.
+    shots: RemoteShots,
 }
 
 impl Window {
@@ -131,7 +134,14 @@ impl Window {
             system_facts: None,
             pointer: None,
             sent_inputs: 0,
+            shots: RemoteShots::default(),
         }
+    }
+
+    /// Ask the window for the screenshot a remote wants, which a later frame hands back.
+    pub(super) fn ask_shot(&mut self, ask: ShotAsk) {
+        self.shots.ask(&mut self.driver.ui, ask);
+        self.next = FramePresent::Immediate;
     }
 
     /// Translate `event` into the recorder's input. Returns whether it asks for a repaint.
@@ -301,7 +311,8 @@ impl Window {
                 refresh_millihertz: facts.refresh_millihertz,
                 now: self.clock.now(),
             };
-            let cpu = core.record(&mut self.driver, spec, app);
+            let cpu = core.record(&mut self.driver, spec, app, FrameDepth::Paint);
+            self.shots.deliver(&self.driver.ui);
             let summary = FrameSummary {
                 frame_id: self.driver.ui.frame_id(),
                 sent_inputs: self.sent_inputs,

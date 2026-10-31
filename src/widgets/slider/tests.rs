@@ -1,7 +1,8 @@
+use crate::host::harness::Harness;
+use crate::host::harness::unit::Passes;
+use crate::input::pointer::PointerButton;
 use crate::internals::panic_probe;
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::passes::Passes;
-use crate::internals::ui_harness::size_trio::SizeTrio;
+use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -23,7 +24,7 @@ const fn range(min: f64, max: f64) -> SliderRange {
 }
 
 /// One frame for a commit-deferring caller: the draft re-seeds from `canonical` and is adopted only on `committed`.
-fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passes<ValueEdges> {
+fn deferred_frame(h: &mut Harness, id: WidgetId, canonical: &mut f64) -> Passes<ValueEdges> {
     h.frame_passes(|ui| {
         let mut draft = *canonical;
         let r = Slider::new(&mut draft, 0.0..=1.0)
@@ -42,12 +43,12 @@ fn deferred_frame(h: &mut UiHarness, id: WidgetId, canonical: &mut f64) -> Passe
 #[test]
 fn release_rewrites_the_value_once_for_a_deferred_caller() {
     let id = WidgetId::from_hash("slider-deferred-commit");
-    let mut h = UiHarness::new(UVec2::new(118, 18));
+    let mut h = Harness::mono(UVec2::new(118, 18));
     let mut canonical = 0.0_f64;
 
     deferred_frame(&mut h, id, &mut canonical);
 
-    h.press_at(Vec2::new(59.0, 9.0));
+    h.press(Vec2::new(59.0, 9.0), PointerButton::Left);
     let s = deferred_frame(&mut h, id, &mut canonical);
     assert!(
         s.a().changed && !s.a().committed,
@@ -63,7 +64,7 @@ fn release_rewrites_the_value_once_for_a_deferred_caller() {
     );
     assert_eq!(canonical, 0.0);
 
-    h.release();
+    h.release(PointerButton::Left);
     let s = deferred_frame(&mut h, id, &mut canonical);
     assert!(s.a().committed, "release commits the gesture");
     assert_eq!(
@@ -82,12 +83,12 @@ fn release_rewrites_the_value_once_for_a_deferred_caller() {
 #[test]
 fn a_click_on_the_track_commits_the_value_it_wrote() {
     let id = WidgetId::from_hash("slider-click-commit");
-    let mut h = UiHarness::new(UVec2::new(118, 18));
+    let mut h = Harness::mono(UVec2::new(118, 18));
     let mut canonical = 0.0_f64;
 
     deferred_frame(&mut h, id, &mut canonical);
 
-    h.press_at(Vec2::new(59.0, 9.0));
+    h.press(Vec2::new(59.0, 9.0), PointerButton::Left);
     let s = deferred_frame(&mut h, id, &mut canonical);
     assert!(
         s.a().changed && !s.a().committed,
@@ -98,7 +99,7 @@ fn a_click_on_the_track_commits_the_value_it_wrote() {
         "deferred caller ignores the mid-gesture write"
     );
 
-    h.release();
+    h.release(PointerButton::Left);
     let s = deferred_frame(&mut h, id, &mut canonical);
     assert!(s.a().committed, "the click's release commits it");
     assert_eq!(
@@ -139,7 +140,7 @@ fn explicit_size_overrides_fill_default() {
     // The knob centers on the cross axis by default, and a caller's `child_align` wins:
     // a 40-tall slider centers the 18 px knob at `(40 - 18) / 2 = 11`.
     let id = WidgetId::from_hash("slider-align");
-    let mut h = UiHarness::new(UVec2::new(200, 100));
+    let mut h = Harness::mono(UVec2::new(200, 100));
     for (align, y) in [(None, 11.0), (Some(Align::v(VAlign::Top)), 0.0)] {
         h.frame(|ui| {
             let mut slider = Slider::new(&mut v, 0.0..=1.0).id(id).size((200.0, 40.0));
@@ -161,7 +162,7 @@ fn endpoint_rails_collapse_without_invalid_fill_weights() {
         (1.0, [102.0, 18.0, 0.0]),
         (f64::NAN, [0.0, 18.0, 102.0]),
     ] {
-        let mut h = UiHarness::new(UVec2::new(120, 30));
+        let mut h = Harness::mono(UVec2::new(120, 30));
         let mut value = value;
         let root = h.frame_value(|ui| {
             Slider::new(&mut value, 0.0..=1.0)
@@ -235,7 +236,7 @@ fn pointer_mapping_is_scale_invariant() {
     let id = WidgetId::from_hash("scaled-slider");
     for scale in [0.5, 1.0, 2.0] {
         for (local_x, expected) in [(9.0, 0.0), (34.5, 0.25), (111.0, 1.0)] {
-            let mut h = UiHarness::new(UVec2::new(300, 100));
+            let mut h = Harness::mono(UVec2::new(300, 100));
             let mut value = 0.5_f64;
             let build = |ui: &mut Ui, value: &mut f64| {
                 Panel::zstack()
@@ -251,7 +252,7 @@ fn pointer_mapping_is_scale_invariant() {
             };
             h.frame(|ui| build(ui, &mut value));
 
-            h.press_in(id, Vec2::new(local_x, 9.0));
+            h.press(h.point_in(id, Vec2::new(local_x, 9.0)), PointerButton::Left);
             h.frame(|ui| build(ui, &mut value));
 
             assert_eq!(
@@ -323,9 +324,9 @@ fn new_rejects_an_infinite_range() {
 #[test]
 fn an_integer_target_lands_on_whole_values() {
     let id = WidgetId::from_hash("slider-int");
-    let mut h = UiHarness::new(UVec2::new(118, 18));
+    let mut h = Harness::mono(UVec2::new(118, 18));
     let mut value = 0_i64;
-    let frame = |h: &mut UiHarness, value: &mut i64| {
+    let frame = |h: &mut Harness, value: &mut i64| {
         h.frame(|ui| {
             Slider::new(&mut *value, 0.0..=10.0)
                 .size((Sizing::fixed(118.0), Sizing::fixed(18.0)))
@@ -335,7 +336,7 @@ fn an_integer_target_lands_on_whole_values() {
     };
     frame(&mut h, &mut value);
 
-    h.press_at(Vec2::new(89.0, 9.0));
+    h.press(Vec2::new(89.0, 9.0), PointerButton::Left);
     frame(&mut h, &mut value);
     assert_eq!(value, 8);
 
@@ -377,9 +378,9 @@ fn a_focused_slider_walks_by_key() {
         (Modifiers::NONE, Key::End, (10.0, 0.0), None, 0.0),
     ];
     for (mods, key, (min, max), step, want) in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 40));
+        let mut h = Harness::mono(UVec2::new(200, 40));
         let mut value = 5.0_f64;
-        let frame = |h: &mut UiHarness, value: &mut f64| {
+        let frame = |h: &mut Harness, value: &mut f64| {
             h.frame_value(|ui| {
                 let slider = Slider::new(&mut *value, min..=max).id(id);
                 match step {
@@ -399,7 +400,7 @@ fn a_focused_slider_walks_by_key() {
         assert!(edges.changed && edges.committed, "{key:?} is a whole edit");
     }
 
-    let mut h = UiHarness::new(UVec2::new(200, 40));
+    let mut h = Harness::mono(UVec2::new(200, 40));
     let mut value = 5.0_f64;
     for (focused, disabled) in [(false, false), (true, true)] {
         if focused {
@@ -427,7 +428,7 @@ fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
 
     let id = WidgetId::from_hash("slider-unit");
     let press = |record: &mut dyn FnMut(&mut Ui)| {
-        let mut h = UiHarness::new(UVec2::new(200, 40));
+        let mut h = Harness::mono(UVec2::new(200, 40));
         h.frame(&mut *record);
         h.set_focus(id);
         h.key(Key::ArrowRight);
@@ -470,7 +471,7 @@ fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
     // rounds back to 6, so the unit is at least 1.
     let mut halves = 5_i64;
     for (key, want) in [(Key::ArrowRight, 6), (Key::ArrowLeft, 5)] {
-        let mut h = UiHarness::new(UVec2::new(200, 40));
+        let mut h = Harness::mono(UVec2::new(200, 40));
         let mut record = |ui: &mut Ui| {
             Slider::new(&mut halves, 0.0..=10.0)
                 .id(id)

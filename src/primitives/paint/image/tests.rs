@@ -1,7 +1,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
-use crate::primitives::paint::image::{Image, ImageFit};
+use crate::primitives::paint::image::{Image, ImageFit, fitted_size};
 use glam::{UVec2, Vec2};
 
 /// A 100×50 image in a 200×200 rect, per fit:
@@ -169,4 +169,83 @@ fn image_rejects_invalid_rgba8_dimensions_and_lengths() {
         expected[3].to_string(),
         "RGBA8 byte length 15 does not match 2x2x4 = 16"
     );
+}
+
+/// A 4 × 2 image of black and white columns, black first, fits a `max_side` of 2 as 2 × 1. The
+/// tent, widened by 2, weighs the columns at its center 3/4 each and the next ones out 1/4, over
+/// the columns the image has: the left texel holds 3/4 white of 7/4, the right one 1/4 + 3/4 of
+/// 7/4. In linear light that is 3/7 and 4/7, which sRGB encodes as 175 and 199; a mean of the
+/// encoded bytes would give 109 and 146. An image that fits comes back as it is.
+#[test]
+fn a_fitted_image_averages_in_linear_light() {
+    let mut image = Image::blank(UVec2::new(4, 2));
+    image.fill_with(|at| {
+        let v = if at.x % 2 == 0 { 0 } else { 255 };
+        SrgbaU8 {
+            r: v,
+            g: v,
+            b: v,
+            a: 255,
+        }
+    });
+    let fitted = image.fitted(2);
+    assert_eq!(fitted.size(), UVec2::new(2, 1));
+    let grey = |v: u8| SrgbaU8 {
+        r: v,
+        g: v,
+        b: v,
+        a: 255,
+    };
+    assert_eq!(fitted.texels(), [grey(175), grey(199)]);
+    assert_eq!(image.fitted(4), image);
+}
+
+/// Color averages premultiplied: a transparent texel's color weighs nothing, so a 2 × 1 image of
+/// opaque red beside transparent green fits to 1 × 1 as red at half alpha, not a red-green blend.
+#[test]
+fn a_fitted_image_weighs_color_by_alpha() {
+    let mut image = Image::blank(UVec2::new(2, 1));
+    image.texels_mut().copy_from_slice(&[
+        SrgbaU8 {
+            r: 255,
+            g: 0,
+            b: 0,
+            a: 255,
+        },
+        SrgbaU8 {
+            r: 0,
+            g: 255,
+            b: 0,
+            a: 0,
+        },
+    ]);
+    assert_eq!(
+        image.fitted(1).texels(),
+        [SrgbaU8 {
+            r: 255,
+            g: 0,
+            b: 0,
+            a: 128,
+        }]
+    );
+}
+
+/// A fit keeps a size that fits, and scales one that does not so that its longer side is the
+/// limit: 1000 of 1600 at 800 is 500, and 3 of 1001 at 10 rounds to 0.03, which keeps 1. Odd
+/// sides round to the nearest: 999 of 1998 at 1000 is 499.5, which rounds up.
+#[test]
+fn a_fit_rounds_each_side_and_keeps_one_texel() {
+    for (size, max_side, fitted) in [
+        ([5, 5], 5, [5, 5]),
+        ([1600, 1000], 800, [800, 500]),
+        ([1000, 1600], 800, [500, 800]),
+        ([1001, 3], 10, [10, 1]),
+        ([1998, 999], 1000, [1000, 500]),
+    ] {
+        assert_eq!(
+            fitted_size(UVec2::from(size), max_side),
+            UVec2::from(fitted),
+            "{size:?} at {max_side}"
+        );
+    }
 }

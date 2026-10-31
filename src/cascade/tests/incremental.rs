@@ -10,7 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
@@ -271,22 +271,18 @@ fn incremental_scroll_matches_full() {
                     .show(ui);
             });
     };
-    let mut h = UiHarness::new(UVec2::splat(300));
+    let mut h = Harness::mono(UVec2::splat(300));
     h.frame(build);
-    Scroll::set_offset(
-        &mut h.ui,
-        WidgetId::from_hash("scroll"),
-        Vec2::new(0.0, 40.0),
-    );
-    let rebuilds = h.engines.cascade.counters.full_rebuilds();
+    Scroll::set_offset(h.ui(), WidgetId::from_hash("scroll"), Vec2::new(0.0, 40.0));
+    let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
     h.frame(build);
 
     assert_eq!(
-        h.engines.cascade.counters.full_rebuilds(),
+        h.engines_mut().cascade.counters.full_rebuilds(),
         rebuilds,
         "a scroll must refresh the cascade in place",
     );
-    assert_cascades_match_full(&h.ui, "scroll");
+    assert_cascades_match_full(h.ui_ref(), "scroll");
 }
 
 /// A widget that adds a shape without moving goes straight to the full
@@ -308,18 +304,18 @@ fn adding_a_shape_skips_the_doomed_incremental_walk() {
             });
     }
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| build(ui, false));
-    let baseline = h.engines.cascade.counters.abandoned_incrementals();
+    let baseline = h.engines_mut().cascade.counters.abandoned_incrementals();
 
     h.frame(|ui| build(ui, true));
     assert_eq!(
-        h.engines.cascade.counters.abandoned_incrementals(),
+        h.engines_mut().cascade.counters.abandoned_incrementals(),
         baseline,
         "a row-count change must be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
     );
 
-    let rows = h.ui.cascade().planes[Plane::MAIN]
+    let rows = h.ui().cascade().planes[Plane::MAIN]
         .paint_arena
         .node_spans
         .iter()
@@ -375,7 +371,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         Refresh,
     }
     /// `(label, the path it must take, mutation applied to the base scene)`.
-    type Mutation = (&'static str, Path, fn(&mut UiHarness));
+    type Mutation = (&'static str, Path, fn(&mut Harness));
     const RESIZED: Scene = Scene {
         size: 120.0,
         ..BASE
@@ -407,26 +403,26 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
             h.frame(|ui| scene(ui, TAB_INDEXED));
         }),
         ("font load", Path::Rebuild, |h| {
-            h.ui.load_font(INTER).expect("the bundled Inter loads");
+            h.ui().load_font(INTER).expect("the bundled Inter loads");
             h.frame(|ui| scene(ui, BASE));
         }),
     ];
 
     for &(label, path, mutate) in mutations {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| scene(ui, BASE));
-        let base_key = h.ui.cascade().key;
-        let rebuilds = h.engines.cascade.counters.full_rebuilds();
-        let abandoned = h.engines.cascade.counters.abandoned_incrementals();
+        let base_key = h.ui().cascade().key;
+        let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
+        let abandoned = h.engines_mut().cascade.counters.abandoned_incrementals();
 
         mutate(&mut h);
 
         assert_ne!(
             base_key,
-            h.ui.cascade().key,
+            h.ui().cascade().key,
             "`{label}` left the key unmoved — the frame would reuse a stale cascade",
         );
-        let rebuilt = h.engines.cascade.counters.full_rebuilds() > rebuilds;
+        let rebuilt = h.engines_mut().cascade.counters.full_rebuilds() > rebuilds;
         assert_eq!(
             if rebuilt {
                 Path::Rebuild
@@ -437,26 +433,29 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
             "`{label}` took the wrong path",
         );
         assert_eq!(
-            h.engines.cascade.counters.abandoned_incrementals(),
+            h.engines_mut().cascade.counters.abandoned_incrementals(),
             abandoned,
             "`{label}` should be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
         );
-        assert_cascades_match_full(&h.ui, label);
+        assert_cascades_match_full(h.ui_ref(), label);
     }
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| scene(ui, BASE));
-    let base_key = h.ui.cascade().key;
-    let rebuilds = h.engines.cascade.counters.full_rebuilds();
+    let base_key = h.ui().cascade().key;
+    let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
     h.frame(|ui| scene(ui, BASE));
     assert_eq!(
         base_key,
-        h.ui.cascade().key,
+        h.ui().cascade().key,
         "an unchanged frame must keep its key",
     );
-    assert!(!h.engines.cascade.counters.ran(), "an unchanged key skips");
+    assert!(
+        !h.engines_mut().cascade.counters.ran(),
+        "an unchanged key skips"
+    );
     assert_eq!(
-        h.engines.cascade.counters.full_rebuilds(),
+        h.engines_mut().cascade.counters.full_rebuilds(),
         rebuilds,
         "an unchanged frame must not rebuild",
     );
@@ -505,30 +504,30 @@ fn refresh_recomputes_only_what_moved() {
     for (label, transformed, a0_size, refreshed) in
         [("transform", true, 10.0, 6), ("resize", false, 20.0, 4)]
     {
-        let mut h = UiHarness::new(UVec2::splat(300));
+        let mut h = Harness::mono(UVec2::splat(300));
         h.frame(|ui| scene(ui, false, 10.0));
-        let rebuilds = h.engines.cascade.counters.full_rebuilds();
-        let before = h.engines.cascade.counters.refreshed_nodes();
+        let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
+        let before = h.engines_mut().cascade.counters.refreshed_nodes();
 
         h.frame(|ui| scene(ui, transformed, a0_size));
 
         assert_eq!(
-            h.engines.cascade.counters.full_rebuilds(),
+            h.engines_mut().cascade.counters.full_rebuilds(),
             rebuilds,
             "{label}: rebuilt",
         );
         assert_eq!(
-            h.engines.cascade.counters.refreshed_nodes() - before,
+            h.engines_mut().cascade.counters.refreshed_nodes() - before,
             refreshed,
             "{label}: recomputed nodes",
         );
         // The last node recomputed is a block (`a2`, then `a0`), whose one row is its chrome.
         assert_eq!(
-            h.engines.cascade.paint_rows().len(),
+            h.engines_mut().cascade.paint_rows().len(),
             1,
             "{label}: scratch holds one node's rows",
         );
-        assert_cascades_match_full(&h.ui, label);
+        assert_cascades_match_full(h.ui_ref(), label);
     }
 }
 
@@ -610,8 +609,8 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
 }
 
 fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
-    let mut h = UiHarness::new(UVec2::splat(300));
+    let mut h = Harness::mono(UVec2::splat(300));
     h.frame(base);
     h.frame(changed);
-    assert_cascades_match_full(&h.ui, label);
+    assert_cascades_match_full(h.ui_ref(), label);
 }

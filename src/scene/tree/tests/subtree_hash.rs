@@ -1,6 +1,6 @@
 //! The rollup: what a subtree hash covers, and where its span ends.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain::EPS;
 use crate::primitives::paint::chrome::Chrome;
@@ -146,7 +146,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     let cols = [Track::FILL, Track::FILL];
     let rows = [Track::FILL];
 
-    let mut ui1 = UiHarness::new(SURFACE);
+    let mut ui1 = Harness::mono(SURFACE);
     let mut g1 = None;
     ui1.frame(|ui| {
         Panel::vstack()
@@ -168,7 +168,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                     .show(ui, |_| {});
             });
     });
-    let mut ui2 = UiHarness::new(SURFACE);
+    let mut ui2 = Harness::mono(SURFACE);
     let mut g2 = None;
     ui2.frame(|ui| {
         Panel::vstack()
@@ -191,14 +191,14 @@ fn grid_per_node_hash_independent_of_arena_slot() {
             });
     });
     assert_eq!(
-        ui1.ui.tree(Layer::Main).rollups.node[g1.unwrap().idx()],
-        ui2.ui.tree(Layer::Main).rollups.node[g2.unwrap().idx()],
+        ui1.ui().tree(Layer::Main).rollups.node[g1.unwrap().idx()],
+        ui2.ui().tree(Layer::Main).rollups.node[g2.unwrap().idx()],
     );
 }
 
 #[test]
 fn subtree_end_rolls_up_during_recording() {
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     let root = h.frame_value(|ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
@@ -228,8 +228,8 @@ fn subtree_end_rolls_up_during_recording() {
             .node()
     });
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
-    assert_eq!(h.ui.tree(Layer::Main).records.len(), 7);
-    let ends = h.ui.tree(Layer::Main).records.subtree_end();
+    assert_eq!(h.ui().tree(Layer::Main).records.len(), 7);
+    let ends = h.ui().tree(Layer::Main).records.subtree_end();
     assert_eq!(ends[0].end(), 7, "synthetic viewport spans everything");
     assert_eq!(ends[root.idx()].end(), 7, "root");
     assert_eq!(ends[2].end(), 3, "leaf a");
@@ -253,20 +253,20 @@ fn subtree_end_handles_deep_nesting() {
             .id(WidgetId::from_hash(("nest", depth)))
             .show(ui, |ui| nest(ui, depth - 1));
     }
-    let mut h = UiHarness::new(SURFACE);
+    let mut h = Harness::mono(SURFACE);
     h.frame(|ui| nest(ui, 16));
-    let n = h.ui.tree(Layer::Main).records.len() as u32;
+    let n = h.ui().tree(Layer::Main).records.len() as u32;
     // Synthetic viewport + 16 nested vstacks + 1 leaf frame.
     assert_eq!(n, 18);
     for i in 0..(n - 1) {
         assert_eq!(
-            h.ui.tree(Layer::Main).records.subtree_end()[i as usize].end(),
+            h.ui().tree(Layer::Main).records.subtree_end()[i as usize].end(),
             n,
             "every ancestor on the chain points past the leaf",
         );
     }
     assert_eq!(
-        h.ui.tree(Layer::Main).records.subtree_end()[(n - 1) as usize].end(),
+        h.ui().tree(Layer::Main).records.subtree_end()[(n - 1) as usize].end(),
         n,
     );
 }
@@ -295,19 +295,19 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
             });
         b_first
     }
-    let mut ui1 = UiHarness::new(SURFACE);
+    let mut ui1 = Harness::mono(SURFACE);
     let mut b_first1 = 0;
     ui1.frame(|ui| {
         b_first1 = build(ui, RgbaF32::srgb(1.0, 0.0, 0.0));
     });
-    let h_b1 = ui1.ui.tree(Layer::Main).rollups.subtree[b_first1 as usize];
+    let h_b1 = ui1.ui().tree(Layer::Main).rollups.subtree[b_first1 as usize];
 
-    let mut ui2 = UiHarness::new(SURFACE);
+    let mut ui2 = Harness::mono(SURFACE);
     let mut b_first2 = 0;
     ui2.frame(|ui| {
         b_first2 = build(ui, RgbaF32::srgb(0.0, 1.0, 0.0));
     });
-    let h_b2 = ui2.ui.tree(Layer::Main).rollups.subtree[b_first2 as usize];
+    let h_b2 = ui2.ui().tree(Layer::Main).rollups.subtree[b_first2 as usize];
     assert_eq!(b_first1, b_first2);
     assert_eq!(h_b1, h_b2, "root B's subtree_hash must not fold root A");
 }

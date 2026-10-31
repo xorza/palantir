@@ -1,6 +1,6 @@
 //! The commands one recorded frame lowers to.
 
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -92,7 +92,7 @@ fn baseline_draw_rect_count_cases() {
         ),
     ];
     for (label, scene, expected) in cases {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| match scene {
                 Scene::Empty => {}
@@ -141,7 +141,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::shape::Shape;
 
     let tint = RgbaF32::new(0.5, 0.25, 1.0, 0.5);
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(
@@ -219,7 +219,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         "the ramp resolved to a baked row"
     );
     assert_eq!(
-        h.ui.forest().record_store.polyline_points.len(),
+        h.ui().forest().record_store.polyline_points.len(),
         0,
         "the point payloads stay untouched by lines"
     );
@@ -233,7 +233,7 @@ fn shadows_lower_to_their_source_and_geometry_lanes() {
     use crate::primitives::packed::fill_kind::FillKind;
     use crate::shape::Shape;
 
-    let mut h = UiHarness::new(UVec2::new(200, 200));
+    let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(
@@ -355,7 +355,7 @@ fn chrome_shadow_paints_drop_under_and_inset_over_the_fill() {
             shadow: if case.inset { shadow.inset() } else { shadow },
             backdrop_filter: BackdropFilter::NONE,
         };
-        let mut h = UiHarness::new(UVec2::new(200, 200));
+        let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Block::new()
@@ -410,49 +410,49 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
         });
     }
 
-    let mut h = UiHarness::with_text(UVec2::new(200, 200));
+    let mut h = Harness::new(UVec2::new(200, 200));
     h.frame(body);
-    let key = h.ui.layout(Layer::Main).text_shapes[0].buffer_key();
-    h.ui.shaper().drop_cosmic_buffers();
+    let key = h.ui().layout(Layer::Main).text_shapes[0].buffer_key();
+    h.ui().shaper().drop_cosmic_buffers();
     assert!(
-        !h.ui.shaper().has_cosmic_buffer(key),
+        !h.ui().shaper().has_cosmic_buffer(key),
         "fixture must evict the retained layout's key",
     );
 
     let cmds = h.encode_paint();
     assert_eq!(cmds.kinds(), ["Text"]);
     let payload = cmds.calls[0].as_text().unwrap();
-    let scene = h.ui.frame_scene();
+    let scene = h.ui().frame_scene();
     let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
-        !h.ui.shaper().has_cosmic_buffer(key),
+        !h.ui().shaper().has_cosmic_buffer(key),
         "frontend encoding must not reconstruct an evicted text buffer",
     );
 
-    h.ui.shaper().drop_cosmic_buffers();
-    let measure_calls = h.ui.shaper().measure_calls();
-    h.ui.request_repaint();
+    h.ui().shaper().drop_cosmic_buffers();
+    let measure_calls = h.ui().shaper().measure_calls();
+    h.ui().request_repaint();
     h.frame(body);
-    let replayed_key = h.ui.layout(Layer::Main).text_shapes[0].buffer_key();
+    let replayed_key = h.ui().layout(Layer::Main).text_shapes[0].buffer_key();
     assert_eq!(replayed_key, key);
     assert_eq!(
-        h.ui.shaper().measure_calls(),
+        h.ui().shaper().measure_calls(),
         measure_calls,
         "unchanged full record must replay text layout without reshaping",
     );
     assert!(
-        !h.ui.shaper().has_cosmic_buffer(replayed_key),
+        !h.ui().shaper().has_cosmic_buffer(replayed_key),
         "layout replay must be allowed to retain an evicted cache key",
     );
     let replayed = h.encode_paint();
     assert_eq!(replayed.kinds(), ["Text"], "replayed text must still emit");
     let payload = replayed.calls[0].as_text().unwrap();
-    let scene = h.ui.frame_scene();
+    let scene = h.ui().frame_scene();
     let interned_text = scene.forest.record_store.interned_text();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
-        !h.ui.shaper().has_cosmic_buffer(replayed_key),
+        !h.ui().shaper().has_cosmic_buffer(replayed_key),
         "frontend replay must leave reconstruction to an encoded-cache miss",
     );
 }
@@ -461,7 +461,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
 fn encoder_text_alignment_respects_leaf_padding() {
     use crate::widgets::button::Button;
 
-    let mut h = UiHarness::with_text(UVec2::new(400, 400));
+    let mut h = Harness::new(UVec2::new(400, 400));
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()

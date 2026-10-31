@@ -1,5 +1,5 @@
-use crate::internals::ui_harness::UiHarness;
-use crate::internals::ui_harness::size_trio::SizeTrio;
+use crate::host::harness::Harness;
+use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
 use std::f32::consts::TAU;
 
@@ -48,8 +48,8 @@ fn arc_and_spin_follow_the_spinner_theme() {
     }
 
     fn recorded(theme: SpinnerTheme, diameter: f32, width: Option<f32>) -> Recorded {
-        let mut h = UiHarness::new(UVec2::new(200, 200));
-        h.ui.theme_mut().spinner = theme;
+        let mut h = Harness::mono(UVec2::new(200, 200));
+        h.ui().theme_mut().spinner = theme;
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let spinner = Spinner::new()
@@ -62,7 +62,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
                 .show(ui);
             });
         });
-        let tree = h.ui.tree(Layer::Main);
+        let tree = h.ui().tree(Layer::Main);
         let arc = tree
             .shapes
             .records
@@ -209,11 +209,11 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
         InvisibleSpinnerCase::Collapsed,
         InvisibleSpinnerCase::HiddenAncestor,
     ] {
-        let mut h = UiHarness::new(UVec2::new(100, 100));
+        let mut h = Harness::mono(UVec2::new(100, 100));
         let report = h.frame(|ui| {
             show_spinner_case(ui, case);
         });
-        let tree = h.ui.tree(Layer::Main);
+        let tree = h.ui().tree(Layer::Main);
 
         assert_eq!(
             tree.shapes.records.len(),
@@ -240,38 +240,38 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
             .show(ui);
     }
 
-    let mut h = UiHarness::new(UVec2::new(100, 100));
+    let mut h = Harness::mono(UVec2::new(100, 100));
 
     let visible = h.frame(|ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(visible.repaint_after, Some(Duration::ZERO));
-    assert_eq!(h.ui.tree(Layer::Main).paint_animations.entries.len(), 1);
+    assert_eq!(h.ui().tree(Layer::Main).paint_animations.entries.len(), 1);
 
-    h.ui.request_repaint();
+    h.ui().request_repaint();
     let hidden_at = Duration::from_millis(16);
     let hidden = h.at(hidden_at).frame(|ui| {
         show_spinner(ui, Visibility::Hidden);
     });
     assert_eq!(hidden.repaint_after, None);
     assert_eq!(
-        h.ui.tree(Layer::Main).shapes.records.len(),
+        h.ui().tree(Layer::Main).shapes.records.len(),
         1,
         "hiding must retain the authored spinner shape",
     );
     assert!(
-        h.ui.tree(Layer::Main).paint_animations.entries.is_empty(),
+        h.ui().tree(Layer::Main).paint_animations.entries.is_empty(),
         "hiding must drop the active animation row",
     );
 
-    h.ui.request_repaint();
+    h.ui().request_repaint();
     let shown_at = Duration::from_millis(32);
     let shown = h.at(shown_at).frame(|ui| {
         show_spinner(ui, Visibility::Visible);
     });
     assert_eq!(shown.repaint_after, Some(shown_at));
     assert_eq!(
-        h.ui.tree(Layer::Main).paint_animations.entries.len(),
+        h.ui().tree(Layer::Main).paint_animations.entries.len(),
         1,
         "showing must restore the active animation row",
     );

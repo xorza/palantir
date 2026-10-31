@@ -1,4 +1,4 @@
-use crate::internals::ui_harness::UiHarness;
+use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -15,8 +15,8 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     use crate::theme::toggle::ToggleTheme;
 
     fn drawn(theme: ToggleTheme) -> Vec<Vec2> {
-        let mut h = UiHarness::new(UVec2::new(200, 100));
-        h.ui.theme_mut().checkbox = theme;
+        let mut h = Harness::mono(UVec2::new(200, 100));
+        h.ui().theme_mut().checkbox = theme;
         let mut v = true;
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -25,7 +25,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
                     .show(ui);
             });
         });
-        let tree = h.ui.tree(Layer::Main);
+        let tree = h.ui().tree(Layer::Main);
         let span = tree
             .shapes
             .records
@@ -36,7 +36,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
             })
             .expect("a checked Checkbox records its tick as a polyline");
         // Points live in the shared record store, addressed by the span.
-        let store = h.ui.record_store();
+        let store = h.ui().record_store();
         store.polyline_points[span.range()].to_vec()
     }
 
