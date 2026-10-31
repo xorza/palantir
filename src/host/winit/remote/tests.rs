@@ -29,10 +29,11 @@ use crate::window::window_token::WindowToken;
 const WINDOW: WindowToken = WindowToken(0);
 const SIZE: UVec2 = UVec2::new(320, 200);
 
-/// One button that counts its clicks.
+/// One button that counts its clicks, and a flag a test sets for the work it reports busy.
 #[derive(Debug, Default)]
 struct Counter {
     clicks: u32,
+    busy: bool,
 }
 
 impl App for Counter {
@@ -45,6 +46,10 @@ impl App for Counter {
         {
             self.clicks += 1;
         }
+    }
+
+    fn is_busy(&self) -> bool {
+        self.busy
     }
 }
 
@@ -76,6 +81,7 @@ impl Loop {
                 sent_inputs: self.sent,
                 repaint_requested: report.repaint_requested,
                 repaint_after: report.repaint_after,
+                busy: self.app.is_busy(),
             },
         );
     }
@@ -212,4 +218,47 @@ fn a_remote_plays_and_reads_a_live_window() {
     handle.quit();
     thread.join().unwrap();
     assert_eq!(remote.query(|_, _| ()), Err(PlayError::Disconnected));
+}
+
+/// A query that panics answers with the panic's message, and the window goes on to answer the
+/// next. A settle waits out a busy app until a frame finds it idle: work another thread ends
+/// after the settle began.
+#[test]
+fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
+    let (handle, thread) = serve();
+    let remote = handle.remote(WINDOW);
+    assert_eq!(
+        remote.query(|_, _| -> u32 { panic!("boom") }),
+        Err(PlayError::Panicked {
+            message: "boom".to_owned()
+        })
+    );
+    assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
+
+    remote.settle().unwrap();
+    handle
+        .run_on_main(|app| {
+            app.busy = true;
+            true
+        })
+        .unwrap();
+    remote.query(|app, _| assert!(app.busy)).unwrap();
+    let worker = handle.clone();
+    let work = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(50));
+        worker
+            .run_on_main(|app| {
+                app.busy = false;
+                true
+            })
+            .unwrap();
+    });
+    remote.settle().unwrap();
+    assert!(
+        !remote.query(|app, _| app.busy).unwrap(),
+        "the settle waited the work out"
+    );
+    work.join().unwrap();
+    handle.quit();
+    thread.join().unwrap();
 }

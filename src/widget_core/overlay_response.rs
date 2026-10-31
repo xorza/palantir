@@ -23,6 +23,9 @@ pub struct OverlayResponse<R> {
     /// [`Ui::focus_first_within`](crate::Ui::focus_first_within) takes to
     /// move focus into it. The default id on a frame the overlay was not recorded.
     pub id: WidgetId,
+    /// The overlay shows this frame and did not the frame before: the frame to give its default
+    /// control the focus, as a dialog's default button takes it.
+    pub opened: bool,
     /// The user asked from outside — an eaten outside-press, or Escape.
     pub dismissed: bool,
     /// A widget inside the body called

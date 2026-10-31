@@ -132,6 +132,27 @@ impl TextEditTheme {
             },
         }
     }
+
+    /// This theme with no padding, margin or chrome in any state, for a field that reads as the
+    /// text it edits: a rename in place, a search field on a panel. Its `Hug` height is the text's
+    /// line, so a row keeps its height when such a field takes a label's place, as an
+    /// [`EditableLabel`](crate::EditableLabel) does. The caret, the selection and the text keep
+    /// this theme's.
+    #[must_use]
+    pub fn flat(&self) -> Self {
+        let mut flat = Self {
+            defaults: SlotDefaults {
+                padding: Spacing::ZERO,
+                margin: Spacing::ZERO,
+                ..self.defaults
+            },
+            ..self.clone()
+        };
+        for look in flat.looks.each_mut() {
+            look.chrome = Chrome::NONE;
+        }
+        flat
+    }
 }
 
 impl ThemeSlot for TextEditTheme {

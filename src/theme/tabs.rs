@@ -15,7 +15,7 @@ use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
-use crate::theme::tab_selection::TabSelection;
+use crate::theme::selection::Selection;
 use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
@@ -217,13 +217,13 @@ impl Default for TabsTheme {
 }
 
 impl ThemeSlot for TabsTheme {
-    type Pick = TabSelection;
+    type Pick = Selection;
 
     /// The selected or unselected pack, then its state (`active` = pressed).
-    fn look(&self, response: &ResponseState, selection: TabSelection) -> &WidgetLook {
+    fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
         let pack = match selection {
-            TabSelection::Selected => &self.selected,
-            TabSelection::Unselected => &self.unselected,
+            Selection::Selected => &self.selected,
+            Selection::Unselected => &self.unselected,
         };
         pack.pick(response, Engagement::Pressed)
     }

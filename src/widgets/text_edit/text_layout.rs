@@ -53,11 +53,11 @@ impl TextLayout {
     }
 
     /// Room a single line keeps for the caret past its glyphs at both ends; none for a wrapped block.
-    pub(super) fn caret_reserve(&self) -> f32 {
+    pub(super) const fn caret_reserve(&self) -> f32 {
         if self.ctx.multiline {
             0.0
         } else {
-            2.0 * self.caret_room
+            single_line_caret_reserve(self.caret_room)
         }
     }
 
@@ -68,7 +68,7 @@ impl TextLayout {
 
     /// Resolve the text box and shaping parameters from the field's rect, padding, and font.
     pub(super) fn resolve(input: LayoutInput) -> Self {
-        let caret_room = input.caret_width.max(0.0);
+        let caret_room = caret_room(input.caret_width);
         // One deflation, so the wrap width and the measured box cannot disagree (a raw subtraction would commit a negative wrap width on an over-constrained field).
         let inner = input
             .response_rect
@@ -86,4 +86,16 @@ impl TextLayout {
             prev_block_offset: input.prev_block_offset,
         }
     }
+}
+
+/// The room a caret of `caret_width` takes past the text's end, a negative width taking none.
+pub(crate) const fn caret_room(caret_width: f32) -> f32 {
+    caret_width.max(0.0)
+}
+
+/// What a single-line field adds to its text's width for the caret at either end, all of it after
+/// left-aligned text: the width an [`EditableLabel`](crate::EditableLabel)'s idle label reserves
+/// so the glyphs hold their place when it swaps to its editor.
+pub(crate) const fn single_line_caret_reserve(caret_room: f32) -> f32 {
+    2.0 * caret_room
 }

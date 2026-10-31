@@ -17,7 +17,7 @@ mod input_pass;
 mod paint_input;
 mod shape_ctx;
 mod text_geometry;
-mod text_layout;
+pub(crate) mod text_layout;
 mod text_nav;
 mod unicode;
 mod view_state;
@@ -54,6 +54,7 @@ use crate::widgets::text_edit::text_geometry::{GeometryInput, TextGeometry};
 use crate::widgets::text_edit::text_layout::{LayoutInput, TextLayout};
 use crate::widgets::text_edit::view_state::{FocusEdges, ViewState, ViewUpdateInput};
 use glam::Vec2;
+use std::mem;
 
 #[derive(Clone, Default, Debug)]
 struct TextEditState {
@@ -69,6 +70,12 @@ struct TextEditState {
     /// The focus session has an uncommitted result; stops a blur after Enter committing twice.
     commit_pending: bool,
     composition: Composition,
+    /// A [buffered](TextEdit::buffered) field's text, which the field edits in place of a bound
+    /// `String`.
+    draft: String,
+    /// A buffered field's current value, copied out so an interned one is read while the pass
+    /// holds `&mut Ui`.
+    current: String,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -99,7 +106,8 @@ impl TextEditState {
 
 /// Editable text leaf: typing (see [`KeyText`](crate::KeyText)), caret motion,
 /// drag-select, multi-line, cut/copy/paste, undo/redo, escape-to-blur and
-/// click-to-place-caret. Borrows `&'a mut String`; the host owns the storage.
+/// click-to-place-caret. [`Self::new`] borrows `&'a mut String`, the host's storage, and edits it
+/// live; [`Self::buffered`] edits a draft of its own and hands the result back on commit.
 ///
 /// While focused it asks for IME text ([`Ui::request_ime`]): the composition shows
 /// at the caret and the bound `String` changes only on commit. Commits type as keys
@@ -111,7 +119,8 @@ impl TextEditState {
 #[must_use = "a widget records nothing until `show`"]
 pub struct TextEdit<'a> {
     widget: Widget,
-    text: &'a mut String,
+    /// The text the field edits; `show` takes it.
+    text: Option<Bound<'a>>,
     style: Option<&'a TextEditTheme>,
     overrides: TextStyleOverrides,
     placeholder: TextInput<'a>,
@@ -127,10 +136,37 @@ pub struct TextEdit<'a> {
     escape_falls_through: bool,
 }
 
+/// What a [`TextEdit`] edits.
+#[derive(Debug)]
+enum Bound<'a> {
+    /// The caller's `String`, edited in place.
+    Live(&'a mut String),
+    /// A draft the field keeps, filled from this value while the field is idle.
+    Buffered(TextInput<'a>),
+}
+
 impl<'a> TextEdit<'a> {
     /// A single-line editor over `text`, edited in place.
     #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
+        Self::over(Bound::Live(text))
+    }
+
+    /// A single-line editor of a draft the field keeps under its id, for a value the caller
+    /// stores in another form or changes only on a whole edit. A frame after one the field was
+    /// not focused in starts with the draft at `current`: an idle field shows the value, and a
+    /// session starts from it. Escape puts `current` back, and the frame that commits, on Enter
+    /// or on the blur that ends the session, hands the draft over as
+    /// [`TextEditResponse::committed_text`] when it differs from `current`. The frame focus
+    /// leaves follows a focused one, so the draft lives to commit. The id must be stable across
+    /// frames, as the draft is kept under it.
+    #[track_caller]
+    pub fn buffered(current: impl Into<TextInput<'a>>) -> Self {
+        Self::over(Bound::Buffered(current.into()))
+    }
+
+    #[track_caller]
+    fn over(text: Bound<'a>) -> Self {
         // A scrolling viewport over one child. A child, because text placement is an
         // alignment and needs the arranged rect. Scrolling, because a panned axis reports no
         // min-content, so a `Fill` field in a narrower container scrolls instead of
@@ -142,7 +178,7 @@ impl<'a> TextEdit<'a> {
             .clip_rect();
         Self {
             widget,
-            text,
+            text: Some(text),
             style: None,
             overrides: TextStyleOverrides::NONE,
             placeholder: TextInput::Borrowed(""),
@@ -275,13 +311,20 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    /// Record the editor and run one frame of editing over the bound `String`.
+    /// Record the editor and run one frame of editing over its text.
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let id = self.widget.resolve(ui);
+        let text = self
+            .text
+            .take()
+            .expect("a field's text is taken once, by `show`");
         // The state row is held for the whole pass because its stages are separated by
         // `&mut Ui` calls; `with_state` moves it out and back without allocating.
-        let PassOutcome { edges, response } =
-            ui.with_state::<TextEditState, _>(id, |ui, state| self.pass(ui, state, id));
+        let (PassOutcome { edges, response }, committed_text) =
+            ui.with_state::<TextEditState, _>(id, |ui, state| match text {
+                Bound::Live(text) => (self.pass(ui, state, id, text), None),
+                Bound::Buffered(current) => self.buffered_pass(ui, state, id, &current),
+            });
         let EditEdges {
             changed,
             committed,
@@ -293,13 +336,51 @@ impl<'a> TextEdit<'a> {
             response: Response::new(ui, response),
             changed,
             committed,
+            committed_text,
             ended,
             focus_gained,
             focus_lost,
         }
     }
 
-    fn pass(mut self, ui: &mut Ui, state: &mut TextEditState, id: WidgetId) -> PassOutcome {
+    /// [`Self::pass`] over the draft of a [buffered](Self::buffered) field: filled from `current`
+    /// while idle and on Escape, and handed back on a commit that changed it.
+    fn buffered_pass(
+        self,
+        ui: &mut Ui,
+        state: &mut TextEditState,
+        id: WidgetId,
+        current: &TextInput<'_>,
+    ) -> (PassOutcome, Option<String>) {
+        let mut draft = mem::take(&mut state.draft);
+        let mut shown = mem::take(&mut state.current);
+        shown.clear();
+        shown.push_str(match current {
+            TextInput::Borrowed(text) => text,
+            TextInput::Owned(text) => text,
+            TextInput::Interned(text) => ui.text(*text),
+        });
+        if !state.view.was_focused() && draft != shown {
+            draft.clone_from(&shown);
+        }
+        let outcome = self.pass(ui, state, id, &mut draft);
+        let edges = outcome.edges;
+        let committed_text = (edges.committed && draft != shown).then(|| draft.clone());
+        if edges.ended == Some(EditEnd::Canceled) {
+            draft.clone_from(&shown);
+        }
+        state.draft = draft;
+        state.current = shown;
+        (outcome, committed_text)
+    }
+
+    fn pass(
+        mut self,
+        ui: &mut Ui,
+        state: &mut TextEditState,
+        id: WidgetId,
+        text: &mut String,
+    ) -> PassOutcome {
         let mut is_focused = ui.focus() == Some(id);
         // The pass's one probe, handed back by `show`. Through `Widget::response`, so
         // `disabled` is folded in; a copy taken before the fold would report a freshly
@@ -392,7 +473,7 @@ impl<'a> TextEdit<'a> {
         let InputResult { ended, edited } = InputPass {
             resp_state: &response,
             is_focused,
-            text: self.text,
+            text,
             layout: &layout,
             policy: AcceptPolicy {
                 rules,
@@ -414,7 +495,7 @@ impl<'a> TextEdit<'a> {
         // history once. A disabled editor offers no menu; not recording it closes any open
         // one, else Cut / Paste / Clear would keep executing.
         let menu_edited = !response.disabled && {
-            let mut editor = Editor::new(self.text, &mut state.edit, rules);
+            let mut editor = Editor::new(text, &mut state.edit, rules);
             editor.show_menu(ui, &response, filter)
         };
         let preedit = if is_focused && !response.disabled {
@@ -425,7 +506,7 @@ impl<'a> TextEdit<'a> {
         let CompositionPass { started, cursor } = state.composition.roll(preedit);
         let composing = cursor.is_some();
         let cleared = started && {
-            let mut editor = Editor::new(self.text, &mut state.edit, rules);
+            let mut editor = Editor::new(text, &mut state.edit, rules);
             let had_selection = editor.has_selection();
             if had_selection {
                 editor.replace_selection("", EditKind::Delete);
@@ -464,9 +545,9 @@ impl<'a> TextEdit<'a> {
             caret: caret_byte,
             wash,
         } = match cursor {
-            Some(cursor) => state.composition.splice(self.text, caret_byte, cursor),
+            Some(cursor) => state.composition.splice(text, caret_byte, cursor),
             None => Shown {
-                text: self.text,
+                text,
                 caret: caret_byte,
                 wash: is_focused.then_some(selection).flatten(),
             },
@@ -484,7 +565,7 @@ impl<'a> TextEdit<'a> {
         );
         // The probe hashed what is on show, which is not the buffer while composing.
         state.edit.observe_text_hash(if composing {
-            Some(EditState::text_hash(self.text))
+            Some(EditState::text_hash(text))
         } else {
             geometry.text_hash
         });
@@ -592,6 +673,10 @@ pub struct TextEditResponse<'a> {
     /// single-line editor or on the blur ending a focus session, never on Escape or a
     /// blur because the editor turned disabled. A session commits once.
     pub committed: bool,
+    /// A [buffered](TextEdit::buffered) field's draft, on the frame it commits a text that
+    /// differs from the field's current value; `None` on every other frame, and always for a
+    /// field over a bound `String`, whose buffer already holds the result.
+    pub committed_text: Option<String>,
     /// How the frame ended the edit, if it did: [`EditEnd::Submitted`] never in multi-line
     /// mode, and [`EditEnd::Canceled`] blurs, so [`Self::focus_lost`] fires and
     /// [`Self::committed`] does not.

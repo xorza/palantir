@@ -55,6 +55,7 @@ impl MenuBarTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let ButtonTheme {
             mut looks,
+            selected: _,
             defaults,
         } = ButtonTheme::menu_button(p, m);
         looks.normal.text = looks.normal.text.with_color(p.text_muted);

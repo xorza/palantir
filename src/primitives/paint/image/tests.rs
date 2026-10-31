@@ -60,6 +60,12 @@ fn image_stores_valid_rgba8_dimensions_and_pixels() {
     let image = Image::from_srgba8(UVec2::new(2, 1), pixels.clone()).unwrap();
     assert_eq!(image.size(), UVec2::new(2, 1));
     assert_eq!(image.pixels, pixels);
+    assert_eq!(
+        image.as_srgba8(),
+        pixels,
+        "the bytes go out as they came in"
+    );
+    assert_eq!(image.texels()[1], SrgbaU8::new(0, 255, 0, 128));
 
     let blank = Image::blank(UVec2::new(2, 3));
     assert_eq!(blank.size(), UVec2::new(2, 3));

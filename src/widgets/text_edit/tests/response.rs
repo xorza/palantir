@@ -323,3 +323,99 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
         assert_eq!(h.focus(), Some(field), "{key:?}: the field keeps focus");
     }
 }
+
+/// A buffered field fills its draft from the current value while idle, keeps it through an edit
+/// and the blur that ends it, hands it over when a commit changes it, and takes the current value
+/// back on Escape. Each case starts at the current value `a`; `Value` changes the current value
+/// before the frame. The first focus puts the caret at the start, so a typed key goes before the
+/// value; the caret keeps its place across sessions, as for a field over a bound `String`.
+/// The want is the frame's `committed_text`, from pass A.
+#[test]
+fn a_buffered_field_hands_over_a_changed_draft_on_commit() {
+    #[derive(Clone, Copy, Debug)]
+    enum Step {
+        Focus,
+        Type(char),
+        Press(Key),
+        Blur,
+        Value(&'static str),
+    }
+    use Step::{Blur, Focus, Press, Type, Value};
+    /// A case's label, its steps, and the `committed_text` each step's frame wants.
+    type Case = (
+        &'static str,
+        &'static [Step],
+        &'static [Option<&'static str>],
+    );
+    let cases: [Case; 6] = [
+        (
+            "an edit commits on Enter",
+            &[Focus, Type('x'), Press(Key::Enter)],
+            &[None, None, Some("xa")],
+        ),
+        (
+            "an edit survives the blur frame and commits on it",
+            &[Focus, Type('x'), Blur],
+            &[None, None, Some("xa")],
+        ),
+        (
+            "a commit with no change hands nothing over",
+            &[Focus, Press(Key::Enter), Blur],
+            &[None, None, None],
+        ),
+        (
+            "Escape drops the draft; the next session starts at the value",
+            &[
+                Focus,
+                Type('x'),
+                Press(Key::Escape),
+                Focus,
+                Type('y'),
+                Press(Key::Enter),
+            ],
+            &[None, None, None, None, None, Some("ay")],
+        ),
+        (
+            "an idle field takes a new value",
+            &[Value("b"), Focus, Type('x'), Press(Key::Enter)],
+            &[None, None, None, Some("xb")],
+        ),
+        (
+            "a focused field keeps its draft over a new value",
+            &[Focus, Type('x'), Value("z"), Press(Key::Enter)],
+            &[None, None, None, Some("xa")],
+        ),
+    ];
+    let id = WidgetId::from_hash(EDITOR);
+    for (label, steps, want) in cases {
+        let mut h = Harness::new(SMALL);
+        let mut current = "a";
+        let frame = |h: &mut Harness, current: &str| {
+            h.frame_passes(|ui| {
+                TextEdit::buffered(current)
+                    .id(id)
+                    .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
+                    .show(ui)
+                    .committed_text
+            })
+            .a()
+            .clone()
+        };
+        assert_eq!(frame(&mut h, current), None, "{label}: first frame");
+        let got: Vec<Option<String>> = steps
+            .iter()
+            .map(|step| {
+                match *step {
+                    Focus => h.set_focus(id),
+                    Type(c) => drop(h.key(Key::Char(c))),
+                    Press(key) => drop(h.key(key)),
+                    Blur => h.clear_focus(),
+                    Value(value) => current = value,
+                }
+                frame(&mut h, current)
+            })
+            .collect();
+        let want: Vec<Option<String>> = want.iter().map(|w| w.map(str::to_owned)).collect();
+        assert_eq!(got, want, "{label}");
+    }
+}

@@ -16,6 +16,7 @@ use crate::shape::style::{LineCap, LineJoin};
 use crate::theme::button::ButtonTheme;
 use crate::theme::combo_box::ComboBoxTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::selection::Selection;
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
@@ -144,7 +145,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         // reads; the `record` closure below owns `ui` mutably.
         let theme = Rc::clone(ui.theme());
         let slot = self.button_style.unwrap_or(&theme.button);
-        let plan = slot.plan(&response, (), theme.text);
+        let plan = slot.plan(&response, Selection::Unselected, theme.text);
         let look = self.widget.wear(ui, plan);
 
         let geometry = self.style.unwrap_or(&theme.combo_box);

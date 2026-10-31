@@ -15,21 +15,26 @@ use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
+use crate::theme::selection::Selection;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
-/// Four-state button theme: a [`StatefulLook`] (`active` = pressed) plus container knobs, picked via [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
+/// Four-state button theme: a [`StatefulLook`] (`active` = pressed) for a button at rest and one
+/// for a [selected](crate::Button::selected) button, plus container knobs, picked via
+/// [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
     /// The four per-state looks; `flatten` keeps theme files flat (`[button.normal]`).
     #[serde(flatten)]
     pub looks: StatefulLook,
+    /// The four per-state looks of a button that shows its on state (`[button.selected.normal]`).
+    pub selected: StatefulLook,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]
     pub defaults: SlotDefaults,
 }
 
 impl ButtonTheme {
-    /// The standard button recipe over `p` and `m`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`. A state change runs under the metrics' `transition`.
+    /// The standard button recipe over `p` and `m`, resting at `element_mid`; disabled keeps `element` with `text_disabled`. `text: None` on active states inherits `Theme::text`. Selected, it wears the pressed look in every live state, as a held button reads. A state change runs under the metrics' `transition`.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let corners = Corners::all(m.radius.control);
         let chrome = |fill: RgbaF32| {
@@ -39,6 +44,14 @@ impl ButtonTheme {
         // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
         let pressed_chrome = Chrome::rounded(p.element_strong, corners)
             .with_border(Stroke::new(p.border_focused, m.stroke.hairline));
+        let pressed = WidgetLook {
+            chrome: pressed_chrome,
+            text: TextStyleOverrides::NONE,
+        };
+        let disabled = WidgetLook {
+            chrome: chrome(p.element),
+            text: TextStyleOverrides::NONE.with_color(p.text_disabled),
+        };
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
@@ -49,14 +62,14 @@ impl ButtonTheme {
                     chrome: chrome(p.element_strong),
                     text: TextStyleOverrides::NONE,
                 },
-                active: WidgetLook {
-                    chrome: pressed_chrome,
-                    text: TextStyleOverrides::NONE,
-                },
-                disabled: WidgetLook {
-                    chrome: chrome(p.element),
-                    text: TextStyleOverrides::NONE.with_color(p.text_disabled),
-                },
+                active: pressed.clone(),
+                disabled: disabled.clone(),
+            },
+            selected: StatefulLook {
+                normal: pressed.clone(),
+                hovered: pressed.clone(),
+                active: pressed,
+                disabled,
             },
             defaults: SlotDefaults {
                 padding: Spacing::xy(m.space.md, m.space.xs),
@@ -68,11 +81,16 @@ impl ButtonTheme {
 
     /// Visit every text slot this theme owns (drives `Theme::scale_text`); destructured so a new field fails to compile here.
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
-        let Self { looks, defaults: _ } = self;
+        let Self {
+            looks,
+            selected,
+            defaults: _,
+        } = self;
         looks.for_each_text(f);
+        selected.for_each_text(f);
     }
 
-    /// Flat "menu-trigger" preset: transparent at rest, hover-only fill, no border or shadow, inset as a menu row; disabled, its label takes `text_disabled`. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button outside a menu bar.
+    /// Flat "menu-trigger" preset: transparent at rest, hover-only fill, no border or shadow, inset as a menu row; disabled, its label takes `text_disabled`. Selected, it rests at the hovered fill, as an open menu's title does. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button outside a menu bar.
     ///
     /// [`Button::style`]: crate::Button::style
     pub fn menu_button(p: &Palette, m: &Metrics) -> Self {
@@ -80,15 +98,22 @@ impl ButtonTheme {
             chrome: Chrome::rounded(fill, Corners::all(m.radius.control)),
             text: TextStyleOverrides::NONE,
         };
+        let disabled = WidgetLook {
+            text: TextStyleOverrides::NONE.with_color(p.text_disabled),
+            ..flat(Brush::TRANSPARENT)
+        };
         Self {
             looks: StatefulLook {
                 normal: flat(Brush::TRANSPARENT),
                 hovered: flat(p.element_mid.into()),
                 active: flat(p.element_strong.into()),
-                disabled: WidgetLook {
-                    text: TextStyleOverrides::NONE.with_color(p.text_disabled),
-                    ..flat(Brush::TRANSPARENT)
-                },
+                disabled: disabled.clone(),
+            },
+            selected: StatefulLook {
+                normal: flat(p.element_mid.into()),
+                hovered: flat(p.element_mid.into()),
+                active: flat(p.element_strong.into()),
+                disabled,
             },
             defaults: SlotDefaults {
                 padding: m.row_padding(),
@@ -100,12 +125,16 @@ impl ButtonTheme {
 }
 
 impl ThemeSlot for ButtonTheme {
-    type Pick = ();
+    type Pick = Selection;
 
-    /// `active` = pressed. Disabled wins over hover and press, pressed over hover; `response.disabled` already carries the node's own flag.
+    /// The resting or the selected pack, then its state: `active` = pressed. Disabled wins over hover and press, pressed over hover; `response.disabled` already carries the node's own flag.
     #[inline(always)]
-    fn look(&self, response: &ResponseState, _pick: ()) -> &WidgetLook {
-        self.looks.pick(response, Engagement::Pressed)
+    fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
+        let pack = match selection {
+            Selection::Unselected => &self.looks,
+            Selection::Selected => &self.selected,
+        };
+        pack.pick(response, Engagement::Pressed)
     }
 
     fn defaults(&self) -> SlotDefaults {

@@ -19,6 +19,7 @@ use crate::widgets::button::Button;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::combo_box::ComboBox;
 use crate::widgets::drag_value::DragValue;
+use crate::widgets::editable_label::EditableLabel;
 use crate::widgets::expander::Expander;
 use crate::widgets::grid::Grid;
 use crate::widgets::panel::Panel;
@@ -32,6 +33,9 @@ use crate::widgets::text_edit::TextEdit;
 
 pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
     Card::new("request", "REQUEST").show(ui, |ui| {
+        EditableLabel::new("Untitled request")
+            .id_salt("request-title")
+            .show(ui);
         Panel::hstack()
             .id_salt("form-row")
             .gap(8.0)

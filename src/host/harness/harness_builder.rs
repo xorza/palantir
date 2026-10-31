@@ -46,6 +46,7 @@ pub struct HarnessBuilder {
     strategy: PresentStrategy,
     frame_dt: Duration,
     settle_frames: u32,
+    background_wait: Duration,
     format: TargetFormat,
 }
 
@@ -68,6 +69,7 @@ impl HarnessBuilder {
             strategy: PresentStrategy::Retained,
             frame_dt: Duration::from_nanos(16_666_667),
             settle_frames: 600,
+            background_wait: Duration::from_secs(30),
             format: TargetFormat::RGBA8_SRGB,
         }
     }
@@ -149,6 +151,13 @@ impl HarnessBuilder {
         self
     }
 
+    /// How long, in real time, [`Harness::settle`] waits for a [wake](crate::Waker) while the app
+    /// [is busy](crate::App::is_busy) and asks no frame; 30 s by default.
+    pub const fn background_wait(mut self, wait: Duration) -> Self {
+        self.background_wait = wait;
+        self
+    }
+
     /// Open the window.
     ///
     /// # Panics
@@ -209,6 +218,7 @@ impl HarnessBuilder {
                 refresh_millihertz: self.refresh_millihertz,
                 frame_dt: self.frame_dt,
                 settle_frames: self.settle_frames,
+                background_wait: self.background_wait,
             },
         )
     }

@@ -23,7 +23,8 @@
 //!   luminance of what the pane shows, after the blur, saturation and grain and before the tint,
 //!   by scaling the color, so its hue and chroma hold. The ground under a pane's text is then at
 //!   most `(1 − α)·max_luminance + α·tint`, whatever is painted behind it, and an author derives
-//!   the ceiling from the contrast its inks need, as WCAG 1.4.3 measures it. Fluent's acrylic
+//!   the ceiling from the contrast its inks need, as WCAG 1.4.3 measures it, or has
+//!   `with_max_luminance_for` derive it from the ink and the tint. Fluent's acrylic
 //!   serves the same need with a luminosity layer (`AcrylicBrush::TintLuminosityOpacity`,
 //!   <https://learn.microsoft.com/windows/winui/api/microsoft.ui.xaml.media.acrylicbrush>).
 //!   Refused: that luminosity blend and CSS `brightness()`, which compress or scale the dark
@@ -41,6 +42,8 @@
 
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use palantir_anim_derive::Animatable;
 
 /// A pane's backdrop filter: the pixels painted before it in paint order, blurred, saturated and
@@ -180,6 +183,40 @@ impl BackdropFilter {
         self
     }
 
+    /// This filter with the [`max_luminance`](Self::max_luminance) that holds `ink`, the dimmest
+    /// ink painted on the pane, at WCAG's 4.5:1 over any backdrop under `tint`, the pane's fill
+    /// with its alpha, as an 8-bit target stores the composite. palantir derives it, as the bound
+    /// depends on the dither its composite adds.
+    ///
+    /// The brightest ground `ink` holds 4.5:1 on is `g = (Y(ink) + 0.05) / 4.5 − 0.05`; a step of
+    /// the 8-bit target lowers it to `g'`, what the composite may reach before the target stores
+    /// it higher. The ground over a backdrop at the ceiling `c` is `(1 − α)·c + α·Y(tint)`, both
+    /// in the linear light the composite runs in; so `c = (g' − α·Y(tint)) / (1 − α)`.
+    ///
+    /// # Panics
+    ///
+    /// Unless `tint`'s alpha is a fraction under 1, and `ink` holds its contrast on `tint` made
+    /// opaque.
+    #[track_caller]
+    pub fn with_max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self {
+        let alpha = tint.a;
+        assert!(
+            (0.0..1.0).contains(&alpha),
+            "a tint's alpha is a fraction under 1: {alpha}"
+        );
+        debug_assert!(
+            alpha * tint.r.min(tint.g).min(tint.b) > SRGB_TOE,
+            "every channel of a ground clears the sRGB curve's linear toe, as `before_storing` needs"
+        );
+        let ground = before_storing((ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05);
+        let tint_luminance = tint.luminance();
+        assert!(
+            tint_luminance <= ground,
+            "the ink holds its contrast on the opaque tint"
+        );
+        self.with_max_luminance((ground - alpha * tint_luminance) / (1.0 - alpha))
+    }
+
     /// This filter seen through `lens`.
     pub const fn with_lens(mut self, lens: Lens) -> Self {
         self.lens = Some(lens);
@@ -279,6 +316,32 @@ impl Default for Lens {
             highlight: 0.6,
         }
     }
+}
+
+/// The contrast WCAG 1.4.3 asks of text against its ground
+/// (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>).
+const TEXT_CONTRAST: f32 = 4.5;
+
+/// The linear level where the sRGB curve's linear toe ends and its power segment starts.
+const SRGB_TOE: f32 = 0.003_130_8;
+
+/// The brightest linear level a composite may reach and still store at most `g`: an 8-bit target
+/// stores a channel within one encoded step of it, half a step of the dither the composite adds
+/// and half of the rounding to a byte. So the level is the one a step under `B`, the highest byte
+/// that decodes to at most `g`. A colored pixel stores no brighter than a neutral one of its
+/// luminance: on the curve's power segment, where every channel of a ground lies as it keeps `α`
+/// of the tint's, the stored level `decode(encode(c) + step)` is concave in `c`, so by Jensen the
+/// weighted channels gain at most what their mean does.
+fn before_storing(g: f32) -> f32 {
+    let level = |byte: u8| RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte)).r;
+    let mut top = RgbaF32::new(g, g, g, 1.0).to_srgba().r;
+    if level(top) > g {
+        top -= 1;
+    }
+    level(
+        top.checked_sub(1)
+            .expect("the ink holds its contrast a step above black"),
+    )
 }
 
 #[cfg(test)]

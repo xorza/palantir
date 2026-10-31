@@ -1,6 +1,7 @@
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::shape::Shape;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
 
@@ -178,4 +179,35 @@ fn a_chrome_with_only_a_filter_paints() {
         }
     );
     assert!(!Chrome::NONE.with_backdrop_filter(filter).is_noop());
+}
+
+/// The ceiling holds the muted ink at WCAG's 4.5:1 over the brightest backdrop as an 8-bit target
+/// stores it. `#a4a4a4` is `Y = 0.371238`, so the brightest ground is
+/// `(0.371238 + 0.05) / 4.5 − 0.05 = 0.043608`, which encodes to byte 58.91, so byte 58 is the
+/// highest at or under it, and the composite may reach byte 57, `0.04091520`. Under a `#383838`
+/// tint at 0.72, `Y = 0.039546`, the ceiling is `(0.04091520 − 0.72 · 0.039546) / 0.28 =
+/// 0.04443538`, and under `#1f1f1f`, `Y = 0.013702`, `(0.04091520 − 0.72 · 0.013702) / 0.28 =
+/// 0.11089178`. A ground at either ceiling stores byte 57. The setter sets the ceiling alone.
+#[test]
+fn a_ceiling_for_an_ink_holds_it_at_the_text_contrast() {
+    let ink = RgbaF32::hex(0xa4a4a4);
+    let level = |byte: u8| RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte));
+    assert!(ink.contrast_ratio(level(58)) >= 4.5);
+    assert!(
+        ink.contrast_ratio(level(59)) < 4.5,
+        "byte 58 is the highest"
+    );
+    for (tint, want) in [(0x383838, 0.04443538), (0x1f1f1f, 0.11089178)] {
+        let tint = RgbaF32::hex(tint).with_alpha(0.72);
+        let filter = BackdropFilter::frosted(20.0).with_max_luminance_for(ink, tint);
+        let ceiling = filter.max_luminance.expect("a ceiling");
+        assert_eq!(
+            filter,
+            BackdropFilter::frosted(20.0).with_max_luminance(ceiling)
+        );
+        // The hand value's eighth digit, and the derivation's f32 rounding, a few ulps of 1e-8.
+        assert!((ceiling - want).abs() < 1e-7, "{ceiling}");
+        let ground = 0.28 * ceiling + 0.72 * tint.luminance();
+        assert!((ground - level(57).r).abs() < 2e-8, "{ground}");
+    }
 }

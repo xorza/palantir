@@ -350,6 +350,28 @@ fn key_chord_watcher_wakes_only_exact_chord() {
     assert!(delta.repaint_requested);
 }
 
+/// A chord read skipped behind one that fired stays watched. Both chords are watched, then
+/// Escape is pressed and read through `Escape || Enter`, which skips the Enter read. The press
+/// makes the frame record again with no input, where Escape reads false and Enter is read, so a
+/// later Enter still wakes a frame.
+#[test]
+fn a_shortcut_read_skipped_behind_one_that_fired_stays_watched() {
+    let reads = |ui: &mut Ui| ui.shortcut_pressed(Key::Escape) || ui.shortcut_pressed(Key::Enter);
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    h.frame(|ui| {
+        reads(ui);
+    });
+    h.key(Key::Escape);
+    let mut passes = Vec::new();
+    h.frame(|ui| passes.push(reads(ui)));
+    assert_eq!(
+        passes,
+        [true, false],
+        "the press, then the pass with no input"
+    );
+    assert!(h.key(Key::Enter).repaint_requested);
+}
+
 #[test]
 fn pointer_events_drain_between_frames() {
     let mut h = Harness::mono(UVec2::new(200, 200));

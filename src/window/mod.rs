@@ -3,6 +3,7 @@
 pub(crate) mod cursor_icon;
 pub(crate) mod screenshot;
 pub(crate) mod vsync;
+pub(crate) mod waker;
 pub(crate) mod window_commands;
 pub(crate) mod window_config;
 pub(crate) mod window_directory;

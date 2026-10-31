@@ -62,7 +62,7 @@ impl AnchorAlign {
 /// [`LayerScope::anchor`](crate::LayerScope::anchor). The origin resolves
 /// after measure: the requested side if the body fits, else the opposite, else
 /// shifted inside the surface. [`LayerScope::fixed_at`](crate::LayerScope::fixed_at) never moves.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 #[must_use]
 pub struct Anchor {
     rect: Rect,
@@ -93,6 +93,12 @@ impl Anchor {
     pub const fn at_point(point: Vec2) -> Self {
         let point = vec2::offset(point);
         Self::below(Rect::new(point.x, point.y, 0.0, 0.0))
+    }
+
+    /// Whether the anchor is a point, as [`Self::at_point`] makes one: a rect with nothing in it
+    /// for the body to keep clear of.
+    pub(crate) const fn is_point(self) -> bool {
+        self.rect.size.w == 0.0 && self.rect.size.h == 0.0
     }
 
     /// Above `rect`, falling back to below it.

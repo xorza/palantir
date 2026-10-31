@@ -14,6 +14,7 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::selection::Selection;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -272,7 +273,7 @@ impl<'a> DragValue<'a> {
 
         let theme = ui.theme();
         let chip = &self.style.unwrap_or(&theme.drag_value).chip;
-        let plan = chip.plan(&response, (), theme.text);
+        let plan = chip.plan(&response, Selection::Unselected, theme.text);
         let look = self.widget.wear(ui, plan);
 
         self.widget.record(ui, Some(&look.chrome), |ui| {

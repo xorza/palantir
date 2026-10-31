@@ -206,3 +206,28 @@ fn an_authored_max_below_the_themed_min_width_wins() {
     let panel = h.arranged(root_id.with("panel"));
     assert_eq!(panel.size.w, 240.0);
 }
+
+/// `opened` marks the first frame an overlay shows: a modal's and a popup's, again after a frame
+/// it was not recorded in, and on no frame between.
+#[test]
+fn opened_marks_the_first_frame_an_overlay_shows() {
+    let mut h = Harness::mono(UVec2::new(400, 300));
+    let modal = WidgetId::from_hash("modal-opened");
+    let popup = WidgetId::from_hash("popup-opened");
+    let show = |h: &mut Harness, shown: bool| {
+        h.frame_value(|ui| {
+            shown.then(|| {
+                let modal = Modal::new().id(modal).show(ui, |_, _| {}).opened;
+                let popup = Popup::new(Anchor::at_point(Vec2::new(10.0, 10.0)))
+                    .id(popup)
+                    .show(ui, |_, _| {})
+                    .opened;
+                [modal, popup]
+            })
+        })
+    };
+    assert_eq!(show(&mut h, true), Some([true, true]));
+    assert_eq!(show(&mut h, true), Some([false, false]));
+    assert_eq!(show(&mut h, false), None);
+    assert_eq!(show(&mut h, true), Some([true, true]), "shown again");
+}

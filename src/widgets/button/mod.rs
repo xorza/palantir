@@ -7,11 +7,13 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::selection::Selection;
+use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
+use crate::widget_core::response::{InnerResponse, Response};
 use crate::widget_core::widget::Widget;
 
 /// A clickable, themed rectangle carrying an optional label.
@@ -32,6 +34,7 @@ pub struct Button<'a> {
     label: TextInput<'a>,
     label_align: Align,
     label_wrap: TextWrap,
+    selection: Selection,
 }
 
 impl<'a> Button<'a> {
@@ -44,6 +47,7 @@ impl<'a> Button<'a> {
             label: TextInput::default(),
             label_align: Align::CENTER,
             label_wrap: TextWrap::Truncate,
+            selection: Selection::Unselected,
         }
     }
 
@@ -71,18 +75,42 @@ impl<'a> Button<'a> {
         self
     }
 
+    /// Whether the button shows its on state, as WAI-ARIA's `aria-pressed` reports one: it then
+    /// wears [`ButtonTheme::selected`]. A click reports as it does on any button; the caller
+    /// changes the state it shows. Default `false`.
+    pub const fn selected(mut self, selected: bool) -> Self {
+        self.selection = if selected {
+            Selection::Selected
+        } else {
+            Selection::Unselected
+        };
+        self
+    }
+
     /// Space and Enter on a focused button report one left click (WAI-ARIA), so `clicked()` covers keyboard.
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+        self.show_with(ui, |_, _| {}).response
+    }
+
+    /// [`Self::show`], then `body` after the label: it adds shapes in the button's own space,
+    /// and gets the text style the button's state resolved, so an icon takes the label's ink.
+    /// The button is a leaf, so `body` adds shapes alone; a widget recorded in it is not laid
+    /// out.
+    pub fn show_with<R>(
+        mut self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &TextStyle) -> R,
+    ) -> InnerResponse<'_, R> {
         let response = self.widget.activation_response(ui, Activation::Button);
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.button);
-        let plan = slot.plan(&response, (), theme.text);
+        let plan = slot.plan(&response, self.selection, theme.text);
         let look = self.widget.wear(ui, plan);
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        self.widget.record(ui, Some(&look.chrome), |ui| {
+        let inner = self.widget.record(ui, Some(&look.chrome), |ui| {
             if !label.is_empty() {
                 let label = ui.intern(label);
                 ui.add_shape(
@@ -92,8 +120,12 @@ impl<'a> Button<'a> {
                         .align(label_align),
                 );
             }
+            body(ui, &look.text)
         });
-        Response::new(ui, response)
+        InnerResponse {
+            response: Response::new(ui, response),
+            inner,
+        }
     }
 }
 

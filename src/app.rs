@@ -10,6 +10,14 @@ pub trait App {
 
     /// Build the UI for `window`. May replay (warmup, action input, relayout) with no action input after the first pass, so unconditional effects belong in [`Self::update`].
     fn record(&mut self, window: WindowToken, ui: &mut Ui);
+
+    /// Whether work the app waits on runs off the frame and will [wake](crate::Waker) the window
+    /// when it lands: a conversion on a worker thread, a file that loads. A settle waits it out:
+    /// [`Harness::settle`](crate::Harness::settle) and `Remote::settle` count a busy app as not
+    /// settled. Read after a frame. Default `false`.
+    fn is_busy(&self) -> bool {
+        false
+    }
 }
 
 /// A closure is the app of a host with one window: it records every window it is asked for, and
