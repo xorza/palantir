@@ -232,6 +232,17 @@ update, a removed GPU. Facts and sources: `.notes/research/2026-10-30-device-los
   ([iced_test `Ice`](https://docs.rs/iced_test/0.14.0/iced_test/ice/struct.Ice.html)).
 - **The visual suite stays on `OffscreenHost`**, as it tests presentation paths: fresh targets,
   each format, a target with no `COPY_DST`. Its rig is `VisualRig`, so one name keeps one meaning.
+- **Every host gives a waker; a settle waits out a busy app.** `Ui::waker` hands out a `Waker`
+  any thread calls, a type-erased closure, as the host is chosen at run time and the winit handle
+  is generic over the app. `App::is_busy`, read after a frame, says work off the frame will wake
+  the window; `Harness::settle` waits for that wake in real time, bounded by `background_wait`,
+  and the winit host carries it in `FrameSummary::busy`, which `Remote::settle` waits on. Refused:
+  a `HostHandle` on the harness, which brings winit's `run_on_main` and `remote`; a flag the
+  record sets on `Ui`, stale when no frame records, the case a settle waits in. Source:
+  Playwright's auto-wait (<https://playwright.dev/docs/actionability>), egui's `Context`, which
+  any thread asks for a frame.
+- **A remote waits on the frame log, not a poll,** a condition variable each frame signals, and a
+  query that panics returns `PlayError::Panicked`, so the window goes on.
 
 ## Public API
 
@@ -421,6 +432,16 @@ tree renders.
   a named setter (`color`, `thickness`, `font_size`). A widget with chrome has
   `chrome(chrome)` and `default_chrome(chrome)`; no trait
   holds them in step, a test in `widgets::tests` does.
+- **`Metrics` carries the type ramp.** `Metrics::text` holds the caption, body and title sizes,
+  the Fluent 2 ramp by default, and the recipes read them: the ambient text the body, a tooltip
+  the caption. Refused: a size a recipe sets by hand, which an app's own ramp could not reach; a
+  resting shadow, which no recipe casts
+  ([Fluent 2 typography](https://fluent2.microsoft.design/typography)).
+- **Frosted glass holds its ink's contrast.** `Chrome::with_frost` tints a solid fill over a
+  blurred backdrop and caps what the glass shows so the dimmest ink keeps WCAG's 4.5:1 as an
+  8-bit target stores the composite; palantir owns the math, as it depends on palantir's dither
+  ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum),
+  [Fluent acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)).
 - **Node values a widget supplies** go through `default_*` (`default_gap`,
   `default_child_align`, `default_size`), in `show`, so a caller's setter
   always wins over the theme.
@@ -443,8 +464,34 @@ tree renders.
   `TextEditResponse`: the same `changed` and `committed`, beside the cancel,
   submit and focus edges a scrub has no equivalent of. An overlay records in another
   layer and returns `OverlayResponse<R>`: the body's value as `inner`, and
-  `dismissed` and `close_requested`. A tooltip senses nothing, so it returns
+  `opened`, `dismissed` and `close_requested`. A tooltip senses nothing, so it returns
   `TooltipResponse { visible }`.
+- **A `Response` borrows the `Ui` immutably,** and an overlay attaches through a
+  `ResponseSnapshot`. Refused: `Response::tooltip`, which needs `&mut Ui` and a `Response` that
+  names `Tooltip`, a widget above `widget_core` in the layering.
+- **A button holds shapes and shows a selected state.** `Button::show_with` records a body after
+  the label and hands it the text style its state resolved, so an icon takes the label's ink;
+  `Button::selected` picks `ButtonTheme::selected`, as `aria-pressed` reports a state. The button
+  stays a leaf, as its label measures as a leaf's text. `Selection` is the pick of every two-pack
+  theme, tabs and buttons. Refused: a container button; a toggle bound to `&mut bool`, as a
+  selected button shows a state a command changes; a `bool` pick
+  ([WAI-ARIA button](https://www.w3.org/WAI/ARIA/apg/patterns/button/)).
+- **A field can edit a draft of its own.** `TextEdit::buffered` keeps the draft under its id,
+  starts each session from the current value, restores it on Escape and hands a changed draft
+  over as `committed_text`; `EditableLabel` opens one on a double click and reserves its caret
+  room, so the glyphs hold their place across the swap. `DragValue` keeps its own draft, as it
+  parses each keystroke live. Refused: a read-only field, which reaches typing, the edit menu,
+  undo and the input method for one caller
+  ([Qt `editingFinished`](https://doc.qt.io/qt-6/qlineedit.html#editingFinished),
+  [GTK4 `EditableLabel`](https://docs.gtk.org/gtk4/class.EditableLabel.html)).
+- **A popup raised at a point stays where it landed.** The window shifts an anchored body to fit
+  each frame, so one whose body changed size moved under the pointer; a point anchor holds the
+  first landing until the body stops fitting or is asked elsewhere. One beside a rect is placed
+  each frame, as it keeps the rect clear
+  ([`TrackPopupMenu`](https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-trackpopupmenu)).
+- **A chord read behind one that fired still watches.** A frame that receives a press records
+  again with no input, and that pass reads every chord, so `a || b` loses no wake. Refused: a
+  table read for that, a gap that does not exist.
 
 ### Input validation
 
