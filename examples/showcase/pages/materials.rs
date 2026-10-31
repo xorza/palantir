@@ -119,10 +119,9 @@ fn live(ui: &mut Ui, k: Kit) {
                     unit: " px",
                 }
                 .show(ui, k, &mut l.blur);
-                // The floor's derivation needs the tint, times its alpha, past the sRGB curve's linear toe.
                 Knob {
                     label: "tint",
-                    range: 0.05..=0.9,
+                    range: 0.0..=0.9,
                     step: 0.05,
                     unit: "",
                 }

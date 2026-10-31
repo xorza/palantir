@@ -210,8 +210,9 @@ impl BackdropFilter {
     ///
     /// # Panics
     ///
-    /// Unless `tint`'s alpha is a fraction under 1, and `ink` holds its contrast on `tint` made
-    /// opaque.
+    /// Unless `tint`'s alpha is a fraction under 1, `ink` holds its contrast on `tint` made
+    /// opaque, and `ink` is light enough that the ground it holds 4.5:1 on stores where the bound
+    /// is exact: a luminance of about 0.237 or more, a grey of `#868686` or lighter.
     #[track_caller]
     pub fn with_max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self {
         let alpha = tint.a;
@@ -219,11 +220,12 @@ impl BackdropFilter {
             (0.0..1.0).contains(&alpha),
             "a tint's alpha is a fraction under 1: {alpha}"
         );
-        debug_assert!(
-            alpha * tint.r.min(tint.g).min(tint.b) > SRGB_TOE,
-            "every channel of a ground clears the sRGB curve's linear toe, as `before_storing` needs"
-        );
         let ground = before_storing((ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05);
+        assert!(
+            ground >= ceiling_bend(),
+            "the ink is too dark for a ceiling: its ground {ground} lies where a colored pixel can \
+             store brighter than a neutral one"
+        );
         let tint_luminance = tint.luminance();
         assert!(
             tint_luminance <= ground,
@@ -248,6 +250,9 @@ impl BackdropFilter {
     /// it no lower. The ground over a backdrop at the floor `f` is `(1 − α)·f + α·Y(tint)`, so
     /// `f = (g' − α·Y(tint)) / (1 − α)`, and 0 where the tint alone clears it.
     ///
+    /// Any ink and any tint, saturated or not, take a floor: the darkest ground an ink holds 4.5:1
+    /// on is at least `4.5 · 0.05 − 0.05 = 0.175`, past where the bound stops being exact.
+    ///
     /// # Panics
     ///
     /// Unless `tint`'s alpha is a fraction under 1, and `ink` holds its contrast on `tint` made
@@ -258,10 +263,6 @@ impl BackdropFilter {
         assert!(
             (0.0..1.0).contains(&alpha),
             "a tint's alpha is a fraction under 1: {alpha}"
-        );
-        debug_assert!(
-            alpha * tint.r.min(tint.g).min(tint.b) > SRGB_TOE,
-            "every channel of a ground clears the sRGB curve's linear toe, as `after_storing` needs"
         );
         let ground = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05);
         let tint_luminance = tint.luminance();
@@ -378,16 +379,33 @@ impl Default for Lens {
     }
 }
 
-/// The linear level where the sRGB curve's linear toe ends and its power segment starts.
-const SRGB_TOE: f32 = 0.003_130_8;
+/// Past this luminance, `decode(encode(c) + step)` equals its concave envelope over `0..=1`, so a
+/// ground there bounds what any mix of channels with its luminance stores, by Jensen on the
+/// envelope, however close to 0 a channel of a saturated tint lies.
+///
+/// Near 0 the curve leaves the sRGB power segment, and its envelope there is the line from its
+/// value at 0, `f₀ = step / 12.92`, tangent to the power segment, `(c^(1/2.4) + k)^2.4` with
+/// `k = step / 1.055`. Tangency asks `k · (u + k)^1.4 = f₀` at `u = c^(1/2.4)`, so
+/// `u + k = m`, [`bend_root`], and the bend is `(m − k)^2.4 ≈ 0.01292`. The floor's curve,
+/// `decode(encode(c) − step)`, meets its convex envelope by the same tangency at `m^2.4 ≈
+/// 0.01364`, under the 0.175 any floor's ground is at least, so a floor needs no such check.
+fn ceiling_bend() -> f32 {
+    (bend_root() - STORED_STEP / 1.055).powf(2.4)
+}
+
+/// `m = (1.055 / 12.92)^(1/1.4)`, the step cancelling out of [`ceiling_bend`]'s tangency.
+fn bend_root() -> f32 {
+    (1.055_f32 / 12.92).powf(1.0 / 1.4)
+}
+
+/// How far an 8-bit target stores a channel from its level, in encoded sRGB: half a step of the
+/// dither the composite adds and half of the rounding to a byte.
+const STORED_STEP: f32 = 1.0 / 255.0;
 
 /// The brightest linear level a composite may reach and still store at most `g`: an 8-bit target
-/// stores a channel within one encoded step of it, half a step of the dither the composite adds
-/// and half of the rounding to a byte. So the level is the one a step under `B`, the highest byte
-/// that decodes to at most `g`. A colored pixel stores no brighter than a neutral one of its
-/// luminance: on the curve's power segment, where every channel of a ground lies as it keeps `α`
-/// of the tint's, the stored level `decode(encode(c) + step)` is concave in `c`, so by Jensen the
-/// weighted channels gain at most what their mean does.
+/// stores a channel within [`STORED_STEP`] of it, so the level is the one a step under `B`, the
+/// highest byte that decodes to at most `g`. A colored pixel stores no brighter than a neutral one
+/// of its luminance when that luminance is past [`ceiling_bend`].
 fn before_storing(g: f32) -> f32 {
     let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte)).r;
     let mut top = RgbaF32::new(g, g, g, 1.0).to_srgba8().r;
@@ -401,10 +419,9 @@ fn before_storing(g: f32) -> f32 {
 }
 
 /// The darkest linear level a composite may reach and still store at least `g`: the mirror of
-/// [`before_storing`], a step above `B`, the lowest byte that decodes to at least `g`, as the
-/// target stores a channel within one encoded step below it. A colored pixel stores no darker
-/// than a neutral one of its luminance: `decode(encode(c) − step)` is convex in `c` on the
-/// curve's power segment, so by Jensen the weighted channels lose at most what their mean does.
+/// [`before_storing`], a step above `B`, the lowest byte that decodes to at least `g`. A colored
+/// pixel stores no darker than a neutral one of its luminance when that luminance is past the
+/// floor's bend, which [`ceiling_bend`] derives.
 fn after_storing(g: f32) -> f32 {
     let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte)).r;
     let mut bottom = RgbaF32::new(g, g, g, 1.0).to_srgba8().r;
