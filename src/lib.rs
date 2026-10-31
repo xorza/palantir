@@ -451,6 +451,7 @@ pub use widgets::tooltip::TooltipResponse;
 pub use window::cursor_icon::CursorIcon;
 pub use window::screenshot::{Screenshot, ScreenshotId};
 pub use window::vsync::Vsync;
+pub use window::waker::Waker;
 pub use window::window_commands::WindowCommand;
 pub use window::window_config::WindowConfig;
 pub use window::window_geometry::WindowGeometry;

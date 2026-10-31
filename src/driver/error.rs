@@ -112,6 +112,19 @@ pub enum PlayError {
         /// The time waited.
         seconds: f32,
     },
+    /// The app stayed [busy](crate::App::is_busy) past the step `step` and sent no
+    /// [wake](crate::Waker) in `seconds` of real time: its work hangs, or ends with no wake.
+    Busy {
+        /// The step, as its `Debug` writes it.
+        step: String,
+        /// The time waited.
+        seconds: f32,
+    },
+    /// A remote query panicked on the window's thread, which went on; `message` is the panic's.
+    Panicked {
+        /// The panic's message, or a note that it had none.
+        message: String,
+    },
 }
 
 impl Display for PlayError {
@@ -134,6 +147,12 @@ impl Display for PlayError {
                 "the window ran no frame in {seconds} s; show it, as a hidden or minimized \
                  window runs none"
             ),
+            Self::Busy { step, seconds } => write!(
+                f,
+                "the app stayed busy {seconds} s after {step} and sent no wake; its work hangs, \
+                 or ends with no wake"
+            ),
+            Self::Panicked { message } => write!(f, "the query panicked: {message}"),
         }
     }
 }

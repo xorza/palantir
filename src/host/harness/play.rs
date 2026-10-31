@@ -14,7 +14,7 @@ use crate::ui::frame_report::FrameReport;
 use crate::window::screenshot::Screenshot;
 use glam::Vec2;
 use std::fmt::Debug;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 impl Harness {
     /// Play `actions` on `app` in order, as a person at the window would, settling after each;
@@ -40,15 +40,26 @@ impl Harness {
     }
 
     /// Run frames of `app`, the clock moving one frame's time before each, until one asks no
-    /// repaint and no screenshot is on its way back from the device, which it waits for. A caret
-    /// blink asks a timed wake, not a repaint, so it settles. Returns the frames run.
+    /// repaint, no screenshot is on its way back from the device, which it waits for, no
+    /// [wake](crate::Waker) waits, and the app is not [busy](App::is_busy). While the app is busy
+    /// and asks nothing, the settle waits in real time for the wake its work sends. A caret blink
+    /// asks a timed wake, not a repaint, so it settles. Returns the frames run.
     ///
     /// # Errors
     ///
     /// [`PlayError::Unsettled`] when the window still asks after the builder's
-    /// [`settle_frames`](crate::HarnessBuilder::settle_frames).
+    /// [`settle_frames`](crate::HarnessBuilder::settle_frames), and [`PlayError::Busy`] when a
+    /// busy app sends no wake in its
+    /// [`background_wait`](crate::HarnessBuilder::background_wait).
     pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
         self.settle_after(app, &format_args!("the settle"))
+    }
+
+    /// Block until a [`Waker`](crate::Waker) of this window wakes it, or `deadline` passes, in
+    /// real time; whether a wake waits for the next frame. For a caller that waits on work it
+    /// knows of, past what [`Self::settle`] waits for.
+    pub fn wait_for_wake(&self, deadline: Instant) -> bool {
+        self.wake.wait(deadline)
     }
 
     /// A picture of `region`, the whole window for none, as the next frame paints it, as the
@@ -93,12 +104,24 @@ impl Harness {
     /// does not.
     fn settle_after(&mut self, app: &mut impl App, step: &dyn Debug) -> Result<u32, PlayError> {
         let start = self.frames;
+        let deadline = Instant::now() + self.background_wait;
         for _ in 0..self.settle_frames {
             let report = self.next_frame(app);
             if self.driver.has_pending_screenshots() {
                 self.wait_for_gpu();
-            } else if !report.repaint_requested {
+                continue;
+            }
+            if report.repaint_requested || self.wake.is_pending() {
+                continue;
+            }
+            if !app.is_busy() {
                 return Ok(self.frames - start);
+            }
+            if !self.wake.wait(deadline) {
+                return Err(PlayError::Busy {
+                    step: format!("{step:?}"),
+                    seconds: self.background_wait.as_secs_f32(),
+                });
             }
         }
         Err(PlayError::Unsettled {

@@ -91,6 +91,7 @@ App
     trait App
         fn update(&mut self, _window: WindowToken, _ui: &Ui) { .. }
         fn record(&mut self, window: WindowToken, ui: &mut Ui)
+        fn is_busy(&self) -> bool { .. }
         impl<F: FnMut(&mut Ui)> App for F
 
 Axis
@@ -842,6 +843,7 @@ FrameSummary  [features: winit]
         pub sent_inputs: u64
         pub repaint_requested: bool
         pub repaint_after: Option<Duration>
+        pub busy: bool
 
 Gpu
     struct Gpu: Clone, Debug
@@ -985,6 +987,7 @@ Harness
     struct Harness: Debug
         pub fn play<A: App, X: Locate<A>>(&mut self, app: &mut A, actions: &[Action<X>]) -> Result<u32, ActError>
         pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError>
+        pub fn wait_for_wake(&self, deadline: Instant) -> bool
         pub fn shot(&mut self, app: &mut impl App, region: Option<Rect>) -> Result<Screenshot, PlayError>
         pub fn new(size: UVec2) -> Self
         pub const fn builder(size: UVec2) -> HarnessBuilder
@@ -1039,6 +1042,7 @@ HarnessBuilder
         pub fn gpu(self, gpu: Gpu) -> Self
         pub const fn frame_dt(self, dt: Duration) -> Self
         pub const fn settle_frames(self, frames: u32) -> Self
+        pub const fn background_wait(self, wait: Duration) -> Self
         pub fn build(self) -> Harness
 
 HostDisconnected  [features: winit]
@@ -1592,6 +1596,8 @@ PlayError
         NoPixels
         Disconnected
         NoFrame { seconds: f32 }
+        Busy { step: String, seconds: f32 }
+        Panicked { message: String }
 
 PointerAction
     struct PointerAction: Clone, Copy, Debug, Eq, PartialEq
@@ -1731,6 +1737,7 @@ Remote  [features: winit]
     struct Remote<T: 'static>: Debug
         pub fn with_blocked(self, blocked: impl Fn() -> bool + Send + 'static) -> Self
         pub fn query<R: Send + 'static>(&self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
+        pub fn settle(&self) -> Result<u32, PlayError>
         pub fn play<X: Locate<T> + Clone + Send + 'static>(&self, actions: &[Action<X>]) -> Result<u32, ActError>
         pub fn shot(&self, region: Option<Rect>) -> Result<Screenshot, PlayError>
         pub fn widgets(&self, filter: Option<String>) -> Result<Vec<InspectedWidget>, PlayError>
@@ -2498,6 +2505,7 @@ TranslateScale
 
 Ui
     struct Ui: Debug
+        pub fn waker(&self) -> Waker
         pub const fn theme(&self) -> &Rc<Theme>
         pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>)
         pub const fn watch_pointer(&mut self, flags: PointerWake)
@@ -2621,6 +2629,10 @@ Vsync
     enum Vsync: Clone, Copy, Debug, Default, Eq, PartialEq
         On
         Off
+
+Waker
+    struct Waker: Clone, Debug
+        pub fn wake(&self)
 
 WidgetId
     struct WidgetId: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq, Pod, Zeroable

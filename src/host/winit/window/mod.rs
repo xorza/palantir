@@ -318,6 +318,7 @@ impl Window {
                 sent_inputs: self.sent_inputs,
                 repaint_requested: cpu.report.repaint_requested,
                 repaint_after: cpu.report.repaint_after,
+                busy: app.is_busy(),
             };
             self.next = self.present(core, cpu);
             Some(summary)

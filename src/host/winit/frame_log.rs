@@ -1,17 +1,20 @@
 //! [`FrameLog`]: each open window's last frame, shared between the event loop and its handles.
 
-use std::sync::Mutex;
+use std::sync::{Condvar, Mutex};
+use std::time::Duration;
 
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::window::window_token::WindowToken;
 
 /// The event loop writes a window's summary after each of its frames, and whether it is hidden as
 /// that changes, and removes both when the window closes; a [`HostHandle`](crate::HostHandle)
-/// reads them on any thread. A host has a few windows, so a scan of a short list under one lock
-/// is all a read or a write pays.
+/// reads them on any thread, and a waiter wakes on each change. A host has a few windows, so a
+/// scan of a short list under one lock is all a read or a write pays.
 #[derive(Debug, Default)]
 pub(super) struct FrameLog {
     windows: Mutex<Vec<LoggedFrame>>,
+    /// Signaled on each write, so a [`Remote`](crate::Remote) waits for a frame without a poll.
+    changed: Condvar,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -25,11 +28,19 @@ struct LoggedFrame {
 impl FrameLog {
     pub(super) fn record(&self, token: WindowToken, summary: FrameSummary) {
         Self::entry(&mut self.windows.lock().unwrap(), token).summary = Some(summary);
+        self.changed.notify_all();
+    }
+
+    /// Block until the next write, or for `timeout` at most.
+    pub(super) fn wait(&self, timeout: Duration) {
+        let windows = self.windows.lock().unwrap();
+        drop(self.changed.wait_timeout(windows, timeout).unwrap());
     }
 
     /// Note whether `token`'s window is hidden, which holds its frames until it shows.
     pub(super) fn set_hidden(&self, token: WindowToken, hidden: bool) {
         Self::entry(&mut self.windows.lock().unwrap(), token).hidden = hidden;
+        self.changed.notify_all();
     }
 
     pub(super) fn get(&self, token: WindowToken) -> Option<FrameSummary> {
@@ -68,11 +79,13 @@ impl FrameLog {
             .lock()
             .unwrap()
             .retain(|logged| logged.token != token);
+        self.changed.notify_all();
     }
 
     /// Forget every window, as the event loop ends and closes them all.
     pub(super) fn clear(&self) {
         self.windows.lock().unwrap().clear();
+        self.changed.notify_all();
     }
 }
 
@@ -89,6 +102,7 @@ mod tests {
             sent_inputs: 0,
             repaint_requested,
             repaint_after: None,
+            busy: false,
         }
     }
 
