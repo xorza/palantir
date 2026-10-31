@@ -8,5 +8,15 @@
         "use_new_terminal": false,
         "allow_concurrent_runs": false,
         "reveal": "always"
+    },
+    {
+        "label": "Run observatory",
+        "command": "cargo",
+        "args": ["run", "--profile", "release-dev", "--example", "observatory"],
+        "env": { "RUST_BACKTRACE": "1" },
+        "cwd": "$ZED_WORKTREE_ROOT",
+        "use_new_terminal": false,
+        "allow_concurrent_runs": false,
+        "reveal": "always"
     }
 ]
