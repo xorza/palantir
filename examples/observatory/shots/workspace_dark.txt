@@ -1,0 +1,4 @@
+// The workspace study in the dark scheme.
+scheme dark
+page "workspace"
+shot workspace_dark

@@ -9,11 +9,9 @@ use palantir::{
     UserScale, VAlign, Vsync, WindowConfig, WindowToken, fmt,
 };
 
-use std::error;
-use std::fmt::{self, Display, Formatter};
-
 use crate::pages;
 use crate::pages::state::AppState;
+use crate::shot::ShotApp;
 use crate::support;
 
 pub(crate) const MAIN_WINDOW: WindowToken = WindowToken(0);
@@ -313,25 +311,6 @@ pub(crate) struct Shell {
     app: AppState,
 }
 
-/// A page label no page has.
-#[derive(Debug)]
-pub(crate) struct UnknownPage {
-    label: String,
-}
-
-impl Display for UnknownPage {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "no page \"{}\"; the pages are: ", self.label)?;
-        for (idx, page) in PAGES.iter().enumerate() {
-            let sep = if idx == 0 { "" } else { ", " };
-            write!(f, "{sep}\"{}\"", page.label)?;
-        }
-        Ok(())
-    }
-}
-
-impl error::Error for UnknownPage {}
-
 impl Shell {
     /// The tour wears the stock theme the `Ui` starts with, so every page shows the default look.
     pub(crate) const fn new() -> Self {
@@ -339,20 +318,6 @@ impl Shell {
             active: 0,
             app: AppState { counter: 0 },
         }
-    }
-
-    /// The tour open on the page whose label is `label`, ignoring case; the first page for none.
-    pub(crate) fn with_page(label: Option<&str>) -> Result<Self, UnknownPage> {
-        let mut shell = Self::new();
-        if let Some(label) = label {
-            shell.active = PAGES
-                .iter()
-                .position(|page| page.label.eq_ignore_ascii_case(label))
-                .ok_or_else(|| UnknownPage {
-                    label: label.to_owned(),
-                })?;
-        }
-        Ok(shell)
     }
 
     fn build(&mut self, ui: &mut Ui) {
@@ -449,6 +414,20 @@ impl Shell {
                     }
                 }
             });
+    }
+}
+
+impl ShotApp for Shell {
+    fn page_labels() -> impl Iterator<Item = &'static str> {
+        PAGES.iter().map(|page| page.label)
+    }
+
+    fn open(page: usize, ui: &mut Ui) -> Self {
+        pin_dark(ui);
+        Self {
+            active: page,
+            ..Self::new()
+        }
     }
 }
 

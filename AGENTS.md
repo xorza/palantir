@@ -257,6 +257,46 @@ Facts and sources: `.notes/research/2026-10-31-shared-device-tile-loss.md`.
 - **The write runs per new stencil only:** the first frame with a rounded clip, a resize, a new
   damage canvas. Cost: a zeroed allocation and an upload of width × height bytes on those frames.
 
+## Light and dark
+
+Facts and sources: `.notes/research/2026-10-31-system-preferences.md`.
+
+- **A theme per scheme, picked by palantir.** Each `Ui` holds a theme for `ColorScheme::Light`
+  and `Dark`; `SchemePreference` (System, Light, Dark) and the system's report are app-wide, and
+  palantir resolves them at a frame's start, so no frame mixes two. A pick by hand wins, then the
+  system, then dark. Refused: iced's shape, where each app subscribes and swaps its own theme
+  ([egui `ThemePreference`](https://docs.rs/egui/latest/egui/enum.ThemePreference.html),
+  [Zed appearance](https://zed.dev/docs/appearance)).
+- **No preference reads as dark, on every OS.** `mundy` answers `NoPreference` for the portal's
+  0, a desktop with no portal and a failed read alike; a portal that fails while the app runs
+  must not turn it light. Cost: GNOME's light users, whose Light setting writes 0, see dark until
+  they pick Light.
+- **`mundy` reads the system on every OS**, the scheme, the double-click time and reduced motion,
+  read once before the first window and then followed. Refused: winit's `ThemeChanged`, silent on
+  X11 and Wayland and on macOS while a window's appearance is pinned; `dark-light`, which reads
+  the scheme alone and polls macOS.
+- **Reduced motion snaps every `Ui::animate`**, as CSS `prefers-reduced-motion` and WCAG 2.3.3 ask
+  of motion a person's input starts; a spinner and a caret still run, as they show state.
+- **Each palette holds WCAG's floors on the pairs the recipes paint**: text 4.5:1, a focus ring or
+  an accent mark 3:1, stacked surfaces 1.10:1 apart; `theme/tests/floors.rs` computes each.
+  `Palette::LIGHT` is Ayu Light moved to the floors, its accent Ayu's orange darkened until white
+  on it clears 4.5:1; `on_accent` is the ink on an accent fill, dark in the dark palette, as
+  Material 3's `on-primary`.
+
+## Examples
+
+- **The showcase is the reference; the observatory is the use.** The showcase pins one parameter
+  a section, which its goldens and `api!` chips need; the observatory composes the widgets into
+  five studies of one fictional tool on one model, as Material's studies and Slint's `demos/`
+  sit beside a widget gallery. Refused: studies inside the showcase.
+- **The shot mode is shared**, in `examples/shared/shot/`, behind `ShotApp`; each example compiles
+  it through `#[path]`, and its tests run in the showcase.
+- **The observatory's data is generated**: SplitMix64 from a fixed seed, star colors from
+  Ballesteros' fit and the Planckian locus, no clock and no file, so a shot and a golden draw the
+  same each run. Refused: the `rand` crate, whose output a version may change.
+- **The night sky stays night in a light scheme**; it is content, as a photo is. The chrome around
+  it follows the scheme.
+
 ## Public API
 
 - **Never change it on your own.** Adding, renaming, removing or re-signing an

@@ -1,0 +1,4 @@
+// The sky chart study in the dark scheme.
+scheme dark
+page "sky chart"
+shot sky_chart_dark

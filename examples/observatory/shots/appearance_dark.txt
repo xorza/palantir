@@ -1,0 +1,4 @@
+// The appearance study in the dark scheme.
+scheme dark
+page "appearance"
+shot appearance_dark

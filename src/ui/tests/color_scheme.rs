@@ -114,3 +114,26 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
     h.ui().set_theme_for(Dark, Theme::stock(Dark));
     assert_eq!(h.ui_ref().theme_epoch, epoch.wrapping_add(1));
 }
+
+/// A write to the shown slot during a record asks for the frame that records the rest under it;
+/// a write to the hidden slot, or of the handle the slot holds, asks for nothing.
+#[test]
+fn a_shown_theme_write_asks_for_a_frame() {
+    let mut h = Harness::mono(SURFACE);
+    h.frame(record);
+    let shown = Rc::new(Theme::stock(Dark));
+    let report = h.frame(|ui| {
+        record(ui);
+        ui.set_theme_for(Dark, Rc::clone(&shown));
+    });
+    assert!(report.repaint_requested);
+    h.frame(record);
+    let epoch = h.ui_ref().theme_epoch;
+    let report = h.frame(|ui| {
+        record(ui);
+        ui.set_theme_for(Dark, Rc::clone(&shown));
+        ui.set_theme_for(Light, Theme::stock(Light));
+    });
+    assert!(!report.repaint_requested);
+    assert_eq!(h.ui_ref().theme_epoch, epoch);
+}
