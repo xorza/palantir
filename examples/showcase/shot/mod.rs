@@ -141,6 +141,7 @@ pub(crate) fn play(
         .scale(header.scale)
         .gpu(gpu)
         .build();
+    h.set_system_color_scheme(header.scheme);
     shell::pin_dark(h.ui());
     let failed = |line| move |error| ShotError::Play { line, error };
     h.settle(&mut shell).map_err(failed(0))?;

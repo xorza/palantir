@@ -4,7 +4,7 @@ use std::{env, fs, process};
 
 use palantir::glam::{UVec2, Vec2};
 use palantir::internals::headless_test_gpu;
-use palantir::{Action, Key, Locator, PointerButton, Rect, Shortcut, ShortcutMods};
+use palantir::{Action, ColorScheme, Key, Locator, PointerButton, Rect, Shortcut, ShortcutMods};
 
 use crate::shot;
 use crate::shot::script::{Header, ParseError, ParseErrorKind, Region, Script, StepKind};
@@ -32,7 +32,7 @@ fn text(text: &str) -> Locator {
 #[test]
 fn the_header_sets_the_window() {
     let script = Script::parse(
-        "// a comment\n\nsize 800x600\nscale 1.5\npage \"overlays\"\nmax-side 1024\n",
+        "// a comment\n\nsize 800x600\nscale 1.5\npage \"overlays\"\nmax-side 1024\nscheme light\n",
     )
     .unwrap();
     assert_eq!(
@@ -42,6 +42,7 @@ fn the_header_sets_the_window() {
             scale: 1.5,
             page: Some("overlays".to_owned()),
             max_side: 1024,
+            scheme: Some(ColorScheme::Light),
         }
     );
     assert!(script.steps.is_empty());
@@ -205,6 +206,14 @@ fn each_refusal_names_its_line() {
             ParseErrorKind::Bad {
                 expected: "a time as 300ms or 2s",
                 found: "soon".to_owned(),
+            },
+        ),
+        (
+            "scheme dusk",
+            1,
+            ParseErrorKind::Bad {
+                expected: "`light` or `dark`",
+                found: "dusk".to_owned(),
             },
         ),
     ] {

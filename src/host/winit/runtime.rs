@@ -14,11 +14,12 @@ use crate::host::core::HostCore;
 use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;
-use crate::host::winit::handle::HostHandle;
+use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::remote::QueryTask;
+use crate::host::winit::system_preferences::SystemPreferences;
 use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
-use crate::host::winit::{Bootstrap, native, platform};
+use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
 use crate::theme::scheme_preference::SchemePreference;
 use crate::window::waker::Waker;
@@ -28,6 +29,8 @@ use crate::window::window_token::WindowToken;
 use std::fmt;
 use std::mem;
 use std::num::NonZeroU32;
+
+use mundy::Subscription;
 
 pub(super) struct WinitRuntime<T: 'static> {
     /// The caller's app, created once the first window's `Ui` existed.
@@ -40,6 +43,8 @@ pub(super) struct WinitRuntime<T: 'static> {
     frames: Arc<FrameLog>,
     /// The handle each window's [`Waker`] asks for its frames through.
     handle: HostHandle<T>,
+    /// Follows the system's settings while the host runs; dropping it ends the following.
+    _system_preferences: Subscription,
 }
 
 impl<T: 'static> fmt::Debug for WinitRuntime<T> {
@@ -66,9 +71,10 @@ impl<T: App + 'static> WinitRuntime<T> {
             .shaper
             .is_none()
             .then(|| FontScan::spawn(options.fonts));
-        // No resources exist yet, so nothing has set a preference or read the system: the first
-        // frame moves the decorations if the app's factory picks another scheme.
-        let decorations = SchemePreference::FALLBACK;
+        // Read while the font scan runs, so the first window opens in the system's scheme; the
+        // first frame moves the decorations if the app's factory picks another.
+        let system = SystemPreferences::read();
+        let decorations = SchemePreference::default().resolve(system.color_scheme);
         let window = native::create_window(event_loop, token, &config.window, decorations)?;
         let SurfaceStartup {
             surfaces,
@@ -89,6 +95,8 @@ impl<T: App + 'static> WinitRuntime<T> {
         let shaper =
             options.shaper_or_else(|| scan.expect("a scan runs when no shaper is set").join());
         let core = HostCore::new(gpu, options, shaper);
+        // Before the first `Ui`, so it starts in the system's scheme.
+        system.apply(&core.resources);
         let mut driver = core.open(token, PresentStrategy::DirectAdaptive);
         driver.ui.set_waker(Self::waker(&handle, token));
         let create_app = bootstrap
@@ -99,6 +107,13 @@ impl<T: App + 'static> WinitRuntime<T> {
 
         let frames = Arc::clone(&handle.frames);
         let own_handle = handle.clone();
+        let system_preferences = {
+            let handle = handle.clone();
+            // A host gone quiet drops the report, as it has no window left to show it in.
+            SystemPreferences::subscribe(move |preferences| {
+                handle.send(UserEvent::SystemPreferences(preferences)).ok();
+            })
+        };
         let mut app = create_app(&mut driver.ui, handle);
         for task in pending_tasks {
             task(&mut app);
@@ -114,8 +129,8 @@ impl<T: App + 'static> WinitRuntime<T> {
             pending_commands: WindowCommands::default(),
             frames,
             handle: own_handle,
+            _system_preferences: system_preferences,
         };
-        runtime.read_platform_settings();
         Ok(runtime)
     }
 
@@ -125,13 +140,10 @@ impl<T: App + 'static> WinitRuntime<T> {
         Waker::new(move || handle.request_repaint(token))
     }
 
-    /// Read the platform settings palantir follows, the double-click time: at startup, and each
-    /// time a window gets the focus back. winit reports no change to them, and a person changes
-    /// them in the system's settings, with the app in the background.
-    pub(super) fn read_platform_settings(&self) {
-        if let Some(window) = platform::double_click_window() {
-            self.core.resources.double_click_window().set(window);
-        }
+    /// Adopt the system's settings as `mundy` reports a change; [`Self::repaint_on_shared_change`]
+    /// then repaints every window if the scheme moved.
+    pub(super) fn apply_system_preferences(&self, preferences: SystemPreferences) {
+        preferences.apply(&self.core.resources);
     }
 
     /// Resolve the window winit reports events for as `id`, once per event.
