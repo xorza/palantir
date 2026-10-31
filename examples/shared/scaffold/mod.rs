@@ -1,8 +1,9 @@
 //! The look both examples share outside palantir's widgets: tokens read from the live palette,
-//! the type ramp, chips, a page's header, and the table that links the two examples.
+//! the type ramp, chips, a page's header, the rail, and the table that links the two examples.
 
 pub(crate) mod header;
 pub(crate) mod links;
+pub(crate) mod rail;
 pub(crate) mod tokens;
 
 /// The checked spelling of an API a page shows: expands to the path as text after the compiler

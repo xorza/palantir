@@ -5,13 +5,14 @@ pub(crate) mod model;
 pub(crate) mod studies;
 
 use palantir::{
-    Align, App, Axis, Button, ButtonTheme, Checkbox, Chrome, ColorScheme, Configure, Key, Panel,
-    RadioButton, SchemePreference, Scroll, Separator, Shortcut, Sizing, SlotDefaults, Spacing,
-    StatefulLook, Text, Theme, Ui, UserScale, Waker, WindowConfig, WindowToken, fmt,
+    App, Checkbox, Configure, Key, Panel, Separator, Shortcut, Sizing, Ui, UserScale, Waker,
+    WidgetId, WindowConfig, WindowToken,
 };
 
 use crate::app::model::Observatory;
 use crate::app::studies::Study;
+use crate::scaffold::rail;
+use crate::scaffold::rail::Nav;
 use crate::scaffold::tokens::Tokens;
 use crate::shot::ShotApp;
 
@@ -29,8 +30,6 @@ pub(crate) fn toggle_eyepiece(ui: &mut Ui) {
     }
 }
 
-const RAIL_WIDTH: f32 = 208.0;
-
 /// The app: which study shows, the model every study shares, and how to wake the eyepiece.
 #[derive(Debug)]
 pub(crate) struct Shell {
@@ -42,11 +41,6 @@ pub(crate) struct Shell {
 }
 
 impl Shell {
-    /// The sky chart, the home study, over a fresh model.
-    pub(crate) fn new() -> Self {
-        Self::on(Study::SkyChart)
-    }
-
     /// `study` over a fresh model.
     pub(crate) fn on(study: Study) -> Self {
         Self {
@@ -91,55 +85,25 @@ impl Shell {
             });
     }
 
-    /// The rail: the studies, then the look and the debug switches.
+    /// The rail: the studies, then the scheme and the debug switches.
     fn rail(&mut self, ui: &mut Ui, t: Tokens) {
-        let idle = nav_style(ui.theme(), t, false);
-        let selected = nav_style(ui.theme(), t, true);
-        Panel::vstack()
-            .id_salt("rail")
-            .size((Sizing::fixed(RAIL_WIDTH), Sizing::FILL))
-            .padding((12.0, 16.0, 12.0, 12.0))
-            .gap(12.0)
-            .chrome(Chrome::fill(t.surround))
-            .show(ui, |ui| {
-                Panel::vstack()
-                    .id_salt("brand")
-                    .padding((12.0, 0.0, 0.0, 0.0))
-                    .gap(2.0)
-                    .show(ui, |ui| {
-                        Text::new("observatory").style(&t.title()).show(ui);
-                        Text::new("a palantir study").style(&t.caption()).show(ui);
-                    });
-                Scroll::vertical()
-                    .id_salt("studies")
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .overlay_bars()
-                    .gap(2.0)
-                    .arrow_focus(Axis::Y)
-                    .show(ui, |ui| {
-                        for (idx, study) in Study::ALL.into_iter().enumerate() {
-                            let style = if study == self.study {
-                                &selected
-                            } else {
-                                &idle
-                            };
-                            let clicked = Button::new()
-                                .id_salt(study.label())
-                                .label(study.label())
-                                .style(style)
-                                .text_align(Align::LEFT)
-                                .size((Sizing::FILL, Sizing::HUG))
-                                .show(ui)
-                                .clicked();
-                            if clicked {
-                                self.study = Study::ALL[idx];
-                            }
-                        }
-                    });
-                Separator::horizontal().show(ui);
-                scheme_switch(ui, t);
-                debug_toggles(ui);
+        let nav = Nav::new(ui.theme(), t);
+        rail::show(ui, t, |ui| {
+            rail::brand(ui, t, "observatory", "a palantir study");
+            rail::list(ui, WidgetId::from_hash("observatory::rail"), |ui| {
+                for study in Study::ALL {
+                    let id = WidgetId::from_hash(("observatory::rail", study.label()));
+                    if nav.item(ui, id, study.label(), study == self.study) {
+                        self.study = study;
+                    }
+                }
             });
+            rail::block(ui, |ui| {
+                rail::label(ui, t, "SCHEME");
+                rail::scheme_switch(ui);
+            });
+            rail::block(ui, debug_toggles);
+        });
     }
 
     /// Ctrl+1 … Ctrl+5 pick a study; F8 the eyepiece; F9, F10, F12 the debug overlays; Ctrl+plus,
@@ -202,77 +166,16 @@ impl ShotApp for Shell {
     }
 }
 
-/// System, Light or Dark, the system's own answer beside System.
-fn scheme_switch(ui: &mut Ui, t: Tokens) {
-    let mut preference = ui.scheme_preference();
-    let system = match ui.system_color_scheme() {
-        Some(ColorScheme::Light) => "light",
-        Some(ColorScheme::Dark) => "dark",
-        None => "unknown",
-    };
-    Panel::vstack()
-        .id_salt("scheme")
-        .padding((12.0, 0.0, 0.0, 0.0))
-        .gap(6.0)
-        .show(ui, |ui| {
-            Text::new("SCHEME").style(&t.heading()).show(ui);
-            let system_label = fmt!(ui, "system ({system})");
-            for (value, label) in [
-                (SchemePreference::System, system_label),
-                (SchemePreference::Light, ui.intern("light")),
-                (SchemePreference::Dark, ui.intern("dark")),
-            ] {
-                RadioButton::new(&mut preference, value)
-                    .id_salt(("scheme", value as u8))
-                    .label(label)
-                    .show(ui);
-            }
-        });
-    ui.set_scheme_preference(preference);
-}
-
 /// The debug overlays, each mirroring its key.
 fn debug_toggles(ui: &mut Ui) {
     let mut overlay = ui.debug_overlay();
-    Panel::vstack()
-        .id_salt("debug")
-        .padding((12.0, 0.0, 0.0, 0.0))
-        .gap(6.0)
-        .show(ui, |ui| {
-            Checkbox::new(&mut overlay.damage_rect)
-                .label("damage rects  F12")
-                .show(ui);
-            Checkbox::new(&mut overlay.frame_stats)
-                .label("frame stats  F9")
-                .show(ui);
-        });
+    Checkbox::new(&mut overlay.damage_rect)
+        .label("damage rects  F12")
+        .show(ui);
+    Checkbox::new(&mut overlay.frame_stats)
+        .label("frame stats  F9")
+        .show(ui);
     ui.set_debug_overlay(overlay);
-}
-
-/// A rail item: the menu bar's title look on an `xs` inset, in the accent while its study shows.
-fn nav_style(theme: &Theme, t: Tokens, selected: bool) -> ButtonTheme {
-    let bar = &theme.menu_bar;
-    let mut looks = bar.title.clone();
-    if selected {
-        let open = bar.open.clone();
-        looks = StatefulLook {
-            normal: open.clone(),
-            hovered: open,
-            active: looks.active,
-            disabled: looks.disabled,
-        };
-        for look in [&mut looks.normal, &mut looks.hovered, &mut looks.active] {
-            look.text = look.text.with_color(t.accent);
-        }
-    }
-    ButtonTheme {
-        selected: looks.clone(),
-        unselected: looks,
-        defaults: SlotDefaults {
-            padding: Spacing::xy(12.0, 4.0),
-            ..bar.defaults
-        },
-    }
 }
 
 #[cfg(test)]

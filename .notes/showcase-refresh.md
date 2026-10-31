@@ -56,11 +56,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 
 ## Look
 
-- **Rail.** A search field heads it (Ctrl+K), filtering labels and blurbs as Storybook's sidebar
-  does. 28 px rows on one 12 px inset, a rounded pill inset from both edges, the scrollbar outside
-  the pill ([Apple HIG sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars)).
-  The open page scrolls into view when it changes from the keyboard. The footer holds Appearance
-  and a Diagnostics button.
 - **Frosted floating surfaces** through `Theme::frost_floats` (**Decisions**).
 - **The modal reads as a dialog.** A title, a body, buttons at the end with the confirming one
   last in the accent look, over the stock dim scrim.
@@ -71,9 +66,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 
 ## Theme, live
 
-- **Appearance in the rail's footer:** System / Light / Dark, an accent row of seed hues, and
-  the UI scale. The showcase owns one appearance and applies it to both schemes, so a focus-ring or
-  accent edit survives a scheme switch; today the focus page writes the shown scheme's theme only.
 - **colors: "Use as accent"** sends the picked color to the appearance as a seed.
 - **The gpu view clears to transparent**, so the stage shows through and the page proves its
   compositing claim in both schemes.
@@ -89,7 +81,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 | custom widget | Range and step knobs; the call-site listing follows them. |
 | overlays | Edit ▾ holds `MenuItem` rows. An opaque / frosted toggle. Tooltips become one row with a delay slider and a max-width slider. |
 | text input | Gains `EditableLabel` and a clipboard copy / paste pair; knobs for max chars, multiline, alignment, select-all-on-focus. |
-| focus & keyboard | Ring width and color edit the appearance; checklists fold. |
 | sizing & spacing | One playground: three children, each with a `Sizing` combo, a weight and an align; padding, gap and justify on the parent. The fixed rows stay below as the reference. |
 | containers | Gap and line-gap sliders; a splitter resizes the wrap and the grid. |
 | text | A width slider replaces "resize window"; a font-size slider; label overflow. |
@@ -109,8 +100,6 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
 
 ## Also
 
-- **`showcase --page NAME`** opens a page in the window mode, as the shot header does.
-- **Alt+↑ / Alt+↓** step through the pages from anywhere, as Storybook binds them.
 - **Shots in both schemes** in the shot tests, one per page, so a light-scheme regression fails.
 
 ## Costs and risks
@@ -166,14 +155,14 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
   `a_click_focuses_a_control_out_of_the_tab_order` (tab); every other focus and modal item was
   already held, so the focus page and the modal carry no list. The nine items that need a real
   input method or OS close button fold under one "Check by hand (n)" disclosure per page.
+- **Rail and appearance (batch 3).** The rail's grid, its items and the scheme switch live in the
+  shared scaffold (`scaffold::rail`), so the observatory's rail is the same one, and the
+  observatory gains `--page` from the shared shot mode. Ctrl+K starts a new search rather than
+  selecting the old one, as the field's Escape first clears a selection; Enter hands focus to the
+  opened item, as the field keeps Alt+arrows. The focus page's ring moved into the appearance
+  with the accent, so either edit survives the other and a scheme switch.
 
 ## Plan
-
-### 3. Rail and appearance
-- [ ] Inset grid, 28 px rows, pill, scrollbar outside it; reveal on change.
-- [ ] Search (Ctrl+K), Alt+↑/↓, `--page`.
-- [ ] Appearance footer (scheme, seed accent solved per scheme, UI scale) and Diagnostics
-      popover.
 
 ### 4. Floating surfaces
 - [ ] palantir: `Theme::frost_floats` and `ButtonTheme::accent`, tested; darkroom's
@@ -186,7 +175,7 @@ Every page shot at 1280 × 800, dark, and the popups shot open.
       1 040 px column.
 
 ### 6. Knobs: widgets and input
-- [ ] controls, colors, tabs, dock, custom widget, overlays, text input, focus.
+- [ ] controls, colors, tabs, dock, custom widget, overlays, text input.
 
 ### 7. Knobs: layout
 - [ ] sizing & spacing, containers, text, clip & transform, scroll & zoom.

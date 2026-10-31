@@ -9,7 +9,7 @@ use palantir::{Action, ColorScheme, Key, Locator, PointerButton, Rect, Shortcut,
 use crate::shell::Shell;
 use crate::shot;
 use crate::shot::script::{Header, ParseError, ParseErrorKind, Region, Script, StepKind};
-use crate::shot::{Folders, ShotError};
+use crate::shot::{Folders, Mode, ShotError};
 
 fn steps(text: &str) -> Vec<StepKind> {
     Script::parse(text)
@@ -363,4 +363,23 @@ fn a_shot_compares_with_an_earlier_run() {
     )
     .unwrap();
     assert!(String::from_utf8(report).unwrap().contains(": missing"));
+}
+
+/// The window opens on the first page, or on the one `--page` names, ignoring case; a page no
+/// page has and a flag with no page are refused before any window opens.
+#[test]
+fn page_opens_the_window_on_a_page() {
+    let mode = |args: &[&str]| Mode::of::<Shell>(args.iter().map(|&arg| arg.to_owned()));
+    assert!(matches!(mode(&[]), Ok(Mode::Window { page: 0 })));
+    // "overlays" is the sixth page.
+    assert!(matches!(
+        mode(&["--page", "OVERLAYS"]),
+        Ok(Mode::Window { page: 5 })
+    ));
+    let unknown = mode(&["--page", "nowhere"]).expect_err("no such page");
+    assert!(unknown.starts_with("no page \"nowhere\""), "{unknown}");
+    let bare = mode(&["--page"]).expect_err("no page named");
+    assert!(bare.starts_with("usage: "), "{bare}");
+    let extra = mode(&["--page", "tabs", "more"]).expect_err("one page");
+    assert!(extra.starts_with("usage: "), "{extra}");
 }

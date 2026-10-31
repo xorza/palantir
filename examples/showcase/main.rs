@@ -1,10 +1,11 @@
-//! The palantir widget tour. `main` wires the winit host, or with
-//! `--shot SCRIPT [--out DIR] [--against DIR]`
-//! plays a script on a window with no desktop ([`shot`]); chrome and page table are in [`shell`],
+//! The palantir widget tour. `main` wires the winit host, open on the first page or on
+//! `--page PAGE`, or with `--shot SCRIPT [--out DIR] [--against DIR]` plays a script on a window with no desktop ([`shot`]); chrome and page table are in [`shell`],
 //! pages in [`pages`], the look in [`support`] over the examples' shared [`scaffold`].
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod app_state;
+mod appearance;
 mod pages;
 #[path = "../shared/scaffold/mod.rs"]
 mod scaffold;
@@ -27,7 +28,7 @@ use palantir::{WindowConfig, WinitHost};
 use tracing_subscriber::EnvFilter;
 
 use crate::shell::Shell;
-use crate::shot::Mode;
+use crate::shot::{Mode, ShotApp};
 
 fn main() -> ExitCode {
     // Logs go to stderr, so a shot's report on stdout holds nothing else.
@@ -38,8 +39,8 @@ fn main() -> ExitCode {
         .with_writer(io::stderr)
         .init();
     let mut stderr = io::stderr().lock();
-    let result = match Mode::of(env::args().skip(1)) {
-        Ok(Mode::Window) => window(),
+    let result = match Mode::of::<Shell>(env::args().skip(1)) {
+        Ok(Mode::Window { page }) => window(page),
         Ok(Mode::Shot {
             script,
             out,
@@ -62,10 +63,11 @@ fn main() -> ExitCode {
     }
 }
 
-fn window() -> Result<(), String> {
+/// The window, open on the page at `page`.
+fn window(page: usize) -> Result<(), String> {
     WinitHost::builder(shell::MAIN_WINDOW)
         .window(WindowConfig::new("palantir showcase").with_inner_size(UVec2::new(1600, 1000)))
-        .build(|_ui, _handle| Shell::new())
+        .build(move |ui, _handle| Shell::open(page, ui))
         .and_then(WinitHost::run)
         .map_err(|error| error.to_string())
 }

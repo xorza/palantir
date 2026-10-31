@@ -2,17 +2,21 @@
 //! driven by [`PAGES`], the single source of truth for each page's label,
 //! group, blurb, key hints, scrolling and builder.
 
+use palantir::glam::Vec2;
 use palantir::{
-    Align, App, Axis, Button, ButtonTheme, Checkbox, Chrome, Configure, FocusPolicy, FontFamily,
-    FontWeight, Justify, Key, Metrics, Panel, Scroll, Separator, Shortcut, Sizing, SlotDefaults,
-    Spacing, StatefulLook, Text, Theme, Tooltip, Ui, UserScale, VAlign, Vsync, WindowConfig,
-    WindowToken, fmt,
+    Align, App, Block, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
+    FocusPolicy, FontFamily, Justify, Key, Metrics, Palette, Panel, PopupTrigger, Scroll, Sense,
+    Separator, Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, Tooltip, Ui, UserScale,
+    VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
 };
 
+use crate::app_state::AppState;
+use crate::appearance::{Appearance, SEEDS};
 use crate::pages;
-use crate::pages::windows::AppState;
 use crate::scaffold::header::Header;
 use crate::scaffold::links::LINKS;
+use crate::scaffold::rail;
+use crate::scaffold::rail::Nav;
 use crate::shot::ShotApp;
 use crate::support::{Kit, Kits, PAGE_GAP};
 
@@ -29,8 +33,13 @@ pub(crate) fn toggle_inspector(ui: &mut Ui) {
     }
 }
 
-const SIDEBAR_W: f32 = 208.0;
 const M: Metrics = Metrics::DEFAULT;
+/// The rail's search field, which Ctrl+K focuses.
+const SEARCH: &str = "showcase::rail::search";
+/// The rail's scrolling list, which an item scrolls into view in.
+const LIST: &str = "showcase::rail::list";
+/// The edge of an accent swatch in the rail's footer.
+const SWATCH: f32 = 20.0;
 
 /// A nav rail heading; pages of one group are adjacent in [`PAGES`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,7 +49,6 @@ enum Group {
     Layout,
     Paint,
     Runtime,
-    /// The bench viewer, drawn in quieter ink.
     Diagnostics,
 }
 
@@ -54,10 +62,6 @@ impl Group {
             Self::Runtime => "RUNTIME",
             Self::Diagnostics => "DIAGNOSTICS",
         }
-    }
-
-    const fn is_quiet(self) -> bool {
-        matches!(self, Self::Diagnostics)
     }
 }
 
@@ -82,6 +86,29 @@ struct Page {
     source: &'static str,
     /// Every page takes the app state; pages that ignore it take `_`.
     build: fn(&mut Ui, &mut AppState, Kit),
+}
+
+impl Page {
+    /// Whether `query` finds this page: in its label or its blurb, ignoring ASCII case; an
+    /// empty query finds every page.
+    fn matches(&self, query: &str) -> bool {
+        contains_ignoring_case(self.label, query) || contains_ignoring_case(self.blurb, query)
+    }
+
+    /// The id of this page's item in the rail.
+    fn item_id(&self) -> WidgetId {
+        WidgetId::from_hash(("showcase::rail", self.label))
+    }
+}
+
+/// Whether `needle` is in `haystack`, ASCII letters compared ignoring case and every other byte
+/// as it is, so a query allocates nothing; every text holds the empty needle.
+fn contains_ignoring_case(haystack: &str, needle: &str) -> bool {
+    needle.is_empty()
+        || haystack
+            .as_bytes()
+            .windows(needle.len())
+            .any(|window| window.eq_ignore_ascii_case(needle.as_bytes()))
 }
 
 /// A page's file, from the repository's root, spelled from its module, which the expansion names,
@@ -164,7 +191,7 @@ const PAGES: &[Page] = &[
         keys: &["Tab", "Shift+Tab", "←→↑↓", "Enter", "Space", "Esc"],
         flow: Flow::Scroll,
         source: source!(focus),
-        build: |ui, _, k| pages::focus::build(ui, k),
+        build: |ui, app, k| pages::focus::build(ui, k, &mut app.appearance),
     },
     Page {
         group: Group::Layout,
@@ -320,29 +347,32 @@ const PAGES: &[Page] = &[
     },
 ];
 
+/// Which way an Alt+arrow steps through the pages.
+#[derive(Clone, Copy, Debug)]
+enum Step {
+    Back,
+    Forward,
+}
+
 #[derive(Debug)]
 pub(crate) struct Shell {
     active: usize,
     app: AppState,
     kits: Kits,
+    /// The rail's search: the pages it finds are the ones the rail lists.
+    query: String,
+    /// The open page was picked from the keyboard, so the rail scrolls its item into view.
+    reveal: bool,
 }
 
 impl Shell {
-    /// The tour wears the stock theme the `Ui` starts with, in whichever scheme shows, so every
-    /// page shows the default look.
-    pub(crate) fn new() -> Self {
-        Self {
-            active: 0,
-            app: AppState { counter: 0 },
-            kits: Kits::new(),
-        }
-    }
-
     fn build(&mut self, ui: &mut Ui) {
         handle_shortcuts(ui);
+        self.navigate(ui);
         // The focus page sets its own policy; every other page gets the default.
         ui.set_focus_policy(FocusPolicy::default());
-        let k = self.kits.kit(ui.color_scheme());
+        self.app.appearance.apply(ui);
+        let k = self.kit(ui);
 
         Panel::hstack()
             .size((Sizing::FILL, Sizing::FILL))
@@ -352,54 +382,151 @@ impl Shell {
             });
 
         pages::windows::intercept(ui, MAIN_WINDOW);
+        // An edit made in this frame builds its theme now; palantir asks for the frame that
+        // shows it, which no input may otherwise wake.
+        self.app.appearance.apply(ui);
     }
 
-    /// The nav rail: brand, grouped page list, debug-overlay footer. The list
-    /// is an arrow group, so one Tab lands in it.
+    /// The kit of the shown scheme, over the palette the appearance built its theme from.
+    const fn kit(&self, ui: &Ui) -> Kit {
+        let scheme = ui.color_scheme();
+        self.kits.kit(scheme, self.app.appearance.palette(scheme))
+    }
+
+    /// Ctrl+K starts a new search, empty and focused; Alt+↑ and Alt+↓ step through the pages
+    /// the search finds, as Storybook binds them.
+    fn navigate(&mut self, ui: &mut Ui) {
+        if ui.shortcut_pressed(Shortcut::ctrl('K')) {
+            self.query.clear();
+            ui.set_focus(WidgetId::from_hash(SEARCH));
+        }
+        if ui.shortcut_pressed(Shortcut::new(ShortcutMods::ALT, Key::ArrowUp)) {
+            self.step(Step::Back);
+        }
+        if ui.shortcut_pressed(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown)) {
+            self.step(Step::Forward);
+        }
+    }
+
+    /// Open the found page before or after the open one; nothing past either end.
+    fn step(&mut self, step: Step) {
+        let mut found = PAGES
+            .iter()
+            .enumerate()
+            .filter(|(_, page)| page.matches(&self.query))
+            .map(|(idx, _)| idx);
+        let next = match step {
+            Step::Back => found.rev().find(|&idx| idx < self.active),
+            Step::Forward => found.find(|&idx| idx > self.active),
+        };
+        if let Some(idx) = next {
+            self.open_page(idx);
+        }
+    }
+
+    const fn open_page(&mut self, idx: usize) {
+        self.active = idx;
+        self.reveal = true;
+    }
+
+    /// The nav rail: brand, search, the grouped pages it finds, and the appearance footer.
     fn rail(&mut self, ui: &mut Ui, k: Kit) {
-        let idle = nav_style(ui.theme(), k, NavLook::Idle);
-        let quiet = nav_style(ui.theme(), k, NavLook::Quiet);
-        let selected = nav_style(ui.theme(), k, NavLook::Selected);
-        Panel::vstack()
-            .size((Sizing::fixed(SIDEBAR_W), Sizing::FILL))
-            .padding((M.space.md, M.space.lg, M.space.md, M.space.md))
-            .gap(M.space.md)
-            .chrome(Chrome::fill(k.t.surround))
-            .show(ui, |ui| {
-                brand(ui, k);
-                Scroll::vertical()
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .overlay_bars()
-                    .gap(2.0)
-                    .arrow_focus(Axis::Y)
-                    .show(ui, |ui| {
-                        for (i, page) in PAGES.iter().enumerate() {
-                            if i == 0 || PAGES[i - 1].group != page.group {
-                                let top = if i == 0 { M.space.xs } else { M.space.lg };
-                                group_heading(ui, k, page.group, top);
-                            }
-                            let style = if i == self.active {
-                                &selected
-                            } else if page.group.is_quiet() {
-                                &quiet
-                            } else {
-                                &idle
-                            };
-                            let hit = Button::new()
-                                .id_salt(page.label)
-                                .label(page.label)
-                                .style(style)
-                                .text_align(Align::LEFT)
-                                .size((Sizing::FILL, Sizing::HUG))
-                                .show(ui)
-                                .clicked();
-                            if hit {
-                                self.active = i;
-                            }
-                        }
-                    });
-                debug_toggles(ui);
-            });
+        let nav = Nav::new(ui.theme(), k.t);
+        self.reveal_item(ui);
+        rail::show(ui, k.t, |ui| {
+            rail::brand(ui, k.t, "palantir", "widget tour");
+            rail::block(ui, |ui| self.search(ui));
+            rail::list(ui, WidgetId::from_hash(LIST), |ui| self.items(ui, k, &nav));
+            rail::block(ui, |ui| self.footer(ui, k));
+        });
+    }
+
+    /// The search field: Enter opens the first page it finds and hands focus to its item, so
+    /// the arrows walk the found list and Alt+arrows the pages, which the field would keep;
+    /// Escape empties it.
+    fn search(&mut self, ui: &mut Ui) {
+        let response = TextEdit::new(&mut self.query)
+            .id(WidgetId::from_hash(SEARCH))
+            .placeholder("Search pages  Ctrl+K")
+            .size((Sizing::FILL, Sizing::HUG))
+            .show(ui);
+        match response.ended {
+            Some(EditEnd::Submitted) => {
+                if let Some(idx) = PAGES.iter().position(|page| page.matches(&self.query)) {
+                    self.open_page(idx);
+                    ui.set_focus(PAGES[idx].item_id());
+                }
+            }
+            Some(EditEnd::Canceled) => self.query.clear(),
+            _ => {}
+        }
+    }
+
+    /// The pages the search finds, each group under its heading.
+    fn items(&mut self, ui: &mut Ui, k: Kit, nav: &Nav) {
+        let mut group = None;
+        for (idx, page) in PAGES.iter().enumerate() {
+            if !page.matches(&self.query) {
+                continue;
+            }
+            if group != Some(page.group) {
+                group_heading(ui, k, page.group, group.is_none());
+                group = Some(page.group);
+            }
+            if nav.item(ui, page.item_id(), page.label, idx == self.active) {
+                self.active = idx;
+            }
+        }
+        if group.is_none() {
+            Text::new("No page matches")
+                .style(&k.t.caption())
+                .margin((rail::INSET, 0.0, 0.0, 0.0))
+                .show(ui);
+        }
+    }
+
+    /// Scroll the open page's item into view when the keyboard picked it, from where the list
+    /// and the item last laid out; it waits for a frame that has laid them out.
+    fn reveal_item(&mut self, ui: &mut Ui) {
+        if !self.reveal {
+            return;
+        }
+        if !PAGES[self.active].matches(&self.query) {
+            // The search hides the item, so there is nothing to bring into view.
+            self.reveal = false;
+            return;
+        }
+        let list = WidgetId::from_hash(LIST);
+        let (Some(view), Some(item)) = (
+            ui.response_for(list).layout_rect,
+            ui.response_for(PAGES[self.active].item_id()).layout_rect,
+        ) else {
+            ui.request_repaint();
+            return;
+        };
+        self.reveal = false;
+        let offset = Scroll::offset(ui, list);
+        let top = item.min.y - view.min.y;
+        let bottom = top + item.size.h;
+        let y = if top < offset.y {
+            top
+        } else if bottom > offset.y + view.size.h {
+            bottom - view.size.h
+        } else {
+            return;
+        };
+        Scroll::set_offset(ui, list, Vec2::new(offset.x, y));
+        ui.request_repaint();
+    }
+
+    /// The scheme, the accent and the UI scale, and the diagnostics behind one button.
+    fn footer(&mut self, ui: &mut Ui, k: Kit) {
+        Separator::horizontal().show(ui);
+        rail::label(ui, k.t, "APPEARANCE");
+        rail::scheme_switch(ui);
+        accent_row(ui, k, &mut self.app.appearance);
+        ui_scale_row(ui, k);
+        diagnostics(ui);
     }
 
     /// The page, on the window's ground: its header, a rule, then the active page's body.
@@ -442,10 +569,14 @@ impl ShotApp for Shell {
         PAGES.iter().map(|page| page.label)
     }
 
+    /// The tour on the page at `page`, its item scrolled into view, in the stock look.
     fn open(page: usize, _ui: &mut Ui) -> Self {
         Self {
             active: page,
-            ..Self::new()
+            app: AppState::new(),
+            kits: Kits::new(),
+            query: String::new(),
+            reveal: true,
         }
     }
 }
@@ -454,7 +585,8 @@ impl App for Shell {
     fn record(&mut self, win: WindowToken, ui: &mut Ui) {
         match win {
             INSPECTOR_WINDOW => {
-                let k = self.kits.kit(ui.color_scheme());
+                self.app.appearance.apply(ui);
+                let k = self.kit(ui);
                 Panel::vstack()
                     .padding(M.space.lg)
                     .gap(M.space.md)
@@ -466,46 +598,118 @@ impl App for Shell {
     }
 }
 
-fn brand(ui: &mut Ui, k: Kit) {
-    Panel::vstack()
-        .size((Sizing::FILL, Sizing::HUG))
-        .padding((M.space.md, 0.0, 0.0, 0.0))
-        .gap(2.0)
-        .show(ui, |ui| {
-            Text::new("palantir")
-                .style(
-                    &k.t.body()
-                        .with_font_size(M.text.title)
-                        .with_weight(FontWeight::BOLD),
-                )
-                .show(ui);
-            Text::new("widget tour").style(&k.t.caption()).show(ui);
-        });
-}
-
-/// `top`: the margin above the heading. A quiet group's heading is a step fainter still.
-fn group_heading(ui: &mut Ui, k: Kit, group: Group, top: f32) {
-    let mut style = k.t.heading();
-    if group.is_quiet() {
-        style = style.with_color(style.color.with_alpha(0.6));
-    }
+/// A group's heading, on the items' text column; the first sits closer to the search above it.
+fn group_heading(ui: &mut Ui, k: Kit, group: Group, first: bool) {
+    let top = if first { M.space.xs } else { M.space.lg };
     Text::new(group.heading())
         .id_salt(group.heading())
-        .style(&style)
-        .margin((M.space.md, top, 0.0, M.space.xs))
+        .style(&k.t.heading())
+        .margin((rail::INSET, top, 0.0, M.space.xs))
         .show(ui);
 }
 
-/// The rail footer; each control mirrors its shortcut.
-fn debug_toggles(ui: &mut Ui) {
-    Separator::horizontal().show(ui);
+/// The stock accent, then each seed of [`SEEDS`], as the shown scheme solves it; the one in use
+/// is ringed in the ink.
+fn accent_row(ui: &mut Ui, k: Kit, look: &mut Appearance) {
+    let scheme = ui.color_scheme();
+    let current = look.seed();
+    let mut picked = current;
+    Panel::hstack()
+        .id_salt("accents")
+        .size((Sizing::FILL, Sizing::HUG))
+        .justify(Justify::SpaceBetween)
+        .show(ui, |ui| {
+            let stock = (None, Palette::for_scheme(scheme).accent);
+            let seeds = SEEDS
+                .iter()
+                .zip(look.seed_accents(scheme))
+                .map(|(&seed, &accent)| (Some(seed), accent));
+            for (idx, (seed, accent)) in [stock].into_iter().chain(seeds).enumerate() {
+                let ring = if seed == current {
+                    Stroke::new(k.t.ink, M.stroke.line)
+                } else {
+                    Stroke::NONE
+                };
+                let clicked = Block::new()
+                    .id(accent_id(idx))
+                    .size((Sizing::fixed(SWATCH), Sizing::fixed(SWATCH)))
+                    .sense(Sense::CLICK)
+                    .focusable(true)
+                    .chrome(Chrome::rounded(accent, Corners::all(SWATCH / 2.0)).with_border(ring))
+                    .show(ui)
+                    .clicked();
+                if clicked {
+                    picked = seed;
+                }
+            }
+        });
+    look.set_seed(picked);
+}
+
+/// The id of the accent swatch at `idx`: the stock accent, then each seed of [`SEEDS`].
+fn accent_id(idx: usize) -> WidgetId {
+    WidgetId::from_hash(("showcase::rail::accent", idx))
+}
+
+/// The UI-scale stepper: `−  100%  +`. The readout only reads: a scrubbable value would
+/// re-lay-out under the pointer mid-drag.
+fn ui_scale_row(ui: &mut Ui, k: Kit) {
+    let scale = ui.user_scale();
+    let step = ui.theme().menu_bar.title.clone();
+    let step = ButtonTheme {
+        selected: step.clone(),
+        unselected: step,
+        defaults: ui.theme().menu_bar.defaults,
+    };
+    let mut next = scale;
+    Panel::hstack()
+        .id_salt("ui scale")
+        .size((Sizing::FILL, Sizing::HUG))
+        .gap(M.space.xs)
+        .child_align(Align::v(VAlign::Center))
+        .show(ui, |ui| {
+            Text::new("UI scale")
+                .style(&k.t.caption())
+                .margin((rail::INSET, 0.0, 0.0, 0.0))
+                .size((Sizing::FILL, Sizing::HUG))
+                .show(ui);
+            if Button::new().style(&step).label("−").show(ui).clicked() {
+                next = scale.stepped_down();
+            }
+            // Fixed width, mono: the readout's width changes between 90% and 100%.
+            Text::new(fmt!(ui, "{}%", scale.percent()))
+                .family(FontFamily::MONO)
+                .font_size(M.text.caption)
+                .size((Sizing::fixed(34.0), Sizing::HUG))
+                .text_align(Align::CENTER)
+                .show(ui);
+            let up = Button::new().style(&step).label("+").show(ui);
+            let clicked = up.clicked();
+            let up = up.snapshot();
+            if clicked {
+                next = scale.stepped_up();
+            }
+            Tooltip::on(&up, "UI scale — Ctrl +/− · Ctrl 0 resets").show(ui);
+        });
+    ui.set_user_scale(next);
+}
+
+/// The debug overlays and vsync, behind one button, each switch mirroring its key.
+fn diagnostics(ui: &mut Ui) {
+    let trigger = Button::new()
+        .id_salt("diagnostics")
+        .label("Diagnostics ▾")
+        .size((Sizing::FILL, Sizing::HUG))
+        .show(ui)
+        .snapshot();
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;
-    Panel::vstack()
-        .size((Sizing::FILL, Sizing::HUG))
-        .padding((M.space.md, 0.0, 0.0, 0.0))
+    let panel = ui.theme().context_menu.panel.clone();
+    PopupTrigger::on(&trigger)
+        .chrome(panel)
+        .padding(M.space.md)
         .gap(M.space.sm)
-        .show(ui, |ui| {
+        .show(ui, |ui, _| {
             Checkbox::new(&mut overlay.damage_rect)
                 .label("damage rects  F12")
                 .show(ui);
@@ -517,50 +721,9 @@ fn debug_toggles(ui: &mut Ui) {
                 .show(ui);
             // Turning vsync off shows in `frame stats` as the rate leaving the refresh cap.
             Checkbox::new(&mut vsync_on).label("vsync").show(ui);
-            ui_scale_row(ui);
         });
     ui.set_vsync(if vsync_on { Vsync::On } else { Vsync::Off });
     ui.set_debug_overlay(overlay);
-}
-
-/// The UI-scale stepper: `−  100%  +`. The readout only reads: a
-/// scrubbable value would re-lay-out under the pointer mid-drag.
-fn ui_scale_row(ui: &mut Ui) {
-    let scale = ui.user_scale();
-    let bar = &ui.theme().menu_bar;
-    let step = ButtonTheme {
-        unselected: bar.title.clone(),
-        selected: bar.title.clone(),
-        defaults: bar.defaults,
-    };
-
-    let mut next = scale;
-    Panel::hstack()
-        .size((Sizing::FILL, Sizing::HUG))
-        .margin(Spacing::new(0.0, M.space.xs, 0.0, 0.0))
-        .justify(Justify::Center)
-        .child_align(Align::v(VAlign::Center))
-        .gap(M.space.xs)
-        .show(ui, |ui| {
-            if Button::new().style(&step).label("−").show(ui).clicked() {
-                next = scale.stepped_down();
-            }
-            // Fixed width, mono: the readout's width changes between 90% and 100%.
-            Text::new(fmt!(ui, "{}%", scale.percent()))
-                .family(FontFamily::MONO)
-                .font_size(12.0)
-                .size((Sizing::fixed(34.0), Sizing::HUG))
-                .text_align(Align::CENTER)
-                .show(ui);
-            let up = Button::new().style(&step).label("+").show(ui);
-            let clicked = up.clicked();
-            let up = up.snapshot();
-            if clicked {
-                next = scale.stepped_up();
-            }
-            Tooltip::on(&up, "UI scale — ctrl +/− · ctrl 0 resets").show(ui);
-        });
-    ui.set_user_scale(next);
 }
 
 fn page_header(ui: &mut Ui, k: Kit, page: &Page) {
@@ -579,51 +742,9 @@ fn page_header(ui: &mut Ui, k: Kit, page: &Page) {
     .show(ui, k.t);
 }
 
-/// The three ways a rail item can look.
-#[derive(Clone, Copy, Debug)]
-enum NavLook {
-    Idle,
-    /// An item of a [`Group::is_quiet`] group.
-    Quiet,
-    /// The open page.
-    Selected,
-}
-
-/// A rail item: the theme's menu-bar title, muted at rest and lit under the pointer, in the
-/// accent while its page is open, on an `xs` vertical inset rather than the title's `sm`, so the
-/// whole list fits a window.
-fn nav_style(theme: &Theme, k: Kit, look: NavLook) -> ButtonTheme {
-    let bar = &theme.menu_bar;
-    let mut looks = bar.title.clone();
-    match look {
-        NavLook::Idle => {}
-        NavLook::Quiet => looks.normal.text = looks.normal.text.with_color(k.t.ink_faint),
-        NavLook::Selected => {
-            let open = bar.open.clone();
-            looks = StatefulLook {
-                normal: open.clone(),
-                hovered: open,
-                active: looks.active,
-                disabled: looks.disabled,
-            };
-            for look in [&mut looks.normal, &mut looks.hovered, &mut looks.active] {
-                look.text = look.text.with_color(k.t.accent);
-            }
-        }
-    }
-    ButtonTheme {
-        selected: looks.clone(),
-        unselected: looks,
-        defaults: SlotDefaults {
-            padding: Spacing::xy(M.space.md, M.space.xs),
-            ..bar.defaults
-        },
-    }
-}
-
-/// ⌘Q / Ctrl+Q quits (palantir drops winit's default macOS menu, and with it
-/// the native ⌘Q). F8 mirrors the inspector button; F9 / F10 / F12 the rail's
-/// overlay switches; Ctrl+`-` / `=` / `0` the UI-scale stepper.
+/// ⌘Q / Ctrl+Q quits (palantir drops winit's default macOS menu, and with it the native ⌘Q). F8
+/// mirrors the inspector button; F9 / F10 / F12 the diagnostics switches; Ctrl+`-` / `=` / `0`
+/// the UI-scale stepper.
 fn handle_shortcuts(ui: &mut Ui) {
     if ui.shortcut_pressed(Shortcut::ctrl('Q')) {
         ui.close_window(MAIN_WINDOW);
@@ -661,8 +782,13 @@ fn handle_shortcuts(ui: &mut Ui) {
 mod tests {
     use std::path::Path;
 
+    use palantir::glam::UVec2;
+    use palantir::{Harness, Key, Scroll, Shortcut, ShortcutMods, WidgetId};
+
+    use crate::appearance::{SEEDS, accent_for};
     use crate::scaffold::links::LINKS;
-    use crate::shell::PAGES;
+    use crate::shell::{LIST, PAGES, SEARCH, Shell, accent_id};
+    use crate::shot::ShotApp;
 
     /// Every page the shared links table names is a page of the tour, and every page's source is
     /// a file of the repository, so neither header row names something that is gone.
@@ -678,5 +804,138 @@ mod tests {
         for page in PAGES {
             assert!(root.join(page.source).is_file(), "{}", page.source);
         }
+    }
+
+    /// A query finds a page by its label or its blurb, ASCII case ignored and other letters as
+    /// they are: "WINDOW" finds app & windows by its label and shapes by "windowed rect" in its
+    /// blurb; "béz" finds strokes' "béziers"; the empty query finds every page.
+    #[test]
+    fn a_query_finds_pages_by_label_or_blurb() {
+        let found = |query: &str| -> Vec<&str> {
+            PAGES
+                .iter()
+                .filter(|page| page.matches(query))
+                .map(|page| page.label)
+                .collect()
+        };
+        assert_eq!(found("").len(), PAGES.len());
+        assert_eq!(found("WINDOW"), ["shapes", "app & windows"]);
+        assert_eq!(found("grad"), ["gradients"]);
+        assert_eq!(found("béz"), ["strokes"]);
+        assert_eq!(found("BÉZ"), Vec::<&str>::new(), "only ASCII letters fold");
+        assert_eq!(found("no such page"), Vec::<&str>::new());
+    }
+
+    fn label(shell: &Shell) -> &'static str {
+        PAGES[shell.active].label
+    }
+
+    /// Ctrl+K starts a search; typing narrows the pages Alt+↑ and Alt+↓ step through, which stop
+    /// at either end; Enter opens the first found; Escape empties the search.
+    #[test]
+    fn the_keyboard_searches_and_steps_through_the_pages() {
+        let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
+        let mut shell = Shell::open(0, h.ui());
+        let settle = |h: &mut Harness, shell: &mut Shell| {
+            h.settle(shell).expect("the frames settle");
+        };
+        settle(&mut h, &mut shell);
+        let alt = |key| Shortcut::new(ShortcutMods::ALT, key);
+
+        h.key(alt(Key::ArrowDown));
+        settle(&mut h, &mut shell);
+        assert_eq!(label(&shell), "colors");
+        h.key(alt(Key::ArrowUp));
+        h.key(alt(Key::ArrowUp));
+        settle(&mut h, &mut shell);
+        assert_eq!(label(&shell), "controls", "nothing before the first page");
+
+        h.key(Shortcut::ctrl('K'));
+        settle(&mut h, &mut shell);
+        assert_eq!(h.ui().focus(), Some(WidgetId::from_hash(SEARCH)));
+        h.type_text("window");
+        h.key(Key::Enter);
+        settle(&mut h, &mut shell);
+        assert_eq!(label(&shell), "shapes", "Enter opens the first page found");
+        assert_eq!(
+            h.ui().focus(),
+            Some(PAGES[13].item_id()),
+            "and focuses its item"
+        );
+        h.key(alt(Key::ArrowDown));
+        settle(&mut h, &mut shell);
+        assert_eq!(
+            label(&shell),
+            "app & windows",
+            "the next found, past the rest"
+        );
+        h.key(alt(Key::ArrowDown));
+        settle(&mut h, &mut shell);
+        assert_eq!(
+            label(&shell),
+            "app & windows",
+            "nothing past the last found"
+        );
+
+        h.key(Shortcut::ctrl('K'));
+        settle(&mut h, &mut shell);
+        assert_eq!(
+            h.ui().focus(),
+            Some(WidgetId::from_hash(SEARCH)),
+            "Ctrl+K from the list"
+        );
+        assert_eq!(shell.query, "", "a new search");
+        h.type_text("grad");
+        settle(&mut h, &mut shell);
+        h.key(Key::Escape);
+        settle(&mut h, &mut shell);
+        assert_eq!(shell.query, "");
+    }
+
+    /// A click on an accent swatch asks for the frame that builds the theme, with no other input
+    /// to wake one: the ring the theme draws takes the seed as the shown scheme solves it.
+    #[test]
+    fn a_picked_accent_reaches_the_theme() {
+        let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
+        let mut shell = Shell::open(0, h.ui());
+        h.settle(&mut shell).expect("the frames settle");
+        h.click(accent_id(1));
+        let report = h.frame_app(&mut shell);
+        assert!(
+            report.repaint_requested,
+            "the edit asks for the frame that builds its theme"
+        );
+        h.settle(&mut shell).expect("the frames settle");
+        let scheme = h.ui().color_scheme();
+        assert_eq!(shell.app.appearance.seed(), Some(SEEDS[0]));
+        assert_eq!(
+            h.ui().theme().focus_ring.color,
+            accent_for(SEEDS[0], scheme)
+        );
+    }
+
+    /// A page opened from the keyboard far down the list scrolls its item into view: on a short
+    /// window the last item starts out of view, and after Alt+↓ steps onto it the list has moved
+    /// so the whole 28 px item shows.
+    #[test]
+    fn a_page_opened_from_the_keyboard_scrolls_into_view() {
+        let mut h = Harness::builder(UVec2::new(1280, 480)).mono().build();
+        let last = PAGES.len() - 1;
+        let mut shell = Shell::open(last - 1, h.ui());
+        h.settle(&mut shell).expect("the frames settle");
+        let item = PAGES[last].item_id();
+        let list = WidgetId::from_hash(LIST);
+        let shown = |h: &mut Harness| h.ui().response_for(item).rect.map(|rect| rect.size.h);
+        assert_ne!(
+            shown(&mut h),
+            Some(28.0),
+            "the last item starts out of full view"
+        );
+        let before = Scroll::offset(h.ui(), list).y;
+        h.key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
+        h.settle(&mut shell).expect("the frames settle");
+        assert_eq!(label(&shell), "frame bench");
+        assert!(Scroll::offset(h.ui(), list).y > before, "the list scrolled");
+        assert_eq!(shown(&mut h), Some(28.0), "the whole item shows");
     }
 }

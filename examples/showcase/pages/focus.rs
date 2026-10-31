@@ -1,13 +1,14 @@
 //! Keyboard focus end to end. Palantir's harness tests hold each behavior a section shows, so the
 //! page carries no list to check by hand.
 
+use crate::appearance::Appearance;
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{
     Axis, Button, Checkbox, ColorButton, ColorPicker, ComboBox, Configure, DragValue, FocusPolicy,
-    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioButton, RgbaF32, Sizing, Slider, Switch,
-    Text, TextEdit, Theme, Track, Ui, WidgetId,
+    FocusRingTheme, Grid, Modal, Panel, PopupTrigger, RadioButton, Sizing, Slider, Switch, Text,
+    TextEdit, Track, Ui, WidgetId,
 };
 
 const PLANS: [&str; 3] = ["Free", "Pro", "Team"];
@@ -80,12 +81,12 @@ fn form_id() -> WidgetId {
     WidgetId::from_hash("showcase::focus::form")
 }
 
-pub(crate) fn build(ui: &mut Ui, k: Kit) {
+pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let state_id = WidgetId::from_hash("showcase::focus::state");
-    ui.with_state::<State, _>(state_id, |ui, s| page(ui, k, s));
+    ui.with_state::<State, _>(state_id, |ui, s| page(ui, k, s, look));
 }
 
-fn page(ui: &mut Ui, k: Kit, s: &mut State) {
+fn page(ui: &mut Ui, k: Kit, s: &mut State, look: &mut Appearance) {
     let mut seen = Seen::default();
 
     tab_order(ui, k, s, &mut seen);
@@ -94,7 +95,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut State) {
     containment(ui, k, s, &mut seen);
     programmatic(ui, k, s, &mut seen);
     policy(ui, k, s);
-    ring(ui, k);
+    ring(ui, k, look);
 
     // Responses read last frame's focus, so a change shows one frame late.
     if seen.0 != s.focused {
@@ -446,7 +447,7 @@ fn policy(ui: &mut Ui, k: Kit, s: &mut State) {
 }
 
 /// Edits the live theme's ring, one slot for every widget.
-fn ring(ui: &mut Ui, k: Kit) {
+fn ring(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     Section::new("Ring theme")
         .apis(&[api!(Ui::theme), api!(type FocusRingTheme)])
         .show(ui, k, |ui| {
@@ -454,11 +455,14 @@ fn ring(ui: &mut Ui, k: Kit) {
                 ui,
                 k,
                 "The framework draws the ring, not the widget, from one slot of the theme. \
-                 The values below edit the theme in use, so every page shows the change.",
+                 The values below edit the tour's appearance, which builds the theme of either \
+                 scheme, so every page shows the change. The color follows the accent until \
+                 one is picked here.",
             );
-            let ring = &ui.theme().focus_ring;
+            let ring = look.ring(ui.color_scheme());
             let mut width = f64::from(ring.width);
             let mut color = ring.color;
+            let mut reset = false;
             support::row(ui, |ui| {
                 Text::new("width").style(&k.t.caption()).show(ui);
                 Slider::new(&mut width, 0.0..=4.0)
@@ -467,23 +471,15 @@ fn ring(ui: &mut Ui, k: Kit) {
                     .show(ui);
                 Text::new("color").style(&k.t.caption()).show(ui);
                 ColorButton::new(ColorPicker::new(&mut color)).show(ui);
-                if Button::new().label("Reset").show(ui).clicked() {
-                    let default = FocusRingTheme::default();
-                    width = f64::from(default.width);
-                    color = default.color;
-                }
+                reset = Button::new().label("Reset").show(ui).clicked();
             });
-            set_ring(ui, width as f32, color);
+            if reset {
+                look.reset_ring();
+                return;
+            }
+            look.set_ring_width(width as f32);
+            if color != ring.color {
+                look.set_ring_color(color);
+            }
         });
-}
-
-fn set_ring(ui: &mut Ui, width: f32, color: RgbaF32) {
-    let ring = &ui.theme().focus_ring;
-    if ring.width == width && ring.color == color {
-        return;
-    }
-    let mut theme = Theme::clone(ui.theme());
-    theme.focus_ring = FocusRingTheme { color, width };
-    let scheme = ui.color_scheme();
-    ui.set_theme_for(scheme, theme);
 }

@@ -3,17 +3,12 @@
 //! same `AppState`, so both counters are one value. A close request the app can veto
 //! (`Ui::close_requested` / `Ui::keep_open`) behind an unsaved-changes toggle.
 
+use crate::app_state::AppState;
 use crate::scaffold::api;
 use crate::shell;
 use crate::support;
 use crate::support::{Kit, Section};
 use palantir::{Align, App, Button, Checkbox, Configure, Text, Ui, WidgetId, WindowToken, fmt};
-
-/// State threaded through the whole showcase frame.
-#[derive(Debug)]
-pub(crate) struct AppState {
-    pub(crate) counter: i32,
-}
 
 /// The close interception's state, in a row the page and [`intercept`] both reach.
 #[derive(Clone, Copy, Debug, Default)]

@@ -72,8 +72,8 @@ impl error::Error for UnknownPage {}
 /// What the command line asks.
 #[derive(Debug)]
 pub(crate) enum Mode {
-    /// The window.
-    Window,
+    /// The window, open on the page at `page`, an index into [`ShotApp::page_labels`].
+    Window { page: usize },
     /// A script played with no desktop, its pictures written into `out` and compared with the ones
     /// in `against`.
     Shot {
@@ -84,17 +84,25 @@ pub(crate) enum Mode {
 }
 
 impl Mode {
-    /// The mode `args` ask, or the usage.
-    pub(crate) fn of(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
+    /// The mode `args` ask of `A`, or why they are refused: the usage, or a page `A` lacks.
+    pub(crate) fn of<A: ShotApp>(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
         let usage = || {
             format!(
-                "usage: {} [--shot SCRIPT [--out DIR] [--against DIR]]",
+                "usage: {} [--page PAGE | --shot SCRIPT [--out DIR] [--against DIR]]",
                 env!("CARGO_CRATE_NAME")
             )
         };
         let Some(first) = args.next() else {
-            return Ok(Self::Window);
+            return Ok(Self::Window { page: 0 });
         };
+        if first == "--page" {
+            let label = args.next().ok_or_else(usage)?;
+            if args.next().is_some() {
+                return Err(usage());
+            }
+            let page = UnknownPage::find::<A>(Some(&label)).map_err(|error| error.to_string())?;
+            return Ok(Self::Window { page });
+        }
         if first != "--shot" {
             return Err(usage());
         }

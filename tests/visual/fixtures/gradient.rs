@@ -4,7 +4,9 @@
 
 use glam::UVec2;
 use palantir::widget::Shape;
-use palantir::{ColorScheme, Configure, LinearGradient, Panel, Rect, RgbaF32, Sizing, Stop};
+use palantir::{
+    ColorScheme, Configure, LinearGradient, Palette, Panel, Rect, RgbaF32, Sizing, Stop,
+};
 
 use crate::fixtures;
 use crate::fixtures::SRGB_ROUND_TRIP;
@@ -115,7 +117,7 @@ mod showcase_page;
 /// The showcase's gradients page as one golden.
 #[test]
 fn showcase_gradients_page_matches_golden() {
-    let k = Kits::new().kit(ColorScheme::Dark);
+    let k = Kits::new().kit(ColorScheme::Dark, &Palette::DARK);
     GoldenName::ShowcaseGradientsPage.assert_scene(UVec2::new(560, 1180), |ui| {
         Panel::vstack()
             .auto_id()

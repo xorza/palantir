@@ -2,7 +2,7 @@
 //! widgets, beside the showcase's reference pages, as Material's studies and Slint's `demos/` sit
 //! beside a widget gallery. The showcase pins one parameter a section, which its goldens and
 //! `api!` chips need; the studies show the widgets in use, so they are an example of their own.
-//! `main` wires the winit host, or with
+//! `main` wires the winit host, open on the first page or on `--page PAGE`, or with
 //! `--shot SCRIPT [--out DIR] [--against DIR]` plays a script on a window with no desktop
 //! ([`shot`]); the app is in [`app`].
 
@@ -27,7 +27,7 @@ use palantir::{WindowConfig, WinitHost};
 use tracing_subscriber::EnvFilter;
 
 use crate::app::{MAIN_WINDOW, Shell};
-use crate::shot::Mode;
+use crate::shot::{Mode, ShotApp};
 
 fn main() -> ExitCode {
     // Logs go to stderr, so a shot's report on stdout holds nothing else.
@@ -38,8 +38,8 @@ fn main() -> ExitCode {
         .with_writer(io::stderr)
         .init();
     let mut stderr = io::stderr().lock();
-    let result = match Mode::of(env::args().skip(1)) {
-        Ok(Mode::Window) => window(),
+    let result = match Mode::of::<Shell>(env::args().skip(1)) {
+        Ok(Mode::Window { page }) => window(page),
         Ok(Mode::Shot {
             script,
             out,
@@ -62,10 +62,11 @@ fn main() -> ExitCode {
     }
 }
 
-fn window() -> Result<(), String> {
+/// The window, open on the page at `page`.
+fn window(page: usize) -> Result<(), String> {
     WinitHost::builder(MAIN_WINDOW)
         .window(WindowConfig::new("palantir observatory").with_inner_size(UVec2::new(1600, 1000)))
-        .build(|_ui, _handle| Shell::new())
+        .build(move |ui, _handle| Shell::open(page, ui))
         .and_then(WinitHost::run)
         .map_err(|error| error.to_string())
 }

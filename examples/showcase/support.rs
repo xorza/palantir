@@ -60,10 +60,10 @@ impl Kits {
         }
     }
 
-    /// The kit of `scheme`, over the stock palette the tour wears.
-    pub(crate) const fn kit(&self, scheme: ColorScheme) -> Kit {
+    /// The kit of `scheme`, over `palette`, the one its theme is built from.
+    pub(crate) const fn kit(&self, scheme: ColorScheme, palette: &Palette) -> Kit {
         Kit {
-            t: Tokens::of(Palette::for_scheme(scheme)),
+            t: Tokens::of(palette),
             swatch: match scheme {
                 ColorScheme::Light => self.light,
                 ColorScheme::Dark => self.dark,
@@ -115,21 +115,24 @@ impl Target {
             at(1.0).luminance() >= self.luminance,
             "hue {hue} cannot reach the target luminance"
         );
-        let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
-        for _ in 0..BISECTION_STEPS {
-            let mid = f32::midpoint(lo, hi);
-            if at(mid).luminance() < self.luminance {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        at(hi)
+        at(bisect(|value| at(value).luminance() >= self.luminance))
     }
 }
 
-/// Halvings of the value's `0..=1` range, as many as an f32 mantissa holds bits.
-const BISECTION_STEPS: u32 = 24;
+/// The least `x` in `0..=1` that `reaches` holds for, `reaches` turning true once as `x` rises
+/// and holding at 1: 24 halvings, as many as an f32 mantissa holds bits.
+pub(crate) fn bisect(reaches: impl Fn(f32) -> bool) -> f32 {
+    let (mut lo, mut hi) = (0.0_f32, 1.0_f32);
+    for _ in 0..24 {
+        let mid = f32::midpoint(lo, hi);
+        if reaches(mid) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    hi
+}
 
 impl Swatches {
     /// The Okhsv hues of the tour's first, neon set, in turns: teal, orange, lime, violet, red.
