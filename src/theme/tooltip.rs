@@ -54,7 +54,7 @@ impl TooltipTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let panel = Chrome::rounded(p.element, Corners::all(m.radius.control))
             .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
-            .with_shadow(m.float_shadow);
+            .with_shadow(p.float_shadow(m));
         Self {
             panel,
             // The caption tier, a step under the body, as Fluent's tooltip sets its text.
@@ -71,6 +71,6 @@ impl TooltipTheme {
 
 impl Default for TooltipTheme {
     fn default() -> Self {
-        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
+        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

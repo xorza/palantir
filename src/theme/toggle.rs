@@ -26,8 +26,11 @@ pub struct ToggleTheme {
     pub unchecked: StatefulLook,
     /// Look when checked.
     pub checked: StatefulLook,
-    /// Color of the check polyline or radio dot, painted over the `checked` chrome.
+    /// Color of the check polyline, the radio dot, or the switch knob over the `checked` chrome.
     pub indicator: RgbaF32,
+    /// Color of the switch knob over the `unchecked` chrome ([`crate::Switch`] only; a checkbox
+    /// and a radio paint no mark when off).
+    pub unchecked_indicator: RgbaF32,
     /// Box side.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub box_size: f32,
@@ -59,6 +62,7 @@ impl ToggleTheme {
             unchecked,
             checked,
             indicator: _,
+            unchecked_indicator: _,
             box_size: _,
             indicator_width: _,
             check_points: _,
@@ -83,7 +87,7 @@ impl ToggleTheme {
             box_size: 16.0,
             indicator_inset: 4.0,
         }
-        .theme(p.window_bg, p, m)
+        .theme(p, m)
     }
 
     /// Defaults for [`crate::RadioButton`]: 16 px pip with pill radius.
@@ -93,17 +97,17 @@ impl ToggleTheme {
             box_size: 16.0,
             indicator_inset: 4.0,
         }
-        .theme(p.window_bg, p, m)
+        .theme(p, m)
     }
 
-    /// Defaults for [`crate::Switch`]: a 20 px-tall pill track with a white knob, animated slide and cross-fade; `box_size` is the track height.
+    /// Defaults for [`crate::Switch`]: a 20 px-tall pill track whose knob wears `on_accent` when on and `text` when off, animated slide and cross-fade; `box_size` is the track height.
     pub fn switch(p: &Palette, m: &Metrics) -> Self {
         let mut t = ToggleGeometry {
             corner: 10.0,
             box_size: 20.0,
             indicator_inset: 3.0,
         }
-        .theme(p.text, p, m);
+        .theme(p, m);
         t.track_aspect = 1.75;
         t.defaults.animation = Some(AnimationSpec::SPRING);
         t
@@ -120,8 +124,9 @@ struct ToggleGeometry {
 }
 
 impl ToggleGeometry {
-    /// The toggle theme of this geometry, its `indicator` painted over the checked chrome.
-    fn theme(self, indicator: RgbaF32, p: &Palette, m: &Metrics) -> ToggleTheme {
+    /// The toggle theme of this geometry: its mark in `on_accent` over the accent, and a switch's
+    /// knob in `text` over the unchecked track.
+    fn theme(self, p: &Palette, m: &Metrics) -> ToggleTheme {
         let Self {
             corner,
             box_size,
@@ -173,7 +178,8 @@ impl ToggleGeometry {
         ToggleTheme {
             unchecked,
             checked,
-            indicator,
+            indicator: p.on_accent,
+            unchecked_indicator: p.text,
             box_size,
             indicator_width: m.stroke.line,
             indicator_inset,

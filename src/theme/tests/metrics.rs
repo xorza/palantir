@@ -7,7 +7,9 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::Theme;
-use crate::theme::metrics::{Metrics, RadiusSteps, SpaceSteps, StrokeSteps, TextSteps};
+use crate::theme::metrics::{
+    Metrics, RadiusSteps, ShadowGeometry, SpaceSteps, StrokeSteps, TextSteps,
+};
 use crate::theme::palette::Palette;
 
 /// Steps no two of which are equal, and none equal to a default step, so each read below names
@@ -37,13 +39,21 @@ const DISTINCT: Metrics = Metrics {
         fine: 0.5,
         line: 0.75,
     },
-    float_shadow: Shadow::drop(RgbaF32::hex(0x123456), Vec2::new(19.0, 21.0), 23.0),
+    float_shadow: ShadowGeometry {
+        offset: Vec2::new(19.0, 21.0),
+        blur: 23.0,
+    },
     transition: Some(AnimationSpec::MEDIUM),
 };
 
 #[test]
 fn every_recipe_reads_its_geometry_from_the_metrics() {
-    let t = Theme::from_parts(&Palette::DEFAULT, &DISTINCT);
+    // A shadow color no stock palette has, so the cast shows it comes from the palette.
+    let palette = Palette {
+        shadow: RgbaF32::hex(0x123456),
+        ..Palette::DARK
+    };
+    let t = Theme::from_parts(&palette, &DISTINCT);
     let row = Spacing::xy(5.0, 3.0);
     let paddings = [
         ("button", t.button.defaults.padding, Spacing::xy(5.0, 1.0)),
@@ -162,6 +172,10 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("picker popup", t.color_picker.popup.shadow),
         ("modal", t.modal.panel.shadow),
     ] {
-        assert_eq!(shadow, DISTINCT.float_shadow, "{slot} shadow");
+        assert_eq!(
+            shadow,
+            Shadow::drop(RgbaF32::hex(0x123456), Vec2::new(19.0, 21.0), 23.0),
+            "{slot} shadow"
+        );
     }
 }

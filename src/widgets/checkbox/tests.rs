@@ -41,7 +41,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
     }
 
     // Stock 16 px box: unit coords land on the hand-tuned pixels (3.5/16 * 16 = 3.5).
-    let stock = ToggleTheme::checkbox(&Palette::DEFAULT, &Metrics::DEFAULT);
+    let stock = ToggleTheme::checkbox(&Palette::DARK, &Metrics::DEFAULT);
     assert_eq!(stock.box_size, 16.0);
     assert_eq!(
         drawn(stock.clone()),

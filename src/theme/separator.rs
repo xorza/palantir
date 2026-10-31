@@ -41,6 +41,6 @@ impl SeparatorTheme {
 
 impl Default for SeparatorTheme {
     fn default() -> Self {
-        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
+        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

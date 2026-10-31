@@ -78,6 +78,7 @@ golden_names! {
     GridMixedTracks => "grid_mixed_tracks",
     GridTwoHugColsLabelNotClipped => "grid_two_hug_cols_label_not_clipped",
     InterleavedShapesPaintOrder => "interleaved_shapes_paint_order",
+    LightPaletteWidgets => "light_palette_widgets",
     LineDiagonalAa => "line_diagonal_aa",
     ModalDialog => "modal_dialog",
     PolylineBevelJoin => "polyline_bevel_join",

@@ -28,7 +28,7 @@ impl ModalTheme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let panel = Chrome::rounded(p.element_mid, Corners::all(m.radius.float))
             .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
-            .with_shadow(m.float_shadow);
+            .with_shadow(p.float_shadow(m));
         Self {
             panel,
             // Black is identical in sRGB and linear, so `RgbaF32::new` is exact.
@@ -41,6 +41,6 @@ impl ModalTheme {
 
 impl Default for ModalTheme {
     fn default() -> Self {
-        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
+        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

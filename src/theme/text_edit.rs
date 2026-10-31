@@ -101,8 +101,9 @@ impl TextEditTheme {
             .with_border(Stroke::new(p.border_focused, stroke_w));
         let disabled_chrome =
             Chrome::rounded(p.element, radius).with_border(Stroke::new(p.border_soft(), stroke_w));
-        // Selection = accent at ~25% alpha: a wash that leaves glyphs readable.
-        let selection = p.accent.with_alpha8(64);
+        // Selection = accent at 61/255, the most the dark palette's field takes before text over
+        // the wash, blended in linear light, drops under 4.5:1 (`theme/tests/floors.rs`).
+        let selection = p.accent.with_alpha8(61);
         // `hovered` defaults to `normal`: no hover feedback out of the box.
         let normal = WidgetLook {
             chrome: normal_chrome,
@@ -171,6 +172,6 @@ impl ThemeSlot for TextEditTheme {
 
 impl Default for TextEditTheme {
     fn default() -> Self {
-        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
+        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

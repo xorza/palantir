@@ -4,9 +4,10 @@ use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
-    Block, Button, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip, ComboBox,
-    Configure, Corners, DragValue, InputEvent, Key, KeyText, Modal, Panel, ProgressBar, Rect,
-    RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch, Text, ToggleTheme, Ui,
+    Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
+    ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Metrics, Modal, Palette,
+    Panel, ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke,
+    Switch, Text, TextEdit, Theme, ToggleTheme, Ui,
 };
 
 use crate::fixtures;
@@ -252,6 +253,66 @@ fn toggle_switch_states_matches_golden() {
                 }
             });
     });
+}
+
+/// The light palette's still states: buttons, toggles on and off, a field with its placeholder,
+/// a slider and a progress bar, each on `Palette::LIGHT` as the stock recipes paint it. The
+/// palette is the subject here, so it is not pinned; transitions are off, so the frame is at rest.
+#[test]
+fn light_palette_widgets_match_golden() {
+    let mut theme = Theme::from_parts(
+        &Palette::LIGHT,
+        &Metrics {
+            transition: None,
+            ..FIXTURE_METRICS
+        },
+    );
+    theme.switch.defaults.animation = None;
+    let img = VisualRig::new()
+        .theme(theme)
+        .clear(Palette::LIGHT.window_bg)
+        .size(UVec2::new(320, 260))
+        .frame(|ui| {
+            Panel::vstack()
+                .auto_id()
+                .padding(16.0)
+                .gap(12.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::hstack().auto_id().gap(8.0).show(ui, |ui| {
+                        Button::new().id_salt("apply").label("Apply").show(ui);
+                        Button::new()
+                            .id_salt("off")
+                            .label("Disabled")
+                            .disabled(true)
+                            .show(ui);
+                    });
+                    Panel::hstack().auto_id().gap(12.0).show(ui, |ui| {
+                        for (salt, mut on) in [("check on", true), ("check off", false)] {
+                            Checkbox::new(&mut on).id_salt(salt).label(salt).show(ui);
+                        }
+                        let mut pick = 0;
+                        RadioButton::new(&mut pick, 0)
+                            .id_salt("radio")
+                            .label("radio")
+                            .show(ui);
+                    });
+                    Panel::hstack().auto_id().gap(12.0).show(ui, |ui| {
+                        for (salt, mut on) in [("on", true), ("off", false)] {
+                            Switch::new(&mut on).id_salt(salt).label(salt).show(ui);
+                        }
+                    });
+                    TextEdit::new(&mut String::new())
+                        .id_salt("field")
+                        .placeholder("Search")
+                        .size((Sizing::fixed(200.0), Sizing::HUG))
+                        .show(ui);
+                    Slider::new(&mut 0.3, 0.0..=1.0).id_salt("slider").show(ui);
+                    ProgressBar::new(0.5).id_salt("progress").show(ui);
+                });
+        })
+        .image;
+    GoldenName::LightPaletteWidgets.assert_matches(&img);
 }
 
 /// Spinner at phase 0: a round-capped arc fading from transparent tail to head.

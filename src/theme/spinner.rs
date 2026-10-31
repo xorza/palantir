@@ -44,6 +44,6 @@ impl SpinnerTheme {
 
 impl Default for SpinnerTheme {
     fn default() -> Self {
-        Self::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT)
+        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }
