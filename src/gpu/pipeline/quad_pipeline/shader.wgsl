@@ -955,11 +955,12 @@ fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_wid
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     if (QUAD_FORM == QUAD_FORM_TRIANGLE) {
-        // Three corner points (in `local` 0..size coords) + corner radius ride
+        // Three corner centers (in `local` 0..size coords) + corner radius ride
         // the reused instance lanes. `sdf_triangle - radius` gives the rounded
-        // shape; `composite` applies the same coverage AA + inner stroke as the
-        // rounded-rect path, so a triangle gets crisp AA + rounded corners with
-        // no MSAA and no tessellation. Solid fill only (no gradient lanes).
+        // shape, whose edges lie on the sharp triangle's; `composite` applies
+        // the same coverage AA + inner stroke as the rounded-rect path, so a
+        // triangle gets crisp AA + rounded corners with no MSAA and no
+        // tessellation. Solid fill only (no gradient lanes).
         let ta = in.radius.xy;
         let tb = in.radius.zw;
         let tc = in.fill_axis.xy;

@@ -378,46 +378,6 @@ fn arc_shapes_match_golden() {
     });
 }
 
-/// A triangle with no area has no inside, so a radius grows only its edges and corners: three collinear corners paint a 4 px stadium, three coincident ones a 6 px disc, neither filling the inflated quad.
-///
-/// The stadium runs (10, 20) to (90, 20), quad x 6..94, y 16..24; pixel (6, 16)'s center (6.5, 16.5) is 4.95 px from (10, 20), outside. The disc at (50, 50) has quad 44..56; pixel (44, 44)'s center is 7.8 px away.
-#[test]
-fn a_degenerate_rounded_triangle_paints_its_edges_not_its_quad() {
-    let mut h = VisualRig::new();
-    let img = h
-        .size(UVec2::new(100, 70))
-        .clear(RgbaF32::BLACK)
-        .frame(|ui| {
-            fixtures::canvas(ui, |ui| {
-                ui.add_shape(
-                    Shape::triangle(
-                        Vec2::new(10.0, 20.0),
-                        Vec2::new(50.0, 20.0),
-                        Vec2::new(90.0, 20.0),
-                    )
-                    .fill(RgbaF32::WHITE)
-                    .radius(4.0_f32),
-                );
-                ui.add_shape(
-                    Shape::triangle(Vec2::splat(50.0), Vec2::splat(50.0), Vec2::splat(50.0))
-                        .fill(RgbaF32::WHITE)
-                        .radius(6.0_f32),
-                );
-            });
-        })
-        .image;
-    let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
-    let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
-
-    assert!(lit(50, 20), "the stadium's spine");
-    assert!(lit(50, 17), "3.5 px from the spine, inside the 4 px radius");
-    assert!(dark(6, 16), "the stadium's quad corner");
-    assert!(dark(93, 23), "the stadium's other quad corner");
-    assert!(lit(50, 50), "the disc's center");
-    assert!(dark(44, 44), "the disc's quad corner");
-    assert!(dark(55, 55), "the disc's other quad corner");
-}
-
 /// A rect off the pixel grid covers, per side, the pixel its edge crosses, even where that pixel's center is outside. With snap off, (40.75, 20.75)..(100.25, 60.25) covers column 40 and row 20 by 0.25 and column 100 and row 60 likewise; pixels just inside are full. Black over white leaves `1 − coverage`.
 #[test]
 fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {

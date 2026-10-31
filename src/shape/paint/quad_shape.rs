@@ -41,8 +41,9 @@ pub(crate) enum QuadShape {
         corners: Corners,
         shadow: LoweredShadow,
     },
-    /// Filled or bordered rounded triangle as an analytic SDF; `a`/`b`/`c` are
-    /// owner-local, fills solid only. `bbox` is their AABB inflated by `radius`;
+    /// Filled or bordered rounded triangle as an analytic SDF, solid fills only:
+    /// `a`/`b`/`c` are the owner-local corner centers, whose dilation by `radius`
+    /// is the shape. `bbox` is their AABB inflated by `radius`;
     /// `cascade::paint_rect` adds the AA fringe later.
     Triangle {
         a: Vec2,
@@ -74,7 +75,7 @@ impl QuadShape {
 }
 
 /// `Triangle` tests its `bbox`; `radius` is checked separately, as lowering's
-/// `radius.max(0.0)` launders a NaN to `0.0`.
+/// clamp to the inradius, an `f32::min`, launders a NaN.
 impl NanCheck for QuadShape {
     fn has_nan(&self) -> bool {
         match self {

@@ -25,7 +25,8 @@ pub struct ExpanderTheme {
     /// Triangle bounding box, corners included; keep it square unless the angles leave it unturned.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
     pub arrow_size: Vec2,
-    /// Triangle corner radius; `0.0` is sharp; at most half the smaller side of [`Self::arrow_size`].
+    /// Triangle corner radius; `0.0` is sharp. Rounding keeps the edges, and a radius past the
+    /// triangle's inradius paints its incircle.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub arrow_radius: f32,
     /// Arrow angle in radians while closed (default: points at the label).

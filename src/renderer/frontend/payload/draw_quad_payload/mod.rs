@@ -79,8 +79,8 @@ pub(crate) struct RectQuad {
     pub(crate) stroke: ShapeStroke,
 }
 
-/// What [`DrawQuadPayload::triangle`] lowers: three logical-px `points`,
-/// rounded by `radius`, with a solid fill and a stroke.
+/// What [`DrawQuadPayload::triangle`] lowers: three logical-px corner centers
+/// in `points`, dilated by `radius`, with a solid fill and a stroke.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TriangleQuad {
     pub(crate) points: [Vec2; 3],
@@ -160,7 +160,7 @@ impl DrawQuadPayload {
         })
     }
 
-    /// A rounded triangle from `q`'s three points. Same tier and stroke
+    /// A rounded triangle from `q`'s three corner centers. Same tier and stroke
     /// normalization as [`Self::rect`].
     pub(crate) const fn triangle(q: TriangleQuad) -> Self {
         let TriangleQuad {

@@ -112,7 +112,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             b: Vec2::new(40.0, 40.0),
             c: Vec2::new(100.0, 100.0),
             radius: 3.0,
-            expected_noop: false,
+            expected_noop: true,
         },
         Case {
             label: "near_degenerate_hundred_scale_rounded",
@@ -120,7 +120,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             b: Vec2::new(100.0, 0.0),
             c: Vec2::new(50.0, 0.004),
             radius: 3.0,
-            expected_noop: false,
+            expected_noop: true,
         },
         Case {
             label: "point",
@@ -136,7 +136,7 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             b: Vec2::new(10.0, 10.0),
             c: Vec2::new(10.0, 10.0),
             radius: 3.0,
-            expected_noop: false,
+            expected_noop: true,
         },
     ];
 
@@ -146,6 +146,62 @@ fn triangle_noop_rejects_scale_relative_zero_area_without_winding_bias() {
             .radius(case.radius);
         assert_eq!(shape.fill, RgbaF32::WHITE, "case: {}", case.label);
         assert_eq!(shape.is_noop(), case.expected_noop, "case: {}", case.label);
+    }
+}
+
+/// Rounding moves each edge in by the radius and dilates back by it, so the edges stay put.
+///
+/// The 30-40-50 right triangle has perimeter 120, incenter `(30·40, 40·30) / 120 = (10, 10)` and
+/// inradius `1200 / 120 = 10`. Radius 5 halves each corner's way to the incenter: `(5, 5)`,
+/// `(20, 5)`, `(5, 25)`, whose edges `y = 5`, `x = 5` and `4x + 3y = 95` lie 5 inside the sharp
+/// `y = 0`, `x = 0` and `4x + 3y = 120`. Radius 25 clamps to the inradius: all three centers sit
+/// on the incenter, and the shape is the incircle.
+#[test]
+fn triangle_rounding_keeps_the_edges() {
+    let mut store = RecordStore::default();
+    let cases = [
+        (
+            0.0,
+            [Vec2::ZERO, Vec2::new(30.0, 0.0), Vec2::new(0.0, 40.0)],
+            0.0,
+            Rect::new(0.0, 0.0, 30.0, 40.0),
+        ),
+        (
+            5.0,
+            [
+                Vec2::new(5.0, 5.0),
+                Vec2::new(20.0, 5.0),
+                Vec2::new(5.0, 25.0),
+            ],
+            5.0,
+            Rect::new(0.0, 0.0, 25.0, 30.0),
+        ),
+        (
+            25.0,
+            [Vec2::splat(10.0); 3],
+            10.0,
+            Rect::new(0.0, 0.0, 20.0, 20.0),
+        ),
+    ];
+    for (radius, centers, clamped, expected_bbox) in cases {
+        let record = Shape::triangle(Vec2::ZERO, Vec2::new(30.0, 0.0), Vec2::new(0.0, 40.0))
+            .fill(RgbaF32::WHITE)
+            .radius(radius)
+            .lower(&mut store);
+        let ShapeRecord::Quad(QuadShape::Triangle {
+            a,
+            b,
+            c,
+            radius: lowered,
+            bbox,
+            ..
+        }) = record
+        else {
+            panic!("a triangle lowers to a triangle quad, got {record:?}");
+        };
+        assert_eq!([a, b, c], centers, "radius {radius}");
+        assert_eq!(lowered, clamped, "radius {radius}");
+        assert_eq!(bbox, expected_bbox, "radius {radius}");
     }
 }
 

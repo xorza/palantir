@@ -60,7 +60,8 @@ impl TriangleShape {
         self
     }
 
-    /// Round all three corners by this radius.
+    /// Round all three corners by this radius. The edges stay on the sharp triangle's, so the
+    /// shape only loses its corners; a radius past the inradius paints the incircle.
     ///
     /// # Panics
     ///
@@ -72,8 +73,7 @@ impl TriangleShape {
         self
     }
 
-    /// Whether the triangle's own area paints nothing. A rounding radius
-    /// can still paint around it, so `is_noop` asks only at no radius.
+    /// Whether the triangle's area paints nothing; rounding stays inside it.
     fn area_is_paint_empty(&self) -> bool {
         let ab = self.b - self.a;
         let ac = self.c - self.a;
@@ -88,13 +88,13 @@ impl TriangleShape {
 }
 
 impl sealed::LowerShape for TriangleShape {
-    /// A thin or collapsed triangle with a radius paints a bar or a disc, so it is not empty.
     fn is_noop(&self) -> bool {
-        (self.fill.is_noop() && self.border.is_noop())
-            || (is_invisible(self.radius) && self.area_is_paint_empty())
+        (self.fill.is_noop() && self.border.is_noop()) || self.area_is_paint_empty()
     }
 
-    /// `bbox` is the AABB of `a`/`b`/`c` inflated by `radius`. The AA fringe is added later in `cascade::paint_rect`, since it is half a physical pixel and this rect is logical.
+    /// `bbox` is the rounded shape's own: the corner centers' AABB inflated by the clamped
+    /// radius. The AA fringe is added later in `cascade::paint_rect`, since it is half a
+    /// physical pixel and this rect is logical.
     fn lower(self, _store: &mut RecordStore) -> ShapeRecord {
         let Self {
             a,
@@ -104,8 +104,12 @@ impl sealed::LowerShape for TriangleShape {
             fill,
             border,
         } = self;
+        let CornerCenters {
+            points: [a, b, c],
+            radius,
+        } = CornerCenters::new([a, b, c], radius);
         // Through `Aabb`: raw `min`/`max` would launder a NaN corner out of the bounds.
-        let bbox = Aabb::of(&[a, b, c]).inflated(radius.max(0.0));
+        let bbox = Aabb::of(&[a, b, c]).inflated(radius);
         ShapeRecord::Quad(QuadShape::Triangle {
             a,
             b,
@@ -115,5 +119,39 @@ impl sealed::LowerShape for TriangleShape {
             border: ShapeStroke::from(border),
             bbox,
         })
+    }
+}
+
+/// The triangle whose dilation by `radius` rounds a sharp one's corners and keeps its edges.
+///
+/// Each edge moves in by the radius. Every edge line lies one inradius from the incenter, so the
+/// move is the homothety about the incenter of ratio `1 - radius / inradius`, the inset Inigo
+/// Quilez's rounded box takes before it subtracts the radius
+/// (<https://iquilezles.org/articles/distfunctions2d/>). The radius clamps to the inradius,
+/// where the centers meet at the incenter and the dilation is the incircle.
+#[derive(Debug)]
+struct CornerCenters {
+    points: [Vec2; 3],
+    radius: f32,
+}
+
+impl CornerCenters {
+    fn new(corners: [Vec2; 3], radius: f32) -> Self {
+        let [a, b, c] = corners;
+        let side_a = b.distance(c);
+        let side_b = c.distance(a);
+        let side_c = a.distance(b);
+        let perimeter = side_a + side_b + side_c;
+        let incenter = (a * side_a + b * side_b + c * side_c) / perimeter;
+        let inradius = (b - a).perp_dot(c - a).abs() / perimeter;
+        debug_assert!(inradius > 0.0, "`is_noop` refuses a triangle with no area");
+        let radius = radius.min(inradius);
+        // `v + (incenter - v) * t` rather than a lerp from the incenter: at no radius it returns
+        // each corner bit for bit.
+        let t = radius / inradius;
+        Self {
+            points: corners.map(|v| v + (incenter - v) * t),
+            radius,
+        }
     }
 }

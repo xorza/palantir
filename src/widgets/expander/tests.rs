@@ -341,22 +341,6 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         assert_close(got.y, want.y, 1e-6, residue);
     }
 
-    let rounded = c.rounded(1.0, -consts::FRAC_PI_2);
-    let expected = [
-        Vec2::new(1.0, 7.0),
-        Vec2::new(7.0, 4.0),
-        Vec2::new(1.0, 1.0),
-    ];
-    for (got, want) in rounded.into_iter().zip(expected) {
-        assert_close(got.x, want.x, 1e-6, residue);
-        assert_close(got.y, want.y, 1e-6, residue);
-    }
-    assert_eq!(
-        c.rounded(0.0, 0.0),
-        c.points(),
-        "a sharp triangle is the arrow itself"
-    );
-
     let t = ExpanderTheme::default();
     assert_eq!(t.arrow_angle(0.0), t.arrow_closed_angle);
     assert_eq!(t.arrow_angle(1.0), t.arrow_open_angle);

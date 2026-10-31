@@ -168,8 +168,7 @@ impl<'a> Expander<'a> {
                 spec,
             );
             let showing = openness > 0.0;
-            let [a, b, c] =
-                Arrow { size: t.arrow_size }.rounded(t.arrow_radius, t.arrow_angle(openness));
+            let [a, b, c] = Arrow { size: t.arrow_size }.rotated(t.arrow_angle(openness));
             let text = look.text;
             let label = ui.intern(label);
             header.record(ui, Some(&look.chrome), |ui| {

@@ -25,15 +25,4 @@ impl Arrow {
         let turn = Vec2::from_angle(radians);
         self.points().map(|p| center + turn.rotate(p - center))
     }
-
-    /// [`Self::rotated`] as a filled triangle's vertices with corners rounded by `radius`. The renderer rounds by dilating, so vertices sit one radius inside the box to fill it exactly. A radius over half the shorter side is fitted to it.
-    pub(crate) fn rounded(self, radius: f32, radians: f32) -> [Vec2; 3] {
-        let radius = radius.min(0.5 * self.size.min_element());
-        let inset = Vec2::splat(radius);
-        Self {
-            size: self.size - 2.0 * inset,
-        }
-        .rotated(radians)
-        .map(|p| p + inset)
-    }
 }
