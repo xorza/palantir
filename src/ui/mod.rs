@@ -321,6 +321,10 @@ impl Ui {
 
     /// `true` if a press this frame matches `shortcut`, its modifiers exactly, and was granted
     /// to this record position's scope.
+    ///
+    /// The read also watches the chord, so an off-focus press of it wakes the next frame. A read
+    /// skipped behind a chord that fired, as the right side of `a || b` is, still watches: a
+    /// frame that receives a press records again with no input, and that pass reads it.
     #[inline]
     pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool {
         let reader = self.key_reader();
