@@ -72,7 +72,7 @@ impl Default for TextStyle {
 
 impl TextStyle {
     pub(crate) fn metrics_valid(&self) -> bool {
-        GlyphFont::metrics_are_valid(self.font_size, self.line_height_for(self.font_size))
+        GlyphFont::metrics_are_valid(self.font_size, self.line_height())
     }
 
     /// This style as the face the shaper is asked for. Widgets go through
@@ -82,21 +82,22 @@ impl TextStyle {
     pub fn font(&self) -> GlyphFont {
         GlyphFont {
             size: self.font_size,
-            line_height: self.line_height_for(self.font_size),
+            line_height: self.line_height(),
             family: self.family,
             weight: self.weight,
             slant: self.slant,
         }
     }
 
-    /// Absolute line height in px for text at `font_size`: the one owner of
-    /// the `line_height_factor` formula.
+    /// Absolute line height in px of this style's text: the one owner of the
+    /// `line_height_factor` formula. Another size's reads through
+    /// [`Self::with_font_size`].
     ///
     /// Answers on the 1/64-px grid the shaper's cache keys hold: 16 px at 1.2
     /// leads at 19.203125, not 19.2.
     #[inline]
-    pub fn line_height_for(&self, font_size: f32) -> f32 {
-        TextShapeKey::leading_on_grid(font_size * self.line_height_factor)
+    pub fn line_height(&self) -> f32 {
+        TextShapeKey::leading_on_grid(self.font_size * self.line_height_factor)
     }
 
     /// Chainable single-axis tweak: `theme.text.with_font_size(14.0)`.

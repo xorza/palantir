@@ -176,7 +176,7 @@ fn a_remote_plays_and_reads_a_live_window() {
     assert!(frames > 0);
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 1);
     let texts: Vec<String> = remote
-        .widgets(Some("press".to_owned()))
+        .widgets(Some("press"))
         .unwrap()
         .into_iter()
         .map(|widget| widget.text)

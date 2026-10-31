@@ -229,7 +229,8 @@ impl<T: 'static> Remote<T> {
     /// # Errors
     ///
     /// As [`Self::query`].
-    pub fn widgets(&self, filter: Option<String>) -> Result<Vec<InspectedWidget>, PlayError> {
+    pub fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
+        let filter = filter.map(str::to_owned);
         self.query(move |_, ui| InspectedWidget::visible(ui, filter.as_deref()))
     }
 
