@@ -116,6 +116,7 @@ mundy = { version = "0.2", default-features = false, features = [
     "callback",
     "color-scheme",
     "double-click-interval",
+    "reduced-motion",
 ], optional = true }
 
 [dev-dependencies]

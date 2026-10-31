@@ -243,10 +243,12 @@ system scheme. Facts and sources for this section:
 - **The subscription runs off the main thread.** Its callback (`Send + Sync`) stores the values
   in shared cells and wakes every window, as `Ui::waker` does. `subscribe` and `once_blocking`
   are called on the main thread, as `mundy` asks.
-- **On Linux, no preference reads as light.** The portal's 0 is "No preference", and GNOME
-  writes it for its own Light setting; libadwaita reads it as light. `mundy` gives
-  `NoPreference` for 0 and for a desktop with no portal alike. Cost: a desktop with no portal
-  shows light.
+- **No preference reads as dark, on every OS.** `mundy` answers `NoPreference` for the portal's
+  0, for a desktop with no portal and for a read that fails, alike; a portal that fails while the
+  host runs must not turn the app light, so `System` shows the dark fallback for all three
+  (owner's call, 2026-10-31). Refused: reading it as light on Linux, as GNOME writes 0 for its
+  Light setting and libadwaita reads 0 as light; cost: GNOME's light users see dark until they
+  pick Light.
 - **No reader at all** (a harness, an offscreen host): the fallback scheme, dark, today's look.
 - **The double-click time improves on GNOME** (its setting reads through the portal, where
   `platform/linux.rs` keeps a fixed 400 ms and says the read fails); KDE's own setting is still
@@ -351,6 +353,15 @@ impl OffscreenHost { pub fn set_system_color_scheme(&mut self, scheme: Option<Co
 - **The light accent is Ayu Light's orange, `#a66509`.** Refused: blue in both schemes, as macOS,
   Windows and GNOME keep the hue. Cost: two accent hues, so an app's own accent reads
   `ui.color_scheme()`.
+- **Reduced motion snaps every `Ui::animate`** while the system asks for it (`mundy`'s
+  `reduced-motion`, read and followed with the scheme), as CSS `prefers-reduced-motion` and WCAG
+  2.3.3 ask of motion a person's input starts
+  (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>); a spinner's turn
+  and a caret's blink still run, as they show state. One choke point, so no widget repeats the
+  rule. The getter is `Ui::is_motion_reduced`, a predicate of `Ui` state as `AGENTS.md` names one;
+  `Harness` and `OffscreenHost` take `set_motion_reduced`. Refused: a per-widget switch, which
+  each widget would have to read; zeroing `Metrics::transition`, which misses `Ui::animate`
+  callers outside the theme (a slew).
 - **`mundy` reads the system on every OS, with no feature of its own**, and replaces the
   double-click reads. Reasons in **Where the scheme comes from**.
 
@@ -397,8 +408,8 @@ L3 is done but for the checks by hand. Where it differs:
 - **The first window opens in the system's scheme**: the host reads `mundy` while the font scan
   runs, before it makes the window, so the fallback shows only when the read fails.
 - **The host no longer reads the settings again on focus**; the subscription reports each change.
-- **Linux keeps 400 ms where the portal gives no double-click time**, a platform constant beside
-  `NO_PREFERENCE`, so a desktop with no portal keeps today's value.
+- **Linux keeps 400 ms where the portal gives no double-click time**, a platform constant, so a
+  desktop with no portal keeps today's value.
 - **The shot header's `scheme light|dark`** sets the harness's system scheme; the showcase pins
   dark, so it matters to the observatory.
 - **Timeout 100 ms**, five cold reads (`.notes/research/2026-10-31-system-preferences.md`).
@@ -407,15 +418,6 @@ Order: L1 → L2 → L3, then 1 → 7; L4 when its go-ahead comes. Each batch en
 `cargo drive gate`, regenerates `.notes/API_SURFACE.md` when the surface moves, and, for a change
 a person can see, ends with `cargo drive run shot` before and after. A batch that changes
 palantir's API also migrates darkroom (palantir is its submodule) and runs darkroom's gate.
-
-### L3. Checks left
-- [ ] By hand on each OS (Linux, macOS, Windows): with `cargo run --example counter`, which
-      follows the system, switch the desktop's scheme; every window repaints in it within a
-      frame, title bar included.
-
-### L4. Reduced motion (proposed; its own go-ahead)
-- [ ] `mundy`'s `reduced-motion`; `Ui::prefers_reduced_motion()`; `Theme::stock` and the
-      transitions drop their animation while it is on, as CSS `prefers-reduced-motion` asks.
 
 ### 1. The example, its model and the shared shot mode
 - [ ] `[[example]] observatory` (`winit` required, `test = true`); the first test lane names
@@ -477,3 +479,9 @@ palantir's API also migrates darkroom (palantir is its submodule) and runs darkr
       custom-widget link stay.
 - [ ] palantir `AGENTS.md`: the lasting decisions fold in (the examples, the scheme, the
       palettes, `mundy`); this proposal is deleted.
+
+## Changed
+
+- **L3's check by hand on each OS** is left to the owner: it switches the desktop's scheme on
+  Linux, macOS and Windows, which this session neither owns nor has; the mapping, the apply path
+  and the shot header are tested, and `cargo run --example counter` follows the system.

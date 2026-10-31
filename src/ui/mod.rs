@@ -289,6 +289,25 @@ impl Ui {
         self.resources.system_color_scheme().get()
     }
 
+    /// Whether the system asks for less motion: then every [`Self::animate`] snaps to its target,
+    /// as CSS `prefers-reduced-motion` asks of transitions
+    /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). A paint
+    /// animation that shows progress, as a spinner's turn and a caret's blink, still runs.
+    /// App-global; `false` where nothing reports it.
+    #[inline]
+    pub fn is_motion_reduced(&self) -> bool {
+        self.resources.motion_reduced().get()
+    }
+
+    /// A host's report of the system's reduced-motion preference; a change asks this window for
+    /// a frame.
+    pub(crate) fn set_motion_reduced(&mut self, reduced: bool) {
+        if self.is_motion_reduced() != reduced {
+            self.resources.motion_reduced().set(reduced);
+            self.frame_runtime.request_repaint();
+        }
+    }
+
     /// A host's report of the system's scheme; a change asks this window for a frame.
     pub(crate) fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) {
         if self.system_color_scheme() != scheme {
@@ -1096,7 +1115,11 @@ impl Ui {
         request: AnimationRequest<V>,
         spec: impl Into<Option<AnimationSpec>>,
     ) -> V {
-        let spec = spec.into().unwrap_or(AnimationSpec::SNAP);
+        let spec = if self.is_motion_reduced() {
+            AnimationSpec::SNAP
+        } else {
+            spec.into().unwrap_or(AnimationSpec::SNAP)
+        };
         let clock = AnimationClock {
             dt: self.frame_runtime.dt,
             render_frame_id: self.frame_runtime.render_frame_id,

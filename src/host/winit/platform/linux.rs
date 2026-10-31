@@ -6,8 +6,6 @@ use winit::event_loop::EventLoopBuilder;
 use winit::platform::wayland::WindowAttributesExtWayland as _;
 use winit::window::WindowAttributes;
 
-use crate::theme::color_scheme::ColorScheme;
-
 /// Nothing to configure.
 pub(super) const fn configure_event_loop<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
 
@@ -20,13 +18,6 @@ pub(super) fn with_app_id(attrs: WindowAttributes, app_id: Option<&str>) -> Wind
         None => attrs,
     }
 }
-
-/// The scheme a desktop that states no preference shows: light. The Settings portal's
-/// `color-scheme` 0 is "No preference", and GNOME writes 0 for its own Light setting, which
-/// libadwaita reads as light
-/// (<https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.impl.portal.Settings.html>).
-/// `mundy` answers `NoPreference` for a desktop with no portal too, which then shows light.
-pub(super) const NO_PREFERENCE: Option<ColorScheme> = Some(ColorScheme::Light);
 
 /// GNOME's and KDE's default double-click time, 400 ms, kept where the portal gives none. GNOME's
 /// setting reads through the portal's `org.gnome.desktop.peripherals.mouse double-click`; KDE keeps
