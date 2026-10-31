@@ -67,7 +67,7 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
         .image;
     for (x, y, pixel) in img.enumerate_pixels() {
         let i = y / SWATCH * COLS + x / SWATCH;
-        let want = swatch_color(i).to_srgba();
+        let want = swatch_color(i).to_srgba8();
         // The LUT is `f16`, finer than an sRGB step, so only encode rounding
         // remains; swatches are at least 5 sRGB units apart.
         fixtures::assert_px(

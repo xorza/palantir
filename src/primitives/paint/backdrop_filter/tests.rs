@@ -191,7 +191,7 @@ fn a_chrome_with_only_a_filter_paints() {
 #[test]
 fn a_ceiling_for_an_ink_holds_it_at_the_text_contrast() {
     let ink = RgbaF32::hex(0xa4a4a4);
-    let level = |byte: u8| RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte));
+    let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte));
     assert!(ink.contrast_ratio(level(58)) >= 4.5);
     assert!(
         ink.contrast_ratio(level(59)) < 4.5,

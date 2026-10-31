@@ -16,7 +16,7 @@ fn switching_model_keeps_the_color() {
             ColorModel::Hsv => ColorModel::Okhsv,
         });
         assert_ne!(other.model(), start.model());
-        let (got, want) = (other.to_color().to_srgba(), start.to_color().to_srgba());
+        let (got, want) = (other.to_color().to_srgba8(), start.to_color().to_srgba8());
         assert_eq!(got, want, "{model:?}");
     }
 }
@@ -53,8 +53,8 @@ fn setters_clamp() {
     assert_eq!(coords.saturation(), 1.0);
     assert_eq!(coords.value(), 0.0);
     assert_eq!(
-        coords.to_color().to_srgba(),
-        ColorCoords::default().to_color().to_srgba(),
+        coords.to_color().to_srgba8(),
+        ColorCoords::default().to_color().to_srgba8(),
         "hue 1 is the color hue 0 is",
     );
 
@@ -142,7 +142,7 @@ fn both_models_round_trip_keep_grays_hue_and_wrap_or_clamp() {
             );
         }
 
-        let byte = |c: ColorCoords| c.to_color().to_srgba();
+        let byte = |c: ColorCoords| c.to_color().to_srgba8();
         assert_eq!(
             byte(axes(model, 1.25, 2.0, 2.0)),
             byte(axes(model, 0.25, 1.0, 1.0)),

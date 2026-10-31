@@ -525,7 +525,7 @@ fn release(resources: &mut Option<PaneResources>, slot: URect) {
 fn held_clear(clear: RgbaF16, format: TargetFormat) -> [f32; 3] {
     let clear = RgbaF32::from(clear);
     let held = if format.get().is_srgb() {
-        RgbaF32::from(RgbaF32::from(clear.to_srgba()).to_f16())
+        RgbaF32::from(RgbaF32::from(clear.to_srgba8()).to_f16())
     } else {
         clear
     };

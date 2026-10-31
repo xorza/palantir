@@ -63,7 +63,7 @@ pub(super) const fn encode_byte(y: f32) -> u8 {
 }
 
 /// The byte an encoded component `c` in `0..=1` lands on through [`decode`] and then
-/// [`encode_byte`], with neither run: what `RgbaF32::srgb(c, ..).to_srgba()` gives.
+/// [`encode_byte`], with neither run: what `RgbaF32::srgb(c, ..).to_srgba8()` gives.
 ///
 /// **Counted, as `encode_byte` is.** The pair is monotonic in `c`, so the byte rises to `k + 1`
 /// at one `f32`, [`ENCODED_THRESHOLDS`]`[k]`, a few ulps from `(k + 1/2) / 255`. Each lies half

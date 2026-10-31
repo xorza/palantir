@@ -509,7 +509,7 @@ impl StripPass<'_> {
                         .align(Align::v(VAlign::Center))
                         .child_align(Align::CENTER);
                     button.record(ui, Some(&close.chrome), |ui| {
-                        close.cross(ui, t.close_size, t.close_glyph, t.close_stroke);
+                        close.cross(ui, t.close_size, t.close_glyph_span, t.close_glyph_width);
                     });
                 }
                 if close_slot {
@@ -589,7 +589,7 @@ impl StripPass<'_> {
             .align(Align::v(VAlign::Bottom))
             .child_align(Align::CENTER);
         button.record(ui, Some(&chevron.chrome), |ui| {
-            chevron.ellipsis(ui, t.close_size, t.close_glyph, t.close_stroke);
+            chevron.ellipsis(ui, t.close_size, t.close_glyph_span, t.close_glyph_width);
         });
         let ui_theme = Rc::clone(ui.theme());
         // A menu button: the chevron's click toggles a menu below it.

@@ -37,7 +37,7 @@ impl Stop {
     pub fn new(offset: f32, color: impl Into<RgbaF32>) -> Self {
         Self {
             offset_u8: num::unit_to_u8(domain::fraction(offset)),
-            color: domain::color(color.into()).to_srgba(),
+            color: domain::color(color.into()).to_srgba8(),
         }
     }
 
@@ -50,7 +50,7 @@ impl Stop {
     /// The color decoded to linear f32.
     #[inline]
     pub const fn color(self) -> RgbaF32 {
-        RgbaF32::from_srgba(self.color)
+        RgbaF32::from_srgba8(self.color)
     }
 }
 

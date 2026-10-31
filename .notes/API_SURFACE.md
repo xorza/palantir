@@ -189,7 +189,7 @@ ButtonState
 
 ButtonTheme
     struct ButtonTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
-        pub looks: StatefulLook
+        pub unselected: StatefulLook
         pub selected: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
@@ -1805,10 +1805,10 @@ RgbaF32
         pub const fn luminance(self) -> f32
         pub const fn contrast_ratio(self, other: Self) -> f32
         pub const fn with_alpha(self, a: f32) -> Self
-        pub const fn from_srgba(bytes: SrgbaU8) -> Self
+        pub const fn from_srgba8(bytes: SrgbaU8) -> Self
         pub const fn hex(rgb: u32) -> Self
         pub const fn hexa(rgba: u32) -> Self
-        pub const fn to_srgba(self) -> SrgbaU8
+        pub const fn to_srgba8(self) -> SrgbaU8
         impl From<RgbaF32> for Brush
 
 Screenshot
@@ -2239,7 +2239,7 @@ TabbedView
             pub fn keyed<H: Hash>(self, key: impl Fn(&S) -> H) -> TabbedView<'a, S, L, impl Fn(usize, &S) -> u64>
         impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K>
             pub const fn closable(self, closable: bool) -> Self
-            pub const fn reorderable(self, reorderable: bool) -> Self
+            pub const fn draggable(self, draggable: bool) -> Self
             pub const fn overflow(self, overflow: TabOverflow) -> Self
             pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
             pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_>
@@ -2276,8 +2276,8 @@ TabsTheme
         pub max_width: f32
         pub close: StatefulLook
         pub close_size: f32
-        pub close_glyph: f32
-        pub close_stroke: f32
+        pub close_glyph_span: f32
+        pub close_glyph_width: f32
         pub close_shown: CloseShown
         pub caret: RgbaF32
         pub caret_width: f32

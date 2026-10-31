@@ -214,7 +214,7 @@ impl Image {
             .texels()
             .iter()
             .map(|texel| {
-                let RgbaF32 { r, g, b, a } = RgbaF32::from_srgba(*texel);
+                let RgbaF32 { r, g, b, a } = RgbaF32::from_srgba8(*texel);
                 [r * a, g * a, b * a, a]
             })
             .collect();
@@ -236,7 +236,7 @@ impl Image {
                 let [r, g, b, a] = weighed(&taps, |i| rows[i * to_w + x]);
                 let straight = if a > 0.0 { a.recip() } else { 0.0 };
                 texels[y * to_w + x] =
-                    RgbaF32::new(r * straight, g * straight, b * straight, a).to_srgba();
+                    RgbaF32::new(r * straight, g * straight, b * straight, a).to_srgba8();
             }
         }
         fitted

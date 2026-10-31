@@ -153,7 +153,7 @@ fn texels_are_srgb_encoded() {
 }
 
 /// The fill solves each column once and skips the decode and encode of HSV, and still writes
-/// the bytes of `slice.color(s, v).to_srgba()` at every texel's center: both models, hues on
+/// the bytes of `slice.color(s, v).to_srgba8()` at every texel's center: both models, hues on
 /// either side of a sector edge, and widths that leave a partial column block.
 #[test]
 fn the_fill_matches_the_color_of_every_texel() {
@@ -166,7 +166,7 @@ fn the_fill_matches_the_color_of_every_texel() {
                 let mut expected = Image::blank(size);
                 expected.fill_with(|at| {
                     let share = (at.as_vec2() + 0.5) / size.as_vec2();
-                    slice.color(share.x, 1.0 - share.y).to_srgba()
+                    slice.color(share.x, 1.0 - share.y).to_srgba8()
                 });
                 assert_eq!(
                     image.texels(),
@@ -277,7 +277,7 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
             .texels()
             .iter()
             .copied()
-            .map(RgbaF32::from_srgba)
+            .map(RgbaF32::from_srgba8)
             .collect();
         (size, texels)
     });
@@ -287,9 +287,9 @@ fn worst_errors(model: ColorModel, hue: f32) -> [SampleError; 3] {
         let v = (row as f32 + 0.5) / pixels.y as f32;
         for col in 0..pixels.x {
             let u = (col as f32 + 0.5) / pixels.x as f32;
-            let want = slice.color(u, 1.0 - v).to_srgba();
+            let want = slice.color(u, 1.0 - v).to_srgba8();
             for ((size, texels), worst) in fields.iter().zip(&mut worst) {
-                let shown = sample(texels, *size, u, v).to_srgba();
+                let shown = sample(texels, *size, u, v).to_srgba8();
                 for (a, b) in [(shown.r, want.r), (shown.g, want.g), (shown.b, want.b)] {
                     let error = (f32::from(a) - f32::from(b)).abs();
                     if error > worst.value {

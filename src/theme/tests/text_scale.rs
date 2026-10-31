@@ -9,7 +9,7 @@ use ron::ser;
 fn disabled_size(theme: &Theme) -> f32 {
     theme
         .button
-        .looks
+        .unselected
         .disabled
         .to_animated(theme.text)
         .text
@@ -31,7 +31,7 @@ fn value_size(theme: &Theme) -> f32 {
         .color_picker
         .value
         .chip
-        .looks
+        .unselected
         .normal
         .text
         .font_size
@@ -211,10 +211,10 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     const RESULT: &str = "text scale would make font size or line height invalid";
     // A look's override is checked as the face it folds into. The first overflows alone (f32::MAX / 2 × 4 is inf; ambient 14 × 4 = 56 is fine). The second is valid alone and at 1× but at 1/1000 its leading 14 × 0.001 × 0.001 = 0.000014 px is under EPS = 0.0001, while the ambient 0.014 × 1.2 is above.
     let big_override = |theme: &mut Theme| {
-        theme.button.looks.normal.text.font_size = Some(f32::MAX / 2.0);
+        theme.button.unselected.normal.text.font_size = Some(f32::MAX / 2.0);
     };
     let tight_override = |theme: &mut Theme| {
-        theme.button.looks.normal.text.line_height_factor = Some(0.001);
+        theme.button.unselected.normal.text.line_height_factor = Some(0.001);
     };
     let untouched: &dyn Fn(&mut Theme) = &|_| {};
     for (label, setup, factor, expected) in [

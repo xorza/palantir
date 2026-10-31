@@ -23,9 +23,10 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 /// [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
-    /// The four per-state looks; `flatten` keeps theme files flat (`[button.normal]`).
+    /// The four per-state looks of a button that is not selected; `flatten` keeps theme files
+    /// flat (`[button.normal]`).
     #[serde(flatten)]
-    pub looks: StatefulLook,
+    pub unselected: StatefulLook,
     /// The four per-state looks of a button that shows its on state (`[button.selected.normal]`).
     pub selected: StatefulLook,
     /// Spacing and transition spec — see [`SlotDefaults`].
@@ -53,7 +54,7 @@ impl ButtonTheme {
             text: TextStyleOverrides::NONE.with_color(p.text_disabled),
         };
         Self {
-            looks: StatefulLook {
+            unselected: StatefulLook {
                 normal: WidgetLook {
                     chrome: chrome(p.element_mid),
                     text: TextStyleOverrides::NONE,
@@ -82,11 +83,11 @@ impl ButtonTheme {
     /// Visit every text slot this theme owns (drives `Theme::scale_text`); destructured so a new field fails to compile here.
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
         let Self {
-            looks,
+            unselected,
             selected,
             defaults: _,
         } = self;
-        looks.for_each_text(f);
+        unselected.for_each_text(f);
         selected.for_each_text(f);
     }
 
@@ -103,7 +104,7 @@ impl ButtonTheme {
             ..flat(Brush::TRANSPARENT)
         };
         Self {
-            looks: StatefulLook {
+            unselected: StatefulLook {
                 normal: flat(Brush::TRANSPARENT),
                 hovered: flat(p.element_mid.into()),
                 active: flat(p.element_strong.into()),
@@ -131,7 +132,7 @@ impl ThemeSlot for ButtonTheme {
     #[inline(always)]
     fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
         let pack = match selection {
-            Selection::Unselected => &self.looks,
+            Selection::Unselected => &self.unselected,
             Selection::Selected => &self.selected,
         };
         pack.pick(response, Engagement::Pressed)

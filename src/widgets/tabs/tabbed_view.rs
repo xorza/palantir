@@ -89,7 +89,7 @@ pub struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64> {
     label: L,
     key: K,
     closable: bool,
-    reorderable: bool,
+    draggable: bool,
     overflow: TabOverflow,
     style: Option<&'a TabsTheme>,
 }
@@ -113,7 +113,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             label,
             key: idx_key::<S>,
             closable: true,
-            reorderable: false,
+            draggable: false,
             overflow: TabOverflow::default(),
             style: None,
         }
@@ -133,7 +133,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             label: self.label,
             key: move |_: usize, page: &S| WidgetId::from_hash(key(page)).0,
             closable: self.closable,
-            reorderable: self.reorderable,
+            draggable: self.draggable,
             overflow: self.overflow,
             style: self.style,
         }
@@ -149,8 +149,8 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
 
     /// Whether a chip may be dragged onto another slot, reported as
     /// [`TabsAction::Reordered`]. Default `false`: the caller performs the move.
-    pub const fn reorderable(mut self, reorderable: bool) -> Self {
-        self.reorderable = reorderable;
+    pub const fn draggable(mut self, draggable: bool) -> Self {
+        self.draggable = draggable;
         self
     }
 
@@ -182,7 +182,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             label,
             key,
             closable,
-            reorderable,
+            draggable,
             overflow,
             style: _,
         } = self;
@@ -213,7 +213,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                         key: key(i, option),
                         label: text,
                         closable,
-                        draggable: reorderable,
+                        draggable,
                     });
                 }
                 let strip = TabStrip::new(&buf.items)
@@ -248,7 +248,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             if let Some(from) = hit.drag_stopped {
                 let carried_from = carried.is_some() && carried == page_keys().nth(from);
                 carried = None;
-                if reorderable
+                if draggable
                     && carried_from
                     && let Some(to) = drop
                     && to != from

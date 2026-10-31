@@ -37,7 +37,7 @@ use std::str;
 /// anti-aliasing step and tween operates in. The sRGB encode happens on the
 /// GPU at swapchain write.
 ///
-/// - [`Self::srgb`] / [`Self::srgba`] / [`Self::hex`] / [`Self::from_srgba`]
+/// - [`Self::srgb`] / [`Self::srgba`] / [`Self::hex`] / [`Self::from_srgba8`]
 ///   read their argument as sRGB-encoded (the numbers CSS and Figma show) and
 ///   linearize it. Use these for colors a human picked.
 /// - [`Self::new`] takes already-linear values.
@@ -307,8 +307,8 @@ impl RgbaF32 {
 
     /// Decode sRGB-encoded bytes; alpha is `a / 255`. `const`, so a hex literal
     /// can be a constant. Exact: a compile-time table lookup, so
-    /// [`Self::to_srgba`] returns every byte.
-    pub const fn from_srgba(bytes: SrgbaU8) -> Self {
+    /// [`Self::to_srgba8`] returns every byte.
+    pub const fn from_srgba8(bytes: SrgbaU8) -> Self {
         Self {
             r: srgb_transfer::DECODED_BYTES[bytes.r as usize],
             g: srgb_transfer::DECODED_BYTES[bytes.g as usize],
@@ -324,13 +324,13 @@ impl RgbaF32 {
     /// As [`SrgbaU8::hex`].
     #[track_caller]
     pub const fn hex(rgb: u32) -> Self {
-        Self::from_srgba(SrgbaU8::hex(rgb))
+        Self::from_srgba8(SrgbaU8::hex(rgb))
     }
 
     /// Packed `0xRRGGBBAA` sRGB literal, alpha last as CSS orders it: [`SrgbaU8::hexa`],
     /// decoded.
     pub const fn hexa(rgba: u32) -> Self {
-        Self::from_srgba(SrgbaU8::hexa(rgba))
+        Self::from_srgba8(SrgbaU8::hexa(rgba))
     }
 
     /// Pack to four f16 lanes, rounding each channel to f16: what a draw lane carries.
@@ -339,8 +339,8 @@ impl RgbaF32 {
         RgbaF16::new(self.r, self.g, self.b, self.a)
     }
 
-    /// Encode to sRGB 8-bit bytes. Inverts [`Self::from_srgba`] exactly.
-    pub const fn to_srgba(self) -> SrgbaU8 {
+    /// Encode to sRGB 8-bit bytes. Inverts [`Self::from_srgba8`] exactly.
+    pub const fn to_srgba8(self) -> SrgbaU8 {
         SrgbaU8 {
             r: srgb_transfer::encode_byte(self.r),
             g: srgb_transfer::encode_byte(self.g),
@@ -353,7 +353,7 @@ impl RgbaF32 {
 impl From<SrgbaU8> for RgbaF32 {
     #[inline]
     fn from(bytes: SrgbaU8) -> Self {
-        Self::from_srgba(bytes)
+        Self::from_srgba8(bytes)
     }
 }
 
@@ -363,9 +363,9 @@ impl From<SrgbaU8> for RgbaF32 {
 /// color loads back the same. Refused: hex alone, which moves every color off the grid.
 impl Serialize for RgbaF32 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let bytes = self.to_srgba();
+        let bytes = self.to_srgba8();
         let SrgbaU8 { r, g, b, a } = bytes;
-        let text = if Self::from_srgba(bytes) != *self {
+        let text = if Self::from_srgba8(bytes) != *self {
             let Self { r, g, b, a } = *self;
             if a == 1.0 {
                 format!("color(srgb-linear {r} {g} {b})")
@@ -399,7 +399,7 @@ impl str::FromStr for RgbaF32 {
 }
 
 /// An 8-bit alpha as a straight alpha: the one conversion, so a color built from 255ths is on the
-/// grid [`RgbaF32::from_srgba`] reads.
+/// grid [`RgbaF32::from_srgba8`] reads.
 const fn alpha_of_byte(a: u8) -> f32 {
     a as f32 / 255.0
 }
@@ -465,12 +465,12 @@ fn parse_hex(value: &str) -> Result<RgbaF32, ParseColorError> {
         Ok((hex_nibble(body[idx])? << 4) | hex_nibble(body[idx + 1])?)
     };
     match body.len() {
-        6 => Ok(RgbaF32::from_srgba(SrgbaU8::rgb(
+        6 => Ok(RgbaF32::from_srgba8(SrgbaU8::rgb(
             parse_byte(0)?,
             parse_byte(2)?,
             parse_byte(4)?,
         ))),
-        8 => Ok(RgbaF32::from_srgba(SrgbaU8::new(
+        8 => Ok(RgbaF32::from_srgba8(SrgbaU8::new(
             parse_byte(0)?,
             parse_byte(2)?,
             parse_byte(4)?,

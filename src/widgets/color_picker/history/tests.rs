@@ -17,7 +17,7 @@ fn presets_are_the_derived_list() {
     let colors = history.colors();
     assert_eq!(colors[11], Okhsv::new(11.0 / 12.0, 1.0, 1.0).to_color());
     assert_eq!(colors[12], RgbaF32::BLACK);
-    assert_eq!(colors[15].to_srgba(), RgbaF32::WHITE.to_srgba());
+    assert_eq!(colors[15].to_srgba8(), RgbaF32::WHITE.to_srgba8());
 }
 
 #[test]

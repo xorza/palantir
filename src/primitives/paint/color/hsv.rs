@@ -162,7 +162,7 @@ impl<const N: usize> HsvBlock<N> {
         block
     }
 
-    /// Each lane's `Hsv::new(h, s, v).to_color().to_srgba()`, into `out`, a texel a lane from
+    /// Each lane's `Hsv::new(h, s, v).to_color().to_srgba8()`, into `out`, a texel a lane from
     /// the first.
     pub(crate) fn row(&self, v: f32, out: &mut [SrgbaU8]) {
         let val = domain::fraction(v);
@@ -188,11 +188,11 @@ mod tests {
     #[test]
     fn value_is_an_encoded_component() {
         assert_eq!(
-            Hsv::new(0.0, 1.0, 0.5).to_color().to_srgba(),
+            Hsv::new(0.0, 1.0, 0.5).to_color().to_srgba8(),
             SrgbaU8::hex(0x800000)
         );
         assert_eq!(
-            Hsv::new(0.0, 0.0, 0.5).to_color().to_srgba(),
+            Hsv::new(0.0, 0.0, 0.5).to_color().to_srgba8(),
             SrgbaU8::hex(0x808080)
         );
     }
@@ -210,7 +210,7 @@ mod tests {
         for (step, expected) in want.iter().enumerate() {
             let h = step as f32 / 6.0;
             assert_eq!(
-                Hsv::new(h, 1.0, 1.0).to_color().to_srgba(),
+                Hsv::new(h, 1.0, 1.0).to_color().to_srgba8(),
                 *expected,
                 "hue {h}"
             );

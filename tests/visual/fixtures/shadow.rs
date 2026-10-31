@@ -39,7 +39,7 @@ fn render_shadow(source: Rect, corners: impl Into<Corners>, shadow: Shadow) -> R
 /// The sRGB byte of gray `lin` in linear light.
 const fn gray(lin: f64) -> u8 {
     let lin = lin as f32;
-    RgbaF32::new(lin, lin, lin, 1.0).to_srgba().r
+    RgbaF32::new(lin, lin, lin, 1.0).to_srgba8().r
 }
 
 /// The sRGB byte of white under [`INK`] at `coverage`.

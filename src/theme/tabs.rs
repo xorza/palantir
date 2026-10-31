@@ -74,10 +74,11 @@ pub struct TabsTheme {
     /// overflow button's dots; its arms are drawn strokes, not a font's "×", so the cross sits on
     /// the button's center at a weight the theme sets.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub close_glyph: f32,
-    /// The close cross's stroke in logical px, and half the overflow button's dot diameter.
+    pub close_glyph_span: f32,
+    /// The width of the close cross's stroke in logical px, and half the overflow button's dot
+    /// diameter.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub close_stroke: f32,
+    pub close_glyph_width: f32,
     /// Which chips show their close button.
     pub close_shown: CloseShown,
     /// The insertion mark a chip drag shows at the slot it would drop into.
@@ -114,8 +115,8 @@ impl TabsTheme {
             min_width: _,
             max_width: _,
             close_size: _,
-            close_glyph: _,
-            close_stroke: _,
+            close_glyph_span: _,
+            close_glyph_width: _,
             close_shown: _,
             caret: _,
             caret_width: _,
@@ -195,8 +196,8 @@ impl TabsTheme {
                 },
             },
             close_size: 16.0,
-            close_glyph: 8.0,
-            close_stroke: m.stroke.fine,
+            close_glyph_span: 8.0,
+            close_glyph_width: m.stroke.fine,
             close_shown: CloseShown::SelectedOrHovered,
             caret: p.accent,
             caret_width: m.stroke.line,

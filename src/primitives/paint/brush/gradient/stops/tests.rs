@@ -7,8 +7,8 @@ use std::hash::{Hash, Hasher as _};
 /// Two-stop gradient built from the bytes a stop stores, which decode and re-encode return exactly.
 fn ramp(a: SrgbaU8, b: SrgbaU8) -> GradientStops {
     GradientStops::new([
-        Stop::new(0.0, RgbaF32::from_srgba(a)),
-        Stop::new(1.0, RgbaF32::from_srgba(b)),
+        Stop::new(0.0, RgbaF32::from_srgba8(a)),
+        Stop::new(1.0, RgbaF32::from_srgba8(b)),
     ])
 }
 
@@ -87,8 +87,8 @@ fn offset_and_color_stay_independent() {
     let base = ramp(SrgbaU8::rgb(1, 2, 3), SrgbaU8::rgb(4, 5, 6));
     let color_swapped = ramp(SrgbaU8::rgb(4, 5, 6), SrgbaU8::rgb(1, 2, 3));
     let offset_moved = GradientStops::new([
-        Stop::new(0.0, RgbaF32::from_srgba(SrgbaU8::rgb(1, 2, 3))),
-        Stop::new(0.5, RgbaF32::from_srgba(SrgbaU8::rgb(4, 5, 6))),
+        Stop::new(0.0, RgbaF32::from_srgba8(SrgbaU8::rgb(1, 2, 3))),
+        Stop::new(0.5, RgbaF32::from_srgba8(SrgbaU8::rgb(4, 5, 6))),
     ]);
 
     let digest = |s: &GradientStops| {

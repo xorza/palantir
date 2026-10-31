@@ -228,7 +228,7 @@ pub(crate) struct OkhsvBlock<const N: usize> {
 }
 
 impl<const N: usize> OkhsvBlock<N> {
-    /// Each lane's `OkhsvColumn::color(v).to_srgba()`, into `out`, a texel a lane from the
+    /// Each lane's `OkhsvColumn::color(v).to_srgba8()`, into `out`, a texel a lane from the
     /// first.
     pub(crate) fn row(&self, v: f32, out: &mut [SrgbaU8]) {
         let [r, g, b] = self.rgb(domain::fraction(v));

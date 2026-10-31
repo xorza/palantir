@@ -45,7 +45,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
     let self_id = WidgetId::from_hash("self-disabled");
     let disabled_fill = RgbaF32::srgb(0.8, 0.1, 0.2);
     let mut style = h.ui().theme.button.clone();
-    style.looks.disabled.chrome = Chrome::fill(disabled_fill);
+    style.unselected.disabled.chrome = Chrome::fill(disabled_fill);
     let response = h.frame_value(|ui| {
         Button::new()
             .id(self_id)

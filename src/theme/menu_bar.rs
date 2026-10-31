@@ -54,7 +54,7 @@ impl MenuBarTheme {
     /// band.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let ButtonTheme {
-            mut looks,
+            unselected: mut looks,
             selected: _,
             defaults,
         } = ButtonTheme::menu_button(p, m);

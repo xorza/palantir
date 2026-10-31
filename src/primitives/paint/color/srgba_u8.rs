@@ -5,8 +5,8 @@
 ///
 /// The one non-linear color form, a distinct type so encoded bytes are never
 /// read as linear light. Decode with
-/// [`RgbaF32::from_srgba`](crate::RgbaF32::from_srgba) or `From`, and encode
-/// with [`RgbaF32::to_srgba`](crate::RgbaF32::to_srgba).
+/// [`RgbaF32::from_srgba8`](crate::RgbaF32::from_srgba8) or `From`, and encode
+/// with [`RgbaF32::to_srgba8`](crate::RgbaF32::to_srgba8).
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct SrgbaU8 {

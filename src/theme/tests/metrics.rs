@@ -108,7 +108,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("picker border", t.color_picker.border_width, 0.25),
         ("caret", t.text_edit.caret_width, 0.5),
         ("dock preview", t.dock.preview_stroke.width, 0.5),
-        ("tab close", t.tabs.close_stroke, 0.5),
+        ("tab close", t.tabs.close_glyph_width, 0.5),
         ("combo arrow", t.combo_box.arrow_width, 0.5),
         ("picker handle", t.color_picker.handle_width, 0.5),
         ("focus ring", t.focus_ring.width, 0.75),
@@ -127,7 +127,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         "a tooltip is the caption tier"
     );
     let chromes = [
-        ("button", &t.button.looks.normal.chrome, 13.0, 0.25),
+        ("button", &t.button.unselected.normal.chrome, 13.0, 0.25),
         ("text edit", &t.text_edit.looks.normal.chrome, 13.0, 0.25),
         ("checkbox", &t.checkbox.unchecked.normal.chrome, 13.0, 0.25),
         ("tooltip", &t.tooltip.panel, 13.0, 0.25),

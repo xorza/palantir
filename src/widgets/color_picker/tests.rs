@@ -33,8 +33,8 @@ fn the_hue_survives_black() {
     frame(&mut h, id, &mut color);
     h.drag_to(Vec2::new(1.0, 300.0));
     frame(&mut h, id, &mut color);
-    assert_eq!(color.to_srgba().r, 0, "dragged past the bottom is black");
-    assert_eq!(color.to_srgba().b, 0);
+    assert_eq!(color.to_srgba8().r, 0, "dragged past the bottom is black");
+    assert_eq!(color.to_srgba8().b, 0);
 
     h.drag_to(Vec2::new(190.0, 4.0));
     frame(&mut h, id, &mut color);
@@ -63,11 +63,11 @@ fn an_outside_edit_re_seeds_the_axes() {
         !edges.changed,
         "the picker does not rewrite what it was handed"
     );
-    assert_eq!(color.to_srgba().r, 0xff, "and it keeps the color intact");
+    assert_eq!(color.to_srgba8().r, 0xff, "and it keeps the color intact");
 
     h.press(Vec2::new(206.0, 1.0), PointerButton::Left);
     frame(&mut h, id, &mut color);
-    let picked = color.to_srgba();
+    let picked = color.to_srgba8();
     assert!(
         picked.r > picked.g && picked.g > picked.b,
         "an orange: {picked:?}"
@@ -81,14 +81,14 @@ fn opacity_leaves_the_color_alone() {
     let mut h = harness();
     let mut color = RgbaF32::hex(0x0000ff);
     frame(&mut h, id, &mut color);
-    let before = color.to_srgba();
+    let before = color.to_srgba8();
 
     h.press(
         Vec2::new(120.0, 160.0 + 6.0 + 14.0 + 6.0 + 7.0),
         PointerButton::Left,
     );
     frame(&mut h, id, &mut color);
-    let after = color.to_srgba();
+    let after = color.to_srgba8();
     assert_eq!(
         (after.r, after.g, after.b),
         (before.r, before.g, before.b),
@@ -122,7 +122,7 @@ fn the_model_switch_keeps_the_color() {
 fn the_channel_boxes_are_one_fixed_width() {
     let id = WidgetId::from_hash("picker-fixed-values");
     let mut h = harness();
-    let mut color = RgbaF32::from_srgba(SrgbaU8::rgb(9, 9, 9));
+    let mut color = RgbaF32::from_srgba8(SrgbaU8::rgb(9, 9, 9));
     let widths = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
             ColorPicker::new(color).alpha(true).id(id).show(ui);
@@ -143,7 +143,7 @@ fn the_channel_boxes_are_one_fixed_width() {
         assert_eq!(width, narrow[0], "{name} is a different width");
     }
 
-    color = RgbaF32::from_srgba(SrgbaU8::rgb(200, 211, 255));
+    color = RgbaF32::from_srgba8(SrgbaU8::rgb(200, 211, 255));
     frame(&mut h, id, &mut color);
     let wide = widths(&mut h, &mut color);
     assert_eq!(wide, narrow, "the boxes followed their digits");
@@ -227,7 +227,7 @@ fn the_readouts_and_channel_edits_start_from_the_bound_color() {
     frame(&mut h, id, &mut color);
     h.release(PointerButton::Left);
     frame(&mut h, id, &mut color);
-    let got = color.to_srgba();
+    let got = color.to_srgba8();
     assert!(got.r > 0, "R moved: {got:?}");
     assert_eq!((got.g, got.b), (0, 255), "G and B kept: {got:?}");
 }

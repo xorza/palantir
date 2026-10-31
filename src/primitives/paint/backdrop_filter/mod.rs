@@ -333,8 +333,8 @@ const SRGB_TOE: f32 = 0.003_130_8;
 /// of the tint's, the stored level `decode(encode(c) + step)` is concave in `c`, so by Jensen the
 /// weighted channels gain at most what their mean does.
 fn before_storing(g: f32) -> f32 {
-    let level = |byte: u8| RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte)).r;
-    let mut top = RgbaF32::new(g, g, g, 1.0).to_srgba().r;
+    let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte)).r;
+    let mut top = RgbaF32::new(g, g, g, 1.0).to_srgba8().r;
     if level(top) > g {
         top -= 1;
     }
