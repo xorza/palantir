@@ -74,7 +74,9 @@ impl ExpanderTheme {
     /// A header transparent at rest, picking up a surface fill on hover.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let radius = Corners::all(m.radius.control);
-        let arrow_size = Vec2::new(9.0, 9.0);
+        // Rounding by 1.5 keeps the edges and trims 1.85 px off each axis of this
+        // triangle, so the painted arrow reads 9 px.
+        let arrow_size = Vec2::new(11.0, 11.0);
         let gap = m.space.sm;
         Self {
             looks: StatefulLook {
