@@ -18,6 +18,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
+use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
@@ -217,6 +218,14 @@ impl OffscreenHost {
     #[track_caller]
     pub fn at(&mut self, time: Duration) -> &mut Self {
         *self.time.manual() = time;
+        self
+    }
+
+    /// Report `scheme` as the system's, as the winit host reports the desktop's; `None`, the
+    /// start, reports nothing, so [`SchemePreference::System`](crate::SchemePreference::System)
+    /// shows the fallback. The next frame shows the resolved scheme.
+    pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
+        self.driver.ui.set_system_color_scheme(scheme);
         self
     }
 

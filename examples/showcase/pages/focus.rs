@@ -540,5 +540,6 @@ fn set_ring(ui: &mut Ui, width: f32, color: RgbaF32) {
     }
     let mut theme = Theme::clone(ui.theme());
     theme.focus_ring = FocusRingTheme { color, width };
-    ui.set_theme(theme);
+    let scheme = ui.color_scheme();
+    ui.set_theme_for(scheme, theme);
 }

@@ -1,5 +1,7 @@
 //! Pass count and replay: what triggers a second record.
 
+use crate::theme::color_scheme::ColorScheme;
+
 use crate::app::App;
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::host::harness::Harness;
@@ -428,7 +430,7 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
         "premise"
     );
 
-    h.ui().set_theme(Theme::default());
+    h.ui().set_theme_for(ColorScheme::Dark, Theme::default());
     assert_ne!(
         animation_frame(&mut h),
         FrameProcessing::PaintOnly,

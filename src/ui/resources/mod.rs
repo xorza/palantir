@@ -1,6 +1,6 @@
 //! The app-global resources of one host, shared by every window's recorder, the one frontend and the one backend:
-//! shaper, image and icon registries, gradient atlas, clipboard, window directory, render owners, diagnostics and
-//! user scale. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
+//! shaper, image and icon registries, gradient atlas, clipboard, window directory, render owners, diagnostics,
+//! user scale and color scheme. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
 
 use std::rc::Rc;
 
@@ -20,6 +20,8 @@ use crate::renderer::render_owner_id::RenderOwners;
 use crate::renderer::shared_device::SharedDevice;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
+use crate::theme::color_scheme::ColorScheme;
+use crate::theme::scheme_preference::SchemePreference;
 use crate::window::window_directory::WindowDirectory;
 
 #[derive(Clone, Debug)]
@@ -38,6 +40,11 @@ pub(crate) struct UiResources {
     /// The one scale every window's `Display` is minted from; app-global because per-monitor scale is already
     /// `Display::system_scale`, leaving a preference windows should not disagree about.
     user_scale: Rc<AppSetting<UserScale>>,
+    /// The scheme the person picked; app-global, so a pick in one window turns every window.
+    scheme_preference: Rc<AppSetting<SchemePreference>>,
+    /// The scheme the system reports, which the winit host writes; `None` where nothing reports
+    /// one.
+    system_color_scheme: Rc<AppSetting<Option<ColorScheme>>>,
     /// The double-click time every window's input reads, which the winit host sets from the
     /// platform's.
     double_click_window: DoubleClickWindow,
@@ -58,6 +65,8 @@ impl UiResources {
             clipboard,
             diagnostics: Diagnostics::default(),
             user_scale: Rc::default(),
+            scheme_preference: Rc::default(),
+            system_color_scheme: Rc::default(),
             double_click_window: DoubleClickWindow::default(),
             windows: WindowDirectory::default(),
             render_owners: RenderOwners::default(),
@@ -98,6 +107,21 @@ impl UiResources {
 
     pub(crate) fn user_scale(&self) -> &AppSetting<UserScale> {
         &self.user_scale
+    }
+
+    pub(crate) fn scheme_preference(&self) -> &AppSetting<SchemePreference> {
+        &self.scheme_preference
+    }
+
+    pub(crate) fn system_color_scheme(&self) -> &AppSetting<Option<ColorScheme>> {
+        &self.system_color_scheme
+    }
+
+    /// The scheme every window shows now: the preference resolved against the system's.
+    pub(crate) fn color_scheme(&self) -> ColorScheme {
+        self.scheme_preference
+            .get()
+            .resolve(self.system_color_scheme.get())
     }
 
     pub(crate) const fn double_click_window(&self) -> &DoubleClickWindow {

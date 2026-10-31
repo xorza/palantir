@@ -14,6 +14,7 @@ pub(crate) mod layer_scope;
 pub(crate) mod resources;
 pub(crate) mod singletons;
 pub(crate) mod state;
+mod theme_pair;
 
 use crate::animation::AnimationMap;
 use crate::animation::animation_map_typed::AnimationClock;
@@ -81,6 +82,8 @@ use crate::text::font_source::FontSource;
 use crate::text::probe::TextProbe;
 use crate::text::run::TextRun;
 use crate::theme::Theme;
+use crate::theme::color_scheme::ColorScheme;
+use crate::theme::scheme_preference::SchemePreference;
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
@@ -92,6 +95,7 @@ use crate::ui::layer_scope::LayerScope;
 use crate::ui::resources::UiResources;
 use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
+use crate::ui::theme_pair::ThemePair;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::vsync::Vsync;
@@ -119,11 +123,13 @@ use std::time::Duration;
 #[derive(Debug)]
 pub struct Ui {
     forest: Forest,
-    /// Refcounted so a widget can hold the theme across the `&mut Ui` its `show`
-    /// takes; cloning the bundle per widget per frame would be a large copy.
-    theme: Rc<Theme>,
-    /// Bumped by every theme write, so a frame can tell its tree was recorded under another
-    /// theme (`RecordBaseline`).
+    /// This window's theme for each scheme. Refcounted so a widget can hold the theme across the
+    /// `&mut Ui` its `show` takes; cloning the bundle per widget per frame would be a large copy.
+    themes: ThemePair,
+    /// The scheme this frame shows, resolved once at its start so a frame never mixes two.
+    scheme: ColorScheme,
+    /// Bumped by every write to the shown theme and every change of the shown scheme, so a frame
+    /// can tell its tree was recorded under another theme (`RecordBaseline`).
     theme_epoch: u32,
     /// Cross-frame widget state, keyed by `WidgetId`.
     state: StateMap,
@@ -181,8 +187,9 @@ impl Ui {
         let input = InputState::new(resources.double_click_window().clone());
         Self {
             forest: Forest::new(resources.text().family_keys()),
+            scheme: resources.color_scheme(),
             resources,
-            theme: Rc::default(),
+            themes: ThemePair::stock(),
             theme_epoch: 0,
             state: StateMap::default(),
             singletons: Singletons::default(),
@@ -211,8 +218,8 @@ impl Ui {
         self.waker.clone()
     }
 
-    /// The active theme. `.clone()` is a refcount bump, so a style can outlive the
-    /// `show(ui)` reborrow:
+    /// The theme of the scheme this frame shows ([`Self::color_scheme`]). `.clone()` is a
+    /// refcount bump, so a style can outlive the `show(ui)` reborrow:
     ///
     /// ```
     /// # use palantir::{Button, Ui};
@@ -223,14 +230,81 @@ impl Ui {
     /// ```
     #[inline]
     pub const fn theme(&self) -> &Rc<Theme> {
-        &self.theme
+        self.themes.get(self.scheme)
     }
 
-    /// Replace the whole theme; takes an `Rc` so swapping prebuilt themes copies nothing.
+    /// This window's theme for `scheme`, shown or not. [`Theme::stock`] of each until set.
     #[inline]
-    pub fn set_theme(&mut self, theme: impl Into<Rc<Theme>>) {
-        self.theme = theme.into();
-        self.theme_epoch = self.theme_epoch.wrapping_add(1);
+    pub const fn theme_for(&self, scheme: ColorScheme) -> &Rc<Theme> {
+        self.themes.get(scheme)
+    }
+
+    /// Replace this window's theme for `scheme`; takes an `Rc` so swapping prebuilt themes copies
+    /// nothing. The theme of the shown scheme applies at once, to the widgets recorded after the
+    /// call; the other waits until its scheme shows.
+    ///
+    /// ```
+    /// # use palantir::{ColorScheme, SchemePreference, Theme, Ui};
+    /// # fn one_look(ui: &mut Ui) {
+    /// // An app with one look sets it and pins its scheme.
+    /// ui.set_theme_for(ColorScheme::Dark, Theme::stock(ColorScheme::Dark));
+    /// ui.set_scheme_preference(SchemePreference::Dark);
+    /// # }
+    /// ```
+    #[inline]
+    pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) {
+        *self.themes.get_mut(scheme) = theme.into();
+        if scheme == self.scheme {
+            self.theme_epoch = self.theme_epoch.wrapping_add(1);
+        }
+    }
+
+    /// The scheme the person picked; [`SchemePreference::System`] until set. App-global.
+    #[inline]
+    pub fn scheme_preference(&self) -> SchemePreference {
+        self.resources.scheme_preference().get()
+    }
+
+    /// Follow the system's scheme, or hold one by hand. App-global: every window shows the
+    /// resolved scheme from its next frame, which this call asks for; this frame keeps its
+    /// scheme, so no frame mixes two. Persisting the pick is the app's.
+    pub fn set_scheme_preference(&mut self, preference: SchemePreference) {
+        if self.scheme_preference() != preference {
+            self.resources.scheme_preference().set(preference);
+            self.frame_runtime.request_repaint();
+        }
+    }
+
+    /// The scheme this frame shows: the preference resolved against
+    /// [`Self::system_color_scheme`], or [`SchemePreference::FALLBACK`] where nothing reports one.
+    #[inline]
+    pub const fn color_scheme(&self) -> ColorScheme {
+        self.scheme
+    }
+
+    /// The scheme the system reports, whatever the preference; `None` where nothing reports one,
+    /// as in a [`Harness`](crate::Harness) until its test sets one.
+    #[inline]
+    pub fn system_color_scheme(&self) -> Option<ColorScheme> {
+        self.resources.system_color_scheme().get()
+    }
+
+    /// A host's report of the system's scheme; a change asks this window for a frame.
+    pub(crate) fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) {
+        if self.system_color_scheme() != scheme {
+            self.resources.system_color_scheme().set(scheme);
+            self.frame_runtime.request_repaint();
+        }
+    }
+
+    /// Adopt the scheme the app-global settings resolve to, at a frame's start; a change moves
+    /// the theme epoch, so the frame records again under the other theme.
+    pub(crate) fn resolve_color_scheme(&mut self) {
+        let scheme = self.resources.color_scheme();
+        if scheme != self.scheme {
+            self.scheme = scheme;
+            self.theme_epoch = self.theme_epoch.wrapping_add(1);
+        }
     }
 
     /// Drive one application frame for `input.window` via [`FrameCycle`]. Pass the
@@ -875,7 +949,7 @@ impl Ui {
     #[track_caller]
     pub(crate) fn open_node(&mut self, resolved: ResolvedId, node: &Node, chrome: Option<&Chrome>) {
         let ring = if self.input.focused() == Some(resolved.id()) && self.input.focus_visible() {
-            let theme = &self.theme.focus_ring;
+            let theme = &self.theme().focus_ring;
             Stroke::new(domain::color(theme.color), domain::length(theme.width))
         } else {
             Stroke::NONE
@@ -1406,12 +1480,12 @@ pub(crate) mod internals {
     }
 
     impl Ui {
-        /// The active theme, for in-place edits. Gated: apps build a [`Theme`] and call
-        /// [`set_theme`](Ui::set_theme). Copy-on-write, so a handle from [`Ui::theme`]
+        /// The shown theme, for in-place edits. Gated: apps build a [`Theme`] and call
+        /// [`set_theme_for`](Ui::set_theme_for). Copy-on-write, so a handle from [`Ui::theme`]
         /// keeps its values.
         pub fn theme_mut(&mut self) -> &mut Theme {
             self.theme_epoch = self.theme_epoch.wrapping_add(1);
-            Rc::make_mut(&mut self.theme)
+            Rc::make_mut(self.themes.get_mut(self.scheme))
         }
     }
 }

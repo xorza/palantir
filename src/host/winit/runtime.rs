@@ -20,6 +20,7 @@ use crate::host::winit::window::{FramePresent, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native, platform};
 use crate::text::font_scan::FontScan;
+use crate::theme::scheme_preference::SchemePreference;
 use crate::window::waker::Waker;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_config::WindowConfig;
@@ -65,7 +66,10 @@ impl<T: App + 'static> WinitRuntime<T> {
             .shaper
             .is_none()
             .then(|| FontScan::spawn(options.fonts));
-        let window = native::create_window(event_loop, token, &config.window)?;
+        // No resources exist yet, so nothing has set a preference or read the system: the first
+        // frame moves the decorations if the app's factory picks another scheme.
+        let decorations = SchemePreference::FALLBACK;
+        let window = native::create_window(event_loop, token, &config.window, decorations)?;
         let SurfaceStartup {
             surfaces,
             gpu,
@@ -101,7 +105,7 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
 
         let mut windows = WindowSet::default();
-        windows.push(Window::new(window, first_surface, driver));
+        windows.push(Window::new(window, first_surface, driver, decorations));
         let runtime = Self {
             app,
             surfaces,
@@ -243,13 +247,17 @@ impl<T: App + 'static> WinitRuntime<T> {
         self.windows.is_empty()
     }
 
-    /// Repaint everything when an app-global setting changed (debug overlay flags, user scale).
+    /// Repaint everything when an app-global setting changed (debug overlay flags, user scale,
+    /// the scheme preference, the system's scheme).
     ///
-    /// Both signals are taken before either is tested; `||` would short-circuit past the second and leave a stray repaint.
+    /// Every signal is taken before any is tested; `||` would short-circuit past the rest and leave a stray repaint.
     pub(super) fn repaint_on_shared_change(&mut self) {
-        let overlay = self.core.resources.diagnostics().overlay.take_change();
-        let user_scale = self.core.resources.user_scale().take_change();
-        if overlay || user_scale {
+        let resources = &self.core.resources;
+        let overlay = resources.diagnostics().overlay.take_change();
+        let user_scale = resources.user_scale().take_change();
+        let preference = resources.scheme_preference().take_change();
+        let system = resources.system_color_scheme().take_change();
+        if overlay || user_scale || preference || system {
             self.repaint_all();
         }
     }
@@ -276,7 +284,8 @@ impl<T: App + 'static> WinitRuntime<T> {
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return Ok(());
         }
-        let window = native::create_window(event_loop, token, config)?;
+        let decorations = self.core.resources.color_scheme();
+        let window = native::create_window(event_loop, token, config, decorations)?;
         let surface = self
             .surfaces
             .make_surface(
@@ -289,7 +298,8 @@ impl<T: App + 'static> WinitRuntime<T> {
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let mut driver = self.core.open(token, PresentStrategy::DirectAdaptive);
         driver.ui.set_waker(Self::waker(&self.handle, token));
-        self.windows.push(Window::new(window, surface, driver));
+        self.windows
+            .push(Window::new(window, surface, driver, decorations));
         Ok(())
     }
 

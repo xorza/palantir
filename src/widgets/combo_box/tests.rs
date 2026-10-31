@@ -7,6 +7,7 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::combo_box::ComboBoxTheme;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
@@ -261,7 +262,7 @@ fn the_dropdown_takes_the_context_menu_theme_it_documents() {
         theme.context_menu.gap = gap;
 
         let mut h = Harness::mono(SURFACE);
-        h.ui().set_theme(theme);
+        h.ui().set_theme_for(ColorScheme::Dark, theme);
         let mut selected = 0;
         let build = |ui: &mut Ui, selected: &mut usize| {
             Panel::canvas()

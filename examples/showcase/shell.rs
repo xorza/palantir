@@ -4,9 +4,9 @@
 
 use palantir::{
     Align, App, Axis, Button, ButtonTheme, Checkbox, Chrome, Configure, FocusPolicy, FontFamily,
-    FontWeight, Justify, Key, Metrics, Panel, Scroll, Separator, Shortcut, Sizing, SlotDefaults,
-    Spacing, StatefulLook, Text, TextStyle, TextWrap, Theme, Tooltip, Ui, UserScale, VAlign, Vsync,
-    WindowConfig, WindowToken, fmt,
+    FontWeight, Justify, Key, Metrics, Panel, SchemePreference, Scroll, Separator, Shortcut,
+    Sizing, SlotDefaults, Spacing, StatefulLook, Text, TextStyle, TextWrap, Theme, Tooltip, Ui,
+    UserScale, VAlign, Vsync, WindowConfig, WindowToken, fmt,
 };
 
 use std::error;
@@ -27,6 +27,12 @@ pub(crate) fn toggle_inspector(ui: &mut Ui) {
     } else {
         ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
     }
+}
+
+/// Pin `ui` to the dark scheme, whatever the system reports: the scaffold reads constants of
+/// `Palette::DARK`, so the stock dark theme is the one look its pages show.
+pub(crate) fn pin_dark(ui: &mut Ui) {
+    ui.set_scheme_preference(SchemePreference::Dark);
 }
 
 const SIDEBAR_W: f32 = 208.0;

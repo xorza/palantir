@@ -102,7 +102,10 @@ fn mode(mut args: impl Iterator<Item = String>) -> Result<Mode, String> {
 fn window() -> Result<(), String> {
     WinitHost::builder(shell::MAIN_WINDOW)
         .window(WindowConfig::new("palantir showcase").with_inner_size(UVec2::new(1600, 1000)))
-        .build(|_ui, _handle| shell::Shell::new())
+        .build(|ui, _handle| {
+            shell::pin_dark(ui);
+            shell::Shell::new()
+        })
         .and_then(WinitHost::run)
         .map_err(|error| error.to_string())
 }

@@ -25,6 +25,8 @@
 //! lives in [`crate::internals::frame_fixture`], shared with the allocation gates in
 //! `tests/alloc/gates/` and the showcase's `frame bench` page.
 
+use crate::theme::color_scheme::ColorScheme;
+
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::fixture;
@@ -92,7 +94,7 @@ fn bench_host(g: &BenchGpu) -> OffscreenHost {
         .collect_gpu_stats(false)
         .swapchain_present()
         .build();
-    host.ui().set_theme(bench_theme());
+    host.ui().set_theme_for(ColorScheme::Dark, bench_theme());
     host
 }
 
@@ -112,7 +114,7 @@ impl CpuHarness {
             .scale(BENCH_DPR)
             .depth(Depth::Compose)
             .build();
-        h.ui().set_theme(bench_theme());
+        h.ui().set_theme_for(ColorScheme::Dark, bench_theme());
         Self {
             h,
             start: Instant::now(),
@@ -298,7 +300,7 @@ fn main_pass_batch(c: &mut Criterion, backends: Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui().set_theme(bench_theme());
+            host.ui().set_theme_for(ColorScheme::Dark, bench_theme());
             let mut state = FrameFixture::default();
             let mut n = 0u32;
             let mut frame = || {
@@ -446,7 +448,7 @@ fn main_pass(c: &mut Criterion, backends: Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui().set_theme(bench_theme());
+            host.ui().set_theme_for(ColorScheme::Dark, bench_theme());
             let mut state = FrameFixture::default();
             let mut n = 0u32;
             let mut frame = || {

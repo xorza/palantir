@@ -1,13 +1,16 @@
 //! [`AppliedLevels`]: the window settings the platform holds.
 
 use crate::primitives::geometry::rect::Rect;
+use crate::theme::color_scheme::ColorScheme;
 use crate::window::cursor_icon::CursorIcon;
 
-/// The cursor and the IME area the native window holds, so each reaches the platform only on a
-/// change.
-#[derive(Debug, Default)]
+/// The cursor, the IME area and the decorations' scheme the native window holds, so each reaches
+/// the platform only on a change.
+#[derive(Debug)]
 pub(super) struct AppliedLevels {
     cursor: CursorIcon,
+    /// The scheme the title bar and frame were last given; the window opens in it.
+    color_scheme: ColorScheme,
     /// In physical px, so a scale change moves the candidate list; `None` while IME is off.
     ime_area: Option<Rect>,
 }
@@ -24,6 +27,22 @@ pub(super) enum ImeChange {
 }
 
 impl AppliedLevels {
+    /// The levels of a window that opened with its decorations in `color_scheme`.
+    pub(super) fn new(color_scheme: ColorScheme) -> Self {
+        Self {
+            cursor: CursorIcon::default(),
+            color_scheme,
+            ime_area: None,
+        }
+    }
+
+    /// Adopt the decorations' `color_scheme` and answer whether the platform must be told.
+    pub(super) fn set_color_scheme(&mut self, color_scheme: ColorScheme) -> bool {
+        let changed = self.color_scheme != color_scheme;
+        self.color_scheme = color_scheme;
+        changed
+    }
+
     /// Adopt `cursor` and answer whether the platform must be told.
     pub(super) fn set_cursor(&mut self, cursor: CursorIcon) -> bool {
         let changed = self.cursor != cursor;

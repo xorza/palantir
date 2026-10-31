@@ -58,8 +58,9 @@
 //!
 //! Three doors, widest first.
 //!
-//! - **[`Theme`]** is the whole style tree ([`Ui::set_theme`](Ui::set_theme)
-//!   swaps it), with per-widget bundles ([`Theme::button`], [`Theme::slider`]).
+//! - **[`Theme`]** is the whole style tree, one per [`ColorScheme`]
+//!   ([`Ui::set_theme_for`](Ui::set_theme_for) swaps one; [`Ui::set_scheme_preference`]
+//!   picks which shows), with per-widget bundles ([`Theme::button`], [`Theme::slider`]).
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
 //!   `Option`, so `.style(overrides.as_ref())` works.
 //! - **A per-axis setter** ([`Text::color`], [`Separator::thickness`],
@@ -373,6 +374,7 @@ pub use theme::metrics::TextSteps;
 pub use theme::modal::ModalTheme;
 pub use theme::palette::Palette;
 pub use theme::progress_bar::ProgressBarTheme;
+pub use theme::scheme_preference::SchemePreference;
 pub use theme::scrollbar::ScrollbarTheme;
 pub use theme::selection::Selection;
 pub use theme::separator::SeparatorTheme;

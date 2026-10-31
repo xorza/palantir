@@ -29,6 +29,7 @@ use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedu
 use crate::host::winit::window::visibility::Visibility;
 use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
+use crate::theme::color_scheme::ColorScheme;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFacts;
@@ -107,10 +108,12 @@ pub(super) struct Window {
 }
 
 impl Window {
+    /// A window whose native half opened with its decorations in `decorations`.
     pub(super) fn new(
         window: Arc<WinitWindow>,
         surface: WindowSurface,
         mut driver: WindowDriver,
+        decorations: ColorScheme,
     ) -> Self {
         let system_scale = display::sanitize_system_scale(window.scale_factor());
         // Seed the recorder's pacing level from the opened swapchain, so `Ui::vsync` is
@@ -123,7 +126,7 @@ impl Window {
             system_scale,
             next: FramePresent::Immediate,
             close_requested: false,
-            levels: AppliedLevels::default(),
+            levels: AppliedLevels::new(decorations),
             visibility: Visibility::default(),
             schedule: PresentSchedule::default(),
             translator: Translator::new(PLATFORM),
@@ -399,6 +402,11 @@ impl Window {
         }
         self.set_vsync(output.vsync);
         self.set_ime_area(output.ime_area);
+        let color_scheme = self.driver.ui.color_scheme();
+        if self.levels.set_color_scheme(color_scheme) {
+            self.window
+                .set_theme(Some(native::color_scheme(color_scheme)));
+        }
         self.close_requested = false;
     }
 

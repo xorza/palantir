@@ -10,6 +10,7 @@ use winit::window::{Icon, Window as WinitWindow};
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::platform;
 use crate::primitives::paint::image::Image;
+use crate::theme::color_scheme::ColorScheme;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
@@ -31,19 +32,29 @@ pub(super) const fn cursor(cursor: CursorIcon) -> window::CursorIcon {
     }
 }
 
+pub(super) const fn color_scheme(scheme: ColorScheme) -> window::Theme {
+    match scheme {
+        ColorScheme::Light => window::Theme::Light,
+        ColorScheme::Dark => window::Theme::Dark,
+    }
+}
+
 pub(super) fn icon(icon: &Image) -> Icon {
     Icon::from_rgba(icon.pixels.clone(), icon.size.x, icon.size.y)
         .expect("validated Image rejected by winit")
 }
 
-/// Builds a winit `Window` from a [`WindowConfig`]; winit types stay inside this module.
+/// Builds a winit `Window` from a [`WindowConfig`], its decorations in `scheme`; winit types stay
+/// inside this module.
 pub(super) fn create_window(
     event_loop: &ActiveEventLoop,
     token: WindowToken,
     cfg: &WindowConfig,
+    scheme: ColorScheme,
 ) -> Result<Arc<WinitWindow>, WinitHostError> {
     let mut attrs = WinitWindow::default_attributes()
         .with_title(cfg.title.clone())
+        .with_theme(Some(color_scheme(scheme)))
         .with_maximized(cfg.placement.maximized);
     if let Some(s) = cfg.inner_size {
         attrs = attrs.with_inner_size(LogicalSize::new(s.x, s.y));

@@ -34,7 +34,8 @@ pub(super) enum FramePlan {
 /// frame checks, so a move forces a record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct RecordBaseline {
-    /// Bumped by every theme write (`Ui::set_theme`).
+    /// Bumped by every write to the shown theme (`Ui::set_theme_for`) and every change of the
+    /// shown scheme.
     pub(super) theme_epoch: u32,
     /// `TextShaper::font_epoch`, which a font load in any window sharing the shaper moves.
     pub(super) font_epoch: u32,

@@ -119,14 +119,16 @@ fn a_hidden_span_ends_when_every_reason_clears() {
 }
 
 /// Each level reaches the platform only on a change: the IME turns on with its first area,
-/// moves with a new one, stays for a repeat, and turns off once.
+/// moves with a new one, stays for a repeat, and turns off once; the decorations' scheme moves
+/// only away from the one the window opened in.
 #[test]
 fn applied_levels_report_only_changes() {
     use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
     use crate::primitives::geometry::rect::Rect;
+    use crate::theme::color_scheme::ColorScheme;
     use crate::window::cursor_icon::CursorIcon;
 
-    let mut levels = AppliedLevels::default();
+    let mut levels = AppliedLevels::new(ColorScheme::Dark);
     for (cursor, changed) in [
         (CursorIcon::default(), false),
         (CursorIcon::Text, true),
@@ -148,6 +150,16 @@ fn applied_levels_report_only_changes() {
         (Some(b), Some(ImeChange::Enable(b))),
     ] {
         assert_eq!(levels.set_ime_area(area), change, "{area:?}");
+    }
+
+    // Opened dark: a repeat of the opening scheme tells the platform nothing.
+    for (scheme, changed) in [
+        (ColorScheme::Dark, false),
+        (ColorScheme::Light, true),
+        (ColorScheme::Light, false),
+        (ColorScheme::Dark, true),
+    ] {
+        assert_eq!(levels.set_color_scheme(scheme), changed, "{scheme:?}");
     }
 }
 
