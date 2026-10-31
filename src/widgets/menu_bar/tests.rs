@@ -247,6 +247,8 @@ fn the_open_title_wears_the_open_look() {
     let rest = ResponseState::default();
     assert_eq!(theme.look(&rest, MenuState::Open), &theme.open);
     assert_eq!(theme.look(&rest, MenuState::Shut), &theme.title.normal);
+    assert_eq!(MenuState::from(true), MenuState::Open);
+    assert_eq!(MenuState::from(false), MenuState::Shut);
     assert_eq!(theme.open, theme.title.hovered);
     assert_ne!(theme.open, theme.title.normal);
 }

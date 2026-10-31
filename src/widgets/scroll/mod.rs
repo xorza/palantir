@@ -604,6 +604,19 @@ impl Scroll<'_> {
     pub fn zoom(ui: &Ui, id: WidgetId) -> f32 {
         ui.state::<ScrollState>(id).map_or(1.0, ScrollState::zoom)
     }
+
+    /// Zoom the scroll with id `id` to `zoom`, read as [`Self::zoom`] reads it, holding the
+    /// content point at the viewport's corner still. From its next frame the scroll clamps it
+    /// into its [`ZoomConfig`]'s range, and one that does not zoom returns to 1.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `zoom` is [positive](crate::widget::domain::positive).
+    #[track_caller]
+    pub fn set_zoom(ui: &mut Ui, id: WidgetId, zoom: f32) {
+        let zoom = domain::positive(zoom);
+        ui.with_state::<ScrollState, _>(id, |_, state| state.set_zoom(zoom));
+    }
 }
 
 /// The pan on one axis that brings a span starting at `start`, `len` long, into a view at

@@ -266,6 +266,8 @@ fn tabs_theme_pick_selects_pack_then_state_and_cap() {
     );
     assert_eq!(Selection::from(true), Selection::Selected);
     assert_eq!(Selection::from(false), Selection::Unselected);
+    assert_eq!(TabStripFocus::from(true), TabStripFocus::Focused);
+    assert_eq!(TabStripFocus::from(false), TabStripFocus::Unfocused);
 
     assert_eq!(theme.cap(TabStripFocus::Focused), Palette::DEFAULT.accent);
     assert_eq!(

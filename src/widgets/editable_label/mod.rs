@@ -81,9 +81,7 @@ impl<'a> EditableLabel<'a> {
     /// Record the label, or its editor while one is open.
     pub fn show(mut self, ui: &mut Ui) -> EditableLabelResponse<'_> {
         let id = self.widget.resolve(ui);
-        let editing = ui
-            .state::<EditableLabelState>(id)
-            .is_some_and(|state| state.editing);
+        let editing = Self::is_editing(ui, id);
         if editing && self.editable {
             return self.show_editor(ui, id);
         }
@@ -125,8 +123,7 @@ impl<'a> EditableLabel<'a> {
             .response
             .snapshot();
         if self.editable && response.left.double_clicked() {
-            ui.with_state::<EditableLabelState, _>(id, |_, state| state.editing = true);
-            ui.set_focus(id);
+            Self::edit(ui, id);
         }
         EditableLabelResponse {
             response: Response::new(ui, response),
@@ -191,6 +188,20 @@ impl<'a> EditableLabel<'a> {
     /// its identity wherever the label records.
     pub fn label_id(editable_label: WidgetId) -> WidgetId {
         editable_label.with("label")
+    }
+
+    /// Open the editor of the label `id` and give it the focus, as a double click does, for a
+    /// rename a menu or a key asks for; the label's next frame records it, its text selected. A
+    /// label that is not [editable](Self::editable) stays a label.
+    pub fn edit(ui: &mut Ui, id: WidgetId) {
+        ui.with_state::<EditableLabelState, _>(id, |_, state| state.editing = true);
+        ui.set_focus(id);
+    }
+
+    /// Whether the label `id` shows its editor.
+    pub fn is_editing(ui: &Ui, id: WidgetId) -> bool {
+        ui.state::<EditableLabelState>(id)
+            .is_some_and(|state| state.editing)
     }
 }
 
