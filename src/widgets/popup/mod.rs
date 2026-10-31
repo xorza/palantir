@@ -117,9 +117,12 @@ impl Popup {
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
-        let chrome = chrome.as_ref().or(theme.panel_chrome.as_ref());
+        widget.configure().default_padding(theme.popup.padding);
+        let chrome = chrome.as_ref().unwrap_or(&theme.popup.panel);
         let handle = CloseHandle::default();
-        let turn = scope.record(ui, |ui| widget.record(ui, chrome, |ui| body(ui, &handle)));
+        let turn = scope.record(ui, |ui| {
+            widget.record(ui, Some(chrome), |ui| body(ui, &handle))
+        });
         let dismiss_mode = click_outside == ClickOutside::Dismiss;
         let response = OverlayResponse {
             id,
@@ -194,8 +197,10 @@ impl Popup {
             .arrow_focus(Axis::Y)
     }
 
-    /// Paint `chrome` behind this widget; unset falls back to
-    /// `panel_chrome`. [`Chrome::NONE`] suppresses the fallback.
+    /// Paint `chrome` behind this widget; unset falls back to [`Theme::popup`]'s panel, as the
+    /// padding does. [`Chrome::NONE`] suppresses the fallback.
+    ///
+    /// [`Theme::popup`]: crate::Theme::popup
     ///
     /// # Panics
     ///

@@ -76,9 +76,9 @@ fn material_section(ui: &mut Ui, k: Kit, look: &mut Appearance) {
             support::note(
                 ui,
                 k,
-                "Menus, combo lists, the picker, tooltips and the modal float on frosted glass, \
-             its blur held so their text keeps 4.5:1 over any page. Switch it off to compare \
-             with the opaque surfaces the stock themes wear; every page follows.",
+                "Menus, combo lists, popups, the picker, tooltips and the modal float on frosted \
+                 glass, its blur held so their text keeps 4.5:1 over any page. Switch it off to \
+                 compare with the opaque surfaces the stock themes wear; every page follows.",
             );
             support::well(ui, k, |ui| {
                 let mut frosted = look.frosted();
@@ -109,7 +109,6 @@ fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         .padding(padding)
                         .gap(gap)
                         .min_size((width, 0.0))
-                        .chrome(support::float_chrome(ui))
                         .arrow_focus(Axis::Y)
                         .show(ui, |ui, close| {
                             for label in ["Copy", "Paste", "Delete"] {
@@ -192,7 +191,6 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         Popup::new(anchor.with_align(s.align).with_gap(6.0))
                             .click_outside(ClickOutside::PassThrough)
                             .padding((10.0, 6.0))
-                            .chrome(support::float_chrome(ui))
                             .show(ui, |ui, _| {
                                 Text::new("popup").style(&k.t.caption()).show(ui);
                             });

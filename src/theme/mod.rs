@@ -19,6 +19,7 @@ pub(crate) mod menu_bar;
 pub(crate) mod metrics;
 pub(crate) mod modal;
 pub(crate) mod palette;
+pub(crate) mod popup;
 pub(crate) mod progress_bar;
 pub(crate) mod scheme_preference;
 pub(crate) mod scrollbar;
@@ -53,6 +54,7 @@ use crate::theme::menu_bar::MenuBarTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
+use crate::theme::popup::PopupTheme;
 use crate::theme::progress_bar::ProgressBarTheme;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::theme::separator::SeparatorTheme;
@@ -101,6 +103,8 @@ pub struct Theme {
     pub combo_box: ComboBoxTheme,
     /// Panel and backdrop of every [`crate::Modal`].
     pub modal: ModalTheme,
+    /// Panel and padding of a [`crate::Popup`] no wrapper dresses.
+    pub popup: PopupTheme,
     /// What the color picker and its parts wear.
     pub color_picker: ColorPickerTheme,
     /// Bubble and delay of every [`crate::Tooltip`].
@@ -127,7 +131,7 @@ pub struct Theme {
     pub text: TextStyle,
     /// Window/swapchain clear color, passed to `WgpuBackend::submit`.
     pub window_clear: RgbaF32,
-    /// Default chrome for containers (`Panel`, `Grid`, `Popup`) without chrome of their own. `None` leaves them unpainted.
+    /// Default chrome for in-tree containers (`Panel`, `Grid`) without chrome of their own. `None` leaves them unpainted; a popup reads [`Self::popup`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_chrome: Option<Chrome>,
     /// Default clip mode for containers that set none; the rounded mask uses [`Self::panel_chrome`]'s `radius`.
@@ -191,11 +195,12 @@ impl Theme {
     }
 
     /// Frost every floating surface: the panels of menus and combo lists, the color picker's
-    /// popup, tooltips and the modal's panel. Each keeps its fill's color at `tint_alpha` over
-    /// [`BackdropFilter::frosted`]`(sigma)`, held so the weakest ink its recipe paints reads at
-    /// WCAG 4.5:1 over any backdrop: `p`'s muted ink on a menu (a shortcut) and on the picker (a
-    /// channel's name), the full ink on a tooltip and on the modal, whose content is the app's. A
-    /// ceiling holds ink lighter than the tint, a floor darker. The stock themes stay opaque, as a
+    /// popup, a bare popup's panel, tooltips and the modal's panel. Each keeps its fill's color
+    /// at `tint_alpha` over [`BackdropFilter::frosted`]`(sigma)`, held so the weakest ink its
+    /// recipe paints reads at WCAG 4.5:1 over any backdrop: `p`'s muted ink on a menu (a
+    /// shortcut), on the picker (a channel's name) and on a bare popup, which an app fills with
+    /// rows like a menu's, the full ink on a tooltip and on the modal, whose content is the
+    /// app's. A ceiling holds ink lighter than the tint, a floor darker. The stock themes stay opaque, as a
     /// frosted float costs a capture under each open one; an app opts in here, as WinUI's flyouts,
     /// menus and tooltips wear acrylic
     /// (<https://learn.microsoft.com/windows/apps/design/style/acrylic>) and macOS's menus and
@@ -215,6 +220,7 @@ impl Theme {
             color_picker,
             tooltip,
             modal,
+            popup,
             // Not floating: drawn in the tree, or a scalar.
             text: _,
             button: _,
@@ -242,6 +248,7 @@ impl Theme {
         for (panel, ink) in [
             (&mut context_menu.panel, p.text_muted),
             (&mut color_picker.popup, p.text_muted),
+            (&mut popup.panel, p.text_muted),
             (&mut tooltip.panel, p.text),
             (&mut modal.panel, p.text),
         ] {
@@ -283,6 +290,7 @@ impl Theme {
             scrollbar: _,
             combo_box: _,
             modal: _,
+            popup: _,
             progress_bar: _,
             separator: _,
             slider: _,
@@ -324,6 +332,7 @@ impl Theme {
             menu_bar: MenuBarTheme::from_parts(p, m),
             combo_box: ComboBoxTheme::from_parts(p, m),
             modal: ModalTheme::from_parts(p, m),
+            popup: PopupTheme::from_parts(p, m),
             color_picker: ColorPickerTheme::from_parts(p, m),
             tooltip: TooltipTheme::from_parts(p, m),
             progress_bar: ProgressBarTheme::from_parts(p, m),

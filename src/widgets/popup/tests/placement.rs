@@ -46,6 +46,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                     Popup::new(Anchor::at_point(anchor))
                         .id(WidgetId::from_hash("sized-popup"))
                         .padding(0.0)
+                        .chrome(Chrome::NONE)
                         .size((sw, sh))
                         .show(ui, |ui, _popup| {
                             Panel::vstack()
@@ -84,6 +85,7 @@ fn popup_near_bottom_flips_upward() {
                 Popup::new(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("flip-popup"))
                     .padding(0.0)
+                    .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui, _popup| {
                         Panel::vstack()
@@ -124,6 +126,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
                 Popup::new(Anchor::at_point(anchor))
                     .id(body_id)
                     .padding(0.0)
+                    .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui, _popup| {
                         Panel::vstack()
@@ -167,6 +170,7 @@ fn popup_with_scroll_settles_in_one_frame() {
                 Popup::new(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("scroll-popup"))
                     .padding(0.0)
+                    .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
                     .max_size((f32::INFINITY, 100.0))
                     .show(ui, |ui, _| {
@@ -225,6 +229,7 @@ fn popup_placement_is_stable_across_frames() {
                 Popup::new(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("stable-popup"))
                     .padding(0.0)
+                    .chrome(Chrome::NONE)
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui, _popup| {
                         Panel::vstack()
@@ -360,6 +365,7 @@ fn an_open_popup_stays_where_it_landed() {
             Popup::new(Anchor::at_point(anchor))
                 .id(id)
                 .padding(0.0)
+                .chrome(Chrome::NONE)
                 .margin(6.0)
                 .show(ui, |ui, _popup| {
                     Panel::vstack()

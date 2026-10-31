@@ -342,7 +342,6 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 PopupTrigger::on(&trigger)
                     .padding(M.space.md)
                     .gap(M.space.sm)
-                    .chrome(support::float_chrome(ui))
                     .show(ui, |ui, close| {
                         for (i, label) in ["Unread", "Starred", "Has files"].into_iter().enumerate()
                         {

@@ -345,12 +345,6 @@ pub(crate) fn checklist(ui: &mut Ui, items: &[&'static str]) {
 #[derive(Default, Debug)]
 struct Ticks(u32);
 
-/// The surface a floating panel wears: the theme's menu panel, frosted when the appearance frosts
-/// the floats, so a popup of the showcase's own reads as palantir's menus do.
-pub(crate) fn float_chrome(ui: &Ui) -> Chrome {
-    ui.theme().context_menu.panel.clone()
-}
-
 /// A modal dialog: a title, a line of why, and a row of answers at the end, the confirming one
 /// last, as macOS puts the default button at the trailing end.
 #[derive(Debug)]

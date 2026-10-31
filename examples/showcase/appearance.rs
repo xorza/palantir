@@ -176,26 +176,48 @@ impl Appearance {
     }
 }
 
-/// `seed` as `scheme`'s accent: its Okhsv hue and saturation at the luminance of the stock
-/// accent, so any seed sits where palantir's tuned accent sits against the ground and under
-/// `on_accent`, the contrast the stock palettes already hold. A hue too dark to reach that
-/// luminance at its saturation, as a deep blue in the dark scheme, gives up saturation instead,
-/// toward white. Material 3 derives its tones from one seed in the same way. Refused: presets
-/// alone, as GNOME and macOS offer, which drop "Use as accent"; a seed as given, as Windows'
-/// custom accent, which can leave the tour unreadable.
+/// The floors an accent holds on `scheme`'s stock palette, as palantir's floors test pairs it,
+/// read as an 8-bit target stores it: WCAG 1.4.3's 4.5:1 under `on_accent`, which a check mark
+/// and a switch knob paint on it, and WCAG 1.4.11's 3:1 as the focus ring on the ground, the band
+/// and a field's fill.
+fn holds_floors(accent: RgbaF32, p: &Palette) -> bool {
+    let stored = RgbaF32::from_srgba8(accent.to_srgba8());
+    stored.contrast_ratio(p.on_accent) >= 4.5
+        && [p.window_bg, p.surround, p.element_mid]
+            .into_iter()
+            .all(|ground| stored.contrast_ratio(ground) >= 3.0)
+}
+
+/// `seed` as `scheme`'s accent: the seed itself when it holds the floors, else the nearest color
+/// at its Okhsv hue and saturation that does, so a vivid seed stays vivid. Under the dark
+/// palette's dark ink the floors bound the luminance from below, so the value rises to the
+/// first that holds; a hue too dark to hold them at full value gives up saturation instead,
+/// toward white. Under the light palette's white ink they bound it from above, and the value
+/// falls. Material 3 derives its tones from one seed in the same way. Refused: one luminance per
+/// scheme, the stock accent's, which paled every seed under the dark palette's lime; presets
+/// alone, as GNOME and macOS offer, which drop "Use as accent"; a failing seed as given, as
+/// Windows' custom accent, which can leave the tour unreadable.
 pub(crate) fn accent_for(seed: RgbaF32, scheme: ColorScheme) -> RgbaF32 {
-    let luminance = Palette::for_scheme(scheme).accent.luminance();
-    let Okhsv { h, s, .. } = Okhsv::from_color(seed, 0.0);
+    // An accent paints opaque, whatever alpha the picker gave the seed.
+    let seed = seed.with_alpha(1.0);
+    let p = Palette::for_scheme(scheme);
+    let holds = |color| holds_floors(color, p);
+    if holds(seed) {
+        return seed;
+    }
+    let Okhsv { h, s, v } = Okhsv::from_color(seed, 0.0);
     let at = |s, v| Okhsv::new(h, s, v).to_color();
-    if at(s, 1.0).luminance() >= luminance {
-        // Luminance rises with the value at a fixed saturation: the lowest value that reaches it.
-        let value = support::bisect(|v| at(s, v).luminance() >= luminance);
-        at(s, value)
+    if p.on_accent.luminance() < p.accent.luminance() {
+        if holds(at(s, 1.0)) {
+            let rise = |x: f32| v + (1.0 - v) * x;
+            at(s, rise(support::bisect(|x| holds(at(s, rise(x))))))
+        } else {
+            let cut = |x: f32| s * (1.0 - x);
+            at(cut(support::bisect(|x| holds(at(cut(x), 1.0)))), 1.0)
+        }
     } else {
-        // At full value it falls as the saturation rises: the least cut of the saturation, toward
-        // white, that reaches it.
-        let cut = support::bisect(|cut| at(s * (1.0 - cut), 1.0).luminance() >= luminance);
-        at(s * (1.0 - cut), 1.0)
+        let fall = |x: f32| v * (1.0 - x);
+        at(s, fall(support::bisect(|x| holds(at(s, fall(x))))))
     }
 }
 
@@ -204,42 +226,51 @@ mod tests {
     use palantir::glam::UVec2;
     use palantir::{ColorScheme, Harness, Metrics, Okhsv, Palette, RgbaF32, Theme};
 
-    use crate::appearance::{Appearance, SEEDS, accent_for};
+    use crate::appearance::{Appearance, SEEDS, accent_for, holds_floors};
 
-    /// Any seed, solved for a scheme, lands on the stock accent's luminance, keeps its hue, and
-    /// so holds the stock accent's contrast as an 8-bit target stores it: 4.5:1 against
-    /// `on_accent` (WCAG 1.4.3), as a check mark and a switch knob sit on it, and 3:1 against the
-    /// ground (WCAG 1.4.11), as the focus ring sits there. Pure blue cannot reach the dark
-    /// luminance at its saturation, so it gives up saturation instead and keeps its hue.
+    /// Any seed, solved for a scheme, holds the floors and keeps its hue; one that holds them
+    /// already stays as given, and one that does not moves no further than the floors ask: a
+    /// thousandth of the value back toward the seed misses them. Pure blue cannot hold the dark
+    /// floors at its saturation, so it gives up saturation and keeps its hue.
     #[test]
-    fn any_seed_holds_the_stock_accents_contrast() {
+    fn any_seed_holds_the_floors_nearest_to_itself() {
         let extra = [0x0000ff, 0xffff00, 0x808080, 0x000000, 0xffffff].map(RgbaF32::hex);
         for scheme in [ColorScheme::Light, ColorScheme::Dark] {
-            let stock = Palette::for_scheme(scheme);
+            let p = Palette::for_scheme(scheme);
             for seed in SEEDS.into_iter().chain(extra) {
                 let accent = accent_for(seed, scheme);
-                // 24 halvings leave the solve within a few f32 steps of the luminance.
-                let over = accent.luminance() - stock.accent.luminance();
-                assert!((0.0..3e-7).contains(&over), "{scheme:?} {seed:?}: {over}");
-                let stored = RgbaF32::from_srgba8(accent.to_srgba8());
-                assert!(
-                    stored.contrast_ratio(stock.on_accent) >= 4.5,
-                    "{scheme:?} {seed:?}"
-                );
-                assert!(
-                    stored.contrast_ratio(stock.window_bg) >= 3.0,
-                    "{scheme:?} {seed:?}"
-                );
-                let hue = |color| Okhsv::from_color(color, 0.0).h;
-                if Okhsv::from_color(seed, 0.0).s > 0.0 {
+                assert!(holds_floors(accent, p), "{scheme:?} {seed:?}");
+                if holds_floors(seed, p) {
+                    assert_eq!(accent, seed, "{scheme:?}: a seed that holds stays");
+                    continue;
+                }
+                let seed_hsv = Okhsv::from_color(seed, 0.0);
+                let got = Okhsv::from_color(accent, 0.0);
+                if seed_hsv.s > 0.0 {
                     // The round trip through linear RGB holds the hue to a few f32 steps.
+                    assert!((got.h - seed_hsv.h).abs() < 1e-4, "{scheme:?} {seed:?}");
+                }
+                let back = (seed_hsv.v - got.v).signum() * 1e-3;
+                if (got.s - seed_hsv.s).abs() < 1e-4 && back != 0.0 {
+                    let nearer = Okhsv::new(got.h, got.s, got.v + back).to_color();
                     assert!(
-                        (hue(accent) - hue(seed)).abs() < 1e-4,
-                        "{scheme:?} {seed:?}"
+                        !holds_floors(nearer, p),
+                        "{scheme:?} {seed:?}: not the nearest"
                     );
                 }
             }
         }
+        // Tailwind's blue 500 reads 2.61:1 on the dark field's fill, under 3:1, so it lightens;
+        // its teal 500 reads 7.40:1 under the ink and 3.85:1 on the fill, so it stays.
+        assert_ne!(accent_for(SEEDS[0], ColorScheme::Dark), SEEDS[0]);
+        assert_eq!(accent_for(SEEDS[1], ColorScheme::Dark), SEEDS[1]);
+        assert_eq!(
+            accent_for(SEEDS[1].with_alpha(0.25), ColorScheme::Dark),
+            SEEDS[1],
+            "a translucent seed paints opaque"
+        );
+        let blue = Okhsv::from_color(accent_for(RgbaF32::hex(0x0000ff), ColorScheme::Dark), 0.0);
+        assert!(blue.s < Okhsv::from_color(RgbaF32::hex(0x0000ff), 0.0).s);
     }
 
     /// A seed, a ring or a frost edit moves the generation, so each window builds both themes

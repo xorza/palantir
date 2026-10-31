@@ -169,10 +169,11 @@ fn stock_themes_wear_their_scheme_palette() {
     assert_ne!(light, Theme::default());
 }
 
-/// `frost_floats` frosts exactly the four floating surfaces: each keeps its fill's color at the
-/// tint's alpha, over a frosted filter whose bound holds its weakest ink (muted on a menu and the
-/// picker, full on a tooltip and the modal), a ceiling under the dark palette's light inks and a
-/// floor under the light palette's dark ones; every other slot is as `from_parts` built it.
+/// `frost_floats` frosts exactly the five floating surfaces: each keeps its fill's color at the
+/// tint's alpha, over a frosted filter whose bound holds its weakest ink (muted on a menu, the
+/// picker and a bare popup, full on a tooltip and the modal), a ceiling under the dark palette's
+/// light inks and a floor under the light palette's dark ones; every other slot is as
+/// `from_parts` built it.
 #[test]
 fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
     for scheme in [ColorScheme::Dark, ColorScheme::Light] {
@@ -184,11 +185,12 @@ fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
             [
                 theme.context_menu.panel.clone(),
                 theme.color_picker.popup.clone(),
+                theme.popup.panel.clone(),
                 theme.tooltip.panel.clone(),
                 theme.modal.panel.clone(),
             ]
         };
-        let inks = [p.text_muted, p.text_muted, p.text, p.text];
+        let inks = [p.text_muted, p.text_muted, p.text_muted, p.text, p.text];
         for ((before, after), ink) in panels(&stock).into_iter().zip(panels(&frosted)).zip(inks) {
             let tint = before
                 .fill
@@ -207,6 +209,7 @@ fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
         }
         frosted.context_menu.panel = stock.context_menu.panel.clone();
         frosted.color_picker.popup = stock.color_picker.popup.clone();
+        frosted.popup.panel = stock.popup.panel.clone();
         frosted.tooltip.panel = stock.tooltip.panel.clone();
         frosted.modal.panel = stock.modal.panel.clone();
         assert_eq!(frosted, stock, "{scheme:?}: nothing else moved");

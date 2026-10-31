@@ -373,6 +373,7 @@ pub use theme::metrics::StrokeSteps;
 pub use theme::metrics::TextSteps;
 pub use theme::modal::ModalTheme;
 pub use theme::palette::Palette;
+pub use theme::popup::PopupTheme;
 pub use theme::progress_bar::ProgressBarTheme;
 pub use theme::scheme_preference::SchemePreference;
 pub use theme::scrollbar::ScrollbarTheme;

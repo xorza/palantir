@@ -95,6 +95,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
             t.color_picker.popup_padding,
             Spacing::all(3.0),
         ),
+        ("popup", t.popup.padding, Spacing::all(3.0)),
     ];
     for (slot, got, want) in paddings {
         assert_eq!(got, want, "{slot} padding");

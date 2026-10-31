@@ -2,7 +2,6 @@
 //! driven by [`PAGES`], the single source of truth for each page's label,
 //! group, blurb, key hints, scrolling and builder.
 
-use palantir::glam::Vec2;
 use palantir::{
     Align, App, Block, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
     FocusPolicy, FontFamily, Justify, Key, Metrics, Palette, Panel, PopupTrigger, Scroll, Sense,
@@ -436,11 +435,14 @@ impl Shell {
     /// The nav rail: brand, search, the grouped pages it finds, and the appearance footer.
     fn rail(&mut self, ui: &mut Ui, k: Kit) {
         let nav = Nav::new(ui.theme(), k.t);
-        self.reveal_item(ui);
+        let mut list = rail::list(WidgetId::from_hash(LIST));
+        if let Some(item) = self.reveal_target(ui) {
+            list = list.reveal(item);
+        }
         rail::show(ui, k.t, |ui| {
             rail::brand(ui, k.t, "palantir", "widget tour");
             rail::block(ui, |ui| self.search(ui));
-            rail::list(ui, WidgetId::from_hash(LIST), |ui| self.items(ui, k, &nav));
+            list.show(ui, |ui| self.items(ui, k, &nav));
             rail::block(ui, |ui| self.footer(ui, k));
         });
     }
@@ -489,38 +491,27 @@ impl Shell {
         }
     }
 
-    /// Scroll the open page's item into view when the keyboard picked it, from where the list
-    /// and the item last laid out; it waits for a frame that has laid them out.
-    fn reveal_item(&mut self, ui: &mut Ui) {
+    /// The open page's item while the keyboard's pick waits to come into view. The list's
+    /// [`Scroll::reveal`] pans to it once both laid out, so the wait ends on the frame they have;
+    /// before that, each frame asks for the next.
+    fn reveal_target(&mut self, ui: &mut Ui) -> Option<WidgetId> {
         if !self.reveal {
-            return;
+            return None;
         }
-        if !PAGES[self.active].matches(&self.query) {
+        let page = &PAGES[self.active];
+        if !page.matches(&self.query) {
             // The search hides the item, so there is nothing to bring into view.
             self.reveal = false;
-            return;
+            return None;
         }
-        let list = WidgetId::from_hash(LIST);
-        let (Some(view), Some(item)) = (
-            ui.response_for(list).layout_rect,
-            ui.response_for(PAGES[self.active].item_id()).layout_rect,
-        ) else {
-            ui.request_repaint();
-            return;
-        };
-        self.reveal = false;
-        let offset = Scroll::offset(ui, list);
-        let top = item.min.y - view.min.y;
-        let bottom = top + item.size.h;
-        let y = if top < offset.y {
-            top
-        } else if bottom > offset.y + view.size.h {
-            bottom - view.size.h
+        let item = page.item_id();
+        let laid_out = |id| ui.response_for(id).layout_rect.is_some();
+        if laid_out(WidgetId::from_hash(LIST)) && laid_out(item) {
+            self.reveal = false;
         } else {
-            return;
-        };
-        Scroll::set_offset(ui, list, Vec2::new(offset.x, y));
-        ui.request_repaint();
+            ui.request_repaint();
+        }
+        Some(item)
     }
 
     /// The scheme, the accent and the UI scale, and the diagnostics behind one button.
@@ -718,9 +709,7 @@ fn diagnostics(ui: &mut Ui) {
         .snapshot();
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;
-    let panel = ui.theme().context_menu.panel.clone();
     PopupTrigger::on(&trigger)
-        .chrome(panel)
         .padding(M.space.md)
         .gap(M.space.sm)
         .show(ui, |ui, _| {

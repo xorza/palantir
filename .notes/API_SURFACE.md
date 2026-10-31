@@ -1680,6 +1680,12 @@ Popup
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
+PopupTheme
+    struct PopupTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+        pub panel: Chrome
+        pub padding: Spacing
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+
 PopupTrigger
     struct PopupTrigger: Configure, Debug, ThemeDefaults (blanket)
         pub fn on(snapshot: &ResponseSnapshot) -> Self
@@ -2467,6 +2473,7 @@ Theme
         pub menu_bar: MenuBarTheme
         pub combo_box: ComboBoxTheme
         pub modal: ModalTheme
+        pub popup: PopupTheme
         pub color_picker: ColorPickerTheme
         pub tooltip: TooltipTheme
         pub progress_bar: ProgressBarTheme

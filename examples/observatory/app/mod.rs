@@ -90,7 +90,7 @@ impl Shell {
         let nav = Nav::new(ui.theme(), t);
         rail::show(ui, t, |ui| {
             rail::brand(ui, t, "observatory", "a palantir study");
-            rail::list(ui, WidgetId::from_hash("observatory::rail"), |ui| {
+            rail::list(WidgetId::from_hash("observatory::rail")).show(ui, |ui| {
                 for study in Study::ALL {
                     let id = WidgetId::from_hash(("observatory::rail", study.label()));
                     if nav.item(ui, id, study.label(), study == self.study) {

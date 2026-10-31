@@ -21,7 +21,7 @@ struct State {
     h: f32,
     v: f32,
     clicked: Option<Cell>,
-    /// The list item "Reveal" brings to the top.
+    /// The list item "Reveal" brings into view.
     reveal: i64,
 }
 
@@ -36,26 +36,19 @@ impl Default for State {
     }
 }
 
+/// The page's state row.
+fn state_id() -> WidgetId {
+    WidgetId::from_hash("showcase::scroll::state")
+}
+
 /// The vertical list's id, which "Reveal" scrolls.
 fn list_id() -> WidgetId {
     WidgetId::from_hash("showcase::scroll::list")
 }
 
-/// The id of the vertical list's item `n`, whose laid-out rect "Reveal" reads.
+/// The id of the vertical list's item `n`, which "Reveal" brings into view.
 fn item_id(n: u32) -> WidgetId {
     list_id().with(n)
-}
-
-/// Scroll the list so item `n` sits at its top, from where the list and the item last laid out.
-fn reveal(ui: &mut Ui, n: i64) {
-    let n = u32::try_from(n).expect("the field's range holds an item's index");
-    let rect = |ui: &Ui, id| {
-        ui.response_for(id)
-            .layout_rect
-            .expect("the list is on the page, so it and its items laid out last frame")
-    };
-    let top = rect(ui, item_id(n)).min.y - rect(ui, list_id()).min.y;
-    Scroll::set_offset(ui, list_id(), Vec2::new(0.0, top));
 }
 
 /// The zoomable pane's id, which the zoom readout and Reset view address.
@@ -71,19 +64,32 @@ struct Cell {
 }
 
 pub(crate) fn build(ui: &mut Ui, k: Kit) {
-    let state_id = WidgetId::from_hash("showcase::scroll::state");
-    ui.with_state::<State, _>(state_id, |ui, s| split_panes(ui, k, s));
+    ui.with_state::<State, _>(state_id(), |ui, s| split_panes(ui, k, s));
 }
 
 fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
+    // Recorded before the list, so a click reveals on the frame it lands.
+    let mut reveal = None;
+    support::row(ui, |ui| {
+        DragValue::new(&mut s.reveal)
+            .range(0.0..=f64::from(ITEMS - 1))
+            .size((Sizing::fixed(64.0), Sizing::HUG))
+            .show(ui);
+        if Button::new().label("Reveal").show(ui).clicked() {
+            let n = u32::try_from(s.reveal).expect("the field's range holds an index");
+            reveal = Some(item_id(n));
+        }
+    });
     let mut clicked = None;
     Splitter::row(&mut s.h)
         .min_pane(120.0)
         .show(ui, |ui, half| match half {
             SplitHalf::First => pane(ui, k, "vertical", |ui| {
-                Scroll::vertical()
-                    .id(list_id())
-                    .size((Sizing::FILL, Sizing::FILL))
+                let mut list = Scroll::vertical().id(list_id());
+                if let Some(item) = reveal {
+                    list = list.reveal(item);
+                }
+                list.size((Sizing::FILL, Sizing::FILL))
                     .gap(M.space.xs)
                     .show(ui, |ui| {
                         for i in 0..ITEMS {
@@ -137,13 +143,6 @@ fn split_panes(ui: &mut Ui, k: Kit, s: &mut State) {
             None => ui.intern("— click a button to check hit-testing through the zoom"),
         };
         support::readout(ui, k, "last click", click);
-        DragValue::new(&mut s.reveal)
-            .range(0.0..=f64::from(ITEMS - 1))
-            .size((Sizing::fixed(64.0), Sizing::HUG))
-            .show(ui);
-        if Button::new().label("Reveal").show(ui).clicked() {
-            reveal(ui, s.reveal);
-        }
         let zoom = fmt!(ui, "{:.2}×", Scroll::zoom(ui, grid_id()));
         support::readout(ui, k, "zoom", zoom);
         if Button::new().label("Reset view").show(ui).clicked() {
@@ -225,21 +224,30 @@ mod tests {
     use palantir::glam::UVec2;
     use palantir::{ColorScheme, Harness, Metrics, Palette, Scroll, Ui};
 
-    use crate::pages::scroll::{build, list_id};
+    use crate::pages::scroll::{State, build, list_id, state_id};
     use crate::support::Kits;
 
-    /// Reveal brings item 20, the field's start, to the list's top: each item before it takes its
-    /// 28 px and the xs gap of 4 px, so the offset is 20 × (28 + 4) = 640.
+    /// Reveal pans the list the least that shows item 20, the field's start: its end, at
+    /// 20 × (28 + 4) + 28 = 668 px down the content, meets the viewport's bottom. Item 0, above
+    /// the view after that, comes back to the top.
     #[test]
-    fn reveal_brings_the_item_to_the_top() {
+    fn reveal_brings_the_item_into_view() {
         assert_eq!(Metrics::DEFAULT.space.xs, 4.0);
         let k = Kits::new().kit(ColorScheme::Dark, &Palette::DARK);
         let mut record = |ui: &mut Ui| build(ui, k);
         let mut h = Harness::builder(UVec2::new(1000, 480)).mono().build();
         h.frame(&mut record);
-        assert_eq!(Scroll::offset(h.ui(), list_id()).y, 0.0);
+        let offset = |h: &mut Harness| Scroll::offset(h.ui(), list_id()).y;
+        assert_eq!(offset(&mut h), 0.0);
+        let view = h.ui().response_for(list_id()).layout_rect.unwrap().size.h;
         h.click("Reveal");
         h.frame(&mut record);
-        assert_eq!(Scroll::offset(h.ui(), list_id()).y, 640.0);
+        assert_eq!(offset(&mut h), 668.0 - view);
+
+        h.ui()
+            .with_state::<State, _>(state_id(), |_, s| s.reveal = 0);
+        h.click("Reveal");
+        h.frame(&mut record);
+        assert_eq!(offset(&mut h), 0.0);
     }
 }

@@ -74,9 +74,10 @@ pub(crate) fn brand(ui: &mut Ui, t: Tokens, title: &'static str, subtitle: &'sta
         });
 }
 
-/// The scrolling list of items under `id`, an arrow group so one Tab lands in it. Its right
-/// padding is the gutter the overlay scrollbar paints in, outside the pills.
-pub(crate) fn list(ui: &mut Ui, id: WidgetId, body: impl FnOnce(&mut Ui)) {
+/// The scrolling list of items under `id`, an arrow group so one Tab lands in it, to show with
+/// the items as its body. Its right padding is the gutter the overlay scrollbar paints in,
+/// outside the pills.
+pub(crate) fn list(id: WidgetId) -> Scroll<'static> {
     Scroll::vertical()
         .id(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -84,7 +85,6 @@ pub(crate) fn list(ui: &mut Ui, id: WidgetId, body: impl FnOnce(&mut Ui)) {
         .padding((0.0, 0.0, INSET, 0.0))
         .gap(M.space.xxs)
         .arrow_focus(Axis::Y)
-        .show(ui, body);
 }
 
 /// The looks of the list's items: the menu bar's flat titles at rest, and the open one on a
