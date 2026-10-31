@@ -1,0 +1,4 @@
+// The session study in the dark scheme.
+scheme dark
+page "session"
+shot session_dark

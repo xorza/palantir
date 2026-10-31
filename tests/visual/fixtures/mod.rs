@@ -15,6 +15,7 @@ mod hidpi;
 mod icon;
 mod image;
 mod layout;
+mod observatory;
 mod occlusion;
 mod scroll;
 mod shadow;

@@ -1,0 +1,4 @@
+// The catalog study in the dark scheme.
+scheme dark
+page "catalog"
+shot catalog_dark

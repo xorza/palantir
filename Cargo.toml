@@ -42,7 +42,7 @@ version = "0.2.6"
 # lane under `-D warnings`, so a warning only it shows would fail CI and nothing here.
 lint = ["--all-features", "--no-default-features"]
 test = [
-    "--lib --test alloc --example showcase --features golden,gpu-debug-markers",
+    "--lib --test alloc --example showcase --example observatory --features golden,gpu-debug-markers",
     "--lib --no-default-features",
 ]
 test-runner = "cargo-test"
@@ -61,6 +61,13 @@ steps = [{ cargo = "test --workspace --locked --features golden,gpu-debug-marker
 steps = [
     { build = "build --example showcase --features golden" },
     { program = ["{target}/debug/examples/showcase{exe}", "--shot"], args = true },
+]
+
+# The observatory example played from a script, as `shot` plays the showcase.
+[workspace.metadata.drive.commands.shot-observatory]
+steps = [
+    { build = "build --example observatory --features golden" },
+    { program = ["{target}/debug/examples/observatory{exe}", "--shot"], args = true },
 ]
 
 [workspace]
@@ -116,6 +123,7 @@ mundy = { version = "0.2", default-features = false, features = [
     "callback",
     "color-scheme",
     "double-click-interval",
+    "reduced-motion",
 ], optional = true }
 
 [dev-dependencies]
@@ -195,6 +203,12 @@ name = "showcase"
 path = "examples/showcase/main.rs"
 required-features = ["winit"]
 # The shot mode's tests run with the first test lane.
+test = true
+
+[[example]]
+name = "observatory"
+path = "examples/observatory/main.rs"
+required-features = ["winit"]
 test = true
 
 [lib]

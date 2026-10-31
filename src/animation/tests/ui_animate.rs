@@ -250,3 +250,29 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     let next = record(&mut h, idle + Duration::from_millis(16), 1.0);
     assert_eq!(next, Easing::OutCubic.apply(0.016 / 0.12));
 }
+
+/// With the system asking for less motion, a retarget lands on its target in the frame that asks,
+/// with no repaint to finish it; without, the same retarget is in flight.
+#[test]
+fn reduced_motion_snaps_every_transition() {
+    let retarget = |reduced: bool| {
+        let AnimationUi { mut h, id } = support::setup_animation_ui("reduced");
+        h.set_motion_reduced(reduced);
+        let step = |h: &mut Harness, target: f32| {
+            let mut value = f32::NAN;
+            let report = h.frame(|ui| {
+                value = ui.animate(
+                    AnimationRequest::new(id, SLOT, target),
+                    Some(AnimationSpec::FAST),
+                );
+                Block::new().id(id).show(ui);
+            });
+            (value, report.repaint_requested)
+        };
+        step(&mut h, 0.0);
+        step(h.at(Duration::from_millis(16)), 1.0)
+    };
+    assert_eq!(retarget(true), (1.0, false));
+    let (value, repaint) = retarget(false);
+    assert!(value < 1.0 && repaint, "{value}");
+}

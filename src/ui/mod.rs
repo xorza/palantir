@@ -240,8 +240,10 @@ impl Ui {
     }
 
     /// Replace this window's theme for `scheme`; takes an `Rc` so swapping prebuilt themes copies
-    /// nothing. The theme of the shown scheme applies at once, to the widgets recorded after the
-    /// call; the other waits until its scheme shows.
+    /// nothing, and the handle the slot holds already changes nothing. The theme of the shown
+    /// scheme applies at once, to the widgets recorded after the call, and asks for a frame that
+    /// records the rest under it, so set it on a change, not every frame; the other waits until
+    /// its scheme shows.
     ///
     /// ```
     /// # use palantir::{ColorScheme, SchemePreference, Theme, Ui};
@@ -253,9 +255,17 @@ impl Ui {
     /// ```
     #[inline]
     pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>) {
-        *self.themes.get_mut(scheme) = theme.into();
+        let theme = theme.into();
+        let slot = self.themes.get_mut(scheme);
+        if Rc::ptr_eq(slot, &theme) {
+            return;
+        }
+        *slot = theme;
         if scheme == self.scheme {
+            // The widgets recorded before the call wore the old theme; the next frame records
+            // them all under the new one.
             self.theme_epoch = self.theme_epoch.wrapping_add(1);
+            self.frame_runtime.request_repaint();
         }
     }
 
@@ -287,6 +297,25 @@ impl Ui {
     #[inline]
     pub fn system_color_scheme(&self) -> Option<ColorScheme> {
         self.resources.system_color_scheme().get()
+    }
+
+    /// Whether the system asks for less motion: then every [`Self::animate`] snaps to its target,
+    /// as CSS `prefers-reduced-motion` asks of transitions
+    /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). A paint
+    /// animation that shows progress, as a spinner's turn and a caret's blink, still runs.
+    /// App-global; `false` where nothing reports it.
+    #[inline]
+    pub fn is_motion_reduced(&self) -> bool {
+        self.resources.motion_reduced().get()
+    }
+
+    /// A host's report of the system's reduced-motion preference; a change asks this window for
+    /// a frame.
+    pub(crate) fn set_motion_reduced(&mut self, reduced: bool) {
+        if self.is_motion_reduced() != reduced {
+            self.resources.motion_reduced().set(reduced);
+            self.frame_runtime.request_repaint();
+        }
     }
 
     /// A host's report of the system's scheme; a change asks this window for a frame.
@@ -1096,7 +1125,11 @@ impl Ui {
         request: AnimationRequest<V>,
         spec: impl Into<Option<AnimationSpec>>,
     ) -> V {
-        let spec = spec.into().unwrap_or(AnimationSpec::SNAP);
+        let spec = if self.is_motion_reduced() {
+            AnimationSpec::SNAP
+        } else {
+            spec.into().unwrap_or(AnimationSpec::SNAP)
+        };
         let clock = AnimationClock {
             dt: self.frame_runtime.dt,
             render_frame_id: self.frame_runtime.render_frame_id,

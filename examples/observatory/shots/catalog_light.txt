@@ -1,0 +1,4 @@
+// The catalog study in the light scheme.
+scheme light
+page "catalog"
+shot catalog_light

@@ -229,6 +229,13 @@ impl OffscreenHost {
         self
     }
 
+    /// Report the system as asking for less motion, or not, as the winit host reports the
+    /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
+    pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self {
+        self.driver.ui.set_motion_reduced(reduced);
+        self
+    }
+
     /// Block until the device has finished every frame submitted so far, and the copies of their
     /// screenshots are back, also when other threads poll the same device. A screenshot asked
     /// for in one of them then lands in the next frame, so a caller that waits once and runs one

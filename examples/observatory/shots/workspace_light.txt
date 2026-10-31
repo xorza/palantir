@@ -1,0 +1,4 @@
+// The workspace study in the light scheme.
+scheme light
+page "workspace"
+shot workspace_light

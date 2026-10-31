@@ -1,6 +1,6 @@
 //! The app-global resources of one host, shared by every window's recorder, the one frontend and the one backend:
 //! shaper, image and icon registries, gradient atlas, clipboard, window directory, render owners, diagnostics,
-//! user scale and color scheme. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
+//! user scale, color scheme and reduced motion. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
 
 use std::rc::Rc;
 
@@ -45,6 +45,9 @@ pub(crate) struct UiResources {
     /// The scheme the system reports, which the winit host writes; `None` where nothing reports
     /// one.
     system_color_scheme: Rc<AppSetting<Option<ColorScheme>>>,
+    /// Whether the system asks for less motion, which the winit host writes; `false` where
+    /// nothing reports it.
+    motion_reduced: Rc<AppSetting<bool>>,
     /// The double-click time every window's input reads, which the winit host sets from the
     /// platform's.
     double_click_window: DoubleClickWindow,
@@ -67,6 +70,7 @@ impl UiResources {
             user_scale: Rc::default(),
             scheme_preference: Rc::default(),
             system_color_scheme: Rc::default(),
+            motion_reduced: Rc::default(),
             double_click_window: DoubleClickWindow::default(),
             windows: WindowDirectory::default(),
             render_owners: RenderOwners::default(),
@@ -115,6 +119,10 @@ impl UiResources {
 
     pub(crate) fn system_color_scheme(&self) -> &AppSetting<Option<ColorScheme>> {
         &self.system_color_scheme
+    }
+
+    pub(crate) fn motion_reduced(&self) -> &AppSetting<bool> {
+        &self.motion_reduced
     }
 
     /// The scheme every window shows now: the preference resolved against the system's.

@@ -12,6 +12,21 @@ use crate::allocator::CountingAllocator;
 static GLOBAL: CountingAllocator = CountingAllocator;
 
 mod allocator;
+/// The observatory example's app, compiled in so a fixture audits its studies' frames.
+#[expect(
+    dead_code,
+    reason = "the module is compiled whole, and the window, the shot mode and the eyepiece are the \
+              example's; the audit records the studies alone"
+)]
+#[path = "../../examples/observatory/app/mod.rs"]
+mod app;
 mod fixtures;
 mod gates;
 mod harness;
+/// The shared shot mode, which the observatory's app names through its `ShotApp` impl.
+#[expect(
+    dead_code,
+    reason = "the app needs the trait; the runner is the examples'"
+)]
+#[path = "../../examples/shared/shot/mod.rs"]
+mod shot;
