@@ -364,7 +364,7 @@ tree renders.
   a change has a `peek_*` twin that does not (`pointer_pos` /
   `peek_pointer_pos`).
 - **Conversions** follow std: `as_*` is a free view (`as_str`, `as_solid`),
-  `to_*` computes a new value (`to_color`, `to_srgba_u8`, `to_animated`), and
+  `to_*` computes a new value (`to_color`, `to_srgba8`, `to_animated`), and
   `from_*` is the constructor that goes the other way.
 - **Predicates.** A property of a value, or of `Ui` state, is `is_*`, `has_*`
   or `can_*` (`is_noop`, `is_approx_zero`, `is_window_open`,

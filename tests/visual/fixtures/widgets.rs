@@ -27,7 +27,7 @@ fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
 /// A transparent fill rounded by `corners` under a green border `width` wide.
 fn green_rim(width: f32, corners: Corners) -> Chrome {
     Chrome::rounded(RgbaF32::TRANSPARENT, corners).with_border(Stroke::new(
-        RgbaF32::from_srgba(SrgbaU8::rgb(0, 255, 0)),
+        RgbaF32::from_srgba8(SrgbaU8::rgb(0, 255, 0)),
         width,
     ))
 }
@@ -202,8 +202,8 @@ fn rounded_clip_survives_surface_resize() {
     // A stale stencil would mismatch the pass and panic. Each render must still
     // draw: corner (10, 10) is 7.5*sqrt(2) ~ 10.6 px from the arc center (18, 18),
     // outside the 8 px arc, so it reads clear; the center reads the fill.
-    let clear = DARK_BG.to_srgba();
-    let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba();
+    let clear = DARK_BG.to_srgba8();
+    let fill = RgbaF32::srgb(0.2, 0.2, 0.3).to_srgba8();
     for size in [UVec2::new(120, 120), UVec2::new(240, 200)] {
         let img = h.size(size).frame(scene).image;
         fixtures::assert_px(

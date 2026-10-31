@@ -21,10 +21,10 @@ impl DragValueTheme {
     pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self {
         let editor = TextEditTheme {
             looks: StatefulLook {
-                normal: chip.looks.normal.clone(),
-                hovered: chip.looks.hovered.clone(),
-                active: chip.looks.hovered.clone(),
-                disabled: chip.looks.disabled.clone(),
+                normal: chip.unselected.normal.clone(),
+                hovered: chip.unselected.hovered.clone(),
+                active: chip.unselected.hovered.clone(),
+                disabled: chip.unselected.disabled.clone(),
             },
             defaults: chip.defaults,
             caret: text_edit.caret,

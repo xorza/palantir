@@ -379,7 +379,7 @@ fn outlined_style() -> ButtonTheme {
     let chrome =
         |fill: RgbaF32, stroke| Chrome::rounded(fill, Corners::all(4.0)).with_border(stroke);
     ButtonTheme {
-        looks: StatefulLook {
+        unselected: StatefulLook {
             normal: WidgetLook {
                 chrome: chrome(RgbaF32::TRANSPARENT, stroke),
                 text: TextStyleOverrides::NONE,
@@ -411,7 +411,7 @@ fn danger_style() -> ButtonTheme {
         text: TextStyleOverrides::NONE.with_color(ink),
     };
     ButtonTheme {
-        looks: StatefulLook {
+        unselected: StatefulLook {
             normal: look(red, RgbaF32::WHITE),
             hovered: look(RgbaF32::hex(0xff7e6a), RgbaF32::WHITE),
             active: look(RgbaF32::hex(0xc74734), RgbaF32::WHITE),

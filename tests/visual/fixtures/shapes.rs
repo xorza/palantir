@@ -250,7 +250,7 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
             });
         })
         .image;
-    let gray = RgbaF32::new(0.5, 0.5, 0.5, 1.0).to_srgba();
+    let gray = RgbaF32::new(0.5, 0.5, 0.5, 1.0).to_srgba8();
     fixtures::assert_px(
         img.get_pixel(60, 60).0,
         [gray.r, gray.g, gray.b, 255],
@@ -433,7 +433,7 @@ fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
         .image;
     let encode = |coverage: f32| {
         RgbaF32::new(1.0 - coverage, 1.0 - coverage, 1.0 - coverage, 1.0)
-            .to_srgba()
+            .to_srgba8()
             .r
     };
     for (x, y, coverage) in [

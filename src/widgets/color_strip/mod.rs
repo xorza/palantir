@@ -146,8 +146,8 @@ impl StripPaint {
         for (col, texel) in image.row_mut(0).iter_mut().enumerate() {
             let along = (col as f32 + 0.5) / width as f32;
             *texel = match self {
-                Self::Hue(model) => model.slice(along).color(1.0, 1.0).to_srgba(),
-                Self::Alpha(color) => color.with_alpha(along).to_srgba(),
+                Self::Hue(model) => model.slice(along).color(1.0, 1.0).to_srgba8(),
+                Self::Alpha(color) => color.with_alpha(along).to_srgba8(),
             };
         }
         image.repeat_row(0);

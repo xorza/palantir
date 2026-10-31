@@ -90,7 +90,7 @@ fn a_pane_with_nothing_under_it_shows_the_clear() {
     ] {
         let (captured, blurs) = paint(clear, scene(background, Before::Veil, None));
         assert_eq!(blurs, 1, "{what}: the veil");
-        let clear_bytes = CLEAR.to_srgba();
+        let clear_bytes = CLEAR.to_srgba8();
         for before in [Before::Nothing, Before::Speck] {
             let (flat, blurs) = paint(clear, scene(background, before, None));
             assert_eq!(blurs, 0, "{what}: {before:?}");

@@ -357,7 +357,7 @@ fn cell_theme() -> ButtonTheme {
     };
     ButtonTheme {
         selected: looks.clone(),
-        looks,
+        unselected: looks,
         defaults: SlotDefaults {
             padding: Spacing::xy(6.0, 4.0),
             margin: Spacing::ZERO,
@@ -369,11 +369,11 @@ fn cell_theme() -> ButtonTheme {
 /// Points `theme`'s four states at one cell's color.
 fn recolor_cell(theme: &mut ButtonTheme, base: RgbaF32) {
     let chrome = |fill: RgbaF32| Chrome::rounded(fill, Corners::all(3.0));
-    theme.looks.normal.chrome = chrome(base);
-    theme.looks.hovered.chrome = chrome(brighten(base, 0.15));
-    theme.looks.active.chrome =
+    theme.unselected.normal.chrome = chrome(base);
+    theme.unselected.hovered.chrome = chrome(brighten(base, 0.15));
+    theme.unselected.active.chrome =
         chrome(brighten(base, 0.3)).with_border(Stroke::new(RgbaF32::WHITE, 1.0));
-    theme.looks.disabled.chrome = chrome(base);
+    theme.unselected.disabled.chrome = chrome(base);
 }
 
 const fn brighten(c: RgbaF32, t: f32) -> RgbaF32 {

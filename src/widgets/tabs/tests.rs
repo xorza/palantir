@@ -167,8 +167,8 @@ fn the_close_cross_is_two_drawn_lines_in_the_close_ink() {
     strip_frame(&mut h, 0);
     let theme = h.ui().theme();
     let t = &theme.tabs;
-    assert_eq!((t.close_size, t.close_glyph), (16.0, 8.0), "premise");
-    let stroke = t.close_stroke;
+    assert_eq!((t.close_size, t.close_glyph_span), (16.0, 8.0), "premise");
+    let stroke = t.close_glyph_width;
     let ink = t.close.normal.text.apply(&theme.text).color.to_f16();
     let node = h.node_for_widget_id(TabStrip::close_id(strip_id(), 20));
     let tree = h.ui().tree(Layer::Main);
@@ -852,7 +852,7 @@ fn a_stale_strip_selection_caps_the_last_chip() {
 /// a shared slice) and moves the bound index with it; gaps beside the chip
 /// are no move, off-strip is no drop.
 #[test]
-fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
+fn a_draggable_view_reports_the_slot_a_drag_released_over() {
     type Release = fn(&Harness, WidgetId) -> Vec2;
 
     let view = WidgetId::from_hash("test.reorder");
@@ -860,7 +860,7 @@ fn a_reorderable_view_reports_the_slot_a_drag_released_over() {
     let record = |ui: &mut Ui, page: &mut usize| {
         TabbedView::new(page, &PAGES)
             .id(view)
-            .reorderable(true)
+            .draggable(true)
             .show(ui, |ui, _| {
                 Panel::vstack()
                     .id_salt("page")
@@ -926,7 +926,7 @@ fn an_escape_cancels_a_view_drag_and_its_caret() {
     let record = |ui: &mut Ui, page: &mut usize| {
         TabbedView::new(page, &PAGES)
             .id(view)
-            .reorderable(true)
+            .draggable(true)
             .show(ui, |_, _| {})
             .action
     };
@@ -1007,7 +1007,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     let record = |ui: &mut Ui, page: &mut usize, pages: &[&str]| {
         TabbedView::new(page, pages)
             .id(view)
-            .reorderable(true)
+            .draggable(true)
             .keyed(|name: &&str| *name)
             .show(ui, |ui, _| {
                 Panel::vstack()

@@ -170,7 +170,7 @@ impl ColorPickerTheme {
             // editable value keeps its box and text in place.
             value: {
                 let mut chip = DragValueTheme::from_parts(p, m).chip;
-                mono_states(&mut chip.looks);
+                mono_states(&mut chip.unselected);
                 chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
                 DragValueTheme::from_chip(chip, &TextEditTheme::from_parts(p, m))
             },

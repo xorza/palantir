@@ -86,7 +86,7 @@ enum HueBlockKind {
 }
 
 impl HueBlock {
-    /// `slice.color(s, v).to_srgba()` for each column's saturation `s`, into `out`, a texel a
+    /// `slice.color(s, v).to_srgba8()` for each column's saturation `s`, into `out`, a texel a
     /// column from the first; `v` clamps to `0..1`.
     pub(crate) fn row(&self, v: f32, out: &mut [SrgbaU8]) {
         debug_assert!(

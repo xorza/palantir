@@ -8,14 +8,14 @@ Darkroom is one user; an item stays only if it is general.
 
 The surface is mostly consistent: builders, values, flag sets, theme slots, state drivers and
 responses each follow one shape. An item is judged by whether a general user needs it, not by
-whether darkroom calls it. The defects fall into two root causes:
+whether darkroom calls it. The defects fall into three root causes:
 
-- **One concept, two names.** The two-pack themes name the resting pack `looks` (button) and
-  `unselected` (tabs). The same tab gesture is `draggable` (dock, `TabItem`) and `reorderable`
-  (`TabbedView`). A byte color is `srgba` on `RgbaF32` and `srgba8` on `Image`, and `srgba` on
-  `RgbaF32` also names its float constructor.
 - **One kind of event, two shapes.** `TabStripResponse` reports participles, as the Responses
   rule asks; `TabbedViewResponse` reports an action enum.
+- **One kind of constructor, three names.** The sub-theme recipes are `from_parts`,
+  `from_palette` or `from_metrics` by the inputs each reads today.
+- **One kind of parameter, two spellings.** Setters name their one argument differently, and
+  some generic arguments are named type parameters where their siblings take `impl Trait`.
 
 Nothing in the surface is specialized for darkroom. The items added for it in the last plan
 (`App::is_busy`, `Ui::waker`, `Harness::wait_for_wake` and `has_pending_wake`,
@@ -24,22 +24,6 @@ Nothing in the surface is specialized for darkroom. The items added for it in th
 a general need, with its source in `AGENTS.md`.
 
 ## Plan
-
-### Batch 2: one name per concept
-
-Files: `src/theme/button.rs` and every reader of `ButtonTheme::looks` (palantir and darkroom),
-`src/theme/tabs.rs`, `src/widgets/tabs/`, `src/primitives/paint/color/mod.rs` and callers.
-
-- [ ] `ButtonTheme::looks` → `unselected`, beside `selected`, as `TabsTheme` names its two
-  packs. Keep `#[serde(flatten)]`, so a theme file keeps `[button.normal]`. A single-pack theme
-  keeps `looks`.
-- [ ] `TabbedView::reorderable` → `draggable`, as `TabItem::draggable` and
-  `DockTabs::draggable` name the same gesture.
-- [ ] `TabsTheme::close_glyph` and `close_stroke` (both `f32`): the Lines rule names a line's
-  width `*_width`. Rename them `close_glyph_span` and `close_glyph_width`.
-- [ ] `RgbaF32::from_srgba(SrgbaU8)` and `to_srgba() -> SrgbaU8` → `from_srgba8` and
-  `to_srgba8`, as `Image::from_srgba8` names bytes, so `RgbaF32::srgba(r, g, b, a)` is the one
-  float constructor with that word.
 
 ### Batch 3: one response shape
 

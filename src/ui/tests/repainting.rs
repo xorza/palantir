@@ -378,7 +378,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
                 ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(
                     LinearGradient::two_stop(
                         0.0,
-                        RgbaF32::from_srgba(SrgbaU8::rgb(
+                        RgbaF32::from_srgba8(SrgbaU8::rgb(
                             idx as u8,
                             (idx >> u8::BITS) as u8,
                             (idx >> (u8::BITS * 2)) as u8,

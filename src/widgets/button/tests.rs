@@ -19,7 +19,7 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
         },
         ..ButtonTheme::default()
     };
-    theme.looks.normal.chrome = Chrome::NONE;
+    theme.unselected.normal.chrome = Chrome::NONE;
 
     let mut h = Harness::mono(UVec2::new(200, 120));
     let [explicit, inherited] = h.frame_value(|ui| {
@@ -111,7 +111,7 @@ fn show_with_hands_the_body_its_states_ink() {
         disabled: inked(base + 3),
     };
     let theme = ButtonTheme {
-        looks: pack(0x100),
+        unselected: pack(0x100),
         selected: pack(0x200),
         defaults: SlotDefaults {
             animation: None,

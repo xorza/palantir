@@ -7,9 +7,9 @@ use ron::ser;
 fn srgb_bytes_survive_the_trip_through_every_wider_form() {
     for byte in 0u8..=255 {
         let srgb = SrgbaU8::new(byte, byte, byte, byte);
-        assert_eq!(RgbaF32::from(srgb).to_srgba(), srgb, "sRGB {byte} via f32");
+        assert_eq!(RgbaF32::from(srgb).to_srgba8(), srgb, "sRGB {byte} via f32");
         assert_eq!(
-            RgbaF32::from(RgbaF32::from(srgb).to_f16()).to_srgba(),
+            RgbaF32::from(RgbaF32::from(srgb).to_f16()).to_srgba8(),
             srgb,
             "sRGB {byte} via f16"
         );
@@ -23,7 +23,7 @@ fn rgb_is_const_constructible() {
     const _LITERAL: RgbaF32 = RgbaF32::srgb(0.2, 0.4, 0.8);
     const HEX: RgbaF32 = RgbaF32::hex(0x3366CC);
     const HEXA: RgbaF32 = RgbaF32::hexa(0x3366CC80);
-    assert_eq!(HEXA.to_srgba(), SrgbaU8::new(0x33, 0x66, 0xCC, 0x80));
+    assert_eq!(HEXA.to_srgba8(), SrgbaU8::new(0x33, 0x66, 0xCC, 0x80));
     assert_eq!(HEX, RgbaF32::hexa(0x3366CCFF));
     assert_eq!(RgbaF32::hex(0xFF_FFFF), RgbaF32::WHITE, "the largest rgb");
     // An eight-digit literal in `hex` would lose its top byte and shift the rest.
@@ -47,7 +47,7 @@ fn ron_roundtrip(c: RgbaF32) -> RonRoundTrip {
 #[test]
 fn hex_round_trip_is_exact_over_all_bytes() {
     for byte in 0u8..=255 {
-        let c = RgbaF32::from_srgba(SrgbaU8::rgb(byte, byte, byte));
+        let c = RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte));
         let RonRoundTrip { text: s, parsed } = ron_roundtrip(c);
         assert_eq!(
             s,
@@ -66,7 +66,7 @@ fn opaque_emits_six_digits_translucent_emits_eight() {
         s.contains(r##""#3366cc""##),
         "opaque must emit 6 digits: {s}"
     );
-    let s = ron_roundtrip(RgbaF32::from_srgba(SrgbaU8::new(0x33, 0x66, 0xcc, 0x80))).text;
+    let s = ron_roundtrip(RgbaF32::from_srgba8(SrgbaU8::new(0x33, 0x66, 0xcc, 0x80))).text;
     assert!(
         s.contains(r##""#3366cc80""##),
         "translucent must emit 8 digits: {s}"
@@ -158,23 +158,23 @@ fn the_linear_form_parses_its_words_and_refuses_the_rest() {
 fn color_parse_accepts_with_and_without_hash() {
     assert_eq!(
         parse_hex("#3266cc").unwrap(),
-        RgbaF32::from_srgba(SrgbaU8::rgb(0x32, 0x66, 0xcc))
+        RgbaF32::from_srgba8(SrgbaU8::rgb(0x32, 0x66, 0xcc))
     );
     assert_eq!(
         parse_hex("3266cc").unwrap(),
-        RgbaF32::from_srgba(SrgbaU8::rgb(0x32, 0x66, 0xcc))
+        RgbaF32::from_srgba8(SrgbaU8::rgb(0x32, 0x66, 0xcc))
     );
     assert_eq!(
         parse_hex("#3266cc80").unwrap(),
-        RgbaF32::from_srgba(SrgbaU8::new(0x32, 0x66, 0xcc, 0x80))
+        RgbaF32::from_srgba8(SrgbaU8::new(0x32, 0x66, 0xcc, 0x80))
     );
     assert_eq!(
         parse_hex("#3266CC").unwrap(),
-        RgbaF32::from_srgba(SrgbaU8::rgb(0x32, 0x66, 0xcc))
+        RgbaF32::from_srgba8(SrgbaU8::rgb(0x32, 0x66, 0xcc))
     );
     assert_eq!(
         parse_hex("#3266CC80").unwrap(),
-        RgbaF32::from_srgba(SrgbaU8::new(0x32, 0x66, 0xcc, 0x80))
+        RgbaF32::from_srgba8(SrgbaU8::new(0x32, 0x66, 0xcc, 0x80))
     );
     assert_eq!("#3266cc80".parse::<RgbaF32>(), parse_hex("#3266cc80"));
     assert_eq!("#3266c".parse::<RgbaF32>(), Err(ParseColorError::Length));

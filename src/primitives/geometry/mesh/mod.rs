@@ -38,7 +38,7 @@ impl MeshVertex {
     pub fn new(pos: Vec2, color: impl Into<RgbaF32>) -> Self {
         Self {
             pos,
-            color: color.into().to_srgba(),
+            color: color.into().to_srgba8(),
         }
     }
 }

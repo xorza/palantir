@@ -245,7 +245,7 @@ fn corner_pair_change_keeps_center_unpainted() {
     // Each corner is a damaged pass of its own, repainted in full: a later
     // pass's clear would wipe the other's paint.
     for (x, y, fill) in [(5, 5, TOP_LEFT), (195, 195, BOTTOM_RIGHT)] {
-        let fill = fill.to_srgba();
+        let fill = fill.to_srgba8();
         fixtures::assert_px(
             f2.get_pixel(x, y).0,
             [fill.r, fill.g, fill.b, 255],

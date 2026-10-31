@@ -46,7 +46,7 @@ fn cube_corners_are_the_gamut_edge() {
             continue;
         }
         let back = Okhsv::new(expected, 1.0, 1.0).to_color();
-        let (got, want) = (back.to_srgba(), corner.to_srgba());
+        let (got, want) = (back.to_srgba8(), corner.to_srgba8());
         assert_eq!(got, want, "corner {idx}");
     }
 }
@@ -56,7 +56,7 @@ fn cube_corners_are_the_gamut_edge() {
 #[test]
 fn pure_blue_lies_outside_the_cube() {
     let edge = Okhsv::new(CORNER_HUES[BLUE], 1.0, 1.0).to_color();
-    assert_eq!(edge.to_srgba(), SrgbaU8::hex(0x0037ff));
+    assert_eq!(edge.to_srgba8(), SrgbaU8::hex(0x0037ff));
     // Reading pure blue back saturates both axes to within `f32` resolution (the side is platform-specific).
     // Eight ULPs of slack covers it and stays well inside a thousandth of an 8-bit step.
     let top = 1.0 - 4.0 * f32::EPSILON..=1.0;
@@ -93,9 +93,9 @@ fn the_value_ends_are_absolute() {
     let white = SrgbaU8::hex(0xffffff);
     for step in 0..12 {
         let h = step as f32 / 12.0;
-        assert_eq!(Okhsv::new(h, 1.0, 0.0).to_color().to_srgba(), black);
-        assert_eq!(Okhsv::new(h, 0.0, 0.0).to_color().to_srgba(), black);
-        assert_eq!(Okhsv::new(h, 0.0, 1.0).to_color().to_srgba(), white);
+        assert_eq!(Okhsv::new(h, 1.0, 0.0).to_color().to_srgba8(), black);
+        assert_eq!(Okhsv::new(h, 0.0, 0.0).to_color().to_srgba8(), black);
+        assert_eq!(Okhsv::new(h, 0.0, 1.0).to_color().to_srgba8(), white);
     }
 }
 

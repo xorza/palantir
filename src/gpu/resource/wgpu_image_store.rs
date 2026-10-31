@@ -245,7 +245,7 @@ fn premultiplied_bytes() -> Box<[[u8; 256]; 256]> {
                 b: 0.0,
                 a: 1.0,
             }
-            .to_srgba()
+            .to_srgba8()
             .r;
         }
     }
@@ -310,7 +310,7 @@ mod tests {
                     b: straight.b * straight.a,
                     a: straight.a,
                 }
-                .to_srgba(),
+                .to_srgba8(),
             };
             assert_eq!(*got, want, "premultiplied {texel:?}");
         }

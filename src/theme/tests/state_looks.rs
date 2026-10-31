@@ -48,7 +48,7 @@ fn response(pointer_over: bool, pressed: bool, disabled: bool) -> ResponseState 
 fn button_theme_pick_precedence() {
     let theme = ButtonTheme::default();
     for (selection, pack) in [
-        (Selection::Unselected, &theme.looks),
+        (Selection::Unselected, &theme.unselected),
         (Selection::Selected, &theme.selected),
     ] {
         let cases: &[(ResponseState, &WidgetLook, &str)] = &[
@@ -77,10 +77,10 @@ fn button_theme_pick_precedence() {
             );
         }
     }
-    assert_eq!(theme.selected.normal, theme.looks.active);
-    assert_eq!(theme.selected.hovered, theme.looks.active);
-    assert_ne!(theme.selected.normal, theme.looks.normal);
-    assert_ne!(theme.selected.hovered, theme.looks.hovered);
+    assert_eq!(theme.selected.normal, theme.unselected.active);
+    assert_eq!(theme.selected.hovered, theme.unselected.active);
+    assert_ne!(theme.selected.normal, theme.unselected.normal);
+    assert_ne!(theme.selected.hovered, theme.unselected.hovered);
 }
 
 #[test]
@@ -298,12 +298,12 @@ fn the_picker_value_editor_is_its_chip() {
 
     let theme = Theme::from_parts(&Palette::DEFAULT, &Metrics::DEFAULT);
     let value = &theme.color_picker.value;
-    assert_eq!(value.editor.looks.normal, value.chip.looks.normal);
-    assert_eq!(value.editor.looks.hovered, value.chip.looks.hovered);
-    assert_eq!(value.editor.looks.disabled, value.chip.looks.disabled);
+    assert_eq!(value.editor.looks.normal, value.chip.unselected.normal);
+    assert_eq!(value.editor.looks.hovered, value.chip.unselected.hovered);
+    assert_eq!(value.editor.looks.disabled, value.chip.unselected.disabled);
     assert_eq!(value.editor.defaults.padding, value.chip.defaults.padding);
     assert_eq!(
-        value.chip.looks.normal.text,
+        value.chip.unselected.normal.text,
         TextStyleOverrides {
             family: Some(FontFamily::MONO),
             font_size: Some(12.0),
@@ -357,6 +357,6 @@ fn bundled_text_inherits_every_axis_but_color() {
         [p.text_muted, p.text, p.text],
     );
     let flat = ButtonTheme::menu_button(&p, &Metrics::DEFAULT);
-    assert_eq!(shade(&flat.looks.disabled), p.text_disabled);
-    assert_eq!(shade(&flat.looks.normal), p.text);
+    assert_eq!(shade(&flat.unselected.disabled), p.text_disabled);
+    assert_eq!(shade(&flat.unselected.normal), p.text);
 }
