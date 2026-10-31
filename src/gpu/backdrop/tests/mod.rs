@@ -231,6 +231,53 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
     }
 }
 
+/// A luminance floor lifts what a pane shows up to it by a neutral before the tint, black too,
+/// and leaves what is brighter alone. White on the left, the black clear on the right, under a
+/// pane of σ 1 tinted gray 0.2 at alpha 0.5 with a floor of 0.3, which lowers to the f16 at or
+/// above it, 0.300048828125: away from the seam, the black side composites to
+/// `0.5 · 0.300048828125 + 0.5 · 0.2 = 0.2500244140625` and the white side stays
+/// `0.5 · 1 + 0.5 · 0.2 = 0.6`. Without the floor the black side is `0.1`.
+#[test]
+fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
+    let paint = |floor: Option<f32>| {
+        whole(move |ui: &mut Ui| {
+            Panel::canvas()
+                .id_salt("backdrop-floor")
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 32.0, 48.0)).fill(RgbaF32::WHITE));
+                    let filter = BackdropFilter {
+                        min_luminance: floor,
+                        ..BackdropFilter::blur(1.0)
+                    };
+                    ui.add_shape(
+                        Shape::rect(Rect::new(0.0, 0.0, 64.0, 48.0))
+                            .fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5))
+                            .backdrop_filter(filter),
+                    );
+                });
+        })
+    };
+    for (floor, white, black) in [(Some(0.3), 0.6, 0.250_024_414_062_5), (None, 0.6, 0.1)] {
+        let got = paint(floor);
+        for (xs, want) in [(4..28, white), (36..60, black)] {
+            for x in xs {
+                for y in 4..44 {
+                    let pixel = got.get_pixel(x, y);
+                    for c in 0..3 {
+                        let g = f64::from(pixel[c]);
+                        assert!(
+                            (g - encode(want)).abs() <= 1.0,
+                            "{floor:?}: ({x}, {y}) channel {c} is {g}, want {:.2}",
+                            encode(want)
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// A canvas with a square of `under` painted before a pane of σ `sigma` at `pane`, and a square
 /// of `over` painted after it, inside it.
 fn layered(ui: &mut Ui, under: RgbaF32, pane: Rect, sigma: f32, over: RgbaF32) {

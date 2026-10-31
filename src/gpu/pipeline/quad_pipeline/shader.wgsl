@@ -104,6 +104,11 @@ struct BackdropSlot {
     // The highest relative luminance the pane shows under its tint; 65504
     // for a pane with no ceiling.
     max_luminance: f32,
+    // The lowest; 0 for a pane with no floor.
+    min_luminance: f32,
+    _pad0: f32,
+    _pad1: f32,
+    _pad2: f32,
 };
 @group(2) @binding(0) var backdrop_results: texture_2d<f32>;
 @group(2) @binding(1) var backdrop_sampler: sampler;
@@ -1124,6 +1129,12 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     let luminance = dot(c, LUMA);
     if (luminance > slot.max_luminance) {
         c *= slot.max_luminance / luminance;
+    }
+    // Lifted by a neutral, whose luminance is its level as LUMA sums to 1, so black reaches the
+    // floor too; after the ceiling, so the floor wins where the two cross.
+    let lifted = dot(c, LUMA);
+    if (lifted < slot.min_luminance) {
+        c += vec3<f32>(slot.min_luminance - lifted);
     }
     let tint = select(0.0, in.fill.a / opacity, opacity > 0.0);
     c = mix(c, in.fill.rgb, clamp(tint, 0.0, 1.0));

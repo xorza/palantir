@@ -1,4 +1,8 @@
-//! [`SystemPreferences`]: what the system's settings say palantir follows, read through `mundy`.
+//! [`SystemPreferences`]: what the system's settings say palantir follows, read through `mundy`
+//! on every OS, once before the first window and then followed. Refused: winit's `ThemeChanged`,
+//! silent on X11 and Wayland and on macOS while a window's appearance is pinned; `dark-light`,
+//! which reads the scheme alone and polls macOS. Facts and sources:
+//! `.notes/research/2026-10-31-system-preferences.md`.
 
 use std::time::Duration;
 
@@ -66,7 +70,9 @@ impl SystemPreferences {
     /// The settings from `mundy`'s scheme and double-click answers, no less motion asked. No
     /// preference reports no scheme, so `System` shows the dark fallback: `mundy` answers it for
     /// a failed read too, as for a Linux portal that fails while the host runs, which must not
-    /// turn the app light. A double-click time of zero, or none, is the platform's fallback.
+    /// turn the app light. Cost: GNOME writes it for its own Light setting, so GNOME's light
+    /// users see dark until they pick Light. A double-click time of zero, or none, is the
+    /// platform's fallback.
     fn from_answers(scheme: mundy::ColorScheme, double_click: Option<Duration>) -> Self {
         let color_scheme = match scheme {
             mundy::ColorScheme::Light => Some(ColorScheme::Light),

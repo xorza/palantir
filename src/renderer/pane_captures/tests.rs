@@ -96,6 +96,7 @@ fn frame(
                 region: ticket.region,
                 lens: None,
                 max_luminance: 65504.0,
+                min_luminance: 0.0,
                 source,
             }
         }));

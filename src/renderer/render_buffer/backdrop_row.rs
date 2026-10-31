@@ -21,6 +21,8 @@ pub(crate) struct BackdropRow {
     pub(crate) lens: Option<Lens>,
     /// The highest relative luminance the pane shows under its tint.
     pub(crate) max_luminance: f32,
+    /// The lowest relative luminance the pane shows under its tint; 0 for none.
+    pub(crate) min_luminance: f32,
     /// Where the pane's result comes from this frame.
     pub(crate) source: PaneSource,
 }
@@ -74,6 +76,7 @@ pub(crate) mod internals {
                     .expect("a fixture's footprint paints"),
                 lens: None,
                 max_luminance: 65504.0,
+                min_luminance: 0.0,
                 source: PaneSource::Held,
             }
         }

@@ -1,5 +1,8 @@
 //! The observatory: five studies of one fictional tool on one model, each built from palantir's
-//! widgets, beside the showcase's reference pages. `main` wires the winit host, or with
+//! widgets, beside the showcase's reference pages, as Material's studies and Slint's `demos/` sit
+//! beside a widget gallery. The showcase pins one parameter a section, which its goldens and
+//! `api!` chips need; the studies show the widgets in use, so they are an example of their own.
+//! `main` wires the winit host, or with
 //! `--shot SCRIPT [--out DIR] [--against DIR]` plays a script on a window with no desktop
 //! ([`shot`]); the app is in [`app`].
 

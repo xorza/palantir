@@ -29,8 +29,11 @@
 //!   <https://learn.microsoft.com/windows/winui/api/microsoft.ui.xaml.media.acrylicbrush>).
 //!   Refused: that luminosity blend and CSS `brightness()`, which compress or scale the dark
 //!   range too and so show less of the backdrop for the same bound; a tint alone, opaque enough
-//!   to hold the bound over white, which leaves a few percent of the backdrop to see. A floor,
-//!   for dark ink on a light tint, waits for a workload.
+//!   to hold the bound over white, which leaves a few percent of the backdrop to see.
+//! - **A luminance floor keeps dark ink over light glass legible**, the ceiling's mirror:
+//!   `min_luminance` lifts what the pane shows by a neutral, so a black backdrop reaches it too,
+//!   and `with_min_luminance_for` derives it from the ink and the tint. Refused: scaling up, as
+//!   the ceiling scales down, which cannot lift black.
 //! - **Linear light.** The capture, the blur and the composite run in linear light, as the rest
 //!   of the pipeline blends, so a blur keeps the energy of bright detail. Refused: blurring
 //!   sRGB-encoded values to imitate a browser's look.
@@ -57,7 +60,7 @@ use palantir_anim_derive::Animatable;
 /// frame where nothing does.
 ///
 /// Plain data, checked where it enters a shape or a [`Chrome`](crate::Chrome): `blur` is a
-/// [length](crate::widget::domain::length), `saturation`, `noise` and a `max_luminance`
+/// [length](crate::widget::domain::length), `saturation`, `noise` and each luminance bound
 /// [factors](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
 /// packs into one, and the lens's own checks hold. Where it paints, a value a tween carried past
 /// the lanes saturates at 65504, and the blur at σ 16384 physical px.
@@ -86,6 +89,16 @@ pub struct BackdropFilter {
     )]
     #[animate(snap)]
     pub max_luminance: Option<f32>,
+    /// The lowest relative luminance the pane shows under its tint, if any: a darker pixel is
+    /// lifted to it by a neutral, so a black backdrop reaches it too. The lane it packs into
+    /// rounds it up, never down. Applied after [`Self::max_luminance`], so it wins where the two
+    /// cross.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::primitives::packed::serde::checked::optional_factor"
+    )]
+    #[animate(snap)]
+    pub min_luminance: Option<f32>,
     /// Glass that bends what the pane shows across a rounded bezel at its edge, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[animate(snap)]
@@ -128,6 +141,7 @@ impl BackdropFilter {
         saturation: 1.0,
         noise: 0.0,
         max_luminance: None,
+        min_luminance: None,
         lens: None,
     };
 
@@ -147,6 +161,7 @@ impl BackdropFilter {
             saturation: 1.8,
             noise: 0.04,
             max_luminance: None,
+            min_luminance: None,
             lens: None,
         }
     }
@@ -217,6 +232,46 @@ impl BackdropFilter {
         self.with_max_luminance((ground - alpha * tint_luminance) / (1.0 - alpha))
     }
 
+    /// This filter with what it shows held to at least `luminance`, a relative luminance.
+    pub const fn with_min_luminance(mut self, luminance: f32) -> Self {
+        self.min_luminance = Some(luminance);
+        self
+    }
+
+    /// This filter with the [`min_luminance`](Self::min_luminance) that holds `ink`, the
+    /// brightest ink painted on the pane, at WCAG's 4.5:1 over any backdrop under `tint`, as an
+    /// 8-bit target stores the composite: the floor dark ink on light glass needs, as
+    /// [`Self::with_max_luminance_for`] is the ceiling light ink on dark glass needs.
+    ///
+    /// The darkest ground `ink` holds 4.5:1 on is `g = 4.5 · (Y(ink) + 0.05) − 0.05`; a step of
+    /// the 8-bit target raises it to `g'`, what the composite must reach for the target to store
+    /// it no lower. The ground over a backdrop at the floor `f` is `(1 − α)·f + α·Y(tint)`, so
+    /// `f = (g' − α·Y(tint)) / (1 − α)`, and 0 where the tint alone clears it.
+    ///
+    /// # Panics
+    ///
+    /// Unless `tint`'s alpha is a fraction under 1, and `ink` holds its contrast on `tint` made
+    /// opaque.
+    #[track_caller]
+    pub fn with_min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self {
+        let alpha = tint.a;
+        assert!(
+            (0.0..1.0).contains(&alpha),
+            "a tint's alpha is a fraction under 1: {alpha}"
+        );
+        debug_assert!(
+            alpha * tint.r.min(tint.g).min(tint.b) > SRGB_TOE,
+            "every channel of a ground clears the sRGB curve's linear toe, as `after_storing` needs"
+        );
+        let ground = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05);
+        let tint_luminance = tint.luminance();
+        assert!(
+            tint_luminance >= ground,
+            "the ink holds its contrast on the opaque tint"
+        );
+        self.with_min_luminance(((ground - alpha * tint_luminance) / (1.0 - alpha)).max(0.0))
+    }
+
     /// This filter seen through `lens`.
     pub const fn with_lens(mut self, lens: Lens) -> Self {
         self.lens = Some(lens);
@@ -230,10 +285,11 @@ impl BackdropFilter {
             && self.saturation == 1.0
             && self.noise == 0.0
             && self.max_luminance.is_none()
+            && self.min_luminance.is_none()
             && self.lens.is_none()
     }
 
-    /// Panics unless `blur` is a length, `saturation`, `noise` and a `max_luminance` factors, and
+    /// Panics unless `blur` is a length, `saturation`, `noise` and each luminance bound factors, and
     /// the lens valid.
     #[inline]
     #[track_caller]
@@ -242,6 +298,9 @@ impl BackdropFilter {
         domain::lane(domain::factor(self.saturation));
         domain::lane(domain::factor(self.noise));
         if let Some(luminance) = self.max_luminance {
+            domain::lane(domain::factor(luminance));
+        }
+        if let Some(luminance) = self.min_luminance {
             domain::lane(domain::factor(luminance));
         }
         if let Some(lens) = &self.lens {
@@ -262,6 +321,7 @@ impl NanCheck for BackdropFilter {
             || self.saturation.is_nan()
             || self.noise.is_nan()
             || self.max_luminance.is_some_and(f32::is_nan)
+            || self.min_luminance.is_some_and(f32::is_nan)
             || self.lens.is_some_and(Lens::has_nan)
     }
 }
@@ -341,6 +401,26 @@ fn before_storing(g: f32) -> f32 {
     level(
         top.checked_sub(1)
             .expect("the ink holds its contrast a step above black"),
+    )
+}
+
+/// The darkest linear level a composite may reach and still store at least `g`: the mirror of
+/// [`before_storing`], a step above `B`, the lowest byte that decodes to at least `g`, as the
+/// target stores a channel within one encoded step below it. A colored pixel stores no darker
+/// than a neutral one of its luminance: `decode(encode(c) − step)` is convex in `c` on the
+/// curve's power segment, so by Jensen the weighted channels lose at most what their mean does.
+fn after_storing(g: f32) -> f32 {
+    let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte)).r;
+    let mut bottom = RgbaF32::new(g, g, g, 1.0).to_srgba8().r;
+    if level(bottom) < g {
+        bottom = bottom
+            .checked_add(1)
+            .expect("the ink holds its contrast on white");
+    }
+    level(
+        bottom
+            .checked_add(1)
+            .expect("the ink holds its contrast a step below white"),
     )
 }
 
