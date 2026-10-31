@@ -115,6 +115,16 @@ For a tour of every widget, run the bundled
 cargo run --profile release-dev --example showcase
 ```
 
+For the widgets at work together, run the
+[observatory](https://github.com/xorza/palantir/tree/master/examples/observatory): five studies
+of one fictional observatory over one model, a sky chart on palantir's pan and zoom over a raw
+wgpu sky, a virtualized catalog, a session form, a dock workspace with a second window, and an
+appearance editor that restyles everything live, in the light, dark or night-vision look:
+
+```sh
+cargo run --profile release-dev --example observatory
+```
+
 **Your own widgets.** The crate root is what an application types;
 `palantir::widget` is what a widget is built from. The showcase's
 **custom widget** page,

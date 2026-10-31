@@ -23,8 +23,7 @@ const SURFACE: UVec2 = UVec2::new(1600, 1000);
 /// A window on `study` with every frame settled.
 fn open(study: Study) -> (Harness, Shell) {
     let mut h = Harness::builder(SURFACE).mono().build();
-    let mut shell = Shell::new();
-    shell.study = study;
+    let mut shell = Shell::on(study);
     h.settle(&mut shell).expect("the first frames settle");
     (h, shell)
 }

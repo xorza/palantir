@@ -42,8 +42,13 @@ pub(crate) struct Shell {
 impl Shell {
     /// The sky chart, the home study, over a fresh model.
     pub(crate) fn new() -> Self {
+        Self::on(Study::SkyChart)
+    }
+
+    /// `study` over a fresh model.
+    pub(crate) fn on(study: Study) -> Self {
         Self {
-            study: Study::SkyChart,
+            study,
             model: Observatory::new(),
         }
     }
@@ -177,10 +182,7 @@ impl ShotApp for Shell {
     }
 
     fn open(page: usize, _ui: &mut Ui) -> Self {
-        Self {
-            study: Study::ALL[page],
-            ..Self::new()
-        }
+        Self::on(Study::ALL[page])
     }
 }
 

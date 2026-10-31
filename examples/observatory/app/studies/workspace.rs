@@ -169,7 +169,10 @@ fn log(ui: &mut Ui, model: &Observatory, t: Tokens) {
 pub(crate) fn show(ui: &mut Ui, model: &mut Observatory, t: Tokens) -> Option<Study> {
     menu_bar(ui, model);
     let state_id = WidgetId::from_hash("observatory::workspace::state");
-    let switch = ui.with_state::<State, _>(state_id, |ui, s| {
+    // An `Option`, as `with_state` leaves a default in the row while the body runs, and the
+    // dock's default allocates.
+    let switch = ui.with_state::<Option<State>, _>(state_id, |ui, s| {
+        let s = s.get_or_insert_with(State::default);
         let mut panes = Panes {
             model: &mut *model,
             t,

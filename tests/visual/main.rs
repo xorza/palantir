@@ -9,10 +9,25 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
+/// The observatory example's app, compiled in so a golden renders each study itself.
+#[expect(
+    dead_code,
+    reason = "the module is compiled whole, and the window, the shot mode and the eyepiece are the \
+              example's; the goldens record the studies alone"
+)]
+#[path = "../../examples/observatory/app/mod.rs"]
+mod app;
 mod fixtures;
 mod golden_name;
 mod goldens;
 mod kept_on_failure;
+/// The shared shot mode, which the observatory's app names through its `ShotApp` impl.
+#[expect(
+    dead_code,
+    reason = "the app needs the trait; the runner is the examples'"
+)]
+#[path = "../../examples/shared/shot/mod.rs"]
+mod shot;
 /// The showcase's support module, compiled in so a golden renders a showcase page itself.
 #[expect(
     dead_code,
