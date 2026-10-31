@@ -260,8 +260,8 @@ pub(crate) mod internals {
 
         /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu
         /// features.
-        pub(crate) const fn collect_gpu_stats(mut self, collect: bool) -> Self {
-            self.options.collect_gpu_stats = collect;
+        pub(crate) const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
+            self.options.collect_gpu_stats = collect_gpu_stats;
             self
         }
     }

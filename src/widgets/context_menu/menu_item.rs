@@ -52,8 +52,8 @@ impl<'a> MenuItem<'a> {
     }
 
     /// Attach a keyboard shortcut: renders the platform-native hint (`⌘C` / `Ctrl+C`) and intercepts that keypress while the menu is open.
-    pub const fn shortcut(mut self, s: Shortcut) -> Self {
-        self.shortcut = MenuShortcut::Activate(s);
+    pub const fn shortcut(mut self, shortcut: Shortcut) -> Self {
+        self.shortcut = MenuShortcut::Activate(shortcut);
         self
     }
 

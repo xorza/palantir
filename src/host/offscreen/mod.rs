@@ -98,8 +98,8 @@ impl OffscreenHostBuilder {
     }
 
     /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu features.
-    pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
-        self.options.collect_gpu_stats = collect;
+    pub const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
+        self.options.collect_gpu_stats = collect_gpu_stats;
         self
     }
 
@@ -115,8 +115,8 @@ impl OffscreenHostBuilder {
     /// Off by default: otherwise a partial repaint would leave the rest undefined, so frames go through a retained backbuffer and are copied out. On, a frame paints straight into the target, a partial one repainting only its damage, and a still frame leaves the target as it is; a frame that takes a screenshot, outlines its damage, or captures a backdrop from a target without `COPY_SRC` goes through the backbuffer.
     ///
     /// **Only say it if it is true:** with a fresh texture of the same size and format each call, everything outside the damage is whatever it contained.
-    pub const fn retained_target(mut self, retained: bool) -> Self {
-        self.strategy = if retained {
+    pub const fn retained_target(mut self, retained_target: bool) -> Self {
+        self.strategy = if retained_target {
             PresentStrategy::Retained
         } else {
             // The target's prior contents can't be relied on: fill it whole.
@@ -133,8 +133,8 @@ impl OffscreenHostBuilder {
 
     /// Backs this host's [`Clipboard`](crate::Clipboard) with the OS clipboard instead of the in-process buffer, which stays underneath. Off by default: thumbnailers and compositors never cut text. See [`Ui::clipboard`](crate::Ui::clipboard).
     #[cfg(feature = "system-clipboard")]
-    pub const fn system_clipboard(mut self, system: bool) -> Self {
-        self.options.system_clipboard = system;
+    pub const fn system_clipboard(mut self, system_clipboard: bool) -> Self {
+        self.options.system_clipboard = system_clipboard;
         self
     }
 
@@ -260,11 +260,11 @@ impl OffscreenHost {
     /// # Panics
     ///
     /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame recorded [`Ui::open_window`] / [`Ui::close_window`].
-    pub fn frame<T: App>(
+    pub fn frame(
         &mut self,
         target: RenderTarget<'_>,
         system_scale: f32,
-        app: &mut T,
+        app: &mut impl App,
     ) -> FrameReport {
         if self.wake.take() {
             self.driver.ui.request_repaint();

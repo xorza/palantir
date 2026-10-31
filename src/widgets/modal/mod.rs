@@ -53,10 +53,10 @@ impl<'a> Modal<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `c` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
-    pub const fn backdrop(mut self, c: RgbaF32) -> Self {
-        self.backdrop = Some(domain::color(c));
+    pub const fn backdrop(mut self, color: RgbaF32) -> Self {
+        self.backdrop = Some(domain::color(color));
         self
     }
 

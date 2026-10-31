@@ -77,8 +77,8 @@ impl TextStyleOverrides {
 
     /// [`Self::with_font_size`] for the color axis.
     #[inline]
-    pub const fn with_color(mut self, c: RgbaF32) -> Self {
-        self.color = Some(c);
+    pub const fn with_color(mut self, color: RgbaF32) -> Self {
+        self.color = Some(color);
         self
     }
 

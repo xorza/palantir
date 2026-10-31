@@ -688,7 +688,7 @@ impl Ui {
     /// Attach a paint primitive to the active node. Direct text counts toward
     /// layout only on a leaf; container-owned text is an overlay shaped against the
     /// container's padded width.
-    pub fn add_shape<S: Lower>(&mut self, shape: S) {
+    pub fn add_shape(&mut self, shape: impl Lower) {
         self.forest.add_shape(shape);
     }
 
@@ -834,7 +834,7 @@ impl Ui {
     /// );
     /// # }
     /// ```
-    pub fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation) {
+    pub fn add_shape_animated(&mut self, shape: impl Lower, animation: PaintAnimation) {
         self.forest.add_shape_animated(shape, animation);
     }
 

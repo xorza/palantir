@@ -69,8 +69,8 @@ impl Popup {
     }
 
     /// What a press outside the overlay does. Default [`ClickOutside::Dismiss`].
-    pub const fn click_outside(mut self, m: ClickOutside) -> Self {
-        self.click_outside = m;
+    pub const fn click_outside(mut self, click_outside: ClickOutside) -> Self {
+        self.click_outside = click_outside;
         self
     }
 

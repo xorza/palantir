@@ -320,7 +320,10 @@ tree renders.
   `format_args!`, and the words `config`, `spec` and `stats`. Parameter names
   follow the rule too (`press`, `shortcut`, `anchor`, `top_left`), except a
   single letter for a setter's one argument when its type names it
-  (`padding(p)`, `style(s)`), and `px` for a length.
+  (`padding(p)`, `style(s)`), and `px` for a length. A `bool` setter names its
+  argument after the setting (`editable(editable)`), as std's
+  `OpenOptions::read(read)` does, since `bool` says nothing of what it sets; a
+  color is `color`.
 - **Fixed short forms.** `idx`, `pos`, `ctx`/`Ctx`, `dir`, `bg`, `col`,
   `exec`, `desc`, `cur`, `prev`, and their plurals with `s` (`idxs`, `poss`),
   in every name; prose, strings and test names keep whole words. A name a

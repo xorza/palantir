@@ -67,8 +67,8 @@ impl<'a> EditableLabel<'a> {
 
     /// Whether a double click opens the editor. Default `true`; `false` shows the label alone,
     /// and closes an editor that is open.
-    pub const fn editable(mut self, on: bool) -> Self {
-        self.editable = on;
+    pub const fn editable(mut self, editable: bool) -> Self {
+        self.editable = editable;
         self
     }
 
@@ -187,10 +187,10 @@ impl<'a> EditableLabel<'a> {
         Size::new(min.w, min.h.max(line_height))
     }
 
-    /// The id of the idle label's text inside the label `id`, derived from it so the text keeps
+    /// The id of the idle label's text inside `editable_label`, derived from it so the text keeps
     /// its identity wherever the label records.
-    pub fn label_id(id: WidgetId) -> WidgetId {
-        id.with("label")
+    pub fn label_id(editable_label: WidgetId) -> WidgetId {
+        editable_label.with("label")
     }
 }
 

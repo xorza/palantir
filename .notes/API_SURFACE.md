@@ -216,8 +216,8 @@ Chrome
         pub backdrop_filter: BackdropFilter
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
-        pub fn fill<I: Into<Brush>>(brush: I) -> Self
-        pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self
+        pub fn fill(brush: impl Into<Brush>) -> Self
+        pub fn rounded(brush: impl Into<Brush>, corners: Corners) -> Self
         pub const fn with_border(self, border: Stroke) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
         pub const fn with_backdrop_filter(self, filter: BackdropFilter) -> Self
@@ -293,9 +293,9 @@ ColorModel
 ColorPicker
     struct ColorPicker<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(color: &'a mut RgbaF32) -> Self
-        pub const fn alpha(self, on: bool) -> Self
+        pub const fn alpha(self, alpha: bool) -> Self
         pub const fn model(self, model: ColorModel) -> Self
-        pub const fn history(self, on: bool) -> Self
+        pub const fn history(self, history: bool) -> Self
         pub const fn swatches(self, colors: &'a [RgbaF32]) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
@@ -394,9 +394,9 @@ Configure
         fn child_align(self, a: Align) -> Self { .. }
         fn sense(self, s: Sense) -> Self { .. }
         fn add_sense(self, s: Sense) -> Self { .. }
-        fn disabled(self, d: bool) -> Self { .. }
-        fn focusable(self, f: bool) -> Self { .. }
-        fn tab_stop(self, stop: bool) -> Self { .. }
+        fn disabled(self, disabled: bool) -> Self { .. }
+        fn focusable(self, focusable: bool) -> Self { .. }
+        fn tab_stop(self, tab_stop: bool) -> Self { .. }
         fn arrow_focus(self, axis: Axis) -> Self { .. }
         fn tab_idx(self, idx: i16) -> Self { .. }
         fn input_scope(self, takes: KeyFilter) -> Self { .. }
@@ -689,7 +689,7 @@ DragValue
         pub const fn range(self, range: RangeInclusive<f64>) -> Self
         pub const fn decimals(self, n: usize) -> Self
         pub fn suffix(self, text: impl Into<TextInput<'a>>) -> Self
-        pub const fn editable(self, on: bool) -> Self
+        pub const fn editable(self, editable: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a DragValueTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
@@ -718,10 +718,10 @@ EditableLabel
     struct EditableLabel<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
-        pub const fn editable(self, on: bool) -> Self
+        pub const fn editable(self, editable: bool) -> Self
         pub const fn max_chars(self, n: usize) -> Self
         pub fn show(self, ui: &mut Ui) -> EditableLabelResponse<'_>
-        pub fn label_id(id: WidgetId) -> WidgetId
+        pub fn label_id(editable_label: WidgetId) -> WidgetId
 
 EditableLabelResponse
     struct EditableLabelResponse<'a>: Debug
@@ -737,9 +737,9 @@ Engagement
 Expander
     struct Expander<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
-        pub const fn start_open(self, open: bool) -> Self
+        pub const fn start_open(self, start_open: bool) -> Self
         pub const fn open(self, open: &'a mut bool) -> Self
-        pub const fn keep_body(self, keep: bool) -> Self
+        pub const fn keep_body(self, keep_body: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self
         pub fn header_id(expander: WidgetId) -> WidgetId
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R>
@@ -1325,7 +1325,7 @@ LayerScope
     struct LayerScope<'a>: Debug
         pub const fn fixed_at(self, point: Vec2) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
-        pub fn max_size(self, size: impl Into<Size>) -> Self
+        pub fn max_size(self, s: impl Into<Size>) -> Self
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
 
 Lens
@@ -1403,7 +1403,7 @@ MenuItem
     struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self
-        pub const fn shortcut(self, s: Shortcut) -> Self
+        pub const fn shortcut(self, shortcut: Shortcut) -> Self
         pub const fn shortcut_hint(self, shortcut: Shortcut) -> Self
         pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui>
 
@@ -1440,7 +1440,7 @@ Modal
     struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
-        pub const fn backdrop(self, c: RgbaF32) -> Self
+        pub const fn backdrop(self, color: RgbaF32) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
@@ -1485,18 +1485,18 @@ OffscreenHost
         pub fn wait_for_gpu(&self)
         pub fn is_device_lost(&self) -> bool
         pub fn recover(&mut self, gpu: Gpu)
-        pub fn frame<T: App>(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut T) -> FrameReport
+        pub fn frame(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut impl App) -> FrameReport
         pub const fn gpu_pass_stats(&self) -> &GpuPassStats
 
 OffscreenHostBuilder
     struct OffscreenHostBuilder: Debug
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
-        pub const fn collect_gpu_stats(self, collect: bool) -> Self
+        pub const fn collect_gpu_stats(self, collect_gpu_stats: bool) -> Self
         pub const fn time(self, time: OffscreenTime) -> Self
-        pub const fn retained_target(self, retained: bool) -> Self
+        pub const fn retained_target(self, retained_target: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
-        pub const fn system_clipboard(self, system: bool) -> Self  [features: system-clipboard or winit]
+        pub const fn system_clipboard(self, system_clipboard: bool) -> Self  [features: system-clipboard or winit]
         pub fn build(self) -> OffscreenHost
 
 OffscreenTime
@@ -1653,7 +1653,7 @@ Popup
     struct Popup: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(anchor: Anchor) -> Self
         pub const fn layer(self, layer: Layer) -> Self
-        pub const fn click_outside(self, m: ClickOutside) -> Self
+        pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
@@ -1893,7 +1893,7 @@ Separator
         pub fn vertical() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub const fn thickness(self, px: f32) -> Self
-        pub const fn color(self, c: RgbaF32) -> Self
+        pub const fn color(self, color: RgbaF32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 SeparatorTheme
@@ -2029,7 +2029,7 @@ Spinner
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self
         pub const fn diameter(self, px: f32) -> Self
-        pub const fn color(self, c: RgbaF32) -> Self
+        pub const fn color(self, color: RgbaF32) -> Self
         pub const fn width(self, px: f32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
@@ -2322,11 +2322,11 @@ TextEdit
         pub const fn slant(self, slant: FontSlant) -> Self
         pub const fn bold(self) -> Self
         pub const fn italic(self) -> Self
-        pub const fn select_all_on_focus(self, on: bool) -> Self
-        pub const fn escape_falls_through(self, on: bool) -> Self
+        pub const fn select_all_on_focus(self, select_all_on_focus: bool) -> Self
+        pub const fn escape_falls_through(self, escape_falls_through: bool) -> Self
         pub const fn max_chars(self, n: usize) -> Self
         pub const fn text_align(self, a: Align) -> Self
-        pub const fn multiline(self, on: bool) -> Self
+        pub const fn multiline(self, multiline: bool) -> Self
         pub fn placeholder(self, text: impl Into<TextInput<'a>>) -> Self
         pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_>
 
@@ -2385,7 +2385,7 @@ TextStyle
         pub fn font(&self) -> GlyphFont
         pub fn line_height(&self) -> f32
         pub const fn with_font_size(self, px: f32) -> Self
-        pub const fn with_color(self, c: RgbaF32) -> Self
+        pub const fn with_color(self, color: RgbaF32) -> Self
         pub const fn with_line_height_factor(self, factor: f32) -> Self
         pub const fn with_family(self, family: FontFamily) -> Self
         pub const fn with_weight(self, weight: FontWeight) -> Self
@@ -2404,7 +2404,7 @@ TextStyleOverrides
         pub const NONE: Self
         pub fn apply(self, base: &TextStyle) -> TextStyle
         pub const fn with_font_size(self, px: f32) -> Self
-        pub const fn with_color(self, c: RgbaF32) -> Self
+        pub const fn with_color(self, color: RgbaF32) -> Self
         pub const fn with_line_height_factor(self, factor: f32) -> Self
         pub const fn with_family(self, family: FontFamily) -> Self
         pub const fn with_weight(self, weight: FontWeight) -> Self
@@ -2472,7 +2472,7 @@ Tooltip
         pub fn on(snapshot: &'a ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TooltipTheme>>) -> Self
         pub const fn delay(self, delay: Duration) -> Self
-        pub const fn when_disabled(self, yes: bool) -> Self
+        pub const fn when_disabled(self, when_disabled: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> TooltipResponse
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
@@ -2552,7 +2552,7 @@ Ui
         pub fn debug_overlay(&self) -> DebugOverlayConfig
         pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig)
         pub fn is_window_open(&self, token: WindowToken) -> bool
-        pub fn add_shape<S: Lower>(&mut self, shape: S)
+        pub fn add_shape(&mut self, shape: impl Lower)
         pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
         pub fn load_image(&self, image: &Image) -> Result<ImageHandle, ImageTooLarge>
         pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError>
@@ -2564,7 +2564,7 @@ Ui
         pub fn fmt(&mut self, args: Arguments<'_>) -> InternedStr
         pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr
         pub fn text(&self, text: InternedStr) -> &str
-        pub fn add_shape_animated<S: Lower>(&mut self, shape: S, animation: PaintAnimation)
+        pub fn add_shape_animated(&mut self, shape: impl Lower, animation: PaintAnimation)
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
         pub fn release_input_scope(&mut self, id: WidgetId)
         pub fn response_for(&self, id: WidgetId) -> ResponseState
@@ -2717,9 +2717,9 @@ WinitHostBuilder  [features: winit]
             pub fn shaper(self, shaper: TextShaper) -> Self
             pub const fn vsync(self, vsync: Vsync) -> Self
             pub const fn power_preference(self, preference: PowerPreference) -> Self
-            pub const fn collect_gpu_stats(self, collect: bool) -> Self
+            pub const fn collect_gpu_stats(self, collect_gpu_stats: bool) -> Self
             pub const fn pixel_snap(self, pixel_snap: bool) -> Self
-            pub const fn system_clipboard(self, system: bool) -> Self
+            pub const fn system_clipboard(self, system_clipboard: bool) -> Self
             pub fn build(self, create_app: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> Result<WinitHost<T>, WinitHostError>
         impl<T: Debug> Debug for WinitHostBuilder<T>
 
@@ -2874,9 +2874,9 @@ widget::Configurator
         pub const fn child_align(&mut self, a: Align) -> &mut Self
         pub const fn sense(&mut self, s: Sense) -> &mut Self
         pub fn add_sense(&mut self, s: Sense) -> &mut Self
-        pub const fn disabled(&mut self, d: bool) -> &mut Self
-        pub const fn focusable(&mut self, f: bool) -> &mut Self
-        pub const fn tab_stop(&mut self, stop: bool) -> &mut Self
+        pub const fn disabled(&mut self, disabled: bool) -> &mut Self
+        pub const fn focusable(&mut self, focusable: bool) -> &mut Self
+        pub const fn tab_stop(&mut self, tab_stop: bool) -> &mut Self
         pub const fn arrow_focus(&mut self, axis: Axis) -> &mut Self
         pub const fn tab_idx(&mut self, idx: i16) -> &mut Self
         pub const fn input_scope(&mut self, takes: KeyFilter) -> &mut Self
@@ -3157,7 +3157,7 @@ widget::TextShape
         pub const fn at_origin(self, origin: Vec2) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn wrap(self, wrap: TextWrap) -> Self
-        pub const fn align(self, align: Align) -> Self
+        pub const fn align(self, a: Align) -> Self
         pub const fn family(self, family: FontFamily) -> Self
         pub const fn weight(self, weight: FontWeight) -> Self
         pub const fn slant(self, slant: FontSlant) -> Self

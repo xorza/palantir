@@ -113,7 +113,7 @@ impl Chrome {
     }
 
     /// A plain fill: no border, corners or shadow.
-    pub fn fill<I: Into<Brush>>(brush: I) -> Self {
+    pub fn fill(brush: impl Into<Brush>) -> Self {
         Self {
             fill: brush.into(),
             border: Stroke::NONE,
@@ -124,7 +124,7 @@ impl Chrome {
     }
 
     /// Solid fill with rounded corners; no border or shadow.
-    pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self {
+    pub fn rounded(brush: impl Into<Brush>, corners: Corners) -> Self {
         Self {
             fill: brush.into(),
             border: Stroke::NONE,
