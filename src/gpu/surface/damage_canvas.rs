@@ -118,10 +118,11 @@ impl DamageCanvas {
     }
 
     /// Make the stencil when there is none.
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
+    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         if self.stencil.is_none() {
             self.stencil = Some(Stencil::new(
                 device,
+                queue,
                 render_target::texture_size(&self.texture),
             ));
         }

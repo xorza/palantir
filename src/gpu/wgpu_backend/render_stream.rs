@@ -136,11 +136,11 @@ impl RenderStream {
     }
 
     /// Give [`Self::canvas`] its stencil.
-    pub(super) fn ensure_canvas_stencil(&mut self, device: &wgpu::Device) {
+    pub(super) fn ensure_canvas_stencil(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         self.canvases[0]
             .as_mut()
             .expect("a canvas made ready")
-            .ensure_stencil(device);
+            .ensure_stencil(device, queue);
     }
 
     /// The canvas [`Self::ensure_canvas`] made ready last.
@@ -149,9 +149,14 @@ impl RenderStream {
     }
 
     /// The stencil at `size`, made when there is none or it has another size.
-    pub(super) fn ensure_stencil(&mut self, device: &wgpu::Device, size: UVec2) {
+    pub(super) fn ensure_stencil(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        size: UVec2,
+    ) {
         if !self.stencil.as_ref().is_some_and(|held| held.fits(size)) {
-            self.stencil = Some(Stencil::new(device, size));
+            self.stencil = Some(Stencil::new(device, queue, size));
         }
     }
 }

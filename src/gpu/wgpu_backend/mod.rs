@@ -375,7 +375,7 @@ impl WgpuBackend {
         stream.backbuffer_fresh = via_backbuffer;
         let stencil = !buffer.rounded_clips.is_empty();
         if stencil {
-            stream.ensure_stencil(&self.gpu.device, target.size());
+            stream.ensure_stencil(&self.gpu.device, &self.gpu.queue, target.size());
         }
         let clear = submission.clear();
         let dims_undamaged = submission.dims_undamaged();
@@ -433,7 +433,7 @@ impl WgpuBackend {
                 DamageCanvas::class(rect, target.size()),
             );
             if stencil {
-                stream.ensure_canvas_stencil(&self.gpu.device);
+                stream.ensure_canvas_stencil(&self.gpu.device, &self.gpu.queue);
             }
         }
         let canvas = canvas_rect.map(|_| stream.canvas().expect("made for the frame"));
