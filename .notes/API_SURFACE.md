@@ -2279,6 +2279,7 @@ Text
 TextEdit
     struct TextEdit<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(text: &'a mut String) -> Self
+        pub fn buffered(current: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn font_size(self, px: f32) -> Self
@@ -2301,6 +2302,7 @@ TextEditResponse
         pub response: Response<'a>
         pub changed: bool
         pub committed: bool
+        pub committed_text: Option<String>
         pub ended: Option<EditEnd>
         pub focus_gained: bool
         pub focus_lost: bool

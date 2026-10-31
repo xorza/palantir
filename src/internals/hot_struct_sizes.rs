@@ -169,7 +169,7 @@ const PINS: &[Pin] = &[
     ),
     pin::<DragValue<'static>>("widgets::DragValue", 208, 8),
     pin::<RadioButton<'static, u8>>("widgets::RadioButton<u8>", 168, 8),
-    pin::<TextEdit<'static>>("widgets::TextEdit", 296, 8),
+    pin::<TextEdit<'static>>("widgets::TextEdit", 312, 8),
     pin::<Text<'static>>("widgets::Text", 264, 8),
     pin::<Slider<'static>>("widgets::Slider", 184, 8),
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
