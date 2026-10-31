@@ -31,7 +31,7 @@ use crate::widgets::tabs::reindex;
 use crate::widgets::tabs::tab_item::TabItem;
 use crate::widgets::tabs::tab_strip::internals::insertion_slot;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
-use crate::widgets::tabs::tabbed_view::{TabbedView, TabsAction};
+use crate::widgets::tabs::tabbed_view::{TabMove, TabbedView, TabbedViewResponse};
 use crate::widgets::text::Text;
 use std::iter;
 
@@ -767,6 +767,30 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
 
 const PAGES: [&str; 3] = ["Color", "Geometry", "Metadata"];
 
+/// The edges a [`TabbedView`] reported on one frame.
+#[derive(Debug, Default, PartialEq)]
+struct Edges {
+    changed: bool,
+    activated: Option<usize>,
+    closed: Option<usize>,
+    reordered: Option<TabMove>,
+}
+
+impl From<TabbedViewResponse<'_>> for Edges {
+    fn from(response: TabbedViewResponse<'_>) -> Self {
+        assert_eq!(
+            response.committed, response.changed,
+            "a pick commits at once"
+        );
+        Self {
+            changed: response.changed,
+            activated: response.activated,
+            closed: response.closed,
+            reordered: response.reordered,
+        }
+    }
+}
+
 /// Clicking a chip writes the bound index and records the page the same frame.
 #[test]
 fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
@@ -774,7 +798,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     let view = WidgetId::from_hash("test.view");
     let mut page = 0usize;
     let mut drawn = 0usize;
-    let record = |ui: &mut Ui, page: &mut usize, drawn: &mut usize| {
+    let record = |ui: &mut Ui, page: &mut usize, drawn: &mut usize| -> Edges {
         TabbedView::new(page, &PAGES)
             .id(view)
             .closable(false)
@@ -782,7 +806,7 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
                 *drawn = idx;
                 Text::new(PAGES[idx]).id_salt("body").show(ui);
             })
-            .action
+            .into()
     };
     h.prime(2, |ui| {
         record(ui, &mut page, &mut drawn);
@@ -792,7 +816,14 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
     let strip = view.with("strip");
     h.click(TabStrip::chip_id(strip, 2));
     let action = h.frame_value(|ui| record(ui, &mut page, &mut drawn));
-    assert_eq!(action, Some(TabsAction::Activated { idx: 2 }));
+    assert_eq!(
+        action,
+        Edges {
+            changed: true,
+            activated: Some(2),
+            ..Edges::default()
+        }
+    );
     assert_eq!(
         (page, drawn),
         (2, 2),
@@ -857,7 +888,7 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
 
     let view = WidgetId::from_hash("test.reorder");
     let strip = view.with("strip");
-    let record = |ui: &mut Ui, page: &mut usize| {
+    let record = |ui: &mut Ui, page: &mut usize| -> Edges {
         TabbedView::new(page, &PAGES)
             .id(view)
             .draggable(true)
@@ -867,16 +898,21 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |_| {});
             })
-            .action
+            .into()
     };
-    let rows: [(&str, Release, Option<TabsAction>, usize); 3] = [
+    let reordered = Edges {
+        changed: true,
+        reordered: Some(TabMove { from: 0, to: 3 }),
+        ..Edges::default()
+    };
+    let rows: [(&str, Release, Edges, usize); 3] = [
         (
             "past the last center: the append",
             |h, strip| {
                 let onto = h.center_of(TabStrip::chip_id(strip, 2));
                 Vec2::new(onto.x + 4.0, onto.y)
             },
-            Some(TabsAction::Reordered { from: 0, to: 3 }),
+            reordered,
             2,
         ),
         (
@@ -885,7 +921,7 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
                 let own = h.center_of(TabStrip::chip_id(strip, 0));
                 Vec2::new(own.x + 4.0, own.y)
             },
-            None,
+            Edges::default(),
             0,
         ),
         (
@@ -894,7 +930,7 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
                 let onto = h.center_of(TabStrip::chip_id(strip, 2));
                 Vec2::new(onto.x + 4.0, onto.y + 120.0)
             },
-            None,
+            Edges::default(),
             0,
         ),
     ];
@@ -923,12 +959,12 @@ fn an_escape_cancels_a_view_drag_and_its_caret() {
     let view = WidgetId::from_hash("test.cancel");
     let strip = view.with("strip");
     let caret = strip.with("caret");
-    let record = |ui: &mut Ui, page: &mut usize| {
+    let record = |ui: &mut Ui, page: &mut usize| -> Edges {
         TabbedView::new(page, &PAGES)
             .id(view)
             .draggable(true)
             .show(ui, |_, _| {})
-            .action
+            .into()
     };
     let mut h = Harness::mono(SURFACE);
     let mut page = 0usize;
@@ -949,13 +985,14 @@ fn an_escape_cancels_a_view_drag_and_its_caret() {
     });
     assert!(h.rect(caret).is_none(), "Escape takes the caret away");
     h.release(PointerButton::Left);
-    assert_eq!(h.frame_value(|ui| record(ui, &mut page)), None);
+    assert_eq!(h.frame_value(|ui| record(ui, &mut page)), Edges::default());
     assert_eq!(page, 0, "the cancelled drag moved nothing");
 }
 
 /// A close rewrites the binding for the collection after the removal, so a caller that removes
 /// the page keeps showing the right one: [Color, Geometry, Metadata] showing `page`, closing
-/// `closed`.
+/// `closed`. The response reports a change only where the index moved: closing page 0 while 0
+/// shows keeps index 0 on the next page, Geometry.
 #[test]
 fn a_close_moves_the_binding_with_the_shown_page() {
     let view = WidgetId::from_hash("test.close");
@@ -964,14 +1001,17 @@ fn a_close_moves_the_binding_with_the_shown_page() {
                   bound: &mut usize,
                   pages: &mut Vec<&'static str>,
                   drawn: &mut &'static str| {
-        let action = TabbedView::new(bound, pages.as_slice())
+        let edges: Edges = TabbedView::new(bound, pages.as_slice())
             .id(view)
             .show(ui, |_, idx| *drawn = pages[idx])
-            .action;
-        if let Some(TabsAction::Closed { idx }) = action {
+            .into();
+        if let Edges {
+            closed: Some(idx), ..
+        } = edges
+        {
             pages.remove(idx);
         }
-        action
+        edges
     };
     for (page, closed, want, shows) in [
         (2, 0, 1, "Metadata"),
@@ -989,7 +1029,14 @@ fn a_close_moves_the_binding_with_the_shown_page() {
         });
         h.click(TabStrip::close_id(strip, u64::try_from(closed).unwrap()));
         let action = h.frame_value(|ui| record(ui, &mut bound, &mut pages, &mut drawn));
-        assert_eq!(action, Some(TabsAction::Closed { idx: closed }));
+        assert_eq!(
+            action,
+            Edges {
+                changed: want != page,
+                closed: Some(closed),
+                ..Edges::default()
+            }
+        );
         assert_eq!(bound, want, "showing {page}, closing {closed}");
         h.frame(|ui| {
             record(ui, &mut bound, &mut pages, &mut drawn);
@@ -1004,7 +1051,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     let view = WidgetId::from_hash("test.keyed");
     let strip = view.with("strip");
     let chip = |name: &str| TabStrip::chip_id(strip, WidgetId::from_hash(name).0);
-    let record = |ui: &mut Ui, page: &mut usize, pages: &[&str]| {
+    let record = |ui: &mut Ui, page: &mut usize, pages: &[&str]| -> Edges {
         TabbedView::new(page, pages)
             .id(view)
             .draggable(true)
@@ -1015,7 +1062,7 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |_| {});
             })
-            .action
+            .into()
     };
 
     let mut h = Harness::mono(SURFACE);
@@ -1052,7 +1099,14 @@ fn a_keyed_view_keeps_each_chip_with_its_page() {
     });
     h.release(PointerButton::Left);
     let action = h.frame_value(|ui| record(ui, &mut page, &PAGES));
-    assert_eq!(action, Some(TabsAction::Reordered { from: 0, to: 3 }));
+    assert_eq!(
+        action,
+        Edges {
+            changed: true,
+            reordered: Some(TabMove { from: 0, to: 3 }),
+            ..Edges::default()
+        }
+    );
     assert_eq!(page, 2, "the bound page followed Color to the end");
 }
 

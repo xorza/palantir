@@ -2198,6 +2198,11 @@ TabItem
         pub draggable: bool
         pub const fn new(key: u64, label: InternedStr) -> Self
 
+TabMove
+    struct TabMove: Clone, Copy, Debug, Eq, PartialEq
+        pub from: usize
+        pub to: usize
+
 TabOverflow
     enum TabOverflow: Clone, Copy, Debug, Default, Eq, PartialEq
         Scroll
@@ -2249,13 +2254,11 @@ TabbedView
 TabbedViewResponse
     struct TabbedViewResponse<'a>: Debug
         pub response: Response<'a>
-        pub action: Option<TabsAction>
-
-TabsAction
-    enum TabsAction: Clone, Copy, Debug, Eq, PartialEq
-        Activated { idx: usize }
-        Closed { idx: usize }
-        Reordered { from: usize, to: usize }
+        pub changed: bool
+        pub committed: bool
+        pub activated: Option<usize>
+        pub closed: Option<usize>
+        pub reordered: Option<TabMove>
 
 TabsTheme
     struct TabsTheme: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot

@@ -478,7 +478,9 @@ tree renders.
   `ValueResponse { response, changed, committed }`, and a discrete pick
   commits at once (`committed == changed`). A text editor returns
   `TextEditResponse`: the same `changed` and `committed`, beside the cancel,
-  submit and focus edges a scrub has no equivalent of. An overlay records in another
+  submit and focus edges a scrub has no equivalent of. A tabbed view returns
+  `TabbedViewResponse`: the same pair, beside the `activated`, `closed` and `reordered` edges
+  its caller applies to the page list. An overlay records in another
   layer and returns `OverlayResponse<R>`: the body's value as `inner`, and
   `opened`, `dismissed` and `close_requested`. A tooltip senses nothing, so it returns
   `TooltipResponse { visible }`.

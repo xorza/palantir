@@ -17,41 +17,37 @@ use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
 use std::hash::Hash;
 use std::rc::Rc;
 
-/// What one pass over a [`TabbedView`] asks its caller to do. Only
-/// [`Self::Activated`] is already done when reported; the other two name a change
-/// to the caller's own collection, which the bound index already follows.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TabsAction {
-    /// The visible page changed; the bound index already holds `idx`.
-    Activated {
-        /// The page now visible.
-        idx: usize,
-    },
-    /// The page's close button was clicked: remove it from the collection. The bound
-    /// index already names the page that shows next: the one still showing, else the
-    /// one that takes the closed page's slot, else the one before it.
-    Closed {
-        /// The page to remove.
-        idx: usize,
-    },
-    /// A chip was dragged onto another slot: move `from` to `to` in the option
-    /// collection. `to` addresses it **before** the move (`len` appends), so the
-    /// page lands at `to - 1` when `to > from`; the bound index already follows.
-    Reordered {
-        /// Where the chip came from.
-        from: usize,
-        /// Where it lands, addressing the collection before the move.
-        to: usize,
-    },
-}
-
-/// A [`TabbedView`]'s pass: its own response and at most one [`TabsAction`].
+/// What one pass over a [`TabbedView`] did, each edge on the frame it happened. Only
+/// [`activated`](Self::activated) is already done when reported; `closed` and `reordered` name a
+/// change to the caller's own collection, which the bound index already follows.
 #[derive(Debug)]
 pub struct TabbedViewResponse<'a> {
     /// The view's own pointer/click/hover [`Response`].
     pub response: Response<'a>,
-    /// What the strip asks the caller to do, if anything.
-    pub action: Option<TabsAction>,
+    /// The bound index was written with another value: a pick, or a close or a move that
+    /// shifted the page showing.
+    pub changed: bool,
+    /// A discrete pick commits at once: always [`Self::changed`].
+    pub committed: bool,
+    /// The page a click or a key made visible; the bound index already holds it.
+    pub activated: Option<usize>,
+    /// The page whose close button was clicked: remove it from the collection. The bound index
+    /// already names the page that shows next: the one still showing, else the one that takes
+    /// the closed page's slot, else the one before it.
+    pub closed: Option<usize>,
+    /// A chip dragged onto another slot: move the page in the collection.
+    pub reordered: Option<TabMove>,
+}
+
+/// A page a drag moved: move `from` to `to` in the option collection. `to` addresses it
+/// **before** the move (`len` appends), so the page lands at `to - 1` when `to > from`; the bound
+/// index already follows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TabMove {
+    /// Where the chip came from.
+    pub from: usize,
+    /// Where it lands, addressing the collection before the move.
+    pub to: usize,
 }
 
 /// A tab strip over a content area, bound to a `&mut usize` page index. Mirrors
@@ -148,7 +144,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
     }
 
     /// Whether a chip may be dragged onto another slot, reported as
-    /// [`TabsAction::Reordered`]. Default `false`: the caller performs the move.
+    /// [`TabbedViewResponse::reordered`]. Default `false`: the caller performs the move.
     pub const fn draggable(mut self, draggable: bool) -> Self {
         self.draggable = draggable;
         self
@@ -188,22 +184,20 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
         } = self;
         let mut shown = domain::idx(*selected, options.len());
         let response = widget.response(ui);
-        let id = response.id;
-        let strip_id = id.with("strip");
+        let strip_id = response.id.with("strip");
         let page_keys = || {
             options
                 .iter()
                 .enumerate()
                 .map(|(slot, page)| key(slot, page))
         };
-        let was_carried = ui.state::<CarriedChip>(id).and_then(|c| c.key);
+        let was_carried = ui.state::<CarriedChip>(response.id).and_then(|c| c.key);
         let mut carried = was_carried;
         if carried.is_some() && ui.shortcut_pressed(Key::Escape) {
             carried = None;
         }
         let drop = carried.and_then(|_| dropped_slot(ui, strip_id, page_keys()));
-        let mut action = None;
-        widget.record(ui, None, |ui| {
+        let pass = widget.record(ui, None, |ui| {
             let hit = ui.with_state::<TabItemBuf, _>(strip_id, |ui, buf| {
                 buf.items.clear();
                 buf.items.reserve_exact(options.len());
@@ -232,15 +226,17 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     drag_stopped: strip.drag_stopped,
                 }
             });
-            if let Some(idx) = hit.closed {
-                if let Some(page) = shown {
-                    *selected = reindex::after_removal(page, idx, options.len());
-                }
-                action = Some(TabsAction::Closed { idx });
-            } else if let Some(idx) = hit.clicked {
-                *selected = idx;
-                shown = Some(idx);
-                action = Some(TabsAction::Activated { idx });
+            let mut pass = ViewPass {
+                closed: hit.closed,
+                activated: hit.clicked.filter(|_| hit.closed.is_none()),
+                ..ViewPass::default()
+            };
+            pass.bound = match pass.closed {
+                Some(idx) => shown.map(|page| reindex::after_removal(page, idx, options.len())),
+                None => pass.activated,
+            };
+            if pass.activated.is_some() {
+                shown = pass.activated;
             }
             if let Some(slot) = hit.drag_started {
                 carried = page_keys().nth(slot);
@@ -255,26 +251,35 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     && to != from + 1
                     && let Some(page) = shown
                 {
-                    *selected = reindex::after_move(page, from, to);
-                    action = Some(TabsAction::Reordered { from, to });
+                    pass.bound = Some(reindex::after_move(page, from, to));
+                    pass.reordered = Some(TabMove { from, to });
                 }
             }
             // Written only on a change, so a view nobody drags mints no row.
             if carried != was_carried {
-                ui.with_state::<CarriedChip, _>(id, |_, c| c.key = carried);
+                ui.with_state::<CarriedChip, _>(response.id, |_, c| c.key = carried);
             }
             Panel::vstack()
-                .id(id.with("content"))
+                .id(response.id.with("content"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     if let Some(page) = shown {
                         body(ui, page);
                     }
                 });
+            pass
         });
+        let changed = pass.bound.is_some_and(|bound| bound != *selected);
+        if let Some(bound) = pass.bound {
+            *selected = bound;
+        }
         TabbedViewResponse {
             response: Response::new(ui, response),
-            action,
+            changed,
+            committed: changed,
+            activated: pass.activated,
+            closed: pass.closed,
+            reordered: pass.reordered,
         }
     }
 }
@@ -284,6 +289,15 @@ impl<S, L, K> Configure for TabbedView<'_, S, L, K> {
     fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()
     }
+}
+
+/// What one pass over the strip did, and the index the binding takes after it.
+#[derive(Debug, Default)]
+struct ViewPass {
+    activated: Option<usize>,
+    closed: Option<usize>,
+    reordered: Option<TabMove>,
+    bound: Option<usize>,
 }
 
 #[derive(Debug)]

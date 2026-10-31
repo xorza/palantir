@@ -8,10 +8,8 @@ Darkroom is one user; an item stays only if it is general.
 
 The surface is mostly consistent: builders, values, flag sets, theme slots, state drivers and
 responses each follow one shape. An item is judged by whether a general user needs it, not by
-whether darkroom calls it. The defects fall into three root causes:
+whether darkroom calls it. The defects fall into two root causes:
 
-- **One kind of event, two shapes.** `TabStripResponse` reports participles, as the Responses
-  rule asks; `TabbedViewResponse` reports an action enum.
 - **One kind of constructor, three names.** The sub-theme recipes are `from_parts`,
   `from_palette` or `from_metrics` by the inputs each reads today.
 - **One kind of parameter, two spellings.** Setters name their one argument differently, and
@@ -24,14 +22,6 @@ Nothing in the surface is specialized for darkroom. The items added for it in th
 a general need, with its source in `AGENTS.md`.
 
 ## Plan
-
-### Batch 3: one response shape
-
-Files: `src/widgets/tabs/tabbed_view.rs`, `src/widgets/tabs/tabs_action.rs`, the showcase.
-
-- [ ] `TabbedViewResponse { action: Option<TabsAction> }` → the participle fields
-  `TabStripResponse` uses: `activated: Option<usize>`, `closed: Option<usize>`,
-  `reordered: Option<Reorder>` with `Reorder { from, to }`. Remove `TabsAction`.
 
 ### Batch 4: theme recipe constructors
 

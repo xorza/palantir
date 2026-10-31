@@ -443,7 +443,7 @@ pub use widgets::switch::Switch;
 pub use widgets::tabs::tab_chip::TabChip;
 pub use widgets::tabs::tab_item::TabItem;
 pub use widgets::tabs::tab_strip::{TabOverflow, TabStrip, TabStripResponse};
-pub use widgets::tabs::tabbed_view::{TabbedView, TabbedViewResponse, TabsAction};
+pub use widgets::tabs::tabbed_view::{TabMove, TabbedView, TabbedViewResponse};
 pub use widgets::text::Text;
 pub use widgets::text_edit::edit_end::EditEnd;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};
