@@ -4,3 +4,4 @@
 - mesh once registrations
 - flexbox
 - mcp
+- missing api siblings, until a caller needs one: `Scroll::set_zoom`, `Clipboard::image`, `EditableLabel::edit` and `is_editing`, `From<bool>` for `TabStripFocus` and `MenuState`

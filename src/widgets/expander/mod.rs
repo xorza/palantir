@@ -75,8 +75,8 @@ impl<'a> Expander<'a> {
 
     /// Whether the section starts open; read on the first frame only, ignored when
     /// [`Self::open`] binds the flag.
-    pub const fn start_open(mut self, open: bool) -> Self {
-        self.start_open = open;
+    pub const fn start_open(mut self, start_open: bool) -> Self {
+        self.start_open = start_open;
         self
     }
 
@@ -91,8 +91,8 @@ impl<'a> Expander<'a> {
     /// [`Visibility::Collapsed`](crate::Visibility::Collapsed). Palantir sweeps the
     /// cross-frame row of any widget no longer recorded, so this keeps the body's
     /// state; default `false`, since costing nothing while closed is the point.
-    pub const fn keep_body(mut self, keep: bool) -> Self {
-        self.keep_body = keep;
+    pub const fn keep_body(mut self, keep_body: bool) -> Self {
+        self.keep_body = keep_body;
         self
     }
 

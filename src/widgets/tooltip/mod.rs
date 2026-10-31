@@ -93,8 +93,8 @@ impl<'a> Tooltip<'a> {
     }
 
     /// Allow the tooltip on disabled triggers. Off by default.
-    pub const fn when_disabled(mut self, yes: bool) -> Self {
-        self.when_disabled = yes;
+    pub const fn when_disabled(mut self, when_disabled: bool) -> Self {
+        self.when_disabled = when_disabled;
         self
     }
 

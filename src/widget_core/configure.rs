@@ -278,8 +278,8 @@ pub trait Configure: Sized {
     /// still takes hover, press and wheel from what it covers, but answers none.
     #[inline]
     #[must_use]
-    fn disabled(mut self, d: bool) -> Self {
-        self.configure().disabled(d);
+    fn disabled(mut self, disabled: bool) -> Self {
+        self.configure().disabled(disabled);
         self
     }
 
@@ -287,8 +287,8 @@ pub trait Configure: Sized {
     /// Disabled or invisible nodes are excluded regardless.
     #[inline]
     #[must_use]
-    fn focusable(mut self, f: bool) -> Self {
-        self.configure().focusable(f);
+    fn focusable(mut self, focusable: bool) -> Self {
+        self.configure().focusable(focusable);
         self
     }
 
@@ -296,8 +296,8 @@ pub trait Configure: Sized {
     /// press focus but leaves the Tab order, as WPF's `IsTabStop`.
     #[inline]
     #[must_use]
-    fn tab_stop(mut self, stop: bool) -> Self {
-        self.configure().tab_stop(stop);
+    fn tab_stop(mut self, tab_stop: bool) -> Self {
+        self.configure().tab_stop(tab_stop);
         self
     }
 

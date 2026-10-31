@@ -105,8 +105,8 @@ impl<'a> ColorPicker<'a> {
     }
 
     /// Show the alpha bar and the opacity value. Off by default.
-    pub const fn alpha(mut self, on: bool) -> Self {
-        self.alpha = on;
+    pub const fn alpha(mut self, alpha: bool) -> Self {
+        self.alpha = alpha;
         self
     }
 
@@ -118,8 +118,8 @@ impl<'a> ColorPicker<'a> {
 
     /// Show a swatch row the picker fills itself: presets, with each committed
     /// pick moving to the front. Replaces [`swatches`](Self::swatches).
-    pub const fn history(mut self, on: bool) -> Self {
-        self.swatches = if on {
+    pub const fn history(mut self, history: bool) -> Self {
+        self.swatches = if history {
             Swatches::Owned
         } else {
             Swatches::Hidden

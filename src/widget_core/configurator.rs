@@ -188,22 +188,22 @@ impl Configurator<'_> {
 
     /// See [`Configure::disabled`](crate::widget_core::configure::Configure::disabled).
     #[inline]
-    pub const fn disabled(&mut self, d: bool) -> &mut Self {
-        self.widget.node.flags.set_disabled(d);
+    pub const fn disabled(&mut self, disabled: bool) -> &mut Self {
+        self.widget.node.flags.set_disabled(disabled);
         self
     }
 
     /// See [`Configure::focusable`](crate::widget_core::configure::Configure::focusable).
     #[inline]
-    pub const fn focusable(&mut self, f: bool) -> &mut Self {
-        self.widget.node.flags.set_focusable(f);
+    pub const fn focusable(&mut self, focusable: bool) -> &mut Self {
+        self.widget.node.flags.set_focusable(focusable);
         self
     }
 
     /// See [`Configure::tab_stop`](crate::widget_core::configure::Configure::tab_stop).
     #[inline]
-    pub const fn tab_stop(&mut self, stop: bool) -> &mut Self {
-        self.widget.node.flags.set_tab_stop(stop);
+    pub const fn tab_stop(&mut self, tab_stop: bool) -> &mut Self {
+        self.widget.node.flags.set_tab_stop(tab_stop);
         self
     }
 

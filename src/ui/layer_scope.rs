@@ -44,17 +44,17 @@ impl<'a> LayerScope<'a> {
         self
     }
 
-    /// Caps the available extent at `size`, still clamped to the surface.
+    /// Caps the available extent at `s`, still clamped to the surface.
     ///
     /// # Panics
     ///
     /// Panics unless both axes are [extents](crate::widget::domain::extent).
     #[track_caller]
-    pub fn max_size(mut self, size: impl Into<Size>) -> Self {
-        let size = size.into();
-        domain::extent(size.w);
-        domain::extent(size.h);
-        self.placement = self.placement.with_max_size(size);
+    pub fn max_size(mut self, s: impl Into<Size>) -> Self {
+        let s = s.into();
+        domain::extent(s.w);
+        domain::extent(s.h);
+        self.placement = self.placement.with_max_size(s);
         self
     }
 

@@ -69,10 +69,10 @@ impl<'a> Spinner<'a> {
     ///
     /// # Panics
     ///
-    /// Panics unless `c` is a [color](crate::widget::domain::color).
+    /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
-    pub const fn color(mut self, c: RgbaF32) -> Self {
-        self.color = Some(domain::color(c));
+    pub const fn color(mut self, color: RgbaF32) -> Self {
+        self.color = Some(domain::color(color));
         self
     }
 

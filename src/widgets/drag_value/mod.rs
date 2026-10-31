@@ -142,8 +142,8 @@ impl<'a> DragValue<'a> {
     }
 
     /// Enables keyboard entry: a click that latches no drag, Enter on the focused chip, or a typed character swaps in an inline `TextEdit`. Enter and click-away commit, Escape reverts. Default off.
-    pub const fn editable(mut self, on: bool) -> Self {
-        self.editable = on;
+    pub const fn editable(mut self, editable: bool) -> Self {
+        self.editable = editable;
         self
     }
 

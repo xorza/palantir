@@ -72,8 +72,8 @@ impl TextShape {
 
     /// Where the run sits inside its owner. Unread once
     /// [`Self::at_origin`] takes placement over.
-    pub const fn align(mut self, align: Align) -> Self {
-        self.align = align;
+    pub const fn align(mut self, a: Align) -> Self {
+        self.align = a;
         self
     }
 

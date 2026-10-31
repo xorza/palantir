@@ -197,8 +197,8 @@ where
     }
 
     /// Opt into GPU timestamp and pipeline-statistics collection; off by default for its per-frame readback.
-    pub const fn collect_gpu_stats(mut self, collect: bool) -> Self {
-        self.config.options.collect_gpu_stats = collect;
+    pub const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
+        self.config.options.collect_gpu_stats = collect_gpu_stats;
         self
     }
 
@@ -210,8 +210,8 @@ where
 
     /// Backs every window's [`Clipboard`](crate::Clipboard) with the OS clipboard, over the
     /// in-process buffer that stays underneath. On by default; see [`Ui::clipboard`].
-    pub const fn system_clipboard(mut self, system: bool) -> Self {
-        self.config.options.system_clipboard = system;
+    pub const fn system_clipboard(mut self, system_clipboard: bool) -> Self {
+        self.config.options.system_clipboard = system_clipboard;
         self
     }
 

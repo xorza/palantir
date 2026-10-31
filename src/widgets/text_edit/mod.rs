@@ -269,8 +269,8 @@ impl<'a> TextEdit<'a> {
 
     /// Select the whole buffer when the field gains focus without a same-frame
     /// pointer press (e.g. via `set_focus`). Default off.
-    pub const fn select_all_on_focus(mut self, on: bool) -> Self {
-        self.select_all_on_focus = on;
+    pub const fn select_all_on_focus(mut self, select_all_on_focus: bool) -> Self {
+        self.select_all_on_focus = select_all_on_focus;
         self
     }
 
@@ -278,8 +278,8 @@ impl<'a> TextEdit<'a> {
     /// overlay. For a field that filters its container (a palette's search box); off by
     /// default because for a rename or value editor Escape is the cancel and must not
     /// reach past the field.
-    pub const fn escape_falls_through(mut self, on: bool) -> Self {
-        self.escape_falls_through = on;
+    pub const fn escape_falls_through(mut self, escape_falls_through: bool) -> Self {
+        self.escape_falls_through = escape_falls_through;
         self
     }
 
@@ -300,8 +300,8 @@ impl<'a> TextEdit<'a> {
 
     /// Switch to multi-line: Enter inserts `\n`, paste keeps newlines, text soft-wraps, and
     /// click/caret/selection use cosmic-text's 2D layout.
-    pub const fn multiline(mut self, on: bool) -> Self {
-        self.multiline = on;
+    pub const fn multiline(mut self, multiline: bool) -> Self {
+        self.multiline = multiline;
         self
     }
 
