@@ -241,7 +241,10 @@ impl OffscreenHost {
     /// for in one of them then lands in the next frame, so a caller that waits once and runs one
     /// frame reads it in [`Ui::screenshot_taken`](crate::Ui::screenshot_taken).
     pub fn wait_for_gpu(&self) {
-        self.core.gpu().wait();
+        let _ = self
+            .core
+            .gpu()
+            .wait_until(&|| self.driver.screenshots_landed());
     }
 
     /// Whether the device this host draws with is lost: a GPU reset, a driver update or a removed

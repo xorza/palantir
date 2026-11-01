@@ -636,7 +636,10 @@ impl Harness {
     /// [`Depth::Gpu`](crate::Depth::Gpu).
     pub fn wait_for_gpu(&self) {
         if self.core.paints() {
-            self.core.gpu().wait();
+            let _ = self
+                .core
+                .gpu()
+                .wait_until(&|| self.driver.screenshots_landed());
         }
     }
 

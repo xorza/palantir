@@ -2,11 +2,10 @@
 //! next copy.
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::surface::map_state::MapState;
 use crate::gpu::surface::render_target;
 use glam::UVec2;
 use std::iter;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 /// A staging buffer sized for one texture's texels. Its owner keeps it, so a recording that copies
 /// every frame back makes one buffer, not one a frame.
@@ -86,15 +85,15 @@ impl TexelReadback {
             render_target::extent(self.size),
         );
         gpu.queue.submit(iter::once(encoder.finish()));
-        let mapped = Arc::new(AtomicBool::new(false));
-        let done = Arc::clone(&mapped);
-        self.buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                done.store(result.is_ok(), Ordering::Release);
-            });
-        gpu.wait();
-        if !mapped.load(Ordering::Acquire) {
+        let map = MapState::map_read(&self.buffer);
+        if !gpu.wait_until(&|| !map.is_pending()) {
+            // Aborts the map, so the next read can map the buffer again.
+            if map.is_pending() {
+                self.buffer.unmap();
+            }
+            return false;
+        }
+        if !map.is_mapped() {
             return false;
         }
         {

@@ -154,6 +154,7 @@ pub(crate) mod internals {
         /// For a texture not in 8-bit RGBA or BGRA, or made without `COPY_SRC`, and when the device
         /// is lost before the copy maps.
         pub fn read_back(&self) -> RgbaImage {
+            const LOST: &str = "the read-back copy maps on a device that is not lost";
             let size = self.size();
             let source = CaptureSource {
                 texture: &self.texture,
@@ -165,10 +166,8 @@ pub(crate) mod internals {
                 source,
                 URect::new(0, 0, size.x, size.y),
             );
-            self.gpu.wait();
-            let image = capture
-                .take()
-                .expect("the read-back copy maps on a device that is not lost");
+            assert!(self.gpu.wait_until(&|| !capture.is_pending()), "{LOST}");
+            let image = capture.take().expect(LOST);
             RgbaImage::from_raw(
                 size.x,
                 size.y,

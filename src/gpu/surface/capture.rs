@@ -2,19 +2,14 @@
 
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::surface::map_state::MapState;
 use crate::gpu::surface::render_target;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use std::iter;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
 
 const BYTES_PER_PIXEL: u32 = 4;
-
-const MAP_PENDING: u8 = 0;
-const MAP_DONE: u8 = 1;
-const MAP_FAILED: u8 = 2;
 
 /// One region of a texture, copied into a staging buffer that maps without blocking the frame;
 /// [`Self::take`] hands the pixels over once the device is done. A screenshot copies the
@@ -32,9 +27,7 @@ struct Staging {
     buffer: wgpu::Buffer,
     /// The copy's row stride: whole `COPY_BYTES_PER_ROW_ALIGNMENT` units.
     padded_row: u32,
-    /// Written by the map callback, read by [`Capture::take`]; the callback runs inside a device
-    /// poll, on whichever thread polls.
-    state: Arc<AtomicU8>,
+    map: MapState,
 }
 
 /// What a capture copies, and how.
@@ -171,19 +164,12 @@ impl Capture {
             encoder.copy_texture_to_buffer(at_region, into_buffer, extent);
         }
         queue.submit(iter::once(encoder.finish()));
-        let state = Arc::new(AtomicU8::new(MAP_PENDING));
-        let mapped = Arc::clone(&state);
-        buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                let done = if result.is_ok() { MAP_DONE } else { MAP_FAILED };
-                mapped.store(done, Ordering::Release);
-            });
+        let map = MapState::map_read(&buffer);
         Self {
             staging: Staging {
                 buffer,
                 padded_row,
-                state,
+                map,
             },
             size: region.size,
             bgra,
@@ -192,7 +178,7 @@ impl Capture {
 
     /// Whether the copy's map callback has yet to run. A lost device runs it too, with a failure.
     pub(crate) fn is_pending(&self) -> bool {
-        self.staging.state.load(Ordering::Acquire) == MAP_PENDING
+        self.staging.map.is_pending()
     }
 
     /// The pixels, once the device has finished the copy and a poll ran its map callback; `None`
@@ -203,10 +189,12 @@ impl Capture {
     /// While the copy [`is_pending`](Self::is_pending).
     pub(crate) fn take(self) -> Option<Image> {
         let staging = &self.staging;
-        match staging.state.load(Ordering::Acquire) {
-            MAP_PENDING => panic!("a capture taken before its copy landed"),
-            MAP_DONE => {}
-            _ => return None,
+        assert!(
+            !staging.map.is_pending(),
+            "a capture taken before its copy landed"
+        );
+        if !staging.map.is_mapped() {
+            return None;
         }
         let row_bytes = (self.size.x * BYTES_PER_PIXEL) as usize;
         let mut pixels = Vec::with_capacity(row_bytes * self.size.y as usize);
@@ -235,18 +223,13 @@ impl Capture {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::gpu::surface::capture::{Capture, MAP_PENDING, Staging};
+    use crate::gpu::surface::capture::{Capture, Staging};
+    use crate::gpu::surface::map_state::MapState;
     use glam::UVec2;
-    use std::sync::Arc;
-    use std::sync::atomic::AtomicU8;
 
     impl Capture {
         /// A capture whose copy never finishes, as one the device is still running.
         pub(crate) fn never_landing(device: &wgpu::Device) -> Self {
-            Self::with_state(device, Arc::new(AtomicU8::new(MAP_PENDING)))
-        }
-
-        fn with_state(device: &wgpu::Device, state: Arc<AtomicU8>) -> Self {
             let buffer = device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir.capture.test"),
                 size: u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
@@ -257,7 +240,7 @@ pub(crate) mod internals {
                 staging: Staging {
                     buffer,
                     padded_row: wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
-                    state,
+                    map: MapState::never_landing(),
                 },
                 size: UVec2::ONE,
                 bgra: false,

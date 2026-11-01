@@ -11,10 +11,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
-/// How long [`Gpu::wait`] waits before it gives up, as Zed's headless readback does. It bounds only
-/// a hang no system resets: Windows (TDR) and amdgpu reset a GPU job that runs past 2 s, which
-/// ends a hang as a loss long before. A wait that returns early tells its caller the work is done
-/// when it is not, so the bound sits far above a slow drain, such as a test's on software Vulkan.
+/// How long [`Gpu::wait_until`] waits for the device before it gives up, as Zed's headless readback
+/// does. It bounds only a hang no system resets: Windows (TDR) and amdgpu reset a GPU job that runs
+/// past 2 s, which ends a hang as a loss long before. A wait that returns early tells its caller
+/// the work is done when it is not, so the bound sits far above a slow drain, such as a test's on
+/// software Vulkan.
 const WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A graphics device and its queue.
@@ -96,23 +97,53 @@ impl Gpu {
         }
     }
 
-    /// Block until the device has finished every submission and every map callback asked for
-    /// before the call has run, for at most [`WAIT_TIMEOUT`]; at once on a lost device.
+    /// Block until the device has finished every submission made before the call, for at most
+    /// [`WAIT_TIMEOUT`]; at once on a lost device. A map callback can still be on its way when it
+    /// returns, as [`Self::wait_until`] says; wait for one there.
+    #[cfg(feature = "internals")]
+    pub(crate) fn wait(&self) {
+        let _ = self.drain();
+    }
+
+    /// Block until the device has finished every submission made before the call, for at most
+    /// [`WAIT_TIMEOUT`], then until `landed` holds: the wait for a map callback, whose result
+    /// `landed` reads. Returns whether it landed: `false` on a lost device and on a wait that
+    /// timed out.
     ///
-    /// wgpu's blocking wait, `PollType::Wait`, as wgpu's examples and Zed's readback wait. A poll
-    /// on another thread can collect the callbacks and run them after this wait returns, so the
-    /// wait also waits for a work-done callback of its own: WebGPU runs every map callback asked
-    /// for before it first (wgpu-core `UserClosures::fire`). The wait is fatal on a device it finds
-    /// lost, so only a caller that asks to block reaches it: an offscreen host's `wait_for_gpu`, a
-    /// read-back, a bench, a test. A device its owner destroyed is not lost to the driver, so the
-    /// wait returns and runs its lost callback.
+    /// A map callback another thread's poll collected runs on that thread, outside wgpu's lock, so
+    /// it can run after the wait's own work-done callback: wgpu-core runs mappings before
+    /// submissions only within one poll's `UserClosures::fire`. That callback ran, so the poll
+    /// that collected the mapping has, and it lands soon. A wait that assumed the order missed one
+    /// map in 20,000 with four threads polling (high-end NVIDIA GPU, Vulkan), and two in three when a callback
+    /// slept 1 ms.
+    pub(crate) fn wait_until(&self, landed: &dyn Fn() -> bool) -> bool {
+        if !self.drain() {
+            return false;
+        }
+        while !landed() {
+            if self.is_lost() {
+                return false;
+            }
+            thread::yield_now();
+        }
+        true
+    }
+
+    /// The blocking wait behind [`Self::wait_until`]: wgpu's `PollType::Wait`, as wgpu's examples
+    /// and Zed's readback wait, then a work-done callback of its own, which a poll on another
+    /// thread can collect and run after this one. Returns whether the device finished: `false` on a
+    /// lost device and on a timeout.
+    ///
+    /// The wait is fatal on a device it finds lost, so only a caller that asks to block reaches it:
+    /// an offscreen host's `wait_for_gpu`, a read-back, a bench, a test. A device its owner
+    /// destroyed is not lost to the driver, so the wait returns and runs its lost callback.
     #[expect(
         clippy::disallowed_methods,
         reason = "the one blocking wait, behind the health check"
     )]
-    pub(crate) fn wait(&self) {
+    fn drain(&self) -> bool {
         if self.is_lost() {
-            return;
+            return false;
         }
         let ran = Arc::new(AtomicBool::new(false));
         let marker = Arc::clone(&ran);
@@ -124,11 +155,15 @@ impl Gpu {
         });
         if let Err(error) = waited {
             tracing::warn!(%error, "the device did not finish its work in {WAIT_TIMEOUT:?}");
-            return;
+            return false;
         }
-        while !ran.load(Ordering::Acquire) && !self.is_lost() {
+        while !ran.load(Ordering::Acquire) {
+            if self.is_lost() {
+                return false;
+            }
             thread::yield_now();
         }
+        true
     }
 }
 
@@ -155,6 +190,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::thread;
+    use std::time::Duration;
 
     /// A buffer of a size no copy may map, which wgpu reports as a validation error.
     fn invalid_buffer(device: &wgpu::Device) {
@@ -181,44 +217,54 @@ mod tests {
         gpu.poll();
     }
 
-    /// `wait` returns once the device finished what was submitted, with the copies' map callbacks
-    /// run: a buffer mapped after its submit is mapped once the wait returns, though another
-    /// thread polls the device all along and can collect the callback and run it itself.
+    /// `wait_until` returns once a copy's map callback ran, though four other threads poll the
+    /// device all along and collect callbacks themselves. Each callback sleeps 1 ms before it
+    /// records, so one a poller runs lands after the wait's own work-done callback: a wait that
+    /// trusted the order missed two maps in three.
     #[test]
-    fn wait_runs_the_map_callbacks_of_what_was_submitted() {
+    fn wait_until_waits_for_a_map_another_thread_runs() {
+        const ROUNDS: u32 = 50;
         let gpu = isolated_headless_test_gpu();
         let polling = Arc::new(AtomicBool::new(true));
-        let poller = {
-            let gpu = gpu.handles();
-            let polling = Arc::clone(&polling);
-            thread::spawn(move || {
-                while polling.load(Ordering::Acquire) {
-                    gpu.poll();
-                }
+        let pollers: Vec<_> = (0..4)
+            .map(|_| {
+                let gpu = gpu.handles();
+                let polling = Arc::clone(&polling);
+                thread::spawn(move || {
+                    while polling.load(Ordering::Acquire) {
+                        gpu.poll();
+                    }
+                })
             })
-        };
+            .collect();
         let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.test.mapped"),
             size: 4,
             usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        gpu.queue.write_buffer(&buffer, 0, &[1, 2, 3, 4]);
-        gpu.poll();
-        let mapped = Arc::new(AtomicBool::new(false));
-        let landed = Arc::clone(&mapped);
-        buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |result| {
-                landed.store(result.is_ok(), Ordering::Release);
-            });
-        gpu.wait();
-        assert!(mapped.load(Ordering::Acquire));
-        assert_eq!(
-            &*buffer.slice(..).get_mapped_range().unwrap(),
-            &[1, 2, 3, 4]
-        );
+        for round in 0..ROUNDS {
+            let bytes = round.to_le_bytes();
+            gpu.queue.write_buffer(&buffer, 0, &bytes);
+            gpu.poll();
+            let mapped = Arc::new(AtomicBool::new(false));
+            let landed = Arc::clone(&mapped);
+            buffer
+                .slice(..)
+                .map_async(wgpu::MapMode::Read, move |result| {
+                    thread::sleep(Duration::from_millis(1));
+                    landed.store(result.is_ok(), Ordering::Release);
+                });
+            assert!(
+                gpu.wait_until(&|| mapped.load(Ordering::Acquire)),
+                "round {round}"
+            );
+            assert_eq!(&*buffer.slice(..).get_mapped_range().unwrap(), &bytes);
+            buffer.unmap();
+        }
         polling.store(false, Ordering::Release);
-        poller.join().unwrap();
+        for poller in pollers {
+            poller.join().unwrap();
+        }
     }
 }

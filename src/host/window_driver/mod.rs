@@ -309,6 +309,14 @@ impl WindowDriver {
         !self.captures.is_empty()
     }
 
+    /// Whether the device's copy of every screenshot owed has landed, or failed, so the next frame
+    /// hands the oldest over.
+    pub(super) fn screenshots_landed(&self) -> bool {
+        self.captures
+            .iter()
+            .all(|pending| !pending.capture.is_pending())
+    }
+
     /// Declare the target of the frame `spec` describes. A change invalidates retained pixels and
     /// the damage baseline.
     pub(super) fn note_target(&mut self, spec: &FrameSpec) {
