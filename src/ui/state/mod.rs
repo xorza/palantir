@@ -11,7 +11,7 @@ use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet}
 
 #[derive(Debug, Default)]
 pub(crate) struct StateMap {
-    stores: TypedStores,
+    stores: TypedStores<WidgetIdSet>,
 }
 
 impl StateMap {
@@ -31,7 +31,7 @@ impl StateMap {
 
     /// Drop the rows of the widgets in `removed`, one probe each.
     pub(super) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
-        self.stores.sweep_removed(removed, Drained::Keep);
+        self.stores.sweep(removed, Drained::Keep);
     }
 }
 
@@ -81,9 +81,9 @@ impl<T> Store<T> {
     }
 }
 
-impl<T: 'static> TypedStore for Store<T> {
-    /// `swap_remove` the row, then patch the swapped neighbor's index off `owners`.
-    fn sweep_removed(&mut self, removed: &WidgetIdSet) {
+impl<T: 'static> TypedStore<WidgetIdSet> for Store<T> {
+    /// `swap_remove` the row of each removed widget, then patch the swapped neighbor's index off `owners`.
+    fn sweep(&mut self, removed: &WidgetIdSet) {
         #[expect(
             clippy::iter_over_hash_type,
             reason = "a fixed hasher, so the rows end in the same slots from run to run"

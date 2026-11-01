@@ -8,7 +8,6 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::animation::spring::Spring;
 use crate::animation::tests::support::{self, Release, SLOT};
-use crate::common::time::ANIMATION_SUBSTEP_DT;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -400,24 +399,25 @@ fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
     );
 }
 
-/// A spring at `ANIMATION_SUBSTEP_DT` settles exactly on its target on the closed form's
-/// step. Near 400 an f32 ulp is 3e-5, so feeding the rounded value back stalled
-/// ~3e-4 short; the row steps its offset from the target instead.
+/// A spring stepped at a 240 Hz frame's delta settles exactly on its target on the closed form's
+/// step. Near 400 an f32 ulp is 3e-5, so feeding the rounded value back stalled ~3e-4 short; the
+/// row steps its offset from the target instead, so the frame clock spends every delta whole.
 #[test]
-fn a_spring_at_the_substep_settles_on_its_target() {
+fn a_spring_at_a_short_frame_settles_on_its_target() {
+    const DT: f32 = 1.0 / 240.0;
     let mut map = AnimationMapTyped::<f32>::default();
     let id = support::widget_id("substep");
     let _ = map.step(
         AnimationRequest::new(id, SLOT, 80.0),
         AnimationSpec::SPRING,
-        ANIMATION_SUBSTEP_DT,
+        DT,
     );
     let mut settled_at = None;
     for step in 0..600 {
         let r = map.step(
             AnimationRequest::new(id, SLOT, 400.0),
             AnimationSpec::SPRING,
-            ANIMATION_SUBSTEP_DT,
+            DT,
         );
         if r.settled {
             assert_eq!(r.cur, 400.0);
@@ -430,7 +430,7 @@ fn a_spring_at_the_substep_settles_on_its_target() {
         distance: 320.0,
         eps: 1e-4,
     };
-    let step = release.settle_step(|_| ANIMATION_SUBSTEP_DT);
+    let step = release.settle_step(|_| DT);
     assert_eq!(settled_at, Some(step));
 }
 

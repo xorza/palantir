@@ -287,6 +287,60 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     assert_eq!(h.frame_value(&mut record), 0.778688);
 }
 
+/// An underdamped close swings below 0 and back above it. The section reads closed from the
+/// frame the swing first reaches 0: openness 0 and no body, while the spring still swings.
+#[test]
+fn a_spring_close_stays_closed_through_its_swing() {
+    let base = ExpanderTheme::default();
+    // Decay a = 3/s at ωd = sqrt(200 − 9) = 13.82 rad/s, from 1 at rest: e^(−at)(cos ωd·t +
+    // (a/ωd) sin ωd·t) reaches 0 at (π − atan(ωd/a))/ωd = 129 ms, −0.51 at π/ωd = 227 ms, and
+    // +0.26 at 2π/ωd = 455 ms.
+    let theme = ExpanderTheme {
+        defaults: SlotDefaults {
+            animation: Some(AnimationSpec::spring(200.0, 6.0)),
+            ..base.defaults
+        },
+        ..base
+    };
+    let mut h = Harness::mono(SURFACE);
+    let mut record = |ui: &mut Ui| {
+        Expander::new("section")
+            .id(root())
+            .style(&theme)
+            .start_open(true)
+            .show(ui, |ui| {
+                Text::new("body").id(label()).show(ui);
+            })
+            .openness
+    };
+    h.prime(2, |ui| {
+        record(ui);
+    });
+    h.click(header());
+    assert_eq!(
+        h.frame_value(&mut record),
+        1.0,
+        "the click frame has no elapsed time"
+    );
+
+    let tick = time::Duration::from_millis(16);
+    let mut closed_at = None;
+    for frame in 1..=200 {
+        h.advance(tick);
+        let openness = h.frame_value(&mut record);
+        let shown = h.rect(body()).is_some();
+        assert!((0.0..=1.0).contains(&openness), "frame {frame}: {openness}");
+        assert_eq!(shown, openness > 0.0, "frame {frame}: {openness}");
+        match closed_at {
+            None if !shown => closed_at = Some(frame),
+            Some(at) => assert!(!shown, "closed at frame {at}, shown again at {frame}"),
+            None => {}
+        }
+    }
+    // Frame 8 at 128 ms is still above 0, frame 9 at 144 ms past it.
+    assert_eq!(closed_at, Some(9));
+}
+
 /// Space and Enter toggle a focused header, nothing else, and its response reads them as the
 /// click a pointer would make.
 #[test]

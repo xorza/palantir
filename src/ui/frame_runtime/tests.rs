@@ -202,50 +202,26 @@ fn frame_classification_covers_external_entry_facts() {
     }
 }
 
-/// A frame's spend is bounded: the accumulator carries unspent time over the clamped wall delta, and `Spring::step` takes `MAX_ANIMATION_DT` as a contract.
-///
-/// One short frame, then a stall: 1 ms carries, 100 ms clamps, 101 ms is the unbounded sum.
+/// A frame's dt is the wall delta since the last, clamped at `MAX_ANIMATION_DT`: 1 ms is 1 ms, a
+/// 100 ms stall clamps to 100 ms, and every frame of a 240 Hz panel and of a 10 µs loop spends its
+/// own delta, where a 1/240 s accumulator spent nothing on every other one.
 #[test]
-fn a_spent_delta_stays_inside_the_animation_bound() {
+fn a_frame_spends_its_wall_delta_inside_the_animation_bound() {
     let mut rt = FrameRuntime::default();
-
     rt.advance_clock(Duration::from_millis(1));
-    assert_eq!(
-        rt.dt, 0.0,
-        "a frame under the accumulator step spends nothing"
-    );
-    assert_eq!(
-        rt.dt_accum,
-        Duration::from_millis(1).as_secs_f32(),
-        "and carries it whole"
-    );
+    assert_eq!(rt.dt, Duration::from_millis(1).as_secs_f32());
+    rt.advance_clock(Duration::from_millis(201));
+    assert_eq!(rt.dt, MAX_ANIMATION_DT, "a stall clamps");
+    rt.advance_clock(Duration::from_millis(217));
+    assert_eq!(rt.dt, Duration::from_millis(16).as_secs_f32());
 
-    rt.advance_clock(Duration::from_millis(101));
-    assert_eq!(
-        rt.dt, MAX_ANIMATION_DT,
-        "the carry may not push a spent delta past the bound",
-    );
-    assert_eq!(rt.dt_accum, 0.0, "a spending frame leaves nothing behind");
-
-    rt.advance_clock(Duration::from_millis(117));
-    assert_eq!(
-        rt.dt,
-        Duration::from_millis(16).as_secs_f32(),
-        "a 16 ms frame spends 16 ms"
-    );
-
-    // At 10 µs a frame nothing is spent until the carry crosses 1/240 s = 4.1667 ms: 416 frames carry 4.16 ms; the 417th spends 4.17 ms.
-    let mut rt = FrameRuntime::default();
-    let mut now = Duration::ZERO;
-    for frame in 1..=416 {
-        now += Duration::from_micros(10);
-        rt.advance_clock(now);
-        assert_eq!(rt.dt, 0.0, "frame {frame} spends nothing");
+    for step in [Duration::from_nanos(4_166_666), Duration::from_micros(10)] {
+        let mut rt = FrameRuntime::default();
+        let mut now = Duration::ZERO;
+        for frame in 1..=8 {
+            now += step;
+            rt.advance_clock(now);
+            assert_eq!(rt.dt, step.as_secs_f32(), "{step:?}: frame {frame}");
+        }
     }
-    now += Duration::from_micros(10);
-    rt.advance_clock(now);
-    let carried = (0..417).fold(0.0f32, |sum, _| {
-        sum + Duration::from_micros(10).as_secs_f32()
-    });
-    assert_eq!(rt.dt, carried, "frame 417 spends the whole carry");
 }

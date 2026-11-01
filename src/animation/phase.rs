@@ -1,8 +1,7 @@
 //! [`Phase`]: a position between two ends that moves toward one of them under an
 //! [`AnimationSpec`], by the rules every animated value follows.
 
-use crate::animation::animation_map_typed::TickResult;
-use crate::animation::animation_row::{MotionRow, Retarget};
+use crate::animation::animation_row::{MotionRow, Retarget, TickResult};
 use crate::animation::animation_spec::AnimationSpec;
 
 /// Which end a [`Phase`] heads for.

@@ -4,7 +4,7 @@
 
 pub(crate) mod wake;
 
-use crate::common::time::{self, ANIMATION_SUBSTEP_DT, MAX_ANIMATION_DT};
+use crate::common::time::{self, MAX_ANIMATION_DT};
 use crate::damage::DamageBase;
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
@@ -57,14 +57,11 @@ pub(super) struct FrameClassifyInput {
 /// Retained clock and scheduling state owned by [`Ui`](crate::Ui).
 #[derive(Debug, Default)]
 pub(crate) struct FrameRuntime {
-    /// Effective per-frame dt fed to the animation integrators. Wall-clock dt
-    /// accumulates in [`Self::dt_accum`] and is spent here only once it crosses
-    /// [`crate::common::time::ANIMATION_SUBSTEP_DT`]; other frames see `0.0`.
-    /// Otherwise an unthrottled loop produces deltas below the f32 ULP at
-    /// pixel-scale positions and stalls a spring short of settling.
+    /// The per-frame dt fed to the animation integrators: the wall delta since the last frame,
+    /// clamped at [`MAX_ANIMATION_DT`] so a stall freezes motion instead of jumping it. Not
+    /// gathered into steps: rows step in offset space, where a small delta keeps its precision,
+    /// and a frame that spent nothing would record in full and paint no motion.
     pub(super) dt: f32,
-    /// Unspent wall-clock dt waiting to cross the threshold; see [`Self::dt`].
-    pub(super) dt_accum: f32,
     /// Bumped once per [`crate::Ui::frame`], before either record pass, so a
     /// settling pass cannot double-advance animation. Counts `PaintOnly`
     /// frames too, unlike [`Self::frame_id`].
@@ -201,18 +198,7 @@ impl FrameRuntime {
                 self.fps_ema * 0.9 + instant_fps * 0.1
             };
         }
-        self.dt_accum += raw_dt;
-        self.dt = if self.dt_accum >= ANIMATION_SUBSTEP_DT {
-            let spent = self.dt_accum;
-            self.dt_accum = 0.0;
-            // Bounds what one frame spends (this plus a carry of up to one
-            // accumulator step); `Spring::step` takes `MAX_ANIMATION_DT` as its
-            // contract. The excess is dropped, not carried, so a stall cannot
-            // bleed into later frames as catch-up motion.
-            spent.min(MAX_ANIMATION_DT)
-        } else {
-            0.0
-        };
+        self.dt = raw_dt;
         self.stamp.time = now;
         self.render_frame_id += 1;
     }

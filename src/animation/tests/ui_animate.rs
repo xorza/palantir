@@ -263,29 +263,35 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
 }
 
 /// With the system asking for less motion, a retarget lands on its target in the frame that asks,
-/// with no repaint to finish it; without, the same retarget is in flight.
+/// with no repaint to finish it; without, the same retarget is in flight. A motion in flight when
+/// the window hides lands on its target on the first frame shown again, and stays there.
 #[test]
-fn reduced_motion_snaps_every_transition() {
+fn reduced_motion_and_a_hidden_span_snap_every_transition() {
+    let step = |h: &mut Harness, id: WidgetId, target: f32| {
+        let mut value = f32::NAN;
+        let report = h.frame(|ui| {
+            value = ui.animate(
+                AnimationRequest::new(id, SLOT, target),
+                Some(AnimationSpec::FAST),
+            );
+            Block::new().id(id).show(ui);
+        });
+        (value, report.repaint_requested)
+    };
     let retarget = |reduced: bool| {
         let AnimationUi { mut h, id } = support::setup_animation_ui("reduced");
         h.set_motion_reduced(reduced);
-        let step = |h: &mut Harness, target: f32| {
-            let mut value = f32::NAN;
-            let report = h.frame(|ui| {
-                value = ui.animate(
-                    AnimationRequest::new(id, SLOT, target),
-                    Some(AnimationSpec::FAST),
-                );
-                Block::new().id(id).show(ui);
-            });
-            (value, report.repaint_requested)
-        };
-        step(&mut h, 0.0);
-        step(h.at(Duration::from_millis(16)), 1.0)
+        step(&mut h, id, 0.0);
+        let moved = step(h.at(Duration::from_millis(16)), id, 1.0);
+        (h, id, moved)
     };
-    assert_eq!(retarget(true), (1.0, false));
-    let (value, repaint) = retarget(false);
+    assert_eq!(retarget(true).2, (1.0, false));
+    let (mut h, id, (value, repaint)) = retarget(false);
     assert!(value < 1.0 && repaint, "{value}");
+
+    h.ui().window_frame_mut().shown_again = true;
+    assert_eq!(step(h.at(Duration::from_millis(32)), id, 1.0), (1.0, false));
+    assert_eq!(step(h.at(Duration::from_millis(48)), id, 1.0), (1.0, false));
 }
 
 /// A look follows a theme change and fades a state change. A themed leaf at rest wears the dark

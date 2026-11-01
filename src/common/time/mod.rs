@@ -2,9 +2,6 @@
 
 use std::time::Duration;
 
-/// Smallest delta the `dt` accumulator spends; shorter frames carry, so an unthrottled repaint loop can't push animation in deltas below the f32 ULP.
-pub(crate) const ANIMATION_SUBSTEP_DT: f32 = 1.0 / 240.0;
-
 /// Per-frame animation delta clamp: stalled frames freeze motion instead of teleporting.
 pub(crate) const MAX_ANIMATION_DT: f32 = 0.1;
 

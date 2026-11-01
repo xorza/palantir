@@ -28,7 +28,7 @@ use crate::primitives::math::float_hash::FloatHash;
 use crate::shape::paint_animation::paint_mod::PaintMod;
 use std::f32::consts::TAU;
 use std::hash;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU32, NonZeroU128};
 use std::time::Duration;
 
 const NANOS_PER_SEC: u128 = 1_000_000_000;
@@ -286,6 +286,13 @@ impl PaintTiming {
         {
             return None;
         }
+        if let (PaintSteps::Steps(n), false) = (self.steps, self.period.is_zero()) {
+            let step = Step::of(self.period, n, elapsed);
+            if self.repeat == PaintRepeat::Once && step.pass >= 1 {
+                return Some(1.0);
+            }
+            return Some(step.idx as f32 / n.get() as f32);
+        }
         let passes = if self.period.is_zero() {
             if now >= self.started_at { 1.0 } else { 0.0 }
         } else {
@@ -295,18 +302,7 @@ impl PaintTiming {
             PaintRepeat::Once => passes.min(1.0),
             PaintRepeat::Forever | PaintRepeat::Settle(_) => passes.fract(),
         };
-        Some(self.quantize(raw as f32))
-    }
-
-    #[inline]
-    fn quantize(self, phase: f32) -> f32 {
-        match self.steps {
-            PaintSteps::Continuous => phase,
-            PaintSteps::Steps(n) => {
-                let n = n.get() as f32;
-                (phase * n).floor() / n
-            }
-        }
+        Some(raw as f32)
     }
 
     #[inline]
@@ -335,24 +331,44 @@ impl PaintTiming {
         let wake = match self.steps {
             PaintSteps::Continuous => now,
             PaintSteps::Steps(n) => {
-                let step = self.period / n.get();
-                if step.is_zero() {
-                    return None;
-                }
-                // The rest of the step `now` is in, in exact nanoseconds, so no count of
-                // steps since `started_at` can overflow on a long run.
-                let step_nanos = step.as_nanos();
                 let elapsed = now.checked_sub(self.started_at).unwrap();
-                let left = step_nanos - elapsed.as_nanos() % step_nanos;
-                let left = Duration::new(
-                    u64::try_from(left / NANOS_PER_SEC)
-                        .expect("under one step, which is a `Duration`"),
-                    u32::try_from(left % NANOS_PER_SEC).unwrap(),
-                );
-                now.saturating_add(left)
+                let step = Step::of(self.period, n, elapsed);
+                let next = step.start_of_next(self.period, n);
+                self.started_at.saturating_add(Duration::new(
+                    u64::try_from(next / NANOS_PER_SEC).unwrap_or(u64::MAX),
+                    u32::try_from(next % NANOS_PER_SEC).unwrap(),
+                ))
             }
         };
         Some(settles_at.map_or(wake, |at| wake.min(at)))
+    }
+}
+
+/// Which of the `n` steps of which pass a time `elapsed` past the start falls in, counted in exact
+/// nanoseconds, so the sample and the wake agree on every boundary however long the run. Step
+/// `idx` of a pass starts at the first nanosecond whose share of the pass reaches `idx / n`.
+#[derive(Clone, Copy, Debug)]
+struct Step {
+    pass: u128,
+    idx: u128,
+}
+
+impl Step {
+    fn of(period: Duration, n: NonZeroU32, elapsed: Duration) -> Self {
+        let period = period.as_nanos();
+        let elapsed = elapsed.as_nanos();
+        Self {
+            pass: elapsed / period,
+            idx: elapsed % period * NonZeroU128::from(n).get() / period,
+        }
+    }
+
+    /// Nanoseconds from the start to the first of the next step, the next pass's first step after
+    /// the last one.
+    fn start_of_next(self, period: Duration, n: NonZeroU32) -> u128 {
+        let period = period.as_nanos();
+        let n = NonZeroU128::from(n).get();
+        self.pass * period + ((self.idx + 1) * period).div_ceil(n)
     }
 }
 

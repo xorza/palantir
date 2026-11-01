@@ -163,11 +163,16 @@ impl<'a> Expander<'a> {
             } else {
                 t.defaults.animation
             };
-            let openness = ui.animate(
-                AnimationRequest::new(header_id, SLOT_OPEN, f32::from(now_open)),
-                spec,
-            );
-            let showing = openness > 0.0;
+            // A spring swings past its ends. The clamp keeps the arrow and the clip in range, and a
+            // close that reached 0 is closed while the swing comes back above it.
+            let swing = ui
+                .animate(
+                    AnimationRequest::new(header_id, SLOT_OPEN, f32::from(now_open)),
+                    spec,
+                )
+                .clamp(0.0, 1.0);
+            let showing = swing > 0.0 && (now_open || stored.is_some_and(|s| s.shown));
+            let openness = if showing { swing } else { 0.0 };
             let [a, b, c] = Arrow { size: t.arrow_size }.rotated(t.arrow_angle(openness));
             let text = look.text;
             let label = ui.intern(label);

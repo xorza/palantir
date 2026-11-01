@@ -1,6 +1,8 @@
-//! One frame of [`ROWS`] widgets retargeting their animated look: the per-widget
-//! tick every animating theme slot pays, under each kind of motion.
+//! One frame of [`ROWS`] widgets resolving their animated look: the per-widget tick every
+//! animating theme slot pays while it retargets, under each kind of motion; the tick of a look at
+//! rest; and the call a static theme makes, with no motion.
 
+use crate::animation::AnimationMap;
 use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped};
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
@@ -50,12 +52,20 @@ fn look(bg: RgbaF32, text: RgbaF32) -> AnimatedLook {
     }
 }
 
+fn ids() -> Vec<WidgetId> {
+    (0..ROWS)
+        .map(|idx| WidgetId::from_hash(idx as u64))
+        .collect()
+}
+
+fn first() -> AnimatedLook {
+    look(RgbaF32::srgb(0.1, 0.2, 0.3), RgbaF32::WHITE)
+}
+
 fn bench_motion(group: &mut CaseGroup<'_>, motion: Motion) {
     group.bench_function(Backend::Cpu.case(motion.label()), |b| {
-        let ids: Vec<_> = (0..ROWS)
-            .map(|idx| WidgetId::from_hash(idx as u64))
-            .collect();
-        let first = look(RgbaF32::srgb(0.1, 0.2, 0.3), RgbaF32::WHITE);
+        let ids = ids();
+        let first = first();
         let second = look(RgbaF32::srgb(0.8, 0.4, 0.2), RgbaF32::BLACK);
         let spec = motion.spec();
         let mut map = AnimationMapTyped::default();
@@ -78,13 +88,61 @@ fn bench_motion(group: &mut CaseGroup<'_>, motion: Motion) {
     });
 }
 
-/// `atomic/animation/cpu/<motion>`: [`ROWS`] widgets retargeting their look in one frame. Per
-/// widget.
+/// Every row at rest on the target it is asked for: the steady path a settled look takes.
+fn bench_steady(group: &mut CaseGroup<'_>) {
+    group.bench_function(Backend::Cpu.case("steady"), |b| {
+        let ids = ids();
+        let target = first();
+        let spec = AnimationSpec::SPRING;
+        let mut map = AnimationMapTyped::default();
+        let mut clock = AnimationClock {
+            dt: 1.0 / 60.0,
+            render_frame_id: 1,
+        };
+        for &id in &ids {
+            map.tick(AnimationRequest::new(id, SLOT, target.clone()), spec, clock);
+        }
+        b.iter(|| {
+            clock.render_frame_id += 1;
+            for &id in &ids {
+                black_box(map.tick(AnimationRequest::new(id, SLOT, target.clone()), spec, clock));
+            }
+        });
+    });
+}
+
+/// An instant spec, as a static theme passes: the target back with no row.
+fn bench_instant(group: &mut CaseGroup<'_>) {
+    group.bench_function(Backend::Cpu.case("instant"), |b| {
+        let ids = ids();
+        let target = first();
+        let mut map = AnimationMap::default();
+        let mut clock = AnimationClock {
+            dt: 1.0 / 60.0,
+            render_frame_id: 1,
+        };
+        b.iter(|| {
+            clock.render_frame_id += 1;
+            for &id in &ids {
+                black_box(map.animate(
+                    AnimationRequest::new(id, SLOT, target.clone()),
+                    AnimationSpec::SNAP,
+                    clock,
+                ));
+            }
+        });
+    });
+}
+
+/// `atomic/animation/cpu/<case>`: [`ROWS`] widgets resolving their look in one frame, retargeting
+/// under each motion, at rest, and with an instant spec. Per widget.
 pub(crate) fn atomic(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "animation", Scale::Sample);
     group.throughput(Throughput::Elements(ROWS as u64));
     for motion in [Motion::Duration, Motion::Spring] {
         bench_motion(&mut group, motion);
     }
+    bench_steady(&mut group);
+    bench_instant(&mut group);
     group.finish();
 }

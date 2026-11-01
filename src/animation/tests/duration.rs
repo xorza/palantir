@@ -311,12 +311,9 @@ fn out_back_reaches_its_overshoot_on_a_small_change() {
     assert_eq!(peak, 0.01 * Easing::OutBack.apply(elapsed / 0.2));
 }
 
-/// A non-finite target is a caller logic error: NaN != NaN would retarget every frame forever.
+/// A non-finite target is a caller logic error: NaN != NaN would retarget every frame forever, so
+/// a release build refuses it too.
 #[test]
-#[cfg_attr(
-    not(debug_assertions),
-    ignore = "probes a debug_assert!, which release compiles out"
-)]
 fn a_non_finite_target_is_refused() {
     for target in [f32::NAN, f32::INFINITY] {
         let mut map = AnimationMapTyped::<f32>::default();
@@ -333,5 +330,38 @@ fn a_non_finite_target_is_refused() {
                 0.016,
             )
         });
+    }
+}
+
+/// A duration whose length or ease changes mid-way starts again from where it is, so the value
+/// holds: an OutCubic run of 120 ms at 60 ms shows 87.5 % of the way from 0 to 1, and the frame
+/// that switches to 200 ms, or to Linear, spends no time and shows the same 0.875. Keeping its
+/// 60 ms under 200 ms would show 65.7 %.
+#[test]
+fn a_new_length_or_ease_keeps_the_value() {
+    let ms = |ms: u64| Duration::from_millis(ms);
+    let fast = AnimationSpec::duration(ms(120), Easing::OutCubic);
+    for switched in [
+        AnimationSpec::duration(ms(200), Easing::OutCubic),
+        AnimationSpec::duration(ms(120), Easing::Linear),
+    ] {
+        let mut map = AnimationMapTyped::<f32>::default();
+        let id = support::widget_id("switch");
+        let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), fast, 0.0);
+        let _ = map.step(AnimationRequest::new(id, SLOT, 1.0), fast, 0.0);
+        let at = map
+            .step(AnimationRequest::new(id, SLOT, 1.0), fast, 0.06)
+            .cur;
+        assert!((at - 0.875).abs() < 1e-6, "{at}");
+        let held = map.step(AnimationRequest::new(id, SLOT, 1.0), switched, 0.0);
+        assert_eq!(held.cur, at, "{switched:?}");
+        assert!(!held.settled);
+        let on = map
+            .step(AnimationRequest::new(id, SLOT, 1.0), switched, 0.01)
+            .cur;
+        assert!(
+            on > at && on < 1.0,
+            "{switched:?} moves on from {at} to {on}"
+        );
     }
 }

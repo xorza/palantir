@@ -1,11 +1,11 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
 use crate::animation::animation_request::AnimationRequest;
-use crate::animation::animation_row::{self, AnimationRow, MotionRow, Retarget};
+use crate::animation::animation_row::{self, AnimationRow, MotionRow, Retarget, TickResult};
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::TypedStore;
-use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::animatable::Animatable;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
@@ -33,18 +33,7 @@ pub(crate) struct AnimationClock {
     pub(crate) render_frame_id: u64,
 }
 
-#[derive(Debug)]
-pub(crate) struct TickResult<T: Animatable> {
-    pub(crate) cur: T,
-    pub(crate) settled: bool,
-}
-
 impl<T: Animatable> AnimationMapTyped<T> {
-    /// Forget `id`'s `slot`, so a later call starts fresh from its target.
-    pub(super) fn drop_row(&mut self, id: WidgetId, slot: AnimationSlot) {
-        self.rows.remove(&(id, slot));
-    }
-
     /// Insert-or-advance. First touch snaps `cur = target` and returns settled:
     /// no animation on appearance. Later calls detect retarget vs steady state and
     /// advance by `clock.dt` seconds.
@@ -61,6 +50,12 @@ impl<T: Animatable> AnimationMapTyped<T> {
     ///
     /// `AnimationMap::animate` filters instant specs (`AnimationSpec::is_instant()`) first;
     /// this assumes a real motion spec.
+    ///
+    /// # Panics
+    ///
+    /// For a target that is not finite, checked past the steady path, so a settled row pays
+    /// nothing.
+    #[track_caller]
     pub(crate) fn tick(
         &mut self,
         request: AnimationRequest<T>,
@@ -77,16 +72,6 @@ impl<T: Animatable> AnimationMapTyped<T> {
             dt,
             render_frame_id,
         } = clock;
-        // A non-finite target is a logic error and would never settle (NaN != NaN
-        // retargets every frame). Through `sub` so `inf - inf` is caught too.
-        debug_assert!(
-            target
-                .clone()
-                .sub(target.clone())
-                .magnitude_squared()
-                .is_finite(),
-            "animation target of {id:?} {slot:?} is not finite",
-        );
         // `T: Animatable` is `Clone`, not `Copy`: consuming a T field needs an explicit
         // `.clone()`, free for Copy types and a deliberate memcpy for heavy ones.
         let row = match self.rows.entry((id, slot)) {
@@ -95,8 +80,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
                     target: target.clone(),
                     key,
                     motion: MotionRow::new(spec.motion, &target, &target),
-                    touched: true,
-                    advanced_at: render_frame_id,
+                    ticked_at: render_frame_id,
                     settled: true,
                 });
                 return TickResult {
@@ -106,9 +90,8 @@ impl<T: Animatable> AnimationMapTyped<T> {
             }
             Entry::Occupied(o) => o.into_mut(),
         };
-        row.touched = true;
-        let already_advanced = row.advanced_at == render_frame_id;
-        row.advanced_at = render_frame_id;
+        let already_advanced = row.ticked_at == render_frame_id;
+        row.ticked_at = render_frame_id;
 
         // Steady-state fast path: a settled row with the same target is a no-op, so
         // skip the settle math. Retarget detection still runs so a new target unfreezes
@@ -126,6 +109,17 @@ impl<T: Animatable> AnimationMapTyped<T> {
                 settled: true,
             };
         }
+        // Past the steady path, which a finite target takes and NaN, never equal to itself,
+        // never does: such a target would retarget and repaint every frame. Through `sub`, so
+        // `inf - inf` is caught too.
+        assert!(
+            target
+                .clone()
+                .sub(target.clone())
+                .magnitude_squared()
+                .is_finite(),
+            "animation target of {id:?} {slot:?} is not finite",
+        );
 
         if key.is_some() && key == row.key && row.target != target {
             if row.settled {
@@ -194,18 +188,10 @@ impl<T: Animatable> AnimationMapTyped<T> {
     }
 }
 
-impl<T: Animatable> TypedStore for AnimationMapTyped<T> {
-    /// Drop rows for removed widgets and slots the caller stopped poking this
-    /// frame; clear `touched` on survivors. One retain pass.
-    fn sweep_removed(&mut self, removed: &WidgetIdSet) {
-        self.rows.retain(|(id, _), row| {
-            if removed.contains(id) {
-                return false;
-            }
-            let kept = row.touched;
-            row.touched = false;
-            kept
-        });
+impl<T: Animatable> TypedStore<u64> for AnimationMapTyped<T> {
+    /// Keep the rows render frame `render_frame_id` ticked. A read of each row, no write.
+    fn sweep(&mut self, render_frame_id: &u64) {
+        self.rows.retain(|_, row| row.ticked_at == *render_frame_id);
     }
     fn is_empty(&self) -> bool {
         self.rows.is_empty()
@@ -218,35 +204,35 @@ impl<T: Animatable> TypedStore for AnimationMapTyped<T> {
 /// the count.
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped, TickResult};
+    use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped};
     use crate::animation::animation_request::AnimationRequest;
+    use crate::animation::animation_row::TickResult;
     use crate::animation::animation_spec::AnimationSpec;
     use crate::primitives::math::animatable::Animatable;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    /// A render frame id no earlier call returned, so the multi-pass guard never
-    /// short-circuits a [`AnimationMapTyped::step`].
-    fn next_frame() -> u64 {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        COUNTER.fetch_add(1, Ordering::Relaxed) + 1
-    }
 
     impl<T: Animatable> AnimationMapTyped<T> {
         pub(crate) fn len(&self) -> usize {
             self.rows.len()
         }
 
-        /// [`Self::tick`] on a render frame of its own, for tests that don't care about
-        /// pass A/B.
+        /// [`Self::tick`] on a render frame after every row's last tick, for tests that don't
+        /// care about pass A/B.
         pub(crate) fn step(
             &mut self,
             request: AnimationRequest<T>,
             spec: AnimationSpec,
             dt: f32,
         ) -> TickResult<T> {
+            let render_frame_id = self
+                .rows
+                .values()
+                .map(|row| row.ticked_at)
+                .max()
+                .unwrap_or(0)
+                + 1;
             let clock = AnimationClock {
                 dt,
-                render_frame_id: next_frame(),
+                render_frame_id,
             };
             self.tick(request, spec, clock)
         }

@@ -84,6 +84,62 @@ fn next_wake_aligns_with_next_boundary() {
     );
 }
 
+/// Each wake lands on the first nanosecond of the next step: the sample there shows step `k mod n`
+/// after `k` wakes, and 1 ns before it still shows the step before. Covers every `n` below 200 at a
+/// 1 s period, where an f32 phase put 810 boundaries one step late, and periods `n` does not divide,
+/// down to steps of 1 ns.
+#[test]
+fn every_wake_samples_the_next_step() {
+    let one_ns = Duration::from_nanos(1);
+    let cases = (1..200).map(|n| (n, Duration::from_secs(1))).chain([
+        (22, Duration::from_nanos(1_000_003)),
+        (41, Duration::from_nanos(999_999_937)),
+        (3, Duration::from_nanos(10)),
+        (7, Duration::from_nanos(7)),
+    ]);
+    for (n, period) in cases {
+        let timing = PaintAnimation::alpha(0.0, 1.0)
+            .with_started_at(START)
+            .with_period(period)
+            .with_steps(n)
+            .with_repeat(PaintRepeat::Forever)
+            .timing;
+        let step = |k: u32| (k % n) as f32 / n as f32;
+        let mut now = START;
+        assert_eq!(timing.phase(now), Some(step(0)));
+        for k in 1..=3 * n {
+            now = timing.next_wake(now).unwrap();
+            assert_eq!(
+                timing.phase(now),
+                Some(step(k)),
+                "n {n}, {period:?}, wake {k}"
+            );
+            assert_eq!(
+                timing.phase(now - one_ns),
+                Some(step(k - 1)),
+                "n {n}, {period:?}, before wake {k}",
+            );
+        }
+        assert_eq!(now, START + period * 3, "n {n}, {period:?}");
+    }
+
+    // Under 1 ns a step, a wake skips the steps no nanosecond starts. Five steps of a 3 ns pass
+    // start at ⌈3k/5⌉ ns = 0, 1, 2, 2, 3 for k = 0..4: the wakes at 1 and 2 ns show steps 1 and 3,
+    // and the one at 3 ns opens the next pass.
+    let timing = PaintAnimation::alpha(0.0, 1.0)
+        .with_started_at(START)
+        .with_period(Duration::from_nanos(3))
+        .with_steps(5)
+        .with_repeat(PaintRepeat::Forever)
+        .timing;
+    let mut now = START;
+    for (ns, phase) in [(1, 0.2), (2, 0.6), (3, 0.0)] {
+        now = timing.next_wake(now).unwrap();
+        assert_eq!(now, START + Duration::from_nanos(ns));
+        assert_eq!(timing.phase(now), Some(phase), "{ns} ns");
+    }
+}
+
 #[test]
 fn pre_start_phase_is_solid_and_wakes_at_start() {
     let a = blink();

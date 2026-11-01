@@ -305,8 +305,16 @@ impl Ui {
     /// right after it is the system's first answer (`SystemPreferences::read`'s timeout).
     fn theme_animates(&self) -> bool {
         self.theme_transition.animates()
-            && !self.is_motion_reduced()
+            && !self.motion_snaps()
             && self.frame_runtime.render_frame_id > 1
+    }
+
+    /// Whether every motion lands on its end this frame: the system asks for less motion, or the
+    /// window shows again after a hidden span, where a motion that ran unseen would show its last
+    /// shown point and finish late.
+    #[inline]
+    fn motion_snaps(&self) -> bool {
+        self.window_frame.shown_again || self.is_motion_reduced()
     }
 
     /// The shown target moved from `old` to the shown scheme's theme: start or turn a
@@ -387,12 +395,12 @@ impl Ui {
 
     /// At a frame's start, after its clock: move a theme transition one `dt` on, then adopt the
     /// scheme the app-global settings resolve to. A change of the shown theme moves the theme
-    /// epoch, so the frame records again under it. A frame after a hidden span, or one with
-    /// motion now reduced, snaps; a scheme change starts its transition at the theme shown, so
-    /// the frame that adopts it shows no step yet. The frame a running transition owes is asked
+    /// epoch, so the frame records again under it. A frame that snaps motion
+    /// (`Self::motion_snaps`) snaps the theme; a scheme change starts its transition at the theme
+    /// shown, so the frame that adopts it shows no step yet. The frame a running transition owes is asked
     /// for after the frame's plan takes this one's requests (`FrameCycle::run`).
     pub(crate) fn advance_theme(&mut self) {
-        let snap = self.window_frame.shown_again || !self.theme_animates();
+        let snap = !self.theme_animates();
         let moved = if snap {
             self.theme_transition.snap()
         } else {
@@ -1197,17 +1205,23 @@ impl Ui {
     }
 
     /// Advance the animation row `request` names toward its target and return the
-    /// current value. [`AnimationSpec::SNAP`] and `None` land on the target now, drop
-    /// any stale row and request no repaint.
+    /// current value. [`AnimationSpec::SNAP`] and `None` land on the target now and
+    /// request no repaint, as every spec does with motion reduced and on the first frame after
+    /// the window was hidden; a row they leave goes at the end of the frame.
+    ///
+    /// # Panics
+    ///
+    /// When an animated target is not finite, which would never settle.
     // Keep the no-map/no-spec return in the widget's block so a static theme does
     // not pay an outlined call plus a large `V` return-slot handoff.
     #[inline(always)]
+    #[track_caller]
     pub fn animate<V: Animatable>(
         &mut self,
         request: AnimationRequest<V>,
         spec: impl Into<Option<AnimationSpec>>,
     ) -> V {
-        let spec = if self.is_motion_reduced() {
+        let spec = if self.motion_snaps() {
             AnimationSpec::SNAP
         } else {
             spec.into().unwrap_or(AnimationSpec::SNAP)
@@ -1514,7 +1528,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
-    #[cfg(all(test, feature = "winit"))]
+    #[cfg(test)]
     use crate::window::window_frame_state::WindowFrameState;
     #[cfg(test)]
     use crate::window::window_requests::WindowRequests;
@@ -1587,8 +1601,7 @@ pub(crate) mod internals {
             &self.window_requests
         }
 
-        /// Only the winit host's own tests write here.
-        #[cfg(feature = "winit")]
+        /// The facts a host publishes before a frame, for tests that act as the host.
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
             &mut self.window_frame
         }

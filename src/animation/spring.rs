@@ -2,7 +2,6 @@
 //! Accepted parameters converge at a bounded rate; a step costs the same
 //! whatever `dt` is.
 
-use crate::common::time::MAX_ANIMATION_DT;
 use crate::primitives::math::animatable::Animatable;
 use std::f64::consts::PI;
 
@@ -86,7 +85,10 @@ impl Spring {
     /// back, so the decay reaches the settle tolerance however large the value is.
     /// A settled step is at rest, with zero offset and velocity.
     pub(super) fn step<T: Animatable>(self, offset: T, velocity: T, dt: f32) -> SpringStep<T> {
-        debug_assert!(dt.is_finite() && (0.0..=MAX_ANIMATION_DT).contains(&dt));
+        debug_assert!(
+            dt.is_finite() && dt >= 0.0,
+            "a step is a finite delta, not {dt}"
+        );
         let transition = SpringTransition::new(self, dt);
         // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Chrome`
         // are only `Copy` when their fields are; scalar clones compile to noops.

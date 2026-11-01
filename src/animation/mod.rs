@@ -13,27 +13,31 @@ pub(crate) mod easing;
 pub(crate) mod phase;
 mod spring;
 
-use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped, TickResult};
+use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped};
 use crate::animation::animation_request::AnimationRequest;
+use crate::animation::animation_row::TickResult;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::{Drained, TypedStores};
-use crate::primitives::identity::widget_id::WidgetIdSet;
 use crate::primitives::math::animatable::Animatable;
 
 /// Central animation table on [`crate::Ui`]; typed maps are allocated on demand by `TypeId`.
+/// Each sweep reads the render frame id that just recorded.
 #[derive(Debug, Default)]
 pub(crate) struct AnimationMap {
-    stores: TypedStores,
+    stores: TypedStores<u64>,
 }
 
 impl AnimationMap {
-    /// Resolve one call site's animated value for this frame.
-    ///
-    /// Cheapest first: nothing has ever animated and no motion wanted returns the target before
-    /// any probe; an instant spec ([`AnimationSpec::is_instant`]) drops any stale row without
-    /// allocating a typed map; otherwise tick.
+    /// Resolve one call site's animated value for this frame: an instant spec
+    /// ([`AnimationSpec::is_instant`]) is the target, with no probe, and leaves a stale row
+    /// unticked for the end-of-frame sweep to drop; otherwise tick.
     ///
     /// The caller owes the repaint when the result is unsettled.
+    ///
+    /// # Panics
+    ///
+    /// For a target that is not finite, as [`AnimationMapTyped::tick`] says.
+    #[track_caller]
     pub(crate) fn animate<T: Animatable>(
         &mut self,
         request: AnimationRequest<T>,
@@ -41,11 +45,6 @@ impl AnimationMap {
         clock: AnimationClock,
     ) -> TickResult<T> {
         if spec.is_instant() {
-            if !self.is_empty()
-                && let Some(typed) = self.try_typed_mut::<T>()
-            {
-                typed.drop_row(request.id, request.slot);
-            }
             return TickResult {
                 cur: request.target,
                 settled: true,
@@ -59,33 +58,33 @@ impl AnimationMap {
         self.stores.get_or_default::<AnimationMapTyped<T>>()
     }
 
-    /// No typed map exists yet: the fast path for an app that never animated, and once every map has drained.
-    fn is_empty(&self) -> bool {
-        self.stores.is_empty()
-    }
-
-    /// Borrow the typed map for `T` if it exists, so an instant spec can drop a stale row without allocating.
-    pub(crate) fn try_typed_mut<T: Animatable>(&mut self) -> Option<&mut AnimationMapTyped<T>> {
-        self.stores.get_mut::<AnimationMapTyped<T>>()
-    }
-
-    /// Drop rows for removed widgets and for slots not poked this frame (else abandoned slots accumulate for widgets whose id lingers), then clear `touched` on survivors. Called once per frame from `FrameCycle::finalize_frame`.
+    /// Drop every row that render frame `render_frame_id` did not tick: a removed widget's, and a
+    /// slot its caller stopped asking for. Once per recorded frame, from
+    /// `FrameCycle::finalize_frame`; a row ticked under an id no widget recorded stays.
     ///
-    /// A typed map that drains to empty is dropped ([`Drained::Drop`]), or [`Self::is_empty`]'s fast path would stay disabled after the app goes idle.
-    pub(crate) fn sweep_removed(&mut self, removed: &WidgetIdSet) {
-        self.stores.sweep_removed(removed, Drained::Drop);
+    /// A typed map that drains to empty is dropped ([`Drained::Drop`]), so an app gone idle holds none.
+    pub(crate) fn sweep(&mut self, render_frame_id: u64) {
+        self.stores.sweep(&render_frame_id, Drained::Drop);
     }
 }
 
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::animation::AnimationMap;
+    use crate::animation::animation_map_typed::AnimationMapTyped;
     use crate::primitives::math::animatable::Animatable;
 
     impl AnimationMap {
+        /// No typed map is kept.
+        pub(crate) fn is_empty(&self) -> bool {
+            self.stores.is_empty()
+        }
+
         /// Rows resident in the `T` map, zero when it has none.
         pub(crate) fn row_count<T: Animatable>(&mut self) -> usize {
-            self.try_typed_mut::<T>().map_or(0, |rows| rows.len())
+            self.stores
+                .get_mut::<AnimationMapTyped<T>>()
+                .map_or(0, |rows| rows.len())
         }
     }
 }

@@ -1,9 +1,15 @@
+use crate::animation::animation_spec::AnimationSpec;
+use crate::animation::easing::Easing;
 use crate::host::harness::Harness;
+use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::domain::internals::assert_close;
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
+use crate::theme::toggle::ToggleTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::switch::{Switch, SwitchTrack};
@@ -146,4 +152,48 @@ fn the_knob_wears_the_ink_of_its_state() {
         .expect("the knob's slide and ink settle inside 2 s");
     assert_eq!(knob_fill(&h), Palette::DARK.on_accent.to_f16(), "on");
     assert_ne!(Palette::DARK.text, Palette::DARK.on_accent);
+}
+
+/// One share of the travel places the knob and blends its ink. Over a 100 ms linear slide, the
+/// click frame spends no time and 16 ms later the share is 0.16: the knob is 15 × 0.16 = 2.4 px
+/// into its 15 px travel, and its fill is the off ink 16 % of the way to the on ink.
+#[test]
+fn one_share_places_the_knob_and_blends_its_ink() {
+    let mut style = ToggleTheme::switch(&Palette::DARK, &Metrics::DEFAULT);
+    style.defaults.animation = Some(AnimationSpec::duration(
+        time::Duration::from_millis(100),
+        Easing::Linear,
+    ));
+    let mut h = Harness::mono(UVec2::new(400, 400));
+    let id = WidgetId::from_hash("wifi");
+    let mut on = false;
+    let mut record = |ui: &mut Ui| {
+        Switch::new(&mut on).id(id).style(&style).show(ui);
+    };
+    h.frame(&mut record);
+    h.click(id);
+    h.frame(&mut record);
+    h.advance(time::Duration::from_millis(16));
+    h.frame(&mut record);
+
+    let track = h.arranged(id.with("box"));
+    let knob = h.arranged(id.with("knob"));
+    // The look's border moves on the check too, and shifts the knob on both axes alike.
+    let (left, top) = (knob.min.x - track.min.x, knob.min.y - track.min.y);
+    assert_close(
+        left - top,
+        15.0 * 0.16,
+        1e-6,
+        "the border's shift cancels within a rounding",
+    );
+    let chrome = h
+        .ui_ref()
+        .tree(Layer::Main)
+        .chrome(h.node_for_widget_id(id.with("knob")))
+        .expect("the knob paints a fill");
+    let ShapeBrush::Solid(fill) = chrome.fill else {
+        panic!("the knob is a solid fill");
+    };
+    let ink = Animatable::lerp(Palette::DARK.text, Palette::DARK.on_accent, 0.16);
+    assert_eq!(fill, ink.to_f16());
 }

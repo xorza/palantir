@@ -1,10 +1,10 @@
 //! The pill-and-knob boolean toggle, with the checkbox's contract.
 
-use crate::animation::animation_key::AnimationKey;
 use crate::animation::animation_request::AnimationRequest;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
@@ -18,7 +18,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::toggle_row::{Settled, ToggleKind, ToggleRow};
 use glam::Vec2;
 
-/// Boolean toggle drawn as a pill track with a sliding knob; takes a `&mut bool` and a click flips it. Visuals come from `theme.switch` ([`crate::ToggleTheme`]). Layout and parts mirror [`crate::Checkbox`] (`HStack [track, label]`, one `Sense::CLICK` target), and the knob is `id.with("knob")`; the track is a `Canvas` and the knob's x animates through [`Ui::animate`].
+/// Boolean toggle drawn as a pill track with a sliding knob; takes a `&mut bool` and a click flips it. Visuals come from `theme.switch` ([`crate::ToggleTheme`]). Layout and parts mirror [`crate::Checkbox`] (`HStack [track, label]`, one `Sense::CLICK` target), and the knob is `id.with("knob")`; the track is a `Canvas`, and one [`Ui::animate`] row from off to on places the knob and blends its ink.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Switch<'a> {
@@ -86,34 +86,19 @@ impl ToggleKind for Knob<'_> {
     }
 
     fn paint(ui: &mut Ui, id: WidgetId, slot: &ToggleTheme, chrome: &Chrome, checked: bool) {
-        let border = chrome.border.width;
-        let border_inset = if domain::is_invisible(border) {
-            0.0
-        } else {
-            border
-        };
-        let geometry = SwitchTrack::from_slot(slot).knob(border_inset);
+        let geometry = SwitchTrack::from_slot(slot).knob(chrome.border_inset());
         let knob_id = id.with("knob");
-        let target_x = if checked {
-            geometry.on_x
-        } else {
-            geometry.off_x
-        };
-        // Keyed by the check, so a theme that moves the track carries the knob with it.
-        let check = AnimationKey::of(checked);
-        let knob_x = ui.animate(
-            AnimationRequest::new(knob_id, "x", target_x).key(check),
+        // One row from off to on, as Flutter's `Switch` runs one position: the ends are read each
+        // frame, so a theme that moves the track or changes an ink carries the knob with it, and
+        // the row settles on a share of the travel, not on pixels.
+        let on = ui.animate(
+            AnimationRequest::new(knob_id, "on", f32::from(checked)),
             slot.defaults.animation,
         );
-        let target_color = if checked {
-            slot.indicator
-        } else {
-            slot.unchecked_indicator
-        };
-        let knob_color = ui.animate(
-            AnimationRequest::new(knob_id, "color", target_color).key(check),
-            slot.defaults.animation,
-        );
+        let knob_x = Animatable::lerp(geometry.off_x, geometry.on_x, on);
+        // A spring slides the knob past an end, but a color past an end leaves the two inks.
+        let knob_color =
+            Animatable::lerp(slot.unchecked_indicator, slot.indicator, on.clamp(0.0, 1.0));
         let knob_chrome = Chrome::rounded(knob_color, Corners::all(geometry.knob * 0.5));
         Widget::leaf()
             .id(knob_id)

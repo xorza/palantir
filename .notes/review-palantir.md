@@ -96,55 +96,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
 an item deletes it.
 
-### Batch 5: animation clock and rows
-
-Files: `src/ui/frame_runtime/mod.rs`, `src/common/time/mod.rs`, `src/animation/` (`spring.rs`,
-`animation_row.rs`, `animation_map_typed.rs`, `mod.rs`, `phase.rs`, `bench.rs`),
-`src/ui/mod.rs`, `src/shape/paint_animation/{mod.rs,curves.rs}`, `src/widgets/expander/mod.rs`,
-`src/widgets/switch/mod.rs`.
-
-- [ ] **BUG** `frame_runtime/mod.rs:204-213`: the accumulator spends time only at 1/240 s, so at
-  240 Hz and faster frames alternate `dt = 0` and `dt = 2×period`, and each `dt = 0` frame still
-  records in full. The stall it guarded is gone (`animation/tests/spring.rs:400-405`). Target:
-  delete `dt_accum` and `ANIMATION_SUBSTEP_DT`; `dt` is the clamped wall delta; drop
-  `Spring::step`'s `dt <= MAX_ANIMATION_DT` debug assert (`spring.rs:89`).
-- [ ] **BUG** `animation_row.rs:104-116`: a Duration→Duration `conform` keeps `elapsed`, so a new
-  length or ease jumps the value (OutCubic 120 ms at 60 ms shows 87.5 %, at 200 ms 65.7 %); it
-  fires at t = 0.5 of a theme transition, where `SlotDefaults::animation` snaps. Target: rescale
-  `elapsed` to keep progress, or restart from `cur`. Test it.
-- [ ] **BUG** `animation_map_typed.rs:82-90`, `ui/mod.rs:1205`: a non-finite target is only
-  `debug_assert!`ed; in release NaN never equals the stored target, so the window repaints
-  forever. Target: release `assert!` on the retarget path only, `#[track_caller]` on
-  `Ui::animate` (Input validation rule 2).
-- [ ] **BUG** `paint_animation/mod.rs:282-310` vs `335-352`: `next_wake` finds step boundaries in
-  integer nanoseconds, `phase` in f32, and they disagree at boundaries (810 `(n, k)` pairs with
-  n < 200), so a step shows one step late. Target: `(elapsed_ns % period_ns) / step_ns` in both.
-  Test: every wake samples a new step.
-- [ ] **BUG** `expander/mod.rs:170,231`: `openness > 0.0` reads the raw spring, so an underdamped
-  close collapses and re-shows the body. Target now: clamp to `0..=1`. Target with **API**: an
-  animate sibling returning `{ value, settled }`; the body hides only when settled at 0.
-- [ ] `animation/mod.rs:43-55`: an instant or `None` spec costs two hash probes per call to remove
-  a row that rarely exists (1,000 probes a frame for 500 fields); the sweep evicts anyway.
-  Target: the instant path returns `target` without touching the map.
-- [ ] `animation_row.rs:278-282`, `animation_map_typed.rs:109,200-209`: liveness has three
-  signals; the sweep writes `touched = false` into every 856-byte row every record frame, and
-  `removed` evicts a row its caller ticked under an unrecorded id. Target: keep only
-  `advanced_at == render_frame_id`, read-only; `AnimationMap` sweeps itself.
-- [ ] `ui/mod.rs:395`: after a hidden span the theme snaps, paint animations jump to wall time, and
-  rows resume a frozen segment. Target: the clock hands consumers one `resumed` bit; rows in
-  flight land on their target.
-- [ ] `switch/mod.rs:101-117`: two keyed rows (px and color) where one 0..1 row serves, as the
-  expander and Flutter's `Switch` do; settling at 1e-4 px instead of 1e-4 of the travel costs
-  about 12 to 50 extra full frames per toggle. Target: one `f32::from(checked)` row, geometry and
-  color lerped from it.
-- [ ] Cycle `animation_row.rs:4` ⇄ `animation_map_typed.rs:4` (and `phase.rs:4`): move
-  `TickResult` into `animation_row.rs`.
-- [ ] `bench.rs:51-79`: only the all-retarget path is measured. Add `steady` and `instant` cases.
-- [ ] `animation_map_typed.rs:229-232`: a test mints frame ids from a `static AtomicU64`, against
-  "no mutable statics". Target: derive the id from the map's rows or take it from the caller.
-- [ ] Nits: `animation_spec/mod.rs:54` `MEDIUM` is unused; `animation/mod.rs:68`
-  `try_typed_mut` can be private; `animation_row.rs:93` `.min(1.0)` is redundant.
-
 ### Batch 6: theme validity and theme data
 
 Files: `src/theme/` (`mod.rs`, `metrics.rs`, `text_style.rs`, `text_style_overrides.rs`,

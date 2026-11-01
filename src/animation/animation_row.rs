@@ -1,7 +1,6 @@
 //! One animated value's cross-frame row: position, target and motion model.
 
 use crate::animation::animation_key::AnimationKey;
-use crate::animation::animation_map_typed::TickResult;
 use crate::animation::animation_spec::AnimationMotion;
 use crate::animation::duration;
 use crate::animation::easing::Easing;
@@ -90,7 +89,7 @@ impl<T: Animatable> MotionRow<T> {
                 shortening,
                 ..
             } => {
-                let progress = progress(*elapsed, *secs * *shortening).min(1.0);
+                let progress = progress(*elapsed, *secs * *shortening);
                 placed(
                     target,
                     &start_offset.clone().scale(1.0 - ease.apply(progress)),
@@ -100,20 +99,17 @@ impl<T: Animatable> MotionRow<T> {
         }
     }
 
-    /// Runs under `motion`: the same kind keeps its state, another starts fresh. Returns whether the kind changed.
+    /// Runs under `motion` from `cur`, its value now, which no change moves. A spring takes new
+    /// parameters with its offset and velocity. A duration with a new length or ease starts again
+    /// from `cur`: keeping its elapsed time under them would jump the value (OutCubic at 60 ms
+    /// of 120 ms shows 87.5 % of the way, of 200 ms 65.7 %). Another kind starts fresh. Returns
+    /// whether the motion started again.
     pub(super) fn conform(&mut self, motion: AnimationMotion, cur: &T, target: &T) -> bool {
         match (self, motion) {
             (
                 Self::Duration { secs, ease, .. },
-                AnimationMotion::Duration {
-                    secs: new_secs,
-                    ease: new_ease,
-                },
-            ) => {
-                *secs = new_secs;
-                *ease = new_ease;
-                false
-            }
+                AnimationMotion::Duration { secs: new, ease: e },
+            ) if *secs == new && *ease == e => false,
             (Self::Spring { spring, .. }, AnimationMotion::Spring(new_spring)) => {
                 *spring = new_spring;
                 false
@@ -269,17 +265,23 @@ fn progress(elapsed: f32, length: f32) -> f32 {
     if length > 0.0 { elapsed / length } else { 1.0 }
 }
 
+/// One tick's value, and whether the motion is at rest on its target.
+#[derive(Debug)]
+pub(crate) struct TickResult<T: Animatable> {
+    pub(crate) cur: T,
+    pub(crate) settled: bool,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AnimationRow<T: Animatable> {
     pub(super) target: T,
     /// The target's cause; see [`AnimationKey`].
     pub(super) key: Option<AnimationKey>,
     pub(super) motion: MotionRow<T>,
-    /// Set by every `tick`, cleared by `post_record`; rows still `false` then are evicted.
-    pub(super) touched: bool,
-    /// Render-frame id of the last integrator step. A second `tick` in the same
-    /// frame (multi-pass record) skips the advance but still retargets.
-    pub(super) advanced_at: u64,
+    /// Render-frame id of the last `tick`. A second `tick` in the same frame (multi-pass record)
+    /// skips the advance but still retargets, and the end-of-frame sweep drops a row whose frame
+    /// is not the one that just recorded.
+    pub(super) ticked_at: u64,
     /// Cached settle state, letting `tick` skip the settle math on a steady
     /// row; the retarget compare still unfreezes it.
     pub(super) settled: bool,
