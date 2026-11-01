@@ -1,5 +1,6 @@
 //! [`FormatPipelines`]: every format-dependent `wgpu::RenderPipeline` for one swapchain format, so shaders, buffers and atlases stay format-independent and shared (an sRGB and an HDR window differ only in which set they bind). Built eagerly, including stencil-test twins.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
 use crate::gpu::pipeline::curve_pipeline::CurvePipeline;
 use crate::gpu::pipeline::image_pipeline::ImagePipeline;
@@ -35,7 +36,7 @@ pub(crate) struct PipelineSources<'a> {
 
 impl FormatPipelines {
     pub(crate) fn new(
-        device: &wgpu::Device,
+        gpu: &Gpu,
         format: wgpu::TextureFormat,
         sources: PipelineSources<'_>,
     ) -> Self {
@@ -48,12 +49,12 @@ impl FormatPipelines {
             blit,
         } = sources;
         Self {
-            quad: quad.build_variants(device, format),
-            mesh: mesh.build_variants(device, format),
-            image: image.build_variants(device, format),
-            curve: curve.build_variants(device, format),
-            raster: raster.build_variants(device, format),
-            blit: blit.build(device, format),
+            quad: quad.build_variants(gpu, format),
+            mesh: mesh.build_variants(gpu, format),
+            image: image.build_variants(gpu, format),
+            curve: curve.build_variants(gpu, format),
+            raster: raster.build_variants(gpu, format),
+            blit: blit.build(gpu, format),
         }
     }
 

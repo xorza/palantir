@@ -55,6 +55,17 @@ Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
   reconfigure.
 - **`configure` runs only on a change**, as it waits for the device to idle.
 
+## Pipeline builds
+
+- **Builds on one device take turns**, under a lock every clone of a `Gpu` shares; `clippy.toml`
+  sends each build through it. wgpu-hal's DX12 shader cache hands FXC blobs to concurrent builds,
+  and FXC counts their references without atomics, which frees a cached blob
+  ([gfx-rs/wgpu#10547](https://github.com/gfx-rs/wgpu/issues/10547)). Refused: a process-wide
+  lock, state with no owner; a shader per thread through distinct entry points
+  ([photocraft#9182](https://github.com/storytold/photocraft/pull/9182)), a rule every new
+  shader must keep; DXC, a DLL each app must ship. Cost: builds on a shared device run one at a
+  time on every backend.
+
 ## Device loss
 
 Facts and sources: `.notes/research/2026-10-30-device-loss.md`.

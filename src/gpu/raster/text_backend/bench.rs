@@ -183,7 +183,7 @@ impl Fixture {
         let program = RasterProgram::new(&g.gpu.device);
         Self {
             backend: TextBackend::new(&g.gpu.device, &program, shaper),
-            pipelines: program.build_variants(&g.gpu.device, TARGET_FORMAT.get()),
+            pipelines: program.build_variants(&g.gpu, TARGET_FORMAT.get()),
             program,
             belt: StagingBelt::new(g.gpu.device.clone(), 1 << 20),
             store,

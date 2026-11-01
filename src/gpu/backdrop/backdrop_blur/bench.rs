@@ -57,7 +57,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
             group.throughput(Throughput::Elements(u64::from(side * side)));
             group.bench_function(backend.case(&format!("{sigma}/{side}")), |bencher| {
                 let gpu = BenchGpu::shared(Timing::PassOnly);
-                let device = &gpu.gpu.device;
                 let plan = BlurPlan::new(sigma as f32);
                 assert_eq!(plan.levels(), levels, "σ {sigma} px halves {levels} times");
                 let surface = UVec2::splat(side);
@@ -74,10 +73,10 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                     scratch_origin: UVec2::ZERO,
                     layout: JobLayout::default(),
                 };
-                let mut blur = BackdropBlur::new(device);
+                let mut blur = BackdropBlur::new(&gpu.gpu);
                 fill_capture(gpu, &mut blur, side);
                 let dest_size = job.dest_rect().max();
-                let dest = device.create_texture(&wgpu::TextureDescriptor {
+                let dest = gpu.gpu.device.create_texture(&wgpu::TextureDescriptor {
                     label: Some("palantir.bench.backdrop_blur.dest"),
                     size: wgpu::Extent3d {
                         width: dest_size.x,
@@ -100,7 +99,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
         group.throughput(Throughput::Elements(u64::from(n)));
         group.bench_function(backend.case(&format!("jobs/{n}")), |bencher| {
             let gpu = BenchGpu::shared(Timing::PassOnly);
-            let device = &gpu.gpu.device;
             let plan = BlurPlan::new(32.0);
             assert_eq!(plan.levels(), 3, "σ 32 px halves three times");
             let mut jobs: Vec<BlurJob> = (0..n)
@@ -115,12 +113,12 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                     layout: JobLayout::default(),
                 })
                 .collect();
-            let mut blur = BackdropBlur::new(device);
+            let mut blur = BackdropBlur::new(&gpu.gpu);
             fill_capture(gpu, &mut blur, 2048);
             let dest_size = jobs
                 .iter()
                 .fold(UVec2::ZERO, |size, job| size.max(job.dest_rect().max()));
-            let dest = device.create_texture(&wgpu::TextureDescriptor {
+            let dest = gpu.gpu.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("palantir.bench.backdrop_blur.jobs"),
                 size: wgpu::Extent3d {
                     width: dest_size.x,

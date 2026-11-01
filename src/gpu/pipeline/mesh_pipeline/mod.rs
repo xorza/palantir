@@ -10,6 +10,7 @@
 //! stencil-*test* variant.
 
 use crate::common::span::Span;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
@@ -81,13 +82,9 @@ impl MeshPipeline {
 
     /// Build the base and stencil-test color pipelines against `format`, the only
     /// format-dependent mesh objects. Called by `FormatPipelines` per format.
-    pub(super) fn build_variants(
-        &self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) -> StencilVariant {
+    pub(super) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> StencilVariant {
         StencilVariant::build(
-            device,
+            gpu,
             PipelineRecipe {
                 vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
                 ..PipelineRecipe::color(

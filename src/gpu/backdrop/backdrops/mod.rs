@@ -2,6 +2,7 @@
 //! composite.
 
 use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
@@ -184,15 +185,15 @@ struct PaneResources {
 
 impl PaneResources {
     fn new(
-        device: &wgpu::Device,
+        gpu: &Gpu,
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
         spectrum: &wgpu::Buffer,
         ceiling: u32,
     ) -> Self {
-        let slot_buffer = DynamicBuffer::storage(device, "palantir.backdrop.slots", 4);
+        let slot_buffer = DynamicBuffer::storage(&gpu.device, "palantir.backdrop.slots", 4);
         let atlas = PackedAtlas::new(
-            device,
+            &gpu.device,
             AtlasSpec {
                 label: "palantir.backdrop.results".to_owned(),
                 format: LEVEL_FORMAT,
@@ -203,7 +204,7 @@ impl PaneResources {
             FIRST_SIDE,
         );
         let group = composite_group(
-            device,
+            &gpu.device,
             layout,
             atlas.view(),
             sampler,
@@ -211,7 +212,7 @@ impl PaneResources {
             spectrum,
         );
         Self {
-            blur: BackdropBlur::new(device),
+            blur: BackdropBlur::new(gpu),
             atlas,
             group_capacity: slot_buffer.capacity(),
             slot_buffer,
@@ -321,7 +322,7 @@ impl Backdrops {
         }
         self.resources.get_or_insert_with(|| {
             PaneResources::new(
-                &ctx.gpu.device,
+                ctx.gpu,
                 &self.layout,
                 &self.sampler,
                 &self.spectrum,

@@ -1,5 +1,6 @@
 //! The render-pipeline descriptor recipe every pipeline module builds through, so descriptor flags can't drift.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::IMMEDIATES_BYTES;
 
 /// Render-pipeline recipe. Callers supply what varies (label, shader, layout, entry points, override constants, vertex buffers, topology, color format, writes, blend, optional depth-stencil); [`Self::build`] fills the project-wide defaults (single color target, no MSAA, no multiview). The built [`wgpu::RenderPipeline`] outlives the recipe.
@@ -47,8 +48,8 @@ impl<'a> PipelineRecipe<'a> {
     }
 
     /// Build the pipeline. Sole source of the descriptor fields pipelines don't vary (sample count, multiview mask).
-    pub(crate) fn build(self, device: &wgpu::Device) -> wgpu::RenderPipeline {
-        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+    pub(crate) fn build(self, gpu: &Gpu) -> wgpu::RenderPipeline {
+        gpu.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some(self.label),
             layout: Some(self.layout),
             vertex: wgpu::VertexState {

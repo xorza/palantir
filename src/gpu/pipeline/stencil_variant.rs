@@ -1,5 +1,6 @@
 //! A color pipeline and its stencil-test twin, built together.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::pipeline_recipe::PipelineRecipe;
 use crate::gpu::surface::stencil::Stencil;
 
@@ -29,7 +30,7 @@ impl StencilVariant {
     /// Build `recipe` and its stencil-test twin, the same recipe under `stencil_label` with
     /// [`Stencil::test_state`]. Shared by every color family so the twins cannot drift.
     pub(crate) fn build(
-        device: &wgpu::Device,
+        gpu: &Gpu,
         recipe: PipelineRecipe<'_>,
         stencil_label: &'static str,
     ) -> Self {
@@ -43,8 +44,8 @@ impl StencilVariant {
             ..recipe.clone()
         };
         Self {
-            base: recipe.build(device),
-            test: test.build(device),
+            base: recipe.build(gpu),
+            test: test.build(gpu),
         }
     }
 

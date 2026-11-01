@@ -1,5 +1,6 @@
 //! Drawing the retained backbuffer onto a target that cannot be copied into.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -36,11 +37,7 @@ impl BlitPipeline {
     }
 
     /// The pipeline for one target format. No blend: the backbuffer holds the finished frame, so the draw replaces the target. No stencil twin: it runs after every clipped draw, in its own pass.
-    pub(crate) fn build(
-        &self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) -> wgpu::RenderPipeline {
+    pub(crate) fn build(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> wgpu::RenderPipeline {
         PipelineRecipe {
             blend: None,
             ..PipelineRecipe::color(
@@ -50,7 +47,7 @@ impl BlitPipeline {
                 format,
             )
         }
-        .build(device)
+        .build(gpu)
     }
 }
 

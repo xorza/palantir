@@ -5,6 +5,7 @@
 
 pub(crate) mod raster_quad;
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{
     FLAG_COLOR, FLAG_DESATURATE, FLAG_MASK, U_BITS, V_SHIFT,
@@ -71,14 +72,10 @@ impl RasterProgram {
 
     /// Builds the base and stencil-test pipelines against `format`, the only format-dependent part
     /// here: for unturned quads, and for the [`SpunRasterQuad`]s a paint animation turns.
-    pub(crate) fn build_variants(
-        &self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) -> RasterVariants {
+    pub(crate) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> RasterVariants {
         RasterVariants {
             flat: StencilVariant::build(
-                device,
+                gpu,
                 PipelineRecipe {
                     vertex_buffers: &[Some(RasterQuad::LAYOUT)],
                     topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -92,7 +89,7 @@ impl RasterProgram {
                 "palantir.raster.pipeline.stencil_test",
             ),
             spun: StencilVariant::build(
-                device,
+                gpu,
                 PipelineRecipe {
                     vertex_buffers: &[Some(SpunRasterQuad::LAYOUT)],
                     topology: wgpu::PrimitiveTopology::TriangleStrip,

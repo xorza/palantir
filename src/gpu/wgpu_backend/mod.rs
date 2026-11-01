@@ -251,33 +251,32 @@ impl WgpuBackend {
     /// Build the one shared GPU renderer over the host's handles. Per-format pipelines build when
     /// a window first notes a target of the format ([`Self::prepare_format`]).
     pub(crate) fn new(gpu: Gpu, resources: BackendResources<'_>, timing: FrameTiming) -> Self {
-        let device = &gpu.device;
         let image_store = Rc::clone(resources.image_store);
         let texture_binding = image_store.binding();
         let gradient = GpuGradientAtlas::new(
-            device,
+            &gpu.device,
             resources.gradient_atlas.clone(),
             texture_binding.clone(),
         );
-        let backdrops = Backdrops::new(device);
-        let quad = QuadPipeline::new(device, &texture_binding, backdrops.layout());
-        let mesh = MeshPipeline::new(device);
-        let image = ImagePipeline::new(device, &texture_binding);
+        let backdrops = Backdrops::new(&gpu.device);
+        let quad = QuadPipeline::new(&gpu, &texture_binding, backdrops.layout());
+        let mesh = MeshPipeline::new(&gpu.device);
+        let image = ImagePipeline::new(&gpu.device, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
         let curve = CurvePipeline::new(&gpu, &texture_binding);
-        let raster = RasterProgram::new(device);
-        let blit = BlitPipeline::new(device, &texture_binding);
-        let text = TextBackend::new(device, &raster, resources.text.clone());
-        let icon = IconBackend::new(device, &raster, resources.icons.clone());
-        let debug = DebugOverlay::new(device);
+        let raster = RasterProgram::new(&gpu.device);
+        let blit = BlitPipeline::new(&gpu.device, &texture_binding);
+        let text = TextBackend::new(&gpu.device, &raster, resources.text.clone());
+        let icon = IconBackend::new(&gpu.device, &raster, resources.icons.clone());
+        let debug = DebugOverlay::new(&gpu.device);
         // 1 MiB chunks, above the resize-drag upload peak, so steady state uses 1-2 chunks.
-        let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
+        let staging_belt = StagingBelt::new(gpu.device.clone(), 1 << 20);
         let timestamp_period = gpu.queue.get_timestamp_period();
         // A device whose timestamps have no period times frames on the CPU clock.
         let timing = (timing == FrameTiming::On).then(|| TimingSupport {
             period_ns: timestamp_period,
             features: if timestamp_period > 0.0 {
-                device.features()
+                gpu.device.features()
             } else {
                 wgpu::Features::empty()
             },
@@ -326,7 +325,7 @@ impl WgpuBackend {
         // `self.pipelines` through `entry().or_insert_with`.
         if !self.pipelines.contains_key(&format) {
             let built = FormatPipelines::new(
-                &self.gpu.device,
+                &self.gpu,
                 format.get(),
                 PipelineSources {
                     quad: &self.quad,
@@ -1023,7 +1022,7 @@ impl WgpuBackend {
         let blit = Capture::needs_blit(backbuffer.texture().format()).then(|| CaptureBlit {
             pipeline: &*self
                 .capture_blit
-                .get_or_insert_with(|| self.blit.build(&self.gpu.device, Capture::FORMAT)),
+                .get_or_insert_with(|| self.blit.build(&self.gpu, Capture::FORMAT)),
             binding: &self.texture_binding,
         });
         let source = CaptureSource {

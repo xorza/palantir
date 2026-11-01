@@ -1,5 +1,6 @@
 //! The GPU half of the shadow cutout tables: the baked atlas, the bake pass, and the per-instance stream `vs_shadow` reads. The CPU half is [`CutoutPlan`], kept on each window's render stream.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
@@ -75,8 +76,8 @@ impl CutoutTables {
     const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R32Float;
 
     /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
-    pub(crate) fn new(device: &wgpu::Device, shader: &wgpu::ShaderModule) -> Self {
-        let mode = if Self::renders_atlas(device) {
+    pub(crate) fn new(gpu: &Gpu, shader: &wgpu::ShaderModule) -> Self {
+        let mode = if Self::renders_atlas(&gpu.device) {
             CutoutMode::Bake
         } else {
             CutoutMode::Shade
@@ -88,7 +89,8 @@ impl CutoutTables {
             ),
             CutoutMode::Shade => (1, wgpu::TextureUsages::TEXTURE_BINDING),
         };
-        let atlas = device
+        let atlas = gpu
+            .device
             .create_texture(&wgpu::TextureDescriptor {
                 label: Some("palantir.quad.cutouts"),
                 size: render_target::extent(UVec2::splat(side)),
@@ -100,20 +102,22 @@ impl CutoutTables {
                 view_formats: &[],
             })
             .create_view(&wgpu::TextureViewDescriptor::default());
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.quad.cutouts.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            }],
-        });
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let layout = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.quad.cutouts.bgl"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                }],
+            });
+        let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("palantir.quad.cutouts.bg"),
             layout: &layout,
             entries: &[wgpu::BindGroupEntry {
@@ -121,7 +125,8 @@ impl CutoutTables {
                 resource: wgpu::BindingResource::TextureView(&atlas),
             }],
         });
-        let bake_layout = pipeline_recipe::pipeline_layout(device, "palantir.quad.cutouts.pl", &[]);
+        let bake_layout =
+            pipeline_recipe::pipeline_layout(&gpu.device, "palantir.quad.cutouts.pl", &[]);
         let bake_pipeline = PipelineRecipe {
             vertex_entry: "vs_cutout_bake",
             vertex_buffers: &[Some(BAKE_LAYOUT)],
@@ -136,15 +141,15 @@ impl CutoutTables {
                 Self::FORMAT,
             )
         }
-        .build(device);
+        .build(gpu);
         Self {
             mode,
             atlas,
             layout,
             bind_group,
             bake_pipeline,
-            tables: DynamicBuffer::vertex(device, "palantir.quad.cutouts.tables", 16),
-            corners: DynamicBuffer::vertex(device, "palantir.quad.cutouts.corners", 256),
+            tables: DynamicBuffer::vertex(&gpu.device, "palantir.quad.cutouts.tables", 16),
+            corners: DynamicBuffer::vertex(&gpu.device, "palantir.quad.cutouts.corners", 256),
             held: HeldTables::default(),
             bakes: Vec::new(),
         }

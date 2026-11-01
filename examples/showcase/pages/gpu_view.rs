@@ -165,6 +165,10 @@ impl GpuPaint for Cube {
             bind_group_layouts: &[Some(&bgl)],
             immediate_size: 0,
         });
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "an app's own pipeline, built on its one UI thread; the turn guards Palantir's builds"
+        )]
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("showcase.cube.pipeline"),
             layout: Some(&layout),

@@ -6,6 +6,7 @@ pub(crate) mod quad_draw;
 pub(crate) mod quad_form;
 
 use crate::common::span::Span;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
@@ -223,34 +224,35 @@ impl QuadPipeline {
 
     /// Build the format-independent quad resources; per-format pipelines come from [`Self::build_variants`].
     pub(crate) fn new(
-        device: &wgpu::Device,
+        gpu: &Gpu,
         textures: &TextureBinding,
         backdrops: &wgpu::BindGroupLayout,
     ) -> Self {
-        let shader = Self::SHADER.module(device);
-        let cutouts = CutoutTables::new(device, &shader);
+        let shader = Self::SHADER.module(&gpu.device);
+        let cutouts = CutoutTables::new(gpu, &shader);
 
-        let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "palantir.quad.instances", 256);
+        let instance_buffer =
+            DynamicBuffer::<Quad>::vertex(&gpu.device, "palantir.quad.instances", 256);
 
         Self {
             instance_buffer,
             draws: Vec::new(),
             mask_buffer: None,
-            clear: SingleQuadBuffer::new(device, "palantir.quad.clear"),
+            clear: SingleQuadBuffer::new(&gpu.device, "palantir.quad.clear"),
             shader,
             // Gradient atlas at group 0. One layout serves all pipelines; stencil state and fragment entry are not part of it.
             pipeline_layout: pipeline_recipe::pipeline_layout(
-                device,
+                &gpu.device,
                 "palantir.quad.pl",
                 &[Some(textures.layout())],
             ),
             shadow_layout: pipeline_recipe::pipeline_layout(
-                device,
+                &gpu.device,
                 "palantir.quad.shadow.pl",
                 &[Some(textures.layout()), Some(cutouts.layout())],
             ),
             backdrop_layout: pipeline_recipe::pipeline_layout(
-                device,
+                &gpu.device,
                 "palantir.quad.backdrop.pl",
                 &[Some(textures.layout()), None, Some(backdrops)],
             ),
@@ -260,11 +262,7 @@ impl QuadPipeline {
     }
 
     /// Build every quad pipeline against `format`, the only format-dependent quad objects; the atlas and buffers are reused.
-    pub(super) fn build_variants(
-        &self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) -> QuadVariants {
+    pub(super) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> QuadVariants {
         let instance = Some(INSTANCE_LAYOUT);
         // The mask pair writes stencil only: `fs_mask` discards outside the SDF, color writes are off, the blend is inert.
         let mask = |label: &'static str, depth_stencil: wgpu::DepthStencilState| {
@@ -277,13 +275,13 @@ impl QuadPipeline {
                 depth_stencil: Some(depth_stencil),
                 ..PipelineRecipe::color(label, &self.shader, &self.pipeline_layout, format)
             }
-            .build(device)
+            .build(gpu)
         };
         let shadow_buffers = [instance.clone(), Some(CutoutTables::CORNER_LAYOUT)];
         let grid = f64::from(u8::from(self.shadow_grid));
         let shadow = |label, stencil_label, fragment_entry, series: bool| {
             StencilVariant::build(
-                device,
+                gpu,
                 PipelineRecipe {
                     vertex_entry: "vs_shadow",
                     fragment_entry,
@@ -299,7 +297,7 @@ impl QuadPipeline {
         };
         let color = |label, stencil_label, form: QuadForm| {
             StencilVariant::build(
-                device,
+                gpu,
                 PipelineRecipe {
                     constants: &[("QUAD_FORM", f64::from(form as u32))],
                     vertex_buffers: slice::from_ref(&instance),
@@ -314,7 +312,7 @@ impl QuadPipeline {
         ));
         let backdrop = |label, stencil_label, form: QuadForm| {
             StencilVariant::build(
-                device,
+                gpu,
                 PipelineRecipe {
                     fragment_entry: "fs_backdrop",
                     constants: &[

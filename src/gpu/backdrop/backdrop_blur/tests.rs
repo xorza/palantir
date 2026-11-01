@@ -142,10 +142,9 @@ fn blur_with(
     jobs: &mut [BlurJob],
     dest_size: UVec2,
 ) -> Vec<[f32; 4]> {
-    let device = &gpu.device;
-    let mut engine = BackdropBlur::with_loop(device, residual);
+    let mut engine = BackdropBlur::with_loop(gpu, residual);
     let format = jobs[0].format;
-    engine.capture_view(device, format, SURFACE);
+    engine.capture_view(&gpu.device, format, SURFACE);
     let capture = &engine.captures[0].target.texture;
     let linear: Vec<[f32; 4]> = pixels
         .iter()
@@ -177,7 +176,7 @@ fn blur_with(
             depth_or_array_layers: 1,
         },
     );
-    let dest = device.create_texture(&wgpu::TextureDescriptor {
+    let dest = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("test.backdrop.dest"),
         size: wgpu::Extent3d {
             width: dest_size.x,
@@ -192,8 +191,10 @@ fn blur_with(
         view_formats: &[],
     });
     let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut belt = StagingBelt::new(device.clone(), 1 << 12);
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
+    let mut encoder = gpu
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     {
         let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
         engine.run(&mut ctx, jobs, &view);
@@ -396,12 +397,11 @@ fn blur_batches(
     jobs: &mut [BlurJob],
     batches: &[Range<usize>],
 ) -> Vec<[f32; 4]> {
-    let device = &gpu.device;
     let dest_size = jobs
         .iter()
         .fold(URect::ZERO, |all, job| all.union(job.dest_rect()))
         .max();
-    let dest = device.create_texture(&wgpu::TextureDescriptor {
+    let dest = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("test.backdrop.dest"),
         size: wgpu::Extent3d {
             width: dest_size.x,
@@ -416,9 +416,11 @@ fn blur_batches(
         view_formats: &[],
     });
     let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut engine = BackdropBlur::new(device);
-    let mut belt = StagingBelt::new(device.clone(), 1 << 12);
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    let mut engine = BackdropBlur::new(gpu);
+    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
+    let mut encoder = gpu
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     {
         let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
         engine.prepare(&mut ctx, jobs, batches.iter().cloned(), None);

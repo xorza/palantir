@@ -1,6 +1,7 @@
 //! The backdrop blur's passes on the device: each job's capture through its tents to the last
 //! level, then the residual Gaussian across and down into the job's slot of the destination.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::vendor;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
@@ -215,12 +216,12 @@ impl BackdropBlur {
         constants: shader_constants,
     };
 
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        Self::with_loop(device, ResidualLoop::of(&device.adapter_info()))
+    pub(crate) fn new(gpu: &Gpu) -> Self {
+        Self::with_loop(gpu, ResidualLoop::of(&gpu.device.adapter_info()))
     }
 
-    /// The blur on `device`, its residual's loop shaped `residual`.
-    pub(crate) fn with_loop(device: &wgpu::Device, residual: ResidualLoop) -> Self {
+    /// The blur on `gpu`, its residual's loop shaped `residual`.
+    pub(crate) fn with_loop(gpu: &Gpu, residual: ResidualLoop) -> Self {
         let one_loop = [(
             "ONE_LOOP",
             f64::from(u8::from(residual == ResidualLoop::One)),
@@ -235,39 +236,45 @@ impl BackdropBlur {
             },
             count: None,
         };
-        let filtered_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.backdrop.blur.source.filtered.bgl"),
-            entries: &[
-                texture_entry(true),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
+        let filtered_layout =
+            gpu.device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("palantir.backdrop.blur.source.filtered.bgl"),
+                    entries: &[
+                        texture_entry(true),
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                            count: None,
+                        },
+                    ],
+                });
+        let loaded_layout = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.backdrop.blur.source.loaded.bgl"),
+                entries: &[texture_entry(false)],
+            });
+        let params_layout = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.backdrop.blur.params.bgl"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: wgpu::BufferSize::new(size_of::<BlurParams>() as u64),
+                    },
                     count: None,
-                },
-            ],
-        });
-        let loaded_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.backdrop.blur.source.loaded.bgl"),
-            entries: &[texture_entry(false)],
-        });
-        let params_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.backdrop.blur.params.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: true,
-                    min_binding_size: wgpu::BufferSize::new(size_of::<BlurParams>() as u64),
-                },
-                count: None,
-            }],
-        });
-        let shader = Self::SHADER.module(device);
+                }],
+            });
+        let shader = Self::SHADER.module(&gpu.device);
         let passes = |source_layout: wgpu::BindGroupLayout, tent_entry| {
             let layout = pipeline_recipe::pipeline_layout(
-                device,
+                &gpu.device,
                 "palantir.backdrop.blur.pl",
                 &[Some(&source_layout), Some(&params_layout)],
             );
@@ -278,7 +285,7 @@ impl BackdropBlur {
                     blend: None,
                     ..PipelineRecipe::color(label, &shader, &layout, LEVEL_FORMAT)
                 }
-                .build(device)
+                .build(gpu)
             };
             SourcePasses {
                 tent: pipeline("palantir.backdrop.blur.tent", tent_entry, &[]),
@@ -300,23 +307,23 @@ impl BackdropBlur {
                 "palantir.backdrop.blur.vertical",
                 &shader,
                 &pipeline_recipe::pipeline_layout(
-                    device,
+                    &gpu.device,
                     "palantir.backdrop.blur.pl",
                     &[Some(&filtered.layout), Some(&params_layout)],
                 ),
                 LEVEL_FORMAT,
             )
         }
-        .build(device);
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        .build(gpu);
+        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("palantir.backdrop.blur.sampler"),
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
         let params_capacity = 16;
-        let params = params_buffer(device, params_capacity);
-        let params_group = params_group(device, &params_layout, &params);
+        let params = params_buffer(&gpu.device, params_capacity);
+        let params_group = params_group(&gpu.device, &params_layout, &params);
         Self {
             filtered,
             loaded,

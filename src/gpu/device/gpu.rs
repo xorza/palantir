@@ -7,6 +7,7 @@ use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::error::UnmetRequirements;
 use std::iter;
 use std::num::NonZeroU32;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
 use std::time::Duration;
 
@@ -30,6 +31,9 @@ pub struct Gpu {
     pub(crate) queue: wgpu::Queue,
     health: DeviceHealth,
     pass_traffic: PassTraffic,
+    /// Held across each pipeline build on the device, so builds take turns: see
+    /// [`Self::create_render_pipeline`].
+    pipeline_turn: Arc<Mutex<()>>,
 }
 
 impl Gpu {
@@ -47,6 +51,7 @@ impl Gpu {
             pass_traffic: PassTraffic::of(&device.adapter_info()),
             device,
             queue,
+            pipeline_turn: Arc::default(),
         }
     }
 
@@ -102,6 +107,33 @@ impl Gpu {
         }
         buffer.unmap();
         buffer
+    }
+
+    /// A render pipeline as `desc` describes, built while no other build on the device runs.
+    ///
+    /// wgpu-hal's Direct3D 12 backend takes a reference to a cached FXC blob under its cache's
+    /// lock and releases it outside, and FXC counts references without atomics, so two threads
+    /// building from one shader can free a blob the cache still holds
+    /// ([gfx-rs/wgpu#10547](https://github.com/gfx-rs/wgpu/issues/10547), open at wgpu 30.0.1).
+    /// See `AGENTS.md`, "Pipeline builds".
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one place a render pipeline is built, under the device's turn"
+    )]
+    pub(crate) fn create_render_pipeline(
+        &self,
+        desc: &wgpu::RenderPipelineDescriptor<'_>,
+    ) -> wgpu::RenderPipeline {
+        let _turn = self.take_pipeline_turn();
+        self.device.create_render_pipeline(desc)
+    }
+
+    /// The device's pipeline turn. A build that panicked, as the uncaptured-error handler does on
+    /// a validation error, leaves nothing half-done behind the lock, so poison is ignored.
+    fn take_pipeline_turn(&self) -> MutexGuard<'_, ()> {
+        self.pipeline_turn
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     /// What a render pass on the device moves, which decides where a partial frame paints.
@@ -191,6 +223,20 @@ pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
 
     impl Gpu {
+        /// A compute pipeline as `desc` describes, built in the device's turn, as
+        /// [`Self::create_render_pipeline`] builds.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "the one place a compute pipeline is built, under the device's turn"
+        )]
+        pub(crate) fn create_compute_pipeline(
+            &self,
+            desc: &wgpu::ComputePipelineDescriptor<'_>,
+        ) -> wgpu::ComputePipeline {
+            let _turn = self.take_pipeline_turn();
+            self.device.create_compute_pipeline(desc)
+        }
+
         /// Lose the device, as a GPU hang does: `Device::destroy` makes every later call a no-op,
         /// as wgpu's own device-loss tests use it, and the wait runs the lost callback, as a real
         /// loss runs it inside the call that finds the loss.
@@ -204,6 +250,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::surface::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
@@ -221,6 +268,55 @@ mod tests {
             usage: wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: true,
         });
+    }
+
+    /// A compute pipeline with an empty entry point, for a build that compiles a shader.
+    fn empty_compute(gpu: &Gpu) -> wgpu::ComputePipeline {
+        let module = gpu
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("palantir.test.empty_compute"),
+                source: wgpu::ShaderSource::Wgsl("@compute @workgroup_size(1) fn main() {}".into()),
+            });
+        gpu.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("palantir.test.empty_compute"),
+            layout: None,
+            module: &module,
+            entry_point: Some("main"),
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+            cache: None,
+        })
+    }
+
+    /// A build on a clone of the `Gpu` waits while the device's turn is held: it can finish only
+    /// after the release, so a build seen done during the 50 ms hold means builds do not take
+    /// turns. A turn a panic poisoned still passes to the next build.
+    #[test]
+    fn pipeline_builds_on_one_device_take_turns() {
+        let gpu = isolated_headless_test_gpu();
+        let clone = gpu.handles();
+        let built = AtomicBool::new(false);
+        thread::scope(|scope| {
+            let turn = gpu.take_pipeline_turn();
+            scope.spawn(|| {
+                empty_compute(&clone);
+                built.store(true, Ordering::Release);
+            });
+            thread::sleep(Duration::from_millis(50));
+            assert!(
+                !built.load(Ordering::Acquire),
+                "the build waits for the turn"
+            );
+            drop(turn);
+        });
+        assert!(built.load(Ordering::Acquire));
+
+        panic_probe::assert_panics_with("a build panicked", || {
+            let _turn = gpu.take_pipeline_turn();
+            panic!("a build panicked");
+        });
+        assert!(gpu.pipeline_turn.is_poisoned());
+        empty_compute(&gpu);
     }
 
     /// A healthy device reads healthy and still panics on a validation error, as wgpu's default

@@ -105,12 +105,13 @@ pub(crate) mod internals {
         pub(crate) fn probe<I: Pod, O: Pod>(self, probe: &str, inputs: &[I]) -> Vec<O> {
             assert!(!inputs.is_empty(), "a probe runs on at least one input");
             let gpu = headless_test_gpu();
-            let device = &gpu.device;
-            let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-                label: Some(self.label),
-                source: wgpu::ShaderSource::Wgsl((self.specialize() + probe).into()),
-            });
-            let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            let module = gpu
+                .device
+                .create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(self.label),
+                    source: wgpu::ShaderSource::Wgsl((self.specialize() + probe).into()),
+                });
+            let pipeline = gpu.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
                 label: Some("test.probe"),
                 layout: None,
                 module: &module,
@@ -118,25 +119,27 @@ pub(crate) mod internals {
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 cache: None,
             });
-            let input = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("test.probe.in"),
-                contents: bytemuck::cast_slice(inputs),
-                usage: wgpu::BufferUsages::STORAGE,
-            });
+            let input = gpu
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("test.probe.in"),
+                    contents: bytemuck::cast_slice(inputs),
+                    usage: wgpu::BufferUsages::STORAGE,
+                });
             let size = inputs.len() * size_of::<O>();
-            let output = device.create_buffer(&wgpu::BufferDescriptor {
+            let output = gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("test.probe.out"),
                 size: size as u64,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
             });
-            let read = device.create_buffer(&wgpu::BufferDescriptor {
+            let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("test.probe.read"),
                 size: size as u64,
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
                 mapped_at_creation: false,
             });
-            let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            let bind_group = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("test.probe.bg"),
                 layout: &pipeline.get_bind_group_layout(0),
                 entries: &[
@@ -150,8 +153,9 @@ pub(crate) mod internals {
                     },
                 ],
             });
-            let mut encoder =
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+            let mut encoder = gpu
+                .device
+                .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
             {
                 let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor::default());
                 pass.set_pipeline(&pipeline);

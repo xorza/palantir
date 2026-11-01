@@ -62,6 +62,10 @@ fn fs() -> @location(0) vec4<f32> {
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 impl GpuPaint for DepthTriangle {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "an app's own pipeline, built on its one UI thread; the turn guards Palantir's builds"
+    )]
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         let device = ctx.gpu.device();
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
