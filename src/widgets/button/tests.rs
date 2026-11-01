@@ -112,6 +112,29 @@ fn space_and_enter_click_a_focused_button() {
         [true, false, false],
         "Enter clicks the button, and the app gets none"
     );
+    // With no scope of the app's own, the button's is the only one: a read outside it gets what
+    // the button does not take, as the app's scope did.
+    let bare = |ui: &mut Ui| {
+        let clicked = record(false)(ui);
+        [
+            clicked,
+            ui.key_pressed(Key::Char('f')),
+            ui.key_pressed(Key::Enter),
+        ]
+    };
+    let _ = h.frame_value(bare);
+    h.key(Key::Char('f'));
+    assert_eq!(
+        h.frame_value(bare),
+        [false, true, false],
+        "f reaches the app root"
+    );
+    h.key(Key::Enter);
+    assert_eq!(
+        h.frame_value(bare),
+        [true, false, false],
+        "Enter clicks the button, and the app root gets none"
+    );
     h.key(Key::Enter);
     assert!(
         !h.frame_value(record(true)),

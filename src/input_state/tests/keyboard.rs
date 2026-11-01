@@ -59,8 +59,8 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 
 /// An app that declares **no scope at all** reads every chord: routing a chord to
 /// "the scope the reader speaks for" would silence `shortcut_pressed` for every consumer
-/// that never calls `input_scope`. Both sides of the grant answer `None`, and `None
-/// == None` keeps it working.
+/// that never calls `input_scope`. A read outside every scope gets each press no scope
+/// claims, and with no scope none is claimed.
 #[test]
 fn a_tree_with_no_scopes_still_reads_every_chord() {
     let mut h = Harness::mono(glam::UVec2::new(200, 200));

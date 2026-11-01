@@ -2,6 +2,7 @@
 //! a shadow and a backdrop filter, as one value a theme hands over whole.
 
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
@@ -99,12 +100,23 @@ impl Chrome {
             && self.backdrop_filter.is_noop()
     }
 
+    /// `padding` grown by the border on every edge, as a node wearing this chrome lays out: **the
+    /// one definition of the fold** `Tree::open_node` applies, for widgets that need the inner
+    /// rect before the tree has it (`TextEdit`, `TextEditTheme::corner_centering`, the switch's
+    /// knob). Through the f16 lanes [`Spacing`] stores, so a fractional border, as one a look
+    /// animates, rounds here as it does in the layout.
+    #[inline]
+    pub(crate) fn fold_padding(&self, padding: Spacing) -> Spacing {
+        let ring = self.border_inset();
+        if ring == 0.0 {
+            return padding;
+        }
+        Spacing::saturating(padding.to_array().map(|lane| lane + ring))
+    }
+
     /// How far the border reaches in from the edge: its width, or zero when the
-    /// width paints nothing. **The one definition of the fold** `Tree::open_node`
-    /// applies to a chrome's padding, for widgets that need the inner rect before
-    /// the tree has it (`TextEdit`, `TextEditTheme::corner_centering`). On the
-    /// width alone, not [`Stroke::is_noop`]: a border an invisible color makes
-    /// still gets room.
+    /// width paints nothing. On the width alone, not [`Stroke::is_noop`]: a border an invisible
+    /// color makes still gets room.
     #[inline]
     pub(crate) const fn border_inset(&self) -> f32 {
         if is_invisible(self.border.width) {

@@ -25,7 +25,6 @@ mod view_state;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
@@ -444,14 +443,9 @@ impl<'a> TextEdit<'a> {
         // `Tree::open_node` folds chrome stroke width into the stored padding, and the
         // encoder's clip mask is `rect.deflated_by(post-inflate padding)`, so glyph and
         // caret coordinates must use that value or the top glyph row is scissored away.
-        let stroke_w = look.chrome.border_inset();
-        let padding = Spacing::saturating(
-            self.widget
-                .authored_padding()
-                .unwrap()
-                .to_array()
-                .map(|v| v + stroke_w),
-        );
+        let padding = look
+            .chrome
+            .fold_padding(self.widget.authored_padding().unwrap());
         let prev_block_offset = state.view.block_offset;
         let layout = TextLayout::resolve(LayoutInput {
             response_rect: response.layout_rect,

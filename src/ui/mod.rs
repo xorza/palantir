@@ -493,7 +493,9 @@ impl Ui {
     }
 
     /// `true` if `key` went down this frame, OS repeats included, whatever the modifiers,
-    /// and the press was granted to this record position's scope.
+    /// and the press was granted to this record position's scope. Outside every scope, a press
+    /// no scope on the focus path claims: a focused button keeps its Enter from an app that
+    /// declares no scope of its own.
     ///
     /// A key reads in the pointer's words, pressed, [held](Self::key_held) and
     /// [released](Self::key_released), each whatever the modifiers, as Dear ImGui's
@@ -524,7 +526,7 @@ impl Ui {
     }
 
     /// `true` if a press this frame matches `shortcut`, its modifiers exactly, and was granted
-    /// to this record position's scope.
+    /// to this record position's scope, as [`Self::key_pressed`] routes it.
     ///
     /// The read also watches the chord, so an off-focus press of it wakes the next frame. A read
     /// skipped behind a chord that fired, as the right side of `a || b` is, still watches: a
@@ -543,11 +545,15 @@ impl Ui {
         self.input.key_pressed(reader, &self.cascade, key)
     }
 
-    /// [`Self::shortcut_pressed`] read as `reader` rather than the record position.
+    /// [`Self::shortcut_pressed`] read inside `reader`, as the scope around it, rather than at
+    /// the record position. For a read made before `reader` records: an app's global chords,
+    /// read at the start of a frame as its root widget, speak for its root scope, and resolve
+    /// against the scopes the last frame recorded.
     #[inline]
-    pub(crate) fn shortcut_pressed_as(&mut self, reader: WidgetId, shortcut: Shortcut) -> bool {
+    pub fn shortcut_pressed_as(&mut self, reader: WidgetId, shortcut: impl Into<Shortcut>) -> bool {
         let reader = self.key_reader_as(reader);
-        self.input.shortcut_pressed(reader, &self.cascade, shortcut)
+        self.input
+            .shortcut_pressed(reader, &self.cascade, shortcut.into())
     }
 
     /// The key reader at this record position.

@@ -254,7 +254,7 @@ impl Widget {
     /// encloses it. Keeps the chord subscribed for the wake gate.
     pub fn shortcut_pressed(&mut self, ui: &mut Ui, shortcut: impl Into<Shortcut>) -> bool {
         let id = self.resolve(ui);
-        ui.shortcut_pressed_as(id, shortcut.into())
+        ui.shortcut_pressed_as(id, shortcut)
     }
 
     /// [`Self::shortcut_pressed`] for `key` whatever the modifiers, as [`Ui::key_pressed`]

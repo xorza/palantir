@@ -83,14 +83,15 @@ impl TextEditTheme {
     /// trailing edge alone, so the glyphs sit half a caret to the leading side of
     /// the box's middle.
     pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2 {
-        let [left, top, ..] = self.defaults.padding.to_array();
-        // `Tree::open_node` folds the chrome's border into the padding, so the inner
-        // rect sits inside the ring, and `TextEdit::show` mirrors that fold. Off
-        // `normal`: the width is one number across states (see
-        // [`TextEditTheme::from_parts`]).
-        let ring = self.looks.normal.chrome.border_inset();
-        at - Vec2::new(text.w, text.h) * 0.5
-            - Vec2::new(left + ring + self.caret_width * 0.5, top + ring)
+        // The inner rect sits inside the ring, as `Tree::open_node` folds it. Off `normal`: the
+        // width is one number across states (see [`TextEditTheme::from_parts`]).
+        let [left, top, ..] = self
+            .looks
+            .normal
+            .chrome
+            .fold_padding(self.defaults.padding)
+            .to_array();
+        at - Vec2::new(text.w, text.h) * 0.5 - Vec2::new(left + self.caret_width * 0.5, top)
     }
 
     /// A field whose stroke changes color on focus but never width.

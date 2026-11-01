@@ -2,6 +2,7 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::animatable::Animatable;
@@ -86,7 +87,9 @@ impl ToggleKind for Knob<'_> {
     }
 
     fn paint(ui: &mut Ui, id: WidgetId, slot: &ToggleTheme, chrome: &Chrome, checked: bool) {
-        let geometry = SwitchTrack::from_slot(slot).knob(chrome.border_inset());
+        // The track's content box starts where the layout's fold of its border puts it.
+        let [border, ..] = chrome.fold_padding(Spacing::ZERO).to_array();
+        let geometry = SwitchTrack::from_slot(slot).knob(border);
         let knob_id = id.with("knob");
         // One row from off to on, as Flutter's `Switch` runs one position: the ends are read each
         // frame, so a theme that moves the track or changes an ink carries the knob with it, and

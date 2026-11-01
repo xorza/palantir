@@ -148,16 +148,27 @@ impl Scopes {
             .or(self.outermost)
     }
 
-    /// Which scope a read at `parent` speaks for; outside every scope, the plane's outermost. `None` means no scope exists at all, not "silenced" (see [`Self::silences`]).
+    /// Whether a press of `class` reaches a read that speaks for `reader` ([`Self::reader`]): the
+    /// scope it is granted to, or, outside every scope, a press no scope on the path claims. The
+    /// outermost scope takes that press as its fallback grant, but a read outside it is not
+    /// inside it: an app with no scope of its own does not read the Enter its focused button
+    /// takes.
+    pub(super) fn reaches(&self, class: KeyClass, reader: Option<WidgetId>) -> bool {
+        match reader {
+            Some(_) => self.grant(class) == reader,
+            None => !self.path_takes(class),
+        }
+    }
+
+    /// The innermost scope on the active plane around a read at `parent`, or `None` outside every
+    /// scope. Not "silenced" (see [`Self::silences`]).
     pub(super) fn reader(
         &mut self,
         parent: Option<WidgetId>,
         cascade: &Cascade,
     ) -> Option<WidgetId> {
         let active = self.active_plane?;
-        let Some(parent) = parent else {
-            return self.outermost;
-        };
+        let parent = parent?;
         if let Some(memo) = self.reader_memo
             && memo.parent == parent
         {
@@ -167,8 +178,7 @@ impl Scopes {
             .live
             .iter()
             .rfind(|row| row.plane == active && cascade.is_within(parent, row.id))
-            .map(|row| row.id)
-            .or(self.outermost);
+            .map(|row| row.id);
         self.reader_memo = Some(ReaderMemo { parent, scope });
         scope
     }

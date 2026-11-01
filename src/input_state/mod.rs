@@ -360,7 +360,7 @@ impl InputState {
         let scope = self.scopes.reader(reader.parent, cascade);
         self.frame_keyboard_events
             .iter()
-            .any(|press| matches(*press) && self.scopes.grant(KeyClass::of(*press)) == scope)
+            .any(|press| matches(*press) && self.scopes.reaches(KeyClass::of(*press), scope))
     }
 
     /// Whether `key` is down now, whatever the modifiers. A fact of the keyboard, as the

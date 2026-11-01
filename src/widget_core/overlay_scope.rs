@@ -92,10 +92,10 @@ impl OverlayScope {
     /// Lay the backdrop down, record `body` into the claimed layer, and report both
     /// dismissal edges.
     ///
-    /// Escape is read in here, before the layer closes: afterwards the ambient
-    /// scope sits below this overlay's and would silence it. A backdrop-less scope
-    /// reports `false` without asking, as `shortcut_pressed` would re-arm a wake every
-    /// frame. An eater goes down first so it paints *under* the body (hit-testing
+    /// Escape is read in here as the overlay's own scope, before the layer closes:
+    /// afterwards the ambient scope sits below this overlay's and would silence it. A
+    /// backdrop-less scope reports `false` without asking, as `shortcut_pressed` would re-arm
+    /// a wake every frame. An eater goes down first so it paints *under* the body (hit-testing
     /// runs in reverse, so the body still wins); it senses all four pointer
     /// interactions so pan, scroll and pinch cannot leak to the host, and only
     /// `Sense::CLICK` dismisses.
@@ -123,7 +123,7 @@ impl OverlayScope {
         let mut escape_pressed = false;
         let inner = scope.show(|ui| {
             let inner = body(ui);
-            escape_pressed = owns_input && ui.shortcut_pressed(Key::Escape);
+            escape_pressed = owns_input && ui.shortcut_pressed_as(self.owner, Key::Escape);
             inner
         });
         OverlayTurn {

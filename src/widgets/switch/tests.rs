@@ -178,13 +178,14 @@ fn one_share_places_the_knob_and_blends_its_ink() {
 
     let track = h.arranged(id.with("box"));
     let knob = h.arranged(id.with("knob"));
-    // The look's border moves on the check too, and shifts the knob on both axes alike.
-    let (left, top) = (knob.min.x - track.min.x, knob.min.y - track.min.y);
+    // The look moves the track's border on the check too, here 1.00015625 px, which the layout's
+    // f16 padding stores as 1: the knob keeps its 3 px inset from the edge it sits against.
+    assert_eq!(knob.min.y - track.min.y, 3.0);
     assert_close(
-        left - top,
-        15.0 * 0.16,
+        knob.min.x - track.min.x,
+        3.0 + 15.0 * 0.16,
         1e-6,
-        "the border's shift cancels within a rounding",
+        "the share is 0.016 / 0.1, rounded in f32",
     );
     let chrome = h
         .ui_ref()

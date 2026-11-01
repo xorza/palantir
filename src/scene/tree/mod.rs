@@ -24,7 +24,6 @@ use crate::common::hash::Hasher;
 use crate::common::idx16::Idx16;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_def::GridDef;
@@ -463,11 +462,7 @@ impl Tree {
             // A border paints inside the arranged rect, so `padding` grows by it. Done
             // here so layout columns carry the effective padding and the `LayoutCore`
             // hash invalidates `MeasureCache` when it shifts.
-            let ring = chrome.border_inset();
-            if ring != 0.0 {
-                let [l, t, r, b] = cols.layout.padding.to_array();
-                cols.layout.padding = Spacing::saturating([l + ring, t + ring, r + ring, b + ring]);
-            }
+            cols.layout.padding = chrome.fold_padding(cols.layout.padding);
             // Storage noop gate for chrome; mirrors `Shapes::add`.
             let needs_chrome_row = !chrome.is_noop()
                 || !focus_ring.is_noop()
