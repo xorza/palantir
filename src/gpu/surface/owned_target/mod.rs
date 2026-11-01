@@ -120,25 +120,21 @@ impl OwnedTarget {
     /// Every texel as the texture holds it, in its own format, copied back and waited for:
     /// `texels` takes the rows top down with no padding between them. Returns `false`, `texels`
     /// left empty, when the copy does not map, as [`TexelReadback::read`] says. The staging
-    /// buffer stays for the next copy, except after a failed one, whose map may still be pending.
+    /// buffer stays for the next copy, also after a failed one, whose pending map the read aborts.
     ///
     /// # Panics
     ///
     /// As [`TexelReadback::new`].
     pub(crate) fn copy_texels(&mut self, texels: &mut Vec<u8>) -> bool {
-        let readback = self
-            .readback
-            .get_or_insert_with(|| TexelReadback::new(&self.gpu.device, &self.texture));
-        let read = readback.read(&self.gpu, &self.texture, texels);
-        if !read {
-            self.readback = None;
-        }
-        read
+        self.readback
+            .get_or_insert_with(|| TexelReadback::new(&self.gpu.device, &self.texture))
+            .read(&self.gpu, &self.texture, texels)
     }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::surface::capture::{Capture, CaptureSource};
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::primitives::geometry::urect::URect;
@@ -152,9 +148,9 @@ pub(crate) mod internals {
         /// # Panics
         ///
         /// For a texture not in 8-bit RGBA or BGRA, or made without `COPY_SRC`, and when the device
-        /// is lost before the copy maps.
+        /// is lost before the copy maps or does not finish it.
         pub fn read_back(&self) -> RgbaImage {
-            const LOST: &str = "the read-back copy maps on a device that is not lost";
+            const COPIED: &str = "the read-back copy comes back";
             let size = self.size();
             let source = CaptureSource {
                 texture: &self.texture,
@@ -166,8 +162,9 @@ pub(crate) mod internals {
                 source,
                 URect::new(0, 0, size.x, size.y),
             );
-            assert!(self.gpu.wait_until(&|| !capture.is_pending()), "{LOST}");
-            let image = capture.take().expect(LOST);
+            let waited = self.gpu.wait_until(&|| !capture.is_pending());
+            assert_eq!(waited, GpuWait::Done, "{COPIED}");
+            let image = capture.take().expect(COPIED);
             RgbaImage::from_raw(
                 size.x,
                 size.y,

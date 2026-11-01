@@ -4,8 +4,9 @@
 use crate::app::App;
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, PlayError};
-use crate::driver::locator::{Locate, Locator};
+use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, Stage};
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::host::harness::Harness;
 use crate::host::window_driver::FrameDepth;
 use crate::input::input_event::InputEvent;
@@ -42,15 +43,17 @@ impl Harness {
     /// Run frames of `app`, the clock moving one frame's time before each, until one asks no
     /// repaint, no screenshot is on its way back from the device, which it waits for, no
     /// [wake](crate::Waker) waits, and the app is not [busy](App::is_busy). While the app is busy
-    /// and asks nothing, the settle waits in real time for the wake its work sends. A caret blink
-    /// asks a timed wake, not a repaint, so it settles. Returns the frames run.
+    /// and asks nothing, the settle waits in real time for each wake its work sends, as long as
+    /// the work goes on. A caret blink asks a timed wake, not a repaint, so it settles. Returns
+    /// the frames run.
     ///
     /// # Errors
     ///
     /// [`PlayError::Unsettled`] when the window still asks after the builder's
-    /// [`settle_frames`](crate::HarnessBuilder::settle_frames), and [`PlayError::Busy`] when a
-    /// busy app sends no wake in its
-    /// [`background_wait`](crate::HarnessBuilder::background_wait).
+    /// [`settle_frames`](crate::HarnessBuilder::settle_frames) frames that ask,
+    /// [`PlayError::Busy`] when a busy app sends no wake in its
+    /// [`background_wait`](crate::HarnessBuilder::background_wait), and
+    /// [`PlayError::DeviceLost`] when the window asks for frames or screenshots of a lost device.
     pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
         self.settle_after(app, &format_args!("the settle"))
     }
@@ -74,8 +77,9 @@ impl Harness {
     /// # Errors
     ///
     /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
-    /// [`PlayError::EmptyRegion`] for a region outside the window, and
-    /// [`PlayError::Unsettled`] when the picture has not landed after the builder's
+    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::DeviceLost`] when
+    /// the device is lost, and [`PlayError::Unsettled`] when the picture has not landed after the
+    /// builder's
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames).
     pub fn shot(
         &mut self,
@@ -94,11 +98,18 @@ impl Harness {
         // after any image an earlier ask is owed, one a frame.
         self.next_frame(app);
         for _ in 0..self.settle_frames {
-            self.wait_for_gpu();
+            // A wait that timed out leaves the copy to a later frame.
+            if self.wait_for_gpu() == GpuWait::DeviceLost {
+                return Err(PlayError::DeviceLost);
+            }
             self.next_frame(app);
             if let Some(shot) = self.driver.ui.screenshot_taken(asked) {
                 return Ok(shot.clone());
             }
+        }
+        // The last frame's submit can find the loss.
+        if self.is_device_lost() {
+            return Err(PlayError::DeviceLost);
         }
         Err(PlayError::Unsettled {
             step: format!("the shot of {region:?}"),
@@ -133,33 +144,48 @@ impl Harness {
     }
 
     /// Frames of `app` until it settles, as [`Self::settle`] runs them, naming `step` when it
-    /// does not.
+    /// does not. Only a frame that asks for another counts against
+    /// [`settle_frames`](crate::HarnessBuilder::settle_frames): a frame a busy app's wake brought
+    /// is its progress, and the wait for the next wake starts again after each.
     fn settle_after(&mut self, app: &mut impl App, step: &dyn Debug) -> Result<u32, PlayError> {
         let start = self.frames;
-        let deadline = Instant::now() + self.background_wait;
-        for _ in 0..self.settle_frames {
+        let mut asking = 0;
+        loop {
             let report = self.next_frame(app);
-            if self.driver.has_pending_screenshots() {
-                self.wait_for_gpu();
+            let busy = app.is_busy();
+            let screenshots = self.driver.has_pending_screenshots();
+            // A wake that is no busy work's progress asks for frames as an animation does.
+            if report.repaint_requested || screenshots || (self.wake.is_pending() && !busy) {
+                // A lost device lands no screenshot and paints no frame an animation asks for.
+                if self.is_device_lost() {
+                    return Err(PlayError::DeviceLost);
+                }
+                asking += 1;
+                if asking == self.settle_frames {
+                    return Err(PlayError::Unsettled {
+                        step: format!("{step:?}"),
+                        frames: self.settle_frames,
+                    });
+                }
+                // A wait that timed out leaves the copy to a later frame.
+                if screenshots && self.wait_for_gpu() == GpuWait::DeviceLost {
+                    return Err(PlayError::DeviceLost);
+                }
                 continue;
             }
-            if report.repaint_requested || self.wake.is_pending() {
+            if self.wake.is_pending() {
                 continue;
             }
-            if !app.is_busy() {
+            if !busy {
                 return Ok(self.frames - start);
             }
-            if !self.wake.wait(deadline) {
+            if !self.wake.wait(Instant::now() + self.background_wait) {
                 return Err(PlayError::Busy {
                     step: format!("{step:?}"),
                     seconds: self.background_wait.as_secs_f32(),
                 });
             }
         }
-        Err(PlayError::Unsettled {
-            step: format!("{step:?}"),
-            frames: self.settle_frames,
-        })
     }
 
     /// One frame of `app`, one frame's time after the last.
@@ -176,8 +202,8 @@ struct HarnessStage<'a, A> {
 }
 
 impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
-    fn point(&mut self, at: &Locator<X>) -> Result<Vec2, PlayError> {
-        Ok(at.find(self.app, &self.h.driver.ui)?.point)
+    fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError> {
+        Ok(at.point_for(self.app, &self.h.driver.ui, reach)?)
     }
 
     /// A modifier change that holds what is held already sends nothing, which would wait a frame.

@@ -8,6 +8,7 @@ use crate::app::App;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
@@ -239,12 +240,10 @@ impl OffscreenHost {
     /// Block until the device has finished every frame submitted so far, and the copies of their
     /// screenshots are back, also when other threads poll the same device. A screenshot asked
     /// for in one of them then lands in the next frame, so a caller that waits once and runs one
-    /// frame reads it in [`Ui::screenshot_taken`](crate::Ui::screenshot_taken).
-    pub fn wait_for_gpu(&self) {
-        let _ = self
-            .core
-            .gpu()
-            .wait_until(&|| self.driver.screenshots_landed());
+    /// frame reads it in [`Ui::screenshot_taken`](crate::Ui::screenshot_taken). Returns how the
+    /// wait ended: [`GpuWait::Done`], or why the copies did not come back.
+    pub fn wait_for_gpu(&self) -> GpuWait {
+        self.core.wait_for_gpu(&self.driver)
     }
 
     /// Whether the device this host draws with is lost: a GPU reset, a driver update or a removed

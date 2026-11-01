@@ -147,8 +147,9 @@ impl HarnessBuilder {
         self
     }
 
-    /// The frames [`Harness::settle`] runs before the window reads as unsettled; 600 by default,
-    /// ten seconds at 60 frames a second.
+    /// The frames that ask for another a [`Harness::settle`] runs before the window reads as
+    /// unsettled; 600 by default, ten seconds at 60 frames a second. Frames a busy app's wakes
+    /// bring do not count.
     ///
     /// # Panics
     ///

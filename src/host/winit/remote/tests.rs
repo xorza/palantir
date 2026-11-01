@@ -221,8 +221,8 @@ fn a_remote_plays_and_reads_a_live_window() {
 }
 
 /// A query that panics answers with the panic's message, and the window goes on to answer the
-/// next. A settle waits out a busy app until a frame finds it idle: work another thread ends
-/// after the settle began.
+/// next; a slow query to a hidden window answers. A settle waits out a busy app until a frame
+/// finds it idle: work another thread ends after the settle began.
 #[test]
 fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
     let (handle, thread) = serve();
@@ -234,6 +234,15 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
         })
     );
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
+    // A query runs between frames, a hidden window's too, so its answer outlasts the 50 ms tick
+    // that gives up a wait for a hidden window's frame.
+    handle.frames.set_hidden(WINDOW, true);
+    let slow = remote.query(|app, _| {
+        thread::sleep(Duration::from_millis(120));
+        app.clicks
+    });
+    assert_eq!(slow, Ok(0));
+    handle.frames.set_hidden(WINDOW, false);
 
     remote.settle().unwrap();
     handle

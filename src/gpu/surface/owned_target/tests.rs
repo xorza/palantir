@@ -39,10 +39,10 @@ fn a_cleared_texture_reads_back_in_rgba_order() {
 }
 
 /// A texel copy of the cleared 3 × 2 target takes its 24 bytes, the row padding cut, and a
-/// second copy goes through the staging buffer the first made. On a lost device the copy fails,
-/// leaves `texels` empty and drops the buffer, whose map may still be pending.
+/// second copy goes through the staging buffer the first made. On a lost device the copy fails
+/// and leaves `texels` empty, and the buffer stays.
 #[test]
-fn a_texel_copy_keeps_its_staging_buffer_until_one_fails() {
+fn a_texel_copy_keeps_its_staging_buffer() {
     let gpu = isolated_headless_test_gpu();
     let mut target = OwnedTarget::new(
         &gpu,
@@ -65,7 +65,7 @@ fn a_texel_copy_keeps_its_staging_buffer_until_one_fails() {
     gpu.lose();
     assert!(!target.copy_texels(&mut texels));
     assert!(texels.is_empty());
-    assert!(target.readback.is_none());
+    assert!(target.readback.is_some());
 }
 
 /// A zero side, or one past the device's largest 2D texture, panics before wgpu sees it; the

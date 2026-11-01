@@ -3,8 +3,9 @@ use crate::display::Display;
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, LocateError, PlayError};
 use crate::driver::locator::Locator;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::render_target::TargetFormat;
-use crate::gpu::test_gpu::headless_test_gpu;
+use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
 use crate::input::keyboard::key::Key;
@@ -130,6 +131,13 @@ impl App for Board {
                 if one.double_clicked() {
                     self.double += 1;
                 }
+                Button::new()
+                    .id(WidgetId::from_hash("off"))
+                    .label("Off")
+                    .size((Sizing::fixed(80.0), Sizing::fixed(24.0)))
+                    .pos(Vec2::new(200.0, 40.0))
+                    .disabled(true)
+                    .show(ui);
                 button(ui, "twin-a", "Twin", Vec2::new(10.0, 40.0));
                 if button(ui, "twin-b", "Twin", Vec2::new(10.0, 70.0)).clicked() {
                     self.twin_b += 1;
@@ -155,9 +163,10 @@ impl App for Board {
 }
 
 /// A person plays the board on a painting window: a click by text clicks once; "Twin" names two
-/// and refuses, `Nth` picks the second; a clipped button is out of view; two clicks are two clicks
-/// and a double click one double click; typed text commits on Enter. A failed step names its
-/// index.
+/// and refuses, `Nth` picks the second; a clipped button is out of view; a disabled one refuses a
+/// click and takes a hover; a drag 2 px long, under the 4 px threshold, refuses; two clicks are
+/// two clicks and a double click one double click; typed text commits on Enter. A failed step
+/// names its index.
 #[test]
 fn play_acts_as_a_person() {
     let gpu = headless_test_gpu();
@@ -193,6 +202,32 @@ fn play_acts_as_a_person() {
             error: PlayError::Locate(LocateError::OffScreen { .. }),
         })
     ));
+
+    assert!(matches!(
+        h.play(
+            &mut app,
+            &[Action::Move("Off".into()), Action::click("Off")]
+        ),
+        Err(ActError {
+            ran: 1,
+            error: PlayError::Locate(LocateError::Disabled { .. }),
+        })
+    ));
+    let short = Action::<Infallible>::Drag {
+        from: "One".into(),
+        to: Locator::Offset(Box::new("One".into()), Vec2::new(2.0, 0.0)),
+        button: PointerButton::Left,
+        mods: ShortcutMods::NONE,
+        steps: Action::DRAG_STEPS,
+    };
+    assert_eq!(
+        h.play(&mut app, &[short]),
+        Err(ActError {
+            ran: 0,
+            error: PlayError::ShortDrag { travel: 2.0 },
+        })
+    );
+    assert_eq!(app.one, 1, "the refused drag clicked nothing");
 
     h.play(&mut app, &[Action::click("One"), Action::click("One")])
         .unwrap();
@@ -278,8 +313,9 @@ impl App for Worker {
 
 /// A settle waits out a busy app: a worker ends its work and wakes the window after the settle
 /// began, and the settle runs the woken frame and returns. A wake waits until a frame takes it.
-/// A busy app that never wakes the window
-/// fails the settle once the builder's background wait passes.
+/// A busy app that never wakes the window fails the settle once the builder's background wait
+/// passes. Work that wakes the window as it goes holds the settle past that wait, and its woken
+/// frames count against no frame bound: 10 wakes 30 ms apart outlast a 200 ms wait and 3 frames.
 #[test]
 fn a_settle_waits_for_a_busy_apps_wake() {
     let mut h = Harness::builder(UVec2::new(64, 32))
@@ -324,6 +360,47 @@ fn a_settle_waits_for_a_busy_apps_wake() {
             seconds: 0.01
         })
     );
+
+    let mut progressing = Harness::builder(UVec2::new(64, 32))
+        .mono()
+        .background_wait(Duration::from_millis(200))
+        .settle_frames(3)
+        .build();
+    let busy = Arc::new(AtomicBool::new(true));
+    let mut app = Worker {
+        busy: Arc::clone(&busy),
+        frames: 0,
+    };
+    progressing.frame_app(&mut app);
+    let waker = progressing.ui().waker();
+    let work = thread::spawn(move || {
+        for _ in 0..10 {
+            thread::sleep(Duration::from_millis(30));
+            waker.wake();
+        }
+        busy.store(false, Ordering::Release);
+        waker.wake();
+    });
+    progressing.settle(&mut app).unwrap();
+    work.join().unwrap();
+    assert!(!app.is_busy());
+}
+
+/// On a lost device a shot, and a settle that waits on a screenshot, report the loss: no copy
+/// comes back, where both ran out their frames and read as an animation that runs on.
+#[test]
+fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
+    let gpu = isolated_headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(64, 32))
+        .gpu(gpu.handles())
+        .build();
+    let mut app = tile;
+    h.settle(&mut app).unwrap();
+    gpu.lose();
+    assert_eq!(h.shot(&mut app, None), Err(PlayError::DeviceLost));
+    assert_eq!(h.wait_for_gpu(), GpuWait::DeviceLost);
+    h.ui().request_screenshot(None).unwrap();
+    assert_eq!(h.settle(&mut app), Err(PlayError::DeviceLost));
 }
 
 /// A shot at scale 1.5 of a 400 × 200 logical window is 600 × 300 texels; a shot of the logical

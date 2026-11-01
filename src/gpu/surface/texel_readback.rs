@@ -2,6 +2,7 @@
 //! next copy.
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::map_state::MapState;
 use crate::gpu::surface::render_target;
 use glam::UVec2;
@@ -86,7 +87,7 @@ impl TexelReadback {
         );
         gpu.queue.submit(iter::once(encoder.finish()));
         let map = MapState::map_read(&self.buffer);
-        if !gpu.wait_until(&|| !map.is_pending()) {
+        if gpu.wait_until(&|| !map.is_pending()) != GpuWait::Done {
             // Aborts the map, so the next read can map the buffer again.
             if map.is_pending() {
                 self.buffer.unmap();

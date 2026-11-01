@@ -33,6 +33,15 @@ pub enum Locator<X = Infallible> {
     App(X),
 }
 
+/// What a located point is for, which decides what may stand there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Reach {
+    /// A pointer that moves or scrolls there, which a disabled widget takes as it is.
+    Hover,
+    /// A press, which a disabled widget takes and does nothing with.
+    Press,
+}
+
 /// A place an app names, which [`Locator::App`] carries: a graph node, a canvas point.
 pub trait Locate<A>: Debug {
     /// Every place this names in `app`'s last frame, as `ui` laid it out, in order, into `out`.
@@ -126,6 +135,30 @@ impl<X> Locator<X> {
         }
     }
 
+    /// The point this names, for `reach`. A press refuses a point where the topmost widget that
+    /// clicks is disabled: it would take the press and do nothing, which Playwright's
+    /// actionability check refuses too (<https://playwright.dev/docs/actionability>).
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::find`], and [`LocateError::Disabled`] for a press on a disabled widget.
+    pub(crate) fn point_for<A>(&self, app: &A, ui: &Ui, reach: Reach) -> Result<Vec2, LocateError>
+    where
+        X: Locate<A>,
+    {
+        let point = self.find(app, ui)?.point;
+        if reach == Reach::Press {
+            let mut widgets = Vec::new();
+            ui.inspect(&mut widgets);
+            if topmost(&widgets, point, Sense::clicks).is_some_and(|widget| widget.disabled) {
+                return Err(LocateError::Disabled {
+                    locator: format!("{self:?}"),
+                });
+            }
+        }
+        Ok(point)
+    }
+
     /// Every place this names, at least one, in order.
     fn find_each<A>(&self, app: &A, ui: &Ui, out: &mut Vec<Found>) -> Result<(), LocateError>
     where
@@ -137,16 +170,24 @@ impl<X> Locator<X> {
                 let mut widgets = Vec::new();
                 ui.inspect(&mut widgets);
                 let shows = |widget: &&InspectedWidget| widget.text.trim() == text;
+                // A covered or clipped match is skipped, as the input cannot reach it; the reason
+                // is the error only when no match is reachable.
+                let mut covered = None;
                 let mut hidden = false;
                 for widget in widgets.iter().filter(shows) {
                     if widget.clipped {
                         hidden = true;
                     } else {
-                        out.push(reached(&widgets, widget, locator)?);
+                        match reached(&widgets, widget, locator) {
+                            Ok(found) => out.push(found),
+                            Err(error) => covered = covered.or(Some(error)),
+                        }
                     }
                 }
                 if out.is_empty() {
-                    return Err(if hidden {
+                    return Err(if let Some(covered) = covered {
+                        covered
+                    } else if hidden {
                         LocateError::OffScreen { locator: locator() }
                     } else {
                         LocateError::NotFound {
@@ -181,37 +222,37 @@ impl<X> Locator<X> {
     }
 }
 
-/// `widget` pressed at its center, when the input it senses reaches it there: it is the topmost
-/// widget that clicks there, for one that clicks, or that hovers, for one that only hovers, as
-/// the hit test reads the paint-ordered table `widgets`. A widget that takes only focus or a
-/// scroll has no press to reach it, so any center serves.
+/// `widget` pressed at its center, when the input it senses reaches it there by its
+/// [routing](Sense::routing), as the hit test reads the paint-ordered table `widgets`.
 fn reached(
     widgets: &[InspectedWidget],
     widget: &InspectedWidget,
     locator: impl Fn() -> String,
 ) -> Result<Found, LocateError> {
     let found = Found::rect(widget.rect);
-    // The routing that serves what the widget senses: a press goes to the topmost widget that
-    // clicks or drags, a hover to the topmost that hovers, so a hover-only label over a button
-    // takes no press from it.
-    let routes: fn(Sense) -> bool = if widget.sense.clicks() {
-        Sense::clicks
-    } else if widget.sense.hovers() {
-        Sense::hovers
-    } else {
+    let Some(routes) = widget.sense.routing() else {
         return Ok(found);
     };
-    let top = widgets
-        .iter()
-        .rev()
-        .find(|other| routes(other.sense) && other.rect.contains(found.point));
-    match top {
+    match topmost(widgets, found.point, routes) {
         Some(top) if top.id == widget.id => Ok(found),
         _ => Err(LocateError::Covered {
             locator: locator(),
             point: found.point,
         }),
     }
+}
+
+/// The last widget of the paint-ordered table `widgets` at `point` that `routes` accepts: the one
+/// the hit test hands that input to.
+fn topmost(
+    widgets: &[InspectedWidget],
+    point: Vec2,
+    routes: fn(Sense) -> bool,
+) -> Option<&InspectedWidget> {
+    widgets
+        .iter()
+        .rev()
+        .find(|widget| routes(widget.sense) && widget.rect.contains(point))
 }
 
 /// The visible texts that contain `wanted`, ignoring case, or the first few when none does.

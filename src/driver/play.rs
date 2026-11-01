@@ -3,20 +3,21 @@
 
 use crate::driver::action::Action;
 use crate::driver::error::PlayError;
-use crate::driver::locator::Locator;
+use crate::driver::locator::{Locator, Reach};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::shortcut::ShortcutMods;
+use crate::input_state::capture::DRAG_THRESHOLD;
 use glam::Vec2;
 use std::fmt::Debug;
 use std::time::Duration;
 
 /// A window a player acts on: where its locators land, its input door, and its frames.
 pub(crate) trait Stage<X> {
-    /// The one point `at` names in the last frame.
-    fn point(&mut self, at: &Locator<X>) -> Result<Vec2, PlayError>;
+    /// The one point `at` names in the last frame, for `reach` ([`Locator::point_for`]).
+    fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError>;
 
     /// Send `event`, which the next frame plays.
     fn input(&mut self, event: InputEvent<'_>);
@@ -47,18 +48,18 @@ pub(crate) fn play<X: Debug>(
 ) -> Result<(), PlayError> {
     match action {
         Action::Move(at) => {
-            let point = stage.point(at)?;
+            let point = stage.point(at, Reach::Hover)?;
             stage.input(InputEvent::PointerMoved(point));
         }
         Action::Click { at, button, mods } => {
-            let point = stage.point(at)?;
+            let point = stage.point(at, Reach::Press)?;
             hover(stage, point, action)?;
             stage.space_press()?;
             press_and_release(stage, *button, *mods)?;
             stage.note_press()?;
         }
         Action::DoubleClick(at) => {
-            let point = stage.point(at)?;
+            let point = stage.point(at, Reach::Press)?;
             hover(stage, point, action)?;
             stage.space_press()?;
             for _ in 0..2 {
@@ -73,8 +74,13 @@ pub(crate) fn play<X: Debug>(
             mods,
             steps,
         } => {
-            let start = stage.point(from)?;
-            let end = stage.point(to)?;
+            let start = stage.point(from, Reach::Press)?;
+            let end = stage.point(to, Reach::Hover)?;
+            // A shorter move is a click to the window, which would pass with no sign.
+            let travel = start.distance(end);
+            if travel < DRAG_THRESHOLD {
+                return Err(PlayError::ShortDrag { travel });
+            }
             hover(stage, start, action)?;
             stage.space_press()?;
             stage.input(InputEvent::ModifiersChanged(mods.held()));
@@ -93,7 +99,7 @@ pub(crate) fn play<X: Debug>(
             stage.note_press()?;
         }
         Action::Scroll { at, delta } => {
-            let point = stage.point(at)?;
+            let point = stage.point(at, Reach::Hover)?;
             hover(stage, point, action)?;
             stage.input(InputEvent::ScrollPixels(*delta));
         }
@@ -103,7 +109,7 @@ pub(crate) fn play<X: Debug>(
             if !(factor.is_finite() && *factor > 0.0) {
                 return Err(PlayError::BadPinch { factor: *factor });
             }
-            let point = stage.point(at)?;
+            let point = stage.point(at, Reach::Hover)?;
             hover(stage, point, action)?;
             stage.input(InputEvent::Zoom(*factor));
         }

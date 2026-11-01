@@ -2,12 +2,11 @@
 
 use crate::gpu::device::device_health::DeviceHealth;
 use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::pass_traffic::PassTraffic;
 use crate::gpu::error::UnmetRequirements;
 use std::iter;
 use std::num::NonZeroU32;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use std::time::Duration;
 
@@ -135,34 +134,31 @@ impl Gpu {
         let _ = self.drain();
     }
 
-    /// Block until the device has finished every submission made before the call, for at most
-    /// [`WAIT_TIMEOUT`], then until `landed` holds: the wait for a map callback, whose result
-    /// `landed` reads. Returns whether it landed: `false` on a lost device and on a wait that
-    /// timed out.
+    /// Block until the device has finished every submission made before the call, a wait of at
+    /// most [`WAIT_TIMEOUT`], then until `landed` holds: the wait for a map callback, whose result
+    /// `landed` reads. Returns how the wait ended.
     ///
-    /// A map callback another thread's poll collected runs on that thread, outside wgpu's lock, so
-    /// it can run after the wait's own work-done callback: wgpu-core runs mappings before
-    /// submissions only within one poll's `UserClosures::fire`. That callback ran, so the poll
-    /// that collected the mapping has, and it lands soon. A wait that assumed the order missed one
-    /// map in 20,000 with four threads polling (high-end NVIDIA GPU, Vulkan), and two in three when a callback
-    /// slept 1 ms.
-    pub(crate) fn wait_until(&self, landed: &dyn Fn() -> bool) -> bool {
-        if !self.drain() {
-            return false;
+    /// Once the device's wait returns, every map of a finished submission is collected, by the
+    /// wait's own poll or an earlier one on another thread, which runs the callback outside
+    /// wgpu's lock, as soon as it can, so the spin for it is short. A wait that took the device's
+    /// finished work for the callbacks run missed one map in 20,000 with four threads polling
+    /// (high-end NVIDIA GPU, Vulkan), and two in three when a callback slept 1 ms.
+    pub(crate) fn wait_until(&self, landed: &dyn Fn() -> bool) -> GpuWait {
+        let drained = self.drain();
+        if drained != GpuWait::Done {
+            return drained;
         }
         while !landed() {
             if self.is_lost() {
-                return false;
+                return GpuWait::DeviceLost;
             }
             thread::yield_now();
         }
-        true
+        GpuWait::Done
     }
 
     /// The blocking wait behind [`Self::wait_until`]: wgpu's `PollType::Wait`, as wgpu's examples
-    /// and Zed's readback wait, then a work-done callback of its own, which a poll on another
-    /// thread can collect and run after this one. Returns whether the device finished: `false` on a
-    /// lost device and on a timeout.
+    /// and Zed's readback wait.
     ///
     /// The wait is fatal on a device it finds lost, so only a caller that asks to block reaches it:
     /// an offscreen host's `wait_for_gpu`, a read-back, a bench, a test. A device its owner
@@ -171,29 +167,22 @@ impl Gpu {
         clippy::disallowed_methods,
         reason = "the one blocking wait, behind the health check"
     )]
-    fn drain(&self) -> bool {
+    fn drain(&self) -> GpuWait {
         if self.is_lost() {
-            return false;
+            return GpuWait::DeviceLost;
         }
-        let ran = Arc::new(AtomicBool::new(false));
-        let marker = Arc::clone(&ran);
-        self.queue
-            .on_submitted_work_done(move || marker.store(true, Ordering::Release));
         let waited = self.device.poll(wgpu::PollType::Wait {
             submission_index: None,
             timeout: Some(WAIT_TIMEOUT),
         });
+        if self.is_lost() {
+            return GpuWait::DeviceLost;
+        }
         if let Err(error) = waited {
             tracing::warn!(%error, "the device did not finish its work in {WAIT_TIMEOUT:?}");
-            return false;
+            return GpuWait::TimedOut;
         }
-        while !ran.load(Ordering::Acquire) {
-            if self.is_lost() {
-                return false;
-            }
-            thread::yield_now();
-        }
-        true
+        GpuWait::Done
     }
 }
 
@@ -215,6 +204,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::surface::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
     use crate::internals::panic_probe;
@@ -286,8 +276,9 @@ mod tests {
                     thread::sleep(Duration::from_millis(1));
                     landed.store(result.is_ok(), Ordering::Release);
                 });
-            assert!(
+            assert_eq!(
                 gpu.wait_until(&|| mapped.load(Ordering::Acquire)),
+                GpuWait::Done,
                 "round {round}"
             );
             assert_eq!(&*buffer.slice(..).get_mapped_range().unwrap(), &bytes);
@@ -313,7 +304,8 @@ mod tests {
         let gpu = isolated_headless_test_gpu();
         let healthy = gpu.create_filled_buffer(&desc, &[1, 2, 3, 4, 5, 6]);
         let map = MapState::map_read(&healthy);
-        assert!(gpu.wait_until(&|| !map.is_pending()) && map.is_mapped());
+        assert_eq!(gpu.wait_until(&|| !map.is_pending()), GpuWait::Done);
+        assert!(map.is_mapped());
         assert_eq!(
             &*healthy.slice(..).get_mapped_range().unwrap(),
             &[1, 2, 3, 4, 5, 6, 0, 0]

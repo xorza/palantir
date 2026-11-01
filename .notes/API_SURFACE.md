@@ -910,6 +910,12 @@ GpuView
         pub const fn repaint(self, repaint: bool) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
+GpuWait
+    enum GpuWait: Clone, Copy, Debug, Eq, PartialEq
+        Done
+        DeviceLost
+        TimedOut
+
 Gradient
     struct Gradient<G>
         pub geometry: G
@@ -1044,7 +1050,7 @@ Harness
         pub fn window_commands(&self) -> &[WindowCommand]
         pub fn clipboard_text(&self) -> String
         pub fn set_clipboard_text(&mut self, text: &str)
-        pub fn wait_for_gpu(&self)
+        pub fn wait_for_gpu(&self) -> GpuWait
         pub const fn ui(&mut self) -> &mut Ui
 
 HarnessBuilder
@@ -1375,6 +1381,7 @@ LocateError
         Ambiguous { locator: String, matches: Vec<String> }
         OffScreen { locator: String }
         Covered { locator: String, point: Vec2 }
+        Disabled { locator: String }
         NoNth { locator: String, count: usize }
         impl From<LocateError> for PlayError
 
@@ -1501,7 +1508,7 @@ OffscreenHost
         pub fn at(&mut self, time: Duration) -> &mut Self
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self
-        pub fn wait_for_gpu(&self)
+        pub fn wait_for_gpu(&self) -> GpuWait
         pub fn is_device_lost(&self) -> bool
         pub fn recover(&mut self, gpu: Gpu)
         pub fn frame(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut impl App) -> FrameReport
@@ -1621,6 +1628,7 @@ PlayError
         Locate(LocateError)
         Unsettled { step: String, frames: u32 }
         BadPinch { factor: f32 }
+        ShortDrag { travel: f32 }
         EmptyRegion
         NoPixels
         DeviceLost

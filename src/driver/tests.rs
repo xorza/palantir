@@ -1,5 +1,5 @@
 use crate::driver::error::LocateError;
-use crate::driver::locator::{Found, Locate, Locator};
+use crate::driver::locator::{Found, Locate, Locator, Reach};
 use crate::host::harness::Harness;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
@@ -14,8 +14,8 @@ use glam::{UVec2, Vec2};
 
 /// Buttons 60 × 20 on a canvas: "One" at (10, 10), "Two" at (10, 40), two "Twin" at (10, 70) and
 /// (10, 100), "Over" recorded on top of "Under" at (100, 10), a "Label" that only hovers on top of
-/// "Behind" at (100, 40), and "Hidden" placed below a 40 × 20
-/// clip at (200, 10).
+/// "Behind" at (100, 40), a "Dup" under "Cover" at (100, 70) and another "Dup" free at (100, 100),
+/// a disabled "Off" at (200, 70), and "Hidden" placed below a 40 × 20 clip at (200, 10).
 fn scene(ui: &mut Ui) {
     let button = |ui: &mut Ui, id: &str, label: &str, pos: Vec2| {
         Button::new()
@@ -23,6 +23,7 @@ fn scene(ui: &mut Ui) {
             .label(label)
             .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
             .pos(pos)
+            .disabled(label == "Off")
             .show(ui);
     };
     Panel::canvas()
@@ -41,6 +42,10 @@ fn scene(ui: &mut Ui) {
                 .sense(Sense::HOVER)
                 .pos(Vec2::new(100.0, 40.0))
                 .show(ui);
+            button(ui, "dup-covered", "Dup", Vec2::new(100.0, 70.0));
+            button(ui, "cover", "Cover", Vec2::new(100.0, 70.0));
+            button(ui, "dup-free", "Dup", Vec2::new(100.0, 100.0));
+            button(ui, "off", "Off", Vec2::new(200.0, 70.0));
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
@@ -128,9 +133,10 @@ fn nth_picks_among_ambiguous_matches() {
     ));
 }
 
-/// A widget under another is covered at its center; one only a clip shows is off screen; a text
-/// no widget shows lists the visible texts that contain it, or the first ones; an id no
-/// interactive widget has lists nothing.
+/// A widget under another is covered at its center, and a text that a covered widget and a free
+/// one show finds the free one; one only a clip shows is off screen; a text no widget shows lists
+/// the visible texts that contain it, or the first ten; an id no interactive widget has lists
+/// nothing. A press refuses a disabled widget, which a hover still finds.
 #[test]
 fn a_locator_says_why_it_found_nothing() {
     let mut h = primed();
@@ -142,6 +148,10 @@ fn a_locator_says_why_it_found_nothing() {
         })
     );
     assert!(find(&mut h, &text("Over")).is_ok());
+    assert_eq!(
+        find(&mut h, &text("Dup")),
+        Ok(Found::rect(Rect::new(100.0, 100.0, 60.0, 20.0)))
+    );
     assert!(
         find(&mut h, &text("Behind")).is_ok(),
         "a label that only hovers takes no press from the button under it"
@@ -165,7 +175,7 @@ fn a_locator_says_why_it_found_nothing() {
         Err(LocateError::NotFound {
             locator: r#"Text("zzz")"#.to_owned(),
             nearest: listed(&[
-                "One", "Two", "Twin", "Twin", "Under", "Over", "Behind", "Label"
+                "One", "Two", "Twin", "Twin", "Under", "Over", "Behind", "Label", "Dup", "Cover"
             ]),
         })
     );
@@ -173,6 +183,21 @@ fn a_locator_says_why_it_found_nothing() {
         find(&mut h, &WidgetId::from_hash("absent").into()),
         Err(LocateError::NotFound { nearest, .. }) if nearest.is_empty()
     ));
+    let off = text("Off");
+    assert_eq!(
+        off.point_for(&(), h.ui(), Reach::Press),
+        Err(LocateError::Disabled {
+            locator: r#"Text("Off")"#.to_owned()
+        })
+    );
+    assert_eq!(
+        off.point_for(&(), h.ui(), Reach::Hover),
+        Ok(Vec2::new(230.0, 80.0))
+    );
+    assert_eq!(
+        text("One").point_for(&(), h.ui(), Reach::Press),
+        Ok(Vec2::new(40.0, 20.0))
+    );
 }
 
 /// The places an app names: a list of rects, by index.
@@ -249,5 +274,11 @@ fn locate_errors_read_as_corrections() {
             point: Vec2::new(1.0, 2.5),
         }),
         "L lies under another widget at (1, 2.5); close what covers it"
+    );
+    assert_eq!(
+        error(LocateError::Disabled {
+            locator: "L".to_owned()
+        }),
+        "L is disabled; a press there does nothing"
     );
 }

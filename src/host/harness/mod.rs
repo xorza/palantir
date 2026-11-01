@@ -58,6 +58,7 @@ use crate::display::Display;
 use crate::display::user_scale::UserScale;
 use crate::driver::error::LocateError;
 use crate::driver::locator::{Found, Locate, Locator};
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::host::core::HostCore;
@@ -474,9 +475,14 @@ impl Harness {
     ///
     /// # Panics
     ///
-    /// As [`Self::hover`].
+    /// As [`Self::hover`], and unless `factor` is finite and above 0: the window drops any other,
+    /// which would pass with no sign.
     #[track_caller]
     pub fn pinch(&mut self, at: impl Into<Locator>, factor: f32) -> InputDelta {
+        assert!(
+            factor.is_finite() && factor > 0.0,
+            "pinch takes a finite factor above 0, not {factor}"
+        );
         self.hover(at);
         self.on_input(InputEvent::Zoom(factor))
     }
@@ -564,8 +570,9 @@ impl Harness {
     ///
     /// # Panics
     ///
-    /// When `id` did not arrange in the last frame, or another widget takes the pointer at that
-    /// point.
+    /// When `id` did not arrange in the last frame, or another widget takes at that point the
+    /// input `id` acts on: a press for a widget that clicks or drags, a hover for one that only
+    /// hovers.
     #[track_caller]
     pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2 {
         let response = self.driver.ui.response_for(id);
@@ -573,13 +580,20 @@ impl Harness {
             panic!("{id:?} has no arranged rect: it did not record, or no frame ran")
         });
         let pos = response.transform.apply_point(layout.min + local);
-        let senses_anything = |sense: Sense| sense != Sense::NONE;
-        let hit = self.driver.ui.cascade().hit_test(pos, senses_anything);
-        assert_eq!(
-            hit,
-            Some(id),
-            "{id:?} does not take the pointer at {pos:?}; {hit:?} is on top there",
-        );
+        let cascade = self.driver.ui.cascade();
+        let routing = cascade
+            .hit_rows()
+            .iter()
+            .find(|row| row.widget_id == id)
+            .and_then(|row| row.sense.routing());
+        if let Some(routes) = routing {
+            let hit = cascade.hit_test(pos, routes);
+            assert_eq!(
+                hit,
+                Some(id),
+                "{id:?} does not take the pointer at {pos:?}; {hit:?} is on top there",
+            );
+        }
         pos
     }
 
@@ -632,15 +646,21 @@ impl Harness {
     }
 
     /// Block until the device finished every frame painted so far, and the copies of their
-    /// screenshots are back, so a screenshot asked lands in the next frame. Does nothing below
-    /// [`Depth::Gpu`](crate::Depth::Gpu).
-    pub fn wait_for_gpu(&self) {
+    /// screenshots are back, so a screenshot asked lands in the next frame. Returns how the wait
+    /// ended: [`GpuWait::Done`], or why the copies did not come back. Below
+    /// [`Depth::Gpu`](crate::Depth::Gpu) nothing paints, and it is done at once.
+    pub fn wait_for_gpu(&self) -> GpuWait {
         if self.core.paints() {
-            let _ = self
-                .core
-                .gpu()
-                .wait_until(&|| self.driver.screenshots_landed());
+            self.core.wait_for_gpu(&self.driver)
+        } else {
+            GpuWait::Done
         }
+    }
+
+    /// Whether the device this harness paints with is lost; never below
+    /// [`Depth::Gpu`](crate::Depth::Gpu).
+    fn is_device_lost(&self) -> bool {
+        self.core.paints() && self.core.gpu().is_lost()
     }
 
     /// The window's `Ui`, for what no method here reads.

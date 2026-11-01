@@ -96,51 +96,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
 an item deletes it.
 
-### Batch 2: the players report the truth
-
-Files: `src/host/harness/{mod.rs,play.rs,harness_builder.rs}`, `src/driver/{locator.rs,play.rs}`,
-`src/host/winit/remote/mod.rs`, `src/host/core.rs`, `src/host/offscreen/mod.rs`,
-`src/gpu/surface/{texel_readback.rs,owned_target/mod.rs}`, `src/gpu/device/gpu.rs`,
-`examples/showcase/shot/{report.rs,script.rs}`.
-
-- [ ] **BUG** `harness/play.rs:79-108,136-161`: on a lost device `shot` and a settle with a
-  pending capture run `settle_frames` full frames and return `Unsettled` ("an animation runs on").
-  Target: both loops return `PlayError::DeviceLost` once `core.gpu().is_lost()`.
-- [ ] **BUG** `harness/play.rs:139-157`: the busy deadline is set once, so an app that keeps
-  sending progress wakes for over 30 s fails with `Busy` ("sent no wake in 30 s"); each woken
-  frame also spends one of `settle_frames`. Target: restart the deadline on each wake; count only
-  frames that asked a repaint. Same bound in `Remote::wait_frame` (`remote/mod.rs:277-307`).
-- [ ] **BUG** `driver/locator.rs:141-147`: `out.push(reached(..)?)` returns `Covered` at the first
-  covered match, though another match is the one the input reaches (a modal's "Cancel" over the
-  page's). Target: skip covered matches like clipped ones; `Covered` only when none is reachable;
-  `Ambiguous`/`Nth` over reachable matches. Test with a duplicate label under an overlay.
-- [ ] **BUG** `driver/play.rs:69-94`: a `Drag` shorter than `DRAG_THRESHOLD` plays as a click and
-  returns `Ok`; `Harness::drag_to` panics on the same input. Target: refuse it after both points
-  resolve (**API**: `PlayError::ShortDrag { travel }`).
-- [ ] **BUG** `remote/mod.rs:239-261`: `receive` fails any request once `is_hidden` reads true
-  after one 50 ms tick, though queries run without a frame. Target: the hidden check only on waits
-  that need a frame (`shot`, `wait_frame`); queries wait up to `WAIT`.
-- [ ] `harness/mod.rs:576-577`: `point_in` hits with `sense != Sense::NONE`, the "any sensing
-  widget" rule AGENTS.md refuses; `hit_at` uses `Sense::hovers`. Target: one routing function
-  shared with `locator::reached`.
-- [ ] `driver/locator.rs:188-215`: a press on a disabled widget plays and returns `Ok`. Target:
-  Click, DoubleClick and Drag refuse it (**API**: `LocateError::Disabled`), as Playwright's
-  actionability check does.
-- [ ] `harness/mod.rs:479`: `pinch` passes a factor of 0, negative or NaN, which `play` refuses
-  as `BadPinch`. Target: release `assert!` plus `# Panics` (cold call, Input validation rule 2).
-- [ ] `harness/mod.rs:637-644`, `offscreen/mod.rs:243-248`: `wait_for_gpu` is written twice and
-  discards whether the copies landed. Target: `HostCore::wait_for_gpu(&self, &WindowDriver) ->
-  bool`; each host forwards it (the bool return is **API**).
-- [ ] `texel_readback.rs:89-95` vs `owned_target/mod.rs:128-137`: the readback unmaps a pending
-  map "so the next read can map again", and `copy_texels` drops the readback anyway. Target: keep
-  the unmap and the buffer; delete `self.readback = None` and update `owned_target/tests.rs`.
-- [ ] `gpu.rs:144-167`: the work-done marker in `drain` gives `wait_until` nothing its `landed`
-  spin does not; the docs claim "for at most `WAIT_TIMEOUT`" for `wait_until`, whose spin has no
-  bound. Target: `drain` is the health check and `poll(Wait)`; correct the bound in the docs.
-- [ ] **BUG** (example) `shot/report.rs:121-127` vs `script.rs:438-450`: `quoted` writes text
-  through `Debug`, whose `\n`, `\t`, `\u{..}` `unquote` reads back as `n`, `t`, `u{..}`. Target:
-  quote with `\"` and `\\` only.
-
 ### Batch 3: keyboard activation claims only its keys
 
 Files: `src/widget_core/widget/mod.rs`, `src/input/key_class.rs`, `src/input_state/mod.rs`,

@@ -1,6 +1,7 @@
 //! Why a [`Locator`](crate::Locator) names no one place, and why an [`Action`](crate::Action)
 //! could not be played.
 
+use crate::input_state::capture::DRAG_THRESHOLD;
 use glam::Vec2;
 use std::error;
 use std::fmt::{self, Display, Formatter};
@@ -35,6 +36,11 @@ pub enum LocateError {
         locator: String,
         /// Where a press would land on the other widget.
         point: Vec2,
+    },
+    /// A press would land on a disabled widget, which takes it and does nothing.
+    Disabled {
+        /// The locator, as its `Debug` writes it.
+        locator: String,
     },
     /// [`Locator::Nth`](crate::Locator::Nth) around a locator that names one place, or past the
     /// matches there are.
@@ -71,6 +77,9 @@ impl Display for LocateError {
                 "{locator} lies under another widget at ({}, {}); close what covers it",
                 point.x, point.y
             ),
+            Self::Disabled { locator } => {
+                write!(f, "{locator} is disabled; a press there does nothing")
+            }
             Self::NoNth { locator, count } => {
                 write!(f, "{locator} picks past the {count} matches there are")
             }
@@ -98,6 +107,12 @@ pub enum PlayError {
     BadPinch {
         /// The factor asked.
         factor: f32,
+    },
+    /// A drag that moves `travel` logical pixels, under the threshold a drag starts at, so the
+    /// window would read it as a click.
+    ShortDrag {
+        /// The distance from the press to the release.
+        travel: f32,
     },
     /// A picture of a region that holds no pixel of the window.
     EmptyRegion,
@@ -141,6 +156,11 @@ impl Display for PlayError {
             Self::BadPinch { factor } => {
                 write!(f, "a pinch takes a finite factor above 0, not {factor}")
             }
+            Self::ShortDrag { travel } => write!(
+                f,
+                "a drag of {travel} px is under the {DRAG_THRESHOLD} px a drag starts at, so it \
+                 would play as a click; drag farther"
+            ),
             Self::EmptyRegion => f.write_str("the region holds no pixel of the window"),
             Self::NoPixels => f.write_str("the window paints no pixels; build it with a GPU"),
             Self::DeviceLost => f.write_str("the device was lost before the pixels came back"),

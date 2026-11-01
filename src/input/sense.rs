@@ -49,6 +49,20 @@ impl Sense {
         self.intersects(Self::CLICK.union(Self::DRAG))
     }
 
+    /// The routing the input a widget of this sense acts on takes: a press goes to the topmost
+    /// widget that clicks or drags, a hover to the topmost that hovers, so a hover-only label
+    /// over a button takes no press from it. `None` for a widget that takes only focus or a
+    /// scroll, which no press reaches.
+    pub(crate) const fn routing(self) -> Option<fn(Self) -> bool> {
+        if self.clicks() {
+            Some(Self::clicks)
+        } else if self.hovers() {
+            Some(Self::hovers)
+        } else {
+            None
+        }
+    }
+
     /// Whether this sense captures pinch zoom factors.
     pub(crate) const fn pinches(self) -> bool {
         self.contains(Self::PINCH)

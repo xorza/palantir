@@ -501,11 +501,36 @@ fn unquote(word: &str) -> Option<(String, &str)> {
     while let Some((idx, c)) = chars.next() {
         match c {
             '"' => return Some((text, &rest[idx + 1..])),
-            '\\' => text.push(chars.next()?.1),
+            '\\' => text.push(escaped(&mut chars)?),
             c => text.push(c),
         }
     }
     None
+}
+
+/// The character an escape after a backslash names, as Rust's `Debug` of a string writes it, so a
+/// report's quoted text reads back as it was: `\n`, `\t`, `\r`, `\0`, `\u{..}`, or the next
+/// character as it is.
+fn escaped(chars: &mut impl Iterator<Item = (usize, char)>) -> Option<char> {
+    Some(match chars.next()?.1 {
+        'n' => '\n',
+        't' => '\t',
+        'r' => '\r',
+        '0' => '\0',
+        'u' => {
+            if chars.next()?.1 != '{' {
+                return None;
+            }
+            let mut code = 0_u32;
+            loop {
+                match chars.next()?.1 {
+                    '}' => break char::from_u32(code)?,
+                    digit => code = code.checked_mul(16)? + digit.to_digit(16)?,
+                }
+            }
+        }
+        c => c,
+    })
 }
 
 fn number(word: &str) -> Option<f32> {

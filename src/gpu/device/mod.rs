@@ -9,6 +9,7 @@ pub(crate) mod gpu;
 pub(crate) mod gpu_ctx;
 pub(crate) mod gpu_frame_ctx;
 pub(crate) mod gpu_init_ctx;
+pub(crate) mod gpu_wait;
 pub(crate) mod pass_traffic;
 pub(crate) mod power_preference;
 pub(crate) mod requested_gpu;

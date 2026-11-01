@@ -10,6 +10,7 @@
 use crate::app::App;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
@@ -114,6 +115,12 @@ impl HostCore {
         for driver in drivers {
             self.attach_window(driver);
         }
+    }
+
+    /// Block until the device finished every frame submitted so far and the copies of
+    /// `driver`'s screenshots are back, also when other threads poll the device.
+    pub(super) fn wait_for_gpu(&self, driver: &WindowDriver) -> GpuWait {
+        self.gpu().wait_until(&|| driver.screenshots_landed())
     }
 
     /// Whether the core has a device half to paint with.

@@ -16,7 +16,7 @@ use glam::Vec2;
 
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, PlayError};
-use crate::driver::locator::{Locate, Locator};
+use crate::driver::locator::{Locate, Locator, Reach};
 use crate::driver::play::{self, Stage};
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{HostHandle, UserEvent};
@@ -167,7 +167,7 @@ impl<T: 'static> Remote<T> {
         self.handle
             .send(UserEvent::Query(self.window, task))
             .map_err(|_| PlayError::Disconnected)?;
-        let answered = self.receive(&answer);
+        let answered = self.receive(&answer, Answer::BetweenFrames);
         if answered.is_err() {
             given_up.store(true, Ordering::Release);
         }
@@ -181,8 +181,8 @@ impl<T: 'static> Remote<T> {
     /// # Errors
     ///
     /// [`PlayError::Unsettled`] when the window still asks for frames after 30 s,
-    /// [`PlayError::Busy`] when the app stays busy as long, [`PlayError::NoFrame`] when it runs
-    /// none, and [`PlayError::Disconnected`] when it closed.
+    /// [`PlayError::Busy`] when a busy app runs no frame for as long, [`PlayError::NoFrame`] when
+    /// the window runs none, and [`PlayError::Disconnected`] when it closed.
     pub fn settle(&self) -> Result<u32, PlayError> {
         let first = self.frame_id();
         self.wait_frame(true, &"the settle")?;
@@ -220,7 +220,7 @@ impl<T: 'static> Remote<T> {
         self.handle
             .send(UserEvent::Shot(self.window, ShotAsk { region, reply }))
             .map_err(|_| PlayError::Disconnected)?;
-        self.receive(&answer)?
+        self.receive(&answer, Answer::InFrame)?
     }
 
     /// The visible interactive widgets of the last frame whose text holds `filter`, ignoring
@@ -234,25 +234,26 @@ impl<T: 'static> Remote<T> {
         self.query(move |_, ui| InspectedWidget::visible(ui, filter.as_deref()))
     }
 
-    /// What `answer` receives, bounded in real time; a hidden window, whose frames wait for it to
-    /// show, gives up at once.
-    fn receive<R>(&self, answer: &Receiver<R>) -> Result<R, PlayError> {
+    /// What `answer` receives, bounded in real time; an answer a frame gives waits on a hidden
+    /// window, whose frames wait for it to show, not at all.
+    fn receive<R>(&self, answer: &Receiver<R>, comes: Answer) -> Result<R, PlayError> {
         let start = Instant::now();
         loop {
             match answer.recv_timeout(TICK) {
                 Ok(value) => return Ok(value),
                 Err(RecvTimeoutError::Disconnected) => return Err(PlayError::Disconnected),
-                Err(RecvTimeoutError::Timeout) => self.check_waiting(start)?,
+                Err(RecvTimeoutError::Timeout) => self.check_waiting(start, comes)?,
             }
         }
     }
 
-    /// Whether a wait that began at `start` may go on: not past [`WAIT`], the window shown, and
-    /// its thread not held.
-    fn check_waiting(&self, start: Instant) -> Result<(), PlayError> {
+    /// Whether a wait that began at `start` may go on: not past [`WAIT`], its thread not held,
+    /// and the window shown, for an answer a frame gives.
+    fn check_waiting(&self, start: Instant, comes: Answer) -> Result<(), PlayError> {
         let waited = start.elapsed();
         let blocked = self.blocked.as_ref().is_some_and(|blocked| blocked());
-        if waited > WAIT || blocked || self.handle.is_hidden(self.window) {
+        let hidden = comes == Answer::InFrame && self.handle.is_hidden(self.window);
+        if waited > WAIT || blocked || hidden {
             return Err(PlayError::NoFrame {
                 seconds: waited.as_secs_f32(),
             });
@@ -273,38 +274,54 @@ impl<T: 'static> Remote<T> {
     }
 
     /// Wait for a frame that saw every event sent and, when `settled`, asks no repaint and finds
-    /// the app not busy.
+    /// the app not busy. A busy app's wait for its next frame starts again at each, as its work
+    /// goes on.
     fn wait_frame(&self, settled: bool, step: &dyn Debug) -> Result<(), PlayError> {
         let start = Instant::now();
         let first = self.frame_id();
+        let mut seen = first;
+        let mut progressed = start;
         loop {
             let last = self.last_frame()?;
             let unsettled = settled && (last.repaint_requested || last.busy);
             if last.sent_inputs >= self.sent.get() && !unsettled {
                 return Ok(());
             }
-            if let Err(error) = self.check_waiting(start) {
+            let working = settled && last.busy && !last.repaint_requested;
+            if last.frame_id != seen {
+                seen = last.frame_id;
+                progressed = Instant::now();
+            }
+            let since = if working { progressed } else { start };
+            if let Err(error) = self.check_waiting(since, Answer::InFrame) {
                 let frames = last.frame_id.saturating_sub(first);
-                let waited = start.elapsed();
-                return Err(
-                    if settled && waited > WAIT && last.busy && !last.repaint_requested {
-                        PlayError::Busy {
-                            step: format!("{step:?}"),
-                            seconds: waited.as_secs_f32(),
-                        }
-                    } else if settled && frames > 0 && waited > WAIT {
-                        PlayError::Unsettled {
-                            step: format!("{step:?}"),
-                            frames: u32::try_from(frames).unwrap_or(u32::MAX),
-                        }
-                    } else {
-                        error
-                    },
-                );
+                let waited = since.elapsed();
+                return Err(if working && waited > WAIT {
+                    PlayError::Busy {
+                        step: format!("{step:?}"),
+                        seconds: waited.as_secs_f32(),
+                    }
+                } else if settled && frames > 0 && waited > WAIT {
+                    PlayError::Unsettled {
+                        step: format!("{step:?}"),
+                        frames: u32::try_from(frames).unwrap_or(u32::MAX),
+                    }
+                } else {
+                    error
+                });
             }
             self.handle.frames.wait(TICK);
         }
     }
+}
+
+/// Where an answer a remote waits for comes from, which decides whether a hidden window gives it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Answer {
+    /// A query, which the loop runs between frames, also of a hidden window.
+    BetweenFrames,
+    /// A frame, which a hidden window does not run.
+    InFrame,
 }
 
 /// A remote as the [`Stage`] the shared rules play on, in real time.
@@ -313,9 +330,11 @@ struct RemoteStage<'a, T: 'static> {
 }
 
 impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage<'_, T> {
-    fn point(&mut self, at: &Locator<X>) -> Result<Vec2, PlayError> {
+    fn point(&mut self, at: &Locator<X>, reach: Reach) -> Result<Vec2, PlayError> {
         let at = at.clone();
-        Ok(self.remote.query(move |app, ui| at.find(&*app, ui))??.point)
+        Ok(self
+            .remote
+            .query(move |app, ui| at.point_for(&*app, ui, reach))??)
     }
 
     fn input(&mut self, event: InputEvent<'_>) {

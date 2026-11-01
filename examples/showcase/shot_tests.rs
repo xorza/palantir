@@ -53,7 +53,8 @@ fn the_header_sets_the_window() {
     assert_eq!(Script::parse("").unwrap().header, Header::default());
 }
 
-/// Each locator form: text, text with an index, a point, and either moved by an offset.
+/// Each locator form: text, text with an index, a point, and either moved by an offset; a text
+/// with the escapes a report writes.
 #[test]
 fn locators_read_each_form() {
     let point = Vec2::new(10.0, 20.5);
@@ -76,6 +77,19 @@ fn locators_read_each_form() {
             steps(&format!("hover {word}")),
             [StepKind::Act(Action::Move(want))],
             "{word}"
+        );
+    }
+    // A label as a report quotes it, through `Debug`, reads back whole.
+    for label in [
+        "two\nlines",
+        "a\ttab",
+        "a bell\u{7}",
+        "back\\slash \"quoted\"",
+    ] {
+        assert_eq!(
+            steps(&format!("hover {label:?}")),
+            [StepKind::Act(Action::Move(text(label)))],
+            "{label:?}"
         );
     }
 }

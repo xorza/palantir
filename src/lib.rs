@@ -245,6 +245,7 @@ pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;
 pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
 pub use gpu::device::gpu_init_ctx::GpuInitCtx;
+pub use gpu::device::gpu_wait::GpuWait;
 pub use gpu::device::power_preference::PowerPreference;
 pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
