@@ -1122,6 +1122,8 @@ fn begin_load_pass<'e>(
 pub(crate) mod internals {
     #[cfg(test)]
     use crate::gpu::device::pass_traffic::PassTraffic;
+    #[cfg(test)]
+    use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::wgpu_backend::WgpuBackend;
 
@@ -1135,6 +1137,12 @@ pub(crate) mod internals {
             for format in formats {
                 self.prepare_format(format);
             }
+        }
+
+        /// The glyph atlas's eviction and growth counts so far.
+        #[cfg(test)]
+        pub(crate) fn text_atlas_counts(&self) -> AtlasCounts {
+            self.text.atlas_counts()
         }
 
         /// The shadow cutout tables the atlas holds from the frames before.

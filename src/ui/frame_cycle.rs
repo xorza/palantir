@@ -54,8 +54,8 @@ impl<'a> FrameCycle<'a> {
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.device_restored = device_epoch != self.ui.device_epoch;
         self.ui.device_epoch = device_epoch;
-        self.ui.resolve_color_scheme();
         self.ui.frame_runtime.begin_frame(stamp);
+        self.ui.advance_theme();
         self.ui
             .frame_runtime
             .tick_text_clock(self.ui.resources.text());
@@ -73,6 +73,10 @@ impl<'a> FrameCycle<'a> {
             close_requested: self.ui.close_requested(),
         });
 
+        // After the plan, which spends the requests made before it on this frame.
+        if self.ui.theme_transition.shown().is_some() {
+            self.ui.frame_runtime.request_repaint();
+        }
         self.ui.frame_runtime.begin_pass();
 
         let processing = match plan {

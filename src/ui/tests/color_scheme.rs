@@ -18,11 +18,12 @@ fn record(ui: &mut Ui) {
     Button::new().id_salt("apply").label("Apply").show(ui);
 }
 
-/// A pick made during a record keeps that frame's scheme and theme, asks for a frame, and the
-/// next frame shows the other scheme's theme, repainted whole.
+/// With no transition, a pick made during a record keeps that frame's scheme and theme, asks for
+/// a frame, and the next frame shows the other scheme's theme, repainted whole.
 #[test]
 fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
     let mut h = Harness::mono(SURFACE);
+    h.ui().set_theme_transition(None);
     h.frame(record);
     assert_eq!(h.ui_ref().color_scheme(), Dark, "nothing reports a scheme");
 
@@ -95,10 +96,12 @@ fn a_pick_in_one_window_shows_in_another() {
 }
 
 /// The theme epoch moves only when the shown theme does: a write to the hidden slot and a pick
-/// that resolves to the shown scheme leave it, a write to the shown slot moves it.
+/// that resolves to the shown scheme leave it, a write to the shown slot moves it at once with no
+/// transition.
 #[test]
 fn the_theme_epoch_moves_only_with_the_shown_theme() {
     let mut h = Harness::mono(SURFACE);
+    h.ui().set_theme_transition(None);
     h.frame(record);
     let epoch = h.ui_ref().theme_epoch;
 
@@ -116,10 +119,12 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
 }
 
 /// A write to the shown slot during a record asks for the frame that records the rest under it;
-/// a write to the hidden slot, or of the handle the slot holds, asks for nothing.
+/// a write to the hidden slot, or of the handle the slot holds, asks for nothing. With no
+/// transition, so no blend owes frames of its own.
 #[test]
 fn a_shown_theme_write_asks_for_a_frame() {
     let mut h = Harness::mono(SURFACE);
+    h.ui().set_theme_transition(None);
     h.frame(record);
     let shown = Rc::new(Theme::stock(Dark));
     let report = h.frame(|ui| {

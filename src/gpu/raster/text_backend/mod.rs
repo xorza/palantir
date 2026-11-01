@@ -157,9 +157,19 @@ impl TextBackend {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #[cfg(test)]
+    use crate::common::counters::CounterSet;
+    #[cfg(test)]
+    use crate::gpu::raster::raster_atlas::counters::AtlasCounts;
     use crate::gpu::raster::text_backend::TextBackend;
 
     impl TextBackend {
+        /// The glyph atlas's eviction and growth counts so far.
+        #[cfg(test)]
+        pub(crate) fn atlas_counts(&self) -> AtlasCounts {
+            self.pass.atlas.counters.counts()
+        }
+
         /// One frame boundary as a window drives it: tick the shared text clock
         /// (owned by the record pass in production), then sweep this side. For
         /// harnesses with no `Ui`, since [`TextBackend::end_frame`] only reads the clock.

@@ -21,12 +21,17 @@ pub enum Layer {
     Menu = 3,
     /// Hover bubbles, above everything else.
     Tooltip = 4,
-    /// Diagnostics overlays. Painted last, hit-tested first.
+    /// Diagnostics overlays. Painted over every layer but [`Self::Pointer`], hit-tested first.
     Debug = 5,
+    /// A cursor the app draws itself, as a recording of the app shows one. Painted last and never
+    /// hit: nothing recorded here senses input or takes focus, so a click under the cursor
+    /// reaches what it points at. Refused: a cursor drawn over the frame after its readback, a
+    /// second renderer with its own anti-aliasing; [`Self::Debug`], which is hit first.
+    Pointer = 6,
 }
 
 impl Layer {
-    pub(crate) const COUNT: usize = 6;
+    pub(crate) const COUNT: usize = 7;
 
     /// Every layer, back to front. Hit order is reversed. Held to the discriminants by the assertion below.
     pub(crate) const PAINT_ORDER: [Self; Self::COUNT] = [
@@ -36,6 +41,7 @@ impl Layer {
         Self::Menu,
         Self::Tooltip,
         Self::Debug,
+        Self::Pointer,
     ];
 
     #[inline]
@@ -54,5 +60,5 @@ const _: () = {
         );
         i += 1;
     }
-    assert!(Layer::Debug.idx() + 1 == Layer::COUNT);
+    assert!(Layer::Pointer.idx() + 1 == Layer::COUNT);
 };

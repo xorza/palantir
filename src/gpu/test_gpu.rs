@@ -7,10 +7,8 @@ use std::env;
 use std::fmt::{self, Display, Formatter};
 use std::fs::{File, OpenOptions};
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::iter;
 use std::ops::Deref;
 use std::sync::OnceLock;
-use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -18,7 +16,8 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
-use crate::gpu::surface::render_target::{self, TargetFormat};
+use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::surface::texel_readback::TexelReadback;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;
@@ -97,48 +96,13 @@ impl HeadlessTestGpuLease {
     ///
     /// # Panics
     ///
-    /// For a texture made without `COPY_SRC`, or of a compressed or depth format.
+    /// For a texture made without `COPY_SRC`, of a compressed or depth format, and when the copy
+    /// does not map.
     pub fn read_texture(&self, texture: &wgpu::Texture) -> Vec<u8> {
-        let texel = texture
-            .format()
-            .block_copy_size(None)
-            .expect("a color texture copies whole texels");
-        let row = texture.width() * texel;
-        let padded = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.test.read_texture"),
-            size: u64::from(padded) * u64::from(texture.height()),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        let mut encoder = self
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        encoder.copy_texture_to_buffer(
-            texture.as_image_copy(),
-            wgpu::TexelCopyBufferInfo {
-                buffer: &buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(padded),
-                    rows_per_image: Some(texture.height()),
-                },
-            },
-            render_target::extent(render_target::texture_size(texture)),
-        );
-        self.queue.submit(iter::once(encoder.finish()));
-        let slice = buffer.slice(..);
-        let (tx, rx) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |mapped| {
-            tx.send(mapped).ok();
-        });
-        self.wait();
-        rx.recv().unwrap().expect("the read buffer maps");
-        let data = slice.get_mapped_range().unwrap();
-        data.chunks_exact(padded as usize)
-            .flat_map(|line| &line[..row as usize])
-            .copied()
-            .collect()
+        let mut texels = Vec::new();
+        let read = TexelReadback::new(&self.device, texture).read(self, texture, &mut texels);
+        assert!(read, "the read buffer maps");
+        texels
     }
 
     /// A new device on the process's one adapter, whose `max_texture_dimension_2d` is the

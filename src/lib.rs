@@ -60,7 +60,8 @@
 //!
 //! - **[`Theme`]** is the whole style tree, one per [`ColorScheme`]
 //!   ([`Ui::set_theme_for`](Ui::set_theme_for) swaps one; [`Ui::set_scheme_preference`]
-//!   picks which shows), with per-widget bundles ([`Theme::button`], [`Theme::slider`]).
+//!   picks which shows; [`Ui::set_theme_transition`] blends a change), with per-widget bundles
+//!   ([`Theme::button`], [`Theme::slider`]).
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
 //!   `Option`, so `.style(overrides.as_ref())` works.
 //! - **A per-axis setter** ([`Text::color`], [`Separator::thickness`],

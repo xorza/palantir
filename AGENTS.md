@@ -123,6 +123,37 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **A settle waits out a busy app** through `App::is_busy` and `Ui::waker`. Refused: a
   `HostHandle` on the harness, which brings winit; a flag the record sets, stale when no frame
   records ([Playwright auto-wait](https://playwright.dev/docs/actionability)).
+- **`capture` renders one frame at the parked clock**, in the target's format, and runs no
+  other, so a recording sets each frame's time. Refused: `shot`, which runs frames until the
+  picture lands and moves the clock; `read_back`, under `internals`, which an example cannot
+  rely on.
+- **A capture waits for its copy.** The target keeps one staging buffer, so a recording makes no
+  buffer a frame. Refused until measured: a ring of staging buffers that keeps frames in flight,
+  the usual recording pipeline.
+
+## Theme transition
+
+Facts and sources: `.notes/research/2026-11-01-reel.md`.
+
+- **A change blends the `Theme` tree**: each frame shows `lerp(from, to, t)`, so colors,
+  lengths and font sizes move with real layout. Refused: blending `Palette` and `Metrics` and
+  building again through `Theme::from_parts`, which loses every edit an app makes after it; a
+  snapshot of the old frame under a mask (Telegram), which freezes moving content and moves no
+  layout.
+- **An absent value blends through its neutral**, as Flutter's `Color.lerp` takes `null` as
+  transparent; only a value with no neutral switches at `t = 0.5`. Refused: every `Option`
+  switching at 0.5, a pop where a fade is possible.
+- **One setting on the `Ui`**, `set_theme_transition`, which a scheme change follows too, as
+  Flutter's `MaterialApp.themeAnimationStyle`. Refused: a separate animating call, one more
+  method for a choice the setting holds; a spec in `Metrics`, a field the transition itself
+  would snap; a spec per call, which a system change has no call to carry.
+- **Font sizes move unquantized.** The glyph atlas neither grows nor evicts over a 300 ms move
+  of 40 lines from 14 to 18 px at scale 2, and shape keys already quantize to 1/64 px. Refused:
+  whole-pixel sizes during a transition, which step the layout visibly for no measured saving.
+  The worst transition frame, `integration/frame/*/theming`, ran 318 µs on the CPU and 1.06 ms
+  on the GPU (Apple laptop, `--quick`), against 133 µs and 2.18 ms for `scrolling`.
+- **One theme per window.** A subtree theme, as Flutter's `Theme` widget, is not built; the reel
+  morphs the window's theme and morphs it back before the camera leaves the slide.
 
 ## Rounded-clip stencil
 

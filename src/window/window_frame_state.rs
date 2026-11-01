@@ -10,6 +10,8 @@ use crate::window::window_placement::WindowPlacement;
 pub(crate) struct WindowFrameState {
     pub(crate) close_requested: bool,
     pub(crate) placement: WindowPlacement,
+    /// The window showed no frame since its last one, hidden by occlusion or a minimize.
+    pub(crate) shown_again: bool,
     /// The image that landed for this frame, if one did. Boxed: a rare, cold value kept out of
     /// the fields every pass walks (`hot_struct_sizes`).
     pub(crate) screenshot: Option<Box<Screenshot>>,
@@ -21,6 +23,7 @@ impl WindowFrameState {
     pub(crate) fn clear_facts(&mut self) {
         self.close_requested = false;
         self.placement = WindowPlacement::default();
+        self.shown_again = false;
     }
 }
 
@@ -30,4 +33,5 @@ impl WindowFrameState {
 pub(crate) struct WindowFacts {
     pub(crate) close_requested: bool,
     pub(crate) placement: WindowPlacement,
+    pub(crate) shown_again: bool,
 }

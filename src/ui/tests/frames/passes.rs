@@ -413,6 +413,7 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
             .label("label")
             .show(ui);
     };
+    h.ui().set_theme_transition(None);
     h.prime(2, record);
     other.prime(2, record);
     let mut ms = 16;

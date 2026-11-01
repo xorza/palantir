@@ -15,6 +15,7 @@ pub(crate) mod resources;
 pub(crate) mod singletons;
 pub(crate) mod state;
 mod theme_pair;
+mod theme_transition;
 
 use crate::animation::AnimationMap;
 use crate::animation::animation_map_typed::AnimationClock;
@@ -96,6 +97,7 @@ use crate::ui::resources::UiResources;
 use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
 use crate::ui::theme_pair::ThemePair;
+use crate::ui::theme_transition::ThemeTransition;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::vsync::Vsync;
@@ -126,6 +128,8 @@ pub struct Ui {
     /// This window's theme for each scheme. Refcounted so a widget can hold the theme across the
     /// `&mut Ui` its `show` takes; cloning the bundle per widget per frame would be a large copy.
     themes: ThemePair,
+    /// The blend shown while the theme moves to a new one.
+    theme_transition: ThemeTransition,
     /// The scheme this frame shows, resolved once at its start so a frame never mixes two.
     scheme: ColorScheme,
     /// Bumped by every write to the shown theme and every change of the shown scheme, so a frame
@@ -190,6 +194,7 @@ impl Ui {
             scheme: resources.color_scheme(),
             resources,
             themes: ThemePair::stock(),
+            theme_transition: ThemeTransition::default(),
             theme_epoch: 0,
             state: StateMap::default(),
             singletons: Singletons::default(),
@@ -218,8 +223,10 @@ impl Ui {
         self.waker.clone()
     }
 
-    /// The theme of the scheme this frame shows ([`Self::color_scheme`]). `.clone()` is a
-    /// refcount bump, so a style can outlive the `show(ui)` reborrow:
+    /// The theme this frame shows: the one of the scheme it shows ([`Self::color_scheme`]), or a
+    /// blend on its way there under [`Self::set_theme_transition`]. `.clone()` is a refcount
+    /// bump, so a style can outlive the `show(ui)` reborrow; a handle kept past the frame makes
+    /// the next blend copy the theme:
     ///
     /// ```
     /// # use palantir::{Button, Ui};
@@ -230,7 +237,10 @@ impl Ui {
     /// ```
     #[inline]
     pub const fn theme(&self) -> &Rc<Theme> {
-        self.themes.get(self.scheme)
+        match self.theme_transition.shown() {
+            Some(blend) => blend,
+            None => self.themes.get(self.scheme),
+        }
     }
 
     /// This window's theme for `scheme`, shown or not. [`Theme::stock`] of each until set.
@@ -240,10 +250,12 @@ impl Ui {
     }
 
     /// Replace this window's theme for `scheme`; takes an `Rc` so swapping prebuilt themes copies
-    /// nothing, and the handle the slot holds already changes nothing. The theme of the shown
-    /// scheme applies at once, to the widgets recorded after the call, and asks for a frame that
-    /// records the rest under it, so set it on a change, not every frame; the other waits until
-    /// its scheme shows.
+    /// nothing, and the handle the slot holds already changes nothing. The other scheme's waits
+    /// until its scheme shows. The shown scheme's moves there under
+    /// [`Self::set_theme_transition`] from the next frame, this one keeping what it shows; under
+    /// `None`, before the window's second frame and with motion reduced, it applies at once, to the
+    /// widgets recorded after the call, and asks for a frame that records the rest under it. Set
+    /// it on a change, not every frame.
     ///
     /// ```
     /// # use palantir::{ColorScheme, SchemePreference, Theme, Ui};
@@ -260,13 +272,60 @@ impl Ui {
         if Rc::ptr_eq(slot, &theme) {
             return;
         }
-        *slot = theme;
+        let old = mem::replace(slot, theme);
         if scheme == self.scheme {
-            // The widgets recorded before the call wore the old theme; the next frame records
-            // them all under the new one.
+            self.follow_theme(old);
+            self.frame_runtime.request_repaint();
+        }
+    }
+
+    /// The spec a change of the shown theme runs under, a pick or the system's turn of the
+    /// scheme included; `None` snaps. Per window; [`AnimationSpec::THEME`] until set.
+    #[inline]
+    pub const fn theme_transition(&self) -> Option<AnimationSpec> {
+        self.theme_transition.spec()
+    }
+
+    /// Run every change of the shown theme under `spec`, as Flutter's `AnimatedTheme` does: each
+    /// frame shows [`Theme`]'s lerp from the theme shown to the new one, so colors, lengths and
+    /// font sizes move with real layout. `None` snaps, as does any change before the window's
+    /// second frame, while the window is hidden, or with motion reduced
+    /// ([`Self::is_motion_reduced`]). A change mid-way starts from the blend shown. A live edit,
+    /// one theme a frame, sets `None` for its span: under 300 ms `OutCubic` it lags 89 ms behind.
+    /// A transition running when `None` is set ends where it heads.
+    pub fn set_theme_transition(&mut self, spec: impl Into<Option<AnimationSpec>>) {
+        if self.theme_transition.set_spec(spec.into()) {
             self.theme_epoch = self.theme_epoch.wrapping_add(1);
             self.frame_runtime.request_repaint();
         }
+    }
+
+    /// Whether a change of the shown theme now animates. Not before the window's second frame:
+    /// a change before the first or during it lands on a window that showed nothing, and one
+    /// right after it is the system's first answer (`SystemPreferences::read`'s timeout).
+    fn theme_animates(&self) -> bool {
+        self.theme_transition.animates()
+            && !self.is_motion_reduced()
+            && self.frame_runtime.render_frame_id > 1
+    }
+
+    /// The shown target moved from `old` to the shown scheme's theme: start or turn a
+    /// transition, or snap.
+    fn follow_theme(&mut self, old: Rc<Theme>) {
+        if self.theme_animates() {
+            self.theme_transition
+                .follow(old, self.themes.get(self.scheme));
+        } else {
+            self.snap_theme();
+        }
+    }
+
+    /// Show the shown scheme's theme now, ending any transition.
+    fn snap_theme(&mut self) {
+        self.theme_transition.snap();
+        // The widgets recorded before the change wore the old theme; the next frame records them
+        // all under the new one.
+        self.theme_epoch = self.theme_epoch.wrapping_add(1);
     }
 
     /// The scheme the person picked; [`SchemePreference::System`] until set. App-global.
@@ -326,13 +385,32 @@ impl Ui {
         }
     }
 
-    /// Adopt the scheme the app-global settings resolve to, at a frame's start; a change moves
-    /// the theme epoch, so the frame records again under the other theme.
-    pub(crate) fn resolve_color_scheme(&mut self) {
+    /// At a frame's start, after its clock: move a theme transition one `dt` on, then adopt the
+    /// scheme the app-global settings resolve to. A change of the shown theme moves the theme
+    /// epoch, so the frame records again under it. A frame after a hidden span, or one with
+    /// motion now reduced, snaps; a scheme change starts its transition at the theme shown, so
+    /// the frame that adopts it shows no step yet. The frame a running transition owes is asked
+    /// for after the frame's plan takes this one's requests (`FrameCycle::run`).
+    pub(crate) fn advance_theme(&mut self) {
+        let snap = self.window_frame.shown_again || !self.theme_animates();
+        let moved = if snap {
+            self.theme_transition.snap()
+        } else {
+            self.theme_transition
+                .advance(self.frame_runtime.dt, self.themes.get(self.scheme))
+        };
+        if moved {
+            self.theme_epoch = self.theme_epoch.wrapping_add(1);
+        }
         let scheme = self.resources.color_scheme();
         if scheme != self.scheme {
+            let old = Rc::clone(self.themes.get(self.scheme));
             self.scheme = scheme;
-            self.theme_epoch = self.theme_epoch.wrapping_add(1);
+            if snap {
+                self.snap_theme();
+            } else {
+                self.follow_theme(old);
+            }
         }
     }
 
@@ -684,9 +762,11 @@ impl Ui {
         let WindowFacts {
             close_requested,
             placement,
+            shown_again,
         } = facts;
         self.window_frame.close_requested = close_requested;
         self.window_frame.placement = placement;
+        self.window_frame.shown_again = shown_again;
     }
 
     /// Seed the pacing level from the swapchain the host opened, so a control
@@ -1519,6 +1599,7 @@ pub(crate) mod internals {
         /// [`set_theme_for`](Ui::set_theme_for). Copy-on-write, so a handle from [`Ui::theme`]
         /// keeps its values.
         pub fn theme_mut(&mut self) -> &mut Theme {
+            self.theme_transition.snap();
             self.theme_epoch = self.theme_epoch.wrapping_add(1);
             Rc::make_mut(self.themes.get_mut(self.scheme))
         }

@@ -109,12 +109,12 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()` under `cfg(test)`. One value for both profiles: the scene's
 /// `cfg(debug_assertions)` check fields sit on each plane's `Tree`, which `Forest` keeps on the
 /// heap.
-const UI_SIZE: usize = 2928;
+const UI_SIZE: usize = 3120;
 
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
 /// release, so read this as a drift tripwire, not the shipped footprint.
-const FRAME_ENGINES_SIZE: usize = 2216;
+const FRAME_ENGINES_SIZE: usize = 2240;
 
 /// The per-frame hot-struct inventory, one `pin::<Type>(name, size, align)` per
 /// row, driving [`print_hot_struct_sizes`] (`#[ignore]`; prints the live table)

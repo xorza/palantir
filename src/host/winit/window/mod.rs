@@ -285,6 +285,7 @@ impl Window {
         self.driver.ui.set_window_facts(WindowFacts {
             close_requested: self.close_requested,
             placement: facts.placement,
+            shown_again: self.visibility.take_shown_again(),
         });
 
         // A hidden window skips its frame except the one carrying a close request:

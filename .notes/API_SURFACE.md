@@ -81,6 +81,7 @@ AnimationSpec
     struct AnimationSpec: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub const FAST: Self
         pub const MEDIUM: Self
+        pub const THEME: Self
         pub const SNAP: Self
         pub const SPRING: Self
         pub const fn duration(length: Duration, ease: Easing) -> Self
@@ -1003,6 +1004,7 @@ Harness
         pub fn wait_for_wake(&self, deadline: Instant) -> bool
         pub fn has_pending_wake(&self) -> bool
         pub fn shot(&mut self, app: &mut impl App, region: Option<Rect>) -> Result<Screenshot, PlayError>
+        pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError>
         pub fn new(size: UVec2) -> Self
         pub const fn builder(size: UVec2) -> HarnessBuilder
         pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport
@@ -1055,6 +1057,7 @@ HarnessBuilder
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
         pub fn depth(self, depth: Depth) -> Self
+        pub const fn format(self, format: TargetFormat) -> Self
         pub fn gpu(self, gpu: Gpu) -> Self
         pub const fn frame_dt(self, dt: Duration) -> Self
         pub const fn settle_frames(self, frames: u32) -> Self
@@ -1334,6 +1337,7 @@ Layer
         Menu = 3
         Tooltip = 4
         Debug = 5
+        Pointer = 6
 
 LayerScope
     struct LayerScope<'a>: Debug
@@ -1620,6 +1624,7 @@ PlayError
         BadPinch { factor: f32 }
         EmptyRegion
         NoPixels
+        DeviceLost
         Disconnected
         NoFrame { seconds: f32 }
         Busy { step: String, seconds: f32 }
@@ -2571,6 +2576,8 @@ Ui
         pub const fn theme(&self) -> &Rc<Theme>
         pub const fn theme_for(&self, scheme: ColorScheme) -> &Rc<Theme>
         pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>)
+        pub const fn theme_transition(&self) -> Option<AnimationSpec>
+        pub fn set_theme_transition(&mut self, spec: impl Into<Option<AnimationSpec>>)
         pub fn scheme_preference(&self) -> SchemePreference
         pub fn set_scheme_preference(&mut self, preference: SchemePreference)
         pub const fn color_scheme(&self) -> ColorScheme

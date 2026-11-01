@@ -1,5 +1,6 @@
 //! [`Visibility`]: whether a window is hidden, and since when.
 
+use std::mem;
 use std::time::{Duration, Instant};
 
 /// Whether a window is hidden, by occlusion or by a minimize, and since when: the frame clock
@@ -12,6 +13,8 @@ pub(super) struct Visibility {
     occluded: bool,
     /// Resized to zero: how Windows reports a minimize (no `Occluded`).
     minimized: bool,
+    /// A hidden span ended since the last frame took this.
+    shown_again: bool,
 }
 
 impl Visibility {
@@ -21,6 +24,12 @@ impl Visibility {
 
     pub(super) const fn is_minimized(&self) -> bool {
         self.minimized
+    }
+
+    /// Whether a hidden span ended since the last call: the frame that takes it is the first
+    /// the window shows again.
+    pub(super) const fn take_shown_again(&mut self) -> bool {
+        mem::replace(&mut self.shown_again, false)
     }
 
     /// Set the occlusion at `now`; returns the hidden span this ends, if the window shows again.
@@ -52,6 +61,7 @@ impl Visibility {
             }
             (false, Some(since)) => {
                 self.hidden_since = None;
+                self.shown_again = true;
                 Some(now.saturating_duration_since(since))
             }
             _ => None,

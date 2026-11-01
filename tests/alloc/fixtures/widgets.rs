@@ -2,14 +2,15 @@
 
 use crate::harness;
 use crate::harness::Audit;
+use std::rc::Rc;
 use std::time::Duration;
 
 use palantir::glam::Vec2;
 use palantir::{
     Anchor, AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorPicker,
-    Configure, ContextMenu, Easing, Expander, ExpanderTheme, MenuItem, Modal, Panel, Popup,
-    ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
-    Spinner, Switch, Text, TextEdit, Tooltip, Ui, WidgetId,
+    ColorScheme, Configure, ContextMenu, Easing, Expander, ExpanderTheme, MenuItem, Modal, Panel,
+    Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
+    SlotDefaults, Spinner, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
 };
 
 #[test]
@@ -275,6 +276,50 @@ fn tooltip_bubble_alloc_free() {
         let _ = h.frame(|ui| visible = scene(ui).visible);
         assert!(visible, "the bubble is up");
     });
+}
+
+/// A theme transition blends into a buffer it keeps, so past the window's first run nothing
+/// allocates. Each 32-frame cycle flips the theme three times, at 0, 4 and 20, against the
+/// 300 ms default's 19 frames of 16 ms: a run starts, turns back to the theme it left and lands
+/// there about ten frames on, and another starts from rest, which the next cycle turns.
+#[test]
+fn theme_transition_alloc_free() {
+    let themes = [
+        Rc::new(Theme::stock(ColorScheme::Dark)),
+        Rc::new(Theme::stock(ColorScheme::Light)),
+    ];
+    let mut h = harness::new_ui();
+    h.ui()
+        .set_theme_for(ColorScheme::Dark, Rc::clone(&themes[0]));
+    let mut scene = |ui: &mut Ui| {
+        Button::new().id_salt("apply").label("Apply").show(ui);
+        Checkbox::new(&mut true)
+            .label("Check")
+            .id_salt("check")
+            .show(ui);
+        Text::new("label").id_salt("label").show(ui);
+    };
+    h.prime(2, &mut scene);
+    let mut frame = 0usize;
+    let mut shown = 0;
+    let (mut blends, mut rests) = (0usize, 0usize);
+    Audit::new().warmup(64).frames(128).run_frames(|| {
+        if matches!(frame % 32, 0 | 4 | 20) {
+            shown = 1 - shown;
+            h.ui()
+                .set_theme_for(ColorScheme::Dark, Rc::clone(&themes[shown]));
+        }
+        frame += 1;
+        h.advance(Duration::from_millis(16));
+        h.frame(&mut scene);
+        let at_rest = themes.iter().any(|theme| Rc::ptr_eq(theme, h.ui().theme()));
+        if at_rest {
+            rests += 1;
+        } else {
+            blends += 1;
+        }
+    });
+    assert!(blends > 0 && rests > 0, "{blends} blends, {rests} rests");
 }
 
 /// A spinner left alone only repaints, so this measures the paint-only frame.

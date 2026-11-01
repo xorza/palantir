@@ -57,6 +57,17 @@ impl AnimationSpec {
             ease: Easing::OutCubic,
         },
     };
+    /// 300 ms ease-out-cubic. A theme change's default ([`Ui::set_theme_transition`]): a theme
+    /// set every frame under it lags 89 ms behind the edit, where `InOutCubic`, which starts at
+    /// `4t³`, would lag 24 s (`.notes/research/2026-11-01-reel.md`, "Measured").
+    ///
+    /// [`Ui::set_theme_transition`]: crate::Ui::set_theme_transition
+    pub const THEME: Self = Self {
+        motion: AnimationMotion::Duration {
+            secs: 0.3,
+            ease: Easing::OutCubic,
+        },
+    };
     /// No motion: the value lands on its target in one frame. The named form of
     /// "do not animate"; `None` in [`Ui::animate`](crate::Ui::animate) does the same,
     /// and both short-circuit on [`Self::is_instant`].

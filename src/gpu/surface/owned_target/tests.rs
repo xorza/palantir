@@ -1,5 +1,5 @@
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
-use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu};
 use crate::internals::panic_probe;
 use glam::UVec2;
 use image::Rgba;
@@ -36,6 +36,36 @@ fn a_cleared_texture_reads_back_in_rgba_order() {
             image.pixels().collect::<Vec<_>>()
         );
     }
+}
+
+/// A texel copy of the cleared 3 × 2 target takes its 24 bytes, the row padding cut, and a
+/// second copy goes through the staging buffer the first made. On a lost device the copy fails,
+/// leaves `texels` empty and drops the buffer, whose map may still be pending.
+#[test]
+fn a_texel_copy_keeps_its_staging_buffer_until_one_fails() {
+    let gpu = isolated_headless_test_gpu();
+    let mut target = OwnedTarget::new(
+        &gpu,
+        TargetSpec {
+            label: "palantir.copy_texels.test",
+            size: UVec2::new(3, 2),
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: OwnedTarget::USAGES,
+        },
+    );
+    clear(&gpu, target.texture());
+    let mut texels = Vec::new();
+    assert!(target.copy_texels(&mut texels));
+    assert_eq!(texels, [51, 102, 153, 255].repeat(6));
+    assert!(target.readback.is_some());
+    texels.clear();
+    assert!(target.copy_texels(&mut texels));
+    assert_eq!(texels, [51, 102, 153, 255].repeat(6), "the kept buffer");
+
+    gpu.lose();
+    assert!(!target.copy_texels(&mut texels));
+    assert!(texels.is_empty());
+    assert!(target.readback.is_none());
 }
 
 /// A zero side, or one past the device's largest 2D texture, panics before wgpu sees it; the

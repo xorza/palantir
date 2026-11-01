@@ -86,7 +86,8 @@ fn the_ime_caret_scales_to_physical_px() {
 /// Hidden by occlusion at 0 s and shown at 3 s, the clock skips 3 s. A minimize during an
 /// occlusion keeps the window hidden past the un-occlude, so the span ends only when both clear
 /// (at 10 s, after 4 s). A frame run while hidden at 12 s restarts the span, so showing at 14 s
-/// skips 2 s, not 4 s; a second occlusion report does not move the start.
+/// skips 2 s, not 4 s; a second occlusion report does not move the start. Each span's end
+/// marks the next frame as shown again, once.
 #[test]
 fn a_hidden_span_ends_when_every_reason_clears() {
     use crate::host::winit::window::visibility::Visibility;
@@ -102,14 +103,19 @@ fn a_hidden_span_ends_when_every_reason_clears() {
         "a repeat keeps the start"
     );
     assert!(v.is_hidden());
+    assert!(!v.take_shown_again(), "still hidden");
     assert_eq!(v.set_occluded(false, at(3)), Some(Duration::from_secs(3)));
     assert!(!v.is_hidden());
+    assert!(v.take_shown_again());
+    assert!(!v.take_shown_again(), "one frame takes it");
 
     assert_eq!(v.set_occluded(true, at(6)), None);
     assert_eq!(v.set_minimized(true, at(7)), None);
     assert_eq!(v.set_occluded(false, at(8)), None, "still minimized");
     assert!(v.is_hidden() && v.is_minimized());
+    assert!(!v.take_shown_again(), "still minimized");
     assert_eq!(v.set_minimized(false, at(10)), Some(Duration::from_secs(4)));
+    assert!(v.take_shown_again());
 
     assert_eq!(v.set_occluded(true, at(11)), None);
     v.restart(at(12));

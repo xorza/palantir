@@ -3,6 +3,7 @@ use crate::display::Display;
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, LocateError, PlayError};
 use crate::driver::locator::Locator;
+use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
@@ -27,6 +28,7 @@ use crate::window::window_commands::WindowCommand;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
+use half::f16;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -350,6 +352,69 @@ fn a_shot_is_the_painted_window() {
 
     let mut cpu = Harness::mono(UVec2::new(64, 32));
     assert_eq!(cpu.shot(&mut app, None), Err(PlayError::NoPixels));
+}
+
+/// A capture runs one frame at the parked clock and moves it no further, and its bytes are the
+/// pixels a shot of the same still window reads, the next capture's too. Below the GPU it has
+/// none.
+#[test]
+fn a_capture_is_one_frame_at_the_parked_clock() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(120, 80))
+        .scale(2.0)
+        .gpu(gpu.handles())
+        .build();
+    let mut app = Board::default();
+    h.settle(&mut app).unwrap();
+    let at = Duration::from_secs(7);
+    h.at(at);
+    let frames = h.frames;
+    let mut pixels = Vec::new();
+    h.capture(&mut app, &mut pixels).unwrap();
+    assert_eq!(h.frames, frames + 1, "one frame");
+    assert_eq!(h.time, at, "the clock stays");
+    assert_eq!(pixels.len(), 120 * 80 * 4);
+    let shot = h.shot(&mut app, None).unwrap();
+    assert_eq!(pixels, shot.image().pixels);
+    let mut again = Vec::new();
+    h.capture(&mut app, &mut again).unwrap();
+    assert_eq!(
+        again, pixels,
+        "a second copy through the kept staging buffer"
+    );
+
+    let mut cpu = Harness::mono(UVec2::new(64, 32));
+    assert_eq!(cpu.capture(&mut app, &mut pixels), Err(PlayError::NoPixels));
+}
+
+/// A `Rgba16Float` window captures its linear values as half floats, 8 bytes a pixel: a block
+/// filled `(0.25, 0.5, 1, 1)` over a black ground reads back those values exactly, each a power
+/// of two an f16 holds.
+#[test]
+fn a_float_window_captures_its_linear_values() {
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(UVec2::new(16, 8))
+        .gpu(gpu.handles())
+        .format(TargetFormat::new(wgpu::TextureFormat::Rgba16Float))
+        .build();
+    h.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    let mut app = |ui: &mut Ui| {
+        Block::new()
+            .id_salt("fill")
+            .size(8.0)
+            .chrome(Chrome::fill(RgbaF32::new(0.25, 0.5, 1.0, 1.0)))
+            .show(ui);
+    };
+    let mut pixels = Vec::new();
+    h.capture(&mut app, &mut pixels).unwrap();
+    assert_eq!(pixels.len(), 16 * 8 * 8);
+    let texel = |x: usize, y: usize| {
+        let at = (y * 16 + x) * 8;
+        let lanes: [u8; 8] = pixels[at..at + 8].try_into().unwrap();
+        bytemuck::cast::<[u8; 8], [u16; 4]>(lanes).map(|bits| f16::from_bits(bits).to_f32())
+    };
+    assert_eq!(texel(2, 2), [0.25, 0.5, 1.0, 1.0], "the block");
+    assert_eq!(texel(12, 2), [0.0, 0.0, 0.0, 1.0], "the ground");
 }
 
 /// The input methods aim by text, by id and by point alike, and `widgets` lists what a locator

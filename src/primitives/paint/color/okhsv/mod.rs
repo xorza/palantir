@@ -2,7 +2,7 @@
 
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::oklab::Oklab;
+use crate::primitives::paint::color::oklab::{self, Oklab};
 use crate::primitives::paint::color::srgb_transfer;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use std::f32::consts::TAU;
@@ -368,7 +368,7 @@ fn peak_scale(lab: Oklab) -> f32 {
     let rgb = lab.to_color();
     let peak = rgb.r.max(rgb.g).max(rgb.b);
     debug_assert!(peak > 0.0, "a hue slice always has a positive peak");
-    (1.0 / peak).cbrt()
+    oklab::cbrt(1.0 / peak)
 }
 
 fn toe(x: f32) -> f32 {

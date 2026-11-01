@@ -319,7 +319,7 @@ impl Cascade {
                 Layer::Menu => true,
                 Layer::Modal => modal == Some(root),
                 Layer::Popup => modal.is_none_or(|modal| modal.plane < root.plane),
-                Layer::Main | Layer::Tooltip | Layer::Debug => false,
+                Layer::Main | Layer::Tooltip | Layer::Debug | Layer::Pointer => false,
             };
             if traps {
                 return TabDomain::Root(root.id);

@@ -2,7 +2,8 @@
 //! built into each window's themes once an edit.
 
 use palantir::{
-    ButtonTheme, ColorScheme, FocusRingTheme, Metrics, Okhsv, Palette, RgbaF32, Theme, Ui, WidgetId,
+    AnimationSpec, ButtonTheme, ColorScheme, FocusRingTheme, Metrics, Okhsv, Palette, RgbaF32,
+    Theme, Ui, WidgetId,
 };
 
 use crate::support;
@@ -46,6 +47,19 @@ pub(crate) struct Appearance {
     /// Moved by every edit; each window builds its themes once a generation, as each window's
     /// `Ui` holds its own.
     generation: u64,
+    /// How the last edit came, which picks how its themes show.
+    edit: Edit,
+}
+
+/// How an edit reaches the look.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Edit {
+    /// A pick: a click on a swatch, a toggle, a reset. Its themes blend in under
+    /// [`AnimationSpec::THEME`].
+    Pick,
+    /// A drag that sets a value every frame, a slider's or a color field's. Its themes snap, as a
+    /// blend would trail the pointer.
+    Drag,
 }
 
 impl Appearance {
@@ -61,6 +75,7 @@ impl Appearance {
             light_seeds: SEEDS.map(|seed| accent_for(seed, ColorScheme::Light)),
             dark_seeds: SEEDS.map(|seed| accent_for(seed, ColorScheme::Dark)),
             generation: 1,
+            edit: Edit::Pick,
         }
     }
 
@@ -100,7 +115,7 @@ impl Appearance {
             palette.accent = accent;
             palette.border_focused = accent;
         }
-        self.generation += 1;
+        self.edited(Edit::Pick);
     }
 
     /// The ring the shown scheme draws: its color, set or the accent's, and its width.
@@ -117,22 +132,23 @@ impl Appearance {
     pub(crate) fn set_ring_color(&mut self, color: RgbaF32) {
         if self.ring_color != Some(color) {
             self.ring_color = Some(color);
-            self.generation += 1;
+            self.edited(Edit::Drag);
         }
     }
 
     pub(crate) fn set_ring_width(&mut self, width: f32) {
         if self.ring_width != width {
             self.ring_width = width;
-            self.generation += 1;
+            self.edited(Edit::Drag);
         }
     }
 
     /// The ring back to the accent's color at the line step.
     pub(crate) fn reset_ring(&mut self) {
-        self.set_ring_width(M.stroke.line);
-        if self.ring_color.take().is_some() {
-            self.generation += 1;
+        let width = self.ring_width != M.stroke.line;
+        self.ring_width = M.stroke.line;
+        if self.ring_color.take().is_some() || width {
+            self.edited(Edit::Pick);
         }
     }
 
@@ -144,8 +160,14 @@ impl Appearance {
     pub(crate) const fn set_frosted(&mut self, frosted: bool) {
         if self.frosted != frosted {
             self.frosted = frosted;
-            self.generation += 1;
+            self.edited(Edit::Pick);
         }
+    }
+
+    /// A new generation of edits, the last one made by `edit`.
+    const fn edited(&mut self, edit: Edit) {
+        self.generation += 1;
+        self.edit = edit;
     }
 
     /// The filled call to action of `scheme`, over the palette its theme is built from.
@@ -162,6 +184,10 @@ impl Appearance {
             if *applied == self.generation {
                 return;
             }
+            ui.set_theme_transition(match self.edit {
+                Edit::Pick => Some(AnimationSpec::THEME),
+                Edit::Drag => None,
+            });
             for scheme in [ColorScheme::Light, ColorScheme::Dark] {
                 let palette = self.palette(scheme);
                 let mut theme = Theme::from_parts(palette, &M);
@@ -224,7 +250,7 @@ pub(crate) fn accent_for(seed: RgbaF32, scheme: ColorScheme) -> RgbaF32 {
 #[cfg(test)]
 mod tests {
     use palantir::glam::UVec2;
-    use palantir::{ColorScheme, Harness, Metrics, Okhsv, Palette, RgbaF32, Theme};
+    use palantir::{AnimationSpec, ColorScheme, Harness, Metrics, Okhsv, Palette, RgbaF32, Theme};
 
     use crate::appearance::{Appearance, SEEDS, accent_for, holds_floors};
 
@@ -275,7 +301,8 @@ mod tests {
 
     /// A seed, a ring or a frost edit moves the generation, so each window builds both themes
     /// once from the solved palettes: the ring follows the accent until a color of its own is set,
-    /// a reset gives it back, and the floats are frosted until switched off.
+    /// a reset gives it back, and the floats are frosted until switched off. A pick's themes
+    /// blend in and a drag's snap.
     #[test]
     fn an_edit_builds_the_themes_once() {
         let mut h = Harness::builder(UVec2::new(64, 64)).mono().build();
@@ -294,6 +321,11 @@ mod tests {
         assert_eq!(look.palette(scheme).accent, accent);
         assert_eq!(look.palette(scheme).border_focused, accent);
         assert_eq!(h.ui().theme().focus_ring.color, accent);
+        assert_eq!(
+            h.ui().theme_transition(),
+            Some(AnimationSpec::THEME),
+            "a pick"
+        );
 
         let red = RgbaF32::hex(0xff0000);
         look.set_ring_color(red);
@@ -301,10 +333,16 @@ mod tests {
         look.apply(h.ui());
         assert_eq!(h.ui().theme().focus_ring.color, red);
         assert_eq!(h.ui().theme().focus_ring.width, 3.0);
+        assert_eq!(h.ui().theme_transition(), None, "a drag");
 
         look.reset_ring();
         look.set_seed(None);
         look.apply(h.ui());
+        assert_eq!(
+            h.ui().theme_transition(),
+            Some(AnimationSpec::THEME),
+            "a reset"
+        );
         assert_eq!(h.ui().theme().focus_ring, look.ring(scheme));
         assert_eq!(*look.palette(scheme), *Palette::for_scheme(scheme));
 

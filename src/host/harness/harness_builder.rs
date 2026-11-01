@@ -123,6 +123,13 @@ impl HarnessBuilder {
         self
     }
 
+    /// The texture format of the window at [`Depth::Gpu`]; 8-bit sRGB RGBA by default. A float
+    /// format keeps linear values past 8 bits, for a [`Harness::capture`] that blends frames.
+    pub const fn format(mut self, format: TargetFormat) -> Self {
+        self.format = format;
+        self
+    }
+
     /// [`Self::depth`] at [`Depth::Gpu`] on `gpu`.
     pub fn gpu(self, gpu: Gpu) -> Self {
         self.depth(Depth::Gpu(gpu))
@@ -227,8 +234,6 @@ impl HarnessBuilder {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     #[cfg(test)]
-    use crate::gpu::surface::render_target::TargetFormat;
-    #[cfg(test)]
     use crate::host::core::HostCore;
     #[cfg(test)]
     use crate::host::harness::Harness;
@@ -268,13 +273,6 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     impl HarnessBuilder {
-        /// The texture format of the window at [`Depth::Gpu`](crate::Depth::Gpu); 8-bit sRGB
-        /// RGBA by default.
-        pub(crate) const fn format(mut self, format: TargetFormat) -> Self {
-            self.format = format;
-            self
-        }
-
         /// A recording window over `resources`, as `token` among the windows that share them.
         pub(crate) fn build_over(self, resources: UiResources, token: WindowToken) -> Harness {
             let core = HostCore::over(resources, &self.options);

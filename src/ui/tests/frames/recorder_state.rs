@@ -116,6 +116,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
     );
 
     // `set_theme_for` takes the handle, so swapping themes is a move.
+    h.ui().set_theme_transition(None);
     let swapped: Rc<Theme> = Rc::new(Theme::default());
     let swapped_ptr = Rc::as_ptr(&swapped);
     h.ui().set_theme_for(ColorScheme::Dark, swapped);

@@ -9,3 +9,5 @@
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
 - hover card at a point for content that is not a widget
+- subtree theme, as Flutter's `Theme` widget
+- reel music track: a calm Pixabay one at 80 BPM, its license read for the use

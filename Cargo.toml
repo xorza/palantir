@@ -42,7 +42,7 @@ version = "0.2.6"
 # lane under `-D warnings`, so a warning only it shows would fail CI and nothing here.
 lint = ["--all-features", "--no-default-features"]
 test = [
-    "--lib --test alloc --example showcase --features golden,gpu-debug-markers",
+    "--lib --test alloc --example showcase --example reel --features golden,gpu-debug-markers",
     "--lib --no-default-features",
 ]
 test-runner = "cargo-test"
@@ -61,6 +61,14 @@ steps = [{ cargo = "test --workspace --locked --features golden,gpu-debug-marker
 steps = [
     { build = "build --example showcase --features golden" },
     { program = ["{target}/debug/examples/showcase{exe}", "--shot"], args = true },
+]
+
+# The reel rendered on a headless window: `cargo drive run reel preview|final|png DIR [--slide K]
+# [--audio FILE]`, built with the fast profile, as a render runs thousands of frames.
+[workspace.metadata.drive.commands.reel]
+steps = [
+    { build = "build --example reel --profile release-dev" },
+    { program = ["{target}/release-dev/examples/reel{exe}"], args = true },
 ]
 
 [workspace]
@@ -190,6 +198,10 @@ path = "tests/alloc/main.rs"
 [[example]]
 name = "counter"
 required-features = ["winit"]
+
+[[example]]
+name = "reel"
+path = "examples/reel/main.rs"
 
 [[example]]
 name = "showcase"

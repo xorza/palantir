@@ -3,6 +3,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target::{self, RenderTarget, TargetFormat};
+use crate::gpu::surface::texel_readback::TexelReadback;
 use glam::UVec2;
 
 /// What an [`OwnedTarget`] is made as: `label` names it in RenderDoc and validation errors.
@@ -23,6 +24,8 @@ pub struct TargetSpec<'a> {
 pub struct OwnedTarget {
     texture: wgpu::Texture,
     gpu: Gpu,
+    /// The staging buffer of [`Self::copy_texels`], made by its first call.
+    readback: Option<TexelReadback>,
 }
 
 impl OwnedTarget {
@@ -62,6 +65,7 @@ impl OwnedTarget {
         Self {
             texture,
             gpu: gpu.clone(),
+            readback: None,
         }
     }
 
@@ -111,6 +115,25 @@ impl OwnedTarget {
                 usage: self.texture.usage(),
             },
         )
+    }
+
+    /// Every texel as the texture holds it, in its own format, copied back and waited for:
+    /// `texels` takes the rows top down with no padding between them. Returns `false`, `texels`
+    /// left empty, when the copy does not map, as [`TexelReadback::read`] says. The staging
+    /// buffer stays for the next copy, except after a failed one, whose map may still be pending.
+    ///
+    /// # Panics
+    ///
+    /// As [`TexelReadback::new`].
+    pub(crate) fn copy_texels(&mut self, texels: &mut Vec<u8>) -> bool {
+        let readback = self
+            .readback
+            .get_or_insert_with(|| TexelReadback::new(&self.gpu.device, &self.texture));
+        let read = readback.read(&self.gpu, &self.texture, texels);
+        if !read {
+            self.readback = None;
+        }
+        read
     }
 }
 

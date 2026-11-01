@@ -27,6 +27,7 @@ use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::float_hash;
 use crate::scene::forest::Forest;
+use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -98,10 +99,12 @@ impl RowSink for TreeSink<'_> {
                 id,
             });
         }
-        // Names the keyboard half alone; only `invisible` removes a node from pointer routing.
-        let keyboard_off = rows.disabled || rows.invisible;
+        // The pointer layer draws a cursor over the app and takes nothing from it.
+        let inert = plane.layer == Layer::Pointer;
+        // Names the keyboard half alone; only `invisible` and the pointer layer remove a node from pointer routing.
+        let keyboard_off = rows.disabled || rows.invisible || inert;
         // Disabling takes away what a widget may *do*, not what it occupies: it stays drawn and under the pointer, so it keeps its declared sense; the response it reads has its interaction half cleared.
-        let sense = if rows.invisible {
+        let sense = if rows.invisible || inert {
             Sense::NONE
         } else {
             attrs.sense()

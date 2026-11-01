@@ -106,6 +106,32 @@ impl Harness {
         })
     }
 
+    /// Render one frame of `app` at the clock as it stands, where [`Self::at`] parks it, and write
+    /// the window's pixels into `pixels` in the target's format
+    /// ([`HarnessBuilder::format`](crate::HarnessBuilder::format)): rows top down with no
+    /// padding, 4 bytes a pixel of 8-bit sRGB RGBA by default, 8 of `Rgba16Float`. That frame
+    /// alone: no held input is delivered, the clock does not move, and no frame waits for the
+    /// picture to land, as [`Self::shot`] does. For a recording, which sets each frame's time.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu), and
+    /// [`PlayError::DeviceLost`] when the device is lost before the pixels come back.
+    pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError> {
+        if self.depth != FrameDepth::Paint {
+            return Err(PlayError::NoPixels);
+        }
+        self.drive(app);
+        let target = self
+            .target
+            .as_mut()
+            .expect("a harness that paints holds a target");
+        if self.core.gpu().is_lost() || !target.copy_texels(pixels) {
+            return Err(PlayError::DeviceLost);
+        }
+        Ok(())
+    }
+
     /// Frames of `app` until it settles, as [`Self::settle`] runs them, naming `step` when it
     /// does not.
     fn settle_after(&mut self, app: &mut impl App, step: &dyn Debug) -> Result<u32, PlayError> {

@@ -141,16 +141,17 @@ mod tests {
                 plane(Layer::Menu, 0),
                 plane(Layer::Tooltip, 0),
                 plane(Layer::Debug, 0),
+                plane(Layer::Pointer, 0),
             ],
         );
         assert!(planes.is_sorted(), "paint order is `Plane`'s order");
-        assert_eq!(table.iter().count(), 8);
+        assert_eq!(table.iter().count(), 9);
         assert_eq!(
             table
                 .iter_paint_order()
                 .map(|(_, v)| *v)
                 .collect::<Vec<_>>(),
-            [0, 0, 0, 0, 7, 0, 0, 0],
+            [0, 0, 0, 0, 7, 0, 0, 0, 0],
         );
 
         let mut derived = PerPlane::<String>::default();
@@ -168,6 +169,7 @@ mod tests {
                 plane(Layer::Menu, 0),
                 plane(Layer::Tooltip, 0),
                 plane(Layer::Debug, 0),
+                plane(Layer::Pointer, 0),
             ],
             "cover keeps its own deeper planes and takes the other's",
         );

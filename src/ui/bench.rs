@@ -19,6 +19,10 @@
 //!   back, one move a frame: input routing, hover state and its small partial repaint.
 //! - **`typing`**: the request card's name field holds the focus and takes a character, then a
 //!   backspace, one a frame: an edit's reshaping, caret and small partial repaint.
+//! - **`theming`**: a theme transition between the dark stock look and a roomier light one, every
+//!   frame at a new phase: a theme blend, a record under it and a whole repaint, with each font
+//!   size at a new value, so text reshapes and rasterizes anew. The worst frame a transition
+//!   costs; [`THEMING`] runs so long that a measured frame never lands.
 //!
 //! The surface is 2560 × 1440 at 2×, a 1280 × 720 window, and the fixture is taller, so the CPU
 //! backend processes the whole tree while paint and the GPU see only the screen. The workload
@@ -27,6 +31,8 @@
 
 use crate::theme::color_scheme::ColorScheme;
 
+use crate::animation::animation_spec::AnimationSpec;
+use crate::animation::easing::Easing;
 use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::fixture;
@@ -36,21 +42,22 @@ use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
-use crate::host::offscreen::OffscreenHost;
+use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::internals::frame_fixture::{BENCH_DPR, BENCH_SCALE, BENCH_SURFACE, FrameFixture};
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::Theme;
-use crate::theme::metrics::Metrics;
+use crate::theme::metrics::{Metrics, SpaceSteps, TextSteps};
 use crate::theme::palette::Palette;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
 use crate::window::window_token::WindowToken;
 use criterion::Criterion;
 use glam::UVec2;
+use std::rc::Rc;
 use std::slice;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// The window clear both backends render over.
 const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
@@ -67,6 +74,43 @@ fn bench_theme() -> Theme {
             &Metrics {
                 transition: None,
                 ..Metrics::DEFAULT
+            },
+        )
+    }
+}
+
+/// The theming arm's transition: linear over a minute, so its phase moves on every frame and a
+/// landing, which would show a still frame, comes once in 3,600.
+const THEMING: AnimationSpec = AnimationSpec::duration(Duration::from_secs(60), Easing::Linear);
+
+/// The theming arm's frame: a 60 Hz step of a clock the arm moves itself, as a bench frame can
+/// take less than the 1/240 s an animation steps by, which would hold the phase.
+const THEMING_FRAME: Duration = Duration::from_nanos(16_666_667);
+
+/// The theming arm's other end: the light palette, text 4 px larger and spacing a third wider,
+/// as a density preset moves both.
+fn roomy_theme() -> Theme {
+    let d = Metrics::DEFAULT;
+    Theme {
+        window_clear: WINDOW_CLEAR,
+        ..Theme::from_parts(
+            &Palette::LIGHT,
+            &Metrics {
+                text: TextSteps {
+                    caption: d.text.caption + 4.0,
+                    body: d.text.body + 4.0,
+                    title: d.text.title + 4.0,
+                },
+                space: SpaceSteps {
+                    xxs: d.space.xxs * 4.0 / 3.0,
+                    xs: d.space.xs * 4.0 / 3.0,
+                    sm: d.space.sm * 4.0 / 3.0,
+                    md: d.space.md * 4.0 / 3.0,
+                    lg: d.space.lg * 4.0 / 3.0,
+                    xl: d.space.xl * 4.0 / 3.0,
+                },
+                transition: None,
+                ..d
             },
         )
     }
@@ -89,10 +133,11 @@ fn gpu() -> &'static BenchGpu {
 /// runs). The default would measure the screenshot path, which copies the
 /// backbuffer out on skip and full frames, and a retained target paints a
 /// partial frame where the desktop cannot.
-fn bench_host(g: &BenchGpu) -> OffscreenHost {
+fn bench_host(g: &BenchGpu, time: OffscreenTime) -> OffscreenHost {
     let mut host = OffscreenHost::builder(g.handles())
         .collect_gpu_stats(false)
         .swapchain_present()
+        .time(time)
         .build();
     host.ui().set_theme_for(ColorScheme::Dark, bench_theme());
     host
@@ -105,11 +150,20 @@ fn bench_host(g: &BenchGpu) -> OffscreenHost {
 #[derive(Debug)]
 struct CpuHarness {
     h: Harness,
-    start: Instant,
+    clock: CpuClock,
+}
+
+/// The time a [`CpuHarness`] frame carries.
+#[derive(Debug)]
+enum CpuClock {
+    /// Since this `Instant`.
+    Realtime(Instant),
+    /// [`THEMING_FRAME`] a frame, this many frames run.
+    Stepped(u32),
 }
 
 impl CpuHarness {
-    fn new() -> Self {
+    fn new(time: OffscreenTime) -> Self {
         let mut h = Harness::builder(BENCH_SURFACE)
             .scale(BENCH_DPR)
             .depth(Depth::Compose)
@@ -117,13 +171,23 @@ impl CpuHarness {
         h.ui().set_theme_for(ColorScheme::Dark, bench_theme());
         Self {
             h,
-            start: Instant::now(),
+            clock: match time {
+                OffscreenTime::Realtime => CpuClock::Realtime(Instant::now()),
+                OffscreenTime::Manual => CpuClock::Stepped(0),
+            },
         }
     }
 
     /// Drive one full CPU frame and ack the present, so `cached` settles into `Skip`.
     fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FramePaint {
-        self.h.at(self.start.elapsed());
+        let time = match &mut self.clock {
+            CpuClock::Realtime(start) => start.elapsed(),
+            CpuClock::Stepped(frames) => {
+                *frames += 1;
+                THEMING_FRAME * *frames
+            }
+        };
+        self.h.at(time);
         self.h.frame(record).paint()
     }
 }
@@ -138,18 +202,20 @@ enum Arm {
     Partial,
     Resizing,
     Scrolling,
+    Theming,
     Typing,
 }
 
 impl Arm {
     /// Sorted by label, the order criterion lists them.
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 8] = [
         Self::Alternating,
         Self::Cached,
         Self::Hovering,
         Self::Partial,
         Self::Resizing,
         Self::Scrolling,
+        Self::Theming,
         Self::Typing,
     ];
 
@@ -161,6 +227,7 @@ impl Arm {
             Self::Partial => "partial",
             Self::Resizing => "resizing",
             Self::Scrolling => "scrolling",
+            Self::Theming => "theming",
             Self::Typing => "typing",
         }
     }
@@ -173,6 +240,9 @@ impl Arm {
             Self::Cached => &[FramePaint::Skip],
             Self::Hovering | Self::Partial | Self::Typing => &[FramePaint::Partial],
             Self::Resizing | Self::Scrolling => &[FramePaint::Full],
+            // Both themes clear the window alike, so damage covers what the blend moves, not
+            // the whole window.
+            Self::Theming => &[FramePaint::Partial],
         }
     }
 
@@ -185,6 +255,7 @@ impl Arm {
             | Self::Hovering
             | Self::Partial
             | Self::Scrolling
+            | Self::Theming
             | Self::Typing => slice::from_ref(&BENCH_SURFACE),
         }
     }
@@ -192,7 +263,7 @@ impl Arm {
     /// Set the fixture to frame `n`'s state.
     fn advance(self, state: &mut FrameFixture, n: u32) {
         match self {
-            Self::Cached | Self::Hovering | Self::Resizing | Self::Typing => {}
+            Self::Cached | Self::Hovering | Self::Resizing | Self::Theming | Self::Typing => {}
             Self::Partial => state.tick = state.tick.wrapping_add(1),
             Self::Scrolling => scroll(state),
             // A scroll step on even frames (full repaint), a counter tick on odd ones (small rect).
@@ -227,9 +298,40 @@ impl Arm {
                 };
                 Some(InputEvent::key_down(key))
             }
-            Self::Alternating | Self::Cached | Self::Partial | Self::Resizing | Self::Scrolling => {
-                None
-            }
+            Self::Alternating
+            | Self::Cached
+            | Self::Partial
+            | Self::Resizing
+            | Self::Scrolling
+            | Self::Theming => None,
+        }
+    }
+
+    /// Ready `ui` for frame `n`: the theming arm starts a transition to the theme it does not
+    /// show whenever none runs, on its first frame and after a rare landing.
+    fn prepare(self, ui: &mut Ui) {
+        if self != Self::Theming || !Rc::ptr_eq(ui.theme(), ui.theme_for(ui.color_scheme())) {
+            return;
+        }
+        let roomy = ui.theme().text.font_size == Metrics::DEFAULT.text.body;
+        ui.set_theme_transition(THEMING);
+        ui.set_theme_for(
+            ColorScheme::Dark,
+            if roomy { roomy_theme() } else { bench_theme() },
+        );
+    }
+
+    /// The clock its frames read: the wall clock, or one the arm steps itself.
+    const fn clock(self) -> OffscreenTime {
+        match self {
+            Self::Theming => OffscreenTime::Manual,
+            Self::Alternating
+            | Self::Cached
+            | Self::Hovering
+            | Self::Partial
+            | Self::Resizing
+            | Self::Scrolling
+            | Self::Typing => OffscreenTime::Realtime,
         }
     }
 
@@ -362,13 +464,14 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
         for arm in Arm::ALL {
             match backend {
                 Backend::Cpu => arm.measure(&mut group, backend, || {
-                    let mut h = CpuHarness::new();
+                    let mut h = CpuHarness::new(arm.clock());
                     let sizes = arm.sizes();
                     move |state: &mut FrameFixture, n: u32| {
                         if arm == Arm::Resizing {
                             h.h.resize(sizes[n as usize % sizes.len()]);
                         }
                         let harness = &mut h.h;
+                        arm.prepare(harness.ui());
                         if let Some(event) = arm.input(state, harness.ui(), n) {
                             harness.on_input(event);
                             release(event, |up| {
@@ -381,9 +484,13 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                 Backend::Gpu => arm.measure(&mut group, backend, || {
                     let g = gpu();
                     let targets = arm.targets();
-                    let mut host = bench_host(g);
+                    let mut host = bench_host(g, arm.clock());
                     move |state: &mut FrameFixture, n: u32| {
                         let target = &targets[n as usize % targets.len()];
+                        if arm.clock() == OffscreenTime::Manual {
+                            host.advance(THEMING_FRAME);
+                        }
+                        arm.prepare(host.ui());
                         if let Some(event) = arm.input(state, host.ui(), n) {
                             host.on_input(event);
                             release(event, |up| {
