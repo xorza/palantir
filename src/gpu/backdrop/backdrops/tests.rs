@@ -90,7 +90,7 @@ fn each_window_keeps_its_own_results() {
     let gpu = headless_test_gpu();
     let owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
-    let mut backdrops = Backdrops::new(&gpu.device);
+    let mut backdrops = Backdrops::new(&gpu);
     prepare(&mut backdrops, &gpu, a, &[]);
     assert!(backdrops.resources.is_none(), "no pane, no resources");
     prepare(&mut backdrops, &gpu, a, &[captured(0)]);
@@ -120,7 +120,7 @@ fn each_window_keeps_its_own_results() {
 fn a_pane_of_the_clear_frees_its_slot() {
     let gpu = headless_test_gpu();
     let owner = RenderOwners::default().reserve();
-    let mut backdrops = Backdrops::new(&gpu.device);
+    let mut backdrops = Backdrops::new(&gpu);
     prepare(&mut backdrops, &gpu, owner, &[captured(0)]);
     let first = slot(&backdrops, owner, 0).unwrap();
     prepare(&mut backdrops, &gpu, owner, &[row(0, PaneSource::Clear)]);
@@ -196,7 +196,7 @@ fn a_full_atlas_evicts_the_least_recently_used_result() {
     let gpu = headless_test_gpu();
     let owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
-    let mut backdrops = Backdrops::with_ceiling(&gpu.device, 64);
+    let mut backdrops = Backdrops::with_ceiling(&gpu, 64);
     prepare(&mut backdrops, &gpu, a, &[captured(0), captured(1)]);
     assert_eq!(backdrops.evicted(a).count(), 0);
     prepare(

@@ -102,28 +102,7 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 
 ## Plan
 
-Batch 7 goes first, as later batches pass the device through its signatures; the rest are sorted
-by impact, bugs first. Each leaves the build and tests green. Whoever addresses an item deletes it.
-
-### Batch 7: the device through `Gpu`
-
-Files: every file under `src/gpu/` with a `device: &wgpu::Device` or `queue: &wgpu::Queue`
-parameter (`rg -n 'device: &wgpu::Device|queue: &wgpu::Queue' src/gpu`), their callers, tests and
-benches.
-
-- [ ] `backdrop_blur/mod.rs` (12 fns), `dynamic_buffer.rs`, `packed_atlas.rs`,
-  `texture_binding.rs`, `raster_atlas/{mod.rs,side.rs,bound_sides.rs}`, `gpu_timings/`,
-  `render_stream.rs`, `surface/{stencil.rs,damage_canvas.rs,capture.rs,backbuffer.rs,
-  texel_readback.rs}`, the pipeline and backend constructors that `WgpuBackend::new` calls, and
-  `ShaderBody::module` and `pipeline_recipe::pipeline_layout`: about 60 fns take
-  `&wgpu::Device`, five of them with a `&wgpu::Queue` beside it, while `CurvePipeline::new`,
-  `QuadPipeline::new`, `BackdropBlur::new` and the pipeline builders take `&Gpu`. Target: every
-  one takes `&Gpu`, so `WgpuBackend::new` passes `&gpu` to each constructor and no call site in
-  `gpu` reads `gpu.device` to pass it on. The exceptions are `DeviceHealth::watch` and
-  `DeviceRequirements::met_by`, which run before a `Gpu` exists. Making `Gpu`'s `device` field
-  private gains nothing, as the public `Gpu::device` hands out the same reference; the route
-  stays the signatures and `clippy.toml`. Batch 8's texture-limit holder reaches the
-  constructors through these signatures.
+Sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses an item deletes it.
 
 ### Batch 8: texture growth and the device ceiling
 
@@ -142,11 +121,10 @@ frame_passes.rs}`.
   device maximum before it evicts, with no byte budget (one full-width pane on 7680×2160 makes
   it 512 MiB; the ceiling allows 8 GiB). Target: a byte budget in `AtlasSpec`, `evict_lru` before
   a grow past it, and a texture of its own for a slot wider than half the edge.
-- [ ] Texture limit: `raster_atlas/side.rs:28`, `backdrops/mod.rs:190`, `backdrop_blur/mod.rs:945`
-  read `device.limits()` themselves; `AttachedStore` (`wgpu_image_store.rs:36-48,72-80,137`) keeps
-  its own copy and raw `device`/`queue` clones; `HostCore::max_texture_dim` (`core.rs:138-140`)
-  re-reads the `Gpu`. Target: one holder, `SharedDevice::texture_limit`, threaded to constructors;
-  `AttachedStore` holds a `Gpu`.
+- [ ] Texture limit: `raster_atlas/side.rs`, `backdrops/mod.rs` and `backdrop_blur/mod.rs` read
+  `gpu.max_texture_dim()` themselves; `AttachedStore` (`wgpu_image_store.rs`) keeps its own copy;
+  `HostCore::max_texture_dim` (`core.rs:138-140`) re-reads the `Gpu`. Target: one holder,
+  `SharedDevice::texture_limit`, threaded to constructors.
 - [ ] `wgpu_backend/mod.rs:558-570` vs `982-1014`: "present the backbuffer" is written twice.
   Target: `Backbuffer::present_onto(encoder, target, blit)`.
 - [ ] `frontend/mod.rs:80-88`: `live_panes` re-derived by its own walk. Target:

@@ -144,12 +144,12 @@ pub(super) struct QueryTracer {
 
 impl QueryTracer {
     /// Timings at `period_ns` per tick, attributed as finely as `features` allow.
-    pub(super) fn new(device: &wgpu::Device, period_ns: f32, features: wgpu::Features) -> Self {
+    pub(super) fn new(gpu: &Gpu, period_ns: f32, features: wgpu::Features) -> Self {
         let inside_passes = features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
         let inside_encoders = features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS);
         let pipeline_stats = features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY);
         let resolve = |label, size| {
-            device.create_buffer(&wgpu::BufferDescriptor {
+            gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
                 size,
                 usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
@@ -157,7 +157,7 @@ impl QueryTracer {
             })
         };
         let staging = |label, size| {
-            device.create_buffer(&wgpu::BufferDescriptor {
+            gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some(label),
                 size,
                 usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
@@ -165,13 +165,13 @@ impl QueryTracer {
             })
         };
         let slots = array::from_fn(|i| Slot {
-            query_set: device.create_query_set(&wgpu::QuerySetDescriptor {
+            query_set: gpu.device.create_query_set(&wgpu::QuerySetDescriptor {
                 label: Some("palantir.gpu_timings.timestamps"),
                 ty: wgpu::QueryType::Timestamp,
                 count: QUERY_COUNT,
             }),
             stats_query_set: pipeline_stats.then(|| {
-                device.create_query_set(&wgpu::QuerySetDescriptor {
+                gpu.device.create_query_set(&wgpu::QuerySetDescriptor {
                     label: Some("palantir.gpu_timings.stats"),
                     ty: wgpu::QueryType::PipelineStatistics(PIPELINE_STATS_FLAGS),
                     count: MAX_STATS_PASSES,

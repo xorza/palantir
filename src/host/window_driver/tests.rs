@@ -374,7 +374,7 @@ mod output_validity_tests {
         // A screenshot still on the device keeps the frames coming, as nothing else wakes the
         // host when it lands; a still frame asks for nothing once it has.
         driver.captures.push_back(PendingScreenshot {
-            capture: Capture::never_landing(&headless_test_gpu().device),
+            capture: Capture::never_landing(&headless_test_gpu()),
             request: ScreenshotRequest {
                 region: Rect::new(0.0, 0.0, 1.0, 1.0),
                 id: ScreenshotId::FIRST,

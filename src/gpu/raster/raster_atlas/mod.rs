@@ -20,6 +20,7 @@ mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::common::span::Span;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
@@ -87,8 +88,6 @@ const UNALLOCATED_KEEP_FRAMES: u64 = 120;
 
 #[derive(Debug)]
 pub(super) struct RasterAtlas<K> {
-    /// Grows sides as inserts demand.
-    device: wgpu::Device,
     sides: [Side; 2],
     labels: AtlasLabels,
     eager_growth_bytes: u64,
@@ -164,24 +163,19 @@ impl PendingCopy {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
-    pub(super) fn new(
-        device: &wgpu::Device,
-        program: &RasterProgram,
-        config: RasterAtlasConfig,
-    ) -> Self {
+    pub(super) fn new(gpu: &Gpu, program: &RasterProgram, config: RasterAtlasConfig) -> Self {
         let sides = [
-            Side::new(device, ContentType::Mask, config),
-            Side::new(device, ContentType::Color, config),
+            Side::new(gpu, ContentType::Mask, config),
+            Side::new(gpu, ContentType::Color, config),
         ];
         let labels = AtlasLabels {
             grow_blit: format!("{} atlas grow blit", config.label),
             batch_upload: format!("{} atlas batch upload", config.label),
         };
 
-        let bound = BoundSides::new(device, SidesLayout::new(program, config.label), &sides);
+        let bound = BoundSides::new(gpu, SidesLayout::new(program, config.label), &sides);
 
         Self {
-            device: device.clone(),
             sides,
             labels,
             eager_growth_bytes: config.eager_growth_bytes,
@@ -298,10 +292,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         if self.sides.iter().any(|side| side.atlas.has_pending_grow()) {
             debug_marker::push_encoder(ctx.encoder, &self.labels.grow_blit);
             for side in &mut self.sides {
-                side.atlas.commit(&self.device, ctx.encoder);
+                side.atlas.commit(ctx.gpu, ctx.encoder);
             }
             debug_marker::pop_encoder(ctx.encoder);
-            self.bound.rebind(&self.device, &self.sides);
+            self.bound.rebind(ctx.gpu, &self.sides);
         }
 
         if self.pending_copies.is_empty() {

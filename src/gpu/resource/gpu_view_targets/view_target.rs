@@ -1,5 +1,6 @@
 //! One framework-owned off-screen target for a composited `GpuView`.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target;
@@ -28,8 +29,8 @@ pub(super) struct AllocatedTarget {
 }
 
 impl AllocatedTarget {
-    pub(super) fn new(device: &wgpu::Device, binding: &TextureBinding, size: UVec2) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+    pub(super) fn new(gpu: &Gpu, binding: &TextureBinding, size: UVec2) -> Self {
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.gpu_view.target"),
             size: render_target::extent(size),
             mip_level_count: 1,
@@ -40,7 +41,7 @@ impl AllocatedTarget {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(device, &view, "palantir.gpu_view.tex.bg");
+        let bind_group = binding.bind_group(gpu, &view, "palantir.gpu_view.tex.bg");
         Self { view, bind_group }
     }
 }

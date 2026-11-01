@@ -1,5 +1,6 @@
 //! [`Capture`]: a region of a texture on its way back from the device.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::map_state::MapState;
@@ -75,12 +76,7 @@ impl Capture {
     ///
     /// For a texture made without `COPY_SRC`, and for one that needs a blit when `source` has
     /// none.
-    pub(crate) fn start(
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        source: CaptureSource<'_>,
-        region: URect,
-    ) -> Self {
+    pub(crate) fn start(gpu: &Gpu, source: CaptureSource<'_>, region: URect) -> Self {
         let CaptureSource { texture, blit } = source;
         assert!(
             texture.usage().contains(wgpu::TextureUsages::COPY_SRC),
@@ -99,15 +95,17 @@ impl Capture {
         let padded_row = (region.size.x * BYTES_PER_PIXEL)
             .div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
             * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.capture.staging"),
             size: u64::from(padded_row) * u64::from(region.size.y),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
             mapped_at_creation: false,
         });
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("palantir.capture"),
-        });
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("palantir.capture"),
+            });
         let at_region = wgpu::TexelCopyTextureInfo {
             texture,
             mip_level: 0,
@@ -131,7 +129,7 @@ impl Capture {
             let CaptureBlit { pipeline, binding } =
                 blit.unwrap_or_else(|| panic!("a {format:?} texture needs the capture blit"));
             let texture = |label, format, usage| {
-                device.create_texture(&wgpu::TextureDescriptor {
+                gpu.device.create_texture(&wgpu::TextureDescriptor {
                     label: Some(label),
                     size: extent,
                     mip_level_count: 1,
@@ -156,14 +154,14 @@ impl Capture {
                 wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
             );
             let cut_view = cut.create_view(&wgpu::TextureViewDescriptor::default());
-            let bind_group = binding.bind_group(device, &cut_view, "palantir.capture.region.bg");
+            let bind_group = binding.bind_group(gpu, &cut_view, "palantir.capture.region.bg");
             let encoded_view = encoded.create_view(&wgpu::TextureViewDescriptor::default());
             blit_pipeline::draw(&mut encoder, &bind_group, &encoded_view, pipeline);
             encoder.copy_texture_to_buffer(encoded.as_image_copy(), into_buffer, extent);
         } else {
             encoder.copy_texture_to_buffer(at_region, into_buffer, extent);
         }
-        queue.submit(iter::once(encoder.finish()));
+        gpu.queue.submit(iter::once(encoder.finish()));
         let map = MapState::map_read(&buffer);
         Self {
             staging: Staging {
@@ -224,14 +222,15 @@ impl Capture {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::surface::capture::{Capture, Staging};
     use crate::gpu::surface::map_state::MapState;
     use glam::UVec2;
 
     impl Capture {
         /// A capture whose copy never finishes, as one the device is still running.
-        pub(crate) fn never_landing(device: &wgpu::Device) -> Self {
-            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        pub(crate) fn never_landing(gpu: &Gpu) -> Self {
+            let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir.capture.test"),
                 size: u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
                 usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,

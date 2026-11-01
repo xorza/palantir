@@ -185,9 +185,11 @@ pub(crate) struct PassTimer {
 
 impl PassTimer {
     pub(crate) fn new(gpu: &BenchGpu) -> Self {
-        let Gpu { device, queue, .. } = &gpu.gpu;
-        let timings =
-            GpuTimings::for_runs(device, queue.get_timestamp_period(), gpu.timing_features);
+        let timings = GpuTimings::for_runs(
+            &gpu.gpu,
+            gpu.gpu.queue.get_timestamp_period(),
+            gpu.timing_features,
+        );
         Self { timings }
     }
 

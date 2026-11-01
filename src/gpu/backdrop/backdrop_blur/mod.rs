@@ -271,10 +271,10 @@ impl BackdropBlur {
                     count: None,
                 }],
             });
-        let shader = Self::SHADER.module(&gpu.device);
+        let shader = Self::SHADER.module(gpu);
         let passes = |source_layout: wgpu::BindGroupLayout, tent_entry| {
             let layout = pipeline_recipe::pipeline_layout(
-                &gpu.device,
+                gpu,
                 "palantir.backdrop.blur.pl",
                 &[Some(&source_layout), Some(&params_layout)],
             );
@@ -307,7 +307,7 @@ impl BackdropBlur {
                 "palantir.backdrop.blur.vertical",
                 &shader,
                 &pipeline_recipe::pipeline_layout(
-                    &gpu.device,
+                    gpu,
                     "palantir.backdrop.blur.pl",
                     &[Some(&filtered.layout), Some(&params_layout)],
                 ),
@@ -322,8 +322,8 @@ impl BackdropBlur {
             ..Default::default()
         });
         let params_capacity = 16;
-        let params = params_buffer(&gpu.device, params_capacity);
-        let params_group = params_group(&gpu.device, &params_layout, &params);
+        let params = params_buffer(gpu, params_capacity);
+        let params_group = params_group(gpu, &params_layout, &params);
         Self {
             filtered,
             loaded,
@@ -341,12 +341,7 @@ impl BackdropBlur {
         }
     }
 
-    fn ensure_capture(
-        &mut self,
-        device: &wgpu::Device,
-        format: TargetFormat,
-        size: UVec2,
-    ) -> usize {
+    fn ensure_capture(&mut self, gpu: &Gpu, format: TargetFormat, size: UVec2) -> usize {
         let at = self
             .captures
             .iter()
@@ -354,17 +349,17 @@ impl BackdropBlur {
             .unwrap_or_else(|| {
                 let filters = format
                     .get()
-                    .guaranteed_format_features(device.features())
+                    .guaranteed_format_features(gpu.device.features())
                     .flags
                     .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
                 self.captures.push(CaptureTarget {
                     format,
                     filters,
                     target: self.sampled(
-                        device,
+                        gpu,
                         "palantir.backdrop.capture",
                         format.get(),
-                        grown(UVec2::ZERO, size, ceiling(device)),
+                        grown(UVec2::ZERO, size, gpu.max_texture_dim().get()),
                         filters,
                     ),
                 });
@@ -373,10 +368,10 @@ impl BackdropBlur {
         let have = render_target::texture_size(&self.captures[at].target.texture);
         if have.x < size.x || have.y < size.y {
             self.captures[at].target = self.sampled(
-                device,
+                gpu,
                 "palantir.backdrop.capture",
                 format.get(),
-                grown(have, size, ceiling(device)),
+                grown(have, size, gpu.max_texture_dim().get()),
                 self.captures[at].filters,
             );
         }
@@ -384,7 +379,7 @@ impl BackdropBlur {
     }
 
     /// Levels that hold `first` texels of level 1 and `levels` levels.
-    fn ensure_levels(&mut self, device: &wgpu::Device, first: UVec2, levels: u8) {
+    fn ensure_levels(&mut self, gpu: &Gpu, first: UVec2, levels: u8) {
         let mips = u32::from(levels);
         let (have, have_mips) = self.levels.as_ref().map_or((UVec2::ZERO, 0), |l| {
             (
@@ -399,8 +394,9 @@ impl BackdropBlur {
         // A mip floors its halving where a level's extent rounds up: a first mip a whole number of
         // the last one's texels keeps every mip as wide as its level.
         let last = 1 << (mips - 1);
-        let size = grown(have, first, ceiling(device)).map(|side| side.next_multiple_of(last));
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let size =
+            grown(have, first, gpu.max_texture_dim().get()).map(|side| side.next_multiple_of(last));
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.backdrop.levels"),
             size: render_target::extent(size),
             mip_level_count: mips,
@@ -424,7 +420,7 @@ impl BackdropBlur {
             .collect();
         let groups = views
             .iter()
-            .map(|view| self.source_group(device, view, true))
+            .map(|view| self.source_group(gpu, view, true))
             .collect();
         self.levels = Some(Levels {
             texture,
@@ -433,7 +429,7 @@ impl BackdropBlur {
         });
     }
 
-    fn ensure_scratch(&mut self, device: &wgpu::Device, size: UVec2) {
+    fn ensure_scratch(&mut self, gpu: &Gpu, size: UVec2) {
         let have = self
             .scratch
             .as_ref()
@@ -442,32 +438,32 @@ impl BackdropBlur {
             return;
         }
         self.scratch = Some(self.sampled(
-            device,
+            gpu,
             "palantir.backdrop.scratch",
             LEVEL_FORMAT,
-            grown(have, size, ceiling(device)),
+            grown(have, size, gpu.max_texture_dim().get()),
             true,
         ));
     }
 
-    fn ensure_params(&mut self, device: &wgpu::Device) {
+    fn ensure_params(&mut self, gpu: &Gpu) {
         if self.slots.len() <= self.params_capacity {
             return;
         }
         self.params_capacity = self.slots.len().next_power_of_two();
-        self.params = params_buffer(device, self.params_capacity);
-        self.params_group = params_group(device, &self.params_layout, &self.params);
+        self.params = params_buffer(gpu, self.params_capacity);
+        self.params_group = params_group(gpu, &self.params_layout, &self.params);
     }
 
     fn sampled(
         &self,
-        device: &wgpu::Device,
+        gpu: &Gpu,
         label: &'static str,
         format: wgpu::TextureFormat,
         size: UVec2,
         filters: bool,
     ) -> Sampled {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
             size: render_target::extent(size.max(UVec2::ONE)),
             mip_level_count: 1,
@@ -481,7 +477,7 @@ impl BackdropBlur {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let group = self.source_group(device, &view, filters);
+        let group = self.source_group(gpu, &view, filters);
         Sampled {
             texture,
             view,
@@ -490,12 +486,7 @@ impl BackdropBlur {
     }
 
     /// The group a pass reads `view` through, with the sampler where its format `filters`.
-    fn source_group(
-        &self,
-        device: &wgpu::Device,
-        view: &wgpu::TextureView,
-        filters: bool,
-    ) -> wgpu::BindGroup {
+    fn source_group(&self, gpu: &Gpu, view: &wgpu::TextureView, filters: bool) -> wgpu::BindGroup {
         let texture = wgpu::BindGroupEntry {
             binding: 0,
             resource: wgpu::BindingResource::TextureView(view),
@@ -509,7 +500,7 @@ impl BackdropBlur {
         } else {
             (&self.loaded.layout, &[texture][..])
         };
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
+        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("palantir.backdrop.blur.source"),
             layout,
             entries,
@@ -531,7 +522,7 @@ impl BackdropBlur {
         for batch in batches {
             debug_assert_eq!(batch.start, laid_out, "batches cover the jobs in order");
             laid_out = batch.end;
-            self.lay_out(&ctx.gpu.device, &mut jobs[batch]);
+            self.lay_out(ctx.gpu, &mut jobs[batch]);
         }
         debug_assert_eq!(laid_out, jobs.len(), "batches cover the jobs");
         self.write_params(ctx, jobs);
@@ -539,7 +530,7 @@ impl BackdropBlur {
 
     /// Give `batch` its capture and levels origins, at the first texel it reads of each, and grow
     /// the capture, the levels and the scratch to hold what it reads.
-    fn lay_out(&mut self, device: &wgpu::Device, batch: &mut [BlurJob]) {
+    fn lay_out(&mut self, gpu: &Gpu, batch: &mut [BlurJob]) {
         let first = batch[0];
         let capture_origin = if self.target.is_some() {
             UVec2::ZERO
@@ -549,7 +540,7 @@ impl BackdropBlur {
                 .map(|job| job.footprint)
                 .reduce(URect::union)
                 .expect("a batch holds a job");
-            self.ensure_capture(device, first.format, footprints.size);
+            self.ensure_capture(gpu, first.format, footprints.size);
             footprints.min
         };
         let deepest = batch.iter().map(|job| job.plan.levels()).max().unwrap_or(0);
@@ -561,14 +552,14 @@ impl BackdropBlur {
             .map_or(UVec2::ZERO, |window| {
                 let align = 1 << (deepest - 1);
                 let origin = window.min / align * align;
-                self.ensure_levels(device, window.max() - origin, deepest);
+                self.ensure_levels(gpu, window.max() - origin, deepest);
                 origin
             });
         let scratch = batch
             .iter()
             .map(|job| job.scratch_origin + job.region.size)
             .fold(UVec2::ZERO, UVec2::max);
-        self.ensure_scratch(device, scratch);
+        self.ensure_scratch(gpu, scratch);
         for job in batch {
             job.layout.capture_origin = capture_origin;
             job.layout.levels_origin = levels_origin;
@@ -585,7 +576,7 @@ impl BackdropBlur {
             job.layout.first_slot = self.slots.len();
             self.push_params(*job);
         }
-        self.ensure_params(&ctx.gpu.device);
+        self.ensure_params(ctx.gpu);
         ctx.write(&self.params, 0, bytemuck::cast_slice(&self.slots));
     }
 
@@ -649,18 +640,18 @@ impl BackdropBlur {
     /// place of a capture.
     pub(crate) fn target_source(
         &self,
-        device: &wgpu::Device,
+        gpu: &Gpu,
         view: &wgpu::TextureView,
         format: TargetFormat,
         size: UVec2,
     ) -> TargetSource {
         let filters = format
             .get()
-            .guaranteed_format_features(device.features())
+            .guaranteed_format_features(gpu.device.features())
             .flags
             .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
         TargetSource {
-            group: self.source_group(device, view, filters),
+            group: self.source_group(gpu, view, filters),
             size,
             filters,
         }
@@ -913,8 +904,8 @@ fn level_region(region: URect, levels: u8, level: u8, surface: UVec2) -> URect {
     ))
 }
 
-fn params_buffer(device: &wgpu::Device, slots: usize) -> wgpu::Buffer {
-    device.create_buffer(&wgpu::BufferDescriptor {
+fn params_buffer(gpu: &Gpu, slots: usize) -> wgpu::Buffer {
+    gpu.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("palantir.backdrop.blur.params"),
         size: (slots * PARAMS_SLOT_BYTES) as u64,
         usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
@@ -923,11 +914,11 @@ fn params_buffer(device: &wgpu::Device, slots: usize) -> wgpu::Buffer {
 }
 
 fn params_group(
-    device: &wgpu::Device,
+    gpu: &Gpu,
     layout: &wgpu::BindGroupLayout,
     params: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
+    gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("palantir.backdrop.blur.params"),
         layout,
         entries: &[wgpu::BindGroupEntry {
@@ -948,11 +939,6 @@ fn grown(have: UVec2, want: UVec2, ceiling: u32) -> UVec2 {
     have.max(want.map(|edge| edge.next_multiple_of(GROWTH_GRANULE).min(ceiling).max(edge)))
 }
 
-/// The largest edge of a texture `device` makes.
-fn ceiling(device: &wgpu::Device) -> u32 {
-    device.limits().max_texture_dimension_2d
-}
-
 /// The texels [`grown`] rounds an edge up to.
 const GROWTH_GRANULE: u32 = 256;
 
@@ -967,6 +953,7 @@ fn shader_constants() -> Vec<ShaderConstant> {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob};
+    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::device::gpu_ctx::GpuCtx;
     use crate::gpu::surface::render_target::TargetFormat;
     use glam::UVec2;
@@ -977,11 +964,11 @@ pub(crate) mod internals {
         /// grown to fit.
         pub(crate) fn capture_view(
             &mut self,
-            device: &wgpu::Device,
+            gpu: &Gpu,
             format: TargetFormat,
             size: UVec2,
         ) -> &wgpu::TextureView {
-            let at = self.ensure_capture(device, format, size);
+            let at = self.ensure_capture(gpu, format, size);
             &self.captures[at].target.view
         }
 

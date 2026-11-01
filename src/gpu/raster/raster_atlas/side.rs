@@ -1,5 +1,6 @@
 //! One per-content-type atlas texture and the eviction latch its clock keeps.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
 use crate::primitives::paint::content_type::ContentType;
@@ -20,12 +21,8 @@ pub(super) struct Side {
 
 impl Side {
     /// The `content` side of an atlas configured by `config`, at its initial size within the device's cap.
-    pub(super) fn new(
-        device: &wgpu::Device,
-        content: ContentType,
-        config: RasterAtlasConfig,
-    ) -> Self {
-        let max = device.limits().max_texture_dimension_2d;
+    pub(super) fn new(gpu: &Gpu, content: ContentType, config: RasterAtlasConfig) -> Self {
+        let max = gpu.max_texture_dim().get();
         let initial = match content {
             ContentType::Mask => config.initial_mask_px,
             ContentType::Color => config.initial_color_px,
@@ -37,7 +34,7 @@ impl Side {
             ceiling: Self::growth_ceiling(max, content, config.max_bytes),
         };
         Self {
-            atlas: PackedAtlas::new(device, spec, initial),
+            atlas: PackedAtlas::new(gpu, spec, initial),
             dry_frame: None,
         }
     }

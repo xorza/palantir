@@ -88,15 +88,16 @@ impl<'a> PipelineRecipe<'a> {
 
 /// Build the layout a recipe's [`PipelineRecipe::layout`] takes. Every pipeline declares the same immediate-region size, [`IMMEDIATES_BYTES`], taken by the prelude's `Immediates`.
 pub(crate) fn pipeline_layout(
-    device: &wgpu::Device,
+    gpu: &Gpu,
     label: &'static str,
     bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
 ) -> wgpu::PipelineLayout {
-    device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some(label),
-        bind_group_layouts,
-        immediate_size: IMMEDIATES_BYTES,
-    })
+    gpu.device
+        .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some(label),
+            bind_group_layouts,
+            immediate_size: IMMEDIATES_BYTES,
+        })
 }
 
 /// An attribute at shader `location` reading `format` at byte `offset` of its vertex: an

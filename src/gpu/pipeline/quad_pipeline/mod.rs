@@ -202,7 +202,7 @@ impl QuadPipeline {
             return;
         }
         let buf = self.mask_buffer.get_or_insert_with(|| {
-            DynamicBuffer::<Quad>::vertex(&ctx.gpu.device, "palantir.quad.masks", 8)
+            DynamicBuffer::<Quad>::vertex(ctx.gpu, "palantir.quad.masks", 8)
         });
         buf.upload_instances(ctx, masks);
     }
@@ -228,31 +228,30 @@ impl QuadPipeline {
         textures: &TextureBinding,
         backdrops: &wgpu::BindGroupLayout,
     ) -> Self {
-        let shader = Self::SHADER.module(&gpu.device);
+        let shader = Self::SHADER.module(gpu);
         let cutouts = CutoutTables::new(gpu, &shader);
 
-        let instance_buffer =
-            DynamicBuffer::<Quad>::vertex(&gpu.device, "palantir.quad.instances", 256);
+        let instance_buffer = DynamicBuffer::<Quad>::vertex(gpu, "palantir.quad.instances", 256);
 
         Self {
             instance_buffer,
             draws: Vec::new(),
             mask_buffer: None,
-            clear: SingleQuadBuffer::new(&gpu.device, "palantir.quad.clear"),
+            clear: SingleQuadBuffer::new(gpu, "palantir.quad.clear"),
             shader,
             // Gradient atlas at group 0. One layout serves all pipelines; stencil state and fragment entry are not part of it.
             pipeline_layout: pipeline_recipe::pipeline_layout(
-                &gpu.device,
+                gpu,
                 "palantir.quad.pl",
                 &[Some(textures.layout())],
             ),
             shadow_layout: pipeline_recipe::pipeline_layout(
-                &gpu.device,
+                gpu,
                 "palantir.quad.shadow.pl",
                 &[Some(textures.layout()), Some(cutouts.layout())],
             ),
             backdrop_layout: pipeline_recipe::pipeline_layout(
-                &gpu.device,
+                gpu,
                 "palantir.quad.backdrop.pl",
                 &[Some(textures.layout()), None, Some(backdrops)],
             ),

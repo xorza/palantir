@@ -61,14 +61,13 @@ impl MeshPipeline {
     /// Format-independent mesh resources; pipelines come from
     /// [`Self::build_variants`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let shader = Self::SHADER.module(device);
+    pub(crate) fn new(gpu: &Gpu) -> Self {
+        let shader = Self::SHADER.module(gpu);
 
-        let vertex_buffer =
-            DynamicBuffer::<MeshVertex>::vertex(device, "palantir.mesh.vertices", 256);
-        let idx_buffer = DynamicBuffer::<u32>::idx(device, "palantir.mesh.indices", 1024);
+        let vertex_buffer = DynamicBuffer::<MeshVertex>::vertex(gpu, "palantir.mesh.vertices", 256);
+        let idx_buffer = DynamicBuffer::<u32>::idx(gpu, "palantir.mesh.indices", 1024);
         let instance_buffer =
-            DynamicBuffer::<MeshInstance>::vertex(device, "palantir.mesh.instances", 64);
+            DynamicBuffer::<MeshInstance>::vertex(gpu, "palantir.mesh.instances", 64);
 
         Self {
             vertex_buffer,
@@ -76,7 +75,7 @@ impl MeshPipeline {
             instance_buffer,
             shader,
             // No bind groups: only the shared immediate region for the viewport.
-            pipeline_layout: pipeline_recipe::pipeline_layout(device, "palantir.mesh.pl", &[]),
+            pipeline_layout: pipeline_recipe::pipeline_layout(gpu, "palantir.mesh.pl", &[]),
         }
     }
 

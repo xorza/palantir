@@ -163,7 +163,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
         return;
     }
     let gpu = &*lease;
-    let mut tracer = QueryTracer::new(&gpu.device, gpu.queue.get_timestamp_period(), features);
+    let mut tracer = QueryTracer::new(gpu, gpu.queue.get_timestamp_period(), features);
     let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let sink = GpuPassStats::default();
     let frame = |tracer: &mut QueryTracer| {
@@ -219,7 +219,7 @@ fn a_break_between_passes_counts_in_no_kind() {
         return;
     }
     let gpu = &*lease;
-    let mut tracer = QueryTracer::new(&gpu.device, gpu.queue.get_timestamp_period(), features);
+    let mut tracer = QueryTracer::new(gpu, gpu.queue.get_timestamp_period(), features);
     let target = lease.target("palantir.test.query_tracer", glam::UVec2::splat(64));
     let view = target.view();
     let mut encoder = gpu

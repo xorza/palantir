@@ -80,11 +80,11 @@ pub(crate) struct GpuTimings {
 }
 
 impl GpuTimings {
-    /// A frame's timings for `device`, at `period_ns` per timestamp tick, as finely as `features`
+    /// A frame's timings for `gpu`, at `period_ns` per timestamp tick, as finely as `features`
     /// allow.
-    pub(crate) fn new(device: &wgpu::Device, period_ns: f32, features: wgpu::Features) -> Self {
+    pub(crate) fn new(gpu: &Gpu, period_ns: f32, features: wgpu::Features) -> Self {
         Self::with_tracer(
-            device,
+            gpu,
             period_ns,
             features,
             features.contains(wgpu::Features::TIMESTAMP_QUERY),
@@ -93,14 +93,9 @@ impl GpuTimings {
 
     /// The query tracer when `queries` says the device writes what the timing needs, else the
     /// wall clock.
-    fn with_tracer(
-        device: &wgpu::Device,
-        period_ns: f32,
-        features: wgpu::Features,
-        queries: bool,
-    ) -> Self {
+    fn with_tracer(gpu: &Gpu, period_ns: f32, features: wgpu::Features, queries: bool) -> Self {
         let tracer = if queries {
-            Tracer::Queries(Box::new(QueryTracer::new(device, period_ns, features)))
+            Tracer::Queries(Box::new(QueryTracer::new(gpu, period_ns, features)))
         } else {
             Tracer::WallClock(WallClockTracer::new())
         };
@@ -171,6 +166,7 @@ impl GpuTimings {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::frame::gpu_timings::{GpuTimings, Tracer};
 
     impl GpuTimings {
@@ -180,13 +176,9 @@ pub(crate) mod internals {
         ///
         /// [`Mark::RunStart`]: crate::gpu::frame::gpu_timings::Mark::RunStart
         /// [`Mark::RunEnd`]: crate::gpu::frame::gpu_timings::Mark::RunEnd
-        pub(crate) fn for_runs(
-            device: &wgpu::Device,
-            period_ns: f32,
-            features: wgpu::Features,
-        ) -> Self {
+        pub(crate) fn for_runs(gpu: &Gpu, period_ns: f32, features: wgpu::Features) -> Self {
             Self::with_tracer(
-                device,
+                gpu,
                 period_ns,
                 features,
                 features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS),

@@ -12,7 +12,7 @@ use wgpu::util::StagingBelt;
 fn writes_only_a_changed_quad() {
     let gpu = headless_test_gpu();
     let device = &gpu.device;
-    let mut buffer = SingleQuadBuffer::new(device, "test.single_quad");
+    let mut buffer = SingleQuadBuffer::new(&gpu, "test.single_quad");
     let mut belt = StagingBelt::new(device.clone(), 1 << 12);
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
     let handles = &*gpu;

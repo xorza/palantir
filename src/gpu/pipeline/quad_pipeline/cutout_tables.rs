@@ -77,7 +77,7 @@ impl CutoutTables {
 
     /// The tables for the quad `shader` (`vs_cutout_bake`, `fs_cutout_bake`).
     pub(crate) fn new(gpu: &Gpu, shader: &wgpu::ShaderModule) -> Self {
-        let mode = if Self::renders_atlas(&gpu.device) {
+        let mode = if Self::renders_atlas(gpu) {
             CutoutMode::Bake
         } else {
             CutoutMode::Shade
@@ -125,8 +125,7 @@ impl CutoutTables {
                 resource: wgpu::BindingResource::TextureView(&atlas),
             }],
         });
-        let bake_layout =
-            pipeline_recipe::pipeline_layout(&gpu.device, "palantir.quad.cutouts.pl", &[]);
+        let bake_layout = pipeline_recipe::pipeline_layout(gpu, "palantir.quad.cutouts.pl", &[]);
         let bake_pipeline = PipelineRecipe {
             vertex_entry: "vs_cutout_bake",
             vertex_buffers: &[Some(BAKE_LAYOUT)],
@@ -148,21 +147,21 @@ impl CutoutTables {
             layout,
             bind_group,
             bake_pipeline,
-            tables: DynamicBuffer::vertex(&gpu.device, "palantir.quad.cutouts.tables", 16),
-            corners: DynamicBuffer::vertex(&gpu.device, "palantir.quad.cutouts.corners", 256),
+            tables: DynamicBuffer::vertex(gpu, "palantir.quad.cutouts.tables", 16),
+            corners: DynamicBuffer::vertex(gpu, "palantir.quad.cutouts.corners", 256),
             held: HeldTables::default(),
             bakes: Vec::new(),
         }
     }
 
-    /// Whether `device` renders into the atlas format. WebGPU guarantees it; on a downlevel device
+    /// Whether `gpu` renders into the atlas format. WebGPU guarantees it; on a downlevel device
     /// wgpu checks a texture's usage against what the adapter reports (`wgpu-core`
     /// `Device::describe_format_features`). A device does not report those features, and the
     /// adapter of a device the app opened is not at hand, so a texture made under an error scope
     /// asks.
-    fn renders_atlas(device: &wgpu::Device) -> bool {
-        let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
-        let _ = device.create_texture(&wgpu::TextureDescriptor {
+    fn renders_atlas(gpu: &Gpu) -> bool {
+        let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let _ = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.quad.cutouts.probe"),
             size: render_target::extent(UVec2::ONE),
             mip_level_count: 1,
@@ -319,7 +318,7 @@ mod tests {
     fn a_webgpu_device_renders_the_atlas() {
         let gpu = headless_test_gpu();
         let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
-        assert!(CutoutTables::renders_atlas(&gpu.device));
+        assert!(CutoutTables::renders_atlas(&gpu));
         assert!(pollster::block_on(scope.pop()).is_none());
     }
 }

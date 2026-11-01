@@ -1,5 +1,6 @@
 //! A one-quad instance buffer that is written only when its quad changes.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::renderer::quad::Quad;
@@ -12,9 +13,9 @@ pub(crate) struct SingleQuadBuffer {
 }
 
 impl SingleQuadBuffer {
-    pub(crate) fn new(device: &wgpu::Device, label: &'static str) -> Self {
+    pub(crate) fn new(gpu: &Gpu, label: &'static str) -> Self {
         Self {
-            buffer: DynamicBuffer::vertex(device, label, 1),
+            buffer: DynamicBuffer::vertex(gpu, label, 1),
             held: None,
         }
     }

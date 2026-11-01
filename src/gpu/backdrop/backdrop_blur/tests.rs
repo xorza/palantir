@@ -144,7 +144,7 @@ fn blur_with(
 ) -> Vec<[f32; 4]> {
     let mut engine = BackdropBlur::with_loop(gpu, residual);
     let format = jobs[0].format;
-    engine.capture_view(&gpu.device, format, SURFACE);
+    engine.capture_view(gpu, format, SURFACE);
     let capture = &engine.captures[0].target.texture;
     let linear: Vec<[f32; 4]> = pixels
         .iter()

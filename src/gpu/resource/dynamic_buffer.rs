@@ -5,6 +5,7 @@
 //!
 //! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) and the `text` backend's vbuf.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use std::marker::PhantomData;
 
@@ -42,13 +43,9 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
 
     /// A vertex/instance buffer for items of type `T`: `VERTEX | COPY_DST`, the common case for the
     /// four pipelines and the debug overlay.
-    pub(crate) fn vertex(
-        device: &wgpu::Device,
-        label: &'static str,
-        initial_capacity: usize,
-    ) -> Self {
+    pub(crate) fn vertex(gpu: &Gpu, label: &'static str, initial_capacity: usize) -> Self {
         Self::new(
-            device,
+            gpu,
             BufferSpec {
                 label,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
@@ -58,13 +55,9 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     }
 
     /// A read-only storage buffer for items of type `T`: `STORAGE | COPY_DST`.
-    pub(crate) fn storage(
-        device: &wgpu::Device,
-        label: &'static str,
-        initial_capacity: usize,
-    ) -> Self {
+    pub(crate) fn storage(gpu: &Gpu, label: &'static str, initial_capacity: usize) -> Self {
         Self::new(
-            device,
+            gpu,
             BufferSpec {
                 label,
                 usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
@@ -80,9 +73,9 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     }
 
     /// An index buffer for items of type `T`: `INDEX | COPY_DST`.
-    pub(crate) fn idx(device: &wgpu::Device, label: &'static str, initial_capacity: usize) -> Self {
+    pub(crate) fn idx(gpu: &Gpu, label: &'static str, initial_capacity: usize) -> Self {
         Self::new(
-            device,
+            gpu,
             BufferSpec {
                 label,
                 usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
@@ -91,13 +84,13 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         )
     }
 
-    fn new(device: &wgpu::Device, spec: BufferSpec) -> Self {
+    fn new(gpu: &Gpu, spec: BufferSpec) -> Self {
         let BufferSpec {
             label,
             usage,
             initial_capacity,
         } = spec;
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
             size: (initial_capacity * Self::ITEM_BYTES) as u64,
             usage,

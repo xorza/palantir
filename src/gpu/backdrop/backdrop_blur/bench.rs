@@ -26,7 +26,7 @@ const SIDES: [u32; 2] = [512, 2048];
 /// A capture of noise over a `side`² surface, so no pass reads a constant.
 fn fill_capture(gpu: &BenchGpu, blur: &mut BackdropBlur, side: u32) {
     let surface = UVec2::splat(side);
-    blur.capture_view(&gpu.gpu.device, TARGET_FORMAT, surface);
+    blur.capture_view(&gpu.gpu, TARGET_FORMAT, surface);
     let texture = &blur.captures[0].target.texture;
     let pixels: Vec<u8> = (0..side * side * 4)
         .map(|i| (i.wrapping_mul(2_654_435_761) >> 24) as u8)

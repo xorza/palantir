@@ -15,6 +15,7 @@ pub(crate) mod bench;
 mod encode;
 mod encoded_counters;
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
@@ -47,12 +48,12 @@ pub(crate) struct TextBackend {
 impl TextBackend {
     /// Build the format-independent text resources; per-format pipelines come from
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
-    pub(crate) fn new(device: &wgpu::Device, program: &RasterProgram, shaper: TextShaper) -> Self {
+    pub(crate) fn new(gpu: &Gpu, program: &RasterProgram, shaper: TextShaper) -> Self {
         Self {
             shaper,
             encoder: TextEncoder::default(),
             pass: RasterPass::new(
-                device,
+                gpu,
                 program,
                 RasterPassConfig {
                     vbuf: "palantir.text.vbuf",

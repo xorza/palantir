@@ -1,5 +1,6 @@
 //! One render owner's side of the device: what its frames keep there between them.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -95,7 +96,7 @@ impl RenderStream {
     /// pixel yet.
     pub(super) fn ensure_backbuffer(
         &mut self,
-        device: &wgpu::Device,
+        gpu: &Gpu,
         binding: &TextureBinding,
         target: RenderTarget<'_>,
     ) -> bool {
@@ -108,19 +109,14 @@ impl RenderStream {
         }
         let made = self.backbuffer.is_none();
         if made {
-            self.backbuffer = Some(Backbuffer::new(device, binding, target));
+            self.backbuffer = Some(Backbuffer::new(gpu, binding, target));
         }
         made
     }
 
     /// Make [`Self::canvas`] `size` in `format`: the one before it when it is, else a new one,
     /// which the oldest gives way to.
-    pub(super) fn ensure_canvas(
-        &mut self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        size: UVec2,
-    ) {
+    pub(super) fn ensure_canvas(&mut self, gpu: &Gpu, format: wgpu::TextureFormat, size: UVec2) {
         let fits = |canvas: &Option<DamageCanvas>| {
             canvas
                 .as_ref()
@@ -131,16 +127,16 @@ impl RenderStream {
         }
         self.canvases.swap(0, 1);
         if !fits(&self.canvases[0]) {
-            self.canvases[0] = Some(DamageCanvas::new(device, format, size));
+            self.canvases[0] = Some(DamageCanvas::new(gpu, format, size));
         }
     }
 
     /// Give [`Self::canvas`] its stencil.
-    pub(super) fn ensure_canvas_stencil(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub(super) fn ensure_canvas_stencil(&mut self, gpu: &Gpu) {
         self.canvases[0]
             .as_mut()
             .expect("a canvas made ready")
-            .ensure_stencil(device, queue);
+            .ensure_stencil(gpu);
     }
 
     /// The canvas [`Self::ensure_canvas`] made ready last.
@@ -149,14 +145,9 @@ impl RenderStream {
     }
 
     /// The stencil at `size`, made when there is none or it has another size.
-    pub(super) fn ensure_stencil(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        size: UVec2,
-    ) {
+    pub(super) fn ensure_stencil(&mut self, gpu: &Gpu, size: UVec2) {
         if !self.stencil.as_ref().is_some_and(|held| held.fits(size)) {
-            self.stencil = Some(Stencil::new(device, queue, size));
+            self.stencil = Some(Stencil::new(gpu, size));
         }
     }
 }
@@ -205,7 +196,7 @@ mod tests {
             RenderStream::detached(RenderOwners::default().reserve(), CutoutMode::Shade);
         let (a, b, c) = (UVec2::new(64, 64), UVec2::new(128, 64), UVec2::new(64, 128));
         let mut ready = |size, format| {
-            stream.ensure_canvas(&gpu.device, format, size);
+            stream.ensure_canvas(&gpu, format, size);
             stream.canvas().unwrap().texture().clone()
         };
         let srgb = wgpu::TextureFormat::Rgba8UnormSrgb;

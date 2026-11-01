@@ -24,12 +24,12 @@ impl BlitPipeline {
         constants: Vec::new,
     };
 
-    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
-        let shader = Self::SHADER.module(device);
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
+        let shader = Self::SHADER.module(gpu);
         Self {
             shader,
             pipeline_layout: pipeline_recipe::pipeline_layout(
-                device,
+                gpu,
                 "palantir.blit.pl",
                 &[Some(textures.layout())],
             ),

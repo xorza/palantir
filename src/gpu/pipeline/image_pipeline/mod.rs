@@ -70,17 +70,17 @@ impl ImagePipeline {
     /// Format-independent resources: shader and instance buffer. Pipelines come
     /// from [`Self::build_variants`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
-    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
-        let shader = Self::SHADER.module(device);
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
+        let shader = Self::SHADER.module(gpu);
 
         let instance_buffer =
-            DynamicBuffer::<ImageInstance>::vertex(device, "palantir.image.instances", 16);
+            DynamicBuffer::<ImageInstance>::vertex(gpu, "palantir.image.instances", 16);
 
         Self {
             instance_buffer,
             shader,
             pipeline_layout: pipeline_recipe::pipeline_layout(
-                device,
+                gpu,
                 "palantir.image.pl",
                 &[Some(textures.layout())],
             ),

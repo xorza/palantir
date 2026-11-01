@@ -1,5 +1,7 @@
 //! [`TextureBinding`]: the texture-plus-sampler group every texture-sampling shader binds.
 
+use crate::gpu::device::gpu::Gpu;
+
 /// The group-0 layout every sampled texture binds through, with its sampler: gradient LUT atlas, registered images, `GpuView` targets, and the backbuffer when drawn onto a no-copy target.
 ///
 /// Built once, by the host's image store, which the backend takes its copy from. `Clone` shares `wgpu`'s ref-counted handles, so every pipeline composes over the same layout and a group built for one binds in any.
@@ -11,20 +13,22 @@ pub(crate) struct TextureBinding {
 }
 
 impl TextureBinding {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.texture.bgl"),
-            entries: &[
-                Self::texture_entry(0),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+    pub(crate) fn new(gpu: &Gpu) -> Self {
+        let layout = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.texture.bgl"),
+                entries: &[
+                    Self::texture_entry(0),
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("palantir.texture.sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
@@ -58,11 +62,11 @@ impl TextureBinding {
     /// The group binding `view` through this layout and sampler.
     pub(crate) fn bind_group(
         &self,
-        device: &wgpu::Device,
+        gpu: &Gpu,
         view: &wgpu::TextureView,
         label: &str,
     ) -> wgpu::BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
+        gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(label),
             layout: &self.layout,
             entries: &[

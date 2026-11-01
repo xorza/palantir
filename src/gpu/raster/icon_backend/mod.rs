@@ -9,6 +9,7 @@
 //! would have to guess that size, and one deferred past it would leave the
 //! frame without the icon.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
@@ -30,10 +31,10 @@ pub(crate) struct IconBackend {
 }
 
 impl IconBackend {
-    pub(crate) fn new(device: &wgpu::Device, program: &RasterProgram, icons: IconRegistry) -> Self {
+    pub(crate) fn new(gpu: &Gpu, program: &RasterProgram, icons: IconRegistry) -> Self {
         Self {
             pass: RasterPass::new(
-                device,
+                gpu,
                 program,
                 RasterPassConfig {
                     vbuf: "palantir.icon.vbuf",

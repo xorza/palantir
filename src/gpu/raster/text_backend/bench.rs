@@ -180,9 +180,9 @@ impl Fixture {
         let shaper = TextShaper::new();
         let mut store = RecordStore::default();
         let runs = make_runs(&mut store, &shaper);
-        let program = RasterProgram::new(&g.gpu.device);
+        let program = RasterProgram::new(&g.gpu);
         Self {
-            backend: TextBackend::new(&g.gpu.device, &program, shaper),
+            backend: TextBackend::new(&g.gpu, &program, shaper),
             pipelines: program.build_variants(&g.gpu, TARGET_FORMAT.get()),
             program,
             belt: StagingBelt::new(g.gpu.device.clone(), 1 << 20),

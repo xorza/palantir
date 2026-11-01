@@ -30,7 +30,7 @@ impl GpuPaint for CountingPaint {
 fn an_unchanged_stamp_skips_the_paint_and_a_bucket_keeps_the_texture() {
     let gpu = headless_test_gpu();
     let device = &gpu.device;
-    let mut targets = GpuViewTargets::new(TextureBinding::new(device));
+    let mut targets = GpuViewTargets::new(TextureBinding::new(&gpu));
     let paints = Rc::new(Cell::new(0));
     let paint = GpuPaintRef(Rc::new(RefCell::new(CountingPaint(Rc::clone(&paints)))));
     let id = TextureId::reserve();

@@ -1,6 +1,7 @@
 //! The off-screen color target the backbuffer-copy path renders into.
 
 use crate::gpu::backdrop::backdrop_blur::TargetSource;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target::{self, RenderTarget};
@@ -46,12 +47,8 @@ impl Backbuffer {
 
     /// A backbuffer [`describing`](Self::describes) `target`. `binding` is what
     /// targets without copy support draw through.
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        binding: &TextureBinding,
-        target: RenderTarget<'_>,
-    ) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+    pub(crate) fn new(gpu: &Gpu, binding: &TextureBinding, target: RenderTarget<'_>) -> Self {
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.backbuffer"),
             size: target.texture().size(),
             mip_level_count: 1,
@@ -66,7 +63,7 @@ impl Backbuffer {
             view_formats: &[],
         });
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(device, &view, "palantir.renderer.backbuffer.bg");
+        let bind_group = binding.bind_group(gpu, &view, "palantir.renderer.backbuffer.bg");
         Self {
             texture,
             view,

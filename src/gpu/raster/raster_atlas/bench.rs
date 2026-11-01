@@ -33,7 +33,7 @@ fn primed_side(gpu: &BenchGpu, content: ContentType, size: u32, zeros: &[u8]) ->
         max_bytes: 16 << 20,
         eager_growth_bytes: 16 << 20,
     };
-    let side = Side::new(&gpu.gpu.device, content, config);
+    let side = Side::new(&gpu.gpu, content, config);
     assert_eq!(
         side.atlas.edge(),
         size,
@@ -95,7 +95,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
                         let start = Instant::now();
                         assert!(side.atlas.grow(), "a side below its ceiling grows");
                         submit(gpu, |encoder| {
-                            side.atlas.commit(&gpu.gpu.device, encoder);
+                            side.atlas.commit(&gpu.gpu, encoder);
                         });
                         let elapsed = start.elapsed();
                         assert_eq!(side.atlas.texture().width(), from * 2, "the side doubled");

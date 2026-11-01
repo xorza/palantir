@@ -50,12 +50,12 @@ impl RasterProgram {
         constants: shader_constants,
     };
 
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let layout = Self::create_layout(device);
+    pub(crate) fn new(gpu: &Gpu) -> Self {
+        let layout = Self::create_layout(gpu);
         let pipeline_layout =
-            pipeline_recipe::pipeline_layout(device, "palantir.raster.pl", &[Some(&layout)]);
+            pipeline_recipe::pipeline_layout(gpu, "palantir.raster.pl", &[Some(&layout)]);
         Self {
-            shader: Self::SHADER.module(device),
+            shader: Self::SHADER.module(gpu),
             layout,
             pipeline_layout,
         }
@@ -108,14 +108,15 @@ impl RasterProgram {
     }
 
     /// Group 0: mask at 0, color at 1, no sampler (the shader reads each texel by index).
-    fn create_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.raster.atlas layout"),
-            entries: &[
-                TextureBinding::texture_entry(0),
-                TextureBinding::texture_entry(1),
-            ],
-        })
+    fn create_layout(gpu: &Gpu) -> wgpu::BindGroupLayout {
+        gpu.device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.raster.atlas layout"),
+                entries: &[
+                    TextureBinding::texture_entry(0),
+                    TextureBinding::texture_entry(1),
+                ],
+            })
     }
 }
 

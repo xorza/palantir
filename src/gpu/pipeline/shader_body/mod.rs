@@ -1,6 +1,7 @@
 //! Assembly of a pipeline's WGSL: the shared prelude, then the body a pipeline family owns, with
 //! Rust-owned constants substituted.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::primitives::paint::antialias::AA_HALF_WIDTH;
 
 /// Concatenated ahead of every shader body, so shared vocabulary has one definition.
@@ -31,11 +32,12 @@ impl ShaderBody {
     }
 
     /// The shader module for this body.
-    pub(crate) fn module(self, device: &wgpu::Device) -> wgpu::ShaderModule {
-        device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some(self.label),
-            source: wgpu::ShaderSource::Wgsl(self.specialize().into()),
-        })
+    pub(crate) fn module(self, gpu: &Gpu) -> wgpu::ShaderModule {
+        gpu.device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some(self.label),
+                source: wgpu::ShaderSource::Wgsl(self.specialize().into()),
+            })
     }
 }
 

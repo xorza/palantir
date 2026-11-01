@@ -128,7 +128,7 @@ impl OwnedTarget {
     /// As [`TexelReadback::new`].
     pub(crate) fn copy_texels(&mut self, texels: &mut Vec<u8>) -> GpuWait {
         self.readback
-            .get_or_insert_with(|| TexelReadback::new(&self.gpu.device, &self.texture))
+            .get_or_insert_with(|| TexelReadback::new(&self.gpu, &self.texture))
             .read(&self.gpu, &self.texture, texels)
     }
 }
@@ -157,12 +157,7 @@ pub(crate) mod internals {
                 texture: &self.texture,
                 blit: None,
             };
-            let capture = Capture::start(
-                &self.gpu.device,
-                &self.gpu.queue,
-                source,
-                URect::new(0, 0, size.x, size.y),
-            );
+            let capture = Capture::start(&self.gpu, source, URect::new(0, 0, size.x, size.y));
             let waited = self.gpu.wait_until(&|| !capture.is_pending());
             assert_eq!(waited, GpuWait::Done, "{COPIED}");
             let image = capture.take().expect(COPIED);

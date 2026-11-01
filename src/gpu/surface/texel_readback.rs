@@ -27,7 +27,7 @@ impl TexelReadback {
     ///
     /// For a texture made without `COPY_SRC`, or in a format with blocks of more than one texel
     /// or of more than one aspect.
-    pub(crate) fn new(device: &wgpu::Device, texture: &wgpu::Texture) -> Self {
+    pub(crate) fn new(gpu: &Gpu, texture: &wgpu::Texture) -> Self {
         let format = texture.format();
         assert!(
             texture.usage().contains(wgpu::TextureUsages::COPY_SRC),
@@ -44,7 +44,7 @@ impl TexelReadback {
         let size = render_target::texture_size(texture);
         let row = size.x * texel;
         let padded_row = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
-        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.texel_readback"),
             size: u64::from(padded_row) * u64::from(size.y),
             usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,

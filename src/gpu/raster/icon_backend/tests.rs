@@ -1,6 +1,7 @@
 //! The unload path: what dropping an [`IconSet`] costs the backend to forget, and when. Needs a device.
 
 mod gpu {
+    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::pipeline::raster_pipeline::RasterProgram;
     use crate::gpu::raster::icon_backend::IconBackend;
     use crate::gpu::test_gpu::headless_test_gpu;
@@ -14,8 +15,8 @@ mod gpu {
     use std::rc::Rc;
 
     /// A backend over its own program; see the text suite's peer.
-    fn icon_backend(device: &wgpu::Device, icons: &IconRegistry) -> IconBackend {
-        IconBackend::new(device, &RasterProgram::new(device), icons.clone())
+    fn icon_backend(gpu: &Gpu, icons: &IconRegistry) -> IconBackend {
+        IconBackend::new(gpu, &RasterProgram::new(gpu), icons.clone())
     }
 
     /// One tintable icon, so the raster lands on the mask side.
@@ -46,7 +47,7 @@ mod gpu {
     fn dropping_a_set_unloads_its_parses_and_its_rasters_at_the_next_submit() {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
-        let mut backend = icon_backend(&gpu.device, &icons);
+        let mut backend = icon_backend(&gpu, &icons);
         let mut frame = 0u64;
 
         let set = load(&icons);
@@ -85,7 +86,7 @@ mod gpu {
     fn a_set_reusing_a_freed_slot_rasterizes_from_scratch() {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
-        let mut backend = icon_backend(&gpu.device, &icons);
+        let mut backend = icon_backend(&gpu, &icons);
         let mut frame = 0u64;
 
         let first = load(&icons);
@@ -116,7 +117,7 @@ mod gpu {
     fn loading_a_fresh_set_every_frame_holds_the_backend_caches_flat() {
         let gpu = headless_test_gpu();
         let icons = IconRegistry::default();
-        let mut backend = icon_backend(&gpu.device, &icons);
+        let mut backend = icon_backend(&gpu, &icons);
         let mut frame = 0u64;
 
         let mut held: Option<IconSet> = None;

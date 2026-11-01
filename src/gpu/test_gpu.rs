@@ -101,7 +101,7 @@ impl HeadlessTestGpuLease {
     /// does not map.
     pub fn read_texture(&self, texture: &wgpu::Texture) -> Vec<u8> {
         let mut texels = Vec::new();
-        let read = TexelReadback::new(&self.device, texture).read(self, texture, &mut texels);
+        let read = TexelReadback::new(self, texture).read(self, texture, &mut texels);
         assert_eq!(read, GpuWait::Done, "the read buffer maps");
         texels
     }

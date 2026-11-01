@@ -1,6 +1,7 @@
 //! A square texture of packed rectangles: its shelf packer, its edge grown by doubling up to a
 //! ceiling, and the copy of its texels into the grown texture.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::surface::render_target;
 use glam::{U16Vec2, UVec2};
@@ -18,8 +19,8 @@ pub(crate) struct AtlasSpec {
 }
 
 impl AtlasSpec {
-    fn create(&self, device: &wgpu::Device, edge: u32) -> wgpu::Texture {
-        device.create_texture(&wgpu::TextureDescriptor {
+    fn create(&self, gpu: &Gpu, edge: u32) -> wgpu::Texture {
+        gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&self.label),
             size: render_target::extent(UVec2::splat(edge)),
             mip_level_count: 1,
@@ -50,9 +51,9 @@ pub(crate) struct PackedAtlas {
 
 impl PackedAtlas {
     /// An empty atlas of `spec` at an edge of `initial` texels, held to the ceiling.
-    pub(crate) fn new(device: &wgpu::Device, spec: AtlasSpec, initial: u32) -> Self {
+    pub(crate) fn new(gpu: &Gpu, spec: AtlasSpec, initial: u32) -> Self {
         let edge = initial.min(spec.ceiling);
-        let texture = spec.create(device, edge);
+        let texture = spec.create(gpu, edge);
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
@@ -107,16 +108,12 @@ impl PackedAtlas {
     /// Make the texture follow the edge after a grow: one texture at the edge, the old one's
     /// texels copied into its top-left by `encoder`, ahead of whatever the frame writes there.
     /// `true` when the texture moved, so whatever binds its view binds the new one.
-    pub(crate) fn commit(
-        &mut self,
-        device: &wgpu::Device,
-        encoder: &mut wgpu::CommandEncoder,
-    ) -> bool {
+    pub(crate) fn commit(&mut self, gpu: &Gpu, encoder: &mut wgpu::CommandEncoder) -> bool {
         let old = self.texture.width();
         if old == self.edge {
             return false;
         }
-        let texture = self.spec.create(device, self.edge);
+        let texture = self.spec.create(gpu, self.edge);
         encoder.copy_texture_to_texture(
             self.texture.as_image_copy(),
             texture.as_image_copy(),
@@ -166,7 +163,7 @@ mod tests {
     fn two_grows_make_one_texture_that_keeps_the_texels() {
         let gpu = headless_test_gpu();
         let mut atlas = PackedAtlas::new(
-            &gpu.device,
+            &gpu,
             AtlasSpec {
                 label: "test.packed_atlas".to_owned(),
                 format: wgpu::TextureFormat::R8Unorm,
@@ -206,11 +203,8 @@ mod tests {
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        assert!(atlas.commit(&gpu.device, &mut encoder));
-        assert!(
-            !atlas.commit(&gpu.device, &mut encoder),
-            "nothing left to commit"
-        );
+        assert!(atlas.commit(&gpu, &mut encoder));
+        assert!(!atlas.commit(&gpu, &mut encoder), "nothing left to commit");
         gpu.queue.submit(iter::once(encoder.finish()));
         assert_eq!(atlas.texture().width(), 64);
 

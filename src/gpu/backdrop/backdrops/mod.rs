@@ -191,9 +191,9 @@ impl PaneResources {
         spectrum: &wgpu::Buffer,
         ceiling: u32,
     ) -> Self {
-        let slot_buffer = DynamicBuffer::storage(&gpu.device, "palantir.backdrop.slots", 4);
+        let slot_buffer = DynamicBuffer::storage(gpu, "palantir.backdrop.slots", 4);
         let atlas = PackedAtlas::new(
-            &gpu.device,
+            gpu,
             AtlasSpec {
                 label: "palantir.backdrop.results".to_owned(),
                 format: LEVEL_FORMAT,
@@ -203,14 +203,7 @@ impl PaneResources {
             },
             FIRST_SIDE,
         );
-        let group = composite_group(
-            &gpu.device,
-            layout,
-            atlas.view(),
-            sampler,
-            &slot_buffer,
-            spectrum,
-        );
+        let group = composite_group(gpu, layout, atlas.view(), sampler, &slot_buffer, spectrum);
         Self {
             blur: BackdropBlur::new(gpu),
             atlas,
@@ -222,59 +215,60 @@ impl PaneResources {
 }
 
 impl Backdrops {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let ceiling = device
-            .limits()
-            .max_texture_dimension_2d
-            .min(u32::from(u16::MAX));
-        Self::with_ceiling(device, ceiling)
+    pub(crate) fn new(gpu: &Gpu) -> Self {
+        let ceiling = gpu.max_texture_dim().get().min(u32::from(u16::MAX));
+        Self::with_ceiling(gpu, ceiling)
     }
 
     /// [`Self::new`] with a results atlas that grows to an edge of `ceiling` texels.
-    fn with_ceiling(device: &wgpu::Device, ceiling: u32) -> Self {
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.backdrop.composite.bgl"),
-            entries: &[
-                TextureBinding::texture_entry(0),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+    fn with_ceiling(gpu: &Gpu, ceiling: u32) -> Self {
+        let layout = gpu
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.backdrop.composite.bgl"),
+                entries: &[
+                    TextureBinding::texture_entry(0),
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
                     },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 3,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Storage { read_only: true },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-            ],
-        });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Buffer {
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
+                            has_dynamic_offset: false,
+                            min_binding_size: None,
+                        },
+                        count: None,
+                    },
+                ],
+            });
+        let sampler = gpu.device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("palantir.backdrop.composite.sampler"),
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let spectrum = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("palantir.backdrop.spectrum"),
-            contents: bytemuck::cast_slice(&SpectrumCell::table()),
-            usage: wgpu::BufferUsages::STORAGE,
-        });
+        let spectrum = gpu
+            .device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("palantir.backdrop.spectrum"),
+                contents: bytemuck::cast_slice(&SpectrumCell::table()),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
         Self {
             cache: FxHashMap::default(),
             prepared: 0,
@@ -413,9 +407,7 @@ impl Backdrops {
         let target = backbuffer
             .filter(|_| !self.jobs.is_empty())
             .map(|backbuffer| {
-                backbuffer.blur_source(|view, size| {
-                    blur.target_source(&ctx.gpu.device, view, format, size)
-                })
+                backbuffer.blur_source(|view, size| blur.target_source(ctx.gpu, view, format, size))
             });
         let resources = self.resources.as_mut().expect("made above");
         resources.blur.prepare(
@@ -425,10 +417,10 @@ impl Backdrops {
             target,
         );
         resources.slot_buffer.upload_instances(ctx, &self.slots);
-        let grew = resources.atlas.commit(&ctx.gpu.device, ctx.encoder);
+        let grew = resources.atlas.commit(ctx.gpu, ctx.encoder);
         if grew || resources.slot_buffer.capacity() != resources.group_capacity {
             resources.group = composite_group(
-                &ctx.gpu.device,
+                ctx.gpu,
                 &self.layout,
                 resources.atlas.view(),
                 &self.sampler,
@@ -603,14 +595,14 @@ const fn slot_origin(slot: URect) -> U16Vec2 {
 }
 
 fn composite_group(
-    device: &wgpu::Device,
+    gpu: &Gpu,
     layout: &wgpu::BindGroupLayout,
     results: &wgpu::TextureView,
     sampler: &wgpu::Sampler,
     slots: &DynamicBuffer<BackdropSlot>,
     spectrum: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
+    gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("palantir.backdrop.composite"),
         layout,
         entries: &[

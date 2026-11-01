@@ -37,11 +37,7 @@ impl TextRig {
     pub(super) fn new() -> Self {
         let lease = headless_test_gpu();
         let shaper = TextShaper::new();
-        let backend = TextBackend::new(
-            &lease.device,
-            &RasterProgram::new(&lease.device),
-            shaper.clone(),
-        );
+        let backend = TextBackend::new(&lease, &RasterProgram::new(&lease), shaper.clone());
         Self {
             lease,
             shaper,

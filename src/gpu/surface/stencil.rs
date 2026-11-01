@@ -3,6 +3,7 @@
 //! (`mask_stamp`: level `k` writes `k + 1` where the stencil equals `k`), and
 //! color draws test at `stencil_reference = chain depth`.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target;
 use glam::UVec2;
 
@@ -91,12 +92,12 @@ impl Stencil {
     /// pass: on NVIDIA under Vulkan, an `S8_UINT` image bound to memory that held nonzero bytes
     /// keeps 4 × 4 blocks that neither a load clear nor a stencil write resets, and every draw of a
     /// rounded-clip pass then fails there (`.notes/research/2026-10-31-shared-device-tile-loss.md`).
-    pub(crate) fn new(device: &wgpu::Device, queue: &wgpu::Queue, size: UVec2) -> Self {
+    pub(crate) fn new(gpu: &Gpu, size: UVec2) -> Self {
         let extent = render_target::extent(size);
         let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST;
         #[cfg(test)]
         let usage = usage | wgpu::TextureUsages::COPY_SRC;
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
             size: extent,
             mip_level_count: 1,
@@ -106,7 +107,7 @@ impl Stencil {
             usage,
             view_formats: &[],
         });
-        queue.write_texture(
+        gpu.queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &texture,
                 mip_level: 0,
@@ -173,7 +174,7 @@ mod tests {
                     buffer
                 })
                 .collect();
-            let stencil = Stencil::new(&gpu.device, &gpu.queue, SIZE);
+            let stencil = Stencil::new(&gpu, SIZE);
             let mut encoder = gpu
                 .device
                 .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());

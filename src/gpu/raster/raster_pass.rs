@@ -6,6 +6,7 @@
 //! mixing icons and text.
 
 use crate::common::span::Span;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
@@ -108,21 +109,17 @@ pub(super) struct RasterPass<K> {
 }
 
 impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
-    pub(super) fn new(
-        device: &wgpu::Device,
-        program: &RasterProgram,
-        config: RasterPassConfig,
-    ) -> Self {
+    pub(super) fn new(gpu: &Gpu, program: &RasterProgram, config: RasterPassConfig) -> Self {
         Self {
-            atlas: RasterAtlas::new(device, program, config.atlas),
+            atlas: RasterAtlas::new(gpu, program, config.atlas),
             instances: Vec::new(),
             starts: Vec::new(),
-            vbuf: DynamicBuffer::vertex(device, config.vbuf, config.initial_instances),
+            vbuf: DynamicBuffer::vertex(gpu, config.vbuf, config.initial_instances),
             spun: Vec::new(),
             cuts: Vec::new(),
             cut_starts: Vec::new(),
             // Turned quads are rare: start the buffer small.
-            spun_vbuf: DynamicBuffer::vertex(device, config.spun_vbuf, 16),
+            spun_vbuf: DynamicBuffer::vertex(gpu, config.spun_vbuf, 16),
             stem: config.atlas.label,
             starvation: Starvation::default(),
         }

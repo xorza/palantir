@@ -288,10 +288,10 @@ mod gpu {
     /// walk the whole ladder cheaply. `eager_growth_bytes` is zero because the
     /// eager arm belongs to
     /// [`growth_stops_at_the_byte_budget_not_the_device_limit`].
-    fn small_atlas(device: &wgpu::Device) -> RasterAtlas<TestKey> {
+    fn small_atlas(gpu: &Gpu) -> RasterAtlas<TestKey> {
         RasterAtlas::new(
-            device,
-            &RasterProgram::new(device),
+            gpu,
+            &RasterProgram::new(gpu),
             RasterAtlasConfig {
                 label: "palantir.test",
                 initial_mask_px: 128,
@@ -330,7 +330,7 @@ mod gpu {
     #[test]
     fn an_entry_past_the_ceiling_is_refused_without_evicting_anything() {
         let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu.device);
+        let mut atlas = small_atlas(&gpu);
         fill(&mut atlas, 16);
         // Age every entry out of the current frame so all 16 are eligible
         // victims; otherwise the clock protects them and the test passes
@@ -365,7 +365,7 @@ mod gpu {
     #[test]
     fn a_side_walked_dry_is_not_walked_again_until_the_clock_moves() {
         let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu.device);
+        let mut atlas = small_atlas(&gpu);
         let pixels = [0u8; 16 * 16];
         let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
 
@@ -453,7 +453,7 @@ mod gpu {
     #[test]
     fn a_raster_taller_than_every_shelf_frees_the_bottom_rows() {
         let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu.device);
+        let mut atlas = small_atlas(&gpu);
         let pixels = [0u8; 16 * 32];
         let tile = PackedRaster {
             metadata: PackedMetadata::new(UVec2::new(16, 16), IVec2::ZERO).unwrap(),
@@ -492,7 +492,7 @@ mod gpu {
     #[test]
     fn forget_retires_the_keys_it_rejects_and_nothing_else() {
         let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu.device);
+        let mut atlas = small_atlas(&gpu);
         let pixels = [0u8; 16 * 16];
         let metadata = PackedMetadata::new(UVec2::new(16, 16), IVec2::new(0, 0)).unwrap();
         for i in 0..8 {
@@ -573,7 +573,7 @@ mod gpu {
     #[test]
     fn an_entry_wider_than_the_side_grows_rather_than_evicting() {
         let gpu = headless_test_gpu();
-        let mut atlas = small_atlas(&gpu.device);
+        let mut atlas = small_atlas(&gpu);
         fill(&mut atlas, 16);
         atlas.advance_to(1);
 

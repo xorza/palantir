@@ -2,6 +2,7 @@
 //! whose pass loads and stores every tile of its attachments
 //! ([`PassTraffic::WholeTarget`](crate::gpu::device::pass_traffic::PassTraffic::WholeTarget)).
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::render_target;
 use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::geometry::urect::URect;
@@ -24,8 +25,8 @@ pub(crate) struct DamageCanvas {
 
 impl DamageCanvas {
     /// A canvas of `size` in `format`.
-    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat, size: UVec2) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
+    pub(crate) fn new(gpu: &Gpu, format: wgpu::TextureFormat, size: UVec2) -> Self {
+        let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.damage_canvas"),
             size: render_target::extent(size),
             mip_level_count: 1,
@@ -118,11 +119,10 @@ impl DamageCanvas {
     }
 
     /// Make the stencil when there is none.
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    pub(crate) fn ensure_stencil(&mut self, gpu: &Gpu) {
         if self.stencil.is_none() {
             self.stencil = Some(Stencil::new(
-                device,
-                queue,
+                gpu,
                 render_target::texture_size(&self.texture),
             ));
         }

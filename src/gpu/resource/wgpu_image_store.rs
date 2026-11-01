@@ -35,8 +35,7 @@ pub(crate) struct WgpuImageStore {
 /// The store's side of one device: the textures it holds on it.
 #[derive(Debug)]
 struct AttachedStore {
-    device: wgpu::Device,
-    queue: wgpu::Queue,
+    gpu: Gpu,
     /// The device's `max_texture_dimension_2d`, which an image registered on an earlier device
     /// can exceed.
     max_texture_dim: u32,
@@ -71,10 +70,9 @@ impl WgpuImageStore {
     /// paints nothing until its next write.
     pub(crate) fn attach(&self, gpu: &Gpu) {
         *self.attached.borrow_mut() = Some(AttachedStore {
-            device: gpu.device.clone(),
-            queue: gpu.queue.clone(),
+            gpu: gpu.clone(),
             max_texture_dim: gpu.max_texture_dim().get(),
-            binding: TextureBinding::new(&gpu.device),
+            binding: TextureBinding::new(gpu),
             textures: FxHashMap::default(),
         });
     }
@@ -103,16 +101,11 @@ impl WgpuImageStore {
 }
 
 /// An empty texture at `size` and its bind group; the write that follows fills it.
-fn create(
-    device: &wgpu::Device,
-    binding: &TextureBinding,
-    id: TextureId,
-    size: UVec2,
-) -> ImageTexture {
+fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> ImageTexture {
     let raw_id = id.0;
     let texture_label = format!("palantir.image.tex.{raw_id:016x}");
     let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
+    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some(&texture_label),
         size: render_target::extent(size),
         mip_level_count: 1,
@@ -123,7 +116,7 @@ fn create(
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let bind_group = binding.bind_group(device, &view, &bind_group_label);
+    let bind_group = binding.bind_group(gpu, &view, &bind_group_label);
     ImageTexture {
         texture,
         bind_group,
@@ -143,15 +136,14 @@ impl ImageStore for WgpuImageStore {
             return;
         }
         let AttachedStore {
-            device,
-            queue,
+            gpu,
             binding,
             textures,
             ..
         } = &mut *attached;
         let entry = textures
             .entry(id)
-            .or_insert_with(|| create(device, binding, id, image.size));
+            .or_insert_with(|| create(gpu, binding, id, image.size));
         debug_assert_eq!(
             render_target::texture_size(&entry.texture),
             image.size,
@@ -160,7 +152,7 @@ impl ImageStore for WgpuImageStore {
         // A pitch off `COPY_BYTES_PER_ROW_ALIGNMENT` is re-packed inside wgpu; padding the rows here
         // would not save that, as wgpu copies the whole into staging either way.
         let write = |data: &[u8]| {
-            queue.write_texture(
+            gpu.queue.write_texture(
                 entry.texture.as_image_copy(),
                 data,
                 wgpu::TexelCopyBufferLayout {

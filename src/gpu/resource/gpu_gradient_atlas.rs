@@ -1,6 +1,7 @@
 //! Device-side gradient LUT atlas, owned by [`WgpuBackend`](crate::gpu::wgpu_backend::WgpuBackend)
 //! and lent to the quad and curve pipelines.
 
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::render_target;
@@ -32,8 +33,8 @@ pub(crate) struct GpuGradientAtlas {
 
 /// Allocates the LUT atlas texture at `rows` rows; shaders read the height via `textureDimensions`.
 /// It gives copies, so the texture that replaces it takes the rows it holds by a copy.
-fn create_texture(device: &wgpu::Device, rows: u32) -> wgpu::Texture {
-    device.create_texture(&wgpu::TextureDescriptor {
+fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
+    gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("palantir.gradient_atlas"),
         size: render_target::extent(UVec2::new(LUT_ROW_TEXELS as u32, rows)),
         mip_level_count: 1,
@@ -48,14 +49,10 @@ fn create_texture(device: &wgpu::Device, rows: u32) -> wgpu::Texture {
 }
 
 impl GpuGradientAtlas {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        cpu: SharedGradientAtlas,
-        binding: TextureBinding,
-    ) -> Self {
-        let texture = create_texture(device, cpu.rows());
+    pub(crate) fn new(gpu: &Gpu, cpu: SharedGradientAtlas, binding: TextureBinding) -> Self {
+        let texture = create_texture(gpu, cpu.rows());
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bind_group = binding.bind_group(device, &view, "palantir.gradient.bg");
+        let bind_group = binding.bind_group(gpu, &view, "palantir.gradient.bg");
 
         Self {
             cpu,
@@ -80,7 +77,7 @@ impl GpuGradientAtlas {
         cpu.flush_with(|rows| {
             if texture.height() != rows.total_rows {
                 debug_assert!(texture.height() < rows.total_rows, "the atlas only grows");
-                let grown = create_texture(&ctx.gpu.device, rows.total_rows);
+                let grown = create_texture(ctx.gpu, rows.total_rows);
                 ctx.encoder.copy_texture_to_texture(
                     texture.as_image_copy(),
                     grown.as_image_copy(),
@@ -88,7 +85,7 @@ impl GpuGradientAtlas {
                 );
                 *texture = grown;
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                *bind_group = binding.bind_group(&ctx.gpu.device, &view, "palantir.gradient.bg");
+                *bind_group = binding.bind_group(ctx.gpu, &view, "palantir.gradient.bg");
             }
             // A flush holds at least one row, so only a lost device declines the staging.
             let Some(Staged {
@@ -176,8 +173,7 @@ mod tests {
     fn a_grown_atlas_copies_the_rows_it_held() {
         let gpu = headless_test_gpu();
         let cpu = SharedGradientAtlas::default();
-        let mut atlas =
-            GpuGradientAtlas::new(&gpu.device, cpu.clone(), TextureBinding::new(&gpu.device));
+        let mut atlas = GpuGradientAtlas::new(&gpu, cpu.clone(), TextureBinding::new(&gpu));
         let filled = INITIAL_ATLAS_ROWS - 1;
         let rows: Vec<u32> = (0..filled).map(|i| cpu.register(&ramp(i)).0).collect();
         upload(&gpu, &mut atlas);

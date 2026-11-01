@@ -254,21 +254,21 @@ impl WgpuBackend {
         let image_store = Rc::clone(resources.image_store);
         let texture_binding = image_store.binding();
         let gradient = GpuGradientAtlas::new(
-            &gpu.device,
+            &gpu,
             resources.gradient_atlas.clone(),
             texture_binding.clone(),
         );
-        let backdrops = Backdrops::new(&gpu.device);
+        let backdrops = Backdrops::new(&gpu);
         let quad = QuadPipeline::new(&gpu, &texture_binding, backdrops.layout());
-        let mesh = MeshPipeline::new(&gpu.device);
-        let image = ImagePipeline::new(&gpu.device, &texture_binding);
+        let mesh = MeshPipeline::new(&gpu);
+        let image = ImagePipeline::new(&gpu, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
         let curve = CurvePipeline::new(&gpu, &texture_binding);
-        let raster = RasterProgram::new(&gpu.device);
-        let blit = BlitPipeline::new(&gpu.device, &texture_binding);
-        let text = TextBackend::new(&gpu.device, &raster, resources.text.clone());
-        let icon = IconBackend::new(&gpu.device, &raster, resources.icons.clone());
-        let debug = DebugOverlay::new(&gpu.device);
+        let raster = RasterProgram::new(&gpu);
+        let blit = BlitPipeline::new(&gpu, &texture_binding);
+        let text = TextBackend::new(&gpu, &raster, resources.text.clone());
+        let icon = IconBackend::new(&gpu, &raster, resources.icons.clone());
+        let debug = DebugOverlay::new(&gpu);
         // 1 MiB chunks, above the resize-drag upload peak, so steady state uses 1-2 chunks.
         let staging_belt = StagingBelt::new(gpu.device.clone(), 1 << 20);
         let timestamp_period = gpu.queue.get_timestamp_period();
@@ -312,7 +312,7 @@ impl WgpuBackend {
     pub(crate) fn open_stream(&self, owner: RenderOwnerId) -> RenderStream {
         let timings = self
             .timing
-            .map(|support| GpuTimings::new(&self.gpu.device, support.period_ns, support.features));
+            .map(|support| GpuTimings::new(&self.gpu, support.period_ns, support.features));
         RenderStream::new(owner, self.quad.cutout_mode(), timings)
     }
 
@@ -363,7 +363,7 @@ impl WgpuBackend {
         } = submission;
         let via_backbuffer = route == Route::ViaBackbuffer;
         if via_backbuffer {
-            let made = stream.ensure_backbuffer(&self.gpu.device, &self.texture_binding, target);
+            let made = stream.ensure_backbuffer(&self.gpu, &self.texture_binding, target);
             // A partial arrives un-escalated only onto a fresh backbuffer, so a new one means that
             // broke; the list was already culled for the partial, so escalating cannot fix it.
             debug_assert!(
@@ -374,7 +374,7 @@ impl WgpuBackend {
         stream.backbuffer_fresh = via_backbuffer;
         let stencil = !buffer.rounded_clips.is_empty();
         if stencil {
-            stream.ensure_stencil(&self.gpu.device, &self.gpu.queue, target.size());
+            stream.ensure_stencil(&self.gpu, target.size());
         }
         let clear = submission.clear();
         let dims_undamaged = submission.dims_undamaged();
@@ -427,12 +427,12 @@ impl WgpuBackend {
         };
         if let Some(rect) = canvas_rect {
             stream.ensure_canvas(
-                &self.gpu.device,
+                &self.gpu,
                 surface_texture.format(),
                 DamageCanvas::class(rect, target.size()),
             );
             if stencil {
-                stream.ensure_canvas_stencil(&self.gpu.device, &self.gpu.queue);
+                stream.ensure_canvas_stencil(&self.gpu);
             }
         }
         let canvas = canvas_rect.map(|_| stream.canvas().expect("made for the frame"));
@@ -1029,7 +1029,7 @@ impl WgpuBackend {
             texture: backbuffer.texture(),
             blit,
         };
-        Capture::start(&self.gpu.device, &self.gpu.queue, source, region)
+        Capture::start(&self.gpu, source, region)
     }
 
     /// Run the map callbacks of the copies the device has finished, without waiting for the rest.

@@ -5,6 +5,7 @@
 mod view_target;
 
 use crate::common::tracy;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
@@ -70,7 +71,7 @@ impl GpuViewTargets {
             "a painted GpuView target is missing from the frame's live roster",
         );
         for draw in draws {
-            let target = self.ensure(&ctx.gpu.device, draw, owner);
+            let target = self.ensure(ctx.gpu, draw, owner);
             // A view composited again without a repaint (damage crossing a `repaint(false)` view) keeps its painted pixels.
             let stamp = draw.stamp(display_scale);
             if target.painted == Some(stamp) {
@@ -125,7 +126,7 @@ impl GpuViewTargets {
     /// `draw`'s target, owned by `owner` and sized to its [`capacity`](RenderTargetDraw::capacity), allocated or resized as needed.
     fn ensure(
         &mut self,
-        device: &wgpu::Device,
+        gpu: &Gpu,
         draw: &RenderTargetDraw,
         owner: RenderOwnerId,
     ) -> &mut ViewTarget {
@@ -135,7 +136,7 @@ impl GpuViewTargets {
                 let target = entry.into_mut();
                 target.owner = owner;
                 if target.size != size {
-                    let allocated = AllocatedTarget::new(device, &self.binding, size);
+                    let allocated = AllocatedTarget::new(gpu, &self.binding, size);
                     target.view = allocated.view;
                     target.bind_group = allocated.bind_group;
                     target.size = size;
@@ -143,7 +144,7 @@ impl GpuViewTargets {
                 target
             }
             Entry::Vacant(entry) => {
-                let allocated = AllocatedTarget::new(device, &self.binding, size);
+                let allocated = AllocatedTarget::new(gpu, &self.binding, size);
                 entry.insert(ViewTarget {
                     view: allocated.view,
                     bind_group: allocated.bind_group,

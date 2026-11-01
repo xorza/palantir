@@ -71,10 +71,10 @@ impl CurvePipeline {
     };
 
     pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
-        let shader = Self::SHADER.module(&gpu.device);
+        let shader = Self::SHADER.module(gpu);
 
         let instance_buffer =
-            DynamicBuffer::<CurveInstance>::vertex(&gpu.device, "palantir.curve.instances", 64);
+            DynamicBuffer::<CurveInstance>::vertex(gpu, "palantir.curve.instances", 64);
         let idxs: &[u8] = bytemuck::cast_slice(&CURVE_IDXS);
         let idx_buffer = gpu.create_filled_buffer(
             &wgpu::BufferDescriptor {
@@ -92,7 +92,7 @@ impl CurvePipeline {
             shader,
             // Gradient at group 0; the viewport rides the shared immediate region.
             pipeline_layout: pipeline_recipe::pipeline_layout(
-                &gpu.device,
+                gpu,
                 "palantir.curve.pl",
                 &[Some(textures.layout())],
             ),

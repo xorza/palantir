@@ -6,6 +6,7 @@
 
 use crate::damage::Damage;
 use crate::damage::region::DAMAGE_RECT_CAP;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::quad_pipeline::QuadBinding;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
@@ -68,11 +69,11 @@ pub(crate) struct DebugOverlay {
 }
 
 impl DebugOverlay {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
+    pub(crate) fn new(gpu: &Gpu) -> Self {
         Self {
-            dim: SingleQuadBuffer::new(device, "palantir.quad.dim"),
+            dim: SingleQuadBuffer::new(gpu, "palantir.quad.dim"),
             // Starts at 8 quads to avoid tiny early regrows.
-            damage_rects: DynamicBuffer::<Quad>::vertex(device, "palantir.quad.overlay", 8),
+            damage_rects: DynamicBuffer::<Quad>::vertex(gpu, "palantir.quad.overlay", 8),
             damage_rect_count: 0,
         }
     }
