@@ -1,5 +1,6 @@
 //! A new target mid-flight, including one that switches spec mode.
 
+use crate::animation::animation_key::AnimationKey;
 use crate::animation::animation_map_typed::AnimationMapTyped;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
@@ -81,7 +82,7 @@ fn spring_to_duration_same_target_restarts_from_current() {
     let progress = dt / 0.1;
     let expected = segment_start + (1.0 - segment_start) * progress;
     let motion = support::duration_motion(row);
-    assert_eq!(*motion.segment_start, segment_start);
+    assert_eq!(*motion.start_offset, segment_start - 1.0);
     assert_eq!(motion.elapsed, dt);
     assert_eq!(result.cur, expected);
 }
@@ -93,20 +94,21 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
     let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), duration, 0.016);
     let _ = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, 0.016);
-    let duration_result = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, 0.4);
-    assert_eq!(duration_result.cur, 0.4);
+    // A binary fraction, so the offset `-1 · (1 − 0.375)` from the target is exact.
+    let duration_result = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, 0.375);
+    assert_eq!(duration_result.cur, 0.375);
 
-    // The spring takes over at rest 0.6 short of the target: `1 − 0.6·e^(-13t)(cos t + 13 sin t)` at t = 0.016 (k = 170, h = 13, ω = 1).
+    // The spring takes over at rest 0.625 short of the target: `1 − 0.625·e^(-13t)(cos t + 13 sin t)` at t = 0.016 (k = 170, h = 13, ω = 1).
     let spring_result = map.step(
         AnimationRequest::new(id, SLOT, 1.0),
         AnimationSpec::SPRING,
         0.016,
     );
     let t = f64::from(0.016_f32);
-    let from_point_four = 1.0 - 0.6 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
+    let from_rest = 1.0 - 0.625 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
     domain::internals::assert_close(
         spring_result.cur,
-        from_point_four,
+        from_rest,
         1e-7,
         "the spring starts from the duration's value, to f32 rounding near 0.4",
     );
@@ -120,9 +122,10 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
         .rows
         .get(&(id, SLOT))
         .expect("row exists after duration restart");
-    let expected = segment_start + (1.0 - segment_start) * dt;
+    // The segment's offset from the target fades by the linear ease.
+    let expected = 1.0 + (segment_start - 1.0) * (1.0 - dt);
     let motion = support::duration_motion(duration_row);
-    assert_eq!(*motion.segment_start, segment_start);
+    assert_eq!(*motion.start_offset, segment_start - 1.0);
     assert_eq!(motion.elapsed, dt);
     assert_eq!(duration_result.cur, expected);
 }
@@ -153,4 +156,95 @@ fn a_reversal_runs_over_the_share_it_covered() {
     assert_eq!(step(0.0, 0.5), 0.5);
     // A target that is not where the segment came from runs the whole length too.
     assert_eq!(step(2.0, 0.5), 0.5 + (2.0 - 0.5) * 0.5);
+}
+
+/// A new target under the request's key is followed, not animated toward. Linear 1 s:
+///
+/// - At rest under key 0, a target moved from 0 to 4 lands at once and stays settled.
+/// - Key 1 heads for 8: from rest at 4 the first frame spends nothing, and 0.25 s later the offset
+///   `4 − 8 = −4` has faded to `−3`, so 5.
+/// - Under key 1 the target moves to 16: the offset and its clock carry on, 0.5 s in it is `−2`, so
+///   14. A row with no key would restart from 5 toward 16, at 7.75.
+/// - 1 s in it lands on 16. Every value is a binary fraction, so exact.
+#[test]
+fn a_target_moving_under_its_key_is_followed() {
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("keyed");
+    let spec = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
+    let mut step = |target: f32, key: u8, dt: f32| {
+        map.step(
+            AnimationRequest::new(id, SLOT, target).key(AnimationKey::of(key)),
+            spec,
+            dt,
+        )
+    };
+    let _ = step(0.0, 0, 0.0);
+    let moved = step(4.0, 0, 0.25);
+    assert_eq!((moved.cur, moved.settled), (4.0, true), "followed at rest");
+
+    assert_eq!(step(8.0, 1, 0.25).cur, 4.0, "a new key starts from rest");
+    assert_eq!(step(8.0, 1, 0.25).cur, 5.0);
+    assert_eq!(
+        step(16.0, 1, 0.25).cur,
+        14.0,
+        "the offset rides the moved target"
+    );
+    let landed = step(16.0, 1, 0.5);
+    assert_eq!((landed.cur, landed.settled), (16.0, true));
+}
+
+/// A keyed row turns back by key, so a reversal holds while the target moves. Linear 1 s, key 0 at
+/// 0, key 1 heads for 1 and is at 0.5 after 0.5 s. Back to key 0, whose target has moved to 0.25:
+/// the segment came from key 0, so it runs over the half it covered, and 0.25 s in it is half way
+/// from 0.5 to 0.25, at 0.375. Compared by value, 0.25 is not where it came from, so it would run
+/// the whole second, at 0.4375. Binary fractions, so exact.
+#[test]
+fn a_reversal_by_key_holds_while_the_target_moves() {
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("keyed-reverse");
+    let spec = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
+    let mut step = |target: f32, key: u8, dt: f32| {
+        map.step(
+            AnimationRequest::new(id, SLOT, target).key(AnimationKey::of(key)),
+            spec,
+            dt,
+        )
+        .cur
+    };
+    let _ = step(0.0, 0, 0.0);
+    assert_eq!(step(1.0, 1, 0.0), 0.0, "from rest");
+    assert_eq!(step(1.0, 1, 0.5), 0.5);
+    assert_eq!(step(0.25, 0, 0.25), 0.375, "back over the half it covered");
+    assert_eq!(step(0.25, 0, 0.25), 0.25, "0.5 s back, at its end");
+}
+
+/// A spring under its key rides a moved target: once key 1 has sprung part way from 0 toward 1,
+/// its target moves to 3 and the offset from it stays, so an advance of no time moves the value by
+/// exactly the target's step of 2; then it settles on 3.
+#[test]
+fn a_spring_rides_a_target_moving_under_its_key() {
+    let mut map = AnimationMapTyped::<f32>::default();
+    let id = support::widget_id("keyed-spring");
+    let mut step = |target: f32, key: u8, dt: f32| {
+        map.step(
+            AnimationRequest::new(id, SLOT, target).key(AnimationKey::of(key)),
+            AnimationSpec::SPRING,
+            dt,
+        )
+    };
+    let _ = step(0.0, 0, 0.0);
+    assert_eq!(step(1.0, 1, 0.016).cur, 0.0, "from rest");
+    let before = step(1.0, 1, 0.016).cur;
+    assert!(0.0 < before && before < 1.0, "in flight at {before}");
+    let after = step(3.0, 1, 0.0).cur;
+    assert_eq!(
+        after - before,
+        2.0,
+        "an advance of no time moves only with the target"
+    );
+    let mut last = step(3.0, 1, 0.016);
+    while !last.settled {
+        last = step(3.0, 1, 0.016);
+    }
+    assert_eq!(last.cur, 3.0);
 }

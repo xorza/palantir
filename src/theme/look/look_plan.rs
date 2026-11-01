@@ -1,5 +1,6 @@
 //! Owned theme values for a themed widget, so the theme borrow ends before its `&mut Ui` body.
 
+use crate::animation::animation_key::AnimationKey;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::slot_defaults::SlotDefaults;
 
@@ -12,5 +13,7 @@ use crate::theme::look::slot_defaults::SlotDefaults;
 #[derive(Debug)]
 pub struct LookPlan {
     pub(crate) target: AnimatedLook,
+    /// The state that picked `target`; see [`AnimationKey`].
+    pub(crate) key: AnimationKey,
     pub(crate) defaults: SlotDefaults,
 }

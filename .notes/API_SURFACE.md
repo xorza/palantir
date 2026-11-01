@@ -200,7 +200,7 @@ ButtonTheme
         pub fn subtle(p: &Palette, m: &Metrics) -> Self
 
 CheckState
-    enum CheckState: Clone, Copy, Debug, Eq, From<bool>, PartialEq
+    enum CheckState: Clone, Copy, Debug, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
         Unchecked
         Checked
 
@@ -1436,7 +1436,7 @@ MenuSeparator
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 MenuState
-    enum MenuState: Clone, Copy, Debug, Eq, From<bool>, PartialEq
+    enum MenuState: Clone, Copy, Debug, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
         Shut
         Open
 
@@ -1897,7 +1897,7 @@ ScrollbarTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Selection
-    enum Selection: Clone, Copy, Debug, Default, Eq, From<bool>, PartialEq
+    enum Selection: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
         Unselected
         Selected
 
@@ -2870,12 +2870,18 @@ widget::Animatable
         fn from_motion(motion: Self) -> Self { .. }
         fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) { .. }
 
+widget::AnimationKey
+    struct AnimationKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+        pub fn of(cause: impl Hash) -> Self
+
 widget::AnimationRequest
     struct AnimationRequest<T: Animatable>
         pub id: WidgetId
         pub slot: AnimationSlot
         pub target: T
+        pub key: Option<AnimationKey>
         pub fn new(id: WidgetId, slot: impl Into<AnimationSlot>, target: T) -> Self
+        pub const fn key(self, key: AnimationKey) -> Self
         impl<T: Clone + Animatable> Clone for AnimationRequest<T>
         impl<T: Debug + Animatable> Debug for AnimationRequest<T>
 
@@ -3228,7 +3234,7 @@ widget::ThemeDefaults
 
 widget::ThemeSlot
     trait ThemeSlot
-        type Pick: Copy
+        type Pick: Copy + Hash
         fn look(&self, response: &ResponseState, pick: Self::Pick) -> &WidgetLook
         fn defaults(&self) -> SlotDefaults
         fn plan(&self, response: &ResponseState, pick: Self::Pick, text: TextStyle) -> LookPlan { .. }

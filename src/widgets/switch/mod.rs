@@ -1,5 +1,6 @@
 //! The pill-and-knob boolean toggle, with the checkbox's contract.
 
+use crate::animation::animation_key::AnimationKey;
 use crate::animation::animation_request::AnimationRequest;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -98,8 +99,10 @@ impl ToggleKind for Knob<'_> {
         } else {
             geometry.off_x
         };
+        // Keyed by the check, so a theme that moves the track carries the knob with it.
+        let check = AnimationKey::of(checked);
         let knob_x = ui.animate(
-            AnimationRequest::new(knob_id, "x", target_x),
+            AnimationRequest::new(knob_id, "x", target_x).key(check),
             slot.defaults.animation,
         );
         let target_color = if checked {
@@ -108,7 +111,7 @@ impl ToggleKind for Knob<'_> {
             slot.unchecked_indicator
         };
         let knob_color = ui.animate(
-            AnimationRequest::new(knob_id, "color", target_color),
+            AnimationRequest::new(knob_id, "color", target_color).key(check),
             slot.defaults.animation,
         );
         let knob_chrome = Chrome::rounded(knob_color, Corners::all(geometry.knob * 0.5));

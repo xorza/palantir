@@ -200,11 +200,11 @@ fn first_touch_returns_target_and_settled() {
         let row = &map.rows[&(id, SLOT)];
         match &row.motion {
             MotionRow::Duration {
-                segment_start,
+                start_offset,
                 elapsed,
                 ..
             } => {
-                assert_eq!((*segment_start, *elapsed), (1.0, 0.0));
+                assert_eq!((*start_offset, *elapsed), (0.0, 0.0));
                 assert!(matches!(spec.motion, AnimationMotion::Duration { .. }));
             }
             MotionRow::Spring { velocity, .. } => {

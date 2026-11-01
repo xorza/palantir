@@ -1,5 +1,6 @@
 //! Per-`(WidgetId, AnimationSlot)` animation rows, generic over [`Animatable`]. Storage is type-erased: [`AnimationMap`] holds one boxed [`AnimationMapTyped<T>`] per `TypeId` used, allocated by the first `Ui::animate::<T>` call.
 
+pub(crate) mod animation_key;
 pub(crate) mod animation_map_typed;
 pub(crate) mod animation_request;
 pub(crate) mod animation_row;

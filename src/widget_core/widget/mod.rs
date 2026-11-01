@@ -223,6 +223,7 @@ impl Widget {
     pub fn wear(&mut self, ui: &mut Ui, plan: LookPlan) -> AnimatedLook {
         let LookPlan {
             target,
+            key,
             defaults:
                 SlotDefaults {
                     padding,
@@ -235,7 +236,7 @@ impl Widget {
             .default_margin(margin);
         let id = self.resolve(ui);
         ui.animate(
-            AnimationRequest::new(id, Self::LOOK_SLOT, target),
+            AnimationRequest::new(id, Self::LOOK_SLOT, target).key(key),
             animation,
         )
     }

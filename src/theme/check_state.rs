@@ -2,7 +2,7 @@
 
 /// Whether a toggle is on, which picks [`ToggleTheme::checked`](crate::ToggleTheme::checked)
 /// or [`ToggleTheme::unchecked`](crate::ToggleTheme::unchecked).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CheckState {
     /// Off: the checkbox empty, the radio unselected, the switch off.
     Unchecked,

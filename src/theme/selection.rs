@@ -3,7 +3,7 @@
 /// Whether a widget shows its selected state: a strip's current tab chip
 /// ([`TabsTheme::selected`](crate::TabsTheme::selected)), or a button that shows an on state
 /// ([`ButtonTheme::selected`](crate::ButtonTheme::selected)).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Selection {
     /// The resting pack.
     #[default]

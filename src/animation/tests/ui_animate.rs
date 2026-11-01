@@ -4,12 +4,23 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{self, AnimationUi, SLOT};
 use crate::host::harness::Harness;
+use crate::input::sense::Sense;
+use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::Theme;
+use crate::theme::color_scheme::ColorScheme;
+use crate::theme::look::animated_look::AnimatedLook;
+use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::selection::Selection;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 use crate::widgets::block::Block;
+use glam::UVec2;
 use std::cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 /// First-touch settled: no repaint; in-flight retarget: repaint; repeated frames settle and stop requesting.
@@ -275,4 +286,50 @@ fn reduced_motion_snaps_every_transition() {
     assert_eq!(retarget(true), (1.0, false));
     let (value, repaint) = retarget(false);
     assert!(value < 1.0 && repaint, "{value}");
+}
+
+/// A look follows a theme change and fades a state change. A themed leaf at rest wears the dark
+/// button look; the shown theme turns light, and the next frame wears the light look exactly, as
+/// the state that picks it did not change. Then the pointer moves over it: the state changes, so
+/// 16 ms later the look is part way to the hovered one, not on it.
+#[test]
+fn a_look_follows_a_theme_change_and_fades_a_state_change() {
+    let mut h = Harness::builder(UVec2::new(100, 100))
+        .mono()
+        .frame_dt(Duration::from_millis(16))
+        .build();
+    let id = WidgetId::from_hash("themed-leaf");
+    let wear = |h: &mut Harness| -> (AnimatedLook, AnimatedLook) {
+        h.frame_value(|ui| {
+            let mut leaf = Widget::leaf()
+                .id(id)
+                .sense(Sense::CLICK)
+                .size((Sizing::fixed(40.0), Sizing::fixed(40.0)));
+            let response = leaf.response(ui);
+            let theme = Rc::clone(ui.theme());
+            let plan = theme
+                .button
+                .plan(&response.state, Selection::Unselected, theme.text);
+            let want = plan.target.clone();
+            let look = leaf.wear(ui, plan);
+            leaf.record(ui, Some(&look.chrome), |_| {});
+            (look, want)
+        })
+    };
+    let (look, want) = wear(&mut h);
+    assert_eq!(look, want, "first touch rests on its look");
+
+    let shown = h.ui_ref().color_scheme();
+    let other = match shown {
+        ColorScheme::Light => ColorScheme::Dark,
+        ColorScheme::Dark => ColorScheme::Light,
+    };
+    h.ui().set_theme_for(shown, Theme::stock(other));
+    let (look, want) = wear(h.advance(Duration::from_millis(16)));
+    assert_eq!(look, want, "a theme change is followed at once");
+
+    h.hover(id);
+    let _ = wear(h.advance(Duration::from_millis(16)));
+    let (look, want) = wear(h.advance(Duration::from_millis(16)));
+    assert_ne!(look, want, "a state change fades");
 }

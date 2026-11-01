@@ -162,7 +162,8 @@ code it governs.
    the settle tolerance derived again. Tests: exact ends; hand-computed
    midpoints against the OKLab reference; a negative channel and an over-1 channel round-trip; a
    spring settling within one 8-bit step; goldens with fades re-baselined.
-2. **State-keyed offsets.** Duration rows store an offset from the target; `AnimationRequest`
+2. **State-keyed offsets** (landed; the decision lives on `AnimationKey` and `MotionRow`; a
+   gradient morph under a duration now switches at the start, as under a spring). Duration rows store an offset from the target; `AnimationRequest`
    carries an optional state key; looks pass theirs. Tests: a target moving under one key paints
    the target every frame; a new key fades over its spec; a return to the previous key mid-fade
    keeps the CSS shortening while the target moves; with no key, today's retarget.

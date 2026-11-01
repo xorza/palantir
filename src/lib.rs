@@ -180,6 +180,7 @@ macro_rules! fmt {
 /// scroll viewport, through [`Scroll`], and the GPU view, through
 /// [`GpuView`].
 pub mod widget {
+    pub use crate::animation::animation_key::AnimationKey;
     pub use crate::animation::animation_request::AnimationRequest;
     pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::common::span::Span;

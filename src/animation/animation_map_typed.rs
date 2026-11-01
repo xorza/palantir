@@ -1,7 +1,7 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
 use crate::animation::animation_request::AnimationRequest;
-use crate::animation::animation_row::{self, AnimationRow, MotionRow};
+use crate::animation::animation_row::{self, AnimationRow, MotionRow, Retarget};
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::TypedStore;
@@ -49,6 +49,10 @@ impl<T: Animatable> AnimationMapTyped<T> {
     /// no animation on appearance. Later calls detect retarget vs steady state and
     /// advance by `clock.dt` seconds.
     ///
+    /// **A new target under the request's key is followed, not animated toward**: the row's
+    /// offset from it and the clock running it carry on, so a look rides a theme transition with
+    /// no delay while its own state fade runs. A new key, or no key, retargets.
+    ///
     /// **A motion starting from rest spends nothing on its first frame**, as a CSS
     /// transition shows its start value: the `dt` before it passed while the row
     /// was at rest, and after an idle window spending it would use up most of
@@ -63,7 +67,12 @@ impl<T: Animatable> AnimationMapTyped<T> {
         spec: AnimationSpec,
         clock: AnimationClock,
     ) -> TickResult<T> {
-        let AnimationRequest { id, slot, target } = request;
+        let AnimationRequest {
+            id,
+            slot,
+            target,
+            key,
+        } = request;
         let AnimationClock {
             dt,
             render_frame_id,
@@ -84,6 +93,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
             Entry::Vacant(v) => {
                 v.insert(AnimationRow {
                     target: target.clone(),
+                    key,
                     motion: MotionRow::new(spec.motion, &target, &target),
                     touched: true,
                     advanced_at: render_frame_id,
@@ -110,23 +120,48 @@ impl<T: Animatable> AnimationMapTyped<T> {
         // this path avoids.
         if row.settled && row.target == target {
             debug_assert!(row.cur() == target, "settled row must sit at its target");
+            row.key = key;
             return TickResult {
                 cur: target,
                 settled: true,
             };
         }
 
+        if key.is_some() && key == row.key && row.target != target {
+            if row.settled {
+                debug_assert!(
+                    row.motion.cur(&target) == target,
+                    "a settled row holds no offset, so it rests on a moved target"
+                );
+                let cur = target.clone();
+                row.target = target;
+                return TickResult { cur, settled: true };
+            }
+            let cur = row.motion.cur(&target);
+            row.motion.conform(spec.motion, &cur, &target);
+            row.target = target;
+            return row.advance_once(cur, already_advanced, dt);
+        }
+
+        let old_key = row.key;
+        row.key = key;
         let retargeted = row.target != target;
         let mut cur = row.cur();
         let switched = row.motion.conform(spec.motion, &cur, &row.target);
         // Only a new target or motion can pair the value with a target it can't do
-        // arithmetic against; otherwise every value is `target + offset` or a curve
-        // sample.
+        // arithmetic against; otherwise every value is `target + offset`.
         if retargeted || switched {
             if let MotionRow::Spring { velocity, .. } = &mut row.motion {
                 cur.normalize_for_spring(&target, velocity);
             }
-            row.motion.retarget(&cur, &row.target, &target);
+            row.motion.retarget(&Retarget {
+                cur: &cur,
+                old_target: &row.target,
+                target: &target,
+                old_key,
+                key,
+                at_rest: row.settled,
+            });
         }
 
         if retargeted {
@@ -140,7 +175,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
                 .motion
                 .close_enough(animation_row::offset(&cur, &row.target))
             {
-                row.motion.stop(&row.target);
+                row.motion.stop();
                 row.settled = true;
                 return TickResult {
                     cur: row.target.clone(),
@@ -155,19 +190,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
             }
         }
 
-        // Multi-pass guard: pass A already advanced the integrator this frame, and
-        // pass B only updated target / `segment_start` / `velocity`; adding another dt
-        // would double the speed on any input frame.
-        if already_advanced {
-            return TickResult {
-                cur,
-                settled: false,
-            };
-        }
-
-        let step = row.motion.advance(row.target.clone(), dt);
-        row.settled = step.settled;
-        step
+        row.advance_once(cur, already_advanced, dt)
     }
 }
 

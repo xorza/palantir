@@ -40,7 +40,7 @@ pub struct MenuBarTheme {
 
 /// Whether a menu bar title's menu is open, which picks [`MenuBarTheme::open`] over
 /// [`MenuBarTheme::title`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MenuState {
     /// The menu is shut.
     Shut,

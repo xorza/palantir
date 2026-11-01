@@ -23,13 +23,14 @@ pub(super) fn widget_id(s: &'static str) -> WidgetId {
 
 #[derive(Debug)]
 pub(super) struct DurationMotionState<'a, T> {
-    pub(super) segment_start: &'a T,
+    /// From the target to the segment's start, in motion space.
+    pub(super) start_offset: &'a T,
     pub(super) elapsed: f32,
 }
 
 pub(super) fn duration_motion<T: Animatable>(row: &AnimationRow<T>) -> DurationMotionState<'_, T> {
     let MotionRow::Duration {
-        segment_start,
+        start_offset,
         elapsed,
         ..
     } = &row.motion
@@ -37,7 +38,7 @@ pub(super) fn duration_motion<T: Animatable>(row: &AnimationRow<T>) -> DurationM
         panic!("expected duration motion state");
     };
     DurationMotionState {
-        segment_start,
+        start_offset,
         elapsed: *elapsed,
     }
 }

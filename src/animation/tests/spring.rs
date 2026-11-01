@@ -306,8 +306,8 @@ fn second_tick_in_same_frame_does_not_double_advance() {
     );
     assert_eq!(map.rows[&(id, SLOT)].target, 5.0);
     assert_eq!(
-        *support::duration_motion(&map.rows[&(id, SLOT)]).segment_start,
-        pass_a_cur
+        *support::duration_motion(&map.rows[&(id, SLOT)]).start_offset,
+        pass_a_cur - 5.0
     );
 
     let next = map.tick(
