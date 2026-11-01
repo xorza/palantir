@@ -5,16 +5,17 @@ use image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
     Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorScheme,
-    ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Metrics, Modal,
-    Palette, Panel, ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8,
-    Stroke, Switch, Text, TextEdit, Theme, ToggleTheme, Ui,
+    ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Modal, Panel,
+    ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch,
+    Text, TextEdit, Ui,
 };
 
 use crate::fixtures;
 use crate::fixtures::DARK_BG;
 use crate::golden_name::GoldenName;
 
-use crate::visual_rig::{FIXTURE_METRICS, FIXTURE_PALETTE, VisualRig};
+use crate::theme;
+use crate::visual_rig::VisualRig;
 
 /// A well padded by `p` and filling the surface around `body`.
 fn padded(ui: &mut Ui, p: f32, body: impl FnOnce(&mut Ui)) {
@@ -234,7 +235,7 @@ fn progress_bar_half_matches_golden() {
 /// `Canvas` track with `.pos`ed knob.
 #[test]
 fn toggle_switch_states_matches_golden() {
-    let mut style = ToggleTheme::switch(&FIXTURE_PALETTE, &FIXTURE_METRICS);
+    let mut style = theme::fixture(ColorScheme::Dark).switch;
     // At the rest position, with no first-frame transient.
     style.defaults.animation = None;
     GoldenName::ToggleSwitchStates.assert_scene(UVec2::new(220, 110), |ui| {
@@ -255,24 +256,13 @@ fn toggle_switch_states_matches_golden() {
     });
 }
 
-/// The light palette's still states: buttons, toggles on and off, a field with its placeholder,
-/// a slider and a progress bar, each on `Palette::LIGHT` as the stock recipes paint it, in the
-/// light slot a light system picks. The palette is the subject here, so it is not pinned;
-/// transitions are off, so the frame is at rest.
+/// The light theme's still states: buttons, toggles on and off, a field with its placeholder,
+/// a slider and a progress bar, at rest, as the light theme holds no motion.
 #[test]
-fn light_palette_widgets_match_golden() {
-    let mut theme = Theme::from_parts(
-        &Palette::LIGHT,
-        &Metrics {
-            transition: None,
-            ..FIXTURE_METRICS
-        },
-    );
-    theme.switch.defaults.animation = None;
+fn light_theme_widgets_match_golden() {
     let img = VisualRig::new()
-        .theme_for(ColorScheme::Light, theme)
-        .system_color_scheme(Some(ColorScheme::Light))
-        .clear(Palette::LIGHT.window_bg)
+        .color_scheme(ColorScheme::Light)
+        .clear(theme::fixture(ColorScheme::Light).window_clear)
         .size(UVec2::new(320, 260))
         .frame(|ui| {
             Panel::vstack()
@@ -314,7 +304,7 @@ fn light_palette_widgets_match_golden() {
                 });
         })
         .image;
-    GoldenName::LightPaletteWidgets.assert_matches(&img);
+    GoldenName::LightThemeWidgets.assert_matches(&img);
 }
 
 /// Spinner at phase 0: a round-capped arc fading from transparent tail to head.

@@ -5,18 +5,20 @@
     reason = "an outside consumer of the published surface, where naming a wgpu type is the point"
 )]
 
-use glam::{UVec2, Vec2};
+use glam::UVec2;
 use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
-    AnimationSpec, ColorScheme, DebugOverlayConfig, FramePaint, Metrics, OffscreenHost,
-    OffscreenTime, Palette, RadiusSteps, RgbaF32, ShadowGeometry, SpaceSteps, StrokeSteps,
-    TextShaper, TextSteps, Theme, Ui,
+    ColorScheme, DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, RgbaF32,
+    SchemePreference, TextShaper, Ui,
 };
 
 use crate::fixtures::DARK_BG;
+use crate::theme;
 
-/// The palette every fixture renders under, pinned so `Palette::DARK` can move without ten goldens depending on it; hue-coded so a wrong rung shows as a hue in the diff.
+/// The palette the dark fixture theme was drawn from, hue-coded so a wrong rung shows as a hue in
+/// the diff: the colors a scene and a showcase page's kit take beside the theme. The theme holds
+/// its own copy, so an edit here does not reach it.
 pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     text: RgbaF32::hex(0xf2f2f2),
     text_muted: RgbaF32::hex(0x9ad2a0),
@@ -31,51 +33,6 @@ pub(crate) const FIXTURE_PALETTE: Palette = Palette {
     on_accent: RgbaF32::hex(0x14141a),
     shadow: RgbaF32::BLACK.with_alpha(128.0 / 255.0),
 };
-
-/// The geometry and motion every fixture renders under, pinned as the palette is, so a retune of
-/// `Metrics::DEFAULT` moves no golden: `Metrics::DEFAULT` as the goldens were drawn under.
-pub(crate) const FIXTURE_METRICS: Metrics = Metrics {
-    text: TextSteps {
-        caption: 12.0,
-        body: 14.0,
-        title: 16.0,
-    },
-    space: SpaceSteps {
-        xxs: 2.0,
-        xs: 4.0,
-        sm: 8.0,
-        md: 12.0,
-        lg: 16.0,
-        xl: 24.0,
-    },
-    radius: RadiusSteps {
-        mark: 2.0,
-        control: 4.0,
-        card: 6.0,
-        float: 10.0,
-    },
-    stroke: StrokeSteps {
-        hairline: 1.0,
-        fine: 1.5,
-        line: 2.0,
-    },
-    float_shadow: ShadowGeometry {
-        offset: Vec2::new(0.0, 8.0),
-        blur: 16.0,
-    },
-    transition: Some(AnimationSpec::FAST),
-};
-
-/// The ambient text size every fixture renders at, pinned as the palette is.
-const FIXTURE_FONT_SIZE: f32 = 14.0;
-
-/// The theme every fixture renders under: the stock recipes over the pinned palette, metrics
-/// and text size.
-pub(crate) fn fixture_theme() -> Theme {
-    let mut theme = Theme::from_parts(&FIXTURE_PALETTE, &FIXTURE_METRICS);
-    theme.text.font_size = FIXTURE_FONT_SIZE;
-    theme
-}
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
@@ -117,7 +74,11 @@ impl VisualRig {
             .pixel_snap(pixel_snap)
             .time(OffscreenTime::Manual)
             .build();
-        host.ui().set_theme_for(ColorScheme::Dark, fixture_theme());
+        // Pinned, so neither the system's report nor `SchemePreference::FALLBACK` picks the scheme.
+        host.ui().set_scheme_preference(SchemePreference::Dark);
+        for scheme in [ColorScheme::Dark, ColorScheme::Light] {
+            host.ui().set_theme_for(scheme, theme::fixture(scheme));
+        }
 
         Self {
             host,
@@ -157,15 +118,13 @@ impl VisualRig {
         self
     }
 
-    /// The window's theme for `scheme`, in place of [`fixture_theme`] in the dark slot.
-    pub(crate) fn theme_for(&mut self, scheme: ColorScheme, theme: Theme) -> &mut Self {
-        self.host.ui().set_theme_for(scheme, theme);
-        self
-    }
-
-    /// The scheme the host reports as the system's, which the next frame resolves.
-    pub(crate) fn system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self {
-        self.host.set_system_color_scheme(scheme);
+    /// The scheme every following frame shows, [`ColorScheme::Dark`] until set.
+    pub(crate) fn color_scheme(&mut self, scheme: ColorScheme) -> &mut Self {
+        let preference = match scheme {
+            ColorScheme::Dark => SchemePreference::Dark,
+            ColorScheme::Light => SchemePreference::Light,
+        };
+        self.host.ui().set_scheme_preference(preference);
         self
     }
 

@@ -2,7 +2,7 @@
 //!
 //! Both directories are gitignored, so baselines are local. A fresh checkout has none: the first run writes each golden and fails it, so someone looks before it becomes the reference.
 //!
-//! `visual_rig` raises the UI, `palantir::golden` compares, `fixtures/` holds the scenes. Name each new golden in `golden_name`.
+//! `visual_rig` raises the UI, `theme/` holds the themes it wears, `palantir::golden` compares, `fixtures/` holds the scenes. Name each new golden in `golden_name`.
 
 #![expect(
     clippy::cast_sign_loss,
@@ -28,6 +28,7 @@ mod scaffold;
 )]
 #[path = "../../examples/showcase/support.rs"]
 mod support;
+mod theme;
 mod visual_rig;
 
 use glam::UVec2;

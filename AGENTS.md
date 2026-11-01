@@ -120,6 +120,11 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **The showcase's shot mode is a script**, as iced's `.ice` tests, rebuilt per call so a shot
   never shows a stale binary.
 - **The visual suite stays on `OffscreenHost`**, as it tests presentation paths.
+- **The visual suite wears a theme of its own**: `tests/visual/theme/`, each `Theme` written out
+  whole, with the scheme pinned to dark. No recipe, `Palette`, `Metrics` or fallback scheme moves
+  a golden, and a new `Theme` field fails to compile until both themes hold it. Refused: the
+  stock recipes over a pinned palette and metrics, which a recipe change still reached; a theme
+  file, a second format to keep in step with the type.
 - **A settle waits out a busy app** through `App::is_busy` and `Ui::waker`. Refused: a
   `HostHandle` on the harness, which brings winit; a flag the record sets, stale when no frame
   records ([Playwright auto-wait](https://playwright.dev/docs/actionability)).
