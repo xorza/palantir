@@ -6,6 +6,7 @@
 - mcp
 - visual testing own theme
 - what text script
+- reduced motion/backdrops theme options selection
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
 - hover card at a point for content that is not a widget
