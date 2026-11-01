@@ -7,7 +7,15 @@ use crate::theme::look::engagement::Engagement;
 
 /// The four-state look pack of state-styled widget themes. `active` is the widget's *engaged* state (pressed for Button / Toggle / MenuItem, focused for TextEdit), named to [`Self::pick`] as an [`Engagement`] so precedence is uniform. Embedded (serde-flattened) by [`crate::ButtonTheme`], [`crate::TextEditTheme`], [`crate::MenuItemTheme`]; [`crate::ToggleTheme`] keeps one per checked state.
 // Not `Copy` because `WidgetLook` isn't.
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Animatable,
+)]
 pub struct StatefulLook {
     /// At rest.
     pub normal: WidgetLook,
@@ -51,16 +59,20 @@ impl StatefulLook {
     }
 
     /// Destructured so a new state fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        mut other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             normal,
             hovered,
             active,
             disabled,
         } = self;
-        normal.for_each_text(f);
-        hovered.for_each_text(f);
-        active.for_each_text(f);
-        disabled.for_each_text(f);
+        normal.for_each_text(other.as_deref_mut().map(|o| &mut o.normal), f);
+        hovered.for_each_text(other.as_deref_mut().map(|o| &mut o.hovered), f);
+        active.for_each_text(other.as_deref_mut().map(|o| &mut o.active), f);
+        disabled.for_each_text(other.map(|o| &mut o.disabled), f);
     }
 }

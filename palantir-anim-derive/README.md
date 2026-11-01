@@ -13,16 +13,19 @@ use palantir::Animatable;
 #[derive(Clone, Debug, Default, PartialEq, Animatable)]
 struct Look {
     color: Color,
-    // Non-animated: lerp jumps to the target, spring math noops on it,
-    // and it contributes nothing to the magnitude.
-    #[animate(snap)]
+    // Blends in a lerp; motion takes the target at once.
+    #[animate(lerp_only)]
     font_size: f32,
+    // No blend: a lerp switches at t = 0.5; motion takes the target at once.
+    #[animate(snap)]
+    italic: bool,
 }
 ```
 
 The derive walks each named field of a struct: animated fields call into their
-own `Animatable` impl, and fields marked `#[animate(snap)]` are excluded from
-the arithmetic. It only applies to structs with named fields.
+own `Animatable` impl, and fields marked `#[animate(snap)]` or
+`#[animate(lerp_only)]` are excluded from the motion arithmetic. It only
+applies to structs with named fields.
 
 ## License
 

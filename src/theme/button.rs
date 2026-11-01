@@ -26,7 +26,9 @@ pub(crate) const ACCENT_PRESS: f32 = 0.24;
 /// Four-state button theme: a [`StatefulLook`] (`active` = pressed) for a button at rest and one
 /// for a [selected](crate::Button::selected) button, plus container knobs, picked via
 /// [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct ButtonTheme {
     /// The four per-state looks of a button that is not selected; `flatten` keeps theme files
     /// flat (`[button.normal]`).
@@ -121,14 +123,18 @@ impl ButtonTheme {
     }
 
     /// Visit every text slot this theme owns (drives `Theme::scale_text`); destructured so a new field fails to compile here.
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        mut other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             unselected,
             selected,
             defaults: _,
         } = self;
-        unselected.for_each_text(f);
-        selected.for_each_text(f);
+        unselected.for_each_text(other.as_deref_mut().map(|o| &mut o.unselected), f);
+        selected.for_each_text(other.map(|o| &mut o.selected), f);
     }
 
     /// The subtle button, as Fluent 2's subtle appearance: transparent at rest, hover-only fill, no border or shadow, inset as a menu row; disabled, its label takes `text_disabled`. Selected, it rests at the hovered fill, as an open menu's title does. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button anywhere (<https://fluent2.microsoft.design/components/web/react/core/button/usage>).

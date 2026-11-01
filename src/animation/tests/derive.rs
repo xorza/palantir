@@ -5,11 +5,13 @@ use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
-/// Two animated fields and two snap fields.
+/// Two animated fields, a lerp-only field and two snap fields.
 #[derive(Clone, Copy, Debug, PartialEq, Animatable)]
 struct Probe {
     x: f32,
     v: Vec2,
+    #[animate(lerp_only)]
+    size: f32,
     #[animate(snap)]
     label: u8,
     #[animate(snap)]
@@ -49,29 +51,57 @@ struct Pair<T: Animatable + Copy> {
     second: T,
 }
 
-/// Each generated method against its hand-computed result. Animated fields use their own `Animatable`; a snap field takes the target in `lerp`, keeps `self` in `sub`, `add` and `scale`, adds nothing to magnitude, and is `Default` in `zero`.
+/// A hook that swaps the ends, so a lerp it runs in reads backwards.
+#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[animate(before_lerp = Self::swap)]
+struct Hooked {
+    x: f32,
+}
+
+impl Hooked {
+    fn swap(a: &mut Self, b: &mut Self) {
+        std::mem::swap(a, b);
+    }
+}
+
+/// Each generated method against its hand-computed result. Animated fields use their own `Animatable`; a lerp-only field blends in `lerp` and keeps `self` in `sub`, `add` and `scale`; a snap field takes `a` below `t = 0.5` and `b` from it in `lerp`, keeps `self` in the arithmetic, and is `Default` in `zero`. Neither adds to the magnitude.
 #[test]
 fn derived_methods_split_animated_from_snapped_fields() {
     let a = Probe {
         x: 1.0,
         v: Vec2::new(2.0, 4.0),
+        size: 10.0,
         label: 3,
         mode: 5,
     };
     let b = Probe {
         x: 5.0,
         v: Vec2::new(6.0, 0.0),
+        size: 18.0,
         label: 7,
         mode: 9,
     };
-    // 1 + (5 − 1)·¼ = 2; (2, 4) + ((6, 0) − (2, 4))·¼ = (3, 3).
+    // 1 + (5 − 1)·¼ = 2; (2, 4) + ((6, 0) − (2, 4))·¼ = (3, 3); 10 + (18 − 10)·¼ = 12.
     let quarter = Probe {
         x: 2.0,
         v: Vec2::new(3.0, 3.0),
-        label: 7,
-        mode: 9,
+        size: 12.0,
+        label: 3,
+        mode: 5,
     };
     assert_eq!(Probe::lerp(a, b, 0.25), quarter);
+    // 1 + 4·½ = 3; (4, 2); 14; the snap fields switch to `b` at ½.
+    assert_eq!(
+        Probe::lerp(a, b, 0.5),
+        Probe {
+            x: 3.0,
+            v: Vec2::new(4.0, 2.0),
+            size: 14.0,
+            ..b
+        },
+    );
+    assert_eq!(Probe::lerp(a, b, 0.0), a);
+    assert_eq!(Probe::lerp(a, b, 1.0), b);
     assert_eq!(
         b.sub(a),
         Probe {
@@ -96,20 +126,29 @@ fn derived_methods_split_animated_from_snapped_fields() {
             ..a
         },
     );
-    // 1² + 2² + 4² = 21; the snap fields add nothing.
+    // 1² + 2² + 4² = 21; the lerp-only and snap fields add nothing.
     assert_eq!(a.magnitude_squared(), 21.0);
     assert_eq!(
         Probe::zero(),
         Probe {
             x: 0.0,
             v: Vec2::ZERO,
+            size: 0.0,
             label: 0,
             mode: 0,
         },
     );
+    assert_eq!(a.to_motion(), a);
+
+    // The hook sees both ends past the exact ones: at ¼ it reads ¾ of the way, 1 + 4·¾ = 4.
+    let (p, q) = (Hooked { x: 1.0 }, Hooked { x: 5.0 });
+    assert_eq!(Hooked::lerp(p, q, 0.25), Hooked { x: 4.0 });
+    assert_eq!(Hooked::lerp(p, q, 0.0), p);
+    assert_eq!(Hooked::lerp(p, q, 1.0), q);
 
     // All snap: no arithmetic at all, and a zero magnitude.
     let (p, q) = (AllSnap { a: 1, b: 2 }, AllSnap { a: 3, b: 4 });
+    assert_eq!(AllSnap::lerp(p, q, 0.49), p);
     assert_eq!(AllSnap::lerp(p, q, 0.5), q);
     assert_eq!(p.sub(q), p);
     assert_eq!(p.magnitude_squared(), 0.0);

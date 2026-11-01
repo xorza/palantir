@@ -17,8 +17,10 @@ pub(crate) const LINE_HEIGHT_FACTOR: f32 = 1.2;
 /// Default text-rendering inputs, grouped so an app can swap the whole text
 /// look with one assignment.
 ///
-/// `color` interpolates; the rest are `#[animate(snap)]` because animating
-/// size invalidates the shape cache every frame.
+/// `color` interpolates. `font_size` and `line_height_factor` are `#[animate(lerp_only)]`: a look's
+/// fade takes them at once, as each step of a size reshapes the text and a hover would pay that
+/// on every frame of it, while a theme's lerp blends them, its layout moving with it. The face
+/// is `#[animate(snap)]`, with no blend.
 #[derive(
     Clone,
     Copy,
@@ -36,14 +38,14 @@ pub struct TextStyle {
     /// Fluent 2 type ramp (<https://fluent2.microsoft.design/typography>): a
     /// desktop control's label, where the web's 16 reads large beside a 4 px
     /// grid's insets.
-    #[animate(snap)]
+    #[animate(lerp_only)]
     pub font_size: f32,
     /// Default ink for [`crate::Text`] and for every widget look state that
     /// leaves `color` unset.
     pub color: RgbaF32,
     /// Line-height-to-font-size ratio, driving shaper leading and caret
     /// height. Default is cosmic-text's natural 1.2.
-    #[animate(snap)]
+    #[animate(lerp_only)]
     pub line_height_factor: f32,
     /// Font family. Default [`FontFamily::SANS`] is bundled Inter.
     #[animate(snap)]

@@ -1,8 +1,8 @@
 //! Vocabulary for "things that can animate." An `Animatable` type supports
 //! interpolation, spring displacement arithmetic, and a squared distance in its
 //! own settle tolerance; value-dependent snap-only fields normalize first.
-//! Built-in impls cover `f32`, `Vec2`, `RgbaF32`; domain types opt in via
-//! `#[derive(Animatable)]` (`palantir-animation-derive`, type-erased `AnimationMap`).
+//! Built-in impls cover `f32`, `Vec2`, arrays and `RgbaF32`; domain types opt in via
+//! `#[derive(Animatable)]` (`palantir-anim-derive`, type-erased `AnimationMap`).
 
 use crate::primitives::math::domain::EPS;
 use glam::Vec2;
@@ -23,8 +23,9 @@ use glam::Vec2;
 /// spell `.clone()`; small `Copy` types still cost nothing. Sizes are pinned
 /// by `hot_struct_sizes_are_pinned`.
 pub trait Animatable: Clone + PartialEq + 'static {
-    /// Interpolate from `a` to `b` at phase `t`, normally `0.0..=1.0`. A curve may
-    /// overshoot, so implementations must not clamp.
+    /// Interpolate from `a` to `b` at phase `t`, normally `0.0..=1.0`, returning `a` at 0 and
+    /// `b` at 1 exactly, so a tween ends on its target. A curve may overshoot, so
+    /// implementations must not clamp.
     fn lerp(a: Self, b: Self, t: f32) -> Self;
     #[must_use]
     /// Difference `self - other`.
@@ -85,10 +86,18 @@ pub trait Animatable: Clone + PartialEq + 'static {
 
 // Per type, not a blanket over `Add + Sub + Mul<f32>`, which would claim every
 // such type: `Animatable` is each type's decision.
+/// `a + (b − a)·t`, which can miss `b` at `t = 1` by a rounding and makes a NaN of two equal
+/// infinities, so both ends and an equal pair return an end.
 impl Animatable for f32 {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
-        a + (b - a) * t
+        if t == 0.0 {
+            a
+        } else if t == 1.0 || a == b {
+            b
+        } else {
+            a + (b - a) * t
+        }
     }
     #[inline]
     fn sub(self, other: Self) -> Self {
@@ -113,9 +122,10 @@ impl Animatable for f32 {
 }
 
 impl Animatable for Vec2 {
+    /// Per axis, as `f32` blends.
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
-        a + (b - a) * t
+        Self::new(f32::lerp(a.x, b.x, t), f32::lerp(a.y, b.y, t))
     }
     #[inline]
     fn sub(self, other: Self) -> Self {
@@ -139,9 +149,103 @@ impl Animatable for Vec2 {
     }
 }
 
+/// Element by element, each settling in its own unit, as a derive sums its fields.
+impl<T: Animatable, const N: usize> Animatable for [T; N] {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        let mut b = b.into_iter();
+        a.map(|a| T::lerp(a, b.next().expect("arrays of one length"), t))
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        let mut other = other.into_iter();
+        self.map(|x| x.sub(other.next().expect("arrays of one length")))
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        let mut other = other.into_iter();
+        self.map(|x| x.add(other.next().expect("arrays of one length")))
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        self.map(|x| x.scale(k))
+    }
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self.into_iter().map(T::magnitude_squared).sum()
+    }
+    #[inline]
+    fn settle_distance_squared(self) -> f32 {
+        self.into_iter().map(T::settle_distance_squared).sum()
+    }
+    #[inline]
+    fn zero() -> Self {
+        std::array::from_fn(|_| T::zero())
+    }
+    #[inline]
+    fn to_motion(self) -> Self {
+        self.map(T::to_motion)
+    }
+    #[inline]
+    fn from_motion(motion: Self) -> Self {
+        motion.map(T::from_motion)
+    }
+    #[inline]
+    fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
+        for ((value, target), velocity) in self.iter_mut().zip(target).zip(velocity) {
+            value.normalize_for_spring(target, velocity);
+        }
+    }
+}
+
 // `RgbaF32` blends in premultiplied Oklab (see `primitives/paint/color/mod.rs`).
 //
-// No `Option<T>` blanket: for "absent or value" fields use a sentinel
-// (`Stroke::NONE`) and let the paint-time `is_noop` filter handle absence. A
-// blanket could only return `Some(...)`, forcing consumers to scrub no-ops
-// back to `None` for hash equality.
+// No `Option<T>` blanket: what an absent value blends through is each type's own answer. A
+// chrome that is absent paints as `Chrome::NONE`, so `Option<Chrome>` blends through it; an
+// absent text override is the ambient style, which only the theme holds. Elsewhere "absent or
+// value" is a sentinel (`Stroke::NONE`) that the paint-time `is_noop` filter drops.
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::math::animatable::Animatable;
+    use glam::Vec2;
+
+    /// `0.32 + (1.32 − 0.32)·1` rounds to `1.3199999`, one ulp short of `1.32`, so the end needs
+    /// its own case; two equal infinities would make `∞ − ∞ = NaN`. Between the ends the blend is
+    /// linear.
+    #[test]
+    fn scalars_end_exactly_and_keep_an_equal_pair() {
+        assert_ne!(0.32_f32 + (1.32_f32 - 0.32) * 1.0, 1.32);
+        assert_eq!(f32::lerp(0.32, 1.32, 1.0), 1.32);
+        assert_eq!(f32::lerp(0.32, 1.32, 0.0), 0.32);
+        assert_eq!(f32::lerp(f32::INFINITY, f32::INFINITY, 0.3), f32::INFINITY);
+        // 2 + (10 − 2)·¼ = 4.
+        assert_eq!(f32::lerp(2.0, 10.0, 0.25), 4.0);
+        assert_eq!(
+            Vec2::lerp(Vec2::new(0.32, 2.0), Vec2::new(1.32, 10.0), 1.0),
+            Vec2::new(1.32, 10.0)
+        );
+        assert_eq!(
+            Vec2::lerp(Vec2::new(0.0, 2.0), Vec2::new(4.0, 10.0), 0.25),
+            Vec2::new(1.0, 4.0)
+        );
+    }
+
+    /// An array blends, adds and scales element by element; its magnitude sums them.
+    #[test]
+    fn arrays_work_element_by_element() {
+        let a = [Vec2::new(0.0, 4.0), Vec2::new(2.0, 2.0)];
+        let b = [Vec2::new(4.0, 0.0), Vec2::new(2.0, 6.0)];
+        // (0, 4) + ((4, 0) − (0, 4))·¼ = (1, 3); (2, 2) + (0, 4)·¼ = (2, 3).
+        assert_eq!(
+            <[Vec2; 2]>::lerp(a, b, 0.25),
+            [Vec2::new(1.0, 3.0), Vec2::new(2.0, 3.0)]
+        );
+        assert_eq!(b.sub(a), [Vec2::new(4.0, -4.0), Vec2::new(0.0, 4.0)]);
+        assert_eq!(a.add(b.sub(a)), b);
+        assert_eq!(a.scale(0.5), [Vec2::new(0.0, 2.0), Vec2::new(1.0, 1.0)]);
+        // 0² + 4² + 2² + 2² = 24.
+        assert_eq!(a.magnitude_squared(), 24.0);
+        assert_eq!(<[Vec2; 2]>::zero(), [Vec2::ZERO; 2]);
+    }
+}

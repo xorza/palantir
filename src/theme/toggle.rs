@@ -20,7 +20,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::Checkbox`], [`crate::RadioButton`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct ToggleTheme {
     /// Look when unchecked.
     pub unchecked: StatefulLook,
@@ -57,7 +59,11 @@ pub struct ToggleTheme {
 impl ToggleTheme {
     /// Destructured so a new field fails to compile here — see
     /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        mut other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             unchecked,
             checked,
@@ -71,8 +77,8 @@ impl ToggleTheme {
             track_aspect: _,
             defaults: _,
         } = self;
-        unchecked.for_each_text(f);
-        checked.for_each_text(f);
+        unchecked.for_each_text(other.as_deref_mut().map(|o| &mut o.unchecked), f);
+        checked.for_each_text(other.map(|o| &mut o.checked), f);
     }
 
     /// [`Self::check_points`] scaled to [`Self::box_size`], in box-local pixels.

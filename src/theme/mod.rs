@@ -79,7 +79,24 @@ use crate::theme::tooltip::TooltipTheme;
 /// # Disabled state
 ///
 /// The framework does not auto-dim disabled subtrees; widgets read the disabled flag themselves.
-#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+///
+/// # Blending
+///
+/// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends two themes as Flutter's
+/// `ThemeData.lerp` does: colors, lengths, spacings, radii and font sizes blend, and a value with
+/// no blend switches at `t = 0.5`. A [`Self::panel_chrome`] one end lacks blends through
+/// [`Chrome::NONE`](crate::Chrome::NONE), and a text axis one end's overrides leave to
+/// [`Self::text`] blends from that end's ambient value, so each step shows a blend of what the
+/// ends show.
+#[derive(
+    Clone,
+    Debug,
+    PartialEq,
+    ::serde::Serialize,
+    ::serde::Deserialize,
+    palantir_anim_derive::Animatable,
+)]
+#[animate(before_lerp = Self::share_text_axes)]
 pub struct Theme {
     /// What every [`crate::Button`] wears; [`crate::ComboBox`] and [`crate::DragValue`] derive from it.
     pub button: ButtonTheme,
@@ -136,6 +153,7 @@ pub struct Theme {
     pub panel_chrome: Option<Chrome>,
     /// Default clip mode for containers that set none; the rounded mask uses [`Self::panel_chrome`]'s `radius`.
     #[serde(default, skip_serializing_if = "is_clip_none")]
+    #[animate(snap)]
     pub panel_clip: ClipMode,
 }
 
@@ -174,7 +192,7 @@ impl Theme {
         let scale = |px: f32| px * factor;
         let ambient = self.text.with_font_size(scale(self.text.font_size));
         let mut metrics_valid = true;
-        self.for_each_text(|text| {
+        self.for_each_text(None, |text, _| {
             metrics_valid &= match text {
                 ThemeText::Style(style) => {
                     style.with_font_size(scale(style.font_size)).metrics_valid()
@@ -188,7 +206,7 @@ impl Theme {
             };
         });
         assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
-        self.for_each_text(|text| match text {
+        self.for_each_text(None, |text, _| match text {
             ThemeText::Style(style) => style.font_size = scale(style.font_size),
             ThemeText::Overrides(o) => o.font_size = o.font_size.map(scale),
         });
@@ -268,10 +286,15 @@ impl Theme {
         }
     }
 
-    /// Visit every text-bearing slot; [`Self::scale_text`] drives it.
+    /// Visit every text-bearing slot, each beside the same slot of `other` when one is given;
+    /// [`Self::scale_text`] and [`Self::share_text_axes`] drive it.
     ///
     /// Every `for_each_text` destructures its whole struct, so a new field fails to compile until classified.
-    fn for_each_text(&mut self, mut f: impl FnMut(ThemeText<'_>)) {
+    fn for_each_text(
+        &mut self,
+        mut other: Option<&mut Self>,
+        mut f: impl FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+    ) {
         let Self {
             text,
             button,
@@ -303,20 +326,38 @@ impl Theme {
             panel_clip: _,
         } = self;
         let f = &mut f;
-        f(ThemeText::Style(text));
-        button.for_each_text(f);
-        checkbox.for_each_text(f);
-        radio.for_each_text(f);
-        switch.for_each_text(f);
-        text_edit.for_each_text(f);
-        drag_value.for_each_text(f);
-        context_menu.for_each_text(f);
-        menu_bar.for_each_text(f);
-        tooltip.for_each_text(f);
-        tabs.for_each_text(f);
-        dock.for_each_text(f);
-        expander.for_each_text(f);
-        color_picker.for_each_text(f);
+        f(
+            ThemeText::Style(text),
+            other.as_deref_mut().map(|o| ThemeText::Style(&mut o.text)),
+        );
+        button.for_each_text(other.as_deref_mut().map(|o| &mut o.button), f);
+        checkbox.for_each_text(other.as_deref_mut().map(|o| &mut o.checkbox), f);
+        radio.for_each_text(other.as_deref_mut().map(|o| &mut o.radio), f);
+        switch.for_each_text(other.as_deref_mut().map(|o| &mut o.switch), f);
+        text_edit.for_each_text(other.as_deref_mut().map(|o| &mut o.text_edit), f);
+        drag_value.for_each_text(other.as_deref_mut().map(|o| &mut o.drag_value), f);
+        context_menu.for_each_text(other.as_deref_mut().map(|o| &mut o.context_menu), f);
+        menu_bar.for_each_text(other.as_deref_mut().map(|o| &mut o.menu_bar), f);
+        tooltip.for_each_text(other.as_deref_mut().map(|o| &mut o.tooltip), f);
+        tabs.for_each_text(other.as_deref_mut().map(|o| &mut o.tabs), f);
+        dock.for_each_text(other.as_deref_mut().map(|o| &mut o.dock), f);
+        expander.for_each_text(other.as_deref_mut().map(|o| &mut o.expander), f);
+        color_picker.for_each_text(other.map(|o| &mut o.color_picker), f);
+    }
+
+    /// Give each end of a lerp the text axes only the other end's overrides name, from its own
+    /// [`Self::text`]: an absent axis shows the ambient value, so the lerp blends from what each
+    /// end shows, as an absent value blends through its neutral. What either end shows is
+    /// unchanged. The derived `lerp` runs it.
+    fn share_text_axes(a: &mut Self, b: &mut Self) {
+        let (ambient_a, ambient_b) = (a.text, b.text);
+        a.for_each_text(Some(b), |a, b| match (a, b) {
+            (ThemeText::Overrides(a), Some(ThemeText::Overrides(b))) => {
+                a.share_axes(&ambient_a, b, &ambient_b);
+            }
+            (ThemeText::Style(_), Some(ThemeText::Style(_))) => {}
+            _ => unreachable!("two themes walk one structure"),
+        });
     }
 
     /// Assemble a full theme from a [`Palette`]'s colors and a [`Metrics`]' steps. The single source of the recipes: [`Self::stock`] is `from_parts` over a built-in palette and `Metrics::DEFAULT`.

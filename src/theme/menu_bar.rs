@@ -18,7 +18,9 @@ use crate::theme::palette::Palette;
 /// ink under the pointer, from [`ButtonTheme::subtle`]; the title whose menu is open rests lit
 /// as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus themselves
 /// wear [`Theme::context_menu`](crate::Theme::context_menu).
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct MenuBarTheme {
     /// A title whose menu is shut, in each state.
     pub title: StatefulLook,
@@ -77,7 +79,11 @@ impl MenuBarTheme {
     }
 
     /// Visit every text slot this theme owns; destructured so a new field fails to compile here.
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        mut other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             title,
             open,
@@ -86,8 +92,8 @@ impl MenuBarTheme {
             gap: _,
             defaults: _,
         } = self;
-        title.for_each_text(f);
-        open.for_each_text(f);
+        title.for_each_text(other.as_deref_mut().map(|o| &mut o.title), f);
+        open.for_each_text(other.map(|o| &mut o.open), f);
     }
 }
 

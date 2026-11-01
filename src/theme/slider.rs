@@ -5,7 +5,9 @@ use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Slider`]: a two-tone track (`fill` left of the knob, `track` right) with a round `knob`.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct SliderTheme {
     /// Unfilled track color (right of the knob).
     pub track: RgbaF32,

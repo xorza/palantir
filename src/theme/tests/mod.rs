@@ -1,4 +1,5 @@
 mod floors;
+mod lerp;
 mod metrics;
 mod serialization;
 mod state_looks;

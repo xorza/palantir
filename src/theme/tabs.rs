@@ -23,7 +23,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 /// [`crate::DockView`] pane. One four-state look pack per selected state,
 /// picked by [`StatefulLook::pick`]. The selected chip wears a top cap:
 /// [`Self::cap_focused`] while the strip holds focus, else [`Self::cap_unfocused`].
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct TabsTheme {
     /// Look pack for the selected chip; its fill defaults to the window ground.
     pub selected: StatefulLook,
@@ -80,6 +82,7 @@ pub struct TabsTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub close_glyph_width: f32,
     /// Which chips show their close button.
+    #[animate(snap)]
     pub close_shown: CloseShown,
     /// The insertion mark a chip drag shows at the slot it would drop into.
     pub caret: RgbaF32,
@@ -96,7 +99,11 @@ pub struct TabsTheme {
 
 impl TabsTheme {
     /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        mut other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             selected,
             unselected,
@@ -123,9 +130,9 @@ impl TabsTheme {
             label_gap: _,
             defaults: _,
         } = self;
-        selected.for_each_text(f);
-        unselected.for_each_text(f);
-        close.for_each_text(f);
+        selected.for_each_text(other.as_deref_mut().map(|o| &mut o.selected), f);
+        unselected.for_each_text(other.as_deref_mut().map(|o| &mut o.unselected), f);
+        close.for_each_text(other.map(|o| &mut o.close), f);
     }
 
     /// The cap color a strip paints under its selected chip.

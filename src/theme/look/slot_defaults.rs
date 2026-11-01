@@ -6,7 +6,15 @@ use crate::primitives::geometry::spacing::Spacing;
 /// What a themed widget contributes to the node rather than the paint: default
 /// spacing and the transition spec. Themed bundles `#[serde(flatten)]` it.
 /// Named fields because `padding` and `margin` share a type.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Animatable,
+)]
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none; explicit zero overrides it.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
@@ -18,5 +26,6 @@ pub struct SlotDefaults {
     /// reads `None`. The stock buttons, menu-bar titles, menu rows and tab chips take
     /// [`Metrics::transition`](crate::Metrics::transition).
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[animate(snap)]
     pub animation: Option<AnimationSpec>,
 }

@@ -2,6 +2,7 @@
 //! a shadow and a backdrop filter, as one value a theme hands over whole.
 
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
@@ -16,8 +17,9 @@ use palantir_anim_derive::Animatable;
 /// the encoder.
 ///
 /// `Animatable` is derived: fill and border interpolate componentwise, `corners` is
-/// `#[animate(snap)]`. "No border" is `Stroke::NONE`, not an `Option`; paint-time
-/// `is_noop` filtering catches authored and animation-decayed no-ops.
+/// `#[animate(lerp_only)]`, so a look's fade takes its radii at once and a theme's lerp blends
+/// them. "No border" is `Stroke::NONE`, not an `Option`; paint-time `is_noop` filtering catches
+/// authored and animation-decayed no-ops.
 ///
 /// Plain data, so arithmetic may pass through values no widget takes. A widget's
 /// `chrome` and `default_chrome` check it where it enters and panic unless
@@ -47,7 +49,7 @@ pub struct Chrome {
         skip_serializing_if = "Corners::is_approx_zero",
         deserialize_with = "crate::primitives::packed::serde::checked::corners"
     )]
-    #[animate(snap)]
+    #[animate(lerp_only)]
     pub corners: Corners,
     /// Single drop / inset shadow; `Shadow::NONE` (the `Default`) means none and is
     /// omitted from serialized output. It animates componentwise (alpha lerps for
@@ -172,6 +174,76 @@ impl Default for Chrome {
     }
 }
 
+/// An absent chrome paints as [`Chrome::NONE`], so a lerp between `None` and a chrome blends
+/// through it, as Flutter's `BoxDecoration.lerp` scales a decoration up from nothing
+/// (<https://api.flutter.dev/flutter/painting/BoxDecoration/lerp.html>): a panel chrome that
+/// appears fades in, its radii and shadow growing from zero. Motion reads a `None` value as
+/// `NONE` too, a fixed point of [`Animatable::to_motion`], and a `None` offset or velocity as
+/// zero.
+impl Animatable for Option<Chrome> {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        if t == 0.0 {
+            return a;
+        }
+        if t == 1.0 {
+            return b;
+        }
+        match (a, b) {
+            (None, None) => None,
+            (a, b) => Some(Chrome::lerp(
+                a.unwrap_or(Chrome::NONE),
+                b.unwrap_or(Chrome::NONE),
+                t,
+            )),
+        }
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        match (self, other) {
+            (None, None) => None,
+            (a, b) => Some(a.unwrap_or(Chrome::NONE).sub(b.unwrap_or(Chrome::NONE))),
+        }
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        match other {
+            None => self,
+            Some(offset) => Some(self.unwrap_or(Chrome::NONE).add(offset)),
+        }
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        self.map(|chrome| chrome.scale(k))
+    }
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self.map_or(0.0, Chrome::magnitude_squared)
+    }
+    #[inline]
+    fn settle_distance_squared(self) -> f32 {
+        self.map_or(0.0, Chrome::settle_distance_squared)
+    }
+    #[inline]
+    fn zero() -> Self {
+        None
+    }
+    #[inline]
+    fn to_motion(self) -> Self {
+        self.map(Chrome::to_motion)
+    }
+    #[inline]
+    fn from_motion(motion: Self) -> Self {
+        motion.map(Chrome::from_motion)
+    }
+    #[inline]
+    fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
+        if let (Some(value), Some(target)) = (self.as_mut(), target) {
+            value.normalize_for_spring(target, velocity.get_or_insert_with(Chrome::zero));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::primitives::paint::color::RgbaF32;
@@ -207,5 +279,38 @@ mod tests {
     fn none_is_the_default_noop_chrome() {
         assert_eq!(Chrome::default(), Chrome::NONE);
         assert!(Chrome::NONE.is_noop());
+    }
+
+    /// A chrome that appears blends from `NONE`: halfway its fill, border and shadow are at half
+    /// their alpha, and its radii, border width and shadow geometry at half their size. Leaving
+    /// reads the same backwards, the ends are exact, and in motion an absent value is `NONE`
+    /// while an absent offset adds nothing.
+    #[test]
+    fn an_absent_chrome_blends_through_none() {
+        let ink = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
+        let chrome = Chrome::rounded(ink, Corners::all(8.0))
+            .with_border(Stroke::new(RgbaF32::BLACK, 2.0))
+            .with_shadow(Shadow::drop(RgbaF32::BLACK, glam::Vec2::new(0.0, 4.0), 6.0));
+        let half = |color| RgbaF32::lerp(RgbaF32::TRANSPARENT, color, 0.5);
+        let mid = Chrome {
+            fill: half(ink).into(),
+            border: Stroke::new(half(RgbaF32::BLACK), 1.0),
+            corners: Corners::all(4.0),
+            shadow: Shadow::drop(half(RgbaF32::BLACK), glam::Vec2::new(0.0, 2.0), 3.0),
+            backdrop_filter: BackdropFilter::NONE,
+        };
+        assert_eq!(half(ink).a, 0.5);
+        let some = Some(chrome.clone());
+        assert_eq!(Option::lerp(None, some.clone(), 0.5), Some(mid.clone()));
+        assert_eq!(Option::lerp(some.clone(), None, 0.5), Some(mid));
+        assert_eq!(Option::lerp(None, some.clone(), 0.0), None);
+        assert_eq!(Option::lerp(None, some.clone(), 1.0), some);
+        assert_eq!(Option::<Chrome>::lerp(None, None, 0.5), None);
+
+        let offset = None.sub(some.clone());
+        assert_eq!(offset, Some(Chrome::NONE.sub(chrome)));
+        assert_eq!(some.clone().add(None), some);
+        assert_eq!(Option::<Chrome>::zero(), None);
+        assert_eq!(Option::<Chrome>::None.magnitude_squared(), 0.0);
     }
 }

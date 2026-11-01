@@ -2,7 +2,8 @@
 //! encodings) plus the lane macro for four-f16 types. Below every layer but `common`, its one dependency: nothing here reaches up into animation, scene, layout or renderer.
 
 /// The surface a four-lane [`F16x4`](crate::primitives::packed::half_simd::F16x4) newtype shares with its
-/// siblings: lane access, `Debug` naming the lanes, scalar `From`, serde forwarders. For [`Corners`](crate::Corners)
+/// siblings: lane access, `Debug` naming the lanes, `Animatable` lane by lane, scalar `From`, serde
+/// forwarders. For [`Corners`](crate::Corners)
 /// and [`Spacing`](crate::Spacing); `RgbaF16` and `FillAxis` have no lane names or wire format and derive `Debug`.
 macro_rules! f16x4_lanes {
     ($t:ident, [$($lane:ident),+ $(,)?]) => {
@@ -38,6 +39,56 @@ macro_rules! f16x4_lanes {
             #[inline]
             fn has_nan(&self) -> bool {
                 $t::has_nan(*self)
+            }
+        }
+
+        /// Per lane in f32, as `f32` blends, each result packed back saturating at ±65504: an f16
+        /// rounds it to a relative 2^-11, under 0.01 px a frame below 16 px.
+        impl $crate::primitives::math::animatable::Animatable for $t {
+            #[inline]
+            fn lerp(a: Self, b: Self, t: f32) -> Self {
+                if t == 0.0 {
+                    return a;
+                }
+                if t == 1.0 {
+                    return b;
+                }
+                Self::lanewise(a, b, |a, b| {
+                    <f32 as $crate::primitives::math::animatable::Animatable>::lerp(a, b, t)
+                })
+            }
+            #[inline]
+            fn sub(self, other: Self) -> Self {
+                Self::lanewise(self, other, |a, b| a - b)
+            }
+            #[inline]
+            fn add(self, other: Self) -> Self {
+                Self::lanewise(self, other, |a, b| a + b)
+            }
+            #[inline]
+            fn scale(self, k: f32) -> Self {
+                Self($crate::primitives::packed::half_simd::F16x4::from_lanes_saturating(
+                    self.to_array().map(|lane| lane * k),
+                ))
+            }
+            #[inline]
+            fn magnitude_squared(self) -> f32 {
+                self.to_array().iter().map(|lane| lane * lane).sum()
+            }
+            #[inline]
+            fn zero() -> Self {
+                Self::ZERO
+            }
+        }
+
+        impl $t {
+            /// `f` over each pair of lanes, packed back saturating.
+            #[inline]
+            fn lanewise(a: Self, b: Self, f: impl Fn(f32, f32) -> f32) -> Self {
+                let (a, b) = (a.to_array(), b.to_array());
+                Self($crate::primitives::packed::half_simd::F16x4::from_lanes_saturating(
+                    ::std::array::from_fn(|i| f(a[i], b[i])),
+                ))
             }
         }
 

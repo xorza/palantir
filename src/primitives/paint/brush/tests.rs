@@ -397,14 +397,25 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
     assert_eq!(conic.ramp.interpolation, Interpolation::Linear);
 }
 
+/// A gradient has no blend, so a lerp switches at `t = 0.5`, against a solid fill too.
 #[test]
-fn linear_brush_animatable_snaps_on_t_one() {
+fn gradient_brush_lerp_switches_halfway() {
     let g0 = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
     let g1 = LinearGradient::two_stop(0.0, RgbaF32::WHITE, RgbaF32::BLACK);
-    let a = Brush::Linear(g0);
-    let b = Brush::Linear(g1);
-    assert_eq!(Brush::lerp(a.clone(), b.clone(), 0.5), a);
-    assert_eq!(Brush::lerp(a, b.clone(), 1.0), b);
+    let solid = Brush::Solid(RgbaF32::WHITE);
+    for (a, b) in [
+        (Brush::Linear(g0.clone()), Brush::Linear(g1.clone())),
+        (Brush::Linear(g0), solid.clone()),
+        (solid, Brush::Linear(g1)),
+    ] {
+        for (t, want) in [(0.0, &a), (0.49, &a), (0.5, &b), (1.0, &b)] {
+            assert_eq!(
+                &Brush::lerp(a.clone(), b.clone(), t),
+                want,
+                "{a:?} → {b:?} at {t}"
+            );
+        }
+    }
 }
 
 fn assert_spring_normalizes_to_target(mut cur: Brush, target: &Brush) {

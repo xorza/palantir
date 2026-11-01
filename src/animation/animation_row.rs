@@ -254,7 +254,8 @@ pub(super) fn offset<T: Animatable>(cur: &T, target: &T) -> T {
 
 /// The value `offset` from `target`. An offset of no length is the target itself, exactly: the
 /// round trip through motion space would change its low bits, and a settled row must rest on its
-/// target. Its length, not `== zero()`: a derived offset keeps its snap fields.
+/// target. Its length, not `== zero()`: a derived offset keeps its snap and
+/// lerp-only fields.
 fn placed<T: Animatable>(target: &T, offset: &T) -> T {
     if offset.clone().magnitude_squared() == 0.0 {
         return target.clone();

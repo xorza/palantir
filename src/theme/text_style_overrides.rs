@@ -1,6 +1,7 @@
 //! Per-axis overrides a text widget or a theme slot folds onto a resolved
 //! [`TextStyle`].
 
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
@@ -67,6 +68,53 @@ impl TextStyleOverrides {
         }
     }
 
+    /// Give `self` each axis only `other` names, from `ambient`, and `other` each axis only `self`
+    /// names, from `other_ambient`: the values each shows over its own ambient style, so neither
+    /// shows anything new.
+    pub(crate) fn share_axes(
+        &mut self,
+        ambient: &TextStyle,
+        other: &mut Self,
+        other_ambient: &TextStyle,
+    ) {
+        share(
+            &mut self.color,
+            ambient.color,
+            &mut other.color,
+            other_ambient.color,
+        );
+        share(
+            &mut self.font_size,
+            ambient.font_size,
+            &mut other.font_size,
+            other_ambient.font_size,
+        );
+        share(
+            &mut self.line_height_factor,
+            ambient.line_height_factor,
+            &mut other.line_height_factor,
+            other_ambient.line_height_factor,
+        );
+        share(
+            &mut self.family,
+            ambient.family,
+            &mut other.family,
+            other_ambient.family,
+        );
+        share(
+            &mut self.weight,
+            ambient.weight,
+            &mut other.weight,
+            other_ambient.weight,
+        );
+        share(
+            &mut self.slant,
+            ambient.slant,
+            &mut other.slant,
+            other_ambient.slant,
+        );
+    }
+
     /// Chainable single-axis override, the counterpart of
     /// [`TextStyle::with_font_size`].
     #[inline]
@@ -131,6 +179,105 @@ impl TextStyleOverrides {
             (None, None) => true,
         }
     }
+}
+
+/// Each axis as [`TextStyle`] treats it: the color blends, the size and leading blend in a lerp
+/// and take the target at once in motion, the face switches at `t = 0.5`. An axis one end names
+/// and the other leaves to the ambient style switches at `t = 0.5` as well, as the overrides alone
+/// hold no ambient to blend from; a whole theme's lerp first gives that end its ambient's value
+/// (`Theme::share_text_axes`), and motion takes the target's at once.
+impl Animatable for TextStyleOverrides {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        if t == 0.0 {
+            return a;
+        }
+        if t == 1.0 {
+            return b;
+        }
+        Self {
+            color: lerp_axis(a.color, b.color, t),
+            font_size: lerp_axis(a.font_size, b.font_size, t),
+            line_height_factor: lerp_axis(a.line_height_factor, b.line_height_factor, t),
+            family: switch_axis(a.family, b.family, t),
+            weight: switch_axis(a.weight, b.weight, t),
+            slant: switch_axis(a.slant, b.slant, t),
+        }
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        Self {
+            color: self.color.zip(other.color).map(|(a, b)| a.sub(b)),
+            ..self
+        }
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        Self {
+            color: match (self.color, other.color) {
+                (Some(value), Some(offset)) => Some(value.add(offset)),
+                (value, _) => value,
+            },
+            ..self
+        }
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        Self {
+            color: self.color.map(|offset| offset.scale(k)),
+            ..self
+        }
+    }
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self.color.map_or(0.0, RgbaF32::magnitude_squared)
+    }
+    #[inline]
+    fn settle_distance_squared(self) -> f32 {
+        self.color.map_or(0.0, RgbaF32::settle_distance_squared)
+    }
+    #[inline]
+    fn zero() -> Self {
+        Self::NONE
+    }
+    #[inline]
+    fn to_motion(self) -> Self {
+        Self {
+            color: self.color.map(RgbaF32::to_motion),
+            ..self
+        }
+    }
+    #[inline]
+    fn from_motion(motion: Self) -> Self {
+        Self {
+            color: motion.color.map(RgbaF32::from_motion),
+            ..motion
+        }
+    }
+}
+
+/// Both ends blended where both name the axis, else switched at `t = 0.5`.
+#[inline]
+fn lerp_axis<T: Animatable>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(T::lerp(a, b, t)),
+        (a, b) => switch_axis(a, b, t),
+    }
+}
+
+/// The axis on the end that lacks it, from that end's ambient value.
+#[inline]
+fn share<T>(a: &mut Option<T>, ambient_a: T, b: &mut Option<T>, ambient_b: T) {
+    match (a.is_some(), b.is_some()) {
+        (false, true) => *a = Some(ambient_a),
+        (true, false) => *b = Some(ambient_b),
+        _ => {}
+    }
+}
+
+#[inline]
+fn switch_axis<T>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
+    if t < 0.5 { a } else { b }
 }
 
 /// [`TextStyleOverrides`] as it arrives off the wire, before the metrics check.

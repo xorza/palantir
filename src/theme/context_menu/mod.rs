@@ -21,7 +21,9 @@ const MIN_WIDTH: f32 = 208.0;
 /// `panel` is the container chrome, `item` drives [`crate::MenuItem`] rows, `min_width` floors the container so short labels don't paint as a pill.
 ///
 /// Read globally through [`crate::Theme::context_menu`] or per instance through the `style` of [`crate::ContextMenu`], [`crate::MenuItem`] and [`crate::MenuSeparator`].
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 #[must_use]
 pub struct ContextMenuTheme {
     /// Panel chrome behind the items; its `padding` carves the gutter to the rows.
@@ -43,7 +45,11 @@ pub struct ContextMenuTheme {
 
 impl ContextMenuTheme {
     /// Panel and separator are chrome only; rows carry the text. Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             item,
             panel: _,
@@ -52,7 +58,7 @@ impl ContextMenuTheme {
             gap: _,
             separator: _,
         } = self;
-        item.for_each_text(f);
+        item.for_each_text(other.map(|o| &mut o.item), f);
     }
 
     /// The popup panel, with a [`MenuItemTheme`] and the menu [`SeparatorTheme`].

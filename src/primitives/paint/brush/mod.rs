@@ -153,12 +153,12 @@ impl Animatable for Brush {
         // Match by reference so the gradient fallback can return an original without cloning.
         match (&a, &b) {
             (Self::Solid(x), Self::Solid(y)) => Self::Solid(RgbaF32::lerp(*x, *y, t)),
-            // Gradient morphs snap until interpolation between gradient payloads exists.
+            // No blend reaches a gradient yet, so it switches halfway, as a snap field does.
             _ => {
-                if t >= 1.0 {
-                    b
-                } else {
+                if t < 0.5 {
                     a
+                } else {
+                    b
                 }
             }
         }

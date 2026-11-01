@@ -10,7 +10,9 @@ use crate::theme::palette::Palette;
 /// surface, so it paints one by default, as egui's `Frame::popup` and GTK's `popover` node do.
 /// Refused: [`crate::Theme::panel_chrome`], the in-tree containers' fallback, which is unset in
 /// the stock themes and so left a popup's rows over the page.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct PopupTheme {
     /// Panel chrome behind the body.
     pub panel: Chrome,

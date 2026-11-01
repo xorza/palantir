@@ -13,7 +13,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use glam::Vec2;
 
 /// Visuals for [`crate::DockView`], dock-specific only: dividers read [`Theme::splitter`](crate::Theme::splitter) and pane strips [`Theme::tabs`](crate::Theme::tabs), leaving the drag feedback.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct DockTheme {
     /// Wash over the region a drop would occupy.
     pub preview_fill: RgbaF32,
@@ -34,7 +36,11 @@ pub struct DockTheme {
 
 impl DockTheme {
     /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             ghost,
             preview_fill: _,
@@ -43,7 +49,7 @@ impl DockTheme {
             ghost_padding: _,
             ghost_offset: _,
         } = self;
-        ghost.for_each_text(f);
+        ghost.for_each_text(other.map(|o| &mut o.ghost), f);
     }
 
     /// Drop previews and the drag ghost, both drawn in the palette's accent. The ghost reads as a tab lifted off its strip: a tab's corners and inset, on the strip's `surround` band.

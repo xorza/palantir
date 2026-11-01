@@ -19,7 +19,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 ///
 /// The field and bars are sized here, not by layout: they paint a CPU-built
 /// texture whose size must be known at record time.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px; also the bars' and rows' width.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -118,7 +120,11 @@ impl ColorPickerTheme {
     /// Visit the two text-bearing bundles. Destructures the whole struct so a new
     /// field must be classified here, which [`Theme::scale_text`](crate::Theme::scale_text)
     /// relies on.
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        mut other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             value,
             hex,
@@ -141,9 +147,12 @@ impl ColorPickerTheme {
             popup: _,
             popup_padding: _,
         } = self;
-        value.for_each_text(f);
-        hex.for_each_text(f);
-        f(ThemeText::Overrides(label));
+        value.for_each_text(other.as_deref_mut().map(|o| &mut o.value), f);
+        hex.for_each_text(other.as_deref_mut().map(|o| &mut o.hex), f);
+        f(
+            ThemeText::Overrides(label),
+            other.map(|o| ThemeText::Overrides(&mut o.label)),
+        );
     }
 
     /// The control's own sizes and the handle's ink are fixed; its lines and popup geometry come from `m`, its checker, border, popup fill and text from `p`.

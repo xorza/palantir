@@ -330,7 +330,7 @@ fn bundled_text_inherits_every_axis_but_color() {
 
     let mut theme = Theme::default();
     let mut named = Vec::new();
-    theme.for_each_text(|text| {
+    theme.for_each_text(None, |text, _| {
         if let ThemeText::Overrides(o) = text {
             let past_color = TextStyleOverrides { color: None, ..*o };
             if !past_color.is_empty() {

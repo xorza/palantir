@@ -1,5 +1,6 @@
 //! A 2D extent in logical pixels: a magnitude, not a position.
 
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::math::nan::NanCheck;
@@ -185,6 +186,51 @@ impl NanCheck for Size {
     }
 }
 
+/// Per axis, as `f32` blends; an infinite axis, the "no bound" of [`Size::INF`], has no blend, so
+/// a lerp against one switches at `t = 0.5` and motion takes the target at once, its offset zero.
+impl Animatable for Size {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        let axis = |a: f32, b: f32| {
+            if a.is_finite() && b.is_finite() {
+                f32::lerp(a, b, t)
+            } else if t < 0.5 {
+                a
+            } else {
+                b
+            }
+        };
+        Self::new(axis(a.w, b.w), axis(a.h, b.h))
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        let axis = |a: f32, b: f32| {
+            if a.is_finite() && b.is_finite() {
+                a - b
+            } else {
+                0.0
+            }
+        };
+        Self::new(axis(self.w, other.w), axis(self.h, other.h))
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        Self::new(self.w + other.w, self.h + other.h)
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        Self::new(self.w * k, self.h * k)
+    }
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self.w * self.w + self.h * self.h
+    }
+    #[inline]
+    fn zero() -> Self {
+        Self::ZERO
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::primitives::geometry::size::Size;
@@ -205,5 +251,24 @@ mod tests {
         let real = Size::new(3.0, 5.0);
         assert_eq!(real.min(nan), real);
         assert_eq!(real.max(nan), real);
+    }
+    /// A finite axis blends; an infinite one switches at `t = 0.5`, and its offset is zero, so
+    /// motion lands on the target's infinity rather than a NaN.
+    #[test]
+    fn a_finite_axis_blends_and_an_unbounded_one_switches() {
+        use crate::primitives::math::animatable::Animatable;
+
+        let a = Size::new(200.0, f32::INFINITY);
+        let b = Size::new(280.0, 120.0);
+        // 200 + 80·¼ = 220.
+        assert_eq!(Size::lerp(a, b, 0.25), Size::new(220.0, f32::INFINITY));
+        assert_eq!(Size::lerp(a, b, 0.5), Size::new(240.0, 120.0));
+        assert_eq!(
+            Size::lerp(a, Size::INF, 0.25),
+            Size::new(200.0, f32::INFINITY)
+        );
+        assert_eq!(a.sub(b), Size::new(-80.0, 0.0));
+        assert_eq!(b.add(a.sub(b)), Size::new(200.0, 120.0));
+        assert_eq!(Size::INF.add(Size::INF.sub(Size::INF)), Size::INF);
     }
 }

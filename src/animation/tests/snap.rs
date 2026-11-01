@@ -1,4 +1,4 @@
-//! Snap-marked fields carry their target immediately; only their own velocity clears.
+//! Snap and lerp-only fields carry their target immediately; only their own velocity clears.
 
 use crate::animation::animation_map_typed::AnimationMapTyped;
 use crate::animation::animation_request::AnimationRequest;
@@ -14,7 +14,8 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use std::time::Duration;
 
-/// `#[animate(snap)]` fields update on retarget mid-spring, not on settle (`Chrome.radius` is snap).
+/// Fields left out of the motion arithmetic update on retarget mid-spring, not on settle
+/// (`Chrome.corners` is `#[animate(lerp_only)]`, which motion treats as `#[animate(snap)]`).
 #[test]
 fn spring_snap_fields_carry_target_immediately() {
     use crate::primitives::geometry::corners::Corners;

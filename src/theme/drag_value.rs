@@ -8,7 +8,9 @@ use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
 
 /// Theme for [`crate::DragValue`]: scrub `chip` ([`ButtonTheme`]) and inline `editor` ([`TextEditTheme`]) used under [`crate::DragValue::editable`]. Built from one source via [`Self::from_chip`], so both modes share a box size and edit mode doesn't resize or restyle.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct DragValueTheme {
     /// Chrome for the scrub chip: the DragValue-specific `ButtonTheme` slot (`Button`/`ComboBox` use `Theme::button`).
     pub chip: ButtonTheme,
@@ -36,10 +38,14 @@ impl DragValueTheme {
     }
 
     /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        mut other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self { chip, editor } = self;
-        chip.for_each_text(f);
-        editor.for_each_text(f);
+        chip.for_each_text(other.as_deref_mut().map(|o| &mut o.chip), f);
+        editor.for_each_text(other.map(|o| &mut o.editor), f);
     }
 
     /// One palette and one set of metrics drive both: the chip from the button recipe, the editor via [`Self::from_chip`].

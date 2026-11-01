@@ -241,13 +241,15 @@ const OKLAB_TRIP: f64 = 5e-7;
 ///   so the cap scales the coordinates down to `(-1.4427, 1.9183, -0.0010)`.
 /// - Past transparent the alpha goes negative and no color is left to recover.
 ///
-/// The ends are exact, and `t` is unclamped.
+/// The ends are exact, an equal pair returns itself with no round trip, and `t` is unclamped.
 #[test]
 fn lerp_blends_in_premultiplied_oklab_and_overshoots() {
     let a = RgbaF32::new(1.0, 0.0, 0.5, 0.5);
     let b = RgbaF32::new(0.0, 1.0, 0.5, 0.0);
     assert_eq!(Animatable::lerp(a, b, 0.0), a);
     assert_eq!(Animatable::lerp(a, b, 1.0), b);
+    let teal = RgbaF32::srgb(0.1, 0.6, 0.7);
+    assert_eq!(Animatable::lerp(teal, teal, 0.37), teal);
     assert_color_close(
         Animatable::lerp(a, b, 0.25),
         [1.0, 0.0, 0.5, 0.375],
@@ -295,7 +297,7 @@ fn lerp_blends_in_premultiplied_oklab_and_overshoots() {
 /// blue of 50.6 at `t = 1.052`. The cap divides by the largest cone root instead, so the painted
 /// color, the straight one times alpha, stays under the end's own 0.05; the references come from a
 /// double-precision Oklab with the same cap. An HDR color is capped at white while it moves, its
-/// ends exact.
+/// ends exact; an equal pair does not move, so it keeps its value.
 #[test]
 fn an_overshoot_toward_a_nearly_transparent_color_stays_bounded() {
     let (red, faint_blue) = (
@@ -324,11 +326,22 @@ fn an_overshoot_toward_a_nearly_transparent_color_stays_bounded() {
         }
     }
 
-    let hdr = RgbaF32::new(2.0, 2.0, 2.0, 1.0);
-    assert_eq!(Animatable::lerp(hdr, hdr, 1.0), hdr);
-    assert_color_close(
+    // Oklab's L of a neutral is the cube root of its luminance, so at alpha ¾ halfway the
+    // neutral's cone roots are 2^⅓ ≈ 1.26, over the alpha: the cap divides by them, to white, but
+    // for the trip's rounding.
+    let (hdr, faint_hdr) = (
+        RgbaF32::new(2.0, 2.0, 2.0, 1.0),
+        RgbaF32::new(2.0, 2.0, 2.0, 0.5),
+    );
+    assert_eq!(Animatable::lerp(hdr, faint_hdr, 1.0), faint_hdr);
+    assert_eq!(
         Animatable::lerp(hdr, hdr, 0.5),
-        [1.000_000_065, 0.999_999_976, 0.999_999_734, 1.0],
+        hdr,
+        "an equal pair does not move"
+    );
+    assert_color_close(
+        Animatable::lerp(hdr, faint_hdr, 0.5),
+        [0.999_999_94, 1.000_000_1, 0.999_999_34, 0.75],
         OKLAB_TRIP,
         "an HDR neutral capped at white",
     );

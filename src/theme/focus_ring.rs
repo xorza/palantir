@@ -7,7 +7,9 @@ use crate::theme::palette::Palette;
 /// The ring around the focused widget, drawn by the framework, only while focus came from the keyboard (CSS `:focus-visible`).
 ///
 /// It paints inside the widget's arranged rect with its chrome's corners, so the widget's clip never cuts it and layout never moves.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct FocusRingTheme {
     /// Ring color.
     pub color: RgbaF32,

@@ -17,7 +17,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 
 /// Four-state row look for [`crate::widgets::context_menu::menu_item::MenuItem`] (`active` = pressed).
 /// `active` defaults to `hovered`: a click closes the menu.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct MenuItemTheme {
     /// Four-state row look.
     #[serde(flatten)]
@@ -35,14 +37,18 @@ pub struct MenuItemTheme {
 
 impl MenuItemTheme {
     /// Destructured so a new field fails to compile here, see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             looks,
             shortcut: _,
             gap: _,
             defaults: _,
         } = self;
-        looks.for_each_text(f);
+        looks.for_each_text(other.map(|o| &mut o.looks), f);
     }
 
     /// Rows transparent at rest, one surface step brighter on hover, under the metrics'

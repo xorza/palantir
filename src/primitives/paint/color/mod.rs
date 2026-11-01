@@ -74,13 +74,14 @@ const SETTLE_EPS: f32 = 1.0 / 16384.0;
 /// Motion space is Oklab premultiplied by alpha, an `RgbaF32` holding `(L·α, a·α, b·α, α)`, so a
 /// spring blends as a tween does; the arithmetic is per lane there, alpha one more lane.
 impl Animatable for RgbaF32 {
-    /// The ends are exact: `t` of 0 or 1 returns `a` or `b` with no round trip through Oklab.
+    /// The ends are exact: `t` of 0 or 1, or two equal ends, return an end with no round trip
+    /// through Oklab, so a color two themes share stays itself through their lerp.
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         if t == 0.0 {
             return a;
         }
-        if t == 1.0 {
+        if t == 1.0 || a == b {
             return b;
         }
         Self::from_motion(a.to_motion().mix(b.to_motion(), t))

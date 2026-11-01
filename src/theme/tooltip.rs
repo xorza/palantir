@@ -12,7 +12,9 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use std::time::Duration;
 
 /// Visuals and timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles paint into `Layer::Tooltip` after `delay` of hover; the `warmup` window keeps later tooltips instant after one is dismissed.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).
     pub panel: Chrome,
@@ -26,9 +28,11 @@ pub struct TooltipTheme {
     pub max_size: Size,
     /// How long the pointer must rest on the trigger before the bubble shows (cold start); seconds in a file.
     #[serde(with = "crate::theme::duration_codec::seconds")]
+    #[animate(snap)]
     pub delay: Duration,
     /// How long after a dismissal the next tooltip shows at once; zero disables it. Seconds in a file.
     #[serde(with = "crate::theme::duration_codec::seconds")]
+    #[animate(snap)]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
@@ -37,7 +41,11 @@ pub struct TooltipTheme {
 
 impl TooltipTheme {
     /// Visit every text slot this theme owns, driving `Theme::scale_text`. Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             text,
             panel: _,
@@ -47,7 +55,10 @@ impl TooltipTheme {
             warmup: _,
             gap: _,
         } = self;
-        f(ThemeText::Overrides(text));
+        f(
+            ThemeText::Overrides(text),
+            other.map(|o| ThemeText::Overrides(&mut o.text)),
+        );
     }
 
     /// A small control-rounded bubble that floats as a menu does.

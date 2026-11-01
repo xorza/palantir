@@ -6,7 +6,9 @@ use crate::theme::palette::Palette;
 use glam::Vec2;
 
 /// Geometry for [`crate::ComboBox`]. Colors and chrome read `Theme::button` and `Theme::context_menu` (trigger as button, dropdown as context menu), so restyling either moves the combo. Left: the label-to-arrow gutter and the chevron.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct ComboBoxTheme {
     /// Gutter between label and chevron; the trigger justifies its children apart, so this is the minimum gap.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]

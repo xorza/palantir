@@ -17,7 +17,9 @@ use glam::Vec2;
 use std::f32::consts::FRAC_PI_2;
 
 /// Visuals for [`crate::Expander`]; the header takes button-style four-state looks.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct ExpanderTheme {
     /// The header's four per-state looks; `flatten` keeps theme files flat (`[expander.normal]`).
     #[serde(flatten)]
@@ -51,7 +53,11 @@ pub struct ExpanderTheme {
 
 impl ExpanderTheme {
     /// Destructured so a new field fails to compile here, see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             looks,
             arrow_size: _,
@@ -63,7 +69,7 @@ impl ExpanderTheme {
             body_padding: _,
             defaults: _,
         } = self;
-        looks.for_each_text(f);
+        looks.for_each_text(other.map(|o| &mut o.looks), f);
     }
 
     pub(crate) fn arrow_angle(&self, openness: f32) -> f32 {

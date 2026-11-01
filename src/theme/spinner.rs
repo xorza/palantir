@@ -7,7 +7,9 @@ use std::f32::consts;
 use std::time::Duration;
 
 /// Visuals and motion for [`crate::Spinner`]. Builder overrides (`.color(...)` / `.diameter(...)` / `.width(...)`) win.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct SpinnerTheme {
     /// Arc color at the comet's head; the tail fades to transparent.
     pub color: RgbaF32,
@@ -17,8 +19,10 @@ pub struct SpinnerTheme {
     /// Arc length in radians; under a full turn, or it reads as a static ring.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
     pub sweep: f32,
-    /// One full turn. A zero period holds the arc still.
+    /// One full turn. A zero period holds the arc still. A theme's lerp switches it halfway, as
+    /// the arc's angle is the clock over the period and a blended period would swing it.
     #[serde(with = "crate::theme::duration_codec::period")]
+    #[animate(snap)]
     pub period: Duration,
     /// Stroke width as a fraction of the diameter.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]

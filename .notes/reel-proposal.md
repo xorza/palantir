@@ -167,10 +167,13 @@ code it governs.
    carries an optional state key; looks pass theirs. Tests: a target moving under one key paints
    the target every frame; a new key fades over its spec; a return to the previous key mid-fade
    keeps the CSS shortening while the target moves; with no key, today's retarget.
-3. **`Animatable` theme tree.** The derive on `Theme` and every sub-theme; `Option` through its
-   neutral; a mode for values with no neutral that switch at `t = 0.5`. Tests: midpoint values of
-   a hand-built pair; a `None` to `Some` chrome at `t = 0.5` is half its alpha; each switching
-   field before and after 0.5; ends exact.
+3. **`Animatable` theme tree** (landed; the decisions live on `Theme`'s "Blending" doc, the
+   derive's attributes, `Option<Chrome>`'s and `TextStyleOverrides`' impls and
+   `Theme::share_text_axes`). An absent text override blends from its end's ambient style, its
+   neutral; `#[animate(snap)]` switches at `t = 0.5`; `#[animate(lerp_only)]` keeps a look's fade
+   taking font sizes and radii at once while a lerp blends them. Open for step 4: a spring that
+   runs a `Theme`'s own arithmetic takes those at once too; a spring on the transition's phase
+   that blends through `lerp` keeps them moving, at one pass over the theme a frame.
 4. **Theme transition on the `Ui`.** `set_theme_transition`, default 300 ms `OutCubic`;
    `set_theme_for` and scheme changes animate under it; snaps before the first frame and while
    hidden; a scratch theme reused, so a running transition allocates nothing after its first

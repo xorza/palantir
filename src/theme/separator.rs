@@ -8,7 +8,9 @@ use crate::theme::palette::Palette;
 /// Visuals for [`crate::Separator`]. Builder overrides (`.color`, `.thickness`, `.margin`) win; these fill in otherwise.
 ///
 /// Also the bundle for [`crate::MenuSeparator`] via [`crate::ContextMenuTheme::separator`]: the same rule with different values.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct SeparatorTheme {
     /// Rule color.
     pub color: RgbaF32,

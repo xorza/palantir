@@ -28,7 +28,15 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 /// on all (pressed for Button, focused for TextEdit). `text` overrides
 /// [`crate::Theme::text`] axis by axis. [`Self::to_animated`] folds them into
 /// the [`AnimatedLook`] target `Ui::animate` interpolates toward.
-#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone,
+    Debug,
+    Default,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Animatable,
+)]
 pub struct WidgetLook {
     /// Fill, stroke, corners and shadow.
     pub chrome: Chrome,
@@ -51,8 +59,15 @@ impl WidgetLook {
     }
 
     /// Visits this look's text overrides; destructured so a new field fails to compile.
-    pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self { text, chrome: _ } = self;
-        f(ThemeText::Overrides(text));
+        f(
+            ThemeText::Overrides(text),
+            other.map(|o| ThemeText::Overrides(&mut o.text)),
+        );
     }
 }

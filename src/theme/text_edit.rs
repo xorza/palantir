@@ -26,7 +26,9 @@ use glam::Vec2;
 /// State-independent fields (`caret`, `caret_width`, `placeholder`,
 /// `selection`, `padding`, `margin`) are flat on the theme. `padding`/`margin`
 /// apply when the builder didn't set them; an explicit zero overrides.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+)]
 pub struct TextEditTheme {
     /// The four per-state looks (`active` = focused). `flatten` keeps theme files
     /// flat (`[text_edit.active]`).
@@ -51,7 +53,11 @@ impl TextEditTheme {
     /// `placeholder` / `caret` / `selection` are bare `RgbaF32`s that take their
     /// size from the resolved look. Destructured so a new field fails to compile
     /// here; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>)>(&mut self, f: &mut F) {
+    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
+        &mut self,
+        other: Option<&mut Self>,
+        f: &mut F,
+    ) {
         let Self {
             looks,
             placeholder: _,
@@ -60,7 +66,7 @@ impl TextEditTheme {
             selection: _,
             defaults: _,
         } = self;
-        looks.for_each_text(f);
+        looks.for_each_text(other.map(|o| &mut o.looks), f);
     }
 
     /// Where a field must put its own corner for a run measuring `text` to come out
