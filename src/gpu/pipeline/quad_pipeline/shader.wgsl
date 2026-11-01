@@ -125,6 +125,11 @@ override QUAD_FORM: u32;
 const QUAD_FORM_SOLID: u32 = /*{QUAD_FORM_SOLID}*/;
 const QUAD_FORM_GRADIENT: u32 = /*{QUAD_FORM_GRADIENT}*/;
 const QUAD_FORM_TRIANGLE: u32 = /*{QUAD_FORM_TRIANGLE}*/;
+// The backdrop's forms: glass of one index, and glass that spreads the
+// spectrum, each apart as the lens and its loop hold registers, which V3D
+// spilled on every pane while one shader drew them all.
+const QUAD_FORM_BACKDROP_LENS: u32 = /*{QUAD_FORM_BACKDROP_LENS}*/;
+const QUAD_FORM_BACKDROP_SPECTRUM: u32 = /*{QUAD_FORM_BACKDROP_SPECTRUM}*/;
 
 // A `core` no point is inside: the fragment always takes its full form.
 const NO_SPAN: f32 = 1e30;
@@ -1080,11 +1085,16 @@ const SPECTRUM_VIOLET: f32 = /*{SPECTRUM_VIOLET}*/;
 // The spectrum's weight in XYZ over the share `t` of the way along it, red
 // end first, held flat across each of `SPECTRUM_SAMPLES` cells: each cell's
 // integral, and the running integrals of the weight and of `t` times it at
-// each cell's start (`spectrum_tables::SpectrumTables`).
+// the cell's start (`spectrum_tables::SpectrumTables`). A buffer, as V3D runs
+// a dynamically indexed constant array as a ladder of selects over every
+// entry, and spilled.
 const SPECTRUM_SAMPLES: u32 = /*{SPECTRUM_SAMPLES}*/;
-const SPECTRUM_WEIGHTS: array<vec3<f32>, SPECTRUM_SAMPLES> = /*{SPECTRUM_WEIGHTS}*/;
-const SPECTRUM_CUMULATIVE: array<vec3<f32>, SPECTRUM_SAMPLES> = /*{SPECTRUM_CUMULATIVE}*/;
-const SPECTRUM_MOMENTS: array<vec3<f32>, SPECTRUM_SAMPLES> = /*{SPECTRUM_MOMENTS}*/;
+struct SpectrumCell {
+    weight: vec3<f32>,
+    cumulative: vec3<f32>,
+    moment: vec3<f32>,
+}
+@group(2) @binding(3) var<storage, read> spectrum: array<SpectrumCell, SPECTRUM_SAMPLES>;
 
 // The most whole steps a bezel pixel reads across the spectrum: it bounds a
 // pixel's cost at 33 reads, 22–27 % over the default dispersion's frame on
@@ -1102,10 +1112,10 @@ fn spectrum_integrals(t: f32) -> SpectrumIntegrals {
     let n = f32(SPECTRUM_SAMPLES);
     let cell = min(u32(t * n), SPECTRUM_SAMPLES - 1u);
     let start = f32(cell) / n;
-    let w = SPECTRUM_WEIGHTS[cell];
+    let at = spectrum[cell];
     return SpectrumIntegrals(
-        SPECTRUM_CUMULATIVE[cell] + w * (t * n - f32(cell)),
-        SPECTRUM_MOMENTS[cell] + w * (0.5 * n * (t * t - start * start)),
+        at.cumulative + at.weight * (t * n - f32(cell)),
+        at.moment + at.weight * (0.5 * n * (t * t - start * start)),
     );
 }
 
@@ -1153,7 +1163,7 @@ fn lens_ray(p: vec2<f32>, outward: vec2<f32>, inward: f32, slot: BackdropSlot, t
 // below a thousandth; there the weight is flat enough to take half the
 // stretch's area. The last stretch is a part one, so no contour marks where
 // the step count grows with the spread. A spread under a thousandth of a px
-// shows nothing, so glass of one index keeps its one read at D.
+// shows nothing, so the pane keeps one read at D.
 fn lens_spectrum(p: vec2<f32>, outward: vec2<f32>, inward: f32, slot: BackdropSlot) -> vec3<f32> {
     let lens = slot.lens;
     let spread = abs(
@@ -1215,23 +1225,24 @@ fn lens_glint(lens: vec4<f32>, inward: f32, outward: vec2<f32>) -> f32 {
 // tint's own share is its alpha over the opacity.
 //
 // A lens bends along the distance's screen gradient, the edge's outward
-// normal on the screen, turned with the pane. Every fragment of a quad reads
-// one slot, so all of a pane's fragments, helpers included, take the lens's
-// branch or none do, and the gradient holds inside it, which the uniformity
-// analysis cannot see. A pane of no glass measures no distance in its core.
+// normal on the screen, turned with the pane. Only the glass pipelines
+// measure the distance, so the gradient is taken in uniform control flow.
 @fragment
-@diagnostic(off, derivative_uniformity)
 fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
     let slot = backdrop_slots[in.fill_lut_row];
     let lens = slot.lens;
     var c: vec3<f32>;
-    if (lens.x > 0.0) {
+    if (QUAD_FORM == QUAD_FORM_BACKDROP_LENS || QUAD_FORM == QUAD_FORM_BACKDROP_SPECTRUM) {
         let d = sdf_rounded_rect(in.local, in.size, in.radius);
         let gradient = vec2<f32>(dpdx(d), dpdy(d));
         let inward = -d;
         if (inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
             let outward = normalize(gradient);
-            c = lens_spectrum(frag_px(in.clip), outward, inward, slot);
+            if (QUAD_FORM == QUAD_FORM_BACKDROP_SPECTRUM) {
+                c = lens_spectrum(frag_px(in.clip), outward, inward, slot);
+            } else {
+                c = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, lens.z), slot);
+            }
             c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
         } else {
             c = backdrop_result(frag_px(in.clip), slot);

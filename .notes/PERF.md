@@ -1,6 +1,6 @@
 # Perf journal
 
-What six optimization runs learned (2026-10-28 to 2026-10-30): how to measure on the hosts,
+What seven optimization runs learned (2026-10-28 to 2026-11-01): how to measure on the hosts,
 what was rejected and why, and what is still open. What was kept is in the commits.
 
 ## Measuring
@@ -18,6 +18,23 @@ what was rejected and why, and what is still open. What was kept is in the commi
   cross-built on local against a sysroot copied from it (glibc 2.41, `clang` and `lld`; a fat-LTO
   bench build peaks at 4.7 GB), and run there from worktrees at local's paths, which
   `CARGO_MANIFEST_DIR` names.
+- **Run 7 hosts** (backdrops, 2026-11-01). mac is the build machine: it builds its own benches
+  and cross-builds the board's with zig as the C compiler and linker (`zig cc -target
+  aarch64-linux-gnu.2.41`, a wrapper that drops rustc's `--fix-cortex-a53-843419` and `-Wl,-O1`,
+  which zig's linker refuses or ignores), in 53 s for the fat-LTO bench binary. handheld:
+  a LAN host, a handheld (an AMD APU, RADV), pinned with `taskset -c 4 setarch -R`, governor `powersave` without `sudo`; it
+  builds its own benches, peaking at 3.0 GB, and kills a user's processes when the SSH session
+  that started them ends, so a run holds its session. win (a LAN host, the mobile AMD CPU under Windows
+  11) was dropped: `cargo` over SSH hangs at 0 % CPU before it resolves the dependencies, and
+  its `cargo.exe` proxy is 0 bytes, so `rustup run stable cargo` stands in. The Mac's macOS
+  Local Network permission belongs to the app that started the `tmux` server: a server started
+  before the permission gets `No route to host` to every LAN address until it restarts.
+- **Run 7 noise floors** (A/A, ABBA): handheld frames ±1.5 % (`many/under` 2.4 %), composite and
+  blur ±0.8 %; board under 0.3 % but `glass/hover` 0.7 %; mac frames ±1 %.
+- **A shader change moves the last f16 bit on Apple GPUs.** Variants of the spectrum loop that
+  are equal in IEEE arithmetic differ by up to 2⁻¹¹ (one f16 step at 1) on a few hundred texels:
+  Metal compiles with fast math. A bit-exact check of a shader change compares frames on each
+  host's own device (`f16diff`, a frame dump per look and pane shape).
 - **Noise floors** (A/A over every case): CPU cases within 2 % local and 4 % fanless. GPU cases within
   4 % on fanless but `gradient_upload` (13 %); local GPU cases up to 43 % (`gradient_upload`), 32 %
   (`record_pass/images`), 12 to 16 % (`text_atlas`, `raster_atlas`), and 8 % on the frames.
@@ -76,6 +93,19 @@ what was rejected and why, and what is still open. What was kept is in the commi
   The partial main pass alone grows on local and fanless since the atlas holds its tables: with no
   bake pass before it, it opens the frame's work; the frames it belongs to shrink.
 
+- **Run 7, the glass composite on V3D.** `fs_backdrop` with the spectrum loop compiled to 2869
+  instructions, 1288 uniforms and 37 spills: the three 48-entry tables, constant arrays indexed
+  by the cell, ran as a select over every entry, and the lens's registers spilled on every pane,
+  glass or not (`V3D_DEBUG=shaderdb` with `MESA_SHADER_CACHE_DISABLE=true`, as a cached shader
+  prints nothing). A blurred pane's composite: 56.5 ms at 2048² against 25.9 with no lens in its
+  shader; glass at 512²: 13.8 ms against 5.4 with the tables in a buffer. The glass pipeline
+  still spills (1410 instructions, 32:74 spills:fills); the plain backdrop pipeline does not
+  (413 instructions).
+- **Run 7, the glass frame's blur.** Glass blurs at σ 2 logical, 4 physical at 2×: the residual
+  runs at level 0 with 25 taps an axis, the plan's most costly σ (`backdrop_blur/gpu/4/2048`:
+  board 153 ms, handheld 4.7 ms, mac 2.9 ms, against 22, 1.3 and 0.5 ms at σ 16). A lens's reach used
+  to grow its footprint by up to 41 px a side at 2×, which the residual blurred and the capture
+  copied.
 - **On the board the GPU is the frame** (run 6): `frame/gpu/scrolling` 21 ms of which the CPU half
   0.59 ms; the main pass of a whole 2560 × 1440 repaint 17.1 ms. Cutting one fragment entry at a
   time (`PALANTIR_DIAG`, a diagnostic build that makes an entry return at once): the tabled
@@ -185,6 +215,19 @@ what was rejected and why, and what is still open. What was kept is in the commi
 - **`is_finite() && v >= 0.0` in a value kind.** LLVM folds it into one class test that x86
   lowers to 14 integer ops; the kinds bound by `f32::MAX` instead, two compares.
 
+- **Blur only the texels the composite reads** (run 7, branch `spike-tight-blur`). Each pass
+  writes the region the footprint snaps to, though the texels within the blur's reach of its
+  edge are past their support and nothing reads them; scissors cut to what the composite reads
+  and, stage by stage, what that needs. Pi −0.7 to −5 % (`cards` −5 %), handheld −0.5 to −4.4 % but
+  +0.6 to +1 % on the blur frames, mac −0.6 to −2 %. Refused: a held capture serves a pane whose
+  footprint lies inside the snapped region, not inside the copied footprint, so cutting the
+  texels past the support needs the footprint snapped to the lattice everywhere it is read
+  (damage, the encoder's filter, the capture), for a few percent.
+- **The spectrum loop's state** (run 7): its running integrals read again from the buffer each
+  step rather than carried; the lens surface computed once for every wavelength; both. Pi: the
+  glass composite −2.5, +3.3 and −2.4 %, its frames −0.4 % at best; handheld: the first +1.2 % on
+  the glass composite at 512² and +0.4 to +0.7 % on its frames; mac within its floor. A V3D path
+  for 0.4 % of a frame is not worth its branch.
 ## Decisions
 
 - **The blur residual's loop follows the device** (run 6). `ResidualLoop::One` on Broadcom's
@@ -220,7 +263,37 @@ what was rejected and why, and what is still open. What was kept is in the commi
   [Dawn render-pass-render-area](https://dawn.googlesource.com/dawn.git/+/refs/heads/main/docs/dawn/features/render_pass_render_area.md),
   ANGLE `vk_renderer.cpp` (`isTileBasedRenderer`), Mesa V3DV `v3dv_cmd_buffer.c`.
 
+- **Glass draws through pipelines of its own, and its spectrum's tables are a buffer** (run 7).
+  `QuadForm::BackdropLens` and `BackdropSpectrum` beside `Backdrop`, each a pipeline that the
+  `QUAD_FORM` constant prunes; the spectrum tables a storage buffer the composite group binds.
+  Refused: one shader with the lens behind a branch, whose registers V3D spilled on every pane;
+  the tables as WGSL constant arrays, which V3D indexes by a select over every entry. Pi: a
+  blurred pane's composite −54 %, `modal/scrolling` −34 %, glass composite −61 % at 512² and
+  glass frames −26 to −41 %, `glass_plain` −14 % on the handheld; frames elsewhere within each
+  host's floor. The module doc of `gpu::backdrop` holds both.
+- **A glass pane's footprint holds what its lens reads, not its reach** (run 7).
+  `LensOptics::margin`: a sample `d` px in moves inward along the edge's normal, and a rounded
+  rect's chord along an inward normal is no shorter than its narrowest side, so a pane wider than
+  its bezel, lean and a pixel together reads a pixel past itself; the pixel is for the normal the
+  composite takes from screen differences, which can turn a pixel from the ridge. The cascade
+  knows a pane's narrowest side only for a shape no clip cuts and no paint animation turns;
+  chrome and the rest keep the reach. Glass frames: mac −8.8 to −10.6 %, handheld −7.2 to −8.3 %, board −5.6 to −6.6 %; `stacked`
+  −4.5 to −6.5 %. Frames of every look and three pane shapes match the reach's bit for bit on
+  the mac; on the handheld one texel of 54 frames moves by one f16 step at 1 (2⁻¹¹), where a smaller
+  capture moves the tent's normalized fetch coordinates.
+
 ## Open
+
+- **The glass pipeline spills on V3D** (run 7): 1410 instructions, 32:74 spills:fills, two
+  threads. The loop carries the last read, the running integrals and the sum; the variants
+  tried (Rejected) moved nothing.
+- **Glass's σ is the plan's most costly**: σ 4 physical runs the residual at level 0, 25 taps an
+  axis, where σ 4.01 halves first. Every exact cut tried is in Rejected (a halving at 2 texels,
+  pairs of linear taps); the bilinear pair at the 8 sub-texel bits the board and the handheld report
+  still moves a pair's weight by up to 0.39 % of the peak.
+- **Glass chrome keeps the lens's whole reach**: the cascade keeps no chrome lift, so
+  `LensOptics::margin` reads no narrowest side for it.
+- **The Windows host's `cargo`** hangs over SSH before it resolves dependencies (run 7).
 
 - **Skip the backdrop capture copy on a swapchain image.** A frame that paints the backbuffer
   copies nothing since run 5, and a frame whose captures would copy more than the surface paints

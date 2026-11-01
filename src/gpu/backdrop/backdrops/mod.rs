@@ -15,9 +15,11 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::render_owner_id::RenderOwnerId;
+use crate::shape::paint::spectrum_tables::{SPECTRUM_SAMPLES, SpectrumTables};
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
 use std::ops::Range;
+use wgpu::util::DeviceExt;
 
 /// How a pane's quad finds its result, as `quad_pipeline/shader.wgsl` declares `BackdropSlot`:
 /// the result's texel coordinate of the lattice's first texel, the physical px of a texel, or 0
@@ -67,6 +69,29 @@ impl BackdropSlot {
             min_luminance: row.min_luminance,
             pad: [0.0; 3],
         }
+    }
+}
+
+/// One cell of [`SpectrumTables`] as `quad_pipeline/shader.wgsl` declares `SpectrumCell`: each
+/// `vec3` padded to WGSL's 16-byte alignment.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct SpectrumCell {
+    weight: [f32; 4],
+    cumulative: [f32; 4],
+    moment: [f32; 4],
+}
+
+impl SpectrumCell {
+    /// The spectrum a lens spreads, cell by cell.
+    fn table() -> [Self; SPECTRUM_SAMPLES] {
+        let tables = SpectrumTables::new();
+        let pad = |[x, y, z]: [f32; 3]| [x, y, z, 0.0];
+        std::array::from_fn(|j| Self {
+            weight: pad(tables.weights[j]),
+            cumulative: pad(tables.cumulative[j]),
+            moment: pad(tables.moments[j]),
+        })
     }
 }
 
@@ -137,6 +162,8 @@ pub(crate) struct Backdrops {
     /// The layout the quad pipeline names at group 2, made with it.
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
+    /// The spectrum a lens spreads ([`SpectrumCell`]), written once.
+    spectrum: wgpu::Buffer,
     /// The edge the results atlas grows to.
     ceiling: u32,
     /// What the panes hold on the device, from the first frame with a pane.
@@ -160,6 +187,7 @@ impl PaneResources {
         device: &wgpu::Device,
         layout: &wgpu::BindGroupLayout,
         sampler: &wgpu::Sampler,
+        spectrum: &wgpu::Buffer,
         ceiling: u32,
     ) -> Self {
         let slot_buffer = DynamicBuffer::storage(device, "palantir.backdrop.slots", 4);
@@ -174,7 +202,14 @@ impl PaneResources {
             },
             FIRST_SIDE,
         );
-        let group = composite_group(device, layout, atlas.view(), sampler, &slot_buffer);
+        let group = composite_group(
+            device,
+            layout,
+            atlas.view(),
+            sampler,
+            &slot_buffer,
+            spectrum,
+        );
         Self {
             blur: BackdropBlur::new(device),
             atlas,
@@ -216,6 +251,16 @@ impl Backdrops {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -223,6 +268,11 @@ impl Backdrops {
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
+        });
+        let spectrum = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("palantir.backdrop.spectrum"),
+            contents: bytemuck::cast_slice(&SpectrumCell::table()),
+            usage: wgpu::BufferUsages::STORAGE,
         });
         Self {
             cache: FxHashMap::default(),
@@ -233,6 +283,7 @@ impl Backdrops {
             slots: Vec::new(),
             layout,
             sampler,
+            spectrum,
             ceiling,
             resources: None,
         }
@@ -269,7 +320,13 @@ impl Backdrops {
             return;
         }
         self.resources.get_or_insert_with(|| {
-            PaneResources::new(&ctx.gpu.device, &self.layout, &self.sampler, self.ceiling)
+            PaneResources::new(
+                &ctx.gpu.device,
+                &self.layout,
+                &self.sampler,
+                &self.spectrum,
+                self.ceiling,
+            )
         });
         // Every result the frame reads is stamped first, so making room for one never evicts
         // another.
@@ -375,6 +432,7 @@ impl Backdrops {
                 resources.atlas.view(),
                 &self.sampler,
                 &resources.slot_buffer,
+                &self.spectrum,
             );
             resources.group_capacity = resources.slot_buffer.capacity();
         }
@@ -549,6 +607,7 @@ fn composite_group(
     results: &wgpu::TextureView,
     sampler: &wgpu::Sampler,
     slots: &DynamicBuffer<BackdropSlot>,
+    spectrum: &wgpu::Buffer,
 ) -> wgpu::BindGroup {
     device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("palantir.backdrop.composite"),
@@ -565,6 +624,10 @@ fn composite_group(
             wgpu::BindGroupEntry {
                 binding: 2,
                 resource: slots.buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 3,
+                resource: spectrum.as_entire_binding(),
             },
         ],
     })

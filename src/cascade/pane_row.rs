@@ -28,8 +28,8 @@ pub(crate) struct PaneRow {
 impl PaneRow {
     /// How far past a pane's rect its capture reads, in physical px: its blur's reach, its lens's,
     /// and a pixel for the edge the composer rounds out.
-    pub(crate) fn reach(plan: BlurPlan, lens_reach: u32) -> f32 {
-        plan.reach() as f32 + lens_reach as f32 + 1.0
+    pub(crate) fn reach(plan: BlurPlan, lens_margin: u32) -> f32 {
+        plan.reach() as f32 + lens_margin as f32 + 1.0
     }
 
     /// The physical px of [`Self::footprint`] on `display`: its edges rounded out, inside the

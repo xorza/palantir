@@ -22,17 +22,26 @@ struct Listed {
 
 /// The one pane a frame of `filter` at `rect` lists, on a surface of 200² physical px at `scale`.
 fn listed(scale: f32, rect: Rect, filter: BackdropFilter) -> Listed {
+    listed_under(scale, None, rect, filter)
+}
+
+/// [`listed`] with the pane inside a canvas that clips to `clip` logical px square when some.
+fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: BackdropFilter) -> Listed {
     let mut h = Harness::builder(UVec2::splat(200))
         .mono()
         .scale(scale)
         .build();
     h.frame(|ui: &mut Ui| {
-        Panel::canvas()
-            .id_salt("panes")
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                ui.add_shape(Shape::rect(rect).backdrop_filter(filter));
-            });
+        let canvas = Panel::canvas().id_salt("panes");
+        let canvas = match clip {
+            Some(side) => canvas
+                .size((Sizing::fixed(side), Sizing::fixed(side)))
+                .clip_rect(),
+            None => canvas.size((Sizing::FILL, Sizing::FILL)),
+        };
+        canvas.show(ui, |ui| {
+            ui.add_shape(Shape::rect(rect).backdrop_filter(filter));
+        });
     });
     let scene = h.ui().frame_scene();
     let panes: Vec<PaneRow> = scene.panes().copied().collect();
@@ -103,4 +112,42 @@ fn a_pane_past_every_plan_coerces_to_the_widest() {
         physical,
         URect::from_min_max(UVec2::ZERO, UVec2::splat(200))
     );
+}
+
+/// A glass pane's footprint grows by what its lens reads past it. The lens below leans
+/// `8 · √(1.5² − 1) = 8.94` px, a reach of 10. A pane 80 px high holds its 10 px bezel, the lean
+/// and a pixel, and reads a pixel past itself; one 12 px high lets a sample out by
+/// `6 + 8.94 − 12 + 1`, so 5; one a clip cuts keeps the reach, as its screen rect is not its own.
+/// Sharp, so the plan reads nothing past a pixel; at scale 1, so logical px are physical.
+#[test]
+fn a_glass_panes_footprint_holds_what_its_lens_reads() {
+    let lens = Lens {
+        bezel: 10.0,
+        thickness: 8.0,
+        refractive_index: 1.5,
+        dispersion: 0.0,
+        highlight: 0.0,
+    };
+    let glass = BackdropFilter::glass(lens).with_blur(0.0);
+    let reach = BlurPlan::new(0.0).reach() + 1;
+    let grown = |rect: URect, by: u32| {
+        URect::from_min_max(rect.min - UVec2::splat(by), rect.max() + UVec2::splat(by))
+    };
+    for (what, clip, rect, margin) in [
+        ("wide", None, Rect::new(40.0, 40.0, 100.0, 80.0), 1),
+        ("thin", None, Rect::new(40.0, 40.0, 100.0, 12.0), 5),
+        (
+            "clipped",
+            Some(120.0),
+            Rect::new(40.0, 40.0, 100.0, 60.0),
+            10,
+        ),
+    ] {
+        let Listed { physical, .. } = listed_under(1.0, clip, rect, glass);
+        let rect = URect::covering(match clip {
+            Some(side) => Rect::new(40.0, 40.0, side - 40.0, 60.0),
+            None => rect,
+        });
+        assert_eq!(physical, grown(rect, reach + margin), "{what}");
+    }
 }

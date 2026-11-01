@@ -61,19 +61,6 @@ impl ShaderConstant {
             value: format!("{value:?}"),
         }
     }
-
-    /// An `array<vec3<f32>, N>` of `values`, each written to round-trip.
-    pub(crate) fn vec3_array(marker: &'static str, values: &[[f32; 3]]) -> Self {
-        assert!(values.iter().flatten().all(|v| v.is_finite()));
-        let items: Vec<String> = values
-            .iter()
-            .map(|[x, y, z]| format!("vec3<f32>({x:?}, {y:?}, {z:?})"))
-            .collect();
-        Self {
-            marker,
-            value: format!("array<vec3<f32>, {}>({})", values.len(), items.join(", ")),
-        }
-    }
 }
 
 /// The constants [`PRELUDE`] declares, substituted into every shader.

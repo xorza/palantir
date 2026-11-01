@@ -43,16 +43,24 @@
 //!   explicit group, as Flutter's `BackdropGroup` and SwiftUI's `GlassEffectContainer` ask for,
 //!   which lets a pane miss what another painted under it; one capture for the union of the
 //!   footprints, which copies and blurs the gap between them.
-//! - **The pane is a fourth quad form, `QuadForm::Backdrop`.** SDF, corners, border, AA, turn,
-//!   rounded clips and scissors hold as for any quad, and the form keeps the backdrop's reads and
-//!   lens math off the solid form's registers. The fill is the tint; a gradient tint draws as its
-//!   own quad above. A per-frame slot table carries each pane's atlas origin, lattice and lens.
+//! - **The pane is a quad form, `QuadForm::Backdrop`, and glass two more.** SDF, corners, border,
+//!   AA, turn, rounded clips and scissors hold as for any quad, and the form keeps the backdrop's
+//!   reads off the solid form's registers. The fill is the tint; a gradient tint draws as its own
+//!   quad above. A per-frame slot table carries each pane's atlas origin, lattice and lens. Glass
+//!   of one index and glass that spreads the spectrum draw through forms of their own
+//!   (`BackdropLens`, `BackdropSpectrum`): one shader with the lens behind a branch held its
+//!   registers for every pane, and V3D spilled it, so a blurred pane's composite took the Pi 2.2
+//!   times as long.
 //! - **Glass refracts by a closed form.** The bezel's height is a squircle
 //!   `(1 − (1 − x)⁴)^¼` of the inward distance; its slope along the SDF gradient is the normal,
 //!   Snell's law gives the bent ray, and thickness times its tangent the displacement (kube.io
 //!   bakes the same into a map). The highlight is Schlick's Fresnel toward a fixed top-left lamp.
 //!   Its reach is the closed bound `thickness · √(n² − 1)` at the densest index, so no frame
-//!   samples the bezel to find it.
+//!   samples the bezel to find it, and a pane wider than its bezel, that reach and a pixel
+//!   together reads only itself (`LensOptics::margin`), so its footprint grows by a pixel, not
+//!   the reach: glass frames 7 to 10 % faster on a handheld and the Apple laptop. A pane a clip cuts or a
+//!   paint animation turns, and glass chrome, keep the reach, as the cascade knows only their
+//!   screen rect.
 //! - **Dispersion spreads the whole spectrum** (`lens_spectrum` in `quad_pipeline/shader.wgsl`).
 //!   Each wavelength refracts at its index by Cauchy's model through `n_D`, and the reads sum
 //!   back to color in CIE XYZ under the 1931 observer, normalized so a field of one color keeps
@@ -60,7 +68,9 @@
 //!   closed form (`.notes/research/2026-11-01-glass-dispersion.md`). Refused: red, green and blue
 //!   at their own index (luma.gl, Haze's `Simple`), two sharp ghosts of a bright edge; seven
 //!   reads weighted by eye (Haze's `Full`); a sum over the reads alone, which fringes a white
-//!   edge with a pure green; a weight loop over a fine grid, 19–36 % of a glass frame.
+//!   edge with a pure green; a weight loop over a fine grid, 19–36 % of a glass frame. The
+//!   tables are a buffer: as a constant array indexed at run time, V3D took 1288 uniforms and a
+//!   select over every entry, 2.6 times the glass composite's time at 512².
 //! - **No banding.** The levels are `Rgba16Float`; before an 8-bit target writes, the composite
 //!   adds interleaved gradient noise of one encoded step, scaled to linear by the sRGB curve's
 //!   slope. Grain (`noise`) is separate and fixed to the pane, so it moves and turns with it.

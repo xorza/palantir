@@ -44,7 +44,33 @@ impl LensOptics {
         reason = "a length times a square root is not negative"
     )]
     pub(crate) fn reach(self, index: f32) -> u32 {
-        ((self.thickness * (index * index - 1.0).max(0.0).sqrt()).ceil() as u32).saturating_add(1)
+        (self.lean(index).ceil() as u32).saturating_add(1)
+    }
+
+    /// How far past a rounded-rect pane whose narrowest side is `narrowest` px the bezel sends a
+    /// sample, at index `index`: a sample `d` px in moves inward by at most the lean, along the
+    /// edge's normal, and a rounded rect's chord along an inward normal is no shorter than its
+    /// narrowest side, so the sample leaves the pane by at most `d + lean − narrowest`, with `d`
+    /// no deeper than the bezel or half the narrowest side. A pixel more, as the composite takes
+    /// the normal from the distance's screen differences, which a pixel from the ridge where two
+    /// edges meet can point either way: there a sample moves out from `d ≥ narrowest / 2 − 1`.
+    /// Rounded up a pixel for the bilinear read, and never past [`Self::reach`]: a pane wider than
+    /// its bezel and lean together reads only itself, and a pixel past it.
+    #[expect(
+        clippy::cast_sign_loss,
+        reason = "the overshoot is clamped at 0, and a NaN casts to 0"
+    )]
+    pub(crate) fn margin(self, index: f32, narrowest: f32) -> u32 {
+        let depth = self.bezel.min(0.5 * narrowest);
+        let overshoot = (depth + self.lean(index) - narrowest + 1.0).max(0.0);
+        (overshoot.ceil() as u32)
+            .saturating_add(1)
+            .min(self.reach(index))
+    }
+
+    /// The tangent bound of [`Self::reach`], unrounded: `thickness · √(n² − 1)`.
+    fn lean(self, index: f32) -> f32 {
+        self.thickness * (index * index - 1.0).max(0.0).sqrt()
     }
 }
 
@@ -149,6 +175,41 @@ mod tests {
             ..LENS
         };
         assert_eq!(widest.reach(65504.0), u32::MAX);
+    }
+
+    /// A sample `d` px in lands `d + displacement` px along the inward normal; a pane whose
+    /// narrowest side holds that keeps it, and one narrower lets it out by the difference, and a
+    /// pixel for a normal turned at the ridge. The lean at 1.9 is `16 · √(3.61 − 1) = 25.85`, so
+    /// its reach is 27. A 64 px pane holds the 24 px bezel, the lean and the pixel, 50.85, and
+    /// reads a pixel past itself; a 40 px pane lets a sample out by `20 + 25.85 − 40 + 1 = 6.85`,
+    /// so 8; a 4 px pane by `2 + 25.85 − 4 + 1`, so 26. Over the bezel the closed form stays
+    /// inside each margin, moved inward, and within a pixel of the ridge moved out.
+    #[test]
+    fn a_wide_pane_holds_what_its_bezel_bends() {
+        assert_eq!(LENS.reach(1.9), 27);
+        assert_eq!(LENS.margin(1.9, 64.0), 1);
+        assert_eq!(LENS.margin(1.9, 40.0), 8);
+        assert_eq!(LENS.margin(1.9, 4.0), 26);
+        assert_eq!(LENS.margin(1.0, 4.0), 1);
+        for narrowest in [4.0, 12.0, 30.0, 40.0, 48.0, 64.0] {
+            let margin = LENS.margin(1.9, narrowest) as f32;
+            for i in 0..=1200 {
+                let inward = (i as f32 * 0.01).min(0.5 * narrowest);
+                let shift = LENS.displacement(inward, 1.9);
+                let out = inward + shift - narrowest;
+                assert!(
+                    out <= margin - 1.0,
+                    "{narrowest} wide, {inward} px in: {out}"
+                );
+                if inward >= 0.5 * narrowest - 1.0 {
+                    let turned = shift - inward;
+                    assert!(
+                        turned <= margin - 1.0,
+                        "{narrowest} wide, {inward} px in, turned: {turned}"
+                    );
+                }
+            }
+        }
     }
 
     /// Cauchy's offset is 0 at D and steps by 1 from C to F, so a lens's dispersion is its

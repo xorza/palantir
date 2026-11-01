@@ -7,7 +7,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
+use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::support::{
@@ -258,4 +259,36 @@ fn a_pane_shares_the_last_break_when_nothing_since_touches_it() {
         [0, 1, 1, 2],
         "apart from the quad, on it, apart, beside the last"
     );
+}
+
+/// A pane's quad draws through the form of its glass: none, one index, or a spectrum spread by
+/// its dispersion, each a pipeline of its own.
+#[test]
+fn a_panes_quad_names_the_form_of_its_glass() {
+    let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
+    let lens = |dispersion| Lens {
+        dispersion,
+        ..Lens::default()
+    };
+    for (filter, kind) in [
+        (BackdropFilter::blur(4.0), FillKind::BACKDROP),
+        (BackdropFilter::glass(lens(0.0)), FillKind::BACKDROP_LENS),
+        (
+            BackdropFilter::glass(lens(0.06)),
+            FillKind::BACKDROP_SPECTRUM,
+        ),
+    ] {
+        let pane = DrawPanePayload {
+            kind: RectKind::Rounded,
+            rect,
+            corners: Corners::ZERO,
+            spin: None,
+            tint: RgbaF32::TRANSPARENT.to_f16(),
+            stroke: ShapeStroke::NONE,
+            backdrop: LoweredBackdrop::from(filter),
+            opacity: 1.0,
+            ticket: ticket(0, rect, 4.0, true),
+        };
+        assert_eq!(pane.quad().fill.kind, kind, "{filter:?}");
+    }
 }

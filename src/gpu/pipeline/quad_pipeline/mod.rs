@@ -27,7 +27,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use crate::shape::paint::lens_optics;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
-use crate::shape::paint::spectrum_tables::{self, SpectrumTables};
+use crate::shape::paint::spectrum_tables;
 use glam::Vec2;
 use std::mem::offset_of;
 use std::slice;
@@ -39,8 +39,11 @@ pub(crate) struct QuadVariants {
     solid: StencilVariant,
     gradient: StencilVariant,
     triangle: StencilVariant,
-    /// Backdrop panes, `fs_backdrop` over [`QuadPipeline`]'s backdrop layout.
+    /// Backdrop panes, `fs_backdrop` over [`QuadPipeline`]'s backdrop layout, and those of glass
+    /// of one index and of glass that spreads the spectrum.
     backdrop: StencilVariant,
+    backdrop_lens: StencilVariant,
+    backdrop_spectrum: StencilVariant,
     /// Drop and inset shadows, reading the baked cutouts ([`CutoutTables`]); apart from `fs` to keep the blur integral out of other quads.
     shadow_general: StencilVariant,
     /// Shadows whose every drawn corner reads a table (`fs_shadow_tables`).
@@ -59,6 +62,8 @@ impl QuadVariants {
             QuadDraw::Form(QuadForm::Gradient) => &self.gradient,
             QuadDraw::Form(QuadForm::Triangle) => &self.triangle,
             QuadDraw::Form(QuadForm::Backdrop) => &self.backdrop,
+            QuadDraw::Form(QuadForm::BackdropLens) => &self.backdrop_lens,
+            QuadDraw::Form(QuadForm::BackdropSpectrum) => &self.backdrop_spectrum,
             QuadDraw::Shadow(ShadowEntry::Tables) => &self.shadow_tables,
             QuadDraw::Shadow(ShadowEntry::TablesWide) => &self.shadow_tables_wide,
             QuadDraw::Shadow(ShadowEntry::General) => &self.shadow_general,
@@ -304,6 +309,25 @@ impl QuadPipeline {
                 stencil_label,
             )
         };
+        let dither = f64::from(u8::from(
+            format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
+        ));
+        let backdrop = |label, stencil_label, form: QuadForm| {
+            StencilVariant::build(
+                device,
+                PipelineRecipe {
+                    fragment_entry: "fs_backdrop",
+                    constants: &[
+                        ("DITHER_SRGB8", dither),
+                        ("QUAD_FORM", f64::from(form as u32)),
+                    ],
+                    vertex_buffers: slice::from_ref(&instance),
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    ..PipelineRecipe::color(label, &self.shader, &self.backdrop_layout, format)
+                },
+                stencil_label,
+            )
+        };
         QuadVariants {
             solid: color(
                 "palantir.quad.pipeline.solid",
@@ -320,26 +344,20 @@ impl QuadPipeline {
                 "palantir.quad.pipeline.triangle.stencil_test",
                 QuadForm::Triangle,
             ),
-            backdrop: StencilVariant::build(
-                device,
-                PipelineRecipe {
-                    fragment_entry: "fs_backdrop",
-                    constants: &[(
-                        "DITHER_SRGB8",
-                        f64::from(u8::from(
-                            format.is_srgb() && format.target_pixel_byte_cost() == Some(4),
-                        )),
-                    )],
-                    vertex_buffers: slice::from_ref(&instance),
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
-                    ..PipelineRecipe::color(
-                        "palantir.quad.pipeline.backdrop",
-                        &self.shader,
-                        &self.backdrop_layout,
-                        format,
-                    )
-                },
+            backdrop: backdrop(
+                "palantir.quad.pipeline.backdrop",
                 "palantir.quad.pipeline.backdrop.stencil_test",
+                QuadForm::Backdrop,
+            ),
+            backdrop_lens: backdrop(
+                "palantir.quad.pipeline.backdrop_lens",
+                "palantir.quad.pipeline.backdrop_lens.stencil_test",
+                QuadForm::BackdropLens,
+            ),
+            backdrop_spectrum: backdrop(
+                "palantir.quad.pipeline.backdrop_spectrum",
+                "palantir.quad.pipeline.backdrop_spectrum.stencil_test",
+                QuadForm::BackdropSpectrum,
             ),
             shadow_general: shadow(
                 "palantir.quad.pipeline.shadow",
@@ -412,7 +430,9 @@ impl QuadPipeline {
         };
         let buffer = &self.instance_buffer.buffer;
         match draw {
-            QuadDraw::Form(QuadForm::Backdrop) => {
+            QuadDraw::Form(
+                QuadForm::Backdrop | QuadForm::BackdropLens | QuadForm::BackdropSpectrum,
+            ) => {
                 binding.bind_through(binder, pass, &self.backdrop_layout, buffer);
                 let backdrops = backdrops.expect("a frame that draws a pane prepared its results");
                 binder.group(pass, 2, backdrops);
@@ -472,7 +492,6 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 
 /// The numbers [`QuadPipeline::SHADER`] takes from the Rust types that own them.
 fn shader_constants() -> Vec<ShaderConstant> {
-    let spectrum = SpectrumTables::new();
     vec![
         ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
         ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
@@ -487,6 +506,11 @@ fn shader_constants() -> Vec<ShaderConstant> {
         ShaderConstant::uint("QUAD_FORM_SOLID", QuadForm::Solid as u32),
         ShaderConstant::uint("QUAD_FORM_GRADIENT", QuadForm::Gradient as u32),
         ShaderConstant::uint("QUAD_FORM_TRIANGLE", QuadForm::Triangle as u32),
+        ShaderConstant::uint("QUAD_FORM_BACKDROP_LENS", QuadForm::BackdropLens as u32),
+        ShaderConstant::uint(
+            "QUAD_FORM_BACKDROP_SPECTRUM",
+            QuadForm::BackdropSpectrum as u32,
+        ),
         // `Pad` isn't pinned: it is `apply_spread`'s fallback, also right for unknown modes.
         ShaderConstant::uint("SPREAD_REPEAT", Spread::Repeat as u32),
         ShaderConstant::uint("SPREAD_REFLECT", Spread::Reflect as u32),
@@ -505,9 +529,6 @@ fn shader_constants() -> Vec<ShaderConstant> {
         ShaderConstant::float("SPECTRUM_RED", spectrum_tables::SPECTRUM_RED),
         ShaderConstant::float("SPECTRUM_VIOLET", spectrum_tables::SPECTRUM_VIOLET),
         ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
-        ShaderConstant::vec3_array("SPECTRUM_WEIGHTS", &spectrum.weights),
-        ShaderConstant::vec3_array("SPECTRUM_CUMULATIVE", &spectrum.cumulative),
-        ShaderConstant::vec3_array("SPECTRUM_MOMENTS", &spectrum.moments),
     ]
 }
 

@@ -73,19 +73,18 @@ impl LoweredBackdrop {
         })
     }
 
-    /// How far, in physical px, the lens sends a sample aside under `scale` physical px per
-    /// logical px: the reach of its densest color. Zero with no lens.
-    pub(crate) fn lens_reach(self, scale: f32) -> u32 {
+    /// How far past the pane, in physical px, the lens reads under `scale` physical px per
+    /// logical px, at its densest color: [`LensOptics::margin`] where `narrowest` gives the
+    /// pane's narrowest side in physical px, else [`LensOptics::reach`]. Zero with no lens.
+    pub(crate) fn lens_margin(self, scale: f32, narrowest: Option<f32>) -> u32 {
         self.lens().map_or(0, |lens| {
-            LensOptics {
+            let optics = LensOptics {
                 bezel: lens.bezel * scale,
                 thickness: lens.thickness * scale,
                 index: lens.refractive_index,
-            }
-            .reach(LensOptics::violet_index(
-                lens.refractive_index,
-                lens.dispersion,
-            ))
+            };
+            let index = LensOptics::violet_index(lens.refractive_index, lens.dispersion);
+            narrowest.map_or_else(|| optics.reach(index), |n| optics.margin(index, n))
         })
     }
 }

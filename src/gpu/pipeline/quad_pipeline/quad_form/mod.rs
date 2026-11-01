@@ -13,6 +13,10 @@ pub(crate) enum QuadForm {
     Triangle = 2,
     /// A pane over its backdrop, which reads the frame's backdrop results at group 2.
     Backdrop = 3,
+    /// [`Self::Backdrop`] of a pane of glass of one index.
+    BackdropLens = 4,
+    /// [`Self::Backdrop`] of a pane of glass that spreads the spectrum.
+    BackdropSpectrum = 5,
 }
 
 impl QuadForm {
@@ -28,6 +32,8 @@ impl QuadForm {
             FillKind::TAG_LINEAR | FillKind::TAG_RADIAL | FillKind::TAG_CONIC => Self::Gradient,
             FillKind::TAG_TRIANGLE => Self::Triangle,
             FillKind::TAG_BACKDROP => Self::Backdrop,
+            FillKind::TAG_BACKDROP_LENS => Self::BackdropLens,
+            FillKind::TAG_BACKDROP_SPECTRUM => Self::BackdropSpectrum,
             _ => panic!("a quad form draws the tag"),
         }
     }

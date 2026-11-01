@@ -31,8 +31,9 @@ use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
-use crate::scene::tree::pane_entry::PaneOrigin;
+use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::shape::paint::blur_plan::BlurPlan;
+use crate::shape::record::ShapeRecord;
 use std::hash::Hasher as _;
 
 #[derive(Clone, Copy, Debug)]
@@ -525,13 +526,13 @@ impl CascadeEngine {
         while let Some(popped) = self.stack.pop() {
             finalize_frame(&mut self.stack, &mut lc.subtree_paint_rects, &popped);
         }
-        list_panes(tree, lc, display_scale);
+        list_panes(tree, layout, lc, display_scale);
         true
     }
 }
 
 /// Rebuild `lc.panes` from the panes `tree` recorded, each at its paint row and that row's screen.
-fn list_panes(tree: &Tree, lc: &mut PlaneCascade, display_scale: f32) {
+fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_scale: f32) {
     lc.panes.clear();
     let widget_ids = tree.records.widget_id();
     for entry in &tree.panes {
@@ -554,8 +555,11 @@ fn list_panes(tree: &Tree, lc: &mut PlaneCascade, display_scale: f32) {
             PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
         }
         .expect("a listed pane has a backdrop");
-        let scale = lc.shape_scales[node] * display_scale;
+        let shape_scale = lc.shape_scales[node];
+        let scale = shape_scale * display_scale;
         let plan = BlurPlan::new(backdrop.sigma() * scale);
+        let narrowest =
+            narrowest_side(tree, layout, entry, rect, shape_scale).map(|n| n * display_scale);
         lc.panes.push(PaneRow {
             key: PaneKey {
                 owner: widget_ids[node],
@@ -564,10 +568,36 @@ fn list_panes(tree: &Tree, lc: &mut PlaneCascade, display_scale: f32) {
             row,
             rect,
             plan,
-            footprint: rect
-                .inflated(PaneRow::reach(plan, backdrop.lens_reach(scale)) / display_scale),
+            footprint: rect.inflated(
+                PaneRow::reach(plan, backdrop.lens_margin(scale, narrowest)) / display_scale,
+            ),
         });
     }
+}
+
+/// The narrowest side, in logical px, of a pane drawn whole at `rect` on the screen, which a lens
+/// reads inside of: a shape's quad that no paint animation turns and no clip cuts. `None` for a
+/// turning or clipped pane, whose screen rect is not its own, and for chrome, whose lift this
+/// walk does not keep.
+fn narrowest_side(
+    tree: &Tree,
+    layout: &PlaneLayout,
+    entry: &PaneEntry,
+    rect: Rect,
+    shape_scale: f32,
+) -> Option<f32> {
+    if entry.origin != PaneOrigin::Shape || tree.paint_animations.rotates(entry.shape_idx) {
+        return None;
+    }
+    let ShapeRecord::Quad(quad) = &tree.shapes.records[entry.shape_idx as usize] else {
+        return None;
+    };
+    let local = quad.bbox_local(layout.rect[entry.node.idx()].size).size;
+    let (w, h) = (local.w * shape_scale, local.h * shape_scale);
+    // The lift and a clip that misses the pane round the size within a few f32 ulps; a clip that
+    // cuts less than this lets a sample out by less than the pixel `PaneRow::reach` rounds out.
+    let whole = |screen: f32, lifted: f32| screen >= lifted * (1.0 - 1e-5);
+    (whole(rect.size.w, w) && whole(rect.size.h, h)).then_some(w.min(h))
 }
 
 #[cfg(feature = "internals")]

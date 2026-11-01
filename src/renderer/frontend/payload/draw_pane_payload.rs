@@ -36,14 +36,20 @@ pub(crate) struct DrawPanePayload {
 }
 
 impl DrawPanePayload {
-    /// The pane's quad: `FillKind::BACKDROP`, with the backdrop's look and the opacity in the
+    /// The pane's quad: `FillKind::BACKDROP`, or `BACKDROP_LENS` or `BACKDROP_SPECTRUM` for glass,
+    /// with the backdrop's
+    /// look and the opacity in the
     /// axis lanes.
     pub(crate) fn quad(&self) -> DrawQuadPayload {
         debug_assert!(
             !self.backdrop.is_none(),
             "a pane with no backdrop is a rect"
         );
-        let mut kind = FillKind::BACKDROP;
+        let mut kind = match self.backdrop.lens() {
+            None => FillKind::BACKDROP,
+            Some(lens) if lens.dispersion == 0.0 => FillKind::BACKDROP_LENS,
+            Some(_) => FillKind::BACKDROP_SPECTRUM,
+        };
         if self.kind == RectKind::Windowed {
             kind = kind.with_window();
         }
