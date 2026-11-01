@@ -1,8 +1,7 @@
-//! The look both examples share outside palantir's widgets: tokens read from the live palette,
-//! the type ramp, chips, a page's header, the rail, and the table that links the two examples.
+//! The showcase's look outside palantir's widgets: tokens read from the live palette, the type
+//! ramp, chips and the rail.
 
-pub(crate) mod header;
-pub(crate) mod links;
+pub(crate) mod chip;
 pub(crate) mod rail;
 pub(crate) mod tokens;
 

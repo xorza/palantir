@@ -1,4 +1,0 @@
-// The appearance study in the dark scheme.
-scheme dark
-page "Appearance"
-shot appearance_dark

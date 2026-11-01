@@ -1,9 +1,7 @@
 //! The palantir widget tour. `main` wires the winit host, open on the first page or on
 //! `--page PAGE`, or with `--shot SCRIPT [--out DIR] [--against DIR]` plays a script on a window
 //! with no desktop ([`shot`]); the rail and the page table are in [`shell`], pages in [`pages`],
-//! the look in [`support`] over the examples' shared [`scaffold`]. The tour has no density
-//! switch: the observatory's Appearance study edits `Metrics` live, and a second demo of it
-//! would move every shot and golden.
+//! the look in [`support`] over the [`scaffold`].
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -11,10 +9,8 @@ mod app_state;
 mod appearance;
 mod job;
 mod pages;
-#[path = "../shared/scaffold/mod.rs"]
 mod scaffold;
 mod shell;
-#[path = "../shared/shot/mod.rs"]
 mod shot;
 #[cfg(test)]
 mod shot_tests;
@@ -32,7 +28,7 @@ use palantir::{WindowConfig, WinitHost};
 use tracing_subscriber::EnvFilter;
 
 use crate::shell::Shell;
-use crate::shot::{Mode, ShotApp};
+use crate::shot::Mode;
 
 fn main() -> ExitCode {
     // Logs go to stderr, so a shot's report on stdout holds nothing else.
@@ -43,13 +39,13 @@ fn main() -> ExitCode {
         .with_writer(io::stderr)
         .init();
     let mut stderr = io::stderr().lock();
-    let result = match Mode::of::<Shell>(env::args().skip(1)) {
+    let result = match Mode::of(env::args().skip(1)) {
         Ok(Mode::Window { page }) => window(page),
         Ok(Mode::Shot {
             script,
             out,
             against,
-        }) => shot::shots::<Shell>(
+        }) => shot::shots(
             &script,
             shot::Folders {
                 out: &out,
@@ -71,7 +67,7 @@ fn main() -> ExitCode {
 fn window(page: usize) -> Result<(), String> {
     WinitHost::builder(shell::MAIN_WINDOW)
         .window(WindowConfig::new("palantir showcase").with_inner_size(UVec2::new(1600, 1000)))
-        .build(move |ui, _handle| Shell::open(page, ui))
+        .build(move |_ui, _handle| Shell::open(page))
         .and_then(WinitHost::run)
         .map_err(|error| error.to_string())
 }

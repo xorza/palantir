@@ -1,8 +1,7 @@
-//! `EXAMPLE --shot SCRIPT [--out DIR] [--against DIR]`: an example played from a script on a
+//! `showcase --shot SCRIPT [--out DIR] [--against DIR]`: the tour played from a script on a
 //! window with no desktop, its pictures written as PNGs and a report of each step printed, for an
 //! agent that checks a change by looking at it. One process a script, so a run never shows a
-//! stale build. Shared by the examples through `#[path]`; an example takes part through
-//! [`ShotApp`].
+//! stale build.
 
 #[cfg(feature = "golden")]
 mod against;
@@ -16,23 +15,14 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use palantir::glam::UVec2;
-use palantir::{App, Gpu, Harness, Image, PlayError, PowerPreference, Rect, RequestedGpu, Ui};
+use palantir::{Gpu, Harness, Image, PlayError, PowerPreference, Rect, RequestedGpu};
 
+use crate::shell::Shell;
 use crate::shot::report::Legend;
 use crate::shot::script::{ParseError, Region, Script, StepKind};
 
 /// Where pictures go when the call names no folder.
 pub(crate) const DEFAULT_OUT: &str = "target/shot";
-
-/// An app the shot mode plays: pages it opens by label.
-pub(crate) trait ShotApp: App + Sized {
-    /// Each page's label, in the app's order.
-    fn page_labels() -> impl Iterator<Item = &'static str>;
-
-    /// The app open on the page at `page`, an index into [`Self::page_labels`]; `ui` is its
-    /// window, before the first frame.
-    fn open(page: usize, ui: &mut Ui) -> Self;
-}
 
 /// A page label no page has.
 #[derive(Debug)]
@@ -42,16 +32,16 @@ pub(crate) struct UnknownPage {
 }
 
 impl UnknownPage {
-    /// The index of `label` among `A`'s pages, ignoring case; the first page for none.
-    fn find<A: ShotApp>(label: Option<&str>) -> Result<usize, Self> {
+    /// The index of `label` among the tour's pages, ignoring case; the first page for none.
+    fn find(label: Option<&str>) -> Result<usize, Self> {
         let Some(label) = label else {
             return Ok(0);
         };
-        A::page_labels()
+        Shell::page_labels()
             .position(|page| page.eq_ignore_ascii_case(label))
             .ok_or_else(|| Self {
                 label: label.to_owned(),
-                pages: A::page_labels().collect(),
+                pages: Shell::page_labels().collect(),
             })
     }
 }
@@ -72,7 +62,7 @@ impl error::Error for UnknownPage {}
 /// What the command line asks.
 #[derive(Debug)]
 pub(crate) enum Mode {
-    /// The window, open on the page at `page`, an index into [`ShotApp::page_labels`].
+    /// The window, open on the page at `page`, an index into [`Shell::page_labels`].
     Window { page: usize },
     /// A script played with no desktop, its pictures written into `out` and compared with the ones
     /// in `against`.
@@ -84,8 +74,8 @@ pub(crate) enum Mode {
 }
 
 impl Mode {
-    /// The mode `args` ask of `A`, or why they are refused: the usage, or a page `A` lacks.
-    pub(crate) fn of<A: ShotApp>(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
+    /// The mode `args` ask, or why they are refused: the usage, or a page the tour lacks.
+    pub(crate) fn of(mut args: impl Iterator<Item = String>) -> Result<Self, String> {
         let usage = || {
             format!(
                 "usage: {} [--page PAGE | --shot SCRIPT [--out DIR] [--against DIR]]",
@@ -100,7 +90,7 @@ impl Mode {
             if args.next().is_some() {
                 return Err(usage());
             }
-            let page = UnknownPage::find::<A>(Some(&label)).map_err(|error| error.to_string())?;
+            let page = UnknownPage::find(Some(&label)).map_err(|error| error.to_string())?;
             return Ok(Self::Window { page });
         }
         if first != "--shot" {
@@ -131,9 +121,9 @@ impl Mode {
     }
 }
 
-/// Play the script at `script` for `A` on a headless device, its report on stdout.
-pub(crate) fn shots<A: ShotApp>(script: &Path, folders: Folders<'_>) -> Result<(), String> {
-    // No optional features: the example draws with what every adapter has.
+/// Play the script at `script` on a headless device, its report on stdout.
+pub(crate) fn shots(script: &Path, folders: Folders<'_>) -> Result<(), String> {
+    // No optional features: the tour draws with what every adapter has.
     #[expect(
         clippy::default_trait_access,
         reason = "the features are a wgpu type, which only `palantir::gpu` names"
@@ -141,7 +131,7 @@ pub(crate) fn shots<A: ShotApp>(script: &Path, folders: Folders<'_>) -> Result<(
     let gpu = RequestedGpu::headless(PowerPreference::HighPerformance, Default::default())
         .map_err(|error| error.to_string())?
         .gpu;
-    run::<A>(gpu, script, folders, &mut io::stdout().lock()).map_err(|error| error.to_string())
+    run(gpu, script, folders, &mut io::stdout().lock()).map_err(|error| error.to_string())
 }
 
 /// The folders a run writes into and compares against.
@@ -235,7 +225,7 @@ impl From<UnknownPage> for ShotError {
 
 /// Play the script at `script` on `gpu`, writing pictures into `folders` and the report into
 /// `report`.
-pub(crate) fn run<A: ShotApp>(
+pub(crate) fn run(
     gpu: Gpu,
     script: &Path,
     folders: Folders<'_>,
@@ -245,11 +235,11 @@ pub(crate) fn run<A: ShotApp>(
         path: script.to_path_buf(),
         source,
     })?;
-    play::<A>(gpu, &Script::parse(&text)?, folders, report)
+    play(gpu, &Script::parse(&text)?, folders, report)
 }
 
 /// Play `script` on `gpu`; see [`run`].
-pub(crate) fn play<A: ShotApp>(
+pub(crate) fn play(
     gpu: Gpu,
     script: &Script,
     folders: Folders<'_>,
@@ -257,13 +247,13 @@ pub(crate) fn play<A: ShotApp>(
 ) -> Result<(), ShotError> {
     let out = folders.out;
     let header = &script.header;
-    let page = UnknownPage::find::<A>(header.page.as_deref())?;
+    let page = UnknownPage::find(header.page.as_deref())?;
     let mut h = Harness::builder(header.size)
         .scale(header.scale)
         .gpu(gpu)
         .build();
     h.set_system_color_scheme(header.scheme);
-    let mut shell = A::open(page, h.ui());
+    let mut shell = Shell::open(page);
     let failed = |line| move |error| ShotError::Play { line, error };
     h.settle(&mut shell).map_err(failed(0))?;
     let written = |path: &Path| {

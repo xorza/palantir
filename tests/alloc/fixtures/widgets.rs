@@ -190,12 +190,24 @@ fn long_multiline_selection_alloc_free() {
     });
 }
 
+/// A settled lend takes the stored row back and builds no default: `Heaped`'s `Default`
+/// allocates, so a default built per lend would fail the audit.
 #[test]
 fn state_map_counter_alloc_free() {
+    #[derive(Debug)]
+    struct Heaped(Vec<u32>);
+    impl Default for Heaped {
+        fn default() -> Self {
+            Self(Vec::with_capacity(4))
+        }
+    }
+
     let id = WidgetId::from_hash("counter");
+    let heaped = WidgetId::from_hash("heaped");
     Audit::new().run(move |ui| {
         Block::new().id_salt("counter").show(ui);
         ui.with_state::<u32, _>(id, |_, n| *n = n.wrapping_add(1));
+        ui.with_state::<Heaped, _>(heaped, |_, h| h.0.clear());
     });
 }
 

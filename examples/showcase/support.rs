@@ -1,4 +1,4 @@
-//! The showcase's look over the shared scaffold: the [`Kit`] a page paints with, its specimen
+//! The showcase's look over the scaffold: the [`Kit`] a page paints with, its specimen
 //! [`Swatches`], and the page scaffolding.
 //!
 //! Every scaffold color is a role of the palette the shown scheme wears, so the tour shows the
@@ -17,7 +17,7 @@ use palantir::{
     Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId, fmt,
 };
 
-use crate::scaffold::header::Chip;
+use crate::scaffold::chip::Chip;
 use crate::scaffold::tokens::{MEASURE, Tokens};
 
 const M: Metrics = Metrics::DEFAULT;
@@ -40,8 +40,8 @@ pub(crate) const CELL_PADDING: f32 = M.space.sm;
 pub(crate) const RADIUS: f32 = M.radius.card;
 
 /// What a page paints with this frame: the scaffold's tokens and the shown scheme's swatches.
-/// Pages take it as a parameter, as the observatory's studies take `Tokens`. Refused: a kit in a
-/// state row or a static, which hides what a page paints with.
+/// Pages take it as a parameter. Refused: a kit in a state row or a static, which hides what a
+/// page paints with.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Kit {
     pub(crate) t: Tokens,

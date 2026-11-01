@@ -5,19 +5,18 @@
 use palantir::{
     Align, App, Block, Button, ButtonTheme, Checkbox, Chrome, Configure, Corners, EditEnd,
     FocusPolicy, FontFamily, Justify, Key, Metrics, Palette, Panel, PopupTrigger, Scroll, Sense,
-    Separator, Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, Tooltip, Ui, UserScale,
-    VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
+    Separator, Shortcut, ShortcutMods, Sizing, Stroke, Text, TextEdit, TextWrap, Tooltip, Ui,
+    UserScale, VAlign, Vsync, WidgetId, WindowConfig, WindowToken, fmt,
 };
 
 use crate::app_state::AppState;
 use crate::appearance::{Appearance, SEEDS};
 use crate::job::Job;
 use crate::pages;
-use crate::scaffold::header::Header;
-use crate::scaffold::links::LINKS;
+use crate::scaffold::chip::Chip;
 use crate::scaffold::rail;
 use crate::scaffold::rail::Nav;
-use crate::shot::ShotApp;
+use crate::scaffold::tokens::{MEASURE, Tokens};
 use crate::support::{Kit, Kits, PAGE_GAP};
 
 pub(crate) const MAIN_WINDOW: WindowToken = WindowToken(0);
@@ -101,6 +100,44 @@ impl Page {
     /// The id of this page's item in the rail.
     fn item_id(&self) -> WidgetId {
         WidgetId::from_hash(("showcase::rail", self.label))
+    }
+
+    /// What the page is, the keys it answers to, and where its source is; no keys row for none.
+    fn header(&self, ui: &mut Ui, t: Tokens) {
+        Panel::vstack()
+            .id_salt(("header", self.label))
+            .size((Sizing::FILL, Sizing::HUG))
+            .gap(M.space.sm)
+            .show(ui, |ui| {
+                Text::new(self.label).style(&t.title()).show(ui);
+                Text::new(self.blurb)
+                    .style(&t.dim())
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .max_size((MEASURE, f32::INFINITY))
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .show(ui);
+                if !self.keys.is_empty() {
+                    Panel::wrap_hstack()
+                        .id_salt("keys")
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .gap(M.space.xs)
+                        .line_gap(M.space.xs)
+                        .child_align(Align::v(VAlign::Center))
+                        .show(ui, |ui| {
+                            Text::new("keys")
+                                .style(&t.caption())
+                                .margin((0.0, 0.0, M.space.xxs, 0.0))
+                                .show(ui);
+                            for &key in self.keys {
+                                Chip::Key.show(ui, t, key);
+                            }
+                        });
+                }
+                Text::new(self.source)
+                    .id_salt("source")
+                    .style(&t.mono(t.ink_faint))
+                    .show(ui);
+            });
     }
 }
 
@@ -369,6 +406,24 @@ pub(crate) struct Shell {
 }
 
 impl Shell {
+    /// The tour on the page at `page`, an index into [`Self::page_labels`], its item scrolled into
+    /// view, in the stock look.
+    pub(crate) fn open(page: usize) -> Self {
+        debug_assert!(page < PAGES.len(), "page {page} of {}", PAGES.len());
+        Self {
+            active: page,
+            app: AppState::new(),
+            kits: Kits::new(),
+            query: String::new(),
+            reveal: true,
+        }
+    }
+
+    /// Each page's label, in the rail's order.
+    pub(crate) fn page_labels() -> impl Iterator<Item = &'static str> {
+        PAGES.iter().map(|page| page.label)
+    }
+
     fn build(&mut self, ui: &mut Ui) {
         handle_shortcuts(ui);
         self.navigate(ui);
@@ -532,7 +587,7 @@ impl Shell {
             .padding((M.space.xl, M.space.xl, M.space.sm, M.space.lg))
             .gap(M.space.xl)
             .show(ui, |ui| {
-                page_header(ui, k, &page);
+                page.header(ui, k.t);
                 Separator::horizontal().show(ui);
                 // Keyed by page so scroll offsets don't carry over.
                 match page.flow {
@@ -561,23 +616,6 @@ impl Shell {
                     }
                 }
             });
-    }
-}
-
-impl ShotApp for Shell {
-    fn page_labels() -> impl Iterator<Item = &'static str> {
-        PAGES.iter().map(|page| page.label)
-    }
-
-    /// The tour on the page at `page`, its item scrolled into view, in the stock look.
-    fn open(page: usize, _ui: &mut Ui) -> Self {
-        Self {
-            active: page,
-            app: AppState::new(),
-            kits: Kits::new(),
-            query: String::new(),
-            reveal: true,
-        }
     }
 }
 
@@ -729,22 +767,6 @@ fn diagnostics(ui: &mut Ui) {
     ui.set_debug_overlay(overlay);
 }
 
-fn page_header(ui: &mut Ui, k: Kit, page: &Page) {
-    Header {
-        title: page.label,
-        blurb: page.blurb,
-        keys: page.keys,
-        apis: &[],
-        related_label: "observatory",
-        related: LINKS
-            .iter()
-            .filter(|link| link.page == page.label)
-            .map(|link| link.study),
-        source: page.source,
-    }
-    .show(ui, k.t);
-}
-
 /// ⌘Q / Ctrl+Q quits (palantir drops winit's default macOS menu, and with it the native ⌘Q). F8
 /// mirrors the inspector button; F9 / F10 / F12 the diagnostics switches; Ctrl+`-` / `=` / `0`
 /// the UI-scale stepper.
@@ -789,20 +811,11 @@ mod tests {
     use palantir::{Harness, Key, Scroll, Shortcut, ShortcutMods, WidgetId};
 
     use crate::appearance::{SEEDS, accent_for};
-    use crate::scaffold::links::LINKS;
     use crate::shell::{LIST, PAGES, SEARCH, Shell, accent_id};
-    use crate::shot::ShotApp;
 
-    /// Every page the shared links table names is a page of the tour, and every page's source is
-    /// a file of the repository, so neither header row names something that is gone.
+    /// Every page's source is a file of the repository, so the header names no file that is gone.
     #[test]
-    fn the_links_and_sources_name_real_pages_and_files() {
-        for link in LINKS {
-            assert!(
-                PAGES.iter().any(|page| page.label == link.page),
-                "{link:?} names no page"
-            );
-        }
+    fn the_sources_name_real_files() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"));
         for page in PAGES {
             assert!(root.join(page.source).is_file(), "{}", page.source);
@@ -838,7 +851,7 @@ mod tests {
     #[test]
     fn the_keyboard_searches_and_steps_through_the_pages() {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
-        let mut shell = Shell::open(0, h.ui());
+        let mut shell = Shell::open(0);
         let settle = |h: &mut Harness, shell: &mut Shell| {
             h.settle(shell).expect("the frames settle");
         };
@@ -900,7 +913,7 @@ mod tests {
     #[test]
     fn a_picked_accent_reaches_the_theme() {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
-        let mut shell = Shell::open(0, h.ui());
+        let mut shell = Shell::open(0);
         h.settle(&mut shell).expect("the frames settle");
         h.click(accent_id(1));
         let report = h.frame_app(&mut shell);
@@ -924,7 +937,7 @@ mod tests {
     fn a_page_opened_from_the_keyboard_scrolls_into_view() {
         let mut h = Harness::builder(UVec2::new(1280, 480)).mono().build();
         let last = PAGES.len() - 1;
-        let mut shell = Shell::open(last - 1, h.ui());
+        let mut shell = Shell::open(last - 1);
         h.settle(&mut shell).expect("the frames settle");
         let item = PAGES[last].item_id();
         let list = WidgetId::from_hash(LIST);

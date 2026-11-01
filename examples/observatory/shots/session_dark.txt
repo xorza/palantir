@@ -1,4 +1,0 @@
-// The session study in the dark scheme.
-scheme dark
-page "Session"
-shot session_dark

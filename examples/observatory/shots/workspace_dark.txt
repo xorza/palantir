@@ -1,4 +1,0 @@
-// The workspace study in the dark scheme.
-scheme dark
-page "Workspace"
-shot workspace_dark

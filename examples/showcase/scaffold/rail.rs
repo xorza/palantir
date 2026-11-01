@@ -1,4 +1,4 @@
-//! The rail each example picks its pages from, on one inset grid: the band keeps every block
+//! The rail the tour picks its pages from, on one inset grid: the band keeps every block
 //! [`INSET`] from its edges, and an item's text sits [`INSET`] inside its pill, so every text of
 //! the rail starts at twice the inset. The list's scrollbar paints in a gutter outside the pills
 //! ([Apple HIG, Sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars)).
@@ -55,7 +55,7 @@ pub(crate) fn label(ui: &mut Ui, t: Tokens, text: &'static str) {
         .show(ui);
 }
 
-/// The example's name and what it is, its text on the items' column.
+/// The tour's name and what it is, its text on the items' column.
 pub(crate) fn brand(ui: &mut Ui, t: Tokens, title: &'static str, subtitle: &'static str) {
     Panel::vstack()
         .id_salt("brand")

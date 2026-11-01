@@ -12,7 +12,7 @@ use palantir::{
 use crate::shell::Shell;
 use crate::shot;
 use crate::shot::script::{Header, ParseError, ParseErrorKind, Region, Script, StepKind};
-use crate::shot::{Folders, Mode, ShotApp, ShotError};
+use crate::shot::{Folders, Mode, ShotError};
 
 fn steps(text: &str) -> Vec<StepKind> {
     Script::parse(text)
@@ -273,7 +273,7 @@ fn a_script_shoots_the_open_popup() {
         Script::parse("size 640x400\npage \"OVERLAYS\"\nclick \"Edit ▾\"\nshot popup\nprobe 1,1\n")
             .unwrap();
     let mut report = Vec::new();
-    shot::play::<Shell>(gpu.handles(), &script, folders(&scratch), &mut report).unwrap();
+    shot::play(gpu.handles(), &script, folders(&scratch), &mut report).unwrap();
     let report = String::from_utf8(report).unwrap();
     let path = scratch.0.join("popup.png");
     let png = image::open(&path).unwrap();
@@ -292,7 +292,7 @@ fn a_script_shoots_the_open_popup() {
     );
 
     let unknown = Script::parse("page \"nowhere\"").unwrap();
-    let refused = shot::play::<Shell>(gpu.handles(), &unknown, folders(&scratch), &mut Vec::new());
+    let refused = shot::play(gpu.handles(), &unknown, folders(&scratch), &mut Vec::new());
     assert!(matches!(refused, Err(ShotError::Page(_))));
     assert!(
         refused.unwrap_err().to_string().contains("\"Overlays\""),
@@ -301,7 +301,7 @@ fn a_script_shoots_the_open_popup() {
 
     let missing = Script::parse("size 640x400\nclick \"Nothing here\"").unwrap();
     assert!(matches!(
-        shot::play::<Shell>(gpu.handles(), &missing, folders(&scratch), &mut Vec::new()),
+        shot::play(gpu.handles(), &missing, folders(&scratch), &mut Vec::new()),
         Err(ShotError::Play { line: 2, .. })
     ));
 }
@@ -315,7 +315,7 @@ fn a_shot_compares_with_an_earlier_run() {
     let second = Scratch::new("second");
     let script =
         |page: &str| Script::parse(&format!("size 320x200\npage \"{page}\"\nshot view\n")).unwrap();
-    shot::play::<Shell>(
+    shot::play(
         gpu.handles(),
         &script("controls"),
         folders(&first),
@@ -324,7 +324,7 @@ fn a_shot_compares_with_an_earlier_run() {
     .unwrap();
 
     let mut report = Vec::new();
-    shot::play::<Shell>(
+    shot::play(
         gpu.handles(),
         &script("controls"),
         against(&second, &first),
@@ -340,7 +340,7 @@ fn a_shot_compares_with_an_earlier_run() {
     assert!(!second.0.join("view.diff.png").exists());
 
     let mut report = Vec::new();
-    shot::play::<Shell>(
+    shot::play(
         gpu.handles(),
         &script("colors"),
         against(&second, &first),
@@ -353,12 +353,12 @@ fn a_shot_compares_with_an_earlier_run() {
 
     let mut report = Vec::new();
     let other = Script::parse("size 160x100\nshot view\n").unwrap();
-    shot::play::<Shell>(gpu.handles(), &other, against(&second, &first), &mut report).unwrap();
+    shot::play(gpu.handles(), &other, against(&second, &first), &mut report).unwrap();
     let report = String::from_utf8(report).unwrap();
     assert!(report.contains(": 320x200, another size"), "{report}");
     let mut report = Vec::new();
     let unseen = Script::parse("size 160x100\nshot unseen\n").unwrap();
-    shot::play::<Shell>(
+    shot::play(
         gpu.handles(),
         &unseen,
         against(&second, &first),
@@ -372,7 +372,7 @@ fn a_shot_compares_with_an_earlier_run() {
 /// page has and a flag with no page are refused before any window opens.
 #[test]
 fn page_opens_the_window_on_a_page() {
-    let mode = |args: &[&str]| Mode::of::<Shell>(args.iter().map(|&arg| arg.to_owned()));
+    let mode = |args: &[&str]| Mode::of(args.iter().map(|&arg| arg.to_owned()));
     assert!(matches!(mode(&[]), Ok(Mode::Window { page: 0 })));
     // "overlays" is the sixth page.
     assert!(matches!(
@@ -397,7 +397,7 @@ fn draws_every_page(scheme: ColorScheme) {
     h.set_system_color_scheme(Some(scheme));
     let palette = Palette::for_scheme(scheme);
     for (page, label) in Shell::page_labels().enumerate() {
-        let mut shell = Shell::open(page, h.ui());
+        let mut shell = Shell::open(page);
         h.settle(&mut shell).unwrap();
         let shot = h.shot(&mut shell, None).unwrap();
         let texels = shot.image().texels();

@@ -6,8 +6,8 @@ use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 
 /// Inside the body the row is lent, so `Ui::state` reads `None`; after it the value is back,
-/// carried across frames. `tests/alloc`'s observatory audit holds that no default is built per
-/// lend: its dock state allocates in `Default`.
+/// carried across frames. `tests/alloc`'s `state_map_counter_alloc_free` holds that no default
+/// is built per lend.
 #[test]
 fn with_state_lends_the_row_out_and_back() {
     let id = WidgetId::from_hash("with-state-lend");

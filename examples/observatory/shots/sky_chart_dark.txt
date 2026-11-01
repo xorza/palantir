@@ -1,4 +1,0 @@
-// The sky chart study in the dark scheme.
-scheme dark
-page "Sky chart"
-shot sky_chart_dark

@@ -5,6 +5,6 @@
 - flexbox
 - mcp
 - visual testing own theme
-- table widget: sortable header, virtual rows over a fixed row height (the observatory's catalog builds both by hand)
-- reorderable list: a drag handle and Alt+arrows (the observatory's plan builds it by hand)
-- hover card at a point for content that is not a widget (the observatory's chart uses a `Popup` at the pointer)
+- table widget: sortable header, virtual rows over a fixed row height
+- reorderable list: a drag handle and Alt+arrows
+- hover card at a point for content that is not a widget
