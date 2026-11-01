@@ -12,7 +12,7 @@ use glam::Vec2;
 /// The arithmetic is linear, and a spring runs it on values in motion space
 /// ([`Self::to_motion`]): its offset from the target and its velocity live there, and the
 /// painted value is `from_motion(target.to_motion().add(offset))`. Motion space is the value
-/// itself unless a type blends in another one, as `RgbaF32` does premultiplied.
+/// itself unless a type blends in another one, as `RgbaF32` does in premultiplied Oklab.
 ///
 /// `PartialEq` lets `tick` skip the sub + magnitude pair when the target is
 /// unchanged.
@@ -43,8 +43,8 @@ pub trait Animatable: Clone + PartialEq + 'static {
     ///
     /// **Unit-free by default:** an `f32` may be pixels or a 0..1 fraction, so the
     /// default divides [`Self::magnitude_squared`] by `EPS²` (`EPS = 1e-4`). A type
-    /// that knows its unit says so: `RgbaF32` settles at `1/4096`, under one 8-bit
-    /// sRGB step near black.
+    /// that knows its unit says so: `RgbaF32` settles at `2^-14` in motion space, under
+    /// the shortest step one 8-bit sRGB code makes there.
     ///
     /// The derive sums its fields' own distances, so pixel and color fields keep
     /// their own tolerances. A derive with one unit of its own uses
@@ -139,7 +139,7 @@ impl Animatable for Vec2 {
     }
 }
 
-// `RgbaF32` blends premultiplied (see `primitives/paint/color/mod.rs`).
+// `RgbaF32` blends in premultiplied Oklab (see `primitives/paint/color/mod.rs`).
 //
 // No `Option<T>` blanket: for "absent or value" fields use a sentinel
 // (`Stroke::NONE`) and let the paint-time `is_noop` filter handle absence. A

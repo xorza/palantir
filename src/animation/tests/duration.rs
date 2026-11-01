@@ -81,7 +81,8 @@ fn instant_duration_is_noop_and_drops_row() {
 }
 
 /// Sub-perceptual drift snaps instead of animating, using the type's own settle tolerance: `1e-5` on an
-/// `f32` (1e-4) snaps; `2e-4` snaps on a color channel (under `1/4096`) but animates on an `f32`.
+/// `f32` (1e-4) snaps; `2e-4` snaps on a color's red at mid grey (4.63e-5 in motion space, under `2^-14`) but
+/// animates on an `f32`.
 #[test]
 fn target_below_snap_floor_snaps_without_animating() {
     let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
@@ -172,12 +173,15 @@ fn one_floor_animates_a_small_change_under_either_motion() {
         0.016,
     );
     assert!(!moving.settled, "the hover fades over several frames");
-    let expected = f64::from(rest.r) + f64::from(hover.r - rest.r) * spring_travel;
+    // A neutral's Oklab lightness is the cube root of its linear value, so the spring travels its
+    // share in lightness and the channel is that lightness cubed.
+    let lightness = |c: RgbaF32| f64::from(c.r).cbrt();
+    let expected = (lightness(rest) + (lightness(hover) - lightness(rest)) * spring_travel).powi(3);
     domain::internals::assert_close(
         moving.cur.r,
         expected,
         1e-8,
-        "the first step travels the closed form's share, to f32 rounding \
+        "the first step travels the closed form's share, to the f32 rounding of an Oklab trip \
          of a value near 0.007",
     );
 }

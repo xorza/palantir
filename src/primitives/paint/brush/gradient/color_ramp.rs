@@ -5,7 +5,6 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::oklab::Oklab;
 
 /// A color for every value in `0..=1`: stops plus the interpolation space.
 ///
@@ -84,14 +83,14 @@ impl ColorRamp {
 }
 
 /// A ramp's stops in the forms its interpolation reads: premultiplied linear, and under
-/// [`Interpolation::Oklab`] the straight colors' Oklab coordinates.
+/// [`Interpolation::Oklab`] premultiplied Oklab, the motion space a color animates in.
 #[derive(Debug)]
 pub(crate) struct RampColors<'a> {
     stops: &'a GradientStops,
     interpolation: Interpolation,
     linear: [RgbaF32; MAX_STOPS],
     /// Unread under [`Interpolation::Linear`].
-    oklab: [Oklab; MAX_STOPS],
+    oklab: [RgbaF32; MAX_STOPS],
 }
 
 impl<'a> RampColors<'a> {
@@ -101,16 +100,12 @@ impl<'a> RampColors<'a> {
             interpolation,
         } = ramp;
         let mut linear = [RgbaF32::TRANSPARENT; MAX_STOPS];
-        let mut oklab = [Oklab {
-            l: 0.0,
-            a: 0.0,
-            b: 0.0,
-        }; MAX_STOPS];
+        let mut oklab = [RgbaF32::TRANSPARENT; MAX_STOPS];
         for idx in 0..stops.len() {
             let color = stops[idx].color();
             linear[idx] = color.premultiplied();
             if *interpolation == Interpolation::Oklab {
-                oklab[idx] = Oklab::from_color(color);
+                oklab[idx] = color.to_motion();
             }
         }
         Self {
@@ -148,22 +143,11 @@ impl<'a> RampColors<'a> {
         }
     }
 
-    /// Interpolates the premultiplied stops `upper - 1` and `upper` in Oklab,
-    /// weighing coordinates by alpha.
+    /// Interpolates stops `upper - 1` and `upper` in premultiplied Oklab, as a color animates. The
+    /// cap of `from_motion` never acts beyond rounding: a stop is 8-bit sRGB, in gamut, and a ramp
+    /// does not overshoot its stops.
     fn lerp_oklab(&self, upper: usize, amount: f32) -> RgbaF32 {
-        let (lower, upper_color) = (self.linear[upper - 1], self.linear[upper]);
-        let (lower_lab, upper_lab) = (self.oklab[upper - 1], self.oklab[upper]);
-        let a = <f32 as Animatable>::lerp(lower.a, upper_color.a, amount);
-        if a <= 0.0 {
-            return RgbaF32::TRANSPARENT;
-        }
-        lower_lab
-            .scale(lower.a)
-            .lerp(upper_lab.scale(upper_color.a), amount)
-            .divide(a)
-            .to_color()
-            .with_alpha(a)
-            .premultiplied()
+        RgbaF32::from_motion(self.oklab[upper - 1].mix(self.oklab[upper], amount)).premultiplied()
     }
 }
 

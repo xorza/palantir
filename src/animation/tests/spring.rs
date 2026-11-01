@@ -365,9 +365,9 @@ fn spring_retarget_keeps_its_velocity() {
 /// - `f32` settles at 1e-4: 0.5e-4 displacement is in; speed `√170·0.9e-4` swings
 ///   0.9e-4, in; `1.1e-4` out; 0.8e-4 plus a 0.8e-4 swing is `0.8² + 0.8² = 1.28 >
 ///   1`, out.
-/// - `RgbaF32` settles at 1/4096 ≈ 2.44e-4, so 2e-4 is in on a color, out on an
-///   `f32`. A color crossing its target at 0.05/s swings `0.05/√300 ≈ 2.9e-3` and
-///   stays out.
+/// - `RgbaF32` settles at 2^-14 ≈ 6.10e-5 in motion space, so 5e-5 is in on a color and
+///   8e-5 is out on a color, in on an `f32`. A color crossing its target at 0.05/s swings
+///   `0.05/√300 ≈ 2.9e-3` and stays out.
 #[test]
 fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
     // The bound reads the stiffness alone.
@@ -381,14 +381,18 @@ fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
         ("small swing", 0.0, k.sqrt() * 0.9e-4, true),
         ("large swing", 0.0, k.sqrt() * 1.1e-4, false),
         ("both near", 0.8e-4, k.sqrt() * 0.8e-4, false),
-        ("f32 at a color's tolerance", 2e-4, 0.0, false),
+        ("f32 past a color's tolerance", 8e-5, 0.0, true),
     ] {
         assert_eq!(spring(k).within_settle_eps(x, v), settled, "{label}");
     }
     let red = |r: f32| RgbaF32::new(r, 0.0, 0.0, 0.0);
     assert!(
-        spring(k).within_settle_eps(red(2e-4), red(0.0)),
-        "a color at 2e-4"
+        spring(k).within_settle_eps(red(5e-5), red(0.0)),
+        "a color at 5e-5"
+    );
+    assert!(
+        !spring(k).within_settle_eps(red(8e-5), red(0.0)),
+        "a color at 8e-5"
     );
     assert!(
         !spring(300.0).within_settle_eps(red(0.0), red(0.05)),
@@ -465,10 +469,10 @@ fn color_spring_converges_to_target() {
     let step = Release {
         spring: Spring::DEFAULT,
         distance,
-        eps: 1.0 / 4096.0,
+        eps: 1.0 / 16384.0,
     }
     .settle_step(|_| 0.016);
-    assert_eq!(step, 53);
+    assert_eq!(step, 59);
     assert_eq!(settled_at, Some(step));
     assert_eq!(last, target, "a settled spring snaps to its target");
 }
@@ -523,10 +527,10 @@ fn solid_brush_spring_matches_color_trajectory() {
     let step = Release {
         spring: Spring::DEFAULT,
         distance,
-        eps: 1.0 / 4096.0,
+        eps: 1.0 / 16384.0,
     }
     .settle_step(|_| 0.016);
-    // A color springs in motion space, so the distance is between the premultiplied colors.
-    assert_eq!(step, 52);
+    // A color springs in motion space, so the distance is between the premultiplied Oklab colors.
+    assert_eq!(step, 58);
     assert_eq!(settled_at, Some(step), "both settle on the same frame");
 }

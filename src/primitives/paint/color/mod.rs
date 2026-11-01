@@ -23,6 +23,7 @@ use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num;
 use crate::primitives::paint::color::error::ParseColorError;
+use crate::primitives::paint::color::oklab::Oklab;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use ::serde::de::Error as _;
@@ -46,12 +47,13 @@ use std::str;
 /// Components may exceed `1.0` for HDR-shaped tween outputs. `Hash` is exact
 /// but for signed zeros; `FloatHash::hash_visual` is the tolerant one.
 ///
-/// [`Animatable::lerp`] and springs blend premultiplied
-/// (CSS Color 4 §12.3), unclamped: a fade to [`Self::TRANSPARENT`] keeps its hue instead of
-/// passing through a darker one. Alpha travels with the color, so keep your own opacity with
-/// [`Self::with_alpha`].
-/// [`Interpolation::Oklab`](crate::Interpolation) blends perceptually, for
-/// gradients.
+/// [`Animatable::lerp`] and springs blend in Oklab, premultiplied, unclamped, as CSS Color 4
+/// interpolates by default (§12): a dark-to-light change is even to the eye, and a fade to
+/// [`Self::TRANSPARENT`] keeps its hue instead of passing through a darker one. A blend of two
+/// in-gamut colors can leave the gamut a little, as red to white peaks 11 % over in red; the
+/// lowering keeps it as it keeps an overshoot. While it moves, a color's cone roots stop at
+/// white's, so an HDR color is capped at white until it lands (see `from_motion`). Alpha travels
+/// with the color, so keep your own opacity with [`Self::with_alpha`].
 #[must_use]
 pub struct RgbaF32 {
     /// Red, linear, nominally 0..1.
@@ -64,14 +66,15 @@ pub struct RgbaF32 {
     pub a: f32,
 }
 
-/// One 8-bit sRGB step is narrowest near black at `1 / 255 / 12.92 ≈ 3.0e-4` linear; `1/4096 ≈
-/// 2.4e-4` stays under it on every channel.
-const SETTLE_EPS: f32 = 1.0 / 4096.0;
+/// In motion space, a step of one 8-bit sRGB code in one channel is shortest at red 9 → 10 on
+/// full green and blue, `7.01e-5`, over all 50,135,040 such steps; `2^-14 ≈ 6.10e-5` stays under
+/// it.
+const SETTLE_EPS: f32 = 1.0 / 16384.0;
 
-/// Motion space is premultiplied, so a spring blends as a tween does; the arithmetic is per
-/// channel there, alpha one more channel.
+/// Motion space is Oklab premultiplied by alpha, an `RgbaF32` holding `(L·α, a·α, b·α, α)`, so a
+/// spring blends as a tween does; the arithmetic is per lane there, alpha one more lane.
 impl Animatable for RgbaF32 {
-    /// The ends are exact: `t` of 0 or 1 returns `a` or `b` with no premultiply round trip.
+    /// The ends are exact: `t` of 0 or 1 returns `a` or `b` with no round trip through Oklab.
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         if t == 0.0 {
@@ -80,9 +83,7 @@ impl Animatable for RgbaF32 {
         if t == 1.0 {
             return b;
         }
-        a.premultiplied()
-            .mix(b.premultiplied(), t)
-            .unpremultiplied()
+        Self::from_motion(a.to_motion().mix(b.to_motion(), t))
     }
 
     #[inline]
@@ -127,12 +128,25 @@ impl Animatable for RgbaF32 {
 
     #[inline]
     fn to_motion(self) -> Self {
-        self.premultiplied()
+        let lab = Oklab::from_color(self).scale(self.a);
+        Self::new(lab.l, lab.a, lab.b, self.a)
     }
 
+    /// Divided by alpha, or by the largest cone root when that is larger, so no recovered cone
+    /// root passes white's 1, the hue kept. Oklab's inverse cubes, so a division by an alpha near 0
+    /// would paint as `1/α²`: a tween that overshoots toward a nearly transparent color would
+    /// flash far past white. A tween within its ends between colors in gamut stays under the cap
+    /// but for rounding, as its roots are a weighted mean of theirs; an HDR color is capped at
+    /// white while it moves. With no alpha there is no color to recover, so the channels are zero.
     #[inline]
     fn from_motion(motion: Self) -> Self {
-        motion.unpremultiplied()
+        let Self { r, g, b, a } = motion;
+        if a <= 0.0 {
+            return Self::new(0.0, 0.0, 0.0, a);
+        }
+        let roots = Oklab { l: r, a: g, b }.cone_roots();
+        let cap = roots.iter().fold(a, |cap, root| cap.max(root.abs()));
+        oklab::cone_color(roots.map(|root| root / cap)).with_alpha(a)
     }
 }
 
@@ -240,17 +254,6 @@ impl RgbaF32 {
             g: self.g * self.a,
             b: self.b * self.a,
             a: self.a,
-        }
-    }
-
-    /// Straight alpha from premultiplied: the inverse of [`Self::premultiplied`]. With no alpha
-    /// there is no color to recover, so the channels are zero.
-    #[inline]
-    pub(crate) fn unpremultiplied(self) -> Self {
-        if self.a > 0.0 {
-            Self::new(self.r / self.a, self.g / self.a, self.b / self.a, self.a)
-        } else {
-            Self::new(0.0, 0.0, 0.0, self.a)
         }
     }
 

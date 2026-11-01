@@ -15,6 +15,8 @@ pub(crate) struct Oklab {
 
 impl Oklab {
     /// `color` in Oklab, ignoring alpha, as [`Hsv::from_color`](crate::Hsv::from_color) does.
+    /// `f32::cbrt` keeps the sign, so an out-of-gamut color with a negative cone response goes
+    /// there and back.
     #[inline]
     pub(crate) fn from_color(color: RgbaF32) -> Self {
         let RgbaF32 { r, g, b, .. } = color;
@@ -32,23 +34,25 @@ impl Oklab {
     }
 
     /// This color, opaque, the inverse of [`Self::from_color`], as [`Hsv::to_color`](crate::Hsv::to_color) is. The
-    /// intermediate cubes can go negative for an out-of-gamut color, and so can a channel;
-    /// interpolating between in-gamut colors stays in gamut.
+    /// intermediate cubes can go negative for an out-of-gamut color, and so can a channel. A
+    /// straight line between two in-gamut colors can leave the gamut: red to white peaks 11 %
+    /// over in red at `t = 0.55`.
     #[inline]
     pub(crate) fn to_color(self) -> RgbaF32 {
+        cone_color(self.cone_roots())
+    }
+
+    /// The cube roots of the cone responses, Ottosson's `l_`, `m_` and `s_`: each is 1 for white
+    /// and in `0..=1` for a color in gamut. Linear in the coordinates, so scaling them scales the
+    /// roots.
+    #[inline]
+    pub(crate) fn cone_roots(self) -> [f32; 3] {
         let Self { l, a, b } = self;
-        let l_ = l + 0.396_337_78 * a + 0.215_803_76 * b;
-        let m_ = l - 0.105_561_346 * a - 0.063_854_17 * b;
-        let s_ = l - 0.089_484_18 * a - 1.291_485_5 * b;
-        let l3 = l_ * l_ * l_;
-        let m3 = m_ * m_ * m_;
-        let s3 = s_ * s_ * s_;
-        RgbaF32::new(
-            4.076_741_7 * l3 - 3.307_711_6 * m3 + 0.230_969_94 * s3,
-            -1.268_438 * l3 + 2.609_757_4 * m3 - 0.341_319_4 * s3,
-            -0.004_196_086_4 * l3 - 0.703_418_6 * m3 + 1.707_614_7 * s3,
-            1.0,
-        )
+        [
+            l + 0.396_337_78 * a + 0.215_803_76 * b,
+            l - 0.105_561_346 * a - 0.063_854_17 * b,
+            l - 0.089_484_18 * a - 1.291_485_5 * b,
+        ]
     }
 
     /// Each coordinate times `k`.
@@ -60,24 +64,19 @@ impl Oklab {
             b: self.b * k,
         }
     }
+}
 
-    /// Each coordinate over `d`.
-    #[inline]
-    pub(crate) fn divide(self, d: f32) -> Self {
-        Self {
-            l: self.l / d,
-            a: self.a / d,
-            b: self.b / d,
-        }
-    }
-
-    /// From `self` toward `to` by `t`, coordinate by coordinate.
-    #[inline]
-    pub(crate) fn lerp(self, to: Self, t: f32) -> Self {
-        Self {
-            l: self.l + (to.l - self.l) * t,
-            a: self.a + (to.a - self.a) * t,
-            b: self.b + (to.b - self.b) * t,
-        }
-    }
+/// The opaque linear color whose cone responses have the cube roots `roots`, the second half of
+/// [`Oklab::to_color`].
+#[inline]
+pub(crate) fn cone_color([l_, m_, s_]: [f32; 3]) -> RgbaF32 {
+    let l3 = l_ * l_ * l_;
+    let m3 = m_ * m_ * m_;
+    let s3 = s_ * s_ * s_;
+    RgbaF32::new(
+        4.076_741_7 * l3 - 3.307_711_6 * m3 + 0.230_969_94 * s3,
+        -1.268_438 * l3 + 2.609_757_4 * m3 - 0.341_319_4 * s3,
+        -0.004_196_086_4 * l3 - 0.703_418_6 * m3 + 1.707_614_7 * s3,
+        1.0,
+    )
 }

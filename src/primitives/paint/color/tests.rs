@@ -213,53 +213,156 @@ fn color_parse_rejects_malformed_input() {
     assert_eq!(ParseColorError::Channel.to_string(), domain::COLOR_RULE);
 }
 
-/// Colors blend premultiplied: `a` premultiplies to `(0.5, 0, 0.25 | 0.5)` and the transparent `b`
-/// to zero, so a quarter of the way the blend is `(0.375, 0, 0.1875 | 0.375)`, which is `a`'s hue
-/// at alpha 0.375. A straight blend would have dimmed it to `(0.75, 0.25, 0.5)`. The ends are
-/// exact, and `t` is unclamped.
+/// Each lane of `got` within `tol` of `want`, which comes from a double-precision Oklab reference.
+#[track_caller]
+fn assert_color_close(got: RgbaF32, want: [f64; 4], tol: f64, why: &str) {
+    for (lane, (g, w)) in [got.r, got.g, got.b, got.a]
+        .into_iter()
+        .zip(want)
+        .enumerate()
+    {
+        domain::internals::assert_close(g, w, tol, &format!("{why}, lane {lane}"));
+    }
+}
+
+/// A trip through Oklab in `f32`: the cube root and the cube each round, and an in-range lane
+/// lands at most 2.7e-7 off, about 2 ulps of 1, by these cases.
+const OKLAB_TRIP: f64 = 5e-7;
+
+/// Colors blend in Oklab premultiplied by alpha, the references from a double-precision Oklab:
+///
+/// - `a` fading to the transparent `b`: `b` is zero in motion space, so at a quarter the blend is
+///   `a`'s coordinates at alpha 0.375, `a`'s own color. A straight blend would have dimmed it to
+///   `(0.75, 0.25, 0.5)`.
+/// - Black to white: a neutral's Oklab lightness is the cube root of its linear value, so the
+///   midpoint `L = 0.5` is linear `0.125`, half way to the eye; linear light would give `0.5`.
+/// - Red to green: the midpoint of their Oklab coordinates is linear `(0.6318, 0.3936, 0.0001)`.
+///   `t = 2` overshoots green by the same delta; its largest cone root, 1.1632, passes white's 1,
+///   so the cap scales the coordinates down to `(-1.4427, 1.9183, -0.0010)`.
+/// - Past transparent the alpha goes negative and no color is left to recover.
+///
+/// The ends are exact, and `t` is unclamped.
 #[test]
-fn lerp_blends_premultiplied_and_overshoots() {
+fn lerp_blends_in_premultiplied_oklab_and_overshoots() {
     let a = RgbaF32::new(1.0, 0.0, 0.5, 0.5);
     let b = RgbaF32::new(0.0, 1.0, 0.5, 0.0);
-
     assert_eq!(Animatable::lerp(a, b, 0.0), a);
     assert_eq!(Animatable::lerp(a, b, 1.0), b);
-    assert_eq!(
+    assert_color_close(
         Animatable::lerp(a, b, 0.25),
-        RgbaF32::new(1.0, 0.0, 0.5, 0.375)
+        [1.0, 0.0, 0.5, 0.375],
+        OKLAB_TRIP,
+        "a fade keeps its hue",
     );
-    assert_eq!(
+    assert_color_close(
         Animatable::lerp(a, b, 0.5),
-        RgbaF32::new(1.0, 0.0, 0.5, 0.25)
+        [1.0, 0.0, 0.5, 0.25],
+        OKLAB_TRIP,
+        "a fade keeps its hue",
     );
-    // Between two opaque colors the blend is the plain one: 0.5 of the way from red to green.
+
+    assert_color_close(
+        Animatable::lerp(RgbaF32::BLACK, RgbaF32::WHITE, 0.5),
+        [0.125, 0.125, 0.125, 1.0],
+        OKLAB_TRIP,
+        "the perceptual midpoint of a neutral",
+    );
+
     let (red, green) = (
         RgbaF32::new(1.0, 0.0, 0.0, 1.0),
         RgbaF32::new(0.0, 1.0, 0.0, 1.0),
     );
-    assert_eq!(
+    assert_color_close(
         Animatable::lerp(red, green, 0.5),
-        RgbaF32::new(0.5, 0.5, 0.0, 1.0)
+        [0.631_818_39, 0.393_603_26, 0.000_136_99, 1.0],
+        OKLAB_TRIP,
+        "red to green",
     );
-    // `t = 2` overshoots `green` by the same delta: r 1.0 → -1.0.
-    assert_eq!(Animatable::lerp(red, green, 2.0).r, -1.0);
-    // Past transparent the alpha goes negative and no color is left to recover.
+    assert_color_close(
+        Animatable::lerp(red, green, 2.0),
+        [-1.442_684_7, 1.918_345_5, -0.000_996_3, 1.0],
+        4.0 * OKLAB_TRIP,
+        "a capped overshoot, the trip's error scaled by the lanes' size",
+    );
     assert_eq!(
         Animatable::lerp(a, b, 2.0),
         RgbaF32::new(0.0, 0.0, 0.0, -0.5)
     );
 }
 
-/// Motion space is premultiplied: `to_motion` premultiplies, `from_motion` inverts it, and with
-/// no alpha no color is left to recover.
+/// A tween that overshoots toward a nearly transparent color stays bounded: opaque red to blue at
+/// alpha 0.05, past its end, divides by an alpha near 0, and Oklab's cube would paint `1/α²`, a
+/// blue of 50.6 at `t = 1.052`. The cap divides by the largest cone root instead, so the painted
+/// color, the straight one times alpha, stays under the end's own 0.05; the references come from a
+/// double-precision Oklab with the same cap. An HDR color is capped at white while it moves, its
+/// ends exact.
 #[test]
-fn motion_space_is_premultiplied() {
+fn an_overshoot_toward_a_nearly_transparent_color_stays_bounded() {
+    let (red, faint_blue) = (
+        RgbaF32::new(1.0, 0.0, 0.0, 1.0),
+        RgbaF32::new(0.0, 0.0, 1.0, 0.05),
+    );
+    for (t, painted) in [
+        (1.05, [-0.004_136_568, 0.000_574_980, 0.004_291_076]),
+        (1.052, [-0.001_445_063, 0.000_268_546, 0.001_034_874]),
+    ] {
+        let got = Animatable::lerp(red, faint_blue, t);
+        for (lane, (channel, want)) in [got.r, got.g, got.b].into_iter().zip(painted).enumerate() {
+            domain::internals::assert_close(
+                channel * got.a,
+                want,
+                1e-6,
+                &format!(
+                    "t = {t}, lane {lane}: the alpha near 0 is a difference of two lanes near 1, \
+                     so it carries their f32 rounding"
+                ),
+            );
+            assert!(
+                channel * got.a <= 0.05,
+                "t = {t}, lane {lane} under the end's blue"
+            );
+        }
+    }
+
+    let hdr = RgbaF32::new(2.0, 2.0, 2.0, 1.0);
+    assert_eq!(Animatable::lerp(hdr, hdr, 1.0), hdr);
+    assert_color_close(
+        Animatable::lerp(hdr, hdr, 0.5),
+        [1.000_000_065, 0.999_999_976, 0.999_999_734, 1.0],
+        OKLAB_TRIP,
+        "an HDR neutral capped at white",
+    );
+}
+
+/// Motion space is Oklab premultiplied: `(1, 0, 0.5)` is Oklab `(0.66695, 0.27391, -0.07463)`, so
+/// at alpha 0.5 it holds half of each. `from_motion` inverts it; with no alpha no color is left
+/// to recover. The cube root keeps its sign, so a color outside the gamut whose long and medium
+/// cone responses are negative, `(-0.5, 0, 0.1)`, goes there and back.
+#[test]
+fn motion_space_is_premultiplied_oklab() {
     let a = RgbaF32::new(1.0, 0.0, 0.5, 0.5);
-    assert_eq!(a.to_motion(), RgbaF32::new(0.5, 0.0, 0.25, 0.5));
-    assert_eq!(RgbaF32::from_motion(a.to_motion()), a);
+    assert_color_close(
+        a.to_motion(),
+        [0.333_475_15, 0.136_952_73, -0.037_314_33, 0.5],
+        OKLAB_TRIP,
+        "half of the Oklab coordinates",
+    );
+    assert_color_close(
+        RgbaF32::from_motion(a.to_motion()),
+        [1.0, 0.0, 0.5, 0.5],
+        OKLAB_TRIP,
+        "there and back",
+    );
     assert_eq!(
         RgbaF32::from_motion(RgbaF32::new(0.25, 0.5, 0.0, 0.0)),
         RgbaF32::new(0.0, 0.0, 0.0, 0.0)
+    );
+    let outside = RgbaF32::new(-0.5, 0.0, 0.1, 1.0);
+    assert_color_close(
+        RgbaF32::from_motion(outside.to_motion()),
+        [-0.5, 0.0, 0.1, 1.0],
+        OKLAB_TRIP,
+        "out of gamut there and back",
     );
 }
 

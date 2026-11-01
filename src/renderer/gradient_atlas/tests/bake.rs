@@ -6,7 +6,6 @@
     reason = "test fixtures cast non-negative sizes, coordinates, indices and color channels"
 )]
 
-use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::paint::brush::gradient::Interpolation;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -69,8 +68,13 @@ fn oklab_red_to_green_midpoint_avoids_muddy_brown() {
         Oklab::from_color(RgbaF32::new(1.0, 0.0, 0.0, 1.0)),
         Oklab::from_color(RgbaF32::new(0.0, 1.0, 0.0, 1.0)),
     );
+    let blended = Oklab {
+        l: from.l + (to.l - from.l) * t,
+        a: from.a + (to.a - from.a) * t,
+        b: from.b + (to.b - from.b) * t,
+    };
     let mid = texel(&out, 127);
-    assert_stored(mid, from.lerp(to, t).to_color(), "Oklab midpoint");
+    assert_stored(mid, blended.to_color(), "Oklab midpoint");
 }
 
 /// First and last texels hold the stops' stored colors (catches off-by-one in
@@ -122,7 +126,10 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
     /// The reference bracketing: restart at segment 1 and walk forward. Same
     /// arithmetic and order, so agreement is exact.
     fn restart_scan(stops: &GradientStops, t: f32) -> RgbaF32 {
-        let linear: Vec<RgbaF32> = stops.iter().map(|stop| stop.color()).collect();
+        let linear: Vec<RgbaF32> = stops
+            .iter()
+            .map(|stop| stop.color().premultiplied())
+            .collect();
         if t <= stops[0].offset() {
             return linear[0];
         }
@@ -139,11 +146,7 @@ fn cursor_scan_matches_restart_scan_across_eight_stops() {
         if domain::is_approx_zero(denominator) {
             return linear[upper];
         }
-        RgbaF32::lerp(
-            linear[upper - 1],
-            linear[upper],
-            (t - lower_offset) / denominator,
-        )
+        linear[upper - 1].mix(linear[upper], (t - lower_offset) / denominator)
     }
 
     let g = LinearGradient::new(

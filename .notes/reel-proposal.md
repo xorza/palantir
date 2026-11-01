@@ -46,7 +46,12 @@ itself, and the library features it needs. Facts and sources:
   even (CSS Color 4's default). The cube root keeps its sign, so an out-of-gamut value or an
   overshoot goes there and back; an OKLab midpoint can leave the sRGB gamut (red to white peaks
   at 11 % over in red), and the lowering keeps it as it keeps an overshoot today. The settle
-  tolerance is derived again in OKLab, under one 8-bit sRGB step at the darkest step. Refused:
+  tolerance is `2^-14`, under the shortest step one 8-bit code makes in OKLab (`7.01e-5`, red
+  9 → 10 on full green and blue); springs settle about 6 frames later at 60 Hz. While a color
+  moves, its recovered cone roots stop at white's 1, the hue kept: an overshoot toward a nearly
+  transparent color would otherwise paint `1/α²` (research, "Color interpolation"), and an HDR
+  color is capped at white until it lands. Refused: clipping each channel, which shifts the hue;
+  no bound. Refused:
   OKLab for the theme alone, two curves for one kind of motion; linear light, which reads bright
   too early; encoded sRGB (Flutter), less even than OKLab.
 - **A look follows a moving theme with no delay.** An `AnimationRequest` may carry a state key;
@@ -152,8 +157,9 @@ Library first, the reel last. Each step lands with its tests, `.notes/API_SURFAC
 where the public API moves, and its decisions folded into `AGENTS.md` or the doc comments of the
 code it governs.
 
-1. **OKLab motion space.** `RgbaF32`'s `to_motion`/`from_motion` in premultiplied OKLab with a
-   sign-keeping cube root; the settle tolerance derived again. Tests: exact ends; hand-computed
+1. **OKLab motion space** (landed; the decision lives on `RgbaF32` and its `SETTLE_EPS`).
+   `RgbaF32`'s `to_motion`/`from_motion` in premultiplied OKLab with a sign-keeping cube root;
+   the settle tolerance derived again. Tests: exact ends; hand-computed
    midpoints against the OKLab reference; a negative channel and an over-1 channel round-trip; a
    spring settling within one 8-bit step; goldens with fades re-baselined.
 2. **State-keyed offsets.** Duration rows store an offset from the target; `AnimationRequest`

@@ -9,7 +9,7 @@ use syn::{Data, DataStruct, DeriveInput, Expr, Field, Fields, Ident, Type, parse
 /// `#[derive(Animatable)]` on a struct with named fields.
 /// `#[animate(snap)]` on a field: `lerp` returns the target's value, spring math
 /// skips it and `magnitude` excludes it. `to_motion` and `from_motion` forward to each animated
-/// field, so a struct of colors springs premultiplied as its colors do.
+/// field, so a struct of colors springs in premultiplied Oklab as its colors do.
 ///
 /// Struct attribute `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own
 /// unit (`settle_distance_squared` = `magnitude_squared / EXPR²`); without it, the animated

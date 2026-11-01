@@ -198,14 +198,15 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
             .show(ui);
         last = Some(cur);
     });
-    // Text color moves black → white, √3 in linear RGB; frame `n` after the retarget is step `n`.
+    // Text color moves black → white, Oklab lightness 0 → 1 with `a` and `b` under 4e-8; frame `n`
+    // after the retarget is step `n`.
     let release = Release {
         spring: Spring::DEFAULT,
-        distance: 3.0f64.sqrt(),
-        eps: 1.0 / 4096.0,
+        distance: 1.0,
+        eps: 1.0 / 16384.0,
     };
     let step = release.settle_step(|_| 0.016);
-    assert_eq!(step, 56);
+    assert_eq!(step, 60);
     assert_eq!(frames, step, "the look's color spring settles");
     assert_eq!(last, Some(target.clone()));
 

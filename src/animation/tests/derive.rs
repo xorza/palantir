@@ -130,13 +130,13 @@ fn derived_methods_split_animated_from_snapped_fields() {
     );
 }
 
-/// The settle distance, compared against `1.0` by spring and duration snap. A struct naming a tolerance divides its magnitude by it: `(3² + 4²) / 0.5² = 100`. Otherwise it sums its fields' in their own units: a red channel of `1/4096` is one `RgbaF32` tolerance (`2^-24 / 2^-24 = 1`), so 100 + 1 = 101; at the `f32` tolerance it would weigh `(2.44e-4 / 1e-4)² ≈ 5.96`. Snap fields weigh nothing.
+/// The settle distance, compared against `1.0` by spring and duration snap. A struct naming a tolerance divides its magnitude by it: `(3² + 4²) / 0.5² = 100`. Otherwise it sums its fields' in their own units: a lane of `2^-14` is one `RgbaF32` tolerance (`2^-28 / 2^-28 = 1`), so 100 + 1 = 101; at the `f32` tolerance it would weigh `(6.10e-5 / 1e-4)² ≈ 0.373`. Snap fields weigh nothing.
 #[test]
 fn derived_settle_distance_measures_each_field_in_its_own_unit() {
     let scaled = Scaled { a: 3.0, b: 4.0 };
     assert_eq!(scaled.settle_distance_squared(), 100.0);
     let mixed = Mixed {
-        color: RgbaF32::new(1.0 / 4096.0, 0.0, 0.0, 0.0),
+        color: RgbaF32::new(1.0 / 16384.0, 0.0, 0.0, 0.0),
         scaled,
         label: 7,
     };
