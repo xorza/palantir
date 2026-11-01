@@ -1,15 +1,14 @@
 //! What a `GpuPaint` gets on every painted frame.
 
+use crate::gpu::device::gpu::Gpu;
 use glam::UVec2;
 use std::fmt;
 use std::time::Duration;
 
 /// Handed to [`GpuPaint::paint`](crate::renderer::gpu_paint::GpuPaint::paint) each painted frame.
 pub struct GpuFrameCtx<'a> {
-    /// The device.
-    pub device: &'a wgpu::Device,
-    /// The queue.
-    pub queue: &'a wgpu::Queue,
+    /// The device and queue, through [`Gpu::device`] and [`Gpu::queue`].
+    pub gpu: &'a Gpu,
     /// Palantir's main command encoder: record your render pass(es) here.
     pub encoder: &'a mut wgpu::CommandEncoder,
     /// The off-screen color target. Render into its top-left [`Self::physical_size`], with the viewport set to that: while a scroll or the window clips the view, the texture is a size bucket larger than what it shows, so a scroll does not reallocate it each frame, and the composite reads only that corner. Size other attachments of the pass to the texture, `target.texture().size()`, as wgpu requires.

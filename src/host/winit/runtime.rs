@@ -184,7 +184,8 @@ impl<T: App + 'static> WinitRuntime<T> {
     ///
     /// # Errors
     ///
-    /// No new device opened in [`RecoveryBackoff`]'s window, or the window's new surface failed.
+    /// No device opened and held in [`RecoveryBackoff`]'s window, or the window's new surface
+    /// failed.
     pub(super) fn draw(&mut self, slot: WindowSlot) -> Result<(), WinitHostError> {
         if self.core.gpu().is_lost() {
             self.recover()?;
@@ -215,17 +216,20 @@ impl<T: App + 'static> WinitRuntime<T> {
         if self.recovery.wait_left(now).is_some() {
             return Ok(());
         }
-        match self.attach_new_device() {
+        let failure = match self.attach_new_device() {
             Ok(()) if !self.core.gpu().is_lost() => {
                 tracing::info!("graphics device lost: a new one is attached");
                 self.recovery.succeeded();
                 self.repaint_all();
                 return Ok(());
             }
-            Ok(()) => tracing::warn!("graphics device lost again as it was attached"),
-            Err(error) if self.recovery.exhausted(now) => return Err(error),
-            Err(error) => tracing::warn!(%error, "no new graphics device yet"),
+            Ok(()) => WinitHostError::DeviceKeptLost,
+            Err(error) => error,
+        };
+        if self.recovery.exhausted(now) {
+            return Err(failure);
         }
+        tracing::warn!(%failure, "no new graphics device holds yet");
         self.recovery.failed(now);
         Ok(())
     }

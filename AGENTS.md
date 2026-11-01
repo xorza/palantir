@@ -76,6 +76,14 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 - **No poll on the frame path**: each submit runs the callbacks. Refused: a loop of empty
   submits, which never ends on a destroyed device; `catch_unwind`, useless under
   `panic = "abort"`. Cost: a loss in a blocking wait ends the process, as in Zed.
+- **A failed recovery retries**, 100 ms doubling to 1 s, for 5 s, the `TdrDdiDelay` a Windows
+  reset gets; meanwhile frames run the app and paint nothing. Refused: one attempt, which a reset
+  still under way fails.
+- **Each recovery opens a new instance**: DX12 enumerates adapters from the factory its instance
+  made, which a driver update leaves stale.
+- **A call a loss can break is guarded in `gpu`**: `Gpu::create_filled_buffer` writes only if the
+  range maps, and a swapchain counts as built only if the device is healthy after its configure.
+  Refused: `create_buffer_init`, which panics on a lost device.
 - **The texture limit is shared state**, as the new adapter's can be smaller. Refused: asking for
   the old limits, which fails a recovery onto a smaller GPU.
 - **Every window gets a new surface.** Refused: the old surface on the new device, which

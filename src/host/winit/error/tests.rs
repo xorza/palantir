@@ -54,6 +54,13 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
         Some(GpuRequestError::NoBackend.to_string()),
     );
 
+    let kept_lost = WinitHostError::DeviceKeptLost;
+    assert_eq!(
+        kept_lost.to_string(),
+        "graphics device lost, and every device attached in its place was lost again",
+    );
+    assert!(kept_lost.source().is_none());
+
     let surface = WinitHostError::Surface {
         token: WindowToken(7),
         source: SurfaceError::MissingSrgb,

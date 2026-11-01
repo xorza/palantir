@@ -6,13 +6,13 @@ use std::time::{Duration, Instant};
 const RETRY_MIN: Duration = Duration::from_millis(100);
 
 /// Ceiling for the doubling wait, so a GPU back from a reset is picked up within it.
-const RETRY_MAX: Duration = Duration::from_secs(2);
+const RETRY_MAX: Duration = Duration::from_secs(1);
 
-/// How long attempts that fail with an error run before the host gives up. Windows resets a GPU
-/// job that runs past `TdrDelay` (2 s) and gives the driver `TdrDdiDelay` (5 s) to leave it
-/// (<https://learn.microsoft.com/windows-hardware/drivers/display/tdr-registry-keys>); the window
-/// sits far above one reset, so a storm of them does not end the app.
-const GIVE_UP_AFTER: Duration = Duration::from_secs(30);
+/// How long attempts run before the host gives up: a Windows reset is done within it, as the
+/// driver gets `TdrDdiDelay` (5 s) to leave the hung job
+/// (<https://learn.microsoft.com/windows-hardware/drivers/display/tdr-registry-keys>); what still
+/// fails after it does not come back by waiting.
+const GIVE_UP_AFTER: Duration = Duration::from_secs(5);
 
 /// The failed attempts of the recovery under way, if one failed; healthy while `None`.
 #[derive(Debug, Default)]
@@ -47,9 +47,8 @@ impl RecoveryBackoff {
         });
     }
 
-    /// Whether attempts have failed for [`GIVE_UP_AFTER`] since the first, so the next error ends
-    /// the host. A device lost again as it was attached never ends it: the UI state stays, and
-    /// there is no error to report.
+    /// Whether attempts have failed for [`GIVE_UP_AFTER`] since the first, so the next failure
+    /// ends the host.
     pub(super) fn exhausted(&self, now: Instant) -> bool {
         self.failing
             .is_some_and(|failing| now.duration_since(failing.since) >= GIVE_UP_AFTER)
@@ -66,8 +65,8 @@ mod tests {
     use crate::host::winit::recovery_backoff::{GIVE_UP_AFTER, RETRY_MIN, RecoveryBackoff};
     use std::time::{Duration, Instant};
 
-    /// The wait doubles from 100 ms and holds at 2 s: 100, 200, 400, 800, 1600, 2000, 2000 ms.
-    /// An attempt waits it out; the host gives up only once 30 s passed since the first failure,
+    /// The wait doubles from 100 ms and holds at 1 s: 100, 200, 400, 800, 1000, 1000, 1000 ms.
+    /// An attempt waits it out; the host gives up only once 5 s passed since the first failure,
     /// and a success starts over.
     #[test]
     fn a_failing_recovery_waits_longer_each_time_and_gives_up_after_its_window() {
@@ -86,7 +85,7 @@ mod tests {
             waits.push(wait.as_millis());
             now += wait;
         }
-        assert_eq!(waits, [100, 200, 400, 800, 1600, 2000, 2000]);
+        assert_eq!(waits, [100, 200, 400, 800, 1000, 1000, 1000]);
 
         assert!(!backoff.exhausted(t0 + GIVE_UP_AFTER - Duration::from_millis(1)));
         assert!(backoff.exhausted(t0 + GIVE_UP_AFTER));

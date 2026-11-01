@@ -63,7 +63,7 @@ const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 impl GpuPaint for DepthTriangle {
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
-        let device = ctx.device;
+        let device = ctx.gpu.device();
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("visual.gpu_view.tri.shader"),
             source: wgpu::ShaderSource::Wgsl(TRI_SHADER.into()),
@@ -115,7 +115,7 @@ impl GpuPaint for DepthTriangle {
         // Depth matches the target texture, which can be larger than `physical_size`, like the cube.
         let target_size = ctx.target.texture().size();
         if self.depth.as_ref().map(|(_, size)| *size) != Some(target_size) {
-            let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+            let texture = ctx.gpu.device().create_texture(&wgpu::TextureDescriptor {
                 label: Some("visual.gpu_view.tri.depth"),
                 size: target_size,
                 mip_level_count: 1,

@@ -81,7 +81,7 @@ impl GpuViewTargets {
                 tracy::zone!("GpuView::init");
                 debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.init");
                 paint.init(&GpuInitCtx {
-                    device: &ctx.gpu.device,
+                    gpu: ctx.gpu,
                     target_format: TARGET_FORMAT,
                     text,
                 });
@@ -94,8 +94,7 @@ impl GpuViewTargets {
             tracy::zone!("GpuView::paint");
             debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
-                device: &ctx.gpu.device,
-                queue: &ctx.gpu.queue,
+                gpu: ctx.gpu,
                 encoder: ctx.encoder,
                 target: &target.view,
                 physical_size: draw.used,

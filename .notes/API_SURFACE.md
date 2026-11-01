@@ -867,8 +867,7 @@ Gpu
 
 GpuFrameCtx
     struct GpuFrameCtx<'a>: Debug
-        pub device: &'a Device
-        pub queue: &'a Queue
+        pub gpu: &'a Gpu
         pub encoder: &'a mut CommandEncoder
         pub target: &'a TextureView
         pub physical_size: UVec2
@@ -880,7 +879,7 @@ GpuFrameCtx
 
 GpuInitCtx
     struct GpuInitCtx<'a>: Debug
-        pub device: &'a Device
+        pub gpu: &'a Gpu
         pub target_format: TextureFormat
         pub text: &'a TextShaper
 
@@ -2788,6 +2787,7 @@ WinitHostError  [features: winit]
         CreateWindow { token: WindowToken, source: OsError }
         Gpu { source: GpuRequestError }
         DeviceLost { source: GpuRequestError }
+        DeviceKeptLost
         Surface { token: WindowToken, source: SurfaceError }
 
 ZoomConfig

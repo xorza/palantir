@@ -63,13 +63,13 @@ struct ClearView {
 impl GpuPaint for ClearView {
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         self.inits += 1;
-        self.device = Some(ctx.device.clone());
+        self.device = Some(ctx.gpu.device().clone());
     }
 
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
         assert_eq!(
             self.device.as_ref(),
-            Some(ctx.device),
+            Some(ctx.gpu.device()),
             "a view paints on the device its init ran on"
         );
         ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {

@@ -118,7 +118,7 @@ impl Cube {
 
 impl GpuPaint for Cube {
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
-        let device = ctx.device;
+        let device = ctx.gpu.device();
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("showcase.cube.shader"),
             source: wgpu::ShaderSource::Wgsl(SHADER.into()),
@@ -245,7 +245,7 @@ impl GpuPaint for Cube {
         let target_size = ctx.target.texture().size();
         let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(target_size);
         if need_depth {
-            let texture = ctx.device.create_texture(&wgpu::TextureDescriptor {
+            let texture = ctx.gpu.device().create_texture(&wgpu::TextureDescriptor {
                 label: Some("showcase.cube.depth"),
                 size: target_size,
                 mip_level_count: 1,
@@ -260,7 +260,8 @@ impl GpuPaint for Cube {
         }
         let depth_view = &gpu.depth.as_ref().expect("depth just ensured").0;
 
-        ctx.queue
+        ctx.gpu
+            .queue()
             .write_buffer(&gpu.uniform, 0, bytemuck::cast_slice(&mvp.to_cols_array()));
 
         let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
