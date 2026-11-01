@@ -96,20 +96,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
 an item deletes it.
 
-### Batch 3: keyboard activation claims only its keys
-
-Files: `src/widget_core/widget/mod.rs`, `src/input/key_class.rs`, `src/input_state/mod.rs`,
-`src/widgets/toggle_row/{mod.rs,tests.rs}`.
-
-- [ ] **BUG** `widget/mod.rs:198-202`: `activation_response` folds `KeyFilter::TEXT` into the
-  scope, documented as "bare Space and Enter", but `KeyClass::Text` is all printable characters
-  and bare Enter. A focused Button, Checkbox, Switch, RadioButton, MenuItem, Expander header,
-  ComboBox, ColorButton or ColorSwatch takes every letter key and bare Enter from its ancestors,
-  so single-letter app shortcuts stop after a click, and `ToggleRow` claims Enter against "a
-  toggle takes Space alone". Target: an activation grant that claims only its chords (Space, plus
-  Enter where the activation takes it), not the class. Test: a focused button and a focused
-  checkbox, with an ancestor reading a letter and Enter.
-
 ### Batch 4: layout and damage correctness
 
 Files: `src/cascade/engine.rs`, `src/damage/plane_walk.rs`, `src/layout/drivers/scrollbars/`,

@@ -1,30 +1,31 @@
 //! Declaring a bit-flag set: the macro, and the operations one gets.
 
-/// Declare a `u8` flag set with exactly the operations this crate asks of one.
+/// Declare a flag set over the unsigned integer it names with exactly the operations this crate
+/// asks of one.
 ///
-/// Every set gets `NONE`, `ALL`, its named flags, the set operations and `|`. `struct Name: packed` also gets crate-private `bits` and `from_bits_truncate`; the bit layout is never public.
+/// Every set gets `NONE`, `ALL`, its named flags, the set operations and `|`. `struct Name: u8, packed` also gets crate-private `bits` and `from_bits_truncate`; the bit layout is never public.
 ///
 /// Replaces `bitflags`, whose public `from_bits_retain`, `iter` and `Flags` impl leaked its types into palantir's surface. Every value is a union of declared bits by construction.
 ///
 /// The one crate-wide macro: `#[macro_use]` in `lib.rs` carries it, so its declaration must precede the modules that use it.
 macro_rules! flag_set {
-    (@packed $name:ident, packed) => {
+    (@packed $name:ident, $repr:ty, packed) => {
         impl $name {
             #[inline]
-            pub(crate) const fn bits(self) -> u8 {
+            pub(crate) const fn bits(self) -> $repr {
                 self.0
             }
 
             /// Rebuild from packed bits, dropping any that name no flag (a word unpacked from a node's flag field carries neighboring fields).
             #[inline]
-            pub(crate) const fn from_bits_truncate(bits: u8) -> Self {
+            pub(crate) const fn from_bits_truncate(bits: $repr) -> Self {
                 Self(bits & Self::ALL.0)
             }
         }
     };
     (
         $(#[$meta:meta])*
-        $vis:vis struct $name:ident $(: $packed:ident)? {
+        $vis:vis struct $name:ident: $repr:ty $(, $packed:ident)? {
             $(
                 $(#[$flag_meta:meta])*
                 const $flag:ident = $bit:expr;
@@ -35,7 +36,7 @@ macro_rules! flag_set {
         #[must_use]
         #[repr(transparent)]
         #[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
-        $vis struct $name(u8);
+        $vis struct $name($repr);
 
         impl $name {
             $(
@@ -102,7 +103,7 @@ macro_rules! flag_set {
             }
         }
 
-        $(flag_set!(@packed $name, $packed);)?
+        $(flag_set!(@packed $name, $repr, $packed);)?
 
         impl std::ops::BitOr for $name {
             type Output = Self;
@@ -139,7 +140,7 @@ macro_rules! flag_set {
 mod tests {
     flag_set! {
         /// Bit 2 is skipped on purpose: the truncation test needs a gap inside the declared range.
-        struct Fixture: packed {
+        struct Fixture: u8, packed {
             const A = 1 << 0;
             const B = 1 << 1;
             const C = 1 << 3;

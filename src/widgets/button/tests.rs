@@ -43,12 +43,14 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
     assert_eq!(inherited.margin, Spacing::all(4.0));
 }
 
-/// A Button is a Tab stop a click focuses; a focused one is clicked by Space and Enter once per press via `clicked()`, while an unfocused or disabled one takes neither.
+/// A Button is a Tab stop a click focuses; a focused one is clicked by Space and Enter once per press via `clicked()`, while an unfocused or disabled one takes neither. It takes no other key from the app's scope around it: a letter reaches the app, and Enter does not.
 #[test]
 fn space_and_enter_click_a_focused_button() {
+    use crate::input::key_class::KeyFilter;
     use crate::input::keyboard::key::Key;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::ui::Ui;
+    use crate::widgets::panel::Panel;
 
     let id = WidgetId::from_hash("button");
     let record = |disabled: bool| {
@@ -81,6 +83,35 @@ fn space_and_enter_click_a_focused_button() {
             "{key:?}: one click per press"
         );
     }
+    // The button takes Space and Enter alone from the app's scope around it: a letter reaches
+    // the app, Enter does not.
+    let with_app = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("app"))
+            .input_scope(KeyFilter::ALL)
+            .show(ui, |ui| {
+                let clicked = record(false)(ui);
+                [
+                    clicked,
+                    ui.key_pressed(Key::Char('f')),
+                    ui.key_pressed(Key::Enter),
+                ]
+            })
+            .inner
+    };
+    let _ = h.frame_value(with_app);
+    h.key(Key::Char('f'));
+    assert_eq!(
+        h.frame_value(with_app),
+        [false, true, false],
+        "f reaches the app"
+    );
+    h.key(Key::Enter);
+    assert_eq!(
+        h.frame_value(with_app),
+        [true, false, false],
+        "Enter clicks the button, and the app gets none"
+    );
     h.key(Key::Enter);
     assert!(
         !h.frame_value(record(true)),

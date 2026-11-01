@@ -9,8 +9,13 @@ use crate::input::keyboard::key_press::KeyPress;
 /// What kind of key press this is. Exactly one class per press.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum KeyClass {
-    /// Printable characters and bare Enter.
+    /// Printable characters other than a space.
     Text,
+    /// Space under no command modifier: what a focused button or toggle acts on, and a field
+    /// types.
+    Space,
+    /// Enter under no command modifier: what a focused button, a field's commit or a form acts on.
+    Enter,
     /// Ctrl+Z/X/C/V/A, Delete, Backspace.
     Edit,
     /// Arrows, Home and End, under any modifiers.
@@ -51,6 +56,12 @@ impl KeyClass {
     ///
     /// Exhaustive over [`Key`] so a new variant must pick a class.
     pub fn of(press: KeyPress) -> Self {
+        // Ahead of typed text, which they carry too, so a widget can take them alone.
+        match press.key {
+            Key::Char(' ') if !press.mods.has_command() => return Self::Space,
+            Key::Enter if !press.mods.has_command() => return Self::Enter,
+            _ => {}
+        }
         // Typed text wins whatever the key is called; whether modifiers
         // compose text is the platform's rule (`KeyPress::types_text`).
         if press.types_text() {
@@ -69,7 +80,7 @@ impl KeyClass {
             Key::Tab => Self::Focus,
             Key::Backspace | Key::Delete => Self::Edit,
             // A command modifier turns a typed key into a chord; Shift does not.
-            Key::Char(_) | Key::Enter if !press.mods.has_command() => Self::Text,
+            Key::Char(_) if !press.mods.has_command() => Self::Text,
             Key::Char(_) if is_edit_chord(press) => Self::Edit,
             Key::Char(_) | Key::Enter => Self::Accel,
             Key::F1
@@ -93,7 +104,7 @@ flag_set! {
     /// The key classes a scope takes while it is on the active path.
     ///
     /// A press goes to the deepest scope whose filter contains its class.
-    pub struct KeyFilter: packed {
+    pub struct KeyFilter: u16, packed {
         /// Takes [`KeyClass::Text`].
         const TEXT   = 1 << 0;
         /// Takes [`KeyClass::Edit`].
@@ -110,6 +121,10 @@ flag_set! {
         const ESCAPE = 1 << 6;
         /// Takes [`KeyClass::Accel`].
         const ACCEL  = 1 << 7;
+        /// Takes [`KeyClass::Space`].
+        const SPACE  = 1 << 8;
+        /// Takes [`KeyClass::Enter`].
+        const ENTER  = 1 << 9;
     }
 }
 
@@ -120,6 +135,8 @@ impl KeyFilter {
     /// `PAGE`, `FOCUS` and `CYCLE` are absent because a field acts on none
     /// of them.
     pub const TEXT_FIELD: Self = Self::TEXT
+        .union(Self::SPACE)
+        .union(Self::ENTER)
         .union(Self::EDIT)
         .union(Self::CARET)
         .union(Self::ESCAPE);
@@ -129,6 +146,8 @@ impl KeyFilter {
     pub const fn takes(self, class: KeyClass) -> bool {
         self.contains(match class {
             KeyClass::Text => Self::TEXT,
+            KeyClass::Space => Self::SPACE,
+            KeyClass::Enter => Self::ENTER,
             KeyClass::Edit => Self::EDIT,
             KeyClass::Caret => Self::CARET,
             KeyClass::Page => Self::PAGE,
@@ -186,6 +205,39 @@ mod tests {
         assert!(!field.takes_press(save));
         let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
         assert!(field.takes_press(shifted));
+    }
+
+    /// Space and Enter are classes of their own under no command modifier, which a field takes
+    /// beside text and a button's scope takes without it; under one they are chords.
+    #[test]
+    fn space_and_enter_split_from_text() {
+        let none = Modifiers::NONE;
+        let cases = [
+            (Key::Char(' '), none, KeyClass::Space),
+            (Key::Char(' '), Modifiers::SHIFT, KeyClass::Space),
+            (Key::Char(' '), Modifiers::CTRL, KeyClass::Accel),
+            (Key::Enter, none, KeyClass::Enter),
+            (Key::Enter, Modifiers::SHIFT, KeyClass::Enter),
+            (Key::Enter, Modifiers::CTRL, KeyClass::Accel),
+            (Key::Char('f'), none, KeyClass::Text),
+        ];
+        let button = KeyFilter::SPACE.union(KeyFilter::ENTER);
+        for (key, mods, class) in cases {
+            let press = KeyPress::with(key, mods);
+            assert_eq!(KeyClass::of(press), class, "{key:?} under {mods:?}");
+            let typed = matches!(class, KeyClass::Text | KeyClass::Space | KeyClass::Enter);
+            assert_eq!(
+                KeyFilter::TEXT_FIELD.takes_press(press),
+                typed,
+                "{key:?} under {mods:?}"
+            );
+            assert_eq!(
+                button.takes_press(press),
+                matches!(class, KeyClass::Space | KeyClass::Enter),
+                "{key:?} under {mods:?}"
+            );
+            assert_eq!(KeyFilter::TEXT.takes_press(press), class == KeyClass::Text);
+        }
     }
 
     /// Navigation class per key, and whether a text field takes it.

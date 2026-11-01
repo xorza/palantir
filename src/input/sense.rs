@@ -5,7 +5,7 @@ flag_set! {
     /// Which pointer interactions a widget participates in. `NONE` is
     /// skipped by hit-testing, so input passes through to what is beneath.
     /// `CLICK` and `DRAG` imply hover (see `Sense::hovers`).
-    pub struct Sense: packed {
+    pub struct Sense: u8, packed {
         /// Visible to the hover hit-test; implied by `CLICK` and `DRAG`.
         const HOVER  = 1 << 0;
         /// Captures press and release.

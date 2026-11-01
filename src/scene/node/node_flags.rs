@@ -18,11 +18,11 @@ impl NodeFlags {
     const CLIP_MASK: u32 = 0b11 << Self::CLIP_SHIFT;
     const FOCUSABLE: u32 = 1 << 9;
     const SCOPE_SHIFT: u32 = 10;
-    const SCOPE_MASK: u32 = 0xff << Self::SCOPE_SHIFT;
+    const SCOPE_MASK: u32 = 0x3ff << Self::SCOPE_SHIFT;
     /// Set when the node is *not* a Tab stop, so the zero default is one.
-    const NOT_TAB_STOP: u32 = 1 << 18;
+    const NOT_TAB_STOP: u32 = 1 << 20;
     /// The axis whose arrows move focus between stops inside the node: `0` none, `1 + Axis`.
-    const ARROW_SHIFT: u32 = 19;
+    const ARROW_SHIFT: u32 = 21;
     const ARROW_MASK: u32 = 0b11 << Self::ARROW_SHIFT;
     pub(crate) const WIDTH: u32 = (Self::SENSE_MASK
         | Self::DISABLED
@@ -72,7 +72,7 @@ impl NodeFlags {
     /// The key classes this node's input scope takes; [`KeyFilter::NONE`] doubles as "not a scope", saving a presence flag.
     #[inline]
     pub(crate) const fn key_filter(self) -> KeyFilter {
-        KeyFilter::from_bits_truncate(((self.bits & Self::SCOPE_MASK) >> Self::SCOPE_SHIFT) as u8)
+        KeyFilter::from_bits_truncate(((self.bits & Self::SCOPE_MASK) >> Self::SCOPE_SHIFT) as u16)
     }
 
     #[inline]
@@ -136,5 +136,5 @@ const _: () = assert!(
 );
 const _: () = assert!(
     ((KeyFilter::ALL.bits() as u32) << NodeFlags::SCOPE_SHIFT) <= NodeFlags::SCOPE_MASK,
-    "KeyFilter uses more than 8 bits",
+    "KeyFilter uses more than 10 bits",
 );

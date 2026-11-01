@@ -277,7 +277,8 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
   dither. Refused: `Chrome::with_frost` and a `Chrome` setter per `BackdropFilter` constructor
   ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).
 - **Activation.** Space and Enter fold into one left click; a toggle takes Space alone, as
-  WAI-ARIA leaves Enter to the form.
+  WAI-ARIA leaves Enter to the form. Each is a `KeyClass` of its own, so a focused widget's scope
+  takes those keys and no letter, as a Qt or GTK button accepts only the keys it acts on.
 - **A wrapper finishes the widget it wraps through its public setters**, never a hook only the
   wrapper calls.
 - **State between frames** lives in the state map under the widget's id, driven from outside by

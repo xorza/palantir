@@ -194,11 +194,17 @@ impl Widget {
     }
 
     /// [`Self::response`] with `activation`'s keys on a focused widget folded in as one left
-    /// click, so `clicked()` reads the same from the pointer and the keyboard. Folds
-    /// [`KeyFilter::TEXT`], the class of bare Space and Enter, into the
-    /// [`input_scope`](Configure::input_scope), so an enclosing scope cannot take them.
+    /// click, so `clicked()` reads the same from the pointer and the keyboard. Folds the classes
+    /// of those keys alone, [`KeyFilter::SPACE`] and for a button [`KeyFilter::ENTER`], into the
+    /// [`input_scope`](Configure::input_scope), so an enclosing scope cannot take them while
+    /// every other key, a letter shortcut, reaches it, as a Qt or GTK button accepts only the keys
+    /// it acts on.
     pub fn activation_response(&mut self, ui: &mut Ui, activation: Activation) -> ResponseSnapshot {
-        let scope = self.authored_input_scope().union(KeyFilter::TEXT);
+        let keys = match activation {
+            Activation::Button => KeyFilter::SPACE.union(KeyFilter::ENTER),
+            Activation::Toggle => KeyFilter::SPACE,
+        };
+        let scope = self.authored_input_scope().union(keys);
         self.configure().input_scope(scope);
         let mut response = self.response(ui);
         if !response.disabled && ui.is_focus_within(response.id) {

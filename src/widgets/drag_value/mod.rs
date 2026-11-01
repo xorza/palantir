@@ -80,9 +80,11 @@ impl<'a> DragValue<'a> {
     #[track_caller]
     pub fn new(value: impl Into<DragNum<'a>>) -> Self {
         Self {
-            widget: Widget::leaf()
-                .focusable(true)
-                .input_scope(KeyFilter::TEXT.union(KeyFilter::CARET)),
+            widget: Widget::leaf().focusable(true).input_scope(
+                KeyFilter::TEXT
+                    .union(KeyFilter::ENTER)
+                    .union(KeyFilter::CARET),
+            ),
             value: value.into(),
             speed: 1.0,
             min: f64::NEG_INFINITY,
@@ -368,13 +370,12 @@ impl Configure for DragValue<'_> {
     }
 }
 
-/// Whether a character was typed into the focused chip this frame; Space is excluded, as a spin button doesn't type it.
+/// Whether a character was typed into the focused chip this frame; a space is its own class, as
+/// a spin button doesn't type it.
 fn typed(ui: &Ui) -> bool {
-    ui.keyboard_events().iter().any(|press| {
-        KeyClass::of(*press) == KeyClass::Text
-            && !press.text.is_empty()
-            && press.text.as_str() != " "
-    })
+    ui.keyboard_events()
+        .iter()
+        .any(|press| KeyClass::of(*press) == KeyClass::Text && !press.text.is_empty())
 }
 
 /// An interned suffix's characters copied out of the arena for formatting; retained, so a steady suffix allocates once.

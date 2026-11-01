@@ -8,7 +8,7 @@ flag_set! {
     /// graphics-API type. `ALL` is the whole requirement.
     ///
     /// `Display` writes the graphics API's names, joined by `, `.
-    pub struct SurfaceUsages {
+    pub struct SurfaceUsages: u8 {
         /// The compositor renders into the surface texture.
         const RENDER_ATTACHMENT = 1 << 0;
     }

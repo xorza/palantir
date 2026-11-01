@@ -8,7 +8,7 @@ flag_set! {
     /// without a graphics-API type. `ALL` is the whole requirement.
     ///
     /// `Display` writes the graphics API's names, joined by `, `.
-    pub struct DeviceFeatures {
+    pub struct DeviceFeatures: u8 {
         /// Immediate data: the viewport rides in it.
         const IMMEDIATES = 1 << 0;
     }

@@ -6,7 +6,7 @@
 
 flag_set! {
     /// Wake-gate categories, granular so a click watcher doesn't wake on every move.
-    pub struct PointerWake {
+    pub struct PointerWake: u8 {
         /// Wakes on [`PointerEvent::Down`](crate::PointerEvent::Down) and [`PointerEvent::Up`](crate::PointerEvent::Up).
         const BUTTONS = 1 << 0;
         /// Wakes on [`PointerEvent::Move`](crate::PointerEvent::Move); expensive in event count.
@@ -20,7 +20,7 @@ flag_set! {
 
 flag_set! {
     /// Keyboard wake-gate categories for **off-focus** consumers; a focused widget always wakes on `KeyDown`.
-    pub struct KeyboardWake {
+    pub struct KeyboardWake: u8 {
         /// Wakes on any [`KeyPress`](crate::input::keyboard::key_press::KeyPress) regardless of focus.
         const KEY = 1 << 0;
         /// Wakes on `ModifiersChanged`.

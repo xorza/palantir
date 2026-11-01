@@ -150,6 +150,8 @@ impl<T: 'static> Remote<T> {
         &self,
         f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static,
     ) -> Result<R, PlayError> {
+        // Before sending, so a held thread gives up at once and the query never runs.
+        self.check_waiting(Instant::now(), Answer::BetweenFrames)?;
         let (reply, answer) = mpsc::sync_channel(1);
         let given_up = Arc::new(AtomicBool::new(false));
         let skip = Arc::clone(&given_up);
@@ -216,6 +218,7 @@ impl<T: 'static> Remote<T> {
     /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::Disconnected`]
     /// when the window closed, and [`PlayError::NoFrame`] when no picture landed in 30 s.
     pub fn shot(&self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
+        self.check_waiting(Instant::now(), Answer::InFrame)?;
         let (reply, answer) = mpsc::sync_channel(1);
         self.handle
             .send(UserEvent::Shot(self.window, ShotAsk { region, reply }))

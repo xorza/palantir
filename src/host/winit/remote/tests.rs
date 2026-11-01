@@ -195,14 +195,7 @@ fn a_remote_plays_and_reads_a_live_window() {
         Err(PlayError::Disconnected)
     );
 
-    // A wait gives up at once while the window's thread is held, and the query it gave up on
-    // never runs, though the loop serves it later.
-    handle
-        .run_on_main(|_| {
-            thread::sleep(Duration::from_millis(100));
-            false
-        })
-        .unwrap();
+    // A query gives up at once while the window's thread is held, and never runs.
     let held = handle.remote(WINDOW).with_blocked(|| true);
     let ran = Arc::new(AtomicBool::new(false));
     let marked = Arc::clone(&ran);

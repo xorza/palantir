@@ -170,31 +170,50 @@ fn toggles_answer_clicks_and_ignore_them_disabled() {
 }
 
 /// Space activates a focused toggle as a click, which its response reports, and commits; an
-/// unfocused one ignores it, and Enter, which WAI-ARIA leaves to the form, moves none.
+/// unfocused one ignores it. A focused toggle takes Space alone from the app's scope around it:
+/// Enter, which WAI-ARIA leaves to the form, and a letter move none and reach the app.
 #[test]
 fn space_activates_a_focused_toggle() {
+    use crate::input::key_class::KeyFilter;
     use crate::input::keyboard::key::Key;
+    use crate::widgets::panel::Panel;
 
     for kind in [Toggle::Checkbox, Toggle::Switch, Toggle::Radio] {
         for (key, focused, acts) in [
             (Key::Char(' '), true, true),
             (Key::Char(' '), false, false),
             (Key::Enter, true, false),
+            (Key::Char('f'), true, false),
         ] {
             let mut h = Harness::mono(UVec2::new(300, 100));
             let mut value = false;
+            // The toggle inside an app's scope, which reads the key after it.
+            let mut record = |ui: &mut Ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("app"))
+                    .input_scope(KeyFilter::ALL)
+                    .show(ui, |ui| {
+                        let edges = record_toggle(ui, kind, &mut value, false);
+                        (edges, ui.key_pressed(key))
+                    })
+                    .inner
+            };
             h.frame(|ui| {
-                record_toggle(ui, kind, &mut value, false);
+                record(ui);
             });
             if focused {
                 h.set_focus(WidgetId::from_hash("toggle"));
             }
             h.key(key);
-            let edges = h.frame_value(|ui| record_toggle(ui, kind, &mut value, false));
+            let (edges, app_got) = h.frame_value(&mut record);
             assert_eq!(
                 (value, edges),
                 (acts, [acts, acts]),
                 "{kind:?} {key:?} focused {focused}"
+            );
+            assert_eq!(
+                app_got, !acts,
+                "{kind:?} {key:?} focused {focused}: the app"
             );
         }
     }

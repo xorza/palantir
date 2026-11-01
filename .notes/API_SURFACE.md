@@ -1269,6 +1269,8 @@ Key
 KeyClass
     enum KeyClass: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
         Text
+        Space
+        Enter
         Edit
         Caret
         Page
@@ -1288,6 +1290,8 @@ KeyFilter
         pub const CYCLE: Self
         pub const ESCAPE: Self
         pub const ACCEL: Self
+        pub const SPACE: Self
+        pub const ENTER: Self
         pub const NONE: Self
         pub const ALL: Self
         pub const fn is_empty(self) -> bool
