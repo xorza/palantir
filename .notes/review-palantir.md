@@ -96,13 +96,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
 an item deletes it.
 
-### Batch 1: device loss must not end the process
-
-Files: `src/gpu/surface/window_surface.rs`.
-
-- [ ] Test `WindowSurface::acquire` before a successful configure. A `WindowSurface` needs a native
-  surface, which no headless test makes; the guard has no test until a test window exists.
-
 ### Batch 2: the players report the truth
 
 Files: `src/host/harness/{mod.rs,play.rs,harness_builder.rs}`, `src/driver/{locator.rs,play.rs}`,

@@ -1,7 +1,12 @@
 use crate::app::App;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::GpuRequestError;
+use crate::gpu::surface::surface_manager::{
+    FirstWindow, HostGpuConfig, SurfaceManager, SurfaceStartup,
+};
+use crate::gpu::surface::window_surface::{Acquired, Prepared};
 use crate::host::winit::error::WinitHostError;
+use crate::host::winit::platform;
 use crate::host::winit::{WinitHost, finish_run};
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
@@ -9,7 +14,11 @@ use crate::ui::Ui;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
+use glam::UVec2;
+use std::sync::Arc;
 use winit::error;
+use winit::event_loop::EventLoop;
+use winit::window::WindowAttributes;
 
 /// An app that records nothing, to name the builder's type.
 #[derive(Debug)]
@@ -83,4 +92,46 @@ fn run_result_preserves_normal_exit_and_prioritizes_host_failure() {
             source: GpuRequestError::NoBackend
         }
     ));
+}
+
+/// A new window's first configure, on a device already lost, builds no swapchain: it counts as
+/// unbuilt and the acquire refuses, where wgpu's acquire from that surface panics ("Error in
+/// Surface::get_current_texture_view: Validation Error"). On the device before the loss, another
+/// window's first configure builds. Opens native windows, so it runs by hand:
+/// `cargo drive test a_surface_configured_on_a_lost_device --ignored`.
+#[test]
+#[ignore = "opens native windows, which a headless machine has none of"]
+fn a_surface_configured_on_a_lost_device_refuses_to_acquire() {
+    let mut builder = EventLoop::builder();
+    platform::internals::any_thread(&mut builder);
+    let event_loop = builder.build().unwrap();
+    let window = || {
+        #[expect(
+            deprecated,
+            reason = "a test has no running loop to make its windows in, and they are all it needs"
+        )]
+        let window = event_loop.create_window(WindowAttributes::default().with_visible(false));
+        Arc::new(window.unwrap())
+    };
+    let (lost_window, healthy_window) = (window(), window());
+    let size = UVec2::splat(64);
+    let SurfaceStartup {
+        surfaces,
+        gpu,
+        first_surface: mut lost,
+    } = SurfaceManager::start(
+        FirstWindow {
+            display: event_loop.owned_display_handle(),
+            window: &lost_window,
+            size,
+        },
+        HostGpuConfig::default(),
+    )
+    .unwrap();
+    let mut healthy = surfaces.make_surface(&healthy_window, size).unwrap();
+    assert_eq!(healthy.prepare(&gpu), Prepared::Rebuilt);
+
+    gpu.lose();
+    assert_eq!(lost.prepare(&gpu), Prepared::Kept);
+    assert!(matches!(lost.acquire(), Acquired::Unconfigured));
 }

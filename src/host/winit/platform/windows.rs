@@ -18,3 +18,14 @@ pub(super) const fn with_app_id(
 
 /// Windows always holds a double-click time, so none is kept here.
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
+
+#[cfg(test)]
+pub(super) mod internals {
+    use winit::event_loop::EventLoopBuilder;
+    use winit::platform::windows::EventLoopBuilderExtWindows as _;
+
+    /// Let a test, which runs off the main thread, build an event loop.
+    pub(crate) fn any_thread<T: 'static>(builder: &mut EventLoopBuilder<T>) {
+        builder.with_any_thread(true);
+    }
+}

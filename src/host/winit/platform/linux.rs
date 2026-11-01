@@ -24,3 +24,16 @@ pub(super) fn with_app_id(attrs: WindowAttributes, app_id: Option<&str>) -> Wind
 /// its own in `kdeglobals`, which no portal key holds, so a KDE desktop answers the GSettings value
 /// (`.notes/research/2026-10-31-system-preferences.md`).
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = Some(Duration::from_millis(400));
+
+#[cfg(test)]
+pub(super) mod internals {
+    use winit::event_loop::EventLoopBuilder;
+    use winit::platform::wayland::EventLoopBuilderExtWayland;
+    use winit::platform::x11::EventLoopBuilderExtX11;
+
+    /// Let a test, which runs off the main thread, build an event loop, under Wayland or X11.
+    pub(crate) fn any_thread<T: 'static>(builder: &mut EventLoopBuilder<T>) {
+        EventLoopBuilderExtWayland::with_any_thread(builder, true);
+        EventLoopBuilderExtX11::with_any_thread(builder, true);
+    }
+}

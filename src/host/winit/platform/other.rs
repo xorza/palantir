@@ -18,3 +18,11 @@ pub(super) const fn with_app_id(
 
 /// No double-click time is assumed: palantir's default holds.
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
+
+#[cfg(test)]
+pub(super) mod internals {
+    use winit::event_loop::EventLoopBuilder;
+
+    /// Nothing to allow: the platform's event loop takes no thread setting.
+    pub(crate) const fn any_thread<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
+}

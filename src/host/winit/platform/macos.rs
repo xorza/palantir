@@ -22,3 +22,12 @@ pub(super) const fn with_app_id(
 
 /// macOS always holds a double-click time, so none is kept here.
 pub(super) const DOUBLE_CLICK_FALLBACK: Option<Duration> = None;
+
+#[cfg(test)]
+pub(super) mod internals {
+    use winit::event_loop::EventLoopBuilder;
+
+    /// Nothing to allow: AppKit runs an event loop on the main thread alone, so a test that
+    /// builds one panics off it.
+    pub(crate) const fn any_thread<T: 'static>(_builder: &mut EventLoopBuilder<T>) {}
+}
