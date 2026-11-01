@@ -1,5 +1,7 @@
 //! The path light takes through a pane's lens: the closed form the composite shades with.
 
+use crate::shape::paint::spectrum_tables::SPECTRUM_VIOLET;
+
 /// One lens in physical px: a bezel `bezel` wide rising to `thickness` as a squircle of the
 /// inward fraction, of refractive index `index`. Light falls straight down onto the glass and
 /// refracts once at its top surface, as kube.io's model has it; the backdrop shows where the bent
@@ -11,7 +13,27 @@ pub(crate) struct LensOptics {
     pub(crate) index: f32,
 }
 
+/// Fraunhofer's D, F and C lines, µm: a lens's index is its index at D, and its dispersion the
+/// step from C to F, `n_F − n_C`, as glass catalogs give it beside the Abbe number.
+pub(crate) const LINE_D: f32 = 0.5893;
+pub(crate) const LINE_F: f32 = 0.4861;
+pub(crate) const LINE_C: f32 = 0.6563;
+
+/// The share of `n_F − n_C` by which the index at `wavelength` µm passes its index at D: Cauchy's
+/// `n(λ) = A + B / λ²` through both, `(λ⁻² − λ_D⁻²) / (λ_F⁻² − λ_C⁻²)`, as Filament's specgen
+/// offsets it.
+const fn cauchy_offset(wavelength: f32) -> f32 {
+    (1.0 / (wavelength * wavelength) - 1.0 / (LINE_D * LINE_D))
+        / (1.0 / (LINE_F * LINE_F) - 1.0 / (LINE_C * LINE_C))
+}
+
 impl LensOptics {
+    /// The densest index a lens of `index` at D and `dispersion` (`n_F − n_C`) spreads light to,
+    /// at the spectrum's violet end: the one whose sample goes furthest.
+    pub(crate) const fn violet_index(index: f32, dispersion: f32) -> f32 {
+        index + dispersion * cauchy_offset(SPECTRUM_VIOLET)
+    }
+
     /// A bound on how far any part of the bezel sends its sample, in px, at index `index`: the
     /// glass is no higher than `thickness`, and the ray's lean `θ₁ − asin(sin θ₁ / n)` grows with
     /// the surface's tilt `θ₁` toward its limit at a vertical edge, `90° − asin(1/n)`, whose
@@ -73,7 +95,8 @@ mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::shape::paint::lens_optics::LensOptics;
+    use crate::shape::paint::lens_optics::{LINE_C, LINE_D, LINE_F, LensOptics, cauchy_offset};
+    use crate::shape::paint::spectrum_tables::SPECTRUM_VIOLET;
 
     const LENS: LensOptics = LensOptics {
         bezel: 24.0,
@@ -126,5 +149,18 @@ mod tests {
             ..LENS
         };
         assert_eq!(widest.reach(65504.0), u32::MAX);
+    }
+
+    /// Cauchy's offset is 0 at D and steps by 1 from C to F, so a lens's dispersion is its
+    /// `n_F − n_C`; at 400 nm it is `(6.25 − 2.8796) / (4.2321 − 2.3217) ≈ 1.7643` (µm⁻²), so a
+    /// lens of index 1.5 and dispersion 0.02 reaches 1.5353 there.
+    #[test]
+    fn the_index_follows_cauchy_through_d_with_its_dispersion_from_c_to_f() {
+        assert_eq!(cauchy_offset(LINE_D), 0.0);
+        assert!((cauchy_offset(LINE_F) - cauchy_offset(LINE_C) - 1.0).abs() < 1e-5);
+        assert!((cauchy_offset(SPECTRUM_VIOLET) - 1.7643).abs() < 1e-3);
+        let violet = LensOptics::violet_index(1.5, 0.02);
+        assert!((violet - 1.535_29).abs() < 1e-4, "{violet}");
+        assert_eq!(LensOptics::violet_index(1.5, 0.0), 1.5);
     }
 }

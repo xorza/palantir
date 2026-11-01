@@ -55,9 +55,16 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 look(
                     ui,
                     k,
-                    "glass — a lens, σ 1",
-                    BackdropFilter::glass(Lens::default()).with_blur(1.0),
-                    RgbaF32::TRANSPARENT,
+                    "glass — a dense lens, σ 1, tinted",
+                    BackdropFilter::glass(Lens {
+                        bezel: 32.0,
+                        thickness: 28.0,
+                        refractive_index: 1.6,
+                        dispersion: 0.55,
+                        ..Lens::default()
+                    })
+                    .with_blur(1.0),
+                    RgbaF32::new(1.0, 1.0, 1.0, 0.1),
                 );
             });
         });

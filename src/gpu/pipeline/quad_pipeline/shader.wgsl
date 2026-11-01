@@ -1067,6 +1067,131 @@ fn lens_displacement(lens: vec4<f32>, inward: f32, index: f32) -> f32 {
     return height * (-along * nx) / (eta - along * nz);
 }
 
+// Fraunhofer's D, F and C lines, µm: a lens's index is its index at D, and
+// its dispersion the step from C to F, `n_F − n_C` (`lens_optics`).
+const LINE_D: f32 = /*{LINE_D}*/;
+const LINE_F: f32 = /*{LINE_F}*/;
+const LINE_C: f32 = /*{LINE_C}*/;
+
+// The ends of the spectrum a lens spreads, µm.
+const SPECTRUM_RED: f32 = /*{SPECTRUM_RED}*/;
+const SPECTRUM_VIOLET: f32 = /*{SPECTRUM_VIOLET}*/;
+
+// The spectrum's weight in XYZ over the share `t` of the way along it, red
+// end first, held flat across each of `SPECTRUM_SAMPLES` cells: each cell's
+// integral, and the running integrals of the weight and of `t` times it at
+// each cell's start (`spectrum_tables::SpectrumTables`).
+const SPECTRUM_SAMPLES: u32 = /*{SPECTRUM_SAMPLES}*/;
+const SPECTRUM_WEIGHTS: array<vec3<f32>, SPECTRUM_SAMPLES> = /*{SPECTRUM_WEIGHTS}*/;
+const SPECTRUM_CUMULATIVE: array<vec3<f32>, SPECTRUM_SAMPLES> = /*{SPECTRUM_CUMULATIVE}*/;
+const SPECTRUM_MOMENTS: array<vec3<f32>, SPECTRUM_SAMPLES> = /*{SPECTRUM_MOMENTS}*/;
+
+// The most whole steps a bezel pixel reads across the spectrum: it bounds a
+// pixel's cost at 33 reads, 22–27 % over the default dispersion's frame on
+// the Apple laptop (`.notes/research/2026-11-01-glass-dispersion.md`).
+const SPECTRUM_STEPS: f32 = 32.0;
+
+// The spectrum's running integrals from its red end to `t`: of the weight,
+// and of `t` times it.
+struct SpectrumIntegrals {
+    area: vec3<f32>,
+    moment: vec3<f32>,
+}
+
+fn spectrum_integrals(t: f32) -> SpectrumIntegrals {
+    let n = f32(SPECTRUM_SAMPLES);
+    let cell = min(u32(t * n), SPECTRUM_SAMPLES - 1u);
+    let start = f32(cell) / n;
+    let w = SPECTRUM_WEIGHTS[cell];
+    return SpectrumIntegrals(
+        SPECTRUM_CUMULATIVE[cell] + w * (t * n - f32(cell)),
+        SPECTRUM_MOMENTS[cell] + w * (0.5 * n * (t * t - start * start)),
+    );
+}
+
+// Linear sRGB to CIE XYZ under D65, and back (IEC 61966-2-1), column-major.
+const RGB_TO_XYZ: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(0.4124564, 0.2126729, 0.0193339),
+    vec3<f32>(0.3575761, 0.7151522, 0.1191920),
+    vec3<f32>(0.1804375, 0.0721750, 0.9503041),
+);
+const XYZ_TO_RGB: mat3x3<f32> = mat3x3<f32>(
+    vec3<f32>(3.2404542, -0.9692660, 0.0556434),
+    vec3<f32>(-1.5371385, 1.8760108, -0.2040259),
+    vec3<f32>(-0.4985314, 0.0415560, 1.0572252),
+);
+
+// The index of a lens for light the share `t` of the way from the
+// spectrum's red end to its violet end: Cauchy's `n(λ) = A + B / λ²`
+// through the index at D with `n_F − n_C` its dispersion, affine in
+// `u = 1 / λ²`, along which `t` runs. At least 1: the red end of a weak,
+// dispersive lens falls below it, where Snell's law has no ray at a steep
+// bezel and a ray would bend outward, past the reach.
+fn lens_index(lens: vec4<f32>, t: f32) -> f32 {
+    let u = mix(1.0 / (SPECTRUM_RED * SPECTRUM_RED), 1.0 / (SPECTRUM_VIOLET * SPECTRUM_VIOLET), t);
+    let per_u = lens.w / (1.0 / (LINE_F * LINE_F) - 1.0 / (LINE_C * LINE_C));
+    return max(lens.z + per_u * (u - 1.0 / (LINE_D * LINE_D)), 1.0);
+}
+
+// The pane's result in XYZ where light the share `t` along the spectrum
+// lands, refracted at its own index.
+fn lens_ray(p: vec2<f32>, outward: vec2<f32>, inward: f32, slot: BackdropSlot, t: f32) -> vec3<f32> {
+    let shift = lens_displacement(slot.lens, inward, lens_index(slot.lens, t));
+    return RGB_TO_XYZ * backdrop_result(p - outward * shift, slot);
+}
+
+// What the bezel shows `inward` px in at `p`, bent along `outward`: every
+// wavelength refracted at its own index and the spectrum summed back to
+// color in XYZ (`gpu::backdrop`, "Dispersion spreads the whole spectrum").
+//
+// The reads step a lattice texel apart, the finest the result holds, so no
+// read shows as a ghost of the next; past `SPECTRUM_STEPS` steps they spread
+// further. Between two reads the result is linear, as the bilinear read is,
+// and each stretch's integral against the weight comes in closed form from
+// the running integrals. Its integral against `(t − a) / (b − a)` divides a
+// difference of moments by the stretch's length, which `f32` cannot hold
+// below a thousandth; there the weight is flat enough to take half the
+// stretch's area. The last stretch is a part one, so no contour marks where
+// the step count grows with the spread. A spread under a thousandth of a px
+// shows nothing, so glass of one index keeps its one read at D.
+fn lens_spectrum(p: vec2<f32>, outward: vec2<f32>, inward: f32, slot: BackdropSlot) -> vec3<f32> {
+    let lens = slot.lens;
+    let spread = abs(
+        lens_displacement(lens, inward, lens_index(lens, 1.0))
+            - lens_displacement(lens, inward, lens_index(lens, 0.0)),
+    );
+    if (slot.lattice == 0.0 || spread < 1e-3) {
+        return backdrop_result(p - outward * lens_displacement(lens, inward, lens.z), slot);
+    }
+    let dt = max(slot.lattice, spread / SPECTRUM_STEPS) / spread;
+    var a = 0.0;
+    var at_a = lens_ray(p, outward, inward, slot, 0.0);
+    var integrals_a = SpectrumIntegrals(vec3<f32>(0.0), vec3<f32>(0.0));
+    var step = 0u;
+    var xyz = vec3<f32>(0.0);
+    loop {
+        step++;
+        let b = min(f32(step) * dt, 1.0);
+        let at_b = lens_ray(p, outward, inward, slot, b);
+        let integrals_b = spectrum_integrals(b);
+        let area = integrals_b.area - integrals_a.area;
+        let length = b - a;
+        let toward_b = select(
+            (integrals_b.moment - integrals_a.moment - a * area) / length,
+            0.5 * area,
+            length < 1e-3,
+        );
+        xyz += at_a * (area - toward_b) + at_b * toward_b;
+        if (b >= 1.0) {
+            break;
+        }
+        a = b;
+        at_a = at_b;
+        integrals_a = integrals_b;
+    }
+    return XYZ_TO_RGB * xyz;
+}
+
 // The glint a top-left lamp leaves on the bezel `inward` px in, its outward
 // normal `outward` on the screen: Schlick's Fresnel at the surface's tilt,
 // times how squarely the bezel faces the lamp.
@@ -1106,12 +1231,7 @@ fn fs_backdrop(in: VertexOut) -> @location(0) vec4<f32> {
         let inward = -d;
         if (inward > 0.0 && inward < lens.x && dot(gradient, gradient) > 0.0) {
             let outward = normalize(gradient);
-            let index = lens.z;
-            c = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, index), slot);
-            if (lens.w > 0.0) {
-                c.r = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, index - 0.5 * lens.w), slot).r;
-                c.b = backdrop_result(frag_px(in.clip) - outward * lens_displacement(lens, inward, index + 0.5 * lens.w), slot).b;
-            }
+            c = lens_spectrum(frag_px(in.clip), outward, inward, slot);
             c += vec3<f32>(slot.highlight * lens_glint(lens, inward, outward));
         } else {
             c = backdrop_result(frag_px(in.clip), slot);

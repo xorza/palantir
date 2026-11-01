@@ -153,7 +153,7 @@ fn capture(c: &mut Criterion, backend: Backend) {
 enum Look {
     Blur,
     Frosted,
-    /// Glass whose red and blue part at the rim.
+    /// Glass that spreads the spectrum at its rim.
     Glass,
     /// Glass of one index for every color.
     GlassPlain,

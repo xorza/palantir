@@ -50,9 +50,17 @@
 //! - **Glass refracts by a closed form.** The bezel's height is a squircle
 //!   `(1 − (1 − x)⁴)^¼` of the inward distance; its slope along the SDF gradient is the normal,
 //!   Snell's law gives the bent ray, and thickness times its tangent the displacement (kube.io
-//!   bakes the same into a map). Dispersion samples red and blue at their own index in the bezel;
-//!   the highlight is Schlick's Fresnel toward a fixed top-left lamp. Its reach is the closed
-//!   bound `thickness · √(n² − 1)`, so no frame samples the bezel to find it.
+//!   bakes the same into a map). The highlight is Schlick's Fresnel toward a fixed top-left lamp.
+//!   Its reach is the closed bound `thickness · √(n² − 1)` at the densest index, so no frame
+//!   samples the bezel to find it.
+//! - **Dispersion spreads the whole spectrum** (`lens_spectrum` in `quad_pipeline/shader.wgsl`).
+//!   Each wavelength refracts at its index by Cauchy's model through `n_D`, and the reads sum
+//!   back to color in CIE XYZ under the 1931 observer, normalized so a field of one color keeps
+//!   it, as Filament's specgen builds its matrices; the weight between reads is integrated in
+//!   closed form (`.notes/research/2026-11-01-glass-dispersion.md`). Refused: red, green and blue
+//!   at their own index (luma.gl, Haze's `Simple`), two sharp ghosts of a bright edge; seven
+//!   reads weighted by eye (Haze's `Full`); a sum over the reads alone, which fringes a white
+//!   edge with a pure green; a weight loop over a fine grid, 19–36 % of a glass frame.
 //! - **No banding.** The levels are `Rgba16Float`; before an 8-bit target writes, the composite
 //!   adds interleaved gradient noise of one encoded step, scaled to linear by the sRGB curve's
 //!   slope. Grain (`noise`) is separate and fixed to the pane, so it moves and turns with it.

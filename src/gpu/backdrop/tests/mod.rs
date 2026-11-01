@@ -25,6 +25,7 @@ use glam::{UVec2, Vec2};
 use image::RgbaImage;
 
 mod clear;
+mod dispersion;
 mod neighbors;
 
 const SIZE: UVec2 = UVec2::new(64, 48);

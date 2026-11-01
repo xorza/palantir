@@ -25,7 +25,9 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
+use crate::shape::paint::lens_optics;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
+use crate::shape::paint::spectrum_tables::{self, SpectrumTables};
 use glam::Vec2;
 use std::mem::offset_of;
 use std::slice;
@@ -470,6 +472,7 @@ const INSTANCE_LAYOUT: wgpu::VertexBufferLayout<'static> = pipeline_recipe::vert
 
 /// The numbers [`QuadPipeline::SHADER`] takes from the Rust types that own them.
 fn shader_constants() -> Vec<ShaderConstant> {
+    let spectrum = SpectrumTables::new();
     vec![
         ShaderConstant::uint("FILL_TAG_MASK", FillKind::TAG_MASK),
         ShaderConstant::uint("SPREAD_SHIFT", FillKind::SPREAD_SHIFT),
@@ -496,6 +499,15 @@ fn shader_constants() -> Vec<ShaderConstant> {
         ShaderConstant::uint("NO_CUTOUT_TABLE", CutoutPlan::NONE),
         ShaderConstant::uint("CUTOUT_NODES", CutoutPlan::SHADED_NODES),
         ShaderConstant::uint("CUTOUT_BAKE_NODES", CutoutPlan::BAKED_NODES),
+        ShaderConstant::float("LINE_D", lens_optics::LINE_D),
+        ShaderConstant::float("LINE_F", lens_optics::LINE_F),
+        ShaderConstant::float("LINE_C", lens_optics::LINE_C),
+        ShaderConstant::float("SPECTRUM_RED", spectrum_tables::SPECTRUM_RED),
+        ShaderConstant::float("SPECTRUM_VIOLET", spectrum_tables::SPECTRUM_VIOLET),
+        ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
+        ShaderConstant::vec3_array("SPECTRUM_WEIGHTS", &spectrum.weights),
+        ShaderConstant::vec3_array("SPECTRUM_CUMULATIVE", &spectrum.cumulative),
+        ShaderConstant::vec3_array("SPECTRUM_MOMENTS", &spectrum.moments),
     ]
 }
 

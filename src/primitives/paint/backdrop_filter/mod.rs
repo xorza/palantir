@@ -126,7 +126,11 @@ pub struct Lens {
     /// The glass's index of refraction; 1 bends nothing, 1.5 is window glass.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::refractive_index")]
     pub refractive_index: f32,
-    /// How far apart the index sits for red and blue, which fringes the bezel with color.
+    /// The index's step from red to blue, `n_F − n_C` between Fraunhofer's C (656.3 nm) and F
+    /// (486.1 nm) lines, as a glass catalog gives it; `refractive_index` is the index at the D
+    /// line (589.3 nm). It spreads the spectrum across the bezel, fringing what the glass bends
+    /// with color. Window glass (N-BK7) has 0.008, dense flint (N-SF11) 0.031; a UI's glass
+    /// takes more, so the fringe shows.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
     pub dispersion: f32,
     /// The strength of the lamp's glint off the bezel.
@@ -365,7 +369,7 @@ impl Lens {
     }
 }
 
-/// A pill of window glass: a 24 px bezel, 16 px thick, of index 1.5, with a little color at the
+/// A pill of window glass: a 24 px bezel, 16 px thick, of index 1.5, with a thin rainbow at the
 /// rim and a soft glint.
 impl Default for Lens {
     fn default() -> Self {

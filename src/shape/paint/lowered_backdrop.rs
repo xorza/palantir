@@ -82,7 +82,10 @@ impl LoweredBackdrop {
                 thickness: lens.thickness * scale,
                 index: lens.refractive_index,
             }
-            .reach(lens.refractive_index + 0.5 * lens.dispersion)
+            .reach(LensOptics::violet_index(
+                lens.refractive_index,
+                lens.dispersion,
+            ))
         })
     }
 }

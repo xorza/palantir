@@ -100,7 +100,7 @@ fn a_turned_pane_matches_golden() {
 }
 
 /// Pin: glass over stripes and text: a pill, its bezel half its height, bending the stripes in at
-/// its rim and splitting red from blue there, and a flat panel with a narrow bezel and a light
+/// its rim and spreading the spectrum there, and a flat panel with a narrow bezel and a light
 /// blur, glinting where its rim faces the top-left lamp.
 #[test]
 fn glass_matches_golden() {
