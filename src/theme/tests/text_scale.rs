@@ -2,7 +2,7 @@ use crate::internals::panic_probe;
 use ron::Value;
 
 use super::pretty;
-use crate::theme::Theme;
+use crate::theme::{FACES_ERROR, Theme};
 use ron::ser;
 
 /// The size a disabled button shapes its label at; the look names only color, so it is `theme.text`'s.
@@ -188,7 +188,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
     tight.button.unselected.disabled.text.line_height_factor = Some(0.000001);
     let error = ron::from_str::<Theme>(&pretty(&tight)).expect_err("a leading under the epsilon");
     assert!(
-        error.to_string().contains(GlyphFont::METRICS_ERROR),
+        error.to_string().contains(FACES_ERROR),
         "unexpected serde error: {error}"
     );
 

@@ -2085,7 +2085,6 @@ Spinner
     struct Spinner<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self
-        pub const fn diameter(self, px: f32) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn width(self, px: f32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
@@ -2603,6 +2602,7 @@ Ui
         pub fn key_held(&mut self, key: Key) -> bool
         pub fn key_released(&mut self, key: Key) -> bool
         pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool
+        pub fn shortcut_pressed_as(&mut self, reader: WidgetId, shortcut: impl Into<Shortcut>) -> bool
         pub fn request_relayout(&mut self)
         pub const fn now(&self) -> Duration
         pub const fn set_cursor(&mut self, cursor: CursorIcon)
@@ -2967,6 +2967,7 @@ widget::Configurator
         pub fn default_margin(&mut self, m: impl Into<Spacing>) -> &mut Self
         pub const fn default_align(&mut self, a: Align) -> &mut Self
         pub const fn default_child_align(&mut self, a: Align) -> &mut Self
+        pub const fn default_justify(&mut self, j: Justify) -> &mut Self
         pub fn default_gap(&mut self, g: f32) -> &mut Self
         pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self
@@ -3246,6 +3247,7 @@ widget::ThemeDefaults
         fn default_margin(self, m: impl Into<Spacing>) -> Self { .. }
         fn default_align(self, a: Align) -> Self { .. }
         fn default_child_align(self, a: Align) -> Self { .. }
+        fn default_justify(self, j: Justify) -> Self { .. }
         fn default_gap(self, g: f32) -> Self { .. }
         fn default_min_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_max_size(self, s: impl Into<Size>) -> Self { .. }
@@ -3295,7 +3297,7 @@ widget::Widget
         pub const fn authored_grid_cell(&self) -> GridCell
         pub const fn authored_gap(&self) -> Option<f32>
         pub const fn authored_line_gap(&self) -> Option<f32>
-        pub const fn authored_justify(&self) -> Justify
+        pub const fn authored_justify(&self) -> Option<Justify>
         pub const fn authored_align(&self) -> Align
         pub const fn authored_child_align(&self) -> Align
         pub const fn authored_sense(&self) -> Sense

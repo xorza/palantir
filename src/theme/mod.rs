@@ -41,7 +41,6 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::text::glyph_font::GlyphFont;
 use crate::theme::button::ButtonTheme;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
@@ -68,7 +67,6 @@ use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
 use crate::theme::tooltip::TooltipTheme;
-use ::serde::de::Error as _;
 
 /// Global theme, aggregating per-widget themes. Widgets read it from `Ui::theme`.
 ///
@@ -98,9 +96,7 @@ use ::serde::de::Error as _;
     ::serde::Deserialize,
     palantir_anim_derive::Animatable,
 )]
-// `remote = "Self"` turns the derives into inherent fns, so the trait impls below run the derived
-// body and then check the whole theme, with no field-by-field wire mirror (serde#642).
-#[serde(remote = "Self")]
+#[serde(try_from = "UncheckedTheme")]
 #[animate(before_lerp = Self::share_text_axes)]
 pub struct Theme {
     /// What every [`crate::Button`] wears; [`crate::ComboBox`] and [`crate::DragValue`] derive from it.
@@ -154,10 +150,10 @@ pub struct Theme {
     /// Window/swapchain clear color, passed to `WgpuBackend::submit`.
     pub window_clear: RgbaF32,
     /// Default chrome for in-tree containers (`Panel`, `Grid`) without chrome of their own. `None` leaves them unpainted; a popup reads [`Self::popup`].
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub panel_chrome: Option<Chrome>,
     /// Default clip mode for containers that set none; the rounded mask uses [`Self::panel_chrome`]'s `radius`.
-    #[serde(default, skip_serializing_if = "is_clip_none")]
+    #[serde(skip_serializing_if = "is_clip_none")]
     #[animate(snap)]
     pub panel_clip: ClipMode,
 }
@@ -172,27 +168,6 @@ pub(crate) enum ThemeText<'a> {
 const TEXT_SCALE_ERROR: &str = "text scale factor must be finite and positive";
 const SCALED_TEXT_METRICS_ERROR: &str = "text scale would make font size or line height invalid";
 const FACES_ERROR: &str = "every text slot over the theme's ambient text must make a valid face";
-
-impl ::serde::Serialize for Theme {
-    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        Self::serialize(self, serializer)
-    }
-}
-
-/// A theme file checks each slot alone as it reads; the whole theme then checks each override as
-/// the face it makes over [`Theme::text`], which no slot alone can see.
-impl<'de> ::serde::Deserialize<'de> for Theme {
-    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let mut theme = Self::deserialize(deserializer)?;
-        if !theme.faces_valid(1.0) {
-            return Err(D::Error::custom(format_args!(
-                "{FACES_ERROR}: {}",
-                GlyphFont::METRICS_ERROR
-            )));
-        }
-        Ok(theme)
-    }
-}
 
 #[inline]
 #[expect(
@@ -449,6 +424,112 @@ impl Default for Theme {
     /// The dark stock look, [`Self::stock`] of [`ColorScheme::Dark`].
     fn default() -> Self {
         Self::stock(ColorScheme::Dark)
+    }
+}
+
+/// [`Theme`] as a file holds it, before the check of the whole theme: each slot checks itself
+/// as it reads, and [`Theme::faces_valid`] then checks each override as the face it makes over
+/// [`Theme::text`], which no slot alone can see.
+#[derive(Debug, ::serde::Deserialize)]
+struct UncheckedTheme {
+    button: ButtonTheme,
+    checkbox: ToggleTheme,
+    radio: ToggleTheme,
+    switch: ToggleTheme,
+    scrollbar: ScrollbarTheme,
+    text_edit: TextEditTheme,
+    drag_value: DragValueTheme,
+    context_menu: ContextMenuTheme,
+    menu_bar: MenuBarTheme,
+    combo_box: ComboBoxTheme,
+    modal: ModalTheme,
+    popup: PopupTheme,
+    color_picker: ColorPickerTheme,
+    tooltip: TooltipTheme,
+    progress_bar: ProgressBarTheme,
+    separator: SeparatorTheme,
+    slider: SliderTheme,
+    spinner: SpinnerTheme,
+    splitter: SplitterTheme,
+    tabs: TabsTheme,
+    dock: DockTheme,
+    expander: ExpanderTheme,
+    focus_ring: FocusRingTheme,
+    text: TextStyle,
+    window_clear: RgbaF32,
+    // This and the next are left out of a file when absent, as `Theme` writes them.
+    #[serde(default)]
+    panel_chrome: Option<Chrome>,
+    #[serde(default)]
+    panel_clip: ClipMode,
+}
+
+impl TryFrom<UncheckedTheme> for Theme {
+    type Error = &'static str;
+
+    fn try_from(unchecked: UncheckedTheme) -> Result<Self, Self::Error> {
+        let UncheckedTheme {
+            button,
+            checkbox,
+            radio,
+            switch,
+            scrollbar,
+            text_edit,
+            drag_value,
+            context_menu,
+            menu_bar,
+            combo_box,
+            modal,
+            popup,
+            color_picker,
+            tooltip,
+            progress_bar,
+            separator,
+            slider,
+            spinner,
+            splitter,
+            tabs,
+            dock,
+            expander,
+            focus_ring,
+            text,
+            window_clear,
+            panel_chrome,
+            panel_clip,
+        } = unchecked;
+        let mut theme = Self {
+            button,
+            checkbox,
+            radio,
+            switch,
+            scrollbar,
+            text_edit,
+            drag_value,
+            context_menu,
+            menu_bar,
+            combo_box,
+            modal,
+            popup,
+            color_picker,
+            tooltip,
+            progress_bar,
+            separator,
+            slider,
+            spinner,
+            splitter,
+            tabs,
+            dock,
+            expander,
+            focus_ring,
+            text,
+            window_clear,
+            panel_chrome,
+            panel_clip,
+        };
+        if !theme.faces_valid(1.0) {
+            return Err(FACES_ERROR);
+        }
+        Ok(theme)
     }
 }
 
