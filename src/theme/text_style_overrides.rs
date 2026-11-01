@@ -2,7 +2,6 @@
 //! [`TextStyle`].
 
 use crate::primitives::math::animatable::Animatable;
-use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -284,6 +283,10 @@ fn switch_axis<T>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
 #[derive(Debug, serde::Deserialize)]
 struct UncheckedTextStyleOverrides {
     color: Option<RgbaF32>,
+    #[serde(
+        default,
+        deserialize_with = "crate::primitives::packed::serde::checked::optional_font_size"
+    )]
     font_size: Option<f32>,
     line_height_factor: Option<f32>,
     family: Option<FontFamily>,
@@ -305,12 +308,6 @@ impl TryFrom<UncheckedTextStyleOverrides> for TextStyleOverrides {
         };
         if !overrides.metrics_valid() {
             return Err(GlyphFont::METRICS_ERROR);
-        }
-        if overrides
-            .font_size
-            .is_some_and(|px| !domain::is_file_length(px))
-        {
-            return Err(domain::FILE_LENGTH_RULE);
         }
         Ok(overrides)
     }

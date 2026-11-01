@@ -182,6 +182,16 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
         );
     }
 
+    // An override valid alone is checked as the face it makes over the ambient text: a leading
+    // factor of 1e-6 over 14 px leads at 1.4e-5 px, under the 1e-4 epsilon, so the theme refuses it.
+    let mut tight = Theme::default();
+    tight.button.unselected.disabled.text.line_height_factor = Some(0.000001);
+    let error = ron::from_str::<Theme>(&pretty(&tight)).expect_err("a leading under the epsilon");
+    assert!(
+        error.to_string().contains(GlyphFont::METRICS_ERROR),
+        "unexpected serde error: {error}"
+    );
+
     // A font size in a file is a length there: 8192 loads, past it is refused, as the base size
     // and as an override.
     for (from, at, past) in [
@@ -207,8 +217,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 #[test]
 fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     use crate::primitives::math::domain::EPS;
-    const FACTOR: &str = "text scale factor must be finite and positive";
-    const RESULT: &str = "text scale would make font size or line height invalid";
+    use crate::theme::{SCALED_TEXT_METRICS_ERROR as RESULT, TEXT_SCALE_ERROR as FACTOR};
     // A look's override is checked as the face it folds into. The first overflows alone (f32::MAX / 2 × 4 is inf; ambient 14 × 4 = 56 is fine). The second is valid alone and at 1× but at 1/1000 its leading 14 × 0.001 × 0.001 = 0.000014 px is under EPS = 0.0001, while the ambient 0.014 × 1.2 is above.
     let big_override = |theme: &mut Theme| {
         theme.button.unselected.normal.text.font_size = Some(f32::MAX / 2.0);

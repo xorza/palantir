@@ -96,40 +96,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
 an item deletes it.
 
-### Batch 6: theme validity and theme data
-
-Files: `src/theme/` (`mod.rs`, `metrics.rs`, `text_style.rs`, `text_style_overrides.rs`,
-`color_picker.rs`, `expander.rs`, `modal.rs`, `tests/`), `src/ui/mod.rs`,
-`src/ui/theme_transition.rs`, `src/primitives/packed/serde/checked/`,
-`palantir-anim-derive/README.md`.
-
-- [ ] **BUG** `theme/mod.rs:96`, `text_style_overrides.rs:174-179`: a theme file checks each
-  override alone, never against `text`; `line_height_factor: Some(1e-6)` loads and makes a
-  1.4e-5 px line that paints nothing (AGENTS.md Input validation rule 4). Target:
-  `Theme::faces_valid`, walking `for_each_text` and applying each override to the ambient; the
-  load (`#[serde(try_from = "UncheckedTheme")]`) and `scale_text` use it. Add the case to
-  `theme_deserialization_rejects_invalid_text_metrics`.
-- [ ] **BUG** `metrics.rs:35-44`: `TextSteps` load through `checked::length`, which accepts 0, so
-  `body: 0.0` loads and every ambient text paints nothing. Target: a `checked::font_size`
-  deserializer shared with `UncheckedTextStyle`; a release `assert!` in `from_parts`.
-- [ ] `ui/mod.rs:314-321`, `theme_transition.rs:79`: a scheme change starts a 300 ms run even when
-  both schemes hold the same `Rc`, re-recording the tree for about 18 frames. Target: return early
-  in `follow_theme` on `Rc::ptr_eq`.
-- [ ] `color_picker.rs:95,97,108,175,191`: `VALUE_FONT_PX = 12.0`, a label at 10 px, `gap: 6.0`
-  and `VALUE_PADDING = 5.0` are set by hand, against "`Metrics` carries the type ramp". Target:
-  `m.text.caption`, a declared step for the label, `m.space.*`; extend
-  `every_recipe_reads_its_geometry_from_the_metrics`.
-- [ ] `color_picker.rs:100-110`: `mono_states` lists four states by hand. Target:
-  `looks.each_mut()`.
-- [ ] `expander.rs:75-78`: hand-rolled `a + (b − a)·t`. Target: `f32::lerp`, exact at `t = 1`.
-- [ ] `palantir-anim-derive/README.md:8,11`: `use palantir::Animatable` does not exist. Target:
-  `palantir::widget::Animatable`.
-- [ ] `modal.rs:38`: the comment names `RgbaF32::new`; the code is `with_alpha8(128)`. Delete it.
-- [ ] Tests: `tests/text_scale.rs:210-211` copies two error strings (name the constants); assert
-  `Rc::as_ptr(ui.theme())` is equal across two transition runs (the no-allocation claim at
-  `theme_transition.rs:21-22`); assert `faces_valid` at t = 0.25, 0.5, 0.75 between the stock pair
-  and a scaled theme.
-
 ### Batch 7: widget correctness and fallbacks
 
 Files: `src/widgets/{editable_label,spinner,menu_bar,tooltip,context_menu,grid.rs,panel,

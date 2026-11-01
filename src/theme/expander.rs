@@ -3,6 +3,7 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
@@ -73,8 +74,11 @@ impl ExpanderTheme {
     }
 
     pub(crate) fn arrow_angle(&self, openness: f32) -> f32 {
-        let t = openness.clamp(0.0, 1.0);
-        self.arrow_closed_angle + (self.arrow_open_angle - self.arrow_closed_angle) * t
+        Animatable::lerp(
+            self.arrow_closed_angle,
+            self.arrow_open_angle,
+            openness.clamp(0.0, 1.0),
+        )
     }
 
     /// A header transparent at rest, picking up a surface fill on hover.

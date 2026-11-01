@@ -315,7 +315,7 @@ fn the_picker_value_editor_is_its_chip() {
     );
 }
 
-/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 12 px; the picker's mono 12 px values on the value chip, its editor and hex field (four states each); the picker's mono 10 px captions.
+/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 12 px; the picker's mono 12 px values on the value chip, its editor and hex field (four states each); the picker's mono 12 px captions.
 #[test]
 fn bundled_text_inherits_every_axis_but_color() {
     use crate::theme::{Theme, ThemeText};
@@ -325,8 +325,7 @@ fn bundled_text_inherits_every_axis_but_color() {
         ..TextStyleOverrides::NONE
     };
     let mut expected = vec![TextStyleOverrides::NONE.with_font_size(12.0)];
-    expected.extend([mono.with_font_size(12.0); 12]);
-    expected.push(mono.with_font_size(10.0));
+    expected.extend([mono.with_font_size(12.0); 13]);
 
     let mut theme = Theme::default();
     let mut named = Vec::new();

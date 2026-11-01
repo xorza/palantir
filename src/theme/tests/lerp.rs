@@ -38,7 +38,9 @@ fn resolved_text(theme: &mut Theme) -> Vec<TextStyle> {
     styles
 }
 
-/// The stock themes come back exactly at either end, the light one's every color included.
+/// The stock themes come back exactly at either end, the light one's every color included. Each
+/// step between makes valid faces, between the stock pair and toward a light theme at half and
+/// at twice the text size.
 #[test]
 fn a_lerp_ends_on_either_theme() {
     let (dark, light) = (
@@ -47,7 +49,16 @@ fn a_lerp_ends_on_either_theme() {
     );
     assert_eq!(Theme::lerp(dark.clone(), light.clone(), 0.0), dark);
     assert_eq!(Theme::lerp(dark.clone(), light.clone(), 1.0), light);
-    assert_ne!(Theme::lerp(dark.clone(), light, 0.5), dark);
+    assert_ne!(Theme::lerp(dark.clone(), light.clone(), 0.5), dark);
+
+    for factor in [1.0, 0.5, 2.0] {
+        let mut scaled = light.clone();
+        scaled.scale_text(factor);
+        for t in [0.25, 0.5, 0.75] {
+            let mut step = Theme::lerp(dark.clone(), scaled.clone(), t);
+            assert!(step.faces_valid(1.0), "{factor}× at {t}");
+        }
+    }
 }
 
 /// Numbers, spacings, radii, arrays, sizes and colors blend; a field the ends share stays

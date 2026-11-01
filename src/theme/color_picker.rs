@@ -89,30 +89,24 @@ pub struct ColorPickerTheme {
     pub label: TextStyleOverrides,
 }
 
-/// Font size of the channel values and hex field: the caption tier, two under the
-/// 14 px body, for a dense grid of readouts, each of four columns
-/// (208 - 3 gaps) / 4 = 47.5 px wide.
-const VALUE_FONT_PX: f32 = 12.0;
-
-const VALUE_PADDING: f32 = 5.0;
-
-/// Put every state's text in the monospace face at the value size.
-fn mono_states(looks: &mut StatefulLook) {
-    for look in [
-        &mut looks.normal,
-        &mut looks.hovered,
-        &mut looks.active,
-        &mut looks.disabled,
-    ] {
+/// Put every state's text in the monospace face at the caption tier, for a dense grid of
+/// readouts: four columns, each (208 − 3 × 8) / 4 = 46 px wide at the stock steps.
+fn mono_states(looks: &mut StatefulLook, m: &Metrics) {
+    for look in looks.each_mut() {
         look.text.family = Some(FontFamily::MONO);
-        look.text.font_size = Some(VALUE_FONT_PX);
+        look.text.font_size = Some(m.text.caption);
     }
+}
+
+/// The inset of a value's box and of the hex field.
+fn value_padding(m: &Metrics) -> Spacing {
+    Spacing::all(m.space.xs)
 }
 
 fn mono_edit(p: &Palette, m: &Metrics) -> TextEditTheme {
     let mut edit = TextEditTheme::from_parts(p, m);
-    mono_states(&mut edit.looks);
-    edit.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
+    mono_states(&mut edit.looks, m);
+    edit.defaults.padding = value_padding(m);
     edit
 }
 
@@ -172,15 +166,15 @@ impl ColorPickerTheme {
             checker_cell: 6.0,
             border: p.element_strong,
             border_width: m.stroke.hairline,
-            gap: 6.0,
+            gap: m.space.sm,
             popup: p.popup_panel(m),
             popup_padding: Spacing::all(m.space.sm),
             // The editor derives from the chip, as `DragValueTheme` promises, so an
             // editable value keeps its box and text in place.
             value: {
                 let mut chip = DragValueTheme::from_parts(p, m).chip;
-                mono_states(&mut chip.unselected);
-                chip.defaults.padding = Spacing::xy(VALUE_PADDING, VALUE_PADDING);
+                mono_states(&mut chip.unselected, m);
+                chip.defaults.padding = value_padding(m);
                 DragValueTheme::from_chip(chip, &TextEditTheme::from_parts(p, m))
             },
             hex: mono_edit(p, m),
@@ -188,7 +182,7 @@ impl ColorPickerTheme {
                 family: Some(FontFamily::MONO),
                 ..TextStyleOverrides::NONE
                     .with_color(p.text_muted)
-                    .with_font_size(10.0)
+                    .with_font_size(m.text.caption)
             },
         }
     }

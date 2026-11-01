@@ -5,10 +5,10 @@ immediate-mode GUI library for Rust.
 
 This crate is an implementation detail of `palantir` and is not meant to be
 depended on directly — `palantir` re-exports the derive next to the trait, so
-`use palantir::Animatable;` pulls in both:
+`use palantir::widget::Animatable;` pulls in both:
 
 ```rust,ignore
-use palantir::Animatable;
+use palantir::widget::Animatable;
 
 #[derive(Clone, Debug, Default, PartialEq, Animatable)]
 struct Look {

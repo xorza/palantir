@@ -64,9 +64,11 @@ fn each_frame_shows_the_lerp_at_its_phase() {
         "the change's own frame keeps its theme"
     );
 
+    let mut blend = None;
     for quarters in 1..4 {
         h.advance(QUARTER);
         let report = h.frame(record);
+        blend.get_or_insert_with(|| Rc::as_ptr(h.ui_ref().theme()));
         let t = quarters as f32 / 4.0;
         assert_eq!(
             **h.ui_ref().theme(),
@@ -83,6 +85,11 @@ fn each_frame_shows_the_lerp_at_its_phase() {
         !report.repaint_requested,
         "a landed transition asks for nothing"
     );
+
+    // The next run blends into the first run's buffer, so a window allocates for its first alone.
+    h.ui().set_theme_for(Dark, Rc::clone(&dark));
+    h.advance(QUARTER).frame(record);
+    assert_eq!(Some(Rc::as_ptr(h.ui_ref().theme())), blend);
 }
 
 /// Turned back at ¼, a duration runs only the way it came, ¼ of its length: half that later it
@@ -139,6 +146,21 @@ fn a_scheme_change_blends_from_the_next_frame() {
         **h.ui_ref().theme(),
         Theme::lerp(Theme::clone(&dark), Theme::clone(&light), 0.25)
     );
+
+    // Two schemes that hold one theme change nothing: no run, so no frame is owed, and the theme
+    // epoch stays, so nothing records again, whether the change would run or snap.
+    for reduced in [false, true] {
+        let (mut h, dark) = running();
+        h.set_motion_reduced(reduced);
+        h.ui().set_theme_for(Light, Rc::clone(&dark));
+        let epoch = h.ui_ref().theme_epoch;
+        h.set_system_color_scheme(Some(Light));
+        let report = h.advance(QUARTER).frame(record);
+        assert_eq!(h.ui_ref().color_scheme(), Light);
+        assert!(shows(&h, &dark));
+        assert_eq!(h.ui_ref().theme_epoch, epoch, "reduced {reduced}");
+        assert!(!report.repaint_requested, "reduced {reduced}: nothing runs");
+    }
 }
 
 /// A change snaps before the window's second frame, with no transition, with motion reduced,

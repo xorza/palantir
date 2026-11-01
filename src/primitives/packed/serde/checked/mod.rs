@@ -5,6 +5,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::packed::serde::LaneCodec;
 use crate::primitives::paint::backdrop_filter::Lens;
+use crate::text::glyph_font::GlyphFont;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer};
 use glam::Vec2;
@@ -31,6 +32,37 @@ pub(crate) fn length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, 
         domain::is_file_length,
         domain::FILE_LENGTH_RULE,
     )
+}
+
+/// A font size: one the shaper accepts, above the UI epsilon, and a length a file may hold.
+pub(crate) fn font_size<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let px = f32::deserialize(deserializer)?;
+    match font_size_rule(px) {
+        None => Ok(px),
+        Some(rule) => Err(D::Error::custom(format_args!("{rule}, got {px}"))),
+    }
+}
+
+/// An optional [`font_size`].
+pub(crate) fn optional_font_size<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f32>, D::Error> {
+    let value = Option::<f32>::deserialize(deserializer)?;
+    match value.and_then(|px| font_size_rule(px).map(|rule| (px, rule))) {
+        None => Ok(value),
+        Some((px, rule)) => Err(D::Error::custom(format_args!("{rule}, got {px}"))),
+    }
+}
+
+/// The rule `px` breaks as a font size, if any.
+const fn font_size_rule(px: f32) -> Option<&'static str> {
+    if !GlyphFont::length_is_valid(px) {
+        Some(GlyphFont::METRICS_ERROR)
+    } else if !domain::is_file_length(px) {
+        Some(domain::FILE_LENGTH_RULE)
+    } else {
+        None
+    }
 }
 
 /// A [positive](domain::positive) rate or divisor.

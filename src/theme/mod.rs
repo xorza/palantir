@@ -41,6 +41,7 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::text::glyph_font::GlyphFont;
 use crate::theme::button::ButtonTheme;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
@@ -67,6 +68,7 @@ use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
 use crate::theme::tooltip::TooltipTheme;
+use ::serde::de::Error as _;
 
 /// Global theme, aggregating per-widget themes. Widgets read it from `Ui::theme`.
 ///
@@ -96,6 +98,9 @@ use crate::theme::tooltip::TooltipTheme;
     ::serde::Deserialize,
     palantir_anim_derive::Animatable,
 )]
+// `remote = "Self"` turns the derives into inherent fns, so the trait impls below run the derived
+// body and then check the whole theme, with no field-by-field wire mirror (serde#642).
+#[serde(remote = "Self")]
 #[animate(before_lerp = Self::share_text_axes)]
 pub struct Theme {
     /// What every [`crate::Button`] wears; [`crate::ComboBox`] and [`crate::DragValue`] derive from it.
@@ -166,6 +171,28 @@ pub(crate) enum ThemeText<'a> {
 
 const TEXT_SCALE_ERROR: &str = "text scale factor must be finite and positive";
 const SCALED_TEXT_METRICS_ERROR: &str = "text scale would make font size or line height invalid";
+const FACES_ERROR: &str = "every text slot over the theme's ambient text must make a valid face";
+
+impl ::serde::Serialize for Theme {
+    fn serialize<S: ::serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        Self::serialize(self, serializer)
+    }
+}
+
+/// A theme file checks each slot alone as it reads; the whole theme then checks each override as
+/// the face it makes over [`Theme::text`], which no slot alone can see.
+impl<'de> ::serde::Deserialize<'de> for Theme {
+    fn deserialize<D: ::serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut theme = Self::deserialize(deserializer)?;
+        if !theme.faces_valid(1.0) {
+            return Err(D::Error::custom(format_args!(
+                "{FACES_ERROR}: {}",
+                GlyphFont::METRICS_ERROR
+            )));
+        }
+        Ok(theme)
+    }
+}
 
 #[inline]
 #[expect(
@@ -189,23 +216,8 @@ impl Theme {
     /// Panics if `factor` is not finite and positive, or would push a font size or line height outside what the shaper accepts. Checked before the first write, so a rejection leaves the theme untouched.
     pub fn scale_text(&mut self, factor: f32) {
         assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
+        assert!(self.faces_valid(factor), "{SCALED_TEXT_METRICS_ERROR}");
         let scale = |px: f32| px * factor;
-        let ambient = self.text.with_font_size(scale(self.text.font_size));
-        let mut metrics_valid = true;
-        self.for_each_text(None, |text, _| {
-            metrics_valid &= match text {
-                ThemeText::Style(style) => {
-                    style.with_font_size(scale(style.font_size)).metrics_valid()
-                }
-                ThemeText::Overrides(o) => TextStyleOverrides {
-                    font_size: o.font_size.map(scale),
-                    ..*o
-                }
-                .apply(&ambient)
-                .metrics_valid(),
-            };
-        });
-        assert!(metrics_valid, "{SCALED_TEXT_METRICS_ERROR}");
         self.for_each_text(None, |text, _| match text {
             ThemeText::Style(style) => style.font_size = scale(style.font_size),
             ThemeText::Overrides(o) => o.font_size = o.font_size.map(scale),
@@ -286,8 +298,33 @@ impl Theme {
         }
     }
 
+    /// Whether every text slot, its font sizes scaled by `factor`, makes a face the shaper accepts:
+    /// a whole style alone, an override as the face it makes over the scaled [`Self::text`]. An
+    /// override valid alone can make an invalid face, as a leading factor of 1e-6 over a 14 px
+    /// ambient makes a 1.4e-5 px line. Mutable only because [`Self::for_each_text`] walks so;
+    /// nothing changes.
+    pub(crate) fn faces_valid(&mut self, factor: f32) -> bool {
+        let scale = |px: f32| px * factor;
+        let ambient = self.text.with_font_size(scale(self.text.font_size));
+        let mut valid = true;
+        self.for_each_text(None, |text, _| {
+            valid &= match text {
+                ThemeText::Style(style) => {
+                    style.with_font_size(scale(style.font_size)).metrics_valid()
+                }
+                ThemeText::Overrides(o) => TextStyleOverrides {
+                    font_size: o.font_size.map(scale),
+                    ..*o
+                }
+                .apply(&ambient)
+                .metrics_valid(),
+            };
+        });
+        valid
+    }
+
     /// Visit every text-bearing slot, each beside the same slot of `other` when one is given;
-    /// [`Self::scale_text`] and [`Self::share_text_axes`] drive it.
+    /// [`Self::faces_valid`], [`Self::scale_text`] and [`Self::share_text_axes`] drive it.
     ///
     /// Every `for_each_text` destructures its whole struct, so a new field fails to compile until classified.
     fn for_each_text(
@@ -361,8 +398,13 @@ impl Theme {
     }
 
     /// Assemble a full theme from a [`Palette`]'s colors and a [`Metrics`]' steps. The single source of the recipes: [`Self::stock`] is `from_parts` over a built-in palette and `Metrics::DEFAULT`.
+    ///
+    /// # Panics
+    ///
+    /// When a text step of `m` makes a face the shaper refuses, as a `body` of 0 would.
+    #[track_caller]
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        Self {
+        let mut theme = Self {
             button: ButtonTheme::from_parts(p, m),
             checkbox: ToggleTheme::checkbox(p, m),
             radio: ToggleTheme::radio(p, m),
@@ -392,7 +434,9 @@ impl Theme {
             window_clear: p.window_bg,
             panel_chrome: None,
             panel_clip: ClipMode::None,
-        }
+        };
+        assert!(theme.faces_valid(1.0), "{FACES_ERROR}");
+        theme
     }
 
     /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].

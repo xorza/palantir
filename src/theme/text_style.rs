@@ -1,7 +1,6 @@
 //! The font, size, weight, color and leading a run of text is shaped and
 //! painted with.
 
-use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -162,6 +161,7 @@ impl TextStyle {
 /// the shaper as a face it cannot resolve.
 #[derive(Debug, serde::Deserialize)]
 struct UncheckedTextStyle {
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::font_size")]
     font_size: f32,
     color: RgbaF32,
     line_height_factor: f32,
@@ -184,9 +184,6 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
         };
         if !style.metrics_valid() {
             return Err(GlyphFont::METRICS_ERROR);
-        }
-        if !domain::is_file_length(style.font_size) {
-            return Err(domain::FILE_LENGTH_RULE);
         }
         Ok(style)
     }

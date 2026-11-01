@@ -32,13 +32,13 @@ pub struct Metrics {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextSteps {
     /// Secondary text and dense surfaces: a tooltip, a caption over a group, a field's help.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::font_size")]
     pub caption: f32,
     /// The ambient text every widget reads: a button's label, a menu row, a field.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::font_size")]
     pub body: f32,
     /// A heading: a pane's or a dialog's title.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::font_size")]
     pub title: f32,
 }
 

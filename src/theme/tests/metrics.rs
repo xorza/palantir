@@ -6,11 +6,40 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
-use crate::theme::Theme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::{
     Metrics, RadiusSteps, ShadowGeometry, SpaceSteps, StrokeSteps, TextSteps,
 };
 use crate::theme::palette::Palette;
+use crate::theme::{FACES_ERROR, Theme};
+
+/// A text step is a font size: a file's `body: 0.0` is refused, and so is a theme built from it,
+/// as every ambient text would paint nothing.
+#[test]
+fn a_text_step_is_a_font_size() {
+    use crate::internals::panic_probe;
+    use crate::text::glyph_font::GlyphFont;
+
+    let valid = super::pretty(&Metrics::DEFAULT);
+    let zero = valid.replacen("body: 14.0", "body: 0.0", 1);
+    assert_ne!(zero, valid, "`body: 14.0` is not in the metrics");
+    let error = ron::from_str::<Metrics>(&zero).expect_err("a zero body");
+    assert!(
+        error.to_string().contains(GlyphFont::METRICS_ERROR),
+        "unexpected serde error: {error}"
+    );
+
+    let metrics = Metrics {
+        text: TextSteps {
+            body: 0.0,
+            ..Metrics::DEFAULT.text
+        },
+        ..Metrics::DEFAULT
+    };
+    panic_probe::assert_panics_with(FACES_ERROR, || {
+        Theme::from_parts(Palette::for_scheme(ColorScheme::Dark), &metrics)
+    });
+}
 
 /// Steps no two of which are equal, and none equal to a default step, so each read below names
 /// the one step its field takes.
@@ -96,6 +125,16 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
             Spacing::all(3.0),
         ),
         ("popup", t.popup.padding, Spacing::all(3.0)),
+        (
+            "picker value",
+            t.color_picker.value.chip.defaults.padding,
+            Spacing::all(1.0),
+        ),
+        (
+            "picker hex",
+            t.color_picker.hex.defaults.padding,
+            Spacing::all(1.0),
+        ),
     ];
     for (slot, got, want) in paddings {
         assert_eq!(got, want, "{slot} padding");
@@ -116,6 +155,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("separator", t.separator.thickness, 0.25),
         ("splitter rule", t.splitter.rule_thickness, 0.25),
         ("picker border", t.color_picker.border_width, 0.25),
+        ("picker gap", t.color_picker.gap, 3.0),
         ("caret", t.text_edit.caret_width, 0.5),
         ("dock preview", t.dock.preview_stroke.width, 0.5),
         ("tab close", t.tabs.close_glyph_width, 0.5),
@@ -132,11 +172,21 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     }
     assert_eq!(t.dock.ghost_offset, Vec2::new(5.0, 7.0));
     assert_eq!(t.text.font_size, 27.0, "the ambient text is the body tier");
-    assert_eq!(
-        t.tooltip.text.font_size,
-        Some(25.0),
-        "a tooltip is the caption tier"
-    );
+    let captions = [
+        ("tooltip", t.tooltip.text.font_size),
+        ("picker label", t.color_picker.label.font_size),
+        (
+            "picker value",
+            t.color_picker.value.chip.unselected.normal.text.font_size,
+        ),
+        (
+            "picker hex",
+            t.color_picker.hex.looks.disabled.text.font_size,
+        ),
+    ];
+    for (slot, size) in captions {
+        assert_eq!(size, Some(25.0), "{slot} is the caption tier");
+    }
     let chromes = [
         ("button", &t.button.unselected.normal.chrome, 13.0, 0.25),
         ("text edit", &t.text_edit.looks.normal.chrome, 13.0, 0.25),

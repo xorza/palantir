@@ -414,6 +414,10 @@ impl Ui {
         if scheme != self.scheme {
             let old = Rc::clone(self.themes.get(self.scheme));
             self.scheme = scheme;
+            // Two schemes that hold one theme change nothing shown, so the record stays.
+            if Rc::ptr_eq(&old, self.themes.get(scheme)) {
+                return;
+            }
             if snap {
                 self.snap_theme();
             } else {
