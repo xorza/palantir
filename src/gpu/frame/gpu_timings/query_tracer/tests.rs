@@ -1,5 +1,6 @@
 use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats};
 use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_timings::query_tracer::{
     BACKDROP_IDX, COPY_OUT_IDX, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer, STATS_DONE,
     STATS_FAILED, TIMESTAMPS_DONE, TIMESTAMPS_FAILED, mappings_complete, mappings_failed,
@@ -189,7 +190,7 @@ fn a_frame_publishes_after_the_next_frame_resolved_it() {
         tracer.finish(&mut encoder);
         gpu.queue.submit([encoder.finish()]);
         tracer.after_submit(gpu, &sink);
-        lease.wait();
+        assert_eq!(gpu.wait_until(&|| tracer.callbacks_landed()), GpuWait::Done);
         tracer.after_submit(gpu, &sink);
     };
     frame(&mut tracer);

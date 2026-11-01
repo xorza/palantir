@@ -126,8 +126,10 @@ impl Harness {
     ///
     /// # Errors
     ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu), and
-    /// [`PlayError::DeviceLost`] when the device is lost before the pixels come back.
+    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
+    /// [`PlayError::DeviceLost`] when the device is lost before the pixels come back, and
+    /// [`PlayError::GpuTimedOut`] when it does not finish the frame in time; `pixels` is left
+    /// empty on either.
     pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError> {
         if self.depth != FrameDepth::Paint {
             return Err(PlayError::NoPixels);
@@ -137,10 +139,11 @@ impl Harness {
             .target
             .as_mut()
             .expect("a harness that paints holds a target");
-        if self.core.gpu().is_lost() || !target.copy_texels(pixels) {
-            return Err(PlayError::DeviceLost);
+        match target.copy_texels(pixels) {
+            GpuWait::Done => Ok(()),
+            GpuWait::DeviceLost => Err(PlayError::DeviceLost),
+            GpuWait::TimedOut => Err(PlayError::GpuTimedOut),
         }
-        Ok(())
     }
 
     /// Frames of `app` until it settles, as [`Self::settle`] runs them, naming `step` when it

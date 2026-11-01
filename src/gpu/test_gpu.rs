@@ -13,6 +13,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
@@ -101,7 +102,7 @@ impl HeadlessTestGpuLease {
     pub fn read_texture(&self, texture: &wgpu::Texture) -> Vec<u8> {
         let mut texels = Vec::new();
         let read = TexelReadback::new(&self.device, texture).read(self, texture, &mut texels);
-        assert!(read, "the read buffer maps");
+        assert_eq!(read, GpuWait::Done, "the read buffer maps");
         texels
     }
 

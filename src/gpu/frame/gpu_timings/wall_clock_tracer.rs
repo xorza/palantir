@@ -121,8 +121,10 @@ impl WallClockTracer {
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats};
-    use crate::gpu::frame::gpu_timings::wall_clock_tracer::WallClockTracer;
+    use crate::gpu::device::gpu_wait::GpuWait;
+    use crate::gpu::frame::gpu_timings::wall_clock_tracer::{PENDING, WallClockTracer};
     use crate::gpu::test_gpu::headless_test_gpu;
+    use std::sync::atomic::Ordering::Acquire;
 
     /// A frame `finish` closed is timed from its submit to the queue's callback and publishes as
     /// the pass time, every finer time absent; a call with no frame closed since starts nothing,
@@ -146,7 +148,14 @@ mod tests {
             1,
             "one frame timed"
         );
-        lease.wait();
+        // Another thread's poll can run the work-done callback after the device's wait returns.
+        let landed = || {
+            tracer
+                .slots
+                .iter()
+                .all(|slot| !slot.in_flight || slot.done.load(Acquire) != PENDING)
+        };
+        assert_eq!(gpu.wait_until(&landed), GpuWait::Done);
         tracer.after_submit(&gpu, &sink);
         assert!(sink.last_pass().is_some(), "the frame published");
         assert!(

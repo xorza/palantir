@@ -1632,6 +1632,7 @@ PlayError
         EmptyRegion
         NoPixels
         DeviceLost
+        GpuTimedOut
         Disconnected
         NoFrame { seconds: f32 }
         Busy { step: String, seconds: f32 }

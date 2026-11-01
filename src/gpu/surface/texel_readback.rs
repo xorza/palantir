@@ -59,9 +59,9 @@ impl TexelReadback {
     }
 
     /// Every texel of `texture`'s first layer as the texture holds it, copied back and waited for:
-    /// `texels` takes the rows top down with no padding between them. Returns `false`, `texels`
-    /// left empty, when the copy does not map: the device was lost, or its wait timed out.
-    pub(crate) fn read(&self, gpu: &Gpu, texture: &wgpu::Texture, texels: &mut Vec<u8>) -> bool {
+    /// `texels` takes the rows top down with no padding between them. Returns how the wait ended;
+    /// `texels` is left empty unless [`GpuWait::Done`].
+    pub(crate) fn read(&self, gpu: &Gpu, texture: &wgpu::Texture, texels: &mut Vec<u8>) -> GpuWait {
         debug_assert_eq!(
             render_target::texture_size(texture),
             self.size,
@@ -87,15 +87,19 @@ impl TexelReadback {
         );
         gpu.queue.submit(iter::once(encoder.finish()));
         let map = MapState::map_read(&self.buffer);
-        if gpu.wait_until(&|| !map.is_pending()) != GpuWait::Done {
-            // Aborts the map, so the next read can map the buffer again.
-            if map.is_pending() {
-                self.buffer.unmap();
+        match gpu.wait_until(&|| !map.is_pending()) {
+            GpuWait::Done if map.is_mapped() => {}
+            GpuWait::Done => {
+                debug_assert!(gpu.is_lost(), "a map fails only on a lost device");
+                return GpuWait::DeviceLost;
             }
-            return false;
-        }
-        if !map.is_mapped() {
-            return false;
+            waited => {
+                // Aborts the map, so the next read can map the buffer again.
+                if map.is_pending() {
+                    self.buffer.unmap();
+                }
+                return waited;
+            }
         }
         {
             let view = self
@@ -109,6 +113,6 @@ impl TexelReadback {
             }
         }
         self.buffer.unmap();
-        true
+        GpuWait::Done
     }
 }

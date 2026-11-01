@@ -121,6 +121,9 @@ pub enum PlayError {
     NoPixels,
     /// The device was lost before the window's pixels came back.
     DeviceLost,
+    /// The device did not finish the frame whose pixels a capture waits for within its bound,
+    /// and is not lost: a hang no system has reset yet.
+    GpuTimedOut,
     /// The window closed, or its host stopped.
     Disconnected,
     /// The window ran no frame in `seconds` of real time: it is hidden or minimized, and its host
@@ -164,6 +167,9 @@ impl Display for PlayError {
             Self::EmptyRegion => f.write_str("the region holds no pixel of the window"),
             Self::NoPixels => f.write_str("the window paints no pixels; build it with a GPU"),
             Self::DeviceLost => f.write_str("the device was lost before the pixels came back"),
+            Self::GpuTimedOut => {
+                f.write_str("the device did not finish the frame in time, and hangs unreset")
+            }
             Self::Disconnected => f.write_str("the window closed"),
             Self::NoFrame { seconds } => write!(
                 f,

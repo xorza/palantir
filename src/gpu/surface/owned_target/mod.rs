@@ -2,6 +2,7 @@
 //! harnesses and benches that own the texture they draw into.
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::render_target::{self, RenderTarget, TargetFormat};
 use crate::gpu::surface::texel_readback::TexelReadback;
 use glam::UVec2;
@@ -118,14 +119,14 @@ impl OwnedTarget {
     }
 
     /// Every texel as the texture holds it, in its own format, copied back and waited for:
-    /// `texels` takes the rows top down with no padding between them. Returns `false`, `texels`
-    /// left empty, when the copy does not map, as [`TexelReadback::read`] says. The staging
-    /// buffer stays for the next copy, also after a failed one, whose pending map the read aborts.
+    /// `texels` takes the rows top down with no padding between them. Returns how the wait ended,
+    /// as [`TexelReadback::read`] says. The staging buffer stays for the next copy, also after a
+    /// failed one, whose pending map the read aborts.
     ///
     /// # Panics
     ///
     /// As [`TexelReadback::new`].
-    pub(crate) fn copy_texels(&mut self, texels: &mut Vec<u8>) -> bool {
+    pub(crate) fn copy_texels(&mut self, texels: &mut Vec<u8>) -> GpuWait {
         self.readback
             .get_or_insert_with(|| TexelReadback::new(&self.gpu.device, &self.texture))
             .read(&self.gpu, &self.texture, texels)

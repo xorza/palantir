@@ -1,3 +1,4 @@
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu};
 use crate::internals::panic_probe;
@@ -55,15 +56,15 @@ fn a_texel_copy_keeps_its_staging_buffer() {
     );
     clear(&gpu, target.texture());
     let mut texels = Vec::new();
-    assert!(target.copy_texels(&mut texels));
+    assert_eq!(target.copy_texels(&mut texels), GpuWait::Done);
     assert_eq!(texels, [51, 102, 153, 255].repeat(6));
     assert!(target.readback.is_some());
     texels.clear();
-    assert!(target.copy_texels(&mut texels));
+    assert_eq!(target.copy_texels(&mut texels), GpuWait::Done);
     assert_eq!(texels, [51, 102, 153, 255].repeat(6), "the kept buffer");
 
     gpu.lose();
-    assert!(!target.copy_texels(&mut texels));
+    assert_eq!(target.copy_texels(&mut texels), GpuWait::DeviceLost);
     assert!(texels.is_empty());
     assert!(target.readback.is_some());
 }

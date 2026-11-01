@@ -681,4 +681,28 @@ fn tick(bytes: &[u8], idx: usize) -> u64 {
 }
 
 #[cfg(test)]
+mod internals {
+    use crate::gpu::frame::gpu_timings::query_tracer::{
+        QueryTracer, SlotState, UNMAPPED, mappings_complete,
+    };
+    use std::sync::atomic::Ordering::Acquire;
+
+    impl QueryTracer {
+        /// Whether every callback the slots wait on has run: each submitted frame's work-done,
+        /// and each resolving slot's maps. Another thread's poll can run them after a wait on the
+        /// device returns, so a test waits for this through `Gpu::wait_until`.
+        pub(super) fn callbacks_landed(&self) -> bool {
+            self.slots.iter().all(|slot| match slot.state {
+                SlotState::Submitted => slot.done.load(Acquire),
+                SlotState::Resolving => {
+                    let state = slot.map_state.load(Acquire);
+                    state == UNMAPPED || mappings_complete(state, slot.stats_buffer.is_some())
+                }
+                SlotState::Free | SlotState::Writing => true,
+            })
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests;
