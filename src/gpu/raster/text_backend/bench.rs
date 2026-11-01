@@ -13,6 +13,7 @@ use crate::bench::backends::{Backend, Backends};
 use crate::bench::kind::{Kind, Scale};
 use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
@@ -172,11 +173,11 @@ struct Fixture {
     store: RecordStore,
     runs: Vec<TextDrawRow>,
     target: wgpu::TextureView,
+    gpu: Gpu,
 }
 
 impl Fixture {
-    fn new(make_runs: fn(&mut RecordStore, &TextShaper) -> Vec<TextDrawRow>) -> Self {
-        let g = gpu();
+    fn new(g: &BenchGpu, make_runs: fn(&mut RecordStore, &TextShaper) -> Vec<TextDrawRow>) -> Self {
         let shaper = TextShaper::new();
         let mut store = RecordStore::default();
         let runs = make_runs(&mut store, &shaper);
@@ -189,6 +190,7 @@ impl Fixture {
             store,
             runs,
             target: g.target("palantir.text_atlas.target", PHYSICAL).view(),
+            gpu: g.handles(),
         }
     }
 
@@ -201,15 +203,14 @@ impl Fixture {
 
     /// One frame drawing `batches` in order, submitted and drained.
     fn frame_batches(&mut self, batches: &[Batch<'_>]) {
-        let g = gpu();
-        let mut encoder = g
+        let mut encoder = self
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.text_atlas.encoder"),
             });
         {
-            let mut ctx = GpuCtx::new(&g.gpu, &mut self.belt, &mut encoder);
+            let mut ctx = GpuCtx::new(&self.gpu, &mut self.belt, &mut encoder);
             let interned_text = self.store.interned_text();
             for (idx, batch) in batches.iter().enumerate() {
                 self.backend.prepare_batch(TextBatchInput {
@@ -255,9 +256,9 @@ impl Fixture {
             }
         }
         self.belt.finish();
-        g.gpu.queue.submit([encoder.finish()]);
+        self.gpu.queue.submit([encoder.finish()]);
         self.belt.recall();
-        g.wait();
+        self.gpu.wait();
         self.backend.tick_frame();
     }
 
@@ -291,14 +292,13 @@ impl Fixture {
 /// What a case runs of a frame at a scale: the whole frame, or `prepare` alone.
 type Stage = fn(&mut Fixture, f32);
 
-fn gpu() -> &'static BenchGpu {
-    BenchGpu::shared(Timing::Bare)
-}
+/// The device timing every GPU case here opens.
+const TIMING: Timing = Timing::Bare;
 
 /// `atomic/text_atlas/gpu/<workload>/<frame|prepare>`: the text backend driven directly, a
 /// whole frame (prepare, flush, draw and submit) or `prepare` alone for the CPU cost a submit
 /// would drown. Both need the device.
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     bench_encoded_cache(c);
     let Some(backend) = backends.gpu() else {
         return;
@@ -307,14 +307,14 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     let case = |name: &str| backend.case(name);
 
     group.bench_function(case("steady_warm/frame"), |b| {
-        let mut steady = Fixture::new(node_rows);
+        let mut steady = Fixture::new(backends.device(TIMING), node_rows);
         for _ in 0..2 {
             steady.frame(BASE_SCALE);
         }
         b.iter(|| steady.frame(BASE_SCALE));
     });
     group.bench_function(case("steady_warm/prepare"), |b| {
-        let mut steady = Fixture::new(node_rows);
+        let mut steady = Fixture::new(backends.device(TIMING), node_rows);
         for _ in 0..2 {
             steady.frame(BASE_SCALE);
         }
@@ -322,7 +322,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     });
 
     group.bench_function(case("zoom_smooth/frame"), |b| {
-        let mut zoom = Fixture::new(node_rows);
+        let mut zoom = Fixture::new(backends.device(TIMING), node_rows);
         for step in 0..WARM_SCALE_CYCLE {
             zoom.frame(rung(step, TEXT_SCALE_STEP));
         }
@@ -338,7 +338,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     let stages: [(&str, Stage); 2] = [("frame", Fixture::frame), ("prepare", Fixture::prepare)];
     for (stage, run_stage) in stages {
         group.bench_function(case(&format!("cache_churn/{stage}")), |b| {
-            let mut churn = Fixture::new(node_rows);
+            let mut churn = Fixture::new(backends.device(TIMING), node_rows);
             for step in 0..CHURN_SCALE_CYCLE {
                 churn.frame(rung(step, TEXT_SCALE_STEP));
             }
@@ -352,7 +352,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     }
 
     group.bench_function(case("mixed_stable_churn/frame"), |b| {
-        let mut mixed = Fixture::new(node_rows);
+        let mut mixed = Fixture::new(backends.device(TIMING), node_rows);
         let runs = mem::take(&mut mixed.runs);
         let (stable, churning) = runs.split_at(runs.len() / 2);
         let batches = |scale| {
@@ -380,7 +380,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     // Large stable key set: every run hits its own row, nothing expires or re-encodes. `prepare`
     // alone, since a whole-map scan is microseconds against a GPU submit.
     group.bench_function(case("stable_keys/prepare"), |b| {
-        let mut distinct = Fixture::new(distinct_runs);
+        let mut distinct = Fixture::new(backends.device(TIMING), distinct_runs);
         for _ in 0..2 {
             distinct.frame(BASE_SCALE);
         }

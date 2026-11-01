@@ -16,6 +16,7 @@ use crate::bench::backends::Backends;
 use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::gpu::device::gpu_wait::GpuWait;
 use crate::host::harness::Harness;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::primitives::geometry::rect::Rect;
@@ -109,9 +110,7 @@ impl Workload {
 }
 
 /// Device without `TIMESTAMP_QUERY`, so a future default cannot write timestamps into the timed pass.
-fn gpu() -> &'static BenchGpu {
-    BenchGpu::shared(Timing::Bare)
-}
+const TIMING: Timing = Timing::Bare;
 
 fn texels(seed: usize) -> Vec<u8> {
     let tone = (seed % 251) as u8;
@@ -244,7 +243,7 @@ impl Fixture {
             workload.label()
         );
         // Drain so the staging belt recalls chunks (its map callback fires only on a poll). `Wait` not `Poll`: frames in flight bias recording.
-        gpu().wait();
+        assert_eq!(window.wait_for_gpu(), GpuWait::Done, "the frame drains");
     }
 
     /// The composed frame's draw-list shape.
@@ -268,7 +267,7 @@ impl Fixture {
 /// `atomic/record_pass/gpu/<workload>`: one frame's `RenderStep` stream translated into wgpu
 /// commands, timed by the pass's own CPU clock, not the frame's wall time. The draw-list shape
 /// is checked first. Per item.
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
@@ -276,7 +275,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     group.throughput(Throughput::Elements(ITEMS as u64));
     for workload in Workload::ALL {
         group.bench_function(backend.case(workload.label()), |bencher| {
-            let mut fixture = Fixture::new(gpu(), workload);
+            let mut fixture = Fixture::new(backends.device(TIMING), workload);
             for _ in 0..WARMUP_FRAMES {
                 fixture.frame();
             }

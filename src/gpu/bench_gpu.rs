@@ -1,8 +1,7 @@
-//! The headless adapter and device every GPU bench driver runs on: one per
-//! [`Timing`] flavor, process-static. Separate from [`crate::gpu::test_gpu`],
-//! whose interprocess lock a bench must not block behind.
+//! The headless adapter and device every GPU bench driver runs on: one per [`Timing`] flavor,
+//! which [`Backends`](crate::bench::backends::Backends) holds for the run. Separate from
+//! [`crate::gpu::test_gpu`], whose interprocess lock a bench must not block behind.
 
-use crate::bench::case_group::BetweenCases;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
@@ -14,7 +13,6 @@ use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use glam::UVec2;
 use std::iter;
-use std::sync::OnceLock;
 use std::time::Duration;
 
 /// The render target format every bench uses, sRGB like the swapchain.
@@ -52,34 +50,34 @@ pub struct BenchGpu {
     pub(crate) timing_features: wgpu::Features,
 }
 
-/// The device of `timing`, its adapter and instrumentation said once on stderr: a missing
-/// feature silently empties a timing.
-#[expect(
-    clippy::print_stderr,
-    reason = "a bench reports the device it measures on, which criterion does not"
-)]
-fn build(timing: Timing) -> BenchGpu {
-    let timing_features = match timing {
-        Timing::Instrumented => DeviceRequirements::GPU_TIMING_FEATURES,
-        Timing::PassOnly => DeviceRequirements::GPU_TIMING_FEATURES
-            .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
-        Timing::Bare => wgpu::Features::empty(),
-    };
-    let gpu =
-        RequestedGpu::headless(BENCH_POWER, timing_features).expect("lease headless bench gpu");
-    let timing_features = gpu.gpu.device.features() & timing_features;
-    let info = gpu.adapter.get_info();
-    let gpu = BenchGpu {
-        gpu: gpu.gpu,
-        info,
-        timing_features,
-    };
-    eprintln!("palantir benches: {timing:?} device, {}", gpu.summary());
-    gpu
-}
-
 impl BenchGpu {
-    /// The adapter the bench devices open on, picked as [`Self::shared`] picks it but with no
+    /// The device of `timing`, its adapter and instrumentation said once on stderr: a missing
+    /// feature silently empties a timing.
+    #[expect(
+        clippy::print_stderr,
+        reason = "a bench reports the device it measures on, which criterion does not"
+    )]
+    pub(crate) fn open(timing: Timing) -> Self {
+        let timing_features = match timing {
+            Timing::Instrumented => DeviceRequirements::GPU_TIMING_FEATURES,
+            Timing::PassOnly => DeviceRequirements::GPU_TIMING_FEATURES
+                .difference(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+            Timing::Bare => wgpu::Features::empty(),
+        };
+        let gpu =
+            RequestedGpu::headless(BENCH_POWER, timing_features).expect("lease headless bench gpu");
+        let timing_features = gpu.gpu.device.features() & timing_features;
+        let info = gpu.adapter.get_info();
+        let gpu = Self {
+            gpu: gpu.gpu,
+            info,
+            timing_features,
+        };
+        eprintln!("palantir benches: {timing:?} device, {}", gpu.summary());
+        gpu
+    }
+
+    /// The adapter the bench devices open on, picked as [`Self::open`] picks it but with no
     /// device opened; `None` when the host has none.
     pub(crate) fn probe() -> Option<BenchAdapter> {
         let instance = GpuRequest::instance().ok()?;
@@ -98,42 +96,6 @@ impl BenchGpu {
                 wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
             ),
         })
-    }
-
-    /// The process's device of `timing`, opened by the first caller.
-    ///
-    /// # Panics
-    ///
-    /// Panics when called between the cases of [`crate::bench::run`]: a group's body runs in
-    /// every run, so a device it opens opens in a filtered run too, against the rule that a case
-    /// builds its inputs in its own closure.
-    ///
-    /// Panics in debug when a unit test calls it: the lib's test process opens one instance, the
-    /// one [`headless_test_gpu`](crate::gpu::test_gpu::headless_test_gpu) leases from.
-    #[track_caller]
-    pub fn shared(timing: Timing) -> &'static Self {
-        static INSTRUMENTED: OnceLock<BenchGpu> = OnceLock::new();
-        static PASS_ONLY: OnceLock<BenchGpu> = OnceLock::new();
-        static BARE: OnceLock<BenchGpu> = OnceLock::new();
-        assert!(
-            !BetweenCases::now(),
-            "a bench opens its device in a case closure, not in its group's body"
-        );
-        #[expect(
-            clippy::assertions_on_constants,
-            reason = "constant per build: false only in the lib's own test build"
-        )]
-        {
-            debug_assert!(
-                !cfg!(test),
-                "a unit test leases its device from `headless_test_gpu`, the process's one instance"
-            );
-        }
-        match timing {
-            Timing::Instrumented => INSTRUMENTED.get_or_init(|| build(Timing::Instrumented)),
-            Timing::PassOnly => PASS_ONLY.get_or_init(|| build(Timing::PassOnly)),
-            Timing::Bare => BARE.get_or_init(|| build(Timing::Bare)),
-        }
     }
 
     /// A `size` render target named `label`, in the swapchain's format.

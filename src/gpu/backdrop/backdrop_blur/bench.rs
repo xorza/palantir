@@ -47,7 +47,7 @@ fn fill_capture(gpu: &BenchGpu, blur: &mut BackdropBlur, side: u32) {
     );
 }
 
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
@@ -56,7 +56,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
         for side in SIDES {
             group.throughput(Throughput::Elements(u64::from(side * side)));
             group.bench_function(backend.case(&format!("{sigma}/{side}")), |bencher| {
-                let gpu = BenchGpu::shared(Timing::PassOnly);
+                let gpu = backends.device(Timing::PassOnly);
                 let plan = BlurPlan::new(sigma as f32);
                 assert_eq!(plan.levels(), levels, "σ {sigma} px halves {levels} times");
                 let surface = UVec2::splat(side);
@@ -98,7 +98,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     for n in [1u32, 8] {
         group.throughput(Throughput::Elements(u64::from(n)));
         group.bench_function(backend.case(&format!("jobs/{n}")), |bencher| {
-            let gpu = BenchGpu::shared(Timing::PassOnly);
+            let gpu = backends.device(Timing::PassOnly);
             let plan = BlurPlan::new(32.0);
             assert_eq!(plan.levels(), 3, "σ 32 px halves three times");
             let mut jobs: Vec<BlurJob> = (0..n)

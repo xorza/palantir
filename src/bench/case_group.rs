@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// Whether code runs between the cases of [`crate::bench::run`]: in a group's own body, which
 /// every run executes, a filtered one or `--list` included, as opposed to a case closure, which
 /// only a run that selects the case does. A static, as criterion hands a case closure no context
-/// to carry it to [`BenchGpu::shared`](crate::gpu::bench_gpu::BenchGpu::shared).
+/// to carry it to [`Backends::device`](crate::bench::backends::Backends::device).
 static BETWEEN_CASES: AtomicBool = AtomicBool::new(false);
 
 /// While alive, sets whether code runs [between cases](BETWEEN_CASES), and puts the setting back

@@ -3,7 +3,7 @@
 
 use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
-use crate::gpu::bench_gpu::{BenchGpu, Timing};
+use crate::gpu::bench_gpu::Timing;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
@@ -67,7 +67,7 @@ impl Fixture {
 /// staged in the belt and copied into the atlas texture as `split` or `merged` says, then
 /// submitted and waited for. Per dirty row. Where `merged` stops being cheaper is the gap a
 /// flush should fold into a run.
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
@@ -93,7 +93,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
             // built on the first, so every timed iteration finds the belt's chunks allocated.
             let mut fixture = None;
             group.bench_function(backend.case(&format!("{name}/gap{gap}")), |b| {
-                let bench = BenchGpu::shared(Timing::Bare);
+                let bench = backends.device(Timing::Bare);
                 let gpu = bench.handles();
                 let Fixture {
                     texture,

@@ -48,9 +48,8 @@ impl Workload {
     }
 }
 
-fn gpu() -> &'static BenchGpu {
-    BenchGpu::shared(Timing::Instrumented)
-}
+/// The device timing every GPU case here opens.
+const TIMING: Timing = Timing::Instrumented;
 
 fn record(ui: &mut Ui, workload: Workload, phase: bool) {
     Panel::zstack()
@@ -123,7 +122,7 @@ impl Fixture {
 
 /// `atomic/curve_pipeline/gpu/<workload>`: the curve batch of one frame on the device, from its
 /// timestamps. Per curve instance.
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.batch_timed_gpu() else {
         return;
     };
@@ -131,7 +130,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
     for workload in [Workload::CubicStrips, Workload::Join] {
         group.throughput(Throughput::Elements(workload.instances()));
         group.bench_function(backend.case(workload.label()), |bencher| {
-            let gpu = gpu();
+            let gpu = backends.device(TIMING);
             let mut fixture = Fixture::new(gpu);
             // The timestamp readback lags a frame, so a few frames run before the first reads.
             let timed = (0..8).any(|_| {

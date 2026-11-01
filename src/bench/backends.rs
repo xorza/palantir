@@ -1,13 +1,22 @@
 //! The backends a case runs on: the CPU always, the GPU when the host has an adapter.
 
-use crate::gpu::bench_gpu::{BenchAdapter, BenchGpu};
+use crate::bench::case_group::BetweenCases;
+use crate::gpu::bench_gpu::{BenchAdapter, BenchGpu, Timing};
+use std::cell::OnceCell;
 use std::env;
 
-/// The backends a case may run on: the CPU always, the GPU when the host has an adapter.
-#[derive(Clone, Copy, Debug)]
+/// The backends a case may run on: the CPU always, the GPU when the host has an adapter, and the
+/// devices the GPU cases run on.
+///
+/// The run owns the devices ([`crate::bench::run`]), so they drop when it ends, before the process
+/// exits: a device a `static` held was never dropped (RFC 1440) and met `exit()` alive, where the
+/// driver's teardown raced its own shader-compiler thread.
+#[derive(Debug)]
 pub struct Backends {
     /// The adapter the GPU cases open their device on; `None` on a host with none.
     adapter: Option<BenchAdapter>,
+    /// A device per [`Timing`], opened by the first case that asks for it.
+    devices: [OnceCell<BenchGpu>; 3],
 }
 
 /// One backend a case runs on, the first part of its case.
@@ -37,7 +46,7 @@ impl Backends {
     pub fn probe() -> Self {
         if env::var_os(Self::NO_GPU).is_some_and(|value| !value.is_empty()) {
             eprintln!("palantir benches: {} is set, so no GPU cases", Self::NO_GPU);
-            return Self { adapter: None };
+            return Self::of(None);
         }
         let adapter = BenchGpu::probe();
         match adapter {
@@ -58,11 +67,39 @@ impl Backends {
                 }
             }
         }
-        Self { adapter }
+        Self::of(adapter)
+    }
+
+    const fn of(adapter: Option<BenchAdapter>) -> Self {
+        Self {
+            adapter,
+            devices: [const { OnceCell::new() }; 3],
+        }
+    }
+
+    /// The device of `timing`, opened by the first case that asks for it.
+    ///
+    /// # Panics
+    ///
+    /// Panics when called between the cases of [`crate::bench::run`]: a group's body runs in
+    /// every run, so a device it opens opens in a filtered run too, against the rule that a case
+    /// builds its inputs in its own closure.
+    #[track_caller]
+    pub fn device(&self, timing: Timing) -> &BenchGpu {
+        assert!(
+            !BetweenCases::now(),
+            "a bench opens its device in a case closure, not in its group's body"
+        );
+        let slot = match timing {
+            Timing::Instrumented => 0,
+            Timing::PassOnly => 1,
+            Timing::Bare => 2,
+        };
+        self.devices[slot].get_or_init(|| BenchGpu::open(timing))
     }
 
     /// The backends a case with both runs on, the CPU first.
-    pub fn all(self) -> Vec<Backend> {
+    pub fn all(&self) -> Vec<Backend> {
         if self.adapter.is_some() {
             vec![Backend::Cpu, Backend::Gpu]
         } else {
@@ -71,13 +108,13 @@ impl Backends {
     }
 
     /// The backends a GPU-only case runs on: the GPU, when there is one.
-    pub(crate) fn gpu(self) -> Option<Backend> {
+    pub(crate) fn gpu(&self) -> Option<Backend> {
         self.adapter.map(|_| Backend::Gpu)
     }
 
     /// The backend a case reading the frame's own backdrop timings runs on: the GPU, when its
     /// adapter writes timestamps between passes, where the frame writes them.
-    pub(crate) fn encoder_timed_gpu(self) -> Option<Backend> {
+    pub(crate) fn encoder_timed_gpu(&self) -> Option<Backend> {
         self.adapter
             .filter(|adapter| adapter.encoder_timestamps)
             .map(|_| Backend::Gpu)
@@ -85,7 +122,7 @@ impl Backends {
 
     /// The backend a case timing one batch inside the pass runs on: the GPU, when its adapter
     /// writes in-pass timestamps.
-    pub(crate) fn batch_timed_gpu(self) -> Option<Backend> {
+    pub(crate) fn batch_timed_gpu(&self) -> Option<Backend> {
         self.adapter
             .filter(|adapter| adapter.pass_timestamps)
             .map(|_| Backend::Gpu)

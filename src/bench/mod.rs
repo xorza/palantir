@@ -38,39 +38,39 @@ use crate::{animation, damage, gpu, input, layout, text, ui};
 use criterion::Criterion;
 
 /// Every case, atomic first. The host's adapters are listed once here; no device opens, as
-/// [`BenchGpu::shared`](crate::gpu::bench_gpu::BenchGpu::shared) refuses to open one between
-/// cases.
+/// [`Backends::device`] refuses to open one between cases. The devices drop with `backends`, when
+/// the run ends.
 pub fn run(c: &mut Criterion) {
     let _between = BetweenCases::set(true);
     let backends = Backends::probe();
 
     animation::bench::atomic(c);
-    backdrop::bench::atomic(c, backends);
-    backdrop_blur::bench::atomic(c, backends);
+    backdrop::bench::atomic(c, &backends);
+    backdrop_blur::bench::atomic(c, &backends);
     color_field::bench::atomic(c);
     composer::bench::atomic(c);
-    curve_pipeline::bench::atomic(c, backends);
+    curve_pipeline::bench::atomic(c, &backends);
     damage::bench::atomic(c);
     frontend::bench::atomic(c);
     gradient_atlas::bench::atomic(c);
     half_simd::bench::atomic(c);
     cascade::bench::atomic(c);
-    image_pipeline::bench::atomic(c, backends);
+    image_pipeline::bench::atomic(c, &backends);
     input::bench::atomic(c);
     layout::bench::atomic(c);
     paint_animations::bench::atomic(c);
-    gpu::bench::atomic(c, backends);
-    gpu::resource::bench::atomic(c, backends);
-    raster_atlas::bench::atomic(c, backends);
+    gpu::bench::atomic(c, &backends);
+    gpu::resource::bench::atomic(c, &backends);
+    raster_atlas::bench::atomic(c, &backends);
     schedule::bench::atomic(c);
-    text_backend::bench::atomic(c, backends);
+    text_backend::bench::atomic(c, &backends);
     text_edit::bench::atomic(c);
     text::bench::atomic(c);
-    ui::bench::atomic(c, backends);
+    ui::bench::atomic(c, &backends);
 
-    backdrop::bench::integration(c, backends);
+    backdrop::bench::integration(c, &backends);
     damage::bench::integration(c);
-    ui::bench::integration(c, backends);
+    ui::bench::integration(c, &backends);
     frontend::bench::integration(c);
     measure_cache::bench::integration(c);
 }

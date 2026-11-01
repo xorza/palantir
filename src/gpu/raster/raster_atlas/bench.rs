@@ -19,9 +19,8 @@ const GROWS: [(ContentType, u32); 3] = [
     (ContentType::Color, 1024),
 ];
 
-fn gpu() -> &'static BenchGpu {
-    BenchGpu::shared(Timing::Bare)
-}
+/// The device timing every GPU case here opens.
+const TIMING: Timing = Timing::Bare;
 
 /// A `content` side at `size`, every texel written and drained, so the timed frame copies
 /// initialized texels and wgpu clears only the grown texture.
@@ -74,19 +73,19 @@ fn submit(gpu: &BenchGpu, record: impl FnOnce(&mut wgpu::CommandEncoder)) {
 
 /// `atomic/raster_atlas/gpu/<grow_<side>/<from>|submit/empty>`: wall time from the grow to the drained
 /// submit that blits it, and the same submit with nothing recorded.
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
     let mut group = Kind::Atomic.group(c, "raster_atlas", Scale::Frame);
     group.bench_function(backend.case("submit/empty"), |b| {
-        let gpu = gpu();
+        let gpu = backends.device(TIMING);
         b.iter(|| submit(gpu, |_| {}));
     });
     for (content, from) in GROWS {
         let id = format!("grow_{}/{from}", content.side_name());
         group.bench_function(backend.case(&id), |b| {
-            let gpu = gpu();
+            let gpu = backends.device(TIMING);
             let zeros = vec![0; (from * from * content.bytes_per_pixel()) as usize];
             b.iter_custom(|iters| {
                 (0..iters)

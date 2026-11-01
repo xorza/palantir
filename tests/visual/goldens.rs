@@ -18,7 +18,7 @@ pub(crate) const ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/visual
 /// The suite's goldens, held to `Tolerance::EXACT` and to the adapter that wrote them. They are local, so an unchanged tree diffs at zero and another adapter fails with that reason instead of suite-wide pixel diffs. Built once, as naming the adapter leases the GPU.
 pub(crate) fn suite() -> &'static Goldens {
     static SUITE: OnceLock<Goldens> = OnceLock::new();
-    SUITE.get_or_init(|| Goldens::new(ROOT).with_adapter(headless_test_gpu().adapter.clone()))
+    SUITE.get_or_init(|| Goldens::new(ROOT).with_adapter(headless_test_gpu().adapter().to_owned()))
 }
 
 /// `actual` and `expected` agree in every pixel; `name` is a file name, not a sentence.

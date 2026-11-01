@@ -125,9 +125,8 @@ const RESIZE_POOL: [UVec2; 4] = [
     UVec2::new(2768, 1488),
 ];
 
-fn gpu() -> &'static BenchGpu {
-    BenchGpu::shared(Timing::PassOnly)
-}
+/// The device timing every GPU case here opens.
+const TIMING: Timing = Timing::PassOnly;
 
 /// A host on the desktop's present strategy (`DirectAdaptive`, as the winit host
 /// runs). The default would measure the screenshot path, which copies the
@@ -336,12 +335,12 @@ impl Arm {
     }
 
     /// One target per surface the arm renders at.
-    fn targets(self) -> Vec<OwnedTarget> {
+    fn targets(self, gpu: &BenchGpu) -> Vec<OwnedTarget> {
         self.sizes()
             .iter()
             .enumerate()
             .map(|(i, size)| {
-                gpu().target(&format!("palantir.frame_bench.{}.{i}", self.label()), *size)
+                gpu.target(&format!("palantir.frame_bench.{}.{i}", self.label()), *size)
             })
             .collect()
     }
@@ -389,14 +388,14 @@ impl Arm {
 /// the frame fixture (the `scrolling` arm), from its in-pass timestamps: the quads, the shadows
 /// and the text, each pipeline's share of [`main_pass`]. Only where the adapter writes in-pass
 /// timestamps; a tiler splits its pass at each, so these cases do not sum to `main_pass`.
-fn main_pass_batch(c: &mut Criterion, backends: Backends) {
+fn main_pass_batch(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.batch_timed_gpu() else {
         return;
     };
     let mut group = Kind::Atomic.group(c, "main_pass_batch", Scale::Frame);
     for kind in [BatchKind::Quads, BatchKind::Shadows, BatchKind::Text] {
         group.bench_function(backend.case(kind.label()), |b| {
-            let g = BenchGpu::shared(Timing::Instrumented);
+            let g = backends.device(Timing::Instrumented);
             let target = g.target("palantir.main_pass_batch_bench", BENCH_SURFACE);
             let mut host = OffscreenHost::builder(g.handles())
                 .collect_gpu_stats(true)
@@ -458,7 +457,7 @@ fn gpu_frame(
 }
 
 /// `integration/frame/<backend>/<scenario>`: one whole frame of the frame fixture.
-pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
+pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
     let mut group = Kind::Integration.group(c, "frame", Scale::Frame);
     for backend in backends.all() {
         for arm in Arm::ALL {
@@ -482,8 +481,8 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                     }
                 }),
                 Backend::Gpu => arm.measure(&mut group, backend, || {
-                    let g = gpu();
-                    let targets = arm.targets();
+                    let g = backends.device(TIMING);
+                    let targets = arm.targets(backends.device(TIMING));
                     let mut host = bench_host(g, arm.clock());
                     move |state: &mut FrameFixture, n: u32| {
                         let target = &targets[n as usize % targets.len()];
@@ -509,7 +508,7 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
 }
 
 /// Two stages of the frame alone over the frame fixture: record, and the main pass.
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     record(c);
     main_pass(c, backends);
     main_pass_batch(c, backends);
@@ -542,14 +541,14 @@ fn record(c: &mut Criterion) {
 /// [`integration`] adds. On Metal the pass time is the frame's wall time from submit to done
 /// ([`GpuTimings`](crate::gpu::frame::gpu_timings::GpuTimings)), so it also holds the frame's
 /// uploads, copies and the wake-up's latency.
-fn main_pass(c: &mut Criterion, backends: Backends) {
+fn main_pass(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.gpu() else {
         return;
     };
     let mut group = Kind::Atomic.group(c, "main_pass", Scale::Frame);
     for arm in [Arm::Partial, Arm::Scrolling] {
         group.bench_function(backend.case(arm.label()), |b| {
-            let g = gpu();
+            let g = backends.device(TIMING);
             let target = g.target("palantir.main_pass_bench", BENCH_SURFACE);
             let mut host = OffscreenHost::builder(g.handles())
                 .collect_gpu_stats(true)

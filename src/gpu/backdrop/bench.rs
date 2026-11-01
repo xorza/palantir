@@ -80,12 +80,12 @@ impl State {
     }
 }
 
-pub(crate) fn atomic(c: &mut Criterion, backends: Backends) {
+pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
     let Some(backend) = backends.encoder_timed_gpu() else {
         return;
     };
-    capture(c, backend);
-    composite(c, backend);
+    capture(c, backends, backend);
+    composite(c, backends, backend);
 }
 
 /// A host on the pass-timed device whose every frame paints whole.
@@ -126,13 +126,13 @@ impl WholeFrames {
     }
 }
 
-fn capture(c: &mut Criterion, backend: Backend) {
+fn capture(c: &mut Criterion, backends: &Backends, backend: Backend) {
     let mut group = Kind::Atomic.group(c, "backdrop_capture", Scale::Frame);
     for size in SIZES {
         group.throughput(Throughput::Elements(u64::from(size.x * size.y)));
         let case = format!("{}x{}", size.x, size.y);
         group.bench_function(backend.case(&case), |bencher| {
-            let gpu = BenchGpu::shared(Timing::PassOnly);
+            let gpu = backends.device(Timing::PassOnly);
             let target = gpu.target("palantir.bench.backdrop_capture", size);
             let mut frames = WholeFrames::new(gpu);
             let mut state = State::default();
@@ -220,14 +220,14 @@ impl Look {
     }
 }
 
-fn composite(c: &mut Criterion, backend: Backend) {
+fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
     let mut group = Kind::Atomic.group(c, "backdrop_composite", Scale::Frame);
     for look in Look::ALL {
         for side in [512, 2048] {
             group.throughput(Throughput::Elements(u64::from(side * side)));
             let case = format!("{}/{side}", look.label());
             group.bench_function(backend.case(&case), |bencher| {
-                let gpu = BenchGpu::shared(Timing::PassOnly);
+                let gpu = backends.device(Timing::PassOnly);
                 let target = gpu.target("palantir.bench.backdrop_composite", UVec2::splat(side));
                 let mut frames = WholeFrames::new(gpu);
                 let mut frame = || {
@@ -393,7 +393,7 @@ impl Look {
 /// three panes, wall time. `cpu` records through compose with no device; `gpu` runs the host's
 /// frame on the desktop's present strategy and waits for it. Each case checks its arm's paint, and
 /// on the device the blurs its frames run.
-pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
+pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
     let mut group = Kind::Integration.group(c, "backdrop_frame", Scale::Frame);
     for backend in backends.all() {
         for look in Look::FRAME {
@@ -418,20 +418,20 @@ pub(crate) fn integration(c: &mut Criterion, backends: Backends) {
                         assert_eq!(frame(), arm.expected(look).0, "{}", arm.label());
                         bencher.iter(&mut frame);
                     }
-                    Backend::Gpu => pane_frames(bencher, look, arm),
+                    Backend::Gpu => pane_frames(bencher, backends, look, arm),
                 });
             }
         }
     }
     if let Some(backend) = backends.gpu() {
-        scenes(&mut group, backend);
+        scenes(&mut group, backends, backend);
     }
     group.finish();
 }
 
 /// The device half of `integration/backdrop_frame`.
-fn pane_frames(bencher: &mut Bencher<'_>, look: Look, arm: Arm) {
-    let gpu = BenchGpu::shared(Timing::PassOnly);
+fn pane_frames(bencher: &mut Bencher<'_>, backends: &Backends, look: Look, arm: Arm) {
+    let gpu = backends.device(Timing::PassOnly);
     let target = gpu.target("palantir.bench.backdrop_frame", FRAME_SURFACE);
     let mut host = OffscreenHost::builder(gpu.handles())
         .collect_gpu_stats(false)
@@ -661,10 +661,10 @@ fn first(fixture: &mut FrameFixture, ui: &mut Ui) {
 /// - `pair_near` and `pair_apart`: two frosted cards whose gap the second's reach covers or not.
 /// - `many/under`: a strip under each row of twelve frosted cards flips color, staling more panes
 ///   than a partial frame holds, so the frame paints whole.
-fn scenes(group: &mut CaseGroup<'_>, backend: Backend) {
+fn scenes(group: &mut CaseGroup<'_>, backends: &Backends, backend: Backend) {
     for scene in SceneCase::ALL {
         group.bench_function(backend.case(scene.name), |bencher| {
-            let gpu = BenchGpu::shared(Timing::PassOnly);
+            let gpu = backends.device(Timing::PassOnly);
             let target = gpu.target("palantir.bench.backdrop_scene", scene.surface);
             let mut host = OffscreenHost::builder(gpu.handles())
                 .collect_gpu_stats(false)
