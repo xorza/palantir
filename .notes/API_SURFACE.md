@@ -2602,7 +2602,6 @@ Ui
         pub fn key_held(&mut self, key: Key) -> bool
         pub fn key_released(&mut self, key: Key) -> bool
         pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool
-        pub fn shortcut_pressed_as(&mut self, reader: WidgetId, shortcut: impl Into<Shortcut>) -> bool
         pub fn request_relayout(&mut self)
         pub const fn now(&self) -> Duration
         pub const fn set_cursor(&mut self, cursor: CursorIcon)

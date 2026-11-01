@@ -550,11 +550,14 @@ impl Ui {
     }
 
     /// [`Self::shortcut_pressed`] read inside `reader`, as the scope around it, rather than at
-    /// the record position. For a read made before `reader` records: an app's global chords,
-    /// read at the start of a frame as its root widget, speak for its root scope, and resolve
-    /// against the scopes the last frame recorded.
+    /// the record position: for a read made outside the node whose scope it speaks for, before
+    /// that node opens or after it closes.
     #[inline]
-    pub fn shortcut_pressed_as(&mut self, reader: WidgetId, shortcut: impl Into<Shortcut>) -> bool {
+    pub(crate) fn shortcut_pressed_as(
+        &mut self,
+        reader: WidgetId,
+        shortcut: impl Into<Shortcut>,
+    ) -> bool {
         let reader = self.key_reader_as(reader);
         self.input
             .shortcut_pressed(reader, &self.cascade, shortcut.into())

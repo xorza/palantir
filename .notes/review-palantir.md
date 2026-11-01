@@ -14,43 +14,52 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 
 ### Root causes
 
-1. **A device loss is handled at a few host checkpoints, not at the wgpu boundary.** Any wgpu call
+1. **The device travels raw beside the type that guards it.** `Gpu` owns what a call on the device
+   must respect: its health, `create_filled_buffer`, and the turn every pipeline build takes
+   (AGENTS.md, "Pipeline builds"). About 60 fns in `gpu` take `&wgpu::Device`, some with a
+   `&wgpu::Queue` beside it, and a few take `&Gpu`, so one constructor family mixes `&gpu` and
+   `&gpu.device` at its call sites, and each new guard threads a new signature chain down to the
+   call it guards.
+2. **A device loss is handled at a few host checkpoints, not at the wgpu boundary.** Any wgpu call
    can find the loss, but hosts check `is_lost` only at fixed points. Each wgpu precondition a loss
    breaks (map at creation, configure before acquire) is guarded case by case, and the unguarded
    ones panic under `panic = "abort"`. Recovery reruns startup for the backend only: not for the
    instance, not for the harness, and only once.
-2. **Two players of one window.** `Harness` and `Remote` share only the internal `Stage`. Their
+3. **Two players of one window.** `Harness` and `Remote` share only the internal `Stage`. Their
    bounds, queries, step labels, device handling and hit rules drifted, so darkroom keeps a
    `Backend` enum that rewrites their errors. `PlayError` stores formatted caller input (`step`)
    and `f32` seconds.
-3. **One trait does two jobs.** `Animatable` serves both spring rows and the theme tree. The theme
+4. **One trait does two jobs.** `Animatable` serves both spring rows and the theme tree. The theme
    pays for a spring contract it never runs (about 60 hand-written lines in
    `TextStyleOverrides`), and the derive grew a theme-only hook (`before_lerp`) and a hand-kept
    parallel walker (`for_each_text`, 15 impls).
-4. **Validity is checked one value at a time, never on the resolved face.** A theme file can load
+5. **Validity is checked one value at a time, never on the resolved face.** A theme file can load
    with overrides or font steps that make text paint nothing; the combined check lives only in
    `scale_text`.
-5. **Snapshot copies beside live reads.** `DragValueTheme` copies `button` and `text_edit` at
+6. **Snapshot copies beside live reads.** `DragValueTheme` copies `button` and `text_edit` at
    `from_parts`, while `ComboBox` reads `button` live; `frost_floats` takes a palette beside the
    theme that holds the inks; the texture limit has four holders; map state is written three ways.
-6. **Leftover time policy and redundant animation state.** The substep accumulator and the spring
+7. **Leftover time policy and redundant animation state.** The substep accumulator and the spring
    `dt` contract outlived the explicit integrator. "No motion" has three spellings and "row
    alive" four signals, each with per-frame cost.
-7. **Caches whose soundness rule lives in a doc comment.** Damage skips a subtree by "same
+8. **Caches whose soundness rule lives in a doc comment.** Damage skips a subtree by "same
    authoring and same rect", which `ARRANGE_DEPENDS_ONLY_ON_SLOT = false` denies for scrollbars.
    The grid breaks "width in, height out" for indefinite Fill tracks.
-8. **Growth policy decided per owner.** Raster atlases have byte budgets; the backdrop results
+9. **Growth policy decided per owner.** Raster atlases have byte budgets; the backdrop results
    atlas and the blur scratch have none, and `grown()` passes a size past the device ceiling.
-9. **Rules encoded at the call site, not in the owning type.** Platform conventions match in six
-   modules; lane validity differs between `Spacing` and `Corners`; error `source` policy differs
-   per variant; five app settings each keep a change flag the host ORs by hand.
-10. **Composition and fallbacks are opt-in per widget.** `ThemeDefaults` lacks setters a widget
+10. **Rules encoded at the call site, not in the owning type.** Platform conventions match in six
+    modules; lane validity differs between `Spacing` and `Corners`; error `source` policy differs
+    per variant; five app settings each keep a change flag the host ORs by hand.
+11. **Composition and fallbacks are opt-in per widget.** `ThemeDefaults` lacks setters a widget
     needs, so widgets override caller layout or preset it in constructors; wrappers finish inner
     widgets through crate-private hooks; disabled looks exist only where a widget wears a look
     plan; key grants claim whole key classes.
 
 ### Target design
 
+- **`&Gpu` is the one device handle in `gpu`**: every fn that reaches the device or its queue
+  takes `&Gpu`, never `&wgpu::Device` or a `(device, queue)` pair. Only the code that runs before
+  a `Gpu` exists takes the raw device: `DeviceHealth::watch`, `DeviceRequirements::met_by`.
 - **Loss-aware wgpu calls.** Every wgpu call whose precondition a loss breaks goes through a helper
   in `gpu`: a fill-at-creation buffer helper that writes only if the range maps; a
   `WindowSurface` that refuses acquire until a configure succeeded. Every frame path re-reads
@@ -93,8 +102,28 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 
 ## Plan
 
-Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
-an item deletes it.
+Batch 7 goes first, as later batches pass the device through its signatures; the rest are sorted
+by impact, bugs first. Each leaves the build and tests green. Whoever addresses an item deletes it.
+
+### Batch 7: the device through `Gpu`
+
+Files: every file under `src/gpu/` with a `device: &wgpu::Device` or `queue: &wgpu::Queue`
+parameter (`rg -n 'device: &wgpu::Device|queue: &wgpu::Queue' src/gpu`), their callers, tests and
+benches.
+
+- [ ] `backdrop_blur/mod.rs` (12 fns), `dynamic_buffer.rs`, `packed_atlas.rs`,
+  `texture_binding.rs`, `raster_atlas/{mod.rs,side.rs,bound_sides.rs}`, `gpu_timings/`,
+  `render_stream.rs`, `surface/{stencil.rs,damage_canvas.rs,capture.rs,backbuffer.rs,
+  texel_readback.rs}`, the pipeline and backend constructors that `WgpuBackend::new` calls, and
+  `ShaderBody::module` and `pipeline_recipe::pipeline_layout`: about 60 fns take
+  `&wgpu::Device`, five of them with a `&wgpu::Queue` beside it, while `CurvePipeline::new`,
+  `QuadPipeline::new`, `BackdropBlur::new` and the pipeline builders take `&Gpu`. Target: every
+  one takes `&Gpu`, so `WgpuBackend::new` passes `&gpu` to each constructor and no call site in
+  `gpu` reads `gpu.device` to pass it on. The exceptions are `DeviceHealth::watch` and
+  `DeviceRequirements::met_by`, which run before a `Gpu` exists. Making `Gpu`'s `device` field
+  private gains nothing, as the public `Gpu::device` hands out the same reference; the route
+  stays the signatures and `clippy.toml`. Batch 8's texture-limit holder reaches the
+  constructors through these signatures.
 
 ### Batch 8: texture growth and the device ceiling
 
