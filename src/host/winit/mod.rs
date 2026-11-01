@@ -60,6 +60,7 @@ mod native;
     path = "platform/other.rs"
 )]
 mod platform;
+mod recovery_backoff;
 pub(crate) mod remote;
 mod runtime;
 mod system_preferences;

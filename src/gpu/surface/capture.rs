@@ -176,7 +176,8 @@ impl Capture {
         }
     }
 
-    /// Whether the copy's map callback has yet to run. A lost device runs it too, with a failure.
+    /// Whether the copy's map callback has yet to run, which on a lost device it may never do
+    /// ([`MapState::is_pending`]).
     pub(crate) fn is_pending(&self) -> bool {
         self.staging.map.is_pending()
     }

@@ -196,7 +196,7 @@ impl QuadPipeline {
             return;
         }
         let buf = self.mask_buffer.get_or_insert_with(|| {
-            DynamicBuffer::<Quad>::vertex(ctx.device, "palantir.quad.masks", 8)
+            DynamicBuffer::<Quad>::vertex(&ctx.gpu.device, "palantir.quad.masks", 8)
         });
         buf.upload_instances(ctx, masks);
     }

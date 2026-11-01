@@ -264,7 +264,7 @@ impl WgpuBackend {
         let mesh = MeshPipeline::new(device);
         let image = ImagePipeline::new(device, &texture_binding);
         let gpu_view_targets = GpuViewTargets::new(texture_binding.clone());
-        let curve = CurvePipeline::new(device, &texture_binding);
+        let curve = CurvePipeline::new(&gpu, &texture_binding);
         let raster = RasterProgram::new(device);
         let blit = BlitPipeline::new(device, &texture_binding);
         let text = TextBackend::new(device, &raster, resources.text.clone());

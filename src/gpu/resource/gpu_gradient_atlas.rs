@@ -80,7 +80,7 @@ impl GpuGradientAtlas {
         cpu.flush_with(|rows| {
             if texture.height() != rows.total_rows {
                 debug_assert!(texture.height() < rows.total_rows, "the atlas only grows");
-                let grown = create_texture(ctx.device, rows.total_rows);
+                let grown = create_texture(&ctx.gpu.device, rows.total_rows);
                 ctx.encoder.copy_texture_to_texture(
                     texture.as_image_copy(),
                     grown.as_image_copy(),
@@ -88,7 +88,7 @@ impl GpuGradientAtlas {
                 );
                 *texture = grown;
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-                *bind_group = binding.bind_group(ctx.device, &view, "palantir.gradient.bg");
+                *bind_group = binding.bind_group(&ctx.gpu.device, &view, "palantir.gradient.bg");
             }
             // A flush holds at least one row, so only a lost device declines the staging.
             let Some(Staged {

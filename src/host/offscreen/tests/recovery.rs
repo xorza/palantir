@@ -355,6 +355,43 @@ fn a_host_recovers_from_a_second_loss_inside_a_frame() {
     assert_paints_as_fresh(&mut host, &mut scene, &device, &shaper);
 }
 
+/// A loss inside a frame whose upload grows the quad instance buffer past its 256 rows: the
+/// buffer made on the lost device comes back unfilled and the submit returns, where a write into
+/// its mapped range panicked. 32 × 32 one-pixel blocks in a checker, which no two quads merge, are
+/// 1,024 quads.
+#[test]
+fn a_loss_inside_a_frame_that_grows_a_buffer_submits_nothing_that_panics() {
+    const SIDE: u32 = 32;
+    const CHECKER: [u32; 2] = [0xd23f7a, 0x2f6fd0];
+    let gpu = isolated_headless_test_gpu();
+    let mut host = OffscreenHost::builder(gpu.handles())
+        .shaper(TextShaper::test_mono())
+        .build();
+    let mut blocks = |ui: &mut Ui| {
+        Panel::canvas().auto_id().show(ui, |ui| {
+            for y in 0..SIDE {
+                for x in 0..SIDE {
+                    Block::new()
+                        .id_salt((x, y))
+                        .pos((x as f32, y as f32))
+                        .size(1.0)
+                        .chrome(Chrome::fill(RgbaF32::hex(CHECKER[((x + y) % 2) as usize])))
+                        .show(ui);
+                }
+            }
+        });
+    };
+    let target = gpu.target("palantir.test.recovery.grow", UVec2::splat(SIDE));
+    host.frame(target.as_target(), 1.0, &mut |_: &mut Ui| {});
+    let spec = host.spec(target.as_target(), 1.0);
+    let CpuFrame { mode, .. } =
+        host.core
+            .record(&mut host.driver, spec, &mut blocks, FrameDepth::Paint);
+    gpu.lose();
+    host.core.submit(&mut host.driver, target.as_target(), mode);
+    assert!(host.is_device_lost());
+}
+
 /// A screenshot whose copy is on its way back when the device is lost lands after the recovery,
 /// taken again from the first frame on the new device: its image is that frame's pixels.
 #[test]

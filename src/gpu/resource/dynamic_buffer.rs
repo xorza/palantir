@@ -1,7 +1,7 @@
-//! `DynamicBuffer`: a `wgpu::Buffer` plus power-of-two growth. `upload_instances` grows the buffer
-//! when the slice exceeds capacity and writes to offset 0: through the staging belt, or straight into
-//! the new mapped buffer on a grow frame. No content-hash dedup: a belt memcpy is cheaper than FxHash
-//! of the same bytes, so gating by hash is net-negative.
+//! `DynamicBuffer`: a `wgpu::Buffer` plus power-of-two growth. `upload_instances` grows the
+//! buffer when the slice exceeds capacity and writes to offset 0: through the staging belt, or
+//! into the new buffer as it is created on a grow frame. No content-hash dedup: a belt memcpy is
+//! cheaper than FxHash of the same bytes, so gating by hash is net-negative.
 //!
 //! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) and the `text` backend's vbuf.
 
@@ -113,17 +113,21 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
     }
 
     /// Grows if needed and writes `items` to offset 0. On a grow frame the new buffer is created
-    /// `mapped_at_creation: true` and the bytes are memcpy'd straight into the mapped range, with no
-    /// belt staging copy or `copy_buffer_to_buffer`.
+    /// holding the bytes, with no belt staging copy or `copy_buffer_to_buffer`
+    /// ([`Gpu::create_filled_buffer`](crate::gpu::device::gpu::Gpu::create_filled_buffer)).
     fn upload(&mut self, ctx: &mut GpuCtx<'_>, items: &[T]) {
         let bytes = bytemuck::cast_slice(items);
-        if self.grow_mapped(ctx.device, items.len()) {
-            self.buffer
-                .slice(..bytes.len() as u64)
-                .get_mapped_range_mut()
-                .expect("map mapped-at-creation range")
-                .copy_from_slice(bytes);
-            self.buffer.unmap();
+        if items.len() > self.capacity {
+            self.capacity = grown_capacity(items.len());
+            self.buffer = ctx.gpu.create_filled_buffer(
+                &wgpu::BufferDescriptor {
+                    label: Some(self.label),
+                    size: (self.capacity * Self::ITEM_BYTES) as u64,
+                    usage: self.usage,
+                    mapped_at_creation: true,
+                },
+                bytes,
+            );
             return;
         }
         ctx.write(&self.buffer, 0, bytes);
@@ -136,23 +140,6 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
             return;
         }
         self.upload(ctx, items);
-    }
-
-    /// Grows to fit `needed_len` items with the new buffer `mapped_at_creation: true`. Returns `true`
-    /// when recreated (the caller writes into the mapped range, then calls `unmap`), `false` when
-    /// capacity already fit (the caller takes the belt path).
-    fn grow_mapped(&mut self, device: &wgpu::Device, needed_len: usize) -> bool {
-        if needed_len <= self.capacity {
-            return false;
-        }
-        self.capacity = grown_capacity(needed_len);
-        self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some(self.label),
-            size: (self.capacity * Self::ITEM_BYTES) as u64,
-            usage: self.usage,
-            mapped_at_creation: true,
-        });
-        true
     }
 }
 

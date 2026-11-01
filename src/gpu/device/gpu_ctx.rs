@@ -5,8 +5,7 @@ use crate::gpu::device::gpu::Gpu;
 use wgpu::util;
 #[derive(Debug)]
 pub(crate) struct GpuCtx<'a> {
-    pub(crate) device: &'a wgpu::Device,
-    pub(crate) queue: &'a wgpu::Queue,
+    pub(crate) gpu: &'a Gpu,
     belt: &'a mut util::StagingBelt,
     pub(crate) encoder: &'a mut wgpu::CommandEncoder,
 }
@@ -17,12 +16,7 @@ impl<'a> GpuCtx<'a> {
         belt: &'a mut util::StagingBelt,
         encoder: &'a mut wgpu::CommandEncoder,
     ) -> Self {
-        Self {
-            device: &gpu.device,
-            queue: &gpu.queue,
-            belt,
-            encoder,
-        }
+        Self { gpu, belt, encoder }
     }
 
     /// Schedule a belt-backed copy from staging to `dst@offset`. Empty `bytes` is a no-op; `offset` and length must be multiples of `COPY_BUFFER_ALIGNMENT` (4).

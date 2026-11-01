@@ -395,7 +395,8 @@ impl WindowDriver {
 
     /// Hand the next frame the oldest screenshot the device has finished, or none: the image is
     /// an edge of exactly that frame. A copy the device failed, as only a lost one does, goes
-    /// back to the requests, and the next frame that paints takes it again.
+    /// back to the requests, and the next frame that paints takes it again; a copy a lost device
+    /// never finishes goes back when a new device attaches.
     pub(super) fn deliver_screenshot(&mut self, backend: &WgpuBackend) {
         if !self.captures.is_empty() {
             backend.poll();

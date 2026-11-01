@@ -96,6 +96,10 @@ impl WindowSurface {
 
     /// Rebuild the swapchain when the configuration it was built with is not the one wanted. A
     /// lost surface has nothing to rebuild: its acquire reports the loss.
+    ///
+    /// A configure on a lost device builds nothing, and wgpu panics on an acquire from a surface
+    /// no configure built (`NotConfigured`), so the build counts only on a device still healthy
+    /// after it; [`Self::acquire`] refuses until one does.
     pub(crate) fn prepare(&mut self, gpu: &Gpu) -> Prepared {
         let Some(surface) = &self.surface else {
             return Prepared::Kept;
@@ -104,6 +108,10 @@ impl WindowSurface {
             return Prepared::Kept;
         }
         surface.configure(&gpu.device, &self.config);
+        if gpu.is_lost() {
+            self.applied = None;
+            return Prepared::Kept;
+        }
         self.applied = Some(self.config.clone());
         Prepared::Rebuilt
     }
@@ -121,6 +129,9 @@ impl WindowSurface {
         let Some(surface) = &self.surface else {
             return Acquired::Lost;
         };
+        if self.applied.is_none() {
+            return Acquired::Unconfigured;
+        }
         let acquired = {
             tracy::zone!("Surface::acquire");
             surface.get_current_texture()
@@ -156,6 +167,9 @@ pub(crate) enum Acquired {
     Timeout,
     /// The call was rejected; back off rather than build a draw list nothing accepts.
     Validation,
+    /// No configure built the swapchain, as one on a lost device does not: back off until the
+    /// device's recovery builds it.
+    Unconfigured,
     /// The window is not visible. Nothing to paint.
     Occluded,
 }

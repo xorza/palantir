@@ -238,18 +238,37 @@ impl BackendSpec {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::device::gpu::Gpu;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::test_gpu::isolated_headless_test_gpu;
     use crate::host::core::HostCore;
     use crate::host::host_options::HostOptions;
+    use crate::host::window_driver::WindowDriver;
     use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentStrategy};
+    use crate::primitives::layout::sizing::Sizing;
+    use crate::primitives::paint::chrome::Chrome;
+    use crate::primitives::paint::color::RgbaF32;
     use crate::text::font_scope::FontScope;
     use crate::text::shaper::TextShaper;
     use crate::ui::Ui;
+    use crate::widget_core::configure::Configure;
+    use crate::widgets::block::Block;
     use crate::window::window_token::WindowToken;
     use glam::UVec2;
+    use std::cell::Cell;
     use std::time::Duration;
+
+    /// What every test core is built with: bundled fonts, no GPU timing.
+    const OPTIONS: HostOptions = HostOptions {
+        fonts: FontScope::Bundled,
+        shaper: None,
+        collect_gpu_stats: false,
+        pixel_snap: true,
+        #[cfg(feature = "system-clipboard")]
+        system_clipboard: false,
+    };
 
     /// Two windows on one host render as two owners and read their own GPU samples: a submit
     /// publishes into its own window's handle, so a window that has not drawn reads nothing. The
@@ -257,15 +276,7 @@ mod tests {
     #[test]
     fn each_window_reads_its_own_gpu_sample() {
         let gpu = headless_test_gpu();
-        let options = HostOptions {
-            fonts: FontScope::Bundled,
-            shaper: None,
-            collect_gpu_stats: false,
-            pixel_snap: true,
-            #[cfg(feature = "system-clipboard")]
-            system_clipboard: false,
-        };
-        let mut core = HostCore::new(gpu.handles(), &options, TextShaper::test_mono());
+        let mut core = HostCore::new(gpu.handles(), &OPTIONS, TextShaper::test_mono());
         let mut drawn = core.open(WindowToken(0), PresentStrategy::BackbufferCopy);
         let idle = core.open(WindowToken(1), PresentStrategy::BackbufferCopy);
         assert_ne!(drawn.render_owner(), idle.render_owner());
@@ -289,5 +300,62 @@ mod tests {
         core.submit(&mut drawn, target.as_target(), mode);
         assert!(drawn.ui.gpu_pass_stats().last_main_pass_cpu().is_some());
         assert_eq!(idle.ui.gpu_pass_stats().last_main_pass_cpu(), None);
+    }
+
+    /// A recovery reaches every window of a host, as the windowed host attaches all of them: after
+    /// a loss, each of two windows paints its own fill on the new device in its first frame, and
+    /// sees the device restored in that frame alone.
+    #[test]
+    fn attaching_a_new_device_reaches_every_window() {
+        const FILLS: [u32; 2] = [0xd23f7a, 0x2f6fd0];
+        let size = UVec2::splat(8);
+        let spec_on = |target: &OwnedTarget| FrameSpec {
+            physical: size,
+            format: TargetFormat::RGBA8_SRGB,
+            gives_copy: target.as_target().gives_copy(),
+            system_scale: 1.0,
+            refresh_millihertz: None,
+            now: Duration::ZERO,
+        };
+        let paint = |core: &mut HostCore, driver: &mut WindowDriver, gpu: &Gpu, fill: u32| {
+            let target = OwnedTarget::window(
+                gpu,
+                "palantir.test.core.recover",
+                size,
+                TargetFormat::RGBA8_SRGB,
+            );
+            let restored = Cell::new(false);
+            let mut app = |ui: &mut Ui| {
+                restored.set(ui.device_restored());
+                Block::new()
+                    .id_salt("fill")
+                    .size(Sizing::FILL)
+                    .chrome(Chrome::fill(RgbaF32::hex(fill)))
+                    .show(ui);
+            };
+            let CpuFrame { mode, .. } =
+                core.record(driver, spec_on(&target), &mut app, FrameDepth::Paint);
+            core.submit(driver, target.as_target(), mode);
+            let [r, g, b, _] = target.read_back().get_pixel(4, 4).0;
+            (restored.get(), u32::from_be_bytes([0, r, g, b]))
+        };
+
+        let first = isolated_headless_test_gpu();
+        let mut core = HostCore::new(first.handles(), &OPTIONS, TextShaper::test_mono());
+        let mut windows = [
+            core.open(WindowToken(0), PresentStrategy::BackbufferCopy),
+            core.open(WindowToken(1), PresentStrategy::BackbufferCopy),
+        ];
+        for (window, fill) in windows.iter_mut().zip(FILLS) {
+            assert_eq!(paint(&mut core, window, &first, fill), (false, fill));
+        }
+        first.lose();
+
+        let second = isolated_headless_test_gpu();
+        core.attach(second.handles(), windows.iter_mut());
+        for (window, fill) in windows.iter_mut().zip(FILLS) {
+            assert_eq!(paint(&mut core, window, &second, fill), (true, fill));
+            assert_eq!(paint(&mut core, window, &second, fill), (false, fill));
+        }
     }
 }

@@ -70,7 +70,7 @@ impl GpuViewTargets {
             "a painted GpuView target is missing from the frame's live roster",
         );
         for draw in draws {
-            let target = self.ensure(ctx.device, draw, owner);
+            let target = self.ensure(&ctx.gpu.device, draw, owner);
             // A view composited again without a repaint (damage crossing a `repaint(false)` view) keeps its painted pixels.
             let stamp = draw.stamp(display_scale);
             if target.painted == Some(stamp) {
@@ -81,7 +81,7 @@ impl GpuViewTargets {
                 tracy::zone!("GpuView::init");
                 debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.init");
                 paint.init(&GpuInitCtx {
-                    device: ctx.device,
+                    device: &ctx.gpu.device,
                     target_format: TARGET_FORMAT,
                     text,
                 });
@@ -94,8 +94,8 @@ impl GpuViewTargets {
             tracy::zone!("GpuView::paint");
             debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
-                device: ctx.device,
-                queue: ctx.queue,
+                device: &ctx.gpu.device,
+                queue: &ctx.gpu.queue,
                 encoder: ctx.encoder,
                 target: &target.view,
                 physical_size: draw.used,

@@ -36,9 +36,17 @@ pub(crate) struct HostGpuConfig {
     pub(crate) collect_gpu_stats: bool,
 }
 
+/// The display a windowed instance opens on, kept so a recovery opens a new instance there.
+trait InstanceDisplay: HasDisplayHandle + fmt::Debug + Send + Sync {}
+
+impl<D: HasDisplayHandle + fmt::Debug + Send + Sync> InstanceDisplay for D {}
+
 /// Native-surface authority retained after startup.
 #[derive(Debug)]
 pub(crate) struct SurfaceManager {
+    /// What every instance opens on: a handle to the display alone, as [`FirstWindow::display`].
+    display: Arc<dyn InstanceDisplay>,
+    /// The instance the windows' surfaces are made on, opened again by each recovery.
     instance: wgpu::Instance,
     /// The adapter of the device the windows draw with now, which a recovery picks again.
     adapter: wgpu::Adapter,
@@ -83,10 +91,12 @@ impl SurfaceManager {
             window,
             size,
         } = first;
-        let instance = GpuRequest::windowed_instance(display)?;
+        let display: Arc<dyn InstanceDisplay> = Arc::new(display);
+        let instance = GpuRequest::windowed_instance(Arc::clone(&display))?;
         let surface = create_surface(&instance, window)?;
         let RequestedGpu { adapter, gpu } = open_device(&instance, cfg, &surface)?;
         let surfaces = Self {
+            display,
             instance,
             adapter,
             cfg,
@@ -101,11 +111,16 @@ impl SurfaceManager {
         })
     }
 
-    /// Open a new device in place of a lost one, as [`Self::start`] opened the first: on an
-    /// adapter picked again, which presents to `window`, whose `surface` is made again on it.
-    /// The old surface goes first, as it unconfigures on the device it was built for and a
-    /// platform may refuse a second surface on one window; configured on the new device, it would
-    /// release its old swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
+    /// Open a new device in place of a lost one, as [`Self::start`] opened the first: on a new
+    /// instance, on an adapter picked again, which presents to `window`, whose `surface` is made
+    /// again on it. The old surface goes first, as it unconfigures on the device it was built for
+    /// and a platform may refuse a second surface on one window; configured on the new device, it
+    /// would release its old swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
+    ///
+    /// A new instance, as DX12's enumerates adapters from the DXGI factory it made when it opened
+    /// (wgpu-hal `dx12::Instance::enumerate_adapters`), which a driver update or a removed GPU
+    /// leaves stale (wgpu-hal rebuilds its own HDR factory once `IsCurrent` is false). Every other
+    /// window's surface is made again on it ([`Self::renew`]).
     pub(crate) fn reopen<W>(
         &mut self,
         window: &Arc<W>,
@@ -115,8 +130,10 @@ impl SurfaceManager {
         W: wgpu::DisplayAndWindowHandle + fmt::Debug + 'static,
     {
         surface.release();
-        let raw = create_surface(&self.instance, window)?;
-        let RequestedGpu { adapter, gpu } = open_device(&self.instance, self.cfg, &raw)?;
+        let instance = GpuRequest::windowed_instance(Arc::clone(&self.display))?;
+        let raw = create_surface(&instance, window)?;
+        let RequestedGpu { adapter, gpu } = open_device(&instance, self.cfg, &raw)?;
+        self.instance = instance;
         self.adapter = adapter;
         *surface = self.rebuilt(raw, surface, gpu.max_texture_dim())?;
         Ok(gpu)

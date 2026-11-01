@@ -75,6 +75,36 @@ impl Gpu {
             .expect("device texture dimension limit is zero")
     }
 
+    /// A buffer as `desc` describes, created holding `bytes` at its start. On a device lost before
+    /// or inside the call, wgpu hands back an invalid buffer whose range does not map: it comes
+    /// back unfilled, as every call on a lost device is dropped. Refused: `create_buffer_init`
+    /// and an `expect` on the mapped range, which end the process on a loss no call has reported
+    /// yet.
+    ///
+    /// `desc.mapped_at_creation` is ignored; its size must be a multiple of
+    /// [`wgpu::COPY_BUFFER_ALIGNMENT`] and hold `bytes` rounded up to one.
+    pub(crate) fn create_filled_buffer(
+        &self,
+        desc: &wgpu::BufferDescriptor<'_>,
+        bytes: &[u8],
+    ) -> wgpu::Buffer {
+        // A mapped range spans whole `COPY_BUFFER_ALIGNMENT` units.
+        let mapped = (bytes.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT);
+        debug_assert!(mapped <= desc.size, "a filled buffer holds its bytes");
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            mapped_at_creation: true,
+            ..desc.clone()
+        });
+        if mapped != 0 {
+            match buffer.slice(..mapped).get_mapped_range_mut() {
+                Ok(mut view) => view.slice(..bytes.len()).copy_from_slice(bytes),
+                Err(error) => debug_assert!(self.is_lost(), "a healthy device maps: {error}"),
+            }
+        }
+        buffer.unmap();
+        buffer
+    }
+
     /// What a render pass on the device moves, which decides where a partial frame paints.
     pub(crate) const fn pass_traffic(&self) -> PassTraffic {
         self.pass_traffic
@@ -185,6 +215,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::surface::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
     use crate::internals::panic_probe;
     use std::sync::Arc;
@@ -266,5 +297,29 @@ mod tests {
         for poller in pollers {
             poller.join().unwrap();
         }
+    }
+
+    /// A healthy device's filled buffer holds the bytes at its start, padded to whole
+    /// `COPY_BUFFER_ALIGNMENT` units; a lost device's comes back unfilled and the call returns,
+    /// where an `expect` on the mapped range panics.
+    #[test]
+    fn a_filled_buffer_holds_its_bytes_and_a_lost_device_returns_one_unfilled() {
+        let desc = wgpu::BufferDescriptor {
+            label: Some("palantir.test.filled"),
+            size: 8,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        };
+        let gpu = isolated_headless_test_gpu();
+        let healthy = gpu.create_filled_buffer(&desc, &[1, 2, 3, 4, 5, 6]);
+        let map = MapState::map_read(&healthy);
+        assert!(gpu.wait_until(&|| !map.is_pending()) && map.is_mapped());
+        assert_eq!(
+            &*healthy.slice(..).get_mapped_range().unwrap(),
+            &[1, 2, 3, 4, 5, 6, 0, 0]
+        );
+        gpu.lose();
+        let lost = gpu.create_filled_buffer(&desc, &[1, 2, 3, 4]);
+        assert_eq!(lost.size(), desc.size);
     }
 }

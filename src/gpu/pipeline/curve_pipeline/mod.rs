@@ -10,6 +10,7 @@
 pub(crate) mod bench;
 
 use crate::common::span::Span;
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
@@ -24,7 +25,6 @@ use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::shape::stroke_bounds::MITER_LIMIT;
 use crate::shape::style::LineCap;
 use std::mem::offset_of;
-use wgpu::util::DeviceExt;
 
 const IDXS_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
 const UNIQUE_VERTICES_PER_INSTANCE: u16 = 2 * (SEGMENTS_PER_INSTANCE as u16 + 1);
@@ -70,16 +70,22 @@ impl CurvePipeline {
         constants: shader_constants,
     };
 
-    pub(crate) fn new(device: &wgpu::Device, textures: &TextureBinding) -> Self {
+    pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
+        let device = &gpu.device;
         let shader = Self::SHADER.module(device);
 
         let instance_buffer =
             DynamicBuffer::<CurveInstance>::vertex(device, "palantir.curve.instances", 64);
-        let idx_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("palantir.curve.indices"),
-            contents: bytemuck::cast_slice(&CURVE_IDXS),
-            usage: wgpu::BufferUsages::INDEX,
-        });
+        let idxs: &[u8] = bytemuck::cast_slice(&CURVE_IDXS);
+        let idx_buffer = gpu.create_filled_buffer(
+            &wgpu::BufferDescriptor {
+                label: Some("palantir.curve.indices"),
+                size: (idxs.len() as u64).next_multiple_of(wgpu::COPY_BUFFER_ALIGNMENT),
+                usage: wgpu::BufferUsages::INDEX,
+                mapped_at_creation: true,
+            },
+            idxs,
+        );
 
         Self {
             instance_buffer,

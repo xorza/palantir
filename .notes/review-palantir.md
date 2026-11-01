@@ -98,42 +98,10 @@ an item deletes it.
 
 ### Batch 1: device loss must not end the process
 
-Files: `src/gpu/resource/dynamic_buffer.rs`, `src/gpu/pipeline/curve_pipeline/mod.rs`,
-`src/gpu/surface/window_surface.rs`, `src/gpu/surface/surface_manager/mod.rs`,
-`src/host/winit/runtime.rs`, `src/host/winit/mod.rs`, `src/host/core.rs`,
-`src/host/offscreen/tests/recovery.rs`, `src/gpu/surface/map_state.rs`,
-`src/gpu/surface/capture.rs`, `src/host/window_driver/mod.rs`.
+Files: `src/gpu/surface/window_surface.rs`.
 
-- [ ] **BUG** `dynamic_buffer.rs:120-124`: the grow path calls
-  `.get_mapped_range_mut().expect(..)` on a `mapped_at_creation` buffer, which returns `Err` on a
-  device found lost earlier in the same submit (`gradient.upload` and `GpuPaint::paint` run
-  first). Target: a fill-at-creation helper in `gpu` that writes only if the range maps and always
-  unmaps; the grow path uses it.
-- [ ] **BUG** `curve_pipeline/mod.rs:78`: `create_buffer_init` panics inside wgpu's util on a lost
-  device, so `WgpuBackend::new` aborts a recovery onto a device lost again. Target: the same
-  helper, or an unmapped buffer filled by `queue.write_buffer`.
-- [ ] **BUG** `window_surface.rs:99-109,120-127`: `prepare` sets `applied` whether or not
-  `configure` succeeded; acquire on a never-configured surface hits wgpu's fatal `NotConfigured`.
-  Target: set `applied` only if `!gpu.is_lost()` after `configure`; `acquire` returns
-  `Acquired::Lost` while `applied.is_none()`.
-- [ ] **BUG** `runtime.rs:183-200`: loss is checked only at the top of `draw`; a loss found in the
-  frame's submit or present leaves the window on its previous frame until an unrelated wake.
-  Target: after `win.frame(..)`, `if self.core.gpu().is_lost() { self.repaint_all() }`.
-- [ ] **BUG** `runtime.rs:206-225`, `winit/mod.rs:420-423`: recovery is tried once and any failure
-  exits the event loop, losing every window's state; health is not re-read after `core.attach`.
-  Target: retry `reopen → attach` with the capped backoff `PresentSchedule` uses, until a healthy
-  device holds; fail after N attempts.
-- [ ] **BUG** (DX12) `surface_manager/mod.rs:42,109-123`: `reopen` enumerates through the startup
-  instance, whose DXGI factory goes stale after a driver update, so recovery can pick the removed
-  adapter. Target: `SurfaceManager` keeps the `OwnedDisplayHandle`; `reopen` builds a new instance
-  with `GpuRequest::windowed_instance` and renews every surface on it, as startup does.
-- [ ] Docs `map_state.rs`, `capture.rs:179`, `window_driver/mod.rs:396-397`: "a lost device runs
-  it too, with a failure" holds for `Device::destroy` only; on a HAL loss wgpu-core's `maintain`
-  returns early and pending maps never fire. Target: say the callback may never run, and that
-  every wait also checks `is_lost`.
-- [ ] Tests `offscreen/tests/recovery.rs`, `core.rs`: add a scene that grows a buffer after the
-  loss; run `HostCore::attach` over two drivers (extend the two-window core test); cover
-  `WindowSurface` acquire before a successful configure.
+- [ ] Test `WindowSurface::acquire` before a successful configure. A `WindowSurface` needs a native
+  surface, which no headless test makes; the guard has no test until a test window exists.
 
 ### Batch 2: the players report the truth
 

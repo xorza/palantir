@@ -338,7 +338,8 @@ impl Window {
 
     fn present(&mut self, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
         let CpuFrame { report, mode } = cpu;
-        let outcome = if report.plan.is_none() {
+        // A lost device paints nothing; its recovery wakes the window again.
+        let outcome = if report.plan.is_none() || core.gpu().is_lost() {
             AcquireOutcome::Skipped
         } else {
             self.acquire_and_present(core, mode)
@@ -387,6 +388,10 @@ impl Window {
             }
             Acquired::Validation => {
                 tracing::warn!("surface acquire: validation");
+                AcquireOutcome::Validation
+            }
+            Acquired::Unconfigured => {
+                tracing::warn!("surface acquire: no swapchain built");
                 AcquireOutcome::Validation
             }
             Acquired::Occluded => AcquireOutcome::Occluded,

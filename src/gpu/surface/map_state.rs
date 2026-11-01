@@ -27,7 +27,10 @@ impl MapState {
         Self(state)
     }
 
-    /// Whether the map callback has yet to run. A lost device runs it too, with a failure.
+    /// Whether the map callback has yet to run. A device its owner destroyed runs it with a
+    /// failure; one the driver lost may never run it, as wgpu-core's `maintain` returns before the
+    /// mappings once its fence read fails. A reader that waits for it also checks
+    /// [`Gpu::is_lost`](crate::gpu::device::gpu::Gpu::is_lost), as `wait_until` does.
     pub(crate) fn is_pending(&self) -> bool {
         self.0.load(Ordering::Acquire) == PENDING
     }

@@ -269,7 +269,7 @@ impl Backdrops {
             return;
         }
         self.resources.get_or_insert_with(|| {
-            PaneResources::new(ctx.device, &self.layout, &self.sampler, self.ceiling)
+            PaneResources::new(&ctx.gpu.device, &self.layout, &self.sampler, self.ceiling)
         });
         // Every result the frame reads is stamped first, so making room for one never evicts
         // another.
@@ -355,8 +355,9 @@ impl Backdrops {
         let target = backbuffer
             .filter(|_| !self.jobs.is_empty())
             .map(|backbuffer| {
-                backbuffer
-                    .blur_source(|view, size| blur.target_source(ctx.device, view, format, size))
+                backbuffer.blur_source(|view, size| {
+                    blur.target_source(&ctx.gpu.device, view, format, size)
+                })
             });
         let resources = self.resources.as_mut().expect("made above");
         resources.blur.prepare(
@@ -366,10 +367,10 @@ impl Backdrops {
             target,
         );
         resources.slot_buffer.upload_instances(ctx, &self.slots);
-        let grew = resources.atlas.commit(ctx.device, ctx.encoder);
+        let grew = resources.atlas.commit(&ctx.gpu.device, ctx.encoder);
         if grew || resources.slot_buffer.capacity() != resources.group_capacity {
             resources.group = composite_group(
-                ctx.device,
+                &ctx.gpu.device,
                 &self.layout,
                 resources.atlas.view(),
                 &self.sampler,

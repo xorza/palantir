@@ -15,6 +15,7 @@ use crate::host::window_driver::PresentStrategy;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::{HostHandle, UserEvent};
+use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::QueryTask;
 use crate::host::winit::system_preferences::SystemPreferences;
 use crate::host::winit::window::{FramePresent, Window};
@@ -39,6 +40,8 @@ pub(super) struct WinitRuntime<T: 'static> {
     pub(super) core: HostCore,
     windows: WindowSet,
     pending_commands: WindowCommands,
+    /// The failed attempts of a device recovery under way.
+    recovery: RecoveryBackoff,
     /// Each window's last frame, which the [`HostHandle`]s read.
     frames: Arc<FrameLog>,
     /// The handle each window's [`Waker`] asks for its frames through.
@@ -127,6 +130,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             core,
             windows,
             pending_commands: WindowCommands::default(),
+            recovery: RecoveryBackoff::default(),
             frames,
             handle: own_handle,
             _system_preferences: system_preferences,
@@ -175,11 +179,12 @@ impl<T: App + 'static> WinitRuntime<T> {
     }
 
     /// Paint one window; it drains its commands into the pending queue. A lost device is replaced
-    /// first ([`Self::recover`]).
+    /// first ([`Self::recover`]). While none holds, the frame runs the app and paints nothing, as
+    /// an offscreen host's does, so a close request and its veto still run.
     ///
     /// # Errors
     ///
-    /// The device was lost and no new one opened, or the window's new surface failed.
+    /// No new device opened in [`RecoveryBackoff`]'s window, or the window's new surface failed.
     pub(super) fn draw(&mut self, slot: WindowSlot) -> Result<(), WinitHostError> {
         if self.core.gpu().is_lost() {
             self.recover()?;
@@ -190,7 +195,11 @@ impl<T: App + 'static> WinitRuntime<T> {
         {
             self.frames.record(win.driver.token, summary);
         }
-        if win.surface.is_lost() {
+        if self.core.gpu().is_lost() {
+            // Lost before the frame or found by its submit or present: every window shows its last
+            // frame, which no wake of its own replaces.
+            self.wake_for_recovery();
+        } else if win.surface.is_lost() {
             renew_surface(&self.surfaces, win, self.core.max_texture_dim());
         }
         if single_window {
@@ -199,11 +208,43 @@ impl<T: App + 'static> WinitRuntime<T> {
         Ok(())
     }
 
+    /// Attach a new device, unless a failed attempt still backs off; on a success every window
+    /// paints whole. A device lost again as it was attached counts as a failed attempt.
+    fn recover(&mut self) -> Result<(), WinitHostError> {
+        let now = Instant::now();
+        if self.recovery.wait_left(now).is_some() {
+            return Ok(());
+        }
+        match self.attach_new_device() {
+            Ok(()) if !self.core.gpu().is_lost() => {
+                tracing::info!("graphics device lost: a new one is attached");
+                self.recovery.succeeded();
+                self.repaint_all();
+                return Ok(());
+            }
+            Ok(()) => tracing::warn!("graphics device lost again as it was attached"),
+            Err(error) if self.recovery.exhausted(now) => return Err(error),
+            Err(error) => tracing::warn!(%error, "no new graphics device yet"),
+        }
+        self.recovery.failed(now);
+        Ok(())
+    }
+
+    /// Wake every window when the next recovery attempt may run: at once, or once a failed one
+    /// backed off.
+    fn wake_for_recovery(&mut self) {
+        let now = Instant::now();
+        let at = now + self.recovery.wait_left(now).unwrap_or_default();
+        for win in &mut self.windows {
+            win.next = FramePresent::At(at);
+        }
+    }
+
     /// Attach a new device in place of the lost one, through the steps startup took: the first
     /// window's new surface picks the adapter ([`SurfaceManager::reopen`]), the host core builds its
     /// device half on it and gives every window its stream there, and every other window gets a
-    /// new surface; then every window paints whole.
-    fn recover(&mut self) -> Result<(), WinitHostError> {
+    /// new surface.
+    fn attach_new_device(&mut self) -> Result<(), WinitHostError> {
         let first = self.windows.iter_mut().next().expect("a window draws");
         let token = first.driver.token;
         let gpu = self
@@ -213,14 +254,12 @@ impl<T: App + 'static> WinitRuntime<T> {
                 SurfaceStartError::Gpu { source } => WinitHostError::DeviceLost { source },
                 SurfaceStartError::Surface { source } => WinitHostError::Surface { token, source },
             })?;
-        tracing::info!("graphics device lost: a new one is attached");
         self.core
             .attach(gpu, self.windows.iter_mut().map(|win| &mut win.driver));
         let max_texture_dim = self.core.max_texture_dim();
         for win in self.windows.iter_mut().skip(1) {
             renew_surface(&self.surfaces, win, max_texture_dim);
         }
-        self.repaint_all();
         Ok(())
     }
 

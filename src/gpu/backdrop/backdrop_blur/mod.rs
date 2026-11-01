@@ -524,7 +524,7 @@ impl BackdropBlur {
         for batch in batches {
             debug_assert_eq!(batch.start, laid_out, "batches cover the jobs in order");
             laid_out = batch.end;
-            self.lay_out(ctx.device, &mut jobs[batch]);
+            self.lay_out(&ctx.gpu.device, &mut jobs[batch]);
         }
         debug_assert_eq!(laid_out, jobs.len(), "batches cover the jobs");
         self.write_params(ctx, jobs);
@@ -578,7 +578,7 @@ impl BackdropBlur {
             job.layout.first_slot = self.slots.len();
             self.push_params(*job);
         }
-        self.ensure_params(ctx.device);
+        self.ensure_params(&ctx.gpu.device);
         ctx.write(&self.params, 0, bytemuck::cast_slice(&self.slots));
     }
 
