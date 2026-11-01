@@ -303,3 +303,52 @@ fn a_transparent_rounded_clip_damages_nothing_of_its_own() {
     let rects: Vec<Rect> = h.damage_region().iter_rects().collect();
     assert_eq!(rects, [Rect::new(0.0, 0.0, CHILD, CHILD)]);
 }
+
+/// Content that grows at a fixed offset moves the thumb, which damage covers though the bar
+/// overlay's own authoring and rect hold: the thumb reads the viewport's content from outside its
+/// subtree. A reserved gutter lies outside the viewport's clip, so the content's own damage misses
+/// it. 300 px of content in a 100 px viewport is a 1/3 thumb, 400 px a 1/4 one.
+#[test]
+fn growing_scroll_content_damages_the_thumb_it_moves() {
+    use crate::widgets::scroll::Scroll;
+
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    let scroll = WidgetId::from_hash("scroll");
+    let thumb = scroll.with("viewport").with("vthumb");
+    let build = |h: &mut Harness, content: f32| {
+        frame(h, |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("host"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(scroll)
+                        .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
+                        .show(ui, |ui| {
+                            Block::new()
+                                .id(WidgetId::from_hash("content"))
+                                .size((Sizing::fixed(50.0), Sizing::fixed(content)))
+                                .chrome(Chrome::fill(BLUE))
+                                .show(ui);
+                        });
+                });
+        });
+    };
+    build(&mut h, 300.0);
+    build(&mut h, 300.0);
+    let before = h.rect(thumb).expect("the thumb shows on overflow");
+    build(&mut h, 400.0);
+    let after = h.rect(thumb).expect("the thumb shows on overflow");
+    assert!(after.size.h < before.size.h, "{before:?} → {after:?}");
+    let moved = Rect::new(
+        before.min.x,
+        after.max().y,
+        before.size.w,
+        before.max().y - after.max().y,
+    );
+    let region = h.damage_region();
+    assert!(
+        region.iter_rects().any(|rect| rect.contains_rect(moved)),
+        "the strip the thumb left, {moved:?}, is damaged: {:?}",
+        region.iter_rects().collect::<Vec<_>>()
+    );
+}

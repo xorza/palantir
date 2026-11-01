@@ -27,10 +27,10 @@ pub(super) struct AxisScratch {
     /// at their preferred extent. Fill tracks read every total, which the
     /// caller answers for.
     pub(super) stable_from: f32,
-    /// What each Fill track's single-track cells measured at on this axis, read where the grid
-    /// hugs or its offer is indefinite: there a Fill track takes its max-content contribution,
-    /// as a Stack's Fill child does.
-    pub(super) fill_content: Vec<f32>,
+    /// Per track, what measure found it must hold where the grid hugs or its offer is indefinite:
+    /// a Fill track its single-track cells' measured extent, grown by the spans crossing it;
+    /// any other track its resolved size. [`grid::fill_fraction`](super::fill_fraction) reads it.
+    pub(super) extents: Vec<f32>,
     flexible: Vec<FillItem<usize>>,
     hugs: Vec<HugItem<usize>>,
 }
@@ -72,8 +72,8 @@ impl AxisScratch {
         self.resolved.grow(n);
         self.offsets.clear();
         self.offsets.resize(n, 0.0);
-        self.fill_content.clear();
-        self.fill_content.resize(n, 0.0);
+        self.extents.clear();
+        self.extents.resize(n, 0.0);
     }
 
     /// Sum of spanned tracks' resolved sizes, or `∞` if any is not yet resolved
@@ -236,13 +236,13 @@ pub(crate) mod internals {
                 resolved,
                 offsets,
                 stable_from: _,
-                fill_content,
+                extents,
                 flexible,
                 hugs,
             } = self;
             // `FixedBitSet` exposes no capacity; its live blocks stand in.
             scratch_report::vec_bytes(sizes)
-                + scratch_report::vec_bytes(fill_content)
+                + scratch_report::vec_bytes(extents)
                 + size_of_val(resolved.as_slice())
                 + scratch_report::vec_bytes(offsets)
                 + scratch_report::vec_bytes(flexible)

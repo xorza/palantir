@@ -2,10 +2,11 @@
 
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::math::float_hash::FloatHash;
 use std::hash::Hasher as _;
 
-/// Per-node fingerprint of cascade inputs from ancestors (transform, clip, disabled, invisible) plus the node's arranged rect, packed with the resolved `invisible` bit: a 63-bit `FxHash` with `invisible` in the high bit, read in one 8-byte load by encoder and damage.
+/// Per-node fingerprint of cascade inputs from ancestors (transform, clip, disabled, invisible) plus the node's arranged rect and what its layout read from outside its subtree, packed with the resolved `invisible` bit: a 63-bit `FxHash` with `invisible` in the high bit, read in one 8-byte load by encoder and damage.
 ///
 /// `DamageEngine::compute` skips a subtree when this and `subtree[i]` both match, jumping to `subtree_end[i]`. Packing is sound because `subtree[i]` covers every descendant's `node_hash` (own visibility) and parent invisibility is a hash input.
 #[repr(transparent)]
@@ -22,11 +23,19 @@ impl CascadeInputHash {
         Self((hash & HASH_MASK) | ((invisible as u64) << 63))
     }
 
-    /// A node's input: its parent's [`CascadeCtx::prefix`](crate::cascade::engine::CascadeCtx::prefix) folded with its own arranged rect, packed with its resolved `invisible`.
+    /// A node's input: its parent's [`CascadeCtx::prefix`](crate::cascade::engine::CascadeCtx::prefix) folded with its own arranged rect and the extent its layout read from outside its subtree ([`PlaneLayout::outside_input`](crate::layout::plane_layout::PlaneLayout::outside_input)), packed with its resolved `invisible`.
     #[inline]
-    pub(crate) fn finish(prefix: &Hasher, layout_rect: Rect, invisible: bool) -> Self {
+    pub(crate) fn finish(
+        prefix: &Hasher,
+        layout_rect: Rect,
+        outside: Option<Size>,
+        invisible: bool,
+    ) -> Self {
         let mut h = prefix.clone();
         layout_rect.hash_visual(&mut h);
+        if let Some(outside) = outside {
+            outside.hash_visual(&mut h);
+        }
         Self::pack(h.finish(), invisible)
     }
 

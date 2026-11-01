@@ -3,9 +3,12 @@
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::common::span::Span;
+use crate::layout::drivers::{DriverOp, OutsideInputOp};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::scene::tree::Tree;
+use crate::scene::tree::node_id::NodeId;
 use crate::text::shaped_text::ShapedText;
 use std::hash::Hasher as _;
 
@@ -28,6 +31,13 @@ pub(crate) struct PlaneLayout {
 }
 
 impl PlaneLayout {
+    /// What node `node`'s driver read from outside its subtree to arrange it, which its rects
+    /// depend on beside its slot; `None` for most.
+    pub(crate) fn outside_input(&self, tree: &Tree, node: NodeId) -> Option<Size> {
+        let mode = LayoutMode::from(tree.records.layout()[node.idx()].meta);
+        OutsideInputOp { tree, layout: self }.dispatch(node, mode)
+    }
+
     /// Destructured so a column added to `PlaneLayout` cannot be left un-resized: the per-node columns
     /// are indexed by `NodeId` with no bounds story of their own.
     pub(super) fn resize_for(&mut self, tree: &Tree) {

@@ -35,7 +35,7 @@ fn cascade_input_hash_collapses_visual_zero_noise() {
             ..CascadeCtx::ROOT
         }
         .prefix();
-        CascadeInputHash::finish(&prefix, rect, false)
+        CascadeInputHash::finish(&prefix, rect, None, false)
     };
     let baseline = hash(TranslateScale::IDENTITY, Rect::ZERO);
     assert_eq!(

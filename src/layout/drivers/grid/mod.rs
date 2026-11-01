@@ -175,14 +175,41 @@ impl LayoutDriver for Grid {
                 + gaps;
         }
         if wants_max {
-            range.max = pass.grid_track_aggregator()[max_base..max_base + n_tracks]
-                .iter()
-                .sum::<f32>()
-                + gaps;
+            let extents = &pass.grid_track_aggregator()[max_base..max_base + n_tracks];
+            range.max = sum_non_fill(tracks, extents) + fill_extent(tracks, extents) + gaps;
         }
         pass.grid_track_aggregator().truncate(base);
         range
     }
+}
+
+/// The flexible fraction the Fill tracks of `tracks` need to hold their `extents`, each at least
+/// its track's `min`, where no leftover exists to share, as CSS Grid finds the size of an `fr` for
+/// indefinite free space (§12.7.1): the largest extent over its track's weight, so a track of
+/// weight `w` takes `fraction · w` and holds its extent. `0` with no Fill track.
+pub(super) fn fill_fraction(tracks: &[Track], extents: &[f32]) -> f32 {
+    tracks
+        .iter()
+        .zip(extents)
+        .filter_map(|(t, &extent)| Some(extent.max(t.min()) / t.sizing().fill_weight()?))
+        .fold(0.0, f32::max)
+}
+
+/// What the Fill tracks of `tracks` take at the [`fill_fraction`] of `extents`: the fraction times
+/// their summed weight.
+pub(super) fn fill_extent(tracks: &[Track], extents: &[f32]) -> f32 {
+    let weights: f32 = tracks.iter().filter_map(|t| t.sizing().fill_weight()).sum();
+    fill_fraction(tracks, extents) * weights
+}
+
+/// The sum of `sizes` over the tracks that do not Fill.
+pub(super) fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
+    tracks
+        .iter()
+        .zip(sizes)
+        .filter(|(t, _)| t.sizing().fill_weight().is_none())
+        .map(|(_, &size)| size)
+        .sum()
 }
 
 /// Whether `span` crosses a Fill track of `tracks`: such a span grows only its Fill tracks
@@ -192,7 +219,7 @@ pub(super) fn crosses_fill(tracks: &[Track], span: Span) -> bool {
     has_fill(&tracks[span.range()])
 }
 
-fn has_fill(tracks: &[Track]) -> bool {
+pub(super) fn has_fill(tracks: &[Track]) -> bool {
     tracks.iter().any(|t| t.sizing().fill_weight().is_some())
 }
 

@@ -96,26 +96,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
 an item deletes it.
 
-### Batch 4: layout and damage correctness
-
-Files: `src/cascade/engine.rs`, `src/damage/plane_walk.rs`, `src/layout/drivers/scrollbars/`,
-`src/layout/drivers/grid/{mod.rs,measure.rs,axis_scratch.rs,placed_child.rs}`,
-`src/damage/tests/`, `src/layout/drivers/grid/tests/`.
-
-- [ ] **BUG** `plane_walk.rs:139`, `cascade/engine.rs:415`: when scroll content grows or shrinks at
-  a fixed offset, the thumbs move but the bars overlay keeps its subtree hash and `cascade_input`,
-  so damage classifies it `SubtreeUnchanged`; in `BarMode::Reserved` the gutter keeps stale
-  pixels. Target: fold the referenced viewport's `scroll_content` into the Scrollbars node's
-  `cascade_input`. Test: grow content at offset 0, expect damage over the gutter.
-- [ ] **BUG** `grid/measure.rs:250`, `axis_scratch.rs:182-190`, `placed_child.rs:83-88`: in a Hug
-  grid with two or more Fill tracks, cells measured at INF keep their width while arrange splits
-  `Σ fill_content` by weight, so a 200-wide cell in a 110-wide column covers its neighbor; spans
-  over Fill tracks add nothing. Target: CSS Grid §12.7.1, `fr = max_i(content_i / weight_i)` with
-  spans, so each track gets at least its content. Test: two Fill columns of unequal content.
-- [ ] `grid/mod.rs:98-185`, `measure.rs:52-84,150-198`: the track-contribution fold is written
-  three times with drifts. Target: one `fold_contributions(..)` used by `Grid::intrinsic` and both
-  measure axes; the fix above lands in it once.
-
 ### Batch 5: animation clock and rows
 
 Files: `src/ui/frame_runtime/mod.rs`, `src/common/time/mod.rs`, `src/animation/` (`spring.rs`,

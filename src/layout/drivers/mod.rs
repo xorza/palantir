@@ -23,8 +23,10 @@ use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 
 /// One container node as its layout driver sees it: how it measures, arranges
@@ -62,6 +64,14 @@ pub(super) trait LayoutDriver: Copy {
     /// `Grid`'s Phase-1 column resolution and `Stack`'s Fill min-content floor. A
     /// driver whose answer depends on its pack axis compares it with the query's.
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange;
+
+    /// The extent [`Self::arrange`] read from outside its subtree, on which its rects depend
+    /// beside its slot; `None` exactly for a driver whose arrange
+    /// [depends only on its slot](Self::ARRANGE_DEPENDS_ONLY_ON_SLOT). The cascade folds it into
+    /// the node's input, so damage sees a subtree whose rects moved with no change of its own.
+    fn outside_input(self, _tree: &Tree, _layout: &PlaneLayout) -> Option<Size> {
+        None
+    }
 }
 
 /// One operation applied to whichever driver a [`LayoutMode`] names; the match
@@ -89,6 +99,33 @@ pub(super) trait DriverOp: Sized {
             LayoutMode::Scroll(axes) => self.run(Scroll::new(node, axes)),
             LayoutMode::Scrollbars(def) => self.run(Scrollbars::new(node, def)),
         }
+    }
+}
+
+/// What the driver `mode` names read from outside its subtree to arrange it
+/// ([`LayoutDriver::outside_input`]).
+#[derive(Debug)]
+pub(super) struct OutsideInputOp<'a> {
+    pub(super) tree: &'a Tree,
+    pub(super) layout: &'a PlaneLayout,
+}
+
+impl DriverOp for OutsideInputOp<'_> {
+    type Output = Option<Size>;
+
+    fn run<D: LayoutDriver>(self, driver: D) -> Option<Size> {
+        let input = driver.outside_input(self.tree, self.layout);
+        debug_assert_eq!(
+            input.is_none(),
+            D::ARRANGE_DEPENDS_ONLY_ON_SLOT,
+            "a driver reads outside its subtree exactly when its arrange depends on more than its \
+             slot"
+        );
+        input
+    }
+
+    fn leaf(self, _node: NodeId) -> Option<Size> {
+        None
     }
 }
 

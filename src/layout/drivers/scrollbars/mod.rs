@@ -8,10 +8,12 @@ use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::measured::Measured;
 use crate::layout::pass::LayoutPass;
+use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::{Axis, AxisExtent};
 use crate::primitives::layout::layout_mode::ScrollbarsDefId;
+use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 
@@ -90,5 +92,11 @@ impl LayoutDriver for Scrollbars {
     /// Bars are absolutely placed chrome in a reserved gutter and never floor their scroll; the driver contributes nothing to a parent's intrinsic, so every argument goes unread.
     fn intrinsic(self, _pass: &mut IntrinsicPass<'_>, _query: IntrinsicQuery) -> IntrinsicRange {
         IntrinsicRange::ZERO
+    }
+
+    /// The viewport's measured content, which sizes the thumbs.
+    fn outside_input(self, tree: &Tree, layout: &PlaneLayout) -> Option<Size> {
+        let content = tree.scrollbar_defs[usize::from(self.def)].content;
+        Some(layout.scroll_content[content.idx()])
     }
 }

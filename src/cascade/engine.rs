@@ -413,7 +413,9 @@ impl CascadeEngine {
             let layout_rect = layout.rect[iu];
             let subtree_end = ends[iu].end();
             let has_children = ends[iu].has_children(iu);
-            let cascade_input = CascadeInputHash::finish(parent_prefix, layout_rect, invisible);
+            let outside = layout.outside_input(tree, id);
+            let cascade_input =
+                CascadeInputHash::finish(parent_prefix, layout_rect, outside, invisible);
             let clean = S::INCREMENTAL
                 && lc.cascade_inputs[iu] == cascade_input
                 && lc.arena_hashes[iu] == subtree_hashes[iu];
