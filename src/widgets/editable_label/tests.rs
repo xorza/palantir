@@ -12,6 +12,7 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::editable_label::EditableLabel;
+use crate::widgets::panel::Panel;
 
 /// What one frame of a label reported, from its last pass.
 #[derive(Debug, Default, PartialEq)]
@@ -144,7 +145,7 @@ fn a_double_click_opens_the_editor_and_enter_commits() {
 
 /// A caller opens the editor without a double click, as a Rename command does: the next frame
 /// records it focused with the text selected, so a key replaces "Alpha", and Enter commits and
-/// closes it. A label that is not editable stays a label.
+/// closes it. A label that is not editable or is disabled stays a label.
 #[test]
 fn a_caller_opens_the_editor() {
     let id = WidgetId::from_hash("label-edit");
@@ -169,6 +170,43 @@ fn a_caller_opens_the_editor() {
     EditableLabel::edit(h.ui(), id);
     assert!(!h.frame_value(|ui| record(ui, id, false)).editing);
     assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    assert_eq!(
+        h.ui().focus(),
+        None,
+        "the closed editor gives its focus back"
+    );
+
+    // A disabled label stays a label too, and its keys reach no editor.
+    EditableLabel::edit(h.ui(), id);
+    let disabled = |ui: &mut Ui| {
+        EditableLabel::new("Alpha")
+            .id(id)
+            .disabled(true)
+            .show(ui)
+            .editing
+    };
+    assert!(!h.frame_value(disabled));
+    h.key(Key::Char('Q'));
+    h.key(Key::Enter);
+    assert!(!h.frame_value(disabled));
+    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    assert_eq!(h.ui().focus(), None);
+
+    // So does one a disabled ancestor holds; the ancestor is known from the frame before.
+    let in_disabled = |ui: &mut Ui| {
+        Panel::vstack()
+            .auto_id()
+            .disabled(true)
+            .show(ui, |ui| EditableLabel::new("Alpha").id(id).show(ui).editing)
+            .inner
+    };
+    h.frame(|ui| {
+        in_disabled(ui);
+    });
+    EditableLabel::edit(h.ui(), id);
+    assert!(!h.frame_value(in_disabled));
+    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    assert_eq!(h.ui().focus(), None);
 }
 
 /// Escape closes the editor and commits nothing, and the next session starts from the text again.

@@ -74,9 +74,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
     #[track_caller]
     pub fn new(state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self {
         Self {
-            widget: Widget::zstack()
-                .id(Self::dock_id(state))
-                .size((Sizing::FILL, Sizing::FILL)),
+            widget: Widget::zstack().id(Self::dock_id(state)),
             state,
             operations,
             min_pane: 0.0,
@@ -120,6 +118,9 @@ impl<'a, T: DockTab> DockView<'a, T> {
             overflow,
             style: _,
         } = self;
+        widget
+            .configure()
+            .default_size((Sizing::FILL, Sizing::FILL));
         let response = widget.response(ui);
         let id = response.id;
         let carried = DockView::drag(state, ui);

@@ -312,7 +312,7 @@ fn light_theme_widgets_match_golden() {
 fn spinner_matches_golden() {
     GoldenName::Spinner.assert_scene(UVec2::new(80, 80), |ui| {
         padded(ui, 16.0, |ui| {
-            Spinner::new().diameter(48.0).id_salt("sp").show(ui);
+            Spinner::new().size(48.0).id_salt("sp").show(ui);
         });
     });
 }

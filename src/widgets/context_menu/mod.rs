@@ -63,8 +63,9 @@ pub struct ContextMenu<'a> {
 }
 
 impl<'a> ContextMenu<'a> {
-    /// Identity is the trigger's, settled here because the popup's
-    /// `#[track_caller]` id would resolve to this line for every menu.
+    /// The menu's id defaults to one derived from the trigger's, `for_id.with("body")`,
+    /// settled here because the popup's `#[track_caller]` id would resolve to this line for
+    /// every menu.
     pub fn for_id(for_id: WidgetId) -> Self {
         Self {
             for_id,

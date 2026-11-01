@@ -435,3 +435,32 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
     );
     assert_eq!(h.focus(), Some(id), "focus goes back to the combo box");
 }
+
+/// The trigger lays its label and arrow apart with `SpaceBetween` under the caller's choice: a
+/// caller's justify wins, as with every themed default.
+#[test]
+fn a_callers_justify_wins_over_the_space_between() {
+    use crate::primitives::layout::justify::Justify;
+    const OPTIONS: [&str; 2] = ["A", "B"];
+    let (plain, centered) = (
+        WidgetId::from_hash("plain"),
+        WidgetId::from_hash("centered"),
+    );
+    let (mut a, mut b) = (0, 0);
+    let mut h = Harness::mono(SURFACE);
+    h.frame(|ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            ComboBox::new(&mut a, &OPTIONS).id(plain).show(ui);
+            ComboBox::new(&mut b, &OPTIONS)
+                .id(centered)
+                .justify(Justify::Center)
+                .show(ui);
+        });
+    });
+    let justify = |id| {
+        let node = h.node_for_widget_id(id);
+        h.ui_ref().tree(Layer::Main).panel(node).justify
+    };
+    assert_eq!(justify(plain), Justify::SpaceBetween);
+    assert_eq!(justify(centered), Justify::Center);
+}

@@ -313,8 +313,7 @@ fn widget_setters_check_their_kinds() {
     use crate::widgets::text_edit::TextEdit;
 
     const NAN_RED: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
-    let length_cases: [fn(f32); 5] = [
-        |v| drop(Spinner::new().diameter(v)),
+    let length_cases: [fn(f32); 4] = [
         |v| drop(Spinner::new().width(v)),
         |v| drop(Separator::horizontal().thickness(v)),
         |v| drop(Text::new("t").font_size(v)),

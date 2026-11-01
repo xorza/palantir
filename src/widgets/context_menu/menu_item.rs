@@ -87,7 +87,7 @@ impl<'a> MenuItem<'a> {
         self.widget
             .configure()
             .default_align(Align::h(HAlign::Stretch))
-            .justify(Justify::SpaceBetween)
+            .default_justify(Justify::SpaceBetween)
             .default_gap(gap);
 
         let label = ui.intern(self.label);

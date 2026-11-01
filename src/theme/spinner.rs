@@ -6,7 +6,7 @@ use crate::theme::palette::Palette;
 use std::f32::consts;
 use std::time::Duration;
 
-/// Visuals and motion for [`crate::Spinner`]. Builder overrides (`.color(...)` / `.diameter(...)` / `.width(...)`) win.
+/// Visuals and motion for [`crate::Spinner`]. Builder overrides (`.color(...)`, `.width(...)` and a fixed `.size(...)`) win.
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]

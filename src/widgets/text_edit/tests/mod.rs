@@ -195,6 +195,14 @@ impl Field {
     }
 }
 
+/// The builder sets no clip the caller did not: `show` lays the rect clip under the caller's.
+#[test]
+fn a_new_field_has_no_authored_clip() {
+    let mut text = String::new();
+    let mut field = TextEdit::new(&mut text);
+    assert_eq!(field.configure().widget.authored_clip(), None);
+}
+
 mod align;
 mod align_per_line;
 mod apply_key;

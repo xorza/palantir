@@ -47,12 +47,12 @@ struct TooltipGlobal {
 /// ```
 ///
 /// Pointer-driven only, and skipped on disabled triggers unless
-/// `.when_disabled(true)`. Implements [`Configure`]; identity defaults to the
-/// trigger's id.
+/// `.when_disabled(true)`. Implements [`Configure`]; the bubble's id defaults to
+/// one derived from the trigger's, `trigger.with("bubble")`.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Tooltip<'a> {
-    snapshot: &'a ResponseSnapshot,
+    snapshot: ResponseSnapshot,
     label: TextInput<'a>,
     delay: Option<Duration>,
     when_disabled: bool,
@@ -70,7 +70,7 @@ impl<'a> Tooltip<'a> {
         // The bubble must never claim hover, or it would shadow its trigger.
         let widget = Widget::vstack().sense(Sense::NONE);
         Self {
-            snapshot,
+            snapshot: *snapshot,
             label: text.into(),
             delay: None,
             when_disabled: false,

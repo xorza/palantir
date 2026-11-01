@@ -153,7 +153,7 @@ impl Configurator<'_> {
     /// See [`Configure::justify`](crate::widget_core::configure::Configure::justify).
     #[inline]
     pub const fn justify(&mut self, j: Justify) -> &mut Self {
-        self.widget.node.justify = j;
+        self.widget.node.justify = Some(j);
         self
     }
 
@@ -304,6 +304,15 @@ impl Configurator<'_> {
     #[inline]
     pub const fn default_child_align(&mut self, a: Align) -> &mut Self {
         self.widget.node.fill_child_align(a);
+        self
+    }
+
+    /// See [`ThemeDefaults::default_justify`](crate::widget_core::configure::ThemeDefaults::default_justify).
+    #[inline]
+    pub const fn default_justify(&mut self, j: Justify) -> &mut Self {
+        if self.widget.node.justify.is_none() {
+            self.widget.node.justify = Some(j);
+        }
         self
     }
 

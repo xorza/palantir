@@ -1262,3 +1262,12 @@ fn a_carried_tab_leaves_with_the_dock() {
     h.frame(|_| {});
     assert_eq!(carried(&h), None, "and leaves with the dock");
 }
+
+/// The builder sets no size the caller did not: `show` lays the fill under the caller's.
+#[test]
+fn a_new_dock_view_has_no_authored_size() {
+    let d = DockState::new("test.dock", Tab::Main);
+    let mut operations = Vec::new();
+    let mut view = DockView::new(&d, &mut operations);
+    assert_eq!(view.configure().widget.authored_size(), None);
+}

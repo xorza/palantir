@@ -110,7 +110,6 @@ impl<'a> TabStrip<'a> {
         Self {
             // Focusable so a press lands the keyboard here; the scope takes only what `keyboard_travel` acts on, so bare Tab reaches the app's traversal.
             widget: Widget::vstack()
-                .size((Sizing::FILL, Sizing::HUG))
                 .focusable(true)
                 .input_scope(KeyFilter::CARET | KeyFilter::CYCLE),
             items,
@@ -230,6 +229,7 @@ impl<'a> TabStrip<'a> {
             style: _,
         } = self;
         let selected = selected.and_then(|i| domain::idx(i, items.len()));
+        widget.configure().default_size((Sizing::FILL, Sizing::HUG));
         let response = widget.response(ui);
         let id = response.id;
         let strip_chrome = t.strip.clone();

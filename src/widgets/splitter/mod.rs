@@ -8,6 +8,7 @@ use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -75,9 +76,7 @@ impl<'a> Splitter<'a> {
     #[track_caller]
     fn new(ratio: &'a mut f32, axis: Axis) -> Self {
         Self {
-            widget: Widget::grid()
-                .size((Sizing::FILL, Sizing::FILL))
-                .clip_rect(),
+            widget: Widget::grid(),
             ratio,
             axis,
             min_pane: 0.0,
@@ -127,6 +126,10 @@ impl<'a> Splitter<'a> {
         ui: &mut Ui,
         mut body: impl FnMut(&mut Ui, SplitHalf),
     ) -> ValueResponse<'_> {
+        self.widget
+            .configure()
+            .default_size((Sizing::FILL, Sizing::FILL))
+            .default_clip(ClipMode::Rect);
         let response = self.widget.response(ui);
         let id = response.id;
         let input = *self.ratio;

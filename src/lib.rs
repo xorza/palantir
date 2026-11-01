@@ -65,7 +65,7 @@
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
 //!   `Option`, so `.style(overrides.as_ref())` works.
 //! - **A per-axis setter** ([`Text::color`], [`Separator::thickness`],
-//!   [`Spinner::diameter`], [`Modal::backdrop`]) overrides one field.
+//!   [`Spinner::width`], [`Modal::backdrop`]) overrides one field.
 //!
 //! The third door exists only where an axis has one meaning: [`Separator`] draws
 //! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a color per

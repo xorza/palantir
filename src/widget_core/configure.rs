@@ -412,6 +412,11 @@ pub trait ThemeDefaults: Configure {
     }
 
     /// Padding to fall back on when the caller set none.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is a [length](crate::widget::domain::length), even where the
+    /// caller set a padding.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -421,6 +426,11 @@ pub trait ThemeDefaults: Configure {
     }
 
     /// Margin to fall back on when the caller set none.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every edge is an [offset](crate::widget::domain::offset), even where the
+    /// caller set a margin.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -445,7 +455,19 @@ pub trait ThemeDefaults: Configure {
         self
     }
 
+    /// Main-axis distribution to fall back on when the caller set none.
+    #[inline]
+    #[must_use]
+    fn default_justify(mut self, j: Justify) -> Self {
+        self.configure().default_justify(j);
+        self
+    }
+
     /// Sibling spacing to fall back on when the caller set none.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `g` is a [gap](crate::widget::domain::gap), even where the caller set one.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -455,6 +477,11 @@ pub trait ThemeDefaults: Configure {
     }
 
     /// Lower size bound to fall back on when the caller set none.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes are [lengths](crate::widget::domain::length), even where the
+    /// caller set a bound.
     #[inline]
     #[must_use]
     #[track_caller]
@@ -464,6 +491,11 @@ pub trait ThemeDefaults: Configure {
     }
 
     /// Upper size bound to fall back on when the caller set none.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless both axes are [extents](crate::widget::domain::extent), even where the
+    /// caller set a bound.
     #[inline]
     #[must_use]
     #[track_caller]

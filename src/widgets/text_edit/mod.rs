@@ -27,6 +27,7 @@ use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
+use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -173,8 +174,7 @@ impl<'a> TextEdit<'a> {
         // somewhere to go; `pass` narrows it to the overflow axis before the node records.
         let widget = Widget::scroll(ScrollAxes::BOTH)
             .sense(Sense::CLICK | Sense::SCROLL)
-            .focusable(true)
-            .clip_rect();
+            .focusable(true);
         Self {
             widget,
             text: Some(text),
@@ -313,6 +313,7 @@ impl<'a> TextEdit<'a> {
 
     /// Record the editor and run one frame of editing over its text.
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
+        self.widget.configure().default_clip(ClipMode::Rect);
         let id = self.widget.resolve(ui);
         let text = self
             .text

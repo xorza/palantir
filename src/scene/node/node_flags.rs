@@ -24,14 +24,21 @@ impl NodeFlags {
     /// The axis whose arrows move focus between stops inside the node: `0` none, `1 + Axis`.
     const ARROW_SHIFT: u32 = 21;
     const ARROW_MASK: u32 = 0b11 << Self::ARROW_SHIFT;
-    pub(crate) const WIDTH: u32 = (Self::SENSE_MASK
+    const ALL: u32 = Self::SENSE_MASK
         | Self::DISABLED
         | Self::CLIP_MASK
         | Self::FOCUSABLE
         | Self::SCOPE_MASK
         | Self::NOT_TAB_STOP
-        | Self::ARROW_MASK)
-        .bit_width();
+        | Self::ARROW_MASK;
+    pub(crate) const WIDTH: u32 = Self::ALL.bit_width();
+    /// What a node that takes over another's slot takes from it ([`Self::adopt`]): whether the
+    /// slot is disabled and whether it is a Tab stop.
+    const ADOPTED: u32 = Self::DISABLED | Self::NOT_TAB_STOP;
+    /// What such a node keeps of its own: how it senses, focuses, clips, scopes keys and moves
+    /// focus by arrows.
+    const OWN: u32 =
+        Self::SENSE_MASK | Self::CLIP_MASK | Self::FOCUSABLE | Self::SCOPE_MASK | Self::ARROW_MASK;
 
     /// The whole bitset, for folding into a hash.
     #[inline]
@@ -119,6 +126,12 @@ impl NodeFlags {
         self.bits = (self.bits & !Self::NOT_TAB_STOP) | (if v { 0 } else { Self::NOT_TAB_STOP });
     }
 
+    /// Take `from`'s [`Self::ADOPTED`] flags, for a node recording in `from`'s slot.
+    #[inline]
+    pub(crate) const fn adopt(&mut self, from: Self) {
+        self.bits = (self.bits & !Self::ADOPTED) | (from.bits & Self::ADOPTED);
+    }
+
     #[inline]
     pub(crate) const fn set_key_filter(&mut self, f: KeyFilter) {
         self.bits = (self.bits & !Self::SCOPE_MASK)
@@ -126,6 +139,11 @@ impl NodeFlags {
     }
 }
 
+const _: () = assert!(
+    NodeFlags::ADOPTED & NodeFlags::OWN == 0
+        && NodeFlags::ADOPTED | NodeFlags::OWN == NodeFlags::ALL,
+    "every flag is adopted or kept, not both",
+);
 const _: () = assert!(
     (ClipMode::Rounded as u32) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
     "ClipMode discriminant exceeds 2 bits",

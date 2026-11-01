@@ -24,11 +24,14 @@ use glam::Vec2;
 /// clock, its tail fading out. The recorded [`Shape::arc`] is identical every
 /// frame (phase 0), so measure and cascade skip the subtree and the composer
 /// shifts the angles; the spin's wake keeps the host repainting only while recorded.
+///
+/// Sized as any leaf: a [fixed](Sizing::fixed) [`size`](Configure::size) on both axes draws the
+/// arc across its shorter side, centered; otherwise the arc takes the theme's diameter, and so
+/// does the node unless the caller sizes it.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Spinner<'a> {
     widget: Widget,
-    diameter: Option<f32>,
     color: Option<RgbaF32>,
     width: Option<f32>,
     style: Option<&'a SpinnerTheme>,
@@ -40,28 +43,16 @@ impl<'a> Spinner<'a> {
     pub fn new() -> Self {
         Self {
             widget: Widget::leaf(),
-            diameter: None,
             color: None,
             width: None,
             style: None,
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `spinner`; [`Self::color`],
-    /// [`Self::diameter`] and [`Self::width`] still win.
+    /// Per-instance override of [`crate::Theme`]'s `spinner`; [`Self::color`], [`Self::width`]
+    /// and a fixed size still win.
     pub fn style(mut self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self {
         self.style = s.into();
-        self
-    }
-
-    /// Diameter in logical px, defaulting to the theme's.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `px` is a [length](crate::widget::domain::length).
-    #[track_caller]
-    pub const fn diameter(mut self, px: f32) -> Self {
-        self.diameter = Some(domain::length(px));
         self
     }
 
@@ -90,7 +81,13 @@ impl<'a> Spinner<'a> {
     /// Records the spinner.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let theme = self.style.unwrap_or(&ui.theme().spinner);
-        let diameter = domain::length_at_least(self.diameter.unwrap_or(theme.diameter), 1.0);
+        let fixed = self
+            .widget
+            .authored_size()
+            .and_then(|size| Some(Vec2::new(size.w().fixed_value()?, size.h().fixed_value()?)));
+        let diameter =
+            domain::length_at_least(fixed.map_or(theme.diameter, Vec2::min_element), 1.0);
+        let extent = fixed.unwrap_or_else(|| Vec2::splat(diameter));
         let width = self
             .width
             .unwrap_or_else(|| (diameter * theme.width_ratio).max(theme.min_width));
@@ -100,7 +97,7 @@ impl<'a> Spinner<'a> {
         self.widget
             .default_size((Sizing::fixed(diameter), Sizing::fixed(diameter)))
             .show(ui, None, |ui| {
-                let ArcGeometry { center, radius } = ArcGeometry::new(diameter, width);
+                let ArcGeometry { center, radius } = ArcGeometry::new(extent, diameter, width);
                 let arc = Shape::arc(
                     CircularArc {
                         center,
@@ -143,10 +140,11 @@ struct ArcGeometry {
 }
 
 impl ArcGeometry {
-    /// Insets the trace circle by half the stroke width so round caps stay inside.
-    fn new(diameter: f32, width: f32) -> Self {
+    /// A circle of `diameter` centered in `extent`, its trace inset by half the stroke width so
+    /// round caps stay inside.
+    fn new(extent: Vec2, diameter: f32, width: f32) -> Self {
         Self {
-            center: Vec2::splat(diameter * 0.5),
+            center: extent * 0.5,
             radius: (diameter - width).max(0.0) * 0.5,
         }
     }

@@ -89,7 +89,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
         let mut widget = self.widget;
         widget.grid_tracks(ui, self.rows.as_ref(), self.cols.as_ref());
 
-        // See `Panel::show` for why the handle is what gets cloned.
+        // A handle, not a borrow: `show` reborrows `ui` mutably.
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
         let chrome = self.chrome.as_ref().or(theme.panel_chrome.as_ref());

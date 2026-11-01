@@ -359,9 +359,9 @@ impl Widget {
         self.node.gaps.line_gap()
     }
 
-    /// The main-axis distribution the caller authored; `Justify::Start` if silent.
+    /// The main-axis distribution the caller authored, or `None`.
     #[inline]
-    pub const fn authored_justify(&self) -> Justify {
+    pub const fn authored_justify(&self) -> Option<Justify> {
         self.node.justify
     }
 

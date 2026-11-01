@@ -123,21 +123,4 @@ impl Configure for Panel {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
-    use crate::primitives::layout::axis::Axis;
-    use crate::widgets::panel::Panel;
-
-    impl Panel {
-        /// [`Panel::wrap_hstack`] or [`Panel::wrap_vstack`], packing along `axis`.
-        #[track_caller]
-        pub(crate) fn wrap_stack_on(axis: Axis) -> Self {
-            match axis {
-                Axis::X => Self::wrap_hstack(),
-                Axis::Y => Self::wrap_vstack(),
-            }
-        }
-    }
-}
-
-#[cfg(test)]
 mod tests;

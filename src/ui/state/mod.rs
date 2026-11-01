@@ -2,7 +2,7 @@
 //!
 //! A row is lent out by [`StateMap::take`] and returned by [`StateMap::put`], so a lend leaves no value behind: no `T::default()` is built per lend, as one whose default allocates would per frame.
 //!
-//! Reusing a `WidgetId` with two `T`s is a caller bug: the rows live in separate stores. Unchecked, to avoid a probe per call.
+//! A row is keyed by `(WidgetId, T)`: one id holds one row of each `T`, each in its own store, as an `EditableLabel` keeps its own row beside the `TextEditState` of the editor it records under the same id.
 //!
 //! When a widget stops being recorded, `FrameCycle::finalize_frame` calls `sweep_removed` once per frame; each store `swap_remove`s the row and patches the swapped neighbor via the `owners` vec in O(1).
 

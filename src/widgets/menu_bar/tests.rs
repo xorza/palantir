@@ -18,7 +18,7 @@ fn bar() -> WidgetId {
 }
 
 fn title(idx: u16) -> WidgetId {
-    title_id(bar(), idx)
+    title_id(bar(), MENUS[usize::from(idx)].0)
 }
 
 /// The three menus of [`MENUS`]; the row picked this frame, if any.
@@ -28,9 +28,14 @@ fn build(ui: &mut Ui) -> Option<&'static str> {
 
 /// The first `count` menus of [`MENUS`]; the row picked this frame, if any.
 fn build_first(ui: &mut Ui, count: usize) -> Option<&'static str> {
+    build_some(ui, &[0, 1, 2][..count])
+}
+
+/// The menus of [`MENUS`] at `idxs`; the row picked this frame, if any.
+fn build_some(ui: &mut Ui, idxs: &[usize]) -> Option<&'static str> {
     let mut picked = None;
     MenuBar::new().id(bar()).show(ui, |menus| {
-        for (label, rows) in MENUS.into_iter().take(count) {
+        for (label, rows) in idxs.iter().map(|&idx| MENUS[idx]) {
             menus.menu(label, |ui, close| {
                 for row in rows {
                     if MenuItem::new(row).id_salt(row).show(ui, close).clicked() {
@@ -50,10 +55,8 @@ fn frame(h: &mut Harness) {
 }
 
 fn open(h: &Harness) -> Option<u16> {
-    h.ui_ref()
-        .state::<MenuBarRow>(bar())
-        .and_then(|row| row.open)
-        .map(|open| open.idx)
+    let open = h.ui_ref().state::<MenuBarRow>(bar())?.open?;
+    (0..MENUS.len() as u16).find(|&idx| title(idx) == open.title)
 }
 
 /// Whether menu `idx` recorded this frame.
@@ -237,6 +240,33 @@ fn a_menu_the_bar_drops_shuts() {
         build_first(ui, 2);
     });
     assert_eq!(open(&h), None, "View's title is gone");
+}
+
+/// A title is keyed by its label, not its place: with File dropped before it, View keeps its open
+/// menu, and the arrows walk the titles the bar shows now.
+#[test]
+fn a_menu_dropped_before_the_open_one_leaves_it_open() {
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, |ui| {
+        build(ui);
+    });
+    h.click(title(2));
+    frame(&mut h);
+    assert_eq!(open(&h), Some(2));
+    h.frame(|ui| {
+        build_some(ui, &[1, 2]);
+    });
+    assert_eq!(open(&h), Some(2), "View stays open");
+    assert!(recorded(&h, 2));
+    h.key(Key::ArrowRight);
+    h.frame(|ui| {
+        build_some(ui, &[1, 2]);
+    });
+    assert_eq!(
+        open(&h),
+        Some(1),
+        "Right from View wraps to Edit, past the dropped File"
+    );
 }
 
 /// The open title wears [`MenuBarTheme::open`] whatever the pointer does, the hovered look of a

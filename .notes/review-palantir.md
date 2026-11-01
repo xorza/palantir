@@ -96,41 +96,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 Batches are sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses
 an item deletes it.
 
-### Batch 7: widget correctness and fallbacks
-
-Files: `src/widgets/{editable_label,spinner,menu_bar,tooltip,context_menu,grid.rs,panel,
-splitter,tabs,dock,text_edit,scroll,combo_box}/`, `src/widget_core/{configure.rs,configurator.rs,
-response.rs}`, `src/scene/node/mod.rs`, `src/ui/state/mod.rs`.
-
-- [ ] **BUG** `editable_label/mod.rs:82-92,136-158`: the editor drops the caller's `disabled`, so
-  `EditableLabel::edit` opens a live editor on a disabled label. Target: when disabled, `show`
-  closes the editor and `edit` is a no-op; forward node flags through one exhaustive helper
-  beside `Node::adopt_placement`, so a new flag fails to compile until it picks a side.
-- [ ] **BUG** `spinner/mod.rs:57-66,91-101`: `Spinner::new().size(48.0)` gives a 48 px node with a
-  theme-size arc in its corner; `diameter` repeats `Configure::size`. Target: the side from
-  `authored_size()` when fixed, else the theme's (**API**: remove `diameter`).
-- [ ] `menu_bar/mod.rs:239-241`: titles are keyed by index, so a menu added conditionally moves
-  every later title's hover, animation and open slot. Target: key by a label hash or caller key,
-  as `TabbedView::keyed`; keep `idx` for arrow order.
-- [ ] `configure.rs:414-473`, `scene/node/mod.rs:157-179`: `default_padding`, `default_margin`,
-  `default_gap`, `default_min_size`, `default_max_size` check only when they fill, and lack
-  `# Panics`. Target: check before the `is_none` test; add `# Panics`.
-- [ ] `splitter/mod.rs:78-80`, `tab_strip.rs:111-115`, `dock/dock_view.rs:79`,
-  `tabs/tabbed_view.rs:106`, `text_edit/mod.rs:175-178`, `scroll/mod.rs:211`: size and clip preset
-  in constructors, so `authored_size()`/`authored_clip()` report values the caller never set.
-  Target: `default_*` in `show`.
-- [ ] `context_menu/menu_item.rs:89-93`, `combo_box/mod.rs:152-156`, `editable_label/mod.rs:116`:
-  `justify` and `child_align` overwrite the caller's choice. Target (**API**: `default_justify`,
-  `default_line_gap`, and the rest `ThemeDefaults` lacks): use them here.
-- [ ] `ui/state/mod.rs:5`: the doc calls two `T`s under one id a caller bug; the design keys rows
-  by `(id, T)` and relies on it. Target: rewrite the doc.
-- [ ] Docs: `tooltip/mod.rs` says identity is the trigger's (it is `trigger_id.with("bubble")`);
-  `context_menu/mod.rs:62-70` the same for `for_id`; `Tooltip::on` stores `&ResponseSnapshot`
-  where its siblings copy it (copy it); `grid.rs:92` cites a comment `Panel::show` lacks.
-- [ ] `panel/mod.rs:126-140`: test-only `Panel::wrap_stack_on` duplicates `wrap_stack`. Delete it.
-- [ ] Tests: add `EditableLabelResponse` to the no-deref list (`response.rs:139-144`); tests for
-  the two bugs above.
-
 ### Batch 8: texture growth and the device ceiling
 
 Files: `src/gpu/backdrop/{backdrops/mod.rs,backdrop_blur/mod.rs}`,

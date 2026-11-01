@@ -12,8 +12,8 @@ use crate::primitives::text::text_input::TextInput;
 use crate::theme::text_edit::TextEditTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
-use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
+use crate::widget_core::configure::{Configure, ThemeDefaults};
+use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
@@ -78,15 +78,21 @@ impl<'a> EditableLabel<'a> {
         self
     }
 
-    /// Record the label, or its editor while one is open.
+    /// Record the label, or its editor while one is open. A label that is not
+    /// [editable](Self::editable) or is disabled, itself or by an ancestor, closes an open editor
+    /// and gives its focus back.
     pub fn show(mut self, ui: &mut Ui) -> EditableLabelResponse<'_> {
-        let id = self.widget.resolve(ui);
+        let ResponseSnapshot { id, state } = self.widget.response(ui);
         let editing = Self::is_editing(ui, id);
-        if editing && self.editable {
+        let editable = self.editable && !state.disabled;
+        if editing && editable {
             return self.show_editor(ui, id);
         }
         if editing {
             ui.with_state::<EditableLabelState, _>(id, |_, state| state.editing = false);
+            if ui.focus() == Some(id) {
+                ui.clear_focus();
+            }
         }
         self.show_label(ui, id)
     }
@@ -113,7 +119,7 @@ impl<'a> EditableLabel<'a> {
             .size(size)
             .min_size(min)
             .padding(Spacing::new(left, top, right + reserve, bottom))
-            .child_align(Align::LEFT)
+            .default_child_align(Align::LEFT)
             .show(ui, Some(&slot.looks.normal.chrome), |ui| {
                 Text::new(label)
                     .id(Self::label_id(id))
@@ -192,7 +198,7 @@ impl<'a> EditableLabel<'a> {
 
     /// Open the editor of the label `id` and give it the focus, as a double click does, for a
     /// rename a menu or a key asks for; the label's next frame records it, its text selected. A
-    /// label that is not [editable](Self::editable) stays a label.
+    /// label that is not [editable](Self::editable) or is disabled stays a label.
     pub fn edit(ui: &mut Ui, id: WidgetId) {
         ui.with_state::<EditableLabelState, _>(id, |_, state| state.editing = true);
         ui.set_focus(id);

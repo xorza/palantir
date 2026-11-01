@@ -8,6 +8,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::record::ShapeRecord;
 use crate::theme::spinner::SpinnerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -18,17 +20,25 @@ use glam::UVec2;
 use glam::Vec2;
 use std::time::Duration;
 
-/// The trace circle insets by half the stroke width (round caps), and degenerate sizes clamp at zero.
+/// The trace circle insets by half the stroke width (round caps), sits at the center of its
+/// box, and degenerate sizes clamp at zero.
 #[test]
 fn arc_geometry_insets_by_half_width() {
     assert_eq!(
-        ArcGeometry::new(24.0, 2.0),
+        ArcGeometry::new(Vec2::splat(24.0), 24.0, 2.0),
         ArcGeometry {
             center: Vec2::splat(12.0),
             radius: 11.0,
         }
     );
-    assert_eq!(ArcGeometry::new(4.0, 8.0).radius, 0.0);
+    assert_eq!(
+        ArcGeometry::new(Vec2::new(30.0, 40.0), 30.0, 2.0),
+        ArcGeometry {
+            center: Vec2::new(15.0, 20.0),
+            radius: 14.0,
+        }
+    );
+    assert_eq!(ArcGeometry::new(Vec2::splat(4.0), 4.0, 8.0).radius, 0.0);
     // The default sweep leaves a gap; a full turn would read as a static ring.
     assert!(SpinnerTheme::default().sweep < TAU);
 }
@@ -37,8 +47,6 @@ fn arc_geometry_insets_by_half_width() {
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
     use crate::primitives::geometry::circular_arc::CircularArc;
-    use crate::shape::paint::curve_basis::CurveBasis;
-    use crate::shape::record::ShapeRecord;
 
     #[derive(Debug)]
     struct Recorded {
@@ -54,7 +62,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let spinner = Spinner::new()
                     .id(WidgetId::from_hash("spin"))
-                    .diameter(diameter);
+                    .size(diameter);
                 match width {
                     Some(px) => spinner.width(px),
                     None => spinner,
@@ -150,11 +158,14 @@ fn comet_fades_tail_to_head() {
     assert_eq!(base.tinted(tail.color()), base.with_alpha(0.0));
 }
 
-/// Layout size and drawn diameter are separate: an explicit size or `HUG` replaces the box; default is the diameter square.
+/// A spinner sizes as a leaf: an explicit size or `HUG` replaces the box, and the default is
+/// the theme's diameter square. A fixed size draws the arc across its shorter side, centered:
+/// 30 × 40 draws a 30 px arc around (15, 20); `HUG` draws the theme's.
 #[test]
-fn explicit_layout_size_is_independent_from_diameter() {
+fn a_fixed_size_sets_the_box_and_the_arc() {
+    let stock = SpinnerTheme::default();
     let trio = SizeTrio::of((Sizing::fixed(30.0), Sizing::fixed(40.0)), |ui, size| {
-        let mut spinner = Spinner::new().diameter(12.0);
+        let mut spinner = Spinner::new();
         if let Some(size) = size {
             spinner = spinner.size(size);
         }
@@ -165,9 +176,39 @@ fn explicit_layout_size_is_independent_from_diameter() {
         SizeTrio {
             sized: Size::new(30.0, 40.0),
             hug: Size::ZERO,
-            default: Size::new(12.0, 12.0),
+            default: Size::new(stock.diameter, stock.diameter),
         }
     );
+
+    let arc = |size: (Sizing, Sizing)| {
+        let mut h = Harness::mono(UVec2::new(200, 200));
+        h.frame(|ui| {
+            Spinner::new()
+                .id(WidgetId::from_hash("spin"))
+                .size(size)
+                .show(ui);
+        });
+        h.ui()
+            .tree(Layer::Main)
+            .shapes
+            .records
+            .iter()
+            .find_map(|s| match s {
+                ShapeRecord::Curve {
+                    basis: CurveBasis::Arc(arc),
+                    ..
+                } => Some(*arc),
+                _ => None,
+            })
+            .expect("spinner records one arc")
+    };
+    let width = (30.0 * stock.width_ratio).max(stock.min_width);
+    let fixed = arc((Sizing::fixed(30.0), Sizing::fixed(40.0)));
+    assert_eq!(fixed.center, Vec2::new(15.0, 20.0));
+    assert_eq!(fixed.radius, (30.0 - width) * 0.5);
+    let hug = arc((Sizing::HUG, Sizing::HUG));
+    let theme_width = (stock.diameter * stock.width_ratio).max(stock.min_width);
+    assert_eq!(hug.radius, (stock.diameter - theme_width) * 0.5);
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -50,18 +50,21 @@ fn flag_setters_round_trip_each_field_independently() {
     }
 }
 
-/// A node adopting another's placement takes its Tab-order stop bit and index, and none of its other flags.
+/// A node adopting another's placement takes its Tab-order stop bit and index and its disabled
+/// bit, and none of its other flags.
 #[test]
 fn adopt_placement_carries_the_tab_order() {
     let from = Widget::leaf()
         .tab_stop(false)
         .tab_idx(7)
+        .disabled(true)
         .sense(Sense::CLICK)
         .node;
     let mut to = Widget::leaf().focusable(true).node;
     to.adopt_placement(from);
     assert!(!to.flags.is_tab_stop());
     assert_eq!(to.tab_idx, 7);
+    assert!(to.flags.is_disabled(), "a disabled slot stays disabled");
     assert!(to.flags.is_focusable(), "its own flags stay");
     assert_eq!(
         to.flags.sense(),
@@ -288,4 +291,26 @@ fn themed_bounds_yield_to_authored_ones() {
         node.set_max_size(Size::new(240.0, 400.0));
         node.fill_min_size(Size::new(f32::NAN, 0.0));
     });
+
+    // A bad default panics where the caller set the field too, so a theme's error shows on the
+    // first frame, not on the first widget that leaves the field to it.
+    let set = || {
+        let mut node = leaf();
+        node.set_min_size(Size::new(1.0, 1.0));
+        node.set_max_size(Size::new(9.0, 9.0));
+        node.set_padding(Spacing::all(1.0));
+        node.set_margin(Spacing::all(1.0));
+        node.gaps.set_gap(1.0);
+        node
+    };
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
+        set().fill_min_size(Size::new(-1.0, 0.0));
+    });
+    panic_probe::assert_panics_with(domain::EXTENT_RULE, || {
+        set().fill_max_size(Size::new(f32::NAN, 0.0));
+    });
+    panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
+        set().fill_padding(Spacing::all(-1.0));
+    });
+    panic_probe::assert_panics_with(domain::GAP_RULE, || set().fill_gap(f32::NAN));
 }

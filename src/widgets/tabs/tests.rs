@@ -1231,3 +1231,15 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
         "the strip came back with its menu closed"
     );
 }
+
+/// The builders set no size the caller did not: `show` lays the fill under the caller's.
+#[test]
+fn a_new_strip_and_view_have_no_authored_size() {
+    use crate::widgets::tabs::tab_strip::TabStrip;
+    use crate::widgets::tabs::tabbed_view::TabbedView;
+    let mut strip = TabStrip::new(&[]);
+    assert_eq!(strip.configure().widget.authored_size(), None);
+    let mut selected = 0;
+    let mut view = TabbedView::labeled(&mut selected, &["a"], |s: &&str| s);
+    assert_eq!(view.configure().widget.authored_size(), None);
+}

@@ -68,7 +68,7 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
             Axis::Y => Size::new(10.0, 20.0),
         };
         h.under_outer(|ui| {
-            let panel = Panel::wrap_stack_on(case.axis);
+            let panel = Panel::wrap_stack(case.axis);
             panel
                 .id(WidgetId::from_hash("wrap"))
                 .size((Sizing::HUG, Sizing::HUG))
@@ -176,7 +176,7 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
         for case in &cases {
             let mut h = Harness::mono(UVec2::new(400, 400));
             h.under_outer(|ui| {
-                let panel = Panel::wrap_stack_on(axis);
+                let panel = Panel::wrap_stack(axis);
                 panel
                     .id(WidgetId::from_hash("all-fill-wrap"))
                     .size(axis.compose_sizing(Sizing::fixed(125.0), Sizing::HUG))
@@ -247,7 +247,7 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
     for axis in [Axis::X, Axis::Y] {
         let mut h = Harness::mono(UVec2::new(400, 400));
         h.under_outer(|ui| {
-            let panel = Panel::wrap_stack_on(axis);
+            let panel = Panel::wrap_stack(axis);
             panel
                 .id(WidgetId::from_hash("mixed-fill-wrap"))
                 .size(axis.compose_sizing(Sizing::fixed(105.0), Sizing::HUG))
@@ -283,7 +283,7 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
     for axis in [Axis::X, Axis::Y] {
         let mut h = Harness::mono(UVec2::new(400, 400));
         h.under_outer(|ui| {
-            let panel = Panel::wrap_stack_on(axis);
+            let panel = Panel::wrap_stack(axis);
             panel
                 .id(WidgetId::from_hash("bounded-fill-wrap"))
                 .size(axis.compose_sizing(Sizing::fixed(105.0), Sizing::HUG))

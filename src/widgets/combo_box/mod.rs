@@ -151,7 +151,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let geometry = self.style.unwrap_or(&theme.combo_box);
         self.widget
             .configure()
-            .justify(Justify::SpaceBetween)
+            .default_justify(Justify::SpaceBetween)
             .default_child_align(Align::v(VAlign::Center))
             .default_gap(geometry.gap);
 

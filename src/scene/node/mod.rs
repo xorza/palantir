@@ -52,7 +52,8 @@ pub(crate) struct Node {
     /// Within-line and between-line gap as two f16 lanes: `gap()` for siblings (and Grid columns), `line_gap()` for lines (and Grid rows). Ignored by Leaf/ZStack/Canvas.
     pub(crate) gaps: AuthoredGaps,
 
-    pub(crate) justify: Justify,
+    /// `None` until set; [`Self::cols`] resolves it to [`Justify::Start`].
+    pub(crate) justify: Option<Justify>,
     pub(crate) align: Align,
     pub(crate) child_align: Align,
     pub(crate) pos: Vec2,
@@ -79,8 +80,7 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) const fn set_min_size(&mut self, value: Size) {
-        domain::length(value.w);
-        domain::length(value.h);
+        check_min_size(value);
         self.min_size = Some(value);
         if let Some(max) = self.max_size {
             self.max_size = Some(Size::new(max.w.max(value.w), max.h.max(value.h)));
@@ -95,8 +95,7 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) const fn set_max_size(&mut self, value: Size) {
-        domain::extent(value.w);
-        domain::extent(value.h);
+        check_max_size(value);
         let min = match self.min_size {
             Some(min) => min,
             None => Size::ZERO,
@@ -112,9 +111,7 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) fn set_padding(&mut self, value: Spacing) {
-        for edge in value.to_array() {
-            domain::length(edge);
-        }
+        check_padding(value);
         self.padding = Some(value);
     }
 
@@ -126,16 +123,22 @@ impl Node {
     #[inline]
     #[track_caller]
     pub(crate) fn set_margin(&mut self, value: Spacing) {
-        for edge in value.to_array() {
-            domain::offset(edge);
-        }
+        check_margin(value);
         self.margin = Some(value);
     }
 
     /// Fills a field only where the caller stayed silent, through the checked writer above. Named `fill_`, not `default_`, which [`ThemeDefaults`](crate::widget_core::configure::ThemeDefaults) owns. A default also yields to the *other* bound the caller set: a themed minimum above an authored maximum is clamped down.
+    ///
+    /// Every `fill_` checks its value first, so a bad default panics at its call site whether
+    /// or not the caller set the field.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::set_min_size`].
     #[inline]
     #[track_caller]
     pub(crate) const fn fill_min_size(&mut self, value: Size) {
+        check_min_size(value);
         if self.min_size.is_none() {
             let value = match self.max_size {
                 Some(max) => Size::new(at_most(value.w, max.w), at_most(value.h, max.h)),
@@ -146,33 +149,50 @@ impl Node {
     }
 
     /// Mirror of [`Self::fill_min_size`]: a themed maximum below an authored minimum is raised to it.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::set_max_size`].
     #[inline]
     #[track_caller]
     pub(crate) const fn fill_max_size(&mut self, value: Size) {
+        check_max_size(value);
         if self.max_size.is_none() {
             self.set_max_size(value);
         }
     }
 
+    /// # Panics
+    ///
+    /// As [`Self::set_padding`].
     #[inline]
     #[track_caller]
     pub(crate) fn fill_padding(&mut self, value: Spacing) {
+        check_padding(value);
         if self.padding.is_none() {
-            self.set_padding(value);
+            self.padding = Some(value);
         }
     }
 
+    /// # Panics
+    ///
+    /// As [`Self::set_margin`].
     #[inline]
     #[track_caller]
     pub(crate) fn fill_margin(&mut self, value: Spacing) {
+        check_margin(value);
         if self.margin.is_none() {
-            self.set_margin(value);
+            self.margin = Some(value);
         }
     }
 
+    /// # Panics
+    ///
+    /// Unless `gap` is a *gap*.
     #[inline]
     #[track_caller]
     pub(crate) fn fill_gap(&mut self, gap: f32) {
+        domain::gap(gap);
         if self.gaps.gap().is_none() {
             self.gaps.set_gap(gap);
         }
@@ -190,7 +210,7 @@ impl Node {
         self.child_align = filled(self.child_align, value);
     }
 
-    /// Takes over `from`'s placement (position in the parent and Tab order), nothing about contents or behavior; for a widget handing its slot to a second node ([`crate::DragValue`]'s chip to [`crate::TextEdit`]) or recording as two nodes ([`crate::Scroll`]). Margin is the one `Option`: `None` keeps the adopting node's themed default.
+    /// Takes over `from`'s placement (position in the parent and Tab order) and whether the slot is disabled, nothing about contents or other behavior ([`NodeFlags::adopt`]); for a widget handing its slot to a second node ([`crate::DragValue`]'s chip to [`crate::TextEdit`]) or recording as two nodes ([`crate::Scroll`]). Margin is the one `Option`: `None` keeps the adopting node's themed default.
     ///
     /// The destructure is exhaustive so a new field must be given a side.
     pub(crate) fn adopt_placement(&mut self, from: Self) {
@@ -222,7 +242,7 @@ impl Node {
         self.pos = pos;
         self.grid = grid;
         self.visibility = visibility;
-        self.flags.set_tab_stop(flags.is_tab_stop());
+        self.flags.adopt(flags);
         self.tab_idx = tab_idx;
     }
 
@@ -258,7 +278,7 @@ impl Node {
             margin: None,
             clip: None,
             gaps: AuthoredGaps::UNSET_PAIR,
-            justify: Justify::Start,
+            justify: None,
             align: Align::new(HAlign::Auto, VAlign::Auto),
             child_align: Align::new(HAlign::Auto, VAlign::Auto),
             pos: Vec2::ZERO,
@@ -288,7 +308,10 @@ impl Node {
             },
             panel: PanelExtras {
                 gaps: self.gaps.resolve(),
-                justify: self.justify,
+                justify: match self.justify {
+                    Some(justify) => justify,
+                    None => Justify::Start,
+                },
                 child_align: self.child_align,
                 transform: self.transform,
             },
@@ -312,6 +335,36 @@ const fn filled(set: Align, fallback: Align) -> Align {
         set => set,
     };
     Align::new(h, v)
+}
+
+#[inline]
+#[track_caller]
+const fn check_min_size(value: Size) {
+    domain::length(value.w);
+    domain::length(value.h);
+}
+
+#[inline]
+#[track_caller]
+const fn check_max_size(value: Size) {
+    domain::extent(value.w);
+    domain::extent(value.h);
+}
+
+#[inline]
+#[track_caller]
+fn check_padding(value: Spacing) {
+    for edge in value.to_array() {
+        domain::length(edge);
+    }
+}
+
+#[inline]
+#[track_caller]
+fn check_margin(value: Spacing) {
+    for edge in value.to_array() {
+        domain::offset(edge);
+    }
 }
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 use glam::Vec2;
+use std::mem;
 use std::rc::Rc;
 
 /// A row of menu titles, each opening its [`MenuItem`](crate::MenuItem) rows below it, and one
@@ -61,28 +62,30 @@ pub struct MenuBar<'a> {
     style: Option<&'a MenuBarTheme>,
 }
 
-/// What a [`MenuBar`] keeps between frames: how many menus it recorded, the one menu open, and
-/// where the pointer was at the end of a frame with one open, so only a move onto another title
-/// switches it. One slot for the open menu, so two cannot be open.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+/// What a [`MenuBar`] keeps between frames: the titles it recorded, in order, the one menu open,
+/// and where the pointer was at the end of a frame with one open, so only a move onto another
+/// title switches it. One slot for the open menu, so two cannot be open.
+#[derive(Debug, Default)]
 struct MenuBarRow {
-    count: u16,
+    /// The arrows walk them and the pointer is found over them. Refilled each frame, so its
+    /// buffer is reused.
+    titles: Vec<WidgetId>,
     open: Option<OpenMenu>,
     pointer: Option<Vec2>,
 }
 
-/// The bar's open menu: its index and the trigger state its popup settles.
+/// The bar's open menu: its title and the trigger state its popup settles.
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct OpenMenu {
-    idx: u16,
+    title: WidgetId,
     trigger: TriggerState<MenuBar<'static>>,
 }
 
 impl OpenMenu {
-    /// Menu `idx`, opening below its title.
-    const fn below(idx: u16) -> Self {
+    /// The menu of `title`, opening below it.
+    const fn below(title: WidgetId) -> Self {
         Self {
-            idx,
+            title,
             trigger: TriggerState::opened(Opening::Below),
         }
     }
@@ -93,7 +96,7 @@ impl OpenMenu {
 enum Switch {
     Keep,
     Shut,
-    Open(u16),
+    Open(WidgetId),
 }
 
 impl<'a> MenuBar<'a> {
@@ -119,10 +122,10 @@ impl<'a> MenuBar<'a> {
         body: impl FnOnce(&mut MenuBarMenus<'_>) -> R,
     ) -> InnerResponse<'_, R> {
         let bar = self.widget.resolve(ui);
-        let row = ui.state::<MenuBarRow>(bar).copied().unwrap_or_default();
+        let mut row = ui.with_state::<MenuBarRow, _>(bar, |_, row| mem::take(row));
         let mut open = row.open;
         if let Some(menu) = open {
-            match switch(ui, bar, row, menu.idx) {
+            match switch(ui, &row, menu.title) {
                 Switch::Keep => {}
                 Switch::Shut => {
                     menu.trigger.shut(ui);
@@ -132,12 +135,14 @@ impl<'a> MenuBar<'a> {
                     menu.trigger.shut(ui);
                     open = Some(OpenMenu::below(next));
                     // A title holding focus follows the open menu, which follows a focused title.
-                    if focused_title(ui, bar, row.count).is_some() {
-                        ui.set_focus(title_id(bar, next));
+                    if focused_title(ui, &row.titles).is_some() {
+                        ui.set_focus(next);
                     }
                 }
             }
         }
+        let mut titles = mem::take(&mut row.titles);
+        titles.clear();
 
         let theme = Rc::clone(ui.theme());
         let style = self.style.unwrap_or(&theme.menu_bar);
@@ -146,46 +151,45 @@ impl<'a> MenuBar<'a> {
             .configure()
             .default_gap(style.gap)
             .default_padding(style.bar_padding);
-        let (inner, count, mut open, step) = self.widget.record(ui, Some(&style.bar), |ui| {
+        let (inner, mut open, step) = self.widget.record(ui, Some(&style.bar), |ui| {
             let mut menus = MenuBarMenus {
                 ui,
                 bar,
                 theme: &theme,
                 style,
-                count: 0,
+                titles: &mut titles,
                 open,
                 step: 0,
             };
             let inner = body(&mut menus);
-            (inner, menus.count, menus.open, menus.step)
+            (inner, menus.open, menus.step)
         });
         // A menu whose title this frame did not record, as the bar lost it, shuts.
+        let at = open.and_then(|menu| titles.iter().position(|&title| title == menu.title));
         if let Some(menu) = open
-            && menu.idx >= count
+            && at.is_none()
         {
             menu.trigger.shut(ui);
             open = None;
         }
         if step != 0
-            && let Some(menu) = open
+            && let (Some(menu), Some(at)) = (open, at)
         {
             menu.trigger.shut(ui);
-            let to = (i32::from(menu.idx) + i32::from(step)).rem_euclid(i32::from(count));
-            open = Some(OpenMenu::below(
-                u16::try_from(to).expect("a menu index fits the count"),
-            ));
+            let len = titles.len();
+            let to = (if step > 0 { at + 1 } else { at + len - 1 }) % len;
+            open = Some(OpenMenu::below(titles[to]));
             ui.request_repaint();
         }
         // Read only while a menu is open, as the read wakes a frame on every pointer move.
         let pointer = open.and_then(|_| ui.pointer_pos());
-        let next = MenuBarRow {
-            count,
-            open,
-            pointer,
-        };
-        if next != row {
-            ui.with_state::<MenuBarRow, _>(bar, |_, row| *row = next);
-        }
+        ui.with_state::<MenuBarRow, _>(bar, |_, row| {
+            *row = MenuBarRow {
+                titles,
+                open,
+                pointer,
+            };
+        });
         InnerResponse {
             response: Response::lazy(bar, ui),
             inner,
@@ -193,10 +197,10 @@ impl<'a> MenuBar<'a> {
     }
 }
 
-/// The title holding focus among the bar's `count`, if one does.
-fn focused_title(ui: &Ui, bar: WidgetId, count: u16) -> Option<u16> {
+/// The title holding focus among `titles`, if one does.
+fn focused_title(ui: &Ui, titles: &[WidgetId]) -> Option<WidgetId> {
     let focus = ui.focus()?;
-    (0..count).find(|&idx| title_id(bar, idx) == focus)
+    titles.iter().copied().find(|&title| title == focus)
 }
 
 /// Where the open menu `open` goes. Focus moved to another title, as the arrows walk the titles,
@@ -204,8 +208,8 @@ fn focused_title(ui: &Ui, bar: WidgetId, count: u16) -> Option<u16> {
 /// and one on another title opens that one, both landing on the open menu's click-eater; a move
 /// onto another title opens it. A pointer that rests where it was when the menu opened, as one
 /// the keyboard opened under it, moves nothing.
-fn switch(ui: &mut Ui, bar: WidgetId, row: MenuBarRow, open: u16) -> Switch {
-    if let Some(focused) = focused_title(ui, bar, row.count)
+fn switch(ui: &mut Ui, row: &MenuBarRow, open: WidgetId) -> Switch {
+    if let Some(focused) = focused_title(ui, &row.titles)
         && focused != open
     {
         return Switch::Open(focused);
@@ -214,14 +218,14 @@ fn switch(ui: &mut Ui, bar: WidgetId, row: MenuBarRow, open: u16) -> Switch {
     let Some(at) = pointer else {
         return Switch::Keep;
     };
-    let Some(over) = (0..row.count).find(|&idx| {
-        ui.response_for(title_id(bar, idx))
+    let Some(over) = row.titles.iter().copied().find(|&title| {
+        ui.response_for(title)
             .rect
             .is_some_and(|rect| rect.contains(at))
     }) else {
         return Switch::Keep;
     };
-    let eater = Popup::eater_id(menu_id(title_id(bar, open)));
+    let eater = Popup::eater_id(menu_id(open));
     if ui.response_for(eater).left.clicked() {
         if over == open {
             Switch::Shut
@@ -235,9 +239,10 @@ fn switch(ui: &mut Ui, bar: WidgetId, row: MenuBarRow, open: u16) -> Switch {
     }
 }
 
-/// The title of the bar's menu `idx`.
-fn title_id(bar: WidgetId, idx: u16) -> WidgetId {
-    bar.with(("menu-title", idx))
+/// The title of the bar's menu reading `label`. Keyed by its text, so a menu added or dropped
+/// before it leaves its hover, its look's animation and its open menu in place.
+fn title_id(bar: WidgetId, label: &str) -> WidgetId {
+    bar.with(("menu-title", label))
 }
 
 /// The menu a title opens.
@@ -252,7 +257,7 @@ pub struct MenuBarMenus<'u> {
     bar: WidgetId,
     theme: &'u Theme,
     style: &'u MenuBarTheme,
-    count: u16,
+    titles: &'u mut Vec<WidgetId>,
     open: Option<OpenMenu>,
     /// Left (−1) or Right (+1) pressed in the open menu, else 0.
     step: i8,
@@ -261,26 +266,26 @@ pub struct MenuBarMenus<'u> {
 impl MenuBarMenus<'_> {
     /// Add a title reading `label`, and while its menu is open record `body` in it, which gets
     /// the menu's [`CloseHandle`] for its [`MenuItem`](crate::MenuItem)s. Returns what `body`
-    /// returned, `None` while the menu is shut.
+    /// returned, `None` while the menu is shut. The label names the menu, so it is one of a kind
+    /// in its bar.
     pub fn menu<'l, R>(
         &mut self,
         label: impl Into<TextInput<'l>>,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> Option<R> {
         let ui = &mut *self.ui;
-        let idx = self.count;
-        self.count += 1;
-        let title = title_id(self.bar, idx);
+        let label = ui.intern(label.into());
+        let title = title_id(self.bar, ui.text(label));
+        self.titles.push(title);
         let mut widget = Widget::leaf().id(title).sense(Sense::CLICK).focusable(true);
         let response = widget.activation_response(ui, Activation::Button);
-        let here = self.open.filter(|open| open.idx == idx);
+        let here = self.open.filter(|open| open.title == title);
         let plan = self.style.plan(
             &response.state,
             MenuState::from(here.is_some()),
             self.theme.text,
         );
         let look = widget.wear(ui, plan);
-        let label = ui.intern(label.into());
         widget.record(ui, Some(&look.chrome), |ui| {
             ui.add_shape(Shape::text(label, look.text.font()).color(look.text.color));
         });
@@ -313,11 +318,11 @@ impl MenuBarMenus<'_> {
         );
         if settled.state.is_open_now() {
             // A title opening while another menu is open takes the bar's one slot from it.
-            if let Some(other) = self.open.filter(|open| open.idx != idx) {
+            if let Some(other) = self.open.filter(|open| open.title != title) {
                 other.trigger.shut(ui);
             }
             self.open = Some(OpenMenu {
-                idx,
+                title,
                 trigger: settled.state,
             });
             self.step = step;

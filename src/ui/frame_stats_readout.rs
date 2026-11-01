@@ -60,7 +60,7 @@ pub(crate) fn record(ui: &mut Ui) {
     let chrome = Chrome::fill(RgbaF32::new(0.0, 0.0, 0.0, 0.75));
     let row = Node {
         size: Some(SizeSpec::new(Sizing::FILL, Sizing::HUG)),
-        justify: Justify::End,
+        justify: Some(Justify::End),
         ..Node::new(NodeMode::Resolved(LayoutMode::Stack(Axis::X)))
     };
     let chip = Node {

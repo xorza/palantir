@@ -131,6 +131,7 @@ pub(crate) mod internals {
 mod tests {
     use crate::widget_core::response::InnerResponse;
     use crate::widget_core::value_response::ValueResponse;
+    use crate::widgets::editable_label::EditableLabelResponse;
     use crate::widgets::expander::ExpanderResponse;
     use crate::widgets::tabs::tab_strip::TabStripResponse;
     use crate::widgets::tabs::tabbed_view::TabbedViewResponse;
@@ -143,6 +144,7 @@ mod tests {
     assert_not_impl_any!(ValueResponse<'static>: Deref);
     assert_not_impl_any!(TextEditResponse<'static>: Deref);
     assert_not_impl_any!(ExpanderResponse<'static, ()>: Deref);
+    assert_not_impl_any!(EditableLabelResponse<'static>: Deref);
     assert_not_impl_any!(TabStripResponse<'static>: Deref);
     assert_not_impl_any!(TabbedViewResponse<'static>: Deref);
 }

@@ -101,7 +101,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
         Driver::WrapStack => {
-            let panel = Panel::wrap_stack_on(case.axis.other());
+            let panel = Panel::wrap_stack(case.axis.other());
             panel
                 .auto_id()
                 .size(parent_size)

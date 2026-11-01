@@ -570,3 +570,13 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
         assert_eq!(commits, usize::from(moved), "{key:?}: commits");
     }
 }
+
+/// The builder sets nothing the caller did not: the fill and the clip are defaults `show` lays
+/// under the caller's choice, so `authored_*` reads only what the caller set.
+#[test]
+fn a_new_splitter_has_no_authored_size_or_clip() {
+    let mut ratio = 0.5;
+    let splitter = Splitter::row(&mut ratio);
+    assert_eq!(splitter.widget.authored_size(), None);
+    assert_eq!(splitter.widget.authored_clip(), None);
+}

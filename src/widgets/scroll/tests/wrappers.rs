@@ -97,7 +97,7 @@ fn split_routes_every_setter_to_one_wrapper() {
             "justify",
             |s| s.justify(Justify::SpaceBetween),
             Side::Inner,
-            |n| n.justify = Justify::SpaceBetween,
+            |n| n.justify = Some(Justify::SpaceBetween),
         ),
         (
             "align",
@@ -178,7 +178,7 @@ fn split_routes_every_setter_to_one_wrapper() {
             Side::Outer,
             |n| n.visibility = Visibility::Collapsed,
         ),
-        // The bare scroll clips `Rect`, the value `clip_rect` writes, so these rows move it off that.
+        // The bare scroll authors no clip, `show` lays `Rect` under it, so any clip moves it.
         (
             "clip",
             |s| s.clip(ClipMode::None),
@@ -216,7 +216,7 @@ fn split_routes_every_setter_to_one_wrapper() {
         bare_inner.node.size,
         Some((Sizing::FILL, Sizing::FILL).into())
     );
-    assert_eq!(bare_inner.node.clip, Some(ClipMode::Rect));
+    assert_eq!(bare_inner.node.clip, None);
     assert_eq!(bare_outer.node.flags.sense(), Sense::SCROLL);
 
     for (setter, apply, side, expect) in rows {
@@ -243,4 +243,11 @@ fn split_routes_every_setter_to_one_wrapper() {
 fn split_rejects_an_authored_transform() {
     let scroll = Scroll::vertical().transform(TranslateScale::from_scale(2.0));
     let _ = ScrollWrappers::split(&scroll.widget, scroll.axes);
+}
+
+/// The builder sets no clip the caller did not: `show` lays the rect clip under the caller's.
+#[test]
+fn a_new_scroll_has_no_authored_clip() {
+    let mut scroll = Scroll::both();
+    assert_eq!(scroll.configure().widget.authored_clip(), None);
 }

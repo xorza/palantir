@@ -164,7 +164,7 @@ fn spanned_nested_wrap_measures_against_internal_gaps_on_both_axes() {
                     .gap(if axis == Axis::X { case.gap } else { 0.0 })
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
-                        let panel = Panel::wrap_stack_on(axis);
+                        let panel = Panel::wrap_stack(axis);
                         panel_node = Some(
                             panel
                                 .auto_id()

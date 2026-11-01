@@ -131,7 +131,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     );
     assert_eq!(widget.authored_gap(), Some(6.0));
     assert_eq!(widget.authored_line_gap(), Some(7.0));
-    assert_eq!(widget.authored_justify(), Justify::SpaceBetween);
+    assert_eq!(widget.authored_justify(), Some(Justify::SpaceBetween));
     assert_eq!(widget.authored_align(), align);
     assert_eq!(widget.authored_child_align(), child_align);
     assert_eq!(widget.authored_sense(), sense);
@@ -157,7 +157,7 @@ fn authored_readers_answer_the_defaults_before_anything_is_set() {
     assert_eq!(widget.authored_line_gap(), None);
     assert_eq!(widget.authored_pos(), Vec2::ZERO);
     assert_eq!(widget.authored_grid_cell(), GridCell::default());
-    assert_eq!(widget.authored_justify(), Justify::Start);
+    assert_eq!(widget.authored_justify(), None);
     assert_eq!(widget.authored_align(), Align::default());
     assert_eq!(widget.authored_child_align(), Align::default());
     assert_eq!(widget.authored_sense(), Sense::NONE);

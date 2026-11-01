@@ -277,7 +277,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             if s.syncing {
                 ProgressBar::new(frac).show(ui);
                 support::row(ui, |ui| {
-                    Spinner::new().diameter(16.0).show(ui);
+                    Spinner::new().size(16.0).show(ui);
                     let pct = fmt!(ui, "syncing {:.0}%", frac * 100.0);
                     Text::new(pct).style(&k.t.caption()).show(ui);
                 });
@@ -331,7 +331,7 @@ fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
         });
 
     Section::new("Progress")
-        .apis(&[api!(ProgressBar::new), api!(Spinner::diameter)])
+        .apis(&[api!(ProgressBar::new), api!(Spinner::new)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -352,12 +352,9 @@ fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                     .gap(M.space.lg)
                     .child_align(Align::v(VAlign::Center))
                     .show(ui, |ui| {
-                        Spinner::new().diameter(20.0).show(ui);
-                        Spinner::new().diameter(32.0).show(ui);
-                        Spinner::new()
-                            .diameter(48.0)
-                            .color(k.swatch.orange)
-                            .show(ui);
+                        Spinner::new().size(20.0).show(ui);
+                        Spinner::new().size(32.0).show(ui);
+                        Spinner::new().size(48.0).color(k.swatch.orange).show(ui);
                     });
             });
         });

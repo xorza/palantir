@@ -103,7 +103,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
-            widget: Widget::vstack().size((Sizing::FILL, Sizing::FILL)),
+            widget: Widget::vstack(),
             selected,
             options,
             label,
@@ -183,6 +183,9 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             style: _,
         } = self;
         let mut shown = domain::idx(*selected, options.len());
+        widget
+            .configure()
+            .default_size((Sizing::FILL, Sizing::FILL));
         let response = widget.response(ui);
         let strip_id = response.id.with("strip");
         let page_keys = || {

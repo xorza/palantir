@@ -16,6 +16,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
+use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::math::domain::{self, vec2};
@@ -208,7 +209,7 @@ impl<'a> Scroll<'a> {
     #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
         Self {
-            widget: Widget::scroll(axes).sense(Sense::SCROLL).clip_rect(),
+            widget: Widget::scroll(axes).sense(Sense::SCROLL),
             axes,
             style: None,
             zoom: None,
@@ -459,6 +460,7 @@ impl<'a> Scroll<'a> {
     /// descendants' transform.
     #[track_caller]
     pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
+        self.widget.configure().default_clip(ClipMode::Rect);
         // The caller's salt names the outer wrapper but the arriving node is the
         // viewport, and the wrappers need the id first: resolve here, outer takes it later.
         // Through `Widget::response`, so a scroll disabled this frame reads no wheel.
