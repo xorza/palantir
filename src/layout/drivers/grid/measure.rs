@@ -19,16 +19,16 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     let node = grid.node;
     let cols = grid.axis(tree, Axis::X);
     let rows = grid.axis(tree, Axis::Y);
-    let n_rows = rows.tracks.len();
-    let n_cols = cols.tracks.len();
+    let row_count = rows.tracks.len();
+    let col_count = cols.tracks.len();
     let scratch = pass.grid_mut().depth_stack.cur();
-    scratch.col.reset_for(n_cols);
-    scratch.row.reset_for(n_rows);
+    scratch.col.reset_for(col_count);
+    scratch.row.reset_for(row_count);
     pass.grid_mut()
         .track_state
         .debug_assert_unmeasured(grid.def);
 
-    if n_rows == 0 || n_cols == 0 {
+    if row_count == 0 || col_count == 0 {
         // Recurse with `Size::ZERO` so leaves still push `ShapedText` entries: the
         // cascade asserts one per text record even for a zero rect.
         for c in tree.children(node).map(|c| c.id) {
@@ -243,8 +243,8 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         ..
     } = pass.grid_mut();
     let s = depth_stack.cur();
-    let col_gaps = cols.gap.gaps_between(n_cols);
-    let row_gaps = rows.gap.gaps_between(n_rows);
+    let col_gaps = cols.gap.gaps_between(col_count);
+    let row_gaps = rows.gap.gaps_between(row_count);
     let fill_w = fill_contribution(grid_sizing_w, inner_avail.w, cols.tracks, &s.col.extents);
     let fill_h = fill_contribution(grid_sizing_h, inner_avail.h, rows.tracks, &s.row.extents);
     let total_w = grid::sum_non_fill(cols.tracks, &s.col.sizes) + fill_w + col_gaps;

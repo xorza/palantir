@@ -198,7 +198,8 @@ impl Image {
     /// the nearest texel and at least one; a copy when it fits already. A tent filter widened by
     /// the ratio weighs every source texel and adds no ringing at the hard edges a UI is made of;
     /// it averages premultiplied linear light, as the frame blends, since an average of encoded
-    /// bytes darkens every edge between light and dark.
+    /// bytes darkens every edge between light and dark. Rows go through one at a time, decoded and
+    /// filtered across as the tent first reads them, so the scratch is a few rows, not the image.
     ///
     /// # Panics
     ///
@@ -210,33 +211,49 @@ impl Image {
         if size == self.size {
             return self.clone();
         }
-        let linear: Vec<[f32; 4]> = self
-            .texels()
-            .iter()
-            .map(|texel| {
-                let RgbaF32 { r, g, b, a } = RgbaF32::from_srgba8(*texel);
-                [r * a, g * a, b * a, a]
-            })
-            .collect();
         let (from_w, from_h) = (self.size.x as usize, self.size.y as usize);
         let (to_w, to_h) = (size.x as usize, size.y as usize);
-        let mut rows = vec![[0.0; 4]; to_w * from_h];
+        // Every output column's taps, flat: column `x` reads `x_taps[x_starts[x]..x_starts[x + 1]]`.
         let mut taps = Vec::new();
+        let mut x_taps = Vec::new();
+        let mut x_starts = Vec::with_capacity(to_w + 1);
+        x_starts.push(0);
         for x in 0..to_w {
             tent_taps(x, from_w, to_w, &mut taps);
-            for y in 0..from_h {
-                rows[y * to_w + x] = weighed(&taps, |i| linear[y * from_w + i]);
-            }
+            x_taps.extend_from_slice(&taps);
+            x_starts.push(x_taps.len());
         }
+        // The source rows filtered across, in a ring as deep as the most rows one output row's
+        // tent reads: `ceil(center + ratio) - floor(center - ratio)` is at most `2 · ratio + 2`.
+        let ring_rows = (2 * from_h).div_ceil(to_h) + 2;
+        let mut ring = vec![[0.0; 4]; ring_rows * to_w];
+        let mut line = vec![[0.0; 4]; from_w];
+        let mut filtered = 0;
         let mut fitted = Self::blank(size);
-        let texels = fitted.texels_mut();
         for y in 0..to_h {
             tent_taps(y, from_h, to_h, &mut taps);
-            for x in 0..to_w {
-                let [r, g, b, a] = weighed(&taps, |i| rows[i * to_w + x]);
+            let first = taps.first().expect("a tent reads a source row").0;
+            let last = taps.last().expect("a tent reads a source row").0 + 1;
+            debug_assert!(
+                last - first <= ring_rows,
+                "the ring holds every row a tent reads"
+            );
+            while filtered < last {
+                let source = &self.texels()[filtered * from_w..][..from_w];
+                for (linear, texel) in line.iter_mut().zip(source) {
+                    let RgbaF32 { r, g, b, a } = RgbaF32::from_srgba8(*texel);
+                    *linear = [r * a, g * a, b * a, a];
+                }
+                let slot = &mut ring[(filtered % ring_rows) * to_w..][..to_w];
+                for (x, out) in slot.iter_mut().enumerate() {
+                    *out = weighed(&x_taps[x_starts[x]..x_starts[x + 1]], |i| line[i]);
+                }
+                filtered += 1;
+            }
+            for (x, out) in fitted.row_mut(y as u32).iter_mut().enumerate() {
+                let [r, g, b, a] = weighed(&taps, |i| ring[(i % ring_rows) * to_w + x]);
                 let straight = if a > 0.0 { a.recip() } else { 0.0 };
-                texels[y * to_w + x] =
-                    RgbaF32::new(r * straight, g * straight, b * straight, a).to_srgba8();
+                *out = RgbaF32::new(r * straight, g * straight, b * straight, a).to_srgba8();
             }
         }
         fitted

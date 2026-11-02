@@ -52,6 +52,13 @@ common → primitives → {animation, text, input, display, window, clipboard, i
 - **A bench may import modules to its right**, so a whole-frame case sits beside the code it
   measures. Refused: a `src/bench/` away from that code.
 
+## GPU memory
+
+- **Scratch decays.** Per-frame GPU scratch grows once a frame to the frame's need and steps down
+  after it sits idle, as the blur textures do after 120 frames; a cache shrinks back to its
+  budget once its live set fits; a staging buffer moves an image in fixed bands. Refused: growth
+  to a high-water mark the window keeps for life, which one 4K glass pane put at about 240 MiB.
+
 ## Swapchain
 
 Facts and sources: `.notes/research/2026-10-29-swapchain.md`.
@@ -394,3 +401,10 @@ Homes beside a file's own `mod tests`:
   outside the crate.
 
 Items code outside the crate calls are `pub`; the rest are `pub(crate)`.
+
+- **One oracle per property**, in `internals::oracle`, over every column the property covers.
+  Refused: a comparator per suite, each blind to other columns, where a `scroll_content`
+  restore bug would pass the suites that skip it.
+- **One fixture per costly resource** (a window, a shaper, a GPU frame), built once per test, and
+  a table over a contract's whole domain (`PaintTier::ALL²`, `PointerButton::ALL`) where tests
+  checked it by sample. No real sleep where the code under test takes a clock or a waker.

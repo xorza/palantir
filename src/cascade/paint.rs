@@ -61,11 +61,11 @@ impl PaintArena {
     }
 
     /// Resets both columns for a new frame; `rows` is only seeded with
-    /// `n_nodes`, as capacity converges after warmup.
-    pub(super) fn reset_for(&mut self, n_nodes: usize) {
+    /// `node_count`, as capacity converges after warmup.
+    pub(super) fn reset_for(&mut self, node_count: usize) {
         self.rows.clear();
-        self.rows.reserve(n_nodes);
-        self.node_spans.resize(n_nodes, Span::default());
+        self.rows.reserve(node_count);
+        self.node_spans.resize(node_count, Span::default());
     }
 }
 

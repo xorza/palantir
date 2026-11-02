@@ -372,16 +372,16 @@ fn read_png(path: &Path) -> io::Result<Image> {
     Image::from_srgba8(size, decoded.into_raw()).map_err(io::Error::other)
 }
 
+/// `image` as a PNG at `path`, written from its bytes as they are.
 fn write_png(image: &Image, path: &Path) -> io::Result<()> {
     let size = image.size();
-    let bytes: Vec<u8> = image
-        .texels()
-        .iter()
-        .flat_map(|texel| [texel.r, texel.g, texel.b, texel.a])
-        .collect();
-    let buffer = image::RgbaImage::from_raw(size.x, size.y, bytes)
-        .expect("an image holds four bytes a texel");
-    buffer
-        .save_with_format(path, image::ImageFormat::Png)
-        .map_err(io::Error::other)
+    image::save_buffer_with_format(
+        path,
+        image.as_srgba8(),
+        size.x,
+        size.y,
+        image::ExtendedColorType::Rgba8,
+        image::ImageFormat::Png,
+    )
+    .map_err(io::Error::other)
 }

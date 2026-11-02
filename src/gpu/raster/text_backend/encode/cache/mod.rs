@@ -340,8 +340,6 @@ const _: () = assert!(
     "the shaped-buffer window must cover the encoded-run window",
 );
 
-// Gated with the churn fixture's readers, not `internals`, which integration
-// suites enable without a churn fixture.
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use super::*;
@@ -349,7 +347,6 @@ pub(crate) mod internals {
     use crate::common::block_arena::BlockArenaCounts;
     #[cfg(test)]
     use crate::common::counters::CounterSet;
-    #[cfg(test)]
     #[cfg(test)]
     use crate::gpu::raster::text_backend::encoded_counters::EncodedCounts;
     use crate::text::key::TextShapeKey;

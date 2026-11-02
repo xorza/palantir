@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use crate::fmt;
 use crate::internals::frame_fixture::FrameFixture;
+use crate::internals::frame_fixture::swatches;
 use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -49,9 +50,9 @@ pub(super) fn app_bar(ui: &mut Ui) {
                         glam::Vec2::splat(0.5),
                         0.0,
                         [
-                            Stop::new(0.0, RgbaF32::hex(0x4cd3ff)),
-                            Stop::new(0.5, RgbaF32::hex(0xd897ff)),
-                            Stop::new(1.0, RgbaF32::hex(0x4cd3ff)),
+                            Stop::new(0.0, swatches::TEAL),
+                            Stop::new(0.5, swatches::VIOLET),
+                            Stop::new(1.0, swatches::TEAL),
                         ],
                     )),
                     corners: Corners::all(11.0),

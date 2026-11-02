@@ -2,8 +2,8 @@
 
 use std::f32::consts::PI;
 
-use crate::internals::demo_swatches;
 use crate::internals::frame_fixture::card::Card;
+use crate::internals::frame_fixture::swatches;
 use crate::internals::frame_fixture::tokens;
 use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
@@ -180,12 +180,12 @@ fn add_polyline(ui: &mut Ui) {
     ];
     // The shared swatch set in order plus one green it lacks: six points need six distinct inks.
     let cols = [
-        demo_swatches::RED,
-        demo_swatches::ORANGE,
-        demo_swatches::LIME,
+        swatches::RED,
+        swatches::ORANGE,
+        swatches::LIME,
         RgbaF32::hex(0x46c46c),
-        demo_swatches::TEAL,
-        demo_swatches::VIOLET,
+        swatches::TEAL,
+        swatches::VIOLET,
     ];
     ui.add_shape(
         Shape::polyline(&pts, Stroke::new(RgbaF32::WHITE, 4.0))

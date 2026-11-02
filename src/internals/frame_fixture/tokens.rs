@@ -2,7 +2,7 @@
 //!
 //! The colors' only load-bearing property is that the chrome they feed stays non-noop: [`card_chrome`] must keep a real drop shadow (the sole driver of the encoder's chrome-shadow branch) and a hairline border, or the workload loses coverage.
 
-use crate::internals::demo_swatches;
+use crate::internals::frame_fixture::swatches;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
@@ -20,10 +20,10 @@ pub(super) const BORDER: RgbaF32 = RgbaF32::hex(0x2b303d);
 pub(super) const TEXT_DIM: RgbaF32 = RgbaF32::hex(0x8b93a7);
 
 // Accents aliased from the shared set under this tree's meaning: a threshold breach or healthy delta.
-pub(super) const ACCENT: RgbaF32 = demo_swatches::TEAL;
-pub(super) const WARN: RgbaF32 = demo_swatches::ORANGE;
-pub(super) const OK: RgbaF32 = demo_swatches::LIME;
-pub(super) const VIOLET: RgbaF32 = demo_swatches::VIOLET;
+pub(super) const ACCENT: RgbaF32 = swatches::TEAL;
+pub(super) const WARN: RgbaF32 = swatches::ORANGE;
+pub(super) const OK: RgbaF32 = swatches::LIME;
+pub(super) const VIOLET: RgbaF32 = swatches::VIOLET;
 
 /// Raised card: fill, hairline border and a real chrome drop shadow, the only driver of the encoder's chrome-shadow branch; keep it non-noop.
 pub(super) fn card_chrome() -> Chrome {

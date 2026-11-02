@@ -104,14 +104,14 @@ impl LayoutDriver for Grid {
         }
         let axis = query.axis();
         let GridAxis { tracks, gap, .. } = self.axis(tree, axis);
-        let n_tracks = tracks.len();
+        let track_count = tracks.len();
 
         let wants_min = query.includes(LenReq::MinContent);
         let wants_max = query.includes(LenReq::MaxContent);
         let base = pass.grid_track_aggregator().len();
         let min_base = base;
-        let max_base = base + usize::from(wants_min) * n_tracks;
-        let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * n_tracks;
+        let max_base = base + usize::from(wants_min) * track_count;
+        let slot_count = (usize::from(wants_min) + usize::from(wants_max)) * track_count;
         pass.grid_track_aggregator().resize(base + slot_count, 0.0);
         for (i, t) in tracks.iter().enumerate() {
             let min = t.min();
@@ -156,26 +156,28 @@ impl LayoutDriver for Grid {
                 }
                 let child = pass.query(c, query);
                 if wants_min {
-                    let extents = &mut pass.grid_track_aggregator()[min_base..min_base + n_tracks];
+                    let extents =
+                        &mut pass.grid_track_aggregator()[min_base..min_base + track_count];
                     distribute_span(tracks, cell_span, gap, child.min, extents);
                 }
                 if wants_max {
-                    let extents = &mut pass.grid_track_aggregator()[max_base..max_base + n_tracks];
+                    let extents =
+                        &mut pass.grid_track_aggregator()[max_base..max_base + track_count];
                     distribute_span(tracks, cell_span, gap, child.max, extents);
                 }
             }
         }
 
-        let gaps = gap.gaps_between(n_tracks);
+        let gaps = gap.gaps_between(track_count);
         let mut range = IntrinsicRange::ZERO;
         if wants_min {
-            range.min = pass.grid_track_aggregator()[min_base..min_base + n_tracks]
+            range.min = pass.grid_track_aggregator()[min_base..min_base + track_count]
                 .iter()
                 .sum::<f32>()
                 + gaps;
         }
         if wants_max {
-            let extents = &pass.grid_track_aggregator()[max_base..max_base + n_tracks];
+            let extents = &pass.grid_track_aggregator()[max_base..max_base + track_count];
             range.max = sum_non_fill(tracks, extents) + fill_extent(tracks, extents) + gaps;
         }
         pass.grid_track_aggregator().truncate(base);

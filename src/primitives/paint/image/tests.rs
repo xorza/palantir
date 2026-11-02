@@ -255,3 +255,64 @@ fn a_fit_rounds_each_side_and_keeps_one_texel() {
         );
     }
 }
+
+/// The row-by-row fit holds the whole-image two-pass one bit for bit, every channel of every
+/// texel, on pseudo-random texels with varied alpha: wide (37 × 23 to 10 × 6), tall (23 × 37),
+/// and at a ratio near one (12 × 9 to 11 × 8), where the ring is shallowest.
+#[test]
+fn a_fit_row_by_row_matches_the_whole_image_two_pass() {
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::image::{tent_taps, weighed};
+
+    /// The fit as two passes over whole-image buffers: every row filtered across, then down.
+    fn two_pass(image: &Image, max_side: u32) -> Vec<SrgbaU8> {
+        let size = image.fitted(max_side).size();
+        let (from_w, from_h) = (image.size().x as usize, image.size().y as usize);
+        let (to_w, to_h) = (size.x as usize, size.y as usize);
+        let linear: Vec<[f32; 4]> = image
+            .texels()
+            .iter()
+            .map(|texel| {
+                let RgbaF32 { r, g, b, a } = RgbaF32::from_srgba8(*texel);
+                [r * a, g * a, b * a, a]
+            })
+            .collect();
+        let mut rows = vec![[0.0; 4]; to_w * from_h];
+        let mut taps = Vec::new();
+        for x in 0..to_w {
+            tent_taps(x, from_w, to_w, &mut taps);
+            for y in 0..from_h {
+                rows[y * to_w + x] = weighed(&taps, |i| linear[y * from_w + i]);
+            }
+        }
+        let mut out = Vec::new();
+        for y in 0..to_h {
+            tent_taps(y, from_h, to_h, &mut taps);
+            for x in 0..to_w {
+                let [r, g, b, a] = weighed(&taps, |i| rows[i * to_w + x]);
+                let straight = if a > 0.0 { a.recip() } else { 0.0 };
+                out.push(RgbaF32::new(r * straight, g * straight, b * straight, a).to_srgba8());
+            }
+        }
+        out
+    }
+
+    let mut seed = 0x9e37_79b9_u32;
+    for (size, max_side) in [
+        (UVec2::new(37, 23), 10),
+        (UVec2::new(23, 37), 10),
+        (UVec2::new(12, 9), 11),
+    ] {
+        let mut image = Image::blank(size);
+        image.fill_with(|_| {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let [r, g, b, a] = seed.to_le_bytes();
+            SrgbaU8 { r, g, b, a }
+        });
+        assert_eq!(
+            image.fitted(max_side).texels(),
+            two_pass(&image, max_side),
+            "{size}"
+        );
+    }
+}

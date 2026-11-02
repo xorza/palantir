@@ -119,7 +119,7 @@ struct Inner {
 }
 
 #[derive(Debug)]
-pub(super) struct QueryTracer {
+pub(crate) struct QueryTracer {
     /// Whether `TIMESTAMP_QUERY_INSIDE_PASSES` is available; off, [`Self::segment_begin`], [`Self::mark`] and [`Self::segment_end`] write no timestamps.
     inside_passes: bool,
     /// Whether `TIMESTAMP_QUERY_INSIDE_ENCODERS` is available; off, the copy-out is not timed.

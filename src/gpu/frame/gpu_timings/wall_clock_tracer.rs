@@ -30,7 +30,7 @@ struct Slot {
 /// span also holds the submit's and the wake-up's latency: no marks inside or between passes,
 /// and no pipeline statistics.
 #[derive(Debug)]
-pub(super) struct WallClockTracer {
+pub(crate) struct WallClockTracer {
     origin: Instant,
     slots: [Slot; SLOTS],
     /// The slot [`Self::finish`] took for the frame it closed, which `after_submit` starts timing.

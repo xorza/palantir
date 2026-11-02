@@ -24,6 +24,7 @@ mod lists;
 mod panes;
 mod specimen;
 mod stat_strip;
+mod swatches;
 mod tokens;
 
 use crate::primitives::geometry::translate_scale::TranslateScale;

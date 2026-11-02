@@ -24,7 +24,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
     const LINE_PROBE: Rect = Rect::new(140.0, 140.0, 20.0, 20.0);
     const REMOVED_CHILD: Rect = Rect::new(60.0, 10.0, 20.0, 20.0);
 
-    let canvas = |ui: &mut Ui, n_children: usize| {
+    let canvas = |ui: &mut Ui, child_count: usize| {
         Panel::canvas()
             .id(WidgetId::from_hash("canvas"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -37,7 +37,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                     )
                     .cap(LineCap::Round),
                 );
-                for i in 0..n_children {
+                for i in 0..child_count {
                     Block::new()
                         .id(WidgetId::from_hash(("child", i)))
                         .pos((10.0 + i as f32 * 50.0, 10.0))

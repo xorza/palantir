@@ -51,7 +51,9 @@ docs = true
 # The golden suite, run after a rendering change: in the first test lane's shape so it reuses that
 # build. It joins no lane, as its goldens are local to each machine's adapter.
 [workspace.metadata.drive.commands.visual]
-steps = [{ cargo = "test --workspace --locked --features golden,gpu-debug-markers --test visual", args = true }]
+steps = [
+    { cargo = "test --workspace --locked --features golden,gpu-debug-markers --test visual", args = true },
+]
 
 # The showcase played from a script with no desktop: `cargo drive run shot SCRIPT [--out DIR]
 # [--against DIR]` writes the script's shots as PNGs and prints a report of each, comparing each
@@ -60,7 +62,10 @@ steps = [{ cargo = "test --workspace --locked --features golden,gpu-debug-marker
 # The driver puts `--` before a cargo step's arguments, so the binary runs as a program step.
 steps = [
     { build = "build --example showcase --features golden" },
-    { program = ["{target}/debug/examples/showcase{exe}", "--shot"], args = true },
+    { program = [
+        "{target}/debug/examples/showcase{exe}",
+        "--shot",
+    ], args = true },
 ]
 
 # The reel rendered on a headless window: `cargo drive run reel preview|final|png DIR [--slide K]
@@ -68,7 +73,9 @@ steps = [
 [workspace.metadata.drive.commands.reel]
 steps = [
     { build = "build --example reel --profile release-dev" },
-    { program = ["{target}/release-dev/examples/reel{exe}"], args = true },
+    { program = [
+        "{target}/release-dev/examples/reel{exe}",
+    ], args = true },
 ]
 
 [workspace]
@@ -80,15 +87,34 @@ workspace = true
 
 [dependencies]
 palantir-anim-derive = { path = "palantir-anim-derive", version = "=0.8.3", default-features = false }
-arboard = { version = "3.7", default-features = false, features = ["image-data"], optional = true }
+arboard = { version = "3.7", default-features = false, features = [
+    "image-data",
+], optional = true }
 bytemuck = { version = "1.25", default-features = false, features = ["derive"] }
-cosmic-text = { version = "0.19", default-features = false, features = ["std", "swash", "fontconfig"] }
+cosmic-text = { version = "0.19", default-features = false, features = [
+    "std",
+    "swash",
+    "fontconfig",
+] }
 fixedbitset = { version = "0.5", default-features = false }
 foldhash = { version = "0.2", default-features = false, features = ["std"] }
-glam = { version = "0.34", default-features = false, features = ["std", "i16", "i32", "u16", "u32", "bytemuck", "serde"] }
+glam = { version = "0.34", default-features = false, features = [
+    "std",
+    "i16",
+    "i32",
+    "u16",
+    "u32",
+    "bytemuck",
+    "serde",
+] }
 resvg = { version = "0.49", default-features = false }
-image = { version = "0.25", default-features = false, features = ["png"], optional = true }
-half = { version = "2.7", default-features = false, features = ["std", "bytemuck"] }
+image = { version = "0.25", default-features = false, features = [
+    "png",
+], optional = true }
+half = { version = "2.7", default-features = false, features = [
+    "std",
+    "bytemuck",
+] }
 rustc-hash = { version = "2.1", default-features = false, features = ["std"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 pollster = { version = "1.0", default-features = false }
@@ -110,14 +136,25 @@ winit = { version = "0.30", default-features = false, features = [
 ], optional = true }
 padding-struct = { version = "0.2", default-features = false }
 soa-rs = { version = "1.0", default-features = false }
-strum = { version = "0.28", default-features = false, features = ["derive"] }
-swash = { version = "0.2", default-features = false, features = ["std", "scale", "render"] }
-serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
+strum = { version = "0.28", default-features = false, features = [
+    "derive",
+], optional = true }
+swash = { version = "0.2", default-features = false, features = [
+    "std",
+    "scale",
+    "render",
+] }
+serde = { version = "1.0", default-features = false, features = [
+    "alloc",
+    "derive",
+] }
 tinyvec = { version = "1.13", default-features = false, features = ["serde"] }
 unicode-linebreak = { version = "0.1", default-features = false }
 unicode-segmentation = { version = "1.13", default-features = false }
 criterion = { version = "0.8", default-features = false, optional = true }
-tracy-client = { version = "0.19", default-features = false, features = ["enable"], optional = true }
+tracy-client = { version = "0.19", default-features = false, features = [
+    "enable",
+], optional = true }
 
 mundy = { version = "0.2", default-features = false, features = [
     "async-io",
@@ -130,8 +167,6 @@ mundy = { version = "0.2", default-features = false, features = [
 [dev-dependencies]
 palantir = { path = ".", default-features = false, features = ["internals"] }
 backtrace = { version = "0.3", default-features = false, features = ["std"] }
-# The showcase's shot mode writes PNGs.
-image = { version = "0.25", default-features = false, features = ["png"] }
 tracing-subscriber = { version = "0.3", default-features = false, features = [
     "std",
     "fmt",
@@ -145,13 +180,12 @@ naga = { version = "30.0", default-features = false, features = ["wgsl-in"] }
 
 [features]
 default = ["winit"]
-internals = ["dep:criterion", "dep:image"]
+internals = ["dep:criterion", "dep:image", "dep:strum"]
 golden = ["dep:image"]
 gpu-debug-markers = []
 system-clipboard = ["dep:arboard"]
 winit = ["dep:winit", "system-clipboard", "dep:mundy"]
 profile-with-tracy = ["dep:tracy-client"]
-
 
 
 # 1, not the usual 0: the owner's choice, kept on the 2026-10 review.

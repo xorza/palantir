@@ -25,3 +25,6 @@ pub(crate) mod surface;
 pub(crate) mod test_gpu;
 pub(crate) mod texel;
 pub(crate) mod wgpu_backend;
+
+#[cfg(test)]
+mod tests;

@@ -118,16 +118,16 @@ impl PolylineScratch {
         let directions = directions.as_slice();
         let colors = colors.as_slice();
         let pt = |k: usize| pts[kept[k] as usize];
-        let n_segs = directions.len();
-        curves.reserve(2 * n_segs - 1);
-        for k in 0..n_segs {
+        let segment_count = directions.len();
+        curves.reserve(2 * segment_count - 1);
+        for k in 0..segment_count {
             // Pre-oriented bisector clip planes for the joint ends; zero = cap end, no clip.
             let n_start = if k > 0 {
                 -(directions[k - 1] + directions[k])
             } else {
                 Vec2::ZERO
             };
-            let n_end = if k + 1 < n_segs {
+            let n_end = if k + 1 < segment_count {
                 directions[k] + directions[k + 1]
             } else {
                 Vec2::ZERO
@@ -143,7 +143,7 @@ impl PolylineScratch {
                 width,
                 color0: segment.start,
                 color1: segment.end,
-                caps: CurveCaps::new(cap, CapEnds::of_segment(k, n_segs)),
+                caps: CurveCaps::new(cap, CapEnds::of_segment(k, segment_count)),
                 kind: CurveKind::SEGMENT,
                 fill_kind: FillKind::SOLID,
                 ..bytemuck::Zeroable::zeroed()
@@ -151,7 +151,7 @@ impl PolylineScratch {
         }
         // One chrome instance per interior joint fills the wedge between segment end
         // faces, in the premultiplied linear average of the adjacent colors.
-        for k in 1..n_segs {
+        for k in 1..segment_count {
             let d_a = directions[k - 1];
             let d_b = directions[k];
             let ca = colors[k - 1].end;

@@ -96,20 +96,20 @@ pub(crate) struct PlaneCascade {
 }
 
 impl PlaneCascade {
-    /// Reset all per-node columns for `n_nodes` and stamp `entries_base` in one
+    /// Reset all per-node columns for `node_count` and stamp `entries_base` in one
     /// call, so a caller cannot reset but forget the offset. Per-node columns
     /// are resized and overwritten in place during the walk, retaining
     /// allocation and initialized slots at a stable tree size; `paint_arena`
     /// resets by its own sizing rules.
-    pub(super) fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
+    pub(super) fn reset_for(&mut self, node_count: usize, entries_base: u32) {
         self.cascade_inputs
-            .resize(n_nodes, CascadeInputHash::default());
-        self.subtree_paint_rects.resize(n_nodes, Rect::ZERO);
-        self.subtree_ends.resize(n_nodes, 0);
-        self.paint_arena.reset_for(n_nodes);
-        self.arena_hashes.resize(n_nodes, ContentHash::default());
-        self.hit_rows.resize(n_nodes, None);
-        self.shape_scales.resize(n_nodes, 1.0);
+            .resize(node_count, CascadeInputHash::default());
+        self.subtree_paint_rects.resize(node_count, Rect::ZERO);
+        self.subtree_ends.resize(node_count, 0);
+        self.paint_arena.reset_for(node_count);
+        self.arena_hashes.resize(node_count, ContentHash::default());
+        self.hit_rows.resize(node_count, None);
+        self.shape_scales.resize(node_count, 1.0);
         self.entries_base = entries_base;
     }
 }

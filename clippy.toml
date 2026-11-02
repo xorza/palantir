@@ -6,14 +6,12 @@ disallowed-types = [
     # wgpu belongs to `crate::gpu`, whose `mod.rs` expects `clippy::disallowed_types` for every file
     # under it; everywhere else a device, a texture or a format travels as one of Palantir's own
     # handles (`Gpu`, `RenderTarget`, `TargetFormat`). Clippy resolves each entry to one type by exact
-    # path, with no wildcard, so the list follows the tree and a type missing from it is unguarded:
-    #
-    #     grep -rhoE 'wgpu::[A-Za-z_][A-Za-z0-9_]*' --include='*.rs' src/ | sort -u
+    # path, with no wildcard, so the list follows the tree: the test `gpu::tests` fails on a wgpu type
+    # or trait under `src/` that the list leaves out, and on an entry no file names.
     { path = "wgpu::Adapter", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::AdapterInfo", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::AddressMode", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Backend", reason = "wgpu belongs to crate::gpu" },
-    { path = "wgpu::Backends", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BindGroup", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BindGroupDescriptor", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BindGroupEntry", reason = "wgpu belongs to crate::gpu" },
@@ -24,6 +22,8 @@ disallowed-types = [
     { path = "wgpu::BindingType", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BlendState", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Buffer", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::BufferBinding", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::BufferBindingType", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BufferDescriptor", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BufferSize", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::BufferUsages", reason = "wgpu belongs to crate::gpu" },
@@ -35,13 +35,20 @@ disallowed-types = [
     { path = "wgpu::CommandEncoderDescriptor", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::CompareFunction", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::CompositeAlphaMode", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::ComputePassDescriptor", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::ComputePipeline", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::ComputePipelineDescriptor", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::CreateSurfaceError", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::CurrentSurfaceTexture", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::DepthBiasState", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::DepthStencilState", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Device", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::DeviceDescriptor", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::DeviceType", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::DisplayAndWindowHandle", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::DynamicOffset", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::Error", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::ErrorFilter", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::ExperimentalFeatures", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Extent3d", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::Features", reason = "wgpu belongs to crate::gpu" },
@@ -97,6 +104,7 @@ disallowed-types = [
     { path = "wgpu::SurfaceColorSpace", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::SurfaceColorSpaces", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::SurfaceConfiguration", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::SurfaceFormatCapabilities", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::SurfaceTexture", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::TexelCopyBufferInfo", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::TexelCopyBufferLayout", reason = "wgpu belongs to crate::gpu" },
@@ -106,6 +114,7 @@ disallowed-types = [
     { path = "wgpu::TextureDescriptor", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::TextureDimension", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::TextureFormat", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::TextureFormatFeatureFlags", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::TextureSampleType", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::TextureUsages", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::TextureView", reason = "wgpu belongs to crate::gpu" },
@@ -114,8 +123,13 @@ disallowed-types = [
     { path = "wgpu::Trace", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::VertexAttribute", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::VertexBufferLayout", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::VertexFormat", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::VertexState", reason = "wgpu belongs to crate::gpu" },
     { path = "wgpu::VertexStepMode", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::rwh::HasDisplayHandle", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::util::BufferInitDescriptor", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::util::DeviceExt", reason = "wgpu belongs to crate::gpu" },
+    { path = "wgpu::util::StagingBelt", reason = "wgpu belongs to crate::gpu" },
 ]
 
 # A group's sampling is set through `Scale` (`src/bench/fixture.rs`), the one
