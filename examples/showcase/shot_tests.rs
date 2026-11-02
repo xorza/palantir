@@ -254,7 +254,8 @@ impl Scratch {
     }
 }
 
-/// Pictures into `out`, compared with the ones in `earlier`.
+/// Pictures into `out`, compared with the ones in `earlier`; only a `golden` build compares.
+#[cfg(feature = "golden")]
 fn against<'a>(out: &'a Scratch, earlier: &'a Scratch) -> Folders<'a> {
     Folders {
         out: &out.0,
@@ -321,7 +322,9 @@ fn a_script_shoots_the_open_popup() {
 }
 
 /// A script shot twice against itself reports the same picture; shot again on another page it
-/// reports the pixels that moved and writes the marked difference beside the picture.
+/// reports the pixels that moved and writes the marked difference beside the picture. The
+/// comparison is the `golden` feature's, so a build without it has nothing to test.
+#[cfg(feature = "golden")]
 #[test]
 fn a_shot_compares_with_an_earlier_run() {
     let gpu = headless_test_gpu();
