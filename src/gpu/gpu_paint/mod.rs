@@ -4,10 +4,11 @@
 //! framework runs it into an off-screen target and composites it through the
 //! image pipeline.
 //!
-//! The `Ui` keeps a [`GpuViews`](crate::renderer::gpu_paint::gpu_views::GpuViews)
-//! store of live views. The shape records only the redraw `epoch`;
-//! `Frontend::build` fills `RenderBuffer::live_targets` from the whole store
-//! (recorded, not painted) so a culled unchanged view keeps its texture.
+//! The `Ui` keeps a [`GpuViews`](crate::gpu::gpu_paint::gpu_views::GpuViews)
+//! store of live views, and the callback stays there: the shape records the view's target id
+//! and redraw `epoch`, a frame's target draw names its owner, and the backend looks the callback
+//! up by owner as it paints. The window driver fills `RenderBuffer::live_targets` from the whole
+//! store (recorded, not painted) so a culled unchanged view keeps its texture.
 
 pub(crate) mod gpu_paint_ref;
 pub(crate) mod gpu_views;

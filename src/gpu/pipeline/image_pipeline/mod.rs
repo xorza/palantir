@@ -9,8 +9,8 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantRecipe};
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};

@@ -1,5 +1,5 @@
 //! The [`ViewportPush`] carrier for `imm.viewport_size` and `imm.frag_origin`, the whole of the
-//! shared immediates ([`IMMEDIATES_BYTES`](crate::gpu::pipeline::IMMEDIATES_BYTES)).
+//! shared immediates ([`IMMEDIATES_BYTES`](crate::gpu::device::device_requirements::IMMEDIATES_BYTES)).
 
 use crate::renderer::render_buffer::RenderBuffer;
 use glam::{UVec2, Vec2};

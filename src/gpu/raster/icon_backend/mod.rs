@@ -11,7 +11,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;

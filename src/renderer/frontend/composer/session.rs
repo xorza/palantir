@@ -24,7 +24,7 @@ use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -303,8 +303,8 @@ impl PaintSink for ComposeSession<'_> {
         clippy::cast_sign_loss,
         reason = "every value is clamped to a non-negative range before the cast"
     )]
-    fn image(&mut self, draw: ImageDraw<'_>) {
-        let ImageDraw { payload: p, view } = draw;
+    fn image(&mut self, p: DrawImagePayload) {
+        let view = p.view;
         // A turned image snaps to no pixel, and moves its center about the pivot as a quad does.
         let ScaledRect {
             physical: physical_rect,
@@ -374,7 +374,7 @@ impl PaintSink for ComposeSession<'_> {
                 full: UVec2::new(px(whole.w), px(whole.h)),
                 offset: UVec2::new(at(offset.x), at(offset.y)),
                 raster_factor: self.composer.transform.physical_scale() * downsample,
-                paint: view.paint.clone(),
+                owner: view.owner,
                 epoch: view.epoch,
             };
             // The target holds `used` in the top-left of its capacity; the rest is slack.

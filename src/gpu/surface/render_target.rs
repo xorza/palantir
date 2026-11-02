@@ -1,5 +1,6 @@
 //! The texture a frame renders into, and its format.
 
+use crate::gpu::texel;
 use glam::UVec2;
 
 /// A texture Palantir renders a frame into; borrowed.
@@ -27,7 +28,7 @@ impl<'a> RenderTarget<'a> {
     }
 
     pub(crate) fn size(self) -> UVec2 {
-        texture_size(self.texture)
+        texel::size(self.texture)
     }
 
     pub(crate) fn format(self) -> TargetFormat {
@@ -84,29 +85,6 @@ impl TargetFormat {
 
     pub(crate) const fn get(self) -> wgpu::TextureFormat {
         self.0
-    }
-}
-
-/// A texture's first-layer size, in texels.
-pub(crate) fn texture_size(texture: &wgpu::Texture) -> UVec2 {
-    UVec2::new(texture.width(), texture.height())
-}
-
-/// A render-target extent; depth is always one.
-pub(crate) const fn extent(size: UVec2) -> wgpu::Extent3d {
-    wgpu::Extent3d {
-        width: size.x,
-        height: size.y,
-        depth_or_array_layers: 1,
-    }
-}
-
-/// The texel at `at` of a texture's first layer, as a copy names it.
-pub(crate) const fn origin(at: UVec2) -> wgpu::Origin3d {
-    wgpu::Origin3d {
-        x: at.x,
-        y: at.y,
-        z: 0,
     }
 }
 

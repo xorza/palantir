@@ -1,13 +1,10 @@
-//! The per-window stencil attachment and the stencil-test state shared by every
-//! rounded-clip-aware pipeline. Masks stamp as a depth-counted stack
-//! (`mask_stamp`: level `k` writes `k + 1` where the stencil equals `k`), and
-//! color draws test at `stencil_reference = chain depth`.
+//! The per-window stencil attachment the rounded-clip pipelines stamp and test, in the format
+//! and under the states [`ClipStencil`] gives them.
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::surface::render_target;
+use crate::gpu::pipeline::stencil_variant::ClipStencil;
+use crate::gpu::texel;
 use glam::UVec2;
-
-use crate::renderer::render_buffer::MAX_ROUNDED_CLIP_DEPTH;
 
 /// A window's stencil attachment for rounded-clip masking, sized to the render target; its
 /// [`RenderStream`](crate::gpu::wgpu_backend::render_stream::RenderStream) makes and keeps it.
@@ -19,65 +16,6 @@ pub(crate) struct Stencil {
 }
 
 impl Stencil {
-    /// `Stencil8` suffices for the mask path; UI is 2D.
-    pub(crate) const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
-
-    /// Depth/stencil state for one rounded-clip pipeline; only `compare`,
-    /// `pass_op` and `write_mask` differ, so the rest is stated once.
-    fn state(
-        compare: wgpu::CompareFunction,
-        pass_op: wgpu::StencilOperation,
-        write_mask: u32,
-    ) -> wgpu::DepthStencilState {
-        let face = wgpu::StencilFaceState {
-            compare,
-            fail_op: wgpu::StencilOperation::Keep,
-            depth_fail_op: wgpu::StencilOperation::Keep,
-            pass_op,
-        };
-        wgpu::DepthStencilState {
-            format: Self::FORMAT,
-            depth_write_enabled: Some(false),
-            depth_compare: Some(wgpu::CompareFunction::Always),
-            stencil: wgpu::StencilState {
-                front: face,
-                back: face,
-                read_mask: MAX_ROUNDED_CLIP_DEPTH,
-                write_mask,
-            },
-            bias: wgpu::DepthBiasState::default(),
-        }
-    }
-
-    /// The stencil-test color pipelines: ref 0 outside masks, chain depth
-    /// inside, compared `Equal`; `write_mask = 0` keeps the stamped masks.
-    pub(crate) fn test_state() -> wgpu::DepthStencilState {
-        Self::state(
-            wgpu::CompareFunction::Equal,
-            wgpu::StencilOperation::Keep,
-            0x00,
-        )
-    }
-
-    /// The mask-stamp variant, drawn per level at `stencil_reference = level`:
-    /// writes `level + 1` where the SDF passes and the stencil equals `level`.
-    pub(crate) fn stamp_state() -> wgpu::DepthStencilState {
-        Self::state(
-            wgpu::CompareFunction::Equal,
-            wgpu::StencilOperation::IncrementClamp,
-            MAX_ROUNDED_CLIP_DEPTH,
-        )
-    }
-
-    /// The mask-clear variant, drawn at reference 0; the outermost quad suffices.
-    pub(crate) fn clear_state() -> wgpu::DepthStencilState {
-        Self::state(
-            wgpu::CompareFunction::Always,
-            wgpu::StencilOperation::Replace,
-            MAX_ROUNDED_CLIP_DEPTH,
-        )
-    }
-
     /// The attachment view, behind an accessor so a `&Stencil` holder cannot reach the texture.
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
         &self.view
@@ -85,7 +23,7 @@ impl Stencil {
 
     /// Whether the attachment is `size` physical px.
     pub(crate) fn fits(&self, size: UVec2) -> bool {
-        self.texture.size() == render_target::extent(size)
+        self.texture.size() == texel::extent(size)
     }
 
     /// A stencil attachment of `size` physical px, its texels written to 0 by a copy before any
@@ -93,7 +31,7 @@ impl Stencil {
     /// keeps 4 × 4 blocks that neither a load clear nor a stencil write resets, and every draw of a
     /// rounded-clip pass then fails there (`.notes/research/2026-10-31-shared-device-tile-loss.md`).
     pub(crate) fn new(gpu: &Gpu, size: UVec2) -> Self {
-        let extent = render_target::extent(size);
+        let extent = texel::extent(size);
         let usage = wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST;
         #[cfg(test)]
         let usage = usage | wgpu::TextureUsages::COPY_SRC;
@@ -103,7 +41,7 @@ impl Stencil {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: Self::FORMAT,
+            format: ClipStencil::FORMAT,
             usage,
             view_formats: &[],
         });

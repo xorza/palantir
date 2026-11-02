@@ -54,17 +54,14 @@
 
 use crate::common::tracy;
 use crate::diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats};
-use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops};
-use crate::gpu::device::backend_resources::BackendResources;
+use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops, FrameBackbuffer};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::debug_overlay::{DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep};
 use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
@@ -73,6 +70,7 @@ use crate::gpu::pipeline::format_pipelines::PipelineSources;
 use crate::gpu::pipeline::format_pipelines::{FormatPipelines, PassPipelines};
 use crate::gpu::pipeline::image_pipeline::{ImageBatch, ImagePipeline, ImageTextures};
 use crate::gpu::pipeline::mesh_pipeline::{MeshBatch, MeshPipeline, MeshUpload};
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::quad_pipeline::{QuadBinding, QuadPipeline, QuadRun};
@@ -90,6 +88,7 @@ use crate::gpu::surface::capture::{Capture, CaptureBlit, CaptureSource};
 use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
+use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
@@ -106,6 +105,7 @@ use std::rc::Rc;
 use std::time::Instant;
 use wgpu::util::StagingBelt;
 
+pub(crate) mod backend_resources;
 pub(crate) mod render_stream;
 
 /// Wgpu renderer owning its device/queue handles, pipelines and text backend.
@@ -228,9 +228,9 @@ impl DrawCtx<'_, '_> {
         if let Some(t) = self.draw.timings {
             t.mark(self.rec, kind);
         }
-        debug_marker::push(self.rec, kind.label());
+        self.rec.push_marker(kind.label());
         body(self);
-        debug_marker::pop(self.rec);
+        self.rec.pop_marker();
     }
 }
 
@@ -591,6 +591,7 @@ impl WgpuBackend {
         let Submission {
             store,
             buffer,
+            gpu_views,
             scissors,
             route,
             overlay,
@@ -635,6 +636,7 @@ impl WgpuBackend {
         self.gpu_view_targets.paint_gpu_views(
             &mut ctx,
             buffer.frame_views(),
+            gpu_views,
             ViewSubmitter {
                 owner,
                 now: buffer.time,
@@ -657,8 +659,12 @@ impl WgpuBackend {
                 clear,
                 backbuffer: stream
                     .backbuffer
-                    .as_mut()
-                    .filter(|_| route == Route::ViaBackbuffer),
+                    .as_ref()
+                    .filter(|_| route == Route::ViaBackbuffer)
+                    .map(|backbuffer| FrameBackbuffer {
+                        backbuffer,
+                        source: &mut stream.blur_source,
+                    }),
             },
         );
 

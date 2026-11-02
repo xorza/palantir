@@ -15,7 +15,6 @@ use crate::display::frame_stamp::FrameStamp;
 use crate::layout::Layout;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::Encoder;
-use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -37,7 +36,6 @@ pub(crate) struct FrameScene<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) layout: &'a Layout,
     pub(crate) cascade: &'a Cascade,
-    pub(crate) gpu_views: &'a GpuViews,
     /// The display and time; the time drives backend `GpuView` frame deltas.
     pub(crate) stamp: FrameStamp,
 }
@@ -78,11 +76,6 @@ impl Frontend {
                 .begin(scene.stamp, &scene.forest.record_store, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
         drop(sink);
-        // Written after the session drops, since the composer's clear fold
-        // discards scene columns mid-compose and this is not one.
-        scene
-            .gpu_views
-            .collect_live_targets(&mut self.buffer.live_targets);
         self.buffer.live_panes.clear();
         self.buffer
             .live_panes

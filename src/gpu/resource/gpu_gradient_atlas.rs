@@ -4,7 +4,7 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target;
+use crate::gpu::texel;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
@@ -37,7 +37,7 @@ pub(crate) struct GpuGradientAtlas {
 fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
     gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("palantir.gradient_atlas"),
-        size: render_target::extent(UVec2::new(LUT_ROW_TEXELS as u32, rows)),
+        size: texel::extent(UVec2::new(LUT_ROW_TEXELS as u32, rows)),
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -91,7 +91,7 @@ pub(super) fn stage_rows<'a>(
                 },
                 aspect: wgpu::TextureAspect::All,
             },
-            render_target::extent(UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start)),
+            texel::extent(UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start)),
         );
         at += bytes.len();
     }

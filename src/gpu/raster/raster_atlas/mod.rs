@@ -20,10 +20,10 @@ mod side;
 
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::common::span::Span;
+use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
-use crate::gpu::frame::debug_marker;
-use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
 use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
@@ -33,7 +33,7 @@ use crate::gpu::raster::raster_atlas::free_slots::FreeSlots;
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
 use crate::gpu::raster::raster_atlas::side::Side;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
-use crate::gpu::surface::render_target;
+use crate::gpu::texel;
 use crate::primitives::paint::content_type::ContentType;
 use glam::{U16Vec2, UVec2};
 use rustc_hash::FxHashMap;
@@ -289,11 +289,11 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         // Grow blits first: the old-to-new copy must complete before new glyph writes. The
         // binding follows the new textures here, before any pass samples them.
         if self.sides.iter().any(|side| side.atlas.has_pending_grow()) {
-            debug_marker::push_encoder(ctx.encoder, &self.labels.grow_blit);
+            debug_marker::push(ctx.encoder, &self.labels.grow_blit);
             for side in &mut self.sides {
                 side.atlas.commit(ctx.gpu, ctx.encoder);
             }
-            debug_marker::pop_encoder(ctx.encoder);
+            debug_marker::pop(ctx.encoder);
             self.bound.rebind(ctx.gpu, &self.sides);
         }
 
@@ -321,7 +321,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
 
         // One walk, so a row's staging offset and its copy's read offset are one number. Pad bytes
         // are left as the belt chunk held them.
-        debug_marker::push_encoder(encoder, &self.labels.batch_upload);
+        debug_marker::push(encoder, &self.labels.batch_upload);
         let mut at = 0usize;
         for c in &self.pending_copies {
             let row_bytes = c.bytes_per_row() as usize;
@@ -345,14 +345,14 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
                     },
                     aspect: wgpu::TextureAspect::All,
                 },
-                render_target::extent(c.size),
+                texel::extent(c.size),
             );
             for row in self.pending_pixels[c.pixels()].chunks_exact(row_bytes) {
                 view.slice(at..at + row_bytes).copy_from_slice(row);
                 at += padded as usize;
             }
         }
-        debug_marker::pop_encoder(encoder);
+        debug_marker::pop(encoder);
 
         self.pending_pixels.clear();
         self.pending_copies.clear();

@@ -1,10 +1,10 @@
 //! The escape hatch to raw `wgpu`: a widget whose rect an app paints itself,
 //! into a texture the encoder composites like any image.
 
+use crate::gpu::gpu_paint::GpuPaint;
+use crate::gpu::gpu_paint::gpu_paint_ref::GpuPaintRef;
+use crate::gpu::gpu_paint::gpu_views::{RecordedView, ViewContent};
 use crate::primitives::layout::sizing::Sizing;
-use crate::renderer::gpu_paint::GpuPaint;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-use crate::renderer::gpu_paint::gpu_views::{RecordedView, ViewContent};
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;

@@ -1,14 +1,14 @@
 //! Off-screen `GpuView` targets a frame paints, and the roster that keeps them alive.
 
 use crate::primitives::identity::texture_id::TextureId;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+use crate::primitives::identity::widget_id::WidgetId;
 use glam::UVec2;
 
 /// One `GpuView` off-screen target to paint this frame (see
 /// [`RenderBuffer::frame_targets`](crate::renderer::render_buffer::RenderBuffer::frame_targets)).
 /// The backend allocates it to [`Self::capacity`] and runs `paint` before the
 /// main pass samples it.
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct RenderTargetDraw {
     pub(crate) id: TextureId,
     /// What the target holds: the on-screen part of the view.
@@ -18,7 +18,8 @@ pub(crate) struct RenderTargetDraw {
     /// Where `used` begins within `full`.
     pub(crate) offset: UVec2,
     pub(crate) raster_factor: f32,
-    pub(crate) paint: GpuPaintRef,
+    /// The view's widget, whose callback the backend finds in the window's `GpuViews`.
+    pub(crate) owner: WidgetId,
     /// The view's repaint version; see [`ViewStamp`].
     pub(crate) epoch: u64,
 }
@@ -100,7 +101,7 @@ pub(crate) struct FrameViews<'a> {
 #[cfg(test)]
 mod tests {
     use crate::primitives::identity::texture_id::TextureId;
-    use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+    use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::render_buffer::render_target_draw::{RenderTargetDraw, bucket};
     use glam::UVec2;
 
@@ -135,7 +136,7 @@ mod tests {
             full,
             offset: UVec2::ZERO,
             raster_factor: 1.0,
-            paint: GpuPaintRef::noop(),
+            owner: WidgetId::from_hash("view"),
             epoch: 0,
         };
         let cases = [

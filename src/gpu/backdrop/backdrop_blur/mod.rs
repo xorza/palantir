@@ -7,7 +7,8 @@ use crate::gpu::device::vendor;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::resource::shelf_packer::ShelfPacker;
-use crate::gpu::surface::render_target::{self, TargetFormat};
+use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::{IVec2, UVec2};
@@ -431,7 +432,7 @@ impl BackdropBlur {
                 });
                 self.captures.len() - 1
             });
-        let have = render_target::texture_size(&self.captures[at].target.texture);
+        let have = texel::size(&self.captures[at].target.texture);
         if have.x < size.x || have.y < size.y {
             self.captures[at].target = self.sampled(
                 gpu,
@@ -448,10 +449,7 @@ impl BackdropBlur {
     fn ensure_levels(&mut self, gpu: &Gpu, first: UVec2, levels: u8) {
         let mips = u32::from(levels);
         let (have, have_mips) = self.levels.as_ref().map_or((UVec2::ZERO, 0), |l| {
-            (
-                render_target::texture_size(&l.texture),
-                l.views.len() as u32,
-            )
+            (texel::size(&l.texture), l.views.len() as u32)
         });
         if have.x >= first.x && have.y >= first.y && have_mips >= mips {
             return;
@@ -465,7 +463,7 @@ impl BackdropBlur {
         );
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.backdrop.levels"),
-            size: render_target::extent(size),
+            size: texel::extent(size),
             mip_level_count: mips,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -500,7 +498,7 @@ impl BackdropBlur {
         let have = self
             .scratch
             .as_ref()
-            .map_or(UVec2::ZERO, |s| render_target::texture_size(&s.texture));
+            .map_or(UVec2::ZERO, |s| texel::size(&s.texture));
         if have.x >= size.x && have.y >= size.y {
             return;
         }
@@ -532,7 +530,7 @@ impl BackdropBlur {
     ) -> Sampled {
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
-            size: render_target::extent(size.max(UVec2::ONE)),
+            size: texel::extent(size.max(UVec2::ONE)),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -633,7 +631,7 @@ impl BackdropBlur {
         for at in 0..self.captures.len() {
             let capture = &self.captures[at];
             let want = grown(UVec2::ZERO, capture.peak, self.ceiling);
-            if render_target::texture_size(&capture.target.texture) != want {
+            if texel::size(&capture.target.texture) != want {
                 self.captures[at].target = self.sampled(
                     gpu,
                     "palantir.backdrop.capture",
@@ -644,12 +642,10 @@ impl BackdropBlur {
             }
             self.captures[at].peak = UVec2::ZERO;
         }
-        let levels_held = self.levels.as_ref().map(|levels| {
-            (
-                render_target::texture_size(&levels.texture),
-                levels.views.len() as u32,
-            )
-        });
+        let levels_held = self
+            .levels
+            .as_ref()
+            .map(|levels| (texel::size(&levels.texture), levels.views.len() as u32));
         let levels_want = (peak.mips > 0).then(|| {
             (
                 levels_size(UVec2::ZERO, peak.levels, peak.mips, self.ceiling),
@@ -665,7 +661,7 @@ impl BackdropBlur {
         let scratch_held = self
             .scratch
             .as_ref()
-            .map(|scratch| render_target::texture_size(&scratch.texture));
+            .map(|scratch| texel::size(&scratch.texture));
         let scratch_want =
             (peak.scratch != UVec2::ZERO).then(|| grown(UVec2::ZERO, peak.scratch, self.ceiling));
         if scratch_held != scratch_want {
@@ -769,16 +765,16 @@ impl BackdropBlur {
             wgpu::TexelCopyTextureInfo {
                 texture: color,
                 mip_level: 0,
-                origin: render_target::origin(footprint.min),
+                origin: texel::origin(footprint.min),
                 aspect: wgpu::TextureAspect::All,
             },
             wgpu::TexelCopyTextureInfo {
                 texture: &capture.target.texture,
                 mip_level: 0,
-                origin: render_target::origin(into),
+                origin: texel::origin(into),
                 aspect: wgpu::TextureAspect::All,
             },
-            render_target::extent(footprint.size),
+            texel::extent(footprint.size),
         );
     }
 
@@ -921,7 +917,7 @@ impl BackdropBlur {
                     .iter()
                     .find(|c| c.format == format)
                     .expect("ensured before the parameters");
-                render_target::texture_size(&capture.target.texture)
+                texel::size(&capture.target.texture)
             },
             |target| target.size,
         );
@@ -930,7 +926,7 @@ impl BackdropBlur {
                 .levels
                 .as_ref()
                 .expect("a blurred level has its levels");
-            render_target::texture_size(&levels.texture) >> u32::from(level - 1)
+            texel::size(&levels.texture) >> u32::from(level - 1)
         };
         let source_max = |level: u8| match level {
             0 => capture_max,

@@ -8,7 +8,7 @@ pub(crate) mod quad_form;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
@@ -16,11 +16,10 @@ use crate::gpu::pipeline::quad_pipeline::quad_draw::QuadDraw;
 use crate::gpu::pipeline::quad_pipeline::quad_form::QuadForm;
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
-use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
+use crate::gpu::pipeline::stencil_variant::{ClipStencil, StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::single_quad_buffer::SingleQuadBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::stencil::Stencil;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
@@ -363,8 +362,14 @@ impl QuadPipeline {
                 "fs_shadow_tables",
                 true,
             ),
-            mask_stamp: mask("palantir.quad.pipeline.mask_stamp", Stencil::stamp_state()),
-            mask_clear: mask("palantir.quad.pipeline.mask_clear", Stencil::clear_state()),
+            mask_stamp: mask(
+                "palantir.quad.pipeline.mask_stamp",
+                ClipStencil::stamp_state(),
+            ),
+            mask_clear: mask(
+                "palantir.quad.pipeline.mask_clear",
+                ClipStencil::clear_state(),
+            ),
         }
     }
 

@@ -2,6 +2,7 @@
 //! identity tracker and plane stack that recording needs.
 
 use crate::common::tracy;
+use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
@@ -263,10 +264,10 @@ impl Forest {
         }
     }
 
-    /// Appends a `GpuView` shape to the active node. Only the redraw `epoch` rides the shape; it skips lowering and never noop-collapses.
-    pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
+    /// Appends a `GpuView` shape to the active node. Only the view's target `id` and redraw `epoch` ride the shape; it skips lowering and never noop-collapses.
+    pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) {
         self.push_shape("add_gpu_view", |tree, _, _| {
-            tree.shapes.add_gpu_view(epoch);
+            tree.shapes.add_gpu_view(id, epoch);
             true
         });
     }

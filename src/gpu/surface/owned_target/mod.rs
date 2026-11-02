@@ -3,8 +3,9 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::surface::render_target::{self, RenderTarget, TargetFormat};
+use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::texel_readback::TexelReadback;
+use crate::gpu::texel;
 use glam::UVec2;
 
 /// What an [`OwnedTarget`] is made as: `label` names it in RenderDoc and validation errors.
@@ -55,7 +56,7 @@ impl OwnedTarget {
         );
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
-            size: render_target::extent(size),
+            size: texel::extent(size),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -98,7 +99,7 @@ impl OwnedTarget {
 
     /// Physical pixels.
     pub fn size(&self) -> UVec2 {
-        render_target::texture_size(&self.texture)
+        texel::size(&self.texture)
     }
 
     /// A target like this one, at `size`.

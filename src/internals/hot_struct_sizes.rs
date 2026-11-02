@@ -207,7 +207,7 @@ const PINS: &[Pin] = &[
     pin::<DrawTextPayload>("payload::DrawTextPayload", 80, 8),
     pin::<DrawPolylinePayload>("payload::DrawPolylinePayload", 56, 4),
     pin::<DrawMeshPayload>("payload::DrawMeshPayload", 64, 4),
-    pin::<DrawImagePayload>("payload::DrawImagePayload", 72, 8),
+    pin::<DrawImagePayload>("payload::DrawImagePayload", 96, 8),
     pin::<DrawCurvePayload>("payload::DrawCurvePayload", 88, 4),
     pin::<DrawIconPayload>("payload::DrawIconPayload", 48, 4),
     pin::<Quad>("renderer::Quad", 64, 4),

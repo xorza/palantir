@@ -1,11 +1,11 @@
-//! One textured-quad draw, and the pair a sink takes it as.
+//! One textured-quad draw.
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::paint_sink::{PaintPayload, PaintSink};
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 
 /// Image draw payload: `rect` is the logical-px paint rect (`fit` and intrinsic size folded in),
@@ -24,48 +24,37 @@ pub(crate) struct DrawImagePayload {
     pub(crate) flags: ImageFlags,
     /// A paint animation's turn.
     pub(crate) spin: Option<Spin>,
+    /// The `GpuView` whose target `handle` names, which the frame paints before it composites.
+    pub(crate) view: Option<GpuViewDraw>,
 }
 
-/// One image draw as [`PaintSink::image`] takes it: the payload plus the paint callback of a `GpuView`.
-///
-/// One value so the two cannot come apart; borrowed so the draw stays `Copy`.
-///
-/// [`PaintSink::image`]: crate::renderer::frontend::paint_sink::PaintSink::image
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ImageDraw<'a> {
-    pub(crate) payload: DrawImagePayload,
-    pub(crate) view: Option<ViewPaint<'a>>,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ViewPaint<'a> {
-    pub(crate) paint: &'a GpuPaintRef,
-    /// The view's repaint version; a target painted at this version and geometry is still valid.
+/// The `GpuView` an image draw composites: the widget whose callback paints its target, and the
+/// view's repaint version, under which a target painted at this geometry is still valid. The
+/// callback stays in the window's `GpuViews`, which the backend reads by `owner`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct GpuViewDraw {
+    pub(crate) owner: WidgetId,
     pub(crate) epoch: u64,
 }
 
-impl PaintPayload for ImageDraw<'_> {
+impl PaintPayload for DrawImagePayload {
     #[inline]
     fn faded(self, by: f32) -> Self {
         if by == 1.0 {
             return self;
         }
         Self {
-            payload: DrawImagePayload {
-                tint: self.payload.tint.faded(by),
-                ..self.payload
-            },
+            tint: self.tint.faded(by),
             ..self
         }
     }
 
-    /// Paints nothing: zero-extent rect, transparent tint, or a null handle with no callback.
+    /// Paints nothing: zero-extent rect, transparent tint, or a null handle with no view.
     #[inline]
     fn is_noop(&self) -> bool {
-        let Self { payload, view } = self;
-        payload.rect.is_paint_empty()
-            || payload.tint.is_noop()
-            || (payload.handle.0 == 0 && view.is_none())
+        self.rect.is_paint_empty()
+            || self.tint.is_noop()
+            || (self.handle.0 == 0 && self.view.is_none())
     }
 
     fn paint(self, sink: &mut impl PaintSink) {

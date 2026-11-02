@@ -2,8 +2,9 @@ use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, BlurParams, EXPIRY_FRAMES, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
 };
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::surface::render_target::{self, TargetFormat};
+use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
+use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::blur_plan::internals::{mirror, reference_tent};
@@ -289,7 +290,7 @@ fn the_shared_textures_expire_after_idle() {
         engine
             .captures
             .iter()
-            .map(|c| render_target::texture_size(&c.target.texture))
+            .map(|c| texel::size(&c.target.texture))
             .collect::<Vec<_>>()
     };
     let large = UVec2::new(600, 400);
@@ -308,7 +309,7 @@ fn the_shared_textures_expire_after_idle() {
     }
     assert_eq!(capture(&engine), [UVec2::splat(256)], "stepped down");
     assert!(engine.levels.is_some() && engine.scratch.is_some());
-    let scratch = render_target::texture_size(&engine.scratch.as_ref().unwrap().texture);
+    let scratch = texel::size(&engine.scratch.as_ref().unwrap().texture);
     assert_eq!(scratch, UVec2::splat(256), "the scratch steps down too");
     for _ in 0..EXPIRY_FRAMES {
         prepare_on(&gpu, &mut engine, &mut []);
@@ -675,7 +676,7 @@ fn a_batch_past_the_scratch_runs_in_rounds() {
         let mut engine = BackdropBlur::new(&gpu);
         engine.cap(u32::from(edge));
         let got = blur_on(&gpu, &mut engine, &pixels, &mut jobs, size);
-        let scratch = render_target::texture_size(&engine.scratch.as_ref().unwrap().texture);
+        let scratch = texel::size(&engine.scratch.as_ref().unwrap().texture);
         assert!(
             scratch.max_element() <= u32::from(edge),
             "{scratch} past {edge}"

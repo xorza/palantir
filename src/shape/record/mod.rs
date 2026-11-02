@@ -303,8 +303,11 @@ impl ShapeRecord {
                     // the frame id on `repaint(true)` (hash changes, the rect repaints)
                     // and holds it on `repaint(false)` (hash matches, the view culls).
                     // The view's paint lives in `Ui::gpu_views`, which the hash cannot
-                    // see.
-                    ImageSource::GpuView { epoch } => h.write_u64(*epoch),
+                    // see; a new paint takes a new target `id`, which it does.
+                    ImageSource::GpuView { id, epoch } => {
+                        h.write_u64(id.0);
+                        h.write_u64(*epoch);
+                    }
                 }
                 // The fit (including `Tile`'s UV transform, which changes every
                 // pan/zoom frame), both sampling filters and the minification tap mode:

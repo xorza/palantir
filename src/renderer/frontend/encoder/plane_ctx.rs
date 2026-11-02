@@ -19,9 +19,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{
-    DrawImagePayload, ImageDraw, ViewPaint,
-};
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -33,7 +31,6 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::renderer::gpu_paint::gpu_views::GpuViews;
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::scene::tree::Tree;
@@ -72,8 +69,6 @@ pub(super) struct PlaneCtx<'a, 'g> {
     pub(super) subtree_paint_rects: &'a [Rect],
     pub(super) gradients: &'a mut GradientPass<'g>,
     pub(super) paint_animation_cursor: PaintAnimationCursor<'a>,
-    /// Live `GpuView`s by owner `WidgetId`, one map across layers; an `ImageSource::GpuView` carries only its epoch.
-    pub(super) gpu_views: &'a GpuViews,
     pub(super) damage_filter: Option<CullRegion<'a>>,
     /// The plane's panes in paint order, and the ticket of each.
     pub(super) panes: &'a [PaneRow],
@@ -420,17 +415,20 @@ impl PlaneCtx<'_, '_> {
                 downsample,
             } => {
                 let base = owner_rect.resolve_local(*local_rect);
-                // A registered image carries its id; a `GpuView` is looked up in `Ui::gpu_views` and its paint callback rides with the payload, with the epoch telling the backend whether the target is current.
+                // Either source carries its texture id; a `GpuView` also names its owner, whose
+                // callback the backend finds in the window's `GpuViews`, and the epoch telling
+                // the backend whether the target is current.
                 let (handle, view) = match source {
                     ImageSource::Texture { id, .. } => (*id, None),
-                    ImageSource::GpuView { epoch } => {
-                        let widget_id = self.tree.records.widget_id()[id.idx()];
-                        let view = self.gpu_views.view(widget_id);
-                        let paint = ViewPaint {
-                            paint: &view.paint,
-                            epoch: *epoch,
-                        };
-                        (view.texture_id, Some(paint))
+                    ImageSource::GpuView { id: target, epoch } => {
+                        let owner = self.tree.records.widget_id()[id.idx()];
+                        (
+                            *target,
+                            Some(GpuViewDraw {
+                                owner,
+                                epoch: *epoch,
+                            }),
+                        )
                     }
                 };
                 let FitRect {
@@ -454,16 +452,14 @@ impl PlaneCtx<'_, '_> {
                     ImageDownsample::Peak => ImageFlags::TAPS_PEAK,
                 });
                 out.draw(
-                    ImageDraw {
-                        payload: DrawImagePayload {
-                            rect,
-                            uv_min,
-                            uv_size,
-                            tint: *tint,
-                            handle,
-                            flags,
-                            spin,
-                        },
+                    DrawImagePayload {
+                        rect,
+                        uv_min,
+                        uv_size,
+                        tint: *tint,
+                        handle,
+                        flags,
+                        spin,
                         view,
                     },
                     alpha,

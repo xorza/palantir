@@ -1,6 +1,6 @@
 //! The shared handle to an app's `GpuPaint` callback.
 
-use crate::renderer::gpu_paint::GpuPaint;
+use crate::gpu::gpu_paint::GpuPaint;
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
@@ -25,8 +25,8 @@ impl PartialEq for GpuPaintRef {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
-    use crate::renderer::gpu_paint::GpuPaint;
-    use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
+    use crate::gpu::gpu_paint::GpuPaint;
+    use crate::gpu::gpu_paint::gpu_paint_ref::GpuPaintRef;
     use std::cell::RefCell;
     use std::rc::Rc;
 

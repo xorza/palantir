@@ -3,12 +3,12 @@ use crate::host::harness::Harness;
 
 use crate::damage::Damage;
 use crate::damage::region::DamageRegion;
+use crate::gpu::gpu_paint::gpu_paint_ref::internals::NoopPaint;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
 use crate::renderer::frontend::{BuildPlan, Frontend};
-use crate::renderer::gpu_paint::gpu_paint_ref::internals::NoopPaint;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::layer::Layer;
 use crate::shape::paint::image_source::ImageSource;
@@ -69,7 +69,7 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
                 .shapes_of(node)
                 .find_map(|shape| match shape {
                     ShapeRecord::Image {
-                        source: ImageSource::GpuView { epoch },
+                        source: ImageSource::GpuView { epoch, .. },
                         ..
                     } => Some(*epoch),
                     _ => None,
@@ -95,7 +95,7 @@ fn default_fills_parent() {
     assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }
 
-/// Retention keys on what the frame recorded, painting on what it damaged: a view culled from a partial repaint keeps its target and `GpuPaint::init` doesn't re-run. One recorded frame composed twice (a `Full` plan draws it, a distant `Partial` doesn't) must give the same live roster.
+/// Retention keys on what the frame recorded, painting on what it damaged: a view culled from a partial repaint keeps its target and `GpuPaint::init` doesn't re-run. One recorded frame composed twice (a `Full` plan draws it, a distant `Partial` doesn't) must give the same live roster, which the window driver lists from the window's views after each build.
 #[test]
 fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     let mut h = Harness::mono(UVec2::new(200, 200));
@@ -117,6 +117,9 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         h.ui_ref().frame_scene(),
         BuildPlan::without_panes(plan(Damage::Full)),
     );
+    h.ui_ref()
+        .gpu_views()
+        .collect_live_targets(&mut frontend.buffer.live_targets);
     assert_eq!(
         frontend.buffer.frame_targets.len(),
         1,
@@ -135,6 +138,9 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
         h.ui_ref().frame_scene(),
         BuildPlan::without_panes(plan(Damage::Partial(elsewhere))),
     );
+    h.ui_ref()
+        .gpu_views()
+        .collect_live_targets(&mut frontend.buffer.live_targets);
     assert!(
         frontend.buffer.frame_targets.is_empty(),
         "the view is outside the damage region, so nothing repaints it",

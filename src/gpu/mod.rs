@@ -11,14 +11,17 @@ pub(crate) mod backdrop;
 pub(crate) mod bench;
 #[cfg(feature = "internals")]
 pub(crate) mod bench_gpu;
+pub(crate) mod debug_marker;
 pub(crate) mod device;
 pub(crate) mod error;
 pub(crate) mod flag_names;
 pub(crate) mod frame;
+pub(crate) mod gpu_paint;
 pub(crate) mod pipeline;
 pub(crate) mod raster;
 pub(crate) mod resource;
 pub(crate) mod surface;
 #[cfg(feature = "internals")]
 pub(crate) mod test_gpu;
+pub(crate) mod texel;
 pub(crate) mod wgpu_backend;

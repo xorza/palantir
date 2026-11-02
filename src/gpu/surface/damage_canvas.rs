@@ -3,8 +3,8 @@
 //! ([`PassTraffic::WholeTarget`](crate::gpu::device::pass_traffic::PassTraffic::WholeTarget)).
 
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::surface::render_target;
 use crate::gpu::surface::stencil::Stencil;
+use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use glam::UVec2;
 
@@ -28,7 +28,7 @@ impl DamageCanvas {
     pub(crate) fn new(gpu: &Gpu, format: wgpu::TextureFormat, size: UVec2) -> Self {
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.damage_canvas"),
-            size: render_target::extent(size),
+            size: texel::extent(size),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -96,13 +96,13 @@ impl DamageCanvas {
                 },
                 aspect: wgpu::TextureAspect::All,
             },
-            render_target::extent(rect.size),
+            texel::extent(rect.size),
         );
     }
 
     /// Whether this canvas is `size` in `format`.
     pub(crate) fn fits(&self, size: UVec2, format: wgpu::TextureFormat) -> bool {
-        render_target::texture_size(&self.texture) == size && self.texture.format() == format
+        texel::size(&self.texture) == size && self.texture.format() == format
     }
 
     pub(crate) const fn texture(&self) -> &wgpu::Texture {
@@ -121,10 +121,7 @@ impl DamageCanvas {
     /// Make the stencil when there is none.
     pub(crate) fn ensure_stencil(&mut self, gpu: &Gpu) {
         if self.stencil.is_none() {
-            self.stencil = Some(Stencil::new(
-                gpu,
-                render_target::texture_size(&self.texture),
-            ));
+            self.stencil = Some(Stencil::new(gpu, texel::size(&self.texture)));
         }
     }
 }

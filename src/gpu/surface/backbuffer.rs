@@ -1,10 +1,10 @@
 //! The off-screen color target the backbuffer-copy path renders into.
 
-use crate::gpu::backdrop::backdrop_blur::TargetSource;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target::{self, RenderTarget};
+use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::texel;
 use glam::UVec2;
 
 /// Persistent off-screen color target for the backbuffer-copy path; keeping
@@ -16,9 +16,6 @@ pub(crate) struct Backbuffer {
     texture: wgpu::Texture,
     view: wgpu::TextureView,
     bind_group: wgpu::BindGroup,
-    /// The group a pane's blur reads this backbuffer through as its level 0, made on the first
-    /// frame that blurs from it and dropped with it.
-    blur_source: Option<TargetSource>,
 }
 
 impl Backbuffer {
@@ -73,20 +70,7 @@ impl Backbuffer {
             texture,
             view,
             bind_group,
-            blur_source: None,
         }
-    }
-
-    /// The source a pane's blur reads this backbuffer through, made by `make` from its view and
-    /// extent on the first call.
-    pub(crate) fn blur_source(
-        &mut self,
-        make: impl FnOnce(&wgpu::TextureView, UVec2) -> TargetSource,
-    ) -> TargetSource {
-        let size = self.size();
-        self.blur_source
-            .get_or_insert_with(|| make(&self.view, size))
-            .clone()
     }
 
     pub(crate) const fn view(&self) -> &wgpu::TextureView {
@@ -99,7 +83,7 @@ impl Backbuffer {
 
     /// Width and height in physical pixels.
     pub(crate) fn size(&self) -> UVec2 {
-        render_target::texture_size(&self.texture)
+        texel::size(&self.texture)
     }
 
     /// Whether this backbuffer matches `target`'s size and format.

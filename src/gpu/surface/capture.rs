@@ -3,8 +3,8 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target;
 use crate::gpu::surface::staging::Staging;
+use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
@@ -78,12 +78,12 @@ impl Capture {
             region.size.x > 0 && region.size.y > 0,
             "an empty region asks no capture: {region:?}"
         );
-        let full = render_target::texture_size(texture);
+        let full = texel::size(texture);
         debug_assert!(
             region.min.x + region.size.x <= full.x && region.min.y + region.size.y <= full.y,
             "a capture region {region:?} inside the {full} texture"
         );
-        let extent = render_target::extent(region.size);
+        let extent = texel::extent(region.size);
         let staging = Staging::new(
             gpu,
             "palantir.capture.staging",
@@ -98,7 +98,7 @@ impl Capture {
         let at_region = wgpu::TexelCopyTextureInfo {
             texture,
             mip_level: 0,
-            origin: render_target::origin(region.min),
+            origin: texel::origin(region.min),
             aspect: wgpu::TextureAspect::All,
         };
         let into_buffer = staging.copy_info();

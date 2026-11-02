@@ -42,7 +42,7 @@
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -81,9 +81,8 @@ pub(crate) trait PaintSink {
     /// `PolylineShape::per_point` and `PolylineShape::per_segment`.
     fn polyline(&mut self, payload: DrawPolylinePayload);
 
-    /// Paint a textured rect, with the `GpuView` callback when this
-    /// composites one; see [`ImageDraw`].
-    fn image(&mut self, draw: ImageDraw<'_>);
+    /// Paint a textured rect, and the `GpuView` it composites, if any.
+    fn image(&mut self, payload: DrawImagePayload);
 
     /// Paint a baked icon: the sink records which icon at which logical rect,
     /// and the backend rasterizes it once the physical size is known.

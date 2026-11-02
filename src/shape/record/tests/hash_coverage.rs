@@ -696,7 +696,10 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         &image(
             rect(0.0),
             white,
-            ImageSource::GpuView { epoch: 1 },
+            ImageSource::GpuView {
+                id: TextureId(1),
+                epoch: 1,
+            },
             ImageFit::Fill,
             ImageFilter::Linear,
             ImageFilter::Linear,

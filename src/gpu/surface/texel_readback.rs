@@ -3,8 +3,8 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::surface::render_target;
 use crate::gpu::surface::staging::Staging;
+use crate::gpu::texel;
 use glam::UVec2;
 use std::iter;
 
@@ -37,7 +37,7 @@ impl TexelReadback {
         let texel = format
             .block_copy_size(None)
             .expect("a color format has one aspect");
-        let size = render_target::texture_size(texture);
+        let size = texel::size(texture);
         Self {
             staging: Staging::new(gpu, "palantir.texel_readback", size, texel),
             size,
@@ -49,7 +49,7 @@ impl TexelReadback {
     /// `texels` is left empty unless [`GpuWait::Done`].
     pub(crate) fn read(&self, gpu: &Gpu, texture: &wgpu::Texture, texels: &mut Vec<u8>) -> GpuWait {
         debug_assert_eq!(
-            render_target::texture_size(texture),
+            texel::size(texture),
             self.size,
             "a readback reads the texture it was made for"
         );
@@ -62,7 +62,7 @@ impl TexelReadback {
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),
             self.staging.copy_info(),
-            render_target::extent(self.size),
+            texel::extent(self.size),
         );
         gpu.queue.submit(iter::once(encoder.finish()));
         self.staging.map_read();

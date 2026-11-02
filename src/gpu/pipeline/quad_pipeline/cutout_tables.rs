@@ -2,14 +2,12 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
 };
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
-use crate::gpu::surface::render_target;
-use glam::UVec2;
 use pollster::FutureExt;
 use std::mem::offset_of;
 
@@ -93,7 +91,11 @@ impl CutoutTables {
             .device
             .create_texture(&wgpu::TextureDescriptor {
                 label: Some("palantir.quad.cutouts"),
-                size: render_target::extent(UVec2::splat(side)),
+                size: wgpu::Extent3d {
+                    width: side,
+                    height: side,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -163,7 +165,11 @@ impl CutoutTables {
         let scope = gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let _ = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.quad.cutouts.probe"),
-            size: render_target::extent(UVec2::ONE),
+            size: wgpu::Extent3d {
+                width: 1,
+                height: 1,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,

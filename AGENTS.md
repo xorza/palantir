@@ -29,14 +29,18 @@ A top-level module imports only modules to its left:
 common → primitives → {animation, text, input, display, window, clipboard, image_registry,
                        diagnostics}
        → shape → icons → scene → layout → cascade → {damage, input_state}
-       → renderer ⇄ gpu → theme → ui → widget_core → widgets → driver → host
+       → renderer → gpu → theme → ui → widget_core → widgets → driver → host
 ```
 
 - **`theme` is plain look data**: it knows no `Widget` or `Ui`, and `Widget::wear` applies a look.
 - **`ui` records through `Node` and shapes**, never through a widget, so the recorder sits below
   the authoring layer.
-- **`gpu` ⇄ `renderer` stays a cycle.** `GpuPaint` names the wgpu types `clippy.toml` keeps in
-  `gpu`; moving it into `gpu` would make `ui` depend on `gpu`.
+- **A `GpuView`'s callback stays in `gpu`'s `GpuViews`**, which `Ui` holds; the shape, the paint
+  payload and the frame's target draw carry only the view's target id, owner and epoch, and the
+  backend looks the callback up by owner as it paints, as Flutter's `Texture` layer holds a
+  `textureId` and the engine's `TextureRegistry` holds the producer. Refused: the callback carried
+  as data, as egui's `PaintCallback` and iced's `shader::Primitive` do, which made `renderer` and
+  `gpu` a cycle. Cost: one hash lookup per repainted `GpuView` per frame.
 - **`App` lives in `ui`**, beside the frame cycle that calls it, as winit's `ApplicationHandler`
   sits beside its event loop and eframe's `App` beside its run loop. Refused: a top-level `app`
   module for the contract alone, which made a cycle with `ui`.

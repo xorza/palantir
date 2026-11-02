@@ -3,6 +3,7 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
+use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{ImageDownsample, ImageFilter, ImageFit};
@@ -75,16 +76,16 @@ impl Shapes {
     }
 
     /// Append an [`ImageSource::GpuView`]-sourced [`ShapeRecord::Image`] directly,
-    /// bypassing [`Self::add`] lowering. The view's `id` + `paint` live in
-    /// `Ui::gpu_views` by the owner's `WidgetId`; the record carries only `epoch`.
+    /// bypassing [`Self::add`] lowering. The view's `paint` lives in `Ui::gpu_views`
+    /// by the owner's `WidgetId`; the record carries its target `id` and `epoch`.
     ///
     /// Placement is neutral: no sub-rect, untinted, `Fill` fit, which resolves to
     /// the base rect at full UV against the encoder's zero intrinsic size.
-    pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
+    pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) {
         let record = ShapeRecord::Image {
             local_rect: None,
             tint: RgbaF32::WHITE.to_f16(),
-            source: ImageSource::GpuView { epoch },
+            source: ImageSource::GpuView { id, epoch },
             fit: ImageFit::Fill,
             min_filter: ImageFilter::Linear,
             mag_filter: ImageFilter::Linear,

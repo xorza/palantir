@@ -1,8 +1,8 @@
 //! The `Ui`'s live-`GpuView` bookkeeping.
 
+use crate::gpu::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use std::collections::hash_map::Entry;
 
 /// One live `GpuView` keyed by `WidgetId`: its stable `texture_id`, the app `paint` callback and the redraw `epoch`.
@@ -12,6 +12,15 @@ pub(crate) struct GpuViewEntry {
     pub(crate) paint: GpuPaintRef,
     /// The shape `epoch`; bumped only on a repaint request so a static view's hash is stable and the encoder culls it.
     epoch: u64,
+}
+
+impl GpuViewEntry {
+    const fn target(&self) -> RecordedTarget {
+        RecordedTarget {
+            id: self.texture_id,
+            epoch: self.epoch,
+        }
+    }
 }
 
 /// Whether a `GpuView`'s content changed this frame.
@@ -31,6 +40,13 @@ pub(crate) struct RecordedView {
     pub(crate) content: ViewContent,
 }
 
+/// What a recorded view's shape carries: its target and the epoch it paints at.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct RecordedTarget {
+    pub(crate) id: TextureId,
+    pub(crate) epoch: u64,
+}
+
 /// Every `GpuView` the `Ui` has seen and not yet swept.
 #[derive(Debug, Default)]
 pub(crate) struct GpuViews {
@@ -38,12 +54,12 @@ pub(crate) struct GpuViews {
 }
 
 impl GpuViews {
-    /// Upserts the view's row and returns the `epoch` its shape carries: bumped
-    /// to `frame` on [`ViewContent::Changed`], else held so the encoder culls the
-    /// view. First sight always paints. A different callback is a different view
+    /// Upserts the view's row and returns the target and `epoch` its shape carries: the
+    /// epoch bumped to `frame` on [`ViewContent::Changed`], else held so the encoder culls
+    /// the view. First sight always paints. A different callback is a different view
     /// and takes a fresh `TextureId`, as the backend target and its
     /// `GpuPaint::init` are keyed on the id.
-    pub(crate) fn record(&mut self, view: RecordedView, frame: u64) -> u64 {
+    pub(crate) fn record(&mut self, view: RecordedView, frame: u64) -> RecordedTarget {
         let RecordedView { id, paint, content } = view;
         match self.entries.entry(id) {
             Entry::Occupied(e) => {
@@ -56,21 +72,24 @@ impl GpuViews {
                 if replaced || content == ViewContent::Changed {
                     entry.epoch = frame;
                 }
-                entry.epoch
+                entry.target()
             }
-            Entry::Vacant(e) => {
-                e.insert(GpuViewEntry {
+            Entry::Vacant(e) => e
+                .insert(GpuViewEntry {
                     texture_id: TextureId::reserve(),
                     paint,
                     epoch: frame,
                 })
-                .epoch
-            }
+                .target(),
         }
     }
 
+    /// The row of `id`, a view recorded since the last sweep: a frame's target draws name only
+    /// views it recorded, and the sweep that follows the frame drops only views it did not.
     pub(crate) fn view(&self, id: WidgetId) -> &GpuViewEntry {
-        &self.entries[&id]
+        self.entries
+            .get(&id)
+            .expect("a painted GpuView was recorded this frame")
     }
 
     /// Drops the rows of widgets the frame stopped recording.
@@ -96,9 +115,9 @@ impl GpuViews {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::gpu_paint::gpu_paint_ref::GpuPaintRef;
+    use crate::gpu::gpu_paint::gpu_views::{GpuViews, RecordedTarget, RecordedView, ViewContent};
     use crate::primitives::identity::widget_id::{WidgetId, WidgetIdSet};
-    use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
-    use crate::renderer::gpu_paint::gpu_views::{GpuViews, RecordedView, ViewContent};
 
     fn view(id: WidgetId, paint: GpuPaintRef, content: ViewContent) -> RecordedView {
         RecordedView { id, paint, content }
@@ -111,24 +130,29 @@ mod tests {
         let mut views = GpuViews::default();
         let first = GpuPaintRef::noop();
 
-        views.record(view(id, first.clone(), ViewContent::Changed), 1);
-        let target = views.view(id).texture_id;
-
-        let epoch = views.record(view(id, first, ViewContent::Unchanged), 2);
+        let first_target = views.record(view(id, first.clone(), ViewContent::Changed), 1);
         assert_eq!(
             views.view(id).texture_id,
-            target,
-            "one callback, one target"
+            first_target.id,
+            "the shape names the row's target"
         );
-        assert_eq!(epoch, 1, "and no repaint it did not ask for");
 
-        let epoch = views.record(view(id, GpuPaintRef::noop(), ViewContent::Unchanged), 3);
+        let held = views.record(view(id, first, ViewContent::Unchanged), 2);
+        assert_eq!(
+            held,
+            RecordedTarget {
+                id: first_target.id,
+                epoch: 1
+            },
+            "one callback, one target, and no repaint it did not ask for"
+        );
+
+        let replaced = views.record(view(id, GpuPaintRef::noop(), ViewContent::Unchanged), 3);
         assert_ne!(
-            views.view(id).texture_id,
-            target,
+            replaced.id, first_target.id,
             "a new callback must not inherit a target init already ran against",
         );
-        assert_eq!(epoch, 3, "and it paints on the frame it arrived");
+        assert_eq!(replaced.epoch, 3, "and it paints on the frame it arrived");
     }
 
     #[test]

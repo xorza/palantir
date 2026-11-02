@@ -20,7 +20,7 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_image_payload::ImageDraw;
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
@@ -818,9 +818,9 @@ fn images_between_labels_coalesce_text_the_same_way() {
             for i in 0..BUTTONS {
                 let x = i as f32 * 100.0;
                 buf.draw(
-                    ImageDraw {
-                        payload: gpu_view_payload(Rect::new(x, 0.0, 16.0, 16.0), TextureId(1)),
+                    DrawImagePayload {
                         view: None,
+                        ..gpu_view_payload(Rect::new(x, 0.0, 16.0, 16.0), TextureId(1))
                     },
                     1.0,
                 );
@@ -878,9 +878,9 @@ fn text_batch_drains_past_a_non_overlapping_image() {
         |buf, _| {
             text(buf, Rect::new(0.0, 0.0, 60.0, 16.0));
             buf.draw(
-                ImageDraw {
-                    payload: gpu_view_payload(Rect::new(100.0, 0.0, 16.0, 16.0), TextureId(1)),
+                DrawImagePayload {
                     view: None,
+                    ..gpu_view_payload(Rect::new(100.0, 0.0, 16.0, 16.0), TextureId(1))
                 },
                 1.0,
             );

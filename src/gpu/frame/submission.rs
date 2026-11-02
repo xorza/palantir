@@ -2,6 +2,7 @@
 
 use crate::damage::Damage;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
+use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -17,6 +18,8 @@ pub(crate) struct Submission<'a> {
     pub(crate) stats: &'a GpuPassStats,
     pub(crate) store: &'a RecordStore,
     pub(crate) buffer: &'a RenderBuffer,
+    /// The window's `GpuView`s, whose callbacks paint the buffer's view targets.
+    pub(crate) gpu_views: &'a GpuViews,
     /// The plan's clear color, which a root quad folded into the clear overrides.
     pub(crate) clear: RgbaF32,
     /// What the frame repaints inside, which the CPU half fitted to the draw list: a partial

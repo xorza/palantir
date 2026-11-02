@@ -7,11 +7,11 @@
 //! code tells the two apart. A core built by [`HostCore::cpu`] has no device half: it records and
 //! composes, and paints nothing.
 
-use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::resource::wgpu_image_store::WgpuImageStore;
 use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
 use crate::host::host_options::HostOptions;
 use crate::host::window_driver::{

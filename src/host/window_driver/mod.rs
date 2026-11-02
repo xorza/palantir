@@ -503,7 +503,9 @@ impl WindowDriver {
         )
     }
 
-    /// Encode and compose the frame `plan` paints, under the ledger's tickets.
+    /// Encode and compose the frame `plan` paints, under the ledger's tickets, and list every
+    /// `GpuView` the window records as the backend's retention roster: recorded, not painted, so
+    /// a culled unchanged view keeps its texture.
     fn build(&self, frontend: &mut Frontend, plan: RenderPlan) {
         frontend.build(
             self.ui.frame_scene(),
@@ -512,6 +514,9 @@ impl WindowDriver {
                 panes: self.pane_captures.tickets(),
             },
         );
+        self.ui
+            .gpu_views()
+            .collect_live_targets(&mut frontend.buffer.live_targets);
     }
 
     /// The path of a direct partial frame, which only a retained target takes, that cannot keep
@@ -656,6 +661,7 @@ impl WindowDriver {
                 stats: self.ui.gpu_pass_stats(),
                 store: self.ui.record_store(),
                 buffer,
+                gpu_views: self.ui.gpu_views(),
                 clear: plan.clear,
                 scissors: &self.scissors,
                 route,

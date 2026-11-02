@@ -29,7 +29,7 @@ use crate::renderer::frontend::composer::rect_grid;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, ImageDraw};
+use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -413,16 +413,14 @@ fn push_text(cmds: &mut PaintCapture, rect: Rect) {
 
 fn push_image(cmds: &mut PaintCapture, rect: Rect) {
     cmds.draw(
-        ImageDraw {
-            payload: DrawImagePayload {
-                rect,
-                uv_min: Vec2::ZERO,
-                uv_size: Vec2::ONE,
-                tint: RgbaF32::WHITE.to_f16(),
-                handle: TextureId(1),
-                flags: ImageFlags::NONE,
-                spin: None,
-            },
+        DrawImagePayload {
+            rect,
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: RgbaF32::WHITE.to_f16(),
+            handle: TextureId(1),
+            flags: ImageFlags::NONE,
+            spin: None,
             view: None,
         },
         1.0,

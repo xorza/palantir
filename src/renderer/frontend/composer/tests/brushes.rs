@@ -8,6 +8,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
@@ -19,14 +20,11 @@ use crate::renderer::frontend::composer::tests::support::{
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
-use crate::renderer::frontend::payload::draw_image_payload::{
-    DrawImagePayload, ImageDraw, ViewPaint,
-};
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 use crate::shape::rect::RectKind;
@@ -170,16 +168,14 @@ fn compose_emits_image_batch_for_drawimage() {
     let buf = run(
         |b, _arena| {
             b.draw(
-                ImageDraw {
-                    payload: DrawImagePayload {
-                        rect: Rect::new(10.0, 20.0, 30.0, 40.0),
-                        uv_min: Vec2::ZERO,
-                        uv_size: Vec2::ONE,
-                        tint: RgbaF32::WHITE.to_f16(),
-                        handle: TextureId(0xc0ffee),
-                        flags: ImageFlags::NONE,
-                        spin: None,
-                    },
+                DrawImagePayload {
+                    rect: Rect::new(10.0, 20.0, 30.0, 40.0),
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::ONE,
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle: TextureId(0xc0ffee),
+                    flags: ImageFlags::NONE,
+                    spin: None,
                     view: None,
                 },
                 1.0,
@@ -437,16 +433,14 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     let buf = run(
         |b, _arena| {
             b.draw(
-                ImageDraw {
-                    payload: DrawImagePayload {
-                        rect: Rect::new(0.0, 0.0, 100.0, 100.0),
-                        uv_min: Vec2::new(0.25, 0.0),
-                        uv_size: Vec2::new(0.5, 1.0),
-                        tint: RgbaF32::WHITE.to_f16(),
-                        handle: TextureId(1),
-                        flags: ImageFlags::NONE,
-                        spin: None,
-                    },
+                DrawImagePayload {
+                    rect: Rect::new(0.0, 0.0, 100.0, 100.0),
+                    uv_min: Vec2::new(0.25, 0.0),
+                    uv_size: Vec2::new(0.5, 1.0),
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle: TextureId(1),
+                    flags: ImageFlags::NONE,
+                    spin: None,
                     view: None,
                 },
                 1.0,
@@ -465,48 +459,42 @@ fn compose_forwards_flags_and_repeat_uv() {
         |b, _arena| {
             // Plain draw: no flags.
             b.draw(
-                ImageDraw {
-                    payload: DrawImagePayload {
-                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                        uv_min: Vec2::ZERO,
-                        uv_size: Vec2::ONE,
-                        tint: RgbaF32::WHITE.to_f16(),
-                        handle: TextureId(1),
-                        flags: ImageFlags::NONE,
-                        spin: None,
-                    },
+                DrawImagePayload {
+                    rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::ONE,
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle: TextureId(1),
+                    flags: ImageFlags::NONE,
+                    spin: None,
                     view: None,
                 },
                 1.0,
             );
             // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
             b.draw(
-                ImageDraw {
-                    payload: DrawImagePayload {
-                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                        uv_min: Vec2::ZERO,
-                        uv_size: Vec2::new(3.0, 2.0),
-                        tint: RgbaF32::WHITE.to_f16(),
-                        handle: TextureId(2),
-                        flags: ImageFlags::TILED,
-                        spin: None,
-                    },
+                DrawImagePayload {
+                    rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::new(3.0, 2.0),
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle: TextureId(2),
+                    flags: ImageFlags::TILED,
+                    spin: None,
                     view: None,
                 },
                 1.0,
             );
             // The two nearest-filter bits ride through together.
             b.draw(
-                ImageDraw {
-                    payload: DrawImagePayload {
-                        rect: Rect::new(0.0, 0.0, 50.0, 50.0),
-                        uv_min: Vec2::ZERO,
-                        uv_size: Vec2::ONE,
-                        tint: RgbaF32::WHITE.to_f16(),
-                        handle: TextureId(3),
-                        flags: ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST),
-                        spin: None,
-                    },
+                DrawImagePayload {
+                    rect: Rect::new(0.0, 0.0, 50.0, 50.0),
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::ONE,
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle: TextureId(3),
+                    flags: ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST),
+                    spin: None,
                     view: None,
                 },
                 1.0,
@@ -578,16 +566,14 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     let buf = run(
         |b, _| {
             b.draw(
-                ImageDraw {
-                    payload: DrawImagePayload {
-                        rect: Rect::new(40.0, 40.0, 20.0, 10.0),
-                        uv_min: Vec2::ZERO,
-                        uv_size: Vec2::ONE,
-                        tint: RgbaF32::WHITE.to_f16(),
-                        handle: TextureId(1),
-                        flags: ImageFlags::NONE,
-                        spin,
-                    },
+                DrawImagePayload {
+                    rect: Rect::new(40.0, 40.0, 20.0, 10.0),
+                    uv_min: Vec2::ZERO,
+                    uv_size: Vec2::ONE,
+                    tint: RgbaF32::WHITE.to_f16(),
+                    handle: TextureId(1),
+                    flags: ImageFlags::NONE,
+                    spin,
                     view: None,
                 },
                 1.0,
@@ -605,20 +591,17 @@ fn a_turned_image_moves_its_center_and_keeps_its_uv() {
     assert_eq!(instance.rotation, FRAC_PI_2);
     assert_eq!((instance.uv_min, instance.uv_size), (Vec2::ZERO, Vec2::ONE));
 
-    let paint = GpuPaintRef::noop();
     let half_off = Rect::new(-10.0, 40.0, 20.0, 10.0);
     let buf = run(
         |b, _| {
             b.draw(
-                ImageDraw {
-                    payload: DrawImagePayload {
-                        spin,
-                        ..gpu_view_payload(half_off, TextureId(2))
-                    },
-                    view: Some(ViewPaint {
-                        paint: &paint,
+                DrawImagePayload {
+                    spin,
+                    view: Some(GpuViewDraw {
+                        owner: WidgetId::from_hash("view"),
                         epoch: 1,
                     }),
+                    ..gpu_view_payload(half_off, TextureId(2))
                 },
                 1.0,
             );

@@ -14,20 +14,18 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
-use crate::renderer::frontend::payload::draw_image_payload::{
-    DrawImagePayload, ImageDraw, ViewPaint,
-};
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
 use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::texture_limit::TextureLimit;
@@ -133,7 +131,8 @@ fn run_in(
     rig.out
 }
 
-/// The payload the encoder builds for a `GpuView`: full arranged rect, untinted, full UV, default sampling. Pair with `Some(&paint)` so the sink flags it a view.
+/// The payload the encoder builds for a `GpuView`: full arranged rect, untinted, full UV, default
+/// sampling, its view owned by one widget at epoch 0.
 pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayload {
     DrawImagePayload {
         rect,
@@ -143,21 +142,16 @@ pub(super) fn gpu_view_payload(rect: Rect, handle: TextureId) -> DrawImagePayloa
         handle,
         flags: ImageFlags::NONE,
         spin: None,
+        view: Some(GpuViewDraw {
+            owner: WidgetId::from_hash("view"),
+            epoch: 0,
+        }),
     }
 }
 
-/// Draw a `GpuView` at `rect`: [`gpu_view_payload`] under a no-op paint, full alpha.
+/// Draw a `GpuView` at `rect`: [`gpu_view_payload`], full alpha.
 pub(super) fn gpu_view(buf: &mut PaintCapture, rect: Rect, handle: TextureId) {
-    buf.draw(
-        ImageDraw {
-            payload: gpu_view_payload(rect, handle),
-            view: Some(ViewPaint {
-                paint: &GpuPaintRef::noop(),
-                epoch: 0,
-            }),
-        },
-        1.0,
-    );
+    buf.draw(gpu_view_payload(rect, handle), 1.0);
 }
 
 /// The payload the encoder builds for an icon: fit-resolved logical rect, identity, tint.
@@ -306,16 +300,14 @@ pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {
     b.draw(
-        ImageDraw {
-            payload: DrawImagePayload {
-                rect: r,
-                uv_min: Vec2::ZERO,
-                uv_size: Vec2::ONE,
-                tint: RgbaF32::WHITE.to_f16(),
-                handle: TextureId(1),
-                flags: ImageFlags::NONE,
-                spin: None,
-            },
+        DrawImagePayload {
+            rect: r,
+            uv_min: Vec2::ZERO,
+            uv_size: Vec2::ONE,
+            tint: RgbaF32::WHITE.to_f16(),
+            handle: TextureId(1),
+            flags: ImageFlags::NONE,
+            spin: None,
             view: None,
         },
         1.0,

@@ -4,14 +4,12 @@ use crate::common::span::Span;
 use crate::internals::paint_capture::{PaintCall, PaintCapture};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::texture_id::TextureId;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::paint_sink::PaintPayload;
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::draw_image_payload::{
-    DrawImagePayload, ImageDraw, ViewPaint,
-};
+use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::gpu_paint::gpu_paint_ref::GpuPaintRef;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use glam::Vec2;
 
@@ -96,12 +94,15 @@ fn polyline_payload_predicate_uses_the_canonical_scalar_noop_policy() {
     }
 }
 
-/// A collapsed `GpuView` emits nothing: no image draw, no callback, so no off-screen target is scheduled. A live one records payload and callback as one call.
+/// A collapsed `GpuView` emits nothing: no image draw, no view, so no off-screen target is scheduled. A live one records its payload with its view.
 ///
-/// The null-handle rows pin that the two callers of that arm differ by `paint` alone: `TextureId(0)` means "no texture" for an image (dropped) but nothing for a `GpuView`.
+/// The null-handle rows pin that the two callers of that arm differ by `view` alone: `TextureId(0)` means "no texture" for an image (dropped) but nothing for a `GpuView`.
 #[test]
-fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
-    let paint = GpuPaintRef::noop();
+fn gpu_view_gate_drops_zero_extent_and_keeps_the_view() {
+    let view = GpuViewDraw {
+        owner: WidgetId::from_hash("view"),
+        epoch: 7,
+    };
     let live = Rect::new(1.0, 2.0, 10.0, 10.0);
     let cases = [
         (
@@ -127,20 +128,15 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
     for (label, rect, handle, has_paint, expect_call) in cases {
         let mut sink = PaintCapture::default();
         sink.draw(
-            ImageDraw {
-                payload: DrawImagePayload {
-                    rect,
-                    uv_min: Vec2::ZERO,
-                    uv_size: Vec2::ONE,
-                    tint: RgbaF32::WHITE.to_f16(),
-                    handle,
-                    flags: ImageFlags::NONE,
-                    spin: None,
-                },
-                view: has_paint.then_some(ViewPaint {
-                    paint: &paint,
-                    epoch: 7,
-                }),
+            DrawImagePayload {
+                rect,
+                uv_min: Vec2::ZERO,
+                uv_size: Vec2::ONE,
+                tint: RgbaF32::WHITE.to_f16(),
+                handle,
+                flags: ImageFlags::NONE,
+                spin: None,
+                view: has_paint.then_some(view),
             },
             1.0,
         );
@@ -148,21 +144,17 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
             assert!(sink.calls.is_empty(), "case {label}: {:?}", sink.calls);
             continue;
         }
-        let [
-            PaintCall::Image {
-                payload,
-                paint: got,
-                epoch,
-            },
-        ] = sink.calls.as_slice()
-        else {
+        let [PaintCall::Image(payload)] = sink.calls.as_slice() else {
             panic!(
                 "case {label}: expected one Image call, got {:?}",
                 sink.calls
             );
         };
-        assert_eq!(got.as_ref(), Some(&paint), "case {label}");
-        assert_eq!(*epoch, 7, "case {label}: the capture keeps the epoch");
+        assert_eq!(
+            payload.view,
+            Some(view),
+            "case {label}: the capture keeps the view"
+        );
         assert_eq!(payload.rect, rect, "case {label}");
         assert_eq!(payload.handle, handle, "case {label}");
         assert_eq!(payload.uv_min, Vec2::ZERO, "case {label}");
@@ -175,16 +167,14 @@ fn gpu_view_gate_drops_zero_extent_and_pairs_payload_with_paint() {
 /// The gate sees the faded payload. A draw faded to nothing is dropped by the existing no-op gate; a half fade halves the tint alpha and leaves color lanes untouched.
 #[test]
 fn the_gate_sees_the_faded_payload() {
-    let draw = || ImageDraw {
-        payload: DrawImagePayload {
-            rect: Rect::new(0.0, 0.0, 4.0, 4.0),
-            uv_min: Vec2::ZERO,
-            uv_size: Vec2::ONE,
-            tint: RgbaF32::WHITE.to_f16(),
-            handle: TextureId(7),
-            flags: ImageFlags::NONE,
-            spin: None,
-        },
+    let draw = || DrawImagePayload {
+        rect: Rect::new(0.0, 0.0, 4.0, 4.0),
+        uv_min: Vec2::ZERO,
+        uv_size: Vec2::ONE,
+        tint: RgbaF32::WHITE.to_f16(),
+        handle: TextureId(7),
+        flags: ImageFlags::NONE,
+        spin: None,
         view: None,
     };
 
@@ -198,7 +188,7 @@ fn the_gate_sees_the_faded_payload() {
 
     let mut half = PaintCapture::default();
     half.draw(draw(), 0.5);
-    let [PaintCall::Image { payload, .. }] = half.calls.as_slice() else {
+    let [PaintCall::Image(payload)] = half.calls.as_slice() else {
         panic!("expected one Image call, got {:?}", half.calls);
     };
     // Half an opaque white tint's alpha, color untouched; exact in f16.

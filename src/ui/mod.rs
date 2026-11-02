@@ -32,6 +32,7 @@ use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::host_display::HostDisplay;
 use crate::display::user_scale::UserScale;
+use crate::gpu::gpu_paint::gpu_views::{GpuViews, RecordedView};
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
 use crate::image_registry::image_handle::ImageHandle;
@@ -67,7 +68,6 @@ use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::error::ImageTooLarge;
 use crate::renderer::frontend::FrameScene;
-use crate::renderer::gpu_paint::gpu_views::{GpuViews, RecordedView};
 use crate::scene::forest::{Forest, NodeChrome};
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -175,7 +175,6 @@ impl Ui {
             forest: &self.forest,
             layout: &self.layout,
             cascade: &self.cascade,
-            gpu_views: &self.gpu_views,
             stamp: self.frame_runtime.stamp(),
         }
     }
@@ -985,11 +984,16 @@ impl Ui {
     }
 
     /// Record `view`: refresh its row in [`Self::gpu_views`] and append an image
-    /// shape carrying the row's `epoch` to the active node.
+    /// shape carrying the row's target and `epoch` to the active node.
     pub(crate) fn gpu_view(&mut self, view: RecordedView) {
         let frame = self.frame_runtime.render_frame_id;
-        let epoch = self.gpu_views.record(view, frame);
-        self.forest.add_gpu_view(epoch);
+        let target = self.gpu_views.record(view, frame);
+        self.forest.add_gpu_view(target.id, target.epoch);
+    }
+
+    /// Every `GpuView` this window records, which its frames paint through.
+    pub(crate) const fn gpu_views(&self) -> &GpuViews {
+        &self.gpu_views
     }
 
     /// Format `args` into the record-pass text storage and return an arena-backed

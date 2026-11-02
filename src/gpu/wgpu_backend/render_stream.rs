@@ -1,5 +1,6 @@
 //! One render owner's side of the device: what its frames keep there between them.
 
+use crate::gpu::backdrop::backdrop_blur::TargetSource;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
@@ -24,6 +25,9 @@ pub(crate) struct RenderStream {
     /// Off-screen target holding the last frame painted through it, for `LoadOp::Load` partial
     /// damage; made on the first such frame, and again for a new size or format.
     pub(super) backbuffer: Option<Backbuffer>,
+    /// The group a pane's blur reads [`Self::backbuffer`] through as its level 0, made on the
+    /// first frame that blurs from it and dropped with it.
+    pub(super) blur_source: Option<TargetSource>,
     /// Whether [`Self::backbuffer`] holds what the target shows. A direct frame leaves it stale,
     /// as does a new target; the next partial resyncs it with one full repaint.
     pub(super) backbuffer_fresh: bool,
@@ -48,6 +52,7 @@ impl RenderStream {
         Self {
             owner,
             backbuffer: None,
+            blur_source: None,
             backbuffer_fresh: false,
             stencil: None,
             canvases: [None, None],
@@ -110,6 +115,7 @@ impl RenderStream {
         let made = self.backbuffer.is_none();
         if made {
             self.backbuffer = Some(Backbuffer::new(gpu, binding, target));
+            self.blur_source = None;
         }
         made
     }

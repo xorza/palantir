@@ -3,7 +3,7 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target;
+use crate::gpu::texel;
 use crate::renderer::render_buffer::render_target_draw::ViewStamp;
 use crate::renderer::render_owner_id::RenderOwnerId;
 use glam::UVec2;
@@ -32,7 +32,7 @@ impl AllocatedTarget {
     pub(super) fn new(gpu: &Gpu, binding: &TextureBinding, size: UVec2) -> Self {
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.gpu_view.target"),
-            size: render_target::extent(size),
+            size: texel::extent(size),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,

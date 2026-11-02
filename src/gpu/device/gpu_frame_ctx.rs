@@ -5,7 +5,7 @@ use glam::UVec2;
 use std::fmt;
 use std::time::Duration;
 
-/// Handed to [`GpuPaint::paint`](crate::renderer::gpu_paint::GpuPaint::paint) each painted frame.
+/// Handed to [`GpuPaint::paint`](crate::gpu::gpu_paint::GpuPaint::paint) each painted frame.
 pub struct GpuFrameCtx<'a> {
     /// The device and queue, through [`Gpu::device`] and [`Gpu::queue`].
     pub gpu: &'a Gpu,

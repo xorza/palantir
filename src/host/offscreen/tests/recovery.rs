@@ -9,6 +9,7 @@
 
 use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
+use crate::gpu::gpu_paint::GpuPaint;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::test_gpu::{
     HeadlessTestGpuLease, headless_test_gpu, isolated_headless_test_gpu,
@@ -33,7 +34,6 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::renderer::gpu_paint::GpuPaint;
 use crate::shape::Shape;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;

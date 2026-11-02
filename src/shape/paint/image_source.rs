@@ -17,11 +17,11 @@ pub(crate) enum ImageSource {
         size: UVec2,
         generation: u32,
     },
-    /// An app-rendered GPU surface: its render-target `TextureId` and `paint` callback live in `Ui::gpu_views`,
-    /// keyed by the owner's `WidgetId`, keeping the hot `records` buffer small and `Rc`-free.
-    /// `epoch` is the damage version folded into the shape hash: `repaint(true)` bumps it to the frame id,
-    /// `repaint(false)` holds it so a static view stays undamaged and is culled.
-    GpuView { epoch: u64 },
+    /// An app-rendered GPU surface: `id` is its render target, which `Ui::gpu_views` minted; its `paint`
+    /// callback stays there, keyed by the owner's `WidgetId`, keeping the hot `records` buffer small and
+    /// `Rc`-free. `epoch` is the damage version folded into the shape hash: `repaint(true)` bumps it to
+    /// the frame id, `repaint(false)` holds it so a static view stays undamaged and is culled.
+    GpuView { id: TextureId, epoch: u64 },
 }
 
 impl ImageSource {

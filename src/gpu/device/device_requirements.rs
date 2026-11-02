@@ -2,7 +2,11 @@
 
 use crate::gpu::device::device_features::DeviceFeatures;
 use crate::gpu::error::UnmetRequirements;
-use crate::gpu::pipeline::IMMEDIATES_BYTES;
+
+/// Size of the immediate (push-constant) region every shader declares in `prelude.wgsl`: the
+/// viewport `pipeline::viewport_push` pushes after every pipeline bind, which a compile-time
+/// assert there holds to this. A device granting fewer bytes cannot run Palantir.
+pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 
 /// The features and limits to ask an adapter for so the returned device can run
 /// Palantir's pipelines.
@@ -109,8 +113,8 @@ mod tests {
 
     use crate::gpu::device::device_features::DeviceFeatures;
     use crate::gpu::device::device_requirements::DeviceRequirements;
+    use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
     use crate::gpu::error::UnmetRequirements;
-    use crate::gpu::pipeline::IMMEDIATES_BYTES;
 
     #[test]
     fn negotiation_holds_the_hard_line_and_lets_the_rest_degrade() {

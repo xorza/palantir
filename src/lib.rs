@@ -250,6 +250,7 @@ pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
 pub use gpu::error::{GpuRequestError, UnmetRequirements};
+pub use gpu::gpu_paint::GpuPaint;
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 #[cfg(feature = "winit")]
 pub use gpu::surface::surface_usages::SurfaceUsages;
@@ -338,7 +339,6 @@ pub use primitives::paint::stroke::Stroke;
 pub use primitives::text::interned_str::InternedStr;
 pub use primitives::text::text_input::TextInput;
 pub use renderer::error::ImageTooLarge;
-pub use renderer::gpu_paint::GpuPaint;
 pub use scene::layer::Layer;
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;

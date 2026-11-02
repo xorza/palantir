@@ -174,8 +174,15 @@ fn image_source_hashes_apart_by_source() {
         mag_filter: ImageFilter::Linear,
         downsample: ImageDownsample::Single,
     };
-    // Same u64-shaped payload, so only the source tag differs.
-    let view = image(ImageSource::GpuView { epoch: 7 }).content_hash();
+    let gpu_view = |id, epoch| {
+        image(ImageSource::GpuView {
+            id: TextureId(id),
+            epoch,
+        })
+        .content_hash()
+    };
+    // The same id under the other tag, so only the source tag differs.
+    let view = gpu_view(7, 7);
     assert_ne!(
         view,
         image(ImageSource::Texture {
@@ -184,7 +191,7 @@ fn image_source_hashes_apart_by_source() {
             generation: 0,
         })
         .content_hash(),
-        "a texture id must not collide with an epoch of the same value",
+        "a view must not collide with a texture of the same id",
     );
     let texture = |generation| {
         image(ImageSource::Texture {
@@ -201,12 +208,17 @@ fn image_source_hashes_apart_by_source() {
     );
     assert_ne!(
         view,
-        image(ImageSource::GpuView { epoch: 8 }).content_hash(),
+        gpu_view(7, 8),
         "a bumped epoch must move the hash, or the view never repaints",
+    );
+    assert_ne!(
+        view,
+        gpu_view(8, 7),
+        "a new target, as a replaced callback takes, must move the hash",
     );
     assert_eq!(
         view,
-        image(ImageSource::GpuView { epoch: 7 }).content_hash(),
+        gpu_view(7, 7),
         "a held epoch must hold the hash, or a static view never culls",
     );
 }

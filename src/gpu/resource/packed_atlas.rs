@@ -4,7 +4,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
-use crate::gpu::surface::render_target;
+use crate::gpu::texel;
 use crate::primitives::geometry::urect::URect;
 use glam::{U16Vec2, UVec2};
 
@@ -55,7 +55,7 @@ impl AtlasSpec {
     fn create(&self, gpu: &Gpu, edge: u32) -> wgpu::Texture {
         gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&self.label),
-            size: render_target::extent(UVec2::splat(edge)),
+            size: texel::extent(UVec2::splat(edge)),
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -173,7 +173,7 @@ impl PackedAtlas {
         encoder.copy_texture_to_texture(
             self.texture.as_image_copy(),
             texture.as_image_copy(),
-            render_target::extent(UVec2::splat(old)),
+            texel::extent(UVec2::splat(old)),
         );
         self.view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         self.texture = texture;
@@ -223,16 +223,16 @@ impl PackedAtlas {
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.texture,
                     mip_level: 0,
-                    origin: render_target::origin(rect.min),
+                    origin: texel::origin(rect.min),
                     aspect: wgpu::TextureAspect::All,
                 },
                 wgpu::TexelCopyTextureInfo {
                     texture: &texture,
                     mip_level: 0,
-                    origin: render_target::origin(min),
+                    origin: texel::origin(min),
                     aspect: wgpu::TextureAspect::All,
                 },
-                render_target::extent(rect.size),
+                texel::extent(rect.size),
             );
             rect.min = min;
         }

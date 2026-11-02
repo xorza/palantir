@@ -126,38 +126,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 8: Cut the GPU cycles
-
-Files: `src/renderer/{gpu_paint,render_buffer/render_target_draw.rs,frontend/}`,
-`src/gpu/{device,resource,surface,backdrop,frame,pipeline,wgpu_backend}/`, `src/ui/mod.rs`,
-`src/host/window_driver/`, `AGENTS.md`.
-
-- [ ] `render_target_draw.rs:4,21`, `draw_image_payload.rs:8,41-45`, `frontend/mod.rs:40,83-85`,
-  `plane_ctx.rs:428-436`, `session.rs:377`, `gpu_view_targets/mod.rs:80`: the app's
-  `GpuPaintRef` travels through the CPU→GPU contract. Target: `RenderTargetDraw` carries ids
-  (`TextureId`, owner `WidgetId`, extents, epoch), and `ImageSource::GpuView` carries the
-  `TextureId` that `GpuViews::record` resolves. `GpuPaint`, `GpuPaintRef` and `GpuViews` move to
-  `gpu`, `Ui` holds `GpuViews`, and the driver passes `&GpuViews` to `paint_gpu_views`.
-  `collect_live_targets` moves to the driver. `ImageDraw` and `ViewPaint` fold into
-  `DrawImagePayload`. renderer → gpu edges drop to 0. AGENTS.md drops the `gpu ⇄ renderer`
-  bullet. Decided: ids only, as Flutter's `Texture` layer holds a `textureId` and the engine's
-  `TextureRegistry` holds the producer. Refused: the callback carried as data, as egui's
-  `PaintCallback` and iced's `shader::Primitive` do, which keeps the cycle and a borrowing payload.
-  Cost: one hash lookup per repainted `GpuView` per frame.
-- [ ] `device/backend_resources.rs:3-6`: `device` imports the image store, icons, gradients and
-  the shaper. Target: `BackendResources` moves to `gpu::wgpu_backend`, its only consumer with
-  `host/core.rs`.
-- [ ] `device_requirements.rs:5`: `device` takes `IMMEDIATES_BYTES` from `pipeline`. Target:
-  `device_requirements` owns the floor, and `pipeline` asserts at compile time that its push fits.
-- [ ] `surface/backbuffer.rs:3,21,79-90`: `Backbuffer` stores the blur's `TargetSource`. Target:
-  the source lives on `RenderStream` beside the backbuffer and resets when `ensure_backbuffer`
-  remakes it.
-- [ ] `frame/pass_recorder/mod.rs:3`, `pipeline/*/mod.rs` imports of `frame`: `PassRecorder`
-  lives in `frame` but needs only `viewport_push`. Target: `pass_recorder` and `PassState` move
-  into `gpu::pipeline`.
-- [ ] `pipeline/stencil_variant.rs:5`, `quad_pipeline/mod.rs:23`: `Stencil::{test,stamp,clear}_state`
-  are pipeline state kept in `surface`. Target: move them into `pipeline::stencil_variant`.
-
 ### Batch 9: Ui ownership
 
 Files: `src/ui/{mod.rs,frame_cycle.rs,theme_transition.rs,frame_runtime/,bench.rs}`,

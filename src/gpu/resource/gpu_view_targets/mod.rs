@@ -5,11 +5,12 @@
 mod view_target;
 
 use crate::common::tracy;
+use crate::gpu::debug_marker;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
-use crate::gpu::frame::debug_marker;
+use crate::gpu::gpu_paint::gpu_views::GpuViews;
 use crate::gpu::resource::gpu_view_targets::view_target::{AllocatedTarget, ViewTarget};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::identity::texture_id::TextureId;
@@ -50,10 +51,13 @@ impl GpuViewTargets {
         self.targets.get(&id).map(|target| &target.bind_group)
     }
 
+    /// Paint each of `views`' draws whose stamp changed, through its owner's callback in
+    /// `callbacks`, the window's views, then drop the targets of this submitter's views that left.
     pub(crate) fn paint_gpu_views(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         views: FrameViews<'_>,
+        callbacks: &GpuViews,
         submitter: ViewSubmitter<'_>,
     ) {
         tracy::zone!();
@@ -63,7 +67,7 @@ impl GpuViewTargets {
             live,
             display_scale,
         } = views;
-        // `live` arrives sorted; see `Frontend::build`.
+        // `live` arrives sorted; see `GpuViews::collect_live_targets`.
         debug_assert!(
             draws
                 .iter()
@@ -77,23 +81,23 @@ impl GpuViewTargets {
             if target.painted == Some(stamp) {
                 continue;
             }
-            let mut paint = draw.paint.0.borrow_mut();
+            let mut paint = callbacks.view(draw.owner).paint.0.borrow_mut();
             if !target.initialized {
                 tracy::zone!("GpuView::init");
-                debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.init");
+                debug_marker::push(ctx.encoder, "palantir.gpu_view.init");
                 paint.init(&GpuInitCtx {
                     gpu: ctx.gpu,
                     target_format: TARGET_FORMAT,
                     text,
                 });
-                debug_marker::pop_encoder(ctx.encoder);
+                debug_marker::pop(ctx.encoder);
                 target.initialized = true;
             }
             let dt = target
                 .last_paint
                 .map_or(Duration::ZERO, |last| now.saturating_sub(last));
             tracy::zone!("GpuView::paint");
-            debug_marker::push_encoder(ctx.encoder, "palantir.gpu_view.paint");
+            debug_marker::push(ctx.encoder, "palantir.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
                 gpu: ctx.gpu,
                 encoder: ctx.encoder,
@@ -105,7 +109,7 @@ impl GpuViewTargets {
                 raster_factor: draw.raster_factor,
                 dt,
             });
-            debug_marker::pop_encoder(ctx.encoder);
+            debug_marker::pop(ctx.encoder);
             target.last_paint = Some(now);
             target.painted = Some(stamp);
         }

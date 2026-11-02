@@ -37,7 +37,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::query_tracer::QueryTracer;
 use crate::gpu::frame::gpu_timings::wall_clock_tracer::WallClockTracer;
 use crate::gpu::frame::main_segment::MainSegment;
-use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::pass_recorder::PassRecorder;
 
 /// Where a backdrop break's timestamp sits among its three.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

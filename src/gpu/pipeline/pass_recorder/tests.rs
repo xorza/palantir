@@ -1,4 +1,4 @@
-use crate::gpu::frame::pass_recorder::{PassRecorder, PassState};
+use crate::gpu::pipeline::pass_recorder::{PassRecorder, PassState};
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::primitives::geometry::urect::URect;
 use glam::Vec2;

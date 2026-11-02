@@ -87,7 +87,6 @@ impl Encoder {
                 subtree_paint_rects: plane_cascades.subtree_paint_rects.as_slice(),
                 gradients: &mut gradients,
                 paint_animation_cursor: tree.paint_animations.cursor(),
-                gpu_views: scene.gpu_views,
                 damage_filter,
                 panes,
                 tickets: plane_tickets,

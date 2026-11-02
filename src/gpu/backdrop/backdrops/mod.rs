@@ -15,7 +15,7 @@
 //!   budget, and a pane that comes back grows it again.
 
 use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, EXPIRY_FRAMES, JobLayout, LEVEL_FORMAT,
+    BackdropBlur, BlurJob, EXPIRY_FRAMES, JobLayout, LEVEL_FORMAT, TargetSource,
 };
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
@@ -150,7 +150,16 @@ pub(crate) struct BackdropFrame<'a> {
     pub(crate) clear: RgbaF16,
     /// The backbuffer the main pass paints, where the frame paints through one: a pass can
     /// sample it, so the blurs read it in place of a capture.
-    pub(crate) backbuffer: Option<&'a mut Backbuffer>,
+    pub(crate) backbuffer: Option<FrameBackbuffer<'a>>,
+}
+
+/// A backbuffer the blurs read, and the group they read it through, which its render stream keeps
+/// beside it, made on the first frame that blurs from it and dropped when the backbuffer is made
+/// again.
+#[derive(Debug)]
+pub(crate) struct FrameBackbuffer<'a> {
+    pub(crate) backbuffer: &'a Backbuffer,
+    pub(crate) source: &'a mut Option<TargetSource>,
 }
 
 /// The panes that capture at one break of the main pass: the barrier it breaks at, and their
@@ -474,11 +483,15 @@ impl Backdrops {
             self.slots.push(BackdropSlot::of(row, kept));
         }
         let blur = &self.resources.as_ref().expect("made above").blur;
-        let target = backbuffer
-            .filter(|_| !self.jobs.is_empty())
-            .map(|backbuffer| {
-                backbuffer.blur_source(|view, size| blur.target_source(ctx.gpu, view, format, size))
-            });
+        let target = backbuffer.filter(|_| !self.jobs.is_empty()).map(
+            |FrameBackbuffer { backbuffer, source }| {
+                source
+                    .get_or_insert_with(|| {
+                        blur.target_source(ctx.gpu, backbuffer.view(), format, backbuffer.size())
+                    })
+                    .clone()
+            },
+        );
         let resources = self.resources.as_mut().expect("made above");
         resources.blur.prepare(
             ctx,

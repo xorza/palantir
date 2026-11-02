@@ -1,5 +1,6 @@
 //! A main pass and what it has bound, so each draw sets only the state that changed.
 
+use crate::gpu::debug_marker;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::primitives::geometry::urect::URect;
 use std::ops::Range;
@@ -182,8 +183,27 @@ impl<'a, S: PassState> PassRecorder<'a, S> {
     }
 
     /// The pass, for the calls that bind nothing a draw reads: timestamps and debug groups.
-    pub(super) const fn untracked(&mut self) -> &mut S {
+    pub(crate) const fn untracked(&mut self) -> &mut S {
         &mut self.pass
+    }
+}
+
+/// A render pass's debug groups, the capture labels a frame's steps carry.
+impl PassRecorder<'_> {
+    /// Open a debug group named `label` on the pass, where the `gpu-debug-markers` feature is on.
+    #[inline]
+    pub(crate) fn push_marker(&mut self, label: &str) {
+        if debug_marker::ENABLED {
+            self.pass.push_debug_group(label);
+        }
+    }
+
+    /// Close the debug group [`Self::push_marker`] opened.
+    #[inline]
+    pub(crate) fn pop_marker(&mut self) {
+        if debug_marker::ENABLED {
+            self.pass.pop_debug_group();
+        }
     }
 }
 

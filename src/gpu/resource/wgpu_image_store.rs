@@ -3,7 +3,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::render_target;
+use crate::gpu::texel;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
@@ -110,7 +110,7 @@ fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> Im
     let bind_group_label = format!("palantir.image.tex.bg.{raw_id:016x}");
     let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
         label: Some(&texture_label),
-        size: render_target::extent(size),
+        size: texel::extent(size),
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
@@ -148,7 +148,7 @@ impl ImageStore for WgpuImageStore {
             .entry(id)
             .or_insert_with(|| create(gpu, binding, id, image.size));
         debug_assert_eq!(
-            render_target::texture_size(&entry.texture),
+            texel::size(&entry.texture),
             image.size,
             "a write matches the texture it lands in",
         );
@@ -161,7 +161,7 @@ impl ImageStore for WgpuImageStore {
                 wgpu::TexelCopyTextureInfo {
                     texture: &entry.texture,
                     mip_level: 0,
-                    origin: render_target::origin(UVec2::new(0, y)),
+                    origin: texel::origin(UVec2::new(0, y)),
                     aspect: wgpu::TextureAspect::All,
                 },
                 data,
@@ -170,7 +170,7 @@ impl ImageStore for WgpuImageStore {
                     bytes_per_row: Some(row_bytes),
                     rows_per_image: Some(rows),
                 },
-                render_target::extent(UVec2::new(image.size.x, rows)),
+                texel::extent(UVec2::new(image.size.x, rows)),
             );
         };
         // An image with no transparency is already premultiplied (scale by one), so

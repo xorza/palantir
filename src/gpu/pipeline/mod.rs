@@ -7,6 +7,7 @@ pub(crate) mod format_pipelines;
 pub(crate) mod image_pipeline;
 pub(crate) mod instanced_pipeline;
 pub(crate) mod mesh_pipeline;
+pub(crate) mod pass_recorder;
 pub(crate) mod pipeline_recipe;
 pub(crate) mod quad_pipeline;
 pub(crate) mod raster_pipeline;
@@ -15,10 +16,13 @@ pub(crate) mod shader_body;
 pub(crate) mod stencil_variant;
 pub(crate) mod viewport_push;
 
+use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 
-/// Size of the immediate (push-constant) region every shader declares in `prelude.wgsl`: the viewport. The backend pushes it after every pipeline bind, and `DeviceRequirements` rejects a device granting fewer bytes.
-pub(crate) const IMMEDIATES_BYTES: u32 = ViewportPush::BYTES as u32;
+const _: () = assert!(
+    ViewportPush::BYTES as u32 == IMMEDIATES_BYTES,
+    "the viewport fills the immediate region the device requirements ask for"
+);
 
 #[cfg(test)]
 pub(crate) mod internals {
