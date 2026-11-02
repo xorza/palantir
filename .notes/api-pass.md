@@ -31,6 +31,28 @@ regenerates `API_SURFACE.md` with `cargo drive surface`.
 - **`EditableLabel`**: focusable, opened by Enter or F2, with `stop_editing(ui, id)`.
 - **Disabled looks** for Slider and the color widgets (a look plan with a disabled state changes
   their theme types).
+- **`MenuItem::selected(bool)`** with a `Selection` axis in `MenuItemTheme`, so the combo list
+  and the tab overflow menu mark the pick; their rows take stable ids, and a keyboard open focuses
+  the selected row.
+- **`MenuBar::open/close/is_open(ui, bar)`** and public `title_id` / `menu_id`, as ContextMenu and
+  ComboBox have.
+- **Overlay part ids**: one part word for the overlay a trigger drops (today `popup`, `body`,
+  `bubble`, `panel`, `list`) and public `*_id` functions (`PopupTrigger::popup_id`,
+  `ContextMenu::menu_id`, `Tooltip::bubble_id`); `Tooltip::on` drops the `'a` on its snapshot.
+- **`Popup::style` and `PopupTrigger::style`** taking `impl Into<Option<&PopupTheme>>`, as
+  `PopupTheme`'s doc names them; `ColorPickerTheme::popup` becomes a `PopupTheme`.
+- **One key map per role** in `axis_keys`: a slider map for Slider and ColorStrip (whose scope
+  takes Up and Down and acts on neither), a spin-button map with Page Up/Down and Home/End for
+  DragValue; `DragValue::step`.
+- **`DragValue::edit` and `is_editing(ui, id)`**, as EditableLabel has.
+- **`DragNum` renamed** for both users (`BoundNum`), with `Num` and `StoreRule` in its module.
+- **`ColorStrip::hue` and `alpha`** in place of `for_hue` and `for_alpha`, as `for_` is `for_id`'s.
+- **Hover and press looks** for ColorButton and ColorSwatch: a button-shaped slot in
+  `ColorPickerTheme`, applied through `wear`.
+- **`MenuItem::show(self, ui)`**: the menu's scope closes on any activated row, so no row threads a
+  `&CloseHandle`.
+- **`TabbedView::show<R>`** with `TabbedViewResponse::inner: Option<R>`, and `closable` defaulting
+  to `false`.
 
 ## Animation
 
@@ -61,3 +83,12 @@ regenerates `API_SURFACE.md` with `cargo drive surface`.
   contract, so it waits with the `Lerp` split above. Refused: one walk over a single tree plus a
   pairing helper, as `Theme::share_text_axes` reads both ends of a lerp at once, and pairing two
   single walks needs scratch per lerp, an allocation each frame of a theme transition.
+
+## GPU
+
+- **`Gpu::create_render_pipeline` and its compute twin** made public and used by the examples'
+  `GpuPaint::init`, so an app's builds take the pipeline-build turn; `Gpu::new` documents that its
+  turn is not shared with another `Gpu` on the same device.
+- **`DeviceFeatures` and `SurfaceUsages` removed**: the two error variants name the wgpu flag
+  types, and `wgpu_mirror!` goes. The mirrors exist for a wgpu-free surface that `pub use wgpu`
+  and `RequestedGpu::headless(PowerPreference, wgpu::Features)` already contradict.
