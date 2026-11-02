@@ -3,9 +3,8 @@
 Eight reviewers ran over the crate: theming and theme interpolation, animation, harness and remote,
 device loss, layout with cascade and damage, rendering, the authoring layer, and the base layers
 with the desktop host. Each finding below was kept only when it could be defended. Bugs are marked
-**BUG**. Items that change the public API are marked **API** and wait for a go-ahead (AGENTS.md,
-"Public API"); the plan lists them under the batch that needs them, and the last section lists
-them together.
+**BUG**. Changes to the public API wait for a go-ahead (AGENTS.md, "Public API"), and
+`.notes/api-pass.md` lists them for one pass.
 
 Test timings at the time of the review: lib tests 8.5 s (all features), 5.1 s (no default
 features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
@@ -171,47 +170,8 @@ Files as named per item.
   `gpu/surface/stencil.rs` (43 %), `shape/paint/lens_optics.rs` (41 %),
   `shape/paint/spectrum_tables.rs` (41 %).
 
-## Waiting for a go-ahead
+## Recorded decision this review questions
 
-### Public API changes
-
-- **Harness recovery**: `Harness::is_device_lost` and `recover`, or the harness reopening its own
-  headless device, so darkroom's MCP session survives a TDR (Batch 2 needs one of them).
-- **`PlayError`**: `Duration` for `NoFrame`/`Busy`; drop `step` from `Unsettled`/`Busy` (darkroom
-  rewrites it, and the two players format it differently); add `ShortDrag`; add
-  `LocateError::Disabled`.
-- **`Remote`**: `find`; a play-limits config or `with_wait(Duration)` (darkroom cannot set its
-  bounds for the window backend); `&mut self` on `play`, `settle`, `shot` in place of `Cell`s.
-- **`wait_for_gpu`** returning whether the copies landed.
-- **`Theme::frost_floats`** without the `Palette` argument: the inks come from the theme frosted.
-- **`Lerp` split** from `Animatable`, with its own derive.
-- **`DragValueTheme`** reshaped to `{ looks, defaults, caret, caret_width, selection,
-  placeholder }`, the editor slot derived at `show`; 8 dead `selected` looks go.
-- **Drop the bundles' `Default`** (each is the dark recipe), or name the scheme.
-- **`ComboBox::menu_style`**.
-- **`Expander::open/close/is_open(ui, id)`** in place of the `&mut bool` binding named `open`.
-- **Wrapper hooks made public**: `PopupTrigger::layer`, `PopupTrigger::menu_look`,
-  `Popup::menu_look`, `Splitter::min_ratio`, `TabStrip::drop_caret`.
-- **`default_justify`, `default_line_gap`** and the rest of `ThemeDefaults`.
-- **`Spinner::diameter`** removed.
-- **`EditableLabel`**: focusable, opened by Enter or F2, with `stop_editing(ui, id)`.
-- **An animate sibling returning `{ value, settled }`**.
-- **One spelling of "no motion"**: `AnimationSpec` with serde default `SNAP`, or `SNAP` removed.
-- **Reduced motion for paint animations**: a decorative marker on `PaintAnimation`, or a doc gate
-  on `add_shape_animated`.
-- **`Easing::curve(self) -> PaintCurve`**; `PaintCurve`'s doc corrected to `[0, 1]`.
-- **`Span`**: `TryFrom<Range<usize>>` in place of a `From` that panics.
-- **`Corners::new`** asserting lanes as `Spacing::new` does, with a crate-private saturating twin.
-- **Disabled looks** for Slider and the color widgets (a look plan with a disabled state changes
-  their theme types).
-
-### Recorded decisions this review questions
-
-- **"The app uploads its images again when `Ui::device_restored()` is true."** The signal is per
-  window for host-wide state, so an app with two windows uploads each image twice, and no in-tree
-  consumer calls it (darkroom's previews stay blank after a winit recovery). Proposal: keep the
-  policy, put the truth on the handle as `ImageHandle::is_resident()`, cleared by
-  `WgpuImageStore::attach`.
 - **`ExpiryWheel::grow_buckets` grows every bucket at once** so no bucket allocates after warmup.
   With 256 buckets and 32-byte tickets, one burst of N inserts keeps 256 × N × 32 B for the
   session (N = 4000: 32 MiB, twice, for the shaped and encoded caches). The choice is between that
