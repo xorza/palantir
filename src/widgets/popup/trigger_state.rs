@@ -1,6 +1,7 @@
 //! The open state an overlay trigger keeps between frames, and the frame that drives it: one
 //! protocol under [`PopupTrigger`](crate::PopupTrigger) and [`ContextMenu`](crate::ContextMenu).
 
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
@@ -121,13 +122,16 @@ pub(crate) struct TriggerFrame {
     pub(crate) disabled: bool,
     /// What [`Opening::Below`] hangs from.
     pub(crate) rect: Option<Rect>,
+    /// The end of the popup's Tab stops a keyboard open focuses.
+    pub(crate) landing: TabEnd,
 }
 
 impl TriggerFrame {
     /// Settle the open state, record `popup` with `body` while open, and keep the row.
     ///
-    /// A popup opened while focus shows the ring (the keyboard opened it) takes focus on its first
-    /// stop, as WAI-ARIA's menu button does; focus returns to the trigger on close. Every close
+    /// A popup opened while focus shows the ring (the keyboard opened it) takes focus on the stop
+    /// at its [`landing`](Self::landing) end, its first unless set, as WAI-ARIA's menu button
+    /// does; focus returns to the trigger on close. Every close
     /// gives the popup's input scope back: one from inside withdraws it there, one by the trigger
     /// here.
     pub(crate) fn show<K: 'static, R>(
@@ -179,7 +183,7 @@ impl TriggerFrame {
                 .anchor(anchor)
                 .show(ui, |ui, handle| Some(body(ui, handle)));
             if state.shown.is_none() && ui.is_focus_visible() {
-                ui.focus_first_within(resp.id);
+                ui.focus_end_within(resp.id, self.landing);
             }
             if resp.closed() {
                 open = None;

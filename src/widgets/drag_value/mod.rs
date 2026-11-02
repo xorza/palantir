@@ -115,19 +115,18 @@ impl<'a> DragValue<'a> {
         self
     }
 
-    /// Clamps the value into `range`; default unbounded. An end may be infinite and a reversed range is ordered. See [`Slider::new`](crate::Slider::new) for why this is a builder step here.
+    /// Clamps the value into `range`; default unbounded. An end may be infinite and a reversed
+    /// range is ordered. See [`Slider::new`](crate::Slider::new) for why this is a builder step
+    /// here.
     ///
     /// # Panics
     ///
     /// Panics if either end is NaN.
     #[track_caller]
     pub const fn range(mut self, range: RangeInclusive<f64>) -> Self {
-        assert!(
-            !range.start().is_nan() && !range.end().is_nan(),
-            "a drag range's ends must not be NaN",
-        );
-        self.min = *range.start();
-        self.max = *range.end();
+        let bounds = domain::f64::bounds(range);
+        self.min = *bounds.start();
+        self.max = *bounds.end();
         self
     }
 
@@ -158,7 +157,7 @@ impl<'a> DragValue<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `drag_value`, covering the chip and the editor.
+    /// Per-instance override of [`Theme::drag_value`](crate::Theme::drag_value), covering the chip and the editor.
     pub fn style(mut self, s: impl Into<Option<&'a DragValueTheme>>) -> Self {
         self.style = s.into();
         self

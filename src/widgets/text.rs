@@ -70,7 +70,7 @@ impl<'a> Text<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `text`. All-or-nothing, so
+    /// Per-instance override of [`Theme::text`](crate::Theme::text). All-or-nothing, so
     /// `.style(&heading).color(red)` is that bundle in red.
     pub fn style(mut self, s: impl Into<Option<&'a TextStyle>>) -> Self {
         self.style = s.into();

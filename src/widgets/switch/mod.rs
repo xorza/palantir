@@ -43,7 +43,7 @@ impl<'a> Switch<'a> {
         self
     }
 
-    /// Per-instance override of `switch`; takes an `Option` as readily as a reference.
+    /// Per-instance override of [`Theme::switch`](crate::Theme::switch).
     pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
         self.row.style = s.into();
         self

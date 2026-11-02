@@ -122,35 +122,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 13: Widgets, no API change
-
-Files: `src/widgets/{combo_box,drag_value,color_picker,color_button,value_area.rs,slider,color_field,color_strip}/`,
-`src/widget_core/value_response.rs`, `src/primitives/math/domain/f64.rs`.
-
-- [ ] `combo_box/mod.rs:107-142`: closed, Up and Down step the pick, and the doc credits that to
-  the WAI-ARIA select-only combobox, which opens the list on those keys. Target: the APG keys.
-  Closed, Down, Up, Home and End open the list as a keyboard open does. Down lands on the current
-  pick, Up and Home on the first row, End on the last. No key changes the pick while the list is
-  closed. Update the combo tests. Decided: the WAI-ARIA APG select-only combobox
-  (w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-select-only), as macOS's
-  `NSPopUpButton` opens on the arrows too. Refused: the Win32 drop-down list's closed stepping,
-  which changes a value the user cannot see listed. Landing on the current pick needs
-  `MenuItem::selected` from `api-pass.md`. Until then, Down lands on the first row.
-- [ ] `drag_value/mod.rs:118-132`: `range` hand-rolls its check and names no domain kind. Target:
-  `domain::f64::bounds` (ordered, infinity allowed, no NaN), named in the doc.
-- [ ] `widget_core/value_response.rs:27-46`, `color_picker/mod.rs:232-237`,
-  `color_button/mod.rs:86-90`: the (changed, committed) pair is modeled four ways. Target:
-  `ValueEdges` and `edges()` become `pub(crate)` production code. Delete `EditEdges` and the test
-  tuples.
-- [ ] `slider/tests.rs:27-80`, `drag_value/tests/{support,scrub}.rs`,
-  `color_field/tests.rs:88-111,350-369`, `color_strip/tests.rs:103-122,193-208`: one deferred-commit
-  contract tested per widget, and `value_area` has no tests. Target: one table over Slider,
-  DragValue, ColorField and ColorStrip, and a `value_area` test for both `AreaValue`s. The
-  DragValue helper's two `bool`s go.
-- [ ] `button/mod.rs:54,60`, `radio/mod.rs:41,47`, `color_strip/mod.rs:89`, `switch/mod.rs:46`,
-  `color_field/mod.rs:85`, `menu_separator.rs:28`: `style` docs differ, and `MenuSeparator` says
-  "unstyled". Target: one sentence form that names and links the slot.
-
 ### Batch 14: Build, tooling and small items
 
 Files: `Cargo.toml`, `clippy.toml`, `src/internals/`, `examples/showcase/shot/mod.rs`,

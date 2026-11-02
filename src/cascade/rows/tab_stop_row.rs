@@ -15,3 +15,11 @@ pub(crate) struct TabStopRow {
     pub(crate) id: WidgetId,
     pub(crate) idx: i16,
 }
+
+/// Which end of a subtree's Tab stops focus enters at, as a list opened by Home or End lands.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum TabEnd {
+    #[default]
+    First,
+    Last,
+}

@@ -1,6 +1,7 @@
 //! Rules the bundled widgets keep alike, as no trait holds them in step: chrome defaults here,
 //! `style` setters, and what a hostile theme file renders as.
 
+mod deferred_commit;
 mod style_override;
 mod theme_file_values;
 
@@ -383,7 +384,7 @@ fn widget_setters_check_their_kinds() {
             drop(DragValue::new(&mut value).speed(bad));
         });
     }
-    panic_probe::assert_panics_with("a drag range's ends must not be NaN", || {
+    panic_probe::assert_panics_with(domain::BOUNDS_RULE, || {
         let mut value = 0.0_f64;
         drop(DragValue::new(&mut value).range(f64::NAN..=1.0));
     });
@@ -649,12 +650,17 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     assert!(open, "Expander");
 
     let mut picked = 0usize;
+    let mut listed = false;
     press(id, Key::ArrowDown, |ui| {
         under_root(ui, |ui| {
             ComboBox::new(&mut picked, &["a", "b"]).id(id).show(ui);
         });
+        listed |= ComboBox::is_open(ui, id);
     });
-    assert_eq!(picked, 1, "ComboBox");
+    assert!(
+        listed && picked == 0,
+        "ComboBox: Down opens the list and picks nothing"
+    );
 
     let mut color = RgbaF32::WHITE;
     let mut opened = false;

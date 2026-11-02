@@ -100,7 +100,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `dock`: the drop wash and the carried chip.
+    /// Per-instance override of [`Theme::dock`](crate::Theme::dock): the drop wash and the carried chip.
     pub fn style(mut self, s: impl Into<Option<&'a DockTheme>>) -> Self {
         self.style = s.into();
         self

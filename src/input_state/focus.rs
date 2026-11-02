@@ -2,6 +2,7 @@
 //! overlay closes.
 
 use crate::cascade::Cascade;
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::primitives::identity::widget_id::WidgetId;
 
 /// What moved focus, which decides whether the focus ring shows.
@@ -29,8 +30,15 @@ pub(super) struct Focus {
     returns: Vec<FocusReturn>,
     /// The topmost dialog root the last cascade held, to notice a new dialog.
     modal_root: Option<WidgetId>,
-    /// The ancestor whose first Tab stop takes focus at the next reconcile.
-    first_within: Option<WidgetId>,
+    /// The subtree whose Tab stop at one end takes focus at the next reconcile.
+    entry: Option<FocusEntry>,
+}
+
+/// A subtree focus enters at one end of its Tab stops.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct FocusEntry {
+    pub(super) within: WidgetId,
+    pub(super) end: TabEnd,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -59,8 +67,8 @@ impl Focus {
         }
     }
 
-    pub(super) const fn focus_first_within(&mut self, ancestor: WidgetId) {
-        self.first_within = Some(ancestor);
+    pub(super) const fn enter_within(&mut self, entry: FocusEntry) {
+        self.entry = Some(entry);
     }
 
     /// The focus a warmup pass records against: this holder, and nothing owed.
@@ -71,14 +79,14 @@ impl Focus {
             settled: None,
             returns: Vec::new(),
             modal_root: None,
-            first_within: None,
+            entry: None,
         }
     }
 
     /// Keep the moves a warmup pass made.
     pub(super) fn adopt_warmup(&mut self, warmup: &Self) {
         self.focused = warmup.focused;
-        self.first_within = warmup.first_within.or(self.first_within);
+        self.entry = warmup.entry.or(self.entry);
     }
 
     /// Settle focus against the frame's final cascade: drop a holder that can no longer take
@@ -99,14 +107,17 @@ impl Focus {
             && modal_root != self.modal_root
             && !self.focused.is_some_and(|id| cascade.is_within(id, root))
         {
-            self.first_within = modal_root;
+            self.entry = modal_root.map(|within| FocusEntry {
+                within,
+                end: TabEnd::First,
+            });
         }
         self.modal_root = modal_root;
-        if let Some(ancestor) = self.first_within.take()
-            && let Some(first) = cascade.first_tab_stop_within(ancestor)
+        if let Some(FocusEntry { within, end }) = self.entry.take()
+            && let Some(stop) = cascade.tab_stop_within(within, end)
         {
-            self.enter(ancestor, self.focused, cascade);
-            self.focused = Some(first);
+            self.enter(within, self.focused, cascade);
+            self.focused = Some(stop);
         }
         // Tab, a press or the app moved focus into an overlay this frame: it returns to where the
         // frame found it, as WAI-ARIA asks of a dialog or menu whatever opened it.

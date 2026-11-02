@@ -1,6 +1,7 @@
 //! The drop-down selector: a trigger that opens a popup list, and the
 //! open/closed flag one trigger site keeps between frames.
 
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -72,7 +73,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     #[track_caller]
     pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
         Self {
-            // Alt+Down and the arrows are `CARET`; the activation keys add `TEXT` in `show`.
+            // Alt+Down, the arrows, Home and End are `CARET`; the activation keys add `TEXT` in
+            // `show`.
             widget: Widget::hstack()
                 .sense(Sense::CLICK)
                 .focusable(true)
@@ -85,16 +87,15 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `combo_box`, restyling the
-    /// widget's own geometry (label/chevron gutter and chevron). Takes an `Option`
-    /// as readily as a reference. [`Self::button_style`] restyles the trigger chrome
-    /// and the dropdown reads [`crate::Theme::context_menu`].
+    /// Per-instance override of [`Theme::combo_box`](crate::Theme::combo_box), the widget's own
+    /// geometry: the label and chevron gutter, and the chevron. [`Self::button_style`] restyles
+    /// the trigger chrome, and the dropdown reads [`Theme::context_menu`](crate::Theme::context_menu).
     pub fn style(mut self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `button`, which the trigger
+    /// Per-instance override of [`Theme::button`](crate::Theme::button), which the trigger
     /// paints as. Separate from [`Self::style`] because the combo is a button plus a
     /// context menu.
     pub fn button_style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
@@ -105,39 +106,34 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     /// Record the trigger, and the dropdown when open.
     ///
     /// The [`ValueResponse`]'s own `response` is the trigger's; read `changed` for
-    /// the pick, which commits at once. Focused, it takes the keys of WAI-ARIA's
-    /// select-only combobox: Space, Enter and Alt+Down open, and while closed the
-    /// Up and Down arrows step the pick, stopping at the ends.
+    /// the pick, which commits at once. Focused, it takes the keys of the WAI-ARIA
+    /// APG's select-only combobox: Space, Enter, Alt+Down, Down, Up and Home open the
+    /// list on its first row, and End on its last, as a keyboard open does. No key
+    /// changes the pick while the list is closed, so the value never changes where the
+    /// user cannot see the list
+    /// ([APG](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-select-only/)).
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
-        let mut stepped = false;
+        let mut landing = TabEnd::First;
         if !response.disabled && ui.is_focus_within(id) {
             // Every chord is sampled: `shortcut_pressed` also keeps it subscribed for the wake gate.
             let mut key = |shortcut| self.widget.shortcut_pressed(ui, shortcut);
-            let alt_down = key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
-            let up = key(Shortcut::key(Key::ArrowUp));
-            let down = key(Shortcut::key(Key::ArrowDown));
-            if alt_down {
-                response.state.activate();
-            } else if !response.clicked()
-                && !PopupTrigger::is_open(ui, id)
-                && let Some(shown) = domain::idx(*self.selected, self.options.len())
+            let opens_first = [
+                Shortcut::new(ShortcutMods::ALT, Key::ArrowDown),
+                Shortcut::key(Key::ArrowDown),
+                Shortcut::key(Key::ArrowUp),
+                Shortcut::key(Key::Home),
+            ]
+            .map(&mut key)
+            .contains(&true);
+            let opens_last = key(Shortcut::key(Key::End));
+            if opens_last {
+                landing = TabEnd::Last;
+            }
+            if (opens_first || opens_last) && !response.clicked() && !PopupTrigger::is_open(ui, id)
             {
-                let last = self.options.len() - 1;
-                let next = if down {
-                    (shown + 1).min(last)
-                } else if up {
-                    shown.saturating_sub(1)
-                } else {
-                    shown
-                };
-                // Against the shown pick, not the binding: a stale index steps nothing it does not
-                // show, and is not written back.
-                if (up || down) && next != shown {
-                    *self.selected = next;
-                    stepped = true;
-                }
+                response.state.activate();
             }
         }
 
@@ -191,6 +187,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         // least as wide as its trigger, an explicit set that outranks
         // `ContextMenuTheme::min_width`. Esc closes through the popup.
         let resp = PopupTrigger::on(&response)
+            .landing(landing)
             .id(id.with("list"))
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
             .menu_look(ctx)
@@ -205,7 +202,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                 }
                 picked
             });
-        let changed = resp.inner.unwrap_or(false) || stepped;
+        let changed = resp.inner.unwrap_or(false);
 
         ValueResponse {
             response: Response::new(ui, response),

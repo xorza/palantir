@@ -259,7 +259,7 @@ impl<'a> Scroll<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `scrollbar`.
+    /// Per-instance override of [`Theme::scrollbar`](crate::Theme::scrollbar).
     pub fn style(mut self, s: impl Into<Option<&'a ScrollbarTheme>>) -> Self {
         self.style = s.into();
         self

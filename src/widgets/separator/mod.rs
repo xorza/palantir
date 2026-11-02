@@ -52,7 +52,7 @@ impl<'a> Separator<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `separator`; [`Self::color`] and [`Self::thickness`] still win.
+    /// Per-instance override of [`Theme::separator`](crate::Theme::separator); [`Self::color`] and [`Self::thickness`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self {
         self.style = s.into();
         self

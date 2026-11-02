@@ -3,6 +3,7 @@
 pub(crate) mod menu_item;
 pub(crate) mod menu_separator;
 
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::math::domain::vec2;
@@ -87,7 +88,7 @@ impl<'a> ContextMenu<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `context_menu`. Restyles
+    /// Per-instance override of [`Theme::context_menu`](crate::Theme::context_menu). Restyles
     /// the panel only; rows take their own sub-themes.
     pub fn style(mut self, s: impl Into<Option<&'a ContextMenuTheme>>) -> Self {
         self.style = s.into();
@@ -120,6 +121,7 @@ impl<'a> ContextMenu<'a> {
             opened,
             disabled: self.disabled,
             rect: None,
+            landing: TabEnd::First,
         }
         .show::<ContextMenu<'static>, R>(ui, popup, body)
     }

@@ -189,7 +189,7 @@ impl<'a> TextEdit<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `text_edit`; all-or-nothing. To
+    /// Per-instance override of [`Theme::text_edit`](crate::Theme::text_edit); all-or-nothing. To
     /// tweak one axis, share a bundle with `..ui.theme().text_edit.clone()`. Buffer
     /// font/leading/color live on the per-state `text` overrides
     /// ([`crate::TextStyleOverrides`]); unset axes inherit [`crate::Theme::text`].

@@ -86,7 +86,7 @@ impl<'a> ColorStrip<'a> {
         self
     }
 
-    /// Theme slot.
+    /// Per-instance override of [`Theme::color_picker`](crate::Theme::color_picker).
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.area.style = s.into();
         self

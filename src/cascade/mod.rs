@@ -22,7 +22,7 @@ use crate::cascade::rows::entry_row::EntryRow;
 use crate::cascade::rows::hit_row::HitRow;
 use crate::cascade::rows::root_row::RootRow;
 use crate::cascade::rows::scope_row::ScopeRow;
-use crate::cascade::rows::tab_stop_row::TabStopRow;
+use crate::cascade::rows::tab_stop_row::{TabEnd, TabStopRow};
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
@@ -299,14 +299,19 @@ impl Cascade {
             .copied()
     }
 
-    /// The first stop in Tab order under `ancestor`, or `None`.
-    pub(crate) fn first_tab_stop_within(&self, ancestor: WidgetId) -> Option<WidgetId> {
-        self.tab_stops
+    /// The stop at `end` of Tab order under `ancestor`, or `None`.
+    pub(crate) fn tab_stop_within(&self, ancestor: WidgetId, end: TabEnd) -> Option<WidgetId> {
+        let stops = self
+            .tab_stops
             .iter()
             .enumerate()
-            .filter(|(_, row)| self.is_within(row.id, ancestor))
-            .min_by_key(|&(pos, row)| (row.idx, pos))
-            .map(|(_, row)| row.id)
+            .filter(|(_, row)| self.is_within(row.id, ancestor));
+        let key = |&(pos, row): &(usize, &TabStopRow)| (row.idx, pos);
+        match end {
+            TabEnd::First => stops.min_by_key(key),
+            TabEnd::Last => stops.max_by_key(key),
+        }
+        .map(|(_, row)| row.id)
     }
 
     /// The stops a Tab press from `focused` may reach, by priority:

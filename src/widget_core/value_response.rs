@@ -24,23 +24,20 @@ pub struct ValueResponse<'a> {
     pub committed: bool,
 }
 
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::widget_core::value_response::ValueResponse;
+/// A [`ValueResponse`]'s two signals without the [`Response`] that borrows the `Ui`: what a
+/// composite widget gathers from the controls inside it, and a test reads out of a frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct ValueEdges {
+    pub(crate) changed: bool,
+    pub(crate) committed: bool,
+}
 
-    /// A [`ValueResponse`]'s two signals, copied out so the `ui` borrow can end.
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(crate) struct ValueEdges {
-        pub(crate) changed: bool,
-        pub(crate) committed: bool,
-    }
-
-    impl ValueResponse<'_> {
-        pub(crate) const fn edges(&self) -> ValueEdges {
-            ValueEdges {
-                changed: self.changed,
-                committed: self.committed,
-            }
+impl ValueResponse<'_> {
+    /// The two signals, copied out so the `ui` borrow can end.
+    pub(crate) const fn edges(&self) -> ValueEdges {
+        ValueEdges {
+            changed: self.changed,
+            committed: self.committed,
         }
     }
 }

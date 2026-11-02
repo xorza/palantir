@@ -80,7 +80,7 @@ impl<'a> Tooltip<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `tooltip`.
+    /// Per-instance override of [`Theme::tooltip`](crate::Theme::tooltip).
     pub fn style(mut self, s: impl Into<Option<&'a TooltipTheme>>) -> Self {
         self.style = s.into();
         self

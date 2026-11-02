@@ -106,7 +106,7 @@ impl<'a> Splitter<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `splitter`.
+    /// Per-instance override of [`Theme::splitter`](crate::Theme::splitter).
     pub fn style(mut self, s: impl Into<Option<&'a SplitterTheme>>) -> Self {
         self.style = s.into();
         self

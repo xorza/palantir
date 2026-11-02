@@ -64,6 +64,9 @@ regenerates `API_SURFACE.md` with `cargo drive surface`.
 
 ## Values
 
+- **`domain::f64::bounds` and `is_bounds`** published beside `range`, with a row in the kinds
+  table: ends not NaN, infinity allowed, ordered low to high. `DragValue::range` reads it today as
+  a crate-private kind.
 - **`Span`**: `TryFrom<Range<usize>>` in place of a `From` that panics.
 - **`Corners::new`** asserting lanes as `Spacing::new` does, with a crate-private saturating twin.
 

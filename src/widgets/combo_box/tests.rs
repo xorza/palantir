@@ -323,15 +323,17 @@ fn disabling_an_open_trigger_closes_its_list() {
     assert_eq!(selected, 0, "a click where a row was picks nothing");
 }
 
-/// A focused, closed combo box steps its pick with the arrows (stopping at the ends, each a committed change), from the option it shows when the index is stale; Enter, Space and Alt+Down open it, the arrows step nothing while open, and `open`, `close` and `is_open` drive it from outside.
+/// A focused, closed combo box opens on the keys of the WAI-ARIA APG's select-only combobox and
+/// changes no pick: Enter, Space, Alt+Down, Down, Up and Home land on the first row, End on the
+/// last. A stale index shows the last option and stays as it is. `open`, `close` and `is_open`
+/// drive it from outside.
 #[test]
-fn the_keys_step_a_closed_pick_and_open_the_list() {
+fn the_keys_open_a_closed_list_and_change_no_pick() {
     use crate::input::keyboard::key::Key;
     use crate::input::keyboard::modifiers::Modifiers;
 
     const OPTIONS: [&str; 3] = ["A", "B", "C"];
     let id = WidgetId::from_hash("combo-keys");
-    let mut selected = 1usize;
     let mut h = Harness::mono(SURFACE);
     let frame = |h: &mut Harness, selected: &mut usize| {
         h.frame_value(|ui| {
@@ -339,51 +341,46 @@ fn the_keys_step_a_closed_pick_and_open_the_list() {
             (r.changed, r.committed)
         })
     };
-    frame(&mut h, &mut selected);
-    h.set_focus(id);
-    frame(&mut h, &mut selected);
-    for (key, want, moved) in [
-        (Key::ArrowDown, 2, true),
-        (Key::ArrowDown, 2, false),
-        (Key::ArrowUp, 1, true),
-        (Key::ArrowUp, 0, true),
-        (Key::ArrowUp, 0, false),
-    ] {
-        h.key(key);
-        assert_eq!(frame(&mut h, &mut selected), (moved, moved), "{key:?}");
-        assert_eq!(selected, want, "{key:?}");
-    }
-    for (mods, key) in [
-        (Modifiers::NONE, Key::Enter),
-        (Modifiers::NONE, Key::Char(' ')),
-        (Modifiers::ALT, Key::ArrowDown),
-    ] {
-        h.set_modifiers(mods);
-        h.key(key);
-        frame(&mut h, &mut selected);
-        h.set_modifiers(Modifiers::NONE);
-        assert!(
-            ComboBox::is_open(h.ui_ref(), id),
-            "{mods:?} {key:?} opens it"
-        );
-        h.key(Key::ArrowDown);
-        frame(&mut h, &mut selected);
-        assert_eq!(selected, 0, "an open list steps nothing");
-        ComboBox::close(h.ui(), id);
-        frame(&mut h, &mut selected);
-        h.set_focus(id);
-        frame(&mut h, &mut selected);
-    }
-
-    // A stale 9 shows C, the last of three: Down steps past nothing it shows and writes nothing,
-    // Up steps from C to B.
-    let mut selected = 9usize;
-    for (key, want, moved) in [(Key::ArrowDown, 9, false), (Key::ArrowUp, 1, true)] {
-        h.key(key);
-        assert_eq!(frame(&mut h, &mut selected), (moved, moved), "{key:?}");
-        assert_eq!(selected, want, "{key:?}");
+    let row = |h: &Harness, label: &str| {
+        h.widgets(Some(label))
+            .into_iter()
+            .find(|widget| widget.id != id && widget.text == label)
+            .map(|widget| widget.id)
+    };
+    // Tab focuses the combo box from the keyboard, as the ring a keyboard open needs.
+    let mut pick = 1usize;
+    frame(&mut h, &mut pick);
+    h.key(Key::Tab);
+    frame(&mut h, &mut pick);
+    for start in [1usize, 9] {
+        let mut selected = start;
+        for (mods, key, lands) in [
+            (Modifiers::NONE, Key::Enter, "A"),
+            (Modifiers::NONE, Key::Char(' '), "A"),
+            (Modifiers::ALT, Key::ArrowDown, "A"),
+            (Modifiers::NONE, Key::ArrowDown, "A"),
+            (Modifiers::NONE, Key::ArrowUp, "A"),
+            (Modifiers::NONE, Key::Home, "A"),
+            (Modifiers::NONE, Key::End, "C"),
+        ] {
+            let what = format!("{start}: {mods:?} {key:?}");
+            frame(&mut h, &mut selected);
+            assert_eq!(h.focus(), Some(id), "{what}: the combo box holds focus");
+            h.set_modifiers(mods);
+            h.key(key);
+            assert_eq!(frame(&mut h, &mut selected), (false, false), "{what}");
+            h.set_modifiers(Modifiers::NONE);
+            assert!(ComboBox::is_open(h.ui_ref(), id), "{what} opens it");
+            frame(&mut h, &mut selected);
+            assert_eq!(h.focus(), row(&h, lands), "{what} lands on {lands}");
+            assert!(h.focus().is_some(), "{what}: a row holds focus");
+            ComboBox::close(h.ui(), id);
+            frame(&mut h, &mut selected);
+        }
+        assert_eq!(selected, start, "no key changed the pick");
     }
 
+    let mut selected = 1usize;
     ComboBox::open(h.ui(), id);
     frame(&mut h, &mut selected);
     assert!(ComboBox::is_open(h.ui_ref(), id), "an outside open records");

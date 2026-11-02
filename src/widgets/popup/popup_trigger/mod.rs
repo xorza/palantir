@@ -1,5 +1,6 @@
 //! A popup a trigger widget opens and closes by clicking.
 
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -48,6 +49,8 @@ pub struct PopupTrigger {
     trigger: ResponseState,
     /// The popup this trigger drops; its anchor is a placeholder until `show`.
     popup: Popup,
+    /// The end of the popup's Tab stops a keyboard open focuses.
+    landing: TabEnd,
 }
 
 impl PopupTrigger {
@@ -57,6 +60,7 @@ impl PopupTrigger {
             for_id: snapshot.id,
             trigger: snapshot.state,
             popup: Popup::new(Anchor::below(Rect::ZERO)).default_id(snapshot.id.with("popup")),
+            landing: TabEnd::First,
         }
     }
 
@@ -89,6 +93,13 @@ impl PopupTrigger {
         self
     }
 
+    /// Focus the stop at `end` of the popup's Tab stops when the keyboard opens it, as a list End
+    /// opens lands on its last row.
+    pub(crate) const fn landing(mut self, end: TabEnd) -> Self {
+        self.landing = end;
+        self
+    }
+
     /// Dress the popup as a menu panel, as [`ContextMenu`](crate::ContextMenu) is.
     pub(crate) fn menu_look(mut self, menu: &ContextMenuTheme) -> Self {
         self.popup = self.popup.menu_look(menu);
@@ -104,7 +115,7 @@ impl PopupTrigger {
     ///
     /// A popup opened from the keyboard (Space or Enter on the focused trigger, or
     /// [`Self::open`] with keyboard focus) takes focus on its first stop, as
-    /// WAI-ARIA's menu button does; a click leaves focus on the trigger. Focus
+    /// WAI-ARIA's menu button does, or on the end its trigger set; a click leaves focus on the trigger. Focus
     /// returns to the trigger on close.
     pub fn show<R>(
         self,
@@ -117,6 +128,7 @@ impl PopupTrigger {
             opened: None,
             disabled: self.trigger.disabled,
             rect: self.trigger.rect,
+            landing: self.landing,
         }
         .show::<Self, R>(ui, self.popup, body)
     }

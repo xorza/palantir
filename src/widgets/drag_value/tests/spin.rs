@@ -7,7 +7,7 @@ use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
-use crate::widgets::drag_value::tests::support::deferred_frame;
+use crate::widgets::drag_value::tests::support::{TYPED, deferred_frame};
 use crate::widgets::drag_value::{DragValue, DragValueState};
 use glam::{UVec2, Vec2};
 
@@ -19,14 +19,14 @@ fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     let id = WidgetId::from_hash("dv-spin-scrub");
     let mut h = Harness::mono(SURFACE);
     let mut canonical = 10.0_f64;
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.drag_to(Vec2::new(70.0, 20.0));
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.release(PointerButton::Left);
-    deferred_frame(&mut h, id, &mut canonical, true, false);
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert_eq!(h.focus(), Some(id), "the press focused the chip");
     assert!(
         !matches!(
@@ -121,20 +121,20 @@ fn typing_into_the_focused_chip_replaces_the_value() {
     let id = WidgetId::from_hash("dv-spin-type");
     let mut h = Harness::mono(SURFACE);
     let mut canonical = 5.0_f64;
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.set_focus(id);
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.key(Key::Char('7'));
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     match h.state::<DragValueState>(id) {
         DragValueState::Editing { buffer, .. } => assert_eq!(buffer, "7"),
         state => panic!("the typed character opened no editor: {state:?}"),
     }
     h.key(Key::Enter);
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert_eq!(canonical, 7.0);
     assert_eq!(h.focus(), Some(id), "the chip keeps focus");
     h.key(Key::ArrowUp);
-    deferred_frame(&mut h, id, &mut canonical, true, false);
+    deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert_eq!(canonical, 7.01);
 }

@@ -81,7 +81,7 @@ impl<'a> Slider<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `slider`.
+    /// Per-instance override of [`Theme::slider`](crate::Theme::slider).
     pub fn style(mut self, s: impl Into<Option<&'a SliderTheme>>) -> Self {
         self.style = s.into();
         self

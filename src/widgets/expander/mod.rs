@@ -96,7 +96,7 @@ impl<'a> Expander<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `expander`.
+    /// Per-instance override of [`Theme::expander`](crate::Theme::expander).
     pub fn style(mut self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self {
         self.style = s.into();
         self

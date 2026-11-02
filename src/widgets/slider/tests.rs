@@ -1,5 +1,4 @@
 use crate::host::harness::Harness;
-use crate::host::harness::internals::Passes;
 use crate::input::pointer::PointerButton;
 use crate::internals::panic_probe;
 use crate::internals::size_trio::SizeTrio;
@@ -10,7 +9,6 @@ use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::value_response::internals::ValueEdges;
 use crate::widgets::panel::Panel;
 use crate::widgets::slider::{Slider, SliderRange};
 use glam::{UVec2, Vec2};
@@ -21,100 +19,6 @@ const fn range(min: f64, max: f64) -> SliderRange {
         max,
         step: None,
     }
-}
-
-/// One frame for a commit-deferring caller: the draft re-seeds from `canonical` and is adopted only on `committed`.
-fn deferred_frame(h: &mut Harness, id: WidgetId, canonical: &mut f64) -> Passes<ValueEdges> {
-    h.frame_passes(|ui| {
-        let mut draft = *canonical;
-        let r = Slider::new(&mut draft, 0.0..=1.0)
-            .size((Sizing::fixed(118.0), Sizing::fixed(18.0)))
-            .id(id)
-            .show(ui);
-        if r.committed {
-            *canonical = draft;
-        }
-        r.edges()
-    })
-}
-
-/// The release frame re-writes the value, so a deferred caller sees the result.
-/// Geometry: 118 wide, knob 18, travel 100 px from x = 9; x = 59 is 0.5, x = 89 is 0.8.
-#[test]
-fn release_rewrites_the_value_once_for_a_deferred_caller() {
-    let id = WidgetId::from_hash("slider-deferred-commit");
-    let mut h = Harness::mono(UVec2::new(118, 18));
-    let mut canonical = 0.0_f64;
-
-    deferred_frame(&mut h, id, &mut canonical);
-
-    h.press(Vec2::new(59.0, 9.0), PointerButton::Left);
-    let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(
-        s.a().changed && !s.a().committed,
-        "press: live write, no commit"
-    );
-    assert_eq!(canonical, 0.0, "deferred caller ignores mid-drag writes");
-
-    h.drag_to(Vec2::new(89.0, 9.0));
-    let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(
-        s.a().changed && !s.a().committed,
-        "drag: live write, no commit"
-    );
-    assert_eq!(canonical, 0.0);
-
-    h.release(PointerButton::Left);
-    let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.a().committed, "release commits the gesture");
-    assert_eq!(
-        s.count_where(|e| e.committed),
-        1,
-        "one commit, one record pass"
-    );
-    assert_eq!(canonical, 0.8, "the commit frame carries the final value");
-
-    let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(!s.a().changed && !s.a().committed, "no residual signals");
-    assert_eq!(canonical, 0.8);
-}
-
-/// A press and release on the track is a whole edit: it writes a value, latches no drag, and commits once.
-#[test]
-fn a_click_on_the_track_commits_the_value_it_wrote() {
-    let id = WidgetId::from_hash("slider-click-commit");
-    let mut h = Harness::mono(UVec2::new(118, 18));
-    let mut canonical = 0.0_f64;
-
-    deferred_frame(&mut h, id, &mut canonical);
-
-    h.press(Vec2::new(59.0, 9.0), PointerButton::Left);
-    let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(
-        s.a().changed && !s.a().committed,
-        "press: live write, no commit"
-    );
-    assert_eq!(
-        canonical, 0.0,
-        "deferred caller ignores the mid-gesture write"
-    );
-
-    h.release(PointerButton::Left);
-    let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(s.a().committed, "the click's release commits it");
-    assert_eq!(
-        s.count_where(|e| e.committed),
-        1,
-        "one commit, one record pass"
-    );
-    assert_eq!(
-        canonical, 0.5,
-        "the commit frame carries the value it wrote"
-    );
-
-    let s = deferred_frame(&mut h, id, &mut canonical);
-    assert!(!s.a().changed && !s.a().committed, "no residual signals");
-    assert_eq!(canonical, 0.5);
 }
 
 /// Explicit `.size(...)` wins over the `Fill × knob_size` default; hugged, it is the knob alone.

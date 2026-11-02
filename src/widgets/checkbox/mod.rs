@@ -43,7 +43,7 @@ impl<'a> Checkbox<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `checkbox`.
+    /// Per-instance override of [`Theme::checkbox`](crate::Theme::checkbox).
     pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
         self.row.style = s.into();
         self

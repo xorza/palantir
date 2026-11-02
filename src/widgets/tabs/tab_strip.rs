@@ -143,7 +143,7 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `tabs`.
+    /// Per-instance override of [`Theme::tabs`](crate::Theme::tabs).
     pub fn style(mut self, s: impl Into<Option<&'a TabsTheme>>) -> Self {
         self.style = s.into();
         self

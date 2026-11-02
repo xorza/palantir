@@ -14,6 +14,7 @@ pub(crate) mod target_scroll_delta;
 pub(crate) mod watches;
 
 use crate::cascade::Cascade;
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::cascade::{TabDirection, TabDomain, WidgetLocation};
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
@@ -37,7 +38,7 @@ use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::arranged_frame::ArrangedFrame;
 use crate::input_state::capture::{PressDrag, ReleaseKind};
 use crate::input_state::event_outcome::EventOutcome;
-use crate::input_state::focus::{Focus, FocusCause};
+use crate::input_state::focus::{Focus, FocusCause, FocusEntry};
 use crate::input_state::ime::Ime;
 use crate::input_state::input_queue::InputQueue;
 use crate::input_state::key_reader::KeyReader;
@@ -165,8 +166,12 @@ impl InputState {
         }
     }
 
-    pub(crate) const fn focus_first_within(&mut self, ancestor: WidgetId) {
-        self.focus.focus_first_within(ancestor);
+    /// Move focus to the Tab stop at `end` under `ancestor` at the end of this frame.
+    pub(crate) const fn focus_end_within(&mut self, ancestor: WidgetId, end: TabEnd) {
+        self.focus.enter_within(FocusEntry {
+            within: ancestor,
+            end,
+        });
     }
 
     #[inline]

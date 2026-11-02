@@ -1,5 +1,6 @@
 //! The application menu bar: a row of titles, each opening its menu, one open at a time.
 
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
@@ -301,6 +302,7 @@ impl MenuBarMenus<'_> {
             opened: None,
             disabled: response.state.disabled,
             rect: response.state.rect,
+            landing: TabEnd::First,
         }
         .settle(
             ui,

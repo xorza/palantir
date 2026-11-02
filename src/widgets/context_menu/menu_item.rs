@@ -45,7 +45,7 @@ impl<'a> MenuItem<'a> {
         }
     }
 
-    /// Per-instance override of `context_menu.item`; takes an `Option` as readily as a reference.
+    /// Per-instance override of [`Theme::context_menu`](crate::Theme::context_menu)'s `item`.
     pub fn style(mut self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self {
         self.style = s.into();
         self

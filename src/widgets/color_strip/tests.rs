@@ -99,26 +99,6 @@ fn the_hue_texture_follows_the_model() {
     }
 }
 
-#[test]
-fn a_click_commits_as_a_drag_does() {
-    let id = WidgetId::from_hash("strip-click-commits");
-    let mut h = harness();
-    let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(1.0);
-    let frame = |h: &mut Harness, color: &mut RgbaF32| {
-        h.frame_value(|ui| {
-            let r = ColorStrip::for_alpha(color).id(id).show(ui);
-            (r.changed, r.committed)
-        })
-    };
-    frame(&mut h, &mut color);
-    h.press(Vec2::new(52.0, 7.0), PointerButton::Left);
-    let (changed, committed) = frame(&mut h, &mut color);
-    assert!(changed && !committed, "the press writes, not commits");
-    h.release(PointerButton::Left);
-    let (_, committed) = frame(&mut h, &mut color);
-    assert!(committed, "the release is the edit");
-}
-
 /// The hue bar's right end is hue 1, not 0: a drag past the edge and End store 1, Home 0; steps past either end wrap.
 #[test]
 fn the_hue_bar_keeps_both_ends() {

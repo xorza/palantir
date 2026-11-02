@@ -11,7 +11,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
-use crate::widget_core::value_response::ValueResponse;
+use crate::widget_core::value_response::{ValueEdges, ValueResponse};
 use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
@@ -50,7 +50,7 @@ impl<'a> ColorButton<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `color_picker` for chip, popup chrome and picker; `None` keeps the picker's own style.
+    /// Per-instance override of [`Theme::color_picker`](crate::Theme::color_picker) for chip, popup chrome and picker; `None` keeps the picker's own style.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self
@@ -83,11 +83,8 @@ impl<'a> ColorButton<'a> {
             .id(id.with("panel"))
             .chrome(slot.popup.clone())
             .padding(slot.popup_padding)
-            .show(ui, |ui, _| {
-                let r = picker.show(ui);
-                (r.changed, r.committed)
-            });
-        let (changed, committed) = opened.inner.unwrap_or_default();
+            .show(ui, |ui, _| picker.show(ui).edges());
+        let ValueEdges { changed, committed } = opened.inner.unwrap_or_default();
 
         ValueResponse {
             response: Response::new(ui, response),

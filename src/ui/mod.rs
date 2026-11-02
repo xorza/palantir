@@ -25,6 +25,7 @@ use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::cascade::Cascade;
 use crate::cascade::WidgetLocation;
+use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
@@ -1350,7 +1351,13 @@ impl Ui {
     /// previous holder when `ancestor` leaves the tree.
     #[inline]
     pub const fn focus_first_within(&mut self, ancestor: WidgetId) {
-        self.input.focus_first_within(ancestor);
+        self.input.focus_end_within(ancestor, TabEnd::First);
+    }
+
+    /// [`Self::focus_first_within`] at `end` of the Tab stops, as a list End opens lands on its
+    /// last row.
+    pub(crate) const fn focus_end_within(&mut self, ancestor: WidgetId, end: TabEnd) {
+        self.input.focus_end_within(ancestor, end);
     }
 
     /// Pointer position in logical pixels (surface space), or `None` off-surface.

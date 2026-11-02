@@ -49,7 +49,7 @@ impl<'a> Spinner<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `spinner`; [`Self::color`], [`Self::width`]
+    /// Per-instance override of [`Theme::spinner`](crate::Theme::spinner); [`Self::color`], [`Self::width`]
     /// and a fixed size still win.
     pub fn style(mut self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self {
         self.style = s.into();

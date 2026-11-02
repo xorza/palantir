@@ -24,7 +24,8 @@ pub struct MenuSeparator<'a> {
 }
 
 impl<'a> MenuSeparator<'a> {
-    /// An unstyled rule.
+    /// A rule in the look of [`Theme::context_menu`](crate::Theme::context_menu)'s `separator`,
+    /// unless [`Self::style`] names another.
     #[track_caller]
     pub fn new() -> Self {
         Self {
@@ -33,7 +34,7 @@ impl<'a> MenuSeparator<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `context_menu.separator`.
+    /// Per-instance override of [`Theme::context_menu`](crate::Theme::context_menu)'s `separator`.
     pub fn style(mut self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self {
         self.style = s.into();
         self

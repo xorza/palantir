@@ -10,7 +10,7 @@ use crate::scene::layer::Layer;
 use crate::theme::splitter::SplitterTheme;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::value_response::internals::ValueEdges;
+use crate::widget_core::value_response::ValueEdges;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;

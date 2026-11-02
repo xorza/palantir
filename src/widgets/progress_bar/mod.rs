@@ -36,7 +36,7 @@ impl<'a> ProgressBar<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `progress_bar`.
+    /// Per-instance override of [`Theme::progress_bar`](crate::Theme::progress_bar).
     pub fn style(mut self, s: impl Into<Option<&'a ProgressBarTheme>>) -> Self {
         self.style = s.into();
         self

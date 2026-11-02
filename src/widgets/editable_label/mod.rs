@@ -59,7 +59,7 @@ impl<'a> EditableLabel<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `text_edit`, for the label and its editor.
+    /// Per-instance override of [`Theme::text_edit`](crate::Theme::text_edit), for the label and its editor.
     pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
         self.style = s.into();
         self

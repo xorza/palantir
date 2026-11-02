@@ -106,3 +106,99 @@ impl ValueArea<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::host::harness::Harness;
+    use crate::input::keyboard::key::Key;
+    use crate::input::pointer::PointerButton;
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::color::color_coords::ColorCoords;
+    use crate::ui::Ui;
+    use crate::widget_core::configure::Configure;
+    use crate::widget_core::value_response::ValueEdges;
+    use crate::widgets::color_field::ColorField;
+    use crate::widgets::color_strip::ColorStrip;
+    use glam::UVec2;
+
+    /// One area of `surface` over `value`, shown by `show` (disabled when its flag is set) and
+    /// read by `read`: Home moves the value to 0 and commits in that one frame, a second Home
+    /// moves nothing and reports nothing, and a disabled area takes no press at its center.
+    fn check<T>(
+        label: &str,
+        surface: UVec2,
+        mut value: T,
+        show: fn(&mut Ui, &mut T, bool) -> ValueEdges,
+        read: fn(&T) -> f32,
+    ) {
+        let id = WidgetId::from_hash("value-area");
+        let mut h = Harness::mono(surface);
+        let frame = |h: &mut Harness, value: &mut T, disabled: bool| {
+            h.frame_value(|ui| show(ui, value, disabled))
+        };
+        frame(&mut h, &mut value, false);
+        h.set_focus(id);
+        frame(&mut h, &mut value, false);
+        let both = ValueEdges {
+            changed: true,
+            committed: true,
+        };
+        h.key(Key::Home);
+        assert_eq!(frame(&mut h, &mut value, false), both, "{label}: Home");
+        assert_eq!(read(&value), 0.0, "{label}: Home");
+        h.key(Key::Home);
+        assert_eq!(
+            frame(&mut h, &mut value, false),
+            ValueEdges::default(),
+            "{label}: a key that moves nothing"
+        );
+
+        let before = read(&value);
+        h.press(surface.as_vec2() / 2.0, PointerButton::Left);
+        assert_eq!(
+            frame(&mut h, &mut value, true),
+            ValueEdges::default(),
+            "{label}: disabled"
+        );
+        assert_eq!(
+            read(&value),
+            before,
+            "{label}: a disabled area writes nothing"
+        );
+    }
+
+    /// Both values the color picker's areas write keep the area's protocol: the field's
+    /// saturation and the alpha bar's alpha, each from 0.5.
+    #[test]
+    fn a_key_commits_at_once_and_a_disabled_area_takes_no_press() {
+        let mut coords = ColorCoords::default();
+        coords.set_saturation(0.5);
+        check(
+            "field",
+            UVec2::new(208, 160),
+            coords,
+            |ui, coords, disabled| {
+                ColorField::new(coords)
+                    .id(WidgetId::from_hash("value-area"))
+                    .disabled(disabled)
+                    .show(ui)
+                    .edges()
+            },
+            |coords| coords.saturation(),
+        );
+        check(
+            "alpha bar",
+            UVec2::new(208, 14),
+            RgbaF32::hex(0x4cd3ff).with_alpha(0.5),
+            |ui, color, disabled| {
+                ColorStrip::for_alpha(color)
+                    .id(WidgetId::from_hash("value-area"))
+                    .disabled(disabled)
+                    .show(ui)
+                    .edges()
+            },
+            |color| color.a,
+        );
+    }
+}

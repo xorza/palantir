@@ -51,7 +51,7 @@ impl<'a> Button<'a> {
         }
     }
 
-    /// Theme slot.
+    /// Per-instance override of [`Theme::button`](crate::Theme::button).
     pub fn style(mut self, s: impl Into<Option<&'a ButtonTheme>>) -> Self {
         self.style = s.into();
         self

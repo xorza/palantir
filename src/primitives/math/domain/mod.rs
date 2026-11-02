@@ -66,6 +66,7 @@ pub(crate) const COUNT_RULE: &str = "a count must be at least 1";
 pub(crate) const POWER_OF_TWO_RULE: &str =
     "the value must be a power of two no larger than its maximum";
 pub(crate) const RANGE_RULE: &str = "a range must have finite ends";
+pub(crate) const BOUNDS_RULE: &str = "bounds must not be NaN";
 
 /// True if `v` is within [`EPS`] of zero.
 #[inline]

@@ -48,7 +48,7 @@ impl<'a> Modal<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `modal`; [`Self::chrome`] and [`Self::backdrop`] still win.
+    /// Per-instance override of [`Theme::modal`](crate::Theme::modal); [`Self::chrome`] and [`Self::backdrop`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a ModalTheme>>) -> Self {
         self.style = s.into();
         self

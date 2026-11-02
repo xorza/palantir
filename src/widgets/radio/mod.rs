@@ -44,7 +44,7 @@ impl<'a, T> RadioButton<'a, T> {
         self
     }
 
-    /// Theme slot.
+    /// Per-instance override of [`Theme::radio`](crate::Theme::radio).
     pub fn style(mut self, s: impl Into<Option<&'a ToggleTheme>>) -> Self {
         self.row.style = s.into();
         self

@@ -37,7 +37,7 @@ impl<'a> ColorSwatch<'a> {
         }
     }
 
-    /// Per-instance override of [`crate::Theme`]'s `color_picker`.
+    /// Per-instance override of [`Theme::color_picker`](crate::Theme::color_picker).
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self
