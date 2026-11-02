@@ -84,14 +84,9 @@ impl Frontend {
             .gpu_views
             .collect_live_targets(&mut self.buffer.live_targets);
         self.buffer.live_panes.clear();
-        for (plane, _) in scene.forest.trees.iter_paint_order() {
-            self.buffer.live_panes.extend(
-                scene.cascade.planes[plane]
-                    .panes
-                    .iter()
-                    .map(|pane| pane.key),
-            );
-        }
+        self.buffer
+            .live_panes
+            .extend(scene.panes().map(|pane| pane.key));
     }
 }
 

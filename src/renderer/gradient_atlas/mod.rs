@@ -114,9 +114,9 @@ pub(crate) struct CpuGradientAtlas {
 pub(crate) struct FlushedRows<'a> {
     pub(crate) runs: &'a [Range<u32>],
     rows: &'a [LutRowTexels],
-    /// The atlas's current row count. The backend recreates its texture when it
-    /// differs; [`CpuGradientAtlas::grow`] dirties every row, so the same upload
-    /// refills it.
+    /// The atlas's current row count. The backend makes its texture again when it
+    /// differs, and copies the old texture's rows into it on the GPU, as resident
+    /// rows keep their ids.
     pub(crate) total_rows: u32,
 }
 

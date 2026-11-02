@@ -22,27 +22,32 @@ pub(crate) struct Backbuffer {
 }
 
 impl Backbuffer {
-    /// Copies this backbuffer's pixels onto `surface_texture`, which needs `COPY_DST` and must [`describe`](Self::describes) this backbuffer.
-    pub(crate) fn copy_onto(
+    /// Put this backbuffer's pixels on `target`, which must [`describe`](Self::describes) it:
+    /// a copy where the target takes one, else a draw through `blit`, in a pass of its own as it
+    /// replaces the target, onto a view made for it.
+    pub(crate) fn present_onto(
         &self,
         encoder: &mut wgpu::CommandEncoder,
-        surface_texture: &wgpu::Texture,
+        target: RenderTarget<'_>,
+        blit: &wgpu::RenderPipeline,
     ) {
-        encoder.copy_texture_to_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyTextureInfo {
-                texture: surface_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            self.texture.size(),
+        debug_assert!(
+            self.describes(target),
+            "a backbuffer presents onto a target of its size and format, as the frame that \
+             painted it, or the frame a skip follows, saw"
         );
+        if target.takes_copy() {
+            encoder.copy_texture_to_texture(
+                self.texture.as_image_copy(),
+                target.texture().as_image_copy(),
+                self.texture.size(),
+            );
+        } else {
+            let view = target
+                .texture()
+                .create_view(&wgpu::TextureViewDescriptor::default());
+            blit_pipeline::draw(encoder, &self.bind_group, &view, blit);
+        }
     }
 
     /// A backbuffer [`describing`](Self::describes) `target`. `binding` is what
@@ -82,17 +87,6 @@ impl Backbuffer {
         self.blur_source
             .get_or_insert_with(|| make(&self.view, size))
             .clone()
-    }
-
-    /// Draws this backbuffer onto a target that cannot be copied into, in its
-    /// own pass since it replaces the target.
-    pub(crate) fn draw_onto(
-        &self,
-        encoder: &mut wgpu::CommandEncoder,
-        target: &wgpu::TextureView,
-        pipeline: &wgpu::RenderPipeline,
-    ) {
-        blit_pipeline::draw(encoder, &self.bind_group, target, pipeline);
     }
 
     pub(crate) const fn view(&self) -> &wgpu::TextureView {

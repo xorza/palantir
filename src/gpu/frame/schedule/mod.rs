@@ -6,6 +6,7 @@
 pub(crate) mod bench;
 
 use crate::common::span::Span;
+use crate::gpu::frame::frame_passes::ColorLoad;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -90,7 +91,8 @@ impl MaskPlan {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RenderStep {
     /// Pre-clear quad inside the damage scissor so AA fringes don't compound across
-    /// frames. Only when `damage_scissor` is `Some`.
+    /// frames. Only when `damage_scissor` is `Some` and the pass loads what the frame
+    /// before left.
     PreClear,
     SetScissor(URect),
     /// Set the stencil reference (stencil-path frames only): chain depth for content,
@@ -140,6 +142,9 @@ pub(crate) struct Schedule<'a> {
     /// The frame's [`MaskPlan`] when the pass has a stencil, else `None`.
     pub(crate) masks: Option<&'a MaskPlan>,
     pub(crate) groups: GroupSpan,
+    /// What the pass does with the target before it paints: one that clears needs no
+    /// [`RenderStep::PreClear`].
+    pub(crate) load: ColorLoad,
 }
 
 impl Schedule<'_> {
@@ -148,7 +153,8 @@ impl Schedule<'_> {
     /// Ordering invariants:
     ///
     /// 1. With `damage_scissor` `Some`, the first steps are
-    ///    `SetScissor(damage_scissor)` then [`PreClear`].
+    ///    `SetScissor(damage_scissor)` then [`PreClear`], on a walk from the first group
+    ///    of a pass that loads.
     /// 2. Each group narrows the scissor to its `effective` rect before its draws.
     /// 3. Stencil-path groups establish their mask chain first: level `k` stamps at
     ///    `stencil_ref = k`, content draws at `depth`. A stale chain clears with one
@@ -183,6 +189,7 @@ impl Schedule<'_> {
             from: self.groups.from as usize,
             end,
             damage_scissor: self.damage_scissor,
+            load: self.load,
             cursors: ScheduleCursors::default(),
             state: PassState {
                 emit,
@@ -203,6 +210,7 @@ struct ScheduleWalk<'a> {
     from: usize,
     end: usize,
     damage_scissor: Option<URect>,
+    load: ColorLoad,
     cursors: ScheduleCursors,
     state: PassState<'a>,
 }
@@ -213,10 +221,11 @@ impl ScheduleWalk<'_> {
         let full_viewport = URect::new(0, 0, buffer.display.physical.x, buffer.display.physical.y);
 
         // Only the walk that starts at the first group clears: one resuming after a barrier paints
-        // over what the walk before it left.
+        // over what the walk before it left, and a pass that clears its target has nothing to
+        // clear again.
         if let Some(scissor) = self.damage_scissor {
             self.state.scissor(scissor);
-            if self.from == 0 {
+            if self.from == 0 && self.load == ColorLoad::Load {
                 self.state.push(RenderStep::PreClear);
             }
         }
@@ -462,6 +471,7 @@ fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> b
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::frame::frame_passes::ColorLoad;
     use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
     use crate::gpu::pipeline::stencil_variant::StencilMode;
     use crate::primitives::geometry::urect::URect;
@@ -525,6 +535,7 @@ pub(crate) mod internals {
                 damage_scissor: damage,
                 masks,
                 groups,
+                load: ColorLoad::Load,
             };
             schedule.for_each_step(&mut |step| {
                 counts.steps += 1;

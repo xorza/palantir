@@ -8,7 +8,7 @@ use crate::primitives::paint::content_type::ContentType;
 /// One per-content-type backing store, indexed by `ContentType as usize`.
 #[derive(Debug)]
 pub(super) struct Side {
-    /// The texture and its packer, grown by doubling up to [`Side::growth_ceiling`].
+    /// The texture and its packer, grown by doubling up to the side's byte budget.
     pub(super) atlas: PackedAtlas,
     /// The frame a full clock rotation over this side last came up empty on.
     ///
@@ -20,9 +20,9 @@ pub(super) struct Side {
 }
 
 impl Side {
-    /// The `content` side of an atlas configured by `config`, at its initial size within the device's cap.
+    /// The `content` side of an atlas configured by `config`, at its initial size within its
+    /// budget.
     pub(super) fn new(gpu: &Gpu, content: ContentType, config: RasterAtlasConfig) -> Self {
-        let max = gpu.max_texture_dim().get();
         let initial = match content {
             ContentType::Mask => config.initial_mask_px,
             ContentType::Color => config.initial_color_px,
@@ -31,24 +31,13 @@ impl Side {
             label: format!("{} {} atlas", config.label, content.side_name()),
             format: texture_format(content),
             usage: wgpu::TextureUsages::TEXTURE_BINDING,
-            ceiling: Self::growth_ceiling(max, content, config.max_bytes),
+            ceiling: gpu.max_texture_dim().get(),
+            max_bytes: config.max_bytes,
         };
         Self {
             atlas: PackedAtlas::new(gpu, spec, initial),
             dry_frame: None,
         }
-    }
-
-    /// Largest side length a `content` atlas will grow to: the device maximum or
-    /// the byte budget, whichever binds first. Takes the device limit so it is
-    /// testable without a `wgpu::Device`.
-    pub(super) fn growth_ceiling(
-        max_texture_dimension_2d: u32,
-        content: ContentType,
-        max_bytes: u64,
-    ) -> u32 {
-        let by_bytes = (max_bytes / u64::from(content.bytes_per_pixel())).isqrt() as u32;
-        max_texture_dimension_2d.min(by_bytes)
     }
 }
 

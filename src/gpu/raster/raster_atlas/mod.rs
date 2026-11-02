@@ -397,7 +397,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// the loop would empty the atlas, every frame it stays on screen (the run is refused
     /// as a template; see `EncodedCache::settle`).
     fn allocate(&mut self, content: ContentType, size: U16Vec2) -> Option<U16Vec2> {
-        if !self.sides[content as usize].atlas.fits_ceiling(size) {
+        if !self.sides[content as usize].atlas.fits_budget(size) {
             self.counters.oversized.bump();
             return None;
         }

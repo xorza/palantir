@@ -2,6 +2,7 @@
 
 use crate::common::span::Span;
 use crate::display::Display;
+use crate::gpu::frame::frame_passes::ColorLoad;
 use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -56,6 +57,7 @@ pub(super) fn collect_between(
         damage_scissor,
         masks,
         groups,
+        load: ColorLoad::Load,
     };
     schedule.for_each_step(&mut |s| steps.push(s));
     steps

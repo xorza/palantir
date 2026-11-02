@@ -6,6 +6,7 @@ use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::vendor;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::surface::render_target::{self, TargetFormat};
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -83,15 +84,13 @@ pub(crate) struct BlurJob {
     /// Where the result's first texel lands in the destination: the region grown by the plan's
     /// apron on every side.
     pub(crate) dest_origin: UVec2,
-    /// Where the residual's first axis writes the region's first texel in the scratch: apart from
-    /// every job encoded with it.
-    pub(crate) scratch_origin: UVec2,
     /// Where the job lies in the textures it shares, which [`BackdropBlur::prepare`] writes.
     pub(crate) layout: JobLayout,
 }
 
-/// Where [`BackdropBlur::prepare`] lays a job out: its parameters, and the origins of the capture
-/// and the levels the jobs of its batch share, each just large enough for what they read.
+/// Where [`BackdropBlur::prepare`] lays a job out: its parameters, the origins of the capture
+/// and the levels the jobs of its batch share, each just large enough for what they read, and its
+/// place in the scratch.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct JobLayout {
     /// The parameter slot of the job's first pass.
@@ -101,6 +100,13 @@ pub(crate) struct JobLayout {
     /// The level-1 texel the levels' first texel holds: a multiple of `2^(deepest − 1)`, of the
     /// batch's deepest level, so each mip's first texel holds a whole texel of its level.
     levels_origin: UVec2,
+    /// The round of its batch's residual the job runs in: each round packs the scratch from
+    /// empty, so a batch whose regions overflow one scratch takes more rounds, never a larger
+    /// scratch.
+    scratch_round: u32,
+    /// Where the residual's first axis writes the region's first texel in the scratch, apart from
+    /// every job of its round.
+    scratch_origin: UVec2,
 }
 
 impl JobLayout {
@@ -186,6 +192,10 @@ struct Levels {
 /// The device side of the backdrop blur: its pipelines, the capture, the levels and the scratch
 /// the passes write, all grown to the largest batch seen, with slack, and kept, so a steady frame
 /// allocates nothing and a resize drag makes them again only now and then.
+///
+/// None of them passes the device's edge. The capture and the levels hold what lies on one
+/// surface, which a target's edge bounds; the scratch holds regions packed side by side, which a
+/// batch can have more of than one edge holds, so its residual runs in rounds.
 #[derive(Debug)]
 pub(crate) struct BackdropBlur {
     filtered: SourcePasses,
@@ -201,8 +211,12 @@ pub(crate) struct BackdropBlur {
     slots: Vec<ParamsSlot>,
     captures: Vec<CaptureTarget>,
     levels: Option<Levels>,
-    /// The residual's first axis, sized to the largest region seen.
+    /// The residual's first axis, sized to the largest round seen.
     scratch: Option<Sampled>,
+    /// Places a round's regions in the scratch, an edge of `ceiling` square.
+    scratch_packer: ShelfPacker,
+    /// The device's largest texture edge, which no texture of the blur passes.
+    ceiling: u32,
     /// The target the prepared jobs read as level 0, or `None` for their captures.
     target: Option<TargetSource>,
 }
@@ -324,6 +338,7 @@ impl BackdropBlur {
         let params_capacity = 16;
         let params = params_buffer(gpu, params_capacity);
         let params_group = params_group(gpu, &params_layout, &params);
+        let ceiling = gpu.max_texture_dim().get();
         Self {
             filtered,
             loaded,
@@ -337,6 +352,8 @@ impl BackdropBlur {
             captures: Vec::new(),
             levels: None,
             scratch: None,
+            scratch_packer: ShelfPacker::within(ceiling),
+            ceiling,
             target: None,
         }
     }
@@ -359,7 +376,7 @@ impl BackdropBlur {
                         gpu,
                         "palantir.backdrop.capture",
                         format.get(),
-                        grown(UVec2::ZERO, size, gpu.max_texture_dim().get()),
+                        grown(UVec2::ZERO, size, self.ceiling),
                         filters,
                     ),
                 });
@@ -371,7 +388,7 @@ impl BackdropBlur {
                 gpu,
                 "palantir.backdrop.capture",
                 format.get(),
-                grown(have, size, gpu.max_texture_dim().get()),
+                grown(have, size, self.ceiling),
                 self.captures[at].filters,
             );
         }
@@ -394,8 +411,12 @@ impl BackdropBlur {
         // A mip floors its halving where a level's extent rounds up: a first mip a whole number of
         // the last one's texels keeps every mip as wide as its level.
         let last = 1 << (mips - 1);
-        let size =
-            grown(have, first, gpu.max_texture_dim().get()).map(|side| side.next_multiple_of(last));
+        let size = grown(have, first, self.ceiling).map(|side| side.next_multiple_of(last));
+        debug_assert!(
+            size.max_element() <= self.ceiling,
+            "levels of {size} pass the device's {} edge",
+            self.ceiling
+        );
         let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.backdrop.levels"),
             size: render_target::extent(size),
@@ -441,7 +462,7 @@ impl BackdropBlur {
             gpu,
             "palantir.backdrop.scratch",
             LEVEL_FORMAT,
-            grown(have, size, gpu.max_texture_dim().get()),
+            grown(have, size, self.ceiling),
             true,
         ));
     }
@@ -528,8 +549,9 @@ impl BackdropBlur {
         self.write_params(ctx, jobs);
     }
 
-    /// Give `batch` its capture and levels origins, at the first texel it reads of each, and grow
-    /// the capture, the levels and the scratch to hold what it reads.
+    /// Give `batch` its capture and levels origins, at the first texel it reads of each, and each
+    /// job its round and place in the scratch, and grow the capture, the levels and the scratch to
+    /// hold what it reads.
     fn lay_out(&mut self, gpu: &Gpu, batch: &mut [BlurJob]) {
         let first = batch[0];
         let capture_origin = if self.target.is_some() {
@@ -555,15 +577,25 @@ impl BackdropBlur {
                 self.ensure_levels(gpu, window.max() - origin, deepest);
                 origin
             });
-        let scratch = batch
-            .iter()
-            .map(|job| job.scratch_origin + job.region.size)
-            .fold(UVec2::ZERO, UVec2::max);
-        self.ensure_scratch(gpu, scratch);
+        let mut scratch = UVec2::ZERO;
+        let mut round = 0;
+        self.scratch_packer.clear();
         for job in batch {
             job.layout.capture_origin = capture_origin;
             job.layout.levels_origin = levels_origin;
+            let size = job.region.size.as_u16vec2();
+            let origin = self.scratch_packer.allocate(size).unwrap_or_else(|| {
+                round += 1;
+                self.scratch_packer.clear();
+                self.scratch_packer
+                    .allocate(size)
+                    .expect("a region lies on its surface, which the device's edge holds")
+            });
+            job.layout.scratch_round = round;
+            job.layout.scratch_origin = origin.as_uvec2();
+            scratch = scratch.max(job.layout.scratch_origin + job.region.size);
         }
+        self.ensure_scratch(gpu, scratch);
     }
 
     /// Write the parameters of laid out `jobs`, and each one's first slot.
@@ -667,8 +699,9 @@ impl BackdropBlur {
     }
 
     /// Record prepared jobs `jobs`' passes, which read one capture: their tents a level to a pass,
-    /// then the residual across into the scratch and down into each job's slot of `dest`, a pass
-    /// each. Every pass draws each job under its own scissor, so the jobs pay one pass a stage.
+    /// then for each round of the scratch the residual across into it and down into each job's
+    /// slot of `dest`, a pass each. Every pass draws each job under its own scissor, so the jobs
+    /// pay one pass a stage.
     pub(crate) fn encode(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -717,23 +750,25 @@ impl BackdropBlur {
         }
         let residual = |job: &BlurJob| job.layout.first_slot + usize::from(job.plan.levels());
         let scratch = self.scratch.as_ref().expect("prepared");
-        let across = jobs.iter().map(|job| Draw {
-            pipeline: &passes_of(job.plan.levels()).horizontal,
-            source: source_of(job.plan.levels()),
-            slot: residual(job),
-            scissor: URect {
-                min: job.scratch_origin,
-                size: job.region.size,
-            },
-        });
-        self.pass(encoder, &scratch.view, across);
-        let down = jobs.iter().map(|job| Draw {
-            pipeline: &self.vertical,
-            source: &scratch.group,
-            slot: residual(job) + 1,
-            scissor: job.dest_rect(),
-        });
-        self.pass(encoder, dest, down);
+        for round in jobs.chunk_by(|a, b| a.layout.scratch_round == b.layout.scratch_round) {
+            let across = round.iter().map(|job| Draw {
+                pipeline: &passes_of(job.plan.levels()).horizontal,
+                source: source_of(job.plan.levels()),
+                slot: residual(job),
+                scissor: URect {
+                    min: job.layout.scratch_origin,
+                    size: job.region.size,
+                },
+            });
+            self.pass(encoder, &scratch.view, across);
+            let down = round.iter().map(|job| Draw {
+                pipeline: &self.vertical,
+                source: &scratch.group,
+                slot: residual(job) + 1,
+                scissor: job.dest_rect(),
+            });
+            self.pass(encoder, dest, down);
+        }
     }
 
     /// The parameters of `job`'s passes, in the order [`Self::encode`] records them.
@@ -744,10 +779,10 @@ impl BackdropBlur {
             format,
             region,
             dest_origin,
-            scratch_origin,
             layout,
             ..
         } = job;
+        let scratch_origin = layout.scratch_origin;
         let levels = plan.levels();
         let capture_max = self.target.as_ref().map_or_else(
             || {
@@ -800,8 +835,8 @@ impl BackdropBlur {
             ..BlurParams::EMPTY
         });
         let apron = plan.apron() as i32;
-        // A read past the region lands in another job's rows of the scratch, outside the support
-        // of every texel the pane shows.
+        // A read past the region lands on another job's texels of the scratch, or on none,
+        // outside the support of every texel the pane shows.
         slot(BlurParams {
             target_to_lattice: region.min.as_ivec2() - IVec2::splat(apron) - dest_origin.as_ivec2(),
             level_size,
@@ -932,11 +967,15 @@ fn params_group(
     })
 }
 
-/// The texels a texture grows to that holds `have` and must hold `want`: each edge rounded up
-/// to [`GROWTH_GRANULE`], held to the `ceiling` edge, so a surface that grows a few px a frame,
-/// as a resize drag does, makes a new texture only every so often.
+/// The texels a texture grows to that holds `have` and must hold `want`, inside the `ceiling`
+/// edge: each edge rounded up to [`GROWTH_GRANULE`], held to the ceiling, so a surface that grows
+/// a few px a frame, as a resize drag does, makes a new texture only every so often.
 fn grown(have: UVec2, want: UVec2, ceiling: u32) -> UVec2 {
-    have.max(want.map(|edge| edge.next_multiple_of(GROWTH_GRANULE).min(ceiling).max(edge)))
+    debug_assert!(
+        want.max_element() <= ceiling,
+        "a texture of {want} passes the device's {ceiling} edge"
+    );
+    have.max(want.map(|edge| edge.next_multiple_of(GROWTH_GRANULE).min(ceiling)))
 }
 
 /// The texels [`grown`] rounds an edge up to.
@@ -955,11 +994,21 @@ pub(crate) mod internals {
     use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob};
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::device::gpu_ctx::GpuCtx;
+    #[cfg(test)]
+    use crate::gpu::resource::shelf_packer::ShelfPacker;
     use crate::gpu::surface::render_target::TargetFormat;
     use glam::UVec2;
     use std::iter;
 
     impl BackdropBlur {
+        /// Hold every texture of the blur to an edge of `ceiling` texels, as a device of that
+        /// limit does.
+        #[cfg(test)]
+        pub(crate) fn cap(&mut self, ceiling: u32) {
+            self.ceiling = ceiling;
+            self.scratch_packer = ShelfPacker::within(ceiling);
+        }
+
         /// The capture a surface of `size` and `format` renders the pixels behind its panes into,
         /// grown to fit.
         pub(crate) fn capture_view(

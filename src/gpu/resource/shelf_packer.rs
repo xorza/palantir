@@ -42,6 +42,9 @@ struct Shelf {
 }
 
 impl ShelfPacker {
+    /// The largest edge a packer counts, in texels.
+    pub(crate) const MAX_SIZE: u32 = u16::MAX as u32;
+
     pub(crate) const fn new(size: u16) -> Self {
         Self {
             size,
@@ -49,6 +52,15 @@ impl ShelfPacker {
             top: 0,
             spare: Vec::new(),
         }
+    }
+
+    /// A packer of `edge` texels, held to [`Self::MAX_SIZE`].
+    pub(crate) const fn within(edge: u32) -> Self {
+        Self::new(if edge < Self::MAX_SIZE {
+            edge as u16
+        } else {
+            u16::MAX
+        })
     }
 
     /// Whether a rectangle of height `h` belongs on a shelf of `height`: no lower, and within a
@@ -231,6 +243,14 @@ impl ShelfPacker {
         at - 1
     }
 
+    /// Free every rectangle at once, keeping each shelf's span list for the next shelf to open.
+    pub(crate) fn clear(&mut self) {
+        while let Some(shelf) = self.shelves.pop() {
+            self.retire(shelf);
+        }
+        self.top = 0;
+    }
+
     /// Widen and deepen the side to `size`, keeping every placement: each shelf gains the new
     /// columns, and the new rows join the unclaimed ones.
     pub(crate) fn grow(&mut self, size: u16) {
@@ -355,7 +375,7 @@ mod tests {
     /// once no unclaimed row is left, split to its height: the rows past it stay an empty shelf.
     /// Without the merge the 16-row rectangle finds no room; the 24 merged rows are past its slack,
     /// so it takes them by the split. A span list of a shelf that went is
-    /// kept and taken by the next shelf to open.
+    /// kept and taken by the next shelf to open, and a clear keeps every shelf's.
     #[test]
     fn emptied_shelves_merge_and_split_to_a_taller_rectangle() {
         let mut packer = ShelfPacker::new(64);
@@ -381,6 +401,13 @@ mod tests {
         );
         assert_eq!(packer.allocate(size(10, 30)), Some(U16Vec2::new(0, 16)));
         assert_eq!(packer.spare.len(), 1, "the new shelf took a kept span list");
+
+        // Shelves of 16 and 32 rows: a clear keeps both span lists beside the kept one and frees
+        // every row.
+        packer.clear();
+        assert_eq!((packer.shelf_count(), packer.spare.len()), (0, 3));
+        assert_eq!(packer.allocate(size(64, 64)), Some(U16Vec2::ZERO));
+        assert_eq!(packer.spare.len(), 2, "the shelf took a kept span list");
     }
 
     /// With no unclaimed row, a rectangle takes the shortest empty shelf that holds it, not the

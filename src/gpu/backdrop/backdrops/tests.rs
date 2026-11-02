@@ -196,7 +196,7 @@ fn a_full_atlas_evicts_the_least_recently_used_result() {
     let gpu = headless_test_gpu();
     let owners = RenderOwners::default();
     let (a, b) = (owners.reserve(), owners.reserve());
-    let mut backdrops = Backdrops::with_ceiling(&gpu, 64);
+    let mut backdrops = Backdrops::with_limits(&gpu, 64, u64::MAX);
     prepare(&mut backdrops, &gpu, a, &[captured(0), captured(1)]);
     assert_eq!(backdrops.evicted(a).count(), 0);
     prepare(
@@ -223,4 +223,35 @@ fn a_full_atlas_evicts_the_least_recently_used_result() {
     assert_eq!(backdrops.blurs(), 0);
     assert_eq!(backdrops.slots[0].lattice, 0.0, "it shows the clear");
     assert_eq!(backdrops.evicted(b).collect::<Vec<_>>(), [key(9)]);
+}
+
+/// At its budget the atlas evicts a result no pane of the frame reads before it grows, and grows
+/// past the budget only for the frame's own results. A budget of 32² `Rgba16Float` texels holds
+/// one 32² slot under a 64 ceiling: window b's pane evicts window a's and takes its slot, the
+/// atlas still 32 wide; b's second pane finds only b's own first result, so the atlas grows to 64
+/// and both stay.
+#[test]
+fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
+    let gpu = headless_test_gpu();
+    let owners = RenderOwners::default();
+    let (a, b) = (owners.reserve(), owners.reserve());
+    let mut backdrops = Backdrops::with_limits(&gpu, 64, 32 * 32 * 8);
+    let edge = |backdrops: &Backdrops| backdrops.resources.as_ref().unwrap().atlas.edge();
+    prepare(&mut backdrops, &gpu, a, &[captured(0)]);
+    assert_eq!(edge(&backdrops), 32, "the first side held to the budget");
+    let at_a = slot(&backdrops, a, 0).unwrap();
+
+    prepare(&mut backdrops, &gpu, b, &[captured(0)]);
+    assert_eq!(backdrops.evicted(a).collect::<Vec<_>>(), [key(0)]);
+    assert_eq!(slot(&backdrops, b, 0), Some(at_a), "a's slot, freed");
+    assert_eq!(edge(&backdrops), 32);
+
+    prepare(&mut backdrops, &gpu, b, &[captured(0), captured(1)]);
+    assert_eq!(
+        edge(&backdrops),
+        64,
+        "grown past the budget for the frame's own"
+    );
+    assert_eq!(backdrops.evicted(b).count(), 0);
+    assert!(slot(&backdrops, b, 1).is_some());
 }

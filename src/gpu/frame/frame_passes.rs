@@ -20,10 +20,8 @@ pub(crate) enum PassStep {
     Break { at: usize },
     /// Copy each damage rect of the damage canvas into the backbuffer.
     CanvasOut,
-    /// Copy the backbuffer onto the target.
-    CopyOut,
-    /// Draw the backbuffer onto a target that takes no copy.
-    DrawOut,
+    /// Put the backbuffer on the target: a copy, or a draw where the target takes none.
+    BackbufferOut,
     /// Outline the damage on the target, after the backbuffer reached it, so the outline never
     /// lands in the backbuffer.
     Overlay,
@@ -42,8 +40,6 @@ pub(crate) enum ColorLoad {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct FrameShape {
     pub(crate) route: Route,
-    /// Whether the target takes a copy, else the backbuffer is drawn onto it.
-    pub(crate) takes_copy: bool,
     /// Whether the frame repaints inside rects and keeps the pixels around them.
     pub(crate) partial: bool,
     /// Whether the partial frame paints into a damage canvas
@@ -98,11 +94,7 @@ impl FramePasses {
             self.steps.push(PassStep::CanvasOut);
         }
         if shape.route == Route::ViaBackbuffer {
-            self.steps.push(if shape.takes_copy {
-                PassStep::CopyOut
-            } else {
-                PassStep::DrawOut
-            });
+            self.steps.push(PassStep::BackbufferOut);
         }
         if shape.outlines_damage {
             self.steps.push(PassStep::Overlay);
@@ -132,15 +124,16 @@ impl FramePasses {
         &self.steps
     }
 
-    /// Whether a step writes the target itself, so the frame makes a view of it: a direct main
-    /// pass, the backbuffer drawn onto it, the outline.
+    /// Whether a pass writes the target through a view the frame makes: a direct main pass, the
+    /// outline. The backbuffer makes its own where it draws onto the target.
     pub(crate) fn writes_target(&self, route: Route) -> bool {
         self.steps.iter().any(|step| match step {
             PassStep::Main { .. } => route == Route::Direct,
-            PassStep::DrawOut | PassStep::Overlay => true,
-            PassStep::Dim | PassStep::Break { .. } | PassStep::CanvasOut | PassStep::CopyOut => {
-                false
-            }
+            PassStep::Overlay => true,
+            PassStep::Dim
+            | PassStep::Break { .. }
+            | PassStep::CanvasOut
+            | PassStep::BackbufferOut => false,
         })
     }
 }
@@ -169,16 +162,14 @@ mod tests {
     /// a partial one loads, after its dim pass where it dims, but on a damage canvas, which it
     /// clears and then copies into the backbuffer. Each barrier ends a pass and breaks,
     /// the next pass resuming at it and loading what the one before left. A frame through the
-    /// backbuffer then copies it onto the target, or draws it on one that takes no copy, and the
-    /// outline comes last. Only a direct main pass, a draw onto the target and the outline write
-    /// the target.
+    /// backbuffer then puts it on the target, and the outline comes last. Only a direct main pass
+    /// and the outline write the target through the frame's view of it.
     #[test]
     fn each_frame_shape_plans_its_passes_in_order() {
         use ColorLoad::{Clear, Load};
         use MainSegment::{First, Inner, Last, Whole};
         let direct_whole = FrameShape {
             route: Route::Direct,
-            takes_copy: true,
             partial: false,
             canvas: false,
             dims_undamaged: false,
@@ -201,7 +192,7 @@ mod tests {
                 "a partial frame",
                 partial,
                 &[],
-                &[main(Whole, 0, None, Load), PassStep::CopyOut],
+                &[main(Whole, 0, None, Load), PassStep::BackbufferOut],
                 false,
             ),
             (
@@ -215,7 +206,7 @@ mod tests {
                 &[
                     main(Whole, 0, None, Clear),
                     PassStep::CanvasOut,
-                    PassStep::CopyOut,
+                    PassStep::BackbufferOut,
                     PassStep::Overlay,
                 ],
                 true,
@@ -231,19 +222,9 @@ mod tests {
                 &[
                     PassStep::Dim,
                     main(Whole, 0, None, Load),
-                    PassStep::CopyOut,
+                    PassStep::BackbufferOut,
                     PassStep::Overlay,
                 ],
-                true,
-            ),
-            (
-                "onto a target that takes no copy",
-                FrameShape {
-                    takes_copy: false,
-                    ..partial
-                },
-                &[],
-                &[main(Whole, 0, None, Load), PassStep::DrawOut],
                 true,
             ),
             (
@@ -270,7 +251,7 @@ mod tests {
                     main(First, 0, Some(0), Clear),
                     PassStep::Break { at: 0 },
                     main(Last, 0, None, Load),
-                    PassStep::CopyOut,
+                    PassStep::BackbufferOut,
                 ],
                 false,
             ),

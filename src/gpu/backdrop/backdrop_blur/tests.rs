@@ -2,7 +2,7 @@ use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
 };
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::surface::render_target::TargetFormat;
+use crate::gpu::surface::render_target::{self, TargetFormat};
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -143,6 +143,17 @@ fn blur_with(
     dest_size: UVec2,
 ) -> Vec<[f32; 4]> {
     let mut engine = BackdropBlur::with_loop(gpu, residual);
+    blur_on(gpu, &mut engine, pixels, jobs, dest_size)
+}
+
+/// [`blur`] on `engine`.
+fn blur_on(
+    gpu: &HeadlessTestGpuLease,
+    engine: &mut BackdropBlur,
+    pixels: &[[u8; 4]],
+    jobs: &mut [BlurJob],
+    dest_size: UVec2,
+) -> Vec<[f32; 4]> {
     let format = jobs[0].format;
     engine.capture_view(gpu, format, SURFACE);
     let capture = &engine.captures[0].target.texture;
@@ -226,7 +237,6 @@ fn whole(plan: BlurPlan, dest_origin: UVec2, format: TargetFormat) -> BlurJob {
             .region(URect::new(0, 0, SURFACE.x, SURFACE.y), SURFACE)
             .unwrap(),
         dest_origin,
-        scratch_origin: UVec2::ZERO,
         footprint: URect::new(0, 0, SURFACE.x, SURFACE.y),
         layout: JobLayout::default(),
     }
@@ -305,8 +315,8 @@ fn the_residuals_loops_write_the_same_texels() {
 }
 
 /// A region inside another gives the texels of its own pane, the region shrunk by the reach, the
-/// same values bit for bit, wherever the two results and their scratch rows land, the two drawn
-/// in the same passes: every read lands on the lattice's texels at a fixed phase, so the
+/// same values bit for bit, wherever the two results and their places in the scratch land, the
+/// two drawn in the same passes: every read lands on the lattice's texels at a fixed phase, so the
 /// arithmetic does not depend on where a pass's target sits.
 #[test]
 fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
@@ -324,7 +334,6 @@ fn a_larger_region_gives_a_panes_texels_bit_for_bit() {
                 pane.max() + UVec2::splat(reach),
             ),
             dest_origin: UVec2::new(1, big.dest_rect().max().y + 2),
-            scratch_origin: UVec2::new(3, big.region.size.y + 1),
             ..big
         };
         let dest = big.dest_rect().union(small.dest_rect());
@@ -366,7 +375,7 @@ fn blur_params_lie_as_the_shader_reads_them() {
 
 /// A texture grows each short edge to the next whole granule, 300 → 512 and 10 → 256, keeps an
 /// edge it already holds, 512 for 520 × 10 grows to 768 × 256, never shrinks, and stops at the
-/// ceiling, 16 300 → 16 384 rather than 16 384's next granule, or at an edge already past it.
+/// ceiling, 16 300 → 16 384 rather than 16 384's next granule.
 #[test]
 fn a_texture_grows_by_whole_granules_up_to_the_ceiling() {
     let ceiling = 16_384;
@@ -383,7 +392,6 @@ fn a_texture_grows_by_whole_granules_up_to_the_ceiling() {
             UVec2::new(16_300, 256),
             UVec2::new(16_384, 256),
         ),
-        (UVec2::ZERO, UVec2::new(20_000, 1), UVec2::new(20_000, 256)),
     ] {
         assert_eq!(grown(have, want, ceiling), grows_to, "{have} for {want}");
     }
@@ -481,7 +489,6 @@ fn a_pane_blurs_from_its_footprint_alone() {
         footprint,
         region: plan.region(footprint, LARGE).unwrap(),
         dest_origin: UVec2::ZERO,
-        scratch_origin: UVec2::ZERO,
         layout: JobLayout::default(),
     };
     let pane_job = |plan: BlurPlan, pane: URect| {
@@ -543,7 +550,6 @@ fn a_pane_blurs_from_its_footprint_alone() {
     assert_eq!((shallow.plan.levels(), deep.plan.levels()), (1, 3));
     let deep = BlurJob {
         dest_origin: UVec2::new(0, shallow.dest_rect().max().y),
-        scratch_origin: UVec2::new(0, shallow.region.size.y),
         ..deep
     };
     let mut apart = [shallow, deep];
@@ -570,4 +576,51 @@ fn a_pane_blurs_from_its_footprint_alone() {
             "job {job}"
         );
     }
+}
+
+/// A batch whose regions overflow the scratch runs its residual in rounds, each packing the
+/// scratch from empty, and gives each job the texels it gives in one round. Two whole-surface jobs
+/// of 97 × 64 texels at σ 1.5, full resolution, fit a scratch of 128 texels side by side only in
+/// height: under a 128 edge the second lands below the first, and under a 97 edge it takes a
+/// second round at the scratch's origin. The scratch then stays at the edge.
+#[test]
+fn a_batch_past_the_scratch_runs_in_rounds() {
+    let gpu = headless_test_gpu();
+    let pixels = capture_pixels();
+    let plan = BlurPlan::new(1.5);
+    assert_eq!(plan.levels(), 0);
+    let first = whole(plan, UVec2::ZERO, FORMAT);
+    let second = BlurJob {
+        dest_origin: UVec2::new(0, first.dest_rect().max().y),
+        ..first
+    };
+    let size = second.dest_rect().max();
+    let run = |edge: u16| {
+        let mut jobs = [first, second];
+        let mut engine = BackdropBlur::new(&gpu);
+        engine.cap(u32::from(edge));
+        let got = blur_on(&gpu, &mut engine, &pixels, &mut jobs, size);
+        let scratch = render_target::texture_size(&engine.scratch.as_ref().unwrap().texture);
+        assert!(
+            scratch.max_element() <= u32::from(edge),
+            "{scratch} past {edge}"
+        );
+        (
+            jobs.map(|job| (job.layout.scratch_round, job.layout.scratch_origin)),
+            got,
+        )
+    };
+    let (one, got_one) = run(128);
+    assert_eq!(one, [(0, UVec2::ZERO), (0, UVec2::new(0, 64))]);
+    let (two, got_two) = run(97);
+    assert_eq!(two, [(0, UVec2::ZERO), (1, UVec2::ZERO)]);
+    assert!(
+        got_one == got_two,
+        "the rounds give the texels of one round"
+    );
+    let half = (first.dest_rect().size.x * first.dest_rect().size.y) as usize;
+    assert!(
+        got_two[..half] == got_two[half..],
+        "the jobs blur the same pixels"
+    );
 }

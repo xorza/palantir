@@ -104,36 +104,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 
 Sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses an item deletes it.
 
-### Batch 8: texture growth and the device ceiling
-
-Files: `src/gpu/backdrop/{backdrops/mod.rs,backdrop_blur/mod.rs}`,
-`src/gpu/resource/{packed_atlas.rs,wgpu_image_store.rs}`, `src/gpu/raster/raster_atlas/side.rs`,
-`src/renderer/{gradient_atlas/mod.rs,frontend/mod.rs,shared_device.rs}`, `src/host/core.rs`,
-`src/gpu/device/gpu.rs`, `src/gpu/wgpu_backend/mod.rs`, `src/gpu/frame/{schedule/mod.rs,
-frame_passes.rs}`.
-
-- [ ] **BUG** `backdrops/mod.rs:284-323`, `backdrop_blur/mod.rs:429-442,560-566,940-942`: a break's
-  jobs stack down the residual scratch with no bound, and `grown()` passes an edge past the
-  ceiling (`.min(ceiling).max(edge)`), so `create_texture` can exceed `max_texture_dimension_2d`
-  (20 glass cards 300 px tall pass 4096). Target: place jobs with a `ShelfPacker` or wrap at the
-  ceiling; split a break that still does not fit; `grown` asserts `want <= ceiling`.
-- [ ] `backdrops/mod.rs:78,186-194,333-357`: the `Rgba16Float` results atlas doubles to the
-  device maximum before it evicts, with no byte budget (one full-width pane on 7680×2160 makes
-  it 512 MiB; the ceiling allows 8 GiB). Target: a byte budget in `AtlasSpec`, `evict_lru` before
-  a grow past it, and a texture of its own for a slot wider than half the edge.
-- [ ] Texture limit: `raster_atlas/side.rs`, `backdrops/mod.rs` and `backdrop_blur/mod.rs` read
-  `gpu.max_texture_dim()` themselves; `AttachedStore` (`wgpu_image_store.rs`) keeps its own copy;
-  `HostCore::max_texture_dim` (`core.rs:138-140`) re-reads the `Gpu`. Target: one holder,
-  `SharedDevice::texture_limit`, threaded to constructors.
-- [ ] `wgpu_backend/mod.rs:558-570` vs `982-1014`: "present the backbuffer" is written twice.
-  Target: `Backbuffer::present_onto(encoder, target, blit)`.
-- [ ] `frontend/mod.rs:80-88`: `live_panes` re-derived by its own walk. Target:
-  `live_panes.extend(scene.panes().map(|p| p.key))`.
-- [ ] `schedule/mod.rs:217-221`, `frame_passes.rs:116-121`: a damage-canvas frame clears in the
-  load op and then draws `PreClear` again. Target: `Schedule` takes `pre_clear` = the pass loads.
-- [ ] Stale docs: `gradient_atlas/mod.rs:116-119` (growth uploads nothing now);
-  `packed_atlas.rs:144` (`edge_u16` says 16384; NVIDIA allows 32768).
-
 ### Batch 9: base layers and the desktop host
 
 Files: `src/host/winit/{input/mod.rs,native.rs,window/mod.rs,error/}`,

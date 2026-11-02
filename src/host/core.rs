@@ -24,7 +24,6 @@ use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
-use std::num::NonZeroU32;
 use std::rc::Rc;
 
 #[derive(Debug)]
@@ -135,15 +134,6 @@ impl HostCore {
 
     pub(super) const fn backend_mut(&mut self) -> &mut WgpuBackend {
         &mut self.device.as_mut().expect(NO_DEVICE).backend
-    }
-
-    /// The device's largest 2D texture side: the cap on surfaces, images and atlases.
-    #[cfg_attr(
-        not(feature = "winit"),
-        expect(dead_code, reason = "only a swapchain is sized by the platform")
-    )]
-    pub(super) fn max_texture_dim(&self) -> NonZeroU32 {
-        self.gpu().max_texture_dim()
     }
 
     /// The device and queue every window of this host presents through.

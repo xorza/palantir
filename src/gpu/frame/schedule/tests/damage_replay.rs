@@ -1,17 +1,19 @@
 //! Scissor transitions and the per-damage-rect replay of a partial frame.
 
 use crate::common::span::Span;
-use crate::gpu::frame::schedule::RenderStep;
+use crate::gpu::frame::frame_passes::ColorLoad;
 use crate::gpu::frame::schedule::tests::support::{
     DrawOp, buf_with, buf_with_batches, buf_with_tier_anchors, collect, group, plain_steps,
     scissor_count, simplify, text_batch,
 };
+use crate::gpu::frame::schedule::{GroupSpan, RenderStep, Schedule};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::render_buffer::draw_group::DrawGroup;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
 
 /// Under partial damage `PreClear` runs before any group draws, else `LoadOp::Load` keeps last frame's
-/// pixels and AA fringes drift. `None` damage skips it.
+/// pixels and AA fringes drift. `None` damage skips it, and so does a pass that clears its target,
+/// as a damage canvas's does.
 #[test]
 fn preclear_emits_under_partial_damage() {
     let buf = buf_with_batches(
@@ -28,6 +30,19 @@ fn preclear_emits_under_partial_damage() {
     );
     assert_eq!(
         simplify(&buf, &plain_steps(&buf)),
+        vec![DrawOp::Quads(0), DrawOp::Text(0)],
+    );
+    let mut clearing = Vec::new();
+    Schedule {
+        buffer: &buf,
+        damage_scissor: damage,
+        masks: None,
+        groups: GroupSpan::ALL,
+        load: ColorLoad::Clear,
+    }
+    .for_each_step(&mut |step| clearing.push(step));
+    assert_eq!(
+        simplify(&buf, &clearing),
         vec![DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }

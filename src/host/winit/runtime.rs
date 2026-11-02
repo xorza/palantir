@@ -201,7 +201,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             // frame, which no wake of its own replaces.
             self.wake_for_recovery();
         } else if win.surface.is_lost() {
-            renew_surface(&self.surfaces, win, self.core.max_texture_dim());
+            renew_surface(&self.surfaces, win, self.core.gpu().max_texture_dim());
         }
         if single_window {
             tracy::mark_main_frame();
@@ -260,7 +260,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             })?;
         self.core
             .attach(gpu, self.windows.iter_mut().map(|win| &mut win.driver));
-        let max_texture_dim = self.core.max_texture_dim();
+        let max_texture_dim = self.core.gpu().max_texture_dim();
         for win in self.windows.iter_mut().skip(1) {
             renew_surface(&self.surfaces, win, max_texture_dim);
         }
@@ -347,7 +347,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             .make_surface(
                 &window,
                 SurfaceManager::clamp_extent(
-                    self.core.max_texture_dim(),
+                    self.core.gpu().max_texture_dim(),
                     native::physical_size(&window),
                 ),
             )

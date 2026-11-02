@@ -459,7 +459,6 @@ impl WgpuBackend {
         self.passes.plan(
             FrameShape {
                 route,
-                takes_copy: target.takes_copy(),
                 partial: repaint_scissors.is_partial(),
                 canvas: canvas.is_some(),
                 dims_undamaged,
@@ -554,17 +553,10 @@ impl WgpuBackend {
                         canvas.copy_into(&mut encoder, bb.texture(), rect, origin);
                     }
                 }
-                PassStep::CopyOut | PassStep::DrawOut => {
+                PassStep::BackbufferOut => {
                     let bb = backbuffer.expect("a frame through the backbuffer has one");
                     encoder_mark(draw, &mut encoder, Mark::CopyOutStart);
-                    if step == PassStep::CopyOut {
-                        bb.copy_onto(&mut encoder, surface_texture);
-                    } else {
-                        let view = surface_view
-                            .as_ref()
-                            .expect("a draw onto the target writes it");
-                        bb.draw_onto(&mut encoder, view, &draw.fmt.blit);
-                    }
+                    bb.present_onto(&mut encoder, target, &draw.fmt.blit);
                     encoder_mark(draw, &mut encoder, Mark::CopyOutEnd);
                 }
                 PassStep::Overlay => {
@@ -773,7 +765,7 @@ impl WgpuBackend {
                     store: wgpu::StoreOp::Discard,
                 }),
             });
-        let load = match load {
+        let load_op = match load {
             ColorLoad::Clear => wgpu::LoadOp::Clear(clear),
             ColorLoad::Load => wgpu::LoadOp::Load,
         };
@@ -787,7 +779,7 @@ impl WgpuBackend {
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
-                    load,
+                    load: load_op,
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -830,6 +822,7 @@ impl WgpuBackend {
             damage_scissor,
             masks: draw.masks,
             groups,
+            load,
         };
         match scissors {
             RepaintScissors::Full => self.render_groups(&mut ctx, schedule(None)),
@@ -987,28 +980,17 @@ impl WgpuBackend {
             .backbuffer
             .as_ref()
             .expect("a skip follows a frame painted through the backbuffer");
-        let surface_texture = target.texture();
-        debug_assert!(
-            backbuffer.describes(target),
-            "skip-copy backbuffer doesn't match the target — a Skip frame \
-             implies the previous frame painted this size/format"
-        );
+        let fmt = self
+            .pipelines
+            .get(&target.format())
+            .expect("a window notes its target's format before it records");
         let mut encoder = self
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.skip"),
             });
-        if target.takes_copy() {
-            backbuffer.copy_onto(&mut encoder, surface_texture);
-        } else {
-            let fmt = self
-                .pipelines
-                .get(&target.format())
-                .expect("a window notes its target's format before it records");
-            let view = surface_texture.create_view(&wgpu::TextureViewDescriptor::default());
-            backbuffer.draw_onto(&mut encoder, &view, &fmt.blit);
-        }
+        backbuffer.present_onto(&mut encoder, target, &fmt.blit);
         self.gpu.queue.submit(iter::once(encoder.finish()));
     }
 

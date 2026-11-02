@@ -36,9 +36,6 @@ pub(crate) struct WgpuImageStore {
 #[derive(Debug)]
 struct AttachedStore {
     gpu: Gpu,
-    /// The device's `max_texture_dimension_2d`, which an image registered on an earlier device
-    /// can exceed.
-    max_texture_dim: u32,
     /// The group-0 layout and sampler every pipeline of the backend composes over. Built here
     /// because the host attaches this store before it builds the backend, which takes its copy
     /// from [`WgpuImageStore::binding`].
@@ -71,7 +68,6 @@ impl WgpuImageStore {
     pub(crate) fn attach(&self, gpu: &Gpu) {
         *self.attached.borrow_mut() = Some(AttachedStore {
             gpu: gpu.clone(),
-            max_texture_dim: gpu.max_texture_dim().get(),
             binding: TextureBinding::new(gpu),
             textures: FxHashMap::default(),
         });
@@ -127,10 +123,11 @@ impl ImageStore for WgpuImageStore {
     fn write(&self, id: TextureId, image: &Image) {
         let mut attached = self.attached_mut();
         // Registration checks the device it ran on; a later device can be smaller.
-        if image.size.max_element() > attached.max_texture_dim {
+        let max_dimension = attached.gpu.max_texture_dim().get();
+        if image.size.max_element() > max_dimension {
             tracing::warn!(
                 size = ?image.size,
-                max_dimension = attached.max_texture_dim,
+                max_dimension,
                 "an image exceeds this device's texture limit and paints nothing"
             );
             return;
@@ -139,7 +136,6 @@ impl ImageStore for WgpuImageStore {
             gpu,
             binding,
             textures,
-            ..
         } = &mut *attached;
         let entry = textures
             .entry(id)

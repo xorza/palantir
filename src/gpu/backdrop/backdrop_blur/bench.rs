@@ -70,7 +70,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     footprint: URect::new(0, 0, side, side),
                     region,
                     dest_origin: UVec2::ZERO,
-                    scratch_origin: UVec2::ZERO,
                     layout: JobLayout::default(),
                 };
                 let mut blur = BackdropBlur::new(&gpu.gpu);
@@ -109,7 +108,6 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     footprint: URect::new(0, 0, 2048, 2048),
                     region: URect::new(16 * i, 8, 8, 8),
                     dest_origin: UVec2::new(16 * i, 0),
-                    scratch_origin: UVec2::new(0, 8 * i),
                     layout: JobLayout::default(),
                 })
                 .collect();

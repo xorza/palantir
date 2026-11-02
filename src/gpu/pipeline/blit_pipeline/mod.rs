@@ -7,7 +7,7 @@ use crate::gpu::resource::texture_binding::TextureBinding;
 
 /// The format-independent half of the backbuffer blit: one shader module, no buffers.
 ///
-/// The peer of [`Backbuffer::copy_onto`](crate::gpu::surface::backbuffer::Backbuffer::copy_onto) for targets lacking `COPY_DST` (a GLES swapchain image takes draws alone); without it such a surface would repaint whole instead of damage-limited. It binds the shared group-0 layout; its sampler slot goes unused, since the shader reads texels by index (a filtered read isn't a copy).
+/// What [`Backbuffer::present_onto`](crate::gpu::surface::backbuffer::Backbuffer::present_onto) draws in place of a copy, for targets lacking `COPY_DST` (a GLES swapchain image takes draws alone); without it such a surface would repaint whole instead of damage-limited. It binds the shared group-0 layout; its sampler slot goes unused, since the shader reads texels by index (a filtered read isn't a copy).
 #[derive(Debug)]
 pub(crate) struct BlitPipeline {
     shader: wgpu::ShaderModule,

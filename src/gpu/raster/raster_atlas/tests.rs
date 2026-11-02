@@ -128,46 +128,6 @@ fn a_drained_ticket_retires_only_its_own_stale_empty() {
     assert_eq!(free.as_slice(), [0, 1]);
 }
 
-/// Growth stops at the byte budget, not the adapter's limit. 16 MiB is `2^24`
-/// and both pixel sizes are powers of two, so the ceiling is a power-of-two
-/// side and the doubling sequence reaches it exactly.
-#[test]
-fn growth_stops_at_the_byte_budget_not_the_device_limit() {
-    // What both tenants configure today; the budget is per instance.
-    const BUDGET: u64 = 16 << 20;
-    for device_max in [8192, 16384, 32768] {
-        assert_eq!(
-            Side::growth_ceiling(device_max, ContentType::Mask, BUDGET),
-            4096,
-            "16 MiB of 1-byte pixels is 4096², whatever device_max={device_max} allows",
-        );
-        assert_eq!(
-            Side::growth_ceiling(device_max, ContentType::Color, BUDGET),
-            2048,
-            "16 MiB of 4-byte pixels is 2048², device_max={device_max}",
-        );
-    }
-    // Both ceilings are exactly the budget.
-    for (content, side) in [(ContentType::Mask, 4096u64), (ContentType::Color, 2048)] {
-        let bytes = side * side * u64::from(content.bytes_per_pixel());
-        assert_eq!(bytes, BUDGET, "{content:?}");
-    }
-    // A device meaner than the budget still binds.
-    assert_eq!(Side::growth_ceiling(1024, ContentType::Mask, BUDGET), 1024);
-    assert_eq!(Side::growth_ceiling(512, ContentType::Color, BUDGET), 512);
-
-    // The budget is per instance, so a tenant can buy more room without moving
-    // the other's ceiling. Quadrupling the bytes doubles the side.
-    assert_eq!(
-        Side::growth_ceiling(16384, ContentType::Color, BUDGET * 4),
-        4096
-    );
-    assert_eq!(
-        Side::growth_ceiling(16384, ContentType::Mask, BUDGET / 4),
-        2048
-    );
-}
-
 /// The clock skips exactly three things (wrong content, no rectangle to
 /// reclaim, drawn on the current frame) and takes the first survivor in hand
 /// order, not the globally oldest.
