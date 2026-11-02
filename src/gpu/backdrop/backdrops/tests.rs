@@ -1,5 +1,7 @@
 use crate::display::Display;
-use crate::gpu::backdrop::backdrops::{BackdropFrame, BackdropSlot, Backdrops, Kept, held_clear};
+use crate::gpu::backdrop::backdrops::{
+    BackdropFrame, BackdropSlot, Backdrops, Kept, SpectrumCell, held_clear,
+};
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
@@ -164,10 +166,20 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
     );
 }
 
-/// `BackdropSlot` lies as the quad shader declares it, which a storage binding reads unchecked:
-/// the clear, a `vec3` the shader aligns to 16 bytes, starts after the lens at 32.
+/// `BackdropSlot` and `SpectrumCell` lie as the quad shader declares them, which storage
+/// bindings read unchecked: the slot's clear, a `vec3` the shader aligns to 16 bytes, starts
+/// after the lens at 32; each of a cell's three `vec3`s takes 16 bytes, 48 in all.
 #[test]
-fn a_backdrop_slot_lies_as_the_shader_reads_it() {
+fn the_backdrop_buffers_lie_as_the_shader_reads_them() {
+    QuadPipeline::SHADER.assert_struct_layout(
+        "SpectrumCell",
+        size_of::<SpectrumCell>(),
+        &[
+            ("weight", offset_of!(SpectrumCell, weight)),
+            ("cumulative", offset_of!(SpectrumCell, cumulative)),
+            ("moment", offset_of!(SpectrumCell, moment)),
+        ],
+    );
     QuadPipeline::SHADER.assert_struct_layout(
         "BackdropSlot",
         size_of::<BackdropSlot>(),

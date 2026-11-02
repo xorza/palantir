@@ -124,16 +124,13 @@ impl FramePasses {
         &self.steps
     }
 
-    /// Whether a pass writes the target through a view the frame makes: a direct main pass, the
-    /// outline. The backbuffer makes its own where it draws onto the target.
+    /// Whether a pass writes the target through a view the frame makes: a direct main or dim
+    /// pass, the outline. The backbuffer makes its own where it draws onto the target.
     pub(crate) fn writes_target(&self, route: Route) -> bool {
         self.steps.iter().any(|step| match step {
-            PassStep::Main { .. } => route == Route::Direct,
+            PassStep::Main { .. } | PassStep::Dim => route == Route::Direct,
             PassStep::Overlay => true,
-            PassStep::Dim
-            | PassStep::Break { .. }
-            | PassStep::CanvasOut
-            | PassStep::BackbufferOut => false,
+            PassStep::Break { .. } | PassStep::CanvasOut | PassStep::BackbufferOut => false,
         })
     }
 }

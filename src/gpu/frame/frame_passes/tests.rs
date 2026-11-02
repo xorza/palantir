@@ -81,6 +81,17 @@ fn each_frame_shape_plans_its_passes_in_order() {
             true,
         ),
         (
+            "a direct partial frame, dimmed, on a target that keeps its pixels",
+            FrameShape {
+                route: Route::Direct,
+                dims_undamaged: true,
+                ..partial
+            },
+            &[],
+            &[PassStep::Dim, main(Whole, 0, None, Load)],
+            true,
+        ),
+        (
             "two breaks of a direct whole frame",
             direct_whole,
             &[2, 5],

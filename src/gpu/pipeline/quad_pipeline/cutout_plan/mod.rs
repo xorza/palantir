@@ -444,7 +444,7 @@ impl CutoutPlan {
             && used.area * Self::SHADED_NODES as f32 > (side * side * Self::BAKED_NODES) as f32
     }
 
-    /// Shelf-packs the paying tables into the atlas, tallest first; a key that doesn't pay or fit keeps [`Self::NONE`].
+    /// Shelf-packs the paying tables into the atlas, tallest first; a key that doesn't pay or fit keeps [`Self::NONE`]. A table too tall for the last shelf leaves it open, as a shorter one after it may still fit.
     fn pack(&mut self) {
         self.codes.clear();
         self.codes.resize(self.keys.len(), Self::NONE);
@@ -465,7 +465,7 @@ impl CutoutPlan {
                 (x, y, shelf) = (0, y + shelf, 0);
             }
             if y + cells > Self::CELLS {
-                break;
+                continue;
             }
             self.codes[at as usize] = Self::code(UVec2::new(x, y), side);
             x += cells;

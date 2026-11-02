@@ -126,26 +126,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 4: GPU correctness
-
-Files: `src/gpu/device/device_requirements.rs`, `src/gpu/frame/frame_passes/mod.rs`,
-`src/gpu/pipeline/quad_pipeline/cutout_plan/mod.rs`, `src/gpu/backdrop/backdrops/`.
-
-- [ ] `device_requirements.rs:57,74-116`: `met_by` checks only features and the immediate size,
-  while `against` sweeps every limit. An app device with WebGL2 limits passes
-  `OffscreenHost::builder` (`offscreen/mod.rs:324-328`) and then panics in wgpu validation.
-  Target: `met_by` calls `against(device.features(), &device.limits(), Features::empty())`, and
-  `check` drops the clause the sweep covers. Add a `downlevel_webgl2_defaults` row.
-- [ ] `frame_passes/mod.rs:129-138`: `writes_target` answers `false` for `Dim`, which draws into
-  the surface view on `Route::Direct` (`wgpu_backend/mod.rs:511`). This is masked today because
-  every plan holds a `Main` step. Target: `Main { .. } | Dim => route == Route::Direct`. Add a
-  row to `frame_passes/tests.rs`.
-- [ ] `cutout_plan/mod.rs:459-473`: `pack` stops at the first table that misses vertically,
-  though shorter tables still fit. Target: `continue`, not `break`. Run the golden suite.
-- [ ] `backdrops/mod.rs:75-96`: `SpectrumCell` has no layout test against `shader.wgsl:1092-1097`.
-  Target: extend `a_backdrop_slot_lies_as_the_shader_reads_it` with `weight` at 0, `cumulative`
-  at 16, `moment` at 32, size 48.
-
 ### Batch 5: GPU memory
 
 Files: `src/gpu/backdrop/{backdrops,backdrop_blur}/`, `src/gpu/resource/{packed_atlas.rs,wgpu_image_store.rs,gpu_gradient_atlas.rs,bench.rs}`,

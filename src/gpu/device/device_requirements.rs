@@ -49,34 +49,19 @@ impl DeviceRequirements {
         Self::against(adapter.features(), &adapter.limits(), optional)
     }
 
-    /// The two conditions Palantir cannot draw without: its mandatory features and
-    /// the immediate-region bytes the viewport rides in.
-    ///
-    /// Shared by [`Self::against`] and [`Self::met_by`] so a failure reports under
-    /// one name.
-    fn check(available: wgpu::Features, limits: &wgpu::Limits) -> Result<(), UnmetRequirements> {
-        let missing = DeviceFeatures::ALL.difference(DeviceFeatures::from_wgpu_truncate(available));
-        if !missing.is_empty() {
-            return Err(UnmetRequirements::Features { missing });
-        }
-        if limits.max_immediate_size < IMMEDIATES_BYTES {
-            return Err(UnmetRequirements::Limit {
-                name: IMMEDIATE_SIZE_LIMIT,
-                required: u64::from(IMMEDIATES_BYTES),
-                available: u64::from(limits.max_immediate_size),
-            });
-        }
-        Ok(())
-    }
-
     /// The negotiation itself, against a capability pair rather than an adapter,
-    /// so it is answerable without a GPU.
+    /// so it is answerable without a GPU, and the one statement of what Palantir needs:
+    /// its mandatory features, then every limit its pipelines consume, the immediate-region
+    /// bytes the viewport rides in among them.
     pub(crate) fn against(
         available: wgpu::Features,
         ceiling: &wgpu::Limits,
         optional: wgpu::Features,
     ) -> Result<Self, UnmetRequirements> {
-        Self::check(available, ceiling)?;
+        let missing = DeviceFeatures::ALL.difference(DeviceFeatures::from_wgpu_truncate(available));
+        if !missing.is_empty() {
+            return Err(UnmetRequirements::Features { missing });
+        }
 
         // The GLES-3 baseline rather than `Limits::default()`, which demands 16
         // inter-stage variables where `curve_pipeline/shader.wgsl`, the busiest shader,
@@ -110,16 +95,13 @@ impl DeviceRequirements {
     }
 
     /// Whether a device already in hand can run Palantir, for hosts built on a
-    /// caller-supplied device.
+    /// caller-supplied device: the negotiation against what the device was made with, so a
+    /// device requested with lower limits than Palantir's pipelines consume fails here, not in
+    /// wgpu's validation of the first pipeline.
     pub fn met_by(device: &wgpu::Device) -> Result<(), UnmetRequirements> {
-        Self::check(device.features(), &device.limits())
+        Self::against(device.features(), &device.limits(), wgpu::Features::empty()).map(drop)
     }
 }
-
-/// wgpu's name for the limit as `check_limits_with_fail_fn` reports it (wgpu
-/// publishes no constant), so [`DeviceRequirements::check`] messages match the
-/// whole-`Limits` sweep.
-const IMMEDIATE_SIZE_LIMIT: &str = "max_immediate_size";
 
 #[cfg(test)]
 mod tests {
@@ -176,6 +158,28 @@ mod tests {
         assert_eq!(
             unmet.to_string(),
             "graphics device limit max_immediate_size is 15, but Palantir requires 16"
+        );
+    }
+
+    /// A device made with WebGL2's limits has the features but no storage buffers, where the
+    /// backdrop composite binds two: the negotiation refuses it by the first limit the sweep
+    /// misses, the GLES-3 baseline's 4 dynamic storage buffers, so a host built on such a device
+    /// fails before wgpu validates a pipeline.
+    #[test]
+    fn a_device_under_the_pipelines_limits_is_refused() {
+        let ceiling = Limits {
+            max_immediate_size: IMMEDIATES_BYTES,
+            ..Limits::downlevel_webgl2_defaults()
+        };
+        let unmet = DeviceRequirements::against(Features::IMMEDIATES, &ceiling, Features::empty())
+            .unwrap_err();
+        assert_eq!(
+            unmet,
+            UnmetRequirements::Limit {
+                name: "max_dynamic_storage_buffers_per_pipeline_layout",
+                required: 4,
+                available: 0,
+            }
         );
     }
 

@@ -377,6 +377,33 @@ fn tables_pack_into_shelves_until_the_atlas_is_full() {
     );
 }
 
+/// A table too tall for what the atlas has left does not stop a shorter one after it. At σ = 16
+/// a side is `(r + 2 · (4 · 16 + 0.5)) · 10 / 16 + 2` texels: radii 130 to 136.25 make 163 to
+/// 167, 11 cells each, so a 64-cell row holds 5 and 5 shelves take 25, up to row 55. The 26th
+/// needs rows 55 to 66 and is left out; radius 8 makes 87 texels, 6 cells, and lands on row 55.
+/// The quads are 1000 px square, so no radius is fitted down to the box `4σ` inside them.
+#[test]
+fn a_shorter_table_fills_the_shelf_a_taller_one_missed() {
+    let mut quads: Vec<Quad> = (0..26)
+        .map(|k| drop_shadow(Size::new(1000.0, 1000.0), 130.0 + k as f32 / 4.0, 16.0))
+        .collect();
+    quads.push(drop_shadow(Size::new(1000.0, 1000.0), 8.0, 16.0));
+    let plan = plan(&quads);
+    let unplaced = plan
+        .corners()
+        .iter()
+        .filter(|corners| **corners == CornerTables([CutoutPlan::NONE; 4]))
+        .count();
+    assert_eq!(unplaced, 1, "one tall table past the atlas");
+    let short = plan.corners()[26].0[0];
+    assert_ne!(short, CutoutPlan::NONE, "the short table is placed");
+    assert_eq!(
+        [short & 63, (short >> 6) & 63],
+        [0, 55],
+        "on the open shelf"
+    );
+}
+
 /// A table is baked only where cheaper than shading the corners sharing it.
 /// At σ = 2, r = 8 a 100 px drop shadow's box is inset by `4σ = 8`, so the
 /// top-left corner's region runs from `8 − 8.5 = −0.5` to `8 + 8 + 8.5 = 24.5`
