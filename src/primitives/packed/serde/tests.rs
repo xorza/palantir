@@ -1,6 +1,8 @@
 use ::serde::de::value::{Error, MapDeserializer, SeqDeserializer};
 
-use crate::primitives::packed::serde::{LaneCodec, deserialize_lanes};
+use crate::primitives::packed::serde::internals::{from_ron, ron_text};
+use crate::primitives::packed::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
+use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::iter;
 
 /// A codec with neutral lane names, pinning the shared machinery; per-type lane names are pinned beside those types.
@@ -18,8 +20,8 @@ impl LaneCodec for TestLanes {
         self.0
     }
 
-    fn two_form(_lanes: [f32; 4]) -> Option<[f32; 2]> {
-        None
+    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
+        (lanes[0] == lanes[1] && lanes[2] == lanes[3]).then_some([lanes[0], lanes[2]])
     }
 
     fn expand_two([a, b]: [f32; 2]) -> [f32; 4] {
@@ -30,6 +32,43 @@ impl LaneCodec for TestLanes {
 
     fn lane_is_valid(lane: f32) -> bool {
         lane >= 0.0
+    }
+}
+
+impl Serialize for TestLanes {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        serialize_lanes(self, s)
+    }
+}
+
+impl<'de> Deserialize<'de> for TestLanes {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        deserialize_lanes(d)
+    }
+}
+
+/// The forms every lane type shares: equal lanes write as one number, the pair a type collapses
+/// to as two, the rest as four, and each reads back as written. A file may also write an integer,
+/// a one-node array, or a table of every lane.
+#[test]
+fn each_form_writes_and_reads_back() {
+    for (lanes, text) in [
+        (TestLanes([4.0; 4]), "4.0"),
+        (TestLanes([4.0, 4.0, 8.0, 8.0]), "[4.0,8.0]"),
+        (TestLanes([1.0, 2.0, 3.0, 4.0]), "[1.0,2.0,3.0,4.0]"),
+    ] {
+        assert_eq!(ron_text(&lanes), text);
+        assert_eq!(from_ron::<TestLanes>(text), lanes, "{text}");
+    }
+    for (text, lanes) in [
+        ("4", TestLanes([4.0; 4])),
+        ("[4.0]", TestLanes([4.0; 4])),
+        (
+            "(a: 1.0, b: 2.0, c: 3.0, d: 4.0)",
+            TestLanes([1.0, 2.0, 3.0, 4.0]),
+        ),
+    ] {
+        assert_eq!(from_ron::<TestLanes>(text), lanes, "{text}");
     }
 }
 

@@ -4,7 +4,6 @@ use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Kept, SpectrumCell, held_clear,
 };
 use crate::gpu::backdrop::tests::CLEAR;
-use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
@@ -18,9 +17,7 @@ use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
 use crate::renderer::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
-use std::iter;
 use std::mem::offset_of;
-use wgpu::util::StagingBelt;
 
 const SURFACE: UVec2 = UVec2::new(200, 100);
 
@@ -57,14 +54,9 @@ fn prepare(
     buffer
         .live_panes
         .extend(rows.iter().map(|row| row.capture.key));
-    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
-    let mut encoder = gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
+    gpu.frame(|ctx| {
         backdrops.prepare(
-            &mut ctx,
+            ctx,
             BackdropFrame {
                 buffer: &buffer,
                 owner,
@@ -73,10 +65,7 @@ fn prepare(
                 backbuffer: None,
             },
         );
-    }
-    belt.finish();
-    gpu.queue.submit(iter::once(encoder.finish()));
-    belt.recall();
+    });
 }
 
 /// The atlas slot of `owner`'s pane `i`, if its result is one.

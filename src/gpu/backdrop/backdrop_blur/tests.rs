@@ -1,7 +1,6 @@
 use crate::gpu::backdrop::backdrop_blur::{
     BackdropBlur, BlurJob, BlurParams, EXPIRY_FRAMES, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
 };
-use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::gpu::texel;
@@ -10,10 +9,8 @@ use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::blur_plan::internals::{mirror, reference_tent};
 use glam::UVec2;
 use half::f16;
-use std::iter;
 use std::mem::offset_of;
 use std::ops::Range;
-use wgpu::util::StagingBelt;
 
 /// Odd on one side, so a level's last texel straddles the surface's edge.
 const SURFACE: UVec2 = UVec2::new(97, 64);
@@ -203,17 +200,9 @@ fn blur_on(
         view_formats: &[],
     });
     let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
-    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
-    let mut encoder = gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
-        engine.run(&mut ctx, jobs, &view);
-    }
-    belt.finish();
-    gpu.queue.submit(iter::once(encoder.finish()));
-    belt.recall();
+    gpu.frame(|ctx| {
+        engine.run(ctx, jobs, &view);
+    });
     read_f16(gpu, &dest)
 }
 
@@ -257,23 +246,15 @@ fn whole_of(plan: BlurPlan, surface: UVec2) -> BlurJob {
 
 /// Lay `jobs` out on `engine` as one batch, as a frame of them does, with nothing encoded.
 fn prepare_on(gpu: &HeadlessTestGpuLease, engine: &mut BackdropBlur, jobs: &mut [BlurJob]) {
-    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
-    let mut encoder = gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
+    gpu.frame(|ctx| {
         let all = 0..jobs.len();
         engine.prepare(
-            &mut ctx,
+            ctx,
             jobs,
             (!jobs.is_empty()).then_some(all).into_iter(),
             None,
         );
-    }
-    belt.finish();
-    gpu.queue.submit(iter::once(encoder.finish()));
-    belt.recall();
+    });
 }
 
 /// The textures a frame's blurs share step down at the end of an expiry window to the most its
@@ -501,23 +482,15 @@ fn blur_batches(
     });
     let view = dest.create_view(&wgpu::TextureViewDescriptor::default());
     let mut engine = BackdropBlur::new(gpu);
-    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
-    let mut encoder = gpu
-        .device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-    {
-        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
-        engine.prepare(&mut ctx, jobs, batches.iter().cloned(), None);
-    }
-    for batch in batches {
-        for job in &jobs[batch.clone()] {
-            engine.copy_capture(&mut encoder, job, color);
+    gpu.frame(|ctx| {
+        engine.prepare(ctx, jobs, batches.iter().cloned(), None);
+        for batch in batches {
+            for job in &jobs[batch.clone()] {
+                engine.copy_capture(ctx.encoder, job, color);
+            }
+            engine.encode(ctx.encoder, &jobs[batch.clone()], &view);
         }
-        engine.encode(&mut encoder, &jobs[batch.clone()], &view);
-    }
-    belt.finish();
-    gpu.queue.submit(iter::once(encoder.finish()));
-    belt.recall();
+    });
     read_f16(gpu, &dest)
 }
 

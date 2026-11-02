@@ -15,14 +15,11 @@ use crate::renderer::frontend::composer::tests::support::{
     clip, draw, params, params_unsnapped, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
-use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
-use crate::renderer::frontend::payload::draw_quad_payload::{RectQuad, TriangleQuad};
+use crate::renderer::frontend::payload::draw_quad_payload::TriangleQuad;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::shape::paint::shape_stroke::ShapeStroke;
-use crate::shape::rect::RectKind;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
@@ -100,22 +97,15 @@ fn stroke_bbox_urect_applies_transform_dpi_and_style_once() {
 /// either geometry.
 #[test]
 fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
-    let nan_stroke: ShapeStroke = Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN).into();
+    let nan_stroke = Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), f32::NAN);
     let display = params(2.0, UVec2::new(400, 400));
 
     // An opaque fill keeps the draw alive so the stroke lanes can be inspected.
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawQuadPayload::rect(RectQuad {
-                    kind: RectKind::Rounded,
-                    rect: Rect::new(10.0, 20.0, 30.0, 40.0),
-                    corners: Corners::ZERO,
-                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-                    stroke: nan_stroke,
-                }),
-                1.0,
-            );
+            QuadBuilder::new(Rect::new(10.0, 20.0, 30.0, 40.0))
+                .stroke(nan_stroke)
+                .draw(b);
         },
         &display,
     );
@@ -136,7 +126,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
                     ],
                     radius: 0.0,
                     fill: RgbaF32::WHITE.to_f16(),
-                    stroke: nan_stroke,
+                    stroke: nan_stroke.into(),
                 }),
                 1.0,
             );
@@ -152,16 +142,10 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
     // A NaN stroke on an otherwise unpainted shape is dropped.
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawQuadPayload::rect(RectQuad {
-                    kind: RectKind::Rounded,
-                    rect: Rect::new(10.0, 20.0, 30.0, 40.0),
-                    corners: Corners::ZERO,
-                    fill: BrushSource::Solid(RgbaF32::TRANSPARENT.to_f16()),
-                    stroke: nan_stroke,
-                }),
-                1.0,
-            );
+            QuadBuilder::new(Rect::new(10.0, 20.0, 30.0, 40.0))
+                .solid(RgbaF32::TRANSPARENT)
+                .stroke(nan_stroke)
+                .draw(b);
         },
         &display,
     );
@@ -673,25 +657,12 @@ fn a_turned_mesh_instance_turns_and_scales_at_once() {
 fn a_turned_rect_moves_its_center_and_keeps_its_own_frame() {
     const EPS: f32 = 1e-4;
     let display = params(2.0, UVec2::new(200, 200));
-    let opaque = |rect: Rect| {
-        DrawQuadPayload::rect(RectQuad {
-            kind: RectKind::Rounded,
-            rect,
-            corners: Corners::ZERO,
-            fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-            stroke: ShapeStroke::NONE,
-        })
-    };
     let buf = run(
         |b, _| {
-            b.draw(opaque(Rect::new(62.0, 47.0, 1.0, 1.0)), 1.0);
-            b.draw(
-                opaque(Rect::new(40.0, 40.0, 20.0, 10.0)).turned(Some(Spin {
-                    pivot: Vec2::new(50.0, 50.0),
-                    angle: FRAC_PI_2,
-                })),
-                1.0,
-            );
+            QuadBuilder::new(Rect::new(62.0, 47.0, 1.0, 1.0)).draw(b);
+            QuadBuilder::new(Rect::new(40.0, 40.0, 20.0, 10.0))
+                .turned_about(Vec2::new(50.0, 50.0), FRAC_PI_2)
+                .draw(b);
         },
         &display,
     );

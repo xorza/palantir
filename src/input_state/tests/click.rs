@@ -357,160 +357,68 @@ fn secondary_click_press_release_emits_secondary_clicked() {
     assert_eq!(h.frame_value(build), [false, false], "a click is one-shot");
 }
 
+/// A run of clicks reaches the button's response: each click reports the count its press
+/// chained to, and `double_clicked` exactly on the second. The press-run rule's edges are the
+/// unit table's (`capture` tests); these rows hold what only a frame shows. A press carries its
+/// own arrival time, so ten idle seconds before a pair, when an event-driven host runs no frame,
+/// leave it a double click.
 #[test]
-fn two_left_clicks_within_window_emit_double_clicked() {
-    // Two clicks within DOUBLE_CLICK_WINDOW set `double_clicked` on the second;
-    // the first alone must not.
-    let mut h = Harness::mono(BUTTON_SURFACE);
+fn a_run_of_clicks_reaches_the_response() {
+    let at = Vec2::new(20.0, 20.0);
+    let drifted = Vec2::new(40.0, 20.0);
+    let rows: &[(&str, Duration, &[Vec2], &[u8])] = &[
+        ("one click", Duration::ZERO, &[at], &[1]),
+        ("two in the window", Duration::ZERO, &[at, at], &[1, 2]),
+        (
+            "a third chains on",
+            Duration::ZERO,
+            &[at, at, at],
+            &[1, 2, 3],
+        ),
+        (
+            "20 px apart, past the radius",
+            Duration::ZERO,
+            &[at, drifted],
+            &[1, 1],
+        ),
+        (
+            "after ten idle seconds",
+            Duration::from_secs(10),
+            &[at, at],
+            &[1, 2],
+        ),
+    ];
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
-                let r = fixed_button(WidgetId::from_hash("dc_target"))
-                    .label("dc")
-                    .show(ui);
-                [r.left.clicked(), r.left.double_clicked()]
+                let r = fixed_button(WidgetId::from_hash("run_target"))
+                    .label("run")
+                    .show(ui)
+                    .left;
+                (r.clicked(), r.click_count(), r.double_clicked())
             })
             .inner
     };
-    h.frame(|ui| {
-        build(ui);
-    });
-
-    h.click(Vec2::new(50.0, 20.0));
-    let [single, double] = h.frame_value(build);
-    assert!(single, "first click should fire `clicked`");
-    assert!(!double, "first click must not fire `double_clicked`");
-
-    h.advance(IN_WINDOW);
-    h.click(Vec2::new(50.0, 20.0));
-    let [single, double] = h.frame_value(build);
-    assert!(single, "second click should still fire `clicked`");
-    assert!(double, "second click should fire `double_clicked`");
-
-    let [_, still] = h.frame_value(build);
-    assert!(!still, "double_clicked is one-shot");
-
-    // A third click must NOT re-fire: the timer reset on the previous fire.
-    h.advance(IN_WINDOW);
-    h.click(Vec2::new(50.0, 20.0));
-    let [single, double] = h.frame_value(build);
-    assert!(single, "third click should fire `clicked`");
-    assert!(!double, "third click must not chain another double");
-}
-
-/// A double click after an idle gap is still a double click. A press carries
-/// its arrival time, and an event-driven host runs no frame while idle; stamped
-/// with the frame clock, the first press would carry the last frame's time and
-/// measure the idle instead of the 100 ms between presses.
-#[test]
-fn a_double_click_survives_the_idle_before_it() {
-    let mut h = Harness::mono(BUTTON_SURFACE);
-    let build = |ui: &mut Ui| {
-        Panel::hstack()
-            .auto_id()
-            .show(ui, |ui| {
-                let r = fixed_button(WidgetId::from_hash("idle_target"))
-                    .label("dc")
-                    .show(ui);
-                [r.left.clicked(), r.left.double_clicked()]
-            })
-            .inner
-    };
-    h.frame(|ui| {
-        build(ui);
-    });
-
-    h.advance(Duration::from_secs(10));
-    h.click(Vec2::new(50.0, 20.0));
-    let [single, double] = h.frame_value(build);
-    assert!(single, "the waking click is a click");
-    assert!(!double, "and the first of a pair is not a double");
-
-    h.advance(IN_WINDOW);
-    h.click(Vec2::new(50.0, 20.0));
-    let [single, double] = h.frame_value(build);
-    assert!(single, "the second click is a click");
-    assert!(
-        double,
-        "two presses 100 ms apart are a double click, whatever the app \
-         was doing for the ten seconds before them",
-    );
-}
-
-#[test]
-fn two_clicks_outside_radius_do_not_double_click() {
-    // Within the window, but the second press is more than `DOUBLE_CLICK_RADIUS`
-    // away: a slow drift is two clicks.
-    let mut h = Harness::mono(BUTTON_SURFACE);
-    let build = |ui: &mut Ui| {
-        Panel::hstack()
-            .auto_id()
-            .show(ui, |ui| {
-                let r = Button::new()
-                    .id(WidgetId::from_hash("dc_radius_target"))
-                    .label("dc")
-                    .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
-                    .show(ui);
-                [r.left.clicked(), r.left.double_clicked()]
-            })
-            .inner
-    };
-    h.frame(|ui| {
-        build(ui);
-    });
-
-    h.click(Vec2::new(20.0, 20.0));
-    assert_eq!(
-        h.frame_value(build),
-        [true, false],
-        "control: the first click"
-    );
-
-    // Second click inside the window but ~20px away: must NOT double.
-    h.advance(IN_WINDOW);
-    h.click(Vec2::new(40.0, 20.0));
-    let [single, double] = h.frame_value(build);
-    assert!(single, "control: the second press lands on the button");
-    assert!(
-        !double,
-        "clicks more than DOUBLE_CLICK_RADIUS apart must not double-click"
-    );
-}
-
-#[test]
-fn click_on_different_widget_resets_double_click() {
-    // Different widgets within the window must NOT double; the gesture is per-id.
-    let surface = UVec2::new(300, 80);
-    let mut h = Harness::mono(surface);
-    // Each button's click count this frame.
-    let build = |ui: &mut Ui| {
-        Panel::hstack()
-            .auto_id()
-            .show(ui, |ui| {
-                ["dc_a", "dc_b"].map(|id| {
-                    fixed_button(WidgetId::from_hash(id))
-                        .label(id)
-                        .show(ui)
-                        .left
-                        .click_count()
-                })
-            })
-            .inner
-    };
-    h.frame(|ui| {
-        build(ui);
-    });
-
-    h.click(Vec2::new(50.0, 20.0)); // hits A
-    assert_eq!(h.frame_value(build), [1, 0], "control: A takes one click");
-    h.advance(IN_WINDOW);
-    h.click(Vec2::new(150.0, 20.0)); // hits B
-    assert_eq!(
-        h.frame_value(build),
-        [0, 1],
-        "B's first click is a single, not the second of A's pair",
-    );
+    for &(label, idle, clicks, counts) in rows {
+        let mut h = Harness::mono(BUTTON_SURFACE);
+        h.frame(|ui| {
+            build(ui);
+        });
+        h.advance(idle);
+        for (n, (&pos, &count)) in clicks.iter().zip(counts).enumerate() {
+            if n > 0 {
+                h.advance(IN_WINDOW);
+            }
+            h.click(pos);
+            assert_eq!(
+                h.frame_value(build),
+                (true, count, count == 2),
+                "{label}: click {n}"
+            );
+        }
+        assert_eq!(h.frame_value(build), (false, 0, false), "{label}: one-shot");
+    }
 }
 
 #[test]

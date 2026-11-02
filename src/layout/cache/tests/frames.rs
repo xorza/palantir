@@ -1,15 +1,14 @@
-//! Cache × full-frame integration: the warm-cache frame must reproduce the cold layout (and encoded commands).
+//! Cache × full-frame integration: a frame on the measure cache lays out as a cold engine does,
+//! every column the layout oracle compares.
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
-use crate::text::extent::TextExtent;
 use crate::text::font_scope::internals::INTER;
-use crate::text::key::TextShapeKey;
 use crate::text::wrap::TextWrap;
 
 use crate::host::harness::Harness;
+use crate::internals::oracle;
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
@@ -28,34 +27,13 @@ use crate::widgets::{
 };
 use glam::UVec2;
 
-/// Run `record` cold then warm and assert every captured node's rect matches. `record` pushes the nodes that matter into `capture`.
-fn assert_warm_rects_match_cold(
-    h: &mut Harness,
-    msg: &str,
-    mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
-) {
-    let cold_nodes = h.frame_value(|ui| {
-        let mut nodes = Vec::new();
-        record(ui, &mut nodes);
-        nodes
-    });
-    let cold: Vec<_> = cold_nodes
-        .iter()
-        .map(|&n| h.ui().arranged_rect(Layer::Main, n))
-        .collect();
-
+/// Run `record` cold, then warm on the measure cache with the last run forgotten, and assert the
+/// warm frame hit the cache, else a match with a cold layout passes vacuously, and that it
+/// matches one.
+fn assert_warm_matches_cold(h: &mut Harness, msg: &str, mut record: impl FnMut(&mut Ui)) {
+    h.frame(&mut record);
     h.engines_mut().layout.forget_last_run();
-    let warm_nodes = h.frame_value(|ui| {
-        let mut nodes = Vec::new();
-        record(ui, &mut nodes);
-        nodes
-    });
-    let warm: Vec<_> = warm_nodes
-        .iter()
-        .map(|&n| h.ui().arranged_rect(Layer::Main, n))
-        .collect();
-
-    // Guard against going inert: if hash stability regresses and the warm frame misses everywhere, cold == warm passes vacuously.
+    h.frame(&mut record);
     assert!(
         !h.engines_mut()
             .layout
@@ -65,55 +43,15 @@ fn assert_warm_rects_match_cold(
             .is_empty(),
         "warm frame produced no measure-cache hits — {msg} pins nothing",
     );
-    assert_eq!(cold, warm, "{msg}");
-}
-
-/// The main layer as a cold layout must reproduce it: every arranged rect, and each shaped run's
-/// extent and buffer, since a stale measure can arrange at the right rect while it paints the
-/// text it was shaped to.
-#[derive(Debug, PartialEq)]
-struct LaidOut {
-    rects: Vec<Rect>,
-    shapes: Vec<(TextExtent, Option<TextShapeKey>)>,
-}
-
-impl LaidOut {
-    fn of(h: &Harness) -> Self {
-        Self {
-            rects: (0..h.ui_ref().tree(Layer::Main).records.len() as u32)
-                .map(|i| h.ui_ref().arranged_rect(Layer::Main, NodeId(i)))
-                .collect(),
-            shapes: h
-                .ui_ref()
-                .layout(Layer::Main)
-                .text_shapes
-                .iter()
-                .map(|shaped| (shaped.extent, shaped.key))
-                .collect(),
-        }
-    }
-}
-
-/// `warm`'s last frame against `record` laid out cold on the same surface: the measure cache and
-/// the last run forgotten first.
-fn assert_matches_cold(warm: &mut Harness, msg: &str, record: impl FnMut(&mut Ui)) {
-    let laid_out = LaidOut::of(warm);
-    warm.engines_mut().layout.cache.forget_all();
-    warm.engines_mut().layout.forget_last_run();
-    warm.frame(record);
-    assert_eq!(
-        laid_out,
-        LaidOut::of(warm),
-        "{msg}: the warm layout diverged from a cold one"
-    );
+    oracle::assert_layout_matches_cold(h, msg);
 }
 
 /// Regression: a cache hit at a Grid (or ancestor) must repopulate `GridTrackStore`, or every cell collapses to x=0. Pins single, nested and sibling grids.
 #[test]
 fn cache_hit_preserves_grid_cell_rects() {
-    type Build = fn(&mut Ui, &mut Vec<NodeId>);
+    type Build = fn(&mut Ui);
     let cases: &[(&str, Build)] = &[
-        ("single_grid", |ui, capture| {
+        ("single_grid", |ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -126,27 +64,21 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .line_gap(6.0)
                         .gap(16.0)
                         .show(ui, |ui| {
-                            capture.push(
-                                Text::new("Title:")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            capture.push(
-                                Text::new("value column")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                    .grid_cell((0, 1))
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new("Title:")
+                                .auto_id()
+                                .font_size(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui);
+                            Text::new("value column")
+                                .auto_id()
+                                .font_size(14.0)
+                                .text_wrap(TextWrap::WrapWithOverflow)
+                                .grid_cell((0, 1))
+                                .show(ui);
                         });
                 });
         }),
-        ("nested_grids", |ui, capture| {
+        ("nested_grids", |ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -157,14 +89,11 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .cols([Track::HUG, Track::FILL])
                         .rows([Track::HUG])
                         .show(ui, |ui| {
-                            capture.push(
-                                Text::new("outer-L")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new("outer-L")
+                                .auto_id()
+                                .font_size(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui);
                             Panel::vstack()
                                 .id(WidgetId::from_hash("inner-host"))
                                 .grid_cell((0, 1))
@@ -176,27 +105,20 @@ fn cache_hit_preserves_grid_cell_rects() {
                                         .rows([Track::HUG])
                                         .show(ui, |ui| {
                                             for (col, label) in [(0, "a"), (1, "bb"), (2, "end")] {
-                                                capture.push(
-                                                    Text::new(label)
-                                                        .id(WidgetId::from_hash((
-                                                            "inner-cell",
-                                                            col,
-                                                        )))
-                                                        .style(
-                                                            &TextStyle::default()
-                                                                .with_font_size(14.0),
-                                                        )
-                                                        .grid_cell((0, col))
-                                                        .show(ui)
-                                                        .node(),
-                                                );
+                                                Text::new(label)
+                                                    .id(WidgetId::from_hash(("inner-cell", col)))
+                                                    .style(
+                                                        &TextStyle::default().with_font_size(14.0),
+                                                    )
+                                                    .grid_cell((0, col))
+                                                    .show(ui);
                                             }
                                         });
                                 });
                         });
                 });
         }),
-        ("sibling_grids", |ui, capture| {
+        ("sibling_grids", |ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -207,22 +129,16 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .cols([Track::HUG, Track::FILL])
                         .rows([Track::HUG])
                         .show(ui, |ui| {
-                            capture.push(
-                                Text::new("L1:")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            capture.push(
-                                Text::new("v1")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 1))
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new("L1:")
+                                .auto_id()
+                                .font_size(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui);
+                            Text::new("v1")
+                                .auto_id()
+                                .font_size(14.0)
+                                .grid_cell((0, 1))
+                                .show(ui);
                         });
                     Grid::new()
                         .id(WidgetId::from_hash("g2"))
@@ -230,29 +146,23 @@ fn cache_hit_preserves_grid_cell_rects() {
                         .cols([Track::HUG, Track::HUG, Track::FILL])
                         .rows([Track::HUG])
                         .show(ui, |ui| {
-                            capture.push(
-                                Text::new("Description:")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            capture.push(
-                                Text::new("end")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 2))
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new("Description:")
+                                .auto_id()
+                                .font_size(14.0)
+                                .grid_cell((0, 0))
+                                .show(ui);
+                            Text::new("end")
+                                .auto_id()
+                                .font_size(14.0)
+                                .grid_cell((0, 2))
+                                .show(ui);
                         });
                 });
         }),
     ];
     for (label, record) in cases {
         let mut h = Harness::new(UVec2::new(800, 600));
-        assert_warm_rects_match_cold(&mut h, &format!("case: {label}"), *record);
+        assert_warm_matches_cold(&mut h, &format!("case: {label}"), *record);
         // The hit must land at the viewport root so grid measure is skipped and the hug-restore path runs.
         assert!(
             h.engines_mut()
@@ -271,27 +181,24 @@ fn cache_hit_preserves_grid_cell_rects() {
 /// Per-driver cache-hit defense. Only Grid retains measure→arrange state (see the `LayoutScratch` cache-hit contract); a driver adding some without [`LayoutScratch::restore_after_cache_hit`] desyncs warm from cold.
 #[test]
 fn cache_hit_preserves_per_driver_rects() {
-    type Build = fn(&mut Ui, &mut Vec<NodeId>);
+    type Build = fn(&mut Ui);
     let cases: &[(&str, Build)] = &[
-        ("hstack", |ui, capture| {
+        ("hstack", |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::hstack()
                     .id(WidgetId::from_hash("row"))
                     .gap(6.0)
                     .show(ui, |ui| {
                         for (i, label) in ["alpha", "beta", "gamma"].iter().enumerate() {
-                            capture.push(
-                                Text::new(*label)
-                                    .id(WidgetId::from_hash(("cell", i)))
-                                    .font_size(14.0)
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new(*label)
+                                .id(WidgetId::from_hash(("cell", i)))
+                                .font_size(14.0)
+                                .show(ui);
                         }
                     });
             });
         }),
-        ("vstack_fill_freeze", |ui, capture| {
+        ("vstack_fill_freeze", |ui| {
             // Min-content floors force the freeze loop; a hit skips it, so arrange must read slots from `desired` alone.
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::vstack()
@@ -306,19 +213,16 @@ fn cache_hit_preserves_per_driver_rects() {
                         .iter()
                         .enumerate()
                         {
-                            capture.push(
-                                Text::new(*label)
-                                    .id(WidgetId::from_hash(("fill", i)))
-                                    .size((Sizing::fill(1.0), Sizing::HUG))
-                                    .font_size(14.0)
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new(*label)
+                                .id(WidgetId::from_hash(("fill", i)))
+                                .size((Sizing::fill(1.0), Sizing::HUG))
+                                .font_size(14.0)
+                                .show(ui);
                         }
                     });
             });
         }),
-        ("wrap_hstack", |ui, capture| {
+        ("wrap_hstack", |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::wrap_hstack()
                     .id(WidgetId::from_hash("wrap"))
@@ -330,36 +234,30 @@ fn cache_hit_preserves_per_driver_rects() {
                             .iter()
                             .enumerate()
                         {
-                            capture.push(
-                                Text::new(*label)
-                                    .id(WidgetId::from_hash(("tag", i)))
-                                    .font_size(14.0)
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new(*label)
+                                .id(WidgetId::from_hash(("tag", i)))
+                                .font_size(14.0)
+                                .show(ui);
                         }
                     });
             });
         }),
-        ("zstack", |ui, capture| {
+        ("zstack", |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
                     .id(WidgetId::from_hash("z"))
                     .size((Sizing::fixed(160.0), Sizing::fixed(40.0)))
                     .show(ui, |ui| {
                         for (i, label) in ["under", "over"].iter().enumerate() {
-                            capture.push(
-                                Text::new(*label)
-                                    .id(WidgetId::from_hash(("layer", i)))
-                                    .font_size(14.0)
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new(*label)
+                                .id(WidgetId::from_hash(("layer", i)))
+                                .font_size(14.0)
+                                .show(ui);
                         }
                     });
             });
         }),
-        ("canvas", |ui, capture| {
+        ("canvas", |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::canvas()
                     .id(WidgetId::from_hash("c"))
@@ -369,14 +267,11 @@ fn cache_hit_preserves_per_driver_rects() {
                             (0, "tl", glam::Vec2::new(4.0, 4.0)),
                             (1, "br", glam::Vec2::new(80.0, 40.0)),
                         ] {
-                            capture.push(
-                                Text::new(label)
-                                    .id(WidgetId::from_hash(("pin", i)))
-                                    .pos(pos)
-                                    .font_size(14.0)
-                                    .show(ui)
-                                    .node(),
-                            );
+                            Text::new(label)
+                                .id(WidgetId::from_hash(("pin", i)))
+                                .pos(pos)
+                                .font_size(14.0)
+                                .show(ui);
                         }
                     });
             });
@@ -384,7 +279,7 @@ fn cache_hit_preserves_per_driver_rects() {
     ];
     for (label, record) in cases {
         let mut h = Harness::new(UVec2::new(800, 600));
-        assert_warm_rects_match_cold(&mut h, &format!("case: {label}"), *record);
+        assert_warm_matches_cold(&mut h, &format!("case: {label}"), *record);
     }
 }
 
@@ -660,7 +555,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                 );
             }
         }
-        assert_matches_cold(&mut h, &format!("step {i} at {w}x{ht}"), record);
+        oracle::assert_layout_matches_cold(&h, &format!("step {i} at {w}x{ht}"));
     }
 }
 
@@ -866,14 +761,7 @@ fn moved_subtree_replays_translated_rects() {
         assert_eq!(a.min.y, b.min.y + 20.0, "node {i} shifted by the wrong dy");
     }
 
-    h.engines_mut().layout.cache.forget_all();
-    let mut cold_nodes = Vec::new();
-    h.frame(|ui| record(ui, 30.0, &mut cold_nodes));
-    assert_eq!(
-        after,
-        rects(h.ui_ref(), &cold_nodes),
-        "translated replay diverged from a cold remeasure",
-    );
+    oracle::assert_layout_matches_cold(&h, "the translated replay");
 }
 
 /// A translated replay lands bit for bit where a cold arrange does: fractional sizes make `old + (new − old)` round differently from the cold sum, so the replay rebuilds each rect from its slot origin. Forty fractional header heights run through one harness, each held against a fresh cold arrange.
@@ -942,13 +830,7 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
                 > 0,
             "frame {frame}: the subtree did not replay translated",
         );
-        assert_matches_cold(
-            &mut warm,
-            &format!("frame {frame}, header {header_h}"),
-            |ui| {
-                record(ui, header_h);
-            },
-        );
+        oracle::assert_layout_matches_cold(&warm, &format!("frame {frame}, header {header_h}"));
     }
 }
 
@@ -956,8 +838,7 @@ fn translated_replay_lands_where_a_cold_arrange_does() {
 #[test]
 fn a_resized_hit_root_replays_its_unchanged_descendants() {
     const ROWS: usize = 3;
-    let record = |ui: &mut Ui, grower_w: f32, capture: &mut Vec<NodeId>| {
-        capture.clear();
+    let record = |ui: &mut Ui, grower_w: f32| {
         Panel::vstack()
             .id(WidgetId::from_hash("root"))
             .size((Sizing::FILL, Sizing::FILL))
@@ -975,29 +856,23 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 for row in 0..ROWS {
-                                    let outer = Panel::hstack()
+                                    Panel::hstack()
                                         .id(WidgetId::from_hash(("row", row)))
                                         .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
                                         .show(ui, |ui| {
-                                            capture.push(
-                                                Panel::zstack()
-                                                    .id(WidgetId::from_hash(("cell", row)))
-                                                    .size((Sizing::fixed(30.0), Sizing::FILL))
-                                                    .show(ui, |_ui| {})
-                                                    .response
-                                                    .node(),
-                                            );
+                                            Panel::zstack()
+                                                .id(WidgetId::from_hash(("cell", row)))
+                                                .size((Sizing::fixed(30.0), Sizing::FILL))
+                                                .show(ui, |_ui| {});
                                         });
-                                    capture.push(outer.response.node());
                                 }
                             });
                     });
             });
     };
     let mut h = Harness::mono(UVec2::new(800, 600));
-    let mut nodes = Vec::new();
-    h.frame(|ui| record(ui, 100.0, &mut nodes));
-    h.frame(|ui| record(ui, 150.0, &mut nodes));
+    h.frame(|ui| record(ui, 100.0));
+    h.frame(|ui| record(ui, 150.0));
     assert!(
         h.engines_mut()
             .layout
@@ -1017,7 +892,7 @@ fn a_resized_hit_root_replays_its_unchanged_descendants() {
         ROWS as u32,
         "each row, arranged where it was, replays",
     );
-    assert_matches_cold(&mut h, "the replay", |ui| record(ui, 150.0, &mut nodes));
+    oracle::assert_layout_matches_cold(&h, "the replay");
 }
 
 /// At scale 1.5 a surface of 1501 and of 1502 physical px is 1000.667 and 1001.333 logical: one
@@ -1050,10 +925,6 @@ fn fractional_offers_at_scale_one_and_a_half_match_cold() {
     for (step, width) in [1501, 1502, 1501, 1503, 1502].into_iter().enumerate() {
         h.resize(UVec2::new(width, 600));
         h.frame(record);
-        assert_matches_cold(
-            &mut h,
-            &format!("step {step} at {width} physical px"),
-            record,
-        );
+        oracle::assert_layout_matches_cold(&h, &format!("step {step} at {width} physical px"));
     }
 }

@@ -5,6 +5,7 @@ use crate::internals::cache_fixture::{
     BROAD_DEPTH, BROAD_FANOUT, BroadChange, DEEP_DEPTH, build_broad, build_broad_variant,
     build_deep,
 };
+use crate::layout::cache::tests::reuse::assert_snapshot_is_linear;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 
@@ -50,7 +51,10 @@ fn adversarial_workloads_retain_one_row_per_node() {
     );
 }
 
-/// One changed leaf re-measures the panels above it; every sibling subtree beside the path hits (seven at each of three levels), even though a taller leaf raises each panel's minimum offer, since a Hug stack of fixed leaves holds under any larger offer.
+/// One changed leaf re-measures the panels above it, the top one of the tree included; every
+/// sibling subtree beside the path hits (seven at each of three levels), even though a taller leaf
+/// raises each panel's minimum offer, since a Hug stack of fixed leaves holds under any larger
+/// offer. The snapshot the frame leaves holds each recorded node once.
 #[test]
 fn localized_change_hits_unchanged_sibling_subtrees() {
     for change in [BroadChange::FillWeight, BroadChange::LeafHeight] {
@@ -60,10 +64,17 @@ fn localized_change_hits_unchanged_sibling_subtrees() {
             .build();
         let _ = h.frame(|ui| build_broad_variant(ui, None));
         let _ = h.frame(|ui| build_broad_variant(ui, Some(change)));
+        let top = h.ui().tree(Layer::Main).records.widget_id()[1];
+        let hits = h.engines_mut().layout.scratch.counters.cache_hits();
         assert_eq!(
-            h.engines_mut().layout.scratch.counters.cache_hits().len(),
+            hits.len(),
             21,
             "{change:?}: seven unchanged siblings hit at each of the three branch levels",
         );
+        assert!(
+            !hits.contains(&top),
+            "{change:?}: the top panel, above the change, re-measures",
+        );
+        assert_snapshot_is_linear(&h);
     }
 }

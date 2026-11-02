@@ -122,54 +122,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 12: Test consolidation
-
-Files: tests under `src/layout/cache/`, `src/input_state/`, `src/renderer/`, `src/primitives/`,
-`src/gpu/`, `src/widgets/`.
-
-- [ ] `layout/cache/tests/frames.rs:32-111`, `internals/oracle.rs:102-130`: three warm-versus-cold
-  layout oracles. Only one checks `scroll_content`. Target: one oracle in `internals::oracle` over
-  every column, with an optional "the warm frame hit" guard.
-- [ ] `layout/cache/tests/reuse.rs:419-476`: a subset of `workloads.rs:54-69`. Target: move its two
-  extra assertions into the `workloads` test and delete it.
-- [ ] `input_state/tests/drag.rs:65-526`: four contracts tested once per button or fixture. Target:
-  one table over `PointerButton::ALL` for latch, delta, the `started` edge, the bystander and the
-  sub-threshold click.
-- [ ] `input_state/tests/click.rs:361,442,482`, `capture.rs:14-115`: Harness tests repeat rows of
-  the unit table. Target: give the unit table a `window` column. Keep one table-driven Harness test
-  for `count` reaching the response.
-- [ ] `composer/tests/{batching,curves,brushes,scaling}.rs`: tier ordering is tested pairwise, 7 of
-  16 pairs, no Icon pair. Target: one table over `PaintTier::ALL²`, overlapping and disjoint.
-- [ ] `composer/tests/batching.rs`: six quad/text grouping tests each assert a subset of one
-  layout. Target: one table that asserts the whole layout per case.
-- [ ] `composer/tests/curves.rs`, `batching.rs`: about 300 lines of inline payloads. Target:
-  `CurveBuilder`, `QuadBuilder::turned` and `kind`, `TestPolyline::bounds`. Move
-  `compose_spins_polyline_about_bbox_center` to `curves.rs`.
-- [ ] `gradient_atlas/bake/tests.rs`, `gradient_atlas/tests/bake.rs`: `bake::row` tested in two
-  places. Target: one file. `lut_row_layout`'s size asserts become `const` asserts in
-  `bake/mod.rs`.
-- [ ] `geometry/corners/tests.rs`, `geometry/spacing/tests.rs`: six tests each run the shared lane
-  codec. Target: codec tests on `TestLanes`, the precision contract once on `F16x4`, and one table
-  per type for its own `LaneCodec` choices.
-- [ ] `gpu/backdrop/tests/{mod,clear,dispersion,neighbors}.rs`: four copies of one helper, and a
-  backend per reference frame (13 tests, about 1.2 s serial). Target: one fixture that keeps a
-  reference window per test and repaints it whole through `Damage::Full`.
-- [ ] `single_quad_buffer/tests.rs:15-19`, `gpu_view_targets/tests.rs:100-106`,
-  `gpu_gradient_atlas.rs:157-167`, `backdrops/tests.rs:55`, `backdrop_blur/tests.rs:205,428`,
-  `text_rig.rs:83`: belt, encoder and `GpuCtx` set up by hand seven times. Target:
-  `HeadlessTestGpuLease::frame(|ctx| …)` in `test_gpu.rs`, which finishes, submits and waits.
-- [ ] `gpu/device/gpu.rs:293-323`: `pipeline_builds_on_one_device_take_turns` proves the turn with a
-  50 ms sleep. Target: while the turn is held, `clone.pipeline_turn.try_lock()` is `WouldBlock`.
-- [ ] `gpu/device/gpu.rs:337-395`: `wait_until_waits_for_a_map_another_thread_runs` runs 50 rounds
-  (0.52 s) where 12 give odds of 1.9e-6. Target: `ROUNDS = 12` with the odds in the doc, and
-  `yield_now` in the pollers.
-- [ ] `widgets/tests/theme_file_values.rs:132-286`: 12 shards rebuild the font database per
-  document, about 1.75 s serial. Target: one `TextShaper` per shard through
-  `HarnessBuilder::shaper`. Measure again, reduce the shard count, and fix the stale "0.3 s"
-  comment.
-- [ ] `widgets/tests/style_override.rs:178-193`: a `TextStyleOverrides` test in the widgets suite.
-  Target: move it beside the theme's override tests.
-
 ### Batch 13: Widgets, no API change
 
 Files: `src/widgets/{combo_box,drag_value,color_picker,color_button,value_area.rs,slider,color_field,color_strip}/`,

@@ -4,6 +4,7 @@ mod backdrops;
 mod batching;
 mod brushes;
 mod clipping;
+mod curve_builder;
 mod curves;
 mod pruning;
 mod quad_builder;

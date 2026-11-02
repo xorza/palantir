@@ -192,3 +192,28 @@ fn lane_is_noop_matches_at_most_eps_exhaustively() {
         );
     }
 }
+
+/// The f16 precision contract every packed length holds, so a silent storage switch (as Q8.8)
+/// trips here: integers are exact to 2048; past it the step is 2, then 4 from 4096, ties to
+/// even: 2049 → 2048, 2051 → 2052, 4097 and 4098 → 4096, 4099 → 4100.
+#[test]
+fn integers_are_exact_to_2048_and_round_to_even_past_it() {
+    for (value, stored) in [
+        (1.0, 1.0),
+        (2.0, 2.0),
+        (3.0, 3.0),
+        (2048.0, 2048.0),
+        (2049.0, 2048.0),
+        (2051.0, 2052.0),
+        (4096.0, 4096.0),
+        (4097.0, 4096.0),
+        (4098.0, 4096.0),
+        (4099.0, 4100.0),
+    ] {
+        assert_eq!(
+            F16x4::from_lanes([value; 4]).lanes(),
+            [stored; 4],
+            "{value}"
+        );
+    }
+}

@@ -256,8 +256,8 @@ mod tests {
     use crate::gpu::surface::map_state::MapState;
     use crate::gpu::test_gpu::isolated_headless_test_gpu;
     use crate::internals::panic_probe;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, TryLockError};
     use std::thread;
     use std::time::Duration;
 
@@ -289,28 +289,23 @@ mod tests {
         })
     }
 
-    /// A build on a clone of the `Gpu` waits while the device's turn is held: it can finish only
-    /// after the release, so a build seen done during the 50 ms hold means builds do not take
-    /// turns. A turn a panic poisoned still passes to the next build.
+    /// Every clone of a `Gpu` takes the one turn of its device: while it is held, a clone's
+    /// turn would block, and once it is released a build on the clone runs. A turn a panic
+    /// poisoned still passes to the next build.
     #[test]
     fn pipeline_builds_on_one_device_take_turns() {
         let gpu = isolated_headless_test_gpu();
         let clone = gpu.handles();
-        let built = AtomicBool::new(false);
-        thread::scope(|scope| {
-            let turn = gpu.take_pipeline_turn();
-            scope.spawn(|| {
-                empty_compute(&clone);
-                built.store(true, Ordering::Release);
-            });
-            thread::sleep(Duration::from_millis(50));
-            assert!(
-                !built.load(Ordering::Acquire),
-                "the build waits for the turn"
-            );
-            drop(turn);
-        });
-        assert!(built.load(Ordering::Acquire));
+        let turn = gpu.take_pipeline_turn();
+        assert!(
+            matches!(
+                clone.pipeline_turn.try_lock(),
+                Err(TryLockError::WouldBlock)
+            ),
+            "a clone waits for the turn its device holds"
+        );
+        drop(turn);
+        empty_compute(&clone);
 
         panic_probe::assert_panics_with("a build panicked", || {
             let _turn = gpu.take_pipeline_turn();
@@ -338,10 +333,11 @@ mod tests {
     /// `wait_until` returns once a copy's map callback ran, though four other threads poll the
     /// device all along and collect callbacks themselves. Each callback sleeps 1 ms before it
     /// records, so one a poller runs lands after the wait's own work-done callback: a wait that
-    /// trusted the order missed two maps in three.
+    /// trusted the order missed two maps in three, so it passes all twelve rounds at odds of
+    /// (1/3)^12 ≈ 1.9e-6.
     #[test]
     fn wait_until_waits_for_a_map_another_thread_runs() {
-        const ROUNDS: u32 = 50;
+        const ROUNDS: u32 = 12;
         let gpu = isolated_headless_test_gpu();
         let polling = Arc::new(AtomicBool::new(true));
         let pollers: Vec<_> = (0..4)
@@ -351,6 +347,7 @@ mod tests {
                 thread::spawn(move || {
                     while polling.load(Ordering::Acquire) {
                         gpu.poll();
+                        thread::yield_now();
                     }
                 })
             })

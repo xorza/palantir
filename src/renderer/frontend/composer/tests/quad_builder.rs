@@ -11,6 +11,7 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::RectQuad;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::rect::RectKind;
+use glam::Vec2;
 
 /// A rect quad, opaque white, sharp, strokeless and unturned until a setter says otherwise, at
 /// full alpha.
@@ -43,11 +44,14 @@ impl QuadBuilder {
     }
 
     /// Turned by `angle` radians about the rect's center.
-    pub(super) fn turned(mut self, angle: f32) -> Self {
-        self.spin = Some(Spin {
-            pivot: self.rect.center(),
-            angle,
-        });
+    pub(super) fn turned(self, angle: f32) -> Self {
+        let pivot = self.rect.center();
+        self.turned_about(pivot, angle)
+    }
+
+    /// Turned by `angle` radians about `pivot`.
+    pub(super) const fn turned_about(mut self, pivot: Vec2, angle: f32) -> Self {
+        self.spin = Some(Spin { pivot, angle });
         self
     }
 

@@ -1,6 +1,5 @@
 //! A text backend on the shared test device, and the frames driving it.
 
-use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
@@ -18,7 +17,6 @@ use crate::text::shaped_ref::ShapedTextRef;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
 use glam::{UVec2, Vec2};
-use wgpu::util::StagingBelt;
 
 pub(super) const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
@@ -79,26 +77,18 @@ impl TextRig {
 
     /// Prepare `batches` at `scale` in one deferred upload; submit and wait.
     pub(super) fn frame(&mut self, scale: f32, batches: &[&[TextDrawRow]]) {
-        let device = &self.lease.device;
-        let mut belt = StagingBelt::new(device.clone(), 1 << 16);
-        let mut encoder =
-            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        {
-            let handles = self.lease.handles();
-            let mut ctx = GpuCtx::new(&handles, &mut belt, &mut encoder);
-            let interned_text = self.store.interned_text();
+        let interned_text = self.store.interned_text();
+        let backend = &mut self.backend;
+        self.lease.frame(|ctx| {
             for (idx, runs) in batches.iter().enumerate() {
-                self.backend.prepare_batch(TextBatchInput {
+                backend.prepare_batch(TextBatchInput {
                     idx,
                     runs,
                     scale,
                     interned_text,
                 });
             }
-            self.backend.pass.flush(&mut ctx);
-        }
-        belt.finish_and_recall_on_submit(&encoder);
-        self.lease.queue.submit([encoder.finish()]);
-        self.lease.wait();
+            backend.pass.flush(ctx);
+        });
     }
 }

@@ -79,36 +79,13 @@ fn a_derived_spacing_saturates_at_the_f16_range() {
 }
 
 #[test]
-fn lanes_round_trip_integer_values_exactly() {
-    let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
-    assert_eq!(s.to_array(), [1.0, 2.0, 3.0, 4.0]);
-    assert_eq!(s.sums(), Size::new(4.0, 6.0));
-}
-
-/// Documents the f16 precision contract.
-#[test]
-fn f16_precision_contract() {
-    // Integers are exact to 2048; past it the f16 step is 2, then 4 from 4096, ties to even: 2049 → 2048, 2051 → 2052, 4097/4098 → 4096, 4099 → 4100.
-    for (value, stored) in [
-        (2048.0, 2048.0),
-        (2049.0, 2048.0),
-        (2051.0, 2052.0),
-        (4096.0, 4096.0),
-        (4097.0, 4096.0),
-        (4098.0, 4096.0),
-        (4099.0, 4100.0),
-    ] {
-        assert_eq!(Spacing::all(value).to_array()[0], stored, "{value}");
-    }
-}
-
-#[test]
 fn to_array_and_from_array_round_trip() {
     let original = Spacing::new(1.0, 2.0, 3.0, 4.0);
     let arr = original.to_array();
     assert_eq!(arr, [1.0, 2.0, 3.0, 4.0]);
     let rebuilt = Spacing::from_array(arr);
     assert_eq!(rebuilt, original);
+    assert_eq!(original.sums(), Size::new(4.0, 6.0));
 }
 
 #[test]
@@ -126,43 +103,22 @@ fn from_tuple_preserves_component_order() {
     assert_eq!(ltrb.to_array(), [1.0, 2.0, 3.0, 4.0]);
 }
 
+/// Spacing's own choices on the shared wire format: matched axes write as
+/// `[horizontal, vertical]`, a diagonal match stays four lanes, and a table names `left`, `top`,
+/// `right`, `bottom`. Each text reads back as the spacing it was written from.
 #[test]
-fn serialize_picks_compact_form_per_symmetry() {
-    let cases: &[(&str, Spacing, &str)] = &[
-        ("uniform_scalar", Spacing::all(4.0), "4.0"),
-        ("axis_pair_two_array", Spacing::xy(4.0, 8.0), "[4.0,8.0]"),
-        (
-            "asymmetric_four_array",
-            Spacing::new(1.0, 2.0, 3.0, 4.0),
-            "[1.0,2.0,3.0,4.0]",
-        ),
-        (
-            "diagonal_match_does_not_collapse",
-            Spacing::new(1.0, 1.0, 2.0, 2.0),
-            "[1.0,1.0,2.0,2.0]",
-        ),
-    ];
-    for (label, s, want) in cases {
-        assert_eq!(ron_text(s), *want, "case: {label}");
+fn spacing_pairs_axes_and_names_each_edge() {
+    for (spacing, text) in [
+        (Spacing::xy(4.0, 8.0), "[4.0,8.0]"),
+        (Spacing::new(1.0, 1.0, 2.0, 2.0), "[1.0,1.0,2.0,2.0]"),
+    ] {
+        assert_eq!(ron_text(&spacing), text);
+        assert_eq!(from_ron::<Spacing>(text), spacing, "{text}");
     }
-}
-
-#[test]
-fn deserialize_accepts_scalar_array_and_integer_forms() {
-    let cases: &[(&str, &str, Spacing)] = &[
-        ("scalar", "4.0", Spacing::all(4.0)),
-        ("integer_scalar", "4", Spacing::all(4.0)),
-        ("two_element_array", "[4.0,8.0]", Spacing::xy(4.0, 8.0)),
-        (
-            "four_element_array",
-            "[1.0,2.0,3.0,4.0]",
-            Spacing::new(1.0, 2.0, 3.0, 4.0),
-        ),
-        ("one_element_array_uniform", "[4.0]", Spacing::all(4.0)),
-    ];
-    for (label, input, want) in cases {
-        assert_eq!(from_ron::<Spacing>(input), *want, "case: {label}");
-    }
+    assert_eq!(
+        from_ron::<Spacing>("(left: 1.0, top: 2.0, right: 3.0, bottom: 4.0)"),
+        Spacing::new(1.0, 2.0, 3.0, 4.0)
+    );
 }
 
 /// A file lane is any f32 that rounds to a finite f16, either sign: ±65519.99 rounds to
@@ -187,28 +143,6 @@ fn deserialize_rejects_a_lane_past_f16() {
                 "{input}: {error}"
             );
         }
-    }
-}
-
-#[test]
-fn deserialize_struct_form() {
-    let text = "(left: 1.0, top: 2.0, right: 3.0, bottom: 4.0)";
-    assert_eq!(from_ron::<Spacing>(text), Spacing::new(1.0, 2.0, 3.0, 4.0));
-}
-
-#[test]
-fn serialize_then_parse_round_trips() {
-    for s in [
-        Spacing::all(4.0),
-        Spacing::xy(4.0, 8.0),
-        Spacing::new(1.0, 2.0, 3.0, 4.0),
-    ] {
-        let out = ron_text(&s);
-        assert_eq!(
-            from_ron::<Spacing>(&out),
-            s,
-            "round-trip failed for {s:?} -> {out}"
-        );
     }
 }
 

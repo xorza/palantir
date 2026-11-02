@@ -48,46 +48,80 @@ fn build_target_and_bystander(ui: &mut Ui) {
     });
 }
 
+/// Every button drags alike, on a draggable beside a second one the press misses:
+/// - with no press, and after a press that moves 2.2 px, under the 4 px threshold, there is no
+///   drag; that release is a click and no stop edge;
+/// - a press at (20, 30) moved to (80, 70) latches: the delta is (60, 40), the start edge fires,
+///   and the second draggable sees nothing;
+/// - the next frame, at (300, 200) past the target's rect, the delta is (280, 170) and the start
+///   edge is gone;
+/// - the release ends the drag and fires the stop edge for that button alone, for one frame.
 #[test]
-fn drag_delta_none_before_press() {
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_clickable);
-    h.hover(Vec2::new(50.0, 50.0));
-    assert_eq!(
-        h.response_in(id(), build_clickable).left.drag.delta(),
-        None,
-        "no press → no drag",
-    );
-}
+fn each_button_latches_tracks_and_isolates_a_drag() {
+    let other = WidgetId::from_hash("other");
+    for button in PointerButton::ALL {
+        let mut h = Harness::mono(UVec2::new(400, 400));
+        h.frame(build_target_and_bystander);
+        let drag = |h: &mut Harness| {
+            h.response_in(id(), build_target_and_bystander)
+                .button(button)
+                .drag
+        };
 
-#[test]
-fn drag_delta_tracks_pointer_minus_press() {
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_clickable);
-    h.press(Vec2::new(20.0, 30.0), PointerButton::Left);
-    h.drag_to(Vec2::new(80.0, 70.0));
+        h.hover(Vec2::new(50.0, 50.0));
+        assert_eq!(drag(&mut h).delta(), None, "{button:?}: no press");
 
-    assert_eq!(
-        h.response_in(id(), build_clickable).left.drag.delta(),
-        Some(Vec2::new(60.0, 40.0)),
-        "delta = current - press_pos",
-    );
-}
+        h.press(Vec2::new(50.0, 50.0), button);
+        h.hover(Vec2::new(52.0, 51.0));
+        let wiggle = drag(&mut h);
+        assert_eq!(wiggle.delta(), None, "{button:?}: under the threshold");
+        assert!(!wiggle.started() && !wiggle.is_live(), "{button:?}");
+        h.release(button);
+        let r = *h
+            .response_in(id(), build_target_and_bystander)
+            .button(button);
+        assert!(r.clicked(), "{button:?}: the short gesture is a click");
+        assert!(
+            !r.drag.stopped(),
+            "{button:?}: no drag latched, no stop edge"
+        );
+        h.advance_past_double_click();
 
-#[test]
-fn drag_delta_persists_when_pointer_leaves_widget_rect() {
-    let s = UVec2::new(400, 400);
-    let mut h = Harness::mono(s);
-    h.frame(build_clickable);
-    h.press(Vec2::new(50.0, 50.0), PointerButton::Left);
-    h.drag_to(Vec2::new(300.0, 200.0));
+        h.press(Vec2::new(20.0, 30.0), button);
+        h.drag_to(Vec2::new(80.0, 70.0));
+        let [target, bystander] = h.frame_value(|ui| {
+            build_target_and_bystander(ui);
+            [id(), other].map(|w| ui.response_for(w).button(button).drag)
+        });
+        assert_eq!(target.delta(), Some(Vec2::new(60.0, 40.0)), "{button:?}");
+        assert!(target.started() && target.is_live(), "{button:?}: latched");
+        assert_eq!(bystander.delta(), None, "{button:?}: the bystander");
+        assert!(!bystander.started() && !bystander.is_live(), "{button:?}");
 
-    assert_eq!(
-        h.response_in(id(), build_clickable).left.drag.delta(),
-        Some(Vec2::new(250.0, 150.0)),
-    );
+        h.drag_to(Vec2::new(300.0, 200.0));
+        let moved = drag(&mut h);
+        assert_eq!(moved.delta(), Some(Vec2::new(280.0, 170.0)), "{button:?}");
+        assert!(
+            !moved.started(),
+            "{button:?}: the start edge lasts one frame"
+        );
+
+        h.release(button);
+        let r = h.response_in(id(), build_target_and_bystander);
+        assert!(r.button(button).drag.stopped(), "{button:?}: the stop edge");
+        assert!(!r.button(button).drag.is_live(), "{button:?}");
+        assert_eq!(r.button(button).drag.delta(), None, "{button:?}");
+        for unpressed in PointerButton::ALL.into_iter().filter(|&b| b != button) {
+            assert!(
+                !r.button(unpressed).drag.stopped(),
+                "{button:?}: {unpressed:?}"
+            );
+        }
+        assert!(
+            !drag(&mut h).stopped(),
+            "{button:?}: the stop edge lasts one frame"
+        );
+    }
 }
 
 #[test]
@@ -127,27 +161,6 @@ fn held_is_rect_independent_unlike_pressed() {
     assert!(!r.left.held() && !r.pressed(), "release clears the capture");
 }
 
-#[test]
-fn drag_delta_clears_on_release() {
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_clickable);
-    h.press(Vec2::new(30.0, 30.0), PointerButton::Left);
-    h.drag_to(Vec2::new(70.0, 70.0));
-    assert_eq!(
-        h.response_in(id(), build_clickable).left.drag.delta(),
-        Some(Vec2::new(40.0, 40.0)),
-        "press (30, 30) → drag (70, 70): 40 px of travel on each axis",
-    );
-
-    h.release(PointerButton::Left);
-    assert_eq!(
-        h.response_in(id(), build_clickable).left.drag.delta(),
-        None,
-        "release ends the drag (active cleared)",
-    );
-}
-
 /// Leaving the surface mid-drag is the gesture working, not ending: the capture
 /// stays latched, the drag keeps reporting its travel and no stop edge fires, so a
 /// commit-on-release gesture does not split one scrub into two undo entries. The
@@ -182,130 +195,6 @@ fn a_drag_survives_the_pointer_leaving_the_surface() {
     assert!(r.left.drag.stopped());
 }
 
-#[test]
-fn drag_stopped_edge_fires_once_on_release() {
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_draggable);
-    h.press(Vec2::new(30.0, 30.0), PointerButton::Middle);
-    h.drag_to(Vec2::new(70.0, 30.0));
-
-    let r = h.response_in(id(), build_draggable);
-    assert!(r.middle.drag.is_live() && !r.middle.drag.stopped());
-
-    h.release(PointerButton::Middle);
-    let r = h.response_in(id(), build_draggable);
-    assert!(!r.middle.drag.is_live(), "release destroys the drag state");
-    assert!(r.middle.drag.stopped());
-    assert!(!r.left.drag.stopped(), "edge is button-filtered");
-
-    let r = h.response_in(id(), build_draggable);
-    assert!(!r.middle.drag.stopped());
-}
-
-#[test]
-fn sub_threshold_release_fires_click_not_drag_stopped() {
-    // A press+release without crossing DRAG_THRESHOLD is a click: no drag latched,
-    // no stop edge.
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_clickable);
-    h.press(Vec2::new(50.0, 50.0), PointerButton::Left);
-    h.hover(Vec2::new(51.0, 50.0));
-    h.release(PointerButton::Left);
-
-    let r = h.response_in(id(), build_clickable);
-    assert!(r.left.clicked(), "sub-threshold press+release is a click");
-    assert!(!r.left.drag.stopped(), "no drag latched, no stop edge");
-}
-
-#[test]
-fn drag_delta_only_for_active_widget() {
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_target_and_bystander);
-    h.press(Vec2::new(20.0, 20.0), PointerButton::Left);
-    h.drag_to(Vec2::new(60.0, 50.0));
-
-    let [target, other] = h.frame_value(|ui| {
-        build_target_and_bystander(ui);
-        [id(), WidgetId::from_hash("other")].map(|w| ui.response_for(w).left.drag.delta())
-    });
-    assert_eq!(target, Some(Vec2::new(40.0, 30.0)), "the captured widget");
-    assert_eq!(other, None, "only the captured widget sees the drag delta");
-}
-
-#[test]
-fn middle_drag_tracks_pointer_minus_press_after_latch() {
-    // Middle press at (20, 30), pointer to (80, 70): travel 72.1 px >
-    // DRAG_THRESHOLD (4 px).
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_draggable);
-    h.press(Vec2::new(20.0, 30.0), PointerButton::Middle);
-    h.drag_to(Vec2::new(80.0, 70.0));
-
-    let r = h.response_in(id(), build_draggable);
-    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
-    assert!(
-        r.middle.drag.started(),
-        "drag-start edge must fire on the threshold-crossing move",
-    );
-    assert!(r.middle.drag.is_live());
-}
-
-#[test]
-fn middle_drag_does_not_expose_delta_below_threshold() {
-    // Press + 3 px wiggle = no latch: `started` false, `delta` `None`.
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_draggable);
-    h.press(Vec2::new(50.0, 50.0), PointerButton::Middle);
-    h.hover(Vec2::new(52.0, 51.0));
-
-    let r = h.response_in(id(), build_draggable);
-    assert_eq!(r.middle.drag.delta(), None);
-    assert!(!r.middle.drag.started());
-    assert!(!r.middle.drag.is_live());
-}
-
-#[test]
-fn drag_started_is_one_frame_edge_then_clears_on_the_next_frame() {
-    // `started` is a single-frame edge: true on the frame observing the latching
-    // move, false the next.
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_draggable);
-    h.press(Vec2::new(50.0, 50.0), PointerButton::Middle);
-    h.drag_to(Vec2::new(80.0, 50.0)); // latches
-    assert!(h.response_in(id(), build_draggable).middle.drag.started());
-
-    h.drag_to(Vec2::new(100.0, 50.0));
-    let r = h.response_in(id(), build_draggable);
-    assert!(
-        !r.middle.drag.started(),
-        "started must clear after one frame",
-    );
-    assert_eq!(
-        r.middle.drag.delta(),
-        Some(Vec2::new(50.0, 0.0)),
-        "delta keeps tracking",
-    );
-}
-
-#[test]
-fn right_button_drag_also_latches() {
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_draggable);
-    h.press(Vec2::new(40.0, 40.0), PointerButton::Right);
-    h.drag_to(Vec2::new(70.0, 40.0));
-
-    let r = h.response_in(id(), build_draggable);
-    assert_eq!(r.right.drag.delta(), Some(Vec2::new(30.0, 0.0)));
-    assert!(r.right.drag.started());
-}
-
 /// Each latched button reports its own drag: two latched together each measure from their own
 /// press, and one's release leaves the other's drag as it was, with no second latch edge.
 #[test]
@@ -330,24 +219,6 @@ fn each_latched_button_reports_its_own_drag() {
     assert!(r.middle.drag.is_live());
     assert!(!r.middle.drag.started(), "no second latch edge");
     assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
-}
-
-#[test]
-fn drag_zero_state_for_uncaptured_widget() {
-    let s = UVec2::new(200, 200);
-    let mut h = Harness::mono(s);
-    h.frame(build_target_and_bystander);
-    h.press(Vec2::new(50.0, 50.0), PointerButton::Middle);
-    h.drag_to(Vec2::new(80.0, 70.0));
-
-    let [target, other] = h.frame_value(|ui| {
-        build_target_and_bystander(ui);
-        [id(), WidgetId::from_hash("other")].map(|w| ui.response_for(w).middle.drag)
-    });
-    assert!(target.started(), "control: the captured widget latched");
-    assert_eq!(other.delta(), None);
-    assert!(!other.is_live());
-    assert!(!other.started());
 }
 
 #[test]

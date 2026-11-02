@@ -59,15 +59,6 @@ fn scene(ui: &mut Ui, sigma: Option<f32>) {
         });
 }
 
-fn frame(sigma: Option<f32>) -> RgbaImage {
-    let gpu = headless_test_gpu();
-    let mut window = Harness::builder(SIZE).mono().gpu(gpu.handles()).build();
-    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
-    let mut app = |ui: &mut Ui| scene(ui, sigma);
-    window.frame(&mut app);
-    window.read_back()
-}
-
 fn decode(byte: u8) -> f64 {
     let c = f64::from(byte) / 255.0;
     if c <= 0.04045 {
@@ -165,7 +156,9 @@ fn assert_blurred(
 /// resolution and σ 6 one level down.
 #[test]
 fn a_pane_shows_the_pixels_before_it_blurred() {
-    let under = frame(None);
+    let gpu = headless_test_gpu();
+    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
+    let under = reference.paint(|ui| scene(ui, None));
     for sigma in [3.0f32, 6.0] {
         let inside = |p: Vec2| {
             if PANE.contains(p) {
@@ -176,7 +169,7 @@ fn a_pane_shows_the_pixels_before_it_blurred() {
         };
         let what = format!("σ {sigma}");
         assert_blurred(
-            &frame(Some(sigma)),
+            &reference.paint(|ui| scene(ui, Some(sigma))),
             &under,
             BlurPlan::new(sigma),
             inside,
@@ -193,8 +186,10 @@ fn a_pane_shows_the_pixels_before_it_blurred() {
 /// the ceiling the white side is `0.5 · 1 + 0.5 · 0.2 = 0.6`.
 #[test]
 fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
-    let paint = |ceiling: Option<f32>| {
-        whole(move |ui: &mut Ui| {
+    let gpu = headless_test_gpu();
+    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
+    let mut paint = |ceiling: Option<f32>| {
+        reference.paint(move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-ceiling")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -240,8 +235,10 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
 /// `0.5 · 1 + 0.5 · 0.2 = 0.6`. Without the floor the black side is `0.1`.
 #[test]
 fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
-    let paint = |floor: Option<f32>| {
-        whole(move |ui: &mut Ui| {
+    let gpu = headless_test_gpu();
+    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
+    let mut paint = |floor: Option<f32>| {
+        reference.paint(move |ui: &mut Ui| {
             Panel::canvas()
                 .id_salt("backdrop-floor")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -298,17 +295,27 @@ fn layered(ui: &mut Ui, under: RgbaF32, pane: Rect, sigma: f32, over: RgbaF32) {
         });
 }
 
-/// What a fresh window paints of `scene` on its first, whole frame.
-fn whole(scene: impl FnMut(&mut Ui)) -> RgbaImage {
-    whole_at(SIZE, scene)
-}
+/// A window that paints each scene it is given whole, as a fresh window's first frame does: the
+/// reference a frame is held to, built once per test, its target repainted whole each time.
+#[derive(Debug)]
+struct Reference(Harness);
 
-/// [`whole`] on a window of `size`.
-fn whole_at(size: UVec2, mut scene: impl FnMut(&mut Ui)) -> RgbaImage {
-    let gpu = headless_test_gpu();
-    let mut window = window(&gpu, size, RgbaF32::BLACK);
-    window.frame(&mut scene);
-    window.read_back()
+impl Reference {
+    /// A reference window on `gpu` of `size` that clears to `clear`.
+    fn new(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> Self {
+        Self(window(gpu, size, clear))
+    }
+
+    /// What a fresh window paints of `scene` on its first, whole frame.
+    fn paint(&mut self, scene: impl FnMut(&mut Ui)) -> RgbaImage {
+        self.0.frame_without_baseline(scene);
+        self.0.read_back()
+    }
+
+    /// The blurs the last [`Self::paint`] ran.
+    fn blurs(&self) -> usize {
+        self.0.backdrop_blurs()
+    }
 }
 
 /// A fresh window on `gpu` of `size` at scale 1 that clears to `clear`.
@@ -340,6 +347,7 @@ fn assert_within_a_step(got: &RgbaImage, want: &RgbaImage, what: &str) {
 fn a_partial_frame_recaptures_only_a_stale_pane() {
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, SIZE, RgbaF32::BLACK);
+    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
     // Two levels down at σ 10: an 4 px lattice, which a one-pixel slide can stay inside.
@@ -367,7 +375,7 @@ fn a_partial_frame_recaptures_only_a_stale_pane() {
         let mut scene = |ui: &mut Ui| layered(ui, under, rect, sigma, over);
         window.frame(&mut scene);
         assert_eq!(Some(window.backdrop_blurs()), blurs, "{what}: blurs");
-        assert_within_a_step(&window.read_back(), &whole(scene), what);
+        assert_within_a_step(&window.read_back(), &reference.paint(scene), what);
     }
 }
 
@@ -411,8 +419,8 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
     };
     let size = UVec2::new(128, 96);
     let gpu = headless_test_gpu();
-    let mut window = Harness::builder(size).mono().gpu(gpu.handles()).build();
-    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    let mut window = window(&gpu, size, RgbaF32::BLACK);
+    let mut reference = Reference::new(&gpu, size, RgbaF32::BLACK);
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
     let green = RgbaF32::srgb(0.1, 0.9, 0.2);
     for (under, over, what, want_paint, blurs) in [
@@ -428,7 +436,7 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
         );
         assert_within_a_step(
             &window.read_back(),
-            &whole_at(size, scene(under, over)),
+            &reference.paint(scene(under, over)),
             what,
         );
     }
@@ -446,7 +454,9 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| scene(ui, None));
     };
-    let chrome = whole(|ui: &mut Ui| {
+    let gpu = headless_test_gpu();
+    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
+    let chrome = reference.paint(|ui: &mut Ui| {
         Panel::zstack()
             .id_salt("backdrop-chrome")
             .size((Sizing::FILL, Sizing::FILL))
@@ -459,7 +469,7 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
                     .show(ui, |_| {});
             });
     });
-    let shape = whole(|ui: &mut Ui| {
+    let shape = reference.paint(|ui: &mut Ui| {
         Panel::zstack()
             .id_salt("backdrop-chrome")
             .size((Sizing::FILL, Sizing::FILL))
@@ -479,7 +489,7 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
             });
     });
     assert!(chrome == shape, "a chrome pane differs from a rect pane");
-    assert!(chrome != whole(stripes), "the pane paints");
+    assert!(chrome != reference.paint(stripes), "the pane paints");
 }
 
 /// A frosted popup with a translucent border and a shadow that shrinks, then grows back, as a
@@ -525,8 +535,8 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
         }
     };
     let gpu = headless_test_gpu();
-    let mut window = Harness::builder(size).mono().gpu(gpu.handles()).build();
-    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    let mut window = window(&gpu, size, RgbaF32::BLACK);
+    let mut reference = Reference::new(&gpu, size, RgbaF32::BLACK);
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
     for (what, h, inner) in [
@@ -537,6 +547,6 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
         ("still tall", 400.0, red),
     ] {
         window.frame(&mut scene(h, inner));
-        assert_within_a_step(&window.read_back(), &whole_at(size, scene(h, inner)), what);
+        assert_within_a_step(&window.read_back(), &reference.paint(scene(h, inner)), what);
     }
 }

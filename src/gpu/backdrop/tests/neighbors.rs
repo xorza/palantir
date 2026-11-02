@@ -2,7 +2,7 @@
 //! around one, more stale panes than a partial frame holds, and results past the atlas.
 
 use crate::gpu::backdrop::tests::{
-    Expect, SIZE, assert_blurred, assert_within_a_step, whole, whole_at, window,
+    Expect, Reference, SIZE, assert_blurred, assert_within_a_step, window,
 };
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::primitives::geometry::corners::Corners;
@@ -56,13 +56,15 @@ fn a_pane_beside_a_pane_shows_it_blurred() {
     let left = |ui: &mut Ui| {
         ui.add_shape(Shape::rect(LEFT).backdrop_filter(BackdropFilter::blur(sigma)));
     };
-    let under = whole(|ui: &mut Ui| {
+    let gpu = headless_test_gpu();
+    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
+    let under = reference.paint(|ui: &mut Ui| {
         canvas(ui, |ui| {
             stripes(ui, 64);
             left(ui);
         });
     });
-    let got = whole(|ui: &mut Ui| {
+    let got = reference.paint(|ui: &mut Ui| {
         canvas(ui, |ui| {
             stripes(ui, 64);
             left(ui);
@@ -87,8 +89,9 @@ fn panes_apart_blur_together() {
     let sigma = 1.0;
     let left = Rect::new(2.0, 4.0, 14.0, 40.0);
     let right = Rect::new(36.0, 6.0, 22.0, 30.0);
-    let under = whole(|ui: &mut Ui| canvas(ui, |ui| stripes(ui, 64)));
     let gpu = headless_test_gpu();
+    let under = Reference::new(&gpu, SIZE, RgbaF32::BLACK)
+        .paint(|ui: &mut Ui| canvas(ui, |ui| stripes(ui, 64)));
     let mut window = window(&gpu, SIZE, RgbaF32::BLACK);
     window.frame(&mut |ui: &mut Ui| {
         canvas(ui, |ui| {
@@ -124,8 +127,10 @@ fn a_pane_inside_a_rounded_clip_blurs_inside_it() {
     let sigma = 3.0;
     let clip = Rect::new(8.0, 6.0, 48.0, 36.0);
     let radius = 10.0;
-    let under = whole(|ui: &mut Ui| canvas(ui, |ui| stripes(ui, 64)));
-    let got = whole(|ui: &mut Ui| {
+    let gpu = headless_test_gpu();
+    let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
+    let under = reference.paint(|ui: &mut Ui| canvas(ui, |ui| stripes(ui, 64)));
+    let got = reference.paint(|ui: &mut Ui| {
         canvas(ui, |ui| {
             stripes(ui, 64);
             Panel::zstack()
@@ -199,6 +204,7 @@ fn more_stale_panes_than_a_partial_frame_holds_paint_whole() {
     };
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, size, RgbaF32::BLACK);
+    let mut reference = Reference::new(&gpu, size, RgbaF32::BLACK);
     for (changed, want) in [
         (0, (FramePaint::Full, 9)),
         (1, (FramePaint::Partial, 1)),
@@ -212,7 +218,7 @@ fn more_stale_panes_than_a_partial_frame_holds_paint_whole() {
         let paint = window.frame(&mut scene(changed)).paint();
         let what = format!("{changed} changed");
         assert_eq!((paint, window.backdrop_blurs()), want, "{what}");
-        assert_within_a_step(&window.read_back(), &whole_at(size, scene(changed)), &what);
+        assert_within_a_step(&window.read_back(), &reference.paint(scene(changed)), &what);
     }
 }
 
@@ -245,6 +251,7 @@ fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
     };
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, size, RgbaF32::BLACK);
+    let mut reference = Reference::new(&gpu, size, RgbaF32::BLACK);
     for (dot, wide, want, what) in [
         (false, false, (FramePaint::Full, 1), "first"),
         (true, false, (FramePaint::Partial, 0), "dot"),
@@ -252,6 +259,10 @@ fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
     ] {
         let painted = window.frame(&mut scene(dot, wide)).paint();
         assert_eq!((painted, window.backdrop_blurs()), want, "{what}");
-        assert_within_a_step(&window.read_back(), &whole_at(size, scene(dot, wide)), what);
+        assert_within_a_step(
+            &window.read_back(),
+            &reference.paint(scene(dot, wide)),
+            what,
+        );
     }
 }

@@ -52,7 +52,7 @@ fn snap_for(h: &Harness, widget_id: WidgetId) -> Option<SnapView<'_>> {
     })
 }
 
-fn assert_snapshot_is_linear(h: &Harness) {
+pub(super) fn assert_snapshot_is_linear(h: &Harness) {
     let snapshot = &h.engines().layout.cache.prev;
     let len = snapshot.nodes.desired.len();
     assert_eq!(snapshot.nodes.scroll_content.len(), len);
@@ -413,65 +413,6 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
             .cache_hits()
             .contains(&WidgetId::VIEWPORT)
     );
-}
-
-#[test]
-fn localized_change_hits_unchanged_sibling() {
-    let build = |ui: &mut Ui, size: f32| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("branch-root"))
-            .show(ui, |ui| {
-                Panel::vstack()
-                    .id(WidgetId::from_hash("changing"))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("changing-leaf"))
-                            .size(size)
-                            .show(ui);
-                    });
-                Panel::vstack()
-                    .id(WidgetId::from_hash("stable"))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("stable-leaf"))
-                            .size(30.0)
-                            .show(ui);
-                    });
-            });
-    };
-    let mut h = Harness::mono(UVec2::new(200, 200));
-    run_frame(&mut h, |ui| build(ui, 20.0));
-    let stable_hash = snap_for(&h, WidgetId::from_hash("stable"))
-        .unwrap()
-        .snap
-        .subtree_hash;
-
-    run_frame(&mut h, |ui| build(ui, 25.0));
-
-    assert!(
-        h.engines_mut()
-            .layout
-            .scratch
-            .counters
-            .cache_hits()
-            .contains(&WidgetId::from_hash("stable"))
-    );
-    assert!(
-        !h.engines_mut()
-            .layout
-            .scratch
-            .counters
-            .cache_hits()
-            .contains(&WidgetId::from_hash("branch-root"))
-    );
-    assert_eq!(
-        stable_hash,
-        snap_for(&h, WidgetId::from_hash("stable"))
-            .unwrap()
-            .snap
-            .subtree_hash
-    );
-    assert_snapshot_is_linear(&h);
 }
 
 #[test]

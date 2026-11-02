@@ -145,7 +145,6 @@ impl GpuGradientAtlas {
 
 #[cfg(test)]
 mod tests {
-    use crate::gpu::device::gpu_ctx::GpuCtx;
     use crate::gpu::resource::gpu_gradient_atlas::{GpuGradientAtlas, ROW_PITCH};
     use crate::gpu::resource::texture_binding::TextureBinding;
     use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
@@ -157,8 +156,6 @@ mod tests {
     use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
     use crate::renderer::gradient_atlas::bake::{self, LUT_ROW_TEXELS};
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-    use std::iter;
-    use wgpu::util::StagingBelt;
 
     /// A ramp of its own for every `i` below 2^24.
     fn ramp(i: u32) -> ColorRamp {
@@ -168,14 +165,7 @@ mod tests {
 
     /// Upload `atlas` on a frame's encoder of its own, and wait for it.
     fn upload(gpu: &HeadlessTestGpuLease, atlas: &mut GpuGradientAtlas) {
-        let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 16);
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        atlas.upload(&mut GpuCtx::new(gpu, &mut belt, &mut encoder));
-        belt.finish();
-        gpu.queue.submit(iter::once(encoder.finish()));
-        gpu.wait();
+        gpu.frame(|ctx| atlas.upload(ctx));
     }
 
     /// A grown atlas takes the rows its old texture held by a copy on the GPU: the 255 rows the

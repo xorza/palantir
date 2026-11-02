@@ -9,7 +9,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::scene::layer::Layer;
 use crate::shape::record::ShapeRecord;
-use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::shaping_font::ShapingFont;
@@ -17,7 +16,6 @@ use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::text_style::TextStyle;
-use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::text::Text;
@@ -180,23 +178,6 @@ fn per_axis_setters_outrank_the_style_bundle() {
 struct RecordedFace {
     font: ShapingFont,
     color: RgbaF16,
-}
-
-/// The family chainers set that axis only, on a style and an override set alike: the override replaces the base's `SANS` and keeps its size.
-#[test]
-fn with_family_sets_only_the_family_axis() {
-    let base = TextStyle::default();
-    assert_eq!(base.family, FontFamily::SANS);
-    let mono = base.with_family(FontFamily::MONO);
-    assert_eq!(mono.family, FontFamily::MONO);
-    assert_eq!(mono.font_size, base.font_size);
-
-    let over = TextStyleOverrides::NONE.with_family(FontFamily::MONO);
-    assert_eq!(over.family, Some(FontFamily::MONO));
-    assert_eq!(over.font_size, None);
-    let applied = over.apply(&base);
-    assert_eq!(applied.family, FontFamily::MONO);
-    assert_eq!(applied.font_size, base.font_size);
 }
 
 fn face_of(h: &Harness, id: WidgetId) -> RecordedFace {

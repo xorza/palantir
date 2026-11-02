@@ -1,6 +1,6 @@
 //! A pane with nothing painted before it, whose backdrop is the clear.
 
-use crate::gpu::backdrop::tests::{CLEAR, SIZE, assert_within_a_step, window};
+use crate::gpu::backdrop::tests::{CLEAR, Reference, SIZE, assert_within_a_step, window};
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -12,7 +12,6 @@ use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use glam::Vec2;
-use image::RgbaImage;
 
 /// σ 2 reaches 8 px, so the pane's footprint spans x 8..56: a speck at the window's corner lies
 /// outside it, and a veil over x 4..60 covers it without covering the window.
@@ -68,14 +67,6 @@ fn scene(
     }
 }
 
-/// What a fresh window that clears to `clear` paints of `scene`, and the blurs it ran.
-fn paint(clear: RgbaF32, mut scene: impl FnMut(&mut Ui)) -> (RgbaImage, usize) {
-    let gpu = headless_test_gpu();
-    let mut window = window(&gpu, SIZE, clear);
-    window.frame(&mut scene);
-    (window.read_back(), window.backdrop_blurs())
-}
-
 /// A pane with nothing painted under its footprint shows the clear without a capture or a blur,
 /// as one whose capture holds only the clear's bytes shows it: the same bytes, as the clear it
 /// shows is the one the target holds, rounded to its byte and to the blur's `f16`. Its edge's
@@ -88,12 +79,14 @@ fn a_pane_with_nothing_under_it_shows_the_clear() {
         (CLEAR, None, "the window's clear"),
         (RgbaF32::BLACK, Some(CLEAR), "a folded background"),
     ] {
-        let (captured, blurs) = paint(clear, scene(background, Before::Veil, None));
-        assert_eq!(blurs, 1, "{what}: the veil");
+        let gpu = headless_test_gpu();
+        let mut reference = Reference::new(&gpu, SIZE, clear);
+        let captured = reference.paint(scene(background, Before::Veil, None));
+        assert_eq!(reference.blurs(), 1, "{what}: the veil");
         let clear_bytes = CLEAR.to_srgba8();
         for before in [Before::Nothing, Before::Speck] {
-            let (flat, blurs) = paint(clear, scene(background, before, None));
-            assert_eq!(blurs, 0, "{what}: {before:?}");
+            let flat = reference.paint(scene(background, before, None));
+            assert_eq!(reference.blurs(), 0, "{what}: {before:?}");
             for (x, y, pixel) in flat.enumerate_pixels() {
                 let at = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
                 if SPECK.contains(at) {
@@ -123,6 +116,7 @@ fn a_pane_with_nothing_under_it_shows_the_clear() {
 fn a_pane_shows_the_clear_or_a_capture_as_what_lies_under_it_changes() {
     let gpu = headless_test_gpu();
     let mut window = window(&gpu, SIZE, CLEAR);
+    let mut reference = Reference::new(&gpu, SIZE, CLEAR);
     let red = RgbaF32::srgb(1.0, 0.2, 0.1);
     let blue = RgbaF32::srgb(0.1, 0.3, 1.0);
     for (under, what, want) in [
@@ -136,7 +130,7 @@ fn a_pane_shows_the_clear_or_a_capture_as_what_lies_under_it_changes() {
             .frame(&mut scene(None, Before::Nothing, under))
             .paint();
         assert_eq!((painted, window.backdrop_blurs()), want, "{what}");
-        let (whole, _) = paint(CLEAR, scene(None, Before::Nothing, under));
+        let whole = reference.paint(scene(None, Before::Nothing, under));
         assert_within_a_step(&window.read_back(), &whole, what);
     }
 }

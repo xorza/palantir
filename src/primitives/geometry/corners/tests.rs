@@ -3,29 +3,6 @@ use crate::primitives::math::domain::EPS;
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 
 #[test]
-fn lanes_round_trip_integer_values_exactly() {
-    let c = Corners::new(1.0, 2.0, 3.0, 4.0);
-    assert_eq!(c.to_array(), [1.0, 2.0, 3.0, 4.0]);
-}
-
-/// The f16 precision contract; a silent storage switch (e.g. Q8.8) would trip these.
-#[test]
-fn f16_precision_contract() {
-    // Integers are exact to 2048; the f16 step is 2 past it and 4 from 4096, ties to even: 2049 → 2048, 2051 → 2052, 4097 and 4098 → 4096, 4099 → 4100.
-    for (value, stored) in [
-        (2048.0, 2048.0),
-        (2049.0, 2048.0),
-        (2051.0, 2052.0),
-        (4096.0, 4096.0),
-        (4097.0, 4096.0),
-        (4098.0, 4096.0),
-        (4099.0, 4100.0),
-    ] {
-        assert_eq!(Corners::all(value).to_array()[0], stored, "{value}");
-    }
-}
-
-#[test]
 fn to_array_reads_clockwise_from_the_top_left() {
     assert_eq!(
         Corners::new(1.0, 2.0, 3.0, 4.0).to_array(),
@@ -149,53 +126,6 @@ fn convenience_ctors() {
     assert_eq!(Corners::right(4.0).to_array(), [0.0, 4.0, 4.0, 0.0]);
 }
 
-#[test]
-fn serialize_picks_compact_form_per_symmetry() {
-    let cases: &[(&str, Corners, &str)] = &[
-        ("uniform_scalar", Corners::all(4.0), "4.0"),
-        (
-            "matched_pairs_two_array",
-            Corners::new(4.0, 4.0, 8.0, 8.0),
-            "[4.0,8.0]",
-        ),
-        (
-            "asymmetric_four_array",
-            Corners::new(1.0, 2.0, 3.0, 4.0),
-            "[1.0,2.0,3.0,4.0]",
-        ),
-        (
-            "near_matched_does_not_collapse",
-            Corners::new(1.0, 2.0, 1.0, 2.0),
-            "[1.0,2.0,1.0,2.0]",
-        ),
-    ];
-    for (label, c, want) in cases {
-        assert_eq!(ron_text(c), *want, "case: {label}");
-    }
-}
-
-#[test]
-fn deserialize_accepts_scalar_array_and_integer_forms() {
-    let cases: &[(&str, &str, Corners)] = &[
-        ("scalar", "4.0", Corners::all(4.0)),
-        ("integer_scalar", "4", Corners::all(4.0)),
-        (
-            "two_element_array",
-            "[4.0,8.0]",
-            Corners::new(4.0, 4.0, 8.0, 8.0),
-        ),
-        (
-            "four_element_array",
-            "[1.0,2.0,3.0,4.0]",
-            Corners::new(1.0, 2.0, 3.0, 4.0),
-        ),
-        ("one_element_array_uniform", "[4.0]", Corners::all(4.0)),
-    ];
-    for (label, input, want) in cases {
-        assert_eq!(from_ron::<Corners>(input), *want, "case: {label}");
-    }
-}
-
 /// A file radius is a non-negative f32 that rounds to a finite f16: 0 and 65519.99, which rounds to 65504, are the ends; -1, 65520, infinity and NaN fail with the rule.
 #[test]
 fn deserialize_rejects_a_radius_f16_cannot_hold() {
@@ -219,24 +149,20 @@ fn deserialize_rejects_a_radius_f16_cannot_hold() {
     }
 }
 
+/// Corners' own choices on the shared wire format: matched top and bottom pairs write as
+/// `[top, bottom]`, a diagonal match stays four lanes, and a table names `tl`, `tr`, `br`, `bl`.
+/// Each text reads back as the corners it was written from.
 #[test]
-fn deserialize_struct_form() {
-    let text = "(tl: 1.0, tr: 2.0, br: 3.0, bl: 4.0)";
-    assert_eq!(from_ron::<Corners>(text), Corners::new(1.0, 2.0, 3.0, 4.0));
-}
-
-#[test]
-fn serialize_then_parse_round_trips() {
-    for c in [
-        Corners::all(4.0),
-        Corners::new(4.0, 4.0, 8.0, 8.0),
-        Corners::new(1.0, 2.0, 3.0, 4.0),
+fn corners_pair_top_and_bottom_and_name_each_corner() {
+    for (corners, text) in [
+        (Corners::new(4.0, 4.0, 8.0, 8.0), "[4.0,8.0]"),
+        (Corners::new(1.0, 2.0, 1.0, 2.0), "[1.0,2.0,1.0,2.0]"),
     ] {
-        let s = ron_text(&c);
-        assert_eq!(
-            from_ron::<Corners>(&s),
-            c,
-            "round-trip failed for {c:?} -> {s}"
-        );
+        assert_eq!(ron_text(&corners), text);
+        assert_eq!(from_ron::<Corners>(text), corners, "{text}");
     }
+    assert_eq!(
+        from_ron::<Corners>("(tl: 1.0, tr: 2.0, br: 3.0, bl: 4.0)"),
+        Corners::new(1.0, 2.0, 3.0, 4.0)
+    );
 }

@@ -14,6 +14,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::text::font_scope::FontScope;
+use crate::text::shaper::TextShaper;
 use crate::theme::Theme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -28,7 +30,7 @@ use crate::widgets::tooltip::Tooltip;
 use glam::{UVec2, Vec2};
 use ron::ser::{self, PrettyConfig};
 use std::ops::Range;
-use std::panic;
+use std::panic::{self, AssertUnwindSafe};
 use std::time::Duration;
 
 /// The default theme as RON text, the document each number is edited in.
@@ -127,10 +129,12 @@ struct Scene {
     color: RgbaF32,
 }
 
-/// One frame of [`probe`] under `theme`, with the menu opened before it. Real shaping, so a font
-/// size reaches the shaper and the ink it measures.
-fn render(theme: Theme) -> Harness {
-    let mut h = Harness::new(UVec2::new(640, 480));
+/// One frame of [`probe`] under `theme`, with the menu opened before it, shaped by `shaper`. Real
+/// shaping, so a font size reaches the shaper and the ink it measures.
+fn render(theme: Theme, shaper: &TextShaper) -> Harness {
+    let mut h = Harness::builder(UVec2::new(640, 480))
+        .shaper(shaper.clone())
+        .build();
     h.ui().set_theme_for(ColorScheme::Dark, theme);
     ContextMenu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
@@ -147,9 +151,12 @@ fn line_of(ron: &str, at: usize) -> &str {
     ron[start..end].trim()
 }
 
-/// Every `SHARDS`-th number.
+/// Every `SHARDS`-th number of the default theme, from the `shard`-th, set to each suspect
+/// value, loads and renders, or is refused on load. One shaper serves every render of the shard,
+/// as building one per document took most of the walk's time.
 fn walk(shard: usize) {
     let base = default_theme_text();
+    let shaper = TextShaper::with_fonts(FontScope::Bundled);
     for span in numbers(&base).into_iter().skip(shard).step_by(SHARDS) {
         for suspect in SUSPECTS {
             let document = format!("{}{suspect}{}", &base[..span.start], &base[span.end..]);
@@ -157,7 +164,9 @@ fn walk(shard: usize) {
                 continue;
             };
             let field = line_of(&base, span.start);
-            let rendered = panic::catch_unwind(|| render(theme));
+            // A panic fails the walk at once, so no later render reads a shaper it left
+            // half-written.
+            let rendered = panic::catch_unwind(AssertUnwindSafe(|| render(theme, &shaper)));
             assert!(
                 rendered.is_ok(),
                 "`{field}` set to {suspect} loads, and rendering it panics",
@@ -193,14 +202,17 @@ fn every_number_at_the_length_bound_at_once_renders() {
         splice(&mut document, span);
     }
     let theme = ron::from_str::<Theme>(&document).expect("each number loads at the bound");
-    let _ = render(theme);
+    let _ = render(theme, &TextShaper::with_fonts(FontScope::Bundled));
 }
 
 /// The default theme's probe frame opens the menu and shows the tooltip, so the walk reaches
 /// their theme values.
 #[test]
 fn the_probe_draws_the_overlays() {
-    let mut h = render(Theme::default());
+    let mut h = render(
+        Theme::default(),
+        &TextShaper::with_fonts(FontScope::Bundled),
+    );
     for layer in [Layer::Popup, Layer::Tooltip] {
         assert!(
             !h.ui().tree(layer).shapes.records.is_empty(),
@@ -221,9 +233,9 @@ fn the_walk_finds_the_theme_numbers() {
     );
 }
 
-/// Fits the per-test budget with real shaping: about 0.3 s a shard, beside the 0.4 s a test
-/// binary takes to start with its fonts.
-const SHARDS: usize = 12;
+/// Fits the per-test budget: the whole walk takes about 0.8 s on one thread in the debug test
+/// profile, so a shard about 0.2 s.
+const SHARDS: usize = 4;
 
 #[test]
 fn file_values_shard_0() {
@@ -243,44 +255,4 @@ fn file_values_shard_2() {
 #[test]
 fn file_values_shard_3() {
     walk(3);
-}
-
-#[test]
-fn file_values_shard_4() {
-    walk(4);
-}
-
-#[test]
-fn file_values_shard_5() {
-    walk(5);
-}
-
-#[test]
-fn file_values_shard_6() {
-    walk(6);
-}
-
-#[test]
-fn file_values_shard_7() {
-    walk(7);
-}
-
-#[test]
-fn file_values_shard_8() {
-    walk(8);
-}
-
-#[test]
-fn file_values_shard_9() {
-    walk(9);
-}
-
-#[test]
-fn file_values_shard_10() {
-    walk(10);
-}
-
-#[test]
-fn file_values_shard_11() {
-    walk(11);
 }

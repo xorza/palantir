@@ -14,12 +14,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::gpu::device::gpu::Gpu;
+#[cfg(test)]
+use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::surface::texel_readback::TexelReadback;
+#[cfg(test)]
+use wgpu::util::StagingBelt;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;
@@ -102,6 +106,23 @@ impl HeadlessTestGpuLease {
     /// Block until every submission on the device has finished.
     pub fn wait(&self) {
         self.device.gpu.wait();
+    }
+
+    /// Run `encode` on an encoder and a staging belt of its own, then finish, submit and wait for
+    /// them: one frame of GPU work a test sets up alone. Returns what `encode` returns.
+    #[cfg(test)]
+    pub(crate) fn frame<R>(&self, encode: impl FnOnce(&mut GpuCtx<'_>) -> R) -> R {
+        let mut belt = StagingBelt::new(self.device.gpu.device.clone(), 1 << 16);
+        let mut encoder = self
+            .device
+            .gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let encoded = encode(&mut GpuCtx::new(self, &mut belt, &mut encoder));
+        belt.finish_and_recall_on_submit(&encoder);
+        self.device.gpu.queue.submit([encoder.finish()]);
+        self.wait();
+        encoded
     }
 
     /// Every texel of `texture`'s first layer, rows top to bottom with no padding, waited for.

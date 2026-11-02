@@ -33,7 +33,7 @@ impl Oracle {
     /// Panics, naming the node or row, when a retained result differs
     /// from its cold counterpart or the damage misses a changed row.
     pub(crate) fn check_frame(&mut self, h: &Harness, report: &FrameReport) {
-        assert_layout_matches_cold(h);
+        assert_layout_matches_cold(h, "the retained layout");
         assert_cascade_matches_cold(h);
         self.check_damage(h, report);
     }
@@ -99,8 +99,11 @@ impl Oracle {
     }
 }
 
-/// Lay the forest out again with a cold engine and assert every node's result equals the frame's.
-fn assert_layout_matches_cold(h: &Harness) {
+/// Lay `h`'s forest out again with a cold engine, no measure cache and no last run, and assert
+/// every plane's result equals the last frame's: each node's arranged rect and scroll content, and
+/// each shaped run's extent and buffer key, as a stale measure can arrange at the right rect while
+/// it paints the text it was shaped to. `msg` names the failure.
+pub(crate) fn assert_layout_matches_cold(h: &Harness, msg: &str) {
     let mut engine = LayoutEngine::new(h.ui_ref().shaper().clone());
     let mut cold = Layout::default();
     engine.run(
@@ -111,7 +114,7 @@ fn assert_layout_matches_cold(h: &Harness) {
     for (plane, tree) in h.ui_ref().forest().trees.iter_paint_order() {
         let (warm, cold) = (h.ui_ref().layout(plane), &cold[plane]);
         for (node, id) in tree.records.widget_id().iter().enumerate() {
-            let at = || format!("{plane:?} node {node} ({id:?})");
+            let at = || format!("{msg}: {plane:?} node {node} ({id:?})");
             assert_eq!(warm.rect[node], cold.rect[node], "rect of {}", at());
             assert_eq!(
                 warm.scroll_content[node],
@@ -122,7 +125,7 @@ fn assert_layout_matches_cold(h: &Harness) {
             let runs = |layout: &PlaneLayout| {
                 layout.text_shapes[layout.text_spans[node].range()]
                     .iter()
-                    .map(|shaped: &ShapedText| (shaped.extent.size, shaped.key))
+                    .map(|shaped: &ShapedText| (shaped.extent, shaped.key))
                     .collect::<Vec<_>>()
             };
             assert_eq!(runs(warm), runs(cold), "shaped text of {}", at());

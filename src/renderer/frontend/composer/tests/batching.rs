@@ -1,7 +1,6 @@
 //! Which draws share a group and a batch, and what forces a split.
 
 use crate::common::span::Span;
-use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
@@ -21,132 +20,112 @@ use crate::renderer::frontend::composer::tests::support::{
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
-use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
-use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
+use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
-use crate::renderer::frontend::payload::spin::Spin;
-use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::shape::paint::shape_stroke::ShapeStroke;
-use crate::shape::record::ColorMode;
-use crate::shape::record_store::RecordStore;
-use crate::shape::rect::RectKind;
-use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_6};
 
-/// `Quad -> Text -> Quad` in one scissor makes two groups, so the second quad renders after the text.
+/// Quads and text share a group until a quad lands on text before it, which the backend draws at
+/// the end of its batch's last group: that quad starts a new group, and it closes the open batch
+/// it overlaps, so later text batches anew.
 #[test]
-fn compose_splits_group_on_text_to_quad_transition() {
-    let buf = run(
-        |b, _arena| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
-            draw(b, Rect::new(20.0, 20.0, 60.0, 40.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
+fn a_quad_over_earlier_text_starts_a_group() {
+    /// A label, the draws, the viewport's side, each group's quads, and each text batch's runs
+    /// and last group.
+    type Row<'a> = (
+        &'a str,
+        fn(&mut PaintCapture),
+        u32,
+        &'a [Span],
+        &'a [(Span, u32)],
     );
-    assert_eq!(buf.quads.len(), 2);
-    assert_eq!(buf.texts.len(), 1);
-    assert_eq!(
-        buf.groups.len(),
-        2,
-        "text→quad transition must start a new group"
-    );
-    assert_eq!(buf.groups[0].quads, Span::new(0, 1));
-    assert_eq!(buf.text_batches.len(), 1);
-    assert_eq!(buf.text_batches[0].texts, Span::new(0, 1));
-    assert_eq!(buf.text_batches[0].last_group, 0);
-    assert_eq!(buf.groups[1].quads, Span::new(1, 1));
-}
-
-#[test]
-fn compose_does_not_split_consecutive_texts() {
-    let buf = run(
-        |b, _arena| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
-            text(b, Rect::new(10.0, 35.0, 80.0, 20.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.quads.len(), 1);
-    assert_eq!(buf.texts.len(), 2);
-    assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.groups[0].quads, Span::new(0, 1));
-    assert_eq!(buf.text_batches.len(), 1);
-    assert_eq!(buf.text_batches[0].texts, Span::new(0, 2));
-    assert_eq!(buf.text_batches[0].last_group, 0);
-}
-
-/// A redundant nested clip (same scissor as its parent) keeps overlap state across the push/pop.
-#[test]
-fn compose_same_clip_push_pop_preserves_overlap_state() {
-    let buf = run(
-        |b, _arena| {
-            clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
-            draw(b, Rect::new(0.0, 0.0, 100.0, 28.0)); // node A chrome
-            text(b, Rect::new(4.0, 4.0, 90.0, 20.0)); //  node A label
-            clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
-            b.pop_clip();
-            draw(b, Rect::new(40.0, 10.0, 100.0, 28.0)); // node B chrome, overlaps A's label
-            b.pop_clip();
-        },
-        &params(1.0, UVec2::new(400, 400)),
-    );
-    assert_eq!(buf.quads.len(), 2);
-    assert_eq!(buf.texts.len(), 1);
-    assert_eq!(
-        buf.groups.len(),
-        2,
-        "overlap state must survive a redundant clip Push/Pop",
-    );
-}
-
-/// Non-overlapping `(quad, text)` rows batch into one group; a quad flushes only when it intersects a prior text.
-#[test]
-fn compose_batches_disjoint_row_units_into_one_group() {
-    let buf = run(
-        |b, _arena| {
-            for i in 0..5 {
-                let y = (i as f32) * 40.0;
-                draw(b, Rect::new(0.0, y, 100.0, 28.0));
-                text(b, Rect::new(4.0, y + 4.0, 90.0, 20.0));
-            }
-        },
-        &params(1.0, UVec2::new(200, 400)),
-    );
-    assert_eq!(buf.quads.len(), 5);
-    assert_eq!(buf.texts.len(), 5);
-    assert_eq!(
-        buf.groups.len(),
-        1,
-        "disjoint (quad,text) rows must batch into one group",
-    );
-    assert_eq!(buf.groups[0].quads, Span::new(0, 5));
-    assert_eq!(buf.text_batches.len(), 1, "one texts batch for all rows");
-    assert_eq!(buf.text_batches[0].texts, Span::new(0, 5));
-}
-
-/// A later quad overlapping a prior text must flush to preserve paint order.
-#[test]
-fn compose_flushes_when_later_quad_overlaps_prior_text() {
-    let buf = run(
-        |b, _arena| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 28.0)); // node A chrome
-            text(b, Rect::new(4.0, 4.0, 90.0, 20.0)); //  node A label
-            draw(b, Rect::new(40.0, 10.0, 100.0, 28.0)); // node B chrome, overlaps A's label
-            text(b, Rect::new(44.0, 14.0, 90.0, 20.0)); // node B label
-        },
-        &params(1.0, UVec2::new(400, 200)),
-    );
-    assert_eq!(buf.quads.len(), 2);
-    assert_eq!(buf.texts.len(), 2);
-    assert_eq!(
-        buf.groups.len(),
-        2,
-        "overlapping quad-after-text must start a new group",
-    );
+    let rows: &[Row<'_>] = &[
+        (
+            "quads then text",
+            |b| {
+                draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+                draw(b, Rect::new(2.0, 2.0, 96.0, 96.0));
+                text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
+            },
+            200,
+            &[Span::new(0, 2)],
+            &[(Span::new(0, 1), 0)],
+        ),
+        (
+            "consecutive texts",
+            |b| {
+                draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+                text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
+                text(b, Rect::new(10.0, 35.0, 80.0, 20.0));
+            },
+            200,
+            &[Span::new(0, 1)],
+            &[(Span::new(0, 2), 0)],
+        ),
+        (
+            "five disjoint rows of a quad and its text",
+            |b| {
+                for i in 0..5 {
+                    let y = (i as f32) * 40.0;
+                    draw(b, Rect::new(0.0, y, 100.0, 28.0));
+                    text(b, Rect::new(4.0, y + 4.0, 90.0, 20.0));
+                }
+            },
+            400,
+            &[Span::new(0, 5)],
+            &[(Span::new(0, 5), 0)],
+        ),
+        (
+            "a quad over the text",
+            |b| {
+                draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+                text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
+                draw(b, Rect::new(20.0, 20.0, 60.0, 40.0));
+            },
+            200,
+            &[Span::new(0, 1), Span::new(1, 1)],
+            &[(Span::new(0, 1), 0)],
+        ),
+        (
+            "the next node's chrome over a label",
+            |b| {
+                draw(b, Rect::new(0.0, 0.0, 100.0, 28.0));
+                text(b, Rect::new(4.0, 4.0, 90.0, 20.0));
+                draw(b, Rect::new(40.0, 10.0, 100.0, 28.0));
+                text(b, Rect::new(44.0, 14.0, 90.0, 20.0));
+            },
+            400,
+            &[Span::new(0, 1), Span::new(1, 1)],
+            &[(Span::new(0, 1), 0), (Span::new(1, 1), 1)],
+        ),
+        (
+            "a redundant nested clip keeps the overlap state",
+            |b| {
+                clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
+                draw(b, Rect::new(0.0, 0.0, 100.0, 28.0));
+                text(b, Rect::new(4.0, 4.0, 90.0, 20.0));
+                clip(b, Rect::new(0.0, 0.0, 200.0, 200.0));
+                b.pop_clip();
+                draw(b, Rect::new(40.0, 10.0, 100.0, 28.0));
+                b.pop_clip();
+            },
+            400,
+            &[Span::new(0, 1), Span::new(1, 1)],
+            &[(Span::new(0, 1), 0)],
+        ),
+    ];
+    for &(label, build, side, groups, batches) in rows {
+        let buf = run(|b, _| build(b), &params(1.0, UVec2::splat(side)));
+        let quads: Vec<Span> = buf.groups.iter().map(|group| group.quads).collect();
+        assert_eq!(quads, groups, "{label}: each group's quads");
+        let texts: Vec<(Span, u32)> = buf
+            .text_batches
+            .iter()
+            .map(|batch| (batch.texts, batch.last_group))
+            .collect();
+        assert_eq!(texts, batches, "{label}: each text batch");
+    }
 }
 
 /// A quad over text still in the open batch, whose last group is already closed, closes the batch
@@ -203,20 +182,9 @@ fn a_turned_quad_orders_against_its_fringe() {
     let buf = run(
         |b, _arena| {
             image(b, Rect::new(18.0, 25.0, 4.0, 1.0));
-            b.draw(
-                DrawQuadPayload::rect(RectQuad {
-                    kind: RectKind::Rounded,
-                    rect: Rect::new(10.0, 10.0, 20.0, 10.0),
-                    corners: Corners::ZERO,
-                    fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-                    stroke: ShapeStroke::NONE,
-                })
-                .turned(Some(Spin {
-                    pivot: Vec2::new(20.0, 15.0),
-                    angle: FRAC_PI_6,
-                })),
-                1.0,
-            );
+            QuadBuilder::new(Rect::new(10.0, 10.0, 20.0, 10.0))
+                .turned(FRAC_PI_6)
+                .draw(b);
         },
         &params(1.0, UVec2::new(100, 100)),
     );
@@ -231,21 +199,12 @@ fn a_turned_quad_orders_against_its_fringe() {
 /// and is culled.
 #[test]
 fn a_turned_quad_is_culled_by_the_pixels_it_reaches() {
-    let quad = |spin| {
-        DrawQuadPayload::rect(RectQuad {
-            kind: RectKind::Rounded,
-            rect: Rect::new(10.0, 40.0, 20.0, 20.0),
-            corners: Corners::ZERO,
-            fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
-            stroke: ShapeStroke::NONE,
-        })
-        .turned(spin)
-    };
-    let quads = |spin| {
+    let quad = QuadBuilder::new(Rect::new(10.0, 40.0, 20.0, 20.0));
+    let quads = |quad: QuadBuilder| {
         run(
             |b, _arena| {
                 clip(b, Rect::new(40.0, 0.0, 20.0, 100.0));
-                b.draw(quad(spin), 1.0);
+                quad.draw(b);
                 b.pop_clip();
             },
             &params(1.0, UVec2::new(100, 100)),
@@ -253,12 +212,12 @@ fn a_turned_quad_is_culled_by_the_pixels_it_reaches() {
         .quads
         .len()
     };
-    let turned = Some(Spin {
-        pivot: Vec2::new(50.0, 50.0),
-        angle: FRAC_PI_2,
-    });
-    assert_eq!(quads(turned), 1, "turned into the clip");
-    assert_eq!(quads(None), 0, "unturned, outside it");
+    assert_eq!(
+        quads(quad.turned_about(Vec2::new(50.0, 50.0), FRAC_PI_2)),
+        1,
+        "turned into the clip"
+    );
+    assert_eq!(quads(quad), 0, "unturned, outside it");
 }
 
 /// A quad orders by the whole pixels it shades, `Quad::shaded_rect`: one at x 10..20 shades
@@ -306,23 +265,6 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
     assert_eq!(buf.groups.len(), 2, "outer halo overlap must split");
     assert_eq!(buf.text_batches[0].last_group, 0);
     assert_eq!(buf.groups[1].quads, Span::new(0, 1));
-}
-
-#[test]
-fn compose_keeps_quads_then_text_in_one_group() {
-    let buf = run(
-        |b, _arena| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            draw(b, Rect::new(2.0, 2.0, 96.0, 96.0));
-            text(b, Rect::new(10.0, 10.0, 80.0, 20.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 1);
-    assert_eq!(buf.groups[0].quads, Span::new(0, 2));
-    assert_eq!(buf.text_batches.len(), 1);
-    assert_eq!(buf.text_batches[0].texts, Span::new(0, 1));
-    assert_eq!(buf.text_batches[0].last_group, 0);
 }
 
 /// Rows in separate scissors still coalesce their text into one batch.
@@ -428,56 +370,6 @@ fn compose_rounded_clip_change_splits_text_batch() {
     assert_eq!(r1.corners.to_array()[0], 8.0);
 }
 
-/// The composer rotates each polyline point about `bbox.center()` before the ancestor transform: a 90 degree spin of a centered horizontal segment is vertical and centered.
-#[test]
-fn compose_spins_polyline_about_bbox_center() {
-    let aabb = |rotation: f32| -> (Vec2, Vec2) {
-        let mut buffer = PaintCapture::default();
-        let mut store = RecordStore::default();
-        let p_start = store.polyline_points.len() as u32;
-        store.polyline_points.push(Vec2::new(15.0, 50.0));
-        store.polyline_points.push(Vec2::new(85.0, 50.0));
-        let c_start = store.polyline_colors.len() as u32;
-        store.polyline_colors.push(RgbaF32::WHITE.to_f16());
-        buffer.draw(
-            DrawPolylinePayload {
-                alpha: 1.0,
-                bounds: if rotation == 0.0 {
-                    StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0))
-                } else {
-                    StrokeBounds::Spun {
-                        spin: Spin {
-                            pivot: Vec2::splat(50.0),
-                            angle: rotation,
-                        },
-                        radius: Vec2::splat(50.0).length(),
-                    }
-                },
-                origin: Vec2::ZERO,
-                width: 2.0,
-                points: Span::new(p_start, 2),
-                colors: Span::new(c_start, 1),
-                color_mode: ColorMode::Single,
-                cap: LineCap::Butt,
-                join: LineJoin::Miter,
-            },
-            1.0,
-        );
-        let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
-        rig.store = store;
-        rig.compose(&buffer);
-        assert_eq!(rig.out.curves.len(), 1, "one segment instance");
-        let ci = &rig.out.curves[0];
-        (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
-    };
-    // Spun 90 degrees about (50, 50): ends at (50, 15) and (50, 85).
-    assert_eq!(aabb(0.0), (Vec2::new(15.0, 50.0), Vec2::new(85.0, 50.0)));
-    assert_eq!(
-        aabb(FRAC_PI_2),
-        (Vec2::new(50.0, 15.0), Vec2::new(50.0, 85.0))
-    );
-}
-
 /// A culled higher-kind draw does not split the text batch: the cull runs before the overlap test.
 #[test]
 fn compose_culled_mesh_over_batch_text_keeps_one_batch() {
@@ -554,65 +446,51 @@ fn tight_curve_bound_avoids_false_group_split() {
     }
 }
 
+/// Every ordered pair of tiers, over and apart: the backend replays a group's tiers in
+/// `PaintTier::ALL` order, so a draw that overlaps one of a later tier recorded before it starts a
+/// new group, and any other pair shares one. The first draw covers (10, 10)..(40, 40), the
+/// overlapping second (20, 20)..(50, 50) and the apart one (120, 120)..(150, 150); a mesh's bounds
+/// grow 1 px and a curve's 2 px, which keep each pair as it is. Two draws of one tier take one
+/// batch.
 #[test]
-fn compose_mesh_then_overlapping_curve_keeps_one_group() {
-    let buf = run(
-        |b, _| {
-            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0));
-            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 1, "record order matches replay order");
-    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
-}
-
-/// Mesh then image replays in record order (one group); image then mesh inverts it and flushes.
-#[test]
-fn compose_mesh_image_record_order_gates_group_split() {
-    let buf = run(
-        |b, _| {
-            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0));
-            image(b, Rect::new(20.0, 20.0, 30.0, 30.0)); // overlaps the mesh
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 1, "mesh then image: replay == record");
-    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
-
-    let buf = run(
-        |b, _| {
-            image(b, Rect::new(20.0, 20.0, 30.0, 30.0));
-            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // overlaps the image
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf.groups.len(),
-        2,
-        "image then mesh: replay inverts record",
-    );
-    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 1);
-}
-
-/// Non-overlapping mixed kinds share one group. Inflated bounds: curve (0,0)..(22,22), mesh (39,39)..(61,61), image (80,80,20,20) exact.
-#[test]
-fn compose_disjoint_mixed_kinds_share_one_group() {
-    let buf = run(
-        |b, _| {
-            curve(b, Rect::new(0.0, 0.0, 20.0, 20.0));
-            mesh(b, Rect::new(40.0, 40.0, 20.0, 20.0));
-            image(b, Rect::new(80.0, 80.0, 20.0, 20.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 1, "disjoint kinds must not split");
-    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
+fn a_draw_under_an_earlier_tier_starts_a_group() {
+    let first_rect = Rect::new(10.0, 10.0, 30.0, 30.0);
+    let draw_tier = |b: &mut PaintCapture, tier: PaintTier, r: Rect| match tier {
+        PaintTier::Mesh => mesh(b, r),
+        PaintTier::Image => image(b, r),
+        PaintTier::Icon => icon(b, r, IconRef::fixture(0, 0)),
+        PaintTier::Curve => curve(b, r),
+    };
+    for first in PaintTier::ALL {
+        for second in PaintTier::ALL {
+            for (apart, second_rect) in [
+                (false, Rect::new(20.0, 20.0, 30.0, 30.0)),
+                (true, Rect::new(120.0, 120.0, 30.0, 30.0)),
+            ] {
+                let buf = run(
+                    |b, _| {
+                        draw_tier(b, first, first_rect);
+                        draw_tier(b, second, second_rect);
+                    },
+                    &params(1.0, UVec2::new(200, 200)),
+                );
+                let split = !apart && second < first;
+                let label = format!("{first:?} then {second:?}, apart: {apart}");
+                assert_eq!(buf.groups.len(), 1 + usize::from(split), "{label}");
+                let first_batch = buf.batches(first)[0];
+                assert_eq!(first_batch.last_group, 0, "{label}");
+                let second_batches = buf.batches(second);
+                assert_eq!(
+                    second_batches.last().map(|batch| batch.last_group),
+                    Some(u32::from(split)),
+                    "{label}"
+                );
+                if first == second {
+                    assert_eq!(second_batches.len(), 1, "{label}: one batch");
+                }
+            }
+        }
+    }
 }
 
 // Pruning drops a quad iff a later quad in its group fully covers its painted extent (`q.rect`) under `Rect::contains_rect`.

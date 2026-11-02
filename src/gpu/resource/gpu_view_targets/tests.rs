@@ -1,4 +1,3 @@
-use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::gpu_paint::GpuPaint;
 use crate::gpu::gpu_paint::gpu_paint_ref::GpuPaintRef;
@@ -15,7 +14,6 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::slice;
 use std::time::Duration;
-use wgpu::util::StagingBelt;
 
 #[derive(Debug)]
 struct CountingPaint(Rc<Cell<u32>>);
@@ -30,7 +28,6 @@ impl GpuPaint for CountingPaint {
 #[test]
 fn an_unchanged_stamp_skips_the_paint_and_a_bucket_keeps_the_texture() {
     let gpu = headless_test_gpu();
-    let device = &gpu.device;
     let mut targets = GpuViewTargets::new(TextureBinding::new(&gpu));
     let paints = Rc::new(Cell::new(0));
     let paint = GpuPaintRef(Rc::new(RefCell::new(CountingPaint(Rc::clone(&paints)))));
@@ -95,27 +92,25 @@ fn an_unchanged_stamp_skips_the_paint_and_a_bucket_keeps_the_texture() {
             false,
         ),
     ];
-    let mut belt = StagingBelt::new(device.clone(), 1 << 12);
     let mut texture: Option<wgpu::Texture> = None;
     for (at, (draw, painted, reallocated)) in submits.into_iter().enumerate() {
         let before = paints.get();
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let handles = &*gpu;
-        let mut ctx = GpuCtx::new(handles, &mut belt, &mut encoder);
-        targets.paint_gpu_views(
-            &mut ctx,
-            FrameViews {
-                draws: slice::from_ref(&draw),
-                live: &[id],
-                display_scale: 1.0,
-            },
-            &callbacks,
-            ViewSubmitter {
-                owner,
-                now: Duration::from_millis(16 * at as u64),
-                text: &shaper,
-            },
-        );
+        gpu.frame(|ctx| {
+            targets.paint_gpu_views(
+                ctx,
+                FrameViews {
+                    draws: slice::from_ref(&draw),
+                    live: &[id],
+                    display_scale: 1.0,
+                },
+                &callbacks,
+                ViewSubmitter {
+                    owner,
+                    now: Duration::from_millis(16 * at as u64),
+                    text: &shaper,
+                },
+            );
+        });
         assert_eq!(paints.get() - before, u32::from(painted), "submit {at}");
         let now = targets.targets[&id].view.texture().clone();
         assert_eq!(

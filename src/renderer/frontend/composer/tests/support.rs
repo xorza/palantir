@@ -16,6 +16,7 @@ use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
+use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_icon_payload::DrawIconPayload;
@@ -23,7 +24,6 @@ use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, G
 use crate::renderer::frontend::payload::draw_mesh_payload::DrawMeshPayload;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
 use crate::renderer::frontend::payload::draw_text_payload::DrawTextPayload;
-use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -194,8 +194,8 @@ pub(super) fn push_distinct_rounded_clips(buffer: &mut PaintCapture, depth: u32)
     }
 }
 
-/// A polyline command a composer test records: white, one color, butt-capped
-/// and mitred unless set.
+/// A polyline command a composer test records: white, one color, butt-capped, mitred and bounded
+/// by its points unless set.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TestPolyline<'a> {
     points: &'a [Vec2],
@@ -204,6 +204,7 @@ pub(super) struct TestPolyline<'a> {
     mode: ColorMode,
     cap: LineCap,
     join: LineJoin,
+    bounds: Option<StrokeBounds>,
 }
 
 impl<'a> TestPolyline<'a> {
@@ -215,6 +216,7 @@ impl<'a> TestPolyline<'a> {
             mode: ColorMode::Single,
             cap: LineCap::Butt,
             join: LineJoin::Miter,
+            bounds: None,
         }
     }
 
@@ -234,6 +236,14 @@ impl<'a> TestPolyline<'a> {
         Self { join, ..self }
     }
 
+    /// The cull bound and the turn, which a turned stroke carries in place of its points' box.
+    pub(super) const fn bounds(self, bounds: StrokeBounds) -> Self {
+        Self {
+            bounds: Some(bounds),
+            ..self
+        }
+    }
+
     /// Lowers the points and colors into `store` and records the draw onto `b`.
     pub(super) fn record(self, b: &mut PaintCapture, store: &mut RecordStore) {
         let Self {
@@ -243,6 +253,7 @@ impl<'a> TestPolyline<'a> {
             mode,
             cap,
             join,
+            bounds,
         } = self;
         let p_start = store.polyline_points.len() as u32;
         store.polyline_points.extend_from_slice(points);
@@ -250,16 +261,19 @@ impl<'a> TestPolyline<'a> {
         store
             .polyline_colors
             .extend(colors.iter().map(|&c| c.to_f16()));
-        let mut lo = points[0];
-        let mut hi = points[0];
-        for &p in points {
-            lo = lo.min(p);
-            hi = hi.max(p);
-        }
+        let bounds = bounds.unwrap_or_else(|| {
+            let mut lo = points[0];
+            let mut hi = points[0];
+            for &p in points {
+                lo = lo.min(p);
+                hi = hi.max(p);
+            }
+            StrokeBounds::Still(Rect::from_min_max(lo, hi))
+        });
         b.draw(
             DrawPolylinePayload {
                 alpha: 1.0,
-                bounds: StrokeBounds::Still(Rect::from_min_max(lo, hi)),
+                bounds,
                 origin: Vec2::ZERO,
                 width,
                 points: Span::new(p_start, points.len() as u32),
@@ -273,29 +287,18 @@ impl<'a> TestPolyline<'a> {
     }
 }
 
+/// A cubic from `bbox`'s top-left to its bottom-right, sagging to its bottom edge.
 pub(super) fn curve(b: &mut PaintCapture, bbox: Rect) {
-    use crate::primitives::geometry::cubic_bezier::CubicBezier;
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::shape::paint::curve_basis::CurveBasis;
-    b.draw(
-        DrawCurvePayload {
-            bounds: StrokeBounds::Still(bbox),
-            origin: Vec2::ZERO,
-            basis: CurveBasis::Cubic(CubicBezier {
-                p0: bbox.min,
-                p1: Vec2::new(bbox.min.x + bbox.size.w * 0.3, bbox.max().y),
-                p2: Vec2::new(bbox.min.x + bbox.size.w * 0.7, bbox.max().y),
-                p3: bbox.max(),
-            }),
-            fill: GpuFill {
-                color: RgbaF32::WHITE.to_f16(),
-                ..Default::default()
-            },
-            width: 2.0,
-            ..Default::default()
-        },
-        1.0,
-    );
+    CurveBuilder::cubic(
+        bbox,
+        [
+            bbox.min,
+            Vec2::new(bbox.min.x + bbox.size.w * 0.3, bbox.max().y),
+            Vec2::new(bbox.min.x + bbox.size.w * 0.7, bbox.max().y),
+            bbox.max(),
+        ],
+    )
+    .draw(b);
 }
 
 pub(super) fn image(b: &mut PaintCapture, r: Rect) {

@@ -14,7 +14,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    curve, gpu_view, gpu_view_payload, image, params, run, run_with_texture_cap,
+    gpu_view, gpu_view_payload, params, run, run_with_texture_cap,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
@@ -465,47 +465,6 @@ fn compose_forwards_flags_and_repeat_uv() {
         buf.images.instance()[2].flags,
         ImageFlags::MIN_NEAREST.union(ImageFlags::MAG_NEAREST)
     );
-}
-
-#[test]
-fn compose_image_curve_record_order_and_same_tier_gate_group_split() {
-    let buf = run(
-        |b, _| {
-            image(b, Rect::new(10.0, 10.0, 30.0, 30.0));
-            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 1, "image then curve: replay == record");
-    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
-
-    let buf = run(
-        |b, _| {
-            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            image(b, Rect::new(10.0, 10.0, 30.0, 30.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf.groups.len(),
-        2,
-        "curve then image: replay inverts record",
-    );
-    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Image)[0].last_group, 1);
-
-    let buf = run(
-        |b, _| {
-            curve(b, Rect::new(0.0, 50.0, 100.0, 0.0));
-            curve(b, Rect::new(0.0, 50.0, 100.0, 0.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 1, "same-tier order is stable");
-    assert_eq!(buf.curves.len(), 2);
-    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
-    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
 }
 
 /// An image turned a quarter about the logical pivot (50, 50) at scale 1: its rect

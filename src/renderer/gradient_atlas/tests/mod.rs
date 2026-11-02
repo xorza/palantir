@@ -1,6 +1,5 @@
-//! Baking gradient LUT rows, and the atlas that keeps them resident.
+//! The atlas that keeps baked gradient LUT rows resident.
 
-mod bake;
 mod eviction;
 mod residency;
 mod support;

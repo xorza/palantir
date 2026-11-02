@@ -5,13 +5,13 @@ use crate::common::span::Span;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::circular_arc::CircularArc;
-use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::renderer::frontend::composer::tests::curve_builder::CurveBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    TestPolyline, clip, curve, image, mesh, params, run, text,
+    TestPolyline, clip, image, params, run, text,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_polyline_payload::DrawPolylinePayload;
@@ -23,6 +23,7 @@ use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::shape::style::{LineCap, LineJoin};
 use glam::{UVec2, Vec2};
+use std::f32::consts::FRAC_PI_2;
 
 /// A higher-kind stroke (a polyline, riding the curve tier) recorded between two
 /// text runs splits the batch where it covers the first run, and only there:
@@ -302,30 +303,19 @@ fn compose_polyline_color_modes_and_coincident_skip() {
 
 #[test]
 fn compose_emits_one_curve_batch_per_scissor_group() {
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::shape::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
             for offset in [0.0_f32, 50.0] {
-                b.draw(
-                    DrawCurvePayload {
-                        bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
-                        origin: Vec2::ZERO,
-                        basis: CurveBasis::Cubic(CubicBezier {
-                            p0: Vec2::new(offset, 0.0),
-                            p1: Vec2::new(offset + 10.0, 50.0),
-                            p2: Vec2::new(offset + 90.0, 50.0),
-                            p3: Vec2::new(offset + 100.0, 0.0),
-                        }),
-                        fill: GpuFill {
-                            color: RgbaF32::WHITE.to_f16(),
-                            ..Default::default()
-                        },
-                        width: 2.0,
-                        ..Default::default()
-                    },
-                    1.0,
-                );
+                CurveBuilder::cubic(
+                    Rect::new(0.0, 0.0, 100.0, 100.0),
+                    [
+                        Vec2::new(offset, 0.0),
+                        Vec2::new(offset + 10.0, 50.0),
+                        Vec2::new(offset + 90.0, 50.0),
+                        Vec2::new(offset + 100.0, 0.0),
+                    ],
+                )
+                .draw(b);
             }
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -351,49 +341,29 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
 
 #[test]
 fn compose_splits_curve_batches_across_scissor_groups() {
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::shape::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic(CubicBezier {
-                        p0: Vec2::new(0.0, 0.0),
-                        p1: Vec2::new(10.0, 50.0),
-                        p2: Vec2::new(90.0, 50.0),
-                        p3: Vec2::new(100.0, 0.0),
-                    }),
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..Default::default()
-                    },
-                    width: 2.0,
-                    ..Default::default()
-                },
-                1.0,
-            );
+            CurveBuilder::cubic(
+                Rect::new(0.0, 0.0, 100.0, 100.0),
+                [
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 50.0),
+                    Vec2::new(90.0, 50.0),
+                    Vec2::new(100.0, 0.0),
+                ],
+            )
+            .draw(b);
             clip(b, Rect::new(0.0, 0.0, 50.0, 200.0));
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 50.0, 50.0)),
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic(CubicBezier {
-                        p0: Vec2::new(0.0, 0.0),
-                        p1: Vec2::new(5.0, 25.0),
-                        p2: Vec2::new(45.0, 25.0),
-                        p3: Vec2::new(50.0, 0.0),
-                    }),
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..Default::default()
-                    },
-                    width: 2.0,
-                    ..Default::default()
-                },
-                1.0,
-            );
+            CurveBuilder::cubic(
+                Rect::new(0.0, 0.0, 50.0, 50.0),
+                [
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(5.0, 25.0),
+                    Vec2::new(45.0, 25.0),
+                    Vec2::new(50.0, 0.0),
+                ],
+            )
+            .draw(b);
             b.pop_clip();
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -415,27 +385,21 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::packed::fill_kind::FillKind;
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::shape::paint::curve_basis::CurveBasis;
     let tint = RgbaF32::new(0.25, 0.5, 1.0, 0.75).to_f16();
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic(CubicBezier {
-                        p0: Vec2::new(0.0, 0.0),
-                        p1: Vec2::new(10.0, 50.0),
-                        p2: Vec2::new(90.0, 50.0),
-                        p3: Vec2::new(100.0, 0.0),
-                    }),
-                    fill: GpuFill::curve(tint, Some(LutRow(7))),
-                    width: 4.0,
-                    ..Default::default()
-                },
-                1.0,
-            );
+            CurveBuilder::cubic(
+                Rect::new(0.0, 0.0, 100.0, 100.0),
+                [
+                    Vec2::new(0.0, 0.0),
+                    Vec2::new(10.0, 50.0),
+                    Vec2::new(90.0, 50.0),
+                    Vec2::new(100.0, 0.0),
+                ],
+            )
+            .fill(GpuFill::curve(tint, Some(LutRow(7))))
+            .width(4.0)
+            .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -466,32 +430,21 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 
 #[test]
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve_kind::CurveKind;
-    use crate::shape::paint::curve_basis::CurveBasis;
     use std::f32::consts::PI;
     let sweep = 1.5 * PI;
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0)),
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Arc(CircularArc {
-                        center: Vec2::new(50.0, 50.0),
-                        radius: 20.0,
-                        start_angle: 0.0,
-                        sweep,
-                    }),
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..Default::default()
-                    },
-                    width: 2.0,
-                    ..Default::default()
+            CurveBuilder::arc(
+                Rect::new(0.0, 0.0, 100.0, 100.0),
+                CircularArc {
+                    center: Vec2::new(50.0, 50.0),
+                    radius: 20.0,
+                    start_angle: 0.0,
+                    sweep,
                 },
-                1.0,
-            );
+            )
+            .draw(b);
         },
         &params(2.0, UVec2::new(400, 400)),
     );
@@ -516,38 +469,22 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
 
 #[test]
 fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::shape::paint::curve_basis::CurveBasis;
     use std::f32::consts::{FRAC_PI_2, PI};
     // Pivot = bbox.center() = (50, 50); center (70, 50) spun by π/2 (clockwise,
     // y-down) maps (+20, 0) to (0, +20), so it lands at (50, 70).
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Spun {
-                        spin: Spin {
-                            pivot: Vec2::splat(50.0),
-                            angle: FRAC_PI_2,
-                        },
-                        radius: Vec2::splat(50.0).length(),
-                    },
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Arc(CircularArc {
-                        center: Vec2::new(70.0, 50.0),
-                        radius: 10.0,
-                        start_angle: 0.0,
-                        sweep: PI,
-                    }),
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..Default::default()
-                    },
-                    width: 2.0,
-                    ..Default::default()
+            CurveBuilder::arc(
+                Rect::new(0.0, 0.0, 100.0, 100.0),
+                CircularArc {
+                    center: Vec2::new(70.0, 50.0),
+                    radius: 10.0,
+                    start_angle: 0.0,
+                    sweep: PI,
                 },
-                1.0,
-            );
+            )
+            .turned(FRAC_PI_2)
+            .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -566,51 +503,31 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 
 #[test]
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::shape::paint::curve_basis::CurveBasis;
     // Same 800 px span: a straight cubic collapses to one instance; a curved one
     // subdivides (⌈⌈800/1.5⌉/16⌉ = 34).
     let straight = |b: &mut PaintCapture| {
-        b.draw(
-            DrawCurvePayload {
-                bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 10.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic(CubicBezier {
-                    p0: Vec2::new(0.0, 5.0),
-                    p1: Vec2::new(800.0 / 3.0, 5.0),
-                    p2: Vec2::new(1600.0 / 3.0, 5.0),
-                    p3: Vec2::new(800.0, 5.0),
-                }),
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.to_f16(),
-                    ..Default::default()
-                },
-                width: 2.0,
-                ..Default::default()
-            },
-            1.0,
-        );
+        CurveBuilder::cubic(
+            Rect::new(0.0, 0.0, 800.0, 10.0),
+            [
+                Vec2::new(0.0, 5.0),
+                Vec2::new(800.0 / 3.0, 5.0),
+                Vec2::new(1600.0 / 3.0, 5.0),
+                Vec2::new(800.0, 5.0),
+            ],
+        )
+        .draw(b);
     };
     let curved = |b: &mut PaintCapture| {
-        b.draw(
-            DrawCurvePayload {
-                bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 800.0, 400.0)),
-                origin: Vec2::ZERO,
-                basis: CurveBasis::Cubic(CubicBezier {
-                    p0: Vec2::new(0.0, 5.0),
-                    p1: Vec2::new(266.0, 400.0),
-                    p2: Vec2::new(533.0, 400.0),
-                    p3: Vec2::new(800.0, 5.0),
-                }),
-                fill: GpuFill {
-                    color: RgbaF32::WHITE.to_f16(),
-                    ..Default::default()
-                },
-                width: 2.0,
-                ..Default::default()
-            },
-            1.0,
-        );
+        CurveBuilder::cubic(
+            Rect::new(0.0, 0.0, 800.0, 400.0),
+            [
+                Vec2::new(0.0, 5.0),
+                Vec2::new(266.0, 400.0),
+                Vec2::new(533.0, 400.0),
+                Vec2::new(800.0, 5.0),
+            ],
+        )
+        .draw(b);
     };
     let vp = params(1.0, UVec2::new(900, 900));
     let flat_buf = run(|b, _| straight(b), &vp);
@@ -627,38 +544,22 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
 
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-    use crate::shape::paint::curve_basis::CurveBasis;
     use std::f32::consts::FRAC_PI_2;
     // Pivot (50, 50): a π/2 spin maps an offset (dx, dy) to (-dy, dx), so p0 (70,
     // 50) → (50, 70) and p3 (50, 30) → (70, 50).
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Spun {
-                        spin: Spin {
-                            pivot: Vec2::splat(50.0),
-                            angle: FRAC_PI_2,
-                        },
-                        radius: Vec2::splat(50.0).length(),
-                    },
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic(CubicBezier {
-                        p0: Vec2::new(70.0, 50.0),
-                        p1: Vec2::new(70.0, 40.0),
-                        p2: Vec2::new(60.0, 30.0),
-                        p3: Vec2::new(50.0, 30.0),
-                    }),
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..Default::default()
-                    },
-                    width: 2.0,
-                    ..Default::default()
-                },
-                1.0,
-            );
+            CurveBuilder::cubic(
+                Rect::new(0.0, 0.0, 100.0, 100.0),
+                [
+                    Vec2::new(70.0, 50.0),
+                    Vec2::new(70.0, 40.0),
+                    Vec2::new(60.0, 30.0),
+                    Vec2::new(50.0, 30.0),
+                ],
+            )
+            .turned(FRAC_PI_2)
+            .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
@@ -672,49 +573,29 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
 
 #[test]
 fn compose_arc_and_curve_share_one_batch_per_group() {
-    use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
     use crate::renderer::render_buffer::curve_kind::CurveKind;
-    use crate::shape::paint::curve_basis::CurveBasis;
     let buf = run(
         |b, _arena| {
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Still(Rect::new(0.0, 0.0, 40.0, 40.0)),
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Arc(CircularArc {
-                        center: Vec2::new(20.0, 20.0),
-                        radius: 10.0,
-                        start_angle: 0.0,
-                        sweep: 1.0,
-                    }),
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..Default::default()
-                    },
-                    width: 2.0,
-                    ..Default::default()
+            CurveBuilder::arc(
+                Rect::new(0.0, 0.0, 40.0, 40.0),
+                CircularArc {
+                    center: Vec2::new(20.0, 20.0),
+                    radius: 10.0,
+                    start_angle: 0.0,
+                    sweep: 1.0,
                 },
-                1.0,
-            );
-            b.draw(
-                DrawCurvePayload {
-                    bounds: StrokeBounds::Still(Rect::new(100.0, 0.0, 100.0, 100.0)),
-                    origin: Vec2::ZERO,
-                    basis: CurveBasis::Cubic(CubicBezier {
-                        p0: Vec2::new(100.0, 0.0),
-                        p1: Vec2::new(110.0, 50.0),
-                        p2: Vec2::new(190.0, 50.0),
-                        p3: Vec2::new(200.0, 0.0),
-                    }),
-                    fill: GpuFill {
-                        color: RgbaF32::WHITE.to_f16(),
-                        ..Default::default()
-                    },
-                    width: 2.0,
-                    ..Default::default()
-                },
-                1.0,
-            );
+            )
+            .draw(b);
+            CurveBuilder::cubic(
+                Rect::new(100.0, 0.0, 100.0, 100.0),
+                [
+                    Vec2::new(100.0, 0.0),
+                    Vec2::new(110.0, 50.0),
+                    Vec2::new(190.0, 50.0),
+                    Vec2::new(200.0, 0.0),
+                ],
+            )
+            .draw(b);
         },
         &params(1.0, UVec2::new(300, 300)),
     );
@@ -729,26 +610,6 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     );
     assert!(buf.curves.iter().any(|c| c.kind == CurveKind::ARC));
     assert!(buf.curves.iter().any(|c| c.kind == CurveKind::CUBIC));
-}
-
-/// The backend replays a group's higher kinds in fixed tier order (mesh, image,
-/// curve; `schedule::emit_group_body`) regardless of record order. Recording
-/// [curve, mesh] in one group would replay mesh→curve, so the composer must flush
-/// into two groups to keep record order.
-#[test]
-fn compose_curve_then_overlapping_mesh_splits_group() {
-    let buf = run(
-        |b, _| {
-            curve(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            mesh(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // overlaps the curve bbox
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.groups.len(), 2, "cross-kind conflict must split");
-    assert_eq!(buf.batches(PaintTier::Curve).len(), 1);
-    assert_eq!(buf.batches(PaintTier::Curve)[0].last_group, 0);
-    assert_eq!(buf.batches(PaintTier::Mesh).len(), 1);
-    assert_eq!(buf.batches(PaintTier::Mesh)[0].last_group, 1);
 }
 
 #[test]
@@ -786,6 +647,37 @@ fn two_point_polyline_does_not_reserve_miter_join_reach() {
         );
         assert_eq!(buf.groups.len(), case.expected_groups, "{case:?}");
     }
+}
+
+/// The composer turns each polyline point about its bounds' pivot before the ancestor
+/// transform: a centered horizontal segment from (15, 50) to (85, 50), turned a quarter about
+/// (50, 50), runs from (50, 15) to (50, 85).
+#[test]
+fn compose_spins_polyline_about_bbox_center() {
+    let points = [Vec2::new(15.0, 50.0), Vec2::new(85.0, 50.0)];
+    let aabb = |bounds: StrokeBounds| -> (Vec2, Vec2) {
+        let buf = run(
+            |b, store| {
+                TestPolyline::new(&points, 2.0)
+                    .bounds(bounds)
+                    .record(b, store);
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        assert_eq!(buf.curves.len(), 1, "one segment instance");
+        let ci = &buf.curves[0];
+        (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
+    };
+    let still = StrokeBounds::Still(Rect::new(0.0, 0.0, 100.0, 100.0));
+    let turned = StrokeBounds::Spun {
+        spin: Spin {
+            pivot: Vec2::splat(50.0),
+            angle: FRAC_PI_2,
+        },
+        radius: Vec2::splat(50.0).length(),
+    };
+    assert_eq!(aabb(still), (points[0], points[1]));
+    assert_eq!(aabb(turned), (Vec2::new(50.0, 15.0), Vec2::new(50.0, 85.0)));
 }
 
 /// The gate *asserts* a polyline's geometry (`PaintPayload::check`) rather than gating on
