@@ -26,9 +26,10 @@ the GPU encodes sRGB at the swapchain write.
 A top-level module imports only modules to its left:
 
 ```text
-common → primitives → {animation, text, input, display, window, image_registry, diagnostics}
+common → primitives → {animation, text, input, display, window, clipboard, image_registry,
+                       diagnostics}
        → shape → icons → scene → layout → cascade → {damage, input_state}
-       → renderer ⇄ gpu → theme → ui ⇄ app → widget_core → widgets → driver → host
+       → renderer ⇄ gpu → theme → ui → widget_core → widgets → driver → host
 ```
 
 - **`theme` is plain look data**: it knows no `Widget` or `Ui`, and `Widget::wear` applies a look.
@@ -36,7 +37,14 @@ common → primitives → {animation, text, input, display, window, image_regist
   the authoring layer.
 - **`gpu` ⇄ `renderer` stays a cycle.** `GpuPaint` names the wgpu types `clippy.toml` keeps in
   `gpu`; moving it into `gpu` would make `ui` depend on `gpu`.
-- **`app` ⇄ `ui` stays a cycle**: `App` is the frame cycle's callback contract.
+- **`App` lives in `ui`**, beside the frame cycle that calls it, as winit's `ApplicationHandler`
+  sits beside its event loop and eframe's `App` beside its run loop. Refused: a top-level `app`
+  module for the contract alone, which made a cycle with `ui`.
+- **`common` is a leaf.** The clipboard holds an `Image`, so it is a platform service beside
+  `window` and `display`, and every validation kind, the font length's included, lives in
+  `primitives::math::domain`, so no rule reaches up into `text`.
+- **`golden`, `internals` and `bench` sit outside the order.** They do not ship in the
+  default build, and each may import any module it tests or measures.
 - **A bench may import modules to its right**, so a whole-frame case sits beside the code it
   measures. Refused: a `src/bench/` away from that code.
 

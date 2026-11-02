@@ -439,7 +439,7 @@ mod record_store_tests {
 
     use glam::{UVec2, Vec2};
 
-    use crate::app::App;
+    use crate::ui::app::App;
 
     use crate::display::frame_stamp::FrameStamp;
     use crate::host::window_driver::tests::config;

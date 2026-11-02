@@ -1,4 +1,5 @@
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::math::domain;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -7,7 +8,6 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
-use crate::text::glyph_font::GlyphFont;
 use crate::theme::Theme;
 use crate::theme::look::WidgetLook;
 use crate::theme::text_style_overrides::TextStyleOverrides;
@@ -165,7 +165,7 @@ fn text_overrides_reject_invalid_metrics_on_load() {
             Err(error) => {
                 assert!(!ok, "{label}: rejected: {error}");
                 assert!(
-                    error.to_string().contains(GlyphFont::METRICS_ERROR),
+                    error.to_string().contains(domain::FONT_LENGTH_RULE),
                     "{label}: unexpected serde error: {error}",
                 );
             }

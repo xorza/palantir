@@ -2,13 +2,13 @@
 
 use crate::theme::color_scheme::ColorScheme;
 
-use crate::app::App;
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::host::harness::Harness;
 use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::tests::support::SURFACE;
@@ -298,7 +298,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 /// `App::update` reads responses before any record pass, so it needs its own quiescence snapshot: a stale one from a pass with the pointer off the surface would default the interaction half out.
 #[test]
 fn update_sees_input_that_arrived_after_a_quiescent_pass() {
-    use crate::app::App;
+    use crate::ui::app::App;
     use crate::window::window_token::WindowToken;
 
     #[derive(Debug)]

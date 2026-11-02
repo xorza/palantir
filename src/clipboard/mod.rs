@@ -377,7 +377,7 @@ impl Clipboard {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::common::clipboard::{Backend, Clipboard, ClipboardUnavailable, MemoryBackend};
+    use crate::clipboard::{Backend, Clipboard, ClipboardUnavailable, MemoryBackend};
     use crate::primitives::paint::image::Image;
     use std::cell::RefCell;
     use std::rc::Rc;

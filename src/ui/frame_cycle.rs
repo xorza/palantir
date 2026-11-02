@@ -2,7 +2,6 @@
 //!
 //! `run` classifies the frame ([`FramePlan`]), then either paints from the retained tree (`PaintOnly`) or runs `App::update`, one to three [`FrameCycle::record_pass`]es (`pre_record`, user closure, `post_record`) and `finalize_frame`; damage runs last. Per-pass resets live in [`FrameCycle::pre_record`], the once-per-frame sweep in `finalize_frame`: the question is whether the user closure re-asserts the state.
 
-use crate::app::App;
 use crate::cascade::cascade_source::CascadeSource;
 use crate::common::tracy;
 use crate::damage::engine::DamageInput;
@@ -13,6 +12,7 @@ use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
@@ -281,8 +281,8 @@ impl<'a> FrameCycle<'a> {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::app::App;
     use crate::ui::Ui;
+    use crate::ui::app::App;
     use crate::ui::frame_cycle::FrameCycle;
     use crate::ui::frame_engines::FrameEngines;
     use crate::window::window_token::WindowToken;

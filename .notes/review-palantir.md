@@ -126,26 +126,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 7: Cut the undocumented top-level cycles
-
-Files: `src/common/clipboard/` → `src/clipboard/`, `src/primitives/math/domain/`,
-`src/primitives/packed/serde/checked/mod.rs`, `src/text/glyph_font.rs`, `src/app.rs` →
-`src/ui/app.rs`, `src/lib.rs`, `AGENTS.md`.
-
-- [ ] `common/clipboard/mod.rs:10,12`: the leaf layer imports `primitives::Image`. Target: a
-  top-level `clipboard` module in the rank-2 set beside `window` and `display`. `common` becomes a
-  leaf again. The `lib.rs` paths stay.
-- [ ] `checked/mod.rs:8,58-66`: the theme file's font-size rule imports `text::GlyphFont`. Target:
-  a font-length kind in `math::domain` (`is_font_length` with its rule string, and a row in the
-  table at `domain/mod.rs:8`). `GlyphFont::length_is_valid` and `checked::font_size_rule` both call
-  it.
-- [ ] `app.rs:3`, `ui/mod.rs:24`, `ui/frame_cycle.rs:5`: `App` is the frame cycle's callback.
-  Target: `src/ui/app.rs`, with `palantir::App` unchanged. Decided: a trait lives with the code
-  that calls it, as winit's `ApplicationHandler` sits beside its event loop and eframe's `App`
-  beside its run loop. Refused: a top-level module for the contract alone, which keeps the cycle.
-- [ ] `AGENTS.md`: add `clipboard` to the diagram and drop the `app ⇄ ui` bullet. Add `golden`,
-  `internals` and `bench` to the diagram, or state that they sit outside it.
-
 ### Batch 8: Cut the GPU cycles
 
 Files: `src/renderer/{gpu_paint,render_buffer/render_target_draw.rs,frontend/}`,

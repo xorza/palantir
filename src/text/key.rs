@@ -4,7 +4,7 @@
 use crate::common::hash;
 use crate::common::non_max_u32::NonMaxU32;
 use crate::primitives::layout::align::HAlign;
-use crate::primitives::math::domain::EPS;
+use crate::primitives::math::domain::{self, EPS};
 use crate::primitives::math::num::F32Px;
 use crate::text::RENDERED_RUN_KEEP_SPREAD_MASK;
 use crate::text::family_keys::FamilyKey;
@@ -100,7 +100,7 @@ impl TextShapeKey {
         debug_assert!(
             GlyphFont::metrics_are_valid(font_size, line_height),
             "{}",
-            GlyphFont::METRICS_ERROR,
+            domain::FONT_LENGTH_RULE,
         );
         Self {
             text_hash: Self::content_hash(text_hash),

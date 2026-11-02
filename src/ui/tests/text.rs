@@ -1,6 +1,6 @@
 //! What a frame reshapes, what it reuses, and what the shared caches keep.
 
-use crate::common::clipboard::Clipboard;
+use crate::clipboard::Clipboard;
 use crate::host::harness::Harness;
 use crate::image_registry::ImageRegistry;
 use crate::internals::panic_probe;

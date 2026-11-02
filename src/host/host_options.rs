@@ -1,6 +1,6 @@
 //! [`HostOptions`]: the settings both host builders take, so they read and apply them alike.
 
-use crate::common::clipboard::Clipboard;
+use crate::clipboard::Clipboard;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 

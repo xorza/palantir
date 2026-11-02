@@ -1,4 +1,4 @@
-use crate::common::clipboard::internals;
+use crate::clipboard::internals;
 use crate::widgets::text_edit::tests::*;
 
 /// Default context menu wires Cut / Copy / Paste / Clear against the host buffer, end to end; the menu auto-closes.

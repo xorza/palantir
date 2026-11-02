@@ -1,4 +1,3 @@
-use crate::app::App;
 use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::surface_manager::{
@@ -11,6 +10,7 @@ use crate::host::winit::{WinitHost, finish_run};
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;

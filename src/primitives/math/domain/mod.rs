@@ -24,7 +24,8 @@
 //! | [`idx`] | `0..len` | clamped; no index when `len == 0` |
 //!
 //! Theme files are checked on load by the same predicates, and a file's lengths and offsets also
-//! by [`MAX_FILE_LENGTH`]. [`EPS`] is the one epsilon for "can the eye resolve this". Everything is `const fn` because the setters that call it are. [`vec2`] and [`f64`](mod@f64) hold the per-axis and `f64` twins.
+//! by [`MAX_FILE_LENGTH`]. A font size and a line height are a crate-private kind of their own,
+//! finite and above [`EPS`], which the shaper and a theme file check alike. [`EPS`] is the one epsilon for "can the eye resolve this". Everything is `const fn` because the setters that call it are. [`vec2`] and [`f64`](mod@f64) hold the per-axis and `f64` twins.
 
 use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
@@ -48,6 +49,8 @@ pub(crate) const OFFSET_RULE: &str = "an offset must be finite";
 pub(crate) const FILE_LENGTH_RULE: &str =
     "a length in a file must be finite, not negative, and at most 8192";
 pub(crate) const FILE_OFFSET_RULE: &str = "an offset in a file must be finite and within ±8192";
+pub(crate) const FONT_LENGTH_RULE: &str =
+    "font size and line height must be finite and above the UI epsilon";
 pub(crate) const LENGTH_RULE: &str = "a length must be finite and not negative";
 pub(crate) const EXTENT_RULE: &str = "an extent must not be negative or NaN";
 pub(crate) const GAP_RULE: &str =
@@ -156,6 +159,13 @@ pub const fn extent(v: f32) -> f32 {
 #[inline]
 pub(crate) const fn is_file_length(v: f32) -> bool {
     is_length(v) && v <= MAX_FILE_LENGTH
+}
+
+/// True if `v` is a font length, a font size or a line height the shaper accepts: finite and
+/// above [`EPS`], at or under which no glyph draws.
+#[inline]
+pub(crate) const fn is_font_length(v: f32) -> bool {
+    v.is_finite() && v > EPS
 }
 
 /// True if `v` is an offset a file may hold: within ±[`MAX_FILE_LENGTH`].

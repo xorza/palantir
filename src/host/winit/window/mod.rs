@@ -12,7 +12,6 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::WindowEvent;
 use winit::window::Window as WinitWindow;
 
-use crate::app::App;
 use crate::common::platform::PLATFORM;
 use crate::common::tracy::{self, FrameSet};
 use crate::display;
@@ -31,6 +30,7 @@ use crate::host::winit::window::visibility::Visibility;
 use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::theme::color_scheme::ColorScheme;
+use crate::ui::app::App;
 use crate::window::vsync::Vsync;
 use crate::window::window_commands::WindowCommands;
 use crate::window::window_frame_state::WindowFacts;

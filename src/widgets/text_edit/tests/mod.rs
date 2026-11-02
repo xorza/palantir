@@ -11,7 +11,7 @@ use crate::widgets::text_edit::unicode::{
     word_range_at,
 };
 
-use crate::common::clipboard::Clipboard;
+use crate::clipboard::Clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;

@@ -120,7 +120,6 @@ fn scale_text_reaches_every_font_size() {
 #[test]
 fn theme_deserialization_rejects_invalid_text_metrics() {
     use crate::primitives::math::domain;
-    use crate::text::glyph_font::GlyphFont;
 
     let valid = pretty(&Theme::default());
     let cases = [
@@ -177,7 +176,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
         assert_ne!(invalid, valid, "{label}: `{from}` is not in the theme");
         let error = ron::from_str::<Theme>(&invalid).expect_err(label);
         assert!(
-            error.to_string().contains(GlyphFont::METRICS_ERROR),
+            error.to_string().contains(domain::FONT_LENGTH_RULE),
             "{label}: unexpected serde error: {error}",
         );
     }

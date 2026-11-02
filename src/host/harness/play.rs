@@ -1,7 +1,6 @@
 //! [`Harness::play`], [`Harness::settle`] and [`Harness::shot`]: the window driven as a person at
 //! it would, waiting for it to settle after each step.
 
-use crate::app::App;
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, PlayError};
 use crate::driver::locator::{Locate, Locator, Reach};
@@ -11,6 +10,7 @@ use crate::host::harness::Harness;
 use crate::host::window_driver::FrameDepth;
 use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
+use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::window::screenshot::Screenshot;
 use glam::Vec2;

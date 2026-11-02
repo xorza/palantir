@@ -4,7 +4,6 @@
 //!
 //! Every rejection is a caller mistake, so `frame` panics rather than returning a `Result`.
 
-use crate::app::App;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::display;
 use crate::gpu::device::gpu::Gpu;
@@ -21,6 +20,7 @@ use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_token::WindowToken;

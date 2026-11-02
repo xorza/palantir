@@ -4,7 +4,6 @@
 //! lives on the shared [`Frontend`], shared GPU resources on the `WgpuBackend`, so N
 //! windows share one renderer without sharing frame-local geometry.
 
-use crate::app::App;
 use crate::common::tracy;
 use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
@@ -26,6 +25,7 @@ use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;
 use crate::ui::frame_report::FrameReport;

@@ -2,11 +2,11 @@
 //! [`TextStyle`].
 
 use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
-use crate::text::glyph_font::GlyphFont;
 use crate::theme::text_style::TextStyle;
 
 /// Per-axis overrides folded onto a resolved [`TextStyle`].
@@ -173,7 +173,7 @@ impl TextStyleOverrides {
     fn metrics_valid(&self) -> bool {
         match (self.font_size, self.line_height_factor) {
             (Some(_), Some(_)) => self.apply(&TextStyle::default()).metrics_valid(),
-            (Some(px), None) => GlyphFont::length_is_valid(px),
+            (Some(px), None) => domain::is_font_length(px),
             (None, Some(factor)) => factor.is_finite() && factor > 0.0,
             (None, None) => true,
         }
@@ -307,7 +307,7 @@ impl TryFrom<UncheckedTextStyleOverrides> for TextStyleOverrides {
             slant: overrides.slant,
         };
         if !overrides.metrics_valid() {
-            return Err(GlyphFont::METRICS_ERROR);
+            return Err(domain::FONT_LENGTH_RULE);
         }
         Ok(overrides)
     }

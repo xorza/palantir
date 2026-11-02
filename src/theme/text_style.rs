@@ -1,6 +1,7 @@
 //! The font, size, weight, color and leading a run of text is shaped and
 //! painted with.
 
+use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
@@ -183,7 +184,7 @@ impl TryFrom<UncheckedTextStyle> for TextStyle {
             slant: style.slant,
         };
         if !style.metrics_valid() {
-            return Err(GlyphFont::METRICS_ERROR);
+            return Err(domain::FONT_LENGTH_RULE);
         }
         Ok(style)
     }

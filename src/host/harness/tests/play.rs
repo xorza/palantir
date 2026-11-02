@@ -1,4 +1,3 @@
-use crate::app::App;
 use crate::display::Display;
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, LocateError, PlayError};
@@ -18,6 +17,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;

@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use crate::common::clipboard::Clipboard;
+use crate::clipboard::Clipboard;
 use crate::icons::icon_registry::IconRegistry;
 use crate::image_registry::ImageRegistry;
 use crate::image_registry::image_handle::ImageHandle;
@@ -114,7 +114,7 @@ impl UiResources {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::common::clipboard::Clipboard;
+    use crate::clipboard::Clipboard;
     use crate::image_registry::ImageRegistry;
     use crate::text::shaper::TextShaper;
     use crate::ui::resources::UiResources;

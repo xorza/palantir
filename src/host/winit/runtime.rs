@@ -6,7 +6,6 @@ use std::time::Instant;
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::WindowId;
 
-use crate::app::App;
 use crate::common::tracy;
 use crate::gpu::error::SurfaceStartError;
 use crate::gpu::surface::surface_manager::{FirstWindow, SurfaceManager, SurfaceStartup};
@@ -23,6 +22,7 @@ use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
 use crate::theme::scheme_preference::SchemePreference;
+use crate::ui::app::App;
 use crate::window::waker::Waker;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_config::WindowConfig;

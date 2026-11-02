@@ -78,7 +78,6 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::WindowId;
 
-use crate::app::App;
 use crate::display;
 use crate::gpu::surface::surface_manager::SurfaceManager;
 use crate::host::winit::config::WinitHostConfig;
@@ -90,6 +89,7 @@ use crate::host::winit::window::FramePresent;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::window::vsync::Vsync;
 use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;

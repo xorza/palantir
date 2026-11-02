@@ -1,6 +1,7 @@
 //! The recorder: [`Ui`], the handle a widget or host authors a frame through,
 //! and the retained state that frame reads and writes.
 
+pub(crate) mod app;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod frame_cycle;
@@ -21,10 +22,9 @@ use crate::animation::AnimationMap;
 use crate::animation::animation_map_typed::AnimationClock;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
-use crate::app::App;
 use crate::cascade::Cascade;
 use crate::cascade::WidgetLocation;
-use crate::common::clipboard::Clipboard;
+use crate::clipboard::Clipboard;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::diagnostics::frame_stats::FrameStats;
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
@@ -85,6 +85,7 @@ use crate::text::run::TextRun;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::scheme_preference::SchemePreference;
+use crate::ui::app::App;
 use crate::ui::frame_cycle::FrameCycle;
 use crate::ui::frame_engines::FrameEngines;
 use crate::ui::frame_input::FrameInput;

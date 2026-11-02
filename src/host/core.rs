@@ -7,7 +7,6 @@
 //! code tells the two apart. A core built by [`HostCore::cpu`] has no device half: it records and
 //! composes, and paints nothing.
 
-use crate::app::App;
 use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
@@ -22,6 +21,7 @@ use crate::image_registry::ImageRegistry;
 use crate::renderer::frontend::Frontend;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
+use crate::ui::app::App;
 use crate::ui::resources::UiResources;
 use crate::window::window_token::WindowToken;
 use std::rc::Rc;

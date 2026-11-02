@@ -18,14 +18,14 @@ use crate::theme::{FACES_ERROR, Theme};
 #[test]
 fn a_text_step_is_a_font_size() {
     use crate::internals::panic_probe;
-    use crate::text::glyph_font::GlyphFont;
+    use crate::primitives::math::domain;
 
     let valid = super::pretty(&Metrics::DEFAULT);
     let zero = valid.replacen("body: 14.0", "body: 0.0", 1);
     assert_ne!(zero, valid, "`body: 14.0` is not in the metrics");
     let error = ron::from_str::<Metrics>(&zero).expect_err("a zero body");
     assert!(
-        error.to_string().contains(GlyphFont::METRICS_ERROR),
+        error.to_string().contains(domain::FONT_LENGTH_RULE),
         "unexpected serde error: {error}"
     );
 

@@ -5,7 +5,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::packed::serde::LaneCodec;
 use crate::primitives::paint::backdrop_filter::Lens;
-use crate::text::glyph_font::GlyphFont;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer};
 use glam::Vec2;
@@ -56,8 +55,8 @@ pub(crate) fn optional_font_size<'de, D: Deserializer<'de>>(
 
 /// The rule `px` breaks as a font size, if any.
 const fn font_size_rule(px: f32) -> Option<&'static str> {
-    if !GlyphFont::length_is_valid(px) {
-        Some(GlyphFont::METRICS_ERROR)
+    if !domain::is_font_length(px) {
+        Some(domain::FONT_LENGTH_RULE)
     } else if !domain::is_file_length(px) {
         Some(domain::FILE_LENGTH_RULE)
     } else {

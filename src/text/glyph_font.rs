@@ -1,6 +1,6 @@
 //! The face a shaping call asks for: font and size parameters, named once so they travel together.
 
-use crate::primitives::math::domain::EPS;
+use crate::primitives::math::domain;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -21,18 +21,11 @@ pub struct GlyphFont {
 }
 
 impl GlyphFont {
-    /// Shared rejection message, so a bad size reads the same wherever authored.
-    pub(crate) const METRICS_ERROR: &'static str =
-        "font size and line height must be finite and above the UI epsilon";
-
-    /// Whether `(size, leading)` names a face the shaper accepts; scalars, so the theme can check a derived line height before a face exists.
+    /// Whether `(size, leading)` names a face the shaper accepts, each a
+    /// [font length](domain::is_font_length); scalars, so the theme can check a derived line
+    /// height before a face exists.
     pub(crate) const fn metrics_are_valid(size: f32, line_height: f32) -> bool {
-        Self::length_is_valid(size) && Self::length_is_valid(line_height)
-    }
-
-    /// The half one metric answers alone.
-    pub(crate) const fn length_is_valid(px: f32) -> bool {
-        px.is_finite() && px > EPS
+        domain::is_font_length(size) && domain::is_font_length(line_height)
     }
 
     pub(crate) const fn metrics_valid(&self) -> bool {

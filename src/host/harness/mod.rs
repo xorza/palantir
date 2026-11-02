@@ -51,7 +51,6 @@
 pub(crate) mod harness_builder;
 mod play;
 
-use crate::app::App;
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::display;
 use crate::display::Display;
@@ -78,6 +77,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
@@ -847,7 +847,6 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 pub(crate) mod unit {
-    use crate::app::App;
     use crate::damage::Damage;
     use crate::damage::region::DamageRegion;
     use crate::host::harness::Harness;
@@ -869,6 +868,7 @@ pub(crate) mod unit {
     use crate::scene::layer::Layer;
     use crate::scene::tree::node_id::NodeId;
     use crate::ui::Ui;
+    use crate::ui::app::App;
     use crate::ui::frame_report::FrameReport;
     use crate::ui::resources::UiResources;
     use crate::widget_core::configure::Configure;

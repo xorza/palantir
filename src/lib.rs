@@ -105,10 +105,10 @@ extern crate self as palantir;
 pub(crate) mod common;
 
 pub(crate) mod animation;
-pub(crate) mod app;
 #[cfg(feature = "internals")]
 pub mod bench;
 pub(crate) mod cascade;
+pub(crate) mod clipboard;
 pub(crate) mod damage;
 pub(crate) mod diagnostics;
 /// Per-output display state shared by host and renderer.
@@ -231,8 +231,7 @@ pub mod widget {
 
 pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
-pub use app::App;
-pub use common::clipboard::{Clipboard, ClipboardUnavailable};
+pub use clipboard::{Clipboard, ClipboardUnavailable};
 pub use common::platform::{PLATFORM, Platform};
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
@@ -393,6 +392,7 @@ pub use theme::text_style_overrides::TextStyleOverrides;
 pub use theme::toggle::ToggleTheme;
 pub use theme::tooltip::TooltipTheme;
 pub use ui::Ui;
+pub use ui::app::App;
 pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::inspected_widget::InspectedWidget;
 pub use ui::layer_scope::LayerScope;

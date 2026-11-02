@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use crate::common::clipboard::internals::{Scripted, ScriptedState};
-use crate::common::clipboard::{Clipboard, ClipboardUnavailable};
+use crate::clipboard::internals::{Scripted, ScriptedState};
+use crate::clipboard::{Clipboard, ClipboardUnavailable};
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
 use std::error;
@@ -49,7 +49,7 @@ fn over(primary: &Rc<RefCell<ScriptedState>>) -> Clipboard {
 #[cfg(feature = "system-clipboard")]
 #[test]
 fn system_reads_without_text_answer_empty() {
-    use crate::common::clipboard::SystemBackend;
+    use crate::clipboard::SystemBackend;
 
     let cases = [
         (Ok(String::from("text")), Ok(String::from("text"))),

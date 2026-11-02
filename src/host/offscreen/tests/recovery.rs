@@ -7,7 +7,6 @@
     reason = "the view paints through wgpu, which only the gpu module names elsewhere"
 )]
 
-use crate::app::App;
 use crate::gpu::device::gpu_frame_ctx::GpuFrameCtx;
 use crate::gpu::device::gpu_init_ctx::GpuInitCtx;
 use crate::gpu::surface::owned_target::OwnedTarget;
@@ -39,6 +38,7 @@ use crate::shape::Shape;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::ui::frame_report::FramePaint;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;

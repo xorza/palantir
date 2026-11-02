@@ -30,9 +30,9 @@ impl<F: FnMut(&mut Ui)> App for F {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::App;
     use crate::host::harness::Harness;
     use crate::ui::Ui;
+    use crate::ui::app::App;
     use crate::window::window_token::WindowToken;
     use glam::UVec2;
 

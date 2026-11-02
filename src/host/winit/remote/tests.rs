@@ -10,7 +10,6 @@ use std::time::{Duration, Instant};
 
 use glam::{UVec2, Vec2};
 
-use crate::app::App;
 use crate::driver::action::Action;
 use crate::driver::error::PlayError;
 use crate::driver::locator::Locator;
@@ -26,6 +25,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
+use crate::ui::app::App;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
