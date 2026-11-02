@@ -55,6 +55,9 @@ pub(super) struct RowMatcher {
     /// `(key, row)` for each side's unclaimed rows, sorted: sort-and-merge keeps the all-rows-shifted case at O(n log n).
     prev_keyed: Vec<(PaintKey, u32)>,
     cur_keyed: Vec<(PaintKey, u32)>,
+    /// For each prev row `t`, and one past the last, the last curr row matched exactly to a prev
+    /// row before `t`: [`Self::gone_place`]'s answer, built once per node while panes are on.
+    last_matched_before: Vec<Option<NonMaxU32>>,
 }
 
 /// One node's paint rows across the frame boundary: the arena block holding last
@@ -102,6 +105,9 @@ impl RowMatcher {
 
         self.reset_for(prev, cur_paints);
         self.claim_exact(prev, cur_paints);
+        if places.panes.is_on() {
+            self.index_exact_matches(prev_len);
+        }
         self.emit_moves_and_adds(out, prev, cur_paints, places);
         self.emit_removals(out, prev, places);
 
@@ -203,8 +209,10 @@ impl RowMatcher {
             }
             match self.prev_keyed.get(pi) {
                 Some(&(pk, prow)) if pk.hash == ck.hash => {
-                    let gone = self.gone_place(prow, places);
-                    places.panes.mark(out.len(), gone);
+                    if places.panes.is_on() {
+                        let gone = self.gone_place(prow, places);
+                        places.panes.mark(out.len(), gone);
+                    }
                     damage::push_screen(out, prev[prow as usize].screen);
                     places.panes.mark(out.len(), of.row(crow));
                     damage::push_screen(out, cur[crow as usize].screen);
@@ -223,9 +231,30 @@ impl RowMatcher {
     fn emit_removals(&self, out: &mut Vec<Rect>, prev: &[Paint], places: &mut RowPlaces<'_>) {
         for (row, p) in prev.iter().enumerate() {
             if !self.prev_matched[row] {
-                let gone = self.gone_place(row as u32, places);
-                places.panes.mark(out.len(), gone);
+                if places.panes.is_on() {
+                    let gone = self.gone_place(row as u32, places);
+                    places.panes.mark(out.len(), gone);
+                }
                 damage::push_screen(out, p.screen);
+            }
+        }
+    }
+
+    /// Fill [`Self::last_matched_before`] from the exact matches: each prev row claimed once, its
+    /// curr row lands one slot past it, and a running max carries it to every later slot.
+    fn index_exact_matches(&mut self, prev_len: usize) {
+        let before = &mut self.last_matched_before;
+        before.clear();
+        before.resize(prev_len + 1, None);
+        for (crow, matched) in self.matched_pos.iter().enumerate() {
+            if let Some(prow) = matched {
+                before[prow.idx() + 1] = Some(NonMaxU32::index(crow));
+            }
+        }
+        for t in 1..before.len() {
+            let carried = before[t - 1];
+            if carried.map(NonMaxU32::get) > before[t].map(NonMaxU32::get) {
+                before[t] = carried;
             }
         }
     }
@@ -243,10 +272,8 @@ impl RowMatcher {
         if prow < of.span.len && places.pane_rows.iter().any(|pane| pane.row == row) {
             return of.row(prow);
         }
-        self.matched_pos
-            .iter()
-            .rposition(|matched| matched.is_some_and(|p| p.get() < prow))
-            .map_or_else(|| of.gone(), |crow| of.row(crow as u32) + 1)
+        self.last_matched_before[prow as usize]
+            .map_or_else(|| of.gone(), |crow| of.row(crow.get()) + 1)
     }
 
     /// True when matched prev positions are not non-decreasing in curr order. Equal neighbors cannot occur (each prev row is claimed once), so `is_sorted` is exact.
@@ -295,11 +322,60 @@ pub(crate) mod internals {
                 matched_pos,
                 prev_keyed,
                 cur_keyed,
+                last_matched_before,
             } = self;
             scratch_report::vec_bytes(prev_matched)
                 + scratch_report::vec_bytes(matched_pos)
                 + scratch_report::vec_bytes(prev_keyed)
                 + scratch_report::vec_bytes(cur_keyed)
+                + scratch_report::vec_bytes(last_matched_before)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::common::non_max_u32::NonMaxU32;
+    use crate::damage::row_matcher::RowMatcher;
+
+    /// Curr rows 0..6 matched to prev rows 3, none, 0, 5, none and 6 of 7. Slot `t` holds the last
+    /// curr row matched below prev row `t`: none at 0; curr 2 (prev 0) from 1, which curr 0 (prev 3)
+    /// does not lower at 4; curr 3 (prev 5) at 6; curr 5 (prev 6) at 7. A scan of every match from
+    /// the back gives each slot alike.
+    #[test]
+    fn the_gone_index_holds_the_last_match_below_each_row() {
+        let mut matcher = RowMatcher {
+            matched_pos: [Some(3), None, Some(0), Some(5), None, Some(6)]
+                .map(|prow| prow.map(NonMaxU32::index))
+                .to_vec(),
+            ..RowMatcher::default()
+        };
+        matcher.index_exact_matches(7);
+        let index: Vec<Option<u32>> = matcher
+            .last_matched_before
+            .iter()
+            .map(|crow| crow.map(NonMaxU32::get))
+            .collect();
+        assert_eq!(
+            index,
+            [
+                None,
+                Some(2),
+                Some(2),
+                Some(2),
+                Some(2),
+                Some(2),
+                Some(3),
+                Some(5)
+            ]
+        );
+        for (prow, &indexed) in index.iter().enumerate() {
+            let scan = matcher
+                .matched_pos
+                .iter()
+                .rposition(|matched| matched.is_some_and(|p| p.idx() < prow))
+                .map(|crow| crow as u32);
+            assert_eq!(indexed, scan, "prev row {prow}");
         }
     }
 }

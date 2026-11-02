@@ -31,8 +31,8 @@ use crate::primitives::geometry::rect::Rect;
 ///   fast path avoids.
 /// - [`Self::arena_hashes`] stamps the retained `paint_arena` rows with the
 ///   rollup they were built from.
-/// - [`Self::paint_rects`] and [`Self::hit_rows`] are read only by the
-///   incremental walk, to refresh a node in place.
+/// - [`Self::hit_rows`] is read only by the incremental walk, to refresh a
+///   node's hit row in place.
 #[derive(Debug, Default)]
 pub(crate) struct PlaneCascade {
     /// Per-node `cascade_input` fingerprint, indexed like `Tree::records`:
@@ -74,10 +74,6 @@ pub(crate) struct PlaneCascade {
     /// overwrite this column, and sharing would need a hash probe on the
     /// repair path.
     pub(super) arena_hashes: Vec<ContentHash>,
-    /// Per-node own paint extent, the seed [`Self::subtree_paint_rects`] rolls
-    /// up from; the incremental walk rebuilds a node's rollup from it without
-    /// recomputing rows.
-    pub(super) paint_rects: Vec<Rect>,
     /// Per-node index of the node's row in
     /// [`Cascade::hits`](crate::cascade::Cascade::hits), if it holds one. Which
     /// nodes hold a row is structural, so the incremental walk rewrites a moved
@@ -97,9 +93,6 @@ pub(crate) struct PlaneCascade {
     /// [`Cascade::by_id`](crate::cascade::Cascade::by_id) snapshot this gives
     /// O(1) `WidgetId → entry` without a per-widget hashmap fill.
     pub(crate) entries_base: u32,
-    /// The plane's `PlaneLayout::rect_hash` these columns were last walked against: while it
-    /// holds, the incremental walk skips subtrees whose inputs held.
-    pub(super) rects: ContentHash,
 }
 
 impl PlaneCascade {
@@ -115,7 +108,6 @@ impl PlaneCascade {
         self.subtree_ends.resize(n_nodes, 0);
         self.paint_arena.reset_for(n_nodes);
         self.arena_hashes.resize(n_nodes, ContentHash::default());
-        self.paint_rects.resize(n_nodes, Rect::ZERO);
         self.hit_rows.resize(n_nodes, None);
         self.shape_scales.resize(n_nodes, 1.0);
         self.entries_base = entries_base;

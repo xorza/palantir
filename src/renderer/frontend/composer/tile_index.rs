@@ -1,8 +1,9 @@
 //! A grid of fixed tiles over the viewport, each listing the entries registered over it: the
-//! spatial index both the composer's overlap checks ([`RectGrid`]) and its occlusion pruning
-//! ([`OcclusionPruner`]) query.
+//! spatial index the composer's overlap checks ([`RectGrid`] for text, [`HigherKindRects`] for the
+//! tiers above it) and its occlusion pruning ([`OcclusionPruner`]) query.
 //!
 //! [`RectGrid`]: crate::renderer::frontend::composer::rect_grid::RectGrid
+//! [`HigherKindRects`]: crate::renderer::frontend::composer::higher_kind_rects::HigherKindRects
 //! [`OcclusionPruner`]: crate::renderer::frontend::composer::occlusion_pruner::OcclusionPruner
 
 use glam::UVec2;

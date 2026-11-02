@@ -35,7 +35,6 @@ struct Occluder {
 #[derive(Debug, Default)]
 pub(super) struct OcclusionPruner {
     opaque_in_group: Vec<Occluder>,
-    drop_idxs: Vec<u32>,
     /// Each tile's covers, by position in `opaque_in_group`.
     tiles: TileIndex,
     contains_tests: TestOnly<Cell<u32>>,
@@ -54,7 +53,6 @@ impl OcclusionPruner {
 
     pub(super) fn clear(&mut self) {
         self.opaque_in_group.clear();
-        self.drop_idxs.clear();
     }
 
     pub(super) fn record_opaque(&mut self, idx: u32, cover: Rect) {
@@ -73,48 +71,40 @@ impl OcclusionPruner {
             self.build_index();
         }
 
-        self.drop_idxs.clear();
         // Always at the first occluder with `idx > i`; both ascend.
         let mut cursor = 0;
         let occluders = self.opaque_in_group.len();
-        for (i, q) in out.quads[start..].iter().enumerate() {
-            // Shadows blur past the stored rect; never drop.
-            if q.fill_kind.is_shadow() {
-                continue;
-            }
-            while cursor < occluders && self.opaque_in_group[cursor].idx as usize <= i {
-                cursor += 1;
-            }
-            // No later occluder for this or any later `i`.
-            if cursor >= occluders {
-                break;
-            }
-            let shaded = q.shaded_rect();
-            let covered = if indexed {
-                self.indexed_covers(shaded, cursor)
-            } else {
-                (cursor..occluders).any(|at| self.covers(at, shaded))
-            };
-            if covered {
-                // A pane that shows nothing must not capture, nor keep a result that goes
-                // stale while it is hidden.
-                if q.fill_kind.is_backdrop() {
-                    out.backdrops[q.fill_lut_row.0 as usize].source = PaneSource::Hidden;
-                }
-                self.drop_idxs.push(i as u32);
-            }
-        }
-        if self.drop_idxs.is_empty() {
-            return;
-        }
-        // Walk forward, copying survivors down; `drop_idxs` is ascending.
-        let mut drop_iter = self.drop_idxs.iter().copied().peekable();
+        let end = out.quads.len();
+        // Survivors move down to `write`, in order.
         let mut write = start;
-        for read in start..out.quads.len() {
-            let rel = (read - start) as u32;
-            if drop_iter.peek().copied() == Some(rel) {
-                drop_iter.next();
-                continue;
+        for read in start..end {
+            let q = &out.quads[read];
+            // Shadows blur past the stored rect; never drop.
+            if !q.fill_kind.is_shadow() {
+                let i = read - start;
+                while cursor < occluders && self.opaque_in_group[cursor].idx as usize <= i {
+                    cursor += 1;
+                }
+                // No later occluder for this or any later quad: the rest survive.
+                if cursor >= occluders {
+                    out.quads.copy_within(read..end, write);
+                    write += end - read;
+                    break;
+                }
+                let shaded = q.shaded_rect();
+                let covered = if indexed {
+                    self.indexed_covers(shaded, cursor)
+                } else {
+                    (cursor..occluders).any(|at| self.covers(at, shaded))
+                };
+                if covered {
+                    // A pane that shows nothing must not capture, nor keep a result that goes
+                    // stale while it is hidden.
+                    if q.fill_kind.is_backdrop() {
+                        out.backdrops[q.fill_lut_row.0 as usize].source = PaneSource::Hidden;
+                    }
+                    continue;
+                }
             }
             if read != write {
                 out.quads[write] = out.quads[read];
@@ -183,13 +173,10 @@ pub(crate) mod internals {
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 opaque_in_group,
-                drop_idxs,
                 tiles,
                 contains_tests: _,
             } = self;
-            scratch_report::vec_bytes(opaque_in_group)
-                + scratch_report::vec_bytes(drop_idxs)
-                + tiles.scratch_bytes()
+            scratch_report::vec_bytes(opaque_in_group) + tiles.scratch_bytes()
         }
     }
 }

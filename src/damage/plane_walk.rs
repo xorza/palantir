@@ -24,7 +24,7 @@ enum Tier {
     Untracked,
     /// No snapshot; everything this node paints is new.
     Added,
-    /// Authoring, cascade state and parent all match, so by `subtree_hash` induction every descendant is bit-identical and the walk jumps the subtree. An idle frame takes this at the root.
+    /// Authoring, cascade state and parent all match, so every descendant is bit-identical (`layout`'s module doc, "A subtree's rects follow from its node") and the walk jumps the subtree. An idle frame takes this at the root.
     SubtreeUnchanged,
     /// Authoring and parent match but `cascade_input` moved (scroll, pan, sibling shift). Rows are unchanged, so damage is the subtree's prior extent ∪ current one, not the per-row flood.
     SubtreeMoved,

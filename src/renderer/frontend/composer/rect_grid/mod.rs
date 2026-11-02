@@ -1,4 +1,4 @@
-//! Spatial index over paint-rect AABBs for the composer's paint-order overlap checks: the text batches' rects, and higher-kind tiers' once they outgrow a short scan. A flat `Vec<URect>` scan costs every query the whole batch, which dominates compose time in text-dense UIs.
+//! Spatial index over paint-rect AABBs for the composer's paint-order overlap checks: the text batches' rects. The higher-kind tiers list their own rects in a [`TileIndex`] once they outgrow a short scan. A flat `Vec<URect>` scan costs every query the whole batch, which dominates compose time in text-dense UIs.
 //!
 //! Real workloads keep dozens to ~200 rects live; most queries die at the union pre-reject and a survivor walks a few tiles.
 //!
@@ -7,11 +7,9 @@
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 
-use crate::common::counters::TestOnly;
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::frontend::composer::tile_index::TileIndex;
 use glam::UVec2;
-use std::cell::Cell;
 
 /// Spatial index over the open batch's text-rect AABBs: each rect is listed in a [`TileIndex`]
 /// over every tile it overlaps, and a query walks only the tiles its rect overlaps.
@@ -19,7 +17,6 @@ use std::cell::Cell;
 pub(super) struct RectGrid {
     tiles: TileIndex,
     rects: Vec<URect>,
-    intersect_tests: TestOnly<Cell<u32>>,
     /// Union AABB of every rect: an O(1) pre-reject for [`Self::any_overlap`] that skips the tile walk. Zero-sized means empty.
     pub(super) union: URect,
 }
@@ -28,7 +25,6 @@ impl RectGrid {
     /// Reshape to cover `viewport` and reset all state, before the first push of new scene output. No allocation when the viewport is unchanged.
     pub(super) fn start_frame(&mut self, viewport: UVec2) {
         self.tiles.start_frame(viewport);
-        self.intersect_tests.reset();
         self.rects.clear();
         self.union = URect::ZERO;
     }
@@ -56,12 +52,9 @@ impl RectGrid {
             return false;
         }
         self.tiles
-            .any_over(self.tiles.span(q.min, q.max()), |rect| self.hit(rect, q))
-    }
-
-    fn hit(&self, rect: u32, q: URect) -> bool {
-        self.intersect_tests.bump_shared();
-        self.rects[rect as usize].intersects(q)
+            .any_over(self.tiles.span(q.min, q.max()), |rect| {
+                self.rects[rect as usize].intersects(q)
+            })
     }
 }
 
@@ -71,15 +64,10 @@ pub(crate) mod internals {
     use crate::renderer::frontend::composer::rect_grid::RectGrid;
 
     impl RectGrid {
-        pub(crate) fn intersect_tests(&self) -> u32 {
-            self.intersect_tests.count()
-        }
-
         pub(crate) fn scratch_bytes(&self) -> usize {
             let Self {
                 tiles,
                 rects,
-                intersect_tests: _,
                 union: _,
             } = self;
             tiles.scratch_bytes() + scratch_report::vec_bytes(rects)

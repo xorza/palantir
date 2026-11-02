@@ -45,6 +45,7 @@ use crate::display::Display;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::backdrop_row::PaneCapture;
 use crate::renderer::render_plan::RenderPlan;
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
@@ -70,13 +71,7 @@ impl Held {
 /// What a frame does with one pane, decided before it encodes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PaneTicket {
-    pub(crate) key: PaneKey,
-    /// The physical px the pane's capture reads.
-    pub(crate) footprint: URect,
-    pub(crate) plan: BlurPlan,
-    /// The texels of the plan's last level the pane's result covers: its held capture's, or this
-    /// frame's where it captures.
-    pub(crate) region: URect,
+    pub(crate) capture: PaneCapture,
     /// Whether the pane takes a new result this frame, from a capture or the clear.
     pub(crate) captures: bool,
 }
@@ -124,9 +119,8 @@ pub(crate) enum Settled {
 #[derive(Debug, Default)]
 pub(crate) struct PaneCaptures {
     held: FxHashMap<PaneKey, Held>,
-    /// The panes [`Self::decide`] took last, and a ticket for each; `None` for a pane whose
-    /// footprint misses the surface, which paints nothing.
-    rows: Vec<PaneRow>,
+    /// A ticket for each pane [`Self::decide`] took last; `None` for a pane whose footprint misses
+    /// the surface, which paints nothing.
     tickets: Vec<Option<PaneTicket>>,
 }
 
@@ -145,16 +139,10 @@ impl PaneCaptures {
         display: Display,
         damage: PaneDamage<'_>,
     ) -> Settled {
-        self.rows.clear();
-        self.rows.extend(panes.into_iter().copied());
-        self.decide_rows(display, damage)
-    }
-
-    fn decide_rows(&mut self, display: Display, damage: PaneDamage<'_>) -> Settled {
         let surface = display.physical;
         self.tickets.clear();
         let mut captures = 0;
-        for pane in &self.rows {
+        for pane in panes {
             let footprint = pane.physical_footprint(display);
             let ticket = pane.plan.region(footprint, surface).map(|region| {
                 let held = damage
@@ -164,21 +152,30 @@ impl PaneCaptures {
                     .filter(|held| held.serves(pane.plan, region, surface));
                 captures += usize::from(held.is_none());
                 PaneTicket {
-                    key: pane.key,
-                    footprint,
-                    plan: pane.plan,
-                    region: held.map_or(region, |held| held.region),
+                    capture: PaneCapture {
+                        key: pane.key,
+                        footprint,
+                        plan: pane.plan,
+                        region: held.map_or(region, |held| held.region),
+                    },
                     captures: held.is_none(),
                 }
             });
             self.tickets.push(ticket);
         }
         if matches!(damage, PaneDamage::Whole) || captures <= Self::PARTIAL_CAP {
-            Settled::Fits
-        } else {
-            self.decide_rows(display, PaneDamage::Whole);
-            Settled::Overflow
+            return Settled::Fits;
         }
+        for ticket in self.tickets.iter_mut().flatten() {
+            let PaneCapture {
+                footprint, plan, ..
+            } = ticket.capture;
+            ticket.capture.region = plan
+                .region(footprint, surface)
+                .expect("a ticket's footprint paints");
+            ticket.captures = true;
+        }
+        Settled::Overflow
     }
 
     /// Stop holding pane `key`'s capture, whose result the device no longer keeps.
@@ -198,29 +195,32 @@ impl PaneCaptures {
     }
 
     /// Record what the frame `buffer` holds, built from the last tickets, took: each pane that
-    /// took a new result holds it, each capturing pane that took none holds nothing, and the
-    /// panes [`Self::decide`] took no row for, no longer on screen, drop theirs.
+    /// took a new result holds it, each capturing pane that took none holds nothing, and a pane
+    /// the frame no longer has, which its [`live_panes`](RenderBuffer::live_panes) leave out,
+    /// drops its own.
     pub(crate) fn settle(&mut self, buffer: &RenderBuffer) {
-        let rows = &self.rows;
-        self.held
-            .retain(|key, _| rows.iter().any(|pane| pane.key == *key));
+        let live = &buffer.live_panes;
+        self.held.retain(|key, _| live.contains(key));
         for ticket in self
             .tickets
             .iter()
             .flatten()
             .filter(|ticket| ticket.captures)
         {
-            self.held.remove(&ticket.key);
+            self.held.remove(&ticket.capture.key);
         }
         let surface = buffer.display.physical;
         for row in &buffer.backdrops {
             if row.source.is_new() {
+                let PaneCapture {
+                    key, plan, region, ..
+                } = row.capture;
                 self.held.insert(
-                    row.key,
+                    key,
                     Held {
-                        plan: row.plan,
+                        plan,
                         surface,
-                        region: row.region,
+                        region,
                     },
                 );
             }

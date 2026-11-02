@@ -150,7 +150,7 @@ impl RenderBuffer {
         self.backdrops
             .iter()
             .filter(|row| matches!(row.source, PaneSource::Capture { .. }))
-            .map(|row| row.footprint.area())
+            .map(|row| row.capture.footprint.area())
             .sum()
     }
 

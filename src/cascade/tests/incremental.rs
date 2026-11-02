@@ -12,10 +12,8 @@ use crate::primitives::paint::color::RgbaF32;
 
 use crate::host::harness::Harness;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
-use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::font_scope::internals::INTER;
@@ -536,9 +534,8 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
     use crate::cascade::cascade_source::CascadeSource;
     use crate::cascade::engine::CascadeEngine;
 
-    let mut engine = CascadeEngine::default();
     let mut full = Cascade::default();
-    engine.run_full(
+    CascadeEngine::default().run_full(
         CascadeSource {
             forest: ui.forest(),
             layout: ui.layout_tables(),
@@ -547,65 +544,12 @@ fn assert_cascades_match_full(ui: &Ui, label: &str) {
         },
         &mut full,
     );
-    assert_eq!(ui.cascade().key, full.key, "{label}: key");
-
-    assert_eq!(ui.cascade().entries, full.entries, "{label}");
-    assert_eq!(ui.cascade().hits, full.hits, "{label}");
-
-    let mut id_count = 0;
-    for plane in ui.forest().trees.planes() {
-        let widget_ids = ui.tree(plane).records.widget_id();
-        id_count += widget_ids.len();
-        for (idx, widget_id) in widget_ids.iter().copied().enumerate() {
-            assert_eq!(
-                ui.cascade().by_id[&widget_id],
-                Endpoint {
-                    plane,
-                    node: NodeId(idx as u32),
-                },
-                "{label}: {plane:?} by-id endpoint"
-            );
-        }
-        let actual = &ui.cascade().planes[plane];
-        let expected = &full.planes[plane];
-        assert_eq!(
-            actual.cascade_inputs, expected.cascade_inputs,
-            "{label}: {plane:?} cascade inputs"
-        );
-        assert_eq!(
-            actual.subtree_paint_rects, expected.subtree_paint_rects,
-            "{label}: {plane:?} subtree paint rects"
-        );
-        assert_eq!(
-            actual.arena_hashes, expected.arena_hashes,
-            "{label}: {plane:?} arena hashes"
-        );
-        assert_eq!(
-            actual.subtree_ends, expected.subtree_ends,
-            "{label}: {plane:?} subtree ends"
-        );
-        assert_eq!(
-            actual.paint_rects, expected.paint_rects,
-            "{label}: {plane:?} own paint rects"
-        );
-        assert_eq!(
-            actual.hit_rows, expected.hit_rows,
-            "{label}: {plane:?} hit rows"
-        );
-        assert_eq!(
-            actual.paint_arena.node_spans, expected.paint_arena.node_spans,
-            "{label}: {plane:?} paint spans"
-        );
-        assert_eq!(
-            actual.paint_arena.rows, expected.paint_arena.rows,
-            "{label}: {plane:?} paint rows"
-        );
-        assert_eq!(
-            actual.entries_base, expected.entries_base,
-            "{label}: {plane:?} entry base"
-        );
-    }
-    assert_eq!(ui.cascade().by_id.len(), id_count, "{label}: by-id length");
+    ui.cascade().assert_same_as(&full, ui.forest(), label);
+    assert_eq!(
+        *ui.cascade().by_id(),
+        ui.forest().ids.last_frame(),
+        "{label}: id lookup"
+    );
 }
 
 fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {

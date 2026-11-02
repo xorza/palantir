@@ -58,11 +58,10 @@ impl NodeRows {
 
 /// Where one tree's walk puts its per-node rows; a trait so each walk is monomorphized with the other's branches folded away.
 trait RowSink {
-    /// Whether the walk repairs a retained cascade in place: only then may it skip nodes, and it must bail on a paint span that changed length.
+    /// Whether the walk repairs a retained cascade in place: only then may it skip a node whose
+    /// inputs held, with its subtree (`layout`'s module doc, "A subtree's rects follow from its
+    /// node"), and it must bail on a paint span that changed length.
     const INCREMENTAL: bool;
-
-    /// Whether a node whose own inputs held may be skipped with its subtree; sound only while every rect in the plane held.
-    fn skips_clean_subtrees(&self) -> bool;
 
     fn emit(&mut self, tree: &Tree, lc: &mut PlaneCascade, rows: NodeRows);
 }
@@ -81,10 +80,6 @@ struct TreeSink<'a> {
 
 impl RowSink for TreeSink<'_> {
     const INCREMENTAL: bool = false;
-
-    fn skips_clean_subtrees(&self) -> bool {
-        false
-    }
 
     #[inline]
     fn emit(&mut self, tree: &Tree, lc: &mut PlaneCascade, rows: NodeRows) {
@@ -150,15 +145,10 @@ impl RowSink for TreeSink<'_> {
 struct TreePatch<'a> {
     entries: &'a mut [EntryRow],
     hits: &'a mut [HitRow],
-    rects_kept: bool,
 }
 
 impl RowSink for TreePatch<'_> {
     const INCREMENTAL: bool = true;
-
-    fn skips_clean_subtrees(&self) -> bool {
-        self.rects_kept
-    }
 
     /// Only the rect and inherited transform are rewritten.
     #[inline]
@@ -257,11 +247,7 @@ impl CascadeEngine {
 
         for (plane, tree) in source.forest.trees.iter_paint_order() {
             let n = tree.records.len();
-            let rects = source.layout[plane].rect_hash();
-            let lc = &mut cascade.planes[plane];
-            let base = lc.entries_base as usize;
-            let rects_kept = lc.rects == rects;
-            lc.rects = rects;
+            let base = cascade.planes[plane].entries_base as usize;
             self.stack.clear();
             let incremental_complete = self.run_tree(
                 TreeSource {
@@ -273,7 +259,6 @@ impl CascadeEngine {
                 &mut TreePatch {
                     entries: &mut cascade.entries[base..base + n],
                     hits: &mut cascade.hits,
-                    rects_kept,
                 },
             );
             if !incremental_complete {
@@ -304,7 +289,6 @@ impl CascadeEngine {
             let entries_base = cascade.entries.len() as u32;
             let lc = &mut cascade.planes[plane];
             lc.reset_for(n, entries_base);
-            lc.rects = source.layout[plane].rect_hash();
             self.stack.clear();
             let full_complete = self.run_tree(
                 TreeSource {
@@ -373,7 +357,7 @@ const fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], p
 impl CascadeEngine {
     /// Walks one tree, writing its cascade columns. Returns whether it *completed*; only the incremental path returns `false`, when a node's repaired paint span changes length and the caller must fully rebuild.
     ///
-    /// **Incremental recompute.** A node whose `cascade_input` (inherited state and own rect) and subtree rollup both held keeps its rows; a moved transform or clip changes every child's prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree while the plane's rects held; once one moved, every node is visited. Movement within `EPS` of zero reads as held.
+    /// **Incremental recompute.** A node whose `cascade_input` (inherited state and own rect) and subtree rollup both held keeps its rows; a moved transform or clip changes every child's prefix, so the change reaches exactly its subtree. A clean node is skipped with its subtree (`layout`'s module doc, "A subtree's rects follow from its node"). Movement within `EPS` of zero reads as held.
     fn run_tree<S: RowSink>(
         &mut self,
         source: TreeSource<'_>,
@@ -390,7 +374,6 @@ impl CascadeEngine {
         let attrs_col = tree.records.attrs();
         let ends = tree.records.subtree_end();
         let subtree_hashes = tree.rollups.subtree.as_slice();
-        let skip_clean = sink.skips_clean_subtrees();
         let root_prefix = CascadeCtx::ROOT.prefix();
 
         let mut i: u32 = 0;
@@ -419,7 +402,7 @@ impl CascadeEngine {
             let clean = S::INCREMENTAL
                 && lc.cascade_inputs[iu] == cascade_input
                 && lc.arena_hashes[iu] == subtree_hashes[iu];
-            if clean && (skip_clean || !has_children) {
+            if clean {
                 if let Some(parent_frame) = self.stack.last_mut() {
                     parent_frame.subtree_paint_rect = parent_frame
                         .subtree_paint_rect
@@ -447,61 +430,55 @@ impl CascadeEngine {
                 parent.clip
             };
             // Invisible nodes never paint; a `Rect::ZERO` rollup seed keeps a hidden subtree from inflating the ancestor's `subtree_paint_rect` and defeating the cull.
-            let subtree_seed = if clean {
-                lc.paint_rects[iu]
-            } else {
-                let ctx = PaintRectCtx {
-                    tree,
-                    layout,
-                    node: id,
-                    visible_rect,
-                    parent_transform: parent.transform,
-                    parent_clip: parent.clip,
-                    shape_clip,
-                    shape_transform: desc_transform,
-                    display_scale,
-                    clips,
-                    has_children,
-                    invisible,
-                };
-                let paint_rect = if S::INCREMENTAL {
-                    self.counters.refreshed_node();
-                    let old_span = lc.paint_arena.node_spans[iu];
-                    self.paint_rows.clear();
-                    let paint = ctx.compute_paint_rect(&mut self.paint_rows);
-                    if old_span.len != paint.span.len {
-                        return false;
-                    }
-                    lc.paint_arena.rows[old_span.range()].copy_from_slice(&self.paint_rows);
-                    paint.rect
-                } else {
-                    let paint = ctx.compute_paint_rect(&mut lc.paint_arena.rows);
-                    lc.paint_arena.node_spans[iu] = paint.span;
-                    paint.rect
-                };
-                let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
-                if S::INCREMENTAL {
-                    lc.arena_hashes[iu] = subtree_hashes[iu];
-                } else {
-                    lc.subtree_ends[iu] = subtree_end;
-                }
-                lc.cascade_inputs[iu] = cascade_input;
-                lc.paint_rects[iu] = subtree_seed;
-                lc.shape_scales[iu] = desc_transform.scale();
-                sink.emit(
-                    tree,
-                    lc,
-                    NodeRows {
-                        node: iu,
-                        root: self.stack.is_empty(),
-                        visible_rect,
-                        transform: parent.transform,
-                        disabled,
-                        invisible,
-                    },
-                );
-                subtree_seed
+            let ctx = PaintRectCtx {
+                tree,
+                layout,
+                node: id,
+                visible_rect,
+                parent_transform: parent.transform,
+                parent_clip: parent.clip,
+                shape_clip,
+                shape_transform: desc_transform,
+                display_scale,
+                clips,
+                has_children,
+                invisible,
             };
+            let paint_rect = if S::INCREMENTAL {
+                self.counters.refreshed_node();
+                let old_span = lc.paint_arena.node_spans[iu];
+                self.paint_rows.clear();
+                let paint = ctx.compute_paint_rect(&mut self.paint_rows);
+                if old_span.len != paint.span.len {
+                    return false;
+                }
+                lc.paint_arena.rows[old_span.range()].copy_from_slice(&self.paint_rows);
+                paint.rect
+            } else {
+                let paint = ctx.compute_paint_rect(&mut lc.paint_arena.rows);
+                lc.paint_arena.node_spans[iu] = paint.span;
+                paint.rect
+            };
+            let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
+            if S::INCREMENTAL {
+                lc.arena_hashes[iu] = subtree_hashes[iu];
+            } else {
+                lc.subtree_ends[iu] = subtree_end;
+            }
+            lc.cascade_inputs[iu] = cascade_input;
+            lc.shape_scales[iu] = desc_transform.scale();
+            sink.emit(
+                tree,
+                lc,
+                NodeRows {
+                    node: iu,
+                    root: self.stack.is_empty(),
+                    visible_rect,
+                    transform: parent.transform,
+                    disabled,
+                    invisible,
+                },
+            );
             lc.subtree_paint_rects[iu] = subtree_seed;
 
             if has_children {

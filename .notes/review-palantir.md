@@ -122,38 +122,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 11: Renderer and damage data
-
-Files: `src/renderer/{pane_captures,render_buffer,frontend/composer}/`, `src/damage/`,
-`src/cascade/`, `src/layout/mod.rs`, `src/internals/oracle.rs`.
-
-- [ ] `pane_captures/mod.rs:72-82,129,148-150`, `backdrop_row.rs:11-28`, `session.rs:558-571`,
-  `frontend/mod.rs:86-89`: one pane is copied into four rows. Target: `PaneCapture { key,
-  footprint, plan, region }` in `render_buffer::backdrop_row`. `PaneTicket` and `BackdropRow`
-  embed it. `settle` reads keys from the tickets, not a `Vec<PaneRow>` copy, and `live_panes` comes
-  from the ledger. Update `pane_captures/tests.rs:90-99`.
-- [ ] `higher_kind_rects.rs:21-60`, `rect_grid/mod.rs:19-55`: past 32 rects, each rect and the
-  union are stored twice. Target: `TierRects` holds a `TileIndex` directly, as `OcclusionPruner`
-  does. `RectGrid` stays for the text grids.
-- [ ] `occlusion_pruner.rs:38,66-125`: decide and compact in two passes through `drop_idxs`.
-  Target: one read/write loop and `truncate`. Fold `tests/pruning.rs`'s 11 single `prune_*` tests
-  and `brushes.rs`'s `windowed_rect_is_not_an_opaque_cover` into one `(label, under, over,
-  pruned)` table. Delete the duplicate `no_stroke_full_cover` case and the "Phase 3" comments. Add
-  a turned full-viewport row to `clear_fold_absorbs_covers_and_rejects_non_qualifying`.
-- [ ] `curve_caps.rs:19`, `paint_order.rs:222`: behavior-selecting `bool`s. Target: a `CapEnds`
-  flag set, and `TextClip::{Whole, Cut}`, which `OpenBatch` also holds.
-- [ ] `row_matcher.rs:206,226,240-251`, `pane_walk.rs:92-95`: `gone_place` scans every row per
-  moved or removed row (n² per node), even when no pane exists. Target: skip it when the pane walk
-  is off. When it is on, build a prefix-max lookup once per node into a retained buffer.
-- [ ] `cascade/engine.rs:63-64,157-159,436-445` vs `damage/plane_walk.rs:28-29,137-138`: the
-  cascade says a clean subtree may be skipped only while every rect held, and the damage walk
-  skips it by induction. Target: state the invariant once in `layout`'s module doc, and prove it
-  with an oracle case that diffs a cascade with `skips_clean_subtrees` forced on. Then drop
-  `rects_kept` or guard `SubtreeUnchanged` the same way.
-- [ ] `cascade/tests/incremental.rs:534-609`, `cascade/mod.rs:385-440`, `internals/oracle.rs:133-158`:
-  three comparators, each blind to a different set of columns. Target: one
-  `Cascade::assert_same_as` over the union of columns, `panes` and `shape_scales` included.
-
 ### Batch 12: Test consolidation
 
 Files: tests under `src/layout/cache/`, `src/input_state/`, `src/renderer/`, `src/primitives/`,

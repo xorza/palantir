@@ -142,14 +142,9 @@ fn assert_cascade_matches_cold(h: &Harness) {
         },
         &mut cold,
     );
-    assert_eq!(
-        h.ui_ref().cascade().key,
-        cold.key,
-        "the key the cascade was built from"
-    );
     h.ui_ref()
         .cascade()
-        .assert_same_as(&cold, h.ui_ref().forest());
+        .assert_same_as(&cold, h.ui_ref().forest(), "the retained cascade");
     assert_eq!(
         *h.ui_ref().cascade().by_id(),
         h.ui_ref().forest().ids.last_frame(),

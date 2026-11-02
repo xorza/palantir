@@ -48,7 +48,7 @@ impl RepaintScissors {
                     .backdrops
                     .iter()
                     .filter(|row| matches!(row.source, PaneSource::Capture { .. }))
-                    .map(|row| row.footprint);
+                    .map(|row| row.capture.footprint);
                 for scissor in footprints.chain(damage_rects) {
                     let mut pieces: ArrayVec<[URect; SCISSOR_CAP]> = ArrayVec::new();
                     pieces.push(scissor);

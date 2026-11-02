@@ -39,6 +39,7 @@ use crate::renderer::frontend::payload::gpu_fill::GpuFill;
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::pane_captures::PaneTicket;
+use crate::renderer::render_buffer::backdrop_row::PaneCapture;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::curve_basis::CurveBasis;
@@ -355,15 +356,17 @@ fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
             backdrop: LoweredBackdrop::of(BackdropFilter::blur(4.0)).unwrap(),
             opacity: 1.0,
             ticket: PaneTicket {
-                key: PaneKey {
-                    owner: WidgetId::from_hash("bench.pane"),
-                    shape: i,
+                capture: PaneCapture {
+                    key: PaneKey {
+                        owner: WidgetId::from_hash("bench.pane"),
+                        shape: i,
+                    },
+                    footprint,
+                    plan,
+                    region: plan
+                        .region(footprint, footprint.max())
+                        .expect("a bench pane paints"),
                 },
-                footprint,
-                plan,
-                region: plan
-                    .region(footprint, footprint.max())
-                    .expect("a bench pane paints"),
                 captures: false,
             },
         },

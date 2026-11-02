@@ -5,10 +5,11 @@ use crate::primitives::identity::pane_key::PaneKey;
 use crate::primitives::paint::backdrop_filter::Lens;
 use crate::shape::paint::blur_plan::BlurPlan;
 
-/// A backdrop pane the composer met. Its quad's `fill_lut_row` is its index in
-/// [`RenderBuffer::backdrops`](crate::renderer::render_buffer::RenderBuffer::backdrops).
+/// What a pane's result is: the pane, the screen its capture reads, its blur, and the texels the
+/// result covers. The pane ledger decides it before a frame encodes, and the composer's row
+/// carries it to the backend.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct BackdropRow {
+pub(crate) struct PaneCapture {
     /// The pane across frames, which its cached blur keys on.
     pub(crate) key: PaneKey,
     /// The physical px the pane's capture reads, inside the surface.
@@ -17,6 +18,13 @@ pub(crate) struct BackdropRow {
     /// The texels of the plan's last level the pane's result covers: its held capture's, or this
     /// frame's where it takes a new one.
     pub(crate) region: URect,
+}
+
+/// A backdrop pane the composer met. Its quad's `fill_lut_row` is its index in
+/// [`RenderBuffer::backdrops`](crate::renderer::render_buffer::RenderBuffer::backdrops).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BackdropRow {
+    pub(crate) capture: PaneCapture,
     /// The pane's lens with its lengths in physical px, if it is glass.
     pub(crate) lens: Option<Lens>,
     /// The highest relative luminance the pane shows under its tint.
@@ -57,7 +65,7 @@ pub(crate) mod internals {
     use crate::primitives::geometry::urect::URect;
     use crate::primitives::identity::pane_key::PaneKey;
     use crate::primitives::identity::widget_id::WidgetId;
-    use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
+    use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneCapture, PaneSource};
     use crate::shape::paint::blur_plan::BlurPlan;
 
     impl BackdropRow {
@@ -65,15 +73,17 @@ pub(crate) mod internals {
         /// result: no lens and no luminance ceiling. Its region is `footprint` on the lattice.
         pub(crate) fn fixture(i: u32, footprint: URect, plan: BlurPlan) -> Self {
             Self {
-                key: PaneKey {
-                    owner: WidgetId::from_hash("pane"),
-                    shape: i,
+                capture: PaneCapture {
+                    key: PaneKey {
+                        owner: WidgetId::from_hash("pane"),
+                        shape: i,
+                    },
+                    footprint,
+                    plan,
+                    region: plan
+                        .region(footprint, footprint.max())
+                        .expect("a fixture's footprint paints"),
                 },
-                footprint,
-                plan,
-                region: plan
-                    .region(footprint, footprint.max())
-                    .expect("a fixture's footprint paints"),
                 lens: None,
                 max_luminance: 65504.0,
                 min_luminance: 0.0,

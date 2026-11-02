@@ -156,7 +156,7 @@ fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
     );
 }
 
-/// `PlaneLayout::rect_hash` lets the incremental walk skip clean subtrees, so it must discriminate on geometry only: identical geometry hashes equal despite paint changes, any moved rect hashes differently.
+/// `PlaneLayout::rect_hash` keys the cascade, which a held key skips whole, so it must discriminate on geometry only: identical geometry hashes equal despite paint changes, any moved rect hashes differently.
 #[test]
 fn rect_hash_tracks_geometry_and_ignores_paint() {
     fn build(size: f32, fill: RgbaF32) -> impl FnMut(&mut Ui) {

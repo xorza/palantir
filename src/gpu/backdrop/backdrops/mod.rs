@@ -61,9 +61,9 @@ impl BackdropSlot {
     fn of(row: &BackdropRow, kept: Kept) -> Self {
         let (offset, lattice, clear) = match kept {
             Kept::Slot(slot) => {
-                let apron = UVec2::splat(row.plan.apron());
-                let offset = (slot.min + apron).as_vec2() - row.region.min.as_vec2();
-                (offset, row.plan.lattice() as f32, [0.0; 3])
+                let apron = UVec2::splat(row.capture.plan.apron());
+                let offset = (slot.min + apron).as_vec2() - row.capture.region.min.as_vec2();
+                (offset, row.capture.plan.lattice() as f32, [0.0; 3])
             }
             Kept::Clear(clear) => (Vec2::ZERO, 0.0, clear),
         };
@@ -411,16 +411,16 @@ impl Backdrops {
         // Every result the frame reads is stamped first, so making room for one never evicts
         // another.
         for row in &buffer.backdrops {
-            if let Some(cached) = self.cache.get_mut(&(owner, row.key)) {
+            if let Some(cached) = self.cache.get_mut(&(owner, row.capture.key)) {
                 cached.used = self.prepared;
             }
         }
         let surface = buffer.display.physical;
         for row in &buffer.backdrops {
-            let at = (owner, row.key);
+            let at = (owner, row.capture.key);
             let kept = match row.source {
                 PaneSource::Capture { barrier } => {
-                    let size = row.region.size + UVec2::splat(2 * row.plan.apron());
+                    let size = row.capture.region.size + UVec2::splat(2 * row.capture.plan.apron());
                     let Some(slot) = self.slot_for(at, size) else {
                         self.evicted.push(at);
                         self.slots.push(BackdropSlot::of(
@@ -444,11 +444,11 @@ impl Backdrops {
                         }
                     }
                     self.jobs.push(BlurJob {
-                        plan: row.plan,
+                        plan: row.capture.plan,
                         surface,
                         format,
-                        footprint: row.footprint,
-                        region: row.region,
+                        footprint: row.capture.footprint,
+                        region: row.capture.region,
                         dest_origin: slot.min,
                         layout: JobLayout::default(),
                     });

@@ -78,6 +78,7 @@ fn frame(
     let tickets: Vec<PaneTicket> = captures.tickets().iter().flatten().copied().collect();
     let mut buffer = RenderBuffer::new();
     buffer.display = display();
+    buffer.live_panes.extend(panes.iter().map(|pane| pane.key));
     buffer
         .backdrops
         .extend(tickets.iter().enumerate().map(|(i, ticket)| {
@@ -90,10 +91,7 @@ fn frame(
                 (true, Drawn::Covered) => Hidden,
             };
             BackdropRow {
-                key: ticket.key,
-                footprint: ticket.footprint,
-                plan: ticket.plan,
-                region: ticket.region,
+                capture: ticket.capture,
                 lens: None,
                 max_luminance: 65504.0,
                 min_luminance: 0.0,
@@ -253,7 +251,7 @@ fn a_pane_captures_when_its_held_capture_does_not_serve() {
     let inside = captures.tickets()[0].expect("on the surface");
     assert!(!inside.captures);
     assert_eq!(
-        inside.region,
+        inside.capture.region,
         plan.region(at(37), SURFACE).unwrap(),
         "held region"
     );
@@ -271,8 +269,10 @@ fn a_pane_off_screen_drops_its_capture() {
     frame(&mut captures, &[on], partial, Drawn::Captured);
 
     captures.decide(&[on], display(), partial);
+    // The frame's scene still holds the pane, which its draws leave out.
     let mut culled = RenderBuffer::new();
     culled.display = display();
+    culled.live_panes.push(on.key);
     captures.settle(&culled);
     assert_eq!(
         frame(&mut captures, &[on], partial, Drawn::Captured),
@@ -406,7 +406,7 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
         h.render_buffer()
             .backdrops
             .iter()
-            .map(|row| (row.key.shape, row.source))
+            .map(|row| (row.capture.key.shape, row.source))
             .collect()
     };
     let captured = Capture { barrier: 1 };

@@ -18,6 +18,7 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::draw_pane_payload::DrawPanePayload;
 use crate::renderer::pane_captures::PaneTicket;
 use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::backdrop_row::PaneCapture;
 use crate::renderer::render_buffer::backdrop_row::PaneSource;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
@@ -31,15 +32,17 @@ fn ticket(i: u32, rect: Rect, sigma: f32, captures: bool) -> PaneTicket {
     let plan = BlurPlan::new(sigma);
     let footprint = URect::covering(rect.inflated(PaneRow::reach(plan, 0)));
     PaneTicket {
-        key: PaneKey {
-            owner: WidgetId::from_hash("pane"),
-            shape: i,
+        capture: PaneCapture {
+            key: PaneKey {
+                owner: WidgetId::from_hash("pane"),
+                shape: i,
+            },
+            footprint,
+            plan,
+            region: plan
+                .region(footprint, footprint.max())
+                .expect("a test pane paints"),
         },
-        footprint,
-        plan,
-        region: plan
-            .region(footprint, footprint.max())
-            .expect("a test pane paints"),
         captures,
     }
 }
@@ -105,10 +108,7 @@ fn a_pane_cuts_the_frame_at_its_barrier() {
     assert_eq!(buf.backdrops.len(), 1);
     let row = buf.backdrops[0];
     assert_eq!(row.source, PaneSource::Capture { barrier: 1 });
-    assert_eq!(
-        (row.key, row.footprint, row.plan, row.region),
-        (ticket.key, ticket.footprint, ticket.plan, ticket.region)
-    );
+    assert_eq!(row.capture, ticket.capture);
     let quad = buf.quads[1];
     assert!(quad.fill_kind.is_backdrop());
     assert_eq!(quad.fill_lut_row, LutRow(0));
@@ -133,7 +133,7 @@ fn a_held_pane_breaks_nothing() {
     assert_eq!(buf.groups[0].quads.range(), 0..3);
     let row = buf.backdrops[0];
     assert_eq!(row.source, PaneSource::Held);
-    assert_eq!(row.region, ticket.region);
+    assert_eq!(row.capture.region, ticket.capture.region);
 }
 
 /// A quad after a pane covering one before it leaves it alone: the pane's capture copies what it

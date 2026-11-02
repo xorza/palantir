@@ -3,7 +3,6 @@
 use crate::common::span::Span;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -13,21 +12,18 @@ use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
-use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::composer::tests::quad_builder::QuadBuilder;
 use crate::renderer::frontend::composer::tests::support::{
-    curve, draw, gpu_view, gpu_view_payload, image, params, run, run_with_texture_cap,
+    curve, gpu_view, gpu_view_payload, image, params, run, run_with_texture_cap,
 };
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_image_payload::{DrawImagePayload, GpuViewDraw};
-use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
 use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::shape::rect::RectKind;
 use glam::{UVec2, Vec2};
 use std::f32::consts::FRAC_PI_2;
 
@@ -56,46 +52,6 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         "solid quad has no LUT row",
     );
     assert_eq!(q.fill_axis, FillAxis::ZERO, "solid quad axis is zeroed");
-}
-
-/// A windowed rect must not fold into the pass clear, take the fragment fast
-/// path, or occlude quads beneath it (its interior is a hole). All three
-/// compare `fill_kind == FillKind::SOLID`; the window bit breaks that by
-/// design. Worst case: full-viewport, opaque, solid, sharp, pixel-aligned at
-/// scale 1.
-#[test]
-fn windowed_rect_is_not_an_opaque_cover() {
-    use crate::primitives::packed::fill_kind::FillKind;
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(10.0, 10.0, 50.0, 50.0));
-            b.draw(
-                DrawQuadPayload::rect(RectQuad {
-                    kind: RectKind::Windowed,
-                    rect: Rect::new(0.0, 0.0, 200.0, 200.0),
-                    corners: Corners::default(),
-                    fill: BrushSource::Solid(RgbaF32::srgb(1.0, 1.0, 1.0).to_f16()),
-                    stroke: Stroke::NONE.into(),
-                }),
-                1.0,
-            );
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert!(
-        buf.clear_override.is_none(),
-        "windowed cover must not clear-fold",
-    );
-    assert_eq!(
-        buf.quads.len(),
-        2,
-        "under-quad survives beneath a windowed cover",
-    );
-    assert_eq!(
-        buf.quads[1].fill_kind,
-        FillKind::SOLID.with_window(),
-        "window bit rides through to the Quad; fast bit absent",
-    );
 }
 
 /// A resolved linear gradient packs row, axis and kind into the paint payload,

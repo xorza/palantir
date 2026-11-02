@@ -18,7 +18,7 @@ use crate::renderer::frontend::composer::curve_run::CurveRun;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::{Lowering, ScaledRect};
 use crate::renderer::frontend::composer::packed_quad::PackedQuad;
-use crate::renderer::frontend::composer::paint_order::{Lane, Ordering};
+use crate::renderer::frontend::composer::paint_order::{Lane, Ordering, TextClip};
 use crate::renderer::frontend::composer::polyline_scratch::PolylineLook;
 use crate::renderer::frontend::composer::stroke_bbox::StrokeBbox;
 use crate::renderer::frontend::paint_sink::PaintSink;
@@ -511,7 +511,12 @@ impl PaintSink for ComposeSession<'_> {
             scale: geometry::snap_text_scale(self.composer.transform.scale()),
             spin,
         };
-        self.ordering().push_text(row, bounds != unclipped);
+        let clip = if bounds == unclipped {
+            TextClip::Whole
+        } else {
+            TextClip::Cut
+        };
+        self.ordering().push_text(row, clip);
     }
 }
 
@@ -549,17 +554,14 @@ impl ComposeSession<'_> {
         backdrop: LoweredBackdrop,
     ) -> LutRow {
         debug_assert!(
-            ticket.footprint.union(visible) == ticket.footprint,
+            ticket.capture.footprint.union(visible) == ticket.capture.footprint,
             "a pane's footprint holds what it shows"
         );
         let source = self.ordering().pane_source(ticket);
         let scale = self.composer.transform.physical_scale();
         let row = LutRow(self.out.backdrops.len() as u32);
         self.out.backdrops.push(BackdropRow {
-            key: ticket.key,
-            footprint: ticket.footprint,
-            plan: ticket.plan,
-            region: ticket.region,
+            capture: ticket.capture,
             lens: backdrop.lens().map(|lens| Lens {
                 bezel: lens.bezel * scale,
                 thickness: lens.thickness * scale,

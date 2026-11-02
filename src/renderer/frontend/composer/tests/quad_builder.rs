@@ -9,25 +9,46 @@ use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::RectQuad;
+use crate::renderer::frontend::payload::spin::Spin;
 use crate::shape::rect::RectKind;
 
-/// A rect quad, opaque white, sharp and strokeless until a setter says otherwise, at full alpha.
-#[derive(Debug)]
+/// A rect quad, opaque white, sharp, strokeless and unturned until a setter says otherwise, at
+/// full alpha.
+#[derive(Clone, Copy, Debug)]
 pub(super) struct QuadBuilder {
+    kind: RectKind,
     rect: Rect,
     corners: Corners,
     fill: BrushSource,
     stroke: Stroke,
+    spin: Option<Spin>,
 }
 
 impl QuadBuilder {
     pub(super) fn new(rect: Rect) -> Self {
         Self {
+            kind: RectKind::Rounded,
             rect,
             corners: Corners::ZERO,
             fill: BrushSource::Solid(RgbaF32::WHITE.to_f16()),
             stroke: Stroke::NONE,
+            spin: None,
         }
+    }
+
+    /// A windowed rect, whose interior is a hole.
+    pub(super) fn windowed(mut self) -> Self {
+        self.kind = RectKind::Windowed;
+        self
+    }
+
+    /// Turned by `angle` radians about the rect's center.
+    pub(super) fn turned(mut self, angle: f32) -> Self {
+        self.spin = Some(Spin {
+            pivot: self.rect.center(),
+            angle,
+        });
+        self
     }
 
     pub(super) fn corners(mut self, corners: Corners) -> Self {
@@ -52,12 +73,13 @@ impl QuadBuilder {
     pub(super) fn draw(self, buf: &mut PaintCapture) {
         buf.draw(
             DrawQuadPayload::rect(RectQuad {
-                kind: RectKind::Rounded,
+                kind: self.kind,
                 rect: self.rect,
                 corners: self.corners,
                 fill: self.fill,
                 stroke: self.stroke.into(),
-            }),
+            })
+            .turned(self.spin),
             1.0,
         );
     }

@@ -386,11 +386,18 @@ pub(crate) mod internals {
             }
         }
 
-        /// Assert this cascade equals `cold`, a full rebuild over the same forest and layout, per node and column. The id lookup is excluded since it snapshots live seen ids.
+        /// Assert this cascade equals `cold`, a full rebuild over the same forest and layout: its
+        /// key, every table, and per plane every column that outlives the walk, as each node's
+        /// contract reads it, each failure named after `label`. The id lookup is left out, as it
+        /// snapshots the ids seen live.
         #[cfg(test)]
-        pub(crate) fn assert_same_as(&self, cold: &Self, forest: &Forest) {
-            assert_eq!(self.entries, cold.entries, "entry rows");
-            assert_eq!(self.hits, cold.hits, "hit rows");
+        pub(crate) fn assert_same_as(&self, cold: &Self, forest: &Forest, label: &str) {
+            assert_eq!(
+                self.key, cold.key,
+                "{label}: the key the cascade was built from"
+            );
+            assert_eq!(self.entries, cold.entries, "{label}: entry rows");
+            assert_eq!(self.hits, cold.hits, "{label}: hit rows");
             let scopes = |cascade: &Self| {
                 cascade
                     .scopes
@@ -398,48 +405,62 @@ pub(crate) mod internals {
                     .map(|row| (row.plane, row.id, row.filter))
                     .collect::<Vec<_>>()
             };
-            assert_eq!(scopes(self), scopes(cold), "scope rows");
-            assert_eq!(self.tab_stops, cold.tab_stops, "tab stop rows");
-            assert_eq!(self.roots, cold.roots, "root rows");
-            assert_eq!(self.arrow_groups, cold.arrow_groups, "arrow group rows");
+            assert_eq!(scopes(self), scopes(cold), "{label}: scope rows");
+            assert_eq!(self.tab_stops, cold.tab_stops, "{label}: tab stop rows");
+            assert_eq!(self.roots, cold.roots, "{label}: root rows");
+            assert_eq!(
+                self.arrow_groups, cold.arrow_groups,
+                "{label}: arrow group rows"
+            );
             for (plane, tree) in forest.trees.iter_paint_order() {
                 let (warm, full) = (&self.planes[plane], &cold.planes[plane]);
+                assert_eq!(
+                    warm.entries_base, full.entries_base,
+                    "{label}: {plane:?} entry base"
+                );
+                assert_eq!(warm.panes, full.panes, "{label}: {plane:?} panes");
                 for (node, id) in tree.records.widget_id().iter().enumerate() {
                     let at = || format!("{plane:?} node {node} ({id:?})");
                     assert_eq!(
                         warm.cascade_inputs[node],
                         full.cascade_inputs[node],
-                        "cascade input of {}",
+                        "{label}: cascade input of {}",
                         at(),
                     );
                     assert_eq!(
                         warm.subtree_paint_rects[node],
                         full.subtree_paint_rects[node],
-                        "subtree paint rect of {}",
+                        "{label}: subtree paint rect of {}",
                         at(),
                     );
                     assert_eq!(
                         warm.subtree_ends[node],
                         full.subtree_ends[node],
-                        "subtree end of {}",
+                        "{label}: subtree end of {}",
                         at(),
                     );
                     assert_eq!(
-                        warm.paint_rects[node],
-                        full.paint_rects[node],
-                        "own paint rect of {}",
+                        warm.arena_hashes[node],
+                        full.arena_hashes[node],
+                        "{label}: arena hash of {}",
                         at(),
                     );
                     assert_eq!(
                         warm.hit_rows[node],
                         full.hit_rows[node],
-                        "hit row of {}",
+                        "{label}: hit row of {}",
+                        at(),
+                    );
+                    assert_eq!(
+                        warm.shape_scales[node].to_bits(),
+                        full.shape_scales[node].to_bits(),
+                        "{label}: shape scale of {}",
                         at(),
                     );
                     assert_eq!(
                         warm.paint_arena.rows_of(node),
                         full.paint_arena.rows_of(node),
-                        "paint rows of {}",
+                        "{label}: paint rows of {}",
                         at(),
                     );
                 }

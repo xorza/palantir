@@ -88,6 +88,11 @@ impl PaneWalk {
         Self::position(ord, span.start).saturating_sub(1)
     }
 
+    /// Whether the plane has panes, so the rects pushed take marks.
+    pub(super) const fn is_on(&self) -> bool {
+        self.on
+    }
+
     /// Note that the rects pushed from `rects` on come from paint at `position` or later.
     pub(super) fn mark(&mut self, rects: usize, position: u64) {
         if !self.on {

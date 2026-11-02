@@ -5,7 +5,7 @@ use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::renderer::frontend::composer::geometry;
 use crate::renderer::frontend::composer::lowering::Lowering;
 use crate::renderer::frontend::payload::draw_curve_payload::DrawCurvePayload;
-use crate::renderer::render_buffer::curve_caps::CurveCaps;
+use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::shape::paint::curve_basis::CurveBasis;
@@ -35,7 +35,7 @@ impl CurveRun {
             width: width_physical,
             color0: p.fill.color,
             color1: p.fill.color,
-            caps: CurveCaps::new(cap, true, true),
+            caps: CurveCaps::new(cap, CapEnds::Both),
             fill_kind: p.fill.kind,
             fill_lut_row: p.fill.lut_row,
             ..bytemuck::Zeroable::zeroed()

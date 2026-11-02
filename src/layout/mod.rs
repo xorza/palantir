@@ -2,6 +2,18 @@
 //! produce. [`LayoutEngine`](engine::LayoutEngine) owns the scratch, text system and measure cache; the
 //! finalized [`Layout`] is threaded out to cascade, encoder, hit testing and scroll refresh. Each
 //! container kind is a [`LayoutDriver`](drivers::LayoutDriver) reached through one dispatch.
+//!
+//! # Decisions
+//!
+//! - **A subtree's rects follow from its node.** Every rect in a node's subtree is a function of
+//!   the subtree's authoring (its `subtree_hash`), the node's own arranged rect, and what its
+//!   driver read from outside the subtree
+//!   ([`PlaneLayout::outside_input`](plane_layout::PlaneLayout::outside_input)).
+//!   [`CascadeInputHash`](crate::cascade::cascade_input_hash::CascadeInputHash) folds in the
+//!   last two, so the incremental cascade and the damage walk both skip a subtree whose hash and
+//!   cascade input held, and read no rect inside it. The oracle (`ui::tests::oracle`) checks the
+//!   retained cascade against a full rebuild after every frame. Refused: a skip only while every
+//!   rect of the plane held, which a move anywhere in the plane turned off.
 
 mod axis_align_pair;
 mod axis_share;

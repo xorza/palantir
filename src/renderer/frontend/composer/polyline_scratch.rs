@@ -4,7 +4,7 @@ use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::frontend::composer::geometry;
-use crate::renderer::render_buffer::curve_caps::CurveCaps;
+use crate::renderer::render_buffer::curve_caps::{CapEnds, CurveCaps};
 use crate::renderer::render_buffer::curve_instance::CurveInstance;
 use crate::renderer::render_buffer::curve_kind::CurveKind;
 use crate::shape::record::ColorMode;
@@ -143,7 +143,7 @@ impl PolylineScratch {
                 width,
                 color0: segment.start,
                 color1: segment.end,
-                caps: CurveCaps::new(cap, k == 0, k + 1 == n_segs),
+                caps: CurveCaps::new(cap, CapEnds::of_segment(k, n_segs)),
                 kind: CurveKind::SEGMENT,
                 fill_kind: FillKind::SOLID,
                 ..bytemuck::Zeroable::zeroed()

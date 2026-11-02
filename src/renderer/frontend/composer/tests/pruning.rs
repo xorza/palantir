@@ -5,6 +5,7 @@ use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
+use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::primitives::paint::stroke::Stroke;
@@ -17,20 +18,145 @@ use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use glam::UVec2;
+use std::f32::consts::FRAC_PI_4;
 
-#[test]
-fn prune_drops_quad_fully_covered_by_later_opaque_quad() {
+/// The quad bytes `quads` compose to alone, on the 200 × 200 viewport every row of
+/// [`a_later_opaque_cover_drops_what_it_holds`] draws on.
+fn alone(quads: &[QuadBuilder]) -> Vec<u8> {
     let buf = run(
         |b, _| {
-            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            draw_marked(b, Rect::new(0.0, 0.0, 100.0, 100.0));
+            for &quad in quads {
+                quad.draw(b);
+            }
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    bytemuck::cast_slice(&buf.quads).to_vec()
+}
+
+/// An under quad goes when a later quad of its group covers it with opaque paint, and only then.
+/// A cover is the over quad's rect, inset by its corners' cutout, its anti-aliased edge and a
+/// translucent stroke: radius 10 and the 0.5 px edge inset ≈ 3.43 px a side, radius 20 ≈ 5.86 px.
+/// A stroke of width 4 at half alpha insets 4.5 px a side, one of width 60 leaves no cover, and an
+/// opaque stroke insets the edge alone. A pruned under leaves the over quad as it composes alone,
+/// and a kept one leaves both; neither folds into the clear.
+#[test]
+fn a_later_opaque_cover_drops_what_it_holds() {
+    let full = Rect::new(0.0, 0.0, 100.0, 100.0);
+    let inner = Rect::new(10.0, 10.0, 50.0, 50.0);
+    let opaque = |width| Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), width);
+    let translucent = |width| Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), width);
+    let quad = QuadBuilder::new;
+    let cases = [
+        // `contains_rect` is inclusive, so a cover of the under's own extent drops it.
+        ("the same rect", quad(full), quad(full), true),
+        // Only a later quad covers: the big one painted first is beneath the small one.
+        ("a smaller later quad", quad(full), quad(inner), false),
+        (
+            "a border paints inside its rect",
+            quad(full)
+                .solid(RgbaF32::srgb(1.0, 0.0, 0.0))
+                .stroke(opaque(2.0)),
+            quad(full),
+            true,
+        ),
+        (
+            "a rounded cover misses the under's edges",
+            quad(full),
+            quad(full).corners(Corners::all(10.0)),
+            false,
+        ),
+        (
+            "a sharp cover drops a rounded under",
+            quad(full).corners(Corners::all(10.0)),
+            quad(full),
+            true,
+        ),
+        (
+            "a translucent fill covers nothing",
+            quad(full),
+            quad(full).solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5)),
+            false,
+        ),
+        (
+            "a rounded cover holds its inscribed rect",
+            quad(Rect::new(10.0, 10.0, 80.0, 80.0)),
+            quad(full).corners(Corners::all(10.0)),
+            true,
+        ),
+        (
+            "a rounded cover's cutout keeps a corner",
+            quad(Rect::new(0.0, 0.0, 5.0, 5.0)),
+            quad(full).corners(Corners::all(20.0)),
+            false,
+        ),
+        (
+            "an opaque stroke covers inside its edge",
+            quad(inner),
+            quad(full).stroke(opaque(2.0)),
+            true,
+        ),
+        (
+            "an opaque stroke's edge is not covered",
+            quad(full),
+            quad(full).stroke(opaque(4.0)),
+            false,
+        ),
+        (
+            "a translucent stroke's ring is not covered",
+            quad(full),
+            quad(full).stroke(translucent(4.0)),
+            false,
+        ),
+        (
+            "a translucent stroke's interior is covered",
+            quad(inner),
+            quad(full).stroke(translucent(4.0)),
+            true,
+        ),
+        (
+            "a stroke wider than half the rect covers nothing",
+            quad(inner),
+            quad(full).stroke(translucent(60.0)),
+            false,
+        ),
+        // Its interior is a hole, so even a viewport-wide one covers nothing.
+        (
+            "a windowed rect covers nothing",
+            quad(inner),
+            quad(Rect::new(0.0, 0.0, 200.0, 200.0)).windowed(),
+            false,
+        ),
+    ];
+    for (label, under, over, pruned) in cases {
+        let buf = run(
+            |b, _| {
+                under.draw(b);
+                over.draw(b);
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        assert_eq!(buf.clear_override, None, "{label}");
+        let composed: &[u8] = bytemuck::cast_slice(&buf.quads);
+        let expected = if pruned {
+            alone(&[over])
+        } else {
+            [alone(&[under]), alone(&[over])].concat()
+        };
+        assert_eq!(composed, expected, "{label}");
+    }
+    let windowed = run(
+        |b, _| {
+            QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
+                .windowed()
+                .draw(b);
         },
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(
-        survivor_calls(&buf),
-        [1],
-        "the covered first quad is pruned"
+        windowed.quads[0].fill_kind,
+        FillKind::SOLID.with_window(),
+        "the window bit rides through to the quad, with no fast bit",
     );
 }
 
@@ -84,18 +210,6 @@ fn prune_non_fast_cover_holds_every_pixel_the_under_shades() {
 }
 
 #[test]
-fn prune_keeps_quad_not_fully_covered_by_smaller_later_quad() {
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            draw(b, Rect::new(10.0, 10.0, 50.0, 50.0));
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.quads.len(), 2);
-}
-
-#[test]
 fn prune_keeps_quads_in_separate_groups_even_when_covered() {
     let buf = run(
         |b, _| {
@@ -108,114 +222,6 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
     );
     assert_eq!(buf.quads.len(), 2);
     assert_eq!(buf.groups.len(), 2);
-}
-
-/// A quad's border is an inner-edge annulus and paints nothing outside the rect, so a bordered quad under a same-rect opaque cover is pruned.
-#[test]
-fn prune_drops_bordered_quad_under_solid_cover() {
-    use crate::primitives::paint::stroke::Stroke;
-
-    let buf = run(
-        |b, _| {
-            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                .solid(RgbaF32::srgb(1.0, 0.0, 0.0))
-                .stroke(Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 2.0))
-                .draw(b);
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // solid on top
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.quads.len(), 1, "bordered under-quad pruned");
-    assert_eq!(buf.quads[0].stroke_width, 0.0, "the cover survives");
-}
-
-#[test]
-fn prune_rounded_on_top_uses_deflated_cover() {
-    // Phase 3: a rounded quad's cover is its bounds deflated by the corner inset plus 0.5 px AA, so a smaller rounded occluder does not cover the under; a sharp one exactly covering a rounded under drops it.
-
-    let buf_rounded_on_top = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // solid sharp under
-            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                .corners(Corners::all(10.0))
-                .draw(b);
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf_rounded_on_top.quads.len(),
-        2,
-        "rounded occluder's deflated cover doesn't reach the under's edges",
-    );
-
-    let buf_sharp_on_top = run(
-        |b, _| {
-            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                .corners(Corners::all(10.0))
-                .draw(b);
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // sharp opaque on top
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf_sharp_on_top.quads.len(),
-        1,
-        "rounded under-quad pruned when sharp opaque covers it",
-    );
-}
-
-#[test]
-fn prune_keeps_transparent_solid_as_non_occluder() {
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0));
-            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                .solid(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5))
-                .draw(b);
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.quads.len(), 2, "semi-transparent does not occlude");
-}
-
-#[test]
-fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
-    // Phase 3: a rounded opaque occluder covers a sharp under inside its inscribed rect. Radius 10 plus AA deflates ≈3.43 per side, so an under at (10,10,80,80) is dropped.
-
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(10.0, 10.0, 80.0, 80.0)); // sharp opaque under
-            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                .corners(Corners::all(10.0))
-                .draw(b);
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf.quads.len(),
-        1,
-        "rounded cover drops under fully inside inscribed rect"
-    );
-}
-
-#[test]
-fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
-    // A sharp under whose corner is in the rounded occluder's cutout must NOT drop. r=20 ⇒ inset ≈ 5.86, so an under at (0,0,5,5) lies in the [0,20]×[0,20] cutout zone.
-
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 5.0, 5.0)); // sharp under in corner
-            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                .corners(Corners::all(20.0))
-                .draw(b);
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf.quads.len(),
-        2,
-        "under inside rounded cutout zone not dropped"
-    );
 }
 
 #[test]
@@ -259,94 +265,6 @@ fn prune_drops_chain_of_opaque_solids_keeping_only_topmost() {
 }
 
 #[test]
-fn prune_stroked_occluder_drops_smaller_sharp_under() {
-    // An opaque stroke leaves an opaque rect; see `prune_occluder_stroke_translucency_gates_cover` for translucent ones.
-    use crate::primitives::paint::stroke::Stroke;
-
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(10.0, 10.0, 50.0, 50.0)); // sharp opaque under
-            QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                .stroke(Stroke::new(RgbaF32::srgb(0.0, 0.0, 0.0), 2.0))
-                .draw(b);
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf.quads.len(),
-        1,
-        "opaque-stroked occluder still covers its rect",
-    );
-}
-
-/// Pin: a translucent stroke leaves a see-through ring, so only the rect deflated by the stroke width may occlude; an opaque-fill quad is fully opaque only with a noop or opaque stroke.
-///
-/// Top quad: (0,0,100,100), sharp, opaque white, stroke width 4 at scale 1. Hand-computed cover:
-/// - noop stroke → full rect (0,0)..(100,100).
-/// - opaque stroke → AA-deflated (0.5,0.5)..(99.5,99.5).
-/// - 50%-alpha stroke → deflated 4.5/side.
-/// - 50%-alpha stroke w=60 → deflation 60/side exceeds the 50 half-extent → empty cover, no occluder.
-///
-/// Bottom quads (a,b,c): the same rect, inside the full cover but not (4,4)..(96,96); (d,e): (10,10,50,50) paints (10,10)..(60,60), inside it.
-#[test]
-fn prune_occluder_stroke_translucency_gates_cover() {
-    use crate::primitives::paint::stroke::Stroke;
-
-    #[derive(Debug)]
-    struct Case {
-        label: &'static str,
-        under: Rect,
-        stroke: Stroke,
-        pruned: bool,
-    }
-    let cases = [
-        Case {
-            label: "no_stroke_full_cover",
-            under: Rect::new(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::NONE,
-            pruned: true,
-        },
-        Case {
-            label: "opaque_stroke_aa_edge_not_covered",
-            under: Rect::new(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::new(RgbaF32::srgb(0.0, 1.0, 0.0), 4.0),
-            pruned: false,
-        },
-        Case {
-            label: "translucent_stroke_ring_not_covered",
-            under: Rect::new(0.0, 0.0, 100.0, 100.0),
-            stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
-            pruned: false,
-        },
-        Case {
-            label: "translucent_stroke_interior_covered",
-            under: Rect::new(10.0, 10.0, 50.0, 50.0),
-            stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 4.0),
-            pruned: true,
-        },
-        Case {
-            label: "stroke_wider_than_half_rect_no_cover",
-            under: Rect::new(10.0, 10.0, 50.0, 50.0),
-            stroke: Stroke::new(RgbaF32::srgba(0.0, 1.0, 0.0, 0.5), 60.0),
-            pruned: false,
-        },
-    ];
-    for case in &cases {
-        let buf = run(
-            |b, _| {
-                draw(b, case.under);
-                QuadBuilder::new(Rect::new(0.0, 0.0, 100.0, 100.0))
-                    .stroke(case.stroke)
-                    .draw(b);
-            },
-            &params(1.0, UVec2::new(200, 200)),
-        );
-        let expected = if case.pruned { 1 } else { 2 };
-        assert_eq!(buf.quads.len(), expected, "case: {}", case.label);
-    }
-}
-
-#[test]
 fn prune_compacts_preserving_non_contiguous_survivors() {
     let buf = run(
         |b, _| {
@@ -381,36 +299,6 @@ fn prune_compacts_preserving_non_contiguous_survivors() {
 }
 
 #[test]
-fn prune_edge_tangent_under_is_dropped_under_inclusive_containment() {
-    // The under's max-edge equals the occluder's; `contains_rect` is inclusive, so it drops. A strict-containment change would leak the tangent quad.
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 50.0, 50.0)); // under, max=(50,50)
-            draw(b, Rect::new(0.0, 0.0, 50.0, 50.0)); // occluder, same extent
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(buf.quads.len(), 1, "identical extent → under dropped");
-}
-
-#[test]
-fn prune_lower_index_occluder_does_not_drop_higher_index_under() {
-    // A giant opaque solid FIRST, then a smaller quad: the giant is the under, so only `occ.idx > i` qualifies.
-    let buf = run(
-        |b, _| {
-            draw(b, Rect::new(0.0, 0.0, 100.0, 100.0)); // big "occluder" but painted FIRST
-            draw(b, Rect::new(10.0, 10.0, 30.0, 30.0)); // small quad painted SECOND
-        },
-        &params(1.0, UVec2::new(200, 200)),
-    );
-    assert_eq!(
-        buf.quads.len(),
-        2,
-        "lower-idx occluder can't drop higher-idx under"
-    );
-}
-
-#[test]
 fn prune_steady_state_across_repeated_compose_calls() {
     let mut buffer = PaintCapture::default();
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
@@ -429,7 +317,6 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     type Build = fn(&mut PaintCapture);
 
     use crate::primitives::packed::fill_axis::FillAxis;
-    use crate::primitives::packed::fill_kind::FillKind;
     use crate::primitives::paint::brush::gradient::Spread;
 
     let vp = UVec2::new(200, 200);
@@ -485,6 +372,16 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
                         lut_row: LutRow::FALLBACK,
                         kind: FillKind::linear(Spread::Pad),
                     }))
+                    .draw(b);
+            },
+            1,
+            None,
+        ),
+        (
+            "a turn disqualifies",
+            |b| {
+                QuadBuilder::new(Rect::new(0.0, 0.0, 200.0, 200.0))
+                    .turned(FRAC_PI_4)
                     .draw(b);
             },
             1,

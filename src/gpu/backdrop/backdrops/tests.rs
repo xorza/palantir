@@ -54,7 +54,9 @@ fn prepare(
     let mut buffer = RenderBuffer::new();
     buffer.display = Display::from_physical(SURFACE, 1.0);
     buffer.backdrops.extend_from_slice(rows);
-    buffer.live_panes.extend(rows.iter().map(|row| row.key));
+    buffer
+        .live_panes
+        .extend(rows.iter().map(|row| row.capture.key));
     let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
     let mut encoder = gpu
         .device

@@ -74,10 +74,17 @@ struct OpenBatch {
     /// Index (into `out.groups`) of the last group whose text contributed, refreshed on every text
     /// push; tells the schedule where to emit the merged render step.
     last_group: u32,
-    /// `true` once a strict run has joined: one whose ancestor clip cuts its full unclipped extent.
-    /// The batch scissor (`open_grid.union`) must then equal that bound, so later runs join only
-    /// with matching `bounds`; the text shader has no per-instance clip.
-    strict: bool,
+    /// [`TextClip::Cut`] once a cut run has joined. The batch scissor (`open_grid.union`) must then
+    /// equal that run's bounds, so later runs join only with matching `bounds`; the text shader has
+    /// no per-instance clip.
+    clip: TextClip,
+}
+
+/// Whether an ancestor clip cuts a text run's unclipped extent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum TextClip {
+    Whole,
+    Cut,
 }
 
 /// A text batch [`BatchState::close`] took, and the scissor its runs share.
@@ -200,7 +207,7 @@ impl Ordering<'_> {
         let barrier = self
             .order
             .pane_break
-            .shared(ticket.footprint)
+            .shared(ticket.capture.footprint)
             .unwrap_or_else(|| {
                 self.close_batch();
                 self.flush();
@@ -216,20 +223,22 @@ impl Ordering<'_> {
     }
 
     /// Push the text run `row` into the open batch, opening one where none is or where its scissor
-    /// cannot hold the run: a `strict` run, cut by an ancestor clip, batches only with peers of
-    /// identical bounds, as the text shader has no per-instance clip. The batch spans groups,
-    /// the one draw whose order is not group-scoped.
-    pub(super) fn push_text(&mut self, row: TextDrawRow, strict: bool) {
+    /// cannot hold the run: a run `clip` cuts batches only with peers of identical bounds, as the
+    /// text shader has no per-instance clip. The batch spans groups, the one draw whose order is
+    /// not group-scoped.
+    pub(super) fn push_text(&mut self, row: TextDrawRow, clip: TextClip) {
         let bounds = row.bounds;
         if let Some(b) = self.order.batch.open.as_ref()
-            && (b.strict || strict)
+            && (b.clip == TextClip::Cut || clip == TextClip::Cut)
             && self.order.batch.open_grid.union != bounds
         {
             self.close_batch();
         }
         // Opened before the push, so `texts_start` takes this run's index.
         let b = self.open_batch();
-        b.strict |= strict;
+        if clip == TextClip::Cut {
+            b.clip = TextClip::Cut;
+        }
         self.out.texts.push(row);
         self.order.batch.open_grid.push(bounds);
     }
@@ -343,7 +352,7 @@ impl Ordering<'_> {
         let b = self.order.batch.open.get_or_insert(OpenBatch {
             texts_start,
             last_group,
-            strict: false,
+            clip: TextClip::Whole,
         });
         b.last_group = last_group;
         b
