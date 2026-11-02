@@ -16,6 +16,7 @@ use crate::theme::popup::PopupTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::popup::popup_trigger::PopupTrigger;
 use glam::{UVec2, Vec2};
 
 fn harness() -> Harness {
@@ -51,13 +52,30 @@ fn the_chip_toggles_its_panel() {
 
     click_chip(&mut h, |h| frame(h, &mut color));
     assert!(
-        h.rect(id.with("panel")).is_some(),
+        h.rect(ColorButton::popup_id(id)).is_some(),
         "the click opened this chip's panel"
+    );
+
+    assert!(ColorButton::is_open(h.ui_ref(), id));
+    assert!(
+        !PopupTrigger::is_open(h.ui_ref(), id),
+        "the button's row is its own, not a popup trigger's"
     );
 
     h.advance_past_double_click();
     click_chip(&mut h, |h| frame(h, &mut color));
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
+    assert!(!ColorButton::is_open(h.ui_ref(), id));
+
+    ColorButton::open(h.ui(), id);
+    frame(&mut h, &mut color);
+    assert!(
+        h.rect(ColorButton::popup_id(id)).is_some(),
+        "open shows the panel"
+    );
+    ColorButton::close(h.ui(), id);
+    frame(&mut h, &mut color);
+    assert_eq!(panel_nodes(&h), 0, "close hides it");
 }
 
 /// The popup shows the picker as configured, under `id.with("picker")` unless the picker names an id. The swatch row is off by default; `history(true)` and `swatches` add rows. `texel_size` is one texel per `n` px, rounded up.
@@ -113,7 +131,10 @@ fn panel_settings_reach_the_picker() {
         };
         frame(&mut h);
         click_chip(&mut h, &mut frame);
-        assert!(h.rect(id.with("panel")).is_some(), "{label}: premise");
+        assert!(
+            h.rect(ColorButton::popup_id(id)).is_some(),
+            "{label}: premise"
+        );
         assert_eq!(
             h.node_of(picker.with("swatches")).is_some(),
             swatch_row,
@@ -180,7 +201,7 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     frame(&mut h);
     click_chip(&mut h, &mut frame);
 
-    let body_id = id.with("panel");
+    let body_id = ColorButton::popup_id(id);
     let body = h.node_of(body_id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
     let chrome = h

@@ -88,7 +88,7 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
         h.click(combo());
         h.frame(|ui| record(ui, opener, &mut selected));
 
-        let list = combo().with("list");
+        let list = ComboBox::menu_id(combo());
         let rows = h
             .rect(list)
             .unwrap_or_else(|| panic!("{opener:?}: the list opened"));

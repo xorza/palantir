@@ -154,7 +154,7 @@ fn a_caller_opens_the_editor() {
         record(ui, id, true);
     });
     assert!(!EditableLabel::is_editing(h.ui_ref(), id));
-    EditableLabel::edit(h.ui(), id);
+    EditableLabel::start_editing(h.ui(), id);
     assert!(EditableLabel::is_editing(h.ui_ref(), id));
     assert!(h.frame_value(|ui| record(ui, id, true)).editing);
     assert_eq!(h.ui().focus(), Some(id));
@@ -167,7 +167,7 @@ fn a_caller_opens_the_editor() {
     assert_eq!(committed.committed_text.as_deref(), Some("Z"));
     assert!(!EditableLabel::is_editing(h.ui_ref(), id));
 
-    EditableLabel::edit(h.ui(), id);
+    EditableLabel::start_editing(h.ui(), id);
     assert!(!h.frame_value(|ui| record(ui, id, false)).editing);
     assert!(!EditableLabel::is_editing(h.ui_ref(), id));
     assert_eq!(
@@ -177,7 +177,7 @@ fn a_caller_opens_the_editor() {
     );
 
     // A disabled label stays a label too, and its keys reach no editor.
-    EditableLabel::edit(h.ui(), id);
+    EditableLabel::start_editing(h.ui(), id);
     let disabled = |ui: &mut Ui| {
         EditableLabel::new("Alpha")
             .id(id)
@@ -203,7 +203,7 @@ fn a_caller_opens_the_editor() {
     h.frame(|ui| {
         in_disabled(ui);
     });
-    EditableLabel::edit(h.ui(), id);
+    EditableLabel::start_editing(h.ui(), id);
     assert!(!h.frame_value(in_disabled));
     assert!(!EditableLabel::is_editing(h.ui_ref(), id));
     assert_eq!(h.ui().focus(), None);
@@ -275,4 +275,52 @@ fn a_drag_on_the_label_reports_its_start() {
     });
     h.drag_to(hit + Vec2::new(40.0, 0.0));
     assert!(h.frame_value(|ui| record(ui, id, true)).drag_started);
+}
+
+/// `stop_editing` ends an edit from outside: `Submitted` commits the draft, as a blur does, and
+/// `Canceled` keeps the text, as Escape does; either way the next frame shows the label. Enter or
+/// F2 on the focused label opens the editor.
+#[test]
+fn a_caller_ends_the_edit_and_the_keys_open_it() {
+    use crate::widgets::text_edit::edit_end::EditEnd;
+
+    let id = WidgetId::from_hash("label-stop");
+    let mut h = harness();
+    h.frame(|ui| {
+        record(ui, id, true);
+    });
+    for (end, want) in [(EditEnd::Submitted, Some("Z")), (EditEnd::Canceled, None)] {
+        EditableLabel::start_editing(h.ui(), id);
+        h.frame(|ui| {
+            record(ui, id, true);
+        });
+        h.key(Key::Char('Z'));
+        h.frame(|ui| {
+            record(ui, id, true);
+        });
+        EditableLabel::stop_editing(h.ui(), id, end);
+        let ended = h.frame_value(|ui| record(ui, id, true));
+        assert_eq!(ended.committed_text.as_deref(), want, "{end:?}");
+        assert!(!EditableLabel::is_editing(h.ui_ref(), id), "{end:?}");
+        assert!(!h.frame_value(|ui| record(ui, id, true)).editing, "{end:?}");
+    }
+
+    for key in [Key::Enter, Key::F2] {
+        h.ui().set_focus(id);
+        h.frame(|ui| {
+            record(ui, id, true);
+        });
+        h.key(key);
+        h.frame(|ui| {
+            record(ui, id, true);
+        });
+        assert!(
+            EditableLabel::is_editing(h.ui_ref(), id),
+            "{key:?} opens it"
+        );
+        EditableLabel::stop_editing(h.ui(), id, EditEnd::Canceled);
+        h.frame(|ui| {
+            record(ui, id, true);
+        });
+    }
 }

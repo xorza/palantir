@@ -14,7 +14,7 @@ fn trigger_id() -> WidgetId {
 }
 
 /// One frame: the trigger (disabled or not) and its popup, whose body returns 7.
-fn scene(ui: &mut Ui, disabled: bool) -> OverlayResponse<Option<i32>> {
+fn scene(ui: &mut Ui, disabled: bool) -> Option<OverlayResponse<i32>> {
     let trigger = Button::new()
         .id(trigger_id())
         .label("open")
@@ -32,28 +32,29 @@ fn trigger_center(h: &Harness) -> Vec2 {
 #[test]
 fn a_click_toggles_and_the_body_runs_only_while_open() {
     let mut h = Harness::mono(SURFACE);
-    assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
+    assert_eq!(h.frame_value(|ui| scene(ui, false)).map(|r| r.inner), None);
     assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
 
     let at = trigger_center(&h);
     h.click(at);
     let opened = h.frame_value(|ui| scene(ui, false));
-    assert_eq!(opened.inner, Some(7), "the click opens it");
+    assert_eq!(opened.map(|r| r.inner), Some(7), "the click opens it");
     assert!(PopupTrigger::is_open(h.ui_ref(), trigger_id()));
 
     assert_eq!(
-        h.frame_value(|ui| scene(ui, false)).inner,
+        h.frame_value(|ui| scene(ui, false)).map(|r| r.inner),
         Some(7),
         "it stays open"
     );
 
     h.click(at);
     assert!(
-        h.frame_value(|ui| scene(ui, false)).closed(),
+        h.frame_value(|ui| scene(ui, false))
+            .is_some_and(|r| r.closed()),
         "a second click closes it"
     );
     assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
-    assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
+    assert_eq!(h.frame_value(|ui| scene(ui, false)).map(|r| r.inner), None);
 }
 
 /// A programmatic open records next frame; a disabled trigger closes an open popup without running its body.
@@ -65,23 +66,26 @@ fn open_close_and_a_disabled_trigger() {
     });
 
     PopupTrigger::open(h.ui(), trigger_id());
-    assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, Some(7));
+    assert_eq!(
+        h.frame_value(|ui| scene(ui, false)).map(|r| r.inner),
+        Some(7)
+    );
 
     assert_eq!(
-        h.frame_value(|ui| scene(ui, true)).inner,
+        h.frame_value(|ui| scene(ui, true)).map(|r| r.inner),
         None,
         "disabled closes it"
     );
     assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
     assert_eq!(
-        h.frame_value(|ui| scene(ui, false)).inner,
+        h.frame_value(|ui| scene(ui, false)).map(|r| r.inner),
         None,
         "and it stays closed once enabled again",
     );
 
     PopupTrigger::open(h.ui(), trigger_id());
     PopupTrigger::close(h.ui(), trigger_id());
-    assert_eq!(h.frame_value(|ui| scene(ui, false)).inner, None);
+    assert_eq!(h.frame_value(|ui| scene(ui, false)).map(|r| r.inner), None);
 }
 
 /// A keyboard-opened popup takes focus and returns it to the trigger on Escape; a click-opened one leaves focus on the trigger.

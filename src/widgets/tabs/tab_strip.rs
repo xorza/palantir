@@ -611,7 +611,6 @@ impl StripPass<'_> {
             MenuLanding::Row(button_id.with(items[slot].key))
         });
         let picked = Menu::below(&chevron.response)
-            .id(button_id.with("popup"))
             .style(self.menu_style)
             .landing(landing)
             .size((Sizing::HUG, Sizing::HUG))
@@ -630,7 +629,7 @@ impl StripPass<'_> {
                 }
                 picked
             });
-        if let Some(slot) = picked.inner.flatten() {
+        if let Some(slot) = picked.and_then(|picked| picked.inner) {
             self.hits.menu_picked = Some(slot);
         }
     }

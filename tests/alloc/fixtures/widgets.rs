@@ -92,12 +92,12 @@ fn expander_mid_reveal_alloc_free() {
         ..base
     };
     let mut h = harness::new_ui();
-    let mut open = true;
-    let section = |ui: &mut Ui, open: &mut bool| {
+    let id = WidgetId::from_hash("section");
+    let section = |ui: &mut Ui| {
         Expander::new("section")
-            .auto_id()
+            .id(id)
+            .start_open(true)
             .style(&theme)
-            .open(open)
             .show(ui, |ui| {
                 Text::new("body").auto_id().show(ui);
             })
@@ -105,17 +105,17 @@ fn expander_mid_reveal_alloc_free() {
     };
     for _ in 0..4 {
         h.frame(|ui| {
-            section(ui, &mut open);
+            section(ui);
         });
     }
-    open = false;
     h.frame(|ui| {
-        section(ui, &mut open);
+        Expander::close(ui, id);
+        section(ui);
     });
     Audit::new().warmup(32).run_frames(|| {
         h.advance(Duration::from_millis(16));
         let mut openness = 0.0;
-        h.frame(|ui| openness = section(ui, &mut open));
+        h.frame(|ui| openness = section(ui));
         assert!(
             openness > 0.0 && openness < 1.0,
             "the frame lands mid-reveal, got openness {openness}",

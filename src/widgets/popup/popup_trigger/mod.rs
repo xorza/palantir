@@ -35,8 +35,8 @@ use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 /// it flips. A disabled trigger closes its popup, since the popup is a tree of
 /// its own and would keep taking input.
 ///
-/// Implements [`Configure`], forwarding to the popup; identity defaults to one
-/// derived from the trigger's.
+/// Implements [`Configure`], forwarding to the popup; its id defaults to
+/// [`Self::popup_id`] of the trigger's.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct PopupTrigger<'a> {
@@ -54,7 +54,7 @@ impl<'a> PopupTrigger<'a> {
         Self {
             for_id: snapshot.id,
             trigger: snapshot.state,
-            popup: Popup::new().default_id(snapshot.id.with("popup")),
+            popup: Popup::new().default_id(PopupTrigger::popup_id(snapshot.id)),
         }
     }
 
@@ -90,9 +90,8 @@ impl<'a> PopupTrigger<'a> {
     /// Toggle the open flag on a trigger click, close it on a disabled trigger, and
     /// record the popup below the trigger while open.
     ///
-    /// Returns the popup's [`OverlayResponse`] as
-    /// [`Menu::show`](crate::Menu::show) does; `inner` is `None` while
-    /// closed.
+    /// Returns the popup's [`OverlayResponse`] as [`Menu::show`](crate::Menu::show) does, `None`
+    /// while closed.
     ///
     /// A popup opened from the keyboard (Space or Enter on the focused trigger, or
     /// [`Self::open`] with keyboard focus) takes focus on its first stop, as
@@ -102,7 +101,17 @@ impl<'a> PopupTrigger<'a> {
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
-    ) -> OverlayResponse<Option<R>> {
+    ) -> Option<OverlayResponse<R>> {
+        self.show_as::<PopupTrigger<'static>, R>(ui, body)
+    }
+
+    /// [`Self::show`] with the open state in the row of `K`, the widget that wraps the trigger,
+    /// so the row is reached through that widget's own `open`, `close` and `is_open` alone.
+    pub(crate) fn show_as<K: 'static, R>(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+    ) -> Option<OverlayResponse<R>> {
         let resp = TriggerFrame {
             for_id: self.for_id,
             toggled: self.trigger.clicked(),
@@ -110,14 +119,19 @@ impl<'a> PopupTrigger<'a> {
             disabled: self.trigger.disabled,
             rect: self.trigger.rect,
         }
-        .show::<PopupTrigger<'static>, R>(ui, self.popup, body);
-        MenuLanding::First.land(ui, &resp);
+        .show::<K, R>(ui, self.popup, body);
+        MenuLanding::First.land(ui, resp.as_ref());
         resp
     }
 }
 
-/// Driving a trigger's popup from outside, by the trigger's id.
+/// Driving a trigger's popup from outside, by the trigger's id, and the id of the popup.
 impl PopupTrigger<'static> {
+    /// The popup of the trigger `trigger`, unless its `Configure` names another.
+    pub fn popup_id(trigger: WidgetId) -> WidgetId {
+        trigger.with("popup")
+    }
+
     /// Open the popup of the trigger `for_id`, e.g. from a keyboard shortcut; it
     /// records on that trigger's next `show`.
     pub fn open(ui: &mut Ui, for_id: WidgetId) {

@@ -35,9 +35,14 @@ enum DragValueState {
     #[default]
     Idle,
     Scrubbing(Scrub),
+    /// [`DragValue::start_editing`] asked for the editor, which the next show seeds from the
+    /// bound value.
+    Opening,
     Editing {
         buffer: String,
         original: Num,
+        /// How [`DragValue::stop_editing`] ended the edit, which the next chip frame resolves.
+        end: Option<EditEnd>,
     },
 }
 
@@ -180,7 +185,7 @@ impl<'a> DragValue<'a> {
             } else {
                 let editing = matches!(
                     ui.state::<DragValueState>(id),
-                    Some(DragValueState::Editing { .. })
+                    Some(DragValueState::Opening | DragValueState::Editing { end: None, .. })
                 );
                 if editing || typed(ui) {
                     return self.show_editing(ui, id, response.layout_rect);
@@ -198,12 +203,24 @@ impl<'a> DragValue<'a> {
         let drag_stopped = response.left.drag.stopped();
         if drag_started || ui.state::<DragValueState>(id).is_some() {
             ui.with_state::<DragValueState, _>(id, |_, state| {
-                if let DragValueState::Editing { buffer, .. } = state {
-                    if self.editable && !response.disabled {
-                        changed = self.value.parse_from(buffer, rule);
-                        committed = true;
+                match state {
+                    DragValueState::Editing {
+                        buffer,
+                        original,
+                        end,
+                    } => {
+                        if self.editable && !response.disabled {
+                            if *end == Some(EditEnd::Canceled) {
+                                changed = self.value.restore(*original);
+                            } else {
+                                changed = self.value.parse_from(buffer, rule);
+                                committed = true;
+                            }
+                        }
+                        *state = DragValueState::Idle;
                     }
-                    *state = DragValueState::Idle;
+                    DragValueState::Opening => *state = DragValueState::Idle,
+                    DragValueState::Idle | DragValueState::Scrubbing(_) => {}
                 }
 
                 if drag_started {
@@ -255,6 +272,7 @@ impl<'a> DragValue<'a> {
                 *s = DragValueState::Editing {
                     buffer: self.value.edit_string(),
                     original: self.value.stored(),
+                    end: None,
                 }
             });
         }
@@ -312,8 +330,10 @@ impl<'a> DragValue<'a> {
         let width = held_w.unwrap_or_else(|| sizes.w());
         let (mut buffer, original) =
             match ui.with_state::<DragValueState, _>(id, |_, s| mem::take(s)) {
-                DragValueState::Editing { buffer, original } => (buffer, original),
-                DragValueState::Idle | DragValueState::Scrubbing(_) => {
+                DragValueState::Editing {
+                    buffer, original, ..
+                } => (buffer, original),
+                DragValueState::Idle | DragValueState::Scrubbing(_) | DragValueState::Opening => {
                     (self.value.edit_string(), self.value.stored())
                 }
             };
@@ -338,7 +358,11 @@ impl<'a> DragValue<'a> {
             *s = if ended.is_some() {
                 DragValueState::Idle
             } else {
-                DragValueState::Editing { buffer, original }
+                DragValueState::Editing {
+                    buffer,
+                    original,
+                    end: None,
+                }
             }
         });
         if ended == Some(EditEnd::Canceled) {
@@ -361,6 +385,50 @@ const KEYS: AxisKeys = AxisKeys {
     page: None,
     ends: None,
 };
+
+/// Driving a drag value's editor from outside, by its id, under GTK4's names.
+impl DragValue<'static> {
+    /// Open the editor of the drag value `id` and give it the focus, as a click does, for an
+    /// entry a key or a menu asks for; its next show seeds the editor from the bound value, all
+    /// selected. A drag value that is not [editable](DragValue::editable) or is disabled stays a
+    /// chip.
+    pub fn start_editing(ui: &mut Ui, id: WidgetId) {
+        ui.with_state::<DragValueState, _>(id, |_, state| {
+            if !matches!(state, DragValueState::Editing { end: None, .. }) {
+                *state = DragValueState::Opening;
+            }
+        });
+        ui.set_focus(id);
+    }
+
+    /// End the edit of the drag value `id` as `end` says: [`EditEnd::Submitted`] commits the
+    /// draft, as Enter does, and [`EditEnd::Canceled`] restores the value the edit opened on, as
+    /// Escape does. The drag value's next show resolves it. No-op for one that does not edit.
+    pub fn stop_editing(ui: &mut Ui, id: WidgetId, end: EditEnd) {
+        if !Self::is_editing(ui, id) {
+            return;
+        }
+        ui.with_state::<DragValueState, _>(id, |_, state| {
+            if let DragValueState::Editing { end: ended, .. } = state {
+                *ended = Some(end);
+            } else {
+                *state = DragValueState::Idle;
+            }
+        });
+        if ui.focus() == Some(id) {
+            ui.clear_focus();
+        }
+    }
+
+    /// Whether the drag value `id` shows its editor, or opens it on its next show. Allocates no
+    /// row.
+    pub fn is_editing(ui: &Ui, id: WidgetId) -> bool {
+        matches!(
+            ui.state::<DragValueState>(id),
+            Some(DragValueState::Opening | DragValueState::Editing { end: None, .. })
+        )
+    }
+}
 
 impl Configure for DragValue<'_> {
     #[inline]

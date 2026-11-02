@@ -155,7 +155,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
         });
 
     Section::new("Rename in place")
-        .apis(&[api!(type EditableLabel), api!(EditableLabel::edit)])
+        .apis(&[api!(type EditableLabel), api!(EditableLabel::start_editing)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -175,7 +175,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                         s.layer = name;
                     }
                     if Button::new().label("Rename").show(ui).clicked() {
-                        EditableLabel::edit(ui, label);
+                        EditableLabel::start_editing(ui, label);
                     }
                 });
             });

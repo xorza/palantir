@@ -76,7 +76,7 @@ impl<K: 'static> TriggerState<K> {
         if state.open.is_none() {
             return;
         }
-        state.shut(ui);
+        state.release(ui);
         ui.with_state::<Self, _>(for_id, |_, state| *state = Self::default());
     }
 
@@ -95,17 +95,18 @@ impl<K: 'static> TriggerState<K> {
     }
 
     /// Give back the input scope this state's popup held, as it closes.
-    pub(crate) fn shut(self, ui: &mut Ui) {
+    pub(crate) fn release(self, ui: &mut Ui) {
         if let Some(popup) = self.shown {
             ui.release_input_scope(popup);
         }
     }
 }
 
-/// What [`TriggerFrame::settle`] leaves: the popup's outcome and the state to keep.
+/// What [`TriggerFrame::settle`] leaves: the popup's outcome, `None` while closed, and the state
+/// to keep.
 #[derive(Debug)]
 pub(crate) struct Settled<K, R> {
-    pub(crate) response: OverlayResponse<Option<R>>,
+    pub(crate) response: Option<OverlayResponse<R>>,
     pub(crate) state: TriggerState<K>,
 }
 
@@ -132,7 +133,7 @@ impl TriggerFrame {
         ui: &mut Ui,
         popup: Popup<'_>,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
-    ) -> OverlayResponse<Option<R>> {
+    ) -> Option<OverlayResponse<R>> {
         let for_id = self.for_id;
         let state = TriggerState::<K>::of(ui, for_id);
         let settled = self.settle(ui, state, popup, body);
@@ -169,17 +170,16 @@ impl TriggerFrame {
             Some(Opening::At(point)) => Some(Anchor::at_point(point)),
             None => None,
         };
-        let mut resp = OverlayResponse::default();
+        let mut resp = None;
         let mut shown = None;
         if let Some(anchor) = anchor {
-            resp = popup
-                .anchor(anchor)
-                .show(ui, |ui, handle| Some(body(ui, handle)));
-            if resp.closed() {
+            let shown_now = popup.anchor(anchor).show(ui, body);
+            if shown_now.closed() {
                 open = None;
             } else {
-                shown = Some(resp.id);
+                shown = Some(shown_now.id);
             }
+            resp = Some(shown_now);
         } else if let Some(popup) = state.shown {
             ui.release_input_scope(popup);
         }

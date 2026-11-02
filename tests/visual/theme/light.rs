@@ -528,7 +528,7 @@ pub(super) fn theme() -> Theme {
                     Vec2::new(0.0, 8.0),
                     16.0,
                 )),
-            backdrop: RgbaF32::hexa(0x00000080),
+            scrim: RgbaF32::hexa(0x00000080),
             padding: Spacing::all(24.0),
             min_width: 280.0,
         },

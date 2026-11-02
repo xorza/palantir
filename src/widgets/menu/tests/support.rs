@@ -5,6 +5,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
+use crate::widgets::menu::Menu;
 use glam::UVec2;
 
 pub(super) const SURFACE: UVec2 = UVec2::new(400, 400);
@@ -14,7 +15,7 @@ pub(super) fn trigger_id() -> WidgetId {
 }
 
 pub(super) fn menu_body(h: &Harness, for_id: WidgetId) -> NodeId {
-    let body_id = for_id.with("body");
+    let body_id = Menu::menu_id(for_id);
     let idx = h
         .ui_ref()
         .tree(Layer::Menu)

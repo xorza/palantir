@@ -2,6 +2,7 @@
 //! state letting a second tooltip skip the delay.
 
 use crate::input::sense::Sense;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
@@ -48,7 +49,7 @@ struct TooltipGlobal {
 ///
 /// Pointer-driven only, and skipped on disabled triggers unless
 /// `.when_disabled(true)`. Implements [`Configure`]; the bubble's id defaults to
-/// one derived from the trigger's, `trigger.with("bubble")`.
+/// [`Self::bubble_id`] of the trigger's.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Tooltip<'a> {
@@ -109,7 +110,7 @@ impl<'a> Tooltip<'a> {
         let gap = theme.gap;
 
         let trigger_id = self.snapshot.id;
-        let bubble_id = trigger_id.with("bubble");
+        let bubble_id = Tooltip::bubble_id(trigger_id);
 
         // The observation, not the reaction: a disabled trigger is never hovered,
         // which `when_disabled` is for.
@@ -222,6 +223,14 @@ impl Tooltip<'_> {
             self.chrome = Some(chrome);
         }
         self
+    }
+}
+
+/// The ids of a tooltip's parts.
+impl Tooltip<'static> {
+    /// The bubble of the tooltip on the trigger `trigger`, unless its `Configure` names another.
+    pub fn bubble_id(trigger: WidgetId) -> WidgetId {
+        trigger.with("bubble")
     }
 }
 

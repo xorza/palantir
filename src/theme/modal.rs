@@ -1,4 +1,4 @@
-//! What a modal wears: the dialog surface and the dimming backdrop.
+//! What a modal wears: the dialog surface and the scrim that dims what is behind it.
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -8,7 +8,7 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
-/// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.backdrop(...)`) win; these defaults fill in.
+/// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.scrim(...)`) win; these defaults fill in.
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]
@@ -18,7 +18,7 @@ pub struct ModalTheme {
     /// Dimming scrim; straight-alpha linear. A color, as Fluent's ContentDialog smoke layer,
     /// Material 3's scrim, Apple's alerts and libadwaita's `AdwDialog` all dim; a frosted panel
     /// shows the page through itself. Refused: a blurred scrim, which captures the whole window.
-    pub backdrop: RgbaF32,
+    pub scrim: RgbaF32,
     /// Padding inside the panel, applied when the builder leaves it unset.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
     pub padding: Spacing,
@@ -35,7 +35,7 @@ impl ModalTheme {
             .with_shadow(p.float_shadow(m));
         Self {
             panel,
-            backdrop: RgbaF32::BLACK.with_alpha8(128),
+            scrim: RgbaF32::BLACK.with_alpha8(128),
             padding: Spacing::all(m.space.xl),
             min_width: 280.0,
         }

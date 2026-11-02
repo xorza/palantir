@@ -158,7 +158,7 @@ fn menu_body_width_does_not_span_surface() {
         build(ui);
     });
 
-    let body_id = trigger_id().with("body");
+    let body_id = Menu::menu_id(trigger_id());
     let rect = h
         .ui()
         .cascade()
@@ -242,7 +242,7 @@ fn a_menu_raised_inside_a_popup_lands_above_it() {
         menu_open(h.ui_ref()),
         "the menu did not open inside the popup"
     );
-    let body = trigger_id().with("body");
+    let body = Menu::menu_id(trigger_id());
     let held = |layer| h.ui_ref().tree(layer).records.widget_id().contains(&body);
     assert!(held(Layer::Menu), "the menu body is not on the menu layer");
     assert!(
@@ -292,7 +292,6 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
                 MenuItem::new("Copy").id(copy).show(ui);
                 MenuItem::new("Paste").show(ui);
             })
-            .inner
             .is_some()
     };
     let mut h = Harness::mono(SURFACE);
@@ -357,7 +356,6 @@ fn below_scene(top: f32) -> impl FnMut(&mut Ui) -> bool {
                     .show(ui, |ui, _| {
                         MenuItem::new("Copy").show(ui);
                     })
-                    .inner
                     .is_some();
             });
         open
@@ -410,7 +408,7 @@ fn a_menu_at_a_point_shows_while_its_caller_keeps_it_open() {
             let resp = Menu::at(Vec2::new(60.0, 70.0)).id(id).show(ui, |ui, _| {
                 MenuItem::new("Copy").id(row).show(ui);
             });
-            *open = !resp.closed();
+            *open = !resp.is_some_and(|resp| resp.closed());
         }
     };
     let mut h = Harness::mono(SURFACE);

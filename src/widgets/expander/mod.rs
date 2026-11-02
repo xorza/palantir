@@ -39,9 +39,9 @@ use std::rc::Rc;
 /// **The body does not record while closed**, so cross-frame rows inside it (a
 /// [`TextEdit`](crate::TextEdit)'s unsent edit, a [`Scroll`](crate::Scroll)'s
 /// offset) are swept; a section holding any wants [`Self::keep_body`], at the price
-/// of a full record every frame. The open flag lives on the widget's id and is
-/// `false` until [`Self::start_open`] says otherwise, so an untouched section keeps
-/// no state row; an application owning the flag binds it with [`Self::open`].
+/// of a full record every frame. The open flag lives in the state map on the widget's id and
+/// is `false` until [`Self::start_open`] says otherwise, so an untouched closed section keeps no
+/// state row; [`Self::open`], [`Self::close`] and [`Self::is_open`] drive it from outside.
 ///
 /// Its parts are the header, [`Self::header_id`], with `arrow` and `label` under it, and the
 /// body, `id.with("body")`, inside `id.with("body").with("reveal")`.
@@ -51,7 +51,6 @@ pub struct Expander<'a> {
     widget: Widget,
     label: TextInput<'a>,
     start_open: bool,
-    open: Option<&'a mut bool>,
     keep_body: bool,
     style: Option<&'a ExpanderTheme>,
 }
@@ -59,31 +58,23 @@ pub struct Expander<'a> {
 const SLOT_OPEN: AnimationSlot = AnimationSlot::new("open");
 
 impl<'a> Expander<'a> {
-    /// A header labeled `label`, closed on its first frame; the widget owns the
-    /// open state until [`Self::open`] takes it over.
+    /// A header labeled `label`, closed on its first frame unless [`Self::start_open`] says
+    /// otherwise.
     #[track_caller]
     pub fn new(label: impl Into<TextInput<'a>>) -> Self {
         Self {
             widget: Widget::vstack(),
             label: label.into(),
             start_open: false,
-            open: None,
             keep_body: false,
             style: None,
         }
     }
 
-    /// Whether the section starts open; read on the first frame only, ignored when
-    /// [`Self::open`] binds the flag.
+    /// Whether the section starts open; read until the section's first toggle, by the user
+    /// or by [`Self::open`] and [`Self::close`].
     pub const fn start_open(mut self, start_open: bool) -> Self {
         self.start_open = start_open;
-        self
-    }
-
-    /// Bind the open flag to the caller's own `bool`; wins over
-    /// [`Self::start_open`], and every toggle is written back.
-    pub const fn open(mut self, open: &'a mut bool) -> Self {
-        self.open = Some(open);
         self
     }
 
@@ -117,7 +108,6 @@ impl<'a> Expander<'a> {
             mut widget,
             label,
             start_open,
-            open,
             keep_body,
             style: _,
         } = self;
@@ -127,10 +117,7 @@ impl<'a> Expander<'a> {
         let header_id = Self::header_id(id);
         let body_id = id.with("body");
         let stored = ui.state::<ExpanderState>(header_id).copied();
-        let was_open = match &open {
-            Some(flag) => **flag,
-            None => stored.map_or(start_open, |s| s.open),
-        };
+        let was_open = stored.map_or(start_open, |s| s.open);
         let height = stored.and_then(|s| s.height);
 
         let mut pass = Pass {
@@ -221,9 +208,6 @@ impl<'a> Expander<'a> {
         });
 
         let now_open = was_open != pass.toggled;
-        if let Some(flag) = open {
-            *flag = now_open;
-        }
         // The body lays out whole whenever it shows, so last frame's rect is its
         // height; a collapsed or unrecorded one has none.
         let measured = stored
@@ -235,11 +219,11 @@ impl<'a> Expander<'a> {
             height: measured.or(height),
             shown: pass.openness > 0.0,
         };
-        // Written only on a change, so an unopened section mints no row (the
-        // probe-don't-insert path `ComboBox` takes); an absent row *is* the
-        // resolved state, hence the comparison against it.
+        // Written on a change, so an unopened section mints no row (the probe-don't-insert path
+        // `ComboBox` takes). An open one always keeps a row, which `is_open` reads, as a section
+        // `start_open` opens has none of its own yet.
         let cur = stored.unwrap_or(ExpanderState {
-            open: was_open,
+            open: false,
             height: None,
             shown: false,
         });
@@ -253,6 +237,26 @@ impl<'a> Expander<'a> {
             changed: pass.toggled,
             openness: pass.openness,
         }
+    }
+}
+
+/// Driving an expander from outside, by its id.
+impl Expander<'static> {
+    /// Open the expander `id`; its next `show` reveals the body.
+    pub fn open(ui: &mut Ui, id: WidgetId) {
+        ui.with_state::<ExpanderState, _>(Self::header_id(id), |_, s| s.open = true);
+    }
+
+    /// Close the expander `id`; its next `show` hides the body.
+    pub fn close(ui: &mut Ui, id: WidgetId) {
+        ui.with_state::<ExpanderState, _>(Self::header_id(id), |_, s| s.open = false);
+    }
+
+    /// Whether the expander `id` is open, as its last `show` or a call above left it. Allocates
+    /// no row.
+    pub fn is_open(ui: &Ui, id: WidgetId) -> bool {
+        ui.state::<ExpanderState>(Self::header_id(id))
+            .is_some_and(|s| s.open)
     }
 }
 

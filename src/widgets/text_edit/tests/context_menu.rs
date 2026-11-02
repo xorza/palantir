@@ -26,7 +26,7 @@ fn context_menu_cut_copy_paste_clear() {
     /// Click the center of the open menu's `row_idx`-th row (separators included) and run a frame; rects are read off the tree, not a fixed pitch.
     fn click_menu_row(h: &mut Harness, buf: &mut String, row_idx: usize) {
         let menu = h
-            .node_of(editor_id().with("body"))
+            .node_of(Menu::menu_id(editor_id()))
             .expect("context menu body recorded");
         let tree = h.ui().tree(menu.plane.layer);
         let row = tree

@@ -17,7 +17,7 @@ use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
-use crate::widget_core::overlay_response::OverlayResponse;
+use crate::widget_core::overlay_response::{OverlayClose, OverlayResponse};
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
@@ -151,8 +151,10 @@ impl<'a> Popup<'a> {
             id,
             opened,
             // `Dismiss` also closes on Esc so hosts read one `closed()` signal.
-            dismissed: dismiss_mode && (turn.pressed_outside || turn.escape_pressed),
-            close_requested: handle.requested() || turn.close_requested,
+            close: OverlayClose::of(
+                handle.requested() || turn.close_requested,
+                dismiss_mode && (turn.pressed_outside || turn.escape_pressed),
+            ),
             inner: turn.inner,
         };
         scope.finish(ui, response)

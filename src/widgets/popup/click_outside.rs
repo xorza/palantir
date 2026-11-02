@@ -8,7 +8,7 @@
 /// the host.
 ///
 /// - `Block`: no dismissal signal; Esc is ignored.
-/// - `Dismiss`: an outside click or Esc sets `OverlayResponse::dismissed`.
+/// - `Dismiss`: an outside click or Esc closes it as `OverlayClose::Dismissed`.
 /// - `PassThrough`: presses and keys reach `Main`; never dismisses (toasts).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ClickOutside {

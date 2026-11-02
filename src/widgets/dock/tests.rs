@@ -1302,7 +1302,7 @@ fn the_dock_restyles_its_strips_and_tab_menus() {
         h.frame(&mut scene);
         let strip_h = h.rect(strip).expect("the strip arranged").size.h;
         let menu_h = h
-            .rect(chip.with("body"))
+            .rect(Menu::menu_id(chip))
             .expect("the tab menu is open")
             .size
             .h;

@@ -65,7 +65,7 @@
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
 //!   `Option`, so `.style(overrides.as_ref())` works.
 //! - **A per-axis setter** ([`Text::color`], [`Separator::thickness`],
-//!   [`Spinner::width`], [`Modal::backdrop`]) overrides one field.
+//!   [`Spinner::width`], [`Modal::scrim`]) overrides one field.
 //!
 //! The third door exists only where an axis has one meaning: [`Separator`] draws
 //! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a color per
@@ -398,7 +398,7 @@ pub use ui::frame_report::{FramePaint, FrameReport};
 pub use ui::inspected_widget::InspectedWidget;
 pub use ui::layer_scope::LayerScope;
 pub use widget_core::configure::Configure;
-pub use widget_core::overlay_response::OverlayResponse;
+pub use widget_core::overlay_response::{OverlayClose, OverlayResponse};
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 pub use widget_core::value_response::ValueResponse;
 pub use widgets::block::Block;

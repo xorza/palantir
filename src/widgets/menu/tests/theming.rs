@@ -337,7 +337,7 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
             .show(ui, |_, _| {});
     });
 
-    let derived = trigger_id().with("body");
+    let derived = Menu::menu_id(trigger_id());
     let menu = h.node_of(derived).expect("context menu body node");
     assert_eq!(menu.plane.layer, Layer::Menu);
     let tree = h.ui().tree(Layer::Menu);

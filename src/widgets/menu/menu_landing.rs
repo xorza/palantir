@@ -22,7 +22,11 @@ pub enum MenuLanding {
 impl MenuLanding {
     /// Move focus onto this row of the menu `resp` answers for, on the frame it opens while focus
     /// shows the ring: the keyboard opened it. Focus returns to where it was when the menu closes.
-    pub(crate) const fn land<R>(self, ui: &mut Ui, resp: &OverlayResponse<R>) {
+    /// A closed menu, `None`, lands nothing.
+    pub(crate) const fn land<R>(self, ui: &mut Ui, resp: Option<&OverlayResponse<R>>) {
+        let Some(resp) = resp else {
+            return;
+        };
         if !resp.opened || !ui.is_focus_visible() {
             return;
         }

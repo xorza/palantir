@@ -20,7 +20,7 @@ fn bar() -> WidgetId {
 }
 
 fn title(idx: u16) -> WidgetId {
-    title_id(bar(), MENUS[usize::from(idx)].0)
+    MenuBar::title_id(bar(), MENUS[usize::from(idx)].0)
 }
 
 /// The three menus of [`MENUS`]; the row picked this frame, if any.
@@ -67,13 +67,13 @@ fn recorded(h: &Harness, idx: u16) -> bool {
         .tree(Layer::Menu)
         .records
         .widget_id()
-        .contains(&menu_id(title(idx)))
+        .contains(&MenuBar::menu_id(title(idx)))
 }
 
-/// One click opens a title's menu, one on another title moves to its menu without a click to shut
-/// the first, and one on the open title shuts it.
+/// One click opens a title's menu, one on another title moves to its menu without a click to close
+/// the first, and one on the open title closes it.
 #[test]
-fn a_click_opens_switches_and_shuts() {
+fn a_click_opens_switches_and_closes() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
@@ -96,7 +96,7 @@ fn a_click_opens_switches_and_shuts() {
 
     h.click(h.center_of(title(2)));
     frame(&mut h);
-    assert_eq!(open(&h), None, "a click on the open title shuts it");
+    assert_eq!(open(&h), None, "a click on the open title closes it");
 }
 
 /// While a menu is open, moving onto another title opens that one's menu in the same frame; with
@@ -186,7 +186,7 @@ fn the_arrows_move_between_menus_and_wrap() {
             assert!(recorded(&h, want), "{opened_by} {key:?}: its menu records");
             if opened_by == "keyboard" {
                 assert!(
-                    h.ui().is_focus_within(menu_id(title(want))),
+                    h.ui().is_focus_within(MenuBar::menu_id(title(want))),
                     "{opened_by} {key:?}: the menu's row takes focus"
                 );
             }
@@ -194,9 +194,9 @@ fn the_arrows_move_between_menus_and_wrap() {
     }
 }
 
-/// A picked row reports and shuts the menu; Esc and a click outside shut it too.
+/// A picked row reports and closes the menu; Esc and a click outside close it too.
 #[test]
-fn a_pick_escape_or_an_outside_click_shuts_the_menu() {
+fn a_pick_escape_or_an_outside_click_closes_the_menu() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
@@ -212,25 +212,25 @@ fn a_pick_escape_or_an_outside_click_shuts_the_menu() {
         .id;
     h.click(redo);
     assert_eq!(h.frame_value(build), Some("Redo"));
-    assert_eq!(open(&h), None, "a pick shuts the menu");
+    assert_eq!(open(&h), None, "a pick closes the menu");
 
-    for shut in ["escape", "outside"] {
+    for how in ["escape", "outside"] {
         h.click(title(1));
         frame(&mut h);
-        assert_eq!(open(&h), Some(1), "{shut}");
-        match shut {
+        assert_eq!(open(&h), Some(1), "{how}");
+        match how {
             "escape" => h.key(Key::Escape),
             _ => h.click(Vec2::new(500.0, 350.0)),
         }
         frame(&mut h);
-        assert_eq!(open(&h), None, "{shut} shuts the menu");
+        assert_eq!(open(&h), None, "{how} closes the menu");
     }
 }
 
-/// A menu whose title the bar stops recording shuts with it, rather than keep the open slot
+/// A menu whose title the bar stops recording closes with it, rather than keep the open slot
 /// with no title to hang from.
 #[test]
-fn a_menu_the_bar_drops_shuts() {
+fn a_menu_the_bar_drops_closes() {
     let mut h = Harness::mono(SURFACE);
     h.prime(2, |ui| {
         build(ui);
@@ -272,15 +272,15 @@ fn a_menu_dropped_before_the_open_one_leaves_it_open() {
 }
 
 /// The open title wears [`MenuBarTheme::open`] whatever the pointer does, the hovered look of a
-/// shut one; a shut title picks from [`MenuBarTheme::title`] by state.
+/// closed one; a closed title picks from [`MenuBarTheme::title`] by state.
 #[test]
 fn the_open_title_wears_the_open_look() {
     let theme = MenuBarTheme::default();
     let rest = ResponseState::default();
     assert_eq!(theme.look(&rest, MenuState::Open), &theme.open);
-    assert_eq!(theme.look(&rest, MenuState::Shut), &theme.title.normal);
+    assert_eq!(theme.look(&rest, MenuState::Closed), &theme.title.normal);
     assert_eq!(MenuState::from(true), MenuState::Open);
-    assert_eq!(MenuState::from(false), MenuState::Shut);
+    assert_eq!(MenuState::from(false), MenuState::Closed);
     assert_eq!(theme.open, theme.title.hovered);
     assert_ne!(theme.open, theme.title.normal);
 }
@@ -330,7 +330,37 @@ fn menu_style_restyles_the_menus() {
         let at = h.center_of(title(0));
         h.click(at);
         h.frame(&mut scene);
-        h.rect(menu_id(title(0))).expect("the menu is open").size.h
+        h.rect(MenuBar::menu_id(title(0)))
+            .expect("the menu is open")
+            .size
+            .h
     };
     assert_eq!(height(true) - height(false), 2.0 * 9.0);
+}
+
+/// `open`, `close` and `is_open` drive the bar from outside: `open` names the menu by its label
+/// and moves the bar's one open menu, a label the bar does not show opens nothing, and `close`
+/// closes it.
+#[test]
+fn open_close_and_is_open_drive_the_bar_from_outside() {
+    let mut h = Harness::mono(SURFACE);
+    h.prime(2, |ui| {
+        build(ui);
+    });
+    assert!(!MenuBar::is_open(h.ui_ref(), bar()));
+    MenuBar::open(h.ui(), bar(), "Edit");
+    frame(&mut h);
+    assert_eq!(open(&h), Some(1));
+    assert!(recorded(&h, 1) && MenuBar::is_open(h.ui_ref(), bar()));
+    MenuBar::open(h.ui(), bar(), "View");
+    frame(&mut h);
+    assert_eq!(open(&h), Some(2));
+    assert!(!recorded(&h, 1) && recorded(&h, 2));
+    MenuBar::close(h.ui(), bar());
+    frame(&mut h);
+    assert_eq!(open(&h), None);
+    assert!(!recorded(&h, 2) && !MenuBar::is_open(h.ui_ref(), bar()));
+    MenuBar::open(h.ui(), bar(), "Help");
+    frame(&mut h);
+    assert_eq!(open(&h), None, "a label the bar does not show");
 }

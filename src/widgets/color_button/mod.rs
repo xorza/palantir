@@ -2,6 +2,7 @@
 
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::theme::color_picker::ColorPickerTheme;
@@ -16,6 +17,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
+use crate::widgets::popup::trigger_state::{Opening, TriggerState};
 use std::rc::Rc;
 
 /// A color chip that opens a [`ColorPicker`] popup when clicked.
@@ -23,7 +25,7 @@ use std::rc::Rc;
 /// The picker is configured as usual and handed over whole. Open state lives
 /// in the response map keyed off the trigger. Click outside or Esc closes it;
 /// there is no revert, since every gesture inside already committed. The popup is
-/// `id.with("panel")`, and the picker defaults to `id.with("picker")`.
+/// [`Self::popup_id`], and the picker defaults to `id.with("picker")`.
 ///
 /// ```
 /// # use palantir::{ColorButton, ColorPicker, RgbaF32, Ui};
@@ -80,16 +82,41 @@ impl<'a> ColorButton<'a> {
             picker = picker.style(style);
         }
         let opened = PopupTrigger::on(&response)
-            .id(id.with("panel"))
             .style(&slot.popup)
-            .show(ui, |ui, _| picker.show(ui).edges());
-        let ValueEdges { changed, committed } = opened.inner.unwrap_or_default();
+            .show_as::<ColorButton<'static>, _>(ui, |ui, _| picker.show(ui).edges());
+        let ValueEdges { changed, committed } =
+            opened.map(|opened| opened.inner).unwrap_or_default();
 
         ValueResponse {
             response: Response::new(ui, response),
             changed,
             committed,
         }
+    }
+}
+
+/// Driving a color button's panel from outside, by the button's id, and the id of the popup.
+impl ColorButton<'static> {
+    /// The popup the color button `id` drops its panel in.
+    pub fn popup_id(id: WidgetId) -> WidgetId {
+        PopupTrigger::popup_id(id)
+    }
+
+    /// Open the panel of the color button `id`, e.g. from a keyboard shortcut; it records on the
+    /// button's next `show`.
+    pub fn open(ui: &mut Ui, id: WidgetId) {
+        TriggerState::<Self>::open(ui, id, Opening::Below);
+    }
+
+    /// Close the panel of the color button `id`, giving back the input it held at once. No-op if
+    /// closed.
+    pub fn close(ui: &mut Ui, id: WidgetId) {
+        TriggerState::<Self>::close(ui, id);
+    }
+
+    /// Whether the panel of the color button `id` is open. Allocates no row.
+    pub fn is_open(ui: &Ui, id: WidgetId) -> bool {
+        TriggerState::<Self>::is_open(ui, id)
     }
 }
 

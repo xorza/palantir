@@ -28,6 +28,7 @@ use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::menu::menu_landing::MenuLanding;
+use crate::widgets::popup::trigger_state::{Opening, TriggerState};
 use crate::widgets::text::Text;
 use std::rc::Rc;
 
@@ -123,7 +124,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
-        let list = id.with("list");
+        let list = Menu::menu_id(id);
         let shown = domain::idx(*self.selected, self.options.len());
         let mut landing = shown.map_or(MenuLanding::First, |pick| {
             MenuLanding::Row(option_id(list, pick))
@@ -148,7 +149,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
             }
             if (opens_pick || opens_first || opens_last)
                 && !response.clicked()
-                && !Menu::is_open(ui, id)
+                && !TriggerState::<Keyed>::is_open(ui, id)
             {
                 response.state.activate();
             }
@@ -203,9 +204,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let resp = Menu::below(&response)
             .style(self.menu_style)
             .landing(landing)
-            .id(list)
             .min_size((response.rect.map_or(0.0, |rect| rect.size.w), 0.0))
-            .show(ui, |ui, _| {
+            .show_as::<Keyed, _>(ui, |ui, _| {
                 let mut picked = false;
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(label(opt));
@@ -219,7 +219,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                 }
                 picked
             });
-        let changed = resp.inner.unwrap_or(false);
+        let changed = resp.is_some_and(|resp| resp.inner);
 
         ValueResponse {
             response: Response::new(ui, response),
@@ -229,24 +229,34 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
     }
 }
 
-/// Driving a combo box's list from outside, by the combo's id, as a [`Menu`] is driven. One concrete
-/// instance holds them, so a call names no option type.
-impl ComboBox<'static, &'static str, fn(&&'static str) -> &'static str> {
+/// The instance that keys a combo box's row and holds the functions that drive it, so a call
+/// names no option type.
+type Keyed = ComboBox<'static, &'static str, fn(&&'static str) -> &'static str>;
+
+/// Driving a combo box's list from outside, by the combo's id, and the id of the list. The
+/// functions sit on one concrete instance, [`ComboBox::open`] and its siblings, so a call names no
+/// generics.
+impl Keyed {
+    /// The list of the combo box `id`, a menu.
+    pub fn menu_id(id: WidgetId) -> WidgetId {
+        Menu::menu_id(id)
+    }
+
     /// Open the list of the combo box `id`, e.g. from a keyboard shortcut; it records on the
     /// combo's next `show`.
     pub fn open(ui: &mut Ui, id: WidgetId) {
-        Menu::open_below(ui, id);
+        TriggerState::<Self>::open(ui, id, Opening::Below);
     }
 
     /// Close the list of the combo box `id`, giving back the input it held at once. No-op if
     /// closed.
     pub fn close(ui: &mut Ui, id: WidgetId) {
-        Menu::close(ui, id);
+        TriggerState::<Self>::close(ui, id);
     }
 
     /// `true` while the list of the combo box `id` is open.
     pub fn is_open(ui: &Ui, id: WidgetId) -> bool {
-        Menu::is_open(ui, id)
+        TriggerState::<Self>::is_open(ui, id)
     }
 }
 

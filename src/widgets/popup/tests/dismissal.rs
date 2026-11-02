@@ -10,6 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -98,7 +99,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                                 .size((Sizing::fixed(100.0), Sizing::fixed(60.0)))
                                 .show(ui, |_| {});
                         });
-                    if r.dismissed {
+                    if r.close == Some(OverlayClose::Dismissed) {
                         *open = false;
                     }
                 }
@@ -138,7 +139,8 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
                             .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
                             .show(ui, |_| {});
                     })
-                    .dismissed
+                    .close
+                    == Some(OverlayClose::Dismissed)
             })
             .inner
     };
@@ -183,9 +185,10 @@ fn a_clicked_row_closes_the_overlay_it_sits_in() {
                     .show(ui, |ui, _| {
                         MenuItem::new("Row").id(row).show(ui);
                     })
-                    .close_requested
+                    .close
+                    == Some(OverlayClose::Requested)
             });
-        [outer.close_requested, outer.inner]
+        [outer.close == Some(OverlayClose::Requested), outer.inner]
     };
     let mut h = Harness::mono(SURFACE);
     assert_eq!(h.frame_value(&mut record), [false, false]);

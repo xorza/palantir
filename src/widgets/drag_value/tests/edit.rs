@@ -301,3 +301,52 @@ fn set_edit_buffer(ui: &mut Ui, id: WidgetId, text: &str) {
         state => panic!("expected DragValue edit state, got {state:?}"),
     });
 }
+
+/// A caller opens the editor without a click and ends it from outside: `start_editing` seeds the
+/// draft from the bound value, `stop_editing(Submitted)` commits the typed 72 once, and
+/// `stop_editing(Canceled)` restores the opening 5 and commits nothing.
+#[test]
+fn a_caller_starts_and_stops_the_edit() {
+    use crate::widgets::text_edit::edit_end::EditEnd;
+
+    let id = WidgetId::from_hash("dv-caller-edit");
+    let mut h = Harness::mono(UVec2::new(300, 100));
+    let frame = |h: &mut Harness, value: &mut f64| {
+        h.frame_value(|ui| {
+            DragValue::new(&mut *value)
+                .editable(true)
+                .decimals(2)
+                .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .id(id)
+                .show(ui)
+                .edges()
+        })
+    };
+    for (end, want, committed) in [
+        (EditEnd::Submitted, 72.0, true),
+        (EditEnd::Canceled, 5.0, false),
+    ] {
+        let mut value = 5.0_f64;
+        frame(&mut h, &mut value);
+        DragValue::start_editing(h.ui(), id);
+        assert!(DragValue::is_editing(h.ui_ref(), id), "{end:?}");
+        frame(&mut h, &mut value);
+        assert_eq!(
+            edit_buffer(h.ui_ref(), id),
+            "5.0",
+            "{end:?}: seeded on entry"
+        );
+        for c in ['7', '2'] {
+            h.key(Key::Char(c));
+            frame(&mut h, &mut value);
+        }
+        DragValue::stop_editing(h.ui(), id, end);
+        assert!(!DragValue::is_editing(h.ui_ref(), id), "{end:?}");
+        let edges = frame(&mut h, &mut value);
+        assert_eq!((value, edges.committed), (want, committed), "{end:?}");
+        assert!(
+            !frame(&mut h, &mut value).committed,
+            "{end:?}: one commit at most"
+        );
+    }
+}

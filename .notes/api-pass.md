@@ -50,9 +50,11 @@ pass is a bug.
 - **A trigger-driven overlay returns `Option<OverlayResponse<R>>`**, `None` while closed, as egui's
   `Popup::show` returns `Option<InnerResponse<R>>`, so `OverlayResponse::id` always names a node.
   How it closed is one field, `close: Option<OverlayClose>` with `Dismissed` and `Requested`, which
-  no longer collides with the window's `Ui::close_requested`.
+  no longer collides with the window's `Ui::close_requested`. `Menu::show` keeps the `Option` for a
+  menu `Menu::at` a point too, which always answers `Some`, so one menu type has one `show`.
 - **A part id has one word per overlay kind**, published as a `*_id` function: `popup_id` for a
-  popup, `menu_id` for a menu, `bubble_id` for a tooltip. Refused: one word for every overlay, as
+  popup, `menu_id` for a menu, `bubble_id` for a tooltip. A combo box's list is a menu, so it is
+  `ComboBox::menu_id`. Refused: one word for every overlay, as
   one trigger may hold a dropdown and a context menu at once.
 - **A widget that drops a menu has `menu_style`**, the `<slot>_style` rule applied to the menu's
   theme: ComboBox, MenuBar, TabStrip, TabbedView, DockView.
@@ -164,29 +166,6 @@ follow it.
 Batches run most harmful first. A batch changes palantir and darkroom together and leaves both
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
-
-### Batch 3: State driven from outside
-
-- [ ] `Expander`: `open(&mut bool)` setter. Target: `open`, `close`, `is_open(ui, id)` on the
-  expander's own id, mapped to `header_id` inside; keep `start_open`. Callers: 1 / 0.
-- [ ] `MenuBar::open(ui, bar, label: &str)`, `close(ui, bar)`, `is_open(ui, bar)`, and public
-  `title_id(bar, label)` and `menu_id(title)`; `close` gives back the scope. The bar keeps one
-  open menu, so `open` names which.
-- [ ] `ColorButton::open`, `close`, `is_open`; `PopupTrigger::open`, `close`, `is_open` on a
-  wrapper's id no longer reach the wrapper's row, as each row is keyed by its own type.
-- [ ] `ComboBox::open`, `close`, `is_open` stay on the concrete instance, which lets a call name no
-  generics; the doc says so.
-- [ ] `EditableLabel` and `DragValue`: `start_editing(ui, id)`, `stop_editing(ui, id, EditEnd)`,
-  `is_editing(ui, id)`. `EditableLabel::edit` is renamed; the label becomes focusable and opens on
-  Enter or F2.
-- [ ] Response shape: `PopupTrigger`, `Menu`, ComboBox's and ColorButton's lists and
-  `MenuBarMenus::menu` return `Option<OverlayResponse<R>>`; `OverlayResponse` holds
-  `close: Option<OverlayClose>` in place of `dismissed` and `close_requested`. Callers: about 7 / 1.
-- [ ] Part ids: `PopupTrigger::popup_id`, `ComboBox::popup_id`, `ColorButton::popup_id`, all
-  `with("popup")`; `Menu::menu_id`, `MenuBar::menu_id`, `with("menu")`; `Tooltip::bubble_id`.
-  ComboBox drops `"list"` and ColorButton `"panel"`.
-- [ ] `MenuState::Shut` renamed `Closed`.
-- [ ] `Modal::backdrop` and `ModalTheme::backdrop` renamed `scrim`.
 
 ### Batch 4: Dock and tabs
 

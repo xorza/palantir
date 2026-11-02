@@ -202,7 +202,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
                 c.apply(Menu::for_id(own_id()), Menu::chrome, Menu::default_chrome)
                     .show(ui, |_, _| {});
             },
-            chrome_node: || own_id().with("body"),
+            chrome_node: || Menu::menu_id(own_id()),
             layer: Layer::Menu,
         },
     ];
@@ -352,7 +352,7 @@ fn widget_setters_check_their_kinds() {
         |c| drop(Spinner::new().color(c)),
         |c| drop(Separator::horizontal().color(c)),
         |c| drop(Text::new("t").color(c)),
-        |c| drop(Modal::new().backdrop(c)),
+        |c| drop(Modal::new().scrim(c)),
         |c| {
             let mut buf = String::new();
             drop(TextEdit::new(&mut buf).color(c));
@@ -650,8 +650,9 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     let mut open = false;
     press(Expander::header_id(id), Key::Enter, |ui| {
         under_root(ui, |ui| {
-            Expander::new("x").id(id).open(&mut open).show(ui, |_| {});
+            Expander::new("x").id(id).show(ui, |_| {});
         });
+        open |= Expander::is_open(ui, id);
     });
     assert!(open, "Expander");
 
@@ -676,7 +677,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
                 .id(id)
                 .show(ui);
         });
-        opened |= PopupTrigger::is_open(ui, id);
+        opened |= ColorButton::is_open(ui, id);
     });
     assert!(opened, "ColorButton");
 

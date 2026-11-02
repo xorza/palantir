@@ -211,33 +211,42 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
     );
 }
 
-/// The binding wins over the default, and every toggle is written back.
+/// `open`, `close` and `is_open` drive a section from outside by its id: a section `start_open`
+/// opens reads open, a click closes it, `open` and `close` flip it on its next show, and a section
+/// never shown reads closed with no row minted.
 #[test]
-fn a_bound_flag_is_read_and_written() {
+fn open_close_and_is_open_drive_it_from_outside() {
     let mut h = Harness::mono(SURFACE);
-    let mut open = true;
-    let record = |ui: &mut Ui, open: &mut bool| {
+    let record = |ui: &mut Ui| {
         Expander::new("section")
             .id(root())
-            .start_open(false)
-            .open(open)
+            .start_open(true)
             .show(ui, |ui| {
                 Text::new("body").id(label()).show(ui);
             });
     };
-    h.prime(2, |ui| record(ui, &mut open));
+    assert!(!Expander::is_open(h.ui_ref(), root()));
     assert!(
-        h.rect(body()).is_some(),
-        "the binding won over start_open(false)",
+        h.ui().state::<ExpanderState>(header()).is_none(),
+        "no row minted"
     );
+    h.prime(2, record);
+    assert!(Expander::is_open(h.ui_ref(), root()), "start_open opens it");
+    assert!(h.rect(body()).is_some());
 
     h.click(header());
-    h.frame(|ui| record(ui, &mut open));
-    assert!(!open, "the toggle was written back through the binding");
+    h.frame(record);
+    assert!(!Expander::is_open(h.ui_ref(), root()), "a click closes it");
 
-    open = true;
-    h.prime(2, |ui| record(ui, &mut open));
-    assert!(h.rect(body()).is_some(), "the caller reopened it");
+    Expander::open(h.ui(), root());
+    h.prime(2, record);
+    assert!(Expander::is_open(h.ui_ref(), root()));
+    assert!(h.rect(body()).is_some(), "open reveals the body");
+
+    Expander::close(h.ui(), root());
+    h.prime(2, record);
+    assert!(!Expander::is_open(h.ui_ref(), root()));
+    assert!(h.rect(body()).is_none(), "close hides the body");
 }
 
 /// The first reveal snaps (no measured height to tween against); later ones animate.

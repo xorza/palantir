@@ -14,7 +14,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::overlay_response::OverlayResponse;
+use crate::widget_core::overlay_response::{OverlayClose, OverlayResponse};
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
@@ -22,7 +22,7 @@ use crate::widgets::popup::click_outside::ClickOutside;
 use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
-/// The backdrop or Esc sets [`OverlayResponse::dismissed`] unless
+/// The backdrop or Esc closes it as [`OverlayClose::Dismissed`] unless
 /// [`Self::click_outside`] blocks them; the body's [`CloseHandle`] closes it from inside.
 ///
 /// On the frame it opens, focus moves to its first Tab stop, however it was opened, as
@@ -38,7 +38,7 @@ use std::rc::Rc;
 pub struct Modal<'a> {
     widget: Widget,
     chrome: Option<Chrome>,
-    backdrop: Option<RgbaF32>,
+    scrim: Option<RgbaF32>,
     click_outside: ClickOutside,
     style: Option<&'a ModalTheme>,
 }
@@ -50,31 +50,31 @@ impl<'a> Modal<'a> {
         Self {
             widget: Widget::vstack().sense(Sense::ABSORB_POINTER),
             chrome: None,
-            backdrop: None,
+            scrim: None,
             click_outside: ClickOutside::Dismiss,
             style: None,
         }
     }
 
-    /// Per-instance override of [`Theme::modal`](crate::Theme::modal); [`Self::chrome`] and [`Self::backdrop`] still win.
+    /// Per-instance override of [`Theme::modal`](crate::Theme::modal); [`Self::chrome`] and [`Self::scrim`] still win.
     pub fn style(mut self, s: impl Into<Option<&'a ModalTheme>>) -> Self {
         self.style = s.into();
         self
     }
 
-    /// Backdrop scrim color, defaulting to [`crate::Theme::modal`]'s.
+    /// The scrim's color, defaulting to [`crate::Theme::modal`]'s.
     ///
     /// # Panics
     ///
     /// Panics unless `color` is a [color](crate::widget::domain::color).
     #[track_caller]
-    pub const fn backdrop(mut self, color: RgbaF32) -> Self {
-        self.backdrop = Some(domain::color(color));
+    pub const fn scrim(mut self, color: RgbaF32) -> Self {
+        self.scrim = Some(domain::color(color));
         self
     }
 
-    /// What a press on the backdrop and Esc do: [`ClickOutside::Dismiss`], the default, sets
-    /// [`OverlayResponse::dismissed`]; [`ClickOutside::Block`] swallows both and stays open, for a
+    /// What a press on the backdrop and Esc do: [`ClickOutside::Dismiss`], the default, closes it
+    /// as [`OverlayClose::Dismissed`]; [`ClickOutside::Block`] swallows both and stays open, for a
     /// dialog the user must answer, as a confirmation of unsaved work is.
     ///
     /// # Panics
@@ -101,7 +101,7 @@ impl<'a> Modal<'a> {
         // `mt.panel` is still borrowed at `scope.record`, which owns `ui` mutably.
         let ui_theme = Rc::clone(ui.theme());
         let mt = self.style.unwrap_or(&ui_theme.modal);
-        let dim = Chrome::fill(self.backdrop.unwrap_or(mt.backdrop));
+        let dim = Chrome::fill(self.scrim.unwrap_or(mt.scrim));
         let panel_chrome = self.chrome.as_ref().unwrap_or(&mt.panel);
         let theme_padding = mt.padding;
         let theme_min_width = mt.min_width;
@@ -135,9 +135,11 @@ impl<'a> Modal<'a> {
         let response = OverlayResponse {
             id: root_id,
             opened,
-            dismissed: self.click_outside == ClickOutside::Dismiss
-                && (turn.pressed_outside || turn.escape_pressed),
-            close_requested: handle.requested() || turn.close_requested,
+            close: OverlayClose::of(
+                handle.requested() || turn.close_requested,
+                self.click_outside == ClickOutside::Dismiss
+                    && (turn.pressed_outside || turn.escape_pressed),
+            ),
             inner: turn.inner,
         };
         scope.finish(ui, response)

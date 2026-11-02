@@ -77,9 +77,10 @@ enum Opener {
 }
 
 impl<'a> Menu<'a> {
-    /// A menu on the trigger `for_id` that only [`Self::open`] opens, at the point it names. Its
-    /// id defaults to one derived from the trigger's, `for_id.with("body")`, settled here because
-    /// the popup's `#[track_caller]` id would resolve to this line for every menu.
+    /// A menu on the trigger `for_id` that only [`Self::open`] opens, at the point it names. A
+    /// menu on a trigger has the id [`Self::menu_id`] of the trigger's unless its `Configure` names
+    /// another, settled here because the popup's `#[track_caller]` id would resolve to this line
+    /// for every menu.
     pub fn for_id(for_id: WidgetId) -> Self {
         Self::on_trigger(
             TriggerFrame {
@@ -146,7 +147,7 @@ impl<'a> Menu<'a> {
         Self {
             opener: Opener::Trigger { frame, at_pointer },
             landing: MenuLanding::First,
-            popup: Popup::new().default_id(frame.for_id.with("body")),
+            popup: Popup::new().default_id(Menu::menu_id(frame.for_id)),
             style: None,
         }
     }
@@ -167,26 +168,35 @@ impl<'a> Menu<'a> {
 
     /// Record the menu and return the popup's outcome.
     ///
-    /// `inner` is `None` when the menu is closed and the body did not run. A menu opened while
+    /// `None` while the menu is closed, as the body did not run; a menu [`Self::at`] a point
+    /// always shows, so it answers `Some`. A menu opened while
     /// focus shows the ring (from the keyboard) takes focus on its [landing](Self::landing) row,
     /// as WAI-ARIA's menu button does, and focus returns to where it was on close.
     pub fn show<R>(
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
-    ) -> OverlayResponse<Option<R>> {
+    ) -> Option<OverlayResponse<R>> {
+        self.show_as::<Menu<'static>, R>(ui, body)
+    }
+
+    /// [`Self::show`] with a trigger's open state in the row of `K`, the widget that wraps the
+    /// menu, so the row is reached through that widget's own `open`, `close` and `is_open` alone.
+    pub(crate) fn show_as<K: 'static, R>(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
+    ) -> Option<OverlayResponse<R>> {
         let landing = self.landing;
         let opener = self.opener;
         let popup = self.dressed(ui);
         let resp = match opener {
             Opener::Trigger { frame, at_pointer } => {
-                Self::opened_frame(ui, frame, at_pointer).show::<Menu<'static>, R>(ui, popup, body)
+                Self::opened_frame(ui, frame, at_pointer).show::<K, R>(ui, popup, body)
             }
-            Opener::Caller(point) => popup
-                .anchor(Anchor::at_point(point))
-                .show(ui, |ui, handle| Some(body(ui, handle))),
+            Opener::Caller(point) => Some(popup.anchor(Anchor::at_point(point)).show(ui, body)),
         };
-        landing.land(ui, &resp);
+        landing.land(ui, resp.as_ref());
         resp
     }
 
@@ -204,7 +214,7 @@ impl<'a> Menu<'a> {
         };
         let popup = self.dressed(ui);
         let settled = Self::opened_frame(ui, frame, at_pointer).settle(ui, state, popup, body);
-        landing.land(ui, &settled.response);
+        landing.land(ui, settled.response.as_ref());
         settled
     }
 
@@ -235,9 +245,9 @@ impl<'a> Menu<'a> {
         TriggerState::<Menu<'static>>::open(ui, for_id, Opening::At(vec2::offset(point)));
     }
 
-    /// Open the menu keyed off `for_id` below its trigger, as a click on it does.
-    pub(crate) fn open_below(ui: &mut Ui, for_id: WidgetId) {
-        TriggerState::<Menu<'static>>::open(ui, for_id, Opening::Below);
+    /// The menu of the trigger `trigger`, unless its `Configure` names another.
+    pub fn menu_id(trigger: WidgetId) -> WidgetId {
+        trigger.with("menu")
     }
 
     /// Close the menu keyed off `for_id`, giving back the input it held at once. No-op if closed.
@@ -283,6 +293,21 @@ impl Configure for Menu<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         self.popup.configure()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::ui::Ui;
+    use crate::widgets::menu::Menu;
+    use crate::widgets::popup::trigger_state::{Opening, TriggerState};
+
+    impl Menu<'static> {
+        /// Open the menu keyed off `for_id` below its trigger, as a click on it does.
+        pub(crate) fn open_below(ui: &mut Ui, for_id: WidgetId) {
+            TriggerState::<Self>::open(ui, for_id, Opening::Below);
+        }
     }
 }
 

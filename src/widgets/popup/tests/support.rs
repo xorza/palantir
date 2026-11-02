@@ -7,6 +7,7 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::click_outside::ClickOutside;
@@ -49,7 +50,8 @@ pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
                         .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
                         .show(ui, |_| {});
                 })
-                .dismissed;
+                .close
+                == Some(OverlayClose::Dismissed);
         });
     BodyPass {
         dismissed,

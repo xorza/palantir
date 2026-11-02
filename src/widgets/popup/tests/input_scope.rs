@@ -10,6 +10,7 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::click_outside::ClickOutside;
@@ -218,7 +219,8 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                                 .escape_falls_through(falls_through)
                                 .show(ui);
                         })
-                        .dismissed
+                        .close
+                        == Some(OverlayClose::Dismissed)
                 })
                 .inner
         };

@@ -29,7 +29,7 @@ fn tooltip_near_right_edge_keeps_natural_width() {
     const TEXT: &str = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";
     let reference = visible_tooltip_at(40.0, TEXT);
     let mut ui = visible_tooltip_at(350.0, TEXT);
-    let bubble_id = WidgetId::from_hash("edge-trigger").with("bubble");
+    let bubble_id = Tooltip::bubble_id(WidgetId::from_hash("edge-trigger"));
     let reference_bubble = reference
         .ui_ref()
         .response_for(bubble_id)
@@ -63,7 +63,7 @@ fn content_growth_and_shrink_reposition_without_input_or_settling() {
             ..ResponseState::default()
         },
     };
-    let bubble_id = trigger_id.with("bubble");
+    let bubble_id = Tooltip::bubble_id(trigger_id);
     let frame = |h: &mut Harness, text: &str| {
         let report = h.frame(|ui| {
             Tooltip::on(&snapshot, text).delay(Duration::ZERO).show(ui);
@@ -101,7 +101,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
         40.0,
         "averylongtooltiptokenwithoutanybreakpointsaverylongtooltiptoken",
     );
-    let bubble_id = WidgetId::from_hash("edge-trigger").with("bubble");
+    let bubble_id = Tooltip::bubble_id(WidgetId::from_hash("edge-trigger"));
     let bubble = ui.rect(bubble_id).expect("tooltip bubble");
     let shaped = ui
         .ui_ref()
@@ -174,7 +174,7 @@ fn configure_reaches_the_bubble_and_explicit_id_beats_the_derived_one() {
             .show(ui);
     });
 
-    let derived = trigger_id.with("bubble");
+    let derived = Tooltip::bubble_id(trigger_id);
     let bubble = h.node_of(derived).expect("tooltip bubble node");
     assert_eq!(bubble.plane.layer, Layer::Tooltip);
     let tree = h.ui().tree(Layer::Tooltip);

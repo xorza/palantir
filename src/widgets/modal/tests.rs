@@ -13,6 +13,7 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::button::Button;
 use crate::widgets::modal::Modal;
 use crate::widgets::popup::Popup;
@@ -51,11 +52,11 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
     let custom = RgbaF32::srgba(0.2, 0.4, 0.6, 0.5);
     for explicit in [None, Some(custom)] {
         let mut h = Harness::mono(SURFACE);
-        let themed = h.ui().theme().modal.backdrop;
+        let themed = h.ui().theme().modal.scrim;
         h.frame(|ui| {
             let modal = Modal::new().id(id);
             match explicit {
-                Some(c) => modal.backdrop(c),
+                Some(c) => modal.scrim(c),
                 None => modal,
             }
             .show(ui, |_, _| {});
@@ -103,7 +104,8 @@ fn a_backdrop_click_or_escape_dismisses_unless_blocked() {
                     .id(WidgetId::from_hash("modal"))
                     .click_outside(click_outside)
                     .show(ui, |_, _| {})
-                    .dismissed,
+                    .close
+                    == Some(OverlayClose::Dismissed),
             };
             let mut h = Harness::mono(UVec2::new(400, 300));
             h.frame_value(&mut record);
@@ -144,7 +146,8 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
             Modal::new()
                 .id(WidgetId::from_hash("modal-escape"))
                 .show(ui, |_, _| {})
-                .dismissed
+                .close
+                == Some(OverlayClose::Dismissed)
         };
 
         // Two frames: the wake-gate parks a press whose shortcut nobody watched yet.
@@ -179,10 +182,11 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
         ui.watch_pointer(PointerWake::BUTTONS);
         ui.watch_keyboard(KeyboardWake::KEY);
         if *open {
-            *open = !Modal::new()
+            *open = Modal::new()
                 .id(WidgetId::from_hash("closing-modal"))
                 .show(ui, |_, _| {})
-                .dismissed;
+                .close
+                != Some(OverlayClose::Dismissed);
         }
     };
 
@@ -218,11 +222,13 @@ fn escape_closes_only_the_topmost_overlay() {
             .anchor(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("under-modal"))
             .show(ui, |_ui, _handle| {})
-            .dismissed,
+            .close
+            == Some(OverlayClose::Dismissed),
         modal: Modal::new()
             .id(WidgetId::from_hash("over-popup"))
             .show(ui, |_, _| {})
-            .dismissed,
+            .close
+            == Some(OverlayClose::Dismissed),
     };
 
     let mut h = Harness::mono(SURFACE);

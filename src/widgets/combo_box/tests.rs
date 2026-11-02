@@ -13,6 +13,7 @@ use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
 use crate::widgets::combo_box::ComboBox;
+use crate::widgets::menu::Menu;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -130,7 +131,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
     );
 
     let trigger = h.rect(id).expect("combo trigger arranged");
-    let list = h.rect(id.with("list")).expect("combo list arranged");
+    let list = h.rect(ComboBox::menu_id(id)).expect("combo list arranged");
     assert_eq!(list.min.x, trigger.min.x, "list starts at trigger left");
     assert_eq!(
         list.max().y,
@@ -288,7 +289,10 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
         h.frame(&mut build);
         ComboBox::open(h.ui(), id);
         h.frame(&mut build);
-        h.rect(id.with("list")).expect("combo list arranged").size.h
+        h.rect(ComboBox::menu_id(id))
+            .expect("combo list arranged")
+            .size
+            .h
     };
 
     for styled in [false, true] {
@@ -304,7 +308,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
 #[test]
 fn disabling_an_open_trigger_closes_its_list() {
     let combo = WidgetId::from_hash("combo");
-    let list = combo.with("list");
+    let list = ComboBox::menu_id(combo);
     let options = ["One", "Two", "Three"];
     let mut selected = 0;
     let record = |h: &mut Harness, disabled: bool, selected: &mut usize| {
@@ -385,6 +389,10 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
             assert_eq!(frame(&mut h, &mut selected), (false, false), "{what}");
             h.set_modifiers(Modifiers::NONE);
             assert!(ComboBox::is_open(h.ui_ref(), id), "{what} opens it");
+            assert!(
+                !Menu::is_open(h.ui_ref(), id),
+                "{what}: the combo's row is its own, not a menu's"
+            );
             frame(&mut h, &mut selected);
             assert_eq!(h.focus(), row(&h, lands), "{what} lands on {lands}");
             assert!(h.focus().is_some(), "{what}: a row holds focus");
@@ -398,7 +406,7 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
     ComboBox::open(h.ui(), id);
     frame(&mut h, &mut selected);
     assert!(ComboBox::is_open(h.ui_ref(), id), "an outside open records");
-    assert!(h.rect(id.with("list")).is_some());
+    assert!(h.rect(ComboBox::menu_id(id)).is_some());
 }
 
 /// Keyboard path: Enter on the focused combo opens it with focus on the first row; Tab and arrows walk the rows in the list it traps; Enter picks and closes; focus returns to the combo.

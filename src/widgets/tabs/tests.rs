@@ -1272,7 +1272,7 @@ fn the_overflow_menu_opens_on_the_selected_chip_in_its_menu_style() {
         h.frame(&mut build);
         h.frame(&mut build);
         let height = h
-            .rect(chevron.with("popup"))
+            .rect(Menu::menu_id(chevron))
             .expect("the menu is open")
             .size
             .h;
@@ -1307,7 +1307,7 @@ fn a_tabbed_view_restyles_its_overflow_menu() {
         h.prime(2, &mut build);
         Menu::open_below(h.ui(), chevron);
         h.frame(&mut build);
-        h.rect(chevron.with("popup"))
+        h.rect(Menu::menu_id(chevron))
             .expect("the menu is open")
             .size
             .h

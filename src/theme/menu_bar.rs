@@ -1,4 +1,4 @@
-//! What a menu bar's titles wear, shut and open, and which of the two applies.
+//! What a menu bar's titles wear, closed and open, and which of the two applies.
 
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
@@ -22,7 +22,7 @@ use crate::theme::palette::Palette;
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]
 pub struct MenuBarTheme {
-    /// A title whose menu is shut, in each state.
+    /// A title whose menu is closed, in each state.
     pub title: StatefulLook,
     /// The title whose menu is open.
     pub open: WidgetLook,
@@ -44,8 +44,8 @@ pub struct MenuBarTheme {
 /// [`MenuBarTheme::title`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MenuState {
-    /// The menu is shut.
-    Shut,
+    /// The menu is closed.
+    Closed,
     /// The menu is open.
     Open,
 }
@@ -53,7 +53,7 @@ pub enum MenuState {
 impl From<bool> for MenuState {
     /// `true` is [`Self::Open`].
     fn from(open: bool) -> Self {
-        if open { Self::Open } else { Self::Shut }
+        if open { Self::Open } else { Self::Closed }
     }
 }
 
@@ -100,11 +100,11 @@ impl MenuBarTheme {
 impl ThemeSlot for MenuBarTheme {
     type Pick = MenuState;
 
-    /// The open look, or the shut pack by state (`active` = pressed).
+    /// The open look, or the closed pack by state (`active` = pressed).
     fn look(&self, response: &ResponseState, state: MenuState) -> &WidgetLook {
         match state {
             MenuState::Open => &self.open,
-            MenuState::Shut => self.title.pick(response, Engagement::Pressed),
+            MenuState::Closed => self.title.pick(response, Engagement::Pressed),
         }
     }
 

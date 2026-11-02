@@ -268,6 +268,10 @@ ColorButton
         pub fn new(picker: ColorPicker<'a>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn popup_id(id: WidgetId) -> WidgetId
+        pub fn open(ui: &mut Ui, id: WidgetId)
+        pub fn close(ui: &mut Ui, id: WidgetId)
+        pub fn is_open(ui: &Ui, id: WidgetId) -> bool
 
 ColorCoords
     enum ColorCoords: Clone, Copy, Debug, Default, PartialEq
@@ -374,6 +378,7 @@ ComboBox
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl ComboBox<'static, &'static str, fn(&&'static str) -> &'static str>
+            pub fn menu_id(id: WidgetId) -> WidgetId
             pub fn open(ui: &mut Ui, id: WidgetId)
             pub fn close(ui: &mut Ui, id: WidgetId)
             pub fn is_open(ui: &Ui, id: WidgetId) -> bool
@@ -685,6 +690,9 @@ DragValue
         pub const fn editable(self, editable: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a DragValueTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn start_editing(ui: &mut Ui, id: WidgetId)
+        pub fn stop_editing(ui: &mut Ui, id: WidgetId, end: EditEnd)
+        pub fn is_editing(ui: &Ui, id: WidgetId) -> bool
 
 DragValueTheme
     struct DragValueTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -715,7 +723,8 @@ EditableLabel
         pub const fn max_chars(self, n: usize) -> Self
         pub fn show(self, ui: &mut Ui) -> EditableLabelResponse<'_>
         pub fn label_id(editable_label: WidgetId) -> WidgetId
-        pub fn edit(ui: &mut Ui, id: WidgetId)
+        pub fn start_editing(ui: &mut Ui, id: WidgetId)
+        pub fn stop_editing(ui: &mut Ui, id: WidgetId, end: EditEnd)
         pub fn is_editing(ui: &Ui, id: WidgetId) -> bool
 
 EditableLabelResponse
@@ -733,11 +742,13 @@ Expander
     struct Expander<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub const fn start_open(self, start_open: bool) -> Self
-        pub const fn open(self, open: &'a mut bool) -> Self
         pub const fn keep_body(self, keep_body: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self
         pub fn header_id(expander: WidgetId) -> WidgetId
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R>
+        pub fn open(ui: &mut Ui, id: WidgetId)
+        pub fn close(ui: &mut Ui, id: WidgetId)
+        pub fn is_open(ui: &Ui, id: WidgetId) -> bool
 
 ExpanderResponse
     struct ExpanderResponse<'a, R>
@@ -1400,8 +1411,9 @@ Menu
         pub fn at(point: Vec2) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
         pub const fn landing(self, landing: MenuLanding) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<Option<R>>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<OverlayResponse<R>>
         pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2)
+        pub fn menu_id(trigger: WidgetId) -> WidgetId
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
         pub const fn chrome(self, chrome: Chrome) -> Self
@@ -1413,10 +1425,15 @@ MenuBar
         pub fn style(self, s: impl Into<Option<&'a MenuBarTheme>>) -> Self
         pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut MenuBarMenus<'_>) -> R) -> InnerResponse<'_, R>
+        pub fn open(ui: &mut Ui, bar: WidgetId, label: &str)
+        pub fn close(ui: &mut Ui, bar: WidgetId)
+        pub fn is_open(ui: &Ui, bar: WidgetId) -> bool
+        pub fn title_id(bar: WidgetId, label: &str) -> WidgetId
+        pub fn menu_id(title: WidgetId) -> WidgetId
 
 MenuBarMenus
     struct MenuBarMenus<'u>: Debug
-        pub fn menu<'l, R>(&mut self, label: impl Into<TextInput<'l>>, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<R>
+        pub fn menu<'l, R>(&mut self, label: impl Into<TextInput<'l>>, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<OverlayResponse<R>>
 
 MenuBarTheme
     struct MenuBarTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
@@ -1460,7 +1477,7 @@ MenuSeparator
 
 MenuState
     enum MenuState: Clone, Copy, Debug, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
-        Shut
+        Closed
         Open
 
 MenuTheme
@@ -1487,7 +1504,7 @@ Modal
     struct Modal<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
-        pub const fn backdrop(self, color: RgbaF32) -> Self
+        pub const fn scrim(self, color: RgbaF32) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
         pub fn close(ui: &mut Ui, id: WidgetId)
@@ -1497,7 +1514,7 @@ Modal
 ModalTheme
     struct ModalTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub panel: Chrome
-        pub backdrop: RgbaF32
+        pub scrim: RgbaF32
         pub padding: Spacing
         pub min_width: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
@@ -1564,18 +1581,21 @@ Okhsv
         pub fn to_color(self) -> RgbaF32
         pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self
 
+OverlayClose
+    enum OverlayClose: Clone, Copy, Debug, Eq, PartialEq
+        Dismissed
+        Requested
+
 OverlayResponse
     struct OverlayResponse<R>
         pub id: WidgetId
         pub opened: bool
-        pub dismissed: bool
-        pub close_requested: bool
+        pub close: Option<OverlayClose>
         pub inner: R
         pub const fn closed(&self) -> bool
         impl<R: Clone> Clone for OverlayResponse<R>
         impl<R: Copy> Copy for OverlayResponse<R>
         impl<R: Debug> Debug for OverlayResponse<R>
-        impl<R: Default> Default for OverlayResponse<R>
 
 OwnedInputEvent
     struct OwnedInputEvent: Clone, Debug, From<InputEvent<'_>>
@@ -1732,7 +1752,8 @@ PopupTrigger
         pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<Option<R>>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<OverlayResponse<R>>
+        pub fn popup_id(trigger: WidgetId) -> WidgetId
         pub fn open(ui: &mut Ui, for_id: WidgetId)
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
@@ -2574,6 +2595,7 @@ Tooltip
         pub fn show(self, ui: &mut Ui) -> TooltipResponse
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
+        pub fn bubble_id(trigger: WidgetId) -> WidgetId
 
 TooltipResponse
     struct TooltipResponse: Clone, Copy, Debug
