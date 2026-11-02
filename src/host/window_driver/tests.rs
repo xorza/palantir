@@ -1018,6 +1018,11 @@ mod screenshot_tests {
     #[test]
     fn a_region_rounds_out_to_whole_physical_pixels() {
         let mut scene = Scene::new(wgpu::TextureFormat::Rgba8UnormSrgb, 2.0);
+        let mut others = [
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+            wgpu::TextureFormat::Rgba16Float,
+        ]
+        .map(|format| (format, Scene::new(format, 2.0)));
         for (region, clamped, min, size) in [
             (
                 Rect::new(5.25, 3.0, 10.0, 6.0),
@@ -1042,12 +1047,9 @@ mod screenshot_tests {
             assert_eq!(image.pixels, crop.into_raw(), "{region:?}");
             // A BGRA target's region is copied and swapped, a float one's blitted at the
             // region's own size: both read as the sRGB one.
-            for format in [
-                wgpu::TextureFormat::Bgra8UnormSrgb,
-                wgpu::TextureFormat::Rgba16Float,
-            ] {
-                let other = Scene::new(format, 2.0).capture(Some(region));
-                assert_eq!(other.image(), image, "{format:?} {region:?}");
+            for (format, other) in &mut others {
+                let shot = other.capture(Some(region));
+                assert_eq!(shot.image(), image, "{format:?} {region:?}");
             }
         }
         let empty = Rect {

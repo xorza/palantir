@@ -33,6 +33,8 @@ use crate::window::window_token::WindowToken;
 
 const WINDOW: WindowToken = WindowToken(0);
 const SIZE: UVec2 = UVec2::new(320, 200);
+/// The wait tick the remotes here check at, short so a test that outlasts one stays fast.
+const TICK: Duration = Duration::from_millis(5);
 
 /// One button that counts its clicks, a pad that sums the gestures it takes, a chord it
 /// counts, and a flag a test sets for the work it reports busy.
@@ -201,7 +203,7 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
 #[test]
 fn a_remote_plays_and_reads_a_live_window() {
     let (handle, thread) = serve();
-    let remote = handle.remote(WINDOW);
+    let remote = handle.remote(WINDOW).with_tick(TICK);
 
     let (clicks, frame) = remote.query(|app, ui| (app.clicks, ui.frame_id())).unwrap();
     assert_eq!(clicks, 0);
@@ -231,7 +233,7 @@ fn a_remote_plays_and_reads_a_live_window() {
     );
 
     // A query gives up at once while the window's thread is held, and never runs.
-    let held = handle.remote(WINDOW).with_blocked(|| true);
+    let held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);
     let ran = Arc::new(AtomicBool::new(false));
     let marked = Arc::clone(&ran);
     assert!(matches!(
@@ -254,7 +256,7 @@ fn a_remote_plays_and_reads_a_live_window() {
 #[test]
 fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
     let (handle, thread) = serve();
-    let remote = handle.remote(WINDOW);
+    let remote = handle.remote(WINDOW).with_tick(TICK);
     assert_eq!(
         remote.query(|_, _| -> u32 { panic!("boom") }),
         Err(PlayError::Panicked {
@@ -262,11 +264,11 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
         })
     );
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
-    // A query runs between frames, a hidden window's too, so its answer outlasts the 50 ms tick
-    // that gives up a wait for a hidden window's frame.
+    // A query runs between frames, a hidden window's too, so its answer outlasts the ticks that
+    // give up a wait for a hidden window's frame.
     handle.frames.set_hidden(WINDOW, true);
     let slow = remote.query(|app, _| {
-        thread::sleep(Duration::from_millis(120));
+        thread::sleep(TICK * 4);
         app.clicks
     });
     assert_eq!(slow, Ok(0));
@@ -280,9 +282,16 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
         })
         .unwrap();
     remote.query(|app, _| assert!(app.busy)).unwrap();
+    // The settle asks whether the window is held at each check it makes while the app is busy,
+    // so the first ask starts the work's end after the settle began.
+    let (began, settle_began) = mpsc::channel();
+    let settling = handle.remote(WINDOW).with_tick(TICK).with_blocked(move || {
+        began.send(()).ok();
+        false
+    });
     let worker = handle.clone();
     let work = thread::spawn(move || {
-        thread::sleep(Duration::from_millis(50));
+        settle_began.recv().unwrap();
         worker
             .run_on_main(|app| {
                 app.busy = false;
@@ -290,7 +299,7 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
             })
             .unwrap();
     });
-    remote.settle().unwrap();
+    settling.settle().unwrap();
     assert!(
         !remote.query(|app, _| app.busy).unwrap(),
         "the settle waited the work out"
@@ -304,7 +313,7 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
 /// each step reading back the same: a drag of 40 px in 8 moves ends once and travels exactly
 /// (40, 0); a scroll of (0, 30) px reaches the pad whole; a pinch of 1.5 reaches it, one that is
 /// not a positive factor fails as `BadPinch` and leaves nothing; a chord with two modifiers fires
-/// the app's read once. A wait of 100 ms runs the harness's stepped clock that far on, and takes
+/// the app's read once. A wait of 10 ms runs the harness's stepped clock that far on, and takes
 /// that much real time on the remote, whose idle window runs no frame meanwhile, as the desktop
 /// host paints only what changes.
 #[test]
@@ -374,7 +383,7 @@ fn both_players_play_each_gesture_alike() {
     // The first frame, which the served window runs at its open, before a step locates in it.
     h.frame_app(&mut app);
     let (handle, thread) = serve();
-    let remote = handle.remote(WINDOW);
+    let remote = handle.remote(WINDOW).with_tick(TICK);
     let mut last = Gestures::default();
     for (i, (action, want)) in steps.into_iter().enumerate() {
         let on_harness = h
@@ -410,7 +419,7 @@ fn both_players_play_each_gesture_alike() {
         last = app.gestures.clone();
     }
 
-    let wait = Duration::from_millis(100);
+    let wait = Duration::from_millis(10);
     let before = h.ui_ref().now();
     h.play(&mut app, &[Action::<std::convert::Infallible>::Wait(wait)])
         .unwrap();

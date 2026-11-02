@@ -311,11 +311,33 @@ impl App for Worker {
     }
 }
 
+/// Busy work that steps once a frame and wakes the window for the next step.
+#[derive(Debug)]
+struct Stepping {
+    steps_left: u32,
+    frames: u32,
+}
+
+impl App for Stepping {
+    fn record(&mut self, _window: WindowToken, ui: &mut Ui) {
+        self.frames += 1;
+        tile(ui);
+        if self.steps_left > 0 {
+            self.steps_left -= 1;
+            ui.waker().wake();
+        }
+    }
+
+    fn is_busy(&self) -> bool {
+        self.steps_left > 0
+    }
+}
+
 /// A settle waits out a busy app: a worker ends its work and wakes the window after the settle
 /// began, and the settle runs the woken frame and returns. A wake waits until a frame takes it.
 /// A busy app that never wakes the window fails the settle once the builder's background wait
-/// passes. Work that wakes the window as it goes holds the settle past that wait, and its woken
-/// frames count against no frame bound: 10 wakes 30 ms apart outlast a 200 ms wait and 3 frames.
+/// passes. Work that wakes the window as it goes holds the settle, and its woken frames count
+/// against no frame bound.
 #[test]
 fn a_settle_waits_for_a_busy_apps_wake() {
     let mut h = Harness::builder(UVec2::new(64, 32))
@@ -361,29 +383,18 @@ fn a_settle_waits_for_a_busy_apps_wake() {
         })
     );
 
+    // Each frame of the work wakes the window for the next, past the 3 frames that bound a
+    // settle: frames 1 to 10 step it, the 10th wake brings frame 11, which finds it done.
     let mut progressing = Harness::builder(UVec2::new(64, 32))
         .mono()
-        .background_wait(Duration::from_millis(200))
         .settle_frames(3)
         .build();
-    let busy = Arc::new(AtomicBool::new(true));
-    let mut app = Worker {
-        busy: Arc::clone(&busy),
+    let mut app = Stepping {
+        steps_left: 10,
         frames: 0,
     };
-    progressing.frame_app(&mut app);
-    let waker = progressing.ui().waker();
-    let work = thread::spawn(move || {
-        for _ in 0..10 {
-            thread::sleep(Duration::from_millis(30));
-            waker.wake();
-        }
-        busy.store(false, Ordering::Release);
-        waker.wake();
-    });
-    progressing.settle(&mut app).unwrap();
-    work.join().unwrap();
-    assert!(!app.is_busy());
+    assert_eq!(progressing.settle(&mut app), Ok(11));
+    assert_eq!((app.steps_left, app.frames), (0, 11));
 }
 
 /// On a lost device a shot, and a settle that waits on a screenshot, report the loss: no copy

@@ -14,6 +14,7 @@ use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
 use crate::gpu::error::{GpuRequestError, SurfaceError, SurfaceStartError};
 use crate::gpu::surface::surface_usages::SurfaceUsages;
 use crate::gpu::surface::window_surface::WindowSurface;
+use crate::gpu::wgpu_backend::FrameTiming;
 use crate::window::vsync::Vsync;
 use std::fmt;
 
@@ -32,8 +33,7 @@ const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages =
 pub(crate) struct HostGpuConfig {
     pub(crate) power_preference: PowerPreference,
     pub(crate) vsync: Vsync,
-    /// Opt into timestamp and pipeline-statistics queries.
-    pub(crate) collect_gpu_stats: bool,
+    pub(crate) timing: FrameTiming,
 }
 
 /// The display a windowed instance opens on, kept so a recovery opens a new instance there.
@@ -147,15 +147,13 @@ fn open_device(
     cfg: HostGpuConfig,
     surface: &wgpu::Surface<'static>,
 ) -> Result<RequestedGpu, GpuRequestError> {
-    let timing_features = if cfg.collect_gpu_stats {
-        DeviceRequirements::GPU_TIMING_FEATURES
-    } else {
-        wgpu::Features::empty()
-    };
     GpuRequest {
         label: "palantir.device",
         power_preference: cfg.power_preference,
-        optional: timing_features,
+        optional: match cfg.timing {
+            FrameTiming::Off => wgpu::Features::empty(),
+            FrameTiming::On => DeviceRequirements::GPU_TIMING_FEATURES,
+        },
         compatible_surface: Some(surface),
     }
     .open(instance)

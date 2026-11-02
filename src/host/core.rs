@@ -66,11 +66,7 @@ impl HostCore {
         );
         let spec = BackendSpec {
             image_store,
-            timing: if options.collect_gpu_stats {
-                FrameTiming::On
-            } else {
-                FrameTiming::Off
-            },
+            timing: options.timing,
         };
         let backend = spec.open(gpu, &core.resources);
         core.device = Some(DeviceHalf { spec, backend });
@@ -258,14 +254,7 @@ mod tests {
     use std::time::Duration;
 
     /// What every test core is built with: bundled fonts, no GPU timing.
-    const OPTIONS: HostOptions = HostOptions {
-        fonts: FontScope::Bundled,
-        shaper: None,
-        collect_gpu_stats: false,
-        pixel_snap: true,
-        #[cfg(feature = "system-clipboard")]
-        system_clipboard: false,
-    };
+    const OPTIONS: HostOptions = HostOptions::new(FontScope::Bundled);
 
     /// Two windows on one host render as two owners and read their own GPU samples: a submit
     /// publishes into its own window's handle, so a window that has not drawn reads nothing. The

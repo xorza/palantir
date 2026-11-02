@@ -63,6 +63,8 @@ pub struct Remote<T: 'static> {
     sent: Cell<u64>,
     /// The last press's real time, which the next press waits out the double-click window from.
     last_press: Cell<Option<Instant>>,
+    /// How often a wait checks whether it may go on: [`TICK`], shorter in tests.
+    tick: Duration,
 }
 
 impl<T: 'static> Debug for Remote<T> {
@@ -85,6 +87,7 @@ impl<T: 'static> Remote<T> {
             blocked: None,
             sent: Cell::new(sent),
             last_press: Cell::new(None),
+            tick: TICK,
         }
     }
 
@@ -202,7 +205,7 @@ impl<T: 'static> Remote<T> {
     fn receive<R>(&self, answer: &Receiver<R>, comes: Answer) -> Result<R, PlayError> {
         let start = Instant::now();
         loop {
-            match answer.recv_timeout(TICK) {
+            match answer.recv_timeout(self.tick) {
                 Ok(value) => return Ok(value),
                 Err(RecvTimeoutError::Disconnected) => return Err(PlayError::Disconnected),
                 Err(RecvTimeoutError::Timeout) => self.check_waiting(start, comes)?,
@@ -273,7 +276,7 @@ impl<T: 'static> Remote<T> {
                     error
                 });
             }
-            self.handle.frames.wait(TICK);
+            self.handle.frames.wait(self.tick);
         }
     }
 }
@@ -346,6 +349,20 @@ fn panic_message(payload: &(dyn Any + Send)) -> &str {
         .map(String::as_str)
         .or_else(|| payload.downcast_ref::<&str>().copied())
         .unwrap_or("a panic with no message")
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::host::winit::remote::Remote;
+    use std::time::Duration;
+
+    impl<T: 'static> Remote<T> {
+        /// Check each wait every `tick`, so a test that outlasts one waits a few milliseconds.
+        pub(crate) const fn with_tick(mut self, tick: Duration) -> Self {
+            self.tick = tick;
+            self
+        }
+    }
 }
 
 #[cfg(test)]

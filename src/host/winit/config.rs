@@ -26,11 +26,8 @@ impl Default for WinitHostConfig {
             vsync: Vsync::On,
             power_preference: PowerPreference::LowPower,
             options: HostOptions {
-                fonts: FontScope::System,
-                shaper: None,
-                collect_gpu_stats: false,
-                pixel_snap: true,
                 system_clipboard: true,
+                ..HostOptions::new(FontScope::System)
             },
         }
     }
@@ -42,7 +39,7 @@ impl WinitHostConfig {
         HostGpuConfig {
             power_preference: self.power_preference,
             vsync: self.vsync,
-            collect_gpu_stats: self.options.collect_gpu_stats,
+            timing: self.options.timing,
         }
     }
 }

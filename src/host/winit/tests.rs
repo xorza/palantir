@@ -4,6 +4,7 @@ use crate::gpu::surface::surface_manager::{
     FirstWindow, HostGpuConfig, SurfaceManager, SurfaceStartup,
 };
 use crate::gpu::surface::window_surface::{Acquired, Prepared};
+use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::platform;
 use crate::host::winit::{WinitHost, finish_run};
@@ -62,7 +63,10 @@ fn builder_setters_override_the_defaults() {
     );
     let (set, unset) = (&builder.config.options, &defaults.config.options);
     assert!(set.shaper.is_some() && unset.shaper.is_none());
-    assert!(set.collect_gpu_stats && !unset.collect_gpu_stats);
+    assert_eq!(
+        (set.timing, unset.timing),
+        (FrameTiming::On, FrameTiming::Off)
+    );
     assert!(!set.pixel_snap && unset.pixel_snap);
     assert!(!set.system_clipboard && unset.system_clipboard);
 }

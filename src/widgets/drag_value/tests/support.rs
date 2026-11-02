@@ -1,7 +1,7 @@
 //! The deferred-commit frame a drag test drives, and the signals it counts.
 
 use crate::host::harness::Harness;
-use crate::host::harness::unit::Passes;
+use crate::host::harness::internals::Passes;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;

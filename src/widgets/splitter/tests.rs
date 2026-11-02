@@ -1,7 +1,7 @@
 //! Splitter divider drag: pointer→ratio mapping, clamping at stops, pane re-layout, and the resize cursor.
 
 use crate::host::harness::Harness;
-use crate::host::harness::unit::Passes;
+use crate::host::harness::internals::Passes;
 use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;

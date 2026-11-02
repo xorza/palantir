@@ -1,4 +1,4 @@
-use crate::host::harness::unit::Passes;
+use crate::host::harness::internals::Passes;
 use crate::input::keyboard::key_text::KeyText;
 use crate::widgets::text_edit::EditEdges;
 use crate::widgets::text_edit::edit_end::EditEnd;

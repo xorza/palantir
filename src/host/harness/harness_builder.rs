@@ -57,14 +57,7 @@ impl HarnessBuilder {
             scale: 1.0,
             user_scale: UserScale::ONE,
             refresh_millihertz: None,
-            options: HostOptions {
-                fonts: FontScope::Bundled,
-                shaper: None,
-                collect_gpu_stats: false,
-                pixel_snap: true,
-                #[cfg(feature = "system-clipboard")]
-                system_clipboard: false,
-            },
+            options: HostOptions::new(FontScope::Bundled),
             depth: Depth::Record,
             strategy: PresentStrategy::Retained,
             frame_dt: Duration::from_nanos(16_666_667),
@@ -234,6 +227,7 @@ impl HarnessBuilder {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::gpu::wgpu_backend::FrameTiming;
     #[cfg(test)]
     use crate::host::core::HostCore;
     #[cfg(test)]
@@ -267,7 +261,7 @@ pub(crate) mod internals {
         /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu
         /// features.
         pub(crate) const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
-            self.options.collect_gpu_stats = collect_gpu_stats;
+            self.options.timing = FrameTiming::new(collect_gpu_stats);
             self
         }
     }

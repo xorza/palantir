@@ -80,6 +80,7 @@ use winit::window::WindowId;
 
 use crate::display;
 use crate::gpu::surface::surface_manager::SurfaceManager;
+use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::winit::config::WinitHostConfig;
 use crate::host::winit::error::WinitHostError;
 use crate::host::winit::frame_log::FrameLog;
@@ -202,7 +203,7 @@ where
 
     /// Opt into GPU timestamp and pipeline-statistics collection; off by default for its per-frame readback.
     pub const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
-        self.config.options.collect_gpu_stats = collect_gpu_stats;
+        self.config.options.timing = FrameTiming::new(collect_gpu_stats);
         self
     }
 

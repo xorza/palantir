@@ -83,12 +83,8 @@ Both recorded cycles go away, and AGENTS.md drops their two bullets.
 
 - Theme orchestration (pair, transition, scheme, epoch) is four `Ui` fields and ~130 lines of `Ui`
   methods, with the epoch bump written by hand at four sites.
-- The two headless hosts each write the per-frame glue: wake, record, commands, submit and system
-  setters.
 
-**Target.** A `WindowTheme` owns the theme state and bumps its
-epoch on every change of `shown()`. A `SoloWindow` owns one headless window's frame step, and each
-host keeps only its policies.
+**Target.** A `WindowTheme` owns the theme state and bumps its epoch on every change of `shown()`.
 
 ### R5. GPU memory that grows to a high-water mark and never decays
 
@@ -125,32 +121,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
-
-### Batch 10: Hosts
-
-Files: `src/host/{harness,offscreen,winit/remote,core.rs,host_options.rs,window_driver/tests.rs}`,
-`src/gpu/surface/surface_manager/mod.rs`, `src/gpu/wgpu_backend/mod.rs`.
-
-- [ ] `harness/mod.rs:346-356,680-693`, `offscreen/mod.rs:228-238,281-298`: the two headless hosts
-  duplicate the frame step and the system setters. Target: `pub(super) SoloWindow { core, driver,
-  wake }` with `frame`, `submit` (skipped on a lost device) and the two system setters.
-- [ ] `offscreen/mod.rs:179-186`, `harness_builder.rs:60-67`, `winit/config.rs:28-34`,
-  `core.rs:261-268`, `host_options.rs:45-51`: five `HostOptions` literals with an inline clipboard
-  `cfg`. Target: `const fn HostOptions::new(fonts)`.
-- [ ] `surface_manager/mod.rs:36,150-154`, `wgpu_backend/mod.rs:183-187`, `core.rs:69-73`:
-  `collect_gpu_stats: bool` and `FrameTiming` hold one choice. Target: `HostGpuConfig::timing:
-  FrameTiming`, with `FrameTiming::requested_features()`.
-- [ ] `harness/mod.rs:849-1088`: a `#[cfg(test)] mod unit` sits between `internals` and `tests`.
-  Target: the reach-ins go into `internals` under `#[cfg(test)]`, and `Passes<R>`, `frame_passes`
-  and `step_passes` go to `host/harness/tests/passes.rs`.
-- [ ] `winit/remote/tests.rs:268-287,412-427`, `remote/mod.rs:38`: about 270 ms of fixed sleeps.
-  Target: `Remote::new` takes its tick, and tests use about 5 ms. The worker waits on a channel
-  the test signals. The `Wait` step uses 10 ms.
-- [ ] `harness/tests/play.rs:332-336,364-386`: `a_settle_waits_for_a_busy_apps_wake` sleeps about
-  300 ms on a thread. Target: an app whose `record` wakes its own `Waker` for N frames drives the
-  `is_pending` branch (`harness/play.rs:181-183`). Keep one short real wait.
-- [ ] `window_driver/tests.rs:1019-1051`: `a_region_rounds_out_to_whole_physical_pixels` builds 5
-  GPU backends where 3 serve. Target: build the two format scenes once, before the region loop.
 
 ### Batch 11: Renderer and damage data
 

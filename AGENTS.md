@@ -119,6 +119,10 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 `Harness` runs one window with no desktop for unit tests, UI tests and agents; `Remote` plays the
 same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s module doc.
 
+- **A host owns its windows; the frame step is the core's.** Every host runs a window's frame
+  through `HostCore::record` and `HostCore::submit` on its `WindowDriver`, and keeps only what
+  differs: its target, how a wake reaches it, and what a lost device skips. Refused: a
+  one-window type for the two headless hosts, which splits the window by how many a host has.
 - **The harness is a host**, on the core and window driver the desktop runs. Refused: a `Ui`
   field, a frame loop every app pays for; a separate crate, which cannot reach the core; a
   frame path of its own, which drifts

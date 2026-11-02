@@ -1,5 +1,5 @@
 use crate::host::harness::Harness;
-use crate::host::harness::unit::Passes;
+use crate::host::harness::internals::Passes;
 use crate::input::pointer::PointerButton;
 use crate::internals::panic_probe;
 use crate::internals::size_trio::SizeTrio;

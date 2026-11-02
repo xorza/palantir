@@ -751,24 +751,32 @@ pub(crate) mod internals {
     use crate::host::window_driver::internals::DriverParts;
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::renderer::frontend::BuildPlan;
-    #[cfg(test)]
-    use crate::renderer::frontend::Frontend;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_plan::RenderPlan;
     use crate::ui::Ui;
     use crate::ui::frame_engines::FrameEngines;
+    #[cfg(test)]
+    use crate::{
+        input::input_event::InputEvent, input::interaction::input_delta::InputDelta,
+        internals::paint_capture::PaintCapture, layout::intrinsic::intrinsic_query::IntrinsicQuery,
+        layout::intrinsic::len_req::LenReq, primitives::geometry::rect::Rect,
+        primitives::geometry::translate_scale::TranslateScale, primitives::layout::axis::Axis,
+        primitives::layout::sizing::Sizing, primitives::math::animatable::Animatable,
+        renderer::frontend::Frontend, renderer::frontend::encoder,
+        renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas,
+        scene::endpoint::Endpoint, scene::layer::Layer, scene::tree::node_id::NodeId, ui::app::App,
+        ui::frame_report::FrameReport, ui::resources::UiResources,
+        widget_core::configure::Configure, widgets::panel::Panel,
+        window::window_token::WindowToken,
+    };
+    #[cfg(test)]
+    use glam::{UVec2, Vec2};
     use image::RgbaImage;
 
     impl Harness {
         /// The draw list the last composed or painted frame built.
         pub(crate) const fn render_buffer(&self) -> &RenderBuffer {
             &self.core.frontend.buffer
-        }
-
-        /// The CPU frontend every frame builds its draw list with.
-        #[cfg(test)]
-        pub(crate) const fn frontend(&self) -> &Frontend {
-            &self.core.frontend
         }
 
         /// Build the draw list of the last frame's scene by `plan`, its panes left out, and read
@@ -801,12 +809,6 @@ pub(crate) mod internals {
                 .as_ref()
                 .expect("a harness that paints holds a target")
                 .read_back()
-        }
-
-        /// The blurs the last frame ran, one per pane whose cached result went stale.
-        #[cfg(test)]
-        pub(crate) const fn backdrop_blurs(&self) -> usize {
-            self.core.backend().backdrop_blurs()
         }
 
         pub(crate) const fn engines(&self) -> &FrameEngines {
@@ -844,48 +846,18 @@ pub(crate) mod internals {
             self.collapsed_damage().region
         }
     }
-}
-
-#[cfg(test)]
-pub(crate) mod unit {
-    use crate::damage::Damage;
-    use crate::damage::region::DamageRegion;
-    use crate::host::harness::Harness;
-    use crate::input::input_event::InputEvent;
-    use crate::input::interaction::input_delta::InputDelta;
-    use crate::internals::paint_capture::PaintCapture;
-    use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
-    use crate::layout::intrinsic::len_req::LenReq;
-    use crate::primitives::geometry::rect::Rect;
-    use crate::primitives::geometry::translate_scale::TranslateScale;
-    use crate::primitives::identity::widget_id::WidgetId;
-    use crate::primitives::layout::axis::Axis;
-    use crate::primitives::layout::sizing::Sizing;
-    use crate::primitives::math::animatable::Animatable;
-    use crate::renderer::frontend::encoder;
-    use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-    use crate::renderer::render_plan::RenderPlan;
-    use crate::scene::endpoint::Endpoint;
-    use crate::scene::layer::Layer;
-    use crate::scene::tree::node_id::NodeId;
-    use crate::ui::Ui;
-    use crate::ui::app::App;
-    use crate::ui::frame_report::FrameReport;
-    use crate::ui::resources::UiResources;
-    use crate::widget_core::configure::Configure;
-    use crate::widgets::panel::Panel;
-    use crate::window::window_token::WindowToken;
-    use glam::{UVec2, Vec2};
 
     /// The values one frame's record closure returned, one per record pass in run order, warmup
     /// left out. Pass A sees the one-frame edges; pass B, when one runs, runs after they are
     /// drained.
+    #[cfg(test)]
     #[derive(Debug)]
     pub(crate) struct Passes<R> {
         values: Vec<R>,
         report: FrameReport,
     }
 
+    #[cfg(test)]
     impl<R> Passes<R> {
         /// What the frame reported to its host.
         pub(crate) const fn report(&self) -> &FrameReport {
@@ -914,7 +886,18 @@ pub(crate) mod unit {
         }
     }
 
+    #[cfg(test)]
     impl Harness {
+        /// The CPU frontend every frame builds its draw list with.
+        pub(crate) const fn frontend(&self) -> &Frontend {
+            &self.core.frontend
+        }
+
+        /// The blurs the last frame ran, one per pane whose cached result went stale.
+        pub(crate) const fn backdrop_blurs(&self) -> usize {
+            self.core.backend().backdrop_blurs()
+        }
+
         /// A window of `size` that shapes with the mono fallback, whose metrics this crate's
         /// tests compute by hand.
         pub(crate) fn mono(size: UVec2) -> Self {

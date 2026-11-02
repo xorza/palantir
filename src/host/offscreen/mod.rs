@@ -9,6 +9,7 @@ use crate::display;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::render_target::RenderTarget;
+use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
 use crate::host::host_options::HostOptions;
@@ -101,7 +102,7 @@ impl OffscreenHostBuilder {
 
     /// Opts into GPU timestamp and pipeline-statistics collection; the device needs the wgpu features.
     pub const fn collect_gpu_stats(mut self, collect_gpu_stats: bool) -> Self {
-        self.options.collect_gpu_stats = collect_gpu_stats;
+        self.options.timing = FrameTiming::new(collect_gpu_stats);
         self
     }
 
@@ -176,14 +177,7 @@ impl OffscreenHost {
     pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder {
         OffscreenHostBuilder {
             gpu,
-            options: HostOptions {
-                fonts: FontScope::Bundled,
-                shaper: None,
-                collect_gpu_stats: false,
-                pixel_snap: true,
-                #[cfg(feature = "system-clipboard")]
-                system_clipboard: false,
-            },
+            options: HostOptions::new(FontScope::Bundled),
             strategy: PresentStrategy::BackbufferCopy,
             time: OffscreenTime::Realtime,
         }
