@@ -13,6 +13,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::editable_label::EditableLabel;
 use crate::widgets::panel::Panel;
+use crate::widgets::text_edit::edit_end::EditEnd;
 
 /// What one frame of a label reported, from its last pass.
 #[derive(Debug, Default, PartialEq)]
@@ -20,7 +21,9 @@ struct Shown {
     editing: bool,
     clicked: bool,
     drag_started: bool,
+    committed: bool,
     committed_text: Option<String>,
+    ended: Option<EditEnd>,
 }
 
 fn record(ui: &mut Ui, id: WidgetId, editable: bool) -> Shown {
@@ -32,7 +35,9 @@ fn record(ui: &mut Ui, id: WidgetId, editable: bool) -> Shown {
         editing: response.editing,
         clicked: response.response.clicked(),
         drag_started: response.response.left.drag.started(),
+        committed: response.committed,
         committed_text: response.committed_text,
+        ended: response.ended,
     }
 }
 
@@ -63,8 +68,9 @@ fn open(h: &mut Harness, id: WidgetId, editable: bool) {
 }
 
 /// The label holds its rect across the swap to its editor and back, for the default theme, with
-/// its padding and border, for a flat one, and for a padding the caller sets; in the flat one the
-/// text sits on the label's leading edge, where the editor draws it.
+/// its padding and border, for a flat one, for a padding the caller sets, and for a font size the
+/// caller sets, which reaches the editor too; in the flat one the text sits on the label's leading
+/// edge, where the editor draws it.
 #[test]
 fn the_label_and_its_editor_take_one_rect() {
     let flat = {
@@ -79,10 +85,12 @@ fn the_label_and_its_editor_take_one_rect() {
         }
         theme
     };
-    for (name, style, padding) in [
-        ("default", None, None),
-        ("flat", Some(&flat), None),
-        ("padded", None, Some(Spacing::new(9.0, 3.0, 5.0, 7.0))),
+    let mut heights = Vec::new();
+    for (name, style, padding, font_size) in [
+        ("default", None, None, None),
+        ("flat", Some(&flat), None, None),
+        ("padded", None, Some(Spacing::new(9.0, 3.0, 5.0, 7.0)), None),
+        ("large", None, None, Some(30.0)),
     ] {
         let id = WidgetId::from_hash(("label-rect", name));
         let mut h = harness();
@@ -91,10 +99,14 @@ fn the_label_and_its_editor_take_one_rect() {
             if let Some(padding) = padding {
                 label = label.padding(padding);
             }
+            if let Some(px) = font_size {
+                label = label.font_size(px);
+            }
             label.show(ui).editing
         };
         assert!(!h.frame_value(show));
         let idle = h.rect(id).expect("label arranged");
+        heights.push(idle.size.h);
         if style.is_some() {
             let text = h.rect(EditableLabel::label_id(id)).expect("text arranged");
             assert_eq!(text.min.x, idle.min.x, "{name}: text on the leading edge");
@@ -114,6 +126,7 @@ fn the_label_and_its_editor_take_one_rect() {
         assert!(!h.frame_value(show), "{name}: Escape closed the editor");
         assert_eq!(h.rect(id), Some(idle), "{name}: the label's rect again");
     }
+    assert!(heights[3] > heights[0], "the font size reached the label");
 }
 
 /// The editor opens with the whole text selected, so the first key replaces it; Enter commits
@@ -132,9 +145,12 @@ fn a_double_click_opens_the_editor_and_enter_commits() {
     h.key(Key::Char('Y'));
     let typed = h.frame_value(|ui| record(ui, id, true));
     assert!(typed.editing && typed.committed_text.is_none(), "{typed:?}");
+    assert!(!typed.committed && typed.ended.is_none(), "{typed:?}");
     h.key(Key::Enter);
     let committed = h.frame_value(|ui| record(ui, id, true));
     assert_eq!(committed.committed_text.as_deref(), Some("XY"));
+    assert!(committed.committed);
+    assert_eq!(committed.ended, Some(EditEnd::Submitted));
     let after = h.frame_value(|ui| record(ui, id, true));
     assert!(
         !after.editing && after.committed_text.is_none(),
@@ -225,14 +241,20 @@ fn escape_keeps_the_text() {
     h.key(Key::Escape);
     let escaped = h.frame_value(|ui| record(ui, id, true));
     assert_eq!(escaped.committed_text, None);
+    assert!(!escaped.committed);
+    assert_eq!(escaped.ended, Some(EditEnd::Canceled));
     assert!(!h.frame_value(|ui| record(ui, id, true)).editing);
-    open(&mut h, id, true);
+    // Opened by the caller: a double click here would land as the third and fourth clicks of a
+    // run, which open nothing.
+    EditableLabel::start_editing(h.ui(), id);
+    assert!(h.frame_value(|ui| record(ui, id, true)).editing);
     h.key(Key::Enter);
+    let unchanged = h.frame_value(|ui| record(ui, id, true));
     assert_eq!(
-        h.frame_value(|ui| record(ui, id, true)).committed_text,
-        None,
+        unchanged.committed_text, None,
         "the new session starts at the text, so Enter changes nothing"
     );
+    assert!(unchanged.committed, "and still commits");
 }
 
 /// A label that is not editable reports its clicks and opens nothing on a double click.
@@ -282,8 +304,6 @@ fn a_drag_on_the_label_reports_its_start() {
 /// F2 on the focused label opens the editor.
 #[test]
 fn a_caller_ends_the_edit_and_the_keys_open_it() {
-    use crate::widgets::text_edit::edit_end::EditEnd;
-
     let id = WidgetId::from_hash("label-stop");
     let mut h = harness();
     h.frame(|ui| {
@@ -301,6 +321,7 @@ fn a_caller_ends_the_edit_and_the_keys_open_it() {
         EditableLabel::stop_editing(h.ui(), id, end);
         let ended = h.frame_value(|ui| record(ui, id, true));
         assert_eq!(ended.committed_text.as_deref(), want, "{end:?}");
+        assert_eq!(ended.committed, want.is_some(), "{end:?}");
         assert!(!EditableLabel::is_editing(h.ui_ref(), id), "{end:?}");
         assert!(!h.frame_value(|ui| record(ui, id, true)).editing, "{end:?}");
     }

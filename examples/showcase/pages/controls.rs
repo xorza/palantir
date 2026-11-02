@@ -14,7 +14,7 @@ use palantir::{
 
 const M: Metrics = Metrics::DEFAULT;
 
-const REGIONS: [&str; 5] = [
+static REGIONS: [&str; 5] = [
     "Europe",
     "North America",
     "South America",
@@ -28,12 +28,12 @@ struct State {
     wifi: bool,
     bluetooth: bool,
     metered: bool,
-    region: usize,
+    region: &'static &'static str,
     volume: f64,
     fps: i64,
     syncing: bool,
     /// The progress bar's share, which the knob sets.
-    progress: f64,
+    progress: f32,
     /// Each disclosure demo holds one, so the state a collapsed body keeps or loses is visible.
     skipped_note: String,
     kept_note: String,
@@ -46,7 +46,7 @@ impl Default for State {
             wifi: true,
             bluetooth: false,
             metered: false,
-            region: 0,
+            region: &REGIONS[0],
             volume: 0.6,
             fps: 120,
             syncing: false,
@@ -219,7 +219,6 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             });
             support::row(ui, |ui| {
                 DragValue::new(&mut s.fps)
-                    .editable(true)
                     .speed(0.25)
                     .range(24.0..=240.0)
                     .decimals(0)
@@ -347,7 +346,7 @@ fn side(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                     unit: "",
                 }
                 .show(ui, k, &mut s.progress);
-                ProgressBar::new(s.progress as f32).show(ui);
+                ProgressBar::new(s.progress).show(ui);
                 Panel::hstack()
                     .gap(M.space.lg)
                     .child_align(Align::v(VAlign::Center))

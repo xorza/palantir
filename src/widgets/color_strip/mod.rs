@@ -1,6 +1,6 @@
 //! The one-axis bars of a color picker: hue, and alpha over its checker.
 
-use crate::input::keyboard::key::Key;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -15,7 +15,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::axis_keys::{AxisKeys, KeyPair, UNIT_PAGE, UNIT_STEP};
+use crate::widgets::axis_keys::{AxisKeys, UNIT_PAGE, UNIT_STEP};
 use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_surface;
 use crate::widgets::value_area::{AreaValue, ValueArea};
@@ -38,31 +38,16 @@ enum StripKind<'a> {
     Alpha(&'a mut RgbaF32),
 }
 
-const ALONG: AxisKeys = AxisKeys {
-    steps: &[KeyPair {
-        back: Key::ArrowLeft,
-        forward: Key::ArrowRight,
-    }],
-    page: Some(KeyPair {
-        back: Key::PageDown,
-        forward: Key::PageUp,
-    }),
-    ends: Some(KeyPair {
-        back: Key::Home,
-        forward: Key::End,
-    }),
-};
-
 impl<'a> ColorStrip<'a> {
-    #[track_caller]
     /// A strip over the hue of `coords`.
-    pub fn for_hue(coords: &'a mut ColorCoords) -> Self {
+    #[track_caller]
+    pub fn hue(coords: &'a mut ColorCoords) -> Self {
         Self::new(StripKind::Hue(coords))
     }
 
-    /// An alpha bar over `color`. Not named `alpha`, which is a picker setter.
+    /// An alpha bar over `color`.
     #[track_caller]
-    pub fn for_alpha(color: &'a mut RgbaF32) -> Self {
+    pub fn alpha(color: &'a mut RgbaF32) -> Self {
         Self::new(StripKind::Alpha(color))
     }
 
@@ -169,7 +154,7 @@ impl AreaValue for StripKind<'_> {
     }
 
     fn travel(&mut self, widget: &mut Widget, ui: &mut Ui) -> bool {
-        let travel = ALONG.read(widget, ui);
+        let travel = AxisKeys::SLIDER.read(widget, ui);
         let mut at = travel.on_unit_axis(self.read(), UNIT_STEP, UNIT_PAGE);
         if travel.end.is_none() && matches!(self, Self::Hue(_)) && !(0.0..=1.0).contains(&at) {
             // Steps wrap round the hue circle; positions do not (drag, Home, End clamp in
@@ -189,7 +174,7 @@ impl AreaValue for StripKind<'_> {
 
     fn underlay(&self, ui: &mut Ui, theme: &ColorPickerTheme, size: Size) {
         if self.paint().wants_checker() {
-            Checkerboard::new(theme).paint(ui, size);
+            Checkerboard::new(theme).paint(ui, Rect::new(0.0, 0.0, size.w, size.h));
         }
     }
 

@@ -305,23 +305,31 @@ fn arcs(ui: &mut Ui, k: Kit) {
     ));
 }
 
-const JOINS: [&str; 3] = ["Miter", "Bevel", "Round"];
-const CAPS: [&str; 3] = ["Butt", "Square", "Round"];
+static JOINS: [(&str, LineJoin); 3] = [
+    ("Miter", LineJoin::Miter),
+    ("Bevel", LineJoin::Bevel),
+    ("Round", LineJoin::Round),
+];
+static CAPS: [(&str, LineCap); 3] = [
+    ("Butt", LineCap::Butt),
+    ("Square", LineCap::Square),
+    ("Round", LineCap::Round),
+];
 
 /// The live stroke's knobs.
 #[derive(Debug)]
 struct LiveStroke {
-    width: f64,
-    join: usize,
-    cap: usize,
+    width: f32,
+    join: &'static (&'static str, LineJoin),
+    cap: &'static (&'static str, LineCap),
 }
 
 impl Default for LiveStroke {
     fn default() -> Self {
         Self {
             width: 10.0,
-            join: 0,
-            cap: 2,
+            join: &JOINS[0],
+            cap: &CAPS[2],
         }
     }
 }
@@ -342,19 +350,19 @@ fn live(ui: &mut Ui, k: Kit) {
                         unit: " px",
                     }
                     .show(ui, k, &mut l.width);
-                    for (label, pick, options) in
-                        [("join", &mut l.join, &JOINS), ("cap", &mut l.cap, &CAPS)]
-                    {
-                        Text::new(label).style(&k.t.caption()).show(ui);
-                        ComboBox::new(pick, options)
-                            .id_salt(label)
-                            .size((Sizing::fixed(100.0), Sizing::HUG))
-                            .show(ui);
-                    }
+                    Text::new("join").style(&k.t.caption()).show(ui);
+                    ComboBox::labeled(&mut l.join, &JOINS, |join| join.0)
+                        .id_salt("join")
+                        .size((Sizing::fixed(100.0), Sizing::HUG))
+                        .show(ui);
+                    Text::new("cap").style(&k.t.caption()).show(ui);
+                    ComboBox::labeled(&mut l.cap, &CAPS, |cap| cap.0)
+                        .id_salt("cap")
+                        .size((Sizing::fixed(100.0), Sizing::HUG))
+                        .show(ui);
                 });
-                let join = [LineJoin::Miter, LineJoin::Bevel, LineJoin::Round][l.join];
-                let cap = [LineCap::Butt, LineCap::Square, LineCap::Round][l.cap];
-                let width = l.width as f32;
+                let (join, cap) = (l.join.1, l.cap.1);
+                let width = l.width;
                 DemoCell::new("the knobs' polyline")
                     .size(480.0, 160.0)
                     .show(ui, k, |ui| {

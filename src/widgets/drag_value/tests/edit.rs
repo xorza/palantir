@@ -76,7 +76,6 @@ fn escape_reverts_the_draft_without_a_commit() {
     let live = |h: &mut Harness, value: &mut f64| {
         h.frame_value(|ui| {
             let r = DragValue::new(&mut *value)
-                .editable(true)
                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .id(live_id)
                 .show(ui);
@@ -207,9 +206,7 @@ fn disabling_mid_edit_discards_the_draft() {
     deferred_frame(&mut h, id, &mut canonical, TYPED);
 
     // Disabled while editing: focus is kicked and the draft discarded.
-    let s = deferred_frame(&mut h, id, &mut canonical, |d| {
-        d.editable(true).disabled(true)
-    });
+    let s = deferred_frame(&mut h, id, &mut canonical, |d| d.disabled(true));
     assert!(!s.a().committed, "locked control emits no commit");
     assert_eq!(h.focus(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
@@ -267,7 +264,6 @@ fn click_to_edit_reports_focus_on_the_same_frame() {
         h.frame_value(|ui| {
             let mut draft = *value;
             DragValue::new(&mut draft)
-                .editable(true)
                 .speed(1.0)
                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .id(id)
@@ -314,7 +310,6 @@ fn a_caller_starts_and_stops_the_edit() {
     let frame = |h: &mut Harness, value: &mut f64| {
         h.frame_value(|ui| {
             DragValue::new(&mut *value)
-                .editable(true)
                 .decimals(2)
                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .id(id)

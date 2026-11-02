@@ -162,6 +162,13 @@ Block
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
+BoundNum
+    enum BoundNum<'a>: Debug, From<&'a mut f32>, From<&'a mut f64>, From<&'a mut i32>, From<&'a mut i64>
+        I32(&'a mut i32)
+        I64(&'a mut i64)
+        F32(&'a mut f32)
+        F64(&'a mut f64)
+
 Brush
     enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<GradientBuilder<ConicGeometry>>, From<GradientBuilder<LinearGeometry>>, From<GradientBuilder<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, PartialEq, Serialize
         Solid(RgbaF32)
@@ -315,8 +322,7 @@ ColorPicker
         pub fn new(color: &'a mut RgbaF32) -> Self
         pub const fn alpha(self, alpha: bool) -> Self
         pub const fn model(self, model: ColorModel) -> Self
-        pub const fn history(self, history: bool) -> Self
-        pub const fn swatches(self, colors: &'a [RgbaF32]) -> Self
+        pub const fn swatches(self, row: SwatchRow<'a>) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub const fn color(&self) -> RgbaF32
@@ -336,8 +342,8 @@ ColorPickerTheme
         pub checker_light: RgbaF32
         pub checker_dark: RgbaF32
         pub checker_cell: f32
-        pub border: RgbaF32
-        pub border_width: f32
+        pub chip: ButtonTheme
+        pub disabled_veil: RgbaF32
         pub gap: f32
         pub popup: PopupTheme
         pub value: DragValueTheme
@@ -362,8 +368,8 @@ ColorScheme
 
 ColorStrip
     struct ColorStrip<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn for_hue(coords: &'a mut ColorCoords) -> Self
-        pub fn for_alpha(color: &'a mut RgbaF32) -> Self
+        pub fn hue(coords: &'a mut ColorCoords) -> Self
+        pub fn alpha(color: &'a mut RgbaF32) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
@@ -375,21 +381,21 @@ ColorSwatch
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 ComboBox
-    struct ComboBox<'a, S, L>: Configure, ThemeDefaults (blanket)
-        impl<'a, S: AsRef<str>> ComboBox<'a, S, fn(&S) -> &str>
-            pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self
-        impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L>
-            pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self
+    struct ComboBox<'a, 'o, S, L>: Configure, ThemeDefaults (blanket)
+        impl<'a, 'o, S: PartialEq + AsRef<str>> ComboBox<'a, 'o, S, fn(&S) -> &str>
+            pub fn new(selected: &'a mut &'o S, options: &'o [S]) -> Self
+        impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L>
+            pub fn labeled(selected: &'a mut &'o S, options: &'o [S], label: L) -> Self
             pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
             pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl ComboBox<'static, &'static str, fn(&&'static str) -> &'static str>
+        impl ComboBox<'static, 'static, &'static str, fn(&&'static str) -> &'static str>
             pub fn menu_id(id: WidgetId) -> WidgetId
             pub fn open(ui: &mut Ui, id: WidgetId)
             pub fn close(ui: &mut Ui, id: WidgetId)
             pub fn is_open(ui: &Ui, id: WidgetId) -> bool
-        impl<'a, S: Debug, L: Debug> Debug for ComboBox<'a, S, L>
+        impl<'a, 'o, S: Debug, L: Debug> Debug for ComboBox<'a, 'o, S, L>
 
 ComboBoxTheme
     struct ComboBoxTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -663,17 +669,13 @@ Drag
         pub const fn started(self) -> bool
         pub const fn stopped(self) -> bool
 
-DragNum
-    enum DragNum<'a>: Debug, From<&'a mut f64>, From<&'a mut i64>
-        I64(&'a mut i64)
-        F64(&'a mut f64)
-
 DragValue
     struct DragValue<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn new(value: impl Into<DragNum<'a>>) -> Self
+        pub fn new(value: impl Into<BoundNum<'a>>) -> Self
         pub const fn text_align(self, a: Align) -> Self
         pub const fn speed(self, speed: f64) -> Self
         pub const fn range(self, range: RangeInclusive<f64>) -> Self
+        pub const fn step(self, step: f64) -> Self
         pub const fn decimals(self, n: usize) -> Self
         pub fn suffix(self, text: impl Into<TextInput<'a>>) -> Self
         pub const fn editable(self, editable: bool) -> Self
@@ -708,6 +710,14 @@ EditableLabel
     struct EditableLabel<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TextEditTheme>>) -> Self
+        pub const fn color(self, color: RgbaF32) -> Self
+        pub const fn font_size(self, px: f32) -> Self
+        pub const fn line_height_factor(self, factor: f32) -> Self
+        pub const fn family(self, family: FontFamily) -> Self
+        pub const fn weight(self, weight: FontWeight) -> Self
+        pub const fn slant(self, slant: FontSlant) -> Self
+        pub const fn bold(self) -> Self
+        pub const fn italic(self) -> Self
         pub const fn editable(self, editable: bool) -> Self
         pub const fn max_chars(self, n: usize) -> Self
         pub fn show(self, ui: &mut Ui) -> EditableLabelResponse<'_>
@@ -720,7 +730,9 @@ EditableLabelResponse
     struct EditableLabelResponse<'a>: Debug
         pub response: Response<'a>
         pub editing: bool
+        pub committed: bool
         pub committed_text: Option<String>
+        pub ended: Option<EditEnd>
 
 Engagement
     enum Engagement: Clone, Copy, Debug, Eq, PartialEq
@@ -1974,8 +1986,8 @@ Separator
     struct Separator<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn horizontal() -> Self
         pub fn vertical() -> Self
+        pub fn along(axis: Axis) -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
-        pub const fn thickness(self, px: f32) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
@@ -2069,17 +2081,22 @@ Sizing
 
 Slider
     struct Slider<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self
+        pub fn new(value: impl Into<BoundNum<'a>>, range: RangeInclusive<f64>) -> Self
         pub const fn step(self, step: f64) -> Self
         pub const fn decimals(self, n: usize) -> Self
         pub fn style(self, s: impl Into<Option<&'a SliderTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
-SliderTheme
-    struct SliderTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+SliderColors
+    struct SliderColors: Animatable, Clone, Debug, Deserialize<'de>, PartialEq, Serialize
         pub track: RgbaF32
         pub fill: RgbaF32
         pub knob: RgbaF32
+
+SliderTheme
+    struct SliderTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+        pub enabled: SliderColors
+        pub disabled: SliderColors
         pub knob_size: f32
         pub track_thickness: f32
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
@@ -2164,7 +2181,9 @@ Splitter
     struct Splitter<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn row(ratio: &'a mut f32) -> Self
         pub fn col(ratio: &'a mut f32) -> Self
+        pub fn along(ratio: &'a mut f32, axis: Axis) -> Self
         pub const fn min_pane(self, px: f32) -> Self
+        pub const fn min_ratio(self, ratio: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a SplitterTheme>>) -> Self
         pub fn show(self, ui: &mut Ui, body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse<'_>
 
@@ -2249,6 +2268,12 @@ SurfaceUsages  [features: winit]
 
 SvgParseError
     struct SvgParseError: Debug, Display, Error
+
+SwatchRow
+    enum SwatchRow<'a>: Clone, Copy, Debug, Default, PartialEq
+        None
+        History
+        Fixed(&'a [RgbaF32])
 
 Switch
     struct Switch<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -3011,6 +3036,7 @@ widget::Configurator
         pub const fn default_child_align(&mut self, a: Align) -> &mut Self
         pub const fn default_justify(&mut self, j: Justify) -> &mut Self
         pub fn default_gap(&mut self, g: f32) -> &mut Self
+        pub fn default_line_gap(&mut self, g: f32) -> &mut Self
         pub fn default_min_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_max_size(&mut self, s: impl Into<Size>) -> &mut Self
         pub fn default_clip(&mut self, mode: ClipMode) -> &mut Self
@@ -3282,6 +3308,7 @@ widget::ThemeDefaults
         fn default_child_align(self, a: Align) -> Self { .. }
         fn default_justify(self, j: Justify) -> Self { .. }
         fn default_gap(self, g: f32) -> Self { .. }
+        fn default_line_gap(self, g: f32) -> Self { .. }
         fn default_min_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_max_size(self, s: impl Into<Size>) -> Self { .. }
         fn default_clip(self, mode: ClipMode) -> Self { .. }

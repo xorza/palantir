@@ -324,6 +324,14 @@ impl Configurator<'_> {
         self
     }
 
+    /// See [`ThemeDefaults::default_line_gap`](crate::widget_core::configure::ThemeDefaults::default_line_gap).
+    #[inline]
+    #[track_caller]
+    pub fn default_line_gap(&mut self, g: f32) -> &mut Self {
+        self.widget.node.fill_line_gap(g);
+        self
+    }
+
     /// See [`ThemeDefaults::default_min_size`](crate::widget_core::configure::ThemeDefaults::default_min_size).
     #[inline]
     #[track_caller]

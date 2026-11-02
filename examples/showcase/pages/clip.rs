@@ -94,8 +94,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     }
                     .show(ui, k, value);
                 }
-                let transform =
-                    TranslateScale::new(Vec2::new(t.dx as f32, t.dy as f32), t.scale as f32);
+                let transform = TranslateScale::new(Vec2::new(t.dx, t.dy), t.scale);
                 support::tiles(ui, |ui| {
                     DemoCell::new("the knobs' transform").show(ui, k, |ui| {
                         Panel::zstack()
@@ -131,9 +130,9 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 /// The transform demo's knobs: a move and a scale.
 #[derive(Debug)]
 struct TransformKnobs {
-    dx: f64,
-    dy: f64,
-    scale: f64,
+    dx: f32,
+    dy: f32,
+    scale: f32,
 }
 
 impl Default for TransformKnobs {
@@ -146,7 +145,7 @@ impl Default for TransformKnobs {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum Mode {
     None,
     Rect,
@@ -215,7 +214,7 @@ fn tile(ui: &mut Ui, k: Kit) {
         .show(ui);
 }
 
-const MODES: [(&str, Mode); 3] = [
+static MODES: [(&str, Mode); 3] = [
     ("None", Mode::None),
     ("Rect", Mode::Rect),
     ("Rounded", Mode::Rounded),
@@ -224,14 +223,14 @@ const MODES: [(&str, Mode); 3] = [
 /// The live card's knobs: its clip mode and its padding.
 #[derive(Debug)]
 struct LiveClip {
-    mode: usize,
-    padding: f64,
+    mode: &'static (&'static str, Mode),
+    padding: f32,
 }
 
 impl Default for LiveClip {
     fn default() -> Self {
         Self {
-            mode: 2,
+            mode: &MODES[2],
             padding: 0.0,
         }
     }
@@ -265,8 +264,8 @@ fn live(ui: &mut Ui, k: Kit) {
                 });
                 ClipCard {
                     label: "the knobs' card",
-                    mode: MODES[l.mode].1,
-                    padding: l.padding as f32,
+                    mode: l.mode.1,
+                    padding: l.padding,
                 }
                 .show(ui, k);
             });

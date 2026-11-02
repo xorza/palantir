@@ -73,15 +73,18 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
     live(ui, k);
 }
 
-const SPACES: [&str; 2] = ["linear RGB", "Oklab"];
+static SPACES: [(&str, Interpolation); 2] = [
+    ("linear RGB", Interpolation::Linear),
+    ("Oklab", Interpolation::Oklab),
+];
 
 /// The live gradient's knobs: two stops, the angle and the space they blend in.
 #[derive(Debug)]
 struct LiveGradient {
     from: RgbaF32,
     to: RgbaF32,
-    angle: f64,
-    space: usize,
+    angle: f32,
+    space: &'static (&'static str, Interpolation),
 }
 
 impl Default for LiveGradient {
@@ -90,7 +93,7 @@ impl Default for LiveGradient {
             from: RED,
             to: GREEN,
             angle: 0.0,
-            space: 1,
+            space: &SPACES[1],
         }
     }
 }
@@ -115,7 +118,7 @@ fn live(ui: &mut Ui, k: Kit) {
                     ColorButton::new(ColorPicker::new(&mut l.to))
                         .id_salt("to")
                         .show(ui);
-                    ComboBox::new(&mut l.space, &SPACES)
+                    ComboBox::labeled(&mut l.space, &SPACES, |space| space.0)
                         .size((Sizing::fixed(120.0), Sizing::HUG))
                         .show(ui);
                 });
@@ -126,8 +129,8 @@ fn live(ui: &mut Ui, k: Kit) {
                     unit: "°",
                 }
                 .show(ui, k, &mut l.angle);
-                let space = [Interpolation::Linear, Interpolation::Oklab][l.space];
-                let brush = LinearGradient::two_stop((l.angle as f32).to_radians(), l.from, l.to)
+                let space = l.space.1;
+                let brush = LinearGradient::two_stop((l.angle).to_radians(), l.from, l.to)
                     .with_interpolation(space);
                 DemoCell::new("the knobs' brush")
                     .size(360.0, TILE)

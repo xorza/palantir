@@ -38,7 +38,7 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
                 Separator::horizontal().show(ui).node(),
                 Separator::horizontal()
                     .style(&styled)
-                    .thickness(7.0)
+                    .size((Sizing::HUG, Sizing::fixed(7.0)))
                     .show(ui)
                     .node(),
             ]
@@ -69,13 +69,15 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
         "an unstyled rule still reads the global slot",
     );
     assert_eq!(
-        rects[thick.idx()].size.h,
-        7.0,
-        "an explicit thickness beats the styled bundle's 3",
+        rects[thick.idx()].size,
+        Size::new(400.0, 7.0),
+        "an explicit cross size beats the styled bundle's 3, and the Hug long axis still stretches",
     );
 }
 
-/// Explicit `.size(...)` replaces the Hug+Stretch default; an untouched horizontal rule stretches across the 400-wide FILL column at thickness 1.
+/// An explicit `.size(...)` replaces the default size, and the stretch stays while the long axis
+/// is `Hug`: a fixed rule is 50 × 3, an all-`Hug` one stretches to 400 at height 0, and an
+/// untouched one stretches across the 400-wide FILL column at thickness 1.
 #[test]
 fn explicit_size_overrides_stretch_default() {
     let trio = SizeTrio::of((Sizing::fixed(50.0), Sizing::fixed(3.0)), |ui, size| {
@@ -89,7 +91,7 @@ fn explicit_size_overrides_stretch_default() {
         trio,
         SizeTrio {
             sized: Size::new(50.0, 3.0),
-            hug: Size::ZERO,
+            hug: Size::new(400.0, 0.0),
             default: Size::new(400.0, 1.0),
         }
     );

@@ -95,7 +95,7 @@ const EXCLUDED: &[(&str, &str)] = &[
              steady-state dock frame against a surface of its own",
     ),
     (
-        "drag_num",
+        "bound_num",
         "a value binding, not a widget — `slider` and `drag_value` cover \
              both of its variants",
     ),

@@ -12,7 +12,7 @@ use crate::widgets::drag_value::DragValue;
 pub(super) type Settings = for<'a> fn(DragValue<'a>) -> DragValue<'a>;
 
 /// A drag value that a click opens to typing.
-pub(super) const TYPED: Settings = |d| d.editable(true);
+pub(super) const TYPED: Settings = |d| d;
 
 /// A drag value that only scrubs.
 pub(super) const SCRUB: Settings = |d| d.editable(false);

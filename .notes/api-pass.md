@@ -61,11 +61,6 @@ pass is a bug.
 - **A widget that shows one run of text carries Text's eight axis setters** (`color`, `font_size`,
   `line_height_factor`, `family`, `weight`, `slant`, `bold`, `italic`), stored as
   `TextStyleOverrides`.
-- **A pick binds a value on every picking widget**, as RadioButton binds `&mut T` against a value
-  and egui's `selectable_value` writes the picked value (decided, 1).
-- **A bound number is any of the crate's scalars**: `BoundNum` takes `f32`, `f64`, `i32` and `i64`,
-  as `f32` is the crate's own scalar. A closed set of scalars is an enum by the coding rules; egui
-  reaches the same reach with its `Numeric` trait.
 - **An edit a widget cannot perform itself is opt-in.** A tab is closable and draggable only when
   the caller says so, unless the widget applies the edit (the dock).
 - **A one-word input verb is the whole gesture**; its halves are named, as Playwright's keyboard
@@ -110,10 +105,6 @@ pass is a bug.
 Each choice was taken on 2026-11-02 with the owner; the refused option and the field's practice
 follow it.
 
-1. **A pick binds a value**: ComboBox takes `&mut T` among `&[T]`, as RadioButton does, and
-   darkroom's `offered_idx` goes. egui binds the value (`selectable_value`); iced's `pick_list` takes
-   the selected value. Refused: an index on both, which maps every RadioButton value to a position;
-   an index form beside the value form, as egui's `show_index`, a second way to pick.
 2. **A box shape starts at its owner's rect and takes `.at(rect)`**: `Shape::rect(r)` becomes
    `Shape::rect().at(r)`, and `owner_rect` and `owner_windowed_rect` go. A shape records before
    layout, so the owner rect is the one place every box shape can default to, as a SwiftUI
@@ -166,35 +157,6 @@ follow it.
 Batches run most harmful first. A batch changes palantir and darkroom together and leaves both
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
-
-### Batch 5: Value widgets
-
-- [ ] `DragNum` renamed `BoundNum`, with `Num` and `StoreRule` in its module, and `F32` and `I32`
-  variants with their `From<&mut f32>` and `From<&mut i32>`; a stored `f32` rounds after the snap.
-  About 30 `as f32` casts in the showcase go.
-- [ ] ComboBox binds a value (decided, 1): `new(selected: &'a mut T, options: &'a [T]) where T:
-  PartialEq + AsRef<str>` and `labeled(selected, options, label)`; a value not in `options` shows
-  `label(selected)`. Callers: 10 / 2; darkroom's `offered_idx` goes.
-- [ ] `DragValue::editable` defaults to `true`, as `EditableLabel::editable` does. Callers: 3 / 2
-  drop `.editable(true)`.
-- [ ] `ColorPicker::history(bool)` and `swatches(&[RgbaF32])` set one choice two ways. Target:
-  `swatches(SwatchRow<'a>)` with `None`, `History`, `Fixed(&'a [RgbaF32])`.
-- [ ] `ColorButton::style` overwrites the style of the picker handed in. Target: it styles the chip
-  and the popup only.
-- [ ] `EditableLabel`: Text's eight axis setters; `EditableLabelResponse` gains `committed` and
-  `ended: Option<EditEnd>`, as `TextEditResponse` has. Darkroom's bold `FlatTextEdit` goes.
-- [ ] One key map per role in `axis_keys`: a slider map for Slider and ColorStrip, a spin-button map
-  with Page Up/Down and Home/End for DragValue; `DragValue::step` means what `Slider::step` means,
-  a snap that is also the arrow unit.
-- [ ] `ColorStrip::hue` and `alpha` in place of `for_hue` and `for_alpha`. Callers: 4 / 0.
-- [ ] Disabled looks for Slider and the color widgets; hover and press looks for ColorButton and
-  ColorSwatch through a button-shaped slot in `ColorPickerTheme`, applied by `wear`.
-- [ ] `Splitter::along(ratio, axis)` and a public `Separator::along(axis)`, beside the `row`/`col`
-  pairs, as `Panel::stack(axis)` is.
-- [ ] `Separator::thickness` repeats `Configure::size` on the cross axis. Target: the long-axis
-  stretch applies whenever that axis is `Hug`, and `thickness` goes (0 callers).
-- [ ] `Splitter::min_ratio` public, with a release `assert!` and `# Panics`, as Dock needs it.
-- [ ] `default_line_gap` in `ThemeDefaults`, with its `Configurator` twin.
 
 ### Batch 6: Input, players and hosts
 
@@ -292,7 +254,7 @@ visual`. Counts are call sites outside the defining file: palantir / darkroom.
   `const_editor_theme.rs` edits one copy.
 - [ ] `Theme::frost_floats` without the `Palette`: the inks come from the theme; a bare popup's ink
   is `context_menu.item.shortcut`.
-- [ ] Names: `ColorPickerTheme::border` and `border_width` become `border: Stroke`; `DockTheme`'s
+- [ ] Names: `DockTheme`'s
   `preview_fill`, `preview_stroke`, `preview_radius` become `preview: Chrome`; `SplitterTheme`'s
   `hovered`, `active` become `rule_hovered`, `rule_active`; `SpinnerTheme::min_width` becomes
   `min_stroke_width`; `Palette::window_bg` and `Theme::window_clear` take one name;

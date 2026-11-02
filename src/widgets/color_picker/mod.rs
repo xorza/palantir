@@ -21,6 +21,7 @@ use crate::widget_core::value_response::{ValueEdges, ValueResponse};
 use crate::widget_core::widget::Widget;
 use crate::widgets::color_field::ColorField;
 use crate::widgets::color_picker::history::History;
+use crate::widgets::color_picker::swatch_row::SwatchRow;
 use crate::widgets::color_strip::ColorStrip;
 use crate::widgets::color_surface;
 use crate::widgets::color_swatch::ColorSwatch;
@@ -34,6 +35,7 @@ use std::fmt::Write as _;
 use std::rc::Rc;
 
 mod history;
+pub(crate) mod swatch_row;
 
 /// A color picker: the saturation/value field, a hue bar, an optional alpha
 /// bar, a preview chip, the channel values, the model switch and a swatch row.
@@ -60,21 +62,9 @@ pub struct ColorPicker<'a> {
     color: &'a mut RgbaF32,
     alpha: bool,
     model: Option<ColorModel>,
-    swatches: Swatches<'a>,
+    swatches: SwatchRow<'a>,
     texel_size: u32,
     style: Option<&'a ColorPickerTheme>,
-}
-
-/// Where the swatch row's colors come from, if it shows. One field with two
-/// setters, so the last call wins and none can conflict.
-#[derive(Debug)]
-enum Swatches<'a> {
-    /// No row. The default.
-    Hidden,
-    /// The picker keeps its own, seeded with presets.
-    Owned,
-    /// The app owns the row and the picker only reads it.
-    Given(&'a [RgbaF32]),
 }
 
 /// What one picker keeps between frames.
@@ -98,7 +88,7 @@ impl<'a> ColorPicker<'a> {
             color,
             alpha: false,
             model: None,
-            swatches: Swatches::Hidden,
+            swatches: SwatchRow::None,
             texel_size: color_surface::TEXEL_SIZE,
             style: None,
         }
@@ -116,21 +106,9 @@ impl<'a> ColorPicker<'a> {
         self
     }
 
-    /// Show a swatch row the picker fills itself: presets, with each committed
-    /// pick moving to the front. Replaces [`swatches`](Self::swatches).
-    pub const fn history(mut self, history: bool) -> Self {
-        self.swatches = if history {
-            Swatches::Owned
-        } else {
-            Swatches::Hidden
-        };
-        self
-    }
-
-    /// Show a swatch row the app owns; clicking picks, and the picker never
-    /// writes the slice. Replaces [`history`](Self::history).
-    pub const fn swatches(mut self, colors: &'a [RgbaF32]) -> Self {
-        self.swatches = Swatches::Given(colors);
+    /// The swatch row under the panel. [`SwatchRow::None`] by default.
+    pub const fn swatches(mut self, row: SwatchRow<'a>) -> Self {
+        self.swatches = row;
         self
     }
 
@@ -218,7 +196,7 @@ struct Inputs<'a> {
     color: &'a mut RgbaF32,
     alpha_on: bool,
     pinned: Option<ColorModel>,
-    swatches: Swatches<'a>,
+    swatches: SwatchRow<'a>,
     texel_size: u32,
 }
 
@@ -382,7 +360,7 @@ impl Inputs<'_> {
                     .gap(gap)
                     .size((Sizing::FILL, Sizing::HUG))
                     .show(ui, |ui| {
-                        let hue = ColorStrip::for_hue(&mut state.coords)
+                        let hue = ColorStrip::hue(&mut state.coords)
                             .texel_size(texel_size)
                             .style(theme)
                             .id(id.with("hue"))
@@ -393,7 +371,7 @@ impl Inputs<'_> {
                         writes.remember |= hue.committed && hue.response.left.released();
                         if alpha_on {
                             let mut working = preview;
-                            let strip = ColorStrip::for_alpha(&mut working)
+                            let strip = ColorStrip::alpha(&mut working)
                                 .texel_size(texel_size)
                                 .style(theme)
                                 .id(id.with("alpha"))
@@ -420,7 +398,7 @@ impl Inputs<'_> {
         if pinned.is_none() {
             rows.model_switch(ui, gap);
         }
-        rows.swatch_row(ui, &swatches);
+        rows.swatch_row(ui, swatches);
 
         let Rows { state, writes, .. } = rows;
         apply(state, color, writes)
@@ -604,13 +582,13 @@ impl Rows<'_> {
     }
 
     /// The preset or history row. Clicking a swatch picks it outright.
-    fn swatch_row(&mut self, ui: &mut Ui, swatches: &Swatches<'_>) {
+    fn swatch_row(&mut self, ui: &mut Ui, swatches: SwatchRow<'_>) {
         let id = self.id;
         let theme = self.theme;
         let colors: &[RgbaF32] = match swatches {
-            Swatches::Hidden => return,
-            Swatches::Owned => self.state.history.colors(),
-            Swatches::Given(given) => given,
+            SwatchRow::None => return,
+            SwatchRow::History => self.state.history.colors(),
+            SwatchRow::Fixed(colors) => colors,
         };
         let mut picked = None;
         Panel::wrap_hstack()

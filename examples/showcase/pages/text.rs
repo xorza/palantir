@@ -17,15 +17,15 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
 /// The wrapping demo's knobs.
 #[derive(Debug)]
 struct State {
-    width: f64,
-    font_size: f64,
+    width: f32,
+    font_size: f32,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
             width: 240.0,
-            font_size: f64::from(M.text.body),
+            font_size: M.text.body,
         }
     }
 }
@@ -75,8 +75,8 @@ fn wrapping(ui: &mut Ui, k: Kit, s: &mut State) {
             .show(ui, k, &mut s.font_size);
             WrapPanel {
                 id: "live",
-                width: s.width as f32,
-                font_size: s.font_size as f32,
+                width: s.width,
+                font_size: s.font_size,
                 text: PARAGRAPH,
             }
             .show(ui, k);

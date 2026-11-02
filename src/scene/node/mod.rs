@@ -198,6 +198,18 @@ impl Node {
         }
     }
 
+    /// # Panics
+    ///
+    /// Unless `gap` is a *gap*.
+    #[inline]
+    #[track_caller]
+    pub(crate) fn fill_line_gap(&mut self, gap: f32) {
+        domain::gap(gap);
+        if self.gaps.line_gap().is_none() {
+            self.gaps.set_line_gap(gap);
+        }
+    }
+
     /// Fills each axis of `align` the caller left `Auto`, leaving the other alone.
     #[inline]
     pub(crate) const fn fill_align(&mut self, value: Align) {

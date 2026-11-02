@@ -399,7 +399,7 @@ pub(crate) struct Knob {
 
 impl Knob {
     #[track_caller]
-    pub(crate) fn show(self, ui: &mut Ui, k: Kit, value: &mut f64) {
+    pub(crate) fn show(self, ui: &mut Ui, k: Kit, value: &mut f32) {
         let decimals = self.decimals();
         Panel::hstack()
             .auto_id()

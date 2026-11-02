@@ -30,7 +30,6 @@ fn editing_a_long_value_holds_the_field_width() {
             .size((Sizing::HUG, Sizing::HUG))
             .show(ui, |ui| {
                 DragValue::new(v)
-                    .editable(true)
                     .decimals(3)
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .min_size((40.0, 0.0))
@@ -73,7 +72,6 @@ fn editing_under_a_scaled_canvas_does_not_panic() {
             .size((Sizing::fixed(120.0), Sizing::fixed(60.0)))
             .show(ui, |ui| {
                 DragValue::new(v)
-                    .editable(true)
                     .decimals(3)
                     .size((Sizing::fill(1.0), Sizing::HUG))
                     .min_size((100.0, 0.0))
@@ -127,7 +125,6 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 DragValue::new(&mut v)
-                    .editable(true)
                     .id(id)
                     .padding(padding)
                     .margin(margin)
@@ -177,7 +174,6 @@ fn entering_edit_mode_keeps_the_chips_box() {
             .gap(8.0)
             .show(ui, |ui| {
                 DragValue::new(v)
-                    .editable(true)
                     .range(24.0..=240.0)
                     .decimals(0)
                     .suffix(" fps")

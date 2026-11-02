@@ -98,6 +98,9 @@ impl ValueArea<'_> {
             });
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             value.marker(ui, theme, size);
+            if response.disabled {
+                ui.add_shape(Shape::owner_rect().fill(theme.disabled_veil));
+            }
         });
         ValueResponse {
             response: Response::new(ui, response),
@@ -115,6 +118,7 @@ mod tests {
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::color_coords::ColorCoords;
+    use crate::scene::layer::Layer;
     use crate::ui::Ui;
     use crate::widget_core::configure::Configure;
     use crate::widget_core::value_response::ValueEdges;
@@ -124,7 +128,8 @@ mod tests {
 
     /// One area of `surface` over `value`, shown by `show` (disabled when its flag is set) and
     /// read by `read`: Home moves the value to 0 and commits in that one frame, a second Home
-    /// moves nothing and reports nothing, and a disabled area takes no press at its center.
+    /// moves nothing and reports nothing, and a disabled area takes no press at its center and
+    /// lays the veil over its colors, one shape past the enabled area's.
     fn check<T>(
         label: &str,
         surface: UVec2,
@@ -154,6 +159,11 @@ mod tests {
             "{label}: a key that moves nothing"
         );
 
+        let shapes = |h: &Harness| {
+            let node = h.node_of(id).expect("the area recorded").node;
+            h.ui_ref().tree(Layer::Main).shapes_of(node).count()
+        };
+        let enabled = shapes(&h);
         let before = read(&value);
         h.press(surface.as_vec2() / 2.0, PointerButton::Left);
         assert_eq!(
@@ -166,6 +176,7 @@ mod tests {
             before,
             "{label}: a disabled area writes nothing"
         );
+        assert_eq!(shapes(&h), enabled + 1, "{label}: the veil");
     }
 
     /// Both values the color picker's areas write keep the area's protocol: the field's
@@ -192,7 +203,7 @@ mod tests {
             UVec2::new(208, 14),
             RgbaF32::hex(0x4cd3ff).with_alpha(0.5),
             |ui, color, disabled| {
-                ColorStrip::for_alpha(color)
+                ColorStrip::alpha(color)
                     .id(WidgetId::from_hash("value-area"))
                     .disabled(disabled)
                     .show(ui)

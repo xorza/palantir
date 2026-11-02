@@ -8,8 +8,8 @@ use crate::support;
 use crate::support::{Kit, Section, Swatches};
 use palantir::{
     Align, Button, Chrome, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker,
-    ColorStrip, ColorSwatch, Configure, Metrics, Panel, RgbaF32, Shadow, Sizing, Ui, VAlign,
-    WidgetId,
+    ColorStrip, ColorSwatch, Configure, Metrics, Panel, RgbaF32, Shadow, Sizing, SwatchRow, Ui,
+    VAlign, WidgetId,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -43,7 +43,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let state_id = WidgetId::from_hash("showcase::colors::state");
     ui.with_state::<Option<State>, _>(state_id, |ui, state| {
         let state = state.get_or_insert_with(|| State::new(k.swatch));
-        Section::new("Picker").apis(&[api!(ColorPicker::alpha), api!(ColorPicker::history)]).show(ui, k, |ui| {
+        Section::new("Picker").apis(&[api!(ColorPicker::alpha), api!(ColorPicker::swatches)]).show(ui, k, |ui| {
                 support::note(ui, k,
                     "The whole panel: field, hue and alpha bars, preview, channel values, the \
                      model switch, and a swatch row the picker keeps itself. The second panel \
@@ -53,7 +53,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                     panel(ui, |ui| {
                         let picked = ColorPicker::new(&mut state.picked)
                             .alpha(true)
-                            .history(true)
+                            .swatches(SwatchRow::History)
                             .show(ui);
                         if picked.committed {
                             if state.recent.len() == RECENT {
@@ -64,7 +64,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                     });
                     panel(ui, |ui| {
                         ColorPicker::new(&mut state.accent)
-                            .swatches(&state.recent)
+                            .swatches(SwatchRow::Fixed(&state.recent))
                             .show(ui);
                     });
                 });
@@ -86,7 +86,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
 
         Section::new("Parts").apis(&[
                 api!(ColorField::new),
-                api!(ColorStrip::for_hue),
+                api!(ColorStrip::hue),
                 api!(ColorField::texel_size),
             ]).show(ui, k, |ui| {
                 support::note(ui, k,
@@ -103,7 +103,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                             .gap(M.space.sm)
                             .size((Sizing::fixed(180.0), Sizing::HUG))
                             .show(ui, |ui| {
-                                ColorStrip::for_hue(&mut state.parts)
+                                ColorStrip::hue(&mut state.parts)
                                     .size((Sizing::FILL, Sizing::fixed(14.0)))
                                     .show(ui);
                                 ColorSwatch::new(state.parts.to_color())
@@ -124,7 +124,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                  holds. Click outside or press Escape to close it.",
             );
             support::row(ui, |ui| {
-                ColorButton::new(ColorPicker::new(&mut state.port).alpha(true).history(true))
+                ColorButton::new(ColorPicker::new(&mut state.port).alpha(true).swatches(SwatchRow::History))
                     .show(ui);
                 ColorSwatch::new(state.port).show(ui);
             });

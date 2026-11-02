@@ -13,7 +13,7 @@ use palantir::{
 
 const M: Metrics = Metrics::DEFAULT;
 
-const PLANS: [&str; 3] = ["Free", "Pro", "Team"];
+static PLANS: [&str; 3] = ["Free", "Pro", "Team"];
 const LIST: [&str; 5] = ["Inbox", "Drafts", "Sent", "Archive", "Trash"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -31,7 +31,7 @@ struct State {
     dark: bool,
     volume: f64,
     size: Size,
-    plan: usize,
+    plan: &'static &'static str,
     seats: i64,
     search: String,
     picked: usize,
@@ -53,7 +53,7 @@ impl Default for State {
             dark: false,
             volume: 0.4,
             size: Size::Medium,
-            plan: 1,
+            plan: &PLANS[1],
             seats: 3,
             search: String::new(),
             picked: 0,
@@ -212,7 +212,6 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
             let r = DragValue::new(&mut s.seats)
                 .range(1.0..=50.0)
                 .speed(0.1)
-                .editable(true)
                 .grid_cell((7, 1))
                 .size((Sizing::fixed(100.0), Sizing::HUG))
                 .show(ui);
@@ -465,7 +464,7 @@ fn ring(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                  one is picked here.",
             );
             let ring = look.ring(ui.color_scheme());
-            let mut width = f64::from(ring.width);
+            let mut width = ring.width;
             let mut color = ring.color;
             let mut reset = false;
             support::row(ui, |ui| {
@@ -482,7 +481,7 @@ fn ring(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                 look.reset_ring();
                 return;
             }
-            look.set_ring_width(width as f32);
+            look.set_ring_width(width);
             if color != ring.color {
                 look.set_ring_color(color);
             }

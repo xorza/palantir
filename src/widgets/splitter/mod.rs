@@ -63,18 +63,20 @@ impl<'a> Splitter<'a> {
     /// share.
     #[track_caller]
     pub fn row(ratio: &'a mut f32) -> Self {
-        Self::new(ratio, Axis::X)
+        Self::along(ratio, Axis::X)
     }
 
     /// Stacked panes with a horizontal divider bar; `ratio` is the top pane's
     /// share.
     #[track_caller]
     pub fn col(ratio: &'a mut f32) -> Self {
-        Self::new(ratio, Axis::Y)
+        Self::along(ratio, Axis::Y)
     }
 
+    /// Panes laid along `axis`, with the divider bar across it; `ratio` is the first pane's
+    /// share. [`Axis::X`] is [`Self::row`].
     #[track_caller]
-    fn new(ratio: &'a mut f32, axis: Axis) -> Self {
+    pub fn along(ratio: &'a mut f32, axis: Axis) -> Self {
         Self {
             widget: Widget::grid(),
             ratio,
@@ -99,9 +101,15 @@ impl<'a> Splitter<'a> {
 
     /// Floor either pane's share of the free space at `ratio` while dragging, beside
     /// [`Self::min_pane`]'s length, for an owner that clamps the ratio it stores: a drag
-    /// past that clamp would snap back on release.
-    pub(crate) const fn min_ratio(mut self, ratio: f32) -> Self {
-        debug_assert!(ratio >= 0.0 && ratio <= 0.5, "a ratio floor is in 0..=0.5");
+    /// past that clamp would snap back on release. Default `0.0`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `ratio` is in `0.0..=0.5`, as two floors above a half cannot both hold.
+    #[track_caller]
+    pub const fn min_ratio(mut self, ratio: f32) -> Self {
+        assert!(ratio >= 0.0, "a ratio floor must be at least 0.0");
+        assert!(ratio <= 0.5, "a ratio floor must be at most 0.5");
         self.min_ratio = ratio;
         self
     }

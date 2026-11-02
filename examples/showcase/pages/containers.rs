@@ -89,14 +89,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                 }
                 .show(ui, k, &mut w.line_gap);
                 Panel::vstack()
-                    .size((Sizing::fixed(w.width as f32), Sizing::HUG))
+                    .size((Sizing::fixed(w.width), Sizing::HUG))
                     .padding(M.space.lg)
                     .chrome(k.t.card())
                     .show(ui, |ui| {
                         Panel::wrap_hstack()
                             .size((Sizing::FILL, Sizing::HUG))
-                            .gap(w.gap as f32)
-                            .line_gap(w.line_gap as f32)
+                            .gap(w.gap)
+                            .line_gap(w.line_gap)
                             .show(ui, |ui| {
                                 for (i, t) in TAGS.iter().enumerate() {
                                     chip(ui, k, ("tag", i), t);
@@ -207,9 +207,9 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 /// The wrapping flow's knobs.
 #[derive(Debug)]
 struct WrapKnobs {
-    width: f64,
-    gap: f64,
-    line_gap: f64,
+    width: f32,
+    gap: f32,
+    line_gap: f32,
 }
 
 impl Default for WrapKnobs {

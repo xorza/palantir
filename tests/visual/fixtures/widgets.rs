@@ -6,8 +6,8 @@ use palantir::widget::Shape;
 use palantir::{
     Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorScheme,
     ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Modal, Panel,
-    ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, Switch,
-    Text, TextEdit, Ui,
+    ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, SwatchRow,
+    Switch, Text, TextEdit, Ui,
 };
 
 use crate::fixtures;
@@ -346,9 +346,10 @@ fn drag_value_matches_golden() {
 #[test]
 fn combo_box_closed_matches_golden() {
     let opts = ["Apple", "Banana", "Cherry"];
+    let mut selected = &opts[1];
     GoldenName::ComboBoxClosed.assert_scene(UVec2::new(220, 70), |ui| {
         padded(ui, 16.0, |ui| {
-            ComboBox::new(&mut 1, &opts)
+            ComboBox::new(&mut selected, &opts)
                 .size((Sizing::fixed(160.0), Sizing::HUG))
                 .id_salt("cb")
                 .show(ui);
@@ -390,9 +391,9 @@ fn color_field_and_bars_match_golden() {
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {
                             ColorField::new(&mut coords).id_salt("field").show(ui);
-                            ColorStrip::for_hue(&mut coords).id_salt("hue").show(ui);
+                            ColorStrip::hue(&mut coords).id_salt("hue").show(ui);
                             let mut translucent = coords.to_color().with_alpha(0.6);
-                            ColorStrip::for_alpha(&mut translucent)
+                            ColorStrip::alpha(&mut translucent)
                                 .id_salt("alpha")
                                 .show(ui);
                         });
@@ -410,7 +411,7 @@ fn color_picker_panel_matches_golden() {
         padded(ui, 12.0, |ui| {
             ColorPicker::new(&mut color)
                 .alpha(true)
-                .history(true)
+                .swatches(SwatchRow::History)
                 .id_salt("picker")
                 .show(ui);
         });

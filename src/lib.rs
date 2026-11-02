@@ -64,7 +64,7 @@
 //!   ([`Theme::button`], [`Theme::slider`]).
 //! - **`style(&…Theme)`** overrides the bundle for one call site; it takes an
 //!   `Option`, so `.style(overrides.as_ref())` works.
-//! - **A per-axis setter** ([`Text::color`], [`Separator::thickness`],
+//! - **A per-axis setter** ([`Text::color`], [`Separator::color`],
 //!   [`Spinner::width`], [`Modal::scrim`]) overrides one field.
 //!
 //! The third door exists only where an axis has one meaning: [`Separator`] draws
@@ -382,7 +382,7 @@ pub use theme::scheme_preference::SchemePreference;
 pub use theme::scrollbar::ScrollbarTheme;
 pub use theme::selection::Selection;
 pub use theme::separator::SeparatorTheme;
-pub use theme::slider::SliderTheme;
+pub use theme::slider::{SliderColors, SliderTheme};
 pub use theme::spinner::SpinnerTheme;
 pub use theme::splitter::SplitterTheme;
 pub use theme::tab_strip_focus::TabStripFocus;
@@ -402,12 +402,14 @@ pub use widget_core::overlay_response::{OverlayClose, OverlayResponse};
 pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 pub use widget_core::value_response::ValueResponse;
 pub use widgets::block::Block;
+pub use widgets::bound_num::BoundNum;
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::close_handle::CloseHandle;
 pub use widgets::color_button::ColorButton;
 pub use widgets::color_field::ColorField;
 pub use widgets::color_picker::ColorPicker;
+pub use widgets::color_picker::swatch_row::SwatchRow;
 pub use widgets::color_strip::ColorStrip;
 pub use widgets::color_swatch::ColorSwatch;
 pub use widgets::combo_box::ComboBox;
@@ -422,7 +424,6 @@ pub use widgets::dock::dock_view::DockView;
 pub use widgets::dock::error::DockError;
 pub use widgets::dock::split_side::{SplitDirection, SplitSide};
 pub use widgets::dock::tab_group::{TabGroup, TabGroupId};
-pub use widgets::drag_num::DragNum;
 pub use widgets::drag_value::DragValue;
 pub use widgets::editable_label::{EditableLabel, EditableLabelResponse};
 pub use widgets::expander::Expander;

@@ -476,6 +476,19 @@ pub trait ThemeDefaults: Configure {
         self
     }
 
+    /// Spacing between lines to fall back on when the caller set none.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `g` is a [gap](crate::widget::domain::gap), even where the caller set one.
+    #[inline]
+    #[must_use]
+    #[track_caller]
+    fn default_line_gap(mut self, g: f32) -> Self {
+        self.configure().default_line_gap(g);
+        self
+    }
+
     /// Lower size bound to fall back on when the caller set none.
     ///
     /// # Panics

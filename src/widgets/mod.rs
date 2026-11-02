@@ -8,6 +8,7 @@
 
 pub(crate) mod axis_keys;
 pub(crate) mod block;
+pub(crate) mod bound_num;
 pub(crate) mod button;
 pub(crate) mod checkbox;
 pub(crate) mod checkerboard;
@@ -20,7 +21,6 @@ pub(crate) mod color_surface;
 pub(crate) mod color_swatch;
 pub(crate) mod combo_box;
 pub(crate) mod dock;
-pub(crate) mod drag_num;
 pub(crate) mod drag_value;
 pub(crate) mod editable_label;
 pub(crate) mod expander;

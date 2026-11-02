@@ -210,7 +210,7 @@ fn the_widgets_own_sense_survives_every_builder_order() {
         );
         nodes.push(
             DragValue::new(&mut value)
-                .editable(true)
+                .editable(false)
                 .auto_id()
                 .show(ui)
                 .response
@@ -218,8 +218,8 @@ fn the_widgets_own_sense_survives_every_builder_order() {
         );
         nodes.push(
             DragValue::new(&mut value)
-                .editable(true)
                 .editable(false)
+                .editable(true)
                 .auto_id()
                 .show(ui)
                 .response
@@ -235,10 +235,13 @@ fn the_widgets_own_sense_survives_every_builder_order() {
         );
     });
     let want = [
-        ("plain", Sense::DRAG),
-        ("editable", Sense::CLICK | Sense::DRAG),
-        ("toggled back off", Sense::DRAG),
-        ("caller's own scroll", Sense::SCROLL | Sense::DRAG),
+        ("plain", Sense::CLICK | Sense::DRAG),
+        ("not editable", Sense::DRAG),
+        ("toggled back on", Sense::CLICK | Sense::DRAG),
+        (
+            "caller's own scroll",
+            Sense::SCROLL | Sense::CLICK | Sense::DRAG,
+        ),
     ];
     let attrs = h.ui().tree(Layer::Main).records.attrs();
     for (node, (case, sense)) in nodes.into_iter().zip(want) {

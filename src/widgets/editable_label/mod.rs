@@ -10,8 +10,14 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::math::domain;
+use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::text::text_input::TextInput;
+use crate::text::font_family::FontFamily;
+use crate::text::font_slant::FontSlant;
+use crate::text::font_weight::FontWeight;
 use crate::theme::text_edit::TextEditTheme;
+use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
@@ -46,6 +52,7 @@ pub struct EditableLabel<'a> {
     widget: Widget,
     text: TextInput<'a>,
     style: Option<&'a TextEditTheme>,
+    overrides: TextStyleOverrides,
     editable: bool,
     max_chars: Option<usize>,
 }
@@ -61,6 +68,7 @@ impl<'a> EditableLabel<'a> {
                 .input_scope(KeyFilter::ENTER),
             text: text.into(),
             style: None,
+            overrides: TextStyleOverrides::NONE,
             editable: true,
             max_chars: None,
         }
@@ -69,6 +77,71 @@ impl<'a> EditableLabel<'a> {
     /// Per-instance override of [`Theme::text_edit`](crate::Theme::text_edit), for the label and its editor.
     pub fn style(mut self, s: impl Into<Option<&'a TextEditTheme>>) -> Self {
         self.style = s.into();
+        self
+    }
+
+    /// Fill color of the text, overriding the resolved look's, on the label and in its editor.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `color` is a [color](crate::widget::domain::color).
+    #[track_caller]
+    pub const fn color(mut self, color: RgbaF32) -> Self {
+        self.overrides.color = Some(domain::color(color));
+        self
+    }
+
+    /// Font size in logical px, a *length*, overriding the resolved look's; named apart from
+    /// [`Configure::size`].
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `px` is a [length](crate::widget::domain::length).
+    #[track_caller]
+    pub const fn font_size(mut self, px: f32) -> Self {
+        self.overrides.font_size = Some(domain::length(px));
+        self
+    }
+
+    /// Line height as a multiple of the font size, overriding the resolved look's. `factor`:
+    /// *positive*.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
+    #[track_caller]
+    pub const fn line_height_factor(mut self, factor: f32) -> Self {
+        self.overrides.line_height_factor = Some(domain::positive(factor));
+        self
+    }
+
+    /// Family to shape against, overriding the resolved look's.
+    pub const fn family(mut self, family: FontFamily) -> Self {
+        self.overrides.family = Some(family);
+        self
+    }
+
+    /// Weight to shape against; [`Self::bold`] is `FontWeight::BOLD`.
+    pub const fn weight(mut self, weight: FontWeight) -> Self {
+        self.overrides.weight = Some(weight);
+        self
+    }
+
+    /// Upright or italic; [`Self::italic`] is `FontSlant::Italic`.
+    pub const fn slant(mut self, slant: FontSlant) -> Self {
+        self.overrides.slant = Some(slant);
+        self
+    }
+
+    /// Shape the text bold.
+    pub const fn bold(mut self) -> Self {
+        self.overrides.weight = Some(FontWeight::BOLD);
+        self
+    }
+
+    /// Shape the text italic; the weight is untouched, so `.bold().italic()` is bold italic.
+    pub const fn italic(mut self) -> Self {
+        self.overrides.slant = Some(FontSlant::Italic);
         self
     }
 
@@ -114,7 +187,9 @@ impl<'a> EditableLabel<'a> {
             && (self.widget.shortcut_pressed(ui, Key::Enter) | ui.shortcut_pressed(Key::F2));
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.text_edit);
-        let text = slot.looks.normal.text.apply(&theme.text);
+        let text = self
+            .overrides
+            .apply(&slot.looks.normal.text.apply(&theme.text));
         let min = self.floor(text.line_height());
         let reserve =
             text_layout::single_line_caret_reserve(text_layout::caret_room(slot.caret_width));
@@ -145,7 +220,9 @@ impl<'a> EditableLabel<'a> {
         EditableLabelResponse {
             response: Response::new(ui, response),
             editing: false,
+            committed: false,
             committed_text: None,
+            ended: None,
         }
     }
 
@@ -153,7 +230,9 @@ impl<'a> EditableLabel<'a> {
     fn show_editor(self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse<'_> {
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.text_edit);
-        let text = slot.looks.normal.text.apply(&theme.text);
+        let text = self
+            .overrides
+            .apply(&slot.looks.normal.text.apply(&theme.text));
         let min = self.floor(text.line_height());
         let extent = self.extent();
         let mut edit = TextEdit::buffered(self.text)
@@ -166,6 +245,7 @@ impl<'a> EditableLabel<'a> {
         if let Some(n) = self.max_chars {
             edit = edit.max_chars(n);
         }
+        edit = with_overrides(edit, self.overrides);
         if let Some(max) = self.widget.authored_max_size() {
             edit = edit.max_size(max);
         }
@@ -174,8 +254,9 @@ impl<'a> EditableLabel<'a> {
         }
         let edited = edit.adopt_placement(&self.widget).show(ui);
         let snapshot = edited.response.snapshot();
-        let closed = edited.committed || edited.ended == Some(EditEnd::Canceled);
+        let (committed, ended) = (edited.committed, edited.ended);
         let committed_text = edited.committed_text;
+        let closed = committed || ended == Some(EditEnd::Canceled);
         if closed {
             ui.with_state::<EditableLabelState, _>(id, |_, state| state.editing = false);
             if ui.focus() == Some(id) {
@@ -185,7 +266,9 @@ impl<'a> EditableLabel<'a> {
         EditableLabelResponse {
             response: Response::new(ui, snapshot),
             editing: true,
+            committed,
             committed_text,
+            ended,
         }
     }
 
@@ -237,6 +320,37 @@ impl<'a> EditableLabel<'a> {
     }
 }
 
+/// `edit` with each axis `overrides` sets, through the editor's own setters.
+const fn with_overrides(mut edit: TextEdit<'_>, overrides: TextStyleOverrides) -> TextEdit<'_> {
+    let TextStyleOverrides {
+        color,
+        font_size,
+        line_height_factor,
+        family,
+        weight,
+        slant,
+    } = overrides;
+    if let Some(color) = color {
+        edit = edit.color(color);
+    }
+    if let Some(px) = font_size {
+        edit = edit.font_size(px);
+    }
+    if let Some(factor) = line_height_factor {
+        edit = edit.line_height_factor(factor);
+    }
+    if let Some(family) = family {
+        edit = edit.family(family);
+    }
+    if let Some(weight) = weight {
+        edit = edit.weight(weight);
+    }
+    if let Some(slant) = slant {
+        edit = edit.slant(slant);
+    }
+    edit
+}
+
 impl Configure for EditableLabel<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
@@ -251,8 +365,15 @@ pub struct EditableLabelResponse<'a> {
     pub response: Response<'a>,
     /// The label showed its editor this frame.
     pub editing: bool,
+    /// The edit finished this frame and kept its result, as
+    /// [`TextEditResponse::committed`](crate::TextEditResponse::committed): on Enter, on a blur,
+    /// or on [`EditEnd::Submitted`] from [`EditableLabel::stop_editing`]; never on Escape.
+    pub committed: bool,
     /// The edited text, on the frame an edit that changed it commits.
     pub committed_text: Option<String>,
+    /// How the frame ended the edit, if it did, as
+    /// [`TextEditResponse::ended`](crate::TextEditResponse::ended).
+    pub ended: Option<EditEnd>,
 }
 
 #[cfg(test)]

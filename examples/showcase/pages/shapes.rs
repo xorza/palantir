@@ -202,8 +202,8 @@ fn window_anatomy(ui: &mut Ui, k: Kit) {
 /// The live triangle's knobs.
 #[derive(Debug)]
 struct LiveTriangle {
-    radius: f64,
-    stroke: f64,
+    radius: f32,
+    stroke: f32,
 }
 
 impl Default for LiveTriangle {
@@ -242,7 +242,7 @@ fn live(ui: &mut Ui, k: Kit) {
                     unit: " px",
                 }
                 .show(ui, k, &mut l.stroke);
-                let (radius, stroke) = (l.radius as f32, l.stroke as f32);
+                let (radius, stroke) = (l.radius, l.stroke);
                 DemoCell::new("the knobs' triangle").show(ui, k, |ui| {
                     ui.add_shape(
                         Shape::triangle(A, B, C)

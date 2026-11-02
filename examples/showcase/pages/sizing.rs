@@ -283,25 +283,35 @@ fn aligned_chip(c: RgbaF32, align: Align) -> Block {
 }
 
 /// The sizings a playground child picks among.
-const SIZINGS: [&str; 3] = ["Fixed 80", "Hug", "Fill"];
-const JUSTIFIES: [&str; 5] = ["Start", "Center", "End", "SpaceBetween", "SpaceAround"];
+static SIZINGS: [(&str, Sizing); 3] = [
+    ("Fixed 80", Sizing::fixed(80.0)),
+    ("Hug", Sizing::HUG),
+    ("Fill", Sizing::FILL),
+];
+static JUSTIFIES: [(&str, Justify); 5] = [
+    ("Start", Justify::Start),
+    ("Center", Justify::Center),
+    ("End", Justify::End),
+    ("SpaceBetween", Justify::SpaceBetween),
+    ("SpaceAround", Justify::SpaceAround),
+];
 
 /// The playground's knobs: each child's sizing, and the row's padding, gap and justification.
 #[derive(Debug)]
 struct Playground {
-    sizing: [usize; 3],
-    padding: f64,
-    gap: f64,
-    justify: usize,
+    sizing: [&'static (&'static str, Sizing); 3],
+    padding: f32,
+    gap: f32,
+    justify: &'static (&'static str, Justify),
 }
 
 impl Default for Playground {
     fn default() -> Self {
         Self {
-            sizing: [0, 1, 2],
+            sizing: [&SIZINGS[0], &SIZINGS[1], &SIZINGS[2]],
             padding: 8.0,
             gap: 8.0,
-            justify: 0,
+            justify: &JUSTIFIES[0],
         }
     }
 }
@@ -324,13 +334,13 @@ fn playground(ui: &mut Ui, k: Kit) {
                     for (i, (sizing, name)) in p.sizing.iter_mut().zip(["A", "B", "C"]).enumerate()
                     {
                         Text::new(name).style(&k.t.caption()).show(ui);
-                        ComboBox::new(sizing, &SIZINGS)
+                        ComboBox::labeled(sizing, &SIZINGS, |sizing| sizing.0)
                             .id_salt(("sizing", i))
                             .size((Sizing::fixed(110.0), Sizing::HUG))
                             .show(ui);
                     }
                     Text::new("justify").style(&k.t.caption()).show(ui);
-                    ComboBox::new(&mut p.justify, &JUSTIFIES)
+                    ComboBox::labeled(&mut p.justify, &JUSTIFIES, |justify| justify.0)
                         .id_salt("justify")
                         .size((Sizing::fixed(140.0), Sizing::HUG))
                         .show(ui);
@@ -351,18 +361,12 @@ fn playground(ui: &mut Ui, k: Kit) {
                     }
                     .show(ui, k, &mut p.gap);
                 });
-                let justify = [
-                    Justify::Start,
-                    Justify::Center,
-                    Justify::End,
-                    Justify::SpaceBetween,
-                    Justify::SpaceAround,
-                ][p.justify];
+                let justify = p.justify.1;
                 Panel::hstack()
                     .id_salt("playground row")
                     .size((Sizing::FILL, Sizing::HUG))
-                    .padding(p.padding as f32)
-                    .gap(p.gap as f32)
+                    .padding(p.padding)
+                    .gap(p.gap)
                     .justify(justify)
                     .chrome(k.t.card())
                     .show(ui, |ui| {
@@ -370,11 +374,7 @@ fn playground(ui: &mut Ui, k: Kit) {
                         for ((sizing, name), color) in
                             p.sizing.iter().zip(["A", "B", "C"]).zip(colors)
                         {
-                            let width = match sizing {
-                                0 => Sizing::fixed(80.0),
-                                1 => Sizing::HUG,
-                                _ => Sizing::FILL,
-                            };
+                            let width = sizing.1;
                             Panel::hstack()
                                 .id_salt(name)
                                 .size((width, Sizing::fixed(36.0)))

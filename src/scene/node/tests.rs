@@ -185,6 +185,25 @@ fn an_authored_value_wins_over_the_theme_default() {
     let mut untouched = Node::new(NodeMode::Resolved(LayoutMode::Leaf));
     untouched.fill_padding(Spacing::all(9.0));
     assert_eq!(untouched.padding, Some(Spacing::all(9.0)), "theme fills in");
+
+    // Each gap lane fills in alone: an authored gap keeps its 3 beside a defaulted line gap of 9,
+    // and an authored line gap keeps its 4 beside a defaulted gap of 8.
+    let mut gaps = Node::new(NodeMode::Resolved(LayoutMode::Leaf));
+    gaps.gaps.set_gap(3.0);
+    gaps.fill_gap(7.0);
+    gaps.fill_line_gap(9.0);
+    assert_eq!(
+        (gaps.gaps.gap(), gaps.gaps.line_gap()),
+        (Some(3.0), Some(9.0))
+    );
+    let mut lines = Node::new(NodeMode::Resolved(LayoutMode::Leaf));
+    lines.gaps.set_line_gap(4.0);
+    lines.fill_line_gap(6.0);
+    lines.fill_gap(8.0);
+    assert_eq!(
+        (lines.gaps.gap(), lines.gaps.line_gap()),
+        (Some(8.0), Some(4.0))
+    );
 }
 
 /// A themed default never contradicts the caller: a default min above an authored max is clamped to it, a default max below an authored min is raised to it, per axis. Conflicting authored bounds resolve as in CSS (min wins), and a NaN default still reaches the check.
@@ -234,6 +253,7 @@ fn themed_bounds_yield_to_authored_ones() {
         node.set_padding(Spacing::all(1.0));
         node.set_margin(Spacing::all(1.0));
         node.gaps.set_gap(1.0);
+        node.gaps.set_line_gap(1.0);
         node
     };
     panic_probe::assert_panics_with(domain::LENGTH_RULE, || {
@@ -246,4 +266,5 @@ fn themed_bounds_yield_to_authored_ones() {
         set().fill_padding(Spacing::all(-1.0));
     });
     panic_probe::assert_panics_with(domain::GAP_RULE, || set().fill_gap(f32::NAN));
+    panic_probe::assert_panics_with(domain::GAP_RULE, || set().fill_line_gap(f32::NAN));
 }

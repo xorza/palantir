@@ -88,8 +88,8 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
 /// The live pane's knobs: the blur, and how much of the tint covers it.
 #[derive(Debug)]
 struct LivePane {
-    blur: f64,
-    tint: f64,
+    blur: f32,
+    tint: f32,
     /// Whether the floor holds the ink; off, the label reads only as well as the page under it.
     hold: bool,
 }
@@ -134,11 +134,11 @@ fn live(ui: &mut Ui, k: Kit) {
                 }
                 .show(ui, k, &mut l.tint);
                 let ink = RgbaF32::hex(0x14161a);
-                let tint = RgbaF32::WHITE.with_alpha(l.tint as f32);
+                let tint = RgbaF32::WHITE.with_alpha(l.tint);
                 support::row(ui, |ui| {
                     Switch::new(&mut l.hold).label("Hold the ink").show(ui);
                 });
-                let frosted = BackdropFilter::frosted(l.blur as f32);
+                let frosted = BackdropFilter::frosted(l.blur);
                 let filter = if l.hold {
                     frosted.with_min_luminance_for(ink, tint)
                 } else {

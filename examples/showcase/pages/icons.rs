@@ -229,7 +229,7 @@ const SIZES: [(f32, &str); 5] = [
 /// The live icon's knobs: its size and its tint.
 #[derive(Debug)]
 struct LiveIcon {
-    size: f64,
+    size: f32,
     tint: Option<RgbaF32>,
 }
 
@@ -270,7 +270,7 @@ fn live(ui: &mut Ui, k: Kit, icons: &Icons) {
                 if tint != l.tint.unwrap_or(k.t.ink) {
                     l.tint = Some(tint);
                 }
-                let px = l.size as f32;
+                let px = l.size;
                 DemoCell::new("the knobs' icon")
                     .size(px.max(96.0) + 24.0, px + 24.0)
                     .show(ui, k, |ui| {

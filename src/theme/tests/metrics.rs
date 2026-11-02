@@ -154,7 +154,11 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("tab radius", t.tabs.radius, 15.0),
         ("separator", t.separator.thickness, 0.25),
         ("splitter rule", t.splitter.rule_thickness, 0.25),
-        ("picker border", t.color_picker.border_width, 0.25),
+        (
+            "picker chip ring",
+            t.color_picker.chip.unselected.normal.chrome.border.width,
+            0.25,
+        ),
         ("picker gap", t.color_picker.gap, 3.0),
         ("caret", t.text_edit.caret_width, 0.5),
         ("dock preview", t.dock.preview_stroke.width, 0.5),

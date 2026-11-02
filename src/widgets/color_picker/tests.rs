@@ -10,6 +10,7 @@ use crate::theme::color_picker::ColorPickerTheme;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueEdges;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::color_picker::swatch_row::SwatchRow;
 use glam::{UVec2, Vec2};
 
 fn harness() -> Harness {
@@ -175,7 +176,7 @@ fn the_style_reaches_the_panel_and_a_caller_gap_wins() {
         let given = [color];
         h.frame(|ui| {
             let mut picker = ColorPicker::new(&mut color)
-                .swatches(&given)
+                .swatches(SwatchRow::Fixed(&given))
                 .style(style)
                 .id(id);
             if let Some(g) = caller_gap {
@@ -232,21 +233,24 @@ fn the_readouts_and_channel_edits_start_from_the_bound_color() {
     assert_eq!((got.g, got.b), (0, 255), "G and B kept: {got:?}");
 }
 
-/// The swatch row is hidden by default, shows sixteen presets under `history(true)`.
+/// The swatch row is hidden by default and under `SwatchRow::None`, shows the sixteen presets
+/// under `History`, and the app's own colors under `Fixed`.
 #[test]
-fn history_shows_the_preset_row_only_when_asked() {
+fn the_swatch_row_shows_only_when_asked() {
+    const OWN: [RgbaF32; 2] = [RgbaF32::WHITE, RgbaF32::BLACK];
     let id = WidgetId::from_hash("picker-history");
-    for (label, history, swatches) in [
+    for (label, row, swatches) in [
         ("default", None, None),
-        ("on", Some(&[true][..]), Some(16)),
-        ("on then off", Some(&[true, false][..]), None),
+        ("none", Some(SwatchRow::None), None),
+        ("history", Some(SwatchRow::History), Some(16)),
+        ("fixed", Some(SwatchRow::Fixed(&OWN)), Some(2)),
     ] {
         let mut h = harness();
         let mut color = RgbaF32::hex(0x4cd3ff);
         h.frame(|ui| {
             let mut picker = ColorPicker::new(&mut color).id(id);
-            for &on in history.unwrap_or_default() {
-                picker = picker.history(on);
+            if let Some(row) = row {
+                picker = picker.swatches(row);
             }
             picker.show(ui);
         });
@@ -269,7 +273,7 @@ fn keyboard_nudges_leave_the_history_alone() {
     let frame = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame_value(|ui| {
             ColorPicker::new(color)
-                .history(true)
+                .swatches(SwatchRow::History)
                 .id(id)
                 .show(ui)
                 .committed

@@ -23,11 +23,11 @@ fn the_alpha_bar_writes_only_alpha() {
     let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(1.0);
     let before = color;
     h.frame(|ui| {
-        ColorStrip::for_alpha(&mut color).id(id).show(ui);
+        ColorStrip::alpha(&mut color).id(id).show(ui);
     });
     h.press(Vec2::new(52.0, 7.0), PointerButton::Left);
     h.frame(|ui| {
-        ColorStrip::for_alpha(&mut color).id(id).show(ui);
+        ColorStrip::alpha(&mut color).id(id).show(ui);
     });
     assert_eq!(color.a, 0.25, "a quarter along the bar");
     assert_eq!((color.r, color.g, color.b), (before.r, before.g, before.b));
@@ -40,11 +40,11 @@ fn the_hue_bar_writes_only_the_hue() {
     let mut coords = ColorCoords::from_color(RgbaF32::hex(0x4cd3ff), ColorModel::Okhsv, 0.0);
     let (sat, val) = (coords.saturation(), coords.value());
     h.frame(|ui| {
-        ColorStrip::for_hue(&mut coords).id(id).show(ui);
+        ColorStrip::hue(&mut coords).id(id).show(ui);
     });
     h.press(Vec2::new(156.0, 7.0), PointerButton::Left);
     h.frame(|ui| {
-        ColorStrip::for_hue(&mut coords).id(id).show(ui);
+        ColorStrip::hue(&mut coords).id(id).show(ui);
     });
     assert_eq!(coords.hue(), 0.75, "three quarters along the bar");
     assert_eq!(coords.saturation(), sat);
@@ -109,7 +109,7 @@ fn the_hue_bar_keeps_both_ends() {
     let mut coords = ColorCoords::from_color(RgbaF32::hex(0x4cd3ff), ColorModel::Okhsv, 0.0);
     let show = |h: &mut Harness, coords: &mut ColorCoords| {
         h.frame(|ui| {
-            ColorStrip::for_hue(coords).id(id).show(ui);
+            ColorStrip::hue(coords).id(id).show(ui);
         });
     };
     show(&mut h, &mut coords);
@@ -140,9 +140,10 @@ fn the_hue_bar_keeps_both_ends() {
     assert_eq!(coords.hue(), paged.rem_euclid(1.0), "so does a page");
 }
 
-/// PageUp/PageDown step an alpha bar by 0.1, clamping at the ends.
+/// Page Up and Down step an alpha bar by 0.1, and Up and Down by 0.005, as a slider's keys do,
+/// clamping at the ends.
 #[test]
-fn page_keys_step_the_alpha_bar() {
+fn page_and_arrow_keys_step_the_alpha_bar() {
     use crate::input::keyboard::key::Key;
 
     let id = WidgetId::from_hash("strip-alpha-page");
@@ -150,7 +151,7 @@ fn page_keys_step_the_alpha_bar() {
     let mut color = RgbaF32::hex(0x4cd3ff).with_alpha(0.5);
     let show = |h: &mut Harness, color: &mut RgbaF32| {
         h.frame(|ui| {
-            ColorStrip::for_alpha(color).id(id).show(ui);
+            ColorStrip::alpha(color).id(id).show(ui);
         });
     };
     show(&mut h, &mut color);
@@ -162,6 +163,8 @@ fn page_keys_step_the_alpha_bar() {
         (Key::PageUp, 1.0),
         (Key::Home, 0.0),
         (Key::PageDown, 0.0),
+        (Key::ArrowUp, 0.005),
+        (Key::ArrowDown, 0.0),
     ];
     for (key, alpha) in steps {
         h.key(key);
@@ -179,7 +182,7 @@ fn the_surface_leaves_with_the_bar() {
     let mut coords = ColorCoords::default();
     let mut h = harness();
     h.frame(|ui| {
-        ColorStrip::for_hue(&mut coords).id(id).show(ui);
+        ColorStrip::hue(&mut coords).id(id).show(ui);
     });
     let surface = |h: &Harness| h.ui_ref().state::<ColorSurface<StripPaint>>(id).is_some();
     assert!(surface(&h), "built while the bar records");

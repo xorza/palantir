@@ -16,6 +16,7 @@ use crate::theme::popup::PopupTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::color_picker::swatch_row::SwatchRow;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
 use glam::{UVec2, Vec2};
 
@@ -78,7 +79,7 @@ fn the_chip_toggles_its_panel() {
     assert_eq!(panel_nodes(&h), 0, "close hides it");
 }
 
-/// The popup shows the picker as configured, under `id.with("picker")` unless the picker names an id. The swatch row is off by default; `history(true)` and `swatches` add rows. `texel_size` is one texel per `n` px, rounded up.
+/// The popup shows the picker as configured, under `id.with("picker")` unless the picker names an id. The swatch row is off by default; `SwatchRow::History` and `SwatchRow::Fixed` add rows. `texel_size` is one texel per `n` px, rounded up.
 #[test]
 fn panel_settings_reach_the_picker() {
     use crate::primitives::paint::color::color_model::ColorModel;
@@ -92,14 +93,14 @@ fn panel_settings_reach_the_picker() {
         ("default", |c| c, false, 4, id.with("picker")),
         (
             "history on",
-            |c| c.history(true),
+            |c| c.swatches(SwatchRow::History),
             true,
             4,
             id.with("picker"),
         ),
         (
             "own swatches",
-            |c| c.swatches(&OWN),
+            |c| c.swatches(SwatchRow::Fixed(&OWN)),
             true,
             4,
             id.with("picker"),
@@ -185,15 +186,15 @@ struct Opened {
     preview: f32,
 }
 
-/// Open the chip under `style` and measure the popup.
-fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
+/// Open the chip under `button` with its picker under `picker`, and measure the popup.
+fn open_with(button: Option<&ColorPickerTheme>, picker: Option<&ColorPickerTheme>) -> Opened {
     let id = WidgetId::from_hash("color-button-theme");
     let mut h = harness();
     let mut color = RgbaF32::hex(0x4cd3ff);
     let mut frame = |h: &mut Harness| {
         h.frame(|ui| {
-            ColorButton::new(ColorPicker::new(&mut color))
-                .style(style)
+            ColorButton::new(ColorPicker::new(&mut color).style(picker))
+                .style(button)
                 .id(id)
                 .show(ui);
         });
@@ -217,9 +218,11 @@ fn open_with(style: Option<&ColorPickerTheme>) -> Opened {
     }
 }
 
-/// The popup and the panel inside it wear the picker theme's chrome and gutter, so one `.style(..)` restyles both. Differential against stock: body taller by the gained padding plus the chip growth, corners the styled radius.
+/// The button's style dresses the popup, its chrome and padding, and leaves the picker handed in
+/// as the caller styled it; the picker's own style reaches the panel alone. Differential against
+/// stock: the button's style adds the gained padding, the picker's the chip growth.
 #[test]
-fn the_popup_takes_the_picker_theme() {
+fn the_button_styles_the_popup_and_the_picker_keeps_its_own() {
     let stock = ColorPickerTheme::default();
     let custom = ColorPickerTheme {
         // Same stroke as stock, so the folded band matches on both sides.
@@ -235,17 +238,27 @@ fn the_popup_takes_the_picker_theme() {
     };
     assert_ne!(custom.popup.panel.corners, stock.popup.panel.corners);
 
-    let plain = open_with(None);
-    let styled = open_with(Some(&custom));
+    let plain = open_with(None, None);
+    let button = open_with(Some(&custom), None);
+    let picker = open_with(None, Some(&custom));
 
     assert_eq!(plain.corners, stock.popup.panel.corners, "stock chrome");
-    assert_eq!(styled.corners, custom.popup.panel.corners, "styled chrome");
+    assert_eq!(
+        button.corners, custom.popup.panel.corners,
+        "the button's chrome"
+    );
+    assert_eq!(
+        picker.corners, stock.popup.panel.corners,
+        "the picker's own"
+    );
     assert_eq!(plain.preview, stock.chip_size, "stock preview");
-    assert_eq!(styled.preview, custom.chip_size, "styled preview");
+    assert_eq!(button.preview, stock.chip_size, "the picker kept its own");
+    assert_eq!(picker.preview, custom.chip_size, "the picker's style");
 
-    // Two edges of padding (19 - 8) * 2 = 22, plus the preview's 30; the bars row grows by what the chip does.
+    // Two edges of padding (19 - 8) * 2 = 22; the bars row grows by the preview's 30.
     let padding = custom.popup.padding.sums().h - stock.popup.padding.sums().h;
-    assert_eq!(styled.height - plain.height, padding + 30.0);
+    assert_eq!(button.height - plain.height, padding);
+    assert_eq!(picker.height - plain.height, 30.0);
 }
 
 /// The constructor mints its id at the caller's line, so two chips keep two open states; one minted inside the constructor would make every chip a twin of the others.

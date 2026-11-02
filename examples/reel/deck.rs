@@ -37,6 +37,9 @@ pub(crate) const SLIDES: usize = 13;
 /// A click's ring: it grows and fades over this long.
 const RING: Duration = Duration::from_millis(400);
 
+/// The deck's blend choices, which its combo binds by reference.
+static BLENDS: [&str; 3] = ["Linear", "OKLab", "Okhsv"];
+
 /// The canvas scroll's id, which the recorder moves the camera through.
 pub(crate) fn canvas_id() -> WidgetId {
     WidgetId::from_hash("reel.canvas")
@@ -114,7 +117,7 @@ pub(crate) struct Deck {
     flash: Option<Duration>,
     switch: bool,
     slider: f64,
-    combo: usize,
+    combo: &'static &'static str,
     name: String,
     check: bool,
     dock: DockState<Tab>,
@@ -133,7 +136,7 @@ impl Deck {
             flash: None,
             switch: false,
             slider: 0.25,
-            combo: 0,
+            combo: &BLENDS[0],
             name: String::new(),
             check: true,
             dock: dock::state(),
@@ -324,7 +327,7 @@ impl Deck {
                         .id(id(3, "slider"))
                         .size((Sizing::FILL, Sizing::HUG))
                         .show(ui);
-                    ComboBox::new(combo, &["Linear", "OKLab", "Okhsv"])
+                    ComboBox::new(combo, &BLENDS)
                         .id(id(3, "combo"))
                         .size((Sizing::fixed(220.0), Sizing::HUG))
                         .show(ui);

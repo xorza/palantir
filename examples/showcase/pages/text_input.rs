@@ -261,7 +261,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
     ime(ui, k, s);
 }
 
-const ALIGNS: [(&str, HAlign); 3] = [
+static ALIGNS: [(&str, HAlign); 3] = [
     ("left", HAlign::Left),
     ("center", HAlign::Center),
     ("right", HAlign::Right),
@@ -273,7 +273,7 @@ struct LiveField {
     text: String,
     max_chars: i64,
     multiline: bool,
-    align: usize,
+    align: &'static (&'static str, HAlign),
     select_all: bool,
 }
 
@@ -283,7 +283,7 @@ impl Default for LiveField {
             text: String::from("Edit me"),
             max_chars: 40,
             multiline: false,
-            align: 0,
+            align: &ALIGNS[0],
             select_all: false,
         }
     }
@@ -324,7 +324,7 @@ fn live(ui: &mut Ui, k: Kit, l: &mut LiveField) {
                         .show(ui);
                 });
                 let max = usize::try_from(l.max_chars).expect("the drag keeps the cap positive");
-                let align = ALIGNS[l.align].1;
+                let align = l.align.1;
                 let height = if l.multiline {
                     Sizing::fixed(96.0)
                 } else {

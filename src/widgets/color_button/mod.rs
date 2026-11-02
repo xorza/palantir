@@ -1,21 +1,17 @@
 //! The chip that opens a color picker popup.
 
-use crate::input::sense::Sense;
-use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
-use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::{ValueEdges, ValueResponse};
-use crate::widget_core::widget::Widget;
-use crate::widgets::checkerboard::Checkerboard;
 use crate::widgets::color_picker::ColorPicker;
+use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::popup::trigger_state::{Opening, TriggerState};
 use std::rc::Rc;
@@ -28,15 +24,16 @@ use std::rc::Rc;
 /// [`Self::popup_id`], and the picker defaults to `id.with("picker")`.
 ///
 /// ```
-/// # use palantir::{ColorButton, ColorPicker, RgbaF32, Ui};
+/// # use palantir::{ColorButton, ColorPicker, RgbaF32, SwatchRow, Ui};
 /// # fn f(ui: &mut Ui, color: &mut RgbaF32) {
-/// ColorButton::new(ColorPicker::new(color).alpha(true).history(true)).show(ui);
+/// ColorButton::new(ColorPicker::new(color).alpha(true).swatches(SwatchRow::History)).show(ui);
 /// # }
 /// ```
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorButton<'a> {
-    widget: Widget,
+    /// The chip: a swatch of the picker's color at the theme's `chip_size`.
+    swatch: ColorSwatch<'a>,
     picker: ColorPicker<'a>,
     style: Option<&'a ColorPickerTheme>,
 }
@@ -46,13 +43,14 @@ impl<'a> ColorButton<'a> {
     #[track_caller]
     pub fn new(picker: ColorPicker<'a>) -> Self {
         Self {
-            widget: Widget::leaf().sense(Sense::CLICK).focusable(true),
+            swatch: ColorSwatch::new(picker.color()),
             picker,
             style: None,
         }
     }
 
-    /// Per-instance override of [`Theme::color_picker`](crate::Theme::color_picker) for chip, popup chrome and picker; `None` keeps the picker's own style.
+    /// Per-instance override of [`Theme::color_picker`](crate::Theme::color_picker) for the chip and
+    /// the popup. The picker keeps the style it was handed with.
     pub fn style(mut self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self {
         self.style = s.into();
         self
@@ -64,23 +62,14 @@ impl<'a> ColorButton<'a> {
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
         let side = domain::length_at_least(slot.chip_size, 1.0);
-        let checker = Checkerboard::new(slot);
-        let mut widget = self
-            .widget
-            .default_size((Sizing::fixed(side), Sizing::fixed(side)));
-        let response = widget.activation_response(ui, Activation::Button);
-        let id = response.id;
-        let size = response
-            .layout_rect
-            .map_or_else(|| Size::new(side, side), |r| r.size);
-        let shown = self.picker.color();
+        let response = self
+            .swatch
+            .style(slot)
+            .default_size((Sizing::fixed(side), Sizing::fixed(side)))
+            .show(ui)
+            .snapshot();
 
-        widget.record(ui, None, |ui| checker.paint_chip(ui, shown, size));
-
-        let mut picker = self.picker.default_id(id.with("picker"));
-        if let Some(style) = self.style {
-            picker = picker.style(style);
-        }
+        let picker = self.picker.default_id(response.id.with("picker"));
         let opened = PopupTrigger::on(&response)
             .style(&slot.popup)
             .show_as::<ColorButton<'static>, _>(ui, |ui, _| picker.show(ui).edges());
@@ -123,7 +112,7 @@ impl ColorButton<'static> {
 impl Configure for ColorButton<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
-        self.widget.configure()
+        self.swatch.configure()
     }
 }
 

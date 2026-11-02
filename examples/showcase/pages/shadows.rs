@@ -221,10 +221,10 @@ fn chrome_translucent() -> Chrome {
 /// The live shadow's knobs.
 #[derive(Debug)]
 struct LiveShadow {
-    offset: f64,
-    blur: f64,
-    spread: f64,
-    alpha: f64,
+    offset: f32,
+    blur: f32,
+    spread: f32,
+    alpha: f32,
 }
 
 impl Default for LiveShadow {
@@ -265,11 +265,11 @@ fn live(ui: &mut Ui, k: Kit) {
                     .show(ui, k, value);
                 }
                 let shadow = Shadow::drop(
-                    RgbaF32::BLACK.with_alpha(l.alpha as f32),
-                    Vec2::new(0.0, l.offset as f32),
-                    l.blur as f32,
+                    RgbaF32::BLACK.with_alpha(l.alpha),
+                    Vec2::new(0.0, l.offset),
+                    l.blur,
                 )
-                .with_spread(l.spread as f32);
+                .with_spread(l.spread);
                 DemoCell::new("the knobs' shadow")
                     .surface(Surface::LightWell)
                     .show(ui, k, |ui| {

@@ -124,7 +124,7 @@ fn alpha_strip() -> Box<dyn DeferredCaller> {
     Box::new(Deferred {
         canonical: RgbaF32::hex(0x4cd3ff).with_alpha(1.0),
         show: |ui, color| {
-            ColorStrip::for_alpha(color)
+            ColorStrip::alpha(color)
                 .id(WidgetId::from_hash(ID))
                 .show(ui)
                 .edges()

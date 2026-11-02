@@ -38,7 +38,10 @@ fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     assert_eq!(canonical, 30.0, "20 px at speed 1");
 }
 
-/// A focused chip steps by its last decimal (0.01 at two decimals), ten with Shift, one commit each, held by the range: 5 → 5.01 → 5.11 → 5.10, then stops at 5.15. An integer binding steps by one, exactly past 2^53; decimals past 15 step at 15.
+/// A focused chip steps by its last decimal (0.01 at two decimals), ten with Shift or a page, one
+/// commit each, held by the range: 5 → 5.01 → 5.11 → 5.10, then stops at 5.15; Page Down is 5.05,
+/// Home 0 and End 5.15. An integer binding steps by one, exactly past 2^53; decimals past 15 step
+/// at 15.
 #[test]
 fn the_arrows_step_a_focused_chip() {
     let id = WidgetId::from_hash("dv-spin-step");
@@ -63,6 +66,9 @@ fn the_arrows_step_a_focused_chip() {
         (Modifiers::SHIFT, Key::ArrowUp, 5.11),
         (Modifiers::NONE, Key::ArrowDown, 5.10),
         (Modifiers::SHIFT, Key::ArrowUp, 5.15),
+        (Modifiers::NONE, Key::PageDown, 5.05),
+        (Modifiers::NONE, Key::Home, 0.0),
+        (Modifiers::NONE, Key::End, 5.15),
     ] {
         h.set_modifiers(mods);
         h.key(key);
@@ -137,4 +143,58 @@ fn typing_into_the_focused_chip_replaces_the_value() {
     h.key(Key::ArrowUp);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert_eq!(canonical, 7.01);
+}
+
+/// A step is a snap and the arrow unit, as a slider's is: over `0..=10` by 2.5, Up from 5 is 7.5,
+/// a typed 6 lands on 5, and a scrub of 6 px at speed 0.5 from there is 8, which lands on 7.5.
+/// Unbounded, Home and End ask for nothing and commit nothing, and the grid runs from zero: Up
+/// from 1 is 3.5, which lands on 2.5.
+#[test]
+fn a_step_snaps_every_write_and_unbounded_ends_do_nothing() {
+    let id = WidgetId::from_hash("dv-spin-stepped");
+    let mut h = Harness::mono(SURFACE);
+    let mut value = 5.0_f64;
+    let frame = |h: &mut Harness, value: &mut f64, bounded: bool| {
+        h.frame_value(|ui| {
+            let mut chip = DragValue::new(&mut *value).step(2.5).speed(0.5);
+            if bounded {
+                chip = chip.range(0.0..=10.0);
+            }
+            chip.size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
+                .id(id)
+                .show(ui)
+                .committed
+        })
+    };
+    frame(&mut h, &mut value, true);
+    h.set_focus(id);
+    frame(&mut h, &mut value, true);
+    h.key(Key::ArrowUp);
+    assert!(frame(&mut h, &mut value, true));
+    assert_eq!(value, 7.5);
+    h.key(Key::Char('6'));
+    frame(&mut h, &mut value, true);
+    h.key(Key::Enter);
+    frame(&mut h, &mut value, true);
+    assert_eq!(value, 5.0, "a typed 6 lands on the nearest grid value");
+    h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
+    frame(&mut h, &mut value, true);
+    h.drag_to(Vec2::new(56.0, 20.0));
+    frame(&mut h, &mut value, true);
+    h.release(PointerButton::Left);
+    frame(&mut h, &mut value, true);
+    assert_eq!(value, 7.5, "a scrub lands on the grid");
+
+    value = 1.0;
+    frame(&mut h, &mut value, false);
+    h.set_focus(id);
+    frame(&mut h, &mut value, false);
+    for key in [Key::Home, Key::End] {
+        h.key(key);
+        assert!(!frame(&mut h, &mut value, false), "{key:?} commits nothing");
+        assert_eq!(value, 1.0, "{key:?}");
+    }
+    h.key(Key::ArrowUp);
+    assert!(frame(&mut h, &mut value, false));
+    assert_eq!(value, 2.5);
 }

@@ -320,9 +320,8 @@ fn widget_setters_check_their_kinds() {
     use crate::widgets::text_edit::TextEdit;
 
     const NAN_RED: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
-    let length_cases: [fn(f32); 4] = [
+    let length_cases: [fn(f32); 3] = [
         |v| drop(Spinner::new().width(v)),
-        |v| drop(Separator::horizontal().thickness(v)),
         |v| drop(Text::new("t").font_size(v)),
         |v| {
             let mut buf = String::new();
@@ -370,7 +369,7 @@ fn widget_setters_check_their_kinds() {
         },
         |n| {
             let mut coords = ColorCoords::default();
-            drop(ColorStrip::for_hue(&mut coords).texel_size(n));
+            drop(ColorStrip::hue(&mut coords).texel_size(n));
         },
     ];
     for set in texel_cases {
@@ -384,11 +383,15 @@ fn widget_setters_check_their_kinds() {
     let _ = DragValue::new(&mut value)
         .speed(f64::MIN_POSITIVE)
         .range(f64::NEG_INFINITY..=0.0);
-    for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
-        panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
-            let mut value = 0.0_f64;
-            drop(DragValue::new(&mut value).speed(bad));
-        });
+    let positive: [for<'a> fn(DragValue<'a>, f64) -> DragValue<'a>; 2] =
+        [|d, v| d.speed(v), |d, v| d.step(v)];
+    for set in positive {
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            panic_probe::assert_panics_with(domain::POSITIVE_RULE, || {
+                let mut value = 0.0_f64;
+                drop(set(DragValue::new(&mut value), bad));
+            });
+        }
     }
     panic_probe::assert_panics_with(domain::BOUNDS_RULE, || {
         let mut value = 0.0_f64;
@@ -396,7 +399,20 @@ fn widget_setters_check_their_kinds() {
     });
 
     let mut ratio = 0.5_f32;
-    let _ = Splitter::row(&mut ratio).min_pane(0.0);
+    let _ = Splitter::row(&mut ratio)
+        .min_pane(0.0)
+        .min_ratio(0.0)
+        .min_ratio(0.5);
+    for (bad, rule) in [
+        (-0.1, "a ratio floor must be at least 0.0"),
+        (f32::NAN, "a ratio floor must be at least 0.0"),
+        (0.6, "a ratio floor must be at most 0.5"),
+    ] {
+        panic_probe::assert_panics_with(rule, || {
+            let mut ratio = 0.5_f32;
+            drop(Splitter::row(&mut ratio).min_ratio(bad));
+        });
+    }
     let length: [fn(); 4] = [
         || {
             let mut ratio = 0.5_f32;
@@ -482,7 +498,7 @@ fn widget_setters_check_their_kinds() {
     }
 }
 
-/// At worst-case input (NaN/infinite fractions, stale indices, empty lists, reversed ranges) each
+/// At worst-case input (NaN/infinite fractions, stale indices and values no option equals, empty lists, reversed ranges) each
 /// coercing widget still lays out and paints, and no NaN reaches a rect or paint call (the capture's
 /// `Debug` text shows a NaN in any field).
 #[test]
@@ -509,7 +525,8 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     const OPTIONS: [&str; 2] = ["a", "b"];
     let mut h = Harness::mono(UVec2::new(800, 1200));
     let mut ratio = f32::NAN;
-    let (mut stale, mut empty, mut page, mut no_page) = (9_usize, 3_usize, 9_usize, 0_usize);
+    let gone = "gone";
+    let (mut stale, mut empty, mut page, mut no_page) = (&gone, &gone, 9_usize, 0_usize);
     let mut slid = f64::NAN;
     let mut dragged = f64::NAN;
     let mut coords = ColorCoords::Okhsv(Okhsv::new(f32::NAN, f32::INFINITY, f32::NAN));
@@ -531,14 +548,14 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                     .size((Sizing::fixed(200.0), Sizing::fixed(40.0)))
                     .show(ui, |_, _| {});
                 ComboBox::new(&mut stale, &OPTIONS).show(ui);
-                let no_options: [&str; 0] = [];
-                ComboBox::new(&mut empty, &no_options).show(ui);
+                ComboBox::new(&mut empty, &[]).show(ui);
                 TabbedView::new(&mut page, &OPTIONS)
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |ui, i| {
                         Text::new(OPTIONS[i]).show(ui);
                     });
-                TabbedView::new(&mut no_page, &no_options)
+                let no_tabs: [&str; 0] = [];
+                TabbedView::new(&mut no_page, &no_tabs)
                     .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
                     .show(ui, |_, _| {});
                 let items = [TabItem::new(1, ui.intern("one"))];
@@ -577,9 +594,9 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let paint = format!("{:?}", h.encode_paint());
     assert!(!paint.contains("NaN"), "a NaN reached paint");
     assert_eq!(
-        (stale, empty, page, no_page),
-        (9, 3, 9, 0),
-        "no index was written back"
+        (*stale, *empty, page, no_page),
+        ("gone", "gone", 9, 0),
+        "no binding was written back"
     );
 }
 
@@ -667,16 +684,17 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     });
     assert!(open, "Expander");
 
-    let mut picked = 0usize;
+    let options = ["a", "b"];
+    let mut picked = &options[0];
     let mut listed = false;
     press(id, Key::ArrowDown, |ui| {
         under_root(ui, |ui| {
-            ComboBox::new(&mut picked, &["a", "b"]).id(id).show(ui);
+            ComboBox::new(&mut picked, &options).id(id).show(ui);
         });
         listed |= ComboBox::is_open(ui, id);
     });
     assert!(
-        listed && picked == 0,
+        listed && *picked == "a",
         "ComboBox: Down opens the list and picks nothing"
     );
 
@@ -725,7 +743,7 @@ fn a_scoped_widget_takes_its_keys_under_an_enclosing_scope() {
     let mut color = RgbaF32::WHITE;
     press(id, Key::ArrowLeft, |ui| {
         under_arrows(ui, |ui| {
-            ColorStrip::for_alpha(&mut color).id(id).show(ui);
+            ColorStrip::alpha(&mut color).id(id).show(ui);
         });
     });
     assert_eq!(color.a, 1.0 - UNIT_STEP, "ColorStrip");

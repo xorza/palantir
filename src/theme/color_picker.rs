@@ -2,10 +2,15 @@
 //! behind translucent colors.
 
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::stroke::Stroke;
 use crate::text::font_family::FontFamily;
 use crate::theme::ThemeText;
+use crate::theme::button::ButtonTheme;
 use crate::theme::drag_value::DragValueTheme;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -56,11 +61,15 @@ pub struct ColorPickerTheme {
     /// Side of one checker square in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::positive")]
     pub checker_cell: f32,
-    /// Hairline around the chip and swatches, so white reads against a light panel.
-    pub border: RgbaF32,
-    /// Width of that hairline in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub border_width: f32,
+    /// What a [`crate::ColorButton`], a [`crate::ColorSwatch`] and the preview chip wear in each
+    /// state, as a button does: the look's chrome frames the color, which fills the chip inside
+    /// the chrome's border, so the hairline lets white read against a light panel.
+    pub chip: ButtonTheme,
+    /// Laid over the colors of a disabled field, bar, chip or swatch, whose colors are data no
+    /// look can dim: the panel's color at half alpha, 128/255 on the grid a saved color keeps,
+    /// reads as libadwaita's `filter: opacity(0.5)` does over that panel
+    /// (<https://gitlab.gnome.org/GNOME/libadwaita/-/merge_requests/307>).
+    pub disabled_veil: RgbaF32,
     /// Gap between the panel's rows and between swatches, in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
@@ -100,6 +109,31 @@ fn value_padding(m: &Metrics) -> Spacing {
     Spacing::all(m.space.xs)
 }
 
+/// A chip's frame: a hairline on no fill, `element_strong` at rest, brighter under the pointer,
+/// the focus color pressed, and back to `element` disabled. It shows no selected state, so both
+/// packs are one.
+fn chip(p: &Palette, m: &Metrics) -> ButtonTheme {
+    let ring = |color: RgbaF32| WidgetLook {
+        chrome: Chrome::NONE.with_border(Stroke::new(color, m.stroke.hairline)),
+        text: TextStyleOverrides::NONE,
+    };
+    let looks = StatefulLook {
+        normal: ring(p.element_strong),
+        hovered: ring(p.text_muted),
+        active: ring(p.border_focused),
+        disabled: ring(p.element),
+    };
+    ButtonTheme {
+        unselected: looks.clone(),
+        selected: looks,
+        defaults: SlotDefaults {
+            padding: Spacing::ZERO,
+            margin: Spacing::ZERO,
+            animation: m.transition,
+        },
+    }
+}
+
 fn mono_edit(p: &Palette, m: &Metrics) -> TextEditTheme {
     let mut edit = TextEditTheme::from_parts(p, m);
     mono_states(&mut edit.looks, m);
@@ -120,6 +154,7 @@ impl ColorPickerTheme {
             value,
             hex,
             label,
+            chip,
             field_width: _,
             field_height: _,
             bar_thickness: _,
@@ -132,13 +167,13 @@ impl ColorPickerTheme {
             checker_light: _,
             checker_dark: _,
             checker_cell: _,
-            border: _,
-            border_width: _,
+            disabled_veil: _,
             gap: _,
             popup: _,
         } = self;
         value.for_each_text(other.as_deref_mut().map(|o| &mut o.value), f);
         hex.for_each_text(other.as_deref_mut().map(|o| &mut o.hex), f);
+        chip.for_each_text(other.as_deref_mut().map(|o| &mut o.chip), f);
         f(
             ThemeText::Overrides(label),
             other.map(|o| ThemeText::Overrides(&mut o.label)),
@@ -160,8 +195,8 @@ impl ColorPickerTheme {
             checker_light: p.element_mid,
             checker_dark: p.element,
             checker_cell: 6.0,
-            border: p.element_strong,
-            border_width: m.stroke.hairline,
+            chip: chip(p, m),
+            disabled_veil: p.element.with_alpha8(128),
             gap: m.space.sm,
             popup: PopupTheme::from_parts(p, m),
             // The editor derives from the chip, as `DragValueTheme` promises, so an

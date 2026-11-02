@@ -40,8 +40,8 @@ pub(crate) enum AxisEnd {
     End,
 }
 
-/// Shift steps this many plain steps.
-const COARSE: i32 = 10;
+/// Shift steps this many plain steps, and a spin button's page is this many.
+pub(crate) const COARSE: i32 = 10;
 
 /// A step along a unit axis (a color coordinate): half a percent.
 pub(crate) const UNIT_STEP: f32 = 0.005;
@@ -49,6 +49,48 @@ pub(crate) const UNIT_STEP: f32 = 0.005;
 pub(crate) const UNIT_PAGE: f32 = 0.1;
 
 impl AxisKeys {
+    /// A slider's keys, as the WAI-ARIA APG's slider takes them: Right and Up step toward the
+    /// end, Left and Down toward the start, Page Up and Down move a page, Home and End jump to
+    /// the ends (<https://www.w3.org/WAI/ARIA/apg/patterns/slider/>).
+    pub(crate) const SLIDER: Self = Self {
+        steps: &[
+            KeyPair {
+                back: Key::ArrowLeft,
+                forward: Key::ArrowRight,
+            },
+            KeyPair {
+                back: Key::ArrowDown,
+                forward: Key::ArrowUp,
+            },
+        ],
+        page: Some(KeyPair {
+            back: Key::PageDown,
+            forward: Key::PageUp,
+        }),
+        ends: Some(KeyPair {
+            back: Key::Home,
+            forward: Key::End,
+        }),
+    };
+
+    /// A spin button's keys, as the WAI-ARIA APG's spin button takes them: Up and Down step,
+    /// Page Up and Down move a page, Home and End jump to a bound end; Left and Right stay with
+    /// the text (<https://www.w3.org/WAI/ARIA/apg/patterns/spinbutton/>).
+    pub(crate) const SPIN_BUTTON: Self = Self {
+        steps: &[KeyPair {
+            back: Key::ArrowDown,
+            forward: Key::ArrowUp,
+        }],
+        page: Some(KeyPair {
+            back: Key::PageDown,
+            forward: Key::PageUp,
+        }),
+        ends: Some(KeyPair {
+            back: Key::Home,
+            forward: Key::End,
+        }),
+    };
+
     /// What a widget walking an axis takes from an enclosing scope: the arrows, Home and End
     /// (`CARET`), and Page Up and Down (`PAGE`).
     pub(crate) const SCOPE: KeyFilter = KeyFilter::CARET.union(KeyFilter::PAGE);

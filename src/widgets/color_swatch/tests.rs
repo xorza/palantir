@@ -90,3 +90,53 @@ fn a_chip_is_a_tab_stop_while_the_caller_keeps_it_one() {
         assert_eq!(h.focus() == Some(id), stop, "{sense:?} {focusable:?}");
     }
 }
+
+/// A chip frames its color in the chip look of its state, as a button does: its ring at rest,
+/// under the pointer and pressed; disabled, the disabled ring, and the veil laid over the color
+/// as a second shape.
+#[test]
+fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
+    use crate::input::pointer::PointerButton;
+    use crate::primitives::paint::stroke::Stroke;
+    use crate::shape::paint::shape_stroke::ShapeStroke;
+
+    let id = WidgetId::from_hash("chip-states");
+    let mut style = ColorPickerTheme::default();
+    style.chip.defaults.animation = None;
+    let looks = style.chip.unselected.clone();
+    let rings = [
+        &looks.normal,
+        &looks.hovered,
+        &looks.active,
+        &looks.disabled,
+    ]
+    .map(|look| look.chrome.border);
+    for (i, a) in rings.iter().enumerate() {
+        for b in &rings[i + 1..] {
+            assert_ne!(a, b, "premise: each state rings apart");
+        }
+    }
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let frame = |h: &mut Harness, disabled: bool| {
+        let node = h.frame_value(|ui| {
+            ColorSwatch::new(RgbaF32::WHITE)
+                .id(id)
+                .style(&style)
+                .disabled(disabled)
+                .show(ui)
+                .node()
+        });
+        let tree = h.ui_ref().tree(Layer::Main);
+        let ring = tree.chrome(node).expect("the chip wears a ring").border;
+        (ring, tree.shapes_of(node).count())
+    };
+    let want = |ring: Stroke, shapes: usize| (ShapeStroke::from(ring), shapes);
+    assert_eq!(frame(&mut h, false), want(rings[0], 1), "at rest");
+    h.hover(id);
+    assert_eq!(frame(&mut h, false), want(rings[1], 1), "hovered");
+    h.press(id, PointerButton::Left);
+    assert_eq!(frame(&mut h, false), want(rings[2], 1), "pressed");
+    h.release(PointerButton::Left);
+    frame(&mut h, false);
+    assert_eq!(frame(&mut h, true), want(rings[3], 2), "disabled, veiled");
+}

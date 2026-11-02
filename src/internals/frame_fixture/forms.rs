@@ -31,6 +31,9 @@ use crate::widgets::switch::Switch;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
 
+/// The quality combo's options.
+pub(super) static QUALITIES: [&str; 4] = ["Low", "Medium", "High", "Ultra"];
+
 pub(super) fn request_card(state: &mut FrameFixture, ui: &mut Ui) {
     Card::new("request", "REQUEST").show(ui, |ui| {
         EditableLabel::new("Untitled request")
@@ -99,8 +102,7 @@ pub(super) fn settings_card(state: &mut FrameFixture, ui: &mut Ui) {
                             .label("dark mode")
                             .show(ui);
                         Separator::vertical().id_salt("s-vsep").show(ui);
-                        let quality_opts = ["Low", "Medium", "High", "Ultra"];
-                        ComboBox::new(&mut state.quality, &quality_opts)
+                        ComboBox::new(&mut state.quality, &QUALITIES)
                             .id_salt("quality")
                             .size((Sizing::fixed(140.0), Sizing::HUG))
                             .show(ui);

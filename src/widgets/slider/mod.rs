@@ -1,6 +1,5 @@
 //! The horizontal value slider and what a frame of it reports.
 
-use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::layout::align::{Align, VAlign};
@@ -14,11 +13,11 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
-use crate::widgets::axis_keys::{AxisEnd, AxisKeys, KeyPair, Travel};
-use crate::widgets::drag_num::{DragNum, MAX_DECIMALS, StoreRule};
+use crate::widgets::axis_keys::{AxisEnd, AxisKeys, Travel};
+use crate::widgets::bound_num::{BoundNum, MAX_DECIMALS, StoreRule};
 use std::ops::RangeInclusive;
 
-/// Horizontal value slider over a numeric range, binding the same [`DragNum`] as
+/// Horizontal value slider over a numeric range, binding the same [`BoundNum`] as
 /// [`DragValue`](crate::DragValue). The knob sits between two `Fill` leaves
 /// weighted `fraction` and `1 − fraction`, so it tracks the resolved width without
 /// knowing it at record time; pointer mapping uses last frame's width. The parts are
@@ -28,7 +27,7 @@ use std::ops::RangeInclusive;
 #[must_use = "a widget records nothing until `show`"]
 pub struct Slider<'a> {
     widget: Widget,
-    value: DragNum<'a>,
+    value: BoundNum<'a>,
     range: SliderRange,
     decimals: usize,
     style: Option<&'a SliderTheme>,
@@ -42,7 +41,7 @@ impl<'a> Slider<'a> {
     ///
     /// Panics unless both ends of `range` are finite.
     #[track_caller]
-    pub fn new(value: impl Into<DragNum<'a>>, range: RangeInclusive<f64>) -> Self {
+    pub fn new(value: impl Into<BoundNum<'a>>, range: RangeInclusive<f64>) -> Self {
         // An infinite end would make a click store `+inf`.
         let range = domain::f64::range(range);
         Self {
@@ -97,20 +96,22 @@ impl<'a> Slider<'a> {
         let theme = self.style.unwrap_or(&ui.theme().slider);
         let knob = domain::length_at_least(theme.knob_size, 1.0);
         let track_h = domain::length_at_least(theme.track_thickness, 0.0);
-        let fill_color = theme.fill;
-        let track_color = theme.track;
-        let knob_color = theme.knob;
+        let colors = if response.disabled {
+            &theme.disabled
+        } else {
+            &theme.enabled
+        };
+        let (fill_color, track_color, knob_color) = (colors.fill, colors.track, colors.knob);
 
         let range = self.range;
-        let rule = StoreRule::new(range.min, range.max, self.decimals);
+        let rule = StoreRule::new(range.min, range.max, self.decimals).step(range.step);
         // The pointer drives the value on every gesture frame, release included; no
         // anchor is retained.
-        let pressed = response.press_fraction(knob).is_some_and(|at| {
-            self.value
-                .commit_value(range.snapped(range.value_at(at.x)), rule)
-        });
+        let pressed = response
+            .press_fraction(knob)
+            .is_some_and(|at| self.value.commit_value(range.value_at(at.x), rule));
         let keyed = !response.disabled && ui.is_focus_within(id) && {
-            let travel = KEYS.read(&mut self.widget, ui);
+            let travel = AxisKeys::SLIDER.read(&mut self.widget, ui);
             !travel.is_still() && self.commit_travel(travel, rule)
         };
         let changed = pressed | keyed;
@@ -155,25 +156,19 @@ impl<'a> Slider<'a> {
 }
 
 impl Slider<'_> {
-    /// Store where `travel` sends the value. Without a snap step the steps add to the stored
-    /// number through [`DragNum::commit_drag`], so an integer past 2^53 moves by whole steps
-    /// where a round trip through `f64` could store a lower value.
+    /// Store where `travel` sends the value, onto the rule's grid. The steps add to the stored
+    /// number through [`BoundNum::commit_drag`], so without a grid an integer past 2^53 moves by
+    /// whole steps where a round trip through `f64` could store a lower value.
     fn commit_travel(&mut self, travel: Travel, rule: StoreRule) -> bool {
         let range = self.range;
         match travel.end {
-            Some(AxisEnd::Start) => self.value.commit_value(range.snapped(range.min), rule),
-            Some(AxisEnd::End) => self.value.commit_value(range.snapped(range.max), rule),
+            Some(AxisEnd::Start) => self.value.commit_value(range.min, rule),
+            Some(AxisEnd::End) => self.value.commit_value(range.max, rule),
             None => {
                 let unit = range.key_unit(self.value.unit(self.decimals));
                 let by = f64::from(travel.steps) * unit
                     + f64::from(travel.pages) * (range.max - range.min) / 10.0;
-                let at = self.value.read();
-                match range.step {
-                    Some(_) => self
-                        .value
-                        .commit_value(range.snapped(at.widen() + by), rule),
-                    None => self.value.commit_drag(at, by, rule),
-                }
+                self.value.commit_drag(self.value.read(), by, rule)
             }
         }
     }
@@ -187,7 +182,7 @@ impl Configure for Slider<'_> {
 }
 
 /// The values a slider's track spans, `min` at the left even when it is above `max`,
-/// and the grid its values snap to.
+/// and the step of the grid its values snap to.
 #[derive(Clone, Copy, Debug)]
 struct SliderRange {
     min: f64,
@@ -215,32 +210,6 @@ impl SliderRange {
         self.min + f64::from(fraction.clamp(0.0, 1.0)) * (self.max - self.min)
     }
 
-    /// Snap to the nearest multiple of `step` from `min` inside the range, so a span that is no
-    /// multiple of the step ends on its last grid value (`0..=10` by 4 takes 10 to 8); no step
-    /// passes the value through.
-    fn snapped(self, value: f64) -> f64 {
-        let Some(s) = self.step else {
-            return value;
-        };
-        let span = self.max - self.min;
-        let count = span / s;
-        // A span that is a whole number of steps divides a few ulps off (`0.3 / 0.1` is
-        // `2.9999999999999996`). The span and the product each round by half an ulp of the span,
-        // so a product that close to it is the whole count.
-        let last = if (count.round() * s - span).abs() <= 2.0 * f64::EPSILON * span.abs() {
-            count.round()
-        } else {
-            count.trunc()
-        };
-        let k = ((value - self.min) / s).round();
-        let k = if last >= 0.0 {
-            k.clamp(0.0, last)
-        } else {
-            k.clamp(last, 0.0)
-        };
-        self.min + k * s
-    }
-
     /// The value an arrow steps by: the snap step, else a hundredth of the range, but at least
     /// `grain`, one unit of the bound number's last digit. So an integer slider over a range under
     /// 100 still moves, and a half step on an integer cannot round back to where it started.
@@ -253,29 +222,6 @@ impl SliderRange {
             .copysign(span)
     }
 }
-
-/// Arrows step toward `max` (right, up) or `min` (left, down); Page Up and Down move a tenth of
-/// the range; Home and End jump to the ends.
-const KEYS: AxisKeys = AxisKeys {
-    steps: &[
-        KeyPair {
-            back: Key::ArrowLeft,
-            forward: Key::ArrowRight,
-        },
-        KeyPair {
-            back: Key::ArrowDown,
-            forward: Key::ArrowUp,
-        },
-    ],
-    page: Some(KeyPair {
-        back: Key::PageDown,
-        forward: Key::PageUp,
-    }),
-    ends: Some(KeyPair {
-        back: Key::Home,
-        forward: Key::End,
-    }),
-};
 
 #[cfg(test)]
 mod tests;

@@ -336,6 +336,32 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
 - **A popup raised at a point stays where it landed** until it stops fitting; one beside a rect
   is placed each frame
   ([`TrackPopupMenu`](https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-trackpopupmenu)).
+- **A pick binds a reference into its options**: `ComboBox` writes `&'o T` among `&'o [T]`, so a
+  pick clones nothing and `T` needs only `PartialEq`. Refused: an index, which each caller maps
+  back to its value (egui's `show_index`); a bound value, which a caller that re-seeds the binding
+  from its own state each frame clones each frame, as darkroom's const editor did against its
+  settled-frame allocation test.
+- **A bound number is any of the crate's scalars**: `BoundNum` takes `f32`, `f64`, `i32` and `i64`,
+  a closed set and so an enum, where egui reaches the same set with its `Numeric` trait. An `f32`
+  is snapped in `f64`, then rounded once to the nearest `f32`.
+- **A step is a snap and the arrow unit** on every bound-number widget, from `min` or from zero
+  while `min` is unbounded, as HTML's step base is
+  ([HTML `step`](https://html.spec.whatwg.org/multipage/input.html#the-step-attribute)). The grid
+  sits in the store rule every write passes, so a drag, a key and typed entry all land on it.
+- **A disabled color surface lies under a veil**: the field, the bars, a chip and a swatch show
+  data colors no look can dim, so a disabled one paints `ColorPickerTheme::disabled_veil`, the
+  panel's color at half alpha, over them, as libadwaita dims a disabled widget with
+  `filter: opacity` ([libadwaita !307](https://gitlab.gnome.org/GNOME/libadwaita/-/merge_requests/307)).
+  Refused: a subtree opacity in the renderer, a change on every backend for one widget family;
+  a desaturated texture, a rebuild on each flip that leaves the chips without a rule. Cost: exact
+  only over the panel's color.
+- **A color chip wears a button's slot**: `ColorPickerTheme::chip` frames the color in a
+  `ButtonTheme`'s look for each state through `wear`, and the color fills the chip inside the
+  frame's border.
+- **One key map per role**: a slider takes the APG slider's keys, arrows both ways, Page and the
+  ends ([APG slider](https://www.w3.org/WAI/ARIA/apg/patterns/slider/)); a drag value the APG spin
+  button's, Up and Down, Page and a bounded end, leaving Left and Right to the text
+  ([APG spin button](https://www.w3.org/WAI/ARIA/apg/patterns/spinbutton/)).
 
 ### Input validation
 
@@ -366,10 +392,13 @@ another command shape builds another copy of the crates.
 
 ```
 cargo drive check          # after each change: fmt, then clippy
-cargo drive test [args]    # the tests; a test name picks some
+cargo drive test [args]    # the tests with default features; a test name picks some
 cargo drive bench [args]   # the benches; a filter, or --test to run each case once
-cargo drive gate           # the full check; CI runs gate --ci on each OS
+cargo drive gate           # the full check, every test lane; CI runs gate --ci on each OS
 ```
+
+`check` after each change, `test` after a batch of them, and `gate` once, when the task is done:
+it runs every lint and test lane, which `check` and `test` leave out to stay fast.
 
 A run ends on one verdict line, so `| tail -1` is enough; on a failure, read the file it names
 rather than run it again.

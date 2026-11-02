@@ -70,7 +70,7 @@ pub struct FrameFixture {
     volume: f64,
     mix: f64,
     zoom: f64,
-    quality: usize,
+    quality: &'static &'static str,
     dark_mode: bool,
     /// Divider position for the split-pane card.
     split: f32,
@@ -103,7 +103,7 @@ impl Default for FrameFixture {
             volume: 0.65,
             mix: 0.35,
             zoom: 42.0_f64,
-            quality: 2,
+            quality: &forms::QUALITIES[2],
             dark_mode: true,
             split: 0.42,
             grid_rows: Vec::new(),

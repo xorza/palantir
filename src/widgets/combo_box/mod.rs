@@ -9,7 +9,6 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::domain;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
@@ -33,14 +32,16 @@ use crate::widgets::text::Text;
 use std::rc::Rc;
 
 /// A dropdown selector: a button-styled trigger showing the current choice,
-/// opening a [`Menu`] list on click. Picking a row sets
-/// the `&mut usize` selection and closes; clicking outside or Esc dismisses.
+/// opening a [`Menu`] list on click. Picking a row points the bound `selected` at that option
+/// and closes; clicking outside or Esc dismisses. A pick binds the option, as egui's
+/// `selectable_value` binds a value, so the caller keeps its own type rather than an index; the
+/// binding is a reference into `options`, so an option that owns text or a record is never
+/// cloned, and a frame that picks nothing allocates nothing.
 /// Open state lives in the state map keyed off the combo's id; [`Self::open`],
 /// [`Self::close`] and [`Self::is_open`] drive it from outside.
 ///
-/// `*selected` is an *index* coerced for display: past the end of `options`
-/// shows the last option, and an empty list shows an empty trigger. The bound
-/// index is rewritten only when the user picks.
+/// A `*selected` no option equals shows its own label and marks no row; it is rewritten only
+/// when the user picks an option it does not equal.
 ///
 /// The trigger reuses [`crate::Theme::button`]; the list is a [`Menu`] of [`MenuItem`] rows
 /// ([`crate::Theme::menu`]).
@@ -51,30 +52,30 @@ use std::rc::Rc;
 /// A closed combo reads exactly one label.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
-pub struct ComboBox<'a, S, L> {
+pub struct ComboBox<'a, 'o, S, L> {
     widget: Widget,
-    selected: &'a mut usize,
-    options: &'a [S],
+    selected: &'a mut &'o S,
+    options: &'o [S],
     label: L,
     style: Option<&'a ComboBoxTheme>,
     button_style: Option<&'a ButtonTheme>,
     menu_style: Option<&'a MenuTheme>,
 }
 
-impl<'a, S: AsRef<str>> ComboBox<'a, S, fn(&S) -> &str> {
-    /// A dropdown over options that are themselves text.
+impl<'a, 'o, S: PartialEq + AsRef<str>> ComboBox<'a, 'o, S, fn(&S) -> &str> {
+    /// A dropdown over options that are themselves text, `selected` one of them.
     #[track_caller]
-    pub fn new(selected: &'a mut usize, options: &'a [S]) -> Self {
+    pub fn new(selected: &'a mut &'o S, options: &'o [S]) -> Self {
         Self::labeled(selected, options, S::as_ref)
     }
 }
 
-impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
+impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
     /// A dropdown over rows that *carry* a label: `label` reads each row's text.
     /// For option types no `AsRef<str>` could serve, e.g. a record with an id beside
     /// a display name. `label` is any `Fn`, so it may capture a table.
     #[track_caller]
-    pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self {
+    pub fn labeled(selected: &'a mut &'o S, options: &'o [S], label: L) -> Self {
         Self {
             // Alt+Down, the arrows, Home and End are `CARET`; the activation keys add `TEXT` in
             // `show`.
@@ -125,7 +126,10 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
         let list = Menu::menu_id(id);
-        let shown = domain::idx(*self.selected, self.options.len());
+        let shown = self
+            .options
+            .iter()
+            .position(|option| option == *self.selected);
         let mut landing = shown.map_or(MenuLanding::First, |pick| {
             MenuLanding::Row(option_id(list, pick))
         });
@@ -171,10 +175,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
 
         let arrow_color = look.text.color;
         let text_style = look.text;
-        let chosen = shown.map_or("", |shown| (self.label)(&self.options[shown]));
-        // Intern the selected label: options borrow from the caller's collection, not
-        // `'static`.
-        let label = ui.intern(chosen);
+        // Interned: the label borrows from the caller's value, not `'static`.
+        let label = ui.intern((self.label)(*self.selected));
 
         self.widget.record(ui, Some(&look.chrome), |ui| {
             Text::new(label)
@@ -212,8 +214,8 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
                     let row = MenuItem::new(lbl)
                         .id(option_id(list, i))
                         .selected(shown == Some(i));
-                    if row.show(ui).clicked() && *selected != i {
-                        *selected = i;
+                    if row.show(ui).clicked() && **selected != *opt {
+                        *selected = opt;
                         picked = true;
                     }
                 }
@@ -231,7 +233,7 @@ impl<'a, S, L: Fn(&S) -> &str> ComboBox<'a, S, L> {
 
 /// The instance that keys a combo box's row and holds the functions that drive it, so a call
 /// names no option type.
-type Keyed = ComboBox<'static, &'static str, fn(&&'static str) -> &'static str>;
+type Keyed = ComboBox<'static, 'static, &'static str, fn(&&'static str) -> &'static str>;
 
 /// Driving a combo box's list from outside, by the combo's id, and the id of the list. The
 /// functions sit on one concrete instance, [`ComboBox::open`] and its siblings, so a call names no
@@ -266,7 +268,7 @@ fn option_id(list: WidgetId, i: usize) -> WidgetId {
     list.with(("option", i))
 }
 
-impl<S, L> Configure for ComboBox<'_, S, L> {
+impl<S, L> Configure for ComboBox<'_, '_, S, L> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()

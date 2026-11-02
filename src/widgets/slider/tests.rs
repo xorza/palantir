@@ -167,37 +167,6 @@ fn pointer_mapping_is_scale_invariant() {
     }
 }
 
-#[test]
-fn snapped_rounds_to_the_step_grid_from_min() {
-    let stepped = |min: f64, step: Option<f64>| SliderRange {
-        step,
-        ..range(min, 100.0)
-    };
-    assert_eq!(stepped(0.0, Some(10.0)).snapped(53.0), 50.0);
-    assert_eq!(stepped(0.0, Some(10.0)).snapped(57.0), 60.0);
-    assert_eq!(stepped(0.0, Some(5.0)).snapped(12.0), 10.0);
-    assert_eq!(stepped(0.0, Some(5.0)).snapped(13.0), 15.0);
-    assert_eq!(stepped(1.0, Some(0.5)).snapped(2.2), 2.0);
-    assert_eq!(stepped(0.0, None).snapped(53.0), 53.0);
-
-    // The grid stays inside the range: `0..=10` by 4 holds 0, 4 and 8, so 10 and 11 land on 8
-    // (rounding alone gives 12) and -3 on 0; reversed, `10..=0` by 4 holds 10, 6 and 2.
-    let grid = |min: f64, max: f64, step: f64| SliderRange {
-        step: Some(step),
-        ..range(min, max)
-    };
-    assert_eq!(grid(0.0, 10.0, 4.0).snapped(10.0), 8.0);
-    assert_eq!(grid(0.0, 10.0, 4.0).snapped(11.0), 8.0);
-    assert_eq!(grid(0.0, 10.0, 4.0).snapped(-3.0), 0.0);
-    assert_eq!(grid(10.0, 0.0, 4.0).snapped(-1.0), 2.0);
-    assert_eq!(grid(10.0, 0.0, 4.0).snapped(11.0), 10.0);
-    // `0.3 / 0.1` divides to just under 3, and 0.3 is still the third step, not the second.
-    assert_eq!(grid(0.0, 0.3, 0.1).snapped(0.3), 3.0 * 0.1);
-    // That allowance is an ulp of the span, not of the count: half a step past `1e12` whole
-    // steps is no whole count, so the last grid value is `1e12`, not `1e12 + 1` past the end.
-    assert_eq!(grid(0.0, 1e12 + 0.5, 1.0).snapped(2e12), 1e12);
-}
-
 /// `None` is the only "off"; a step that cannot snap is refused.
 #[test]
 fn step_rejects_a_value_that_cannot_snap() {
@@ -224,7 +193,7 @@ fn new_rejects_an_infinite_range() {
     }
 }
 
-/// A `DragNum` integer target lands on whole values: on `0..=10`, x = 34 is 2.5, rounding away from zero to 3.
+/// A `BoundNum` integer target lands on whole values: on `0..=10`, x = 34 is 2.5, rounding away from zero to 3.
 #[test]
 fn an_integer_target_lands_on_whole_values() {
     let id = WidgetId::from_hash("slider-int");
@@ -387,5 +356,50 @@ fn an_arrow_steps_at_least_one_unit_of_the_bound_number() {
         h.key(key);
         h.frame(&mut record);
         assert_eq!(halves, want, "{key:?} on a half step");
+    }
+}
+
+/// A slider wears the theme's enabled colors on its fill, track and knob, and its disabled ones
+/// while disabled.
+#[test]
+fn a_disabled_slider_wears_the_disabled_colors() {
+    use crate::scene::layer::Layer;
+    use crate::shape::paint::shape_brush::ShapeBrush;
+
+    let id = WidgetId::from_hash("slider-colors");
+    for disabled in [false, true] {
+        let mut h = Harness::mono(UVec2::new(200, 40));
+        let mut value = 0.5_f64;
+        h.frame(|ui| {
+            Slider::new(&mut value, 0.0..=1.0)
+                .id(id)
+                .disabled(disabled)
+                .show(ui);
+        });
+        let theme = h.ui_ref().theme().slider.clone();
+        assert_ne!(theme.enabled, theme.disabled, "premise: the states differ");
+        let want = if disabled {
+            theme.disabled
+        } else {
+            theme.enabled
+        };
+        for (part, color) in [
+            ("fill", want.fill),
+            ("track", want.track),
+            ("knob", want.knob),
+        ] {
+            let node = h.node_of(id.with(part)).expect("part recorded").node;
+            let fill = h
+                .ui_ref()
+                .tree(Layer::Main)
+                .chrome(node)
+                .expect("the part paints chrome")
+                .fill;
+            let color = color.to_f16();
+            assert!(
+                matches!(fill, ShapeBrush::Solid(got) if got == color),
+                "disabled {disabled}, {part}: {fill:?}, want {color:?}",
+            );
+        }
     }
 }

@@ -281,7 +281,7 @@ fn minified(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
     );
 }
 
-const FITS: [(&str, ImageFit); 5] = [
+static FITS: [(&str, ImageFit); 5] = [
     ("Fill", ImageFit::Fill),
     ("Contain", ImageFit::Contain),
     ("Cover", ImageFit::Cover),
@@ -296,10 +296,19 @@ const FITS: [(&str, ImageFit); 5] = [
 ];
 
 /// The live image's knobs: its fit, and whether a magnified texel shows as a block.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct LiveImage {
-    fit: usize,
+    fit: &'static (&'static str, ImageFit),
     nearest: bool,
+}
+
+impl Default for LiveImage {
+    fn default() -> Self {
+        Self {
+            fit: &FITS[0],
+            nearest: false,
+        }
+    }
 }
 
 /// The 4×4 sprite in a wide rect, its fit and its sampling from the knobs.
@@ -322,7 +331,7 @@ fn live(ui: &mut Ui, k: Kit, src: &Sources) {
                         .show(ui);
                     Switch::new(&mut l.nearest).label("Nearest").show(ui);
                 });
-                let fit = FITS[l.fit].1;
+                let fit = l.fit.1;
                 let filter = if l.nearest {
                     ImageFilter::Nearest
                 } else {

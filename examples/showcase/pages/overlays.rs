@@ -33,7 +33,7 @@ struct State {
     answer: Option<&'static str>,
     /// The tooltip knobs: its delay in milliseconds and the width it wraps at.
     tip_delay_ms: f64,
-    tip_width: f64,
+    tip_width: f32,
     action: Option<&'static str>,
     /// The roomy menu's theme, built once on the first frame.
     roomy: Option<MenuTheme>,
@@ -267,7 +267,7 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
                          button; a long body stacks into lines, and the bubble hugs the text.",
                     )
                     .delay(Duration::from_secs_f64(s.tip_delay_ms / 1000.0))
-                    .max_size((s.tip_width as f32, f32::INFINITY))
+                    .max_size((s.tip_width, f32::INFINITY))
                     .show(ui);
                     Text::new("delay").style(&k.t.caption()).show(ui);
                     Slider::new(&mut s.tip_delay_ms, 0.0..=1500.0)

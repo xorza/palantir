@@ -10,7 +10,7 @@ use palantir::{
     Anchor, AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorPicker,
     ColorScheme, Configure, Easing, Expander, ExpanderTheme, Menu, MenuItem, Modal, Panel, Popup,
     ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
-    Spinner, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
+    Spinner, SwatchRow, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
 };
 
 #[test]
@@ -35,7 +35,7 @@ fn color_picker_alloc_free() {
     Audit::new().text().run(|ui| {
         ColorPicker::new(&mut color)
             .alpha(true)
-            .history(true)
+            .swatches(SwatchRow::History)
             .auto_id()
             .show(ui);
     });

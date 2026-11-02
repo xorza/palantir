@@ -24,7 +24,7 @@ const M: Metrics = Metrics::DEFAULT;
 struct Bars {
     wide: bool,
     /// The timed bars' duration in milliseconds, which the knob sets.
-    duration_ms: f64,
+    duration_ms: f32,
     /// When the last toggle sent the bars off, which the plots' dots ride from.
     started: Option<Duration>,
 }
@@ -264,7 +264,7 @@ fn easing(ui: &mut Ui, k: Kit) {
                     .show(ui, k, &mut s.duration_ms);
                 });
                 let target = if s.wide { 420.0 } else { 80.0 };
-                let duration = Duration::from_secs_f64(s.duration_ms / 1000.0);
+                let duration = Duration::from_secs_f32(s.duration_ms / 1000.0);
                 // The share of the duration since the toggle, which each plot's dot sits at.
                 let t = s.started.map_or(1.0, |started| {
                     (ui.now().saturating_sub(started).as_secs_f32() / duration.as_secs_f32())

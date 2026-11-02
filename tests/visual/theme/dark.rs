@@ -6,9 +6,10 @@ use palantir::{
     AnimationSpec, ButtonTheme, Chrome, ClipMode, CloseShown, ColorPickerTheme, ComboBoxTheme,
     Corners, DockTheme, DragValueTheme, Easing, ExpanderTheme, FocusRingTheme, FontFamily,
     FontSlant, FontWeight, MenuBarTheme, MenuItemTheme, MenuTheme, ModalTheme, PopupTheme,
-    ProgressBarTheme, RgbaF32, ScrollbarTheme, SeparatorTheme, Shadow, Size, SliderTheme,
-    SlotDefaults, Spacing, SpinnerTheme, SplitterTheme, StatefulLook, Stroke, TabsTheme,
-    TextEditTheme, TextStyle, TextStyleOverrides, Theme, ToggleTheme, TooltipTheme, WidgetLook,
+    ProgressBarTheme, RgbaF32, ScrollbarTheme, SeparatorTheme, Shadow, Size, SliderColors,
+    SliderTheme, SlotDefaults, Spacing, SpinnerTheme, SplitterTheme, StatefulLook, Stroke,
+    TabsTheme, TextEditTheme, TextStyle, TextStyleOverrides, Theme, ToggleTheme, TooltipTheme,
+    WidgetLook,
 };
 
 /// The dark theme, in the hue-coded colors of `FIXTURE_PALETTE`, with motion.
@@ -570,8 +571,50 @@ pub(super) fn theme() -> Theme {
             checker_light: RgbaF32::hex(0x1e4048),
             checker_dark: RgbaF32::hex(0x2e1f38),
             checker_cell: 6.0,
-            border: RgbaF32::hex(0x3d4f1e),
-            border_width: 1.0,
+            chip: ButtonTheme {
+                unselected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x3d4f1e), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x9ad2a0), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x2f6fd0), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x2e1f38), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                },
+                selected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x3d4f1e), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x9ad2a0), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x2f6fd0), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::NONE.with_border(Stroke::new(RgbaF32::hex(0x2e1f38), 1.0)),
+                        text: TextStyleOverrides::NONE,
+                    },
+                },
+                defaults: SlotDefaults {
+                    padding: Spacing::all(0.0),
+                    margin: Spacing::all(0.0),
+                    animation: None,
+                },
+            },
+            disabled_veil: RgbaF32::hexa(0x2e1f3880),
             gap: 6.0,
             popup: PopupTheme {
                 panel: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(10.0))
@@ -798,9 +841,16 @@ pub(super) fn theme() -> Theme {
             margin: Spacing::all(0.0),
         },
         slider: SliderTheme {
-            track: RgbaF32::hex(0x1e4048),
-            fill: RgbaF32::hex(0xd23f7a),
-            knob: RgbaF32::hex(0xf2f2f2),
+            enabled: SliderColors {
+                track: RgbaF32::hex(0x1e4048),
+                fill: RgbaF32::hex(0xd23f7a),
+                knob: RgbaF32::hex(0xf2f2f2),
+            },
+            disabled: SliderColors {
+                track: RgbaF32::hex(0x2e1f38),
+                fill: RgbaF32::hex(0xd9a05e),
+                knob: RgbaF32::hex(0xd9a05e),
+            },
             knob_size: 18.0,
             track_thickness: 4.0,
         },

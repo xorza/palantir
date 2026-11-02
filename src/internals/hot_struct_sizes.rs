@@ -162,12 +162,12 @@ const PINS: &[Pin] = &[
     pin::<Button<'static>>("widgets::Button", 160, 8),
     pin::<Checkbox<'static>>("widgets::Checkbox", 160, 8),
     pin::<Switch<'static>>("widgets::Switch", 160, 8),
-    pin::<ComboBox<'static, &'static str, for<'a> fn(&'a &'static str) -> &'a str>>(
+    pin::<ComboBox<'static, 'static, &'static str, for<'a> fn(&'a &'static str) -> &'a str>>(
         "widgets::ComboBox",
         176,
         8,
     ),
-    pin::<DragValue<'static>>("widgets::DragValue", 208, 8),
+    pin::<DragValue<'static>>("widgets::DragValue", 224, 8),
     pin::<RadioButton<'static, u8>>("widgets::RadioButton<u8>", 168, 8),
     pin::<TextEdit<'static>>("widgets::TextEdit", 312, 8),
     pin::<Text<'static>>("widgets::Text", 264, 8),
@@ -179,7 +179,7 @@ const PINS: &[Pin] = &[
     pin::<Block>("widgets::Block", 296, 8),
     pin::<Grid>("widgets::Grid", 296, 8),
     pin::<Scroll<'static>>("widgets::Scroll", 360, 8),
-    pin::<Separator<'static>>("widgets::Separator", 160, 8),
+    pin::<Separator<'static>>("widgets::Separator", 152, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 160, 8),
     pin::<Popup<'static>>("widgets::Popup", 336, 8),
     pin::<Modal<'static>>("widgets::Modal", 328, 8),
