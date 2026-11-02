@@ -66,7 +66,7 @@ impl<'a> Tooltip<'a> {
     /// (`trigger.snapshot()` releases the `&Ui` borrow). An empty `text` records no
     /// bubble.
     #[track_caller]
-    pub fn on(snapshot: &'a ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self {
+    pub fn on(snapshot: &ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self {
         // The bubble must never claim hover, or it would shadow its trigger.
         let widget = Widget::vstack().sense(Sense::NONE);
         Self {

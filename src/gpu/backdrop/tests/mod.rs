@@ -519,7 +519,8 @@ fn a_pane_growing_back_paints_once_under_overlapping_repaints() {
                                 16.0,
                             ))
                             .with_backdrop_filter(BackdropFilter::frosted(8.0));
-                    Popup::new(Anchor::at_point(Vec2::new(30.0, 20.0)))
+                    Popup::new()
+                        .anchor(Anchor::at_point(Vec2::new(30.0, 20.0)))
                         .id_salt("backdrop-grow-pane")
                         .layer(Layer::Menu)
                         .chrome(chrome)

@@ -32,7 +32,8 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
                 .show(ui, |ui| {
-                    Popup::new(Anchor::at_point(ANCHOR))
+                    Popup::new()
+                        .anchor(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(mode)
                         .padding(4.0)
@@ -125,7 +126,8 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                 .show(ui, |ui| {
                     // Read from `Main`; `F5`, not Esc, which the popup itself consumes.
                     let saw = ui.shortcut_pressed(Key::F5);
-                    Popup::new(Anchor::at_point(ANCHOR))
+                    Popup::new()
+                        .anchor(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(mode)
                         .show(ui, |ui, _popup| {
@@ -162,7 +164,8 @@ fn text_edit_inside_a_popup_receives_typing() {
     let field = WidgetId::from_hash("popup-field");
     let mut buf = String::new();
     let scene = |ui: &mut Ui, buf: &mut String| {
-        Popup::new(Anchor::at_point(Vec2::ZERO))
+        Popup::new()
+            .anchor(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("host"))
             .show(ui, |ui, _handle| {
                 TextEdit::new(buf).id(field).show(ui);
@@ -205,7 +208,8 @@ fn a_field_decides_whether_escape_closes_the_popup_around_it() {
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Popup::new(Anchor::at_point(ANCHOR))
+                    Popup::new()
+                        .anchor(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("filter-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _handle| {

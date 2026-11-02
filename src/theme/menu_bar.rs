@@ -17,7 +17,7 @@ use crate::theme::palette::Palette;
 /// in the muted ink, so it reads as a menu rather than as a button, and fills and takes the full
 /// ink under the pointer, from [`ButtonTheme::subtle`]; the title whose menu is open rests lit
 /// as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus themselves
-/// wear [`Theme::context_menu`](crate::Theme::context_menu).
+/// wear [`Theme::menu`](crate::Theme::menu).
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]

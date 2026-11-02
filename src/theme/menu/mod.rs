@@ -1,11 +1,11 @@
-//! Menu theming: [`ContextMenuTheme`] here, its rows in [`menu_item`]. Menu rules wear a [`crate::SeparatorTheme`].
+//! Menu theming: [`MenuTheme`] here, its rows in [`menu_item`]. Menu rules wear a [`crate::SeparatorTheme`].
 
 pub(crate) mod menu_item;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::ThemeText;
-use crate::theme::context_menu::menu_item::MenuItemTheme;
+use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::separator::SeparatorTheme;
@@ -17,15 +17,16 @@ use crate::theme::separator::SeparatorTheme;
 /// the 4 px grid's next step.
 const MIN_WIDTH: f32 = 208.0;
 
-/// Visuals for [`crate::Popup`]-hosted context menus.
+/// Visuals for every [`crate::Menu`]: a context menu, a menu below its trigger, a combo list, a
+/// menu bar's menus and a tab strip's overflow.
 /// `panel` is the container chrome, `item` drives [`crate::MenuItem`] rows, `min_width` floors the container so short labels don't paint as a pill.
 ///
-/// Read globally through [`crate::Theme::context_menu`] or per instance through the `style` of [`crate::ContextMenu`], [`crate::MenuItem`] and [`crate::MenuSeparator`].
+/// Read globally through [`crate::Theme::menu`] or per instance through the `style` of [`crate::Menu`], [`crate::MenuItem`] and [`crate::MenuSeparator`], and the `menu_style` of a widget that drops one.
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]
 #[must_use]
-pub struct ContextMenuTheme {
+pub struct MenuTheme {
     /// Panel chrome behind the items; its `padding` carves the gutter to the rows.
     pub panel: Chrome,
     /// Padding inside the container, around the items.
@@ -43,7 +44,7 @@ pub struct ContextMenuTheme {
     pub separator: SeparatorTheme,
 }
 
-impl ContextMenuTheme {
+impl MenuTheme {
     /// Panel and separator are chrome only; rows carry the text. Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
     pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
         &mut self,
@@ -74,7 +75,7 @@ impl ContextMenuTheme {
     }
 }
 
-impl Default for ContextMenuTheme {
+impl Default for MenuTheme {
     fn default() -> Self {
         Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }

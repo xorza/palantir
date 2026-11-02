@@ -8,7 +8,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::combo_box::ComboBox;
-use crate::widgets::context_menu::ContextMenu;
+use crate::widgets::menu::Menu;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -28,7 +28,7 @@ fn menu_trigger() -> WidgetId {
 enum Opener {
     Modal,
     Popup,
-    ContextMenu,
+    Menu,
     ModalInModal,
 }
 
@@ -47,12 +47,13 @@ fn record(ui: &mut Ui, opener: Opener, selected: &mut usize) {
                     .show(ui, |ui, _| dropdown(ui, selected));
             }
             Opener::Popup => {
-                Popup::new(Anchor::at_point(Vec2::new(20.0, 20.0)))
+                Popup::new()
+                    .anchor(Anchor::at_point(Vec2::new(20.0, 20.0)))
                     .auto_id()
                     .show(ui, |ui, _| dropdown(ui, selected));
             }
-            Opener::ContextMenu => {
-                ContextMenu::for_id(menu_trigger()).show(ui, |ui, _| dropdown(ui, selected));
+            Opener::Menu => {
+                Menu::for_id(menu_trigger()).show(ui, |ui, _| dropdown(ui, selected));
             }
             Opener::ModalInModal => {
                 Modal::new().auto_id().show(ui, |ui, _| {
@@ -72,14 +73,14 @@ fn a_dropdown_opens_and_picks_inside_every_overlay() {
     for opener in [
         Opener::Modal,
         Opener::Popup,
-        Opener::ContextMenu,
+        Opener::Menu,
         Opener::ModalInModal,
     ] {
         let mut selected = 0;
         let mut h = Harness::mono(UVec2::new(400, 300));
         h.frame(|ui| {
-            if matches!(opener, Opener::ContextMenu) {
-                ContextMenu::open(ui, menu_trigger(), Vec2::new(20.0, 20.0));
+            if matches!(opener, Opener::Menu) {
+                Menu::open(ui, menu_trigger(), Vec2::new(20.0, 20.0));
             }
             record(ui, opener, &mut selected);
         });

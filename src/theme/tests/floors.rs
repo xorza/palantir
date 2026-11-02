@@ -183,8 +183,8 @@ fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
         frosted.frost_floats(p, 20.0, 0.6);
         let panels = |theme: &Theme| {
             [
-                theme.context_menu.panel.clone(),
-                theme.color_picker.popup.clone(),
+                theme.menu.panel.clone(),
+                theme.color_picker.popup.panel.clone(),
                 theme.popup.panel.clone(),
                 theme.tooltip.panel.clone(),
                 theme.modal.panel.clone(),
@@ -207,7 +207,7 @@ fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
             assert_eq!(after.border, before.border);
             assert_eq!(after.shadow, before.shadow);
         }
-        frosted.context_menu.panel = stock.context_menu.panel.clone();
+        frosted.menu.panel = stock.menu.panel.clone();
         frosted.color_picker.popup = stock.color_picker.popup.clone();
         frosted.popup.panel = stock.popup.panel.clone();
         frosted.tooltip.panel = stock.tooltip.panel.clone();

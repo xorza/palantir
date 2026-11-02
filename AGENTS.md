@@ -260,7 +260,7 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
   `bool` is named for the setting (`editable(editable)`, as `OpenOptions::read`).
 - **Fixed short forms.** `idx`, `pos`, `ctx`/`Ctx`, `dir`, `bg`, `col`, `exec`, `desc`, `cur`,
   `prev`, plurals with `s`; prose, strings and test names keep whole words. A foreign name and a
-  term of another meaning keep theirs (`GradientIndex`, `WindowDirectory`, `ContextMenu`).
+  term of another meaning keep theirs (`GradientIndex`, `WindowDirectory`, `Menu`).
 - **`Chrome` is what a node paints behind its content**: fill, border, radii, shadow. `bg` is a
   background color alone. Refused: `bg` or `background` for a `Chrome`, which holds more than a
   fill; "chrome" for a widget's scaffolding.

@@ -7,8 +7,8 @@ use crate::support::{DemoCell, Kit, Knob, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{GlyphFont, PaintAnimation, PaintRepeat, Shape, curves};
 use palantir::{
-    Align, BackdropFilter, Button, Chrome, Configure, ContextMenu, ContextMenuTheme, Corners, Lens,
-    MenuItem, Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Switch, Text, Ui, WidgetId, fmt,
+    Align, BackdropFilter, Button, Chrome, Configure, Corners, Lens, Menu, MenuItem, MenuTheme,
+    Panel, PopupTrigger, Rect, RgbaF32, Sizing, Stroke, Switch, Text, Ui, WidgetId, fmt,
 };
 use std::time::Duration;
 
@@ -246,11 +246,11 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
         })
         .response
         .snapshot();
-    let mut menu: ContextMenuTheme = ui.theme().context_menu.clone();
+    let mut menu: MenuTheme = ui.theme().menu.clone();
     menu.panel = frosted_chrome();
-    ContextMenu::on(&page).style(&menu).show(ui, |ui, popup| {
+    Menu::context(&page).style(&menu).show(ui, |ui, _| {
         for label in ["Copy", "Paste", "Delete"] {
-            MenuItem::new(label).id_salt(label).show(ui, popup);
+            MenuItem::new(label).id_salt(label).show(ui);
         }
     });
 }

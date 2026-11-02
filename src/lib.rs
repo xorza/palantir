@@ -71,7 +71,7 @@
 //! one rule, but [`Slider`] has a track, fill and knob and [`Button`] a color per
 //! state, so those take the bundle. [`Chrome`] follows the same rule: widgets
 //! with one panel behind them have `chrome()` ([`Panel`], [`Grid`], [`Block`],
-//! [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`], [`ContextMenu`]).
+//! [`Scroll`], [`Popup`], [`Modal`], [`Tooltip`], [`Menu`]).
 //!
 //! # Feature flags
 //!
@@ -356,8 +356,6 @@ pub use theme::close_shown::CloseShown;
 pub use theme::color_picker::ColorPickerTheme;
 pub use theme::color_scheme::ColorScheme;
 pub use theme::combo_box::ComboBoxTheme;
-pub use theme::context_menu::ContextMenuTheme;
-pub use theme::context_menu::menu_item::MenuItemTheme;
 pub use theme::dock::DockTheme;
 pub use theme::drag_value::DragValueTheme;
 pub use theme::expander::ExpanderTheme;
@@ -367,6 +365,8 @@ pub use theme::look::animated_look::AnimatedLook;
 pub use theme::look::engagement::Engagement;
 pub use theme::look::slot_defaults::SlotDefaults;
 pub use theme::look::stateful_look::StatefulLook;
+pub use theme::menu::MenuTheme;
+pub use theme::menu::menu_item::MenuItemTheme;
 pub use theme::menu_bar::{MenuBarTheme, MenuState};
 pub use theme::metrics::Metrics;
 pub use theme::metrics::RadiusSteps;
@@ -411,9 +411,6 @@ pub use widgets::color_picker::ColorPicker;
 pub use widgets::color_strip::ColorStrip;
 pub use widgets::color_swatch::ColorSwatch;
 pub use widgets::combo_box::ComboBox;
-pub use widgets::context_menu::ContextMenu;
-pub use widgets::context_menu::menu_item::MenuItem;
-pub use widgets::context_menu::menu_separator::MenuSeparator;
 pub use widgets::dock::allowed_splits::AllowedSplits;
 pub use widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 pub use widgets::dock::dock_operation::{DockDrop, DockOperation};
@@ -432,6 +429,10 @@ pub use widgets::expander::Expander;
 pub use widgets::expander::ExpanderResponse;
 pub use widgets::gpu_view::GpuView;
 pub use widgets::grid::Grid;
+pub use widgets::menu::Menu;
+pub use widgets::menu::menu_item::MenuItem;
+pub use widgets::menu::menu_landing::MenuLanding;
+pub use widgets::menu::menu_separator::MenuSeparator;
 pub use widgets::menu_bar::{MenuBar, MenuBarMenus};
 pub use widgets::modal::Modal;
 pub use widgets::panel::Panel;

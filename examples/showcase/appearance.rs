@@ -347,10 +347,10 @@ mod tests {
         assert_eq!(*look.palette(scheme), *Palette::for_scheme(scheme));
 
         // Frosted by default; off, the floats wear the stock opaque panel.
-        assert!(!h.ui().theme().context_menu.panel.backdrop_filter.is_noop());
+        assert!(!h.ui().theme().menu.panel.backdrop_filter.is_noop());
         look.set_frosted(false);
         look.apply(h.ui());
         let stock = Theme::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT);
-        assert_eq!(h.ui().theme().context_menu.panel, stock.context_menu.panel);
+        assert_eq!(h.ui().theme().menu.panel, stock.menu.panel);
     }
 }

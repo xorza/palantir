@@ -328,8 +328,7 @@ ColorPickerTheme
         pub border: RgbaF32
         pub border_width: f32
         pub gap: f32
-        pub popup: Chrome
-        pub popup_padding: Spacing
+        pub popup: PopupTheme
         pub value: DragValueTheme
         pub hex: TextEditTheme
         pub label: TextStyleOverrides
@@ -372,6 +371,7 @@ ComboBox
             pub fn labeled(selected: &'a mut usize, options: &'a [S], label: L) -> Self
             pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
             pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
+            pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
         impl ComboBox<'static, &'static str, fn(&&'static str) -> &'static str>
             pub fn open(ui: &mut Ui, id: WidgetId)
@@ -431,28 +431,6 @@ ConicGradient
 
 ConicGradientBuilder
     type ConicGradientBuilder = GradientBuilder<ConicGeometry>
-
-ContextMenu
-    struct ContextMenu<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn for_id(for_id: WidgetId) -> Self
-        pub fn on(snapshot: &ResponseSnapshot) -> Self
-        pub fn style(self, s: impl Into<Option<&'a ContextMenuTheme>>) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<Option<R>>
-        pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2)
-        pub fn close(ui: &mut Ui, for_id: WidgetId)
-        pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
-        pub const fn chrome(self, chrome: Chrome) -> Self
-        pub const fn default_chrome(self, chrome: Chrome) -> Self
-
-ContextMenuTheme
-    struct ContextMenuTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
-        pub panel: Chrome
-        pub padding: Spacing
-        pub min_width: f32
-        pub gap: f32
-        pub item: MenuItemTheme
-        pub separator: SeparatorTheme
-        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Corners
     struct Corners: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
@@ -635,7 +613,6 @@ DockTabMenu
         pub tab: T
         pub group: TabGroupId
         pub operations: &'a mut Vec<DockOperation<T>>
-        pub close: &'a CloseHandle
         impl<'a, T: Debug> Debug for DockTabMenu<'a, T>
 
 DockTabs
@@ -666,6 +643,8 @@ DockView
             pub const fn min_pane(self, px: f32) -> Self
             pub const fn overflow(self, overflow: TabOverflow) -> Self
             pub fn style(self, s: impl Into<Option<&'a DockTheme>>) -> Self
+            pub fn tabs_style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
+            pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u>
         impl<T: DockTab> DockView<'_, T>
             pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D)
@@ -1413,10 +1392,26 @@ Locator
         impl<X> From<Vec2> for Locator<X>
         impl<X> From<WidgetId> for Locator<X>
 
+Menu
+    struct Menu<'a>: Configure, Debug, ThemeDefaults (blanket)
+        pub fn for_id(for_id: WidgetId) -> Self
+        pub fn context(snapshot: &ResponseSnapshot) -> Self
+        pub fn below(snapshot: &ResponseSnapshot) -> Self
+        pub fn at(point: Vec2) -> Self
+        pub fn style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
+        pub const fn landing(self, landing: MenuLanding) -> Self
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<Option<R>>
+        pub fn open(ui: &mut Ui, for_id: WidgetId, point: Vec2)
+        pub fn close(ui: &mut Ui, for_id: WidgetId)
+        pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
+        pub const fn chrome(self, chrome: Chrome) -> Self
+        pub const fn default_chrome(self, chrome: Chrome) -> Self
+
 MenuBar
     struct MenuBar<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuBarTheme>>) -> Self
+        pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut MenuBarMenus<'_>) -> R) -> InnerResponse<'_, R>
 
 MenuBarMenus
@@ -1437,17 +1432,25 @@ MenuItem
     struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self
+        pub const fn selected(self, selected: bool) -> Self
         pub const fn shortcut(self, shortcut: Shortcut) -> Self
         pub const fn shortcut_hint(self, shortcut: Shortcut) -> Self
-        pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui>
+        pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 MenuItemTheme
     struct MenuItemTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
-        pub looks: StatefulLook
+        pub unselected: StatefulLook
+        pub selected: StatefulLook
         pub shortcut: RgbaF32
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+
+MenuLanding
+    enum MenuLanding: Clone, Copy, Debug, Default, Eq, PartialEq
+        First
+        Last
+        Row(WidgetId)
 
 MenuSeparator
     struct MenuSeparator<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1459,6 +1462,16 @@ MenuState
     enum MenuState: Clone, Copy, Debug, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
         Shut
         Open
+
+MenuTheme
+    struct MenuTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+        pub panel: Chrome
+        pub padding: Spacing
+        pub min_width: f32
+        pub gap: f32
+        pub item: MenuItemTheme
+        pub separator: SeparatorTheme
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Metrics
     struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -1696,8 +1709,9 @@ PointerWake
         pub const fn set(&mut self, other: Self, on: bool)
 
 Popup
-    struct Popup: Configure, Debug, ThemeDefaults (blanket)
-        pub fn new(anchor: Anchor) -> Self
+    struct Popup<'a>: Configure, Debug, ThemeDefaults (blanket)
+        pub fn new() -> Self
+        pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn layer(self, layer: Layer) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
@@ -1713,8 +1727,9 @@ PopupTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 PopupTrigger
-    struct PopupTrigger: Configure, Debug, ThemeDefaults (blanket)
+    struct PopupTrigger<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn on(snapshot: &ResponseSnapshot) -> Self
+        pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<Option<R>>
@@ -2292,6 +2307,7 @@ TabStrip
         pub const fn focused(self, focused: bool) -> Self
         pub const fn overflow(self, overflow: TabOverflow) -> Self
         pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
+        pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
         pub fn chip_id(strip: WidgetId, key: u64) -> WidgetId
         pub fn close_id(strip: WidgetId, key: u64) -> WidgetId
         pub fn show(self, ui: &mut Ui, content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse<'_>
@@ -2324,6 +2340,7 @@ TabbedView
             pub const fn draggable(self, draggable: bool) -> Self
             pub const fn overflow(self, overflow: TabOverflow) -> Self
             pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
+            pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_>
         impl<'a, S: Debug, L: Debug, K: Debug> Debug for TabbedView<'a, S, L, K>
         impl<S, L, K> Configure for TabbedView<'_, S, L, K>
@@ -2506,7 +2523,7 @@ Theme
         pub scrollbar: ScrollbarTheme
         pub text_edit: TextEditTheme
         pub drag_value: DragValueTheme
-        pub context_menu: ContextMenuTheme
+        pub menu: MenuTheme
         pub menu_bar: MenuBarTheme
         pub combo_box: ComboBoxTheme
         pub modal: ModalTheme
@@ -2550,7 +2567,7 @@ ToggleTheme
 
 Tooltip
     struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn on(snapshot: &'a ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self
+        pub fn on(snapshot: &ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TooltipTheme>>) -> Self
         pub const fn delay(self, delay: Duration) -> Self
         pub const fn when_disabled(self, when_disabled: bool) -> Self
@@ -3098,7 +3115,6 @@ widget::OverlayScope
         pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
         pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R>
         pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R>
-        pub fn withdraw(self, ui: &mut Ui)
 
 widget::OverlaySpec
     struct OverlaySpec: Clone, Copy, Debug
@@ -3109,6 +3125,7 @@ widget::OverlaySpec
 widget::OverlayTurn
     struct OverlayTurn<R>
         pub inner: R
+        pub close_requested: bool
         pub escape_pressed: bool
         pub pressed_outside: bool
         impl<R: Debug> Debug for OverlayTurn<R>

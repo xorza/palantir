@@ -6,6 +6,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -13,10 +14,10 @@ use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
-use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::context_menu::menu_separator::MenuSeparator;
-use crate::widgets::context_menu::tests::support::{SURFACE, menu_rows, trigger_id};
+use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_item::MenuItem;
+use crate::widgets::menu::menu_separator::MenuSeparator;
+use crate::widgets::menu::tests::support::{SURFACE, menu_body, menu_rows, trigger_id};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::TriggerState;
@@ -26,10 +27,10 @@ use glam::Vec2;
 #[test]
 fn close_before_open_does_not_create_state() {
     let mut h = Harness::mono(UVec2::ONE);
-    ContextMenu::close(h.ui(), trigger_id());
+    Menu::close(h.ui(), trigger_id());
     assert!(
         h.ui()
-            .state::<TriggerState<ContextMenu<'static>>>(trigger_id())
+            .state::<TriggerState<Menu<'static>>>(trigger_id())
             .is_none()
     );
 }
@@ -79,7 +80,7 @@ fn item_click_dismisses_and_reports_clicked() {
         build(ui);
     });
     // Open the menu at a known anchor.
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
@@ -102,7 +103,7 @@ fn shortcut_press_fires_item_and_dismisses_unless_only_hinted() {
         h.frame(|ui| {
             build_copy(ui, hint);
         });
-        ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+        Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
         let row = h.frame_value(|ui| build_copy(ui, hint));
         assert!(menu_open(h.ui_ref()));
         assert!(
@@ -130,7 +131,7 @@ fn escape_dismisses_menu() {
     h.frame(|ui| {
         build(ui);
     });
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
@@ -152,7 +153,7 @@ fn menu_body_width_does_not_span_surface() {
     h.frame(|ui| {
         build(ui);
     });
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
         build(ui);
     });
@@ -166,7 +167,7 @@ fn menu_body_width_does_not_span_surface() {
         .expect("menu body recorded");
     // The rows are narrower than the theme's floor, so the body sits at
     // it: hugging, not spanning the 400 px surface.
-    assert_eq!(rect.size.w, h.ui().theme().context_menu.min_width);
+    assert_eq!(rect.size.w, h.ui().theme().menu.min_width);
     assert_eq!(rect.size.w, 208.0);
 }
 
@@ -199,27 +200,27 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
                 .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                 .show(ui)
                 .snapshot();
-            ContextMenu::on(&trigger).show(ui, |ui, popup| {
+            Menu::context(&trigger).show(ui, |ui, _| {
                 let item = MenuItem::new("Copy");
                 let item = if hint {
                     item.shortcut_hint(Shortcut::ctrl('C'))
                 } else {
                     item.shortcut(Shortcut::ctrl('C'))
                 };
-                let row = item.show(ui, popup);
+                let row = item.show(ui);
                 copy = CopyRow {
                     clicked: row.left.clicked(),
                     id: row.id,
                 };
                 MenuSeparator::new().show(ui);
-                MenuItem::new("Paste").show(ui, popup);
+                MenuItem::new("Paste").show(ui);
             });
         });
     copy
 }
 
 fn menu_open(ui: &Ui) -> bool {
-    ContextMenu::is_open(ui, trigger_id())
+    Menu::is_open(ui, trigger_id())
 }
 
 /// **A menu raised from inside a popup records above it rather than panicking.**
@@ -234,7 +235,7 @@ fn menu_open(ui: &Ui) -> bool {
 fn a_menu_raised_inside_a_popup_lands_above_it() {
     let mut h = Harness::mono(SURFACE);
     h.frame(nested);
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(nested);
 
     assert!(
@@ -256,7 +257,8 @@ fn nested(ui: &mut Ui) {
         .id(WidgetId::from_hash("root"))
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            Popup::new(Anchor::below(Rect::new(10.0, 10.0, 100.0, 20.0)))
+            Popup::new()
+                .anchor(Anchor::below(Rect::new(10.0, 10.0, 100.0, 20.0)))
                 .id(WidgetId::from_hash("host"))
                 .show(ui, |ui, _| {
                     let trigger = Button::new()
@@ -265,8 +267,8 @@ fn nested(ui: &mut Ui) {
                         .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .snapshot();
-                    ContextMenu::on(&trigger).show(ui, |ui, popup| {
-                        MenuItem::new("Copy").show(ui, popup);
+                    Menu::context(&trigger).show(ui, |ui, _| {
+                        MenuItem::new("Copy").show(ui);
                     });
                 });
         });
@@ -285,10 +287,10 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
             .disabled(disabled)
             .show(ui)
             .snapshot();
-        ContextMenu::on(&trigger)
-            .show(ui, |ui, popup| {
-                MenuItem::new("Copy").id(copy).show(ui, popup);
-                MenuItem::new("Paste").show(ui, popup);
+        Menu::context(&trigger)
+            .show(ui, |ui, _| {
+                MenuItem::new("Copy").id(copy).show(ui);
+                MenuItem::new("Paste").show(ui);
             })
             .inner
             .is_some()
@@ -307,7 +309,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
         "premise: Tab focuses the trigger"
     );
 
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(h.frame_value(|ui| scene(ui, false)));
     assert_eq!(
         h.focus(),
@@ -324,7 +326,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
     assert!(!menu_open(h.ui_ref()));
     assert_eq!(h.focus(), Some(trigger_id()), "closing gives focus back");
 
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     assert!(
         !h.frame_value(|ui| scene(ui, true)),
         "the body does not run under a disabled trigger"
@@ -334,4 +336,104 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
         !h.frame_value(|ui| scene(ui, false)),
         "and it stays closed once enabled again"
     );
+}
+
+/// A trigger 120 × 40 at `(20, top)` with a menu below it; whether the menu is open.
+fn below_scene(top: f32) -> impl FnMut(&mut Ui) -> bool {
+    move |ui| {
+        let mut open = false;
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .padding(Spacing::new(20.0, top, 0.0, 0.0))
+            .show(ui, |ui| {
+                let trigger = Button::new()
+                    .id(trigger_id())
+                    .label("menu")
+                    .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
+                    .show(ui)
+                    .snapshot();
+                open = Menu::below(&trigger)
+                    .show(ui, |ui, _| {
+                        MenuItem::new("Copy").show(ui);
+                    })
+                    .inner
+                    .is_some();
+            });
+        open
+    }
+}
+
+/// A menu below its trigger opens on a left click, on the menu layer, flush with the trigger's
+/// left edge and under its foot at y = 40 + 40; under a trigger at the window's foot it flips
+/// above, its foot on the trigger's top at y = 340. A second click closes it, and a right-click
+/// opens nothing.
+#[test]
+fn a_menu_below_toggles_on_a_click_and_hangs_from_its_trigger() {
+    let body = |h: &Harness| h.ui_ref().layout(Layer::Menu).rect[menu_body(h, trigger_id()).idx()];
+    for (top, flips) in [(40.0, false), (340.0, true)] {
+        let mut scene = below_scene(top);
+        let mut h = Harness::mono(SURFACE);
+        h.frame_value(&mut scene);
+        let at = Vec2::new(80.0, top + 20.0);
+        h.right_click(at);
+        assert!(
+            !h.frame_value(&mut scene),
+            "{top}: a right-click opens nothing"
+        );
+        h.click(at);
+        assert!(h.frame_value(&mut scene), "{top}: a click opens it");
+        let rect = body(&h);
+        assert_eq!(rect.min.x, 20.0, "{top}");
+        if flips {
+            assert_eq!(rect.max().y, top, "{top}: flipped above");
+        } else {
+            assert_eq!(rect.min.y, top + 40.0, "{top}: below the foot");
+        }
+        h.click(at);
+        h.frame_value(&mut scene);
+        assert!(!menu_open(h.ui_ref()), "{top}: a second click closes it");
+    }
+}
+
+/// A menu at a point shows while its caller keeps it open: on the menu layer at the point, its
+/// first row focused when the keyboard holds focus, and a clicked row closes it, which the
+/// caller reads to stop showing it.
+#[test]
+fn a_menu_at_a_point_shows_while_its_caller_keeps_it_open() {
+    let id = WidgetId::from_hash("canvas-menu");
+    let row = WidgetId::from_hash("row");
+    let mut open = false;
+    let scene = |ui: &mut Ui, open: &mut bool| {
+        Button::new().id(trigger_id()).label("focus").show(ui);
+        if *open {
+            let resp = Menu::at(Vec2::new(60.0, 70.0)).id(id).show(ui, |ui, _| {
+                MenuItem::new("Copy").id(row).show(ui);
+            });
+            *open = !resp.closed();
+        }
+    };
+    let mut h = Harness::mono(SURFACE);
+    h.frame(|ui| scene(ui, &mut open));
+    h.key(Key::Tab);
+    h.frame(|ui| scene(ui, &mut open));
+    assert_eq!(
+        h.focus(),
+        Some(trigger_id()),
+        "premise: the keyboard holds focus"
+    );
+    open = true;
+    h.frame(|ui| scene(ui, &mut open));
+    h.frame(|ui| scene(ui, &mut open));
+    assert_eq!(h.node_of(id).map(|at| at.plane.layer), Some(Layer::Menu));
+    assert_eq!(h.rect(id).map(|rect| rect.min), Some(Vec2::new(60.0, 70.0)));
+    assert_eq!(
+        h.focus(),
+        Some(row),
+        "the keyboard focus lands on the first row"
+    );
+    let at = h.center_of(row);
+    h.click(at);
+    h.frame(|ui| scene(ui, &mut open));
+    assert!(!open, "a clicked row closes it");
 }

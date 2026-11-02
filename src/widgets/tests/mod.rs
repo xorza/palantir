@@ -18,8 +18,8 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::block::Block;
-use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::grid::Grid;
+use crate::widgets::menu::Menu;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -143,7 +143,9 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
             name: "Popup",
             record: |ui, c| {
                 c.apply(
-                    Popup::new(Anchor::at_point(Vec2::new(20.0, 20.0))).id(own_id()),
+                    Popup::new()
+                        .anchor(Anchor::at_point(Vec2::new(20.0, 20.0)))
+                        .id(own_id()),
                     Popup::chrome,
                     Popup::default_chrome,
                 )
@@ -195,14 +197,10 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
             layer: Layer::Tooltip,
         },
         Kind {
-            name: "ContextMenu",
+            name: "Menu",
             record: |ui, c| {
-                c.apply(
-                    ContextMenu::for_id(own_id()),
-                    ContextMenu::chrome,
-                    ContextMenu::default_chrome,
-                )
-                .show(ui, |_, _| {});
+                c.apply(Menu::for_id(own_id()), Menu::chrome, Menu::default_chrome)
+                    .show(ui, |_, _| {});
             },
             chrome_node: || own_id().with("body"),
             layer: Layer::Menu,
@@ -217,7 +215,7 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
     for kind in &kinds {
         for case in cases {
             let mut h = Harness::mono(SURFACE);
-            ContextMenu::open(h.ui(), own_id(), Vec2::new(20.0, 20.0));
+            Menu::open(h.ui(), own_id(), Vec2::new(20.0, 20.0));
             // Two frames: the tooltip turns visible the frame after the pointer settles.
             h.frame(|ui| (kind.record)(ui, case));
             h.frame(|ui| (kind.record)(ui, case));
@@ -437,7 +435,7 @@ fn widget_setters_check_their_kinds() {
         },
         || {
             let mut h = Harness::mono(SURFACE);
-            ContextMenu::open(h.ui(), WidgetId::from_hash("m"), Vec2::new(f32::NAN, 0.0));
+            Menu::open(h.ui(), WidgetId::from_hash("m"), Vec2::new(f32::NAN, 0.0));
         },
     ];
     for set in offset {

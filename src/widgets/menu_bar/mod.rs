@@ -1,18 +1,15 @@
 //! The application menu bar: a row of titles, each opening its menu, one open at a time.
 
-use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::text_input::TextInput;
-use crate::scene::layer::Layer;
 use crate::shape::Shape;
 use crate::theme::Theme;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::menu::MenuTheme;
 use crate::theme::menu_bar::{MenuBarTheme, MenuState};
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
@@ -21,8 +18,9 @@ use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::response::{InnerResponse, Response};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::menu::Menu;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
+use crate::widgets::popup::trigger_state::{Opening, TriggerState};
 use glam::Vec2;
 use std::mem;
 use std::rc::Rc;
@@ -36,19 +34,19 @@ use std::rc::Rc;
 /// or, on the open title, shuts it. Left and Right move to the neighboring menu, wrapping, and
 /// walk the titles while one holds focus, as the
 /// [WAI-ARIA menubar](https://www.w3.org/WAI/ARIA/apg/patterns/menubar/) asks. A menu closes
-/// as a [`ContextMenu`](crate::ContextMenu) does: on Esc, a click outside, or a picked row.
+/// as a [`Menu`] does: on Esc, a click outside, or a picked row.
 ///
 /// ```
 /// # use palantir::{MenuBar, MenuItem, Ui};
 /// # fn demo(ui: &mut Ui) {
 /// MenuBar::new().show(ui, |bar| {
-///     bar.menu("File", |ui, close| {
-///         if MenuItem::new("Quit").show(ui, close).clicked() {
+///     bar.menu("File", |ui, _| {
+///         if MenuItem::new("Quit").show(ui).clicked() {
 ///             // …
 ///         }
 ///     });
-///     bar.menu("Edit", |ui, close| {
-///         MenuItem::new("Undo").show(ui, close);
+///     bar.menu("Edit", |ui, _| {
+///         MenuItem::new("Undo").show(ui);
 ///     });
 /// });
 /// # }
@@ -61,6 +59,7 @@ use std::rc::Rc;
 pub struct MenuBar<'a> {
     widget: Widget,
     style: Option<&'a MenuBarTheme>,
+    menu_style: Option<&'a MenuTheme>,
 }
 
 /// What a [`MenuBar`] keeps between frames: the titles it recorded, in order, the one menu open,
@@ -107,12 +106,20 @@ impl<'a> MenuBar<'a> {
         Self {
             widget: Widget::hstack().arrow_focus(Axis::X),
             style: None,
+            menu_style: None,
         }
     }
 
-    /// Per-instance override of [`Theme::menu_bar`](crate::Theme::menu_bar).
+    /// Per-instance override of [`Theme::menu_bar`](crate::Theme::menu_bar), the bar and its
+    /// titles; [`Self::menu_style`] restyles the menus.
     pub fn style(mut self, s: impl Into<Option<&'a MenuBarTheme>>) -> Self {
         self.style = s.into();
+        self
+    }
+
+    /// Per-instance override of [`Theme::menu`](crate::Theme::menu) for the menus the titles drop.
+    pub fn menu_style(mut self, s: impl Into<Option<&'a MenuTheme>>) -> Self {
+        self.menu_style = s.into();
         self
     }
 
@@ -158,6 +165,7 @@ impl<'a> MenuBar<'a> {
                 bar,
                 theme: &theme,
                 style,
+                menu_style: self.menu_style,
                 titles: &mut titles,
                 open,
                 step: 0,
@@ -258,6 +266,7 @@ pub struct MenuBarMenus<'u> {
     bar: WidgetId,
     theme: &'u Theme,
     style: &'u MenuBarTheme,
+    menu_style: Option<&'u MenuTheme>,
     titles: &'u mut Vec<WidgetId>,
     open: Option<OpenMenu>,
     /// Left (−1) or Right (+1) pressed in the open menu, else 0.
@@ -266,7 +275,8 @@ pub struct MenuBarMenus<'u> {
 
 impl MenuBarMenus<'_> {
     /// Add a title reading `label`, and while its menu is open record `body` in it, which gets
-    /// the menu's [`CloseHandle`] for its [`MenuItem`](crate::MenuItem)s. Returns what `body`
+    /// the menu's [`CloseHandle`] for content that is not a [`MenuItem`](crate::MenuItem), as a
+    /// row closes the menu itself. Returns what `body`
     /// returned, `None` while the menu is shut. The label names the menu, so it is one of a kind
     /// in its bar.
     pub fn menu<'l, R>(
@@ -291,33 +301,23 @@ impl MenuBarMenus<'_> {
             ui.add_shape(Shape::text(label, look.text.font()).color(look.text.color));
         });
 
-        let popup = Popup::new(Anchor::below(Rect::ZERO))
-            .id(menu_id(title))
-            .layer(Layer::Menu)
-            .menu_look(&self.theme.context_menu);
         let mut step = 0;
-        let settled = TriggerFrame {
-            for_id: title,
-            toggled: response.state.clicked(),
-            opened: None,
-            disabled: response.state.disabled,
-            rect: response.state.rect,
-            landing: TabEnd::First,
-        }
-        .settle(
-            ui,
-            here.map_or_else(TriggerState::default, |open| open.trigger),
-            popup,
-            |ui, close| {
-                let inner = body(ui, close);
-                if ui.key_pressed(Key::ArrowLeft) {
-                    step = -1;
-                } else if ui.key_pressed(Key::ArrowRight) {
-                    step = 1;
-                }
-                inner
-            },
-        );
+        let settled = Menu::below(&response)
+            .id(menu_id(title))
+            .style(self.menu_style)
+            .settle(
+                ui,
+                here.map_or_else(TriggerState::default, |open| open.trigger),
+                |ui, close| {
+                    let inner = body(ui, close);
+                    if ui.key_pressed(Key::ArrowLeft) {
+                        step = -1;
+                    } else if ui.key_pressed(Key::ArrowRight) {
+                        step = 1;
+                    }
+                    inner
+                },
+            );
         if settled.state.is_open_now() {
             // A title opening while another menu is open takes the bar's one slot from it.
             if let Some(other) = self.open.filter(|open| open.title != title) {

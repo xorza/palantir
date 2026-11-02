@@ -150,9 +150,9 @@ fn panel(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
     let theme = &ui.theme().color_picker;
     let chrome = Chrome {
         shadow: Shadow::NONE,
-        ..theme.popup.clone()
+        ..theme.popup.panel.clone()
     };
-    let padding = theme.popup_padding;
+    let padding = theme.popup.padding;
     Panel::vstack()
         .auto_id()
         .padding(padding)

@@ -1,13 +1,9 @@
 //! A popup a trigger widget opens and closes by clicking.
 
-use crate::cascade::rows::tab_stop_row::TabEnd;
 use crate::input::interaction::response_state::ResponseState;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::paint::chrome::Chrome;
-use crate::scene::layer::Layer;
-use crate::theme::context_menu::ContextMenuTheme;
+use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -15,6 +11,7 @@ use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 
@@ -34,7 +31,7 @@ use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 /// ```
 ///
 /// Open state lives in the state map keyed off the trigger's id, as
-/// [`ContextMenu`](crate::ContextMenu)'s does, and is written only on the frame
+/// [`Menu`](crate::Menu)'s does, and is written only on the frame
 /// it flips. A disabled trigger closes its popup, since the popup is a tree of
 /// its own and would keep taking input.
 ///
@@ -42,26 +39,29 @@ use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 /// derived from the trigger's.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
-pub struct PopupTrigger {
+pub struct PopupTrigger<'a> {
     for_id: WidgetId,
     /// The trigger's state when the snapshot was taken: its click toggles the
     /// popup, its rect anchors it, its disabled flag closes it.
     trigger: ResponseState,
-    /// The popup this trigger drops; its anchor is a placeholder until `show`.
-    popup: Popup,
-    /// The end of the popup's Tab stops a keyboard open focuses.
-    landing: TabEnd,
+    /// The popup this trigger drops; anchored below the trigger at `show`.
+    popup: Popup<'a>,
 }
 
-impl PopupTrigger {
+impl<'a> PopupTrigger<'a> {
     /// Attach a popup to the trigger `snapshot` was taken from.
     pub fn on(snapshot: &ResponseSnapshot) -> Self {
         Self {
             for_id: snapshot.id,
             trigger: snapshot.state,
-            popup: Popup::new(Anchor::below(Rect::ZERO)).default_id(snapshot.id.with("popup")),
-            landing: TabEnd::First,
+            popup: Popup::new().default_id(snapshot.id.with("popup")),
         }
+    }
+
+    /// Per-instance override of [`Theme::popup`](crate::Theme::popup). See [`Popup::style`].
+    pub fn style(mut self, s: impl Into<Option<&'a PopupTheme>>) -> Self {
+        self.popup = self.popup.style(s);
+        self
     }
 
     /// Paint `chrome` behind the popup. See [`Popup::chrome`].
@@ -87,52 +87,37 @@ impl PopupTrigger {
         self
     }
 
-    /// Record into `layer` rather than [`Layer::Popup`], as a menu button's menu does.
-    pub(crate) const fn layer(mut self, layer: Layer) -> Self {
-        self.popup = self.popup.layer(layer);
-        self
-    }
-
-    /// Focus the stop at `end` of the popup's Tab stops when the keyboard opens it, as a list End
-    /// opens lands on its last row.
-    pub(crate) const fn landing(mut self, end: TabEnd) -> Self {
-        self.landing = end;
-        self
-    }
-
-    /// Dress the popup as a menu panel, as [`ContextMenu`](crate::ContextMenu) is.
-    pub(crate) fn menu_look(mut self, menu: &ContextMenuTheme) -> Self {
-        self.popup = self.popup.menu_look(menu);
-        self
-    }
-
     /// Toggle the open flag on a trigger click, close it on a disabled trigger, and
     /// record the popup below the trigger while open.
     ///
     /// Returns the popup's [`OverlayResponse`] as
-    /// [`ContextMenu::show`](crate::ContextMenu::show) does; `inner` is `None` while
+    /// [`Menu::show`](crate::Menu::show) does; `inner` is `None` while
     /// closed.
     ///
     /// A popup opened from the keyboard (Space or Enter on the focused trigger, or
     /// [`Self::open`] with keyboard focus) takes focus on its first stop, as
-    /// WAI-ARIA's menu button does, or on the end its trigger set; a click leaves focus on the trigger. Focus
-    /// returns to the trigger on close.
+    /// WAI-ARIA's menu button does; a click leaves focus on the trigger. Focus returns to the
+    /// trigger on close.
     pub fn show<R>(
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &CloseHandle) -> R,
     ) -> OverlayResponse<Option<R>> {
-        TriggerFrame {
+        let resp = TriggerFrame {
             for_id: self.for_id,
             toggled: self.trigger.clicked(),
             opened: None,
             disabled: self.trigger.disabled,
             rect: self.trigger.rect,
-            landing: self.landing,
         }
-        .show::<Self, R>(ui, self.popup, body)
+        .show::<PopupTrigger<'static>, R>(ui, self.popup, body);
+        MenuLanding::First.land(ui, &resp);
+        resp
     }
+}
 
+/// Driving a trigger's popup from outside, by the trigger's id.
+impl PopupTrigger<'static> {
     /// Open the popup of the trigger `for_id`, e.g. from a keyboard shortcut; it
     /// records on that trigger's next `show`.
     pub fn open(ui: &mut Ui, for_id: WidgetId) {
@@ -153,7 +138,7 @@ impl PopupTrigger {
 }
 
 /// Forwards to the popup this trigger drops.
-impl Configure for PopupTrigger {
+impl Configure for PopupTrigger<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         self.popup.configure()

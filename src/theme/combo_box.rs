@@ -5,7 +5,7 @@ use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use glam::Vec2;
 
-/// Geometry for [`crate::ComboBox`]. Colors and chrome read `Theme::button` and `Theme::context_menu` (trigger as button, dropdown as context menu), so restyling either moves the combo. Left: the label-to-arrow gutter and the chevron.
+/// Geometry for [`crate::ComboBox`]. Colors and chrome read `Theme::button` and `Theme::menu` (trigger as button, dropdown as context menu), so restyling either moves the combo. Left: the label-to-arrow gutter and the chevron.
 #[derive(
     Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
 )]
@@ -22,7 +22,7 @@ pub struct ComboBoxTheme {
 }
 
 impl ComboBoxTheme {
-    /// Geometry only; colors come from [`ButtonTheme`](crate::ButtonTheme) and [`ContextMenuTheme`](crate::ContextMenuTheme), so it reads no palette.
+    /// Geometry only; colors come from [`ButtonTheme`](crate::ButtonTheme) and [`MenuTheme`](crate::MenuTheme), so it reads no palette.
     pub const fn from_parts(_p: &Palette, m: &Metrics) -> Self {
         Self {
             gap: m.space.md,

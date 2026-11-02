@@ -2,7 +2,7 @@
 
 use std::cell::Cell;
 
-/// The dismissal request handed to an overlay's body, so content can close the [`Popup`](crate::Popup) or [`Modal`](crate::Modal) it is inside. Lives on the stack for one `show` call; input needs no handle since a body records inside the overlay's scope.
+/// The dismissal request handed to an overlay's body, so content that is not a row can close the [`Popup`](crate::Popup) or [`Modal`](crate::Modal) it is inside, as a dialog's button does; an activated [`MenuItem`](crate::MenuItem) closes its overlay without one. Lives on the stack for one `show` call; input needs no handle since a body records inside the overlay's scope.
 #[derive(Debug, Default)]
 pub struct CloseHandle {
     requested: Cell<bool>,

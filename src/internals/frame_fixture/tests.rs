@@ -65,12 +65,12 @@ const EXCLUDED: &[(&str, &str)] = &[
         "records nothing until an interaction the benches never deliver",
     ),
     (
-        "context_menu",
+        "menu",
         "same as modal — nothing is recorded until a right-click",
     ),
     (
         "menu_bar",
-        "its menus record nothing until a click, as context_menu's; its titles alone \
+        "its menus record nothing until a click, as menu's; its titles alone \
              would move every existing bench number for coverage its own tests already give",
     ),
     (

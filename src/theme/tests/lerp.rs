@@ -81,8 +81,8 @@ fn the_midpoint_of_a_built_pair_blends_every_value() {
     b.text.font_size = 18.0;
     a.text.line_height_factor = 1.0;
     b.text.line_height_factor = 2.0;
-    a.context_menu.panel.corners = Corners::all(4.0);
-    b.context_menu.panel.corners = Corners::all(8.0);
+    a.menu.panel.corners = Corners::all(4.0);
+    b.menu.panel.corners = Corners::all(8.0);
     a.tooltip.max_size = Size::new(280.0, f32::INFINITY);
     b.tooltip.max_size = Size::new(320.0, 200.0);
     b.window_clear = RED;
@@ -103,7 +103,7 @@ fn the_midpoint_of_a_built_pair_blends_every_value() {
     // 14 + 4·½ = 16; 1 + 1·½ = 1.5.
     assert_eq!(mid.text.font_size, 16.0);
     assert_eq!(mid.text.line_height_factor, 1.5);
-    assert_eq!(mid.context_menu.panel.corners, Corners::all(6.0));
+    assert_eq!(mid.menu.panel.corners, Corners::all(6.0));
     // 280 + 40·½ = 300; the unbounded height switches to `b`'s at ½.
     assert_eq!(mid.tooltip.max_size, Size::new(300.0, 200.0));
     assert_eq!(mid.window_clear, RgbaF32::lerp(a.window_clear, RED, 0.5),);

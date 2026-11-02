@@ -38,7 +38,8 @@ pub(super) fn record_body(ui: &mut Ui, config: ClickOutside) -> BodyPass {
         .size((Sizing::FILL, Sizing::FILL))
         .sense(Sense::CLICK)
         .show(ui, |ui| {
-            dismissed = Popup::new(Anchor::at_point(ANCHOR))
+            dismissed = Popup::new()
+                .anchor(Anchor::at_point(ANCHOR))
                 .id(WidgetId::from_hash("test-popup"))
                 .click_outside(config)
                 .padding(4.0)

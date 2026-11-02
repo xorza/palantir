@@ -2,7 +2,6 @@
 //! behind translucent colors.
 
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::theme::ThemeText;
@@ -10,6 +9,7 @@ use crate::theme::drag_value::DragValueTheme;
 use crate::theme::look::stateful_look::StatefulLook;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
+use crate::theme::popup::PopupTheme;
 use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
@@ -64,13 +64,10 @@ pub struct ColorPickerTheme {
     /// Gap between the panel's rows and between swatches, in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub gap: f32,
-    /// Chrome of the popup a [`crate::ColorButton`] drops its panel in:
-    /// [`Palette::popup_panel`], as for menus and combo lists.
-    pub popup: Chrome,
-    /// Padding inside the popup chrome; wider than [`Self::gap`] so the panel reads
-    /// as set in a card.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
-    pub popup_padding: Spacing,
+    /// The popup a [`crate::ColorButton`] drops its panel in: [`Palette::popup_panel`], as for
+    /// menus and combo lists, padded wider than [`Self::gap`] so the panel reads as set in a
+    /// card.
+    pub popup: PopupTheme,
     /// What the channel values wear: [`Theme::drag_value`](crate::Theme) in the
     /// bundled monospace face, so digits don't shuffle as a number changes length
     /// (the panel also pins their boxes to one width).
@@ -139,7 +136,6 @@ impl ColorPickerTheme {
             border_width: _,
             gap: _,
             popup: _,
-            popup_padding: _,
         } = self;
         value.for_each_text(other.as_deref_mut().map(|o| &mut o.value), f);
         hex.for_each_text(other.as_deref_mut().map(|o| &mut o.hex), f);
@@ -167,8 +163,7 @@ impl ColorPickerTheme {
             border: p.element_strong,
             border_width: m.stroke.hairline,
             gap: m.space.sm,
-            popup: p.popup_panel(m),
-            popup_padding: Spacing::all(m.space.sm),
+            popup: PopupTheme::from_parts(p, m),
             // The editor derives from the chip, as `DragValueTheme` promises, so an
             // editable value keeps its box and text in place.
             value: {

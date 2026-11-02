@@ -11,12 +11,12 @@ use serde::Serialize;
 
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
-use crate::theme::context_menu::ContextMenuTheme;
-use crate::theme::context_menu::menu_item::MenuItemTheme;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::stateful_look::StatefulLook;
+use crate::theme::menu::MenuTheme;
+use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
 use crate::theme::progress_bar::ProgressBarTheme;
@@ -34,7 +34,7 @@ use static_assertions::{assert_impl_all, assert_not_impl_any};
 
 assert_not_impl_any!(Theme: Copy);
 assert_not_impl_any!(ButtonTheme: Copy);
-assert_not_impl_any!(ContextMenuTheme: Copy);
+assert_not_impl_any!(MenuTheme: Copy);
 assert_not_impl_any!(MenuItemTheme: Copy);
 assert_not_impl_any!(DragValueTheme: Copy);
 assert_not_impl_any!(ModalTheme: Copy);

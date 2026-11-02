@@ -501,7 +501,8 @@ fn tooltip_inside_popup_records_without_panic() {
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Popup::new(Anchor::at_point(popup_anchor))
+                    Popup::new()
+                        .anchor(Anchor::at_point(popup_anchor))
                         .id(WidgetId::from_hash("popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .padding(4.0)

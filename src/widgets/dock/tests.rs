@@ -7,14 +7,14 @@ use crate::host::harness::Harness;
 use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::text::interned_str::InternedStr;
+use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
@@ -25,6 +25,8 @@ use crate::widgets::dock::dock_view::DockView;
 use crate::widgets::dock::pane_geometry::{DropTarget, PaneGeometry};
 use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
 use crate::widgets::dock::tab_group::{TabGroup, TabGroupId};
+use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
@@ -1133,7 +1135,7 @@ impl DockTabs for MenuOn {
     fn tab_menu(&mut self, ui: &mut Ui, menu: DockTabMenu<'_, Tab>) {
         if MenuItem::new("Close")
             .id(Self::item_id())
-            .show(ui, menu.close)
+            .show(ui)
             .clicked()
         {
             menu.operations
@@ -1160,7 +1162,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .center();
     h.right_click(at);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(!ContextMenu::is_open(h.ui_ref(), chip(Tab::Main)));
+    assert!(!Menu::is_open(h.ui_ref(), chip(Tab::Main)));
     assert!(h.rect(MenuOn::item_id()).is_none(), "Main has no menu");
 
     let at = h
@@ -1169,7 +1171,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .center();
     h.right_click(at);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(ContextMenu::is_open(h.ui_ref(), chip(Tab::Prefs)));
+    assert!(Menu::is_open(h.ui_ref(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_some(),
         "Prefs's menu shows its item"
@@ -1183,7 +1185,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         [Tab::Main, viewer(1)],
         "the item closed the right-clicked tab"
     );
-    assert!(!ContextMenu::is_open(h.ui_ref(), chip(Tab::Prefs)));
+    assert!(!Menu::is_open(h.ui_ref(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
         "the menu closed with its pick"
@@ -1196,10 +1198,10 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .center();
     h.right_click(at);
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(ContextMenu::is_open(h.ui_ref(), chip(viewer(1))));
+    assert!(Menu::is_open(h.ui_ref(), chip(viewer(1))));
     d.retain_tabs(|tab| tab != viewer(1));
     h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    assert!(!ContextMenu::is_open(h.ui_ref(), chip(viewer(1))));
+    assert!(!Menu::is_open(h.ui_ref(), chip(viewer(1))));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
         "a menu whose tab the app removed closes"
@@ -1270,4 +1272,44 @@ fn a_new_dock_view_has_no_authored_size() {
     let mut operations = Vec::new();
     let mut view = DockView::new(&d, &mut operations);
     assert_eq!(view.configure().widget.authored_size(), None);
+}
+
+/// `tabs_style` restyles every pane's strip and `menu_style` the tab menus: a chip padding 5 px
+/// taller on each edge makes the strip 2 × 5 taller, and a menu padding 9 px wider on each edge
+/// makes the tab menu 2 × 9 taller.
+#[test]
+fn the_dock_restyles_its_strips_and_tab_menus() {
+    let measure = |styled: bool| {
+        let d = seeded();
+        let mut tabs = MenuOn(Tab::Prefs);
+        let mut ops = Vec::new();
+        let mut strips = Theme::default().tabs;
+        strips.chip_padding = strips.chip_padding + Spacing::new(0.0, 5.0, 0.0, 5.0);
+        let mut menu = Theme::default().menu;
+        menu.padding = menu.padding + Spacing::all(9.0);
+        let strip = DockView::strip_id(&d, d.primary().id);
+        let chip = TabStrip::chip_id(strip, DockView::tab_key(Tab::Prefs));
+        let mut h = Harness::mono(SURFACE);
+        let mut scene = |ui: &mut Ui| {
+            DockView::new(&d, &mut ops)
+                .tabs_style(styled.then_some(&strips))
+                .menu_style(styled.then_some(&menu))
+                .show(ui, &mut tabs);
+        };
+        h.prime(3, &mut scene);
+        let at = h.rect(chip).expect("the Prefs chip arranged").center();
+        h.right_click(at);
+        h.frame(&mut scene);
+        let strip_h = h.rect(strip).expect("the strip arranged").size.h;
+        let menu_h = h
+            .rect(chip.with("body"))
+            .expect("the tab menu is open")
+            .size
+            .h;
+        [strip_h, menu_h]
+    };
+    let [plain_strip, plain_menu] = measure(false);
+    let [styled_strip, styled_menu] = measure(true);
+    assert_eq!(styled_strip - plain_strip, 2.0 * 5.0);
+    assert_eq!(styled_menu - plain_menu, 2.0 * 9.0);
 }

@@ -8,9 +8,9 @@ use std::time::Duration;
 use palantir::glam::Vec2;
 use palantir::{
     Anchor, AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorPicker,
-    ColorScheme, Configure, ContextMenu, Easing, Expander, ExpanderTheme, MenuItem, Modal, Panel,
-    Popup, ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider,
-    SlotDefaults, Spinner, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
+    ColorScheme, Configure, Easing, Expander, ExpanderTheme, Menu, MenuItem, Modal, Panel, Popup,
+    ProgressBar, RadioButton, RgbaF32, Scroll, Separator, Shortcut, Sizing, Slider, SlotDefaults,
+    Spinner, Switch, Text, TextEdit, Theme, Tooltip, Ui, WidgetId,
 };
 
 #[test]
@@ -162,16 +162,14 @@ fn open_context_menu_shortcuts_alloc_free() {
             .show(ui)
             .snapshot();
         if needs_open {
-            ContextMenu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
+            Menu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
             needs_open = false;
         }
-        ContextMenu::on(&trigger).show(ui, |ui, popup| {
-            MenuItem::new("Copy")
-                .shortcut(Shortcut::ctrl('C'))
-                .show(ui, popup);
+        Menu::context(&trigger).show(ui, |ui, _| {
+            MenuItem::new("Copy").shortcut(Shortcut::ctrl('C')).show(ui);
             MenuItem::new("Select all")
                 .shortcut(Shortcut::ctrl('A'))
-                .show(ui, popup);
+                .show(ui);
         });
     });
 }
@@ -345,7 +343,8 @@ fn overlays_alloc_free() {
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::new(Anchor::at_point(Vec2::new(40.0, 40.0)))
+                Popup::new()
+                    .anchor(Anchor::at_point(Vec2::new(40.0, 40.0)))
                     .id_salt("pop")
                     .show(ui, |ui, _handle| {
                         Text::new("popup body").id_salt("pop-text").show(ui);

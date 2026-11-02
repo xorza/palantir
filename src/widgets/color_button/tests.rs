@@ -12,6 +12,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::color_picker::ColorPickerTheme;
+use crate::theme::popup::PopupTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
 use crate::widgets::color_picker::ColorPicker;
@@ -201,26 +202,28 @@ fn the_popup_takes_the_picker_theme() {
     let stock = ColorPickerTheme::default();
     let custom = ColorPickerTheme {
         // Same stroke as stock, so the folded band matches on both sides.
-        popup: Chrome {
-            corners: Corners::all(9.0),
-            ..stock.popup.clone()
+        popup: PopupTheme {
+            panel: Chrome {
+                corners: Corners::all(9.0),
+                ..stock.popup.panel.clone()
+            },
+            padding: Spacing::all(19.0),
         },
-        popup_padding: Spacing::all(19.0),
         chip_size: stock.chip_size + 30.0,
         ..stock.clone()
     };
-    assert_ne!(custom.popup.corners, stock.popup.corners);
+    assert_ne!(custom.popup.panel.corners, stock.popup.panel.corners);
 
     let plain = open_with(None);
     let styled = open_with(Some(&custom));
 
-    assert_eq!(plain.corners, stock.popup.corners, "stock chrome");
-    assert_eq!(styled.corners, custom.popup.corners, "styled chrome");
+    assert_eq!(plain.corners, stock.popup.panel.corners, "stock chrome");
+    assert_eq!(styled.corners, custom.popup.panel.corners, "styled chrome");
     assert_eq!(plain.preview, stock.chip_size, "stock preview");
     assert_eq!(styled.preview, custom.chip_size, "styled preview");
 
     // Two edges of padding (19 - 8) * 2 = 22, plus the preview's 30; the bars row grows by what the chip does.
-    let padding = custom.popup_padding.sums().h - stock.popup_padding.sums().h;
+    let padding = custom.popup.padding.sums().h - stock.popup.padding.sums().h;
     assert_eq!(styled.height - plain.height, padding + 30.0);
 }
 

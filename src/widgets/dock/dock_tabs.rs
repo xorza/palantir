@@ -3,7 +3,6 @@
 use crate::primitives::geometry::size::Size;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::ui::Ui;
-use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::dock::dock_operation::DockOperation;
 use crate::widgets::dock::dock_tab::DockTab;
 use crate::widgets::dock::tab_group::TabGroupId;
@@ -46,7 +45,7 @@ pub trait DockTabs {
     fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) {}
 }
 
-/// What [`DockTabs::tab_menu`] is handed: the right-clicked chip, its pane, the operation sink and the menu's dismiss handle.
+/// What [`DockTabs::tab_menu`] is handed: the right-clicked chip, its pane and the operation sink.
 #[derive(Debug)]
 pub struct DockTabMenu<'a, T> {
     /// The right-clicked tab.
@@ -55,6 +54,4 @@ pub struct DockTabMenu<'a, T> {
     pub group: TabGroupId,
     /// Where an item's operation goes; drained by the application's queue or [`DockView::run`](crate::DockView::run).
     pub operations: &'a mut Vec<DockOperation<T>>,
-    /// Pass to [`MenuItem::show`](crate::MenuItem::show).
-    pub close: &'a CloseHandle,
 }

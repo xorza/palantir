@@ -8,7 +8,7 @@ use crate::widget_core::response::Response;
 use crate::widgets::separator::Separator;
 use std::rc::Rc;
 
-/// The rule between menu groups: a [`crate::Separator`] wearing [`crate::Theme::context_menu`]'s `separator` slot, handed down whole.
+/// The rule between menu groups: a [`crate::Separator`] wearing [`crate::Theme::menu`]'s `separator` slot, handed down whole.
 ///
 /// ```
 /// # use palantir::{MenuSeparator, Ui};
@@ -24,7 +24,7 @@ pub struct MenuSeparator<'a> {
 }
 
 impl<'a> MenuSeparator<'a> {
-    /// A rule in the look of [`Theme::context_menu`](crate::Theme::context_menu)'s `separator`,
+    /// A rule in the look of [`Theme::menu`](crate::Theme::menu)'s `separator`,
     /// unless [`Self::style`] names another.
     #[track_caller]
     pub fn new() -> Self {
@@ -34,7 +34,7 @@ impl<'a> MenuSeparator<'a> {
         }
     }
 
-    /// Per-instance override of [`Theme::context_menu`](crate::Theme::context_menu)'s `separator`.
+    /// Per-instance override of [`Theme::menu`](crate::Theme::menu)'s `separator`.
     pub fn style(mut self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self {
         self.style = s.into();
         self
@@ -44,7 +44,7 @@ impl<'a> MenuSeparator<'a> {
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         // A handle, not a borrow: `Separator::style` holds the reference across `show`'s `&mut Ui`, and this may point into the `Ui`'s theme.
         let ui_theme = Rc::clone(ui.theme());
-        let style = self.style.unwrap_or(&ui_theme.context_menu.separator);
+        let style = self.style.unwrap_or(&ui_theme.menu.separator);
         self.separator.style(style).show(ui)
     }
 }

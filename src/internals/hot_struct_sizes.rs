@@ -66,11 +66,11 @@ use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::combo_box::ComboBox;
-use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::context_menu::menu_item::MenuItem;
 use crate::widgets::drag_value::DragValue;
 use crate::widgets::gpu_view::GpuView;
 use crate::widgets::grid::Grid;
+use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::modal::Modal;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
@@ -109,7 +109,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()` under `cfg(test)`. One value for both profiles: the scene's
 /// `cfg(debug_assertions)` check fields sit on each plane's `Tree`, which `Forest` keeps on the
 /// heap.
-const UI_SIZE: usize = 3080;
+const UI_SIZE: usize = 3104;
 
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
@@ -164,7 +164,7 @@ const PINS: &[Pin] = &[
     pin::<Switch<'static>>("widgets::Switch", 160, 8),
     pin::<ComboBox<'static, &'static str, for<'a> fn(&'a &'static str) -> &'a str>>(
         "widgets::ComboBox",
-        168,
+        176,
         8,
     ),
     pin::<DragValue<'static>>("widgets::DragValue", 208, 8),
@@ -181,11 +181,11 @@ const PINS: &[Pin] = &[
     pin::<Scroll<'static>>("widgets::Scroll", 360, 8),
     pin::<Separator<'static>>("widgets::Separator", 160, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 160, 8),
-    pin::<Popup>("widgets::Popup", 328, 8),
+    pin::<Popup<'static>>("widgets::Popup", 336, 8),
     pin::<Modal<'static>>("widgets::Modal", 328, 8),
     pin::<Tooltip<'static>>("widgets::Tooltip", 496, 8),
     pin::<GpuView>("widgets::GpuView", 144, 8),
-    pin::<ContextMenu<'static>>("widgets::ContextMenu", 352, 8),
+    pin::<Menu<'static>>("widgets::Menu", 416, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),

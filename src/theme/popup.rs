@@ -6,7 +6,8 @@ use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for a [`crate::Popup`] or [`crate::PopupTrigger`] whose caller sets no chrome or
-/// padding; the menus, the combo list and the picker wear their own slots. A popup is a floating
+/// padding, unless its `style` names another; the menus wear [`crate::MenuTheme`], and the color
+/// picker's popup its own `PopupTheme`. A popup is a floating
 /// surface, so it paints one by default, as egui's `Frame::popup` and GTK's `popover` node do.
 /// Refused: [`crate::Theme::panel_chrome`], the in-tree containers' fallback, which is unset in
 /// the stock themes and so left a popup's rows over the page.

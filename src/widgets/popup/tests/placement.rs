@@ -43,7 +43,8 @@ fn popup_body_sizing_matches_sizing_mode() {
                 .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Popup::new(Anchor::at_point(anchor))
+                    Popup::new()
+                        .anchor(Anchor::at_point(anchor))
                         .id(WidgetId::from_hash("sized-popup"))
                         .padding(0.0)
                         .chrome(Chrome::NONE)
@@ -82,7 +83,8 @@ fn popup_near_bottom_flips_upward() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::new(Anchor::at_point(anchor))
+                Popup::new()
+                    .anchor(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("flip-popup"))
                     .padding(0.0)
                     .chrome(Chrome::NONE)
@@ -123,7 +125,8 @@ fn popup_flip_reaches_cascade_not_just_layout() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::new(Anchor::at_point(anchor))
+                Popup::new()
+                    .anchor(Anchor::at_point(anchor))
                     .id(body_id)
                     .padding(0.0)
                     .chrome(Chrome::NONE)
@@ -167,7 +170,8 @@ fn popup_with_scroll_settles_in_one_frame() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::new(Anchor::at_point(anchor))
+                Popup::new()
+                    .anchor(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("scroll-popup"))
                     .padding(0.0)
                     .chrome(Chrome::NONE)
@@ -226,7 +230,8 @@ fn popup_placement_is_stable_across_frames() {
             .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                Popup::new(Anchor::at_point(anchor))
+                Popup::new()
+                    .anchor(Anchor::at_point(anchor))
                     .id(WidgetId::from_hash("stable-popup"))
                     .padding(0.0)
                     .chrome(Chrome::NONE)
@@ -297,10 +302,10 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
         let frame = |h: &mut Harness, size: Size| {
             let report = h.frame(|ui| {
                 let popup = match edge {
-                    Edge::Top => Popup::new(Anchor::above(anchor)),
-                    Edge::Right => Popup::new(Anchor::right_of(anchor)),
-                    Edge::Bottom => Popup::new(Anchor::below(anchor)),
-                    Edge::Left => Popup::new(Anchor::left_of(anchor)),
+                    Edge::Top => Popup::new().anchor(Anchor::above(anchor)),
+                    Edge::Right => Popup::new().anchor(Anchor::right_of(anchor)),
+                    Edge::Bottom => Popup::new().anchor(Anchor::below(anchor)),
+                    Edge::Left => Popup::new().anchor(Anchor::left_of(anchor)),
                 };
                 popup
                     .id(body_id)
@@ -362,7 +367,8 @@ fn an_open_popup_stays_where_it_landed() {
     let id = WidgetId::from_hash("landed-popup");
     let scene = |anchor: Vec2, height: f32| {
         move |ui: &mut Ui| {
-            Popup::new(Anchor::at_point(anchor))
+            Popup::new()
+                .anchor(Anchor::at_point(anchor))
                 .id(id)
                 .padding(0.0)
                 .chrome(Chrome::NONE)

@@ -27,7 +27,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::widget::Widget;
-use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::{block::Block, button::Button, grid::Grid, panel::Panel, text::Text};
 use glam::{UVec2, Vec2};

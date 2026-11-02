@@ -134,7 +134,7 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
 fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
     use crate::input::keyboard::key::Key;
     use crate::input::shortcut::Shortcut;
-    use crate::widgets::context_menu::ContextMenu;
+    use crate::widgets::menu::Menu;
 
     /// Open, close and probe one trigger kind by the shared trigger id.
     #[derive(Clone, Copy, Debug)]
@@ -152,9 +152,9 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
     };
     let menu = Drive {
         name: "menu",
-        open: |ui| ContextMenu::open(ui, trigger_id(), Vec2::new(200.0, 150.0)),
-        close: |ui| ContextMenu::close(ui, trigger_id()),
-        is_open: |ui| ContextMenu::is_open(ui, trigger_id()),
+        open: |ui| Menu::open(ui, trigger_id(), Vec2::new(200.0, 150.0)),
+        close: |ui| Menu::close(ui, trigger_id()),
+        is_open: |ui| Menu::is_open(ui, trigger_id()),
     };
     let x = Shortcut::key(Key::Char('x'));
     let record = |ui: &mut Ui| {
@@ -165,7 +165,7 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
             .show(ui)
             .snapshot();
         PopupTrigger::on(&trigger).show(ui, |_, _| ());
-        ContextMenu::on(&trigger).show(ui, |_, _| ());
+        Menu::context(&trigger).show(ui, |_, _| ());
         main_read
     };
 

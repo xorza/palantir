@@ -1,9 +1,11 @@
 use super::*;
 use crate::host::harness::Harness;
 use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::geometry::spacing::Spacing;
+use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::theme::palette::Palette;
-use crate::widgets::context_menu::menu_item::MenuItem;
+use crate::widgets::menu::menu_item::MenuItem;
 use glam::UVec2;
 
 const SURFACE: UVec2 = UVec2::new(600, 400);
@@ -36,9 +38,9 @@ fn build_some(ui: &mut Ui, idxs: &[usize]) -> Option<&'static str> {
     let mut picked = None;
     MenuBar::new().id(bar()).show(ui, |menus| {
         for (label, rows) in idxs.iter().map(|&idx| MENUS[idx]) {
-            menus.menu(label, |ui, close| {
+            menus.menu(label, |ui, _| {
                 for row in rows {
-                    if MenuItem::new(row).id_salt(row).show(ui, close).clicked() {
+                    if MenuItem::new(row).id_salt(row).show(ui).clicked() {
                         picked = Some(row);
                     }
                 }
@@ -304,4 +306,31 @@ fn the_bar_spans_its_parent_on_the_band() {
         panic!("the band is a solid fill");
     };
     assert_eq!(fill, Palette::DARK.surround.to_f16());
+}
+
+/// `menu_style` restyles the menus the titles drop: a padding 9 px wider on each edge makes the
+/// open menu 2 × 9 taller than the theme's.
+#[test]
+fn menu_style_restyles_the_menus() {
+    let height = |styled: bool| {
+        let mut menu = Theme::default().menu;
+        menu.padding = menu.padding + Spacing::all(9.0);
+        let mut scene = |ui: &mut Ui| {
+            MenuBar::new()
+                .id(bar())
+                .menu_style(styled.then_some(&menu))
+                .show(ui, |menus| {
+                    menus.menu("File", |ui, _| {
+                        MenuItem::new("New").show(ui);
+                    });
+                });
+        };
+        let mut h = Harness::mono(SURFACE);
+        h.frame(&mut scene);
+        let at = h.center_of(title(0));
+        h.click(at);
+        h.frame(&mut scene);
+        h.rect(menu_id(title(0))).expect("the menu is open").size.h
+    };
+    assert_eq!(height(true) - height(false), 2.0 * 9.0);
 }

@@ -87,7 +87,7 @@ impl fmt::Debug for Response<'_> {
 
 /// Owned snapshot of a response, from [`Response::snapshot`]. Derefs like
 /// [`Response`] but doesn't borrow `Ui`, so it can anchor
-/// [`crate::Tooltip::on`] / [`crate::ContextMenu::on`].
+/// [`crate::Tooltip::on`] / [`crate::Menu::context`].
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseSnapshot {
     /// Widget id of the originating widget.

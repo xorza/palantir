@@ -21,9 +21,9 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
 use crate::widgets::color_picker::ColorPicker;
-use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::context_menu::menu_separator::MenuSeparator;
+use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_item::MenuItem;
+use crate::widgets::menu::menu_separator::MenuSeparator;
 use crate::widgets::modal::Modal;
 use crate::widgets::spinner::Spinner;
 use crate::widgets::tooltip::Tooltip;
@@ -91,12 +91,10 @@ fn numbers(ron: &str) -> Vec<Range<usize>> {
 fn probe(ui: &mut Ui, scene: &mut Scene) {
     scene.fixture.render(1, ui);
     scene.dock.record(ui);
-    ContextMenu::for_id(menu_id()).show(ui, |ui, popup| {
-        MenuItem::new("Copy")
-            .shortcut(Shortcut::ctrl('C'))
-            .show(ui, popup);
+    Menu::for_id(menu_id()).show(ui, |ui, _| {
+        MenuItem::new("Copy").shortcut(Shortcut::ctrl('C')).show(ui);
         MenuSeparator::new().show(ui);
-        MenuItem::new("Paste").show(ui, popup);
+        MenuItem::new("Paste").show(ui);
     });
     let hovered = ResponseSnapshot {
         id: WidgetId::from_hash("probe-tip-trigger"),
@@ -136,7 +134,7 @@ fn render(theme: Theme, shaper: &TextShaper) -> Harness {
         .shaper(shaper.clone())
         .build();
     h.ui().set_theme_for(ColorScheme::Dark, theme);
-    ContextMenu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
+    Menu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
         color: RgbaF32::srgb(0.2, 0.4, 0.6),
         ..Scene::default()

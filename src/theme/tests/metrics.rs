@@ -96,11 +96,11 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
             t.drag_value.chip.defaults.padding,
             Spacing::xy(5.0, 1.0),
         ),
-        ("menu", t.context_menu.padding, Spacing::all(1.0)),
-        ("menu item", t.context_menu.item.defaults.padding, row),
+        ("menu", t.menu.padding, Spacing::all(1.0)),
+        ("menu item", t.menu.item.defaults.padding, row),
         (
             "menu separator",
-            t.context_menu.separator.margin,
+            t.menu.separator.margin,
             Spacing::xy(0.0, 1.0),
         ),
         ("tooltip", t.tooltip.padding, Spacing::xy(5.0, 1.0)),
@@ -121,7 +121,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ),
         (
             "picker popup",
-            t.color_picker.popup_padding,
+            t.color_picker.popup.padding,
             Spacing::all(3.0),
         ),
         ("popup", t.popup.padding, Spacing::all(3.0)),
@@ -140,7 +140,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(got, want, "{slot} padding");
     }
     let lengths = [
-        ("menu hint gap", t.context_menu.item.gap, 9.0),
+        ("menu hint gap", t.menu.item.gap, 9.0),
         ("tooltip gap", t.tooltip.gap, 3.0),
         ("tab gap", t.tabs.gap, 1.0),
         ("tab label gap", t.tabs.label_gap, 3.0),
@@ -192,8 +192,8 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("text edit", &t.text_edit.looks.normal.chrome, 13.0, 0.25),
         ("checkbox", &t.checkbox.unchecked.normal.chrome, 13.0, 0.25),
         ("tooltip", &t.tooltip.panel, 13.0, 0.25),
-        ("menu", &t.context_menu.panel, 17.0, 0.25),
-        ("picker popup", &t.color_picker.popup, 17.0, 0.25),
+        ("menu", &t.menu.panel, 17.0, 0.25),
+        ("picker popup", &t.color_picker.popup.panel, 17.0, 0.25),
         ("modal", &t.modal.panel, 17.0, 0.25),
         ("dock ghost", &t.dock.ghost.chrome, 15.0, 0.25),
     ];
@@ -202,7 +202,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(chrome.border.width, border, "{slot} border");
     }
     assert_eq!(
-        t.context_menu.item.looks.hovered.chrome.corners,
+        t.menu.item.unselected.hovered.chrome.corners,
         Corners::all(13.0)
     );
     assert_eq!(t.tabs.close.hovered.chrome.corners, Corners::all(13.0));
@@ -210,7 +210,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     for (slot, animation) in [
         ("button", t.button.defaults.animation),
         ("menu bar title", t.menu_bar.defaults.animation),
-        ("menu item", t.context_menu.item.defaults.animation),
+        ("menu item", t.menu.item.defaults.animation),
         ("tab chip", t.tabs.defaults.animation),
         ("drag value", t.drag_value.chip.defaults.animation),
     ] {
@@ -218,8 +218,8 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     }
     for (slot, shadow) in [
         ("tooltip", t.tooltip.panel.shadow),
-        ("menu", t.context_menu.panel.shadow),
-        ("picker popup", t.color_picker.popup.shadow),
+        ("menu", t.menu.panel.shadow),
+        ("picker popup", t.color_picker.popup.panel.shadow),
         ("modal", t.modal.panel.shadow),
     ] {
         assert_eq!(

@@ -1,28 +1,29 @@
-//! One activatable row inside a context menu.
+//! One activatable row inside a menu.
 
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::primitives::layout::align::{Align, HAlign};
 use crate::primitives::layout::justify::Justify;
 use crate::primitives::text::text_input::TextInput;
-use crate::theme::context_menu::menu_item::MenuItemTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::menu::menu_item::MenuItemTheme;
+use crate::theme::selection::Selection;
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::text::Text;
 
-/// One row inside a [`ContextMenu`](crate::ContextMenu): label left, optional right-aligned shortcut hint. Clicking calls [`CloseHandle::close`]. A bound [`Self::shortcut`] synthesizes a click and closes the menu (disabled rows don't intercept).
+/// One row inside a [`Menu`](crate::Menu): label left, optional right-aligned shortcut hint. Activating it closes the overlay it sits in, a menu or any popup, as egui's menu rows close their menu. A bound [`Self::shortcut`] synthesizes a click and closes the menu (disabled rows don't intercept).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct MenuItem<'a> {
     widget: Widget,
     label: TextInput<'a>,
     shortcut: MenuShortcut,
+    selection: Selection,
     style: Option<&'a MenuItemTheme>,
 }
 
@@ -41,13 +42,25 @@ impl<'a> MenuItem<'a> {
             widget: Widget::hstack().sense(Sense::CLICK).focusable(true),
             label: label.into(),
             shortcut: MenuShortcut::None,
+            selection: Selection::Unselected,
             style: None,
         }
     }
 
-    /// Per-instance override of [`Theme::context_menu`](crate::Theme::context_menu)'s `item`.
+    /// Per-instance override of [`Theme::menu`](crate::Theme::menu)'s `item`.
     pub fn style(mut self, s: impl Into<Option<&'a MenuItemTheme>>) -> Self {
         self.style = s.into();
+        self
+    }
+
+    /// Whether the row is the pick, as the current choice of a combo list: it then wears
+    /// [`MenuItemTheme::selected`]. A click reports as on any row. Default `false`.
+    pub const fn selected(mut self, selected: bool) -> Self {
+        self.selection = if selected {
+            Selection::Selected
+        } else {
+            Selection::Unselected
+        };
         self
     }
 
@@ -63,8 +76,8 @@ impl<'a> MenuItem<'a> {
         self
     }
 
-    /// Record the row inside an open menu; activating it closes the menu through `popup`.
-    pub fn show<'ui>(mut self, ui: &'ui mut Ui, popup: &CloseHandle) -> Response<'ui> {
+    /// Record the row; activating it closes the innermost overlay recording it.
+    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         // Single `response_for` probe: the body is decorative, so the response is identical before and after the node records.
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
@@ -75,10 +88,10 @@ impl<'a> MenuItem<'a> {
 
         // The look plan comes off one borrow of the theme that ends before `wear` reborrows `ui`; a menu row picks and animates like a Button.
         let theme = ui.theme();
-        let item = self.style.unwrap_or(&theme.context_menu.item);
+        let item = self.style.unwrap_or(&theme.menu.item);
         let shortcut_color = item.shortcut;
         let gap = item.gap;
-        let plan = item.plan(&response, (), theme.text);
+        let plan = item.plan(&response, self.selection, theme.text);
         let look = self.widget.wear(ui, plan);
         // Already fallen back to `theme.text` by `WidgetLook::animate`.
         let text_style = look.text;
@@ -131,11 +144,10 @@ impl<'a> MenuItem<'a> {
         }
         // Eager: `response` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
-        let resp = Response::new(ui, response);
-        if resp.clicked() {
-            popup.close();
+        if response.state.clicked() {
+            ui.overlays().close_innermost();
         }
-        resp
+        Response::new(ui, response)
     }
 }
 

@@ -12,7 +12,8 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
-use crate::theme::context_menu::ContextMenuTheme;
+use crate::theme::menu::MenuTheme;
+use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
@@ -43,25 +44,35 @@ use std::rc::Rc;
 /// Implements [`Configure`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
-pub struct Popup {
-    anchor: Anchor,
+pub struct Popup<'a> {
+    anchor: Option<Anchor>,
     click_outside: ClickOutside,
     layer: Layer,
     widget: Widget,
     chrome: Option<Chrome>,
+    style: Option<&'a PopupTheme>,
 }
 
-impl Popup {
-    /// A popup placed by `anchor`, e.g. `Popup::new(Anchor::below(rect))`.
+impl<'a> Popup<'a> {
+    /// A popup at the surface origin, with the whole surface to fit in; [`Self::anchor`] places
+    /// it, e.g. `Popup::new().anchor(Anchor::below(rect))`.
     #[track_caller]
-    pub fn new(anchor: Anchor) -> Self {
+    pub fn new() -> Self {
         Self {
-            anchor,
+            anchor: None,
             click_outside: ClickOutside::Dismiss,
             layer: Layer::Popup,
             widget: Widget::vstack().sense(Sense::CLICK),
             chrome: None,
+            style: None,
         }
+    }
+
+    /// Per-instance override of [`Theme::popup`](crate::Theme::popup): the panel and padding a
+    /// caller leaves unset. [`Self::chrome`] still wins.
+    pub fn style(mut self, s: impl Into<Option<&'a PopupTheme>>) -> Self {
+        self.style = s.into();
+        self
     }
 
     /// Record into `layer` rather than [`Layer::Popup`]; a context menu uses
@@ -78,10 +89,9 @@ impl Popup {
         self
     }
 
-    /// Re-anchor an already-built popup, for a wrapper whose placement is only
-    /// known at `show` ([`crate::ContextMenu`]).
+    /// Where the popup sits; the surface origin when unset.
     pub const fn anchor(mut self, anchor: Anchor) -> Self {
-        self.anchor = anchor;
+        self.anchor = Some(anchor);
         self
     }
 
@@ -104,12 +114,13 @@ impl Popup {
             layer,
             mut widget,
             chrome,
+            style,
         } = self;
         // Resolved before the layer switch so the body and eater ids are scoped
         // to the trigger's site, not the side layer's root.
         let id = widget.resolve(ui);
         let margin = widget.authored_margin().unwrap_or(Spacing::ZERO);
-        let anchor = Self::landed(ui, id, anchor, margin);
+        let anchor = anchor.map(|anchor| Self::landed(ui, id, anchor, margin));
         let eater_id = Self::eater_id(id);
         // Takes the pointer and the keys from lower layers together, or neither.
         let backdrop = if click_outside == ClickOutside::PassThrough {
@@ -119,7 +130,7 @@ impl Popup {
         };
         let spec = OverlaySpec {
             layer,
-            anchor: Some(anchor),
+            anchor,
             backdrop,
         };
         let scope = OverlayScope::claim(ui, spec, &mut widget);
@@ -128,8 +139,9 @@ impl Popup {
 
         let theme = Rc::clone(ui.theme());
         widget.configure().default_clip(theme.panel_clip);
-        widget.configure().default_padding(theme.popup.padding);
-        let chrome = chrome.as_ref().unwrap_or(&theme.popup.panel);
+        let slot = style.unwrap_or(&theme.popup);
+        widget.configure().default_padding(slot.padding);
+        let chrome = chrome.as_ref().unwrap_or(&slot.panel);
         let handle = CloseHandle::default();
         let turn = scope.record(ui, |ui| {
             widget.record(ui, Some(chrome), |ui| body(ui, &handle))
@@ -140,7 +152,7 @@ impl Popup {
             opened,
             // `Dismiss` also closes on Esc so hosts read one `closed()` signal.
             dismissed: dismiss_mode && (turn.pressed_outside || turn.escape_pressed),
-            close_requested: handle.requested(),
+            close_requested: handle.requested() || turn.close_requested,
             inner: turn.inner,
         };
         scope.finish(ui, response)
@@ -154,7 +166,7 @@ struct Landing {
     landed: Option<Vec2>,
 }
 
-impl Popup {
+impl Popup<'_> {
     /// The anchor the popup `id` records at. A popup asked to sit at a point, as a context menu
     /// raised at the pointer is, sits at `asked` on its first frame there, then at the point that
     /// frame landed it. The window shifts an anchored body to fit each frame it is placed, so one
@@ -200,7 +212,7 @@ impl Popup {
 
     /// Dress the popup as a menu panel: the menu theme's chrome, padding, row gap and minimum
     /// width, each unless the caller set it, and arrow keys walking the rows.
-    pub(crate) fn menu_look(self, menu: &ContextMenuTheme) -> Self {
+    pub(crate) fn menu_look(self, menu: &MenuTheme) -> Self {
         self.default_chrome(menu.panel.clone())
             .default_padding(menu.padding)
             .default_min_size(Size::new(menu.min_width, 0.0))
@@ -240,7 +252,7 @@ impl Popup {
     }
 }
 
-impl Configure for Popup {
+impl Configure for Popup<'_> {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         self.widget.configure()

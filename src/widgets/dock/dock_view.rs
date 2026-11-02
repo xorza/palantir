@@ -9,12 +9,13 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::dock::DockTheme;
+use crate::theme::menu::MenuTheme;
+use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
-use crate::widgets::context_menu::ContextMenu;
 use crate::widgets::dock::dock_node::{DockNode, NodeIdx};
 use crate::widgets::dock::dock_operation::DockOperation;
 use crate::widgets::dock::dock_path::DockPath;
@@ -27,6 +28,7 @@ use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_drag::TabDrag;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::dock::tab_group::TabGroupId;
+use crate::widgets::menu::Menu;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::Splitter;
 use crate::widgets::splitter::split_half::SplitHalf;
@@ -67,6 +69,8 @@ pub struct DockView<'a, T> {
     min_pane: f32,
     overflow: TabOverflow,
     style: Option<&'a DockTheme>,
+    tabs_style: Option<&'a TabsTheme>,
+    menu_style: Option<&'a MenuTheme>,
 }
 
 impl<'a, T: DockTab> DockView<'a, T> {
@@ -80,6 +84,8 @@ impl<'a, T: DockTab> DockView<'a, T> {
             min_pane: 0.0,
             overflow: TabOverflow::default(),
             style: None,
+            tabs_style: None,
+            menu_style: None,
         }
     }
 
@@ -106,6 +112,19 @@ impl<'a, T: DockTab> DockView<'a, T> {
         self
     }
 
+    /// Per-instance override of [`Theme::tabs`](crate::Theme::tabs) for every pane's strip.
+    pub fn tabs_style(mut self, s: impl Into<Option<&'a TabsTheme>>) -> Self {
+        self.tabs_style = s.into();
+        self
+    }
+
+    /// Per-instance override of [`Theme::menu`](crate::Theme::menu) for the tab menus and the
+    /// strips' overflow menus.
+    pub fn menu_style(mut self, s: impl Into<Option<&'a MenuTheme>>) -> Self {
+        self.menu_style = s.into();
+        self
+    }
+
     /// Record the pane tree and the drag feedback over it.
     pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u> {
         let app_theme = Rc::clone(ui.theme());
@@ -117,6 +136,8 @@ impl<'a, T: DockTab> DockView<'a, T> {
             min_pane,
             overflow,
             style: _,
+            tabs_style,
+            menu_style,
         } = self;
         widget
             .configure()
@@ -134,6 +155,8 @@ impl<'a, T: DockTab> DockView<'a, T> {
             min_pane,
             overflow,
             theme,
+            tabs_style,
+            menu_style,
             drop,
         };
         widget.record(ui, None, |ui| {
@@ -343,6 +366,8 @@ struct DockCtx<'c, T, D> {
     overflow: TabOverflow,
     /// Borrowed from the `Rc<Theme>` clone `show` holds, so the theme outlives every `Ui` reborrow.
     theme: &'c DockTheme,
+    tabs_style: Option<&'c TabsTheme>,
+    menu_style: Option<&'c MenuTheme>,
     /// Where the carried tab would land, from last frame's geometry.
     drop: Option<DropTarget>,
 }
@@ -419,6 +444,8 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 .selected(group.active)
                 .focused(focused)
                 .overflow(self.overflow)
+                .style(self.tabs_style)
+                .menu_style(self.menu_style)
                 .drop_caret(self.drop.and_then(|drop| drop.caret_in(group.id)))
                 .show(ui, |ui, chip| {
                     self.tabs.tab_content(ui, group.tabs[chip.slot], chip);
@@ -446,7 +473,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
                 ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| {
                     *row = Some(target);
                 });
-                ContextMenu::open(ui, chip, p);
+                Menu::open(ui, chip, p);
             }
         }
     }
@@ -468,26 +495,26 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
             .find_tab(target.tab)
             .is_none_or(|at| at.group != target.group)
         {
-            ContextMenu::close(ui, chip);
+            Menu::close(ui, chip);
             ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| *row = None);
             return;
         }
         let operations = &mut *self.operations;
         let tabs = &mut *self.tabs;
-        ContextMenu::for_id(chip)
+        Menu::for_id(chip)
+            .style(self.menu_style)
             .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui, close| {
+            .show(ui, |ui, _| {
                 tabs.tab_menu(
                     ui,
                     DockTabMenu {
                         tab: target.tab,
                         group: target.group,
                         operations,
-                        close,
                     },
                 );
             });
-        if !ContextMenu::is_open(ui, chip) {
+        if !Menu::is_open(ui, chip) {
             ui.with_state::<Option<TabMenuTarget<T>>, _>(self.dock, |_, row| *row = None);
         }
     }

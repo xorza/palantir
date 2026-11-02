@@ -100,6 +100,7 @@ use crate::ui::resources::UiResources;
 use crate::ui::singletons::Singletons;
 use crate::ui::state::StateMap;
 use crate::ui::window_theme::{Motion, WindowTheme};
+use crate::widget_core::overlay_stack::OverlayStack;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::vsync::Vsync;
@@ -154,6 +155,8 @@ pub struct Ui {
     /// Asks this window's host for a frame from any thread; the host sets it once the window
     /// opens.
     waker: Waker,
+    /// The overlay bodies recording now, and the close a row in each asked for.
+    overlays: OverlayStack,
 }
 
 /// Widget- and host-facing authoring API; mostly one-line delegations to sealed subsystems.
@@ -191,6 +194,7 @@ impl Ui {
             window_frame: WindowFrameState::default(),
             gpu_pass_stats: GpuPassStats::default(),
             waker: Waker::new(|| {}),
+            overlays: OverlayStack::default(),
         }
     }
 
@@ -981,6 +985,11 @@ impl Ui {
     #[inline]
     pub fn layer(&mut self, layer: Layer) -> LayerScope<'_> {
         LayerScope::new(self, layer)
+    }
+
+    /// The overlay bodies recording now.
+    pub(crate) const fn overlays(&mut self) -> &mut OverlayStack {
+        &mut self.overlays
     }
 
     /// Withdraw an [`input_scope`](crate::Configure::input_scope) this pass recorded.

@@ -8,13 +8,13 @@ pub(crate) mod close_shown;
 pub(crate) mod color_picker;
 pub(crate) mod color_scheme;
 pub(crate) mod combo_box;
-pub(crate) mod context_menu;
 pub(crate) mod dock;
 pub(crate) mod drag_value;
 mod duration_codec;
 pub(crate) mod expander;
 pub(crate) mod focus_ring;
 pub(crate) mod look;
+pub(crate) mod menu;
 pub(crate) mod menu_bar;
 pub(crate) mod metrics;
 pub(crate) mod modal;
@@ -45,11 +45,11 @@ use crate::theme::button::ButtonTheme;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::combo_box::ComboBoxTheme;
-use crate::theme::context_menu::ContextMenuTheme;
 use crate::theme::dock::DockTheme;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::expander::ExpanderTheme;
 use crate::theme::focus_ring::FocusRingTheme;
+use crate::theme::menu::MenuTheme;
 use crate::theme::menu_bar::MenuBarTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::modal::ModalTheme;
@@ -113,11 +113,11 @@ pub struct Theme {
     pub text_edit: TextEditTheme,
     /// [`crate::DragValue`]'s chip and editor, derived from `button` + `text_edit` via [`DragValueTheme::from_chip`].
     pub drag_value: DragValueTheme,
-    /// Panel and rows of every [`crate::ContextMenu`] and [`crate::ComboBox`] dropdown.
-    pub context_menu: ContextMenuTheme,
-    /// The titles of every [`crate::MenuBar`]; its menus wear [`Self::context_menu`].
+    /// Panel and rows of every [`crate::Menu`], which every widget that drops a menu shows.
+    pub menu: MenuTheme,
+    /// The titles of every [`crate::MenuBar`]; its menus wear [`Self::menu`].
     pub menu_bar: MenuBarTheme,
-    /// [`crate::ComboBox`] geometry; colors come from [`Self::button`] and [`Self::context_menu`].
+    /// [`crate::ComboBox`] geometry; colors come from [`Self::button`] and [`Self::menu`].
     pub combo_box: ComboBoxTheme,
     /// Panel and backdrop of every [`crate::Modal`].
     pub modal: ModalTheme,
@@ -222,7 +222,7 @@ impl Theme {
     pub fn frost_floats(&mut self, p: &Palette, sigma: f32, tint_alpha: f32) {
         let sigma = domain::length(sigma);
         let Self {
-            context_menu,
+            menu,
             color_picker,
             tooltip,
             modal,
@@ -252,8 +252,8 @@ impl Theme {
             panel_clip: _,
         } = self;
         for (panel, ink) in [
-            (&mut context_menu.panel, p.text_muted),
-            (&mut color_picker.popup, p.text_muted),
+            (&mut menu.panel, p.text_muted),
+            (&mut color_picker.popup.panel, p.text_muted),
             (&mut popup.panel, p.text_muted),
             (&mut tooltip.panel, p.text),
             (&mut modal.panel, p.text),
@@ -315,7 +315,7 @@ impl Theme {
             switch,
             text_edit,
             drag_value,
-            context_menu,
+            menu,
             menu_bar,
             tooltip,
             tabs,
@@ -348,7 +348,7 @@ impl Theme {
         switch.for_each_text(other.as_deref_mut().map(|o| &mut o.switch), f);
         text_edit.for_each_text(other.as_deref_mut().map(|o| &mut o.text_edit), f);
         drag_value.for_each_text(other.as_deref_mut().map(|o| &mut o.drag_value), f);
-        context_menu.for_each_text(other.as_deref_mut().map(|o| &mut o.context_menu), f);
+        menu.for_each_text(other.as_deref_mut().map(|o| &mut o.menu), f);
         menu_bar.for_each_text(other.as_deref_mut().map(|o| &mut o.menu_bar), f);
         tooltip.for_each_text(other.as_deref_mut().map(|o| &mut o.tooltip), f);
         tabs.for_each_text(other.as_deref_mut().map(|o| &mut o.tabs), f);
@@ -387,7 +387,7 @@ impl Theme {
             scrollbar: ScrollbarTheme::from_parts(p, m),
             text_edit: TextEditTheme::from_parts(p, m),
             drag_value: DragValueTheme::from_parts(p, m),
-            context_menu: ContextMenuTheme::from_parts(p, m),
+            menu: MenuTheme::from_parts(p, m),
             menu_bar: MenuBarTheme::from_parts(p, m),
             combo_box: ComboBoxTheme::from_parts(p, m),
             modal: ModalTheme::from_parts(p, m),
@@ -439,7 +439,7 @@ struct UncheckedTheme {
     scrollbar: ScrollbarTheme,
     text_edit: TextEditTheme,
     drag_value: DragValueTheme,
-    context_menu: ContextMenuTheme,
+    menu: MenuTheme,
     menu_bar: MenuBarTheme,
     combo_box: ComboBoxTheme,
     modal: ModalTheme,
@@ -476,7 +476,7 @@ impl TryFrom<UncheckedTheme> for Theme {
             scrollbar,
             text_edit,
             drag_value,
-            context_menu,
+            menu,
             menu_bar,
             combo_box,
             modal,
@@ -505,7 +505,7 @@ impl TryFrom<UncheckedTheme> for Theme {
             scrollbar,
             text_edit,
             drag_value,
-            context_menu,
+            menu,
             menu_bar,
             combo_box,
             modal,

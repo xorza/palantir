@@ -34,12 +34,16 @@ impl Backdrop {
     }
 }
 
-/// What one [`OverlayScope::record`] saw: the body's result and the two dismissal edges.
+/// What one [`OverlayScope::record`] saw: the body's result, the two dismissal edges, and a
+/// close a row in the body asked for.
 #[derive(Debug)]
 #[must_use]
 pub struct OverlayTurn<R> {
     /// What the body returned.
     pub inner: R,
+    /// A row in the body, as an activated [`MenuItem`](crate::MenuItem), asked to close the
+    /// overlay.
+    pub close_requested: bool,
     /// Escape was pressed while the overlay held the keys; always `false` without a backdrop.
     pub escape_pressed: bool,
     /// A press landed on the backdrop rather than the body; always `false` without one.
@@ -62,7 +66,7 @@ pub struct OverlaySpec {
 /// One overlay's turn on a layer, from stamping its root until it closes.
 /// [`Popup`](crate::Popup), [`Modal`](crate::Modal) and [`Tooltip`](crate::Tooltip)
 /// share this lifecycle; two steps have ordering constraints (see [`Self::record`],
-/// [`Self::withdraw`]). A scope silences the layers strictly *below* its own, never
+/// [`Self::finish`]). A scope silences the layers strictly *below* its own, never
 /// its own body, so a `TextEdit` in a popup keeps the keyboard.
 ///
 /// A custom overlay follows the same order: [`Self::claim`] with the root before
@@ -115,6 +119,7 @@ impl OverlayScope {
             });
         }
         let owns_input = backdrop.owns_input();
+        ui.overlays().enter();
         let scope = ui.layer(layer);
         let scope = match anchor {
             Some(anchor) => scope.anchor(anchor),
@@ -126,8 +131,10 @@ impl OverlayScope {
             escape_pressed = owns_input && ui.shortcut_pressed_as(self.owner, Key::Escape);
             inner
         });
+        let close_requested = ui.overlays().leave();
         OverlayTurn {
             inner,
+            close_requested,
             escape_pressed,
             pressed_outside: self.backdrop_clicked(ui),
         }
@@ -145,23 +152,14 @@ impl OverlayScope {
         ui.response_for(id).any_clicked()
     }
 
-    /// End the turn with `response`: an overlay that closed gives its scope back, as
-    /// [`Self::withdraw`] does, so no close path keeps owning input.
+    /// End the turn with `response`: an overlay that closed gives its scope back, so no close
+    /// path keeps owning input. **The current pass is unaffected**: scope paths resolve against
+    /// a cascade a frame old, so merely ceasing to record would keep owning input one more frame
+    /// and swallow the click where it was. Takes `self`, so the claim is spent.
     pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R> {
-        if response.closed() {
-            self.withdraw(ui);
-        }
-        response
-    }
-
-    /// Give the scope back once the overlay has resolved that it closed; an overlay
-    /// still open drops its scope instead. **The current pass is unaffected**: scope
-    /// paths resolve against a cascade a frame old, so merely ceasing to record would
-    /// keep owning input one more frame and swallow the click where it was. Takes
-    /// `self`, so the claim is spent.
-    pub fn withdraw(self, ui: &mut Ui) {
-        if self.spec.backdrop.owns_input() {
+        if response.closed() && self.spec.backdrop.owns_input() {
             ui.release_input_scope(self.owner);
         }
+        response
     }
 }

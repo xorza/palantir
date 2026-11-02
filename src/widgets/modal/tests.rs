@@ -136,7 +136,8 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
         const SURFACE: UVec2 = UVec2::new(400, 300);
         let scene = |ui: &mut Ui| {
             if with_popup {
-                Popup::new(Anchor::at_point(Vec2::ZERO))
+                Popup::new()
+                    .anchor(Anchor::at_point(Vec2::ZERO))
                     .id(WidgetId::from_hash("under-modal"))
                     .show(ui, |_ui, _handle| {});
             }
@@ -213,7 +214,8 @@ fn escape_closes_only_the_topmost_overlay() {
         modal: bool,
     }
     let scene = |ui: &mut Ui| Closed {
-        popup: Popup::new(Anchor::at_point(Vec2::ZERO))
+        popup: Popup::new()
+            .anchor(Anchor::at_point(Vec2::ZERO))
             .id(WidgetId::from_hash("under-modal"))
             .show(ui, |_ui, _handle| {})
             .dismissed,
@@ -267,7 +269,8 @@ fn opened_marks_the_first_frame_an_overlay_shows() {
         h.frame_value(|ui| {
             shown.then(|| {
                 let modal = Modal::new().id(modal).show(ui, |_, _| {}).opened;
-                let popup = Popup::new(Anchor::at_point(Vec2::new(10.0, 10.0)))
+                let popup = Popup::new()
+                    .anchor(Anchor::at_point(Vec2::new(10.0, 10.0)))
                     .id(popup)
                     .show(ui, |_, _| {})
                     .opened;
@@ -307,7 +310,8 @@ fn closing_from_outside_gives_the_input_back_at_once() {
                             Modal::new().id(id).show(ui, |_, _| {});
                         }
                         Overlay::Popup => {
-                            Popup::new(Anchor::at_point(Vec2::new(20.0, 20.0)))
+                            Popup::new()
+                                .anchor(Anchor::at_point(Vec2::new(20.0, 20.0)))
                                 .id(id)
                                 .show(ui, |_, _| {});
                         }

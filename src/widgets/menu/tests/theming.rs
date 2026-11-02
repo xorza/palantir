@@ -10,43 +10,39 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
-use crate::theme::context_menu::ContextMenuTheme;
-use crate::theme::context_menu::menu_item::MenuItemTheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
+use crate::theme::menu::MenuTheme;
+use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::separator::SeparatorTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::context_menu::menu_separator::MenuSeparator;
-use crate::widgets::context_menu::tests::support::{
-    MenuRow, SURFACE, menu_body, menu_rows, trigger_id,
-};
+use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_item::MenuItem;
+use crate::widgets::menu::menu_separator::MenuSeparator;
+use crate::widgets::menu::tests::support::{MenuRow, SURFACE, menu_body, menu_rows, trigger_id};
 use glam::Vec2;
 use std::time::Duration;
 
-/// Both menu gutters are theme knobs: `context_menu.gap` is the row pitch, `context_menu.item.gap` the label-to-shortcut floor; each moves only its own axis.
+/// Both menu gutters are theme knobs: `menu.gap` is the row pitch, `menu.item.gap` the label-to-shortcut floor; each moves only its own axis.
 #[test]
 fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
     fn menu(ui: &mut Ui) {
-        ContextMenu::for_id(trigger_id()).show(ui, |ui, popup| {
-            MenuItem::new("Copy")
-                .shortcut(Shortcut::ctrl('C'))
-                .show(ui, popup);
-            MenuItem::new("Paste").show(ui, popup);
+        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+            MenuItem::new("Copy").shortcut(Shortcut::ctrl('C')).show(ui);
+            MenuItem::new("Paste").show(ui);
         });
     }
 
     let mut h = Harness::mono(SURFACE);
     // Hug the content, or the theme's 160 px floor absorbs the widened gutter.
-    h.ui().theme_mut().context_menu.min_width = 0.0;
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
+    h.ui().theme_mut().menu.min_width = 0.0;
+    Menu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     let before = menu_rows(&h, trigger_id());
     assert_eq!(before.len(), 2, "two rows recorded");
 
-    h.ui().theme_mut().context_menu.gap += 6.0;
-    h.ui().theme_mut().context_menu.item.gap += 10.0;
+    h.ui().theme_mut().menu.gap += 6.0;
+    h.ui().theme_mut().menu.item.gap += 10.0;
     h.frame(menu);
     let after = menu_rows(&h, trigger_id());
 
@@ -64,15 +60,15 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
 
     // A caller's gap wins over the item theme's: `0.0` takes the whole themed gutter out.
     h.frame(|ui| {
-        ContextMenu::for_id(trigger_id()).show(ui, |ui, popup| {
+        Menu::for_id(trigger_id()).show(ui, |ui, _| {
             MenuItem::new("Copy")
                 .shortcut(Shortcut::ctrl('C'))
                 .gap(0.0)
-                .show(ui, popup);
+                .show(ui);
         });
     });
     let flush = menu_rows(&h, trigger_id());
-    let item_gap = h.ui().theme().context_menu.item.gap;
+    let item_gap = h.ui().theme().menu.item.gap;
     assert_eq!(
         after[0].rect.size.w - flush[0].rect.size.w,
         item_gap,
@@ -85,21 +81,21 @@ fn theme_gaps_drive_row_pitch_and_shortcut_gutter() {
 fn an_explicit_zero_gap_beats_the_theme_default() {
     fn rows(h: &mut Harness, gap: Option<f32>) -> Vec<MenuRow> {
         h.frame(|ui| {
-            let mut menu = ContextMenu::for_id(trigger_id());
+            let mut menu = Menu::for_id(trigger_id());
             if let Some(g) = gap {
                 menu = menu.gap(g);
             }
-            menu.show(ui, |ui, popup| {
-                MenuItem::new("Copy").show(ui, popup);
-                MenuItem::new("Paste").show(ui, popup);
+            menu.show(ui, |ui, _| {
+                MenuItem::new("Copy").show(ui);
+                MenuItem::new("Paste").show(ui);
             });
         });
         menu_rows(h, trigger_id())
     }
 
     let mut h = Harness::mono(SURFACE);
-    h.ui().theme_mut().context_menu.gap = 7.0;
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
+    h.ui().theme_mut().menu.gap = 7.0;
+    Menu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
 
     let unset = rows(&mut h, None);
     assert_eq!(unset.len(), 2);
@@ -120,20 +116,20 @@ fn an_explicit_zero_gap_beats_the_theme_default() {
     );
 }
 
-/// `MenuSeparator` wears `context_menu.separator`, never `theme.separator`.
+/// `MenuSeparator` wears `menu.separator`, never `theme.separator`.
 #[test]
 fn menu_separator_theme_drives_rule_geometry_and_color() {
     fn menu(ui: &mut Ui) {
-        ContextMenu::for_id(trigger_id()).show(ui, |ui, popup| {
-            MenuItem::new("Copy").show(ui, popup);
+        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+            MenuItem::new("Copy").show(ui);
             MenuSeparator::new().show(ui);
-            MenuItem::new("Paste").show(ui, popup);
+            MenuItem::new("Paste").show(ui);
         });
     }
 
     let mut h = Harness::mono(SURFACE);
     let rule = RgbaF32::hex(0xff00ff);
-    h.ui().theme_mut().context_menu.separator = SeparatorTheme {
+    h.ui().theme_mut().menu.separator = SeparatorTheme {
         color: rule,
         thickness: 3.0,
         margin: Spacing::xy(0.0, 7.0),
@@ -141,7 +137,7 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
     h.ui().theme_mut().separator.thickness = 11.0;
     h.ui().theme_mut().separator.color = RgbaF32::hex(0x00ff00);
 
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     let rows = menu_rows(&h, trigger_id());
     assert_eq!(rows.len(), 3, "two rows plus the separator between them");
@@ -176,34 +172,34 @@ fn menu_separator_theme_drives_rule_geometry_and_color() {
 fn a_disabled_rows_hint_dims_with_its_label() {
     let rows = [WidgetId::from_hash("live"), WidgetId::from_hash("dead")];
     let menu = |ui: &mut Ui| {
-        ContextMenu::for_id(trigger_id()).show(ui, |ui, popup| {
+        Menu::for_id(trigger_id()).show(ui, |ui, _| {
             for (id, disabled) in rows.into_iter().zip([false, true]) {
                 MenuItem::new("Copy")
                     .id(id)
                     .disabled(disabled)
                     .shortcut_hint(Shortcut::ctrl('C'))
-                    .show(ui, popup);
+                    .show(ui);
             }
         });
     };
     let mut h = Harness::mono(SURFACE);
     let theme = h.ui().theme_mut();
-    theme.context_menu.item.shortcut = RgbaF32::hex(0x00ff00);
-    theme.context_menu.item.looks.disabled.text = theme
-        .context_menu
+    theme.menu.item.shortcut = RgbaF32::hex(0x00ff00);
+    theme.menu.item.unselected.disabled.text = theme
+        .menu
         .item
-        .looks
+        .unselected
         .disabled
         .text
         .with_color(RgbaF32::hex(0xff00ff));
-    theme.context_menu.item.looks.hovered.text = theme
-        .context_menu
+    theme.menu.item.unselected.hovered.text = theme
+        .menu
         .item
-        .looks
+        .unselected
         .hovered
         .text
         .with_color(RgbaF32::hex(0x0000ff));
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(menu);
     h.frame(menu);
     let hint_color = |h: &Harness, id: WidgetId| {
@@ -250,7 +246,7 @@ fn a_disabled_rows_hint_dims_with_its_label() {
 /// `.style(...)` beats the global slot on every menu widget and writes nothing back; rows resolve through `WidgetTheme::plan`, so theme `padding`/`margin` fill where the builder was silent and an explicit value wins.
 #[test]
 fn per_instance_style_overrides_global_menu_theme() {
-    let custom = ContextMenuTheme {
+    let custom = MenuTheme {
         padding: Spacing::all(13.0),
         min_width: 220.0,
         item: MenuItemTheme {
@@ -265,23 +261,21 @@ fn per_instance_style_overrides_global_menu_theme() {
             thickness: 5.0,
             ..SeparatorTheme::default()
         },
-        ..ContextMenuTheme::default()
+        ..MenuTheme::default()
     };
 
     let mut h = Harness::mono(SURFACE);
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
     h.frame(|ui| {
-        ContextMenu::for_id(trigger_id())
-            .style(&custom)
-            .show(ui, |ui, popup| {
-                MenuItem::new("Copy").style(&custom.item).show(ui, popup);
-                MenuSeparator::new().style(&custom.separator).show(ui);
-                MenuItem::new("Bare")
-                    .style(&custom.item)
-                    .padding(Spacing::ZERO)
-                    .margin(Spacing::ZERO)
-                    .show(ui, popup);
-            });
+        Menu::for_id(trigger_id()).style(&custom).show(ui, |ui, _| {
+            MenuItem::new("Copy").style(&custom.item).show(ui);
+            MenuSeparator::new().style(&custom.separator).show(ui);
+            MenuItem::new("Bare")
+                .style(&custom.item)
+                .padding(Spacing::ZERO)
+                .margin(Spacing::ZERO)
+                .show(ui);
+        });
     });
 
     let body = menu_body(&h, trigger_id());
@@ -321,8 +315,8 @@ fn per_instance_style_overrides_global_menu_theme() {
         "explicit row margin wins over the theme's 2/6"
     );
 
-    let default = ContextMenuTheme::default();
-    let global = &h.ui_ref().theme().context_menu;
+    let default = MenuTheme::default();
+    let global = &h.ui_ref().theme().menu;
     assert_eq!(global.padding, default.padding);
     assert_eq!(global.min_width, default.min_width);
     assert_eq!(global.item.defaults.padding, default.item.defaults.padding);
@@ -333,9 +327,9 @@ fn per_instance_style_overrides_global_menu_theme() {
 #[test]
 fn explicit_zero_padding_and_minimum_override_menu_theme() {
     let mut h = Harness::mono(SURFACE);
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
-        ContextMenu::for_id(trigger_id())
+        Menu::for_id(trigger_id())
             .chrome(Chrome::NONE)
             .padding(Spacing::ZERO)
             .margin(Spacing::all(5.0))
@@ -354,11 +348,9 @@ fn explicit_zero_padding_and_minimum_override_menu_theme() {
 
     let explicit = WidgetId::from_hash("my-own-menu-body");
     let mut h = Harness::mono(SURFACE);
-    ContextMenu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
+    Menu::open(h.ui(), trigger_id(), Vec2::new(60.0, 60.0));
     h.frame(|ui| {
-        ContextMenu::for_id(trigger_id())
-            .id(explicit)
-            .show(ui, |_, _| {});
+        Menu::for_id(trigger_id()).id(explicit).show(ui, |_, _| {});
     });
     assert_eq!(
         h.node_of(explicit).map(|at| at.plane.layer),
@@ -390,4 +382,45 @@ fn separators_take_their_call_site_ids() {
     });
     assert_ne!(ids.0, ids.1);
     assert_ne!(ids.1, ids.0.with(1), "not an occurrence of the first");
+}
+
+/// The pick wears the item theme's selected pack and the other rows its unselected one, read off
+/// the label ink of each row.
+#[test]
+fn the_picked_row_wears_the_selected_look() {
+    let rows = [WidgetId::from_hash("one"), WidgetId::from_hash("two")];
+    let menu = |ui: &mut Ui| {
+        Menu::for_id(trigger_id()).show(ui, |ui, _| {
+            for (id, picked) in rows.into_iter().zip([false, true]) {
+                MenuItem::new("Row").id(id).selected(picked).show(ui);
+            }
+        });
+    };
+    let mut h = Harness::mono(SURFACE);
+    let theme = h.ui().theme_mut();
+    for (pack, ink) in [
+        (&mut theme.menu.item.unselected, 0x00ff00),
+        (&mut theme.menu.item.selected, 0xff00ff),
+    ] {
+        pack.normal.text = pack.normal.text.with_color(RgbaF32::hex(ink));
+    }
+    Menu::open(h.ui(), trigger_id(), Vec2::new(20.0, 20.0));
+    h.frame(menu);
+    h.frame(menu);
+    let label_color = |h: &Harness, id: WidgetId| {
+        let node = h
+            .ui_ref()
+            .forest()
+            .node_for_widget_id(Layer::Menu, id.with("label"));
+        h.ui_ref()
+            .tree(Layer::Menu)
+            .shapes_of(node)
+            .find_map(|shape| match shape {
+                ShapeRecord::Text { color, .. } => Some(*color),
+                _ => None,
+            })
+            .expect("the label records one text shape")
+    };
+    assert_eq!(label_color(&h, rows[0]), RgbaF32::hex(0x00ff00).to_f16());
+    assert_eq!(label_color(&h, rows[1]), RgbaF32::hex(0xff00ff).to_f16());
 }

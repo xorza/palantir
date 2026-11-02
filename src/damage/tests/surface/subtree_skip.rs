@@ -116,7 +116,8 @@ fn popup_eater_does_not_force_full_repaint() {
     let anchor = Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut h, |ui| {
-        Popup::new(Anchor::at_point(anchor))
+        Popup::new()
+            .anchor(Anchor::at_point(anchor))
             .id(WidgetId::from_hash("p"))
             .chrome(Chrome::fill(BLUE))
             .show(ui, |ui, _popup| {

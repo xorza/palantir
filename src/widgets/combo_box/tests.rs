@@ -251,41 +251,53 @@ fn trigger_chrome_follows_button_style() {
     }
 }
 
-/// The list takes the context menu's padding and row gap as well as its color, so a combo and a right-click menu from one theme read as one control. Its height grows by the padding on two edges plus one row gap.
+/// The list takes the menu theme's padding and row gap as well as its color, so a combo and a
+/// right-click menu from one theme read as one control; `menu_style` restyles it alike. Its
+/// height grows by the padding on two edges plus one row gap.
 #[test]
-fn the_dropdown_takes_the_context_menu_theme_it_documents() {
-    let list_height = |padding: f32, gap: f32| {
+fn the_dropdown_takes_the_menu_theme_it_documents() {
+    let list_height = |padding: f32, gap: f32, styled: bool| {
         let options = ["One", "Two"];
         let id = WidgetId::from_hash("combo");
-        let mut theme = Theme::default();
-        theme.context_menu.padding = Spacing::all(padding);
-        theme.context_menu.gap = gap;
+        let mut menu = Theme::default().menu;
+        menu.padding = Spacing::all(padding);
+        menu.gap = gap;
 
         let mut h = Harness::mono(SURFACE);
-        h.ui().set_theme_for(ColorScheme::Dark, theme);
+        if !styled {
+            let theme = Theme {
+                menu: menu.clone(),
+                ..Theme::default()
+            };
+            h.ui().set_theme_for(ColorScheme::Dark, theme);
+        }
         let mut selected = 0;
-        let build = |ui: &mut Ui, selected: &mut usize| {
+        let mut build = |ui: &mut Ui| {
             Panel::canvas()
                 .id(WidgetId::from_hash("root"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ComboBox::new(selected, &options)
+                    ComboBox::new(&mut selected, &options)
                         .id(id)
+                        .menu_style(styled.then_some(&menu))
                         .pos(Vec2::new(40.0, 40.0))
                         .size((Sizing::fixed(140.0), Sizing::fixed(30.0)))
                         .show(ui);
                 });
         };
-        h.frame(|ui| build(ui, &mut selected));
+        h.frame(&mut build);
         ComboBox::open(h.ui(), id);
-        h.frame(|ui| build(ui, &mut selected));
+        h.frame(&mut build);
         h.rect(id.with("list")).expect("combo list arranged").size.h
     };
 
-    assert_eq!(
-        list_height(11.0, 7.0) - list_height(0.0, 0.0),
-        2.0 * 11.0 + 7.0,
-    );
+    for styled in [false, true] {
+        assert_eq!(
+            list_height(11.0, 7.0, styled) - list_height(0.0, 0.0, styled),
+            2.0 * 11.0 + 7.0,
+            "styled {styled}",
+        );
+    }
 }
 
 /// Disabling an open ComboBox closes it: no list is recorded and a click where a row was picks nothing.
@@ -324,8 +336,9 @@ fn disabling_an_open_trigger_closes_its_list() {
 }
 
 /// A focused, closed combo box opens on the keys of the WAI-ARIA APG's select-only combobox and
-/// changes no pick: Enter, Space, Alt+Down, Down, Up and Home land on the first row, End on the
-/// last. A stale index shows the last option and stays as it is. `open`, `close` and `is_open`
+/// changes no pick: Enter, Space, Alt+Down and Down land on the pick, Up and Home on the first
+/// row, End on the last. A stale index shows the last option, which the keys land on as the pick,
+/// and stays as it is. `open`, `close` and `is_open`
 /// drive it from outside.
 #[test]
 fn the_keys_open_a_closed_list_and_change_no_pick() {
@@ -354,11 +367,12 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
     frame(&mut h, &mut pick);
     for start in [1usize, 9] {
         let mut selected = start;
+        let shown = OPTIONS[start.min(OPTIONS.len() - 1)];
         for (mods, key, lands) in [
-            (Modifiers::NONE, Key::Enter, "A"),
-            (Modifiers::NONE, Key::Char(' '), "A"),
-            (Modifiers::ALT, Key::ArrowDown, "A"),
-            (Modifiers::NONE, Key::ArrowDown, "A"),
+            (Modifiers::NONE, Key::Enter, shown),
+            (Modifiers::NONE, Key::Char(' '), shown),
+            (Modifiers::ALT, Key::ArrowDown, shown),
+            (Modifiers::NONE, Key::ArrowDown, shown),
             (Modifiers::NONE, Key::ArrowUp, "A"),
             (Modifiers::NONE, Key::Home, "A"),
             (Modifiers::NONE, Key::End, "C"),

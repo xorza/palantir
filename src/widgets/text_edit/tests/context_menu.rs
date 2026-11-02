@@ -4,7 +4,7 @@ use crate::widgets::text_edit::tests::*;
 /// Default context menu wires Cut / Copy / Paste / Clear against the host buffer, end to end; the menu auto-closes.
 #[test]
 fn context_menu_cut_copy_paste_clear() {
-    use crate::widgets::context_menu::ContextMenu;
+    use crate::widgets::menu::Menu;
     fn editor_id() -> WidgetId {
         WidgetId::from_hash("ctx-ed")
     }
@@ -19,7 +19,7 @@ fn context_menu_cut_copy_paste_clear() {
     }
 
     fn open_menu_and_record(h: &mut Harness, buf: &mut String) {
-        ContextMenu::open(h.ui(), editor_id(), Vec2::new(20.0, 10.0));
+        Menu::open(h.ui(), editor_id(), Vec2::new(20.0, 10.0));
         h.frame(|ui| body(ui, buf));
     }
 
@@ -54,7 +54,7 @@ fn context_menu_cut_copy_paste_clear() {
     assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
     assert_eq!(h.clipboard_text(), "ell");
     assert!(
-        !ContextMenu::is_open(h.ui_ref(), editor_id()),
+        !Menu::is_open(h.ui_ref(), editor_id()),
         "item click auto-closes menu",
     );
 
@@ -102,7 +102,7 @@ fn context_menu_cut_copy_paste_clear() {
     let state = h.state::<TextEditState>(editor_id()).clone();
     assert_eq!(state.edit.selection_range(), Some(0..buf.len()));
     assert!(
-        !ContextMenu::is_open(h.ui_ref(), editor_id()),
+        !Menu::is_open(h.ui_ref(), editor_id()),
         "Select All shortcut closes the menu",
     );
 }
@@ -238,7 +238,7 @@ fn clipboard_shortcut_does_not_insert_char() {
     assert_eq!(state.caret, 2);
 }
 
-/// Right-click on the editor opens the menu (secondary click → `ContextMenu::on`).
+/// Right-click on the editor opens the menu (secondary click → `Menu::context`).
 #[test]
 fn secondary_click_opens_text_edit_menu() {
     fn body(ui: &mut Ui, buf: &mut String) {
@@ -250,25 +250,25 @@ fn secondary_click_opens_text_edit_menu() {
         });
     }
 
-    use crate::widgets::context_menu::ContextMenu;
+    use crate::widgets::menu::Menu;
     let editor_id = WidgetId::from_hash("ctx-ed-sec");
 
     let mut h = Harness::mono(SMALL);
     let mut buf = String::from("hi");
     h.frame(|ui| body(ui, &mut buf));
-    assert!(!ContextMenu::is_open(h.ui_ref(), editor_id));
+    assert!(!Menu::is_open(h.ui_ref(), editor_id));
 
     h.right_click(Vec2::new(40.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     assert!(
-        ContextMenu::is_open(h.ui_ref(), editor_id),
+        Menu::is_open(h.ui_ref(), editor_id),
         "secondary click on TextEdit opens its default menu",
     );
 }
 
 #[test]
 fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
-    use crate::widgets::context_menu::ContextMenu;
+    use crate::widgets::menu::Menu;
 
     let a_id = WidgetId::from_hash("focused-editor");
     let b_id = WidgetId::from_hash("menu-editor");
@@ -293,7 +293,7 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
         state.edit.caret = a.len();
         state.edit.selection = Some(0);
     });
-    ContextMenu::open(h.ui(), b_id, Vec2::new(200.0, 20.0));
+    Menu::open(h.ui(), b_id, Vec2::new(200.0, 20.0));
     h.frame(|ui| {
         body(ui, &mut a, &mut b);
     });
@@ -312,5 +312,5 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
     );
     assert_eq!(b, "", "Select All then Cut must execute in arrival order");
     assert_eq!(h.clipboard_text(), "menu");
-    assert!(!ContextMenu::is_open(h.ui_ref(), b_id));
+    assert!(!Menu::is_open(h.ui_ref(), b_id));
 }

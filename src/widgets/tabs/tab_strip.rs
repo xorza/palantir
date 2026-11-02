@@ -23,6 +23,7 @@ use crate::shape::style::LineCap;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::theme_slot::ThemeSlot;
+use crate::theme::menu::MenuTheme;
 use crate::theme::selection::Selection;
 use crate::theme::tab_strip_focus::TabStripFocus;
 use crate::theme::tabs::TabsTheme;
@@ -32,8 +33,9 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{Response, ResponseSnapshot};
 use crate::widget_core::widget::Widget;
-use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::popup::popup_trigger::PopupTrigger;
+use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_item::MenuItem;
+use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::tabs::tab_chip::TabChip;
 use crate::widgets::tabs::tab_item::TabItem;
@@ -94,6 +96,7 @@ pub struct TabStrip<'a> {
     overflow: TabOverflow,
     drop_caret: Option<usize>,
     style: Option<&'a TabsTheme>,
+    menu_style: Option<&'a MenuTheme>,
 }
 
 impl TabStripResponse<'_> {
@@ -118,6 +121,7 @@ impl<'a> TabStrip<'a> {
             overflow: TabOverflow::default(),
             drop_caret: None,
             style: None,
+            menu_style: None,
         }
     }
 
@@ -146,6 +150,12 @@ impl<'a> TabStrip<'a> {
     /// Per-instance override of [`Theme::tabs`](crate::Theme::tabs).
     pub fn style(mut self, s: impl Into<Option<&'a TabsTheme>>) -> Self {
         self.style = s.into();
+        self
+    }
+
+    /// Per-instance override of [`Theme::menu`](crate::Theme::menu) for the overflow menu.
+    pub fn menu_style(mut self, s: impl Into<Option<&'a MenuTheme>>) -> Self {
+        self.menu_style = s.into();
         self
     }
 
@@ -227,6 +237,7 @@ impl<'a> TabStrip<'a> {
             overflow,
             drop_caret,
             style: _,
+            menu_style,
         } = self;
         let selected = selected.and_then(|i| domain::idx(i, items.len()));
         widget.configure().default_size((Sizing::FILL, Sizing::HUG));
@@ -238,6 +249,7 @@ impl<'a> TabStrip<'a> {
 
         let mut pass = StripPass {
             theme: t,
+            menu_style,
             ambient,
             strip: id,
             items,
@@ -369,6 +381,7 @@ struct StripHits {
 #[derive(Debug)]
 struct StripPass<'a> {
     theme: &'a TabsTheme,
+    menu_style: Option<&'a MenuTheme>,
     ambient: TextStyle,
     strip: WidgetId,
     items: &'a [TabItem],
@@ -575,7 +588,7 @@ impl StripPass<'_> {
             })
         };
         let button_id = strip.with("overflow");
-        if !items.iter().any(hidden) && !PopupTrigger::is_open(ui, button_id) {
+        if !items.iter().any(hidden) && !Menu::is_open(ui, button_id) {
             return;
         }
         let chevron = self.glyph_button(ui, button_id);
@@ -591,18 +604,24 @@ impl StripPass<'_> {
         button.record(ui, Some(&chevron.chrome), |ui| {
             chevron.ellipsis(ui, t.close_size, t.close_glyph_span, t.close_glyph_width);
         });
-        let ui_theme = Rc::clone(ui.theme());
-        // A menu button: the chevron's click toggles a menu below it.
-        let picked = PopupTrigger::on(&chevron.response)
+        // A menu button: the chevron's click toggles a menu below it, which marks the selected
+        // chip and opens on it from the keyboard.
+        let selected = self.selected;
+        let landing = selected.map_or(MenuLanding::First, |slot| {
+            MenuLanding::Row(button_id.with(items[slot].key))
+        });
+        let picked = Menu::below(&chevron.response)
+            .id(button_id.with("popup"))
+            .style(self.menu_style)
+            .landing(landing)
             .size((Sizing::HUG, Sizing::HUG))
-            .layer(Layer::Menu)
-            .menu_look(&ui_theme.context_menu)
-            .show(ui, |ui, popup| {
+            .show(ui, |ui, _| {
                 let mut picked = None;
                 for (i, item) in items.iter().enumerate() {
                     if MenuItem::new(item.label)
                         .id(button_id.with(item.key))
-                        .show(ui, popup)
+                        .selected(selected == Some(i))
+                        .show(ui)
                         .left
                         .clicked()
                     {

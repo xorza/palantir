@@ -9,7 +9,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 /// host branches on the same predicate.
 /// `dismissed` is set when the user asked from outside — an eaten
 /// outside-press or an Esc press. `close_requested` is set when a content
-/// widget inside the body called [`CloseHandle::close`](crate::CloseHandle::close).
+/// widget inside the body asked to close it.
 /// `inner` is whatever the body returned, the way
 /// [`InnerResponse`](crate::InnerResponse) carries a container's.
 ///
@@ -28,8 +28,8 @@ pub struct OverlayResponse<R> {
     pub opened: bool,
     /// The user asked from outside — an eaten outside-press, or Escape.
     pub dismissed: bool,
-    /// A widget inside the body called
-    /// [`CloseHandle::close`](crate::CloseHandle::close).
+    /// A widget inside the body called [`CloseHandle::close`](crate::CloseHandle::close), or a
+    /// row in it was activated, as a [`MenuItem`](crate::MenuItem) is.
     pub close_requested: bool,
     /// What the body returned.
     pub inner: R,
@@ -37,7 +37,7 @@ pub struct OverlayResponse<R> {
 
 impl<R> OverlayResponse<R> {
     /// `true` when the overlay asked to close this frame, from either side: the one close-signal
-    /// predicate overlay-trigger widgets (`ComboBox`, `ContextMenu`) branch on.
+    /// predicate overlay-trigger widgets (`ComboBox`, `Menu`) branch on.
     pub const fn closed(&self) -> bool {
         self.dismissed || self.close_requested
     }

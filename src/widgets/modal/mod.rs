@@ -137,7 +137,7 @@ impl<'a> Modal<'a> {
             opened,
             dismissed: self.click_outside == ClickOutside::Dismiss
                 && (turn.pressed_outside || turn.escape_pressed),
-            close_requested: handle.requested(),
+            close_requested: handle.requested() || turn.close_requested,
             inner: turn.inner,
         };
         scope.finish(ui, response)

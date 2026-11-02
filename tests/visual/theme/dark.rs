@@ -4,8 +4,8 @@ use std::time::Duration;
 use glam::Vec2;
 use palantir::{
     AnimationSpec, ButtonTheme, Chrome, ClipMode, CloseShown, ColorPickerTheme, ComboBoxTheme,
-    ContextMenuTheme, Corners, DockTheme, DragValueTheme, Easing, ExpanderTheme, FocusRingTheme,
-    FontFamily, FontSlant, FontWeight, MenuBarTheme, MenuItemTheme, ModalTheme, PopupTheme,
+    Corners, DockTheme, DragValueTheme, Easing, ExpanderTheme, FocusRingTheme, FontFamily,
+    FontSlant, FontWeight, MenuBarTheme, MenuItemTheme, MenuTheme, ModalTheme, PopupTheme,
     ProgressBarTheme, RgbaF32, ScrollbarTheme, SeparatorTheme, Shadow, Size, SliderTheme,
     SlotDefaults, Spacing, SpinnerTheme, SplitterTheme, StatefulLook, Stroke, TabsTheme,
     TextEditTheme, TextStyle, TextStyleOverrides, Theme, ToggleTheme, TooltipTheme, WidgetLook,
@@ -418,7 +418,7 @@ pub(super) fn theme() -> Theme {
                 },
             },
         },
-        context_menu: ContextMenuTheme {
+        menu: MenuTheme {
             panel: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(10.0))
                 .with_border(Stroke::new(RgbaF32::hexa(0x9ad2a038), 1.0))
                 .with_shadow(Shadow::drop(
@@ -430,7 +430,7 @@ pub(super) fn theme() -> Theme {
             min_width: 208.0,
             gap: 0.0,
             item: MenuItemTheme {
-                looks: StatefulLook {
+                unselected: StatefulLook {
                     normal: WidgetLook {
                         chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
                         text: TextStyleOverrides::NONE,
@@ -442,6 +442,27 @@ pub(super) fn theme() -> Theme {
                     active: WidgetLook {
                         chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
                         text: TextStyleOverrides::NONE,
+                    },
+                    disabled: WidgetLook {
+                        chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                        text: TextStyleOverrides {
+                            color: Some(RgbaF32::hex(0xd9a05e)),
+                            ..TextStyleOverrides::NONE
+                        },
+                    },
+                },
+                selected: StatefulLook {
+                    normal: WidgetLook {
+                        chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
+                        text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0xd23f7a)),
+                    },
+                    hovered: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0xd23f7a)),
+                    },
+                    active: WidgetLook {
+                        chrome: Chrome::rounded(RgbaF32::hex(0x1e4048), Corners::all(4.0)),
+                        text: TextStyleOverrides::NONE.with_color(RgbaF32::hex(0xd23f7a)),
                     },
                     disabled: WidgetLook {
                         chrome: Chrome::fill(RgbaF32::hexa(0x00000000)),
@@ -552,14 +573,16 @@ pub(super) fn theme() -> Theme {
             border: RgbaF32::hex(0x3d4f1e),
             border_width: 1.0,
             gap: 6.0,
-            popup: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(10.0))
-                .with_border(Stroke::new(RgbaF32::hexa(0x9ad2a038), 1.0))
-                .with_shadow(Shadow::drop(
-                    RgbaF32::hexa(0x00000080),
-                    Vec2::new(0.0, 8.0),
-                    16.0,
-                )),
-            popup_padding: Spacing::all(8.0),
+            popup: PopupTheme {
+                panel: Chrome::rounded(RgbaF32::hex(0x2e1f38), Corners::all(10.0))
+                    .with_border(Stroke::new(RgbaF32::hexa(0x9ad2a038), 1.0))
+                    .with_shadow(Shadow::drop(
+                        RgbaF32::hexa(0x00000080),
+                        Vec2::new(0.0, 8.0),
+                        16.0,
+                    )),
+                padding: Spacing::all(8.0),
+            },
             value: DragValueTheme {
                 chip: ButtonTheme {
                     unselected: StatefulLook {

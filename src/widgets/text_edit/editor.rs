@@ -5,9 +5,9 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
-use crate::widgets::context_menu::ContextMenu;
-use crate::widgets::context_menu::menu_item::MenuItem;
-use crate::widgets::context_menu::menu_separator::MenuSeparator;
+use crate::widgets::menu::Menu;
+use crate::widgets::menu::menu_item::MenuItem;
+use crate::widgets::menu::menu_separator::MenuSeparator;
 use crate::widgets::text_edit::action::{ActionAvailability, EditAction};
 use crate::widgets::text_edit::edit_state::EditState;
 use crate::widgets::text_edit::history::{
@@ -90,7 +90,7 @@ impl<'a> Editor<'a> {
     ) -> bool {
         let clipboard = ui.clipboard();
         let mut clicked_action = None;
-        ContextMenu::on(snapshot).show(ui, |ui, popup| {
+        Menu::context(snapshot).show(ui, |ui, popup| {
             for &keypress in ui.keyboard_events() {
                 if !filter.takes_press(keypress) {
                     continue;
@@ -118,7 +118,7 @@ impl<'a> Editor<'a> {
                 if let Some(shortcut) = item.action.shortcut() {
                     row = row.shortcut_hint(shortcut);
                 }
-                if row.show(ui, popup).clicked() {
+                if row.show(ui).clicked() {
                     clicked_action = Some(item.action);
                 }
             }

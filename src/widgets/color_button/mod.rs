@@ -81,8 +81,7 @@ impl<'a> ColorButton<'a> {
         }
         let opened = PopupTrigger::on(&response)
             .id(id.with("panel"))
-            .chrome(slot.popup.clone())
-            .padding(slot.popup_padding)
+            .style(&slot.popup)
             .show(ui, |ui, _| picker.show(ui).edges());
         let ValueEdges { changed, committed } = opened.inner.unwrap_or_default();
 

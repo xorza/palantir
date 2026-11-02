@@ -8,9 +8,9 @@ use crate::support;
 use crate::support::{Dialog, Kit, Section};
 use palantir::{
     Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, ClickOutside, CloseHandle,
-    Configure, ContextMenu, ContextMenuTheme, Justify, Key, MenuBar, MenuItem, MenuSeparator,
-    Metrics, Modal, Panel, Popup, PopupTrigger, RadioButton, ResponseSnapshot, Sense, Shortcut,
-    Sizing, Slider, Spacing, Switch, Text, Theme, Tooltip, Ui, WidgetId, fmt,
+    Configure, Justify, Key, Menu, MenuBar, MenuItem, MenuSeparator, MenuTheme, Metrics, Modal,
+    Panel, Popup, PopupTrigger, RadioButton, ResponseSnapshot, Sense, Shortcut, Sizing, Slider,
+    Spacing, Switch, Text, Theme, Tooltip, Ui, WidgetId, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -36,7 +36,7 @@ struct State {
     tip_width: f64,
     action: Option<&'static str>,
     /// The roomy menu's theme, built once on the first frame.
-    roomy: Option<ContextMenuTheme>,
+    roomy: Option<MenuTheme>,
 }
 
 impl Default for State {
@@ -103,20 +103,16 @@ fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
             support::well(ui, k, |ui| {
                 support::row(ui, |ui| {
                     let trigger = Button::new().label("Edit ▾").show(ui).snapshot();
-                    let menu = &ui.theme().context_menu;
+                    let menu = &ui.theme().menu;
                     let (padding, gap, width) = (menu.padding, menu.gap, menu.min_width);
                     PopupTrigger::on(&trigger)
                         .padding(padding)
                         .gap(gap)
                         .min_size((width, 0.0))
                         .arrow_focus(Axis::Y)
-                        .show(ui, |ui, close| {
+                        .show(ui, |ui, _| {
                             for label in ["Copy", "Paste", "Delete"] {
-                                if MenuItem::new(label)
-                                    .id_salt(label)
-                                    .show(ui, close)
-                                    .clicked()
-                                {
+                                if MenuItem::new(label).id_salt(label).show(ui).clicked() {
                                     s.choice = Some(label);
                                 }
                             }
@@ -188,7 +184,8 @@ fn anchor_section(ui: &mut Ui, k: Kit, s: &mut State) {
                             Side::LeftOf => Anchor::left_of(rect),
                             Side::RightOf => Anchor::right_of(rect),
                         };
-                        Popup::new(anchor.with_align(s.align).with_gap(6.0))
+                        Popup::new()
+                            .anchor(anchor.with_align(s.align).with_gap(6.0))
                             .click_outside(ClickOutside::PassThrough)
                             .padding((10.0, 6.0))
                             .show(ui, |ui, _| {
@@ -326,7 +323,7 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
 
 fn context_menu_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Context menu")
-        .apis(&[api!(ContextMenu::on), api!(MenuItem::shortcut)])
+        .apis(&[api!(Menu::context), api!(MenuItem::shortcut)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -337,7 +334,7 @@ fn context_menu_section(ui: &mut Ui, k: Kit, s: &mut State) {
             );
             support::row(ui, |ui| {
                 let trigger = Button::new().label("right-click me").show(ui).snapshot();
-                Menu {
+                DemoMenu {
                     trigger: &trigger,
                     style: None,
                 }
@@ -358,7 +355,7 @@ fn context_menu_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         })
                         .response
                         .snapshot();
-                    Menu {
+                    DemoMenu {
                         trigger: &surface,
                         style: roomy,
                     }
@@ -386,9 +383,9 @@ fn menu_bar_section(ui: &mut Ui, k: Kit, s: &mut State) {
                             ("Edit", ["Undo", "Redo", "Copy"]),
                             ("View", ["Zoom In", "Zoom Out", "Fit"]),
                         ] {
-                            bar.menu(title, |ui, close| {
+                            bar.menu(title, |ui, _| {
                                 for row in rows {
-                                    if MenuItem::new(row).id_salt(row).show(ui, close).clicked() {
+                                    if MenuItem::new(row).id_salt(row).show(ui).clicked() {
                                         s.action = Some(row);
                                     }
                                 }
@@ -402,8 +399,8 @@ fn menu_bar_section(ui: &mut Ui, k: Kit, s: &mut State) {
 }
 
 /// The live context menu theme with looser spacing.
-fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
-    let mut t = ui.theme().context_menu.clone();
+fn roomy_menu_theme(ui: &Ui) -> MenuTheme {
+    let mut t = ui.theme().menu.clone();
     t.padding = Spacing::all(10.0);
     t.gap = 4.0;
     t.item.defaults.padding = Spacing::xy(12.0, 8.0);
@@ -415,23 +412,23 @@ fn roomy_menu_theme(ui: &Ui) -> ContextMenuTheme {
 
 /// The demo's context menu on `trigger`.
 #[derive(Debug)]
-struct Menu<'a> {
+struct DemoMenu<'a> {
     trigger: &'a ResponseSnapshot,
     /// Restyles through the theme bundle every menu widget reads; every `style` setter takes an `Option`, so "styled or default" is a threaded value, not a branch.
-    style: Option<&'a ContextMenuTheme>,
+    style: Option<&'a MenuTheme>,
 }
 
-impl Menu<'_> {
+impl DemoMenu<'_> {
     /// Records the menu, writing the clicked item's label to `action`.
     fn show(self, ui: &mut Ui, action: &mut Option<&'static str>) {
         let Self { trigger, style } = self;
-        let mut menu = ContextMenu::on(trigger)
+        let mut menu = Menu::context(trigger)
             .size((Sizing::HUG, Sizing::HUG))
             .style(style);
         if style.is_some() {
             menu = menu.min_size((260.0, 0.0)).max_size((320.0, 280.0));
         }
-        menu.show(ui, |ui, popup| {
+        menu.show(ui, |ui, _| {
             let item = style.map(|s| &s.item);
             let rule = style.map(|s| &s.separator);
             for (label, shortcut) in [
@@ -443,7 +440,7 @@ impl Menu<'_> {
                     .id_salt(label)
                     .shortcut(shortcut)
                     .style(item)
-                    .show(ui, popup)
+                    .show(ui)
                     .clicked()
                 {
                     *action = Some(label);
@@ -453,12 +450,12 @@ impl Menu<'_> {
             MenuItem::new("Disabled")
                 .disabled(true)
                 .style(item)
-                .show(ui, popup);
+                .show(ui);
             MenuSeparator::new().style(rule).show(ui);
             if MenuItem::new("Delete")
                 .shortcut(Shortcut::key(Key::Backspace))
                 .style(item)
-                .show(ui, popup)
+                .show(ui)
                 .clicked()
             {
                 *action = Some("Delete");

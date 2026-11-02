@@ -41,8 +41,12 @@ pass is a bug.
   ([egui `Popup`](https://docs.rs/egui/latest/egui/containers/struct.Popup.html)). ComboBox, the
   tab overflow and MenuBar wrap it. A menu row closes the overlay it sits in through the scope, as
   egui's menus close on a click by default, so no row takes a `CloseHandle`. Its name is `Menu`
-  (decided, 10). Refused: publishing `PopupTrigger::menu_look` and `layer`, which gives `PopupTrigger` two
-  theme setters.
+  (decided, 10). A menu no one widget raises, as darkroom's canvas menus, keeps its open state
+  with the caller through `Menu::at(point)`, as egui's `Popup::open_bool` does (decided,
+  2026-11-02). Where a keyboard open lands is `MenuLanding` (first, last, or a row), so a combo
+  list opens on its pick as the APG's Down does; `TabEnd` stays crate-private. Refused:
+  publishing `PopupTrigger::menu_look` and `layer`, which gives `PopupTrigger` two theme setters;
+  darkroom's canvas menus on `Menu::below`, as they open at a point the canvas picks.
 - **A trigger-driven overlay returns `Option<OverlayResponse<R>>`**, `None` while closed, as egui's
   `Popup::show` returns `Option<InnerResponse<R>>`, so `OverlayResponse::id` always names a node.
   How it closed is one field, `close: Option<OverlayClose>` with `Dismissed` and `Requested`, which
@@ -160,35 +164,6 @@ follow it.
 Batches run most harmful first. A batch changes palantir and darkroom together and leaves both
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
-
-### Batch 2: One menu type
-
-- [ ] `ContextMenu` renamed `Menu`, `ContextMenu::on` renamed `Menu::context`, `ContextMenuTheme`
-  and `Theme::context_menu` renamed `MenuTheme` and `Theme::menu`.
-- [ ] `Menu::below(snapshot: &ResponseSnapshot) -> Self`: a click toggles it, it opens
-  below the trigger on `Layer::Menu` in the menu look, and it flips to fit. Darkroom's header menu
-  (`header/mod.rs:217`) and `AnchoredMenu` (`anchored_menu.rs:69`) move to it; both lose the wrong
-  layer, the missing arrow focus and the hand-copied theme.
-- [ ] ComboBox, the tab overflow menu and MenuBar wrap `Menu` in place of `PopupTrigger` with the
-  crate-private `layer`, `menu_look` and `landing`. `Menu::landing(TabEnd)` becomes public, as
-  ComboBox's End needs it.
-- [ ] `MenuItem::show(self, ui)`: the overlay scope closes on an activated row, in every overlay
-  scope, so a row in a bare `Popup` closes it too. Remove the `&CloseHandle` argument and
-  `DockTabMenu::close`; bodies keep `&CloseHandle` for content that is not a row, such as a modal's
-  buttons. Callers: about 16 / 14, plus 4 darkroom helper signatures.
-- [ ] `menu_style(impl Into<Option<&'a MenuTheme>>)` on ComboBox, MenuBar, TabStrip,
-  TabbedView and DockView; `DockView::tabs_style(&TabsTheme)`, as `DockView::style` takes
-  `DockTheme` and the panes' strips cannot be restyled today.
-- [ ] `Popup::style` and `PopupTrigger::style` taking `impl Into<Option<&'a PopupTheme>>`, as
-  `PopupTheme`'s doc names them; `Popup` becomes `Popup<'a>`. `ColorPickerTheme::popup` becomes a
-  `PopupTheme`.
-- [ ] `MenuItem::selected(bool)`, with a `Selection` axis in `MenuItemTheme`, so the combo list and
-  the tab overflow menu mark the pick; their rows take stable ids, and a keyboard open lands on the
-  selected row, as the APG's Down does.
-- [ ] `Popup::new()` with an optional `anchor(Anchor)`, defaulting to the surface origin, in place
-  of `new(anchor)` plus `anchor(anchor)`, which wrappers fill with placeholder rects.
-- [ ] `OverlayScope::withdraw`: public with no caller outside `finish`. Target: private.
-- [ ] `Tooltip::on` drops the `'a` on its snapshot, which it copies.
 
 ### Batch 3: State driven from outside
 

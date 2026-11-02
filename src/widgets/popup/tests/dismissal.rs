@@ -10,6 +10,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::click_outside::ClickOutside;
@@ -87,7 +88,8 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 if *open {
-                    let r = Popup::new(Anchor::at_point(ANCHOR))
+                    let r = Popup::new()
+                        .anchor(Anchor::at_point(ANCHOR))
                         .id(WidgetId::from_hash("test-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _popup| {
@@ -126,7 +128,8 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
             .size((Sizing::FILL, Sizing::FILL))
             .sense(Sense::CLICK)
             .show(ui, |ui| {
-                open && Popup::new(Anchor::at_point(ANCHOR))
+                open && Popup::new()
+                    .anchor(Anchor::at_point(ANCHOR))
                     .id(WidgetId::from_hash("test-popup"))
                     .click_outside(ClickOutside::Dismiss)
                     .show(ui, |ui, _popup| {
@@ -162,4 +165,31 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
         ui.input().keyboard_events(Layer::Main.into()).len()
     });
     assert_eq!(seen, 1, "the frame after dismissal must reach Main");
+}
+
+/// A row closes the overlay it sits in through the scope, with no handle: a clicked row in a bare
+/// popup inside another popup closes the inner popup alone.
+#[test]
+fn a_clicked_row_closes_the_overlay_it_sits_in() {
+    let row = WidgetId::from_hash("row");
+    let mut record = |ui: &mut Ui| {
+        let outer = Popup::new()
+            .anchor(Anchor::at_point(Vec2::new(10.0, 10.0)))
+            .id(WidgetId::from_hash("outer"))
+            .show(ui, |ui, _| {
+                Popup::new()
+                    .anchor(Anchor::at_point(Vec2::new(200.0, 200.0)))
+                    .id(WidgetId::from_hash("inner"))
+                    .show(ui, |ui, _| {
+                        MenuItem::new("Row").id(row).show(ui);
+                    })
+                    .close_requested
+            });
+        [outer.close_requested, outer.inner]
+    };
+    let mut h = Harness::mono(SURFACE);
+    assert_eq!(h.frame_value(&mut record), [false, false]);
+    let at = h.center_of(row);
+    h.click(at);
+    assert_eq!(h.frame_value(&mut record), [false, true]);
 }

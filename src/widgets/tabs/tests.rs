@@ -9,6 +9,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -17,14 +18,15 @@ use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
 use crate::shape::style::LineCap;
+use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
 use crate::theme::palette::Palette;
 use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
+use crate::widgets::menu::Menu;
 use crate::widgets::panel::Panel;
-use crate::widgets::popup::popup_trigger::PopupTrigger;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::tabs::reindex;
@@ -1221,13 +1223,13 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
     h.click(chevron);
     h.frame(build(half_way));
     assert!(
-        PopupTrigger::is_open(h.ui_ref(), chevron),
+        Menu::is_open(h.ui_ref(), chevron),
         "premise: the menu is open"
     );
     h.frame(|_| {});
     h.frame(build(half_way));
     assert!(
-        !PopupTrigger::is_open(h.ui_ref(), chevron),
+        !Menu::is_open(h.ui_ref(), chevron),
         "the strip came back with its menu closed"
     );
 }
@@ -1242,4 +1244,73 @@ fn a_new_strip_and_view_have_no_authored_size() {
     let mut selected = 0;
     let mut view = TabbedView::labeled(&mut selected, &["a"], |s: &&str| s);
     assert_eq!(view.configure().widget.authored_size(), None);
+}
+
+/// The overflow menu marks the selected chip and a keyboard open lands on its row; `menu_style`
+/// restyles it, a padding 9 px wider on each edge making it 2 × 9 taller.
+#[test]
+fn the_overflow_menu_opens_on_the_selected_chip_in_its_menu_style() {
+    let chevron = strip_id().with("overflow");
+    let open = |styled: bool| {
+        let mut menu = Theme::default().menu;
+        menu.padding = menu.padding + Spacing::all(9.0);
+        let mut build = |ui: &mut Ui| {
+            let items = items(ui);
+            TabStrip::new(&items)
+                .id(strip_id())
+                .selected(1)
+                .overflow(TabOverflow::Menu)
+                .menu_style(styled.then_some(&menu))
+                .size((Sizing::fixed(60.0), Sizing::HUG))
+                .show(ui, |ui, chip| chip.show_label(ui));
+        };
+        let mut h = Harness::mono(SURFACE);
+        h.prime(2, &mut build);
+        h.key(Key::Tab);
+        h.frame(&mut build);
+        Menu::open_below(h.ui(), chevron);
+        h.frame(&mut build);
+        h.frame(&mut build);
+        let height = h
+            .rect(chevron.with("popup"))
+            .expect("the menu is open")
+            .size
+            .h;
+        (h.focus(), height)
+    };
+    let (focus, plain) = open(false);
+    assert_eq!(focus, Some(chevron.with(20u64)), "the selected chip's row");
+    let (_, styled) = open(true);
+    assert_eq!(styled - plain, 2.0 * 9.0);
+}
+
+/// A tabbed view hands its `menu_style` to its strip's overflow menu: a padding 9 px wider on
+/// each edge makes the menu 2 × 9 taller.
+#[test]
+fn a_tabbed_view_restyles_its_overflow_menu() {
+    const PAGES: [&str; 3] = ["alpha", "beta", "gamma"];
+    let view = WidgetId::from_hash("view");
+    let chevron = view.with("strip").with("overflow");
+    let height = |styled: bool| {
+        let mut menu = Theme::default().menu;
+        menu.padding = menu.padding + Spacing::all(9.0);
+        let mut page = 0;
+        let mut build = |ui: &mut Ui| {
+            TabbedView::new(&mut page, &PAGES)
+                .id(view)
+                .overflow(TabOverflow::Menu)
+                .menu_style(styled.then_some(&menu))
+                .size((Sizing::fixed(60.0), Sizing::fixed(80.0)))
+                .show(ui, |_, _| {});
+        };
+        let mut h = Harness::mono(SURFACE);
+        h.prime(2, &mut build);
+        Menu::open_below(h.ui(), chevron);
+        h.frame(&mut build);
+        h.rect(chevron.with("popup"))
+            .expect("the menu is open")
+            .size
+            .h
+    };
+    assert_eq!(height(true) - height(false), 2.0 * 9.0);
 }

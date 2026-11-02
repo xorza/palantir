@@ -4,6 +4,7 @@ use crate::input::keyboard::key::Key;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
+use crate::theme::menu::MenuTheme;
 use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
@@ -88,6 +89,7 @@ pub struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64> {
     draggable: bool,
     overflow: TabOverflow,
     style: Option<&'a TabsTheme>,
+    menu_style: Option<&'a MenuTheme>,
 }
 
 impl<'a, S: AsRef<str>> TabbedView<'a, S, fn(&S) -> &str> {
@@ -112,6 +114,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             draggable: false,
             overflow: TabOverflow::default(),
             style: None,
+            menu_style: None,
         }
     }
 
@@ -132,6 +135,7 @@ impl<'a, S, L: Fn(&S) -> &str> TabbedView<'a, S, L> {
             draggable: self.draggable,
             overflow: self.overflow,
             style: self.style,
+            menu_style: self.menu_style,
         }
     }
 }
@@ -163,6 +167,12 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
         self
     }
 
+    /// Per-instance override of [`Theme::menu`](crate::Theme::menu) for the overflow menu.
+    pub fn menu_style(mut self, s: impl Into<Option<&'a MenuTheme>>) -> Self {
+        self.menu_style = s.into();
+        self
+    }
+
     /// Record the strip and the page under it; `body` runs once with the visible
     /// page's index into `options` as passed, or not at all with no pages. A close or a
     /// move rewrites the binding for the collection after the change, so the body
@@ -181,6 +191,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             draggable,
             overflow,
             style: _,
+            menu_style,
         } = self;
         let mut shown = domain::idx(*selected, options.len());
         widget
@@ -219,6 +230,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     .overflow(overflow)
                     .drop_caret(drop)
                     .style(t)
+                    .menu_style(menu_style)
                     .show(ui, |ui, chip| chip.show_label(ui));
                 StripHit {
                     // The view owns its selection, so every way of asking for a tab

@@ -200,7 +200,8 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
         TOAST_W.min(bar_rect.size.w),
         bar_rect.size.h,
     );
-    Popup::new(Anchor::above(anchor))
+    Popup::new()
+        .anchor(Anchor::above(anchor))
         .click_outside(ClickOutside::PassThrough)
         .chrome(Chrome {
             fill: tokens::CARD_BG.into(),

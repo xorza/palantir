@@ -20,7 +20,7 @@ use glam::{UVec2, Vec2};
 use std::cell::{Cell, RefCell};
 use std::time::Duration;
 
-/// Cascade runs in `post_record`, not `finalize_frame`, so a `request_relayout` re-record can read pass A's rect via `response_for(id).rect` (`ContextMenu::show` clamps its anchor with it).
+/// Cascade runs in `post_record`, not `finalize_frame`, so a `request_relayout` re-record can read pass A's rect via `response_for(id).rect` (`Menu::show` clamps its anchor with it).
 #[test]
 fn cascade_visible_to_relayout_pass() {
     let pass = Cell::new(0u32);
