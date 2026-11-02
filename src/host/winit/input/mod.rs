@@ -159,28 +159,49 @@ fn ime_event(ime: &Ime) -> Option<InputEvent<'_>> {
     }
 }
 
-/// The `KeyDown` a press becomes, or `None` for one that is not input.
+/// What one key press becomes: its `KeyDown`, and the text past what the `KeyDown` carries,
+/// which follows it as committed text.
+#[derive(Clone, Copy, Debug)]
+struct Press<'a> {
+    key_down: InputEvent<'static>,
+    overflow: Option<&'a str>,
+}
+
+/// The [`Press`] a key press becomes, or `None` for one that is not input.
 ///
 /// - A synthetic press is dropped: X11 and Windows send one per held key on
 ///   focus gain, which could submit a form nobody pressed a key at.
 /// - Text typed with Super held is cleared: Super is a command modifier
 ///   everywhere (Cmd on macOS reaches `Modifiers::ctrl`), and `Modifiers` has
 ///   no Super bit on Windows and Linux.
-fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<InputEvent<'static>> {
+/// - Text past [`KeyText::CAPACITY`], as an emoji joined of several, overflows between two
+///   characters into an [`InputEvent::ImeCommit`], which types it in place after the press.
+fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<Press<'_>> {
     if facts.is_synthetic {
         return None;
     }
     // The platform's resolution of layout, dead keys and modifiers; `logical_key`
     // holds one character where a dead-key fallback produces two.
-    let text = match facts.text {
-        Some(text) if !modifiers.super_key() => KeyText::new(text),
-        _ => KeyText::EMPTY,
-    };
-    Some(InputEvent::KeyDown {
-        key: logical_key(facts.logical),
-        repeat: facts.repeat,
-        physical: physical_key(*facts.physical),
-        text,
+    let mut text = KeyText::EMPTY;
+    let mut overflow = None;
+    if let Some(typed) = facts.text
+        && !modifiers.super_key()
+    {
+        for (at, c) in typed.char_indices() {
+            if !text.push(c) {
+                overflow = Some(&typed[at..]);
+                break;
+            }
+        }
+    }
+    Some(Press {
+        key_down: InputEvent::KeyDown {
+            key: logical_key(facts.logical),
+            repeat: facts.repeat,
+            physical: physical_key(*facts.physical),
+            text,
+        },
+        overflow,
     })
 }
 

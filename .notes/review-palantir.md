@@ -104,32 +104,6 @@ features), visual 3.8 s. Five tests take over 1 s on one thread (Batch 11).
 
 Sorted by impact, bugs first. Each leaves the build and tests green. Whoever addresses an item deletes it.
 
-### Batch 9: base layers and the desktop host
-
-Files: `src/host/winit/{input/mod.rs,native.rs,window/mod.rs,error/}`,
-`src/window/{window_geometry.rs,window_commands.rs}`, `src/ui/mod.rs`,
-`src/primitives/geometry/spacing/mod.rs`, `src/text/error.rs`, `src/display/user_scale/mod.rs`.
-
-- [ ] **BUG** `winit/input/mod.rs:176`: `KeyText::new` stops at 14 bytes, so a longer composed text
-  (an 18-byte emoji ZWJ sequence) loses its tail. Target: emit the first part as `KeyDown` and the
-  rest as `InputEvent::ImeCommit`. Test with 20 bytes.
-- [ ] **BUG** `native.rs:82-97`: a saved position is kept only if its top-left lies on a monitor;
-  a window snapped to the left edge on Windows reports x ≈ -7 and loses it. Target: keep it when a
-  title-bar band of the restored rect intersects a monitor; add the case to the table test.
-- [ ] **BUG** `window_geometry.rs`, `ui/mod.rs:810`: `inner_size` is the live size, so geometry
-  saved while maximized un-maximizes to full screen. Target: the window keeps its last
-  non-maximized size from `Resized` and publishes it through `WindowFacts`, as Qt's
-  `saveGeometry`.
-- [ ] **BUG** `winit/window/mod.rs:417`: the IME caret converts with `effective_scale()`, pointer
-  input with `translation_scale()`. Target: `translation_scale()`.
-- [ ] **BUG** `spacing/mod.rs:101`: `impl Add for Spacing` asserts each lane fits f16, so two large
-  spacings panic, against "a sum the crate derives saturates". Target: saturate; test overflow.
-- [ ] `winit/error/mod.rs:71-98`, `text/error.rs:30`: five variants print the cause in `Display`
-  and return it from `source()`, so chain reporters print it twice; the `Gpu` arm already follows
-  the rule. Target: one or the other; update `error/tests.rs`.
-- [ ] Docs: `window_commands.rs:12` says `Open` reconfigures a live window (it is ignored with a
-  warning); `user_scale/mod.rs:5` says "chrome scale" (refused word: "interface scale").
-
 ### Batch 10: structure without behavior change
 
 Files as named per item.

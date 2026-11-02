@@ -2,7 +2,7 @@
 
 use crate::primitives::math::domain::EPS;
 
-/// A chrome scale the application chooses, multiplied onto the platform's;
+/// An interface scale the application chooses, multiplied onto the platform's;
 /// `Display::scale_factor` is the product.
 ///
 /// **A second factor, not one settable number:** the system factor is a fact

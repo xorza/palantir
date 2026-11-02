@@ -18,7 +18,7 @@ use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::QueryTask;
 use crate::host::winit::system_preferences::SystemPreferences;
-use crate::host::winit::window::{FramePresent, Window};
+use crate::host::winit::window::{FramePresent, OpenedWindow, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
 use crate::text::font_scan::FontScan;
@@ -123,7 +123,13 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
 
         let mut windows = WindowSet::default();
-        windows.push(Window::new(window, first_surface, driver, decorations));
+        windows.push(Window::new(OpenedWindow {
+            window,
+            surface: first_surface,
+            driver,
+            decorations,
+            inner_size: config.window.inner_size,
+        }));
         let runtime = Self {
             app,
             surfaces,
@@ -354,8 +360,13 @@ impl<T: App + 'static> WinitRuntime<T> {
             .map_err(|source| WinitHostError::Surface { token, source })?;
         let mut driver = self.core.open(token, PresentStrategy::DirectAdaptive);
         driver.ui.set_waker(Self::waker(&self.handle, token));
-        self.windows
-            .push(Window::new(window, surface, driver, decorations));
+        self.windows.push(Window::new(OpenedWindow {
+            window,
+            surface,
+            driver,
+            decorations,
+            inner_size: config.inner_size,
+        }));
         Ok(())
     }
 

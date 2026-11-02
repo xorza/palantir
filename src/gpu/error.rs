@@ -75,15 +75,9 @@ impl Display for GpuRequestError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoBackend => f.write_str("no wgpu backend is compiled in for this target"),
-            Self::RequestAdapter { source } => {
-                write!(f, "failed to find a graphics adapter: {source}")
-            }
-            Self::Requirements { source } => {
-                write!(f, "the graphics adapter cannot run Palantir: {source}")
-            }
-            Self::RequestDevice { source } => {
-                write!(f, "failed to create the graphics device: {source}")
-            }
+            Self::RequestAdapter { .. } => f.write_str("failed to find a graphics adapter"),
+            Self::Requirements { .. } => f.write_str("the graphics adapter cannot run Palantir"),
+            Self::RequestDevice { .. } => f.write_str("failed to create the graphics device"),
         }
     }
 }
@@ -147,7 +141,7 @@ impl From<SurfaceError> for SurfaceStartError {
 impl Display for SurfaceError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Create { source } => write!(f, "failed to create a window surface: {source}"),
+            Self::Create { .. } => f.write_str("failed to create a window surface"),
             Self::Incompatible => {
                 f.write_str("graphics adapter cannot present to the window surface")
             }

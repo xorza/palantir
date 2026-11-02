@@ -315,7 +315,8 @@ mod tests {
         assert_eq!(cause.to_string(), source.to_string());
         assert_eq!(
             unreadable.to_string(),
-            format!("icon \"bad\" is not a readable SVG: {source}"),
+            "icon \"bad\" is not a readable SVG",
+            "the cause is the source's alone",
         );
         let twin = IconTable::from_svgs([
             ("twin", ONE_COLOR),

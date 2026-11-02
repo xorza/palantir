@@ -24,7 +24,9 @@ impl Display for HostDisconnected {
 
 impl Error for HostDisconnected {}
 
-/// Failure while constructing or running a [`WinitHost`](crate::WinitHost).
+/// Failure while constructing or running a [`WinitHost`](crate::WinitHost). A variant that holds
+/// a cause names it in [`Error::source`], never in its `Display`, so a reporter that walks the
+/// chain prints each sentence once.
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum WinitHostError {
@@ -71,24 +73,17 @@ pub enum WinitHostError {
 impl Display for WinitHostError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::CreateEventLoop { source } => write!(f, "failed to create event loop: {source}"),
-            Self::RunEventLoop { source } => write!(f, "event loop failed: {source}"),
-            Self::CreateWindow { token, source } => {
-                write!(f, "failed to create window {token:?}: {source}")
-            }
+            Self::CreateEventLoop { .. } => f.write_str("failed to create event loop"),
+            Self::RunEventLoop { .. } => f.write_str("event loop failed"),
+            Self::CreateWindow { token, .. } => write!(f, "failed to create window {token:?}"),
             Self::Gpu { source } => Display::fmt(source, f),
-            Self::DeviceLost { source } => {
-                write!(
-                    f,
-                    "graphics device lost and none opened in its place: {source}"
-                )
+            Self::DeviceLost { .. } => {
+                f.write_str("graphics device lost and none opened in its place")
             }
             Self::DeviceKeptLost => f.write_str(
                 "graphics device lost, and every device attached in its place was lost again",
             ),
-            Self::Surface { token, source } => {
-                write!(f, "window {token:?} surface failed: {source}")
-            }
+            Self::Surface { token, .. } => write!(f, "window {token:?} surface failed"),
         }
     }
 }

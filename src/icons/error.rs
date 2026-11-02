@@ -36,9 +36,7 @@ pub enum IconTableError {
 impl Display for IconTableError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Unreadable { name, source } => {
-                write!(f, "icon {name:?} is not a readable SVG: {source}")
-            }
+            Self::Unreadable { name, .. } => write!(f, "icon {name:?} is not a readable SVG"),
             Self::TooMany { count } => {
                 write!(f, "an icon set holds at most 65536 icons, got {count}")
             }

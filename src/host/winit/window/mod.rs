@@ -7,7 +7,7 @@ mod visibility;
 use std::sync::Arc;
 use std::time::Instant;
 
-use glam::{IVec2, Vec2};
+use glam::{IVec2, UVec2, Vec2};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::WindowEvent;
 use winit::window::Window as WinitWindow;
@@ -44,7 +44,17 @@ use std::mem;
 #[derive(Clone, Copy, Debug)]
 pub(super) struct SystemFacts {
     placement: WindowPlacement,
+    /// Whether the window fills its screen, as the macOS green button makes it; like
+    /// maximized, a size the window does not return to.
+    fullscreen: bool,
     refresh_millihertz: Option<u32>,
+}
+
+impl SystemFacts {
+    /// Whether the window shows at its own size: neither maximized nor full screen.
+    const fn is_normal(self) -> bool {
+        !self.placement.maximized && !self.fullscreen
+    }
 }
 
 /// Where the pointer is, and the scale the recorder was last told it in: one fact,
@@ -95,9 +105,15 @@ pub(super) struct Window {
     /// Origin of the input clock. Not the frame clock, which skips a hidden span: two presses
     /// either side would read as a double-click.
     input_epoch: Instant,
-    /// A resize can change only whether the window is maximized (moves arrive as
-    /// `Moved`), so only that fact is marked stale.
+    /// A resize can change only whether the window is maximized or full screen (moves arrive as
+    /// `Moved`), so only those facts are marked stale.
     maximized_stale: bool,
+    /// The content size in physical px, as the last resize reported it.
+    inner: UVec2,
+    /// The content size in physical px the window returns to from maximized or full screen: its
+    /// size at the last frame it was neither, or the size it opened with, as Qt's
+    /// `saveGeometry` keeps the normal geometry apart from the maximized one.
+    restored: Option<UVec2>,
     frame_set: FrameSet,
     system_facts: Option<SystemFacts>,
     pointer: Option<PointerAnchor>,
@@ -107,19 +123,40 @@ pub(super) struct Window {
     shots: RemoteShots,
 }
 
+/// What a [`Window`] opens with: its native half, its surface and driver, its decorations'
+/// scheme, and the logical content size its config asked for, which it returns to from
+/// maximized until it shows unmaximized.
+#[derive(Debug)]
+pub(super) struct OpenedWindow {
+    pub(super) window: Arc<WinitWindow>,
+    pub(super) surface: WindowSurface,
+    pub(super) driver: WindowDriver,
+    pub(super) decorations: ColorScheme,
+    pub(super) inner_size: Option<UVec2>,
+}
+
 impl Window {
-    /// A window whose native half opened with its decorations in `decorations`.
-    pub(super) fn new(
-        window: Arc<WinitWindow>,
-        surface: WindowSurface,
-        mut driver: WindowDriver,
-        decorations: ColorScheme,
-    ) -> Self {
+    pub(super) fn new(opened: OpenedWindow) -> Self {
+        let OpenedWindow {
+            window,
+            surface,
+            mut driver,
+            decorations,
+            inner_size,
+        } = opened;
         let system_scale = display::sanitize_system_scale(window.scale_factor());
+        let restored = inner_size.map(|size| {
+            (size.as_vec2() * system_scale)
+                .round()
+                .as_uvec2()
+                .max(UVec2::ONE)
+        });
         // Seed the recorder's pacing level from the opened swapchain, so `Ui::vsync` is
         // truthful before any frame.
         driver.ui.seed_vsync(surface.vsync());
         Self {
+            inner: native::physical_size(&window),
+            restored,
             window,
             surface,
             driver,
@@ -215,6 +252,7 @@ impl Window {
         if let Some(facts) = &mut self.system_facts {
             if mem::take(&mut self.maximized_stale) {
                 facts.placement.maximized = self.window.is_maximized();
+                facts.fullscreen = self.window.fullscreen().is_some();
             }
             return *facts;
         }
@@ -228,6 +266,7 @@ impl Window {
                     .map(|pos| IVec2::new(pos.x, pos.y)),
                 maximized: self.window.is_maximized(),
             },
+            fullscreen: self.window.fullscreen().is_some(),
             refresh_millihertz: self
                 .window
                 .current_monitor()
@@ -243,7 +282,10 @@ impl Window {
         self.system_facts = None;
     }
 
-    pub(super) const fn note_resized(&mut self) {
+    /// The content now `inner` physical px, not zero: whether the window is maximized may have
+    /// changed too.
+    pub(super) const fn note_resized(&mut self, inner: UVec2) {
+        self.inner = inner;
         self.maximized_stale = true;
     }
 
@@ -280,11 +322,15 @@ impl Window {
         tracy::zone!("Window::frame");
 
         let facts = self.system_facts();
+        if facts.is_normal() {
+            self.restored = Some(self.inner);
+        }
         // Also where the previous frame's veto is asserted spent (`Ui::set_window_facts`).
         // `finish` is outside the occlusion branch, so every frame reaches the drain.
         self.driver.ui.set_window_facts(WindowFacts {
             close_requested: self.close_requested,
             placement: facts.placement,
+            restored_size: self.restored,
             shown_again: self.visibility.take_shown_again(),
         });
 
@@ -416,10 +462,11 @@ impl Window {
         self.close_requested = false;
     }
 
-    /// Turn the platform's input method on beside `caret` (logical px), or off for
-    /// `None`; only on a change.
+    /// Turn the platform's input method on beside `caret` (logical px, at the scale the frame
+    /// laid it out at), or off for `None`; only on a change.
     fn set_ime_area(&mut self, caret: Option<Rect>) {
-        let physical = caret.map(|rect| physical_rect(rect, self.effective_scale()));
+        let scale = self.translation_scale();
+        let physical = caret.map(|rect| physical_rect(rect, scale));
         let area = match self.levels.set_ime_area(physical) {
             None => return,
             Some(ImeChange::Disable) => {

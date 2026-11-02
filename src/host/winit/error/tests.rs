@@ -10,11 +10,12 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
     let event_loop = WinitHostError::CreateEventLoop {
         source: error::EventLoopError::RecreationAttempt,
     };
+    assert_eq!(event_loop.to_string(), "failed to create event loop");
     assert_eq!(
-        event_loop.to_string(),
-        "failed to create event loop: EventLoop can't be recreated"
+        event_loop.source().map(ToString::to_string),
+        Some("EventLoop can't be recreated".to_owned()),
+        "the cause rides in the chain, not in the sentence"
     );
-    assert!(event_loop.source().is_some());
 
     // A device request failing during the first window's open reads as a device failure; it hands on its cause, not itself, so chain printers never repeat a sentence.
     let unmet = UnmetRequirements::Limit {
@@ -29,8 +30,7 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
     };
     assert_eq!(
         capability.to_string(),
-        "the graphics adapter cannot run Palantir: \
-         graphics device limit max_immediate_size is 8, but Palantir requires 16",
+        "the graphics adapter cannot run Palantir"
     );
     assert_eq!(
         capability.source().map(ToString::to_string),
@@ -44,10 +44,7 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
     };
     assert_eq!(
         lost.to_string(),
-        format!(
-            "graphics device lost and none opened in its place: {}",
-            GpuRequestError::NoBackend
-        ),
+        "graphics device lost and none opened in its place"
     );
     assert_eq!(
         lost.source().map(ToString::to_string),
@@ -65,10 +62,7 @@ fn host_errors_preserve_sources_and_explain_capability_failures() {
         token: WindowToken(7),
         source: SurfaceError::MissingSrgb,
     };
-    assert_eq!(
-        surface.to_string(),
-        "window WindowToken(7) surface failed: window surface has no sRGB format and color space",
-    );
+    assert_eq!(surface.to_string(), "window WindowToken(7) surface failed");
     assert_eq!(
         surface.source().map(ToString::to_string),
         Some(SurfaceError::MissingSrgb.to_string()),

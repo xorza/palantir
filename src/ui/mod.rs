@@ -783,10 +783,12 @@ impl Ui {
         let WindowFacts {
             close_requested,
             placement,
+            restored_size,
             shown_again,
         } = facts;
         self.window_frame.close_requested = close_requested;
         self.window_frame.placement = placement;
+        self.window_frame.restored_size = restored_size;
         self.window_frame.shown_again = shown_again;
     }
 
@@ -817,21 +819,19 @@ impl Ui {
         &self.forest.record_store
     }
 
-    /// This window's live geometry for persist-and-restore. Placement position is
+    /// This window's geometry for persist-and-restore: where it sits, and the size it returns
+    /// to from maximized, its live size while it is not maximized. Placement position is
     /// `None` where the platform reports none (Wayland). In the window manager's
     /// logical pixels (see [`Display::system_logical_size`]), since the platform never
     /// hears about [`Self::set_user_scale`].
-    #[expect(
-        clippy::cast_sign_loss,
-        reason = "a display's logical size is non-negative"
-    )]
     pub fn window_geometry(&self) -> WindowGeometry {
-        let logical = self.frame_runtime.stamp().display.system_logical_size();
+        let display = self.frame_runtime.stamp().display;
+        let physical = self.window_frame.restored_size.unwrap_or(display.physical);
         WindowGeometry {
-            inner_size: UVec2::new(
-                (logical.w.round() as u32).max(1),
-                (logical.h.round() as u32).max(1),
-            ),
+            inner_size: (physical.as_vec2() / display.system_scale)
+                .round()
+                .as_uvec2()
+                .max(UVec2::ONE),
             placement: self.window_frame.placement,
         }
     }

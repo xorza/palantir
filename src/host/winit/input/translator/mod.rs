@@ -9,7 +9,7 @@ use winit::keyboard::{ModifiersState, PhysicalKey};
 use crate::common::platform::Platform;
 use crate::display;
 use crate::host::winit::input::{
-    KeyDownFacts, ime_event, key_down, normalize_modifiers, shift_wheel,
+    KeyDownFacts, Press, ime_event, key_down, normalize_modifiers, shift_wheel,
 };
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
@@ -163,7 +163,10 @@ impl Translator {
                 is_synthetic,
                 ..
             } if event.state == ElementState::Pressed => {
-                if let Some(press) = key_down(
+                if let Some(Press {
+                    key_down: press,
+                    overflow,
+                }) = key_down(
                     KeyDownFacts {
                         logical: &event.logical_key,
                         physical: &event.physical_key,
@@ -181,6 +184,9 @@ impl Translator {
                         emit(lost);
                     }
                     emit(press);
+                    if let Some(text) = overflow {
+                        emit(InputEvent::ImeCommit(text));
+                    }
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {

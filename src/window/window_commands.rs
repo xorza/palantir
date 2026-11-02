@@ -9,7 +9,7 @@ use std::vec::Drain;
 /// after the frame and a [`Harness`](crate::Harness) records.
 #[derive(Debug)]
 pub enum WindowCommand {
-    /// Open the window `token`, or give the open one `config`.
+    /// Open the window `token`; a host ignores it, with a warning, where `token` is open.
     Open {
         /// The window.
         token: WindowToken,

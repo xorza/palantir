@@ -40,12 +40,18 @@ fn an_edge_past_f16_is_refused_where_it_is_built() {
 }
 
 /// A derived spacing saturates where an authored one is refused: ±70000 and ±infinity land on
-/// ±65504, and a NaN still panics.
+/// ±65504, and a NaN still panics. A sum is derived: 60000 + 60000 lands on 65504 and
+/// −60000 + −60000 on −65504, each lane alone, as 1 + 2 is still 3 beside them.
 #[test]
 fn a_derived_spacing_saturates_at_the_f16_range() {
     assert_eq!(
         Spacing::saturating([70000.0, -70000.0, f32::INFINITY, 1.0]).to_array(),
         [65504.0, -65504.0, 65504.0, 1.0]
+    );
+    let wide = Spacing::new(60000.0, -60000.0, 1.0, 0.0);
+    assert_eq!(
+        (wide + Spacing::new(60000.0, -60000.0, 2.0, 0.0)).to_array(),
+        [65504.0, -65504.0, 3.0, 0.0]
     );
     panic_probe::assert_panics_with(Spacing::LANE_RULE, || {
         Spacing::saturating([0.0, f32::NAN, 0.0, 0.0])

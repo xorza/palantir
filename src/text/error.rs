@@ -26,9 +26,7 @@ pub enum FontLoadError {
 impl Display for FontLoadError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Io { path, source } => {
-                write!(f, "cannot read the font file {}: {source}", path.display())
-            }
+            Self::Io { path, .. } => write!(f, "cannot read the font file {}", path.display()),
             Self::NoFaces => f.write_str("the font data holds no usable face"),
             Self::FamilyNameTooLong => {
                 f.write_str("every family the font names is longer than a font family name holds")

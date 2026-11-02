@@ -98,13 +98,15 @@ impl Spacing {
     }
 }
 
+/// Side by side, each lane saturating at ±65504 rather than refusing as [`Spacing::new`] does: a
+/// sum of two valid spacings is a spacing the crate derives.
 impl ops::Add for Spacing {
     type Output = Self;
     #[inline]
     fn add(self, rhs: Self) -> Self {
         let [al, at, ar, ab] = self.to_array();
         let [bl, bt, br, bb] = rhs.to_array();
-        Self::from_array([al + bl, at + bt, ar + br, ab + bb])
+        Self::saturating([al + bl, at + bt, ar + br, ab + bb])
     }
 }
 

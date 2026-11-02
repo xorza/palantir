@@ -5,10 +5,11 @@ use winit::keyboard::{
 
 use crate::common::platform::Platform;
 use crate::host::winit::input::{
-    KeyDownFacts, key_down, logical_key, normalize_modifiers, physical_key, shift_wheel,
+    KeyDownFacts, Press, key_down, logical_key, normalize_modifiers, physical_key, shift_wheel,
 };
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
+use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
 
 #[test]
@@ -162,9 +163,12 @@ fn a_synthetic_press_is_dropped() {
     assert!(key_down(facts(true), ModifiersState::empty()).is_none());
     assert!(matches!(
         key_down(facts(false), ModifiersState::empty()),
-        Some(InputEvent::KeyDown {
-            key: Key::Enter,
-            ..
+        Some(Press {
+            key_down: InputEvent::KeyDown {
+                key: Key::Enter,
+                ..
+            },
+            overflow: None,
         })
     ));
 }
@@ -181,13 +185,59 @@ fn text_under_super_is_cleared() {
         repeat: false,
         is_synthetic: false,
     };
-    let text_of = |modifiers| match key_down(facts, modifiers) {
-        Some(InputEvent::KeyDown { text, .. }) => text,
+    assert!(typed(facts, ModifiersState::SUPER).is_empty());
+    assert_eq!(typed(facts, ModifiersState::empty()).as_str(), "l");
+    assert_eq!(typed(facts, ModifiersState::SHIFT).as_str(), "l");
+}
+
+/// The text the `KeyDown` of a press of `facts` under `modifiers` carries.
+fn typed(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> KeyText {
+    match key_down(facts, modifiers) {
+        Some(Press {
+            key_down: InputEvent::KeyDown { text, .. },
+            ..
+        }) => text,
         other => panic!("a press translates to a KeyDown, got {other:?}"),
+    }
+}
+
+/// The text a press of `facts` under `modifiers` types past its `KeyDown`.
+fn overflow(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<&str> {
+    key_down(facts, modifiers)
+        .expect("a press is input")
+        .overflow
+}
+
+/// Text past what a `KeyDown` carries overflows whole characters into committed text, so none is
+/// lost. 20 bytes, a family emoji of three people joined by two zero-width joiners (18) and
+/// "ab": the press carries the first person and joiner twice, 14 bytes, and the rest, the last
+/// person and "ab", follows. Exactly 14 bytes overflow nothing, and Super clears the overflow
+/// with the text.
+#[test]
+fn text_past_a_key_overflows_into_committed_text() {
+    let logical = WinitKey::Character("a".into());
+    let physical = PhysicalKey::Code(KeyCode::KeyA);
+    let facts = |text| KeyDownFacts {
+        logical: &logical,
+        physical: &physical,
+        text: Some(text),
+        repeat: false,
+        is_synthetic: false,
     };
-    assert!(text_of(ModifiersState::SUPER).is_empty());
-    assert_eq!(text_of(ModifiersState::empty()).as_str(), "l");
-    assert_eq!(text_of(ModifiersState::SHIFT).as_str(), "l");
+    let family = "\u{1F469}\u{200D}\u{1F469}\u{200D}\u{1F466}ab";
+    assert_eq!(family.len(), 20);
+    let none = ModifiersState::empty();
+    let head = typed(facts(family), none);
+    let tail = overflow(facts(family), none);
+    assert_eq!(head.as_str(), "\u{1F469}\u{200D}\u{1F469}\u{200D}");
+    assert_eq!(tail, Some("\u{1F466}ab"));
+    assert_eq!(format!("{}{}", head.as_str(), tail.unwrap()), family);
+
+    let fourteen = "abcdefghijklmn";
+    assert_eq!(typed(facts(fourteen), none).as_str(), fourteen);
+    assert_eq!(overflow(facts(fourteen), none), None);
+    assert!(typed(facts(family), ModifiersState::SUPER).is_empty());
+    assert_eq!(overflow(facts(family), ModifiersState::SUPER), None);
 }
 
 /// Shift+wheel scrolls sideways on Windows and Linux (only a purely vertical delta moves); macOS sends it itself.

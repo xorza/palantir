@@ -4,6 +4,7 @@
 use super::*;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::internals::{INTER, MONO};
+use std::error::Error;
 
 // No face file is unregistered by the bundled scope, so the load cases start
 // from an empty database and introduce a bundled face.
@@ -65,9 +66,17 @@ fn a_load_that_cannot_produce_a_face_says_which_way_it_failed() {
     );
 
     let missing_file = c.load_font("/nonexistent/palantir-test-font.ttf".into());
-    assert!(
-        matches!(missing_file, Err(FontLoadError::Io { .. })),
-        "an unreadable path is Io, not NoFaces, got {missing_file:?}",
+    let Err(error @ FontLoadError::Io { source, .. }) = &missing_file else {
+        panic!("an unreadable path is Io, not NoFaces, got {missing_file:?}");
+    };
+    assert_eq!(
+        error.to_string(),
+        "cannot read the font file /nonexistent/palantir-test-font.ttf"
+    );
+    assert_eq!(
+        Error::source(error).map(ToString::to_string),
+        Some(source.to_string()),
+        "the filesystem's words ride in the chain, not in the sentence"
     );
 }
 

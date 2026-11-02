@@ -66,9 +66,10 @@ pub(super) fn create_window(
         attrs = attrs.with_window_icon(Some(icon(image)));
     }
     attrs = platform::with_app_id(attrs, cfg.app_id.as_deref());
-    // Restore a saved position only if it lands on a connected monitor; winit does not clamp.
+    // Restore a saved position only where the title bar reaches a connected monitor; winit does
+    // not clamp.
     if let Some(p) = cfg.placement.physical_pos
-        && pos_on_monitor(event_loop, p)
+        && title_bar_on_monitor(event_loop, p, cfg.inner_size.map(|size| size.x))
     {
         attrs = attrs.with_position(PhysicalPosition::new(p.x, p.y));
     }
@@ -78,22 +79,58 @@ pub(super) fn create_window(
         .map_err(|source| WinitHostError::CreateWindow { token, source })
 }
 
-/// Whether `pos` (physical, window top-left) falls inside any connected monitor's bounds.
-fn pos_on_monitor(event_loop: &ActiveEventLoop, pos: IVec2) -> bool {
-    within_any(
+/// The logical rows of a window's top that its title bar takes, and its width where the window's
+/// is unknown: what must reach a monitor for the user to grab the window.
+const TITLE_BAND: f64 = 32.0;
+
+/// A connected monitor: its top-left and extent in physical px, and its scale.
+#[derive(Clone, Copy, Debug)]
+struct MonitorArea {
+    at: IVec2,
+    size: UVec2,
+    scale: f64,
+}
+
+/// Whether the title bar of a window whose frame starts at `pos` (physical) and whose content is
+/// `inner_width` logical px wide reaches any connected monitor.
+fn title_bar_on_monitor(
+    event_loop: &ActiveEventLoop,
+    pos: IVec2,
+    inner_width: Option<u32>,
+) -> bool {
+    title_bar_reaches(
         pos,
+        inner_width,
         event_loop.available_monitors().map(|m| {
             let (at, size) = (m.position(), m.size());
-            (IVec2::new(at.x, at.y), UVec2::new(size.width, size.height))
+            MonitorArea {
+                at: IVec2::new(at.x, at.y),
+                size: UVec2::new(size.width, size.height),
+                scale: m.scale_factor(),
+            }
         }),
     )
 }
 
-/// Whether `pos` lies in any of `monitors` (physical top-left and extent): near edges in, far edges out.
-fn within_any(pos: IVec2, monitors: impl IntoIterator<Item = (IVec2, UVec2)>) -> bool {
-    monitors.into_iter().any(|(at, size)| {
-        let end = at + size.as_ivec2();
-        pos.x >= at.x && pos.y >= at.y && pos.x < end.x && pos.y < end.y
+/// Whether the band a title bar takes, [`TITLE_BAND`] logical rows from `pos` and `inner_width`
+/// logical px wide, both at a monitor's own scale, overlaps that monitor for any of `monitors`.
+/// Qt's `restoreGeometry` keeps a window whose title bar shows. Refused: the frame's top-left on
+/// a monitor, which a window snapped to the left edge on Windows misses, as its invisible resize
+/// border starts 7 px left of the screen.
+fn title_bar_reaches(
+    pos: IVec2,
+    inner_width: Option<u32>,
+    monitors: impl IntoIterator<Item = MonitorArea>,
+) -> bool {
+    let (x, y) = (i64::from(pos.x), i64::from(pos.y));
+    monitors.into_iter().any(|monitor| {
+        let width = inner_width.map_or(TITLE_BAND, f64::from) * monitor.scale;
+        let band_end_x = x + width.ceil() as i64;
+        let band_end_y = y + (TITLE_BAND * monitor.scale).ceil() as i64;
+        let (at_x, at_y) = (i64::from(monitor.at.x), i64::from(monitor.at.y));
+        let end_x = at_x + i64::from(monitor.size.x);
+        let end_y = at_y + i64::from(monitor.size.y);
+        x < end_x && at_x < band_end_x && y < end_y && at_y < band_end_y
     })
 }
 
@@ -108,23 +145,92 @@ mod tests {
     use crate::primitives::paint::image::Image;
     use glam::{IVec2, UVec2};
 
-    /// A restored position must land on a screen: near edges count, far edges do not, no monitor places nothing.
+    /// A restored position stands where its title bar, 32 logical rows as wide as the window,
+    /// reaches a screen. Beside a 1920 × 1080 monitor at scale 1 sits a 2560 × 1440 one at scale
+    /// 2, whose band is 64 rows tall. A window snapped to the left edge on Windows starts 7 px off
+    /// the screen and stands; one whose title bar lies past every edge, above the top or wholly
+    /// left of the screen, falls back to the platform's placement. A window of unknown width
+    /// takes a 32-px band: its corner one texel off a monitor's far edge still reaches it.
     #[test]
-    fn a_position_is_on_a_monitor_only_inside_its_bounds() {
-        let left = (IVec2::new(0, 0), UVec2::new(1920, 1080));
-        let right = (IVec2::new(1920, 0), UVec2::new(2560, 1440));
-        for (pos, on) in [
-            (IVec2::new(100, 100), true),
-            (IVec2::new(0, 0), true),
-            (IVec2::new(1919, 1079), true),
-            (IVec2::new(1920, 1200), true),
-            (IVec2::new(1919, 1080), false),
-            (IVec2::new(4480, 0), false),
-            (IVec2::new(-1, 10), false),
+    fn a_position_stands_where_its_title_bar_reaches_a_monitor() {
+        let left = native::MonitorArea {
+            at: IVec2::new(0, 0),
+            size: UVec2::new(1920, 1080),
+            scale: 1.0,
+        };
+        let right = native::MonitorArea {
+            at: IVec2::new(1920, 0),
+            size: UVec2::new(2560, 1440),
+            scale: 2.0,
+        };
+        for (pos, inner_width, on, why) in [
+            (IVec2::new(100, 100), Some(800), true, "inside"),
+            (
+                IVec2::new(-7, 0),
+                Some(960),
+                true,
+                "snapped to the left edge",
+            ),
+            (
+                IVec2::new(-2000, 0),
+                Some(960),
+                false,
+                "wholly left of the screen",
+            ),
+            (
+                IVec2::new(-2000, 0),
+                Some(2100),
+                true,
+                "its title bar's right end shows",
+            ),
+            (
+                IVec2::new(100, -40),
+                Some(800),
+                false,
+                "above the top of the left screen",
+            ),
+            (
+                IVec2::new(100, -20),
+                Some(800),
+                true,
+                "its title bar's lower rows show",
+            ),
+            (
+                IVec2::new(2000, -40),
+                Some(800),
+                true,
+                "a 64-row band at scale 2 shows",
+            ),
+            (IVec2::new(4480, 0), Some(800), false, "past the far edge"),
+            (
+                IVec2::new(1919, 1079),
+                None,
+                true,
+                "a corner texel on the left screen",
+            ),
+            (
+                IVec2::new(-31, -31),
+                None,
+                true,
+                "a 32-px band's last texel",
+            ),
+            (
+                IVec2::new(-32, 0),
+                None,
+                false,
+                "a 32-px band ending at the edge",
+            ),
         ] {
-            assert_eq!(native::within_any(pos, [left, right]), on, "{pos}");
+            assert_eq!(
+                native::title_bar_reaches(pos, inner_width, [left, right]),
+                on,
+                "{pos}, {why}"
+            );
         }
-        assert!(!native::within_any(IVec2::ZERO, []), "no monitor, no place");
+        assert!(
+            !native::title_bar_reaches(IVec2::ZERO, Some(800), []),
+            "no monitor, no place"
+        );
     }
 
     #[test]

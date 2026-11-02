@@ -220,7 +220,9 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
 - **Flag set** — `flag_set!`: named flags, `NONE`, `ALL`, set operations, never its bits.
 - **Sealed trait** — a public marker over a crate-private supertrait.
 - **Error** — `*Error`, an enum of the cases a caller tells apart, or a struct for a single
-  condition; `Display`, `Error`, a foreign cause as `source`.
+  condition; `Display`, `Error`, a foreign cause as `source` and never also in `Display`, so a
+  reporter that walks the chain prints each sentence once
+  ([error-handling project group](https://blog.rust-lang.org/inside-rust/2021/07/01/What-the-error-handling-project-group-is-working-towards.html)).
 
 ### Names
 

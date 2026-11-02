@@ -189,7 +189,8 @@ impl Display for PlayError {
 impl error::Error for PlayError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            Self::Locate(error) => Some(error),
+            // Skips the locate error itself, whose words the `Display` already forwards.
+            Self::Locate(error) => error.source(),
             _ => None,
         }
     }
@@ -213,12 +214,40 @@ pub struct ActError {
 
 impl Display for ActError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "action {} failed: {}", self.ran, self.error)
+        write!(f, "action {} failed", self.ran)
     }
 }
 
 impl error::Error for ActError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         Some(&self.error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::driver::error::{ActError, LocateError, PlayError};
+    use std::error::Error;
+
+    /// A cause shows once in a chain: a failed action names its step and hands on why, and a
+    /// locate failure, which a play error shows in its own words, is not handed on again.
+    #[test]
+    fn each_cause_shows_once_in_the_chain() {
+        let locate = LocateError::OffScreen {
+            locator: "Text(\"Save\")".to_owned(),
+        };
+        let play = PlayError::Locate(locate.clone());
+        assert_eq!(play.to_string(), locate.to_string());
+        assert!(play.source().is_none());
+
+        let act = ActError {
+            ran: 3,
+            error: play.clone(),
+        };
+        assert_eq!(act.to_string(), "action 3 failed");
+        assert_eq!(
+            act.source().map(ToString::to_string),
+            Some(play.to_string())
+        );
     }
 }

@@ -444,7 +444,7 @@ where
                 if win.set_minimized(false) {
                     win.next = FramePresent::Immediate;
                 }
-                win.note_resized();
+                win.note_resized(UVec2::new(new.width, new.height));
                 let size = SurfaceManager::clamp_extent(
                     max_texture_dim,
                     UVec2::new(new.width, new.height),
