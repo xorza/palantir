@@ -112,6 +112,7 @@ impl ops::Add for Spacing {
 
 /// `(horizontal, vertical)` — both sides on each axis.
 impl<X: Number, Y: Number> From<(X, Y)> for Spacing {
+    #[track_caller]
     fn from((x, y): (X, Y)) -> Self {
         Self::xy(x.to_f32(), y.to_f32())
     }
@@ -119,6 +120,7 @@ impl<X: Number, Y: Number> From<(X, Y)> for Spacing {
 
 /// `(left, top, right, bottom)` — matches struct field order.
 impl<L: Number, T: Number, R: Number, B: Number> From<(L, T, R, B)> for Spacing {
+    #[track_caller]
     fn from((l, t, r, b): (L, T, R, B)) -> Self {
         Self::new(l.to_f32(), t.to_f32(), r.to_f32(), b.to_f32())
     }

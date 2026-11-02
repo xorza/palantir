@@ -768,3 +768,20 @@ fn every_window_keys_a_family_in_its_shapers_table() {
         assert_eq!(recorded, want);
     }
 }
+
+/// A transparent label sizes its node as an opaque one does, so a fade through alpha 0 moves no
+/// layout; only its ink goes.
+#[test]
+fn a_transparent_label_measures_as_an_opaque_one() {
+    let id = WidgetId::from_hash("fading-label");
+    let measure = |color| {
+        let mut h = Harness::mono(SURFACE);
+        h.frame(|ui| {
+            Text::new("fade").id(id).color(color).show(ui);
+        });
+        h.arranged(id).size
+    };
+    let opaque = measure(RgbaF32::WHITE);
+    assert!(opaque.w > 0.0 && opaque.h > 0.0, "{opaque:?}");
+    assert_eq!(measure(RgbaF32::TRANSPARENT), opaque);
+}

@@ -126,29 +126,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 3: Record and layout inputs
-
-Files: `src/shape/text.rs`, `src/primitives/layout/{placement.rs,packed_layout_meta.rs,layout_mode.rs,scroll_axes.rs}`,
-`src/primitives/mod.rs`, `src/primitives/geometry/spacing/mod.rs`.
-
-- [ ] `shape/text.rs:101-103`: `is_noop` includes `color.is_noop()`, so a transparent label records
-  no text and hugs to its padding, and a fade through alpha ≈ 0 makes the layout jump. Target:
-  `is_noop` is `text.is_empty() || !font.metrics_valid()`. The emit gate
-  (`draw_text_payload.rs:38`) keeps dropping the ink. Add a test: a transparent label measures as
-  an opaque one.
-- [ ] `placement.rs:49`: with a cap, `available` ignores a fixed origin, so
-  `fixed_at((150, 0)).max_size((100, inf))` on a 200 px surface measures 100 px, not 50. Target:
-  the per-origin extent first, then `.min(cap)` per axis. Add the `(150, 0)` case.
-- [ ] `primitives/mod.rs:95-99`, `spacing/mod.rs:114-125`: the number and tuple `From`s for
-  `Spacing` lack `#[track_caller]`, so `padding(f32::NAN)` panics at the crate's line (AGENTS.md,
-  "Input validation" 2). Target: add the attribute. Add padding and margin rows to a call-site test
-  like `a_bad_size_panics_at_the_call_site`.
-- [ ] `packed_layout_meta.rs:68-82`, `layout_mode.rs:22-41`: tags 0..=7 written as bare numbers in
-  two files. Target: both conversions in one file over `TAG_*` consts, with the round trip
-  asserted beside them, as `FillKind` does.
-- [ ] `scroll_axes.rs:21-30,71-84`: a hand-rolled bit set whose `from_bits` keeps undeclared bits
-  and whose `Debug` prints a number. Target: `flag_set!` in its packed form.
-
 ### Batch 4: GPU correctness
 
 Files: `src/gpu/device/device_requirements.rs`, `src/gpu/frame/frame_passes/mod.rs`,

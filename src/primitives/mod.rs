@@ -93,6 +93,7 @@ macro_rules! f16x4_lanes {
         }
 
         impl<T: $crate::primitives::math::num::Number> From<T> for $t {
+            #[track_caller]
             fn from(v: T) -> Self {
                 Self::all(v.to_f32())
             }

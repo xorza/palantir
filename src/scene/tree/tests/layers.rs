@@ -79,7 +79,7 @@ fn ui_layer_records_popup_into_separate_tree() {
     );
 }
 
-/// `Ui::layer`'s size cap sets the overlay's `available`: `None` fills from the anchor (50, 40) to the 400×300 surface corner, (350, 260); `Some(s)` ignores the anchor and clamps to the surface.
+/// `Ui::layer`'s size cap sets the overlay's `available`: `None` fills from the anchor (50, 40) to the 400×300 surface corner, (350, 260); `Some(s)` bounds that room per axis and never widens it, so a 9999 cap still stops at the corner.
 #[test]
 fn ui_layer_size_caps_overlay_available() {
     use crate::primitives::geometry::size::Size;
@@ -88,8 +88,8 @@ fn ui_layer_size_caps_overlay_available() {
     let cases: &[(Option<Size>, Size)] = &[
         (None, Size::new(350.0, 260.0)),
         (Some(Size::new(120.0, 80.0)), Size::new(120.0, 80.0)),
-        (Some(Size::new(9999.0, 9999.0)), Size::new(400.0, 300.0)),
-        (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 300.0)),
+        (Some(Size::new(9999.0, 9999.0)), Size::new(350.0, 260.0)),
+        (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 260.0)),
     ];
     let mut h = Harness::mono(SURF);
     for (cap, expected) in cases {

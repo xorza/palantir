@@ -17,8 +17,9 @@ pub(crate) enum Origin {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Placement {
     pub(crate) origin: Origin,
-    /// Upper bound on the available extent, clamped to the surface; `None` leaves the space from a fixed point to
-    /// the surface edge, or the whole surface for an anchored root.
+    /// Upper bound on the available extent, never past the room the origin leaves: the space from a
+    /// fixed point to the surface edge, or the whole surface for an anchored root. `None` leaves
+    /// that room.
     pub(crate) max_size: Option<Size>,
 }
 
@@ -45,14 +46,11 @@ impl Placement {
     }
 
     pub(crate) fn available(self, surface: Rect) -> Size {
-        match (self.max_size, self.origin) {
-            (Some(size), _) => Size::new(size.w.min(surface.size.w), size.h.min(surface.size.h)),
-            (None, Origin::Fixed(point)) => {
-                let remaining = (surface.max() - point).max(Vec2::ZERO);
-                Size::new(remaining.x, remaining.y)
-            }
-            (None, Origin::Anchored(_)) => surface.size,
-        }
+        let room = match self.origin {
+            Origin::Fixed(point) => surface.size.room_past(point - surface.min),
+            Origin::Anchored(_) => surface.size,
+        };
+        self.max_size.map_or(room, |cap| cap.min(room))
     }
 
     pub(crate) fn origin(self, measured: Size, surface: Rect) -> Vec2 {
@@ -98,15 +96,29 @@ mod tests {
         );
     }
 
+    /// A cap bounds a fixed root inside the room its point leaves, whichever is smaller per axis,
+    /// in either order: at (12, 7) the room is `200 − 12` by `100 − 7`, past the 80 by 40 cap; at
+    /// (150, 0) it is `200 − 150 = 50` wide, under the cap of 100, which would run 50 past the edge.
     #[test]
     fn a_fixed_point_and_a_size_cap_land_the_same_way_in_either_order() {
-        let point = Vec2::new(12.0, 7.0);
-        let cap = Size::new(80.0, 40.0);
-        let point_first = anchored().with_fixed(point).with_max_size(cap);
-        let size_first = anchored().with_max_size(cap).with_fixed(point);
-        for placed in [point_first, size_first] {
-            assert_eq!(placed.available(SURFACE), cap);
-            assert_eq!(placed.origin(MEASURED, SURFACE), point);
+        for (point, cap, want) in [
+            (
+                Vec2::new(12.0, 7.0),
+                Size::new(80.0, 40.0),
+                Size::new(80.0, 40.0),
+            ),
+            (
+                Vec2::new(150.0, 0.0),
+                Size::new(100.0, f32::INFINITY),
+                Size::new(50.0, 100.0),
+            ),
+        ] {
+            let point_first = anchored().with_fixed(point).with_max_size(cap);
+            let size_first = anchored().with_max_size(cap).with_fixed(point);
+            for placed in [point_first, size_first] {
+                assert_eq!(placed.available(SURFACE), want, "{point} {cap:?}");
+                assert_eq!(placed.origin(MEASURED, SURFACE), point);
+            }
         }
     }
 

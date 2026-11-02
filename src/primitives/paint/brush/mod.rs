@@ -114,6 +114,7 @@ impl From<LinearGradient> for Brush {
 
 impl From<LinearGradientBuilder> for Brush {
     #[inline]
+    #[track_caller]
     fn from(builder: LinearGradientBuilder) -> Self {
         Self::Linear(builder.build())
     }
@@ -128,6 +129,7 @@ impl From<RadialGradient> for Brush {
 
 impl From<RadialGradientBuilder> for Brush {
     #[inline]
+    #[track_caller]
     fn from(builder: RadialGradientBuilder) -> Self {
         Self::Radial(builder.build())
     }
@@ -142,6 +144,7 @@ impl From<ConicGradient> for Brush {
 
 impl From<ConicGradientBuilder> for Brush {
     #[inline]
+    #[track_caller]
     fn from(builder: ConicGradientBuilder) -> Self {
         Self::Conic(builder.build())
     }

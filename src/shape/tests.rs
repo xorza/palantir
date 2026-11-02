@@ -272,6 +272,17 @@ fn text_noop_rejects_invalid_metrics() {
         );
     }
 
+    let mut run =
+        |text: &str, color| Shape::text(store.intern(text), GlyphFont::new(16.0)).color(color);
+    assert!(
+        !run("hidden", RgbaF32::TRANSPARENT).is_noop(),
+        "a transparent run still sizes its node"
+    );
+    assert!(
+        run("", RgbaF32::WHITE).is_noop(),
+        "an empty run shapes nothing"
+    );
+
     for (label, font_size, line_height, expected_noop) in cases {
         let shape = Shape::text(
             store.intern("visible"),

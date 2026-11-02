@@ -3,6 +3,8 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::*;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 
 /// A NaN edge is reported per lane: the four share one `u64`, so checking only the first would pass a NaN bottom corner.
 #[test]
@@ -37,6 +39,24 @@ fn an_edge_past_f16_is_refused_where_it_is_built() {
         Spacing::new(65519.0, -65519.0, 0.0, 1.0).to_array(),
         [65504.0, -65504.0, 0.0, 1.0]
     );
+}
+
+/// A padding or margin past its lanes panics at the caller's line, through the number and both
+/// tuple conversions `Configure::padding` and `margin` take, as AGENTS.md's input validation asks.
+#[test]
+fn a_bad_spacing_panics_at_the_call_site() {
+    type Case = (u32, fn());
+    let cases: [Case; 5] = [
+        (line!(), || drop(Widget::leaf().padding(f32::NAN))),
+        (line!(), || drop(Widget::leaf().padding((1.0, f32::NAN)))),
+        (line!(), || drop(Widget::leaf().padding((1, 2, 3, 65520)))),
+        (line!(), || drop(Widget::leaf().margin(f32::INFINITY))),
+        (line!(), || _ = Spacing::from((f32::NAN, 1.0))),
+    ];
+    for (n, (line, record)) in cases.into_iter().enumerate() {
+        let site = panic_probe::panic_site(Spacing::LANE_RULE, record);
+        assert_eq!(site, format!("{}:{line}", file!()), "case {n}");
+    }
 }
 
 /// A derived spacing saturates where an authored one is refused: ±70000 and ±infinity land on

@@ -157,88 +157,21 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
     });
 }
 
+/// `LayoutCore::from_node` packs the node's mode, alignment and visibility; the packing itself is
+/// tested beside `PackedLayoutMeta`.
 #[test]
-fn layout_core_round_trips_mode_align_visibility() {
+fn layout_core_carries_mode_align_visibility() {
     use crate::primitives::layout::align::{Align, HAlign, VAlign};
     use crate::primitives::layout::visibility::Visibility;
-    let cases: &[(LayoutMode, Align, Visibility)] = &[
-        (
-            LayoutMode::Leaf,
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Visible,
-        ),
-        (
-            LayoutMode::Stack(Axis::X),
-            Align::new(HAlign::Left, VAlign::Center),
-            Visibility::Hidden,
-        ),
-        (
-            LayoutMode::Grid(GridDefId::from_idx(42)),
-            Align::new(HAlign::Right, VAlign::Bottom),
-            Visibility::Collapsed,
-        ),
-        (
-            LayoutMode::Scroll(ScrollAxes::VERTICAL),
-            Align::new(HAlign::Center, VAlign::Top),
-            Visibility::Visible,
-        ),
-        (
-            LayoutMode::Scroll(ScrollAxes::HORIZONTAL),
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Visible,
-        ),
-        (
-            LayoutMode::Scroll(ScrollAxes::BOTH),
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Hidden,
-        ),
-        (
-            LayoutMode::WrapStack(Axis::X),
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Visible,
-        ),
-        (
-            LayoutMode::WrapStack(Axis::Y),
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Visible,
-        ),
-        (
-            LayoutMode::ZStack,
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Visible,
-        ),
-        (
-            LayoutMode::Canvas,
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Visible,
-        ),
-        (
-            LayoutMode::Stack(Axis::Y),
-            Align::new(HAlign::Auto, VAlign::Auto),
-            Visibility::Visible,
-        ),
-    ];
-    for &(mode, align, vis) in cases {
-        let mut node = Node::new(NodeMode::Resolved(mode));
-        node.align = align;
-        node.visibility = vis;
-        let core = LayoutCore::from_node(&node);
-        assert_eq!(
-            LayoutMode::from(core.meta),
-            mode,
-            "mode for {mode:?}/{align:?}/{vis:?}",
-        );
-        assert_eq!(
-            core.meta.align(),
-            align,
-            "align for {mode:?}/{align:?}/{vis:?}",
-        );
-        assert_eq!(
-            core.meta.visibility(),
-            vis,
-            "visibility for {mode:?}/{align:?}/{vis:?}"
-        );
-    }
+    let mode = LayoutMode::Grid(GridDefId::from_idx(42));
+    let align = Align::new(HAlign::Right, VAlign::Bottom);
+    let mut node = Node::new(NodeMode::Resolved(mode));
+    node.align = align;
+    node.visibility = Visibility::Collapsed;
+    let core = LayoutCore::from_node(&node);
+    assert_eq!(LayoutMode::from(core.meta), mode);
+    assert_eq!(core.meta.align(), align);
+    assert_eq!(core.meta.visibility(), Visibility::Collapsed);
 }
 
 /// The theme fills in only where the caller stayed silent; an authored bound still faces its own check.

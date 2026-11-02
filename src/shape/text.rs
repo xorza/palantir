@@ -97,9 +97,11 @@ impl TextShape {
 }
 
 impl sealed::LowerShape for TextShape {
-    /// An unusable face shapes nothing, as the two public text queries answer too.
+    /// Empty text or an unusable face shapes nothing, as the two public text queries answer too.
+    /// A transparent color does not drop the run: text is the one shape layout reads, so the run
+    /// still sizes its node, and the emit gate drops its ink.
     fn is_noop(&self) -> bool {
-        self.text.is_empty() || self.color.is_noop() || !self.font.metrics_valid()
+        self.text.is_empty() || !self.font.metrics_valid()
     }
 
     fn lower(self, store: &mut RecordStore) -> ShapeRecord {

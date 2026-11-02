@@ -179,7 +179,7 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
 
 /// A bad stop count or stop color panics at the caller's line through every public door: the
 /// stop run, the ramp, each kind's `new` and `two_stop`, the builder's ninth `stop`, its `build`,
-/// and its `From`.
+/// and its `From`, into a gradient or straight into a brush.
 #[test]
 fn a_bad_gradient_panics_at_the_call_site() {
     const NAN: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
@@ -194,7 +194,7 @@ fn a_bad_gradient_panics_at_the_call_site() {
     fn eight() -> LinearGradientBuilder {
         (0..MAX_STOPS).fold(empty(), |b, _| b.stop(0.0, W))
     }
-    let few: [(u32, fn()); 7] = [
+    let few: [(u32, fn()); 8] = [
         (line!(), || _ = GradientStops::new(one())),
         (line!(), || _ = ColorRamp::new(one())),
         (line!(), || _ = LinearGradient::new(0.0, one())),
@@ -202,6 +202,7 @@ fn a_bad_gradient_panics_at_the_call_site() {
         (line!(), || _ = ConicGradient::new(C, 0.0, one())),
         (line!(), || _ = empty().build()),
         (line!(), || _ = LinearGradient::from(empty())),
+        (line!(), || _ = Brush::from(empty())),
     ];
     let many: [(u32, fn()); 1] = [(line!(), || _ = eight().stop(1.0, W))];
     let color: [(u32, fn()); 5] = [
