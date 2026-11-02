@@ -18,6 +18,7 @@ pub(crate) struct TexelReadback {
     row: u32,
     /// A row's stride in the buffer: whole `COPY_BYTES_PER_ROW_ALIGNMENT` units.
     padded_row: u32,
+    map: MapState,
 }
 
 impl TexelReadback {
@@ -55,6 +56,7 @@ impl TexelReadback {
             size,
             row,
             padded_row,
+            map: MapState::new(),
         }
     }
 
@@ -86,7 +88,8 @@ impl TexelReadback {
             render_target::extent(self.size),
         );
         gpu.queue.submit(iter::once(encoder.finish()));
-        let map = MapState::map_read(&self.buffer);
+        let map = &self.map;
+        map.map_read(&self.buffer);
         match gpu.wait_until(&|| !map.is_pending()) {
             GpuWait::Done if map.is_mapped() => {}
             GpuWait::Done => {

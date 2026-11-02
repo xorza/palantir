@@ -12,7 +12,6 @@ use crate::layout::axis_slot::NodeSlot;
 use crate::layout::cache::Arranged;
 use crate::layout::cache::measure_snapshot::SubtreeKey;
 use crate::layout::drivers::grid::grid_ctx::GridCtx;
-use crate::layout::drivers::grid::grid_track_store::GridTrackStore;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
 use crate::layout::drivers::{DriverOp, LayoutDriver, ReplayOp};
@@ -20,7 +19,7 @@ use crate::layout::engine::LayoutEngine;
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::layout_scratch::RestoreTarget;
+use crate::layout::layout_scratch::{ReplayOrigin, RestoreTarget};
 use crate::layout::measured::Measured;
 use crate::layout::placed_child::{Placed, PlacedChild};
 use crate::layout::plane_input::PlaneInput;
@@ -67,14 +66,6 @@ fn place(origin: Vec2, slot: Rect, margin: Spacing) -> Rect {
     .deflated_by(margin)
 }
 
-/// One inner box a translated replay is inside: where its subtree ends, and its
-/// page position.
-#[derive(Clone, Copy, Debug)]
-pub(super) struct ReplayOrigin {
-    end: usize,
-    origin: Vec2,
-}
-
 impl<'a> LayoutPass<'a> {
     /// Min-content intrinsic on one axis: the smallest this node can shrink to
     /// without breaking a rigid descendant (Fixed widget, explicit `min_size`, longest
@@ -86,42 +77,6 @@ impl<'a> LayoutPass<'a> {
             return 0.0;
         }
         self.intrinsic(node, axis, LenReq::MinContent)
-    }
-
-    /// Measure the children of a per-axis-hug panel (ZStack / Canvas) and return the
-    /// extent that covers them. `offset` is where the panel places a child (zero for
-    /// a ZStack, the declared position for a Canvas). Every axis offers the child the
-    /// room left past the offset (what `arrange` will hand it, or on a Hug axis the
-    /// most the panel can grow to), since offering more makes a wrapping child report
-    /// a height for a width it won't get. A bounded axis reports the child's own
-    /// extent; a Hug axis folds the offset back in.
-    pub(super) fn measure_per_axis_hug(
-        &mut self,
-        node: NodeId,
-        inner_avail: Size,
-        mut offset: impl FnMut(&Tree, NodeId) -> Vec2,
-    ) -> Measured {
-        let tree = self.tree;
-        let hug = tree.records.layout()[node.idx()].size.hug_mask();
-        // The child holds while the room past its position stays past its range.
-        let room_from = |from: f32, offset: f32| if from > 0.0 { from + offset } else { 0.0 };
-        let mut max = Measured::ZERO;
-        for c in tree.active_children(node) {
-            let at = offset(tree, c);
-            // A hug axis grows to cover where the child was put; a bounded one reports the
-            // child's extent alone. The floor follows the extent.
-            let child = self.measure(c, inner_avail.room_past(at));
-            let covered = |d: Size| Size::new(at.x + d.w, at.y + d.h).select(hug, d);
-            max = Measured {
-                size: max.size.max(covered(child.size)),
-                floor: max.floor.max(covered(child.floor)),
-                stable_from: max.stable_from.max(Size::new(
-                    room_from(child.stable_from.w, at.x),
-                    room_from(child.stable_from.h, at.y),
-                )),
-            };
-        }
-        max
     }
 
     pub(super) const fn new(
@@ -168,11 +123,6 @@ impl LayoutPass<'_> {
     #[inline]
     pub(super) const fn grid_mut(&mut self) -> &mut GridCtx {
         &mut self.engine.scratch.grid
-    }
-
-    #[inline]
-    pub(super) const fn grid_track_state_mut(&mut self) -> &mut GridTrackStore {
-        &mut self.engine.scratch.grid.track_state
     }
 
     #[inline]
@@ -287,9 +237,8 @@ impl LayoutPass<'_> {
                         plane: self.out,
                     },
                 );
-                // The root is recorded under this offer, not the one restored with its subtree: a
-                // root slot keyed on a stale offer fails `MeasureCache::matches_forest` and
-                // rebuilds every frame.
+                // The root is recorded under this offer, not the one restored with its subtree:
+                // a subtree captured under a stale offer misses every later lookup.
                 self.engine.scratch.available[cur_start] = available;
                 return hit.root;
             }

@@ -4,10 +4,9 @@ use crate::input_state::InputState;
 use crate::primitives::identity::widget_id::WidgetId;
 
 fn pinch_state() -> InputState {
-    InputState {
-        pinch_target: Some(pinch_id()),
-        ..InputState::default()
-    }
+    let mut state = InputState::default();
+    state.pointer.pinch_target = Some(pinch_id());
+    state
 }
 
 fn pinch_id() -> WidgetId {
@@ -32,5 +31,5 @@ fn post_record_resets_zoom_delta_to_identity() {
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.2);
     state.end_frame(&cascade);
     assert_eq!(state.scroll_delta_for(pinch_id()).zoom.get(), 1.0);
-    assert!(state.frame_target_deltas.is_empty());
+    assert!(state.pointer.target_deltas.is_empty());
 }

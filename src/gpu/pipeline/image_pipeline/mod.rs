@@ -2,19 +2,19 @@
 //! but draws textured quads (per-instance rect + tint, per-image bind group).
 //!
 //! Bind groups belong to the two stores the backend hands
-//! [`ImagePipeline::draw`]: [`WgpuImageStore`](crate::gpu::resource::wgpu_image_store::WgpuImageStore)
+//! [`ImagePipeline::draw_batch`]: [`WgpuImageStore`](crate::gpu::resource::wgpu_image_store::WgpuImageStore)
 //! and [`GpuViewTargets`]. Both build against one binding shape, so a view
 //! composite binds like an image.
 
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantRecipe};
+use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::gpu::pipeline::runs::Runs;
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
-use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::gpu_view_targets::GpuViewTargets;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::resource::wgpu_image_store::ImageTexture;
@@ -53,9 +53,7 @@ impl<'a> ImageTextures<'a> {
 
 #[derive(Debug)]
 pub(crate) struct ImagePipeline {
-    instance_buffer: DynamicBuffer<ImageInstance>,
-    shader: wgpu::ShaderModule,
-    pipeline_layout: wgpu::PipelineLayout,
+    family: InstancedPipeline<ImageInstance>,
 }
 
 impl ImagePipeline {
@@ -71,18 +69,16 @@ impl ImagePipeline {
     /// from [`Self::build_variants`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
-        let shader = Self::SHADER.module(gpu);
-
-        let instance_buffer =
-            DynamicBuffer::<ImageInstance>::vertex(gpu, "palantir.image.instances", 16);
-
         Self {
-            instance_buffer,
-            shader,
-            pipeline_layout: pipeline_recipe::pipeline_layout(
+            family: InstancedPipeline::new(
                 gpu,
-                "palantir.image.pl",
-                &[Some(textures.layout())],
+                InstancedSpec {
+                    shader: Self::SHADER,
+                    layout: "palantir.image.pl",
+                    groups: &[Some(textures.layout())],
+                    instances: "palantir.image.instances",
+                    capacity: 16,
+                },
             ),
         }
     }
@@ -90,37 +86,23 @@ impl ImagePipeline {
     /// Build the base and stencil-test color pipelines against `format`, the only
     /// format-dependent image objects. Called by `FormatPipelines` per format.
     pub(super) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> StencilVariant {
-        StencilVariant::build(
+        self.family.build_variants(
             gpu,
-            PipelineRecipe {
+            format,
+            VariantRecipe {
+                label: "palantir.image.pipeline",
+                stencil_label: "palantir.image.pipeline.stencil_test",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..PipelineRecipe::color(
-                    "palantir.image.pipeline",
-                    &self.shader,
-                    &self.pipeline_layout,
-                    format,
-                )
             },
-            "palantir.image.pipeline.stencil_test",
         )
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
-        self.instance_buffer.upload_instances(ctx, instances);
+        self.family.upload(ctx, instances);
     }
 
-    pub(crate) fn bind<'a>(
-        &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
-    ) {
-        binder.pipeline(pass, pipeline, &self.pipeline_layout);
-        binder.vertex(pass, 0, &self.instance_buffer.buffer);
-    }
-
-    /// Draw one image batch. `ids` is the frame's per-draw texture column and
+    /// Draw one image batch through `pipeline`. `ids` is the frame's per-draw texture column and
     /// `items` selects this batch's slice (see [`ImageBatch`]).
     ///
     /// Adjacent draws sharing a texture collapse into one `set_bind_group` +
@@ -128,20 +110,21 @@ impl ImagePipeline {
     ///
     /// An **absent id is skipped** silently: its owning
     /// [`ImageHandle`](crate::ImageHandle) was dropped. The check runs once per run.
-    pub(crate) fn draw<'a>(
-        &self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
+    pub(crate) fn draw_batch<'a>(
+        &'a self,
+        rec: &mut PassRecorder<'a>,
+        pipeline: &'a wgpu::RenderPipeline,
         ImageBatch { ids, items }: ImageBatch<'_>,
         textures: ImageTextures<'_>,
     ) {
-        binder.forget_group(0);
+        rec.pipeline(pipeline, self.family.layout());
+        rec.vertex(0, self.family.instances());
         for run in Runs::new(items, |i| ids[i as usize]) {
             let Some(bind_group) = textures.bind_group(run.key) else {
                 continue;
             };
-            pass.set_bind_group(0, bind_group, &[]);
-            pass.draw(0..4, run.instances.into());
+            rec.group_once(0, bind_group);
+            rec.draw(0..4, run.instances.into());
         }
     }
 }

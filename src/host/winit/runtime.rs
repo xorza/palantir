@@ -308,18 +308,9 @@ impl<T: App + 'static> WinitRuntime<T> {
         self.windows.is_empty()
     }
 
-    /// Repaint everything when an app-global setting changed (debug overlay flags, user scale,
-    /// the scheme preference, the system's scheme, its reduced-motion preference).
-    ///
-    /// Every signal is taken before any is tested; `||` would short-circuit past the rest and leave a stray repaint.
+    /// Repaint everything when an app-global setting changed.
     pub(super) fn repaint_on_shared_change(&mut self) {
-        let resources = &self.core.resources;
-        let overlay = resources.diagnostics().overlay.take_change();
-        let user_scale = resources.user_scale().take_change();
-        let preference = resources.scheme_preference().take_change();
-        let system = resources.system_color_scheme().take_change();
-        let motion = resources.motion_reduced().take_change();
-        if overlay || user_scale || preference || system || motion {
+        if self.core.resources.settings().take_change() {
             self.repaint_all();
         }
     }

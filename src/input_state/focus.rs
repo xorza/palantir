@@ -141,7 +141,7 @@ impl Focus {
         while let Some(idx) = self
             .returns
             .iter()
-            .rposition(|row| !cascade.by_id.contains_key(&row.overlay))
+            .rposition(|row| !cascade.contains(row.overlay))
         {
             let row = self.returns.remove(idx);
             if self.focused.is_none() && cascade.is_focusable(row.to) {

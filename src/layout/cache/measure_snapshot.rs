@@ -5,8 +5,11 @@ use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use crate::layout::cache;
 use crate::layout::cache::node_arenas::NodeArenas;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
+use crate::scene::tree::Tree;
+use crate::scene::tree::root_slot::RootSlot;
 use crate::text::shaped_text::ShapedText;
 
 /// One cacheable subtree's place in a [`MeasureSnapshot`]: what it was
@@ -30,6 +33,17 @@ pub(crate) struct SubtreeKey {
 }
 
 impl SubtreeKey {
+    /// The key of the subtree at root `slot` of `tree`, offered what `slot` gives it on
+    /// `surface`.
+    pub(crate) fn of_root(tree: &Tree, slot: &RootSlot, surface: Rect) -> Self {
+        let root = slot.first_node.idx();
+        Self {
+            widget_id: tree.records.widget_id()[root],
+            subtree_hash: tree.rollups.layout_subtree[root],
+            available: slot.available(surface),
+        }
+    }
+
     /// The same subtree under the same offer, bit for bit.
     pub(crate) fn matches(self, other: Self) -> bool {
         self.widget_id == other.widget_id
@@ -46,8 +60,6 @@ pub(crate) struct MeasureSnapshot {
     pub(super) snapshots: WidgetIdMap<u32>,
     pub(super) descs: Vec<ArenaSnapshot>,
     pub(super) desc_widget_ids: Vec<WidgetId>,
-    /// Every root's key, in paint order.
-    pub(super) roots: Vec<SubtreeKey>,
     /// Ordered fold over `desc_widget_ids`, rebuilt by every capture.
     pub(super) desc_identity: u64,
     /// The `desc_identity` [`Self::snapshots`] was built for. Held
@@ -74,7 +86,6 @@ impl MeasureSnapshot {
         self.text_shapes.clear();
         self.descs.clear();
         self.desc_widget_ids.clear();
-        self.roots.clear();
         self.desc_identity = 0;
     }
 

@@ -661,7 +661,7 @@ fn surface_focus_loss_ends_every_capture_and_clears_modifiers() {
     assert!(r.left.drag.stopped(), "the drag gets its commit edge");
     assert!(!r.left.held(), "and the press is no longer latched");
     assert_eq!(
-        h.ui().input().modifiers,
+        h.ui().input().keyboard.modifiers,
         Modifiers::default(),
         "a modifier held into another window is not held here",
     );

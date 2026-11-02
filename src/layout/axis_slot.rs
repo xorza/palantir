@@ -43,6 +43,16 @@ impl AxisSlot {
         }
     }
 
+    /// This box offered `available`, its smallest content `intrinsic_min`: what a measure
+    /// resolves.
+    const fn offered(self, available: f32, intrinsic_min: f32) -> Self {
+        Self {
+            available,
+            intrinsic_min,
+            ..self
+        }
+    }
+
     /// Wrap the raw content range a walk answered in this axis' box: padding,
     /// the `Sizing` override, margin, and the `min_size` / `max_size` clamps, on
     /// the halves `query` asks for.
@@ -217,33 +227,9 @@ impl NodeSlot<'_> {
             available,
             intrinsic_min,
         } = self;
-        let Size {
-            w: p_horiz,
-            h: p_vert,
-        } = layout.padding.sums();
-        let Size {
-            w: m_horiz,
-            h: m_vert,
-        } = layout.margin.sums();
-
-        let w = AxisSlot {
-            sizing: layout.size.w(),
-            available: available.w,
-            intrinsic_min: intrinsic_min.w,
-            margin: m_horiz,
-            padding: p_horiz,
-            min: bounds.min_size.w,
-            max: bounds.max_size.w,
-        };
-        let h = AxisSlot {
-            sizing: layout.size.h(),
-            available: available.h,
-            intrinsic_min: intrinsic_min.h,
-            margin: m_vert,
-            padding: p_vert,
-            min: bounds.min_size.h,
-            max: bounds.max_size.h,
-        };
+        let w = AxisSlot::unbounded(&layout, bounds, Axis::X).offered(available.w, intrinsic_min.w);
+        let h = AxisSlot::unbounded(&layout, bounds, Axis::Y).offered(available.h, intrinsic_min.h);
+        let (p_horiz, p_vert) = (w.padding, h.padding);
 
         let inner_avail = Size::new(w.inner_avail(), h.inner_avail());
         let Measured {

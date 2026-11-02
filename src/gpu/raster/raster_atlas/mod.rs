@@ -22,8 +22,8 @@ use crate::common::expiry_wheel::ExpiryWheel;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
-use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::RasterProgram;
 use crate::gpu::raster::raster_atlas::atlas_slot::{AtlasSlot, SlotPlacement, SlotState};
 use crate::gpu::raster::raster_atlas::bound_sides::{BoundSides, SidesLayout};
@@ -199,17 +199,16 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// [`RasterQuad`](crate::gpu::pipeline::raster_pipeline::raster_quad::RasterQuad)).
     pub(super) fn draw_span<'a>(
         &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
+        rec: &mut PassRecorder<'a>,
         vbuf: &'a wgpu::Buffer,
         span: Span,
     ) {
         if span.len == 0 {
             return;
         }
-        binder.group(pass, 0, self.bound.bind_group());
-        binder.vertex(pass, 0, vbuf);
-        pass.draw(0..4, span.start..span.start + span.len);
+        rec.group(0, self.bound.bind_group());
+        rec.vertex(0, vbuf);
+        rec.draw(0..4, span.start..span.start + span.len);
     }
 
     pub(super) const fn side_px(&self, content: ContentType) -> u32 {

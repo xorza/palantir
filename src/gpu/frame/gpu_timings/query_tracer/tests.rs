@@ -2,10 +2,10 @@ use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats}
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::frame::gpu_timings::query_tracer::{
-    BACKDROP_IDX, COPY_OUT_IDX, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer, STATS_DONE,
-    STATS_FAILED, TIMESTAMPS_DONE, TIMESTAMPS_FAILED, mappings_complete, mappings_failed,
+    BACKDROP_IDX, COPY_OUT_IDX, MAX_TIMESTAMPS, Publisher, QUERY_COUNT, QueryTracer, maps_landed,
 };
 use crate::gpu::frame::main_segment::MainSegment;
+use crate::gpu::surface::map_state::MapState;
 use crate::gpu::test_gpu;
 use std::time::Duration;
 
@@ -137,17 +137,19 @@ fn stats_publish_in_flag_declaration_order() {
 }
 
 #[test]
-fn readback_waits_for_every_mapping_and_reports_failures() {
-    assert!(!mappings_complete(0, false));
-    assert!(mappings_complete(TIMESTAMPS_DONE, false));
-
-    assert!(!mappings_complete(TIMESTAMPS_DONE, true));
-    assert!(!mappings_complete(STATS_DONE, true));
-    assert!(mappings_complete(TIMESTAMPS_DONE | STATS_DONE, true));
-
-    assert!(!mappings_failed(TIMESTAMPS_DONE | STATS_DONE));
-    assert!(mappings_failed(TIMESTAMPS_DONE | TIMESTAMPS_FAILED));
-    assert!(mappings_failed(STATS_DONE | STATS_FAILED));
+fn readback_waits_for_every_mapping() {
+    let (idle, pending) = (MapState::new(), MapState::never_landing);
+    let (mapped, failed) = (|| MapState::landed(true), || MapState::landed(false));
+    assert!(!maps_landed(&idle, &idle), "no map began");
+    assert!(maps_landed(&mapped(), &idle), "a slot with no statistics");
+    assert!(!maps_landed(&pending(), &idle));
+    assert!(
+        !maps_landed(&mapped(), &pending()),
+        "the statistics still map"
+    );
+    assert!(maps_landed(&mapped(), &mapped()));
+    assert!(maps_landed(&failed(), &mapped()), "a failure lands too");
+    assert!(maps_landed(&mapped(), &failed()));
 }
 
 /// A frame's pass time publishes two frames late: its queries resolve in the next frame, after

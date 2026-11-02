@@ -16,8 +16,8 @@ pub(crate) const DRAG_THRESHOLD: f32 = 4.0;
 
 /// Maximum interval between two clicks on the same widget for a double-click when no platform
 /// setting is read: the Windows and macOS default, and what a host with no desktop keeps, so a
-/// test repeats. The winit host reads the platform's own
-/// ([`DoubleClickWindow`](crate::input_state::double_click_window::DoubleClickWindow)).
+/// test repeats. The winit host reads the platform's own into the host's
+/// [`AppSettings`](crate::ui::resources::app_settings::AppSettings).
 pub(crate) const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(500);
 
 /// Maximum pointer travel (logical px) between two clicks for a double-click. Held fixed: macOS and

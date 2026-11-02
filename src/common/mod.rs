@@ -1,6 +1,5 @@
 //! Cross-cutting utilities. Submodules are `pub(crate)` at `crate::common::<sub>::<item>`, except [`flag_set`], which holds a macro reached textually.
 
-pub(crate) mod app_setting;
 pub(crate) mod block_arena;
 pub(crate) mod clipboard;
 pub(crate) mod content_hash;

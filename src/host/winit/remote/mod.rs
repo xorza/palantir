@@ -2,6 +2,8 @@
 //! thread as a person at it would, with the actions, locators and reads a
 //! [`Harness`](crate::Harness) takes.
 
+pub(crate) mod remote_end;
+
 use std::any::Any;
 use std::cell::Cell;
 use std::fmt::{self, Debug};
@@ -25,7 +27,7 @@ use crate::input::owned_input_event::OwnedInputEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::ui::Ui;
 use crate::ui::inspected_widget::InspectedWidget;
-use crate::window::screenshot::{Screenshot, ScreenshotId};
+use crate::window::screenshot::Screenshot;
 use crate::window::window_token::WindowToken;
 
 /// The longest real time a remote waits for the window: for an answer, a frame, or a settle.
@@ -42,50 +44,8 @@ pub(crate) type QueryTask<T> = Box<dyn FnOnce(&mut T, &mut Ui) + Send>;
 /// A screenshot a remote asked of a window, and where its image goes.
 #[derive(Debug)]
 pub(crate) struct ShotAsk {
-    region: Option<Rect>,
-    reply: SyncSender<Result<Screenshot, PlayError>>,
-}
-
-/// The screenshots remotes asked of one window that have not landed. Each answers in the frame
-/// its image lands in, which reads it before a later frame replaces it; a window that closes
-/// drops the asks, which its remotes read as [`PlayError::Disconnected`].
-#[derive(Debug, Default)]
-pub(crate) struct RemoteShots {
-    pending: Vec<PendingShot>,
-}
-
-#[derive(Debug)]
-struct PendingShot {
-    id: ScreenshotId,
-    reply: SyncSender<Result<Screenshot, PlayError>>,
-}
-
-impl RemoteShots {
-    /// Ask `ui` for the screenshot `ask` names; a region with no pixel of the window answers at
-    /// once.
-    pub(crate) fn ask(&mut self, ui: &mut Ui, ask: ShotAsk) {
-        match ui.request_screenshot(ask.region) {
-            Some(id) => self.pending.push(PendingShot {
-                id,
-                reply: ask.reply,
-            }),
-            None => {
-                ask.reply.send(Err(PlayError::EmptyRegion)).ok();
-            }
-        }
-    }
-
-    /// Hand each screenshot that landed in the frame `ui` just ran to the remote that asked.
-    pub(crate) fn deliver(&mut self, ui: &Ui) {
-        self.pending
-            .retain(|pending| match ui.screenshot_taken(pending.id) {
-                Some(shot) => {
-                    pending.reply.send(Ok(shot.clone())).ok();
-                    false
-                }
-                None => true,
-            });
-    }
+    pub(super) region: Option<Rect>,
+    pub(super) reply: SyncSender<Result<Screenshot, PlayError>>,
 }
 
 /// One window of a running [`WinitHost`](crate::WinitHost), driven from another thread: queries

@@ -400,7 +400,8 @@ mod tests {
         };
         let gpu = isolated_headless_test_gpu();
         let healthy = gpu.create_filled_buffer(&desc, &[1, 2, 3, 4, 5, 6]);
-        let map = MapState::map_read(&healthy);
+        let map = MapState::new();
+        map.map_read(&healthy);
         assert_eq!(gpu.wait_until(&|| !map.is_pending()), GpuWait::Done);
         assert!(map.is_mapped());
         assert_eq!(

@@ -1,6 +1,6 @@
 # API pass
 
-The public API changes the palantir review (`review-palantir.md`) proposed and the batches did not
+The public API changes the palantir review proposed and its batches did not
 apply, each waiting for a go-ahead (AGENTS.md, "Public API"). Whoever applies one deletes it, and
 regenerates `API_SURFACE.md` with `cargo drive surface`.
 
@@ -53,3 +53,11 @@ regenerates `API_SURFACE.md` with `cargo drive surface`.
   true"): the signal is per window for host-wide state, so an app with two windows uploads each
   image twice, and no in-tree consumer calls it (darkroom's previews stay blank after a winit
   recovery). The policy stays; the truth moves onto the handle.
+
+## Theme walk
+
+- **`#[animate(text)]`** on the `Animatable` derive, emitting the theme's text-slot walk
+  (`for_each_text`), so the 15 hand-written walks go. The attribute widens the public derive's
+  contract, so it waits with the `Lerp` split above. Refused: one walk over a single tree plus a
+  pairing helper, as `Theme::share_text_axes` reads both ends of a lerp at once, and pairing two
+  single walks needs scratch per lerp, an allocation each frame of a theme transition.

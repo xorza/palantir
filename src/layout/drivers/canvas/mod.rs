@@ -1,6 +1,6 @@
 //! The absolute-position driver: children sit at their own offsets; the container reports the extent covering them.
 
-use crate::layout::drivers::LayoutDriver;
+use crate::layout::drivers::{LayoutDriver, per_axis_hug};
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
@@ -24,17 +24,17 @@ impl Canvas {
 impl LayoutDriver for Canvas {
     const ARRANGE_DEPENDS_ONLY_ON_SLOT: bool = true;
 
-    /// Canvas: children placed at their declared `Layout.pos` (parent-inner coords, default `(0, 0)`), each measured against the room past where it sits; see [`LayoutPass::measure_per_axis_hug`].
+    /// Canvas: children placed at their declared `Layout.pos` (parent-inner coords, default `(0, 0)`), each measured against the room past where it sits; see [`per_axis_hug::measure`].
     ///
     /// **Content size per axis depends on the canvas's sizing on that axis.** A `Hug` axis reports `max(child_pos + child_desired)`; a `Fill` axis reports `max(child_desired)`, so `.pos(...)` cannot inflate the canvas past its available and flicker `Damage::Full` while dragging.
     /// Negative positions render outside `inner` either way (the running max starts at 0); build scrollable negative-origin canvases on [`crate::widgets::scroll::Scroll`].
     ///
     /// A bounded axis has no floor: a child larger than the canvas overflows it rather than holding it open, as CSS gives a scroll container no content-based minimum and WPF's Canvas does not size to its children. A floor here would rise through every `Fill` parent, so one tall child would push its window's layout past the window.
     fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
-        // Active children only: a collapsed child must not inflate the content size. The position decides both the room a bounded axis has left and the extent a Hug axis grows to; `measure_per_axis_hug` derives each.
+        // Active children only: a collapsed child must not inflate the content size. The position decides both the room a bounded axis has left and the extent a Hug axis grows to; `per_axis_hug::measure` derives each.
         let hug = pass.tree.records.layout()[self.node.idx()].size.hug_mask();
         let measured =
-            pass.measure_per_axis_hug(self.node, inner_avail, |tree, c| tree.bounds(c).pos);
+            per_axis_hug::measure(pass, self.node, inner_avail, |tree, c| tree.bounds(c).pos);
         Measured {
             floor: measured.floor.select(hug, Size::ZERO),
             ..measured

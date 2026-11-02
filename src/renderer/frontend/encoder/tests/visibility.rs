@@ -8,6 +8,8 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::renderer::frontend::encoder::tests::support::{rect_with_fill, screen_rects_by_fill};
+use crate::scene::endpoint::Endpoint;
+use crate::scene::plane::Plane;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
@@ -132,9 +134,12 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             .inner
     });
     let cascade = h.ui_ref().cascade();
-    // Main is first in `PAINT_ORDER`, so node index equals entry index.
+    let child = cascade.location(Endpoint {
+        plane: Plane::MAIN,
+        node: child,
+    });
     assert!(
-        cascade.entries[child.idx()].disabled,
+        cascade.entry(child).disabled,
         "a disabled ancestor must flatten into the descendant's effective disabled",
     );
     assert!(cascade.hit_test(Vec2::splat(20.0), |_| true).is_none(),);

@@ -73,13 +73,14 @@ impl ShortcutMods {
     /// The set a press holds to fire this chord on `platform`: on macOS the host reports
     /// Command as `ctrl`, so a declared `meta` folds into it.
     const fn held_on(self, platform: Platform) -> Self {
-        match platform {
-            Platform::Mac => Self {
+        if platform.commands_with_super() {
+            Self {
                 ctrl: self.ctrl || self.meta,
                 meta: false,
                 ..self
-            },
-            Platform::Windows | Platform::Linux => self,
+            }
+        } else {
+            self
         }
     }
 
@@ -327,7 +328,7 @@ impl fmt::Display for ShortcutLabel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Shortcut { mods, key } = self.shortcut;
         let mods = mods.held_on(self.platform);
-        if matches!(self.platform, Platform::Mac) {
+        if self.platform.labels_with_symbols() {
             // Canonical macOS order ⌥ ⇧ ⌘ <key>; the primary modifier is Cmd there,
             // so it sits last.
             if mods.alt {
@@ -363,11 +364,7 @@ impl fmt::Display for ShortcutLabel {
         }
         if mods.meta {
             sep(f, &mut first)?;
-            f.write_str(if matches!(self.platform, Platform::Windows) {
-                "Win"
-            } else {
-                "Super"
-            })?;
+            f.write_str(self.platform.super_label())?;
         }
         sep(f, &mut first)?;
         write_key(f, key, self.platform)
@@ -375,7 +372,7 @@ impl fmt::Display for ShortcutLabel {
 }
 
 fn write_key(f: &mut fmt::Formatter<'_>, key: Key, platform: Platform) -> fmt::Result {
-    let mac = matches!(platform, Platform::Mac);
+    let mac = platform.labels_with_symbols();
     match key {
         Key::Char(c) => f.write_char(c.to_ascii_uppercase()),
         Key::ArrowLeft => f.write_str("←"),

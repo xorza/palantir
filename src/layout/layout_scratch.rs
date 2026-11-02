@@ -10,12 +10,19 @@ use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::stack::stack_scratch::StackScratch;
 use crate::layout::drivers::wrapstack::WrapScratch;
 use crate::layout::intrinsic::len_req::SLOT_COUNT;
-use crate::layout::pass::ReplayOrigin;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::size::Size;
 use crate::scene::tree::Tree;
 use glam::Vec2;
 use std::ops::Range;
+
+/// One inner box a translated replay is inside: where its subtree ends, and its
+/// page position.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ReplayOrigin {
+    pub(super) end: usize,
+    pub(super) origin: Vec2,
+}
 
 /// Where a measure-cache hit lands: the live tree, the subtree's node range in it, and the plane's output columns.
 #[derive(Debug)]

@@ -18,7 +18,8 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
     for record in &scene.forest.collisions {
         for ep in [record.first, record.second] {
             let rect = scene.layout[ep.plane].rect[ep.node.idx()];
-            let screen = scene.cascade.entry_at(ep).transform.apply_rect(rect);
+            let entry = scene.cascade.entry(scene.cascade.location(ep));
+            let screen = entry.transform.apply_rect(rect);
             out.draw(
                 DrawQuadPayload::rect(RectQuad {
                     kind: RectKind::Rounded,

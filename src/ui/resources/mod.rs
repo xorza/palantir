@@ -1,17 +1,13 @@
 //! The app-global resources of one host, shared by every window's recorder, the one frontend and the one backend:
-//! shaper, image and icon registries, gradient atlas, clipboard, window directory, render owners, diagnostics,
-//! user scale, color scheme and reduced motion. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
+//! shaper, image and icon registries, gradient atlas, clipboard, window directory, render owners, and the
+//! settings every window shares. Every field is clone-shared, so recorders in two windows resolve the same font, texture and scale.
 
 use std::rc::Rc;
 
-use crate::common::app_setting::AppSetting;
 use crate::common::clipboard::Clipboard;
-use crate::diagnostics::Diagnostics;
-use crate::display::user_scale::UserScale;
 use crate::icons::icon_registry::IconRegistry;
 use crate::image_registry::ImageRegistry;
 use crate::image_registry::image_handle::ImageHandle;
-use crate::input_state::double_click_window::DoubleClickWindow;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
 use crate::renderer::error::ImageTooLarge;
@@ -21,8 +17,10 @@ use crate::renderer::shared_device::SharedDevice;
 use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
-use crate::theme::scheme_preference::SchemePreference;
+use crate::ui::resources::app_settings::AppSettings;
 use crate::window::window_directory::WindowDirectory;
+
+pub(crate) mod app_settings;
 
 #[derive(Clone, Debug)]
 pub(crate) struct UiResources {
@@ -36,21 +34,7 @@ pub(crate) struct UiResources {
     /// attach epoch, shared with every clone and the frontend; no ceiling until a device attaches.
     device: Rc<SharedDevice>,
     clipboard: Clipboard,
-    diagnostics: Diagnostics,
-    /// The one scale every window's `Display` is minted from; app-global because per-monitor scale is already
-    /// `Display::system_scale`, leaving a preference windows should not disagree about.
-    user_scale: Rc<AppSetting<UserScale>>,
-    /// The scheme the person picked; app-global, so a pick in one window turns every window.
-    scheme_preference: Rc<AppSetting<SchemePreference>>,
-    /// The scheme the system reports, which the winit host writes; `None` where nothing reports
-    /// one.
-    system_color_scheme: Rc<AppSetting<Option<ColorScheme>>>,
-    /// Whether the system asks for less motion, which the winit host writes; `false` where
-    /// nothing reports it.
-    motion_reduced: Rc<AppSetting<bool>>,
-    /// The double-click time every window's input reads, which the winit host sets from the
-    /// platform's.
-    double_click_window: DoubleClickWindow,
+    settings: Rc<AppSettings>,
     windows: WindowDirectory,
     render_owners: RenderOwners,
 }
@@ -66,12 +50,7 @@ impl UiResources {
             gradient_atlas: SharedGradientAtlas::default(),
             device: Rc::default(),
             clipboard,
-            diagnostics: Diagnostics::default(),
-            user_scale: Rc::default(),
-            scheme_preference: Rc::default(),
-            system_color_scheme: Rc::default(),
-            motion_reduced: Rc::default(),
-            double_click_window: DoubleClickWindow::default(),
+            settings: Rc::default(),
             windows: WindowDirectory::default(),
             render_owners: RenderOwners::default(),
         }
@@ -105,35 +84,14 @@ impl UiResources {
         &self.clipboard
     }
 
-    pub(crate) const fn diagnostics(&self) -> &Diagnostics {
-        &self.diagnostics
-    }
-
-    pub(crate) fn user_scale(&self) -> &AppSetting<UserScale> {
-        &self.user_scale
-    }
-
-    pub(crate) fn scheme_preference(&self) -> &AppSetting<SchemePreference> {
-        &self.scheme_preference
-    }
-
-    pub(crate) fn system_color_scheme(&self) -> &AppSetting<Option<ColorScheme>> {
-        &self.system_color_scheme
-    }
-
-    pub(crate) fn motion_reduced(&self) -> &AppSetting<bool> {
-        &self.motion_reduced
+    /// The settings every window shares.
+    pub(crate) fn settings(&self) -> &AppSettings {
+        &self.settings
     }
 
     /// The scheme every window shows now: the preference resolved against the system's.
     pub(crate) fn color_scheme(&self) -> ColorScheme {
-        self.scheme_preference
-            .get()
-            .resolve(self.system_color_scheme.get())
-    }
-
-    pub(crate) const fn double_click_window(&self) -> &DoubleClickWindow {
-        &self.double_click_window
+        self.settings.color_scheme()
     }
 
     pub(crate) const fn windows(&self) -> &WindowDirectory {

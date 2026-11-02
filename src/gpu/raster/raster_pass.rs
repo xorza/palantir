@@ -8,7 +8,7 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::raster_quad::{RasterQuad, SpunRasterQuad};
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::packed_metadata::PackedMetadata;
@@ -260,8 +260,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
 
     pub(super) fn render_batch<'a>(
         &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
+        rec: &mut PassRecorder<'a>,
         batch_idx: usize,
         pipelines: RasterPipelines<'a>,
     ) {
@@ -270,8 +269,8 @@ impl<K: Copy + Eq + Hash + Debug> RasterPass<K> {
                 RasterDraw::Flat(span) => (pipelines.flat, &self.vbuf.buffer, span),
                 RasterDraw::Spun(span) => (pipelines.spun, &self.spun_vbuf.buffer, span),
             };
-            binder.pipeline(pass, pipeline, pipelines.layout);
-            self.atlas.draw_span(binder, pass, vbuf, span);
+            rec.pipeline(pipeline, pipelines.layout);
+            self.atlas.draw_span(rec, vbuf, span);
         });
     }
 

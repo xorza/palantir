@@ -64,29 +64,28 @@ fn dimensions_above_u16_are_preserved_without_a_gpu() {
     assert_eq!(handle.size(), UVec2::new(WIDTH, 1));
 }
 
+/// One host's settings are one value: a write through a clone reads back through the other, and
+/// raises the host's one repaint signal, which the ask lowers.
 #[test]
-fn diagnostics_are_shared_across_clones() {
+fn settings_are_shared_across_clones() {
     let host = UiResources::isolated_mono();
     let ui = host.clone();
     assert_eq!(
-        host.diagnostics().overlay.get(),
+        host.settings().debug_overlay(),
         DebugOverlayConfig::default()
     );
-
-    ui.diagnostics().overlay.set(DebugOverlayConfig {
+    ui.settings().set_debug_overlay(DebugOverlayConfig {
         damage_rect: true,
         ..DebugOverlayConfig::default()
     });
-
-    assert!(host.diagnostics().overlay.get().damage_rect);
-    assert!(ui.diagnostics().overlay.get().damage_rect);
+    assert!(host.settings().debug_overlay().damage_rect);
     assert!(
-        ui.diagnostics().overlay.take_change(),
-        "the write raises the host's repaint signal",
+        host.settings().take_change(),
+        "the write raises the host's repaint signal"
     );
     assert!(
-        !host.diagnostics().overlay.take_change(),
-        "and the ask lowers it, for the one host that shares the flags",
+        !ui.settings().take_change(),
+        "and the ask lowers it for every clone"
     );
 }
 

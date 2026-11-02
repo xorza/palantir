@@ -92,10 +92,12 @@ impl SystemPreferences {
     /// Write the settings into the host's shared cells: the scheme and the motion always, as an
     /// absent scheme is an answer; the double-click time only when the system gave one.
     pub(super) fn apply(self, resources: &UiResources) {
-        resources.system_color_scheme().set(self.color_scheme);
-        resources.motion_reduced().set(self.motion_reduced);
+        resources
+            .settings()
+            .set_system_color_scheme(self.color_scheme);
+        resources.settings().set_motion_reduced(self.motion_reduced);
         if let Some(window) = self.double_click {
-            resources.double_click_window().set(window);
+            resources.settings().set_double_click_window(window);
         }
     }
 }
@@ -159,7 +161,10 @@ mod tests {
     #[test]
     fn applying_writes_the_scheme_and_keeps_an_unreported_double_click_time() {
         let resources = UiResources::isolated_mono();
-        assert_eq!(resources.double_click_window().get(), DOUBLE_CLICK_WINDOW);
+        assert_eq!(
+            resources.settings().double_click_window(),
+            DOUBLE_CLICK_WINDOW
+        );
         let ms = Duration::from_millis;
         SystemPreferences {
             color_scheme: Some(ColorScheme::Light),
@@ -168,11 +173,11 @@ mod tests {
         }
         .apply(&resources);
         assert_eq!(
-            resources.system_color_scheme().get(),
+            resources.settings().system_color_scheme(),
             Some(ColorScheme::Light)
         );
-        assert_eq!(resources.double_click_window().get(), ms(250));
-        assert!(resources.motion_reduced().get());
+        assert_eq!(resources.settings().double_click_window(), ms(250));
+        assert!(resources.settings().motion_reduced());
 
         SystemPreferences {
             color_scheme: None,
@@ -180,8 +185,8 @@ mod tests {
             motion_reduced: false,
         }
         .apply(&resources);
-        assert_eq!(resources.system_color_scheme().get(), None);
-        assert_eq!(resources.double_click_window().get(), ms(250));
-        assert!(!resources.motion_reduced().get());
+        assert_eq!(resources.settings().system_color_scheme(), None);
+        assert_eq!(resources.settings().double_click_window(), ms(250));
+        assert!(!resources.settings().motion_reduced());
     }
 }

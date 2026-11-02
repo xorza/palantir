@@ -19,6 +19,7 @@ use crate::ui::frame_report::{FramePaint, FrameProcessing, FrameReport};
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::frame_runtime::{FrameClassifyInput, FramePlan, RecordBaseline};
 use crate::ui::frame_stats_readout;
+use crate::ui::input_ctx;
 use crate::window::window_token::WindowToken;
 use std::mem;
 
@@ -160,7 +161,8 @@ impl<'a> FrameCycle<'a> {
         self.ui.frame_runtime.end_frame();
 
         // The input frame boundary: held events apply against this frame's cascade; anything input owes the frame asks for it here, since no host event will.
-        if self.ui.input.next_frame(&self.ui.cascade) {
+        let ctx = input_ctx(&self.ui.cascade, &self.ui.resources);
+        if self.ui.input.next_frame(ctx) {
             self.ui.frame_runtime.request_repaint();
         }
 

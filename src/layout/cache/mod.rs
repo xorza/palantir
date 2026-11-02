@@ -25,7 +25,6 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::LayoutMode;
-use crate::scene::forest::Forest;
 use crate::scene::tree::Tree;
 use crate::text::shaped_text::ShapedText;
 use glam::Vec2;
@@ -112,32 +111,11 @@ impl MeasureCache {
         self.cur.clear_capture();
     }
 
-    /// Whether last frame's capture still describes `forest` at `surface`:
-    /// same node and root counts, and every root under the same widget id,
-    /// subtree hash and offer. `false` forces a rebuild.
-    pub(super) fn matches_forest(&self, forest: &Forest, surface: Rect) -> bool {
-        let snapshot = &self.prev;
-        if snapshot.nodes.desired.len() != forest.total_nodes()
-            || snapshot.roots.len() != forest.total_roots()
-        {
-            return false;
-        }
-        let mut root_idx = 0;
-        for tree in forest.trees.iter_paint_order().map(|(_, tree)| tree) {
-            for slot in &tree.roots {
-                let root = slot.first_node;
-                let cur = SubtreeKey {
-                    widget_id: tree.records.widget_id()[root.idx()],
-                    subtree_hash: tree.rollups.layout_subtree[root.idx()],
-                    available: slot.available(surface),
-                };
-                if !snapshot.roots[root_idx].matches(cur) {
-                    return false;
-                }
-                root_idx += 1;
-            }
-        }
-        true
+    /// Whether last frame's capture holds a node for each of `nodes`, the forest's: a capture
+    /// that a font load or no frame emptied holds none. The roots' keys, which the engine keeps
+    /// with each run, say the rest.
+    pub(super) const fn holds_nodes(&self, nodes: usize) -> bool {
+        self.prev.nodes.desired.len() == nodes
     }
 
     /// Last frame's arrange of a subtree of `len` nodes whose capture starts
@@ -301,15 +279,6 @@ impl MeasureCache {
                 }
             }
             self.hug_offsets[node_count] = self.cur.tracks.len() as u32;
-        }
-
-        for slot in &tree.roots {
-            let idx = slot.first_node.idx();
-            self.cur.roots.push(SubtreeKey {
-                widget_id: tree.records.widget_id()[idx],
-                subtree_hash: tree.rollups.layout_subtree[idx],
-                available: available[idx],
-            });
         }
 
         for idx in 0..node_count {

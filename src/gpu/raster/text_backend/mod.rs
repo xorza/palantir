@@ -17,7 +17,7 @@ mod encoded_counters;
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram};
 use crate::gpu::raster::raster_atlas::RasterAtlasConfig;
 use crate::gpu::raster::raster_pass::{RasterPass, RasterPassConfig};
@@ -147,12 +147,11 @@ impl TextBackend {
     /// Draw the quads `batch_idx` prepared.
     pub(crate) fn render_batch<'a>(
         &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
+        rec: &mut PassRecorder<'a>,
         batch_idx: usize,
         pipelines: RasterPipelines<'a>,
     ) {
-        self.pass.render_batch(binder, pass, batch_idx, pipelines);
+        self.pass.render_batch(rec, batch_idx, pipelines);
     }
 }
 

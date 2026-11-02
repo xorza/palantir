@@ -20,7 +20,7 @@ pub(crate) struct RootSlot {
 impl RootSlot {
     /// Size offered to this root.
     ///
-    /// `LayoutEngine::run` and `MeasureCache::matches_forest` both read it and must agree, or every root misses.
+    /// `LayoutEngine::run` measures at it and keys the root's run by it, so the two agree.
     pub(crate) fn available(&self, surface: Rect) -> Size {
         if self.layer == Layer::Main {
             surface.size

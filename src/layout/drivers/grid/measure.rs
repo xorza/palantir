@@ -24,7 +24,8 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     let scratch = pass.grid_mut().depth_stack.cur();
     scratch.col.reset_for(n_cols);
     scratch.row.reset_for(n_rows);
-    pass.grid_track_state_mut()
+    pass.grid_mut()
+        .track_state
         .debug_assert_unmeasured(grid.def);
 
     if n_rows == 0 || n_cols == 0 {
@@ -59,12 +60,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
             let t = &cols.tracks[i];
             if t.sizing().is_hug() {
                 let range = pass.intrinsic_range(c, Axis::X);
-                let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
+                let col_ranges = pass.grid_mut().track_state.ranges_mut(cols.id);
                 col_ranges.min[i] = col_ranges.min[i].max(range.min);
                 col_ranges.max[i] = col_ranges.max[i].max(range.max);
             } else if t.sizing().fill_weight().is_some() {
                 let min = pass.intrinsic(c, Axis::X, LenReq::MinContent);
-                let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
+                let col_ranges = pass.grid_mut().track_state.ranges_mut(cols.id);
                 col_ranges.min[i] = col_ranges.min[i].max(min);
             }
         }
@@ -77,7 +78,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
                     continue;
                 }
                 let range = pass.intrinsic_range(c, Axis::X);
-                let col_ranges = pass.grid_track_state_mut().ranges_mut(cols.id);
+                let col_ranges = pass.grid_mut().track_state.ranges_mut(cols.id);
                 grid::distribute_span(cols.tracks, span, cols.gap, range.min, col_ranges.min);
                 grid::distribute_span(cols.tracks, span, cols.gap, range.max, col_ranges.max);
             }
@@ -149,7 +150,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
             let row = cell.row() as usize;
             let sizing = rows.tracks[row].sizing();
             if sizing.is_hug() || sizing.fill_weight().is_some() {
-                let row_ranges = pass.grid_track_state_mut().ranges_mut(rows.id);
+                let row_ranges = pass.grid_mut().track_state.ranges_mut(rows.id);
                 row_ranges.min[row] = row_ranges.min[row].max(d.floor.h);
                 if sizing.is_hug() {
                     row_ranges.max[row] = row_ranges.max[row].max(d.size.h);
@@ -167,7 +168,7 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
                 continue;
             }
             let (size, floor) = (pass.desired(c).h, pass.floor(c).h);
-            let row_ranges = pass.grid_track_state_mut().ranges_mut(rows.id);
+            let row_ranges = pass.grid_mut().track_state.ranges_mut(rows.id);
             grid::distribute_span(rows.tracks, span, rows.gap, floor, row_ranges.min);
             grid::distribute_span(rows.tracks, span, rows.gap, size, row_ranges.max);
         }

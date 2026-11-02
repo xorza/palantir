@@ -59,12 +59,12 @@ use crate::gpu::device::backend_resources::BackendResources;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::pass_traffic::PassTraffic;
-use crate::gpu::frame::binder::MainBinder;
 use crate::gpu::frame::debug_marker;
 use crate::gpu::frame::debug_overlay::{DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep};
 use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::frame::schedule::{GroupSpan, MaskPlan, RenderStep, Schedule};
 use crate::gpu::frame::submission::{Route, Submission};
 use crate::gpu::pipeline::blit_pipeline::BlitPipeline;
@@ -214,25 +214,23 @@ struct SegmentPass<'a> {
     load: ColorLoad,
 }
 
-/// One pass's draws: the frame's, the pass's pipelines, and the binder and pass they record
-/// through.
+/// One pass's draws: the frame's, the pass's pipelines, and the recorder they record through.
 #[derive(Debug)]
 struct DrawCtx<'a, 'p> {
     draw: FrameDraw<'a>,
     pipelines: PassPipelines<'a>,
-    binder: &'p mut MainBinder<'a>,
-    pass: &'p mut wgpu::RenderPass<'a>,
+    rec: &'p mut PassRecorder<'a>,
 }
 
 impl DrawCtx<'_, '_> {
     /// Record `body`, a batch of `kind`, under its timing mark and its debug group.
     fn batch(&mut self, kind: BatchKind, body: impl FnOnce(&mut Self)) {
         if let Some(t) = self.draw.timings {
-            t.mark(self.pass, kind);
+            t.mark(self.rec, kind);
         }
-        debug_marker::push(self.pass, kind.label());
+        debug_marker::push(self.rec, kind.label());
         body(self);
-        debug_marker::pop(self.pass);
+        debug_marker::pop(self.rec);
     }
 }
 
@@ -805,7 +803,7 @@ impl WgpuBackend {
             );
         }
         // One for the pass: what a scissor replay leaves bound stays bound for the next.
-        let mut binder = MainBinder::new(draw.viewport.with_origin(draw.origin));
+        let mut rec = PassRecorder::new(pass, draw.viewport.with_origin(draw.origin));
         let stencil = if draw.masks.is_some() {
             StencilMode::Test
         } else {
@@ -814,8 +812,7 @@ impl WgpuBackend {
         let mut ctx = DrawCtx {
             draw,
             pipelines: draw.fmt.for_pass(stencil),
-            binder: &mut binder,
-            pass: &mut pass,
+            rec: &mut rec,
         };
         let schedule = |damage_scissor| Schedule {
             buffer: draw.buffer,
@@ -834,7 +831,7 @@ impl WgpuBackend {
             }
         }
         if let Some(t) = draw.timings {
-            t.segment_end(&mut pass, segment);
+            t.segment_end(&mut rec, segment);
         }
     }
 
@@ -856,34 +853,35 @@ impl WgpuBackend {
         };
         schedule.for_each_step(&mut |step| match step {
             RenderStep::PreClear => ctx.batch(BatchKind::PreClear, |ctx| {
-                // Through the binder, so the viewport is pushed before the draw; else the clear
+                // Through the recorder, so the viewport is pushed before the draw; else the clear
                 // quad reads stale immediates (zero on a partial pass's first PreClear) and
                 // clears nothing.
                 let solid = ctx.pipelines.quad(QuadDraw::Form(QuadForm::Solid));
-                self.quad.bind_clear(ctx.binder, ctx.pass, quad(solid));
-                ctx.pass.draw(0..4, 0..1);
+                self.quad.bind_clear(ctx.rec, quad(solid));
+                ctx.rec.draw(0..4, 0..1);
             }),
             RenderStep::SetScissor(r) => {
-                let at = r.min - draw.origin;
-                ctx.pass.set_scissor_rect(at.x, at.y, r.size.x, r.size.y);
+                ctx.rec.scissor(URect {
+                    min: r.min - draw.origin,
+                    size: r.size,
+                });
             }
-            RenderStep::SetStencilRef(v) => ctx.pass.set_stencil_reference(v),
+            RenderStep::SetStencilRef(v) => ctx.rec.stencil_reference(v),
             RenderStep::MaskStamp(mi) => ctx.batch(BatchKind::Mask, |ctx| {
                 let stamp = ctx.pipelines.mask_stamp();
-                self.quad.bind_mask(ctx.binder, ctx.pass, quad(stamp));
-                self.quad.draw_mask(ctx.pass, mi);
+                self.quad.bind_mask(ctx.rec, quad(stamp));
+                self.quad.draw_mask(ctx.rec, mi);
             }),
             RenderStep::MaskClear(mi) => ctx.batch(BatchKind::Mask, |ctx| {
                 let clear = ctx.pipelines.mask_clear();
-                self.quad.bind_mask(ctx.binder, ctx.pass, quad(clear));
-                self.quad.draw_mask(ctx.pass, mi);
+                self.quad.bind_mask(ctx.rec, quad(clear));
+                self.quad.draw_mask(ctx.rec, mi);
             }),
             RenderStep::Quads { range } => {
                 for run in self.quad.runs(range) {
                     ctx.batch(run.key.batch_kind(), |ctx| {
                         self.quad.draw_run(
-                            ctx.binder,
-                            ctx.pass,
+                            ctx.rec,
                             QuadRun {
                                 draw: run.key,
                                 instances: run.instances,
@@ -896,7 +894,7 @@ impl WgpuBackend {
                 }
             }
             RenderStep::Text { batch } => ctx.batch(BatchKind::Text, |ctx| {
-                self.text.render_batch(ctx.binder, ctx.pass, batch, raster);
+                self.text.render_batch(ctx.rec, batch, raster);
             }),
             RenderStep::TierBatch { tier, batch } => {
                 // The timing bucket and label come from the tier, so a new tier cannot reach the
@@ -904,40 +902,30 @@ impl WgpuBackend {
                 ctx.batch(batch_kind(tier), |ctx| {
                     let items = || buffer.batches(tier)[batch].items;
                     match tier {
-                        PaintTier::Mesh => {
-                            self.mesh.bind(ctx.binder, ctx.pass, ctx.pipelines.mesh());
-                            self.mesh.draw(
-                                ctx.pass,
-                                MeshBatch {
-                                    draws: buffer.meshes.draw(),
-                                    items: items(),
-                                },
-                            );
-                        }
-                        PaintTier::Image => {
-                            self.image.bind(ctx.binder, ctx.pass, ctx.pipelines.image());
-                            self.image.draw(
-                                ctx.binder,
-                                ctx.pass,
-                                ImageBatch {
-                                    ids: buffer.images.id(),
-                                    items: items(),
-                                },
-                                textures,
-                            );
-                        }
-                        PaintTier::Icon => {
-                            self.icon.render_batch(ctx.binder, ctx.pass, batch, raster);
-                        }
-                        PaintTier::Curve => {
-                            self.curve.bind(
-                                ctx.binder,
-                                ctx.pass,
-                                ctx.pipelines.curve(),
-                                &self.gradient.bind_group,
-                            );
-                            self.curve.draw(ctx.pass, items());
-                        }
+                        PaintTier::Mesh => self.mesh.draw_batch(
+                            ctx.rec,
+                            ctx.pipelines.mesh(),
+                            MeshBatch {
+                                draws: buffer.meshes.draw(),
+                                items: items(),
+                            },
+                        ),
+                        PaintTier::Image => self.image.draw_batch(
+                            ctx.rec,
+                            ctx.pipelines.image(),
+                            ImageBatch {
+                                ids: buffer.images.id(),
+                                items: items(),
+                            },
+                            textures,
+                        ),
+                        PaintTier::Icon => self.icon.render_batch(ctx.rec, batch, raster),
+                        PaintTier::Curve => self.curve.draw_batch(
+                            ctx.rec,
+                            ctx.pipelines.curve(),
+                            &self.gradient.bind_group,
+                            items(),
+                        ),
                     }
                 });
             }

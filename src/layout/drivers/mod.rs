@@ -5,6 +5,7 @@
 
 mod canvas;
 pub(crate) mod grid;
+mod per_axis_hug;
 mod scroll;
 pub(crate) mod scrollbars;
 pub(crate) mod stack;

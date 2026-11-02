@@ -15,7 +15,7 @@ use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
@@ -223,7 +223,7 @@ impl Fixture {
             self.backend.flush(&mut ctx);
         }
         {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            let pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("palantir.text_atlas.pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &self.target,
@@ -239,20 +239,22 @@ impl Fixture {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            // `render_batch` binds the pipeline a span needs, and the binder pushes the viewport
+            // `render_batch` binds the pipeline a span needs, and the recorder pushes the viewport
             // with the first.
-            let mut binder = MainBinder::new(ViewportPush {
-                size: Vec2::ZERO,
-                origin: Vec2::ZERO,
-            });
+            let mut rec = PassRecorder::new(
+                pass,
+                ViewportPush {
+                    size: Vec2::ZERO,
+                    origin: Vec2::ZERO,
+                },
+            );
             let pipelines = RasterPipelines {
                 flat: self.pipelines.flat.select(StencilMode::Off),
                 spun: self.pipelines.spun.select(StencilMode::Off),
                 layout: self.program.pipeline_layout(),
             };
             for idx in 0..batches.len() {
-                self.backend
-                    .render_batch(&mut binder, &mut pass, idx, pipelines);
+                self.backend.render_batch(&mut rec, idx, pipelines);
             }
         }
         self.belt.finish();

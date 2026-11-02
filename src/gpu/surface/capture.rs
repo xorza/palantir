@@ -162,7 +162,8 @@ impl Capture {
             encoder.copy_texture_to_buffer(at_region, into_buffer, extent);
         }
         gpu.queue.submit(iter::once(encoder.finish()));
-        let map = MapState::map_read(&buffer);
+        let map = MapState::new();
+        map.map_read(&buffer);
         Self {
             staging: Staging {
                 buffer,

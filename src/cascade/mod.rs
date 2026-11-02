@@ -36,8 +36,8 @@ use glam::Vec2;
 #[derive(Debug, Default)]
 pub(crate) struct Cascade {
     pub(crate) planes: PerPlane<PlaneCascade>,
-    /// One row per recorded node, node-aligned within each plane's block (`planes[p].entries_base + node.0`); planes append in paint order. See [`EntryRow`].
-    pub(crate) entries: Vec<EntryRow>,
+    /// One row per recorded node, node-aligned within each plane's block (`planes[p].entries_base + node.0`); planes append in paint order. See [`EntryRow`]; read through [`Self::entry`].
+    entries: Vec<EntryRow>,
     /// Interactive rows only, in paint order, reverse-scanned by hit tests; see [`HitRow`].
     hits: Vec<HitRow>,
     /// Declared input scopes in paint order — see [`ScopeRow`].
@@ -49,7 +49,7 @@ pub(crate) struct Cascade {
     /// Arrow groups in record order — see [`ArrowGroupRow`].
     pub(crate) arrow_groups: Vec<ArrowGroupRow>,
     /// `WidgetId → Endpoint` lookup. **Invariant: equals the recorded entries of `SeenIds.cur` at the end of the latest `CascadeEngine::run`.** A snapshot because `response_for` runs mid-record, after `SeenIds::pre_record` cleared `cur`, and a relayout's second pass must still see pass A's entries; `seen.prev` holds the previous frame, not pass.
-    pub(crate) by_id: WidgetIdMap<Endpoint>,
+    by_id: WidgetIdMap<Endpoint>,
     /// The inputs this cascade was built from; `None` before the first run.
     pub(crate) key: Option<CascadeKey>,
 }
@@ -115,11 +115,16 @@ impl Cascade {
         self.by_id.get(&id).copied()
     }
 
-    /// The entry row at `endpoint`. Gated like its one caller, the development-only collision overlay.
-    #[cfg(debug_assertions)]
+    /// Whether `id` was recorded in the latest run.
     #[inline]
-    pub(crate) fn entry_at(&self, endpoint: Endpoint) -> &EntryRow {
-        &self.entries[(self.planes[endpoint.plane].entries_base + endpoint.node.0) as usize]
+    pub(crate) fn contains(&self, id: WidgetId) -> bool {
+        self.by_id.contains_key(&id)
+    }
+
+    /// The entry row at `loc`, from [`Self::locate`] or [`Self::location`].
+    #[inline]
+    pub(crate) fn entry(&self, loc: WidgetLocation) -> &EntryRow {
+        &self.entries[loc.entry_idx as usize]
     }
 
     /// Both the entry index and the endpoint, from one `by_id` probe.
@@ -341,7 +346,9 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::primitives::geometry::rect::Rect;
     #[cfg(test)]
-    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
+    #[cfg(test)]
+    use crate::scene::endpoint::Endpoint;
     #[cfg(test)]
     use crate::scene::forest::Forest;
 
@@ -357,6 +364,12 @@ pub(crate) mod internals {
     }
 
     impl Cascade {
+        /// The id lookup, which an oracle compares with the forest's last frame.
+        #[cfg(test)]
+        pub(crate) const fn by_id(&self) -> &WidgetIdMap<Endpoint> {
+            &self.by_id
+        }
+
         /// Every interactive row's widget in paint order, for tests asserting what reached the hit table.
         #[cfg(test)]
         pub(crate) fn hit_ids(&self) -> impl Iterator<Item = WidgetId> + '_ {

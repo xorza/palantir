@@ -122,7 +122,7 @@ fn physical_key(physical: PhysicalKey) -> Key {
 /// A vertical wheel with Shift held scrolls horizontally on Windows and
 /// Linux; macOS sends the horizontal delta itself.
 fn shift_wheel(delta: Vec2, modifiers: ModifiersState, platform: Platform) -> Vec2 {
-    let swaps = platform != Platform::Mac && modifiers.shift_key() && delta.x == 0.0;
+    let swaps = !platform.turns_shift_wheel() && modifiers.shift_key() && delta.x == 0.0;
     if swaps {
         Vec2::new(delta.y, 0.0)
     } else {
@@ -206,7 +206,7 @@ fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<Press<
 }
 
 fn normalize_modifiers(modifiers: ModifiersState, platform: Platform) -> Modifiers {
-    let mac = matches!(platform, Platform::Mac);
+    let mac = platform.commands_with_super();
     Modifiers {
         shift: modifiers.shift_key(),
         ctrl: if mac {

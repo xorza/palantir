@@ -24,12 +24,12 @@ use crate::widgets::panel::Panel;
 fn keyboard_events_do_not_perturb_scroll_state() {
     let mut state = InputState::default();
     let target = WidgetId::from_hash("scroll");
-    state.scroll_targets = ScrollTargets::both(target);
+    state.pointer.scroll_targets = ScrollTargets::both(target);
     state.feed(InputEvent::ScrollPixels(glam::Vec2::new(3.0, 5.0)));
-    let before_scroll = state.frame_target_deltas.clone();
+    let before_scroll = state.pointer.target_deltas.clone();
     state.feed(InputEvent::key_down(Key::ArrowLeft));
     state.feed(InputEvent::ModifiersChanged(Modifiers::NONE));
-    assert_eq!(state.frame_target_deltas, before_scroll);
+    assert_eq!(state.pointer.target_deltas, before_scroll);
 }
 
 #[test]
@@ -47,7 +47,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
         text: KeyText::from_char('b'),
     });
 
-    let presses = &state.frame_keyboard_events;
+    let presses = &state.keyboard.presses;
     assert_eq!(presses.len(), 2);
     assert_eq!(presses[0].key, Key::Char('a'));
     assert!(presses[0].mods.ctrl);
@@ -524,11 +524,11 @@ fn post_record_clears_keys_but_preserves_modifiers() {
     state.set_focus(Some(forged_focus()));
     state.feed(InputEvent::ModifiersChanged(Modifiers::SHIFT));
     state.feed(InputEvent::key_down(Key::ArrowLeft));
-    let buf_cap_before = state.frame_keyboard_events.capacity();
+    let buf_cap_before = state.keyboard.presses.capacity();
 
     state.end_frame(&cascade);
 
-    assert!(state.frame_keyboard_events.is_empty());
-    assert_eq!(state.frame_keyboard_events.capacity(), buf_cap_before);
-    assert!(state.modifiers.shift);
+    assert!(state.keyboard.presses.is_empty());
+    assert_eq!(state.keyboard.presses.capacity(), buf_cap_before);
+    assert!(state.keyboard.modifiers.shift);
 }

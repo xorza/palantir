@@ -5,6 +5,7 @@ pub(crate) mod blit_pipeline;
 pub(crate) mod curve_pipeline;
 pub(crate) mod format_pipelines;
 pub(crate) mod image_pipeline;
+pub(crate) mod instanced_pipeline;
 pub(crate) mod mesh_pipeline;
 pub(crate) mod pipeline_recipe;
 pub(crate) mod quad_pipeline;

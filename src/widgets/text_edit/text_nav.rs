@@ -19,9 +19,10 @@ impl TextNav {
     /// The modifier that turns a horizontal arrow into a word motion, and Backspace or
     /// Delete into a word delete.
     pub(super) const fn word_chord(self) -> Modifiers {
-        match self.0 {
-            Platform::Mac => Modifiers::ALT,
-            Platform::Windows | Platform::Linux => Modifiers::CTRL,
+        if self.0.words_with_option() {
+            Modifiers::ALT
+        } else {
+            Modifiers::CTRL
         }
     }
 
@@ -33,7 +34,7 @@ impl TextNav {
 
     /// The line chord, macOS only: Cmd with Left / Right or Backspace.
     pub(super) const fn is_line(self, modifiers: Modifiers) -> bool {
-        matches!(self.0, Platform::Mac) && modifiers.ctrl && !modifiers.alt
+        self.0.has_cmd_arrow_chords() && modifiers.ctrl && !modifiers.alt
     }
 
     /// Ctrl with Home / End everywhere, Cmd with Up / Down on macOS.
@@ -44,7 +45,7 @@ impl TextNav {
         }
         match keypress.key {
             Key::Home | Key::End => true,
-            Key::ArrowUp | Key::ArrowDown => matches!(self.0, Platform::Mac),
+            Key::ArrowUp | Key::ArrowDown => self.0.has_cmd_arrow_chords(),
             _ => false,
         }
     }

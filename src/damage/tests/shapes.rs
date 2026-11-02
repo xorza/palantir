@@ -12,7 +12,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
-use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::shape::style::LineCap;
 use crate::text::TEXT_SCALE_STEP;
@@ -176,128 +175,75 @@ fn added_widget_contributes_curr_rect_to_damage() {
     assert!(!h.damage_region().is_empty());
 }
 
-/// Hovering a button dirties exactly the button; hit-test lags a frame, so frames settle before the transition is asserted. The button's look snaps, so the hover lands in one frame.
+/// Hovering a button dirties exactly the button, and so does leaving it: in each direction the
+/// pointer settles where it starts, moves, and the one frame after the move damages the hovered
+/// button's rect alone, small enough to stay a partial repaint, and the next frame nothing.
+/// Hit-test lags a frame, so frames settle before the move is asserted; the button's look snaps,
+/// so the change lands in one frame.
 #[test]
-fn button_hover_damage_covers_only_the_button() {
-    let mut h = Harness::mono(UVec2::new(400, 400));
-    h.ui().theme_mut().button.defaults.animation = None;
-    let mut hot_node = None;
-    let mut cold_node = None;
-    let build = |h: &mut Harness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        h.frame(|ui| {
+fn button_hover_and_unhover_damage_cover_only_the_button() {
+    let build = |h: &mut Harness| {
+        h.frame_value(|ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |ui| {
-                    *hot = Some(
-                        Button::new()
-                            .id(WidgetId::from_hash("hot"))
-                            .label("Hover me")
-                            .show(ui)
-                            .node(),
-                    );
-                    *cold = Some(
-                        Button::new()
-                            .id(WidgetId::from_hash("cold"))
-                            .label("Quiet")
-                            .show(ui)
-                            .node(),
-                    );
-                });
-        });
+                    let hot = Button::new()
+                        .id(WidgetId::from_hash("hot"))
+                        .label("Hover me")
+                        .show(ui)
+                        .node();
+                    Button::new()
+                        .id(WidgetId::from_hash("cold"))
+                        .label("Quiet")
+                        .show(ui);
+                    hot
+                })
+                .inner
+        })
     };
+    for entering in [true, false] {
+        let direction = if entering { "hover" } else { "unhover" };
+        let mut h = Harness::mono(UVec2::new(400, 400));
+        h.ui().theme_mut().button.defaults.animation = None;
+        let hot = build(&mut h);
+        let hot_rect = h.ui().arranged_rect(Layer::Main, hot);
+        let (off, on) = (Vec2::new(380.0, 380.0), hot_rect.min + Vec2::new(5.0, 5.0));
+        let (from, to) = if entering { (off, on) } else { (on, off) };
 
-    h.hover(Vec2::new(380.0, 380.0));
-    build(&mut h, &mut hot_node, &mut cold_node);
-    build(&mut h, &mut hot_node, &mut cold_node);
-    assert!(
-        h.engines_mut().damage.counters.dirty().is_empty(),
-        "off-button pointer should reach a no-diff steady state"
-    );
+        h.hover(from);
+        build(&mut h);
+        build(&mut h);
+        assert!(
+            h.engines_mut().damage.counters.dirty().is_empty(),
+            "{direction}: the pointer settles before it moves"
+        );
 
-    let hot_rect = h.ui().arranged_rect(Layer::Main, hot_node.unwrap());
-    let target = hot_rect.min + Vec2::new(5.0, 5.0);
+        h.hover(to);
+        build(&mut h);
+        let dirty: Vec<_> = h.engines_mut().damage.counters.dirty().to_vec();
+        assert_eq!(dirty.len(), 1, "{direction}: only the button is dirty");
+        assert_eq!(
+            h.ui().tree(Layer::Main).records.widget_id()[dirty[0].idx()],
+            WidgetId::from_hash("hot"),
+            "{direction}"
+        );
+        assert_eq!(
+            h.damage_region().iter_rects().next(),
+            Some(hot_rect),
+            "{direction}"
+        );
+        assert_eq!(
+            Damage::expect_partial(Damage::new(h.collapsed_damage())),
+            hot_rect.into(),
+            "{direction}: small per-button damage must not trip the full-repaint heuristic",
+        );
 
-    // `on_input` recomputes hover against the existing hit_index, so the next recording emits the hovered fill.
-    h.hover(target);
-    build(&mut h, &mut hot_node, &mut cold_node);
-
-    assert_eq!(
-        h.engines_mut().damage.counters.dirty().len(),
-        1,
-        "only the hovered button should be dirty"
-    );
-    let dirty_id = h.engines_mut().damage.counters.dirty()[0];
-    assert_eq!(
-        h.ui().tree(Layer::Main).records.widget_id()[dirty_id.idx()],
-        WidgetId::from_hash("hot"),
-    );
-    assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
-    assert_eq!(
-        Damage::expect_partial(Damage::new(h.collapsed_damage())),
-        hot_rect.into(),
-        "small per-button damage must not trip the full-repaint heuristic",
-    );
-
-    build(&mut h, &mut hot_node, &mut cold_node);
-    assert!(
-        h.engines_mut().damage.counters.dirty().is_empty(),
-        "settled hover should produce no further damage"
-    );
-}
-
-/// Un-hovering is symmetric: damage is the button rect. The look snaps, as above.
-#[test]
-fn button_unhover_damage_covers_only_the_button() {
-    let mut h = Harness::mono(UVec2::new(400, 400));
-    h.ui().theme_mut().button.defaults.animation = None;
-    let mut hot_node = None;
-    let mut cold_node = None;
-    let build = |h: &mut Harness, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        h.frame(|ui| {
-            Panel::vstack()
-                .id(WidgetId::from_hash("root"))
-                .show(ui, |ui| {
-                    *hot = Some(
-                        Button::new()
-                            .id(WidgetId::from_hash("hot"))
-                            .label("Hover me")
-                            .show(ui)
-                            .node(),
-                    );
-                    *cold = Some(
-                        Button::new()
-                            .id(WidgetId::from_hash("cold"))
-                            .label("Quiet")
-                            .show(ui)
-                            .node(),
-                    );
-                });
-        });
-    };
-
-    build(&mut h, &mut hot_node, &mut cold_node);
-    let hot_rect = h.ui().arranged_rect(Layer::Main, hot_node.unwrap());
-    h.hover(hot_rect.min + Vec2::new(5.0, 5.0));
-    build(&mut h, &mut hot_node, &mut cold_node);
-    build(&mut h, &mut hot_node, &mut cold_node);
-    assert!(
-        h.engines_mut().damage.counters.dirty().is_empty(),
-        "settled hover"
-    );
-
-    h.hover(Vec2::new(380.0, 380.0));
-    build(&mut h, &mut hot_node, &mut cold_node);
-    assert_eq!(h.engines_mut().damage.counters.dirty().len(), 1);
-    assert_eq!(
-        h.ui_ref().tree(Layer::Main).records.widget_id()
-            [h.engines().damage.counters.dirty()[0].idx()],
-        WidgetId::from_hash("hot"),
-    );
-    assert_eq!(h.damage_region().iter_rects().next(), Some(hot_rect));
-    assert_eq!(
-        Damage::expect_partial(Damage::new(h.collapsed_damage())),
-        hot_rect.into()
-    );
+        build(&mut h);
+        assert!(
+            h.engines_mut().damage.counters.dirty().is_empty(),
+            "{direction}: a settled pointer damages nothing more"
+        );
+    }
 }
 
 /// A turning shape of each kind that turns is damaged against the square its bound sweeps,
@@ -384,7 +330,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
         });
 
         let owner = h.rect(owner_id).expect("the owner arranged");
-        let node_idx = h.ui().cascade().by_id[&owner_id].node.idx();
+        let node_idx = h.ui().cascade().endpoint(owner_id).unwrap().node.idx();
         let span = h.ui().cascade().planes[Plane::MAIN].paint_arena.node_spans[node_idx];
         assert_eq!(
             span.len, 1,
@@ -431,7 +377,11 @@ fn node_snapshot_decomposition_matches_cascade() {
             });
     });
     let plane = Plane::MAIN;
-    let node_idx = h.ui().cascade().by_id[&WidgetId::from_hash("multi")]
+    let node_idx = h
+        .ui()
+        .cascade()
+        .endpoint(WidgetId::from_hash("multi"))
+        .unwrap()
         .node
         .idx();
     let node_span = h.ui().cascade().planes[plane].paint_arena.node_spans[node_idx];

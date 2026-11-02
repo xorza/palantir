@@ -151,7 +151,7 @@ fn assert_cascade_matches_cold(h: &Harness) {
         .cascade()
         .assert_same_as(&cold, h.ui_ref().forest());
     assert_eq!(
-        h.ui_ref().cascade().by_id,
+        *h.ui_ref().cascade().by_id(),
         h.ui_ref().forest().ids.last_frame(),
         "id lookup"
     );

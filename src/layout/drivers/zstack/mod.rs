@@ -1,7 +1,7 @@
 //! The stacking driver: every child measures against and arranges into the same slot, so they overlap.
 
 use crate::layout::axis_align_pair::AxisAlignPair;
-use crate::layout::drivers::LayoutDriver;
+use crate::layout::drivers::{LayoutDriver, per_axis_hug};
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
@@ -40,7 +40,7 @@ impl LayoutDriver for ZStack {
     ///
     /// Content size is `max(child desired)` per axis.
     fn measure(self, pass: &mut LayoutPass<'_>, inner_avail: Size) -> Measured {
-        pass.measure_per_axis_hug(self.node, inner_avail, |_, _| Vec2::ZERO)
+        per_axis_hug::measure(pass, self.node, inner_avail, |_, _| Vec2::ZERO)
     }
 
     /// Each child gets a slot in `inner` sized by its `Sizing` and placed by `align_x` / `align_y`, falling back to the ZStack's `child_align` when `Auto`. Defaults to top-left; a `Sizing::fill` child's `Auto` stretches.

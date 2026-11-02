@@ -143,17 +143,18 @@ fn disabled_false_when_chain_clean() {
 #[test]
 fn a_departed_pointer_clears_every_routed_target() {
     let id = WidgetId::from_hash("w");
-    let mut s = InputState {
-        pointer_pos: None,
-        hovered: Some(id),
-        scroll_targets: ScrollTargets::both(id),
-        pinch_target: Some(id),
-        ..Default::default()
-    };
+    let mut s = InputState::default();
+    s.pointer.hovered = Some(id);
+    s.pointer.scroll_targets = ScrollTargets::both(id);
+    s.pointer.pinch_target = Some(id);
 
     s.refresh_pointer_targets(&Cascade::default());
     assert_eq!(
-        (s.hovered, s.scroll_targets, s.pinch_target),
+        (
+            s.pointer.hovered,
+            s.pointer.scroll_targets,
+            s.pointer.pinch_target
+        ),
         (None, ScrollTargets::default(), None),
         "a pointer that left takes every routed target with it",
     );
@@ -179,12 +180,12 @@ fn frame_quiescent_predicate() {
     let broken = |label: &str, mutate: &dyn Fn(&mut InputState)| {
         assert!(!quiescent(mutate), "{label} must break quiescence");
     };
-    broken("pointer_pos", &|s| s.pointer_pos = Some(Vec2::ZERO));
-    broken("frame_target_deltas", &|s| {
-        s.frame_target_deltas.push(TargetScrollDelta::new(id));
+    broken("pointer.pos", &|s| s.pointer.pos = Some(Vec2::ZERO));
+    broken("pointer.target_deltas", &|s| {
+        s.pointer.target_deltas.push(TargetScrollDelta::new(id));
     });
     broken("capture.press", &|s| {
-        s.captures[PointerButton::Left.idx()].press = Some(Press {
+        s.pointer.captures[PointerButton::Left.idx()].press = Some(Press {
             target: id,
             origin: Vec2::ZERO,
             travel: Vec2::ZERO,
@@ -194,13 +195,13 @@ fn frame_quiescent_predicate() {
         });
     });
     broken("capture.release (click)", &|s| {
-        s.captures[PointerButton::Right.idx()].release = Some(Release {
+        s.pointer.captures[PointerButton::Right.idx()].release = Some(Release {
             target: id,
             kind: ReleaseKind::Click { count: 1 },
         });
     });
     broken("capture.release (miss)", &|s| {
-        s.captures[PointerButton::Middle.idx()].release = Some(Release {
+        s.pointer.captures[PointerButton::Middle.idx()].release = Some(Release {
             target: id,
             kind: ReleaseKind::Miss,
         });

@@ -48,9 +48,9 @@ use crate::input::policy::FocusPolicy;
 use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
 use crate::input::watch::{KeyboardWake, PointerWake};
-use crate::input_state::InputState;
 use crate::input_state::arranged_frame::ArrangedFrame;
 use crate::input_state::key_reader::KeyReader;
+use crate::input_state::{InputCtx, InputState};
 use crate::layout::Layout;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -188,7 +188,6 @@ impl Ui {
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
     pub(crate) fn new(resources: UiResources) -> Self {
         let device_epoch = resources.device().epoch();
-        let input = InputState::new(resources.double_click_window().clone());
         Self {
             forest: Forest::new(resources.text().family_keys()),
             scheme: resources.color_scheme(),
@@ -201,7 +200,7 @@ impl Ui {
             gpu_views: GpuViews::default(),
             layout: Layout::default(),
             cascade: Cascade::default(),
-            input,
+            input: InputState::default(),
             animation: AnimationMap::default(),
             frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
@@ -339,7 +338,7 @@ impl Ui {
     /// The scheme the person picked; [`SchemePreference::System`] until set. App-global.
     #[inline]
     pub fn scheme_preference(&self) -> SchemePreference {
-        self.resources.scheme_preference().get()
+        self.resources.settings().scheme_preference()
     }
 
     /// Follow the system's scheme, or hold one by hand. App-global: every window shows the
@@ -347,7 +346,7 @@ impl Ui {
     /// scheme, so no frame mixes two. Persisting the pick is the app's.
     pub fn set_scheme_preference(&mut self, preference: SchemePreference) {
         if self.scheme_preference() != preference {
-            self.resources.scheme_preference().set(preference);
+            self.resources.settings().set_scheme_preference(preference);
             self.frame_runtime.request_repaint();
         }
     }
@@ -363,7 +362,7 @@ impl Ui {
     /// as in a [`Harness`](crate::Harness) until its test sets one.
     #[inline]
     pub fn system_color_scheme(&self) -> Option<ColorScheme> {
-        self.resources.system_color_scheme().get()
+        self.resources.settings().system_color_scheme()
     }
 
     /// Whether the system asks for less motion: then every [`Self::animate`] snaps to its target,
@@ -373,14 +372,14 @@ impl Ui {
     /// App-global; `false` where nothing reports it.
     #[inline]
     pub fn is_motion_reduced(&self) -> bool {
-        self.resources.motion_reduced().get()
+        self.resources.settings().motion_reduced()
     }
 
     /// A host's report of the system's reduced-motion preference; a change asks this window for
     /// a frame.
     pub(crate) fn set_motion_reduced(&mut self, reduced: bool) {
         if self.is_motion_reduced() != reduced {
-            self.resources.motion_reduced().set(reduced);
+            self.resources.settings().set_motion_reduced(reduced);
             self.frame_runtime.request_repaint();
         }
     }
@@ -388,7 +387,7 @@ impl Ui {
     /// A host's report of the system's scheme; a change asks this window for a frame.
     pub(crate) fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) {
         if self.system_color_scheme() != scheme {
-            self.resources.system_color_scheme().set(scheme);
+            self.resources.settings().set_system_color_scheme(scheme);
             self.frame_runtime.request_repaint();
         }
     }
@@ -454,7 +453,8 @@ impl Ui {
     /// to redraw.
     #[inline]
     pub(crate) fn on_input(&mut self, event: InputEvent<'_>, now: Duration) -> InputDelta {
-        self.input.on_input(event, &self.cascade, now)
+        self.input
+            .on_input(event, input_ctx(&self.cascade, &self.resources), now)
     }
 
     // `peek_*` reads without declaring a wake. `watch_*` and plain reads declare
@@ -849,13 +849,13 @@ impl Ui {
     /// ```
     #[inline]
     pub fn debug_overlay(&self) -> DebugOverlayConfig {
-        self.resources.diagnostics().overlay.get()
+        self.resources.settings().debug_overlay()
     }
 
     /// Replace this app's debug-overlay flags, visible in every window.
     #[inline]
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        self.resources.diagnostics().overlay.set(overlay);
+        self.resources.settings().set_debug_overlay(overlay);
     }
 
     /// The handle the backend publishes this window's GPU timings into.
@@ -1285,7 +1285,7 @@ impl Ui {
     /// until set.
     #[inline]
     pub fn user_scale(&self) -> UserScale {
-        self.resources.user_scale().get()
+        self.resources.settings().user_scale()
     }
 
     /// Scale the whole UI by `scale` on top of the platform factor. App-global;
@@ -1305,7 +1305,7 @@ impl Ui {
     /// distinct scale re-rasterizes every glyph; see [`UserScale`].
     #[inline]
     pub fn set_user_scale(&mut self, scale: UserScale) {
-        self.resources.user_scale().set(scale);
+        self.resources.settings().set_user_scale(scale);
     }
 
     /// This frame's monotonic index over frames authoring code ran on. Retained
@@ -1326,7 +1326,7 @@ impl Ui {
     /// for the platform, else 500 ms. A driver that sends separate clicks spaces them past it.
     #[inline]
     pub fn double_click_window(&self) -> Duration {
-        self.input.double_click_window()
+        self.resources.settings().double_click_window()
     }
 
     /// This frame's monotonic index among frames that reached the screen. Counts
@@ -1515,9 +1515,18 @@ impl Ui {
 }
 
 /// No `#[inline]`: nothing here reaches an optimized build that would want it.
+/// What input applies an event against: `cascade`, and the double-click time `resources` share.
+fn input_ctx<'a>(cascade: &'a Cascade, resources: &UiResources) -> InputCtx<'a> {
+    InputCtx {
+        cascade,
+        double_click: resources.settings().double_click_window(),
+    }
+}
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::theme::Theme;
+    use crate::ui::input_ctx;
     use std::rc::Rc;
 
     #[cfg(test)]
@@ -1568,7 +1577,8 @@ pub(crate) mod internals {
         /// no frame recorded between.
         pub(crate) fn end_input_frame(&mut self) -> bool {
             self.input.end_frame(&self.cascade);
-            self.input.next_frame(&self.cascade)
+            self.input
+                .next_frame(input_ctx(&self.cascade, &self.resources))
         }
     }
 

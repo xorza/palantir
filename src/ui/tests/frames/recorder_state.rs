@@ -62,7 +62,7 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
         "a self-disabled widget reports disabled on its own first frame, \
          before the cascade has seen it",
     );
-    let endpoint = h.ui().cascade.by_id[&self_id];
+    let endpoint = h.ui().cascade.endpoint(self_id).unwrap();
     let chrome = h.ui().forest.trees[endpoint.plane]
         .chrome(endpoint.node)
         .expect("disabled button chrome");

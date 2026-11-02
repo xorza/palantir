@@ -126,7 +126,9 @@ fn every_window_reads_the_hosts_double_click_time() {
     let shared = UiResources::isolated_mono();
     let mut first = Harness::from_resources(shared.clone(), SURFACE);
     let mut second = Harness::from_resources(shared.clone(), SURFACE);
-    shared.double_click_window().set(Duration::from_millis(200));
+    shared
+        .settings()
+        .set_double_click_window(Duration::from_millis(200));
     for harness in [&mut first, &mut second] {
         assert_eq!(
             harness.ui().double_click_window(),

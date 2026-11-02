@@ -14,6 +14,8 @@ pub mod frame_fixture;
 #[cfg(test)]
 mod hot_struct_sizes;
 #[cfg(test)]
+pub(crate) mod layout_rig;
+#[cfg(test)]
 pub(crate) mod oracle;
 pub(crate) mod paint_capture;
 #[cfg(test)]

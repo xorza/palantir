@@ -37,6 +37,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::query_tracer::QueryTracer;
 use crate::gpu::frame::gpu_timings::wall_clock_tracer::WallClockTracer;
 use crate::gpu::frame::main_segment::MainSegment;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 
 /// Where a backdrop break's timestamp sits among its three.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -123,7 +124,8 @@ impl GpuTimings {
     }
 
     /// Mark the start of a `kind` of batch inside the main pass.
-    pub(crate) fn mark(&self, pass: &mut wgpu::RenderPass<'_>, kind: BatchKind) {
+    pub(crate) fn mark(&self, rec: &mut PassRecorder<'_>, kind: BatchKind) {
+        let pass = rec.untracked();
         match &self.tracer {
             Tracer::Queries(t) => t.mark(pass, kind),
             Tracer::WallClock(t) => t.mark(pass, kind),
@@ -131,7 +133,8 @@ impl GpuTimings {
     }
 
     /// Close the timing of the main pass's `segment` inside it.
-    pub(crate) fn segment_end(&self, pass: &mut wgpu::RenderPass<'_>, segment: MainSegment) {
+    pub(crate) fn segment_end(&self, rec: &mut PassRecorder<'_>, segment: MainSegment) {
+        let pass = rec.untracked();
         match &self.tracer {
             Tracer::Queries(t) => t.segment_end(pass, segment),
             Tracer::WallClock(t) => t.segment_end(pass, segment),

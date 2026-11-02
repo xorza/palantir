@@ -3,14 +3,14 @@
 
 use crate::common::tracy;
 use crate::layout::Layout;
-use crate::layout::cache::{self, CaptureTreeInput, MeasureCache};
+use crate::layout::cache::measure_snapshot::SubtreeKey;
+use crate::layout::cache::{CaptureTreeInput, MeasureCache};
 use crate::layout::layout_scratch::LayoutScratch;
 use crate::layout::pass::LayoutPass;
 use crate::layout::placed_child::{Placed, PlacedChild};
 use crate::layout::plane_input::PlaneInput;
 use crate::layout::text::text_shape_input::TextShapeInput;
 use crate::primitives::geometry::rect::Rect;
-use crate::primitives::geometry::size::Size;
 use crate::scene::forest::Forest;
 use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
@@ -23,8 +23,9 @@ use crate::text::system::TextSystem;
 ///   `LayoutScratch::resize_for`.
 /// - `text`: per-window text shaping and reuse slots.
 /// - `cache`: cross-frame measure cache, see [`crate::layout::cache`].
-/// - `last_roots`: how the last run laid each root out, which with the
-///   snapshot decides whether its output is this run's.
+/// - `last_roots`: how the last run laid each root out, which decides whether
+///   the snapshot still describes the forest and whether the last output is
+///   this run's.
 ///
 /// Per-frame output is not held here: `run` threads it through an
 /// `out: &mut Layout` owned by the caller. Recursive work receives only the
@@ -37,14 +38,25 @@ pub(crate) struct LayoutEngine {
     last_roots: Vec<RootRun>,
 }
 
-/// One root as a run laid it out: its plane, the exact extent it was measured
-/// against, and the slot it was arranged into (outside its margin). Kept in
+/// One root as a run laid it out: its subtree and the exact extent it was measured
+/// against, its plane, and the slot it was arranged into (outside its margin). Kept in
 /// paint order.
 #[derive(Clone, Copy, Debug)]
 struct RootRun {
+    key: SubtreeKey,
     plane: Plane,
-    available: Size,
     slot: Rect,
+}
+
+/// How this run's roots compare with the last run's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LastRun {
+    /// A root's subtree or offer differs, or the roots do: last frame's measures may not apply.
+    Differs,
+    /// Every subtree and offer is the last run's, but a root moved plane or place.
+    Moved,
+    /// The last run's output is this run's.
+    Same,
 }
 
 impl LayoutEngine {
@@ -57,29 +69,31 @@ impl LayoutEngine {
         }
     }
 
-    /// Whether the last run's output is what this run would write, so `out`
-    /// stands as it is.
+    /// How `forest`'s roots at `surface` compare with the last run's.
     ///
-    /// The snapshot match proves each root's subtree is the one last laid out,
-    /// under the same offer; the plane is compared here. Equal subtree and offer arrange to the same slot
-    /// size, so the slot holds iff the origin placement resolves to is where
-    /// the last run put it. Equal inputs give an equal run.
-    fn keeps_last_run(&self, forest: &Forest, surface: Rect) -> bool {
+    /// Equal subtree and offer arrange to the same slot size, so the slot holds
+    /// iff the origin placement resolves to is where the last run put it. Equal
+    /// inputs give an equal run.
+    fn compare_last_run(&self, forest: &Forest, surface: Rect) -> LastRun {
         let mut last = self.last_roots.iter();
+        let mut same = LastRun::Same;
         for (plane, tree) in forest.trees.iter_paint_order() {
             for slot in &tree.roots {
                 let Some(run) = last.next() else {
-                    return false;
+                    return LastRun::Differs;
                 };
-                if run.plane != plane
-                    || !cache::same_offer(run.available, slot.available(surface))
-                    || run.slot.min != slot.origin(run.slot.size, surface)
-                {
-                    return false;
+                if !run.key.matches(SubtreeKey::of_root(tree, slot, surface)) {
+                    return LastRun::Differs;
+                }
+                if run.plane != plane || run.slot.min != slot.origin(run.slot.size, surface) {
+                    same = LastRun::Moved;
                 }
             }
         }
-        last.next().is_none()
+        if last.next().is_some() {
+            return LastRun::Differs;
+        }
+        same
     }
 
     /// Run measure and arrange for every root in every plane's tree against
@@ -103,8 +117,10 @@ impl LayoutEngine {
         if self.text.sync_fonts() {
             self.cache.forget_all();
         }
-        self.scratch.cache_rebuild = !self.cache.matches_forest(forest, surface);
-        if !self.scratch.cache_rebuild && self.keeps_last_run(forest, surface) {
+        let last_run = self.compare_last_run(forest, surface);
+        self.scratch.cache_rebuild =
+            last_run == LastRun::Differs || !self.cache.holds_nodes(forest.total_nodes());
+        if !self.scratch.cache_rebuild && last_run == LastRun::Same {
             self.scratch.counters.kept_last_run();
             return;
         }
@@ -150,8 +166,8 @@ impl LayoutEngine {
                     pass.arrange(root, arranged);
                 }
                 self.last_roots.push(RootRun {
+                    key: SubtreeKey::of_root(tree, slot, surface),
                     plane,
-                    available,
                     slot: arranged,
                 });
             }
@@ -235,9 +251,12 @@ pub(crate) mod internals {
         }
 
         /// Make the next run lay the forest out again, to drive the snapshot
-        /// restore on a frame that changes nothing.
+        /// restore on a frame that changes nothing: every root's slot moves to a
+        /// place no origin equals, which keeps the subtrees and so the snapshot.
         pub(crate) fn forget_last_run(&mut self) {
-            self.last_roots.clear();
+            for run in &mut self.last_roots {
+                run.slot.min = glam::Vec2::NAN;
+            }
         }
 
         /// Drop every cached intrinsic and zero the compute counter.

@@ -58,9 +58,10 @@ impl Modifiers {
     /// - macOS: Option composes (`@` is Option+L on a German layout), so only Cmd (`ctrl` here) and raw Control command.
     /// - Windows and Linux: Ctrl+Alt is AltGr and composes; Ctrl or Alt alone, or anything with Super, commands.
     pub(crate) const fn compose_text(self, platform: Platform) -> bool {
-        match platform {
-            Platform::Mac => !self.ctrl && !self.mac_ctrl,
-            Platform::Windows | Platform::Linux => self.ctrl == self.alt && !self.meta,
+        if platform.option_composes() {
+            !self.ctrl && !self.mac_ctrl
+        } else {
+            self.ctrl == self.alt && !self.meta
         }
     }
 }

@@ -8,43 +8,87 @@ use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 use crate::app::App;
 use crate::driver::action::Action;
 use crate::driver::error::PlayError;
+use crate::driver::locator::Locator;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
 use crate::host::winit::frame_log::FrameLog;
-use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{EventSender, HostHandle, UserEvent};
-use crate::host::winit::remote::RemoteShots;
+use crate::host::winit::remote::remote_end::RemoteEnd;
+use crate::input::pointer::PointerButton;
+use crate::input::sense::Sense;
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
+use crate::widgets::panel::Panel;
 use crate::window::window_token::WindowToken;
 
 const WINDOW: WindowToken = WindowToken(0);
 const SIZE: UVec2 = UVec2::new(320, 200);
 
-/// One button that counts its clicks, and a flag a test sets for the work it reports busy.
+/// One button that counts its clicks, a pad that sums the gestures it takes, a chord it
+/// counts, and a flag a test sets for the work it reports busy.
 #[derive(Debug, Default)]
 struct Counter {
     clicks: u32,
     busy: bool,
+    gestures: Gestures,
+}
+
+/// What the pad took: drags ended and the travel of the last, the scroll, each pinch, and the
+/// presses of [`CHORD`].
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Gestures {
+    drags: u32,
+    travel: Vec2,
+    scroll: Vec2,
+    pinches: Vec<f32>,
+    chords: u32,
+}
+
+const CHORD: &str = "ctrl+shift+k";
+
+fn pad_id() -> WidgetId {
+    WidgetId::from_hash("pad")
 }
 
 impl App for Counter {
     fn record(&mut self, _window: WindowToken, ui: &mut Ui) {
-        if Button::new()
-            .id(WidgetId::from_hash("press"))
-            .label("Press me")
-            .show(ui)
-            .clicked()
-        {
-            self.clicks += 1;
+        Panel::vstack().auto_id().show(ui, |ui| {
+            if Button::new()
+                .id(WidgetId::from_hash("press"))
+                .label("Press me")
+                .show(ui)
+                .clicked()
+            {
+                self.clicks += 1;
+            }
+            let pad = Panel::hstack()
+                .id(pad_id())
+                .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
+                .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
+                .show(ui, |_| {})
+                .response;
+            let gestures = &mut self.gestures;
+            if let Some(delta) = pad.left.drag.delta() {
+                gestures.travel = delta;
+            }
+            gestures.drags += u32::from(pad.left.drag.stopped());
+            gestures.scroll += pad.scroll.pixels;
+            if pad.scroll.zoom.get() != 1.0 {
+                gestures.pinches.push(pad.scroll.zoom.get());
+            }
+        });
+        if ui.shortcut_pressed(CHORD.parse::<Shortcut>().unwrap()) {
+            self.gestures.chords += 1;
         }
     }
 
@@ -58,9 +102,8 @@ impl App for Counter {
 struct Loop {
     h: Harness,
     app: Counter,
-    shots: RemoteShots,
+    remote: RemoteEnd,
     frames: Arc<FrameLog>,
-    sent: u64,
     start: Instant,
     repaint: bool,
 }
@@ -69,21 +112,14 @@ impl Loop {
     fn frame(&mut self) {
         self.h.at(self.start.elapsed());
         let report = self.h.frame_app(&mut self.app);
-        self.shots.deliver(self.h.ui_ref());
+        let summary = self
+            .remote
+            .after_frame(self.h.ui_ref(), &report, self.app.is_busy());
         self.repaint = report.repaint_requested;
         if self.repaint {
             self.h.wait_for_gpu();
         }
-        self.frames.record(
-            WINDOW,
-            FrameSummary {
-                frame_id: self.h.ui_ref().frame_id(),
-                sent_inputs: self.sent,
-                repaint_requested: report.repaint_requested,
-                repaint_after: report.repaint_after,
-                busy: self.app.is_busy(),
-            },
-        );
+        self.frames.record(WINDOW, summary);
     }
 
     /// Serve `events` until a quit: an event of another window is dropped, as no window holds it.
@@ -110,9 +146,9 @@ impl Loop {
                 UserEvent::Input(WINDOW, event) => {
                     self.h.at(self.start.elapsed());
                     self.h.on_input(event.as_event());
-                    self.sent += 1;
+                    self.remote.note_input();
                 }
-                UserEvent::Shot(WINDOW, ask) => self.shots.ask(self.h.ui(), ask),
+                UserEvent::Shot(WINDOW, ask) => self.remote.ask_shot(self.h.ui(), ask),
                 UserEvent::RunOnMain(task) => {
                     task(&mut self.app);
                 }
@@ -140,9 +176,8 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
         let window = Loop {
             h: Harness::builder(SIZE).gpu(gpu.handles()).build(),
             app: Counter::default(),
-            shots: RemoteShots::default(),
+            remote: RemoteEnd::default(),
             frames,
-            sent: 0,
             start: Instant::now(),
             repaint: false,
         };
@@ -261,6 +296,136 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
         "the settle waited the work out"
     );
     work.join().unwrap();
+    handle.quit();
+    thread.join().unwrap();
+}
+
+/// One table of steps a person takes, played on a [`Harness`] and on a served [`Remote`] alike,
+/// each step reading back the same: a drag of 40 px in 8 moves ends once and travels exactly
+/// (40, 0); a scroll of (0, 30) px reaches the pad whole; a pinch of 1.5 reaches it, one that is
+/// not a positive factor fails as `BadPinch` and leaves nothing; a chord with two modifiers fires
+/// the app's read once. A wait of 100 ms runs the harness's stepped clock that far on, and takes
+/// that much real time on the remote, whose idle window runs no frame meanwhile, as the desktop
+/// host paints only what changes.
+#[test]
+fn both_players_play_each_gesture_alike() {
+    let pad = || Locator::Id(pad_id());
+    let steps: [(Action, Result<Gestures, PlayError>); 5] = [
+        (
+            Action::Drag {
+                from: pad(),
+                to: Locator::Offset(Box::new(pad()), Vec2::new(40.0, 0.0)),
+                button: PointerButton::Left,
+                mods: ShortcutMods::NONE,
+                steps: Action::DRAG_STEPS,
+            },
+            Ok(Gestures {
+                drags: 1,
+                travel: Vec2::new(40.0, 0.0),
+                ..Gestures::default()
+            }),
+        ),
+        (
+            Action::Scroll {
+                at: pad(),
+                delta: Vec2::new(0.0, 30.0),
+            },
+            Ok(Gestures {
+                drags: 1,
+                travel: Vec2::new(40.0, 0.0),
+                scroll: Vec2::new(0.0, 30.0),
+                ..Gestures::default()
+            }),
+        ),
+        (
+            Action::Pinch {
+                at: pad(),
+                factor: 1.5,
+            },
+            Ok(Gestures {
+                drags: 1,
+                travel: Vec2::new(40.0, 0.0),
+                scroll: Vec2::new(0.0, 30.0),
+                pinches: vec![1.5],
+                ..Gestures::default()
+            }),
+        ),
+        (
+            Action::Pinch {
+                at: pad(),
+                factor: -1.0,
+            },
+            Err(PlayError::BadPinch { factor: -1.0 }),
+        ),
+        (
+            Action::Key(CHORD.parse().unwrap()),
+            Ok(Gestures {
+                drags: 1,
+                travel: Vec2::new(40.0, 0.0),
+                scroll: Vec2::new(0.0, 30.0),
+                pinches: vec![1.5],
+                chords: 1,
+            }),
+        ),
+    ];
+    let gpu = headless_test_gpu();
+    let mut h = Harness::builder(SIZE).gpu(gpu.handles()).build();
+    let mut app = Counter::default();
+    // The first frame, which the served window runs at its open, before a step locates in it.
+    h.frame_app(&mut app);
+    let (handle, thread) = serve();
+    let remote = handle.remote(WINDOW);
+    let mut last = Gestures::default();
+    for (i, (action, want)) in steps.into_iter().enumerate() {
+        let on_harness = h
+            .play(&mut app, std::slice::from_ref(&action))
+            .map(|_| app.gestures.clone())
+            .map_err(|failed| failed.error);
+        let on_remote = remote
+            .play(std::slice::from_ref(&action))
+            .map_err(|failed| failed.error)
+            .and_then(|_| remote.query(|app, _| app.gestures.clone()));
+        let outcome = |result: &Result<Gestures, PlayError>| {
+            result.as_ref().map(|_| ()).map_err(Clone::clone)
+        };
+        assert_eq!(
+            outcome(&on_remote),
+            outcome(&on_harness),
+            "step {i}: the players agree"
+        );
+        if want.is_ok() {
+            assert_eq!(on_harness, want, "step {i} on the harness");
+        } else {
+            assert_eq!(outcome(&on_harness), outcome(&want), "step {i}");
+            assert_eq!(
+                app.gestures, last,
+                "step {i}: a refused step leaves nothing"
+            );
+        }
+        assert_eq!(
+            remote.query(|app, _| app.gestures.clone()).unwrap(),
+            app.gestures,
+            "step {i}: the remote's app reads as the harness's"
+        );
+        last = app.gestures.clone();
+    }
+
+    let wait = Duration::from_millis(100);
+    let before = h.ui_ref().now();
+    h.play(&mut app, &[Action::<std::convert::Infallible>::Wait(wait)])
+        .unwrap();
+    assert!(
+        h.ui_ref().now() >= before + wait,
+        "the harness's clock ran {wait:?}"
+    );
+    let started = Instant::now();
+    remote
+        .play(&[Action::<std::convert::Infallible>::Wait(wait)])
+        .unwrap();
+    assert!(
+        started.elapsed() >= wait,
+        "the remote waited {wait:?} of real time"
+    );
     handle.quit();
     thread.join().unwrap();
 }

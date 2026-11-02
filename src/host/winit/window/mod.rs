@@ -23,7 +23,8 @@ use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentPath, W
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
-use crate::host::winit::remote::{RemoteShots, ShotAsk};
+use crate::host::winit::remote::ShotAsk;
+use crate::host::winit::remote::remote_end::RemoteEnd;
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
 use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
 use crate::host::winit::window::visibility::Visibility;
@@ -117,10 +118,8 @@ pub(super) struct Window {
     frame_set: FrameSet,
     system_facts: Option<SystemFacts>,
     pointer: Option<PointerAnchor>,
-    /// How many events [`HostHandle::send_input`](crate::HostHandle::send_input) delivered.
-    sent_inputs: u64,
-    /// The screenshots remotes asked that have not landed.
-    shots: RemoteShots,
+    /// What the window answers its remotes with.
+    remote: RemoteEnd,
 }
 
 /// What a [`Window`] opens with: its native half, its surface and driver, its decorations'
@@ -173,14 +172,13 @@ impl Window {
             frame_set: FrameSet::claim(),
             system_facts: None,
             pointer: None,
-            sent_inputs: 0,
-            shots: RemoteShots::default(),
+            remote: RemoteEnd::default(),
         }
     }
 
     /// Ask the window for the screenshot a remote wants, which a later frame hands back.
     pub(super) fn ask_shot(&mut self, ask: ShotAsk) {
-        self.shots.ask(&mut self.driver.ui, ask);
+        self.remote.ask_shot(&mut self.driver.ui, ask);
         self.next = FramePresent::Immediate;
     }
 
@@ -205,7 +203,7 @@ impl Window {
         let now = self.input_epoch.elapsed();
         self.driver.ui.on_input(event, now);
         self.note_pointer(PointerTrace::of_input(event, scale), scale);
-        self.sent_inputs += 1;
+        self.remote.note_input();
         self.next = FramePresent::Immediate;
     }
 
@@ -362,14 +360,9 @@ impl Window {
                 now: self.clock.now(),
             };
             let cpu = core.record(&mut self.driver, spec, app, FrameDepth::Paint);
-            self.shots.deliver(&self.driver.ui);
-            let summary = FrameSummary {
-                frame_id: self.driver.ui.frame_id(),
-                sent_inputs: self.sent_inputs,
-                repaint_requested: cpu.report.repaint_requested,
-                repaint_after: cpu.report.repaint_after,
-                busy: app.is_busy(),
-            };
+            let summary = self
+                .remote
+                .after_frame(&self.driver.ui, &cpu.report, app.is_busy());
             self.next = self.present(core, cpu);
             Some(summary)
         };

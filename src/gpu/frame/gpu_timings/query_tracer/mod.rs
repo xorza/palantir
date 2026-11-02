@@ -14,11 +14,12 @@ use crate::diagnostics::gpu_pass_stats::{BackdropTimes, BatchKind, GpuPassStats,
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::{BackdropPhase, Mark};
 use crate::gpu::frame::main_segment::MainSegment;
+use crate::gpu::surface::map_state::MapState;
 use std::array;
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, Ordering::Acquire, Ordering::Release};
+use std::sync::atomic::{AtomicBool, Ordering::Acquire, Ordering::Release};
 
 const BYTES_PER_U64: u64 = 8;
 
@@ -52,15 +53,6 @@ const STATS_BUFFER_BYTES: u64 = MAX_STATS_PASSES as u64 * STATS_QUERY_BYTES;
 /// resolve maps; with every slot busy a frame goes unmeasured.
 const SLOTS: usize = 3;
 
-/// A slot's staging buffers hold no map in flight.
-const UNMAPPED: u8 = 0;
-/// A map is in flight; the bits below land on it.
-const MAPPING: u8 = 1 << 4;
-const TIMESTAMPS_DONE: u8 = 1 << 0;
-const STATS_DONE: u8 = 1 << 1;
-const TIMESTAMPS_FAILED: u8 = 1 << 2;
-const STATS_FAILED: u8 = 1 << 3;
-
 const PIPELINE_STATS_FLAGS: wgpu::PipelineStatisticsTypes =
     wgpu::PipelineStatisticsTypes::VERTEX_SHADER_INVOCATIONS
         .union(wgpu::PipelineStatisticsTypes::CLIPPER_INVOCATIONS)
@@ -88,6 +80,7 @@ struct Slot {
     /// The pipeline-statistics query, when the device has `PIPELINE_STATISTICS_QUERY`.
     stats_query_set: Option<wgpu::QuerySet>,
     timestamps_buffer: wgpu::Buffer,
+    timestamps_map: MapState,
     timestamps_count: u32,
     /// Kind of the segment between timestamps `i` and `i+1`, saved at `finish()`, `None` for a
     /// break between passes; empty in basic mode.
@@ -99,7 +92,8 @@ struct Slot {
     /// [`MAX_STATS_PASSES`].
     stats_passes: Option<u32>,
     stats_buffer: Option<wgpu::Buffer>,
-    map_state: Arc<AtomicU8>,
+    /// Kept beside `stats_buffer`, idle where there is none.
+    stats_map: MapState,
     /// Set by the queue's work-done callback once the frame that wrote the slot completed.
     done: Arc<AtomicBool>,
     state: SlotState,
@@ -181,6 +175,7 @@ impl QueryTracer {
                 "palantir.gpu_timings.timestamps.staging",
                 TIMESTAMP_BUFFER_BYTES,
             ),
+            timestamps_map: MapState::new(),
             timestamps_count: 0,
             segment_kinds: Vec::with_capacity(MAX_TIMESTAMPS as usize),
             copied_out: false,
@@ -188,7 +183,7 @@ impl QueryTracer {
             stats_passes: Some(0),
             stats_buffer: pipeline_stats
                 .then(|| staging("palantir.gpu_timings.stats.staging", STATS_BUFFER_BYTES)),
-            map_state: Arc::new(AtomicU8::new(UNMAPPED)),
+            stats_map: MapState::new(),
             done: Arc::new(AtomicBool::new(false)),
             state: if i == 0 {
                 SlotState::Writing
@@ -436,7 +431,7 @@ impl QueryTracer {
                 .on_submitted_work_done(move || done.store(true, Release));
         }
         for slot in &mut self.slots {
-            if slot.state == SlotState::Resolving && slot.map_state.load(Acquire) == UNMAPPED {
+            if slot.state == SlotState::Resolving && slot.timestamps_map.is_idle() {
                 slot.map();
             }
         }
@@ -448,16 +443,16 @@ impl QueryTracer {
             if slot.state != SlotState::Resolving {
                 continue;
             }
-            let state = slot.map_state.load(Acquire);
-            if !mappings_complete(state, slot.stats_buffer.is_some()) {
+            if !maps_landed(&slot.timestamps_map, &slot.stats_map) {
                 continue;
             }
-            if mappings_failed(state) {
-                slot.discard(state);
+            if slot.timestamps_map.has_failed() || slot.stats_map.has_failed() {
+                slot.discard();
             } else {
                 slot.consume(publisher);
             }
-            slot.map_state.store(UNMAPPED, Release);
+            slot.timestamps_map.clear();
+            slot.stats_map.clear();
             slot.state = SlotState::Free;
         }
         if self.writing.is_none() {
@@ -466,13 +461,10 @@ impl QueryTracer {
     }
 }
 
-const fn mappings_complete(state: u8, has_stats: bool) -> bool {
-    let required = TIMESTAMPS_DONE | if has_stats { STATS_DONE } else { 0 };
-    state & required == required
-}
-
-const fn mappings_failed(state: u8) -> bool {
-    state & (TIMESTAMPS_FAILED | STATS_FAILED) != 0
+/// Whether a slot's maps have landed, mapped or failed: its timestamps', which every map begins,
+/// and its statistics', idle where the slot has none.
+fn maps_landed(timestamps: &MapState, stats: &MapState) -> bool {
+    !timestamps.is_idle() && !timestamps.is_pending() && !stats.is_pending()
 }
 
 impl Slot {
@@ -524,31 +516,18 @@ impl Slot {
     /// Start mapping this slot's staging buffers, which land once the submit that resolved them
     /// completed.
     fn map(&self) {
-        let map_state = Arc::clone(&self.map_state);
-        map_state.store(MAPPING, Release);
-        self.timestamps_buffer
-            .slice(..)
-            .map_async(wgpu::MapMode::Read, move |res| {
-                let failed = if res.is_err() { TIMESTAMPS_FAILED } else { 0 };
-                map_state.fetch_or(TIMESTAMPS_DONE | failed, Release);
-            });
+        self.timestamps_map.map_read(&self.timestamps_buffer);
         if let Some(stats_buf) = &self.stats_buffer {
-            let map_state = Arc::clone(&self.map_state);
-            stats_buf
-                .slice(..)
-                .map_async(wgpu::MapMode::Read, move |res| {
-                    let failed = if res.is_err() { STATS_FAILED } else { 0 };
-                    map_state.fetch_or(STATS_DONE | failed, Release);
-                });
+            self.stats_map.map_read(stats_buf);
         }
     }
 
     /// Unmap whatever mapped, after either mapping failed.
-    fn discard(&self, state: u8) {
-        if state & TIMESTAMPS_FAILED == 0 {
+    fn discard(&self) {
+        if self.timestamps_map.is_mapped() {
             self.timestamps_buffer.unmap();
         }
-        if state & STATS_FAILED == 0
+        if self.stats_map.is_mapped()
             && let Some(stats_buf) = &self.stats_buffer
         {
             stats_buf.unmap();
@@ -682,9 +661,7 @@ fn tick(bytes: &[u8], idx: usize) -> u64 {
 
 #[cfg(test)]
 mod internals {
-    use crate::gpu::frame::gpu_timings::query_tracer::{
-        QueryTracer, SlotState, UNMAPPED, mappings_complete,
-    };
+    use crate::gpu::frame::gpu_timings::query_tracer::{QueryTracer, SlotState, maps_landed};
     use std::sync::atomic::Ordering::Acquire;
 
     impl QueryTracer {
@@ -695,8 +672,8 @@ mod internals {
             self.slots.iter().all(|slot| match slot.state {
                 SlotState::Submitted => slot.done.load(Acquire),
                 SlotState::Resolving => {
-                    let state = slot.map_state.load(Acquire);
-                    state == UNMAPPED || mappings_complete(state, slot.stats_buffer.is_some())
+                    slot.timestamps_map.is_idle()
+                        || maps_landed(&slot.timestamps_map, &slot.stats_map)
                 }
                 SlotState::Free | SlotState::Writing => true,
             })

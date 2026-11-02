@@ -12,8 +12,9 @@
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantRecipe};
+use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::gpu::pipeline::shader_body::ShaderBody;
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -40,13 +41,9 @@ pub(crate) struct MeshBatch<'a> {
 
 #[derive(Debug)]
 pub(crate) struct MeshPipeline {
+    family: InstancedPipeline<MeshInstance>,
     vertex_buffer: DynamicBuffer<MeshVertex>,
     idx_buffer: DynamicBuffer<u32>,
-    instance_buffer: DynamicBuffer<MeshInstance>,
-    /// Mesh shader module, format-independent; [`Self::build_variants`] builds each
-    /// format's pipelines from it.
-    shader: wgpu::ShaderModule,
-    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl MeshPipeline {
@@ -62,38 +59,35 @@ impl MeshPipeline {
     /// [`Self::build_variants`] via
     /// [`FormatPipelines`](crate::gpu::pipeline::format_pipelines::FormatPipelines).
     pub(crate) fn new(gpu: &Gpu) -> Self {
-        let shader = Self::SHADER.module(gpu);
-
-        let vertex_buffer = DynamicBuffer::<MeshVertex>::vertex(gpu, "palantir.mesh.vertices", 256);
-        let idx_buffer = DynamicBuffer::<u32>::idx(gpu, "palantir.mesh.indices", 1024);
-        let instance_buffer =
-            DynamicBuffer::<MeshInstance>::vertex(gpu, "palantir.mesh.instances", 64);
-
         Self {
-            vertex_buffer,
-            idx_buffer,
-            instance_buffer,
-            shader,
-            // No bind groups: only the shared immediate region for the viewport.
-            pipeline_layout: pipeline_recipe::pipeline_layout(gpu, "palantir.mesh.pl", &[]),
+            family: InstancedPipeline::new(
+                gpu,
+                InstancedSpec {
+                    shader: Self::SHADER,
+                    layout: "palantir.mesh.pl",
+                    // No bind groups: only the shared immediate region for the viewport.
+                    groups: &[],
+                    instances: "palantir.mesh.instances",
+                    capacity: 64,
+                },
+            ),
+            vertex_buffer: DynamicBuffer::vertex(gpu, "palantir.mesh.vertices", 256),
+            idx_buffer: DynamicBuffer::idx(gpu, "palantir.mesh.indices", 1024),
         }
     }
 
     /// Build the base and stencil-test color pipelines against `format`, the only
     /// format-dependent mesh objects. Called by `FormatPipelines` per format.
     pub(super) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> StencilVariant {
-        StencilVariant::build(
+        self.family.build_variants(
             gpu,
-            PipelineRecipe {
+            format,
+            VariantRecipe {
+                label: "palantir.mesh.pipeline",
+                stencil_label: "palantir.mesh.pipeline.stencil_test",
                 vertex_buffers: &[Some(VERTEX_LAYOUT), Some(INSTANCE_LAYOUT)],
-                ..PipelineRecipe::color(
-                    "palantir.mesh.pipeline",
-                    &self.shader,
-                    &self.pipeline_layout,
-                    format,
-                )
+                topology: wgpu::PrimitiveTopology::TriangleList,
             },
-            "palantir.mesh.pipeline.stencil_test",
         )
     }
 
@@ -109,45 +103,34 @@ impl MeshPipeline {
         if !mesh_upload_required(vertices.len(), idxs.len(), instances.len()) {
             return;
         }
-
-        self.instance_buffer.upload_instances(ctx, instances);
+        self.family.upload(ctx, instances);
         self.vertex_buffer.upload_instances(ctx, vertices);
         self.idx_buffer.upload_instances(ctx, idxs);
     }
 
-    /// Bind pipeline and vertex/instance/index buffers once per batch; [`Self::draw`]
-    /// then issues the draws. The viewport rides the shared immediate region,
-    /// re-pushed by the backend's `rebind` after every pipeline switch.
-    pub(crate) fn bind<'a>(
-        &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
-    ) {
-        binder.pipeline(pass, pipeline, &self.pipeline_layout);
-        binder.vertex(pass, 0, &self.vertex_buffer.buffer);
-        binder.vertex(pass, 1, &self.instance_buffer.buffer);
-        binder.index(pass, &self.idx_buffer.buffer, wgpu::IndexFormat::Uint32);
-    }
-
-    /// Draw one mesh batch. `draws` is the frame's per-draw span column and `items`
-    /// selects this batch's slice (the same `Span` that indexes the instance buffer).
+    /// Draw one mesh batch through `pipeline`. `draws` is the frame's per-draw span column and
+    /// `items` selects this batch's slice (the same `Span` that indexes the instance buffer).
     ///
     /// One `draw_indexed` per mesh, with no run to coalesce unlike `ImagePipeline`:
     /// `MeshShape`'s lowering appends each mesh's vertices and indices to the record
     /// payloads without interning, so no two `MeshDraw`s are equal. Interning by
     /// `content_hash` would be the prerequisite for batching.
-    pub(crate) fn draw<'a>(
+    pub(crate) fn draw_batch<'a>(
         &'a self,
-        pass: &mut wgpu::RenderPass<'a>,
+        rec: &mut PassRecorder<'a>,
+        pipeline: &'a wgpu::RenderPipeline,
         MeshBatch { draws, items }: MeshBatch<'_>,
     ) {
+        rec.pipeline(pipeline, self.family.layout());
+        rec.vertex(0, &self.vertex_buffer.buffer);
+        rec.vertex(1, self.family.instances());
+        rec.index(&self.idx_buffer.buffer, wgpu::IndexFormat::Uint32);
         for (offset, draw) in draws[items.range()].iter().enumerate() {
             if draw.idxs.len == 0 {
                 continue;
             }
             let instance = items.start + offset as u32;
-            pass.draw_indexed(
+            rec.draw_indexed(
                 draw.idxs.into(),
                 // Per-call vertex offset keeps a mesh's indices buffer-local.
                 draw.vertices.start as i32,

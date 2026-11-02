@@ -77,11 +77,6 @@ impl Forest {
         self.trees.iter().map(|tree| tree.records.len()).sum()
     }
 
-    /// Top-level roots across every plane.
-    pub(crate) fn total_roots(&self) -> usize {
-        self.trees.iter().map(|tree| tree.roots.len()).sum()
-    }
-
     /// Interns a grid's track definition into the current plane's tree, so `open_node`'s handle check holds by construction.
     #[inline]
     pub(crate) fn push_grid_def(&mut self, rows: &[Track], cols: &[Track]) -> GridDefId {

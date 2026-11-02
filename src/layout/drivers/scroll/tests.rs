@@ -30,13 +30,11 @@ fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
     let viewport_id = outer_id.with("viewport");
     let outer = ui
         .cascade()
-        .by_id
-        .get(&outer_id)
+        .endpoint(outer_id)
         .expect("scroll outer endpoint");
     let viewport = ui
         .cascade()
-        .by_id
-        .get(&viewport_id)
+        .endpoint(viewport_id)
         .expect("scroll viewport endpoint");
     let viewport_tree = ui.tree(viewport.plane.layer);
     let viewport_rect = ui.arranged_rect(viewport.plane.layer, viewport.node);

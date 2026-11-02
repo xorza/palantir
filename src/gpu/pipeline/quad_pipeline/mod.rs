@@ -8,7 +8,7 @@ pub(crate) mod quad_form;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{CutoutMode, CutoutPlan, ShadowEntry};
 use crate::gpu::pipeline::quad_pipeline::cutout_tables::CutoutTables;
@@ -107,17 +107,16 @@ impl<'a> QuadBinding<'a> {
         pass.set_vertex_buffer(0, buffer.slice(..));
     }
 
-    /// [`Self::bind`] over `layout` in the main pass, through `binder`, which skips what is bound.
+    /// [`Self::bind`] over `layout` in the main pass, through `rec`, which skips what is bound.
     fn bind_through(
         self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
+        rec: &mut PassRecorder<'a>,
         layout: &'a wgpu::PipelineLayout,
         buffer: &'a wgpu::Buffer,
     ) {
-        binder.pipeline(pass, self.pipeline, layout);
-        binder.group(pass, 0, self.gradient_bind_group);
-        binder.vertex(pass, 0, buffer);
+        rec.pipeline(self.pipeline, layout);
+        rec.group(0, self.gradient_bind_group);
+        rec.vertex(0, buffer);
     }
 }
 
@@ -182,19 +181,14 @@ impl QuadPipeline {
     }
 
     /// Bind `binding` over the pre-clear quad. Under [`StencilMode::Test`], the test at reference 0 matches every pixel and leaves the stencil intact.
-    pub(crate) fn bind_clear<'a>(
-        &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
-        binding: QuadBinding<'a>,
-    ) {
+    pub(crate) fn bind_clear<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
         debug_assert!(
             self.clear.is_uploaded(),
             "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
         // Sets no stencil reference: the schedule dedupes `SetStencilRef` assuming no draw arm sets one, and the ref is already 0.
-        binding.bind_through(binder, pass, &self.pipeline_layout, self.clear.buffer());
+        binding.bind_through(rec, &self.pipeline_layout, self.clear.buffer());
     }
 
     pub(crate) fn upload_masks(&mut self, ctx: &mut GpuCtx<'_>, masks: &[Quad]) {
@@ -208,18 +202,13 @@ impl QuadPipeline {
     }
 
     /// Bind a mask pipeline (stamp or clear) over the mask buffer; the caller sets `stencil_reference` per draw.
-    pub(crate) fn bind_mask<'a>(
-        &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
-        binding: QuadBinding<'a>,
-    ) {
+    pub(crate) fn bind_mask<'a>(&'a self, rec: &mut PassRecorder<'a>, binding: QuadBinding<'a>) {
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
-        binding.bind_through(binder, pass, &self.pipeline_layout, &buf.buffer);
+        binding.bind_through(rec, &self.pipeline_layout, &buf.buffer);
     }
 
-    pub(crate) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
-        pass.draw(0..4, mask_idx..mask_idx + 1);
+    pub(crate) fn draw_mask(&self, rec: &mut PassRecorder<'_>, mask_idx: u32) {
+        rec.draw(0..4, mask_idx..mask_idx + 1);
     }
 
     /// Build the format-independent quad resources; per-format pipelines come from [`Self::build_variants`].
@@ -405,12 +394,7 @@ impl QuadPipeline {
     /// reads, and draw it:
     /// a shadow reads the cutout tables and draws the eight cells around its hole, a backdrop pane
     /// reads the frame's results.
-    pub(crate) fn draw_run<'a>(
-        &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
-        run: QuadRun<'a>,
-    ) {
+    pub(crate) fn draw_run<'a>(&'a self, rec: &mut PassRecorder<'a>, run: QuadRun<'a>) {
         let QuadRun {
             draw,
             instances,
@@ -430,19 +414,19 @@ impl QuadPipeline {
             QuadDraw::Form(
                 QuadForm::Backdrop | QuadForm::BackdropLens | QuadForm::BackdropSpectrum,
             ) => {
-                binding.bind_through(binder, pass, &self.backdrop_layout, buffer);
+                binding.bind_through(rec, &self.backdrop_layout, buffer);
                 let backdrops = backdrops.expect("a frame that draws a pane prepared its results");
-                binder.group(pass, 2, backdrops);
-                pass.draw(0..4, instances.into());
+                rec.group(2, backdrops);
+                rec.draw(0..4, instances.into());
             }
             QuadDraw::Form(_) => {
-                binding.bind_through(binder, pass, &self.pipeline_layout, buffer);
-                pass.draw(0..4, instances.into());
+                binding.bind_through(rec, &self.pipeline_layout, buffer);
+                rec.draw(0..4, instances.into());
             }
             QuadDraw::Shadow(_) => {
-                binding.bind_through(binder, pass, &self.shadow_layout, buffer);
-                self.cutouts.bind(binder, pass);
-                pass.draw(0..SHADOW_GRID_VERTICES, instances.into());
+                binding.bind_through(rec, &self.shadow_layout, buffer);
+                self.cutouts.bind(rec);
+                rec.draw(0..SHADOW_GRID_VERTICES, instances.into());
             }
         }
     }

@@ -2,7 +2,7 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
+use crate::gpu::frame::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{
     BakeTable, CornerTables, CutoutMode, CutoutPlan,
@@ -229,9 +229,9 @@ impl CutoutTables {
     }
 
     /// Bind the atlas and the corner stream for a shadow draw.
-    pub(crate) fn bind<'a>(&'a self, binder: &mut MainBinder<'a>, pass: &mut wgpu::RenderPass<'a>) {
-        binder.group(pass, 1, &self.bind_group);
-        binder.vertex(pass, 1, &self.corners.buffer);
+    pub(crate) fn bind<'a>(&'a self, rec: &mut PassRecorder<'a>) {
+        rec.group(1, &self.bind_group);
+        rec.vertex(1, &self.corners.buffer);
     }
 }
 

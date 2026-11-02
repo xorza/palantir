@@ -138,7 +138,7 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
     let delta = h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 7.0));
 
     assert!(delta.repaint_requested);
-    assert!(h.ui().input().frame_target_deltas.is_empty());
+    assert!(h.ui().input().pointer.target_deltas.is_empty());
     assert!(matches!(
         h.ui().pointer_events(),
         [PointerEvent::Scroll {

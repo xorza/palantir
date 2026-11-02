@@ -18,7 +18,8 @@ use crate::cascade::Cascade;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
-use crate::input_state::InputState;
+use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
+use crate::input_state::{InputCtx, InputState};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
@@ -31,7 +32,11 @@ use std::time::Duration;
 impl InputState {
     /// Feed `event` at time zero against an empty cascade: the input machine alone.
     fn feed(&mut self, event: InputEvent<'_>) -> InputDelta {
-        self.on_input(event, &Cascade::default(), Duration::ZERO)
+        let ctx = InputCtx {
+            cascade: &Cascade::default(),
+            double_click: DOUBLE_CLICK_WINDOW,
+        };
+        self.on_input(event, ctx, Duration::ZERO)
     }
 }
 

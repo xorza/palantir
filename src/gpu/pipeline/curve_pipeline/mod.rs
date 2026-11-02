@@ -12,11 +12,11 @@ pub(crate) mod bench;
 use crate::common::span::Span;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
-use crate::gpu::frame::binder::MainBinder;
-use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe, vertex_attr};
+use crate::gpu::frame::pass_recorder::PassRecorder;
+use crate::gpu::pipeline::instanced_pipeline::{InstancedPipeline, InstancedSpec, VariantRecipe};
+use crate::gpu::pipeline::pipeline_recipe::{self, vertex_attr};
 use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::StencilVariant;
-use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::renderer::render_buffer::curve_caps::CurveCaps;
@@ -54,11 +54,8 @@ const _: () = {
 
 #[derive(Debug)]
 pub(crate) struct CurvePipeline {
-    instance_buffer: DynamicBuffer<CurveInstance>,
+    family: InstancedPipeline<CurveInstance>,
     idx_buffer: wgpu::Buffer,
-    shader: wgpu::ShaderModule,
-    /// Format-independent, so built once here rather than per format.
-    pipeline_layout: wgpu::PipelineLayout,
 }
 
 impl CurvePipeline {
@@ -71,10 +68,6 @@ impl CurvePipeline {
     };
 
     pub(crate) fn new(gpu: &Gpu, textures: &TextureBinding) -> Self {
-        let shader = Self::SHADER.module(gpu);
-
-        let instance_buffer =
-            DynamicBuffer::<CurveInstance>::vertex(gpu, "palantir.curve.instances", 64);
         let idxs: &[u8] = bytemuck::cast_slice(&CURVE_IDXS);
         let idx_buffer = gpu.create_filled_buffer(
             &wgpu::BufferDescriptor {
@@ -85,59 +78,56 @@ impl CurvePipeline {
             },
             idxs,
         );
-
         Self {
-            instance_buffer,
-            idx_buffer,
-            shader,
-            // Gradient at group 0; the viewport rides the shared immediate region.
-            pipeline_layout: pipeline_recipe::pipeline_layout(
+            family: InstancedPipeline::new(
                 gpu,
-                "palantir.curve.pl",
-                &[Some(textures.layout())],
+                InstancedSpec {
+                    shader: Self::SHADER,
+                    layout: "palantir.curve.pl",
+                    // Gradient at group 0; the viewport rides the shared immediate region.
+                    groups: &[Some(textures.layout())],
+                    instances: "palantir.curve.instances",
+                    capacity: 64,
+                },
             ),
+            idx_buffer,
         }
     }
 
     pub(super) fn build_variants(&self, gpu: &Gpu, format: wgpu::TextureFormat) -> StencilVariant {
-        StencilVariant::build(
+        self.family.build_variants(
             gpu,
-            PipelineRecipe {
+            format,
+            VariantRecipe {
+                label: "palantir.curve.pipeline",
+                stencil_label: "palantir.curve.pipeline.stencil_test",
                 vertex_buffers: &[Some(INSTANCE_LAYOUT)],
-                ..PipelineRecipe::color(
-                    "palantir.curve.pipeline",
-                    &self.shader,
-                    &self.pipeline_layout,
-                    format,
-                )
+                topology: wgpu::PrimitiveTopology::TriangleList,
             },
-            "palantir.curve.pipeline.stencil_test",
         )
     }
 
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
-        self.instance_buffer.upload_instances(ctx, instances);
+        self.family.upload(ctx, instances);
     }
 
-    /// Binds once per pass, before one [`Self::draw`] per curve group batch.
-    pub(crate) fn bind<'a>(
+    /// Draw one curve group batch, `instances`, through `pipeline`, its gradients read through
+    /// `gradient_bind_group`.
+    pub(crate) fn draw_batch<'a>(
         &'a self,
-        binder: &mut MainBinder<'a>,
-        pass: &mut wgpu::RenderPass<'a>,
+        rec: &mut PassRecorder<'a>,
         pipeline: &'a wgpu::RenderPipeline,
         gradient_bind_group: &'a wgpu::BindGroup,
+        instances: Span,
     ) {
-        binder.pipeline(pass, pipeline, &self.pipeline_layout);
-        binder.group(pass, 0, gradient_bind_group);
-        binder.vertex(pass, 0, &self.instance_buffer.buffer);
-        binder.index(pass, &self.idx_buffer, wgpu::IndexFormat::Uint16);
-    }
-
-    pub(crate) fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, instances: Span) {
         if instances.len == 0 {
             return;
         }
-        pass.draw_indexed(0..IDXS_PER_INSTANCE, 0, instances.into());
+        rec.pipeline(pipeline, self.family.layout());
+        rec.group(0, gradient_bind_group);
+        rec.vertex(0, self.family.instances());
+        rec.index(&self.idx_buffer, wgpu::IndexFormat::Uint16);
+        rec.draw_indexed(0..IDXS_PER_INSTANCE, 0, instances.into());
     }
 }
 
