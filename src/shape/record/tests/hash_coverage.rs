@@ -50,7 +50,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             corners,
             fill,
             border: stroke,
-            backdrop: LoweredBackdrop::NONE,
+            backdrop: None,
         })
     };
     let base = quad_rect(
@@ -124,7 +124,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             corners,
             fill,
             border,
-            backdrop: LoweredBackdrop::from(BackdropFilter::blur(8.0)),
+            backdrop: LoweredBackdrop::of(BackdropFilter::blur(8.0)),
         }),
     );
     moves(

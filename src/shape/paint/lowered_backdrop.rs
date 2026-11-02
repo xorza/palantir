@@ -13,8 +13,9 @@ use std::hash;
 /// composer scales to physical; a pane with no lens has a zero `lens`. `max_luminance` is the
 /// ceiling's f16 bits, rounded down so the pane never shows brighter than its author allowed, and
 /// 65504 for a pane with none; `min_luminance` the floor's, rounded up so it never shows darker,
-/// and 0 for none.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// and 0 for none. Only a filter that changes the pixels lowers, so a record holds no backdrop as
+/// `None`, never as a value of this type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct LoweredBackdrop {
     look: F16x4,
     lens: F16x4,
@@ -23,17 +24,42 @@ pub(crate) struct LoweredBackdrop {
 }
 
 impl LoweredBackdrop {
-    /// No pane: [`BackdropFilter::NONE`], which leaves the pixels as they are.
-    pub(crate) const NONE: Self = Self {
-        look: F16x4::ZERO,
-        lens: F16x4::ZERO,
-        max_luminance: 0,
-        min_luminance: 0,
-    };
-
-    /// Whether a rect with this backdrop draws as an ordinary rect.
-    pub(crate) const fn is_none(self) -> bool {
-        self.look.as_u64() == 0 && self.lens.as_u64() == 0
+    /// `backdrop` as a record keeps it, `None` for a filter that leaves the pixels as they are,
+    /// which [`BackdropFilter::is_noop`] decides. [`BackdropFilter::validate`] holds an authored
+    /// filter within its kinds, and an animated chrome's tween may carry it past them, as
+    /// [`Easing::OutBack`](crate::Easing::OutBack) does past an end: here, where it starts to
+    /// paint, each value coerces into its kind, a length or factor up to 0, the index up to 1 and
+    /// the lens's fractions into `0..=1`, and saturates at the lanes.
+    pub(crate) fn of(backdrop: BackdropFilter) -> Option<Self> {
+        if backdrop.is_noop() {
+            return None;
+        }
+        let lens = backdrop.lens.map_or(F16x4::ZERO, |lens| {
+            F16x4::from_lanes_saturating([
+                lens.bezel.max(0.0),
+                lens.thickness.max(0.0),
+                lens.refractive_index.max(1.0),
+                domain::fraction(lens.dispersion),
+            ])
+        });
+        let highlight = backdrop
+            .lens
+            .map_or(0.0, |lens| domain::fraction(lens.highlight));
+        Some(Self {
+            look: F16x4::from_lanes_saturating([
+                backdrop.blur.max(0.0),
+                backdrop.saturation.max(0.0),
+                backdrop.noise.max(0.0),
+                highlight,
+            ]),
+            lens,
+            max_luminance: backdrop
+                .max_luminance
+                .map_or(half::f16::MAX.to_bits(), |v| f16_at_or_below(v.max(0.0))),
+            min_luminance: backdrop
+                .min_luminance
+                .map_or(0, |v| f16_at_or_above(v.max(0.0))),
+        })
     }
 
     /// The blur's σ in logical px.
@@ -86,41 +112,6 @@ impl LoweredBackdrop {
             let index = LensOptics::violet_index(lens.refractive_index, lens.dispersion);
             narrowest.map_or_else(|| optics.reach(index), |n| optics.margin(index, n))
         })
-    }
-}
-
-/// Saturating: [`BackdropFilter::validate`] holds an authored filter within the lanes, and an
-/// animated chrome's tween may overshoot it.
-impl From<BackdropFilter> for LoweredBackdrop {
-    fn from(backdrop: BackdropFilter) -> Self {
-        if backdrop.is_noop() {
-            return Self::NONE;
-        }
-        // The lens's fractions coerce here, where they start to paint.
-        let lens = backdrop.lens.map_or(F16x4::ZERO, |lens| {
-            F16x4::from_lanes_saturating([
-                lens.bezel,
-                lens.thickness,
-                lens.refractive_index,
-                domain::fraction(lens.dispersion),
-            ])
-        });
-        let highlight = backdrop
-            .lens
-            .map_or(0.0, |lens| domain::fraction(lens.highlight));
-        Self {
-            look: F16x4::from_lanes_saturating([
-                backdrop.blur,
-                backdrop.saturation,
-                backdrop.noise,
-                highlight,
-            ]),
-            lens,
-            max_luminance: backdrop
-                .max_luminance
-                .map_or(half::f16::MAX.to_bits(), f16_at_or_below),
-            min_luminance: backdrop.min_luminance.map_or(0, f16_at_or_above),
-        }
     }
 }
 

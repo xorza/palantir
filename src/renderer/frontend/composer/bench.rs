@@ -352,7 +352,7 @@ fn push_pane(cmds: &mut PaintCapture, rect: Rect, i: u32) {
             spin: None,
             tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
             stroke: ShapeStroke::NONE,
-            backdrop: LoweredBackdrop::from(BackdropFilter::blur(4.0)),
+            backdrop: LoweredBackdrop::of(BackdropFilter::blur(4.0)).unwrap(),
             opacity: 1.0,
             ticket: PaneTicket {
                 key: PaneKey {

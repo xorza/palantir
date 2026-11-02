@@ -43,11 +43,11 @@
 //!
 //! [`RectShape::backdrop_filter`]: crate::widget::RectShape::backdrop_filter
 
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
-use palantir_anim_derive::Animatable;
 
 /// A pane's backdrop filter: the pixels painted before it in paint order, blurred, saturated and
 /// grained, seen through an optional lens, under the pane's own fill, its tint, as CSS pairs
@@ -64,7 +64,7 @@ use palantir_anim_derive::Animatable;
 /// [factors](crate::widget::domain::factor), each a [lane](crate::widget::domain::lane) as it
 /// packs into one, and the lens's own checks hold. Where it paints, a value a tween carried past
 /// the lanes saturates at 65504, and the blur at σ 16384 physical px.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 #[must_use]
 pub struct BackdropFilter {
@@ -87,7 +87,6 @@ pub struct BackdropFilter {
         skip_serializing_if = "Option::is_none",
         deserialize_with = "crate::primitives::packed::serde::checked::optional_factor"
     )]
-    #[animate(snap)]
     pub max_luminance: Option<f32>,
     /// The lowest relative luminance the pane shows under its tint, if any: a darker pixel is
     /// lifted to it by a neutral, so a black backdrop reaches it too. The lane it packs into
@@ -97,11 +96,9 @@ pub struct BackdropFilter {
         skip_serializing_if = "Option::is_none",
         deserialize_with = "crate::primitives::packed::serde::checked::optional_factor"
     )]
-    #[animate(snap)]
     pub min_luminance: Option<f32>,
     /// Glass that bends what the pane shows across a rounded bezel at its edge, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[animate(snap)]
     pub lens: Option<Lens>,
 }
 
@@ -224,12 +221,13 @@ impl BackdropFilter {
             (0.0..1.0).contains(&alpha),
             "a tint's alpha is a fraction under 1: {alpha}"
         );
-        let ground = before_storing((ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05);
-        assert!(
-            ground >= ceiling_bend(),
-            "the ink is too dark for a ceiling: its ground {ground} lies where a colored pixel can \
-             store brighter than a neutral one"
-        );
+        let wanted = (ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05;
+        let Some(ground) = before_storing(wanted).filter(|&ground| ground >= ceiling_bend()) else {
+            panic!(
+                "the ink is too dark for a ceiling: its ground {wanted} lies where a colored pixel \
+                 can store brighter than a neutral one"
+            );
+        };
         let tint_luminance = tint.luminance();
         assert!(
             tint_luminance <= ground,
@@ -320,6 +318,86 @@ impl Default for BackdropFilter {
     }
 }
 
+/// `blur`, `saturation` and `noise` blend and spring. An absent floor or lens blends through its
+/// neutral, as an absent chrome blends through `Chrome::NONE`: a floor of 0 lifts nothing, and
+/// `Lens::FLAT` bends nothing. The ceiling switches at `t = 0.5`, as its neutral, no bound, is
+/// no lane value. In motion the three take the target at once, as a `lerp_only` field does.
+impl Animatable for BackdropFilter {
+    #[inline]
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        if t == 0.0 {
+            return a;
+        }
+        if t == 1.0 {
+            return b;
+        }
+        Self {
+            blur: f32::lerp(a.blur, b.blur, t),
+            saturation: f32::lerp(a.saturation, b.saturation, t),
+            noise: f32::lerp(a.noise, b.noise, t),
+            max_luminance: if t < 0.5 {
+                a.max_luminance
+            } else {
+                b.max_luminance
+            },
+            min_luminance: match (a.min_luminance, b.min_luminance) {
+                (None, None) => None,
+                (a, b) => Some(f32::lerp(a.unwrap_or(0.0), b.unwrap_or(0.0), t)),
+            },
+            lens: match (a.lens, b.lens) {
+                (None, None) => None,
+                (a, b) => Some(Lens::lerp(
+                    a.unwrap_or(Lens::FLAT),
+                    b.unwrap_or(Lens::FLAT),
+                    t,
+                )),
+            },
+        }
+    }
+    #[inline]
+    fn sub(self, other: Self) -> Self {
+        Self {
+            blur: self.blur - other.blur,
+            saturation: self.saturation - other.saturation,
+            noise: self.noise - other.noise,
+            ..self
+        }
+    }
+    #[inline]
+    fn add(self, other: Self) -> Self {
+        Self {
+            blur: self.blur + other.blur,
+            saturation: self.saturation + other.saturation,
+            noise: self.noise + other.noise,
+            ..self
+        }
+    }
+    #[inline]
+    fn scale(self, k: f32) -> Self {
+        Self {
+            blur: self.blur * k,
+            saturation: self.saturation * k,
+            noise: self.noise * k,
+            ..self
+        }
+    }
+    #[inline]
+    fn magnitude_squared(self) -> f32 {
+        self.blur * self.blur + self.saturation * self.saturation + self.noise * self.noise
+    }
+    #[inline]
+    fn zero() -> Self {
+        Self {
+            blur: 0.0,
+            saturation: 0.0,
+            noise: 0.0,
+            max_luminance: None,
+            min_luminance: None,
+            lens: None,
+        }
+    }
+}
+
 impl NanCheck for BackdropFilter {
     fn has_nan(&self) -> bool {
         self.blur.is_nan()
@@ -334,6 +412,27 @@ impl NanCheck for BackdropFilter {
 impl Lens {
     pub(crate) const REFRACTIVE_INDEX_RULE: &str =
         "a refractive index must be finite and at least 1";
+
+    /// Glass that bends nothing: no bezel, no thickness, index 1, no fringe and no glint. An
+    /// absent lens blends through it.
+    const FLAT: Self = Self {
+        bezel: 0.0,
+        thickness: 0.0,
+        refractive_index: 1.0,
+        dispersion: 0.0,
+        highlight: 0.0,
+    };
+
+    /// Field by field, as `f32` blends.
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        Self {
+            bezel: f32::lerp(a.bezel, b.bezel, t),
+            thickness: f32::lerp(a.thickness, b.thickness, t),
+            refractive_index: f32::lerp(a.refractive_index, b.refractive_index, t),
+            dispersion: f32::lerp(a.dispersion, b.dispersion, t),
+            highlight: f32::lerp(a.highlight, b.highlight, t),
+        }
+    }
 
     /// True if `n` can be a refractive index: finite and at least 1, as no glass bends light
     /// away from the normal on entry.
@@ -409,17 +508,16 @@ const STORED_STEP: f32 = 1.0 / 255.0;
 /// The brightest linear level a composite may reach and still store at most `g`: an 8-bit target
 /// stores a channel within [`STORED_STEP`] of it, so the level is the one a step under `B`, the
 /// highest byte that decodes to at most `g`. A colored pixel stores no brighter than a neutral one
-/// of its luminance when that luminance is past [`ceiling_bend`].
-fn before_storing(g: f32) -> f32 {
+/// of its luminance when that luminance is past [`ceiling_bend`]. `None` where no level lies a
+/// step under `B`: a `g` under the first step above black, the ground of every ink darker than
+/// `Y ≈ 0.175`.
+fn before_storing(g: f32) -> Option<f32> {
     let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte)).r;
     let mut top = RgbaF32::new(g, g, g, 1.0).to_srgba8().r;
     if level(top) > g {
-        top -= 1;
+        top = top.checked_sub(1)?;
     }
-    level(
-        top.checked_sub(1)
-            .expect("the ink holds its contrast a step above black"),
-    )
+    Some(level(top.checked_sub(1)?))
 }
 
 /// The darkest linear level a composite may reach and still store at least `g`: the mirror of

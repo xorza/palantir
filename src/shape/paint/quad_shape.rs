@@ -22,15 +22,15 @@ pub(crate) enum QuadShape {
     /// Filled or bordered rounded rectangle, or inverse window, by `kind`.
     /// `local_rect = None` covers the owner's arranged rect; `Some(r)` paints
     /// in owner-relative coords, in the slot it was pushed in, under the
-    /// owner's clip but outside its pan transform. A `backdrop` other than
-    /// `NONE` makes it a pane over the pixels painted before it.
+    /// owner's clip but outside its pan transform. A `backdrop` makes it a
+    /// pane over the pixels painted before it.
     Rect {
         kind: RectKind,
         local_rect: Option<Rect>,
         corners: Corners,
         fill: ShapeBrush,
         border: ShapeStroke,
-        backdrop: LoweredBackdrop,
+        backdrop: Option<LoweredBackdrop>,
     },
     /// Gaussian-blurred rounded rect (drop or inset shadow). `local_rect =
     /// None` shadows the owner's arranged rect; the composer shifts a drop

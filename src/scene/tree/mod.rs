@@ -495,7 +495,7 @@ impl Tree {
         if effectively_visible
             && ex
                 .chrome
-                .is_some_and(|row| !self.chrome_table[row.idx()].backdrop.is_none())
+                .is_some_and(|row| self.chrome_table[row.idx()].backdrop.is_some())
         {
             self.panes.push(PaneEntry {
                 node: new_id,

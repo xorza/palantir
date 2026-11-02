@@ -116,9 +116,9 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
         chrome.shadow.into()
     };
     let backdrop = if chrome.backdrop_filter.has_nan() {
-        LoweredBackdrop::NONE
+        None
     } else {
-        LoweredBackdrop::from(chrome.backdrop_filter)
+        LoweredBackdrop::of(chrome.backdrop_filter)
     };
     let ring = ShapeStroke::from(ring);
     let has_ring = !ring.is_noop();

@@ -28,7 +28,6 @@ pub(crate) struct DrawPanePayload {
     pub(crate) tint: RgbaF16,
     /// Normalized by [`ShapeStroke::normalized`], so `NONE` means no stroke exactly.
     pub(crate) stroke: ShapeStroke,
-    /// Not [`LoweredBackdrop::NONE`]: a rect with no backdrop is an ordinary quad.
     pub(crate) backdrop: LoweredBackdrop,
     /// How much of the pane shows, the tint and the backdrop alike.
     pub(crate) opacity: f32,
@@ -41,10 +40,6 @@ impl DrawPanePayload {
     /// look and the opacity in the
     /// axis lanes.
     pub(crate) fn quad(&self) -> DrawQuadPayload {
-        debug_assert!(
-            !self.backdrop.is_none(),
-            "a pane with no backdrop is a rect"
-        );
         let mut kind = match self.backdrop.lens() {
             None => FillKind::BACKDROP,
             Some(lens) if lens.dispersion == 0.0 => FillKind::BACKDROP_LENS,

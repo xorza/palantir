@@ -55,7 +55,7 @@ fn ticketed(buf: &mut PaintCapture, rect: Rect, ticket: PaneTicket, alpha: f32) 
             spin: None,
             tint: RgbaF32::new(1.0, 1.0, 1.0, 0.25).to_f16(),
             stroke: ShapeStroke::NONE,
-            backdrop: LoweredBackdrop::from(BackdropFilter::blur(4.0)),
+            backdrop: LoweredBackdrop::of(BackdropFilter::blur(4.0)).unwrap(),
             opacity: 1.0,
             ticket,
         },
@@ -285,7 +285,7 @@ fn a_panes_quad_names_the_form_of_its_glass() {
             spin: None,
             tint: RgbaF32::TRANSPARENT.to_f16(),
             stroke: ShapeStroke::NONE,
-            backdrop: LoweredBackdrop::from(filter),
+            backdrop: LoweredBackdrop::of(filter).unwrap(),
             opacity: 1.0,
             ticket: ticket(0, rect, 4.0, true),
         };

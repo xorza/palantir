@@ -160,7 +160,7 @@ impl ShapeRecord {
     /// record.
     pub(crate) const fn backdrop(&self) -> Option<LoweredBackdrop> {
         match self {
-            Self::Quad(QuadShape::Rect { backdrop, .. }) if !backdrop.is_none() => Some(*backdrop),
+            Self::Quad(QuadShape::Rect { backdrop, .. }) => *backdrop,
             _ => None,
         }
     }

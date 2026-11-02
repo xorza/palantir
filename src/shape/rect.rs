@@ -127,7 +127,7 @@ impl sealed::LowerShape for RectShape {
             corners,
             fill: lower::brush(store, &fill),
             border: ShapeStroke::from(border),
-            backdrop: LoweredBackdrop::from(backdrop_filter),
+            backdrop: LoweredBackdrop::of(backdrop_filter),
         })
     }
 }

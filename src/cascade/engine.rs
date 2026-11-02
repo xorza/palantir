@@ -553,7 +553,7 @@ fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_
             continue;
         }
         let backdrop = match entry.origin {
-            PaneOrigin::Chrome => tree.chrome(entry.node).map(|row| row.backdrop),
+            PaneOrigin::Chrome => tree.chrome(entry.node).and_then(|row| row.backdrop),
             PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
         }
         .expect("a listed pane has a backdrop");

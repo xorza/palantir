@@ -149,10 +149,8 @@ fn paint_pane(paint: RectPaint, look: PaneLook, out: &mut impl PaintSink) {
 impl PlaneCtx<'_, '_> {
     /// What makes the rect recorded at `site` a pane: `backdrop` and its ticket; `None` for a
     /// rect of no backdrop, or a pane the cascade lists not.
-    fn pane_look(&mut self, site: PaneSite, backdrop: LoweredBackdrop) -> Option<PaneLook> {
-        if backdrop.is_none() {
-            return None;
-        }
+    fn pane_look(&mut self, site: PaneSite, backdrop: Option<LoweredBackdrop>) -> Option<PaneLook> {
+        let backdrop = backdrop?;
         let ticket = self.pane_ticket(site)?;
         Some(PaneLook { backdrop, ticket })
     }

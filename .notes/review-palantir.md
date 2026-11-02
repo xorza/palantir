@@ -128,26 +128,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 1: Backdrop filter lowering and contrast math
-
-Files: `src/shape/paint/lowered_backdrop.rs`, `src/shape/record/mod.rs`, `src/scene/tree/mod.rs`,
-`src/renderer/frontend/encoder/plane_ctx.rs`, `src/primitives/paint/backdrop_filter/`.
-
-- [ ] `lowered_backdrop.rs:35-37,94-122`: `is_none` reads all-zero lanes as "no pane", so
-  `BackdropFilter::NONE.with_saturation(0.0)` (and saturation 0 with a luminance bound) paints
-  nothing. Target: carry `Option<LoweredBackdrop>` in `QuadShape::Rect` and `ChromeRow`, decided
-  by `BackdropFilter::is_noop`. Delete `LoweredBackdrop::NONE` and `is_none`. Readers at
-  `record/mod.rs:161-171`, `tree/mod.rs:495-498`, `plane_ctx.rs:153`. Add a saturation-0 lowering
-  test.
-- [ ] `backdrop_filter/mod.rs:413-423`: `before_storing` wraps `top -= 1` on byte 0 for any ink
-  with Y < 0.175. Release returns a ceiling of about 0.991 where `# Panics` promises a panic.
-  Target: refuse `g < 0` with the documented message before any byte arithmetic. Add `#000000`
-  and a gray just under Y = 0.175 to the refusal test.
-- [ ] `backdrop_filter/mod.rs:100,104`: `min_luminance` and `lens` are `#[animate(snap)]` though
-  both have a neutral (AGENTS.md, "Theme transition"). Target: blend the floor through 0, and give
-  `Lens` an `Animatable` impl so `Option<Lens>` blends through a neutral lens. `max_luminance`
-  keeps its snap, with the reason in its doc.
-
 ### Batch 2: Input routing, focus and keys
 
 Files: `src/input_state/mod.rs`, `src/input_state/pointer/`, `src/widget_core/overlay_scope.rs`,
