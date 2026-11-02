@@ -278,14 +278,17 @@ fn tooltip_bubble_alloc_free() {
     });
 }
 
-/// A theme transition blends into a buffer it keeps, so past the window's first run nothing
-/// allocates. Each 32-frame cycle flips the theme three times, at 0, 4 and 20, against the
-/// 300 ms default's 19 frames of 16 ms: a run starts, turns back to the theme it left and lands
-/// there about ten frames on, and another starts from rest, which the next cycle turns.
+/// A theme transition blends into buffers it keeps, so past the window's first runs nothing
+/// allocates, also when the app holds every theme it sets. Each 64-frame cycle sets a theme four
+/// times against the 300 ms default's 19 frames of 16 ms: at 0 the light one, at 4 back to the dark
+/// one it left, a turn, at 8 a third one while that turn runs, which starts a run from the blend
+/// shown and lands about frame 27, and at 40 the dark one from rest, which lands before the cycle
+/// ends.
 #[test]
 fn theme_transition_alloc_free() {
     let themes = [
         Rc::new(Theme::stock(ColorScheme::Dark)),
+        Rc::new(Theme::stock(ColorScheme::Light)),
         Rc::new(Theme::stock(ColorScheme::Light)),
     ];
     let mut h = harness::new_ui();
@@ -301,13 +304,17 @@ fn theme_transition_alloc_free() {
     };
     h.prime(2, &mut scene);
     let mut frame = 0usize;
-    let mut shown = 0;
     let (mut blends, mut rests) = (0usize, 0usize);
     Audit::new().warmup(64).frames(128).run_frames(|| {
-        if matches!(frame % 32, 0 | 4 | 20) {
-            shown = 1 - shown;
+        let set = match frame % 64 {
+            0 => Some(1),
+            4 | 40 => Some(0),
+            8 => Some(2),
+            _ => None,
+        };
+        if let Some(set) = set {
             h.ui()
-                .set_theme_for(ColorScheme::Dark, Rc::clone(&themes[shown]));
+                .set_theme_for(ColorScheme::Dark, Rc::clone(&themes[set]));
         }
         frame += 1;
         h.advance(Duration::from_millis(16));

@@ -208,7 +208,7 @@ mod output_validity_tests {
             .ui
             .open_window(opened, WindowConfig::new("inspector"));
         driver.ui.set_cursor(CursorIcon::Pointer);
-        driver.ui.window_frame_mut().close_requested = true;
+        driver.ui.window_frame_mut().facts.close_requested = true;
 
         let output = driver.drain_window_output(&mut commands);
         assert_eq!(output.cursor, CursorIcon::Pointer);
@@ -227,7 +227,7 @@ mod output_validity_tests {
         let capacity = driver.ui.window_requests().commands.capacity();
         assert!(capacity > 0);
 
-        driver.ui.window_frame_mut().close_requested = true;
+        driver.ui.window_frame_mut().facts.close_requested = true;
         driver.ui.keep_open();
         let mut vetoed = WindowCommands::default();
         driver.drain_window_output(&mut vetoed);

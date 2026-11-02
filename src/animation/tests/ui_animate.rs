@@ -289,7 +289,7 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
     let (mut h, id, (value, repaint)) = retarget(false);
     assert!(value < 1.0 && repaint, "{value}");
 
-    h.ui().window_frame_mut().shown_again = true;
+    h.ui().window_frame_mut().facts.shown_again = true;
     assert_eq!(step(h.at(Duration::from_millis(32)), id, 1.0), (1.0, false));
     assert_eq!(step(h.at(Duration::from_millis(48)), id, 1.0), (1.0, false));
 }

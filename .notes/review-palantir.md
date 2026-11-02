@@ -126,31 +126,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 9: Ui ownership
-
-Files: `src/ui/{mod.rs,frame_cycle.rs,theme_transition.rs,frame_runtime/,bench.rs}`,
-`src/window/window_frame_state.rs`, `src/host/harness/mod.rs`, `tests/alloc/fixtures/widgets.rs`.
-
-- [ ] `ui/mod.rs:130-137,268-336,401-426,1637-1641`, `frame_cycle.rs:58,64,79-81`: four theme
-  fields with the epoch bump written at four sites. Target: `ui/window_theme.rs::WindowTheme
-  { pair, transition, scheme, epoch }` with `shown`, `get`, `set(scheme, theme, Motion)`,
-  `set_spec`, `advance(dt, resolved, Motion)`, `edit` and `epoch`. Every change of `shown()`
-  bumps the epoch inside. `Ui`'s public methods call it. The transition rules move to plain-input
-  tests, and `ui/tests/theme_transition.rs` and `color_scheme.rs` keep only the frame-level
-  contract.
-- [ ] `theme_transition.rs:20-22,99-120`: a third theme mid-transition clones a shared
-  `Rc<Theme>` (about 15 KB) after warmup. Target: keep both buffers as spares, and write into a
-  spare when `Rc::get_mut` is `None`. Add a third theme to `tests/alloc/fixtures/widgets.rs:286-323`.
-- [ ] `ui/mod.rs:161-164,190,209-210`, `frame_runtime/mod.rs:43-44,247-253`: `Ui::device_epoch`
-  copies the recorded baseline's epoch. Target: one field in `FrameRuntime`, seeded at `Ui::new`,
-  with `device_restored` computed in `take_frame_plan`.
-- [ ] `window_frame_state.rs:11-43`, `ui/mod.rs:778-793`: the four window facts are written twice
-  and copied field by field. Target: `WindowFrameState { facts: WindowFacts, screenshot }`, with
-  `WindowFacts: Default` not gated on winit.
-- [ ] `host/harness/mod.rs:35-36`, `ui/bench.rs:86-87`, `ui/mod.rs:1517`: docs describe the
-  removed 1/240 s step, and claim `input_ctx` never runs in release. Target: rule 8 says "clamped
-  to 0.1 s", the bench comment gives its real reason, and the `input_ctx` sentence goes.
-
 ### Batch 10: Hosts
 
 Files: `src/host/{harness,offscreen,winit/remote,core.rs,host_options.rs,window_driver/tests.rs}`,

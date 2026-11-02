@@ -97,9 +97,28 @@ pub(crate) struct FrameRuntime {
     relayout_requested: bool,
     /// The baseline the retained tree was last recorded under, `None` before the first record.
     recorded: Option<RecordBaseline>,
+    /// The device epoch the window was made under, which the first frame compares with in
+    /// place of a recorded baseline: a device lost between the two still reads as restored.
+    made_under_device: u32,
+    /// Whether this frame's device is not the one the last record drew under: true for the one
+    /// frame after a recovery, which always records (`Ui::device_restored`).
+    device_restored: bool,
 }
 
 impl FrameRuntime {
+    /// A window's runtime before its first frame, made under the device of `device_epoch`.
+    pub(crate) fn new(device_epoch: u32) -> Self {
+        Self {
+            made_under_device: device_epoch,
+            ..Self::default()
+        }
+    }
+
+    /// Whether this frame's device is not the one the last record drew under.
+    pub(crate) const fn device_restored(&self) -> bool {
+        self.device_restored
+    }
+
     /// Advance the shared text clock when this window frames again on the
     /// reading it last framed at.
     ///
@@ -242,6 +261,10 @@ impl FrameRuntime {
         // here keeps the field to one meaning (before: someone asked; after:
         // this frame asked for another).
         let repaint_requested = mem::take(&mut self.repaint_requested);
+        let last_device = self
+            .recorded
+            .map_or(self.made_under_device, |recorded| recorded.device_epoch);
+        self.device_restored = input.record_baseline.device_epoch != last_device;
         let baseline_moved = self.recorded != Some(input.record_baseline);
         let paint_only = !force_full
             && !baseline_moved

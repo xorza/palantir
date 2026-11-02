@@ -32,8 +32,9 @@
 //! 7. **A frozen clock makes every click one run of clicks**: the double-click window is 500 ms
 //!    and 5 px, so [`Harness::advance_past_double_click`] goes between separate clicks.
 //!    [`Harness::play`] waits it out by itself.
-//! 8. **Animation time is not the frame clock.** An animation's step is clamped to 0.1 s and
-//!    quantized at 1/240 s, so it moves through [`Harness::advance_frames`].
+//! 8. **Animation time is not the frame clock.** An animation's step is the frame's delta clamped
+//!    to 0.1 s, so a long wait moves it no further than one step; it moves through
+//!    [`Harness::advance_frames`].
 //! 9. **A frame can run no record pass.** A focused `TextEdit`'s caret blink keeps paint-only
 //!    frames coming for 30 s, and [`Harness::frame_value`] panics on one.
 //! 10. **The size is physical; pointer positions are logical** (`physical / scale`).

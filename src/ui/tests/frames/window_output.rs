@@ -51,7 +51,7 @@ fn window_requests_reach_the_host_after_the_frame() {
         physical_pos: Some(IVec2::new(-120, 48)),
         maximized: true,
     };
-    h.ui().window_frame.placement = placed;
+    h.ui().window_frame.facts.placement = placed;
     let geometry = h.ui().window_geometry();
     assert_eq!(
         geometry.inner_size, SURFACE,
@@ -59,7 +59,7 @@ fn window_requests_reach_the_host_after_the_frame() {
     );
     assert_eq!(geometry.placement, placed);
     // A maximized window persists the size it returns to, not the screen it fills.
-    h.ui().window_frame.restored_size = Some(UVec2::new(640, 360));
+    h.ui().window_frame.facts.restored_size = Some(UVec2::new(640, 360));
     assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(640, 360));
     assert_eq!(
         WindowConfig::new("restored")
@@ -82,7 +82,7 @@ fn close_request_veto_protocol() {
     );
 
     // Host signals a close; an app that vetoes keeps the window open.
-    h.ui().window_frame.close_requested = true;
+    h.ui().window_frame.facts.close_requested = true;
     let requested = h.frame_value(|ui| {
         ui.keep_open();
         ui.close_requested()
@@ -98,7 +98,7 @@ fn close_request_veto_protocol() {
     );
 
     // Same signal, app ignores it: a real close.
-    h.ui().window_frame.close_requested = true;
+    h.ui().window_frame.facts.close_requested = true;
     assert!(h.frame_value(|ui| ui.close_requested()));
     assert!(
         matches!(h.window_commands(), [WindowCommand::Close(WindowToken(0))]),
@@ -112,9 +112,9 @@ fn window_geometry_reports_the_platform_space_not_the_ui_space() {
     let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
     h.frame(|_| {});
     assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(100, 100));
-    h.ui().window_frame.restored_size = Some(UVec2::new(641, 361));
+    h.ui().window_frame.facts.restored_size = Some(UVec2::new(641, 361));
     assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(321, 181));
-    h.ui().window_frame.restored_size = None;
+    h.ui().window_frame.facts.restored_size = None;
 
     let mut zoomed = Harness::builder(SURFACE)
         .mono()

@@ -266,10 +266,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
     // A pending close request vetoes the fast path: the app reads `close_requested` only during record.
-    h.ui().window_frame.close_requested = true;
+    h.ui().window_frame.facts.close_requested = true;
     let r3 = h.at(half * 3).frame(|ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
-    h.ui().window_frame.close_requested = false;
+    h.ui().window_frame.facts.close_requested = false;
     let r4 = h.at(half * 4).frame(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 

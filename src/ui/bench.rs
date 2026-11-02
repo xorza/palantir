@@ -83,8 +83,9 @@ fn bench_theme() -> Theme {
 /// landing, which would show a still frame, comes once in 3,600.
 const THEMING: AnimationSpec = AnimationSpec::duration(Duration::from_secs(60), Easing::Linear);
 
-/// The theming arm's frame: a 60 Hz step of a clock the arm moves itself, as a bench frame can
-/// take less than the 1/240 s an animation steps by, which would hold the phase.
+/// The theming arm's frame: a 60 Hz step of a clock the arm moves itself, so each measured frame
+/// moves the transition by the same phase however long the frame took, and two runs blend the
+/// same themes.
 const THEMING_FRAME: Duration = Duration::from_nanos(16_666_667);
 
 /// The theming arm's other end: the light palette, text 4 px larger and spacing a third wider,

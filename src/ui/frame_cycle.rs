@@ -53,15 +53,13 @@ impl<'a> FrameCycle<'a> {
 
         let first_frame = self.ui.frame_runtime.is_first_frame();
         let device_epoch = self.ui.resources.device().epoch();
-        self.ui.device_restored = device_epoch != self.ui.device_epoch;
-        self.ui.device_epoch = device_epoch;
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui.advance_theme();
         self.ui
             .frame_runtime
             .tick_text_clock(self.ui.resources.text());
         let record_baseline = RecordBaseline {
-            theme_epoch: self.ui.theme_epoch,
+            theme_epoch: self.ui.window_theme.epoch(),
             font_epoch: self.ui.resources.text().font_epoch(),
             device_epoch,
         };
@@ -75,7 +73,7 @@ impl<'a> FrameCycle<'a> {
         });
 
         // After the plan, which spends the requests made before it on this frame.
-        if self.ui.theme_transition.shown().is_some() {
+        if self.ui.window_theme.is_moving() {
             self.ui.frame_runtime.request_repaint();
         }
         self.ui.frame_runtime.begin_pass();

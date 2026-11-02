@@ -153,12 +153,12 @@ fn a_scheme_change_blends_from_the_next_frame() {
         let (mut h, dark) = running();
         h.set_motion_reduced(reduced);
         h.ui().set_theme_for(Light, Rc::clone(&dark));
-        let epoch = h.ui_ref().theme_epoch;
+        let epoch = h.ui_ref().window_theme.epoch();
         h.set_system_color_scheme(Some(Light));
         let report = h.advance(QUARTER).frame(record);
         assert_eq!(h.ui_ref().color_scheme(), Light);
         assert!(shows(&h, &dark));
-        assert_eq!(h.ui_ref().theme_epoch, epoch, "reduced {reduced}");
+        assert_eq!(h.ui_ref().window_theme.epoch(), epoch, "reduced {reduced}");
         assert!(!report.repaint_requested, "reduced {reduced}: nothing runs");
     }
 }
@@ -199,7 +199,7 @@ fn a_change_snaps_where_nothing_should_move() {
 
     let (mut h, _) = running();
     h.ui().set_theme_for(Dark, Rc::clone(&light));
-    h.ui().window_frame.shown_again = true;
+    h.ui().window_frame.facts.shown_again = true;
     h.advance(QUARTER).frame(record);
     assert!(shows(&h, &light), "a frame after a hidden span");
 }

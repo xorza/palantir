@@ -17,9 +17,9 @@ pub(crate) struct ThemeTransition {
     /// `None` snaps.
     spec: Option<AnimationSpec>,
     run: Option<ThemeRun>,
-    /// A finished run's blend, which the next run writes into, so only a window's first run
-    /// allocates.
-    spare: Option<Rc<Theme>>,
+    /// A finished run's buffers, its blend and the start a third theme gave it, which later runs
+    /// write into, so only a window's first runs allocate, also when the app holds its themes.
+    spares: [Option<Rc<Theme>>; 2],
 }
 
 /// One run: `shown` is `lerp(from, to, phase)`.
@@ -36,7 +36,7 @@ impl Default for ThemeTransition {
         Self {
             spec: Some(AnimationSpec::THEME),
             run: None,
-            spare: None,
+            spares: [None, None],
         }
     }
 }
@@ -80,7 +80,7 @@ impl ThemeTransition {
         let spec = self.spec.expect("a change animates only under a spec");
         match &mut self.run {
             None => {
-                let shown = match self.spare.take() {
+                let shown = match take_spare(&mut self.spares) {
                     Some(mut spare) => {
                         Rc::make_mut(&mut spare).clone_from(&old);
                         spare
@@ -97,9 +97,15 @@ impl ThemeTransition {
             Some(run) if Rc::ptr_eq(new, &run.from) => run.phase.turn(PhaseEnd::Start),
             Some(run) if Rc::ptr_eq(new, &run.to) => run.phase.turn(PhaseEnd::End),
             Some(run) => {
-                // The blend becomes the new start; the old start's buffer takes a copy, as the
-                // rest of this frame shows the blend.
+                // The blend becomes the new start, and the rest of this frame shows a copy of it:
+                // in the old start's buffer where the run owns it, else in a spare, as the app
+                // may hold that theme, which a write would clone.
                 mem::swap(&mut run.from, &mut run.shown);
+                if Rc::get_mut(&mut run.shown).is_none()
+                    && let Some(spare) = take_spare(&mut self.spares)
+                {
+                    run.shown = spare;
+                }
                 Rc::make_mut(&mut run.shown).clone_from(&run.from);
                 run.to = Rc::clone(new);
                 run.phase = Phase::start(spec);
@@ -111,7 +117,8 @@ impl ThemeTransition {
     pub(crate) fn snap(&mut self) -> bool {
         match self.run.take() {
             Some(run) => {
-                self.keep_spare(run.shown);
+                keep_spare(&mut self.spares, run.shown);
+                keep_spare(&mut self.spares, run.from);
                 true
             }
             None => false,
@@ -152,11 +159,18 @@ impl ThemeTransition {
         *Rc::make_mut(&mut run.shown) = mix;
         true
     }
+}
 
-    /// Keep `shown` for the next run unless something else holds it.
-    fn keep_spare(&mut self, shown: Rc<Theme>) {
-        if Rc::strong_count(&shown) == 1 {
-            self.spare = Some(shown);
-        }
+/// A spare buffer, if one is kept.
+fn take_spare(spares: &mut [Option<Rc<Theme>>; 2]) -> Option<Rc<Theme>> {
+    spares.iter_mut().find_map(Option::take)
+}
+
+/// Keep `theme` for a later run, unless something else holds it or both spares are kept.
+fn keep_spare(spares: &mut [Option<Rc<Theme>>; 2], mut theme: Rc<Theme>) {
+    if Rc::get_mut(&mut theme).is_some()
+        && let Some(slot) = spares.iter_mut().find(|slot| slot.is_none())
+    {
+        *slot = Some(theme);
     }
 }

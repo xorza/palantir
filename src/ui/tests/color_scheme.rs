@@ -103,19 +103,27 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
     let mut h = Harness::mono(SURFACE);
     h.ui().set_theme_transition(None);
     h.frame(record);
-    let epoch = h.ui_ref().theme_epoch;
+    let epoch = h.ui_ref().window_theme.epoch();
 
     let light = Rc::new(Theme::stock(Light));
     h.ui().set_theme_for(Light, Rc::clone(&light));
-    assert_eq!(h.ui_ref().theme_epoch, epoch, "the light slot is hidden");
+    assert_eq!(
+        h.ui_ref().window_theme.epoch(),
+        epoch,
+        "the light slot is hidden"
+    );
     assert!(Rc::ptr_eq(h.ui_ref().theme_for(Light), &light));
 
     h.frame(|ui| ui.set_scheme_preference(SchemePreference::Dark));
     h.frame(record);
-    assert_eq!(h.ui_ref().theme_epoch, epoch, "dark resolves to dark again");
+    assert_eq!(
+        h.ui_ref().window_theme.epoch(),
+        epoch,
+        "dark resolves to dark again"
+    );
 
     h.ui().set_theme_for(Dark, Theme::stock(Dark));
-    assert_eq!(h.ui_ref().theme_epoch, epoch.wrapping_add(1));
+    assert_eq!(h.ui_ref().window_theme.epoch(), epoch.wrapping_add(1));
 }
 
 /// A write to the shown slot during a record asks for the frame that records the rest under it;
@@ -133,12 +141,12 @@ fn a_shown_theme_write_asks_for_a_frame() {
     });
     assert!(report.repaint_requested);
     h.frame(record);
-    let epoch = h.ui_ref().theme_epoch;
+    let epoch = h.ui_ref().window_theme.epoch();
     let report = h.frame(|ui| {
         record(ui);
         ui.set_theme_for(Dark, Rc::clone(&shown));
         ui.set_theme_for(Light, Theme::stock(Light));
     });
     assert!(!report.repaint_requested);
-    assert_eq!(h.ui_ref().theme_epoch, epoch);
+    assert_eq!(h.ui_ref().window_theme.epoch(), epoch);
 }
