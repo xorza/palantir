@@ -112,14 +112,21 @@ pub(crate) mod internals {
 mod tests {
     use crate::gpu::device::gpu_wait::GpuWait;
     use crate::gpu::surface::map_state::MapState;
-    use crate::gpu::test_gpu::headless_test_gpu;
+    use crate::gpu::test_gpu::isolated_headless_test_gpu;
 
     /// One state serves every map of its buffer: idle, pending, mapped, idle again once cleared,
     /// and mapped again by the next map. A map an unmap aborted lands as no later map: its
     /// callback finds the next generation and leaves it be.
+    ///
+    /// On a device of its own: a poll another test runs on a shared device maps a pending buffer
+    /// with its state set to idle for the length of the map (wgpu-core 30 `Buffer::map`), so the
+    /// unmap that aborts the pending map here would find no map and raise a validation error, as
+    /// it did on the Windows runner. wgpu fixed it after 30.0.1
+    /// (<https://github.com/gfx-rs/wgpu/pull/9959>); the shared device serves again once palantir
+    /// takes a release with the fix.
     #[test]
     fn one_state_serves_each_map_of_its_buffer() {
-        let gpu = headless_test_gpu();
+        let gpu = isolated_headless_test_gpu();
         let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.test.map_state"),
             size: 8,
