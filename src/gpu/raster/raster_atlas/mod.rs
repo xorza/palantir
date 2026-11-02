@@ -490,10 +490,10 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
     /// shelf qualifies, as emptying one in the middle that is too short frees nothing usable.
     fn evict_shelf(&mut self, target: ContentType, h: u16) -> u32 {
         let packer = self.sides[target as usize].atlas.packer();
-        let shelves = packer.shelf_count();
+        let shelves = packer.shelves();
         let uses = &mut self.shelf_uses;
         uses.clear();
-        uses.resize(shelves, ShelfUse::Empty);
+        uses.resize(shelves.len(), ShelfUse::Empty);
         for slot in &self.slots {
             let Some(placement) = slot.placement().filter(|p| p.content == target) else {
                 continue;
@@ -509,12 +509,12 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
             .evict_scans
             .edit(|n| *n += self.slots.len() as u64);
         let evictable = |i: &usize| uses[*i] == ShelfUse::Evictable;
-        let Some(row) = (0..shelves)
+        let Some(shelf_y) = (0..shelves.len())
             .filter(evictable)
-            .filter(|&i| packer.row(i).height >= h)
-            .min_by_key(|&i| packer.row(i).height)
-            .or_else(|| shelves.checked_sub(1).filter(evictable))
-            .map(|i| packer.row(i))
+            .filter(|&i| shelves[i].height >= h)
+            .min_by_key(|&i| shelves[i].height)
+            .or_else(|| shelves.len().checked_sub(1).filter(evictable))
+            .map(|i| shelves[i].y)
         else {
             return 0;
         };
@@ -522,7 +522,7 @@ impl<K: Copy + Eq + Hash + Debug> RasterAtlas<K> {
         for idx in 0..self.slots.len() as u32 {
             let on_shelf = self.slots[idx as usize]
                 .placement()
-                .is_some_and(|p| p.content == target && p.origin.y == row.y);
+                .is_some_and(|p| p.content == target && p.origin.y == shelf_y);
             if on_shelf {
                 self.evict(idx);
                 evicted += 1;

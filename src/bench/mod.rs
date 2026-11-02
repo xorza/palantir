@@ -61,6 +61,7 @@ pub fn run(c: &mut Criterion) {
     paint_animations::bench::atomic(c);
     gpu::bench::atomic(c, &backends);
     gpu::resource::bench::atomic(c, &backends);
+    gpu::resource::shelf_packer::bench::atomic(c);
     raster_atlas::bench::atomic(c, &backends);
     schedule::bench::atomic(c);
     text_backend::bench::atomic(c, &backends);
