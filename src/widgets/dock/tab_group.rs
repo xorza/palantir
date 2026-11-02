@@ -33,11 +33,6 @@ impl<T> TabGroup<T> {
         &self.tabs
     }
 
-    /// The visible tab's slot in [`Self::tabs`].
-    pub const fn active(&self) -> usize {
-        self.active
-    }
-
     /// Removes the tab at `idx`, and keeps showing the tab that was showing; see
     /// [`reindex::after_removal`].
     pub(super) fn remove_tab(&mut self, idx: usize) {

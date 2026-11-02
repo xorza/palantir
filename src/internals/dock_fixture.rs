@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::interned_str::InternedStr;
@@ -48,7 +49,7 @@ impl Tab {
 
 impl Default for DockFixture {
     fn default() -> Self {
-        let mut dock = DockState::new("frame_fixture.dock", Tab::Canvas);
+        let mut dock = DockState::new(Tab::Canvas);
         let primary = dock.primary().id();
         for tab in [Tab::Layers, Tab::History, Tab::Console, Tab::Output] {
             dock.apply(DockOperation::OpenTab { tab });
@@ -78,19 +79,24 @@ impl Default for DockFixture {
 }
 
 impl DockFixture {
+    /// The id the fixture's dock records under.
+    fn id() -> WidgetId {
+        WidgetId::from_hash("frame_fixture.dock")
+    }
+
     /// Record one frame through [`DockView::run`], the one-call surface.
     pub fn record(&mut self, ui: &mut Ui) {
-        DockView::run(ui, &mut self.dock, &mut self.panes);
+        DockView::run(ui, Self::id(), &mut self.dock, &mut self.panes);
     }
 
     /// Record one frame through the two-call surface: scan responses into the reused operation buffer, apply, then show.
     pub fn record_scanned(&mut self, ui: &mut Ui) {
         self.operations.clear();
-        DockView::scan(ui, &self.dock, &mut self.operations);
+        DockView::scan(ui, Self::id(), &self.dock, &mut self.operations);
         for operation in self.operations.drain(..) {
             self.dock.apply(operation);
         }
-        DockView::new(&self.dock, &mut self.operations)
+        DockView::new(Self::id(), &self.dock, &mut self.operations)
             .min_pane(120.0)
             .show(ui, &mut self.panes);
         for operation in self.operations.drain(..) {
@@ -105,11 +111,11 @@ struct Panes;
 impl DockTabs for Panes {
     type Tab = Tab;
 
-    fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
+    fn label(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
         ui.intern(tab.title())
     }
 
-    fn content(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
+    fn body(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt(("pane", tab.title()))
             .size((Sizing::FILL, Sizing::FILL))
@@ -123,7 +129,7 @@ impl DockTabs for Panes {
         tab != Tab::Canvas
     }
 
-    fn tab_content(&mut self, ui: &mut Ui, tab: Tab, chip: &TabChip) {
+    fn chip(&mut self, ui: &mut Ui, tab: Tab, chip: &TabChip) {
         chip.show_label(ui);
         if tab == Tab::Canvas {
             Block::new()

@@ -16,10 +16,11 @@ use crate::theme::close_shown::CloseShown;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::dock::allowed_splits::AllowedSplits;
+use crate::widgets::dock::dock_layout::DockLayout;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_path::DockPath;
-use crate::widgets::dock::dock_state::DockState;
+use crate::widgets::dock::dock_state::{DockState, RATIO_MIN};
 use crate::widgets::dock::dock_tabs::{DockTabMenu, DockTabs};
 use crate::widgets::dock::dock_view::DockView;
 use crate::widgets::dock::pane_geometry::{DropTarget, PaneGeometry};
@@ -45,8 +46,13 @@ fn viewer(n: u32) -> Tab {
 }
 
 /// One pane holding `Main`, plus `Prefs` and one viewer.
+/// The id every dock view in this suite records under.
+fn dock() -> WidgetId {
+    WidgetId::from_hash("test.dock")
+}
+
 fn seeded() -> DockState<Tab> {
-    let mut d = DockState::new("test.dock", Tab::Main);
+    let mut d = DockState::new(Tab::Main);
     let primary = d.primary().id;
     d.insert_into(Tab::Prefs, primary);
     d.insert_into(viewer(1), primary);
@@ -85,7 +91,7 @@ fn split_off(d: &mut DockState<Tab>, tab: Tab, group: TabGroupId, side: SplitSid
 
 #[test]
 fn a_new_dock_is_a_single_pinned_group() {
-    let d = DockState::new("test.dock", Tab::Main);
+    let d = DockState::new(Tab::Main);
     d.validate().unwrap();
     assert_eq!(d.groups().count(), 1);
     assert_eq!(d.primary().tabs, [Tab::Main]);
@@ -465,7 +471,7 @@ fn set_ratio_clamps_and_survives_stale_paths() {
     });
     assert_eq!(
         root_split(&d).split.ratio,
-        DockState::<Tab>::RATIO_MIN,
+        RATIO_MIN,
         "the ratio clamps to the floor"
     );
 
@@ -495,7 +501,7 @@ fn set_ratio_clamps_and_survives_stale_paths() {
     d.validate().unwrap();
     assert_eq!(
         root_split(&d).split.ratio,
-        DockState::<Tab>::RATIO_MIN,
+        RATIO_MIN,
         "stale paths change nothing"
     );
 }
@@ -529,10 +535,11 @@ fn split_depth_is_capped_without_losing_the_tab() {
 }
 
 /// A lower cap refuses sooner, in the model as well as the widget, or a drag
-/// would offer a drop `apply` then dropped.
+/// would offer a drop `apply` then dropped. The split directions are the view's alone, which
+/// `PaneGeometry::classify` holds to.
 #[test]
-fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
-    let mut d = DockState::new("test.dock", Tab::Main).with_max_depth(1);
+fn a_lower_cap_refuses_sooner() {
+    let mut d = DockState::new(Tab::Main).with_max_depth(1);
     let primary = d.primary().id;
     d.insert_into(Tab::Prefs, primary);
     d.insert_into(viewer(1), primary);
@@ -541,15 +548,6 @@ fn a_lower_cap_and_a_narrower_split_policy_both_refuse() {
     let before = d.clone();
     split_off(&mut d, viewer(1), target, SplitSide::Right);
     assert_eq!(d, before, "depth 1 refuses the second level");
-
-    let mut d = DockState::new("test.dock", Tab::Main).with_allowed_splits(AllowedSplits::Row);
-    let primary = d.primary().id;
-    d.insert_into(Tab::Prefs, primary);
-    let before = d.clone();
-    split_off(&mut d, Tab::Prefs, primary, SplitSide::Bottom);
-    assert_eq!(d, before, "a column split is refused under Row");
-    split_off(&mut d, Tab::Prefs, primary, SplitSide::Right);
-    assert_eq!(d.groups().count(), 2, "a row split is still offered");
 }
 
 #[test]
@@ -610,9 +608,9 @@ fn serde_roundtrips_through_ron() {
     let mut d = seeded();
     let primary = d.primary().id;
     split_off(&mut d, viewer(1), primary, SplitSide::Bottom);
-    let text = ser::to_string(&d).expect("serialize");
-    let back: DockState<Tab> = ron::from_str(&text).expect("deserialize");
-    assert_eq!(back, d);
+    let text = ser::to_string(d.layout()).expect("serialize");
+    let layout: DockLayout<Tab> = ron::from_str(&text).expect("deserialize");
+    assert_eq!(DockState::load(layout, Tab::Main), Ok(d));
 }
 
 /// A saved layout that breaks an invariant fails to load with that error.
@@ -744,8 +742,9 @@ fn loading_rejects_each_corruption() {
 
 /// Save `d` and read it back, expecting the read to fail.
 fn load_err(d: &DockState<Tab>) -> String {
-    let text = ser::to_string(d).expect("a corrupt tree still serializes");
-    ron::from_str::<DockState<Tab>>(&text)
+    let text = ser::to_string(d.layout()).expect("a corrupt tree still serializes");
+    let layout: DockLayout<Tab> = ron::from_str(&text).expect("a corrupt tree still parses");
+    DockState::load(layout, d.pinned())
         .expect_err("a corrupt layout must not load")
         .to_string()
 }
@@ -783,7 +782,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         allowed,
         edge_fraction,
     };
-    let classify = |p: Vec2| geometry(true, AllowedSplits::All, 0.25).classify(p);
+    let classify = |p: Vec2| geometry(true, AllowedSplits::ALL, 0.25).classify(p);
 
     // Over the strip, the strip's own slot; it marks the caret, so nothing washes.
     let hit = classify(Vec2::new(50.0, 15.0));
@@ -821,14 +820,14 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
     // inside a 0.25 wedge and outside a 0.2 one.
     let p = Vec2::new(90.0, 165.0);
     assert_eq!(classify(p).drop(), left.drop());
-    let narrow = geometry(true, AllowedSplits::All, 0.2).classify(p);
+    let narrow = geometry(true, AllowedSplits::ALL, 0.2).classify(p);
     assert_eq!(narrow.drop(), DockDrop::Into { group, idx: 2 });
 
     // At the cap, or where the policy forbids the nearest edge, wedges join.
     let at = Vec2::new(20.0, 60.0);
-    let capped = geometry(false, AllowedSplits::All, 0.25).classify(at);
+    let capped = geometry(false, AllowedSplits::ALL, 0.25).classify(at);
     assert_eq!(capped.drop(), DockDrop::Into { group, idx: 2 });
-    let col_only = geometry(true, AllowedSplits::Col, 0.25).classify(at);
+    let col_only = geometry(true, AllowedSplits::COL, 0.25).classify(at);
     assert_eq!(
         col_only.drop(),
         DockDrop::Split {
@@ -837,7 +836,7 @@ fn a_drop_classifies_into_strip_slots_join_and_wedges() {
         },
         "the nearest *offered* edge wins when Left is refused"
     );
-    let none = geometry(true, AllowedSplits::None, 0.25).classify(at);
+    let none = geometry(true, AllowedSplits::NONE, 0.25).classify(at);
     assert_eq!(none.drop(), DockDrop::Into { group, idx: 2 });
 }
 
@@ -848,7 +847,7 @@ struct Labels;
 impl DockTabs for Labels {
     type Tab = Tab;
 
-    fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
+    fn label(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
         ui.intern(match tab {
             Tab::Main => "main",
             Tab::Prefs => "prefs",
@@ -856,7 +855,7 @@ impl DockTabs for Labels {
         })
     }
 
-    fn content(&mut self, ui: &mut Ui, _tab: Tab, _size: Option<Size>) {
+    fn body(&mut self, ui: &mut Ui, _tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .id_salt("body")
             .size((Sizing::FILL, Sizing::FILL))
@@ -878,14 +877,14 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     h.prime(3, |ui| {
-        DockView::run(ui, &mut d, &mut tabs);
+        DockView::run(ui, dock(), &mut d, &mut tabs);
     });
 
     let left_pane = h
-        .rect(DockView::pane_id(&d, primary))
+        .rect(DockView::pane_id(dock(), primary))
         .expect("the left pane arranged");
     let right_pane = h
-        .rect(DockView::pane_id(&d, right))
+        .rect(DockView::pane_id(dock(), right))
         .expect("the right pane arranged");
     // 0.5 halves the 600 px less the splitter's 1 px rule; full height each.
     assert_eq!(left_pane, Rect::new(0.0, 0.0, 299.5, 400.0));
@@ -894,7 +893,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     // One 35.2 px chip row (19.2 px line, 8 px padding each side) under 4 px of top padding; content takes the rest.
     for (group, pane) in [(primary, left_pane), (right, right_pane)] {
         let strip = h
-            .rect(DockView::strip_id(&d, group))
+            .rect(DockView::strip_id(dock(), group))
             .expect("the strip arranged");
         assert_eq!(
             strip,
@@ -903,7 +902,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
                 ..pane
             }
         );
-        let content = h.arranged(DockView::content_id(&d, group));
+        let content = h.arranged(DockView::content_id(dock(), group));
         assert_eq!(
             content,
             Rect::new(
@@ -917,12 +916,12 @@ fn a_split_dock_tiles_its_panes_and_strips() {
 
     // Chip ids are the strip's, keyed on the tab, as the navigation scan polls.
     let chip = TabStrip::chip_id(
-        DockView::strip_id(&d, primary),
+        DockView::strip_id(dock(), primary),
         DockView::tab_key(Tab::Prefs),
     );
     let chip_rect = h.rect(chip).expect("the Prefs chip arranged");
     let strip = h
-        .rect(DockView::strip_id(&d, primary))
+        .rect(DockView::strip_id(dock(), primary))
         .expect("the strip arranged");
     // The Prefs chip sits below the 4 px padding, down to the strip's bottom. A chip is 12 px of
     // padding, its mono label at 8 px a char, an 8 px gap, the 16 px close and a 4 px trailing
@@ -941,14 +940,14 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
     let mut run = |h: &mut Harness, d: &mut DockState<Tab>| {
-        h.frame(|ui| DockView::run(ui, d, &mut tabs));
-        h.arranged(DockView::pane_id(d, primary)).size.w
+        h.frame(|ui| DockView::run(ui, dock(), d, &mut tabs));
+        h.arranged(DockView::pane_id(dock(), primary)).size.w
     };
     for _ in 0..3 {
         run(&mut h, &mut d);
     }
     h.press(
-        DockView::splitter_id(&d, DockPath::ROOT).with("divider"),
+        DockView::splitter_id(dock(), DockPath::ROOT).with("divider"),
         PointerButton::Left,
     );
     run(&mut h, &mut d);
@@ -957,7 +956,7 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
     h.release(PointerButton::Left);
     widths.extend([run(&mut h, &mut d), run(&mut h, &mut d)]);
 
-    let floor = DockState::<Tab>::RATIO_MIN * 599.0;
+    let floor = RATIO_MIN * 599.0;
     assert!(
         (widths[0] - floor).abs() < 1e-3,
         "the drag stops at the clamp: {widths:?}, within an f32 rounding of the Fill split",
@@ -966,7 +965,7 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
         widths.iter().all(|w| *w == widths[0]),
         "no frame moves the divider: {widths:?}",
     );
-    assert_eq!(root_split(&d).split.ratio(), DockState::<Tab>::RATIO_MIN);
+    assert_eq!(root_split(&d).split.ratio(), RATIO_MIN);
 }
 
 /// A tab carried over a strip marks its slot with the strip's caret and washes nothing; over
@@ -976,24 +975,24 @@ fn a_carried_tab_marks_a_strip_slot_or_washes_a_region() {
     let mut d = seeded();
     let mut tabs = Labels;
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
-    let strip = DockView::strip_id(&d, d.primary().id);
+    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    let strip = DockView::strip_id(dock(), d.primary().id);
     let caret = strip.with("caret");
-    let wash = DockView::dock_id(&d).with("preview");
+    let wash = dock().with("preview");
 
     h.press(
         TabStrip::chip_id(strip, DockView::tab_key(Tab::Main)),
         PointerButton::Left,
     );
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     let last = h.center_of(TabStrip::chip_id(strip, DockView::tab_key(viewer(1))));
     h.drag_to(last + Vec2::new(4.0, 0.0));
-    h.prime(2, |ui| DockView::run(ui, &mut d, &mut tabs));
+    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert!(h.rect(caret).is_some(), "over the strip, its caret");
     assert!(h.rect(wash).is_none(), "and no wash");
 
     h.drag_to(Vec2::new(300.0, 200.0));
-    h.prime(2, |ui| DockView::run(ui, &mut d, &mut tabs));
+    h.prime(2, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert!(h.rect(caret).is_none(), "over the content, no caret");
     assert!(h.rect(wash).is_some(), "but a wash");
 }
@@ -1005,17 +1004,17 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
     let mut d = seeded();
     let mut h = Harness::mono(SURFACE);
     let mut tabs = Labels;
-    h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
+    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert_eq!(d.primary().active_tab(), Tab::Main);
 
     let chip = TabStrip::chip_id(
-        DockView::strip_id(&d, d.primary().id),
+        DockView::strip_id(dock(), d.primary().id),
         DockView::tab_key(Tab::Prefs),
     );
     h.click(chip);
     let content = h.frame_value(|ui| {
-        DockView::run(ui, &mut d, &mut tabs);
-        ui.response_for(DockView::content_id(&d, d.primary().id))
+        DockView::run(ui, dock(), &mut d, &mut tabs);
+        ui.response_for(DockView::content_id(dock(), d.primary().id))
             .rect
     });
     assert_eq!(
@@ -1033,12 +1032,12 @@ fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut h = Harness::mono(SURFACE);
     h.ui().theme_mut().tabs.close_shown = CloseShown::Always;
     let mut tabs = Labels;
-    h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
+    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
 
-    let strip = DockView::strip_id(&d, d.primary().id);
+    let strip = DockView::strip_id(dock(), d.primary().id);
     let close = TabStrip::close_id(strip, DockView::tab_key(Tab::Prefs));
     h.click(close);
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
 
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
@@ -1061,12 +1060,13 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
     fn frame(h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels) {
         h.frame(|ui| {
             let mut operations = Vec::new();
-            DockView::scan(ui, d, &mut operations);
+            DockView::scan(ui, dock(), d, &mut operations);
             #[expect(clippy::iter_with_drain, reason = "the buffer is filled again below")]
             for operation in operations.drain(..) {
                 d.apply(operation);
             }
-            DockView::new(&*d, &mut operations)
+            DockView::new(dock(), &*d, &mut operations)
+                .id(dock())
                 .overflow(TabOverflow::Menu)
                 .show(ui, tabs);
             for operation in operations {
@@ -1084,7 +1084,7 @@ fn a_pick_from_the_overflow_menu_activates_its_tab() {
         frame(&mut h, &mut d, &mut tabs);
     }
 
-    let strip = DockView::strip_id(&d, d.primary().id);
+    let strip = DockView::strip_id(dock(), d.primary().id);
     let chevron = strip.with("overflow");
     assert!(
         h.rect(chevron).is_some(),
@@ -1120,12 +1120,12 @@ impl MenuOn {
 impl DockTabs for MenuOn {
     type Tab = Tab;
 
-    fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
-        Labels.title(ui, tab)
+    fn label(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
+        Labels.label(ui, tab)
     }
 
-    fn content(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
-        Labels.content(ui, tab, size);
+    fn body(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
+        Labels.body(ui, tab, size);
     }
 
     fn has_tab_menu(&mut self, tab: Tab) -> bool {
@@ -1152,8 +1152,8 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     let mut d = seeded();
     let mut tabs = MenuOn(Tab::Prefs);
     let mut h = Harness::mono(SURFACE);
-    h.prime(3, |ui| DockView::run(ui, &mut d, &mut tabs));
-    let strip = DockView::strip_id(&d, d.primary().id);
+    h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    let strip = DockView::strip_id(dock(), d.primary().id);
     let chip = |tab| TabStrip::chip_id(strip, DockView::tab_key(tab));
 
     let at = h
@@ -1161,7 +1161,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the Main chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert!(!Menu::is_open(h.ui_ref(), chip(Tab::Main)));
     assert!(h.rect(MenuOn::item_id()).is_none(), "Main has no menu");
 
@@ -1170,7 +1170,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the Prefs chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert!(Menu::is_open(h.ui_ref(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_some(),
@@ -1178,8 +1178,8 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
     );
 
     h.click(MenuOn::item_id());
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert_eq!(
         d.all_tabs().collect::<Vec<_>>(),
         [Tab::Main, viewer(1)],
@@ -1197,10 +1197,10 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .expect("the viewer chip arranged")
         .center();
     h.right_click(at);
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert!(Menu::is_open(h.ui_ref(), chip(viewer(1))));
     d.retain_tabs(|tab| tab != viewer(1));
-    h.frame(|ui| DockView::run(ui, &mut d, &mut tabs));
+    h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
     assert!(!Menu::is_open(h.ui_ref(), chip(viewer(1))));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
@@ -1213,7 +1213,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
 /// refuses a further split.
 #[test]
 fn a_layout_deeper_than_the_default_cap_loads() {
-    let mut d = DockState::new("deep.dock", Tab::Main).with_max_depth(6);
+    let mut d = DockState::new(Tab::Main).with_max_depth(6);
     let mut group = d.primary().id;
     for n in 1..=5 {
         d.insert_into(viewer(n), group);
@@ -1223,8 +1223,9 @@ fn a_layout_deeper_than_the_default_cap_loads() {
             .expect("the split pane holds the tab")
             .group;
     }
-    let text = ser::to_string(&d).expect("serialize");
-    let loaded: DockState<Tab> = ron::from_str(&text).expect("a depth-5 layout loads");
+    let text = ser::to_string(d.layout()).expect("serialize");
+    let layout: DockLayout<Tab> = ron::from_str(&text).expect("deserialize");
+    let loaded = DockState::load(layout, Tab::Main).expect("a depth-5 layout loads");
     assert_eq!(loaded.groups().count(), 6);
     assert!(
         !loaded.can_split(group),
@@ -1243,13 +1244,13 @@ fn a_carried_tab_leaves_with_the_dock() {
     let mut tabs = Labels;
     let mut h = Harness::mono(UVec2::new(400, 200));
     let record = |h: &mut Harness, d: &mut DockState<Tab>, tabs: &mut Labels| {
-        h.frame(|ui| DockView::run(ui, d, tabs));
+        h.frame(|ui| DockView::run(ui, dock(), d, tabs));
     };
     for _ in 0..2 {
         record(&mut h, &mut d, &mut tabs);
     }
-    let dock = DockView::dock_id(&d);
-    let strip = DockView::strip_id(&d, d.primary().id);
+    let dock_id = dock();
+    let strip = DockView::strip_id(dock_id, d.primary().id);
     let chip = TabStrip::chip_id(strip, DockView::tab_key(Tab::Prefs));
     let at = h.center_of(chip);
     h.press(at, PointerButton::Left);
@@ -1257,7 +1258,7 @@ fn a_carried_tab_leaves_with_the_dock() {
     h.drag_to(at + Vec2::new(0.0, 60.0));
     record(&mut h, &mut d, &mut tabs);
     let carried = |h: &Harness| {
-        let drag = h.ui_ref().state::<TabDrag<Tab>>(dock)?;
+        let drag = h.ui_ref().state::<TabDrag<Tab>>(dock_id)?;
         drag.tab
     };
     assert_eq!(carried(&h), Some(Tab::Prefs), "the drag carries the tab");
@@ -1268,9 +1269,9 @@ fn a_carried_tab_leaves_with_the_dock() {
 /// The builder sets no size the caller did not: `show` lays the fill under the caller's.
 #[test]
 fn a_new_dock_view_has_no_authored_size() {
-    let d = DockState::new("test.dock", Tab::Main);
+    let d = DockState::new(Tab::Main);
     let mut operations = Vec::new();
-    let mut view = DockView::new(&d, &mut operations);
+    let mut view = DockView::new(dock(), &d, &mut operations);
     assert_eq!(view.configure().widget.authored_size(), None);
 }
 
@@ -1287,11 +1288,12 @@ fn the_dock_restyles_its_strips_and_tab_menus() {
         strips.chip_padding = strips.chip_padding + Spacing::new(0.0, 5.0, 0.0, 5.0);
         let mut menu = Theme::default().menu;
         menu.padding = menu.padding + Spacing::all(9.0);
-        let strip = DockView::strip_id(&d, d.primary().id);
+        let strip = DockView::strip_id(dock(), d.primary().id);
         let chip = TabStrip::chip_id(strip, DockView::tab_key(Tab::Prefs));
         let mut h = Harness::mono(SURFACE);
         let mut scene = |ui: &mut Ui| {
-            DockView::new(&d, &mut ops)
+            DockView::new(dock(), &d, &mut ops)
+                .id(dock())
                 .tabs_style(styled.then_some(&strips))
                 .menu_style(styled.then_some(&menu))
                 .show(ui, &mut tabs);

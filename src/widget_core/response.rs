@@ -146,5 +146,5 @@ mod tests {
     assert_not_impl_any!(ExpanderResponse<'static, ()>: Deref);
     assert_not_impl_any!(EditableLabelResponse<'static>: Deref);
     assert_not_impl_any!(TabStripResponse<'static>: Deref);
-    assert_not_impl_any!(TabbedViewResponse<'static>: Deref);
+    assert_not_impl_any!(TabbedViewResponse<'static, ()>: Deref);
 }

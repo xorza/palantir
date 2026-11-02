@@ -66,7 +66,7 @@ impl State {
 
 impl Default for State {
     fn default() -> Self {
-        let mut dock = DockState::new("showcase.dock", Tab::Canvas);
+        let mut dock = DockState::new(Tab::Canvas);
         let primary = dock.primary().id();
         for tab in OPENABLE {
             dock.apply(DockOperation::OpenTab { tab });
@@ -99,11 +99,11 @@ struct Panes<'a> {
 impl DockTabs for Panes<'_> {
     type Tab = Tab;
 
-    fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
+    fn label(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
         ui.intern(tab.label())
     }
 
-    fn content(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
+    fn body(&mut self, ui: &mut Ui, tab: Tab, size: Option<Size>) {
         let k = self.k;
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
@@ -141,7 +141,7 @@ impl DockTabs for Panes<'_> {
         tab != Tab::Canvas
     }
 
-    fn tab_content(&mut self, ui: &mut Ui, tab: Tab, chip: &TabChip) {
+    fn chip(&mut self, ui: &mut Ui, tab: Tab, chip: &TabChip) {
         chip.show_label(ui);
         if tab == Tab::Canvas {
             Block::new()
@@ -185,14 +185,15 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             .show(ui, |ui| {
                 // The scan settles the arrangement before the record walks it, so a click draws on the frame it lands.
                 s.operations.clear();
-                DockView::scan(ui, &s.dock, &mut s.operations);
+                let dock_id = WidgetId::from_hash("showcase::dock");
+                DockView::scan(ui, dock_id, &s.dock, &mut s.operations);
                 s.apply_operations();
                 let mut panes = Panes {
                     k,
                     color: &mut s.color,
                     last: s.last,
                 };
-                DockView::new(&s.dock, &mut s.operations)
+                DockView::new(dock_id, &s.dock, &mut s.operations)
                     .min_pane(140.0)
                     .show(ui, &mut panes);
                 s.apply_operations();

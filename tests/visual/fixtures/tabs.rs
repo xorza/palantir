@@ -16,7 +16,10 @@ fn tab_strip_matches_golden() {
         let items: Vec<TabItem> = ["curves", "levels", "export"]
             .into_iter()
             .enumerate()
-            .map(|(i, label)| TabItem::new(i as u64, ui.intern(label)))
+            .map(|(i, label)| TabItem {
+                closable: true,
+                ..TabItem::new(i as u64, ui.intern(label))
+            })
             .collect();
         Panel::vstack()
             .id_salt("strip-well")
@@ -50,7 +53,6 @@ fn tabbed_view_matches_golden() {
             *page = 1;
             TabbedView::new(page, &["Color", "Geometry", "Metadata"])
                 .id_salt("pages")
-                .closable(false)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui, idx| {
                     Panel::vstack()

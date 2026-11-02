@@ -2,28 +2,23 @@
 
 use crate::widgets::dock::split_side::{SplitDirection, SplitSide};
 
-/// The split directions a [`DockView`](crate::DockView) offers during a tab drag; a refused one degrades to a join.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum AllowedSplits {
-    /// Every direction. The default.
-    #[default]
-    All,
-    /// Only side-by-side splits.
-    Row,
-    /// Only stacking splits.
-    Col,
-    /// No splits; a dragged tab can only join a strip.
-    None,
+flag_set! {
+    /// The split directions a [`DockView`](crate::DockView) offers during a tab drag; a refused
+    /// one degrades to a join. `ALL` offers both, and `NONE` lets a dragged tab only join a strip.
+    pub struct AllowedSplits: u8 {
+        /// Side-by-side splits.
+        const ROW = 1 << 0;
+        /// Stacking splits.
+        const COL = 1 << 1;
+    }
 }
 
 impl AllowedSplits {
     /// Whether a split onto `side` is offered.
-    pub fn allows(self, side: SplitSide) -> bool {
-        match self {
-            Self::All => true,
-            Self::Row => side.direction() == SplitDirection::Row,
-            Self::Col => side.direction() == SplitDirection::Col,
-            Self::None => false,
-        }
+    pub(crate) const fn allows(self, side: SplitSide) -> bool {
+        self.contains(match side.direction() {
+            SplitDirection::Row => Self::ROW,
+            SplitDirection::Col => Self::COL,
+        })
     }
 }

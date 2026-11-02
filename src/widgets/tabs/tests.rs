@@ -31,9 +31,10 @@ use crate::widgets::scroll::Scroll;
 use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::tabs::reindex;
 use crate::widgets::tabs::tab_item::TabItem;
+use crate::widgets::tabs::tab_move::TabMove;
 use crate::widgets::tabs::tab_strip::internals::insertion_slot;
 use crate::widgets::tabs::tab_strip::{TabOverflow, TabStrip};
-use crate::widgets::tabs::tabbed_view::{TabMove, TabbedView, TabbedViewResponse};
+use crate::widgets::tabs::tabbed_view::{TabbedView, TabbedViewResponse};
 use crate::widgets::text::Text;
 use std::iter;
 
@@ -43,11 +44,14 @@ fn strip_id() -> WidgetId {
     WidgetId::from_hash("test.strip")
 }
 
-/// Three chips keyed 10 / 20 / 30 so a key can't be mistaken for a slot.
+/// Three closable chips keyed 10 / 20 / 30 so a key can't be mistaken for a slot.
 fn items(ui: &mut Ui) -> Vec<TabItem> {
     [(10u64, "alpha"), (20, "beta"), (30, "gamma")]
         .into_iter()
-        .map(|(key, label)| TabItem::new(key, ui.intern(label)))
+        .map(|(key, label)| TabItem {
+            closable: true,
+            ..TabItem::new(key, ui.intern(label))
+        })
         .collect()
 }
 
@@ -380,13 +384,9 @@ fn a_close_click_reports_a_close_and_not_a_click() {
             .id(strip_id())
             .selected(0)
             .show(ui, |ui, chip| chip.show_label(ui));
-        (r.clicked, r.activated(), r.closed)
+        (r.activated, r.closed)
     });
-    assert_eq!(
-        hit,
-        (None, None, Some(1)),
-        "the close won over the activation"
-    );
+    assert_eq!(hit, (None, Some(1)), "the close won over the activation");
 }
 
 /// A plain chip click reports its slot, and nothing else.
@@ -403,9 +403,13 @@ fn a_chip_click_reports_its_slot() {
             .id(strip_id())
             .selected(0)
             .show(ui, |ui, chip| chip.show_label(ui));
-        (r.clicked, r.keyed, r.activated(), r.closed)
+        (r.unscanned, r.activated, r.closed)
     });
-    assert_eq!(hit, (Some(2), None, Some(2), None));
+    assert_eq!(
+        hit,
+        (None, Some(2), None),
+        "a click is no unscanned activation"
+    );
 }
 
 /// Keyboard travel (WAI-ARIA tabs), reported apart from a pointer click.
@@ -426,8 +430,11 @@ fn arrows_home_and_end_travel_and_wrap() {
                 .id(strip_id())
                 .selected(selected)
                 .show(ui, |ui, chip| chip.show_label(ui));
-            assert_eq!(r.activated(), r.keyed, "a keyboard move is an activation");
-            (r.keyed, r.clicked)
+            assert_eq!(
+                r.activated, r.unscanned,
+                "a keyboard move is an unscanned activation"
+            );
+            r.unscanned
         });
         h.set_modifiers(Modifiers::default());
         hit
@@ -435,27 +442,27 @@ fn arrows_home_and_end_travel_and_wrap() {
 
     assert_eq!(
         travel(&mut h, Key::ArrowRight, Modifiers::default(), 0),
-        (Some(1), None),
+        Some(1),
         "right steps forward, and reports as a keyboard move"
     );
     assert_eq!(
         travel(&mut h, Key::ArrowLeft, Modifiers::default(), 0),
-        (Some(2), None),
+        Some(2),
         "left wraps around the near end"
     );
     assert_eq!(
-        travel(&mut h, Key::End, Modifiers::default(), 0).0,
+        travel(&mut h, Key::End, Modifiers::default(), 0),
         Some(2),
         "End jumps to the last chip"
     );
     assert_eq!(
-        travel(&mut h, Key::Home, Modifiers::default(), 2).0,
+        travel(&mut h, Key::Home, Modifiers::default(), 2),
         Some(0),
         "Home jumps to the first"
     );
     assert_eq!(
         travel(&mut h, Key::ArrowRight, Modifiers::default(), 2),
-        (Some(0), None),
+        Some(0),
         "right wraps around the far end"
     );
 
@@ -464,7 +471,7 @@ fn arrows_home_and_end_travel_and_wrap() {
         ..Modifiers::default()
     };
     assert_eq!(
-        travel(&mut h, Key::Tab, ctrl, 0).0,
+        travel(&mut h, Key::Tab, ctrl, 0),
         Some(1),
         "Ctrl+Tab cycles forward"
     );
@@ -475,7 +482,7 @@ fn arrows_home_and_end_travel_and_wrap() {
         ..Modifiers::default()
     };
     assert_eq!(
-        travel(&mut h, Key::Tab, ctrl_shift, 0).0,
+        travel(&mut h, Key::Tab, ctrl_shift, 0),
         Some(2),
         "Ctrl+Shift+Tab cycles back"
     );
@@ -488,7 +495,7 @@ fn arrows_home_and_end_travel_and_wrap() {
             TabStrip::new(&items)
                 .id(strip_id())
                 .show(ui, |ui, chip| chip.show_label(ui))
-                .keyed
+                .unscanned
         });
         assert_eq!(keyed, Some(want), "{key:?} with no selection");
     }
@@ -507,7 +514,7 @@ fn a_keyboard_move_pans_the_band_to_the_chip() {
                 .selected(selected)
                 .size((Sizing::fixed(120.0), Sizing::HUG))
                 .show(ui, |ui, chip| chip.show_label(ui))
-                .keyed
+                .unscanned
         })
     };
     let mut h = Harness::mono(SURFACE);
@@ -611,7 +618,7 @@ fn travel_needs_focus_inside_the_strip() {
             .id(strip_id())
             .selected(0)
             .show(ui, |ui, chip| chip.show_label(ui))
-            .keyed
+            .unscanned
     });
     assert_eq!(keyed, None);
 }
@@ -633,7 +640,7 @@ fn a_focused_strip_cycles_on_ctrl_tab_and_yields_bare_tab() {
                     .id(strip_id())
                     .selected(0)
                     .show(ui, |ui, chip| chip.show_label(ui))
-                    .keyed;
+                    .unscanned;
                 (at_root, keyed)
             })
             .inner
@@ -697,7 +704,7 @@ fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
             TabStrip::new(&items)
                 .id(strip_id())
                 .selected(0)
-                .drop_caret(Some(slot))
+                .dock_drag(Some(slot))
                 .size((Sizing::fixed(120.0), Sizing::HUG))
                 .show(ui, |ui, chip| chip.show_label(ui));
         }
@@ -778,12 +785,8 @@ struct Edges {
     reordered: Option<TabMove>,
 }
 
-impl From<TabbedViewResponse<'_>> for Edges {
-    fn from(response: TabbedViewResponse<'_>) -> Self {
-        assert_eq!(
-            response.committed, response.changed,
-            "a pick commits at once"
-        );
+impl<R> From<TabbedViewResponse<'_, R>> for Edges {
+    fn from(response: TabbedViewResponse<'_, R>) -> Self {
         Self {
             changed: response.changed,
             activated: response.activated,
@@ -838,26 +841,26 @@ fn a_tabbed_view_writes_its_binding_and_shows_the_new_page() {
 }
 
 /// An out-of-range page index shows the last page without rewriting the binding;
-/// an empty list records a strip with no page.
+/// an empty list records a strip with no page. What the body returns is the response's `inner`.
 #[test]
 fn a_stale_page_shows_the_last_one_and_no_pages_show_none() {
     let mut h = Harness::mono(SURFACE);
     let view = WidgetId::from_hash("test.stale");
     let mut page = 7usize;
-    let mut drawn = None;
-    h.frame(|ui| {
+    let drawn = h.frame_value(|ui| {
         TabbedView::new(&mut page, &PAGES)
             .id(view)
-            .show(ui, |_, idx| drawn = Some(idx));
+            .show(ui, |_, idx| idx)
+            .inner
     });
     assert_eq!((page, drawn), (7, Some(2)));
 
-    let mut drawn = None;
     let no_tabs: [&str; 0] = [];
-    h.frame(|ui| {
+    let drawn = h.frame_value(|ui| {
         TabbedView::new(&mut page, &no_tabs)
             .id(view)
-            .show(ui, |_, idx| drawn = Some(idx));
+            .show(ui, |_, idx| idx)
+            .inner
     });
     assert_eq!((page, drawn), (7, None));
     assert!(
@@ -1005,6 +1008,7 @@ fn a_close_moves_the_binding_with_the_shown_page() {
                   drawn: &mut &'static str| {
         let edges: Edges = TabbedView::new(bound, pages.as_slice())
             .id(view)
+            .closable(true)
             .show(ui, |_, idx| *drawn = pages[idx])
             .into();
         if let Edges {
@@ -1215,9 +1219,13 @@ fn a_partly_clipped_chip_raises_the_overflow_chevron() {
             .overflow(TabOverflow::Menu)
             .size((Sizing::fixed(half_way), Sizing::HUG))
             .show(ui, |ui, chip| chip.show_label(ui));
-        (r.menu_picked, r.clicked, r.activated())
+        (r.unscanned, r.activated)
     });
-    assert_eq!(picked, (Some(2), None, Some(2)));
+    assert_eq!(
+        picked,
+        (Some(2), Some(2)),
+        "a menu pick is an unscanned activation"
+    );
 
     // Menu state is the chevron's: it comes back closed.
     h.click(chevron);

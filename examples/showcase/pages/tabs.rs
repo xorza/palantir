@@ -51,12 +51,13 @@ impl State {
             let page = self.pages.remove(idx);
             self.last = Some(Edit::Closed(page));
         }
-        if let Some(TabMove { from, to }) = reordered {
-            let page = self.pages.remove(from);
-            // `to` names the slot before the move, so a page moved right lands one short of it.
-            let to = if to > from { to - 1 } else { to };
-            self.pages.insert(to, page);
-            self.last = Some(Edit::Moved { page, to });
+        if let Some(moved) = reordered {
+            let page = self.pages[moved.from];
+            moved.apply(&mut self.pages);
+            self.last = Some(Edit::Moved {
+                page,
+                to: moved.landing(),
+            });
         }
     }
 }
@@ -146,16 +147,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     .show(ui, |ui| {
                         s.items.clear();
                         for (i, label) in MANY.iter().enumerate() {
-                            s.items.push(TabItem {
-                                closable: false,
-                                ..TabItem::new(i as u64, ui.intern(*label))
-                            });
+                            s.items.push(TabItem::new(i as u64, ui.intern(*label)));
                         }
                         let hit = TabStrip::new(&s.items)
                             .selected(s.overflowing)
                             .overflow(TabOverflow::Menu)
                             .show(ui, |ui, chip| chip.show_label(ui));
-                        if let Some(i) = hit.activated() {
+                        if let Some(i) = hit.activated {
                             s.overflowing = i;
                         }
                     });
@@ -168,7 +166,10 @@ fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
     support::well(ui, k, |ui| {
         s.items.clear();
         for &key in &s.open {
-            s.items.push(TabItem::new(key, fmt!(ui, "layer {key}")));
+            s.items.push(TabItem {
+                closable: true,
+                ..TabItem::new(key, fmt!(ui, "layer {key}"))
+            });
         }
         let hit = TabStrip::new(&s.items)
             .selected(s.picked)
@@ -178,7 +179,7 @@ fn strip_demo(ui: &mut Ui, k: Kit, s: &mut State) {
         {
             s.open.remove(slot);
             s.picked = s.picked.min(s.open.len() - 1);
-        } else if let Some(slot) = hit.activated() {
+        } else if let Some(slot) = hit.activated {
             s.picked = slot;
         }
     });
@@ -201,17 +202,19 @@ fn layer_chip(ui: &mut Ui, chip: &TabChip) {
 /// The view over the page's own list, applying each close and move it reports; the last page
 /// stays, so the view is never empty.
 fn tabbed_view(ui: &mut Ui, k: Kit, s: &mut State) {
-    let response = TabbedView::new(&mut s.page, &s.pages).show(ui, |ui, page| {
-        Panel::vstack()
-            .size((Sizing::FILL, Sizing::FILL))
-            .padding(M.space.md)
-            .gap(M.space.sm)
-            .show(ui, |ui| {
-                Text::new(s.pages[page]).style(&k.t.body()).show(ui);
-                let line = fmt!(ui, "page index {page}");
-                Text::new(line).style(&k.t.caption()).show(ui);
-            });
-    });
+    let response = TabbedView::new(&mut s.page, &s.pages)
+        .closable(true)
+        .show(ui, |ui, page| {
+            Panel::vstack()
+                .size((Sizing::FILL, Sizing::FILL))
+                .padding(M.space.md)
+                .gap(M.space.sm)
+                .show(ui, |ui| {
+                    Text::new(s.pages[page]).style(&k.t.body()).show(ui);
+                    let line = fmt!(ui, "page index {page}");
+                    Text::new(line).style(&k.t.caption()).show(ui);
+                });
+        });
     let (closed, reordered) = (response.closed, response.reordered);
     s.apply(closed, reordered);
 }

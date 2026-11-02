@@ -403,9 +403,12 @@ fn widget_setters_check_their_kinds() {
             drop(Splitter::row(&mut ratio).min_pane(-1.0));
         },
         || {
-            let state = DockState::new("kinds.dock", 0_u32);
+            let state = DockState::new(0_u32);
             let mut operations = Vec::new();
-            drop(DockView::new(&state, &mut operations).min_pane(f32::NAN));
+            drop(
+                DockView::new(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
+                    .min_pane(f32::NAN),
+            );
         },
         || drop(Scroll::both().content_margin(Spacing::new(0.0, -1.0, 0.0, 0.0))),
         || {
@@ -415,10 +418,18 @@ fn widget_setters_check_their_kinds() {
     for set in length {
         panic_probe::assert_panics_with(domain::LENGTH_RULE, set);
     }
-    drop(DockState::new("kinds.dock", 0_u32).with_edge_fraction(0.5));
+    let edge_fraction = |fraction: f32| {
+        let state = DockState::new(0_u32);
+        let mut operations = Vec::new();
+        drop(
+            DockView::new(WidgetId::from_hash("kinds.dock"), &state, &mut operations)
+                .edge_fraction(fraction),
+        );
+    };
+    edge_fraction(0.5);
     for bad in [-0.1, 0.6, f32::NAN] {
         panic_probe::assert_panics_with("edge_fraction must be in 0..=0.5", || {
-            drop(DockState::new("kinds.dock", 0_u32).with_edge_fraction(bad));
+            edge_fraction(bad);
         });
     }
     let offset: [fn(); 5] = [

@@ -6,9 +6,9 @@ use crate::widgets::dock::split_side::SplitDirection;
 use crate::widgets::dock::tab_group::TabGroup;
 use crate::widgets::splitter::split_half::SplitHalf;
 
-/// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes, unlike [`TabGroupId`](crate::TabGroupId). A stale one names another node, or none, where [`DockState::node`](crate::DockState::node) panics.
+/// Index of a node in [`DockState`](crate::DockState)'s flat tree; valid only between structural changes, unlike [`TabGroupId`](crate::TabGroupId). A stale one names another node, or none, where `DockState::node` panics.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct NodeIdx(pub(super) u32);
+pub(crate) struct NodeIdx(pub(super) u32);
 
 impl NodeIdx {
     /// The index of slot `slot`.
@@ -25,16 +25,17 @@ impl NodeIdx {
 
 /// One node of the flat tree: a division, or a pane.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum DockNode<T> {
+pub(crate) enum DockNode<T> {
     /// A division of this node's rect.
     Split(DockSplit),
     /// A leaf pane with one tab strip.
     Group(TabGroup<T>),
 }
 
-/// A division of one rect between two child nodes; read-only outside the crate.
+/// A division of one rect between two child nodes: `first` leads, left in a `Row` and top in a
+/// `Col`.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DockSplit {
+pub(crate) struct DockSplit {
     pub(super) direction: SplitDirection,
     pub(super) ratio: f32,
     pub(super) first: NodeIdx,
@@ -43,23 +44,13 @@ pub struct DockSplit {
 
 impl DockSplit {
     /// How the two children are arranged.
-    pub const fn direction(self) -> SplitDirection {
+    pub(crate) const fn direction(self) -> SplitDirection {
         self.direction
     }
 
     /// The first child's share of the free space, inside the split clamp.
-    pub const fn ratio(self) -> f32 {
+    pub(crate) const fn ratio(self) -> f32 {
         self.ratio
-    }
-
-    /// The leading child: left in a `Row`, top in a `Col`.
-    pub const fn first(self) -> NodeIdx {
-        self.first
-    }
-
-    /// The trailing child.
-    pub const fn second(self) -> NodeIdx {
-        self.second
     }
 
     /// The child on `half`.

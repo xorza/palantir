@@ -39,6 +39,7 @@ use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::tabs::tab_chip::TabChip;
 use crate::widgets::tabs::tab_item::TabItem;
+use crate::widgets::tabs::tab_move::TabMove;
 use glam::Vec2;
 use std::rc::Rc;
 
@@ -48,29 +49,42 @@ pub enum TabOverflow {
     /// Chips pan under the wheel. The default; no chrome of its own.
     #[default]
     Scroll,
-    /// [`Self::Scroll`] plus a trailing chevron listing every chip. Read [`TabStripResponse::menu_picked`] beside [`TabStripResponse::clicked`], or the menu closes on a choice that does nothing.
+    /// [`Self::Scroll`] plus a trailing chevron listing every chip; a pick reports as
+    /// [`TabStripResponse::activated`], as a click does.
     Menu,
 }
 
 /// What one pass over a strip found: the chip acted on, by slot. Every field is a one-frame edge.
-///
-/// Activation is reported by source: a caller that polls chips a phase earlier (the dock's navigation scan) acts on [`Self::keyed`] and [`Self::menu_picked`]; everyone else on [`Self::activated`].
 #[derive(Debug)]
 pub struct TabStripResponse<'a> {
     /// The strip's own [`Response`].
     pub response: Response<'a>,
-    /// The chip a click activated.
-    pub clicked: Option<usize>,
-    /// The chip a keyboard move activated.
-    pub keyed: Option<usize>,
-    /// The chip chosen from the overflow menu.
-    pub menu_picked: Option<usize>,
-    /// The chip whose close button was clicked; wins over `clicked`.
+    /// The chip a click, a keyboard move or an overflow-menu pick activated.
+    pub activated: Option<usize>,
+    /// The chip whose close button was clicked; the press activates nothing.
     pub closed: Option<usize>,
-    /// The chip whose drag latched this frame.
-    pub drag_started: Option<usize>,
-    /// The chip whose drag released this frame.
-    pub drag_stopped: Option<usize>,
+    /// A chip a drag moved onto another slot: move the item in the collection, as
+    /// [`TabMove::apply`] does.
+    pub reordered: Option<TabMove>,
+    /// The activation a scan of last frame's chip responses cannot see, a keyboard move or a
+    /// menu pick, for the dock, whose scan acts on clicks a phase earlier.
+    pub(crate) unscanned: Option<usize>,
+}
+
+/// Who carries a dragged chip.
+#[derive(Clone, Copy, Debug)]
+enum ChipDrag {
+    /// The strip: a drag reorders its own chips.
+    Reorder,
+    /// The dock, which moves a tab across panes: the strip marks the slot the dock shows, if any.
+    Dock { caret: Option<usize> },
+}
+
+/// The chip a reorder drag is carrying, by key, kept on the strip's id until the release or an
+/// Escape.
+#[derive(Debug, Default)]
+struct CarriedChip {
+    key: Option<u64>,
 }
 
 /// A row of tab chips, the shared half of [`TabbedView`](crate::TabbedView) and [`DockView`](crate::DockView) (same [`TabsTheme`], chip ids and overflow). Alone it is a plain segmented selector.
@@ -79,7 +93,7 @@ pub struct TabStripResponse<'a> {
 /// # use palantir::{TabItem, TabStrip, Ui};
 /// # fn demo(ui: &mut Ui, items: &[TabItem], active: usize) {
 /// let hit = TabStrip::new(items).selected(active).show(ui, |ui, chip| chip.show_label(ui));
-/// if let Some(i) = hit.activated() {
+/// if let Some(i) = hit.activated {
 ///     // activate items[i]
 /// }
 /// # }
@@ -94,16 +108,9 @@ pub struct TabStrip<'a> {
     selected: Option<usize>,
     focus: TabStripFocus,
     overflow: TabOverflow,
-    drop_caret: Option<usize>,
+    drag: ChipDrag,
     style: Option<&'a TabsTheme>,
     menu_style: Option<&'a MenuTheme>,
-}
-
-impl TabStripResponse<'_> {
-    /// The chip activated this frame by click, keyboard move, or overflow-menu pick.
-    pub fn activated(&self) -> Option<usize> {
-        self.clicked.or(self.keyed).or(self.menu_picked)
-    }
 }
 
 impl<'a> TabStrip<'a> {
@@ -119,7 +126,7 @@ impl<'a> TabStrip<'a> {
             selected: None,
             focus: TabStripFocus::Focused,
             overflow: TabOverflow::default(),
-            drop_caret: None,
+            drag: ChipDrag::Reorder,
             style: None,
             menu_style: None,
         }
@@ -159,10 +166,11 @@ impl<'a> TabStrip<'a> {
         self
     }
 
-    /// Mark the slot a carried chip would drop into, from [`Self::drop_slot`]; a slot past the
-    /// end marks the append.
-    pub(crate) const fn drop_caret(mut self, slot: Option<usize>) -> Self {
-        self.drop_caret = slot;
+    /// Leave chip drags to the dock, which moves a tab across panes, and mark `caret`, the slot
+    /// the dock shows a carried tab would drop into, from [`Self::drop_slot`]; a slot past the end
+    /// marks the append.
+    pub(crate) const fn dock_drag(mut self, caret: Option<usize>) -> Self {
+        self.drag = ChipDrag::Dock { caret };
         self
     }
 
@@ -235,7 +243,7 @@ impl<'a> TabStrip<'a> {
             selected,
             focus,
             overflow,
-            drop_caret,
+            drag,
             style: _,
             menu_style,
         } = self;
@@ -243,6 +251,19 @@ impl<'a> TabStrip<'a> {
         widget.configure().default_size((Sizing::FILL, Sizing::HUG));
         let response = widget.response(ui);
         let id = response.id;
+        let was_carried = match drag {
+            ChipDrag::Reorder => ui.state::<CarriedChip>(id).and_then(|c| c.key),
+            ChipDrag::Dock { .. } => None,
+        };
+        let mut carried = was_carried;
+        if carried.is_some() && ui.shortcut_pressed(Key::Escape) {
+            carried = None;
+        }
+        let keys = || items.iter().map(|item| item.key);
+        let caret = match drag {
+            ChipDrag::Reorder => carried.and_then(|_| dropped_slot(ui, id, keys())),
+            ChipDrag::Dock { caret } => caret,
+        };
         let strip_chrome = t.strip.clone();
         let rule = Chrome::fill(t.rule);
         let rule_thickness = t.rule_thickness;
@@ -288,7 +309,7 @@ impl<'a> TabStrip<'a> {
                     .size((Sizing::FILL, Sizing::fixed(rule_thickness)));
                 rule_leaf.record(ui, Some(&rule), |_| {});
             }
-            if let Some(slot) = drop_caret {
+            if let Some(slot) = caret {
                 pass.caret(ui, slot);
             }
             pass.keyboard_travel(ui);
@@ -309,16 +330,50 @@ impl<'a> TabStrip<'a> {
             keyed,
             menu_picked,
         } = hits;
+        let mut reordered = None;
+        if matches!(drag, ChipDrag::Reorder) {
+            if let Some(slot) = drag_started {
+                carried = Some(items[slot].key);
+            }
+            if let Some(from) = drag_stopped {
+                let carried_from = carried == Some(items[from].key);
+                carried = None;
+                if carried_from
+                    && let Some(to) = caret
+                    && to != from
+                    && to != from + 1
+                {
+                    reordered = Some(TabMove { from, to });
+                }
+            }
+            // Written only on a change, so a strip nobody drags mints no row.
+            if carried != was_carried {
+                ui.with_state::<CarriedChip, _>(id, |_, c| c.key = carried);
+            }
+        }
+        let unscanned = keyed.or(menu_picked);
         TabStripResponse {
             response: Response::new(ui, response),
-            clicked,
-            keyed,
-            menu_picked,
+            activated: clicked.or(unscanned),
             closed,
-            drag_started,
-            drag_stopped,
+            reordered,
+            unscanned,
         }
     }
+}
+
+/// The slot the pointer is over, from last frame's extents of the chips keyed `keys`; `None`
+/// unless over the strip.
+fn dropped_slot(
+    ui: &mut Ui,
+    strip: WidgetId,
+    keys: impl IntoIterator<Item = u64>,
+) -> Option<usize> {
+    let pointer = ui.pointer_pos()?;
+    if !ui.response_for(strip).rect?.contains(pointer) {
+        return None;
+    }
+    Some(TabStrip::drop_slot(ui, strip, keys, pointer.x))
 }
 
 impl Configure for TabStrip<'_> {

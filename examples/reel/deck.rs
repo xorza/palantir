@@ -487,11 +487,12 @@ impl Deck {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     operations.clear();
-                    DockView::scan(ui, dock, operations);
+                    let dock_id = id(7, "dock");
+                    DockView::scan(ui, dock_id, dock, operations);
                     for operation in operations.drain(..) {
                         dock.apply(operation);
                     }
-                    DockView::new(dock, operations)
+                    DockView::new(dock_id, dock, operations)
                         .min_pane(160.0)
                         .show(ui, &mut Panes);
                     for operation in operations.drain(..) {

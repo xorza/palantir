@@ -14,10 +14,10 @@ pub trait DockTabs {
     type Tab: DockTab;
 
     /// The tab's name, for the overflow menu and [`TabChip::show_label`]; intern through [`Ui::intern`] or [`fmt!`](crate::fmt).
-    fn title(&mut self, ui: &mut Ui, tab: Self::Tab) -> InternedStr;
+    fn label(&mut self, ui: &mut Ui, tab: Self::Tab) -> InternedStr;
 
     /// The tab's body, recorded into the pane's content area; `size` is its arranged size, `None` on the one frame before the pane's first layout.
-    fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>);
+    fn body(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>);
 
     /// Whether the chip carries a close button; the pinned tab refuses it regardless.
     fn closable(&mut self, _tab: Self::Tab) -> bool {
@@ -31,7 +31,7 @@ pub trait DockTabs {
 
     /// What `tab`'s chip shows between its padding and its close button: an icon, the name, a
     /// status mark, in `chip`'s ink to follow its hover and selection. The name alone by default.
-    fn tab_content(&mut self, ui: &mut Ui, _tab: Self::Tab, chip: &TabChip) {
+    fn chip(&mut self, ui: &mut Ui, _tab: Self::Tab, chip: &TabChip) {
         chip.show_label(ui);
     }
 

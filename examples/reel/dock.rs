@@ -25,7 +25,7 @@ impl Tab {
 
 /// The arrangement the slide opens on: every tab in one pane, the scene shown.
 pub(crate) fn state() -> DockState<Tab> {
-    let mut dock = DockState::new("reel.dock", Tab::Scene);
+    let mut dock = DockState::new(Tab::Scene);
     for tab in [Tab::Layers, Tab::Console] {
         dock.apply(DockOperation::OpenTab { tab });
     }
@@ -40,11 +40,11 @@ pub(crate) struct Panes;
 impl DockTabs for Panes {
     type Tab = Tab;
 
-    fn title(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
+    fn label(&mut self, ui: &mut Ui, tab: Tab) -> InternedStr {
         ui.intern(tab.label())
     }
 
-    fn content(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
+    fn body(&mut self, ui: &mut Ui, tab: Tab, _size: Option<Size>) {
         Panel::vstack()
             .size((Sizing::FILL, Sizing::FILL))
             .padding(24.0)

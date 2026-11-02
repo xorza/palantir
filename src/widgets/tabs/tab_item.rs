@@ -10,20 +10,22 @@ pub struct TabItem {
     pub key: u64,
     /// The tab's name: what [`TabChip::show_label`](crate::TabChip::show_label) shows, and the overflow menu's row.
     pub label: InternedStr,
-    /// Shows a close button.
+    /// Shows a close button, reported as [`TabStripResponse::closed`](crate::TabStripResponse::closed).
     pub closable: bool,
-    /// Can be dragged.
+    /// Can be dragged onto another slot, reported as
+    /// [`TabStripResponse::reordered`](crate::TabStripResponse::reordered).
     pub draggable: bool,
 }
 
 impl TabItem {
-    /// A tab with `key` and `label`.
+    /// A tab with `key` and `label`, neither closable nor draggable: each is an edit the caller
+    /// makes to its own collection, so it opts in.
     pub const fn new(key: u64, label: InternedStr) -> Self {
         Self {
             key,
             label,
-            closable: true,
-            draggable: true,
+            closable: false,
+            draggable: false,
         }
     }
 }

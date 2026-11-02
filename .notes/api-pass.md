@@ -167,33 +167,6 @@ Batches run most harmful first. A batch changes palantir and darkroom together a
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
 
-### Batch 4: Dock and tabs
-
-- [ ] `DockState` serializes `seed` and `pinned`, so darkroom validates and repairs them
-  (`PinnedTab`, `ForeignDock`, `LayoutReset`); `DockView`'s ids come from the state, and
-  `DockView::new` overrides the widget id. Target: the document holds the tree alone;
-  `DockState::new(pinned)` and `DockState::load(raw, pinned) -> Result<Self, DockError<T>>`; the
-  seed goes, and `DockView::pane_id(dock: WidgetId, group)` and its siblings derive from the
-  widget's id. Callers: 2 / 6.
-- [ ] View policy on the model, reset on load: `allowed_splits` and `edge_fraction` become
-  `DockView` setters; `max_depth` stays on the state.
-- [ ] Two split addresses: `NodeIdx`, `DockNode`, `DockSplit`, `DockState::ROOT`, `node()` and
-  `RATIO_MIN`/`RATIO_MAX` become crate-private (0 callers); `DockPath` stays, opaque.
-- [ ] `AllowedSplits` becomes a `flag_set!` with `ROW` and `COL`.
-- [ ] `DockTabs` names: `title`, `content`, `tab_content` become `label`, `body`, `chip`, as
-  `TabItem` and `TabChip` say. Callers: 2 implementations.
-- [ ] `TabStripResponse`: `clicked`, `keyed`, `menu_picked` and `activated()` become
-  `pub activated: Option<usize>`, as `TabbedViewResponse` has; the source split stays private.
-- [ ] `TabStrip` drag: move `TabbedView`'s carried-chip logic into `TabStrip`, which reports
-  `reordered: Option<TabMove>` in place of `drag_started` and `drag_stopped` (0 callers).
-- [ ] Tab defaults: `TabItem::new` and `TabbedView` default `closable` and `draggable` to `false`;
-  `DockTabs` keeps `true`.
-- [ ] `TabMove::apply<T>(self, items: &mut [T])`, a rotate, so no caller re-derives the slot.
-- [ ] `TabbedView::show<R>` with `TabbedViewResponse::inner: Option<R>`; drop
-  `TabbedViewResponse::committed`, which always equals `changed`.
-- [ ] Remove `DockView::content_size`, `TabGroup::active()`; `DockState::can_split`,
-  `allowed_splits()` and `edge_fraction()` become crate-private.
-
 ### Batch 5: Value widgets
 
 - [ ] `DragNum` renamed `BoundNum`, with `Num` and `StoreRule` in its module, and `F32` and `I32`

@@ -52,12 +52,19 @@ Align
         pub const STRETCH: Self
 
 AllowedSplits
-    enum AllowedSplits: Clone, Copy, Debug, Default, Eq, PartialEq
-        All
-        Row
-        Col
-        None
-        pub fn allows(self, side: SplitSide) -> bool
+    struct AllowedSplits: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
+        pub const ROW: Self
+        pub const COL: Self
+        pub const NONE: Self
+        pub const ALL: Self
+        pub const fn is_empty(self) -> bool
+        pub const fn contains(self, other: Self) -> bool
+        pub const fn intersects(self, other: Self) -> bool
+        pub const fn union(self, other: Self) -> Self
+        pub const fn difference(self, other: Self) -> Self
+        pub const fn insert(&mut self, other: Self)
+        pub const fn remove(&mut self, other: Self)
+        pub const fn set(&mut self, other: Self, on: bool)
 
 Anchor
     struct Anchor: Clone, Copy, Debug, PartialEq
@@ -540,14 +547,12 @@ DockError
         impl<T: Debug> Error for DockError<T>
         impl<T: PartialEq> PartialEq for DockError<T>
 
-DockNode
-    enum DockNode<T>
-        Split(DockSplit)
-        Group(TabGroup<T>)
+DockLayout
+    struct DockLayout<T>
         impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
-        impl<T: Clone> Clone for DockNode<T>
-        impl<T: Debug> Debug for DockNode<T>
-        impl<T: PartialEq> PartialEq for DockNode<T>
+        impl<T: Clone> Clone for DockLayout<T>
+        impl<T: Debug> Debug for DockLayout<T>
+        impl<T: PartialEq> PartialEq for DockLayout<T>
         impl<T> Serialize where T: Serialize
 
 DockOperation
@@ -571,29 +576,15 @@ DockPath
         pub fn first(self) -> Self
         pub fn second(self) -> Self
 
-DockSplit
-    struct DockSplit: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
-        pub const fn direction(self) -> SplitDirection
-        pub const fn ratio(self) -> f32
-        pub const fn first(self) -> NodeIdx
-        pub const fn second(self) -> NodeIdx
-
 DockState
     struct DockState<T>
         impl<T: DockTab> DockState<T>
-            pub const ROOT: NodeIdx
-            pub const RATIO_MIN: f32
-            pub const RATIO_MAX: f32
-            pub fn new(seed: impl Hash, pinned: T) -> Self
+            pub fn new(pinned: T) -> Self
+            pub fn load(layout: DockLayout<T>, pinned: T) -> Result<Self, DockError<T>>
+            pub const fn layout(&self) -> &DockLayout<T>
             pub fn with_max_depth(self, depth: u32) -> Self
-            pub const fn with_allowed_splits(self, allowed: AllowedSplits) -> Self
-            pub const fn with_edge_fraction(self, fraction: f32) -> Self
             pub const fn pinned(&self) -> T
-            pub const fn seed(&self) -> u64
-            pub const fn allowed_splits(&self) -> AllowedSplits
-            pub const fn edge_fraction(&self) -> f32
             pub const fn focused(&self) -> TabGroupId
-            pub fn node(&self, idx: NodeIdx) -> &DockNode<T>
             pub fn groups(&self) -> impl Iterator<Item = &TabGroup<T>>
             pub fn all_tabs(&self) -> impl Iterator<Item = T> + '_
             pub fn active_tabs(&self) -> impl Iterator<Item = T> + '_
@@ -602,12 +593,9 @@ DockState
             pub fn group(&self, id: TabGroupId) -> Option<&TabGroup<T>>
             pub fn apply(&mut self, operation: DockOperation<T>)
             pub fn retain_tabs(&mut self, keep: impl FnMut(T) -> bool)
-            pub fn can_split(&self, group: TabGroupId) -> bool
-        impl<'de, T> Deserialize<'de> where T: DockTab + Deserialize<'de>
         impl<T: Clone> Clone for DockState<T>
         impl<T: Debug> Debug for DockState<T>
         impl<T: PartialEq> PartialEq for DockState<T>
-        impl<T> Serialize where T: Serialize
 
 DockTab
     trait DockTab: Copy + Eq + Hash + Debug + 'static
@@ -623,11 +611,11 @@ DockTabMenu
 DockTabs
     trait DockTabs
         type Tab: DockTab
-        fn title(&mut self, ui: &mut Ui, tab: Self::Tab) -> InternedStr
-        fn content(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>)
+        fn label(&mut self, ui: &mut Ui, tab: Self::Tab) -> InternedStr
+        fn body(&mut self, ui: &mut Ui, tab: Self::Tab, size: Option<Size>)
         fn closable(&mut self, _tab: Self::Tab) -> bool { .. }
         fn draggable(&mut self, _tab: Self::Tab) -> bool { .. }
-        fn tab_content(&mut self, ui: &mut Ui, _tab: Self::Tab, chip: &TabChip) { .. }
+        fn chip(&mut self, ui: &mut Ui, _tab: Self::Tab, chip: &TabChip) { .. }
         fn has_tab_menu(&mut self, _tab: Self::Tab) -> bool { .. }
         fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) { .. }
 
@@ -644,23 +632,24 @@ DockTheme
 DockView
     struct DockView<'a, T>: Configure, ThemeDefaults (blanket)
         impl<'a, T: DockTab> DockView<'a, T>
-            pub fn new(state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self
+            pub fn new(dock: WidgetId, state: &'a DockState<T>, operations: &'a mut Vec<DockOperation<T>>) -> Self
             pub const fn min_pane(self, px: f32) -> Self
             pub const fn overflow(self, overflow: TabOverflow) -> Self
+            pub const fn allowed_splits(self, allowed: AllowedSplits) -> Self
+            pub const fn edge_fraction(self, fraction: f32) -> Self
             pub fn style(self, s: impl Into<Option<&'a DockTheme>>) -> Self
             pub fn tabs_style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
             pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u>
         impl<T: DockTab> DockView<'_, T>
-            pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, state: &mut DockState<T>, tabs: &mut D)
-            pub fn dock_id(state: &DockState<T>) -> WidgetId
-            pub fn pane_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
-            pub fn content_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
-            pub fn strip_id(state: &DockState<T>, group: TabGroupId) -> WidgetId
-            pub fn splitter_id(state: &DockState<T>, path: DockPath) -> WidgetId
+            pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, dock: WidgetId, state: &mut DockState<T>, tabs: &mut D)
             pub fn tab_key(tab: T) -> u64
-            pub fn scan(ui: &mut Ui, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
-            pub fn content_size(ui: &Ui, state: &DockState<T>, group: TabGroupId) -> Option<Size>
+            pub fn scan(ui: &mut Ui, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
+        impl DockView<'static, ()>
+            pub fn pane_id(dock: WidgetId, group: TabGroupId) -> WidgetId
+            pub fn content_id(dock: WidgetId, group: TabGroupId) -> WidgetId
+            pub fn strip_id(dock: WidgetId, group: TabGroupId) -> WidgetId
+            pub fn splitter_id(dock: WidgetId, path: DockPath) -> WidgetId
         impl<'a, T: Debug> Debug for DockView<'a, T>
 
 Drag
@@ -1533,9 +1522,6 @@ Modifiers
         pub const CTRL_SHIFT: Self
         pub const fn has_command(self) -> bool
 
-NodeIdx
-    struct NodeIdx: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
-
 Number
     trait Number: Scalar
         impl<T: Scalar> Number for T
@@ -2290,7 +2276,6 @@ TabGroup
     struct TabGroup<T>
         pub const fn id(&self) -> TabGroupId
         pub fn tabs(&self) -> &[T]
-        pub const fn active(&self) -> usize
         impl<T: Copy> TabGroup<T>
             pub fn active_tab(&self) -> T
         impl<'de, T> Deserialize<'de> where T: Deserialize<'de>
@@ -2315,6 +2300,8 @@ TabMove
     struct TabMove: Clone, Copy, Debug, Eq, PartialEq
         pub from: usize
         pub to: usize
+        pub const fn landing(self) -> usize
+        pub fn apply<T>(self, items: &mut [T])
 
 TabOverflow
     enum TabOverflow: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -2341,13 +2328,9 @@ TabStripFocus
 TabStripResponse
     struct TabStripResponse<'a>: Debug
         pub response: Response<'a>
-        pub clicked: Option<usize>
-        pub keyed: Option<usize>
-        pub menu_picked: Option<usize>
+        pub activated: Option<usize>
         pub closed: Option<usize>
-        pub drag_started: Option<usize>
-        pub drag_stopped: Option<usize>
-        pub fn activated(&self) -> Option<usize>
+        pub reordered: Option<TabMove>
 
 TabbedView
     struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64>: ThemeDefaults (blanket)
@@ -2362,18 +2345,19 @@ TabbedView
             pub const fn overflow(self, overflow: TabOverflow) -> Self
             pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-            pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize)) -> TabbedViewResponse<'_>
+            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize) -> R) -> TabbedViewResponse<'_, R>
         impl<'a, S: Debug, L: Debug, K: Debug> Debug for TabbedView<'a, S, L, K>
         impl<S, L, K> Configure for TabbedView<'_, S, L, K>
 
 TabbedViewResponse
-    struct TabbedViewResponse<'a>: Debug
+    struct TabbedViewResponse<'a, R>
         pub response: Response<'a>
+        pub inner: Option<R>
         pub changed: bool
-        pub committed: bool
         pub activated: Option<usize>
         pub closed: Option<usize>
         pub reordered: Option<TabMove>
+        impl<'a, R: Debug> Debug for TabbedViewResponse<'a, R>
 
 TabsTheme
     struct TabsTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot

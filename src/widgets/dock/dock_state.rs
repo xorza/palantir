@@ -6,20 +6,15 @@
 //! structural operation, so `Vec` equality is structural equality (an undo layer
 //! can diff snapshots).
 //!
-//! Invariants, checked on deserialize so a bad saved layout is an error:
+//! Invariants, checked by [`DockState::load`] so a bad saved layout is an error:
 //! - canonical pre-order, fully reachable from slot 0;
 //! - some group holds the pinned tab;
 //! - no group is empty, no tab appears twice, group ids are unique, each `active`
 //!   is in range, `focused` names a live group, every ratio is inside the clamp;
 //! - the group-id counter can still mint an id no group holds.
 
-use std::hash::Hash;
-
-use serde::{Deserialize, Serialize};
-
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain;
-use crate::widgets::dock::allowed_splits::AllowedSplits;
+use crate::widgets::dock::dock_layout::DockLayout;
 use crate::widgets::dock::dock_node::{DockNode, DockSplit, NodeIdx};
 use crate::widgets::dock::dock_operation::{DockDrop, DockOperation};
 use crate::widgets::dock::dock_path::DockPath;
@@ -31,15 +26,12 @@ use crate::widgets::tabs::reindex;
 use std::mem;
 
 /// Split-ratio clamp: neither pane drops below a tenth of the split.
-const RATIO_MIN: f32 = 0.1;
+pub(crate) const RATIO_MIN: f32 = 0.1;
 /// Derived, so the clamp stays the symmetric one a divider drag floors at (`Splitter::min_ratio`).
-const RATIO_MAX: f32 = 1.0 - RATIO_MIN;
+pub(crate) const RATIO_MAX: f32 = 1.0 - RATIO_MIN;
 
 /// Most nested splits on any root-to-leaf chain (up to 16 panes).
 const DEFAULT_MAX_DEPTH: u32 = 4;
-
-/// The split wedges' reach: the inner half of a pane's content is the join zone.
-const DEFAULT_EDGE_FRACTION: f32 = 0.25;
 
 /// A tab's position: which group holds it, and where in that group's strip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,109 +42,73 @@ pub struct TabAddress {
     pub idx: usize,
 }
 
-/// The whole pane arrangement: the flat split tree, the focused group, and the
-/// policy the operations enforce.
+/// The whole pane arrangement: the flat split tree, the focused group, the pinned tab and the
+/// nesting cap the operations enforce.
 ///
-/// The application owns one per tab domain and persists it. The widget never
-/// mutates it: [`DockView`](crate::DockView) emits [`DockOperation`]s and
-/// [`Self::apply`] is where they land, so an app can route them through its own
-/// queue and keep them out of undo. The one edit outside it is
-/// [`Self::retain_tabs`], a filter no `Copy` operation can carry.
+/// The application owns one per tab domain and persists its [`Self::layout`]. The widget never
+/// mutates it: [`DockView`](crate::DockView) emits [`DockOperation`]s and [`Self::apply`] is
+/// where they land, so an app can route them through its own queue and keep them out of undo.
+/// The one edit outside it is [`Self::retain_tabs`], a filter no `Copy` operation can carry.
 ///
 /// ```
 /// # use palantir::{DockOperation, DockState};
 /// # #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 /// # enum Tab { Main, Console }
-/// let mut dock = DockState::new("app.dock", Tab::Main);
+/// let mut dock = DockState::new(Tab::Main);
 /// dock.apply(DockOperation::OpenTab { tab: Tab::Console });
 /// assert_eq!(dock.groups().count(), 1);
 /// ```
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(
-    try_from = "RawDockState<T>",
-    bound(deserialize = "T: DockTab + Deserialize<'de>")
-)]
+#[derive(Clone, Debug, PartialEq)]
 #[must_use]
 pub struct DockState<T> {
-    nodes: Vec<DockNode<T>>,
-    focused: TabGroupId,
-    next_group: u64,
+    layout: DockLayout<T>,
     pinned: T,
-    seed: u64,
-    /// Policy, not document: not serialized; apply a changed cap after loading.
-    #[serde(skip_serializing)]
     max_depth: u32,
-    #[serde(skip_serializing)]
-    allowed_splits: AllowedSplits,
-    #[serde(skip_serializing)]
-    edge_fraction: f32,
-}
-
-/// The document half of a [`DockState`] as a file holds it, before validation.
-#[derive(Debug, Deserialize)]
-struct RawDockState<T> {
-    nodes: Vec<DockNode<T>>,
-    focused: TabGroupId,
-    next_group: u64,
-    pinned: T,
-    seed: u64,
-}
-
-impl<T: DockTab> TryFrom<RawDockState<T>> for DockState<T> {
-    type Error = DockError<T>;
-
-    /// The file's tree under the default policy, if it holds every module-doc invariant.
-    fn try_from(raw: RawDockState<T>) -> Result<Self, Self::Error> {
-        let RawDockState {
-            nodes,
-            focused,
-            next_group,
-            pinned,
-            seed,
-        } = raw;
-        let state = Self {
-            nodes,
-            focused,
-            next_group,
-            pinned,
-            seed,
-            max_depth: DEFAULT_MAX_DEPTH,
-            allowed_splits: AllowedSplits::default(),
-            edge_fraction: DEFAULT_EDGE_FRACTION,
-        };
-        state.validate()?;
-        Ok(state)
-    }
 }
 
 impl<T: DockTab> DockState<T> {
     /// The root node's index: always slot 0.
-    pub const ROOT: NodeIdx = NodeIdx(0);
+    pub(crate) const ROOT: NodeIdx = NodeIdx(0);
 
-    /// Smallest share a split gives either pane.
-    pub const RATIO_MIN: f32 = RATIO_MIN;
-    /// Largest share a split gives the first pane; mirror of [`Self::RATIO_MIN`].
-    pub const RATIO_MAX: f32 = RATIO_MAX;
-
-    /// A dock holding one pane, showing `pinned`. `seed` scopes every widget id this
-    /// dock derives; use one stable string per tab domain. `pinned` refuses to close,
-    /// so the root always survives and the arrangement is never empty.
-    pub fn new(seed: impl Hash, pinned: T) -> Self {
+    /// A dock holding one pane, showing `pinned`. `pinned` refuses to close, so the root always
+    /// survives and the arrangement is never empty.
+    pub fn new(pinned: T) -> Self {
         let primary = TabGroup {
             id: TabGroupId(0),
             tabs: vec![pinned],
             active: 0,
         };
         Self {
-            focused: primary.id,
-            nodes: vec![DockNode::Group(primary)],
-            next_group: 1,
+            layout: DockLayout {
+                focused: primary.id,
+                nodes: vec![DockNode::Group(primary)],
+                next_group: 1,
+            },
             pinned,
-            seed: WidgetId::from_hash(seed).0,
             max_depth: DEFAULT_MAX_DEPTH,
-            allowed_splits: AllowedSplits::All,
-            edge_fraction: DEFAULT_EDGE_FRACTION,
         }
+    }
+
+    /// The dock `layout` arranges, with `pinned` as the tab that refuses to close, if the layout
+    /// holds every invariant the module doc lists.
+    ///
+    /// # Errors
+    ///
+    /// The [`DockError`] naming the first invariant `layout` breaks, as a file a hand or another
+    /// version edited can.
+    pub fn load(layout: DockLayout<T>, pinned: T) -> Result<Self, DockError<T>> {
+        let state = Self {
+            layout,
+            pinned,
+            max_depth: DEFAULT_MAX_DEPTH,
+        };
+        state.validate()?;
+        Ok(state)
+    }
+
+    /// What this dock persists; serialize it to save, and [`Self::load`] it back.
+    pub const fn layout(&self) -> &DockLayout<T> {
+        &self.layout
     }
 
     /// Cap the split nesting on any root-to-leaf chain. Default 4 (up to 16 panes). On
@@ -172,52 +128,14 @@ impl<T: DockTab> DockState<T> {
         self
     }
 
-    /// Which split directions a drag offers. Default [`AllowedSplits::All`].
-    pub const fn with_allowed_splits(mut self, allowed: AllowedSplits) -> Self {
-        self.allowed_splits = allowed;
-        self
-    }
-
-    /// How far in from each edge of a pane's content a dragged tab splits rather than joins,
-    /// as a fraction of that content's width or height. Default `0.25`, which leaves the
-    /// inner half as the join zone; `0.0` offers no split, and `0.5` no join.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `fraction` is in `0..=0.5`.
-    #[track_caller]
-    pub const fn with_edge_fraction(mut self, fraction: f32) -> Self {
-        assert!(
-            fraction >= 0.0 && fraction <= 0.5,
-            "edge_fraction must be in 0..=0.5",
-        );
-        self.edge_fraction = fraction;
-        self
-    }
-
     /// The tab that refuses to close.
     pub const fn pinned(&self) -> T {
         self.pinned
     }
 
-    /// The seed this dock's widget ids derive from.
-    pub const fn seed(&self) -> u64 {
-        self.seed
-    }
-
-    /// The split directions a drop may create; see [`Self::with_allowed_splits`].
-    pub const fn allowed_splits(&self) -> AllowedSplits {
-        self.allowed_splits
-    }
-
-    /// The split wedges' reach; see [`Self::with_edge_fraction`].
-    pub const fn edge_fraction(&self) -> f32 {
-        self.edge_fraction
-    }
-
     /// The group keyboard shortcuts and newly opened tabs go to.
     pub const fn focused(&self) -> TabGroupId {
-        self.focused
+        self.layout.focused
     }
 
     /// The node at `idx`; the record walk follows [`DockSplit`]'s child indices.
@@ -225,13 +143,13 @@ impl<T: DockTab> DockState<T> {
     /// # Panics
     ///
     /// Panics if `idx` is past the last node, as one read before a structural operation can be.
-    pub fn node(&self, idx: NodeIdx) -> &DockNode<T> {
-        &self.nodes[idx.usize()]
+    pub(crate) fn node(&self, idx: NodeIdx) -> &DockNode<T> {
+        &self.layout.nodes[idx.usize()]
     }
 
     /// The leaf groups in left-to-right, top-to-bottom pane order (vector order).
     pub fn groups(&self) -> impl Iterator<Item = &TabGroup<T>> {
-        self.nodes.iter().filter_map(|n| match n {
+        self.layout.nodes.iter().filter_map(|n| match n {
             DockNode::Group(g) => Some(g),
             DockNode::Split(_) => None,
         })
@@ -270,7 +188,7 @@ impl<T: DockTab> DockState<T> {
     }
 
     fn group_mut(&mut self, id: TabGroupId) -> Option<&mut TabGroup<T>> {
-        self.nodes.iter_mut().find_map(|n| match n {
+        self.layout.nodes.iter_mut().find_map(|n| match n {
             DockNode::Group(g) if g.id == id => Some(g),
             _ => None,
         })
@@ -292,13 +210,13 @@ impl<T: DockTab> DockState<T> {
     /// in `focused` would fail [`Self::validate`] at the next load.
     fn focus(&mut self, group: TabGroupId) {
         if self.group(group).is_some() {
-            self.focused = group;
+            self.layout.focused = group;
         }
     }
 
     /// Add `tab` to the focused group unless already open somewhere, then activate it.
     fn open_tab(&mut self, tab: T) {
-        self.find_or_insert(tab, self.focused);
+        self.find_or_insert(tab, self.layout.focused);
         self.activate(tab);
     }
 
@@ -311,7 +229,7 @@ impl<T: DockTab> DockState<T> {
         self.group_mut(group)
             .expect("find_tab resolved a live group")
             .active = idx;
-        self.focused = group;
+        self.layout.focused = group;
     }
 
     /// Append `tab` to `group`'s strip unless already open: the tree half of
@@ -360,9 +278,7 @@ impl<T: DockTab> DockState<T> {
             return;
         }
         // Depth cap, checked before any mutation so a refused split can't lose the tab.
-        if let DockDrop::Split { side, .. } = drop
-            && (!self.can_split(target) || !self.allowed_splits.allows(side))
-        {
+        if matches!(drop, DockDrop::Split { .. }) && !self.can_split(target) {
             return;
         }
 
@@ -382,16 +298,16 @@ impl<T: DockTab> DockState<T> {
                 let idx = idx.min(g.tabs.len());
                 g.tabs.insert(idx, tab);
                 g.active = idx;
-                self.focused = group;
+                self.layout.focused = group;
             }
             DockDrop::Split { group, side } => {
                 let new_group = TabGroup {
-                    id: TabGroupId(self.next_group),
+                    id: TabGroupId(self.layout.next_group),
                     tabs: vec![tab],
                     active: 0,
                 };
-                self.next_group += 1;
-                self.focused = new_group.id;
+                self.layout.next_group += 1;
+                self.layout.focused = new_group.id;
                 self.split_group(group, side, new_group);
             }
         }
@@ -412,7 +328,7 @@ impl<T: DockTab> DockState<T> {
             };
             idx = s.child(half);
         }
-        if let DockNode::Split(s) = &mut self.nodes[idx.usize()] {
+        if let DockNode::Split(s) = &mut self.layout.nodes[idx.usize()] {
             s.ratio = domain::fraction_or(ratio, 0.5).clamp(RATIO_MIN, RATIO_MAX);
         }
     }
@@ -422,7 +338,7 @@ impl<T: DockTab> DockState<T> {
     /// that [`Self::primary`] panics on.
     pub fn retain_tabs(&mut self, mut keep: impl FnMut(T) -> bool) {
         let pinned = self.pinned;
-        for node in &mut self.nodes {
+        for node in &mut self.layout.nodes {
             if let DockNode::Group(g) = node {
                 g.retain(|tab| *tab == pinned || keep(*tab));
             }
@@ -431,7 +347,7 @@ impl<T: DockTab> DockState<T> {
     }
 
     /// Whether `group`'s pane may still split (the nesting cap).
-    pub fn can_split(&self, group: TabGroupId) -> bool {
+    pub(crate) fn can_split(&self, group: TabGroupId) -> bool {
         self.group_depth(group).is_some_and(|d| d < self.max_depth)
     }
 
@@ -455,21 +371,22 @@ impl<T: DockTab> DockState<T> {
     /// Children are parked at the vector's end; the caller's `normalize` re-packs.
     fn split_group(&mut self, target: TabGroupId, side: SplitSide, new_group: TabGroup<T>) {
         let Some(slot) = self
+            .layout
             .nodes
             .iter()
             .position(|n| matches!(n, DockNode::Group(g) if g.id == target))
         else {
             return;
         };
-        let existing_idx = NodeIdx::at(self.nodes.len());
-        let fresh_idx = NodeIdx::at(self.nodes.len() + 1);
+        let existing_idx = NodeIdx::at(self.layout.nodes.len());
+        let fresh_idx = NodeIdx::at(self.layout.nodes.len() + 1);
         let (first, second) = if side.new_pane_first() {
             (fresh_idx, existing_idx)
         } else {
             (existing_idx, fresh_idx)
         };
         let existing = mem::replace(
-            &mut self.nodes[slot],
+            &mut self.layout.nodes[slot],
             DockNode::Split(DockSplit {
                 direction: side.direction(),
                 ratio: 0.5,
@@ -477,8 +394,8 @@ impl<T: DockTab> DockState<T> {
                 second,
             }),
         );
-        self.nodes.push(existing);
-        self.nodes.push(DockNode::Group(new_group));
+        self.layout.nodes.push(existing);
+        self.layout.nodes.push(DockNode::Group(new_group));
     }
 
     /// Re-pack `nodes` into canonical pre-order, dropping empty groups and dissolving
@@ -488,11 +405,11 @@ impl<T: DockTab> DockState<T> {
             self.is_alive(Self::ROOT),
             "the pinned tab keeps the tree non-empty"
         );
-        let mut out = Vec::with_capacity(self.nodes.len());
+        let mut out = Vec::with_capacity(self.layout.nodes.len());
         self.copy_live(Self::ROOT, &mut out);
-        self.nodes = out;
-        if self.group(self.focused).is_none() {
-            self.focused = self.primary().id;
+        self.layout.nodes = out;
+        if self.group(self.layout.focused).is_none() {
+            self.layout.focused = self.primary().id;
         }
     }
 
@@ -538,7 +455,7 @@ impl<T: DockTab> DockState<T> {
     pub(super) fn validate(&self) -> Result<(), DockError<T>> {
         let mut expect = 0;
         self.check_canonical(Self::ROOT, 0, &mut expect)?;
-        if expect as usize != self.nodes.len() {
+        if expect as usize != self.layout.nodes.len() {
             return Err(DockError::UnreachableSlots);
         }
 
@@ -569,14 +486,16 @@ impl<T: DockTab> DockState<T> {
         }
         // The id counter is document state: check it here, not at the split that spends
         // it. It must name an id no group holds and have room left to count.
-        if self.next_group == u64::MAX || seen_groups.iter().any(|g| g.0 >= self.next_group) {
+        if self.layout.next_group == u64::MAX
+            || seen_groups.iter().any(|g| g.0 >= self.layout.next_group)
+        {
             return Err(DockError::GroupAllocator {
-                next_group: self.next_group,
+                next_group: self.layout.next_group,
             });
         }
-        if self.group(self.focused).is_none() {
+        if self.group(self.layout.focused).is_none() {
             return Err(DockError::MissingFocusedGroup {
-                group: self.focused,
+                group: self.layout.focused,
             });
         }
         Ok(())
@@ -598,7 +517,7 @@ impl<T: DockTab> DockState<T> {
         if idx.0 != *expect {
             return Err(DockError::NonCanonical);
         }
-        let Some(node) = self.nodes.get(idx.usize()) else {
+        let Some(node) = self.layout.nodes.get(idx.usize()) else {
             return Err(DockError::NodeOutOfRange { idx: idx.0 });
         };
         *expect += 1;
@@ -626,21 +545,21 @@ mod internals {
     impl<T: DockTab> DockState<T> {
         /// Raw node access for the validation suite to build corrupt trees.
         pub(crate) fn nodes_mut(&mut self) -> &mut Vec<DockNode<T>> {
-            &mut self.nodes
+            &mut self.layout.nodes
         }
 
         /// Point `focused` at a group without checking it exists.
         pub(crate) fn set_focused_unchecked(&mut self, group: TabGroupId) {
-            self.focused = group;
+            self.layout.focused = group;
         }
 
         pub(crate) fn absent_group(&self) -> TabGroupId {
-            TabGroupId(self.next_group + 1000)
+            TabGroupId(self.layout.next_group + 1000)
         }
 
         /// Park the id counter where no operation sequence could.
         pub(crate) fn set_next_group_unchecked(&mut self, next: u64) {
-            self.next_group = next;
+            self.layout.next_group = next;
         }
 
         /// Append `tab` to a live `group` without activating it or moving focus.
