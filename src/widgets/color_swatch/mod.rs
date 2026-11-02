@@ -17,7 +17,7 @@ use crate::widgets::checkerboard::Checkerboard;
 
 /// A chip painting one color, over a checkerboard when it is translucent.
 ///
-/// It writes nothing. It senses a click, read through [`clicked()`](crate::ResponseState::clicked), and takes focus, where Space and Enter click it; with the click sense removed it is display only and no Tab stop. Sized from [`ColorPickerTheme::swatch_size`] and styled with the rest of the family.
+/// It writes nothing. It senses a click, read through [`clicked()`](crate::ResponseState::clicked), and takes focus, where Space and Enter click it. With the click sense removed it is display only, and `focusable(false)` takes its Tab stop away too, as for every widget: a caller's setter wins. Sized from [`ColorPickerTheme::swatch_size`] and styled with the rest of the family.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct ColorSwatch<'a> {
@@ -51,9 +51,6 @@ impl<'a> ColorSwatch<'a> {
         let mut widget = self
             .widget
             .default_size((Sizing::fixed(side), Sizing::fixed(side)));
-        if !widget.authored_sense().contains(Sense::CLICK) {
-            widget.configure().focusable(false);
-        }
         let response = widget.activation_response(ui, Activation::Button);
         let size = response
             .layout_rect

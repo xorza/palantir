@@ -335,29 +335,18 @@ fn shortcuts_parse_from_text() {
 }
 
 /// A Windows or Linux label parses back to its shortcut, for every key a label names and every
-/// modifier: the label and the parse speak one language.
+/// modifier: the label and the parse speak one language. Space labels as a word, as a blank
+/// would leave `Ctrl+` dangling; `Key::Other`, which names no key, labels as `Unknown` and parses
+/// to no shortcut, where a `?` would parse as the question-mark key.
 #[test]
 fn a_label_parses_back_to_its_shortcut() {
-    let keys = [
-        Key::ArrowLeft,
-        Key::ArrowRight,
-        Key::ArrowUp,
-        Key::ArrowDown,
-        Key::Backspace,
-        Key::Delete,
-        Key::Home,
-        Key::End,
-        Key::PageUp,
-        Key::PageDown,
-        Key::Enter,
-        Key::Tab,
-        Key::Escape,
-        Key::F1,
-        Key::F7,
-        Key::F12,
-        Key::Char('q'),
-        Key::Char('7'),
-    ];
+    let keys = NAMED_KEYS
+        .into_iter()
+        .filter(|&key| key != Key::Other)
+        .chain([Key::Char('q'), Key::Char('7')]);
+    for key in NAMED_KEYS {
+        assert!(KeyName::of(key).is_some(), "{key:?} is named");
+    }
     let mods = [
         ShortcutMods::NONE,
         ShortcutMods::CTRL_SHIFT,
@@ -368,7 +357,7 @@ fn a_label_parses_back_to_its_shortcut() {
         },
     ];
     for platform in [Platform::Linux, Platform::Windows] {
-        for key in keys {
+        for key in keys.clone() {
             for mods in mods {
                 let shortcut = Shortcut::new(mods, key);
                 let label = shortcut.label(platform).to_string();
@@ -376,6 +365,15 @@ fn a_label_parses_back_to_its_shortcut() {
             }
         }
     }
+    let space = Shortcut::new(ShortcutMods::CTRL, Key::Char(' '));
+    assert_eq!(space.label(Platform::Linux).to_string(), "Ctrl+Space");
+    assert_eq!(space.label(Platform::Mac).to_string(), "⌘Space");
+    let other = Shortcut::new(ShortcutMods::CTRL, Key::Other);
+    assert_eq!(other.label(Platform::Windows).to_string(), "Ctrl+Unknown");
+    assert_eq!(
+        "Ctrl+Unknown".parse::<Shortcut>(),
+        Err(ParseShortcutError::Key)
+    );
 }
 
 /// A press types its character, upper case with Shift, and nothing with a command modifier or

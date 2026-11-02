@@ -269,44 +269,126 @@ impl FromStr for Shortcut {
     }
 }
 
-/// A named key, as a lower-case word or a Windows or Linux label writes it, or one character.
+/// How a shortcut names a key with a word or a glyph rather than its character: what its label
+/// writes, on macOS and elsewhere, and the other words the parse accepts for it.
+#[derive(Debug)]
+struct KeyName {
+    label: &'static str,
+    mac_label: &'static str,
+    aliases: &'static [&'static str],
+}
+
+impl KeyName {
+    const fn new(label: &'static str) -> Self {
+        Self {
+            label,
+            mac_label: label,
+            aliases: &[],
+        }
+    }
+
+    const fn mac_label(self, mac_label: &'static str) -> Self {
+        Self { mac_label, ..self }
+    }
+
+    const fn aliases(self, aliases: &'static [&'static str]) -> Self {
+        Self { aliases, ..self }
+    }
+
+    /// The name of `key`, `None` for a printing character, which labels as itself. Space is a
+    /// word on every platform, as a macOS menu writes `⌃Space`. A key named here joins
+    /// [`NAMED_KEYS`], so its label parses back.
+    const fn of(key: Key) -> Option<Self> {
+        Some(match key {
+            Key::ArrowLeft => Self::new("←").aliases(&["left"]),
+            Key::ArrowRight => Self::new("→").aliases(&["right"]),
+            Key::ArrowUp => Self::new("↑").aliases(&["up"]),
+            Key::ArrowDown => Self::new("↓").aliases(&["down"]),
+            Key::Backspace => Self::new("Backspace").mac_label("⌫"),
+            Key::Delete => Self::new("Delete").mac_label("⌦").aliases(&["del"]),
+            Key::Home => Self::new("Home"),
+            Key::End => Self::new("End"),
+            Key::PageUp => Self::new("PgUp").aliases(&["pageup"]),
+            Key::PageDown => Self::new("PgDn").aliases(&["pagedown"]),
+            Key::Enter => Self::new("Enter").mac_label("⏎").aliases(&["return"]),
+            Key::Tab => Self::new("Tab").mac_label("⇥"),
+            Key::Escape => Self::new("Esc").aliases(&["escape"]),
+            Key::Char(' ') => Self::new("Space"),
+            Key::F1 => Self::new("F1"),
+            Key::F2 => Self::new("F2"),
+            Key::F3 => Self::new("F3"),
+            Key::F4 => Self::new("F4"),
+            Key::F5 => Self::new("F5"),
+            Key::F6 => Self::new("F6"),
+            Key::F7 => Self::new("F7"),
+            Key::F8 => Self::new("F8"),
+            Key::F9 => Self::new("F9"),
+            Key::F10 => Self::new("F10"),
+            Key::F11 => Self::new("F11"),
+            Key::F12 => Self::new("F12"),
+            Key::Other => Self::new("Unknown"),
+            Key::Char(_) => return None,
+        })
+    }
+}
+
+/// Every key [`KeyName::of`] names, which the parse reads its names from.
+const NAMED_KEYS: [Key; 27] = [
+    Key::ArrowLeft,
+    Key::ArrowRight,
+    Key::ArrowUp,
+    Key::ArrowDown,
+    Key::Backspace,
+    Key::Delete,
+    Key::Home,
+    Key::End,
+    Key::PageUp,
+    Key::PageDown,
+    Key::Enter,
+    Key::Tab,
+    Key::Escape,
+    Key::Char(' '),
+    Key::F1,
+    Key::F2,
+    Key::F3,
+    Key::F4,
+    Key::F5,
+    Key::F6,
+    Key::F7,
+    Key::F8,
+    Key::F9,
+    Key::F10,
+    Key::F11,
+    Key::F12,
+    Key::Other,
+];
+
+/// A named key as its Windows or Linux label or an alias writes it, case-blind, or one
+/// character. `Key::Other`'s label names no key a press can match, so it does not parse.
 fn parse_key(text: &str) -> Result<Key, ParseShortcutError> {
-    Ok(match text.to_ascii_lowercase().as_str() {
-        "" => return Err(ParseShortcutError::NoKey),
-        "enter" | "return" => Key::Enter,
-        "escape" | "esc" => Key::Escape,
-        "tab" => Key::Tab,
-        "backspace" => Key::Backspace,
-        "delete" | "del" => Key::Delete,
-        "left" | "←" => Key::ArrowLeft,
-        "right" | "→" => Key::ArrowRight,
-        "up" | "↑" => Key::ArrowUp,
-        "down" | "↓" => Key::ArrowDown,
-        "home" => Key::Home,
-        "end" => Key::End,
-        "pageup" | "pgup" => Key::PageUp,
-        "pagedown" | "pgdn" => Key::PageDown,
-        "space" => Key::Char(' '),
-        "f1" => Key::F1,
-        "f2" => Key::F2,
-        "f3" => Key::F3,
-        "f4" => Key::F4,
-        "f5" => Key::F5,
-        "f6" => Key::F6,
-        "f7" => Key::F7,
-        "f8" => Key::F8,
-        "f9" => Key::F9,
-        "f10" => Key::F10,
-        "f11" => Key::F11,
-        "f12" => Key::F12,
-        _ => {
+    if text.is_empty() {
+        return Err(ParseShortcutError::NoKey);
+    }
+    let named = NAMED_KEYS.into_iter().find(|&key| {
+        KeyName::of(key).is_some_and(|name| {
+            name.label.eq_ignore_ascii_case(text)
+                || name
+                    .aliases
+                    .iter()
+                    .any(|alias| alias.eq_ignore_ascii_case(text))
+        })
+    });
+    match named {
+        Some(Key::Other) => Err(ParseShortcutError::Key),
+        Some(key) => Ok(key),
+        None => {
             let mut chars = text.chars();
             match (chars.next(), chars.next()) {
-                (Some(c), None) => Key::Char(c.to_ascii_lowercase()),
-                _ => return Err(ParseShortcutError::Key),
+                (Some(c), None) => Ok(Key::Char(c.to_ascii_lowercase())),
+                _ => Err(ParseShortcutError::Key),
             }
         }
-    })
+    }
 }
 
 /// Platform-native label for the platform this build targets: macOS glyphs (`⌥⇧⌘<key>`), else
@@ -372,35 +454,11 @@ impl fmt::Display for ShortcutLabel {
 }
 
 fn write_key(f: &mut fmt::Formatter<'_>, key: Key, platform: Platform) -> fmt::Result {
-    let mac = platform.labels_with_symbols();
-    match key {
-        Key::Char(c) => f.write_char(c.to_ascii_uppercase()),
-        Key::ArrowLeft => f.write_str("←"),
-        Key::ArrowRight => f.write_str("→"),
-        Key::ArrowUp => f.write_str("↑"),
-        Key::ArrowDown => f.write_str("↓"),
-        Key::Backspace => f.write_str(if mac { "⌫" } else { "Backspace" }),
-        Key::Delete => f.write_str(if mac { "⌦" } else { "Delete" }),
-        Key::Home => f.write_str("Home"),
-        Key::End => f.write_str("End"),
-        Key::PageUp => f.write_str("PgUp"),
-        Key::PageDown => f.write_str("PgDn"),
-        Key::Enter => f.write_str(if mac { "⏎" } else { "Enter" }),
-        Key::Tab => f.write_str(if mac { "⇥" } else { "Tab" }),
-        Key::Escape => f.write_str("Esc"),
-        Key::F1 => f.write_str("F1"),
-        Key::F2 => f.write_str("F2"),
-        Key::F3 => f.write_str("F3"),
-        Key::F4 => f.write_str("F4"),
-        Key::F5 => f.write_str("F5"),
-        Key::F6 => f.write_str("F6"),
-        Key::F7 => f.write_str("F7"),
-        Key::F8 => f.write_str("F8"),
-        Key::F9 => f.write_str("F9"),
-        Key::F10 => f.write_str("F10"),
-        Key::F11 => f.write_str("F11"),
-        Key::F12 => f.write_str("F12"),
-        Key::Other => f.write_str("?"),
+    match (KeyName::of(key), key) {
+        (Some(name), _) if platform.labels_with_symbols() => f.write_str(name.mac_label),
+        (Some(name), _) => f.write_str(name.label),
+        (None, Key::Char(c)) => f.write_char(c.to_ascii_uppercase()),
+        (None, key) => unreachable!("only a printing character has no name: {key:?}"),
     }
 }
 

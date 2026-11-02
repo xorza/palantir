@@ -111,8 +111,8 @@ impl<'a> InputEvent<'a> {
     /// [`InputState::on_input`](crate::input_state::InputState): a
     /// non-finite scalar would poison retained state (NaN fails every hit-test; an
     /// offset holding one trips [`TranslateScale::new`](crate::TranslateScale)'s
-    /// finite check later). Zoom composes by multiplication, so it must be strictly
-    /// positive too.
+    /// finite check later). Zoom composes by multiplication, so it must be a
+    /// [`ZoomFactor`]: positive and normal, so its inverse is finite.
     pub(crate) fn is_valid(&self) -> bool {
         match self {
             Self::PointerMoved(p) | Self::ScrollPixels(p) | Self::ScrollLines(p) => p.is_finite(),
@@ -181,7 +181,7 @@ mod tests {
             }
             assert!(!InputEvent::Zoom(value).is_valid(), "zoom {value}");
         }
-        for factor in [0.0, -0.0, -1.0] {
+        for factor in [0.0, -0.0, -1.0, 1.0e-40] {
             assert!(!InputEvent::Zoom(factor).is_valid(), "zoom {factor}");
         }
 

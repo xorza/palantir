@@ -1347,9 +1347,12 @@ impl Ui {
     /// Every edge the pointer produced this frame, widget by widget: the collation
     /// counterpart to [`Self::response_for`]'s polling. Edges, not levels (see
     /// [`PointerEdge`](crate::PointerEdge)). Read during record.
+    ///
+    /// A disabled widget, itself or by an ancestor as the last cascade holds it, has no edges,
+    /// as its `response_for` read outside a disabled subtree reports none.
     #[inline]
     pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
-        self.input.pointer_actions()
+        self.input.pointer_actions(&self.cascade)
     }
 
     /// Move keyboard focus to `id` now, bypassing [`FocusPolicy`]. Key-class routing

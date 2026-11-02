@@ -29,7 +29,8 @@ impl ZoomFactor {
     /// No zoom; the identity of [`Self::combine`].
     pub const ONE: Self = Self(1.0);
 
-    /// `factor` as a zoom, or `None` unless it is finite and strictly positive.
+    /// `factor` as a zoom, or `None` unless it is finite and at least [`f32::MIN_POSITIVE`], the
+    /// smallest normal: a subnormal factor's inverse is infinite.
     #[inline]
     pub const fn new(factor: f32) -> Option<Self> {
         if is_valid(factor) {
@@ -65,10 +66,10 @@ impl ZoomFactor {
     }
 }
 
-/// Finite and strictly positive.
+/// Finite and no smaller than the smallest normal, so its inverse is finite too.
 #[inline]
 const fn is_valid(factor: f32) -> bool {
-    factor.is_finite() && factor > 0.0
+    factor.is_finite() && factor >= f32::MIN_POSITIVE
 }
 
 /// Brings an `f64` product back into the invertible `f32` range. NaN needs its

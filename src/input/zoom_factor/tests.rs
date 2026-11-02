@@ -20,13 +20,25 @@ fn clamp_maps_every_product_to_a_valid_factor() {
     }
 }
 
-/// `new` accepts exactly the factors that compose: no inversion, annihilation or NaN.
+/// `new` accepts exactly the factors that compose: no inversion, annihilation or NaN, and no
+/// subnormal, whose inverse is infinite: `1 / 1e-40` overflows f32.
 #[test]
 fn only_a_finite_positive_number_is_a_factor() {
+    assert_eq!(1.0 / 1.0e-40_f32, f32::INFINITY);
+    assert!((1.0 / f32::MIN_POSITIVE).is_finite());
     for good in [f32::MIN_POSITIVE, 0.5, 1.0, 2.0, f32::MAX] {
         assert!(ZoomFactor::new(good).is_some(), "{good} is a factor");
     }
-    for bad in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+    for bad in [
+        0.0,
+        -0.0,
+        -1.0,
+        1.0e-40,
+        f32::MIN_POSITIVE / 2.0,
+        f32::NAN,
+        f32::INFINITY,
+        f32::NEG_INFINITY,
+    ] {
         assert!(ZoomFactor::new(bad).is_none(), "{bad} is not a factor");
     }
 }

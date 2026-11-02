@@ -335,9 +335,19 @@ impl InputState {
 
     /// Every edge the pointer produced this frame, widget by widget, from the same
     /// capture state as [`Self::response_for`]. Three slots per button, at most two
-    /// filled (`InputQueue` admits one press-or-release per button per frame).
+    /// filled (`InputQueue` admits one press-or-release per button per frame). A widget
+    /// `cascade` holds disabled, itself or by an ancestor, has none, as its response is empty:
+    /// the press still latched on it, so nothing behind it takes the input.
     #[inline]
-    pub(crate) fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_ {
+    pub(crate) fn pointer_actions<'a>(
+        &'a self,
+        cascade: &'a Cascade,
+    ) -> impl Iterator<Item = PointerAction> + 'a {
+        let disabled = move |id| {
+            cascade
+                .locate(id)
+                .is_some_and(|loc| cascade.entry(loc).disabled)
+        };
         PointerButton::ALL.into_iter().flat_map(move |button| {
             let cap = self.pointer.capture(button);
             let of = move |id, edge| PointerAction { id, button, edge };
@@ -358,7 +368,10 @@ impl InputState {
                 };
                 Some(of(release.target, edge))
             });
-            [pressed, dragging, ended].into_iter().flatten()
+            [pressed, dragging, ended]
+                .into_iter()
+                .flatten()
+                .filter(move |action| !disabled(action.id))
         })
     }
 

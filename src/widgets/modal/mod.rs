@@ -22,6 +22,11 @@ use std::rc::Rc;
 /// A centered dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
 /// The backdrop or Esc sets [`OverlayResponse::dismissed`]; the body's
 /// [`CloseHandle`] closes it from inside.
+///
+/// On the frame it opens, focus moves to its first Tab stop, however it was opened, as
+/// WAI-ARIA's dialog pattern asks (<https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/>),
+/// and returns to the widget that held it when the modal closes. A popup moves focus only when
+/// opened from the keyboard, as a native menu opened by a click highlights no row.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Modal<'a> {

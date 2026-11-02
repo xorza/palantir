@@ -381,6 +381,7 @@ impl Inputs<'_> {
                     .style(theme)
                     .id(id.with("preview"))
                     .sense(Sense::NONE)
+                    .focusable(false)
                     .size((Sizing::fixed(chip), Sizing::fixed(chip)))
                     .show(ui);
                 Panel::vstack()

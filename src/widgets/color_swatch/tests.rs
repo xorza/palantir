@@ -1,4 +1,6 @@
 use crate::host::harness::Harness;
+use crate::input::keyboard::key::Key;
+use crate::input::sense::Sense;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
@@ -58,4 +60,33 @@ fn a_chip_reports_its_click() {
     h.click(id);
     assert!(record(&mut h), "the click lands");
     assert!(!record(&mut h), "and is one-shot");
+}
+
+/// Tab reaches a chip exactly when the caller leaves it focusable: removing the click sense
+/// alone keeps the Tab stop a caller set, and `focusable(false)` takes it away.
+#[test]
+fn a_chip_is_a_tab_stop_while_the_caller_keeps_it_one() {
+    let id = WidgetId::from_hash("chip-tab");
+    for (sense, focusable, stop) in [
+        (Sense::CLICK, None, true),
+        (Sense::NONE, Some(true), true),
+        (Sense::NONE, Some(false), false),
+        (Sense::CLICK, Some(false), false),
+    ] {
+        let mut h = Harness::mono(UVec2::new(100, 100));
+        let record = |h: &mut Harness| {
+            h.frame(|ui| {
+                let chip = ColorSwatch::new(RgbaF32::WHITE).id(id).sense(sense);
+                match focusable {
+                    Some(focusable) => chip.focusable(focusable),
+                    None => chip,
+                }
+                .show(ui);
+            });
+        };
+        record(&mut h);
+        h.key(Key::Tab);
+        record(&mut h);
+        assert_eq!(h.focus() == Some(id), stop, "{sense:?} {focusable:?}");
+    }
 }

@@ -81,14 +81,12 @@ Both recorded cycles go away, and AGENTS.md drops their two bullets.
 
 ### R4. A policy held by one member of a family instead of the family's owner
 
-- The keyboard-open focus policy lives in `TriggerFrame`. `Modal` uses `OverlayScope` without it,
-  so focus stays under the backdrop.
 - Theme orchestration (pair, transition, scheme, epoch) is four `Ui` fields and ~130 lines of `Ui`
   methods, with the epoch bump written by hand at four sites.
 - The two headless hosts each write the per-frame glue: wake, record, commands, submit and system
   setters.
 
-**Target.** `OverlayScope` owns overlay focus. A `WindowTheme` owns the theme state and bumps its
+**Target.** A `WindowTheme` owns the theme state and bumps its
 epoch on every change of `shown()`. A `SoloWindow` owns one headless window's frame step, and each
 host keeps only its policies.
 
@@ -127,31 +125,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
-
-### Batch 2: Input routing, focus and keys
-
-Files: `src/input_state/mod.rs`, `src/input_state/pointer/`, `src/widget_core/overlay_scope.rs`,
-`src/widgets/popup/trigger_state.rs`, `src/widgets/modal/mod.rs`,
-`src/widgets/color_swatch/mod.rs`, `src/input/shortcut/`, `src/input/zoom_factor/mod.rs`.
-
-- [ ] `input_state/mod.rs:340-366`: `pointer_actions` yields `Pressed`, `DragStarted` and
-  `Clicked` for a disabled widget that `response_for` hides (`ui/mod.rs:1126-1133`). This breaks
-  the collation contract in `tests/click.rs:602-611`. Target: the press `Capture` records whether
-  its target was disabled, from `EntryRow::disabled` and `forest.ancestor_disabled()`, and both
-  readers honor it. Add a disabled row, and one disabled mid-press, to the collation test.
-- [ ] `modal/mod.rs:64-113`: a modal never moves focus inside, so Space and Enter act on nothing
-  until Tab. Target: move the keyboard-open focus policy from `TriggerFrame`
-  (`trigger_state.rs:181-183`) into `OverlayScope`, which Popup, Modal and Tooltip share. Add a
-  modal focus test (open by key, focus inside, close, focus returns).
-- [ ] `color_swatch/mod.rs:54-56`: `configure().focusable(false)` overwrites a caller's
-  `focusable(true)`. Target: drop the Tab stop only when the caller set none (read the authored
-  value, as `authored_sense` does).
-- [ ] `shortcut/mod.rs:289,377,403`: Ctrl+Space labels as `Ctrl+ `, which does not parse back, and
-  `Key::Other` labels as `?`, which parses as `Char('?')`. Target: one named-key table read by
-  `write_key` and `parse_key`, with `Char(' ')` written `Space` (macOS `␣`). The round-trip test
-  sweeps the table.
-- [ ] `zoom_factor/mod.rs:34-40,73-76`: `new` admits subnormals whose inverse is `inf`. Target:
-  `new` refuses below `f32::MIN_POSITIVE`, as `combine` and `from_wheel` already clamp.
 
 ### Batch 3: Record and layout inputs
 

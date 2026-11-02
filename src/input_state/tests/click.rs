@@ -607,6 +607,9 @@ fn press_started_counts_multi_press_runs() {
 ///
 /// Read per pass: a frame that settles input records twice and the second pass
 /// gets none, so pass B is `false` for the poll and empty for the collation.
+///
+/// A disabled button reports no edge on either end, whether it was disabled before the
+/// press or between the press and the release.
 #[test]
 fn pointer_actions_report_the_edges_the_response_reports() {
     use crate::input::interaction::button_phase::ButtonPhase;
@@ -668,5 +671,40 @@ fn pointer_actions_report_the_edges_the_response_reports() {
     assert!(
         quiet.is_empty(),
         "an edge outlived the frame it happened on"
+    );
+
+    let disabled = move |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            fixed_button(id).label("hi").disabled(true).show(ui);
+        });
+    };
+    let read = |ui: &mut Ui, build: &dyn Fn(&mut Ui)| {
+        let edges = ui.pointer_actions().collect::<Vec<_>>();
+        let state = ui.response_for(id).left;
+        build(ui);
+        (edges, state.phase != ButtonPhase::Idle)
+    };
+    h.frame(disabled);
+    h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
+    let pressed = h.frame_value(|ui| read(ui, &disabled));
+    assert_eq!(pressed, (vec![], false), "a disabled button takes no press");
+    h.release(PointerButton::Left);
+    let released = h.frame_value(|ui| read(ui, &disabled));
+    assert_eq!(
+        released,
+        (vec![], false),
+        "a disabled button takes no click"
+    );
+
+    h.frame(build);
+    h.press(Vec2::new(50.0, 20.0), PointerButton::Left);
+    h.frame(build);
+    h.frame(disabled);
+    h.release(PointerButton::Left);
+    let released = h.frame_value(|ui| read(ui, &disabled));
+    assert_eq!(
+        released,
+        (vec![], false),
+        "a button disabled mid-press takes no click"
     );
 }
