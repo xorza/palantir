@@ -152,7 +152,46 @@ struct CaptureTarget {
     /// Whether the format filters, so the passes that read the capture fetch it bilinearly.
     filters: bool,
     target: Sampled,
+    /// The most a frame of the current expiry window read of it.
+    peak: UVec2,
 }
+
+/// What a frame's batches read of the textures they share, each at its largest: the capture of
+/// the frame's format, the first level's texels and the levels' count, and the scratch.
+#[derive(Clone, Copy, Debug, Default)]
+struct BlurNeeds {
+    capture: Option<(TargetFormat, UVec2)>,
+    levels: UVec2,
+    mips: u8,
+    scratch: UVec2,
+}
+
+impl BlurNeeds {
+    /// The larger of `self` and `other`, texture by texture.
+    fn max(self, other: Self) -> Self {
+        let capture = match (self.capture, other.capture) {
+            (Some((format, a)), Some((other_format, b))) => {
+                debug_assert_eq!(format, other_format, "a frame's captures share its format");
+                Some((format, a.max(b)))
+            }
+            (a, b) => a.or(b),
+        };
+        Self {
+            capture,
+            levels: self.levels.max(other.levels),
+            mips: self.mips.max(other.mips),
+            scratch: self.scratch.max(other.scratch),
+        }
+    }
+}
+
+/// The prepares an expiry window spans: at its end each texture the blur shares steps down to the
+/// most a frame of the window read, and one no frame read goes. Two seconds of a 60 Hz animation,
+/// so a pane that closes and opens again within one gesture keeps its textures; a window that
+/// paints no frame keeps them until it paints again, as no frame runs to shrink them. The decision
+/// is `Backdrops`': expire after idle, as Chromium's `cc::ResourcePool` and Flutter's
+/// `RasterCache` drop what recent frames did not use.
+pub(crate) const EXPIRY_FRAMES: u32 = 120;
 
 /// A target the frame's blurs read their level 0 from where it is sampled, in place of a capture:
 /// the group a pass reads it through, its extent, and whether its format filters.
@@ -190,8 +229,10 @@ struct Levels {
 }
 
 /// The device side of the backdrop blur: its pipelines, the capture, the levels and the scratch
-/// the passes write, all grown to the largest batch seen, with slack, and kept, so a steady frame
-/// allocates nothing and a resize drag makes them again only now and then.
+/// the passes write, all grown to the largest batch seen, with slack, so a steady frame allocates
+/// nothing and a resize drag makes them again only now and then. Each texture steps down to what
+/// the last [`EXPIRY_FRAMES`] prepares read, and goes where none read it, so one full-screen pane
+/// does not hold its textures for the session.
 ///
 /// None of them passes the device's edge. The capture and the levels hold what lies on one
 /// surface, which a target's edge bounds; the scratch holds regions packed side by side, which a
@@ -213,6 +254,11 @@ pub(crate) struct BackdropBlur {
     levels: Option<Levels>,
     /// The residual's first axis, sized to the largest round seen.
     scratch: Option<Sampled>,
+    /// The most a frame of the current expiry window read of the levels and the scratch; each
+    /// capture keeps its own.
+    peak: BlurNeeds,
+    /// The prepares of the current expiry window so far.
+    window: u32,
     /// Places a round's regions in the scratch, an edge of `ceiling` square.
     scratch_packer: ShelfPacker,
     /// The device's largest texture edge, which no texture of the blur passes.
@@ -352,6 +398,8 @@ impl BackdropBlur {
             captures: Vec::new(),
             levels: None,
             scratch: None,
+            peak: BlurNeeds::default(),
+            window: 0,
             scratch_packer: ShelfPacker::within(ceiling),
             ceiling,
             target: None,
@@ -379,6 +427,7 @@ impl BackdropBlur {
                         grown(UVec2::ZERO, size, self.ceiling),
                         filters,
                     ),
+                    peak: UVec2::ZERO,
                 });
                 self.captures.len() - 1
             });
@@ -408,10 +457,7 @@ impl BackdropBlur {
             return;
         }
         let mips = mips.max(have_mips);
-        // A mip floors its halving where a level's extent rounds up: a first mip a whole number of
-        // the last one's texels keeps every mip as wide as its level.
-        let last = 1 << (mips - 1);
-        let size = grown(have, first, self.ceiling).map(|side| side.next_multiple_of(last));
+        let size = levels_size(have, first, mips as u8, self.ceiling);
         debug_assert!(
             size.max_element() <= self.ceiling,
             "levels of {size} pass the device's {} edge",
@@ -529,8 +575,8 @@ impl BackdropBlur {
     }
 
     /// Lay out `jobs` in `batches`, each the jobs [`Self::encode`] records together, make room for
-    /// them and write their parameters, ahead of the copies that fill their captures and the
-    /// passes.
+    /// them once, at the most a batch reads, and write their parameters, ahead of the copies that
+    /// fill their captures and the passes. Ends an expiry window every [`EXPIRY_FRAMES`] calls.
     pub(crate) fn prepare(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -539,21 +585,103 @@ impl BackdropBlur {
         target: Option<TargetSource>,
     ) {
         self.target = target;
+        let mut needs = BlurNeeds::default();
         let mut laid_out = 0;
         for batch in batches {
             debug_assert_eq!(batch.start, laid_out, "batches cover the jobs in order");
             laid_out = batch.end;
-            self.lay_out(ctx.gpu, &mut jobs[batch]);
+            needs = needs.max(self.lay_out(&mut jobs[batch]));
         }
         debug_assert_eq!(laid_out, jobs.len(), "batches cover the jobs");
+        self.make_room(ctx.gpu, needs);
         self.write_params(ctx, jobs);
+        self.expire(ctx.gpu, needs);
+    }
+
+    /// Grow the capture, the levels and the scratch to hold `needs`.
+    fn make_room(&mut self, gpu: &Gpu, needs: BlurNeeds) {
+        if let Some((format, size)) = needs.capture {
+            self.ensure_capture(gpu, format, size);
+        }
+        if needs.mips > 0 {
+            self.ensure_levels(gpu, needs.levels, needs.mips);
+        }
+        if needs.scratch != UVec2::ZERO {
+            self.ensure_scratch(gpu, needs.scratch);
+        }
+    }
+
+    /// Fold this frame's `needs` into the window's peak and, at the window's end, make each shared
+    /// texture again at the window's peak where it holds more, or drop it where no frame read it.
+    fn expire(&mut self, gpu: &Gpu, needs: BlurNeeds) {
+        if let Some((format, size)) = needs.capture
+            && let Some(capture) = self.captures.iter_mut().find(|c| c.format == format)
+        {
+            capture.peak = capture.peak.max(size);
+        }
+        self.peak = self.peak.max(BlurNeeds {
+            capture: None,
+            ..needs
+        });
+        self.window += 1;
+        if self.window < EXPIRY_FRAMES {
+            return;
+        }
+        self.window = 0;
+        let peak = std::mem::take(&mut self.peak);
+        self.captures.retain(|capture| capture.peak != UVec2::ZERO);
+        for at in 0..self.captures.len() {
+            let capture = &self.captures[at];
+            let want = grown(UVec2::ZERO, capture.peak, self.ceiling);
+            if render_target::texture_size(&capture.target.texture) != want {
+                self.captures[at].target = self.sampled(
+                    gpu,
+                    "palantir.backdrop.capture",
+                    capture.format.get(),
+                    want,
+                    capture.filters,
+                );
+            }
+            self.captures[at].peak = UVec2::ZERO;
+        }
+        let levels_held = self.levels.as_ref().map(|levels| {
+            (
+                render_target::texture_size(&levels.texture),
+                levels.views.len() as u32,
+            )
+        });
+        let levels_want = (peak.mips > 0).then(|| {
+            (
+                levels_size(UVec2::ZERO, peak.levels, peak.mips, self.ceiling),
+                u32::from(peak.mips),
+            )
+        });
+        if levels_held != levels_want {
+            self.levels = None;
+            if peak.mips > 0 {
+                self.ensure_levels(gpu, peak.levels, peak.mips);
+            }
+        }
+        let scratch_held = self
+            .scratch
+            .as_ref()
+            .map(|scratch| render_target::texture_size(&scratch.texture));
+        let scratch_want =
+            (peak.scratch != UVec2::ZERO).then(|| grown(UVec2::ZERO, peak.scratch, self.ceiling));
+        if scratch_held != scratch_want {
+            self.scratch = None;
+            if peak.scratch != UVec2::ZERO {
+                self.ensure_scratch(gpu, peak.scratch);
+            }
+        }
     }
 
     /// Give `batch` its capture and levels origins, at the first texel it reads of each, and each
-    /// job its round and place in the scratch, and grow the capture, the levels and the scratch to
-    /// hold what it reads.
-    fn lay_out(&mut self, gpu: &Gpu, batch: &mut [BlurJob]) {
+    /// job its round and place in the scratch, and report what of the capture, the levels and the
+    /// scratch it reads.
+    fn lay_out(&mut self, batch: &mut [BlurJob]) -> BlurNeeds {
         let first = batch[0];
+        let mut needs = BlurNeeds::default();
         let capture_origin = if self.target.is_some() {
             UVec2::ZERO
         } else {
@@ -562,7 +690,7 @@ impl BackdropBlur {
                 .map(|job| job.footprint)
                 .reduce(URect::union)
                 .expect("a batch holds a job");
-            self.ensure_capture(gpu, first.format, footprints.size);
+            needs.capture = Some((first.format, footprints.size));
             footprints.min
         };
         let deepest = batch.iter().map(|job| job.plan.levels()).max().unwrap_or(0);
@@ -574,7 +702,8 @@ impl BackdropBlur {
             .map_or(UVec2::ZERO, |window| {
                 let align = 1 << (deepest - 1);
                 let origin = window.min / align * align;
-                self.ensure_levels(gpu, window.max() - origin, deepest);
+                needs.levels = window.max() - origin;
+                needs.mips = deepest;
                 origin
             });
         let mut scratch = UVec2::ZERO;
@@ -595,7 +724,8 @@ impl BackdropBlur {
             job.layout.scratch_origin = origin.as_uvec2();
             scratch = scratch.max(job.layout.scratch_origin + job.region.size);
         }
-        self.ensure_scratch(gpu, scratch);
+        needs.scratch = scratch;
+        needs
     }
 
     /// Write the parameters of laid out `jobs`, and each one's first slot.
@@ -980,6 +1110,14 @@ fn grown(have: UVec2, want: UVec2, ceiling: u32) -> UVec2 {
 
 /// The texels [`grown`] rounds an edge up to.
 const GROWTH_GRANULE: u32 = 256;
+
+/// The first mip of levels that hold `have` and must hold `want` texels of level 1 across `mips`
+/// levels: [`grown`], each edge a whole number of the last mip's texels, as a mip floors its
+/// halving where a level's extent rounds up, so every mip stays as wide as its level.
+fn levels_size(have: UVec2, want: UVec2, mips: u8, ceiling: u32) -> UVec2 {
+    let last = 1 << (mips - 1);
+    grown(have, want, ceiling).map(|side| side.next_multiple_of(last))
+}
 
 /// The numbers [`BackdropBlur::SHADER`] takes from the Rust types that own them.
 fn shader_constants() -> Vec<ShaderConstant> {

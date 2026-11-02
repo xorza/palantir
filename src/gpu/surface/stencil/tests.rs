@@ -2,7 +2,6 @@ use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::test_gpu::isolated_headless_test_gpu;
 use glam::UVec2;
 use std::iter;
-use std::sync::mpsc;
 
 /// A stencil made where freed buffers held nonzero bytes reads 0 in every texel after a pass
 /// that clears it, as each rounded-clip pass does. Each round frees the last round's stencil
@@ -13,7 +12,6 @@ use std::sync::mpsc;
 #[test]
 fn a_stencil_on_memory_buffers_held_clears_to_zero() {
     const SIZE: UVec2 = UVec2::new(160, 120);
-    const ROW: u32 = 256;
     let gpu = isolated_headless_test_gpu();
     let mut seed = 0x1234_5678_u32;
     let mut next = || {
@@ -60,41 +58,11 @@ fn a_stencil_on_memory_buffers_held_clears_to_zero() {
             occlusion_query_set: None,
             multiview_mask: None,
         }));
-        let read = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("test.stencil.read"),
-            size: u64::from(ROW * SIZE.y),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &stencil.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::StencilOnly,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &read,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(ROW),
-                    rows_per_image: None,
-                },
-            },
-            stencil.texture.size(),
-        );
         gpu.queue.submit(iter::once(encoder.finish()));
-        let slice = read.slice(..);
-        let (tx, rx) = mpsc::channel();
-        slice.map_async(wgpu::MapMode::Read, move |mapped| {
-            tx.send(mapped).ok();
-        });
-        gpu.wait();
-        rx.recv().unwrap().unwrap();
-        let texels = slice.get_mapped_range().unwrap();
+        let texels = gpu.read_texture(&stencil.texture);
         let spoiled = (0..SIZE.y)
             .flat_map(|y| (0..SIZE.x).map(move |x| (x, y)))
-            .find(|&(x, y)| texels[(y * ROW + x) as usize] != 0);
+            .find(|&(x, y)| texels[(y * SIZE.x + x) as usize] != 0);
         assert_eq!(spoiled, None, "round {round}");
         held = Some((stencil, buffers));
     }

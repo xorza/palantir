@@ -1,5 +1,5 @@
 use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, BlurParams, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
+    BackdropBlur, BlurJob, BlurParams, EXPIRY_FRAMES, JobLayout, LEVEL_FORMAT, ResidualLoop, grown,
 };
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::surface::render_target::{self, TargetFormat};
@@ -240,6 +240,81 @@ fn whole(plan: BlurPlan, dest_origin: UVec2, format: TargetFormat) -> BlurJob {
         footprint: URect::new(0, 0, SURFACE.x, SURFACE.y),
         layout: JobLayout::default(),
     }
+}
+
+/// One job over the whole of a `surface` px surface.
+fn whole_of(plan: BlurPlan, surface: UVec2) -> BlurJob {
+    BlurJob {
+        surface,
+        region: plan
+            .region(URect::new(0, 0, surface.x, surface.y), surface)
+            .unwrap(),
+        footprint: URect::new(0, 0, surface.x, surface.y),
+        ..whole(plan, UVec2::ZERO, FORMAT)
+    }
+}
+
+/// Lay `jobs` out on `engine` as one batch, as a frame of them does, with nothing encoded.
+fn prepare_on(gpu: &HeadlessTestGpuLease, engine: &mut BackdropBlur, jobs: &mut [BlurJob]) {
+    let mut belt = StagingBelt::new(gpu.device.clone(), 1 << 12);
+    let mut encoder = gpu
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+    {
+        let mut ctx = GpuCtx::new(gpu, &mut belt, &mut encoder);
+        let all = 0..jobs.len();
+        engine.prepare(
+            &mut ctx,
+            jobs,
+            (!jobs.is_empty()).then_some(all).into_iter(),
+            None,
+        );
+    }
+    belt.finish();
+    gpu.queue.submit(iter::once(encoder.finish()));
+    belt.recall();
+}
+
+/// The textures a frame's blurs share step down at the end of an expiry window to the most its
+/// frames read, and go where none read them. A 600 × 400 capture grows to whole granules, 768 ×
+/// 512; the window it fell in keeps it, the next window of 97 × 64 frames steps it down to
+/// 256 × 256, and a window of frames with no blur drops the capture, the levels and the scratch.
+#[test]
+fn the_shared_textures_expire_after_idle() {
+    let gpu = headless_test_gpu();
+    let mut engine = BackdropBlur::new(&gpu);
+    let plan = BlurPlan::new(10.0);
+    assert!(plan.levels() > 0, "fixture: a blur that halves");
+    let capture = |engine: &BackdropBlur| {
+        engine
+            .captures
+            .iter()
+            .map(|c| render_target::texture_size(&c.target.texture))
+            .collect::<Vec<_>>()
+    };
+    let large = UVec2::new(600, 400);
+    prepare_on(&gpu, &mut engine, &mut [whole_of(plan, large)]);
+    assert_eq!(capture(&engine), [UVec2::new(768, 512)]);
+    for _ in 1..EXPIRY_FRAMES {
+        prepare_on(&gpu, &mut engine, &mut [whole_of(plan, SURFACE)]);
+    }
+    assert_eq!(
+        capture(&engine),
+        [UVec2::new(768, 512)],
+        "its window read it"
+    );
+    for _ in 0..EXPIRY_FRAMES {
+        prepare_on(&gpu, &mut engine, &mut [whole_of(plan, SURFACE)]);
+    }
+    assert_eq!(capture(&engine), [UVec2::splat(256)], "stepped down");
+    assert!(engine.levels.is_some() && engine.scratch.is_some());
+    let scratch = render_target::texture_size(&engine.scratch.as_ref().unwrap().texture);
+    assert_eq!(scratch, UVec2::splat(256), "the scratch steps down too");
+    for _ in 0..EXPIRY_FRAMES {
+        prepare_on(&gpu, &mut engine, &mut []);
+    }
+    assert!(capture(&engine).is_empty(), "no frame read a capture");
+    assert!(engine.levels.is_none() && engine.scratch.is_none());
 }
 
 /// The GPU passes match the reference arithmetic on every texel the job writes, its apron

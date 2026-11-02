@@ -13,6 +13,7 @@ use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::array;
 use std::cell::{Ref, RefCell, RefMut};
+use std::ops::Range;
 
 /// The [`ImageStore`] a host's registry writes through and its backend draws
 /// from. They share one `Rc`, so the device side sits behind a `RefCell`; a draw takes
@@ -24,7 +25,8 @@ use std::cell::{Ref, RefCell, RefMut};
 pub(crate) struct WgpuImageStore {
     /// `None` until the first attach.
     attached: RefCell<Option<AttachedStore>>,
-    /// Staging for [`premultiply_into`], reused across updates. Opaque images skip
+    /// Staging for [`premultiply_into`], reused across updates and held to [`STAGED_BYTES`]: a
+    /// translucent image is premultiplied and written a band of rows at a time. Opaque images skip
     /// it ([`Self::write`]).
     staged: RefCell<Vec<SrgbaU8>>,
     /// Built with the store, at startup: the build takes milliseconds, which shouldn't
@@ -50,6 +52,11 @@ pub(crate) struct ImageTexture {
 }
 
 const ATTACHED: &str = "the host attaches a device before it draws or registers an image";
+
+/// The most [`WgpuImageStore::staged`] holds, a band of rows at least one high: a 64 MP
+/// translucent image staged whole would keep 256 MiB for the session, and in bands of 1 MiB it
+/// costs the same copies, one `write_texture` each.
+const STAGED_BYTES: u32 = 1 << 20;
 
 /// A store with no device yet.
 impl Default for WgpuImageStore {
@@ -147,33 +154,52 @@ impl ImageStore for WgpuImageStore {
         );
         // A pitch off `COPY_BYTES_PER_ROW_ALIGNMENT` is re-packed inside wgpu; padding the rows here
         // would not save that, as wgpu copies the whole into staging either way.
-        let write = |data: &[u8]| {
+        let row_bytes = image.size.x * 4;
+        let write = |y: u32, data: &[u8]| {
+            let rows = data.len() as u32 / row_bytes;
             gpu.queue.write_texture(
-                entry.texture.as_image_copy(),
+                wgpu::TexelCopyTextureInfo {
+                    texture: &entry.texture,
+                    mip_level: 0,
+                    origin: render_target::origin(UVec2::new(0, y)),
+                    aspect: wgpu::TextureAspect::All,
+                },
                 data,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(image.size.x * 4),
-                    rows_per_image: Some(image.size.y),
+                    bytes_per_row: Some(row_bytes),
+                    rows_per_image: Some(rows),
                 },
-                render_target::extent(image.size),
+                render_target::extent(UVec2::new(image.size.x, rows)),
             );
         };
         // An image with no transparency is already premultiplied (scale by one), so
         // it is written as is rather than copied into a second buffer.
         let texels = image.texels();
         if texels.iter().all(|texel| texel.a == u8::MAX) {
-            write(&image.pixels);
+            write(0, &image.pixels);
             return;
         }
         let mut staged = self.staged.borrow_mut();
-        premultiply_into(&self.premultiply, texels, &mut staged);
-        write(bytemuck::cast_slice(&staged));
+        let width = image.size.x as usize;
+        for rows in bands(image.size) {
+            let band = &texels[rows.start as usize * width..rows.end as usize * width];
+            premultiply_into(&self.premultiply, band, &mut staged);
+            write(rows.start, bytemuck::cast_slice(&staged));
+        }
     }
 
     fn free(&self, id: TextureId) {
         self.attached_mut().textures.remove(&id);
     }
+}
+
+/// The rows of a `size` image, in bands of at most [`STAGED_BYTES`], each at least one row high.
+fn bands(size: UVec2) -> impl Iterator<Item = Range<u32>> {
+    let band = (STAGED_BYTES / (size.x * 4)).max(1);
+    (0..size.y)
+        .step_by(band as usize)
+        .map(move |start| start..(start + band).min(size.y))
 }
 
 /// `texels` with every color scaled by its own alpha, still sRGB-encoded:
@@ -259,11 +285,12 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::gpu::resource::wgpu_image_store::{
-        WgpuImageStore, premultiplied_bytes, premultiply_into,
+        STAGED_BYTES, WgpuImageStore, bands, premultiplied_bytes, premultiply_into,
     };
     use crate::gpu::test_gpu;
     use crate::image_registry::ImageRegistry;
     use crate::image_registry::image_handle::ImageHandle;
+    use crate::image_registry::image_store::ImageStore;
     use crate::primitives::identity::texture_id::TextureId;
     use crate::primitives::paint::color::RgbaF32;
     use crate::primitives::paint::color::srgba_u8::SrgbaU8;
@@ -351,5 +378,30 @@ mod tests {
             weak.upgrade().is_none(),
             "the last image handle releases a store whose other owners are gone",
         );
+    }
+
+    /// A translucent image is premultiplied and written a band of rows at a time, so the staging
+    /// never holds more than one: 1024 × 300 texels are 1.2 MiB, in bands of
+    /// `2^20 / 4096 = 256` rows; a 16 384-wide image takes `2^20 / 65 536 = 16` rows a band, and an
+    /// image under one band writes in one.
+    #[test]
+    fn a_translucent_image_writes_in_bands_of_the_staging() {
+        let bands = |w, h| bands(UVec2::new(w, h)).collect::<Vec<_>>();
+        assert_eq!(bands(1024, 300), [0..256, 256..300]);
+        assert_eq!(bands(16384, 40), [0..16, 16..32, 32..40]);
+        assert_eq!(bands(8, 8).len(), 1, "one band");
+        assert_eq!(bands(8, 8).first(), Some(&(0..8)));
+
+        let gpu = test_gpu::headless_test_gpu();
+        let store = WgpuImageStore::default();
+        store.attach(&gpu);
+        let mut image = Image::blank(UVec2::new(1024, 300));
+        image.texels_mut().fill(SrgbaU8 {
+            a: 128,
+            ..SrgbaU8::hex(0x4cd3ff)
+        });
+        store.write(TextureId(1), &image);
+        let staged = store.staged.borrow().capacity() * 4;
+        assert!(staged <= STAGED_BYTES as usize, "{staged} bytes staged");
     }
 }

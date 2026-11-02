@@ -9,6 +9,7 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use glam::UVec2;
+use std::ops::Range;
 
 /// Bytes per uploaded LUT row, derived from the CPU `RgbaF16` row store.
 const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<RgbaF16>()) as u32;
@@ -46,6 +47,54 @@ fn create_texture(gpu: &Gpu, rows: u32) -> wgpu::Texture {
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     })
+}
+
+/// Stage `runs`, each a range of `texture`'s rows whose bytes `bytes_of` gives, `len_bytes` in all,
+/// in the belt once, and copy each run into its rows on the frame's encoder, one copy a run. A flush
+/// holds at least one row, so only a lost device declines the staging, and then nothing is copied.
+pub(super) fn stage_rows<'a>(
+    ctx: &mut GpuCtx<'_>,
+    texture: &wgpu::Texture,
+    runs: &[Range<u32>],
+    len_bytes: u64,
+    bytes_of: impl Fn(Range<u32>) -> &'a [u8],
+) {
+    let Some(Staged {
+        mut view,
+        buffer,
+        offset,
+        encoder,
+    }) = ctx.stage(len_bytes, u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT))
+    else {
+        return;
+    };
+    let mut at = 0;
+    for run in runs {
+        let bytes = bytes_of(run.clone());
+        view.slice(at..at + bytes.len()).copy_from_slice(bytes);
+        encoder.copy_buffer_to_texture(
+            wgpu::TexelCopyBufferInfo {
+                buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: offset + at as u64,
+                    bytes_per_row: Some(ROW_PITCH),
+                    rows_per_image: None,
+                },
+            },
+            wgpu::TexelCopyTextureInfo {
+                texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: 0,
+                    y: run.start,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            render_target::extent(UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start)),
+        );
+        at += bytes.len();
+    }
 }
 
 impl GpuGradientAtlas {
@@ -87,46 +136,9 @@ impl GpuGradientAtlas {
                 let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
                 *bind_group = binding.bind_group(ctx.gpu, &view, "palantir.gradient.bg");
             }
-            // A flush holds at least one row, so only a lost device declines the staging.
-            let Some(Staged {
-                mut view,
-                buffer,
-                offset,
-                encoder,
-            }) = ctx.stage(
-                rows.len_bytes() as u64,
-                u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
-            )
-            else {
-                return;
-            };
-            let mut at = 0;
-            for run in rows.runs {
-                let bytes = rows.bytes(run.clone());
-                view.slice(at..at + bytes.len()).copy_from_slice(bytes);
-                encoder.copy_buffer_to_texture(
-                    wgpu::TexelCopyBufferInfo {
-                        buffer,
-                        layout: wgpu::TexelCopyBufferLayout {
-                            offset: offset + at as u64,
-                            bytes_per_row: Some(ROW_PITCH),
-                            rows_per_image: None,
-                        },
-                    },
-                    wgpu::TexelCopyTextureInfo {
-                        texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d {
-                            x: 0,
-                            y: run.start,
-                            z: 0,
-                        },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    render_target::extent(UVec2::new(LUT_ROW_TEXELS as u32, run.end - run.start)),
-                );
-                at += bytes.len();
-            }
+            stage_rows(ctx, texture, rows.runs, rows.len_bytes() as u64, |run| {
+                rows.bytes(run)
+            });
         });
     }
 }

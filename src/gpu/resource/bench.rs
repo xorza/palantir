@@ -5,7 +5,8 @@ use crate::bench::backends::Backends;
 use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::Timing;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::gpu_ctx::{GpuCtx, Staged};
+use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::resource::gpu_gradient_atlas;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use criterion::{Criterion, Throughput};
@@ -105,52 +106,16 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                         .device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
                     let mut ctx = GpuCtx::new(&gpu, belt, &mut encoder);
-                    let Staged {
-                        mut view,
-                        buffer,
-                        offset,
-                        encoder: copies,
-                    } = ctx
-                        .stage(
-                            u64::from(bytes),
-                            u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
-                        )
-                        .expect("a case stages rows");
-                    let mut at = 0usize;
-                    for run in &runs {
-                        let (start, len) = (run.start, run.end - run.start);
-                        let len_bytes = (len * ROW_BYTES) as usize;
-                        let from = (start * ROW_BYTES) as usize;
-                        view.slice(at..at + len_bytes)
-                            .copy_from_slice(&source[from..from + len_bytes]);
-                        copies.copy_buffer_to_texture(
-                            wgpu::TexelCopyBufferInfo {
-                                buffer,
-                                layout: wgpu::TexelCopyBufferLayout {
-                                    offset: offset + at as u64,
-                                    bytes_per_row: Some(ROW_BYTES),
-                                    rows_per_image: None,
-                                },
-                            },
-                            wgpu::TexelCopyTextureInfo {
-                                texture,
-                                mip_level: 0,
-                                origin: wgpu::Origin3d {
-                                    x: 0,
-                                    y: start,
-                                    z: 0,
-                                },
-                                aspect: wgpu::TextureAspect::All,
-                            },
-                            wgpu::Extent3d {
-                                width: LUT_ROW_TEXELS as u32,
-                                height: len,
-                                depth_or_array_layers: 1,
-                            },
-                        );
-                        at += len_bytes;
-                    }
-                    drop(view);
+                    gpu_gradient_atlas::stage_rows(
+                        &mut ctx,
+                        texture,
+                        &runs,
+                        u64::from(bytes),
+                        |run| {
+                            &source
+                                [(run.start * ROW_BYTES) as usize..(run.end * ROW_BYTES) as usize]
+                        },
+                    );
                     belt.finish();
                     gpu.queue.submit([encoder.finish()]);
                     belt.recall();

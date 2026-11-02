@@ -3,8 +3,8 @@
 
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::surface::map_state::MapState;
 use crate::gpu::surface::render_target;
+use crate::gpu::surface::staging::Staging;
 use glam::UVec2;
 use std::iter;
 
@@ -12,13 +12,8 @@ use std::iter;
 /// every frame back makes one buffer, not one a frame.
 #[derive(Debug)]
 pub(crate) struct TexelReadback {
-    buffer: wgpu::Buffer,
+    staging: Staging,
     size: UVec2,
-    /// One row's bytes.
-    row: u32,
-    /// A row's stride in the buffer: whole `COPY_BYTES_PER_ROW_ALIGNMENT` units.
-    padded_row: u32,
-    map: MapState,
 }
 
 impl TexelReadback {
@@ -43,20 +38,9 @@ impl TexelReadback {
             .block_copy_size(None)
             .expect("a color format has one aspect");
         let size = render_target::texture_size(texture);
-        let row = size.x * texel;
-        let padded_row = row.next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
-        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.texel_readback"),
-            size: u64::from(padded_row) * u64::from(size.y),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
         Self {
-            buffer,
+            staging: Staging::new(gpu, "palantir.texel_readback", size, texel),
             size,
-            row,
-            padded_row,
-            map: MapState::new(),
         }
     }
 
@@ -77,19 +61,12 @@ impl TexelReadback {
             });
         encoder.copy_texture_to_buffer(
             texture.as_image_copy(),
-            wgpu::TexelCopyBufferInfo {
-                buffer: &self.buffer,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(self.padded_row),
-                    rows_per_image: Some(self.size.y),
-                },
-            },
+            self.staging.copy_info(),
             render_target::extent(self.size),
         );
         gpu.queue.submit(iter::once(encoder.finish()));
-        let map = &self.map;
-        map.map_read(&self.buffer);
+        self.staging.map_read();
+        let map = self.staging.map();
         match gpu.wait_until(&|| !map.is_pending()) {
             GpuWait::Done if map.is_mapped() => {}
             GpuWait::Done => {
@@ -97,25 +74,11 @@ impl TexelReadback {
                 return GpuWait::DeviceLost;
             }
             waited => {
-                // Aborts the map, so the next read can map the buffer again.
-                if map.is_pending() {
-                    self.buffer.unmap();
-                }
+                self.staging.abort();
                 return waited;
             }
         }
-        {
-            let view = self
-                .buffer
-                .slice(..)
-                .get_mapped_range()
-                .expect("a buffer that mapped reads whole");
-            texels.reserve_exact((self.row * self.size.y) as usize);
-            for line in view.chunks_exact(self.padded_row as usize) {
-                texels.extend_from_slice(&line[..self.row as usize]);
-            }
-        }
-        self.buffer.unmap();
+        self.staging.unpad_into(texels);
         GpuWait::Done
     }
 }

@@ -126,36 +126,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 5: GPU memory
-
-Files: `src/gpu/backdrop/{backdrops,backdrop_blur}/`, `src/gpu/resource/{packed_atlas.rs,wgpu_image_store.rs,gpu_gradient_atlas.rs,bench.rs}`,
-`src/gpu/surface/{capture.rs,texel_readback.rs,owned_target/}`.
-
-- [ ] `backdrops/mod.rs:494-525`, `packed_atlas.rs:74-76,150-152`, `backdrop_blur/mod.rs:361-468`:
-  the results atlas, capture, levels and scratch never shrink. One full-window 4K pane pins about
-  240 MiB. Target: capture, levels and scratch step down after K frames with no break that needed
-  that size. The results atlas copies its slots back into a budget-sized texture once every live
-  slot fits for K frames. Record K and its reason in the module doc. Add a test: a large pane
-  closes, K frames pass, the sizes return to the budget. Decided: expire after idle, as Chromium's
-  `cc::ResourcePool` expires unused resources after `kDefaultExpirationDelay` and Flutter's
-  `RasterCache::EvictUnusedCacheEntries` drops entries a frame did not meet. Refused: the
-  high-water mark kept, which holds up to 512 MiB for the session; results capped at the budget,
-  which re-blurs a large pane every frame. Cost: the shrink frame copies up to 32 MiB, and a pane
-  that comes back grows the atlas again. The decision goes into `backdrops`' module doc.
-- [ ] `backdrop_blur/mod.rs:534-599`: `lay_out` regrows per batch and makes textures no pass
-  reads. Target: `lay_out` accumulates the frame's maximum extents, and `prepare` calls each
-  `ensure_*` once.
-- [ ] `wgpu_image_store.rs:29,164-171,193-206`: `staged` keeps a premultiply buffer at the largest
-  translucent image (256 MiB for 64 MP). Target: premultiply and write in row bands of a fixed
-  budget (1 MiB), one `write_texture` per band.
-- [ ] `capture.rs:95-171,186-211`, `texel_readback.rs:42-120`, `owned_target/mod.rs:129-171`: two
-  staging read-back paths, and `read_back` makes a new buffer and copies three times. Target: one
-  `Staging { buffer, row, padded_row, map }` with `record` and `unpad_into(&mut Vec<u8>)`, under
-  `Capture` and `TexelReadback`. `read_back` is `copy_texels` plus the BGRA swap into one `Vec`.
-  The stencil test (`stencil/tests.rs:63-95`) uses `gpu.read_texture`.
-- [ ] `resource/bench.rs:96-158`: the gradient-upload bench copies `GpuGradientAtlas::upload`'s loop
-  (`gpu_gradient_atlas.rs:93-127`). Target: one `stage_rows` both call.
-
 ### Batch 6: Text and icons
 
 Files: `src/text/{probe,cosmic,key.rs,system.rs,request.rs}`, `src/icons/icon_table.rs`.

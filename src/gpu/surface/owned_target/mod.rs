@@ -136,9 +136,9 @@ impl OwnedTarget {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::gpu::device::gpu_wait::GpuWait;
-    use crate::gpu::surface::capture::{Capture, CaptureSource};
+    use crate::gpu::surface::capture::{self, Capture};
     use crate::gpu::surface::owned_target::OwnedTarget;
-    use crate::primitives::geometry::urect::URect;
+    use crate::gpu::surface::texel_readback::TexelReadback;
     use image::RgbaImage;
 
     impl OwnedTarget {
@@ -152,21 +152,27 @@ pub(crate) mod internals {
         /// is lost before the copy maps or does not finish it.
         pub fn read_back(&self) -> RgbaImage {
             const COPIED: &str = "the read-back copy comes back";
+            let format = self.texture.format();
+            assert!(
+                !Capture::needs_blit(format),
+                "a read-back of a {format:?} texture"
+            );
             let size = self.size();
-            let source = CaptureSource {
-                texture: &self.texture,
-                blit: None,
-            };
-            let capture = Capture::start(&self.gpu, source, URect::new(0, 0, size.x, size.y));
-            let waited = self.gpu.wait_until(&|| !capture.is_pending());
+            let mut pixels = Vec::new();
+            let waited = TexelReadback::new(&self.gpu, &self.texture).read(
+                &self.gpu,
+                &self.texture,
+                &mut pixels,
+            );
             assert_eq!(waited, GpuWait::Done, "{COPIED}");
-            let image = capture.take().expect(COPIED);
-            RgbaImage::from_raw(
-                size.x,
-                size.y,
-                bytemuck::cast_slice(image.texels()).to_vec(),
-            )
-            .expect("one RGBA pixel per texel of the texture")
+            if matches!(
+                format,
+                wgpu::TextureFormat::Bgra8UnormSrgb | wgpu::TextureFormat::Bgra8Unorm
+            ) {
+                capture::swap_bgra(&mut pixels);
+            }
+            RgbaImage::from_raw(size.x, size.y, pixels)
+                .expect("one RGBA pixel per texel of the texture")
         }
 
         pub(crate) fn view(&self) -> wgpu::TextureView {

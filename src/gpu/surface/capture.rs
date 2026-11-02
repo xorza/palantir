@@ -3,8 +3,8 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::pipeline::blit_pipeline;
 use crate::gpu::resource::texture_binding::TextureBinding;
-use crate::gpu::surface::map_state::MapState;
 use crate::gpu::surface::render_target;
+use crate::gpu::surface::staging::Staging;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::paint::image::Image;
 use glam::UVec2;
@@ -21,14 +21,6 @@ pub(crate) struct Capture {
     size: UVec2,
     /// The staged bytes are BGRA, which [`Self::take`] swaps into [`Self::FORMAT`]'s order.
     bgra: bool,
-}
-
-#[derive(Debug)]
-struct Staging {
-    buffer: wgpu::Buffer,
-    /// The copy's row stride: whole `COPY_BYTES_PER_ROW_ALIGNMENT` units.
-    padded_row: u32,
-    map: MapState,
 }
 
 /// What a capture copies, and how.
@@ -92,15 +84,12 @@ impl Capture {
             "a capture region {region:?} inside the {full} texture"
         );
         let extent = render_target::extent(region.size);
-        let padded_row = (region.size.x * BYTES_PER_PIXEL)
-            .div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
-            * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-        let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.capture.staging"),
-            size: u64::from(padded_row) * u64::from(region.size.y),
-            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-            mapped_at_creation: false,
-        });
+        let staging = Staging::new(
+            gpu,
+            "palantir.capture.staging",
+            region.size,
+            BYTES_PER_PIXEL,
+        );
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
@@ -112,14 +101,7 @@ impl Capture {
             origin: render_target::origin(region.min),
             aspect: wgpu::TextureAspect::All,
         };
-        let into_buffer = wgpu::TexelCopyBufferInfo {
-            buffer: &buffer,
-            layout: wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(padded_row),
-                rows_per_image: Some(region.size.y),
-            },
-        };
+        let into_buffer = staging.copy_info();
         let format = texture.format();
         let bgra = matches!(
             format,
@@ -162,14 +144,9 @@ impl Capture {
             encoder.copy_texture_to_buffer(at_region, into_buffer, extent);
         }
         gpu.queue.submit(iter::once(encoder.finish()));
-        let map = MapState::new();
-        map.map_read(&buffer);
+        staging.map_read();
         Self {
-            staging: Staging {
-                buffer,
-                padded_row,
-                map,
-            },
+            staging,
             size: region.size,
             bgra,
         }
@@ -178,7 +155,7 @@ impl Capture {
     /// Whether the copy's map callback has yet to run, which on a lost device it may never do
     /// ([`MapState::is_pending`]).
     pub(crate) fn is_pending(&self) -> bool {
-        self.staging.map.is_pending()
+        self.staging.map().is_pending()
     }
 
     /// The pixels, once the device has finished the copy and a poll ran its map callback; `None`
@@ -188,31 +165,15 @@ impl Capture {
     ///
     /// While the copy [`is_pending`](Self::is_pending).
     pub(crate) fn take(self) -> Option<Image> {
-        let staging = &self.staging;
-        assert!(
-            !staging.map.is_pending(),
-            "a capture taken before its copy landed"
-        );
-        if !staging.map.is_mapped() {
+        let map = self.staging.map();
+        assert!(!map.is_pending(), "a capture taken before its copy landed");
+        if !map.is_mapped() {
             return None;
         }
-        let row_bytes = (self.size.x * BYTES_PER_PIXEL) as usize;
-        let mut pixels = Vec::with_capacity(row_bytes * self.size.y as usize);
-        {
-            let data = staging
-                .buffer
-                .slice(..)
-                .get_mapped_range()
-                .expect("a mapped staging buffer has its range");
-            for row in data.chunks_exact(staging.padded_row as usize) {
-                pixels.extend_from_slice(&row[..row_bytes]);
-            }
-        }
-        staging.buffer.unmap();
+        let mut pixels = Vec::new();
+        self.staging.unpad_into(&mut pixels);
         if self.bgra {
-            for texel in pixels.as_chunks_mut::<{ BYTES_PER_PIXEL as usize }>().0 {
-                texel.swap(0, 2);
-            }
+            swap_bgra(&mut pixels);
         }
         Some(
             Image::from_srgba8(self.size, pixels)
@@ -221,28 +182,25 @@ impl Capture {
     }
 }
 
+/// BGRA bytes swapped into RGBA order in place, four to a texel.
+pub(crate) fn swap_bgra(bytes: &mut [u8]) {
+    for texel in bytes.as_chunks_mut::<{ BYTES_PER_PIXEL as usize }>().0 {
+        texel.swap(0, 2);
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
-    use crate::gpu::surface::capture::{Capture, Staging};
-    use crate::gpu::surface::map_state::MapState;
+    use crate::gpu::surface::capture::Capture;
+    use crate::gpu::surface::staging::Staging;
     use glam::UVec2;
 
     impl Capture {
         /// A capture whose copy never finishes, as one the device is still running.
         pub(crate) fn never_landing(gpu: &Gpu) -> Self {
-            let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.capture.test"),
-                size: u64::from(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT),
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
             Self {
-                staging: Staging {
-                    buffer,
-                    padded_row: wgpu::COPY_BYTES_PER_ROW_ALIGNMENT,
-                    map: MapState::never_landing(),
-                },
+                staging: Staging::never_landing(gpu),
                 size: UVec2::ONE,
                 bgra: false,
             }

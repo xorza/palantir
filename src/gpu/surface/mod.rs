@@ -14,6 +14,7 @@ pub(crate) mod map_state;
 )]
 pub(crate) mod owned_target;
 pub(crate) mod render_target;
+pub(crate) mod staging;
 pub(crate) mod stencil;
 #[cfg(feature = "winit")]
 pub(crate) mod surface_manager;

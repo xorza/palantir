@@ -1,4 +1,5 @@
 use crate::display::Display;
+use crate::gpu::backdrop::backdrop_blur::EXPIRY_FRAMES;
 use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Kept, SpectrumCell, held_clear,
 };
@@ -266,4 +267,27 @@ fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
     );
     assert_eq!(backdrops.evicted(b).count(), 0);
     assert!(slot(&backdrops, b, 1).is_some());
+}
+
+/// An atlas grown past its budget packs its results back into the budget an expiry window after
+/// its last grow, once they fit: b's two panes take it to 64; when one leaves, the other is held,
+/// and after [`EXPIRY_FRAMES`] prepares the atlas is 32 wide again with that result inside it.
+#[test]
+fn an_atlas_past_its_budget_shrinks_back_after_idle() {
+    let gpu = headless_test_gpu();
+    let owner = RenderOwners::default().reserve();
+    let mut backdrops = Backdrops::with_limits(&gpu, 64, 32 * 32 * 8);
+    let edge = |backdrops: &Backdrops| backdrops.resources.as_ref().unwrap().atlas.edge();
+    prepare(&mut backdrops, &gpu, owner, &[captured(0), captured(1)]);
+    assert_eq!(edge(&backdrops), 64, "grown past the budget");
+    let held = [row(1, PaneSource::Held)];
+    for _ in 1..EXPIRY_FRAMES {
+        prepare(&mut backdrops, &gpu, owner, &held);
+    }
+    assert_eq!(edge(&backdrops), 64, "the window is not over");
+    prepare(&mut backdrops, &gpu, owner, &held);
+    assert_eq!(edge(&backdrops), 32, "packed back into the budget");
+    let kept = slot(&backdrops, owner, 1).unwrap();
+    assert!(kept.max().max_element() <= 32, "{kept:?} inside the budget");
+    assert!(slot(&backdrops, owner, 0).is_none(), "the pane that left");
 }

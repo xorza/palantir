@@ -1,7 +1,22 @@
 //! A frame's panes on the device: their blurs, cached across frames, and the results their quads
 //! composite.
+//!
+//! # Decisions
+//!
+//! - **What a large pane grows expires after idle.** The results atlas packs its results back
+//!   into a texture of its budget [`EXPIRY_FRAMES`] prepares after it last grew past it, and every
+//!   as many after, once they fit; the blur's capture, levels and scratch step down at the end of
+//!   each such window to what its frames read. One full-window 4K glass pane otherwise holds about
+//!   240 MiB for the session, and two take the atlas to 8192², 512 MiB. Chromium's
+//!   `cc::ResourcePool` expires resources unused for `kDefaultExpirationDelay`, and Flutter's
+//!   `RasterCache::EvictUnusedCacheEntries` drops what a frame did not meet. Refused: the
+//!   high-water mark kept for the session; results capped at the budget, which blurs a large pane
+//!   again every frame. Cost: the frame that shrinks the atlas copies its results, up to the 32 MiB
+//!   budget, and a pane that comes back grows it again.
 
-use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
+use crate::gpu::backdrop::backdrop_blur::{
+    BackdropBlur, BlurJob, EXPIRY_FRAMES, JobLayout, LEVEL_FORMAT,
+};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
@@ -19,6 +34,7 @@ use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::shape::paint::spectrum_tables::{SPECTRUM_SAMPLES, SpectrumTables};
 use glam::{U16Vec2, UVec2, Vec2};
 use rustc_hash::FxHashMap;
+use std::cmp::Reverse;
 use std::ops::Range;
 
 /// How a pane's quad finds its result, as `quad_pipeline/shader.wgsl` declares `BackdropSlot`:
@@ -147,8 +163,9 @@ pub(crate) struct BlurBreak {
 
 /// Every window's panes blurred into one atlas, a slot each, kept while a pane's backdrop holds,
 /// and the group their quads read it through. What the panes hold on the device is made on the
-/// first frame with a pane, so an app with none pays for no pipeline and no atlas; its buffers and
-/// textures grow to the largest frame seen and are kept.
+/// first frame with a pane, so an app with none pays for no pipeline and no atlas; its buffers
+/// grow to the largest frame seen and are kept, and its textures expire after idle, as the
+/// module's decisions say.
 ///
 /// At its byte budget the atlas evicts the least recently used results no pane of the frame reads,
 /// from any window, and lists them ([`Self::evicted`]) for each window's pane ledger to drop. With
@@ -174,6 +191,12 @@ pub(crate) struct Backdrops {
     ceiling: u32,
     /// The bytes the results atlas grows to before it evicts.
     budget: u64,
+    /// Prepares since the results atlas last grew past its budget or last tried to shrink back.
+    past_budget: u32,
+    /// The results a shrink moves with their slots, tallest first, and the slots alone, which
+    /// the shrink rewrites.
+    moving: Vec<((RenderOwnerId, PaneKey), URect)>,
+    moving_slots: Vec<URect>,
     /// What the panes hold on the device, from the first frame with a pane.
     resources: Option<PaneResources>,
 }
@@ -324,6 +347,9 @@ impl Backdrops {
             composite: Composite::new(gpu),
             ceiling,
             budget,
+            past_budget: 0,
+            moving: Vec::new(),
+            moving_slots: Vec::new(),
             resources: None,
         }
     }
@@ -372,6 +398,7 @@ impl Backdrops {
                 },
             )
         });
+        let shrank = self.shrink_atlas(ctx);
         // Every result the frame reads is stamped first, so making room for one never evicts
         // another.
         for row in &buffer.backdrops {
@@ -461,12 +488,61 @@ impl Backdrops {
         );
         resources.slot_buffer.upload_instances(ctx, &self.slots);
         let grew = resources.atlas.commit(ctx.gpu, ctx.encoder);
-        if grew || resources.slot_buffer.capacity() != resources.group_capacity {
+        if shrank || grew || resources.slot_buffer.capacity() != resources.group_capacity {
             resources.group =
                 self.composite
                     .group(ctx.gpu, resources.atlas.view(), &resources.slot_buffer);
             resources.group_capacity = resources.slot_buffer.capacity();
         }
+    }
+
+    /// Pack every result back into an atlas of the budget's edge once the atlas has spent
+    /// [`EXPIRY_FRAMES`] prepares past it, then every as many after, while the results do not fit;
+    /// `true` when the atlas moved.
+    fn shrink_atlas(&mut self, ctx: &mut GpuCtx<'_>) -> bool {
+        let resources = self
+            .resources
+            .as_mut()
+            .expect("made before a frame's panes");
+        if !resources.atlas.is_past_budget() {
+            self.past_budget = 0;
+            return false;
+        }
+        self.past_budget += 1;
+        if self.past_budget < EXPIRY_FRAMES {
+            return false;
+        }
+        self.past_budget = 0;
+        self.moving.clear();
+        self.moving.extend(
+            self.cache
+                .iter()
+                .filter_map(|(&at, cached)| match cached.kept {
+                    Kept::Slot(slot) => Some((at, slot)),
+                    Kept::Clear(_) => None,
+                }),
+        );
+        self.moving.sort_unstable_by_key(|&(_, slot)| {
+            (
+                Reverse(slot.size.y),
+                Reverse(slot.size.x),
+                slot.min.y,
+                slot.min.x,
+            )
+        });
+        self.moving_slots.clear();
+        self.moving_slots
+            .extend(self.moving.iter().map(|&(_, slot)| slot));
+        if !resources
+            .atlas
+            .shrink_to_budget(ctx.gpu, ctx.encoder, &mut self.moving_slots)
+        {
+            return false;
+        }
+        for (&(at, _), &slot) in self.moving.iter().zip(&self.moving_slots) {
+            self.cache.get_mut(&at).expect("listed from the cache").kept = Kept::Slot(slot);
+        }
+        true
     }
 
     /// Drop the results of `owner`'s panes not in `live`, the panes its frame painted or kept.
@@ -515,11 +591,12 @@ impl Backdrops {
                 });
             }
             // A slot wider than the edge finds no room that evictions free.
-            let grew = self.atlas().grow()
-                || (self.atlas().fits_now(want) && self.evict_lru())
-                || self.atlas().grow_past_budget();
+            let grew = self.atlas().grow() || (self.atlas().fits_now(want) && self.evict_lru());
             if !grew {
-                return None;
+                if !self.atlas().grow_past_budget() {
+                    return None;
+                }
+                self.past_budget = 0;
             }
         }
     }

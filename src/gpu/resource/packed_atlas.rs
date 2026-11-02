@@ -5,6 +5,7 @@
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::surface::render_target;
+use crate::primitives::geometry::urect::URect;
 use glam::{U16Vec2, UVec2};
 
 /// What every texture of one atlas shares through its doublings.
@@ -73,7 +74,7 @@ impl AtlasSpec {
 ///
 /// The atlas grows on its own up to its byte budget, which its owner evicts within. Past it only
 /// an owner that would otherwise drop what the frame shows grows it, up to the device's edge, and
-/// the texture never shrinks back.
+/// only its owner shrinks it back, through [`Self::shrink_to_budget`].
 #[derive(Debug)]
 pub(crate) struct PackedAtlas {
     texture: wgpu::Texture,
@@ -176,6 +177,69 @@ impl PackedAtlas {
         );
         self.view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         self.texture = texture;
+        true
+    }
+
+    /// Whether the edge has grown past the budget.
+    pub(crate) const fn is_past_budget(&self) -> bool {
+        self.edge > self.budget_edge
+    }
+
+    /// Move `rects`, every rectangle the atlas holds, into a texture at the budget's edge, packed
+    /// in the order given, so a caller lists them tallest first, as a shelf packer fills best:
+    /// each rectangle's texels copied by `encoder` to where it lands, and `rects` rewritten to
+    /// match. `false`, with nothing moved, while the atlas is within its budget or the rectangles
+    /// do not fit it; `true` when the texture moved, so whatever binds its view binds the new one.
+    pub(crate) fn shrink_to_budget(
+        &mut self,
+        gpu: &Gpu,
+        encoder: &mut wgpu::CommandEncoder,
+        rects: &mut [URect],
+    ) -> bool {
+        debug_assert!(
+            !self.has_pending_grow(),
+            "a grow is committed before a shrink"
+        );
+        if !self.is_past_budget() {
+            return false;
+        }
+        let edge = edge_u16(self.budget_edge);
+        let size = |rect: &URect| rect.size.as_u16vec2();
+        let mut trial = ShelfPacker::new(edge);
+        if !rects
+            .iter()
+            .all(|rect| trial.allocate(size(rect)).is_some())
+        {
+            return false;
+        }
+        let texture = self.spec.create(gpu, self.budget_edge);
+        let mut packer = ShelfPacker::new(edge);
+        for rect in rects.iter_mut() {
+            let min = packer
+                .allocate(size(rect))
+                .expect("the trial packed the same rectangles in the same order")
+                .as_uvec2();
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.texture,
+                    mip_level: 0,
+                    origin: render_target::origin(rect.min),
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &texture,
+                    mip_level: 0,
+                    origin: render_target::origin(min),
+                    aspect: wgpu::TextureAspect::All,
+                },
+                render_target::extent(rect.size),
+            );
+            rect.min = min;
+        }
+        self.view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        self.texture = texture;
+        self.edge = self.budget_edge;
+        self.packer = packer;
         true
     }
 
@@ -299,6 +363,73 @@ mod tests {
                     0
                 };
                 assert_eq!(read[y * 64 + x], want, "texel ({x}, {y})");
+            }
+        }
+    }
+
+    /// A shrink packs the rectangles still held into a texture of the budget's edge and moves
+    /// their texels: with the 32² budget full, a 16² rectangle grows the atlas to 64 and lands on a
+    /// new shelf at (0, 32); once the first leaves, the 16² one moves to (0, 0) of a 32² texture, texel for
+    /// texel. While both are held they do not fit the budget, and nothing moves.
+    #[test]
+    fn a_shrink_packs_what_is_held_into_the_budget() {
+        use crate::primitives::geometry::urect::URect;
+        let gpu = headless_test_gpu();
+        let mut atlas = PackedAtlas::new(&gpu, spec(wgpu::TextureFormat::R8Unorm, 64, 32 * 32), 32);
+        let first = URect::new(0, 0, 32, 32);
+        assert_eq!(atlas.allocate(U16Vec2::splat(32)), Some(U16Vec2::ZERO));
+        assert_eq!(
+            atlas.allocate(U16Vec2::splat(16)),
+            None,
+            "the budget is full"
+        );
+        assert!(!atlas.grow() && atlas.grow_past_budget());
+        let at = atlas.allocate(U16Vec2::splat(16)).unwrap();
+        assert_eq!(at, U16Vec2::new(0, 32));
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        assert!(atlas.commit(&gpu, &mut encoder));
+        gpu.queue.submit(iter::once(encoder.finish()));
+        let texels: Vec<u8> = (0..=255u8).collect();
+        gpu.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: atlas.texture(),
+                mip_level: 0,
+                origin: wgpu::Origin3d { x: 0, y: 32, z: 0 },
+                aspect: wgpu::TextureAspect::All,
+            },
+            &texels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(16),
+                rows_per_image: None,
+            },
+            wgpu::Extent3d {
+                width: 16,
+                height: 16,
+                depth_or_array_layers: 1,
+            },
+        );
+        assert!(atlas.is_past_budget());
+
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let second = URect::new(0, 32, 16, 16);
+        let mut both = [first, second];
+        assert!(!atlas.shrink_to_budget(&gpu, &mut encoder, &mut both));
+        assert_eq!((atlas.edge(), both), (64, [first, second]), "nothing moved");
+        let mut held = [second];
+        assert!(atlas.shrink_to_budget(&gpu, &mut encoder, &mut held));
+        gpu.queue.submit(iter::once(encoder.finish()));
+        assert_eq!(held, [URect::new(0, 0, 16, 16)]);
+        assert_eq!((atlas.edge(), atlas.texture().width()), (32, 32));
+        assert!(!atlas.is_past_budget());
+        let read = gpu.read_texture(atlas.texture());
+        for y in 0..16usize {
+            for x in 0..16usize {
+                assert_eq!(read[y * 32 + x], texels[y * 16 + x], "texel ({x}, {y})");
             }
         }
     }
