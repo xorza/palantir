@@ -171,16 +171,10 @@ impl F16x4 {
         arch::to_f32x4(self.0)
     }
 
-    /// Per-lane f32 multiply, re-quantized through f16 as [`Self::from_lanes`] packs.
+    /// Per-lane f32 multiply, each product [saturated](Self::saturate_lane) and re-quantized
+    /// through f16, as [`Self::from_lanes_saturating`] packs.
     ///
-    /// Fused because `from_lanes(lanes().map(*k))` bounces through two `[f32; 4]` arrays that LLVM does not fold back into one register chain.
-    #[inline]
-    pub(crate) fn scaled(self, k: f32) -> Self {
-        Self(arch::scaled(self.0, k, f32::INFINITY))
-    }
-
-    /// [`Self::scaled`] with each product [saturated](Self::saturate_lane), as
-    /// [`Self::from_lanes_saturating`] packs.
+    /// Fused because `from_lanes_saturating(lanes().map(*k))` bounces through two `[f32; 4]` arrays that LLVM does not fold back into one register chain.
     #[inline]
     pub(crate) fn scaled_saturating(self, k: f32) -> Self {
         Self(arch::scaled(self.0, k, Self::MAX_LANE))

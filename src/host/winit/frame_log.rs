@@ -101,7 +101,7 @@ mod tests {
             frame_id,
             sent_inputs: 0,
             repaint_requested,
-            repaint_after: None,
+            repaint_at: None,
             busy: false,
         }
     }
@@ -117,7 +117,7 @@ mod tests {
         log.record(a, summary(1, true));
         log.record(b, summary(1, false));
         let later = FrameSummary {
-            repaint_after: Some(Duration::from_millis(530)),
+            repaint_at: Some(Duration::from_millis(530)),
             ..summary(2, false)
         };
         log.record(a, later);

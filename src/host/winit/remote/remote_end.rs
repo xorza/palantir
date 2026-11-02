@@ -68,7 +68,7 @@ impl RemoteEnd {
             frame_id: ui.frame_id(),
             sent_inputs: self.sent_inputs,
             repaint_requested: report.repaint_requested,
-            repaint_after: report.repaint_after,
+            repaint_at: report.repaint_at,
             busy,
         }
     }

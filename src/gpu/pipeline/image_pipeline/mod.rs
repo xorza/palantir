@@ -124,7 +124,7 @@ impl ImagePipeline {
                 continue;
             };
             rec.group_once(0, bind_group);
-            rec.draw(0..4, run.instances.into());
+            rec.draw(0..4, run.instances.u32_range());
         }
     }
 }

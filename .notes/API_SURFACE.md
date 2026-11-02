@@ -20,7 +20,10 @@ Action
         Scroll { at: Locator<X>, delta: Vec2 }
         Pinch { at: Locator<X>, factor: f32 }
         Key(Shortcut)
+        KeyDown(Shortcut)
+        KeyUp(Shortcut)
         Type(String)
+        InsertText(String)
         Wait(Duration)
         impl Action
             pub const DRAG_STEPS: u32
@@ -848,7 +851,7 @@ FramePaint
 FrameReport
     struct FrameReport: Debug
         pub repaint_requested: bool
-        pub repaint_after: Option<Duration>
+        pub repaint_at: Option<Duration>
         pub const fn paint(&self) -> FramePaint
 
 FrameSummary  [features: winit]
@@ -856,7 +859,7 @@ FrameSummary  [features: winit]
         pub frame_id: u64
         pub sent_inputs: u64
         pub repaint_requested: bool
-        pub repaint_after: Option<Duration>
+        pub repaint_at: Option<Duration>
         pub busy: bool
 
 Gpu
@@ -873,7 +876,7 @@ GpuFrameCtx
         pub physical_size: UVec2
         pub physical_full_size: UVec2
         pub physical_offset: UVec2
-        pub display_scale: f32
+        pub scale_factor: f32
         pub raster_factor: f32
         pub dt: Duration
 
@@ -1036,10 +1039,12 @@ Harness
         pub fn scroll_pixels(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta
         pub fn scroll_lines(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta
         pub fn pinch(&mut self, at: impl Into<Locator>, factor: f32) -> InputDelta
-        pub fn key(&mut self, key: impl Into<Shortcut>) -> InputDelta
-        pub fn key_up(&mut self, key: Key) -> InputDelta
+        pub fn key(&mut self, key: impl Into<Shortcut>)
+        pub fn key_down(&mut self, key: impl Into<Shortcut>) -> InputDelta
+        pub fn key_up(&mut self, key: impl Into<Shortcut>) -> InputDelta
         pub fn set_modifiers(&mut self, mods: Modifiers)
         pub fn type_text(&mut self, text: &str)
+        pub fn insert_text(&mut self, text: &str) -> InputDelta
         pub fn find<A, X: Locate<A>>(&self, app: &A, at: &Locator<X>) -> Result<Found, LocateError>
         pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget>
         pub fn rect(&self, id: WidgetId) -> Option<Rect>
@@ -1163,7 +1168,8 @@ ImageFit
 ImageHandle
     struct ImageHandle: Clone, Debug
         pub fn size(&self) -> UVec2
-        pub fn update(&self, image: &Image)
+        pub fn update(&self, image: &Image) -> Result<(), ImageTooLarge>
+        pub fn is_resident(&self) -> bool
 
 ImageTooLarge
     struct ImageTooLarge: Clone, Copy, Debug, Display, Eq, Error, PartialEq
@@ -1469,7 +1475,9 @@ Modal
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a ModalTheme>>) -> Self
         pub const fn backdrop(self, color: RgbaF32) -> Self
+        pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
+        pub fn close(ui: &mut Ui, id: WidgetId)
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
@@ -1693,6 +1701,7 @@ Popup
         pub const fn layer(self, layer: Layer) -> Self
         pub const fn click_outside(self, click_outside: ClickOutside) -> Self
         pub const fn anchor(self, anchor: Anchor) -> Self
+        pub fn close(ui: &mut Ui, id: WidgetId)
         pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
@@ -2080,6 +2089,18 @@ Spacing
         impl<L: Number, T: Number, R: Number, B: Number> From<(L, T, R, B)> for Spacing
         impl<T: Number> From<T> for Spacing
         impl<X: Number, Y: Number> From<(X, Y)> for Spacing
+
+Span
+    struct Span: Clone, Copy, Debug, Default, Eq, PartialEq, Pod, TryFrom<Range<u32>>, TryFrom<Range<usize>>, Zeroable
+        pub start: u32
+        pub len: u32
+        pub const fn new(start: u32, len: u32) -> Self
+        pub const fn range(self) -> Range<usize>
+
+SpanRangeError
+    enum SpanRangeError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+        Backward { start: usize, end: usize }
+        PastU32 { end: usize }
 
 Spinner
     struct Spinner<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2627,7 +2648,6 @@ Ui
         pub fn has_font(&self, family: FontFamily) -> bool
         pub fn font_families(&self) -> Vec<FontFamily>
         pub fn max_image_dimension(&self) -> Option<NonZeroU32>
-        pub const fn device_restored(&self) -> bool
         pub fn clipboard(&self) -> Clipboard
         pub fn fmt(&mut self, args: Arguments<'_>) -> InternedStr
         pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr
@@ -3195,15 +3215,6 @@ widget::Shape
         pub fn image(handle: ImageHandle) -> ImageShape
         pub fn icon(handle: IconHandle) -> IconShape
         pub const fn mesh(mesh: &Mesh) -> MeshShape<'_>
-
-widget::Span
-    struct Span: Clone, Copy, Debug, Default, Eq, From<Range<u32>>, From<Range<usize>>, PartialEq, Pod, Zeroable
-        pub start: u32
-        pub len: u32
-        pub const fn new(start: u32, len: u32) -> Self
-        pub const fn range(self) -> Range<usize>
-        impl From<Span> for Range<u32>
-        impl From<Span> for Range<usize>
 
 widget::TextGlyphs
     struct TextGlyphs<'a>: Debug

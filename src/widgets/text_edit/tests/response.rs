@@ -126,8 +126,8 @@ fn committed_fires_once_per_finished_edit() {
             .iter()
             .map(|step| {
                 match *step {
-                    Type(c) => drop(h.key(Key::Char(c))),
-                    Press(key) => drop(h.key(key)),
+                    Type(c) => h.key(Key::Char(c)),
+                    Press(key) => h.key(key),
                     Blur => h.clear_focus(),
                 }
                 frame(&mut h, &mut buf).a().committed
@@ -407,8 +407,8 @@ fn a_buffered_field_hands_over_a_changed_draft_on_commit() {
             .map(|step| {
                 match *step {
                     Focus => h.set_focus(id),
-                    Type(c) => drop(h.key(Key::Char(c))),
-                    Press(key) => drop(h.key(key)),
+                    Type(c) => h.key(Key::Char(c)),
+                    Press(key) => h.key(key),
                     Blur => h.clear_focus(),
                     Value(value) => current = value,
                 }

@@ -266,7 +266,7 @@ fn effectively_invisible_spinners_keep_their_shape_without_scheduling_frames() {
             "{case:?}: an invisible spinner must have no active animation row",
         );
         assert_eq!(
-            report.repaint_after, None,
+            report.repaint_at, None,
             "{case:?}: an invisible spinner must not schedule another frame",
         );
     }
@@ -286,7 +286,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     let visible = h.frame(|ui| {
         show_spinner(ui, Visibility::Visible);
     });
-    assert_eq!(visible.repaint_after, Some(Duration::ZERO));
+    assert_eq!(visible.repaint_at, Some(Duration::ZERO));
     assert_eq!(h.ui().tree(Layer::Main).paint_animations.entries.len(), 1);
 
     h.ui().request_repaint();
@@ -294,7 +294,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     let hidden = h.at(hidden_at).frame(|ui| {
         show_spinner(ui, Visibility::Hidden);
     });
-    assert_eq!(hidden.repaint_after, None);
+    assert_eq!(hidden.repaint_at, None);
     assert_eq!(
         h.ui().tree(Layer::Main).shapes.records.len(),
         1,
@@ -310,7 +310,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     let shown = h.at(shown_at).frame(|ui| {
         show_spinner(ui, Visibility::Visible);
     });
-    assert_eq!(shown.repaint_after, Some(shown_at));
+    assert_eq!(shown.repaint_at, Some(shown_at));
     assert_eq!(
         h.ui().tree(Layer::Main).paint_animations.entries.len(),
         1,

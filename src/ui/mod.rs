@@ -175,7 +175,6 @@ impl Ui {
 
     /// Construct a per-window `Ui`; each owns its own [`Forest`].
     pub(crate) fn new(resources: UiResources) -> Self {
-        let frame_runtime = FrameRuntime::new(resources.device().epoch());
         Self {
             forest: Forest::new(resources.text().family_keys()),
             window_theme: WindowTheme::new(resources.color_scheme()),
@@ -187,7 +186,7 @@ impl Ui {
             cascade: Cascade::default(),
             input: InputState::default(),
             animation: AnimationMap::default(),
-            frame_runtime,
+            frame_runtime: FrameRuntime::default(),
             window_requests: WindowRequests::default(),
             window_frame: WindowFrameState::default(),
             gpu_pass_stats: GpuPassStats::default(),
@@ -892,16 +891,6 @@ impl Ui {
     #[inline]
     pub fn max_image_dimension(&self) -> Option<NonZeroU32> {
         self.resources.device().texture_limit().max_dimension()
-    }
-
-    /// Whether the host attached a new device since this window's last frame, after it lost the
-    /// one before: true for that one frame, which always records. The textures of every
-    /// registered image went with the old device and paint nothing until
-    /// [`ImageHandle::update`] fills them again, so an app that keeps its images' texels calls it
-    /// here for each one it still shows. [`Self::max_image_dimension`] can differ too.
-    #[inline]
-    pub const fn device_restored(&self) -> bool {
-        self.frame_runtime.device_restored()
     }
 
     /// A handle on the host's clipboard, shared by every window of that host. A

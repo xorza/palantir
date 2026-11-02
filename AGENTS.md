@@ -97,9 +97,11 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 - **Rebuilt, not repaired**: device-bound state is made again by its constructors. Refused: a
   `reset` on each GPU type, which a later field can miss (Zed PR #54349, DirectX
   DeviceResources).
-- **The app uploads its images again** when `Ui::device_restored()` is true. Refused: a CPU copy
-  of every image, which doubles the RAM of darkroom's 64 MP images (DirectX `OnDeviceRestored`,
-  Android `onSurfaceCreated`).
+- **The app uploads an image again** when its `ImageHandle::is_resident()` is false. Residency is
+  the image's own fact, so one check serves every window that shows it. Refused: a CPU copy of
+  every image, which doubles the RAM of darkroom's 64 MP images (DirectX `OnDeviceRestored`,
+  Android `onSurfaceCreated`); a per-window `device_restored` signal, which a two-window app
+  answers twice for one host-wide image.
 - **`GpuPaint::init` runs again.** Refused: a `device_lost` hook, as Rust drops the old handles.
 - **`Gpu` owns the device's health.** Refused: callbacks set in each host. Cost: a callback the
   app set is replaced, and a destroyed device reads lost only after a `Gpu::wait` (wgpu #9278).

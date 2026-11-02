@@ -21,9 +21,10 @@ pub struct GpuFrameCtx<'a> {
     pub physical_full_size: UVec2,
     /// Where [`Self::physical_size`] begins within [`Self::physical_full_size`]; `ZERO` when nothing clips. Skew your projection by it, as a tile renderer does. **Not optional for a picked view**: hit-testing is reported against `physical_full_size`, so framing to `physical_size` would disagree and appear to zoom as a scroll slides.
     pub physical_offset: UVec2,
-    /// Logical→display scale for this window's monitor; display pixel density only.
-    pub display_scale: f32,
-    /// Logical→target scale for this view, including display scale, composed transforms and device-cap downsampling.
+    /// Logical→physical scale of this window: the system scale times the user scale, the window's
+    /// [`Display::scale_factor`](crate::Display::scale_factor).
+    pub scale_factor: f32,
+    /// Logical→target scale for this view: [`Self::scale_factor`], composed transforms and device-cap downsampling.
     pub raster_factor: f32,
     /// Wall-clock time since this view last painted (`Duration::ZERO` on its first), for framerate-independent animation.
     pub dt: Duration,
@@ -33,7 +34,7 @@ impl fmt::Debug for GpuFrameCtx<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GpuFrameCtx")
             .field("physical_size", &self.physical_size)
-            .field("display_scale", &self.display_scale)
+            .field("scale_factor", &self.scale_factor)
             .field("raster_factor", &self.raster_factor)
             .field("dt", &self.dt)
             .finish_non_exhaustive()

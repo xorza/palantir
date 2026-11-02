@@ -383,8 +383,8 @@ impl Tree {
         let col_start = self.grid_tracks.len();
         self.grid_tracks.extend_from_slice(cols);
         self.grid_defs.push(GridDef {
-            rows: Span::from(row_start..col_start),
-            cols: Span::from(col_start..self.grid_tracks.len()),
+            rows: Span::try_from(row_start..col_start).unwrap(),
+            cols: Span::try_from(col_start..self.grid_tracks.len()).unwrap(),
         });
         id
     }

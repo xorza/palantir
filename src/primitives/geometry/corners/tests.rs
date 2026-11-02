@@ -1,5 +1,7 @@
+use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::*;
 use crate::primitives::math::domain::EPS;
+use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 
 #[test]
@@ -64,10 +66,74 @@ fn inner_fits_then_takes_the_larger_adjacent_inset() {
     );
 }
 
+/// Each product is the corner times the factor; one past the lanes saturates at 65504, as
+/// 40000 × 2 does, and a factor that is no length panics.
 #[test]
 fn scaled_by_multiplies_each_corner() {
     let c = Corners::new(2.0, 4.0, 6.0, 8.0).scaled_by(1.5);
     assert_eq!(c.to_array(), [3.0, 6.0, 9.0, 12.0]);
+    assert_eq!(
+        Corners::new(40000.0, 1.0, 0.0, 2.0)
+            .scaled_by(2.0)
+            .to_array(),
+        [65504.0, 2.0, 0.0, 4.0]
+    );
+    for bad in [-1.0, f32::NAN, f32::INFINITY] {
+        panic_probe::assert_panics_with("a corner scale must be finite", || {
+            Corners::all(1.0).scaled_by(bad)
+        });
+    }
+}
+
+/// Every constructor refuses a radius that is no length or packs past f16, on any lane: NaN, an
+/// infinity, -1 and 65520, the first magnitude f16 rounds to infinity. 65519 rounds down to
+/// 65504 and is taken. A derived radius saturates where an authored one is refused, and still
+/// refuses NaN and a negative radius.
+#[test]
+fn a_radius_past_its_lane_is_refused_where_it_is_built() {
+    let rule = <Corners as LaneCodec>::LANE_RULE;
+    for bad in [f32::NAN, f32::INFINITY, -1.0, 65520.0] {
+        for lane in 0..4 {
+            let mut lanes = [1.0, 2.0, 3.0, 4.0];
+            lanes[lane] = bad;
+            panic_probe::assert_panics_with(rule, || {
+                Corners::new(lanes[0], lanes[1], lanes[2], lanes[3])
+            });
+        }
+        let builds: [fn(f32) -> Corners; 5] = [
+            Corners::all,
+            Corners::top,
+            Corners::bottom,
+            Corners::left,
+            Corners::right,
+        ];
+        for build in builds {
+            panic_probe::assert_panics_with(rule, || build(bad));
+        }
+        panic_probe::assert_panics_with(rule, || Corners::from((1.0, bad)));
+    }
+    assert_eq!(Corners::all(65519.0).to_array(), [65504.0; 4]);
+    assert_eq!(
+        Corners::saturating([70000.0, f32::INFINITY, 0.0, 1.0]).to_array(),
+        [65504.0, 65504.0, 0.0, 1.0]
+    );
+    for bad in [f32::NAN, -1.0] {
+        panic_probe::assert_panics_with(rule, || Corners::saturating([0.0, bad, 0.0, 0.0]));
+    }
+}
+
+/// A NaN edge is reported per lane: the four share one `u64`, so checking only the first would pass a NaN bottom corner.
+#[test]
+fn a_nan_on_any_corner_is_screened() {
+    assert!(!Corners::all(4.0).has_nan(), "a whole corner set is finite");
+    for lane in 0..4 {
+        let mut lanes = [1.0, 2.0, 3.0, 4.0];
+        lanes[lane] = f32::NAN;
+        assert!(
+            NanCheck::has_nan(&Corners(F16x4::from_lanes(lanes))),
+            "lane {lane} went unseen",
+        );
+    }
 }
 
 /// The bit-trick path in `is_approx_zero`: ±0, sub-EPS, at-EPS, above-EPS and NaN lanes classify correctly.
@@ -91,7 +157,7 @@ fn approx_zero_handles_edge_lane_patterns() {
     );
     // NaN bits sit in the exponent region (≥ 0x7C00), far above EPS: non-zero.
     assert!(
-        !Corners::all(f32::NAN).is_approx_zero(),
+        !Corners(F16x4::from_lanes([f32::NAN; 4])).is_approx_zero(),
         "NaN lanes are not zero"
     );
 }

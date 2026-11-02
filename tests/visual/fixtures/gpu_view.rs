@@ -28,7 +28,7 @@ struct DepthTriangle {
     depth: Option<(wgpu::TextureView, wgpu::Extent3d)>,
     logical_square: Option<f32>,
     last_size: UVec2,
-    last_display_scale: f32,
+    last_scale_factor: f32,
     last_raster_factor: f32,
 }
 
@@ -40,7 +40,7 @@ impl DepthTriangle {
             depth: None,
             logical_square,
             last_size: UVec2::ZERO,
-            last_display_scale: 0.0,
+            last_scale_factor: 0.0,
             last_raster_factor: 0.0,
         }
     }
@@ -114,7 +114,7 @@ impl GpuPaint for DepthTriangle {
 
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
         self.last_size = ctx.physical_size;
-        self.last_display_scale = ctx.display_scale;
+        self.last_scale_factor = ctx.scale_factor;
         self.last_raster_factor = ctx.raster_factor;
         // Depth matches the target texture, which can be larger than `physical_size`, like the cube.
         let target_size = ctx.target.texture().size();
@@ -243,7 +243,7 @@ fn gpu_view_callback_receives_composed_raster_factor() {
         .image;
 
     assert_eq!(paint.borrow().last_size, UVec2::new(96, 96));
-    assert_eq!(paint.borrow().last_display_scale, 2.0);
+    assert_eq!(paint.borrow().last_scale_factor, 2.0);
     assert_eq!(paint.borrow().last_raster_factor, 3.0);
 
     for &(x, y, expected) in &[(36, 36, [0, 255, 0, 255]), (60, 60, [0, 0, 255, 255])] {

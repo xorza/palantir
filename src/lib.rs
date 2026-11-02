@@ -184,7 +184,6 @@ pub mod widget {
     pub use crate::animation::animation_key::AnimationKey;
     pub use crate::animation::animation_request::AnimationRequest;
     pub use crate::animation::animation_slot::AnimationSlot;
-    pub use crate::common::span::Span;
     pub use crate::primitives::geometry::circular_arc::CircularArc;
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
     pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
@@ -233,6 +232,8 @@ pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
 pub use clipboard::{Clipboard, ClipboardUnavailable};
 pub use common::platform::{PLATFORM, Platform};
+pub use common::span::Span;
+pub use common::span::error::SpanRangeError;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 pub use display::user_scale::UserScale;

@@ -182,9 +182,9 @@ fn the_schedule_follows_each_acquire_outcome() {
     use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use glam::UVec2;
 
-    let report = |repaint_requested, repaint_after| FrameReport {
+    let report = |repaint_requested, repaint_at| FrameReport {
         repaint_requested,
-        repaint_after,
+        repaint_at,
         plan: None,
         processing: FrameProcessing::SingleLayout,
     };

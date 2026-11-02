@@ -131,7 +131,7 @@ impl MeshPipeline {
             }
             let instance = items.start + offset as u32;
             rec.draw_indexed(
-                draw.idxs.into(),
+                draw.idxs.u32_range(),
                 // Per-call vertex offset keeps a mesh's indices buffer-local.
                 draw.vertices.start as i32,
                 instance..instance + 1,

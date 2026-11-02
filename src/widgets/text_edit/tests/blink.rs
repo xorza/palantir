@@ -130,7 +130,7 @@ fn caret_blinks_on_and_off_while_focused() {
         "long-idle blink stops on the visible phase",
     );
     assert_eq!(
-        report.repaint_after, None,
+        report.repaint_at, None,
         "a settled caret must stop asking the host for frames",
     );
 }
@@ -282,7 +282,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
 
     // The focus edge resets the blink: the next flip is half a 0.5 s period in.
     assert_eq!(
-        r.repaint_after,
+        r.repaint_at,
         Some(Duration::from_secs_f32(100.5)),
         "focus gain must restart blink scheduling regardless of caret movement",
     );
@@ -305,7 +305,7 @@ fn focused_text_edit_schedules_blink_wake() {
     };
     let report = h.frame(&mut scene);
     assert_eq!(
-        report.repaint_after, None,
+        report.repaint_at, None,
         "unfocused editor doesn't schedule blink wakes",
     );
 
@@ -313,7 +313,7 @@ fn focused_text_edit_schedules_blink_wake() {
     h.click(Vec2::new(20.0, 20.0));
     let report = h.frame(&mut scene);
     assert_eq!(
-        report.repaint_after,
+        report.repaint_at,
         Some(Duration::from_millis(500)),
         "focused editor schedules a blink wake at the first half-period flip",
     );

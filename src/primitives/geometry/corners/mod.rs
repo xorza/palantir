@@ -35,51 +35,116 @@ impl Corners {
         );
     }
 
-    /// One radius on all four corners.
+    /// Four radii in lane order, each a [length](crate::widget::domain::length) and a
+    /// [lane](crate::widget::domain::lane).
     #[inline]
+    #[track_caller]
+    fn checked(lanes: [f32; 4]) -> Self {
+        assert!(
+            lanes.into_iter().all(<Self as LaneCodec>::lane_is_valid),
+            "{}",
+            <Self as LaneCodec>::LANE_RULE,
+        );
+        Self(F16x4::from_lanes(lanes))
+    }
+
+    /// Radii the crate derives from valid lengths (half a stroke's width), whose lanes
+    /// [saturate](F16x4::saturate_lane) at 65504 rather than pack to infinity: the lengths have no
+    /// upper bound, and a radius that large rounds past every box a texture can fill, so the clamp
+    /// changes nothing drawn. Authored radii go through [`Self::new`], which refuses.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a lane that is no length, as NaN or a negative radius.
+    #[inline]
+    #[track_caller]
+    pub(crate) fn saturating(lanes: [f32; 4]) -> Self {
+        Self::checked(lanes.map(F16x4::saturate_lane))
+    }
+
+    /// One radius on all four corners.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
+    #[inline]
+    #[track_caller]
     pub fn all(r: f32) -> Self {
-        Self(F16x4::from_lanes([r, r, r, r]))
+        Self::checked([r, r, r, r])
     }
 
     /// Four radii, clockwise from the top left.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every radius is a [length](crate::widget::domain::length), finite and not
+    /// negative, and a [lane](crate::widget::domain::lane), below 65520, which rounds to 65504. A
+    /// larger radius would pack to infinity.
     #[inline]
+    #[track_caller]
     pub fn new(top_left: f32, top_right: f32, bottom_right: f32, bottom_left: f32) -> Self {
-        Self(F16x4::from_lanes([
-            top_left,
-            top_right,
-            bottom_right,
-            bottom_left,
-        ]))
+        Self::checked([top_left, top_right, bottom_right, bottom_left])
     }
 
     /// Rounds the top edge only.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
     #[inline]
+    #[track_caller]
     pub fn top(r: f32) -> Self {
-        Self(F16x4::from_lanes([r, r, 0.0, 0.0]))
+        Self::checked([r, r, 0.0, 0.0])
     }
 
     /// Rounds the bottom edge only.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
     #[inline]
+    #[track_caller]
     pub fn bottom(r: f32) -> Self {
-        Self(F16x4::from_lanes([0.0, 0.0, r, r]))
+        Self::checked([0.0, 0.0, r, r])
     }
 
     /// Rounds the left edge only.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
     #[inline]
+    #[track_caller]
     pub fn left(r: f32) -> Self {
-        Self(F16x4::from_lanes([r, 0.0, 0.0, r]))
+        Self::checked([r, 0.0, 0.0, r])
     }
 
     /// Rounds the right edge only.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::new`].
     #[inline]
+    #[track_caller]
     pub fn right(r: f32) -> Self {
-        Self(F16x4::from_lanes([0.0, r, r, 0.0]))
+        Self::checked([0.0, r, r, 0.0])
     }
 
-    /// Every radius multiplied by `factor`.
+    /// Every radius multiplied by `factor`, each product saturating at 65504 rather than packing to
+    /// infinity.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `factor` is a [length](crate::widget::domain::length): a negative or NaN
+    /// factor makes no radius, and an infinite one makes NaN of a zero radius.
     #[inline]
+    #[track_caller]
     pub fn scaled_by(self, factor: f32) -> Self {
-        Self(self.0.scaled(factor))
+        assert!(
+            domain::is_length(factor),
+            "a corner scale must be finite and not negative, not {factor}"
+        );
+        Self(self.0.scaled_saturating(factor))
     }
 
     /// The radii of the box inset from one of `size` by `padding`, as a border insets the
@@ -131,6 +196,7 @@ impl Corners {
 
 /// `(top, bottom)`: both corners on each edge.
 impl<T: Number, B: Number> From<(T, B)> for Corners {
+    #[track_caller]
     fn from((t, b): (T, B)) -> Self {
         let (t, b) = (t.to_f32(), b.to_f32());
         Self::new(t, t, b, b)
@@ -139,6 +205,7 @@ impl<T: Number, B: Number> From<(T, B)> for Corners {
 
 /// `(tl, tr, br, bl)`, in lane order.
 impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for Corners {
+    #[track_caller]
     fn from((tl, tr, br, bl): (TL, TR, BR, BL)) -> Self {
         Self::new(tl.to_f32(), tr.to_f32(), br.to_f32(), bl.to_f32())
     }

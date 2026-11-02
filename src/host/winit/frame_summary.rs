@@ -16,8 +16,8 @@ pub struct FrameSummary {
     pub sent_inputs: u64,
     /// See [`FrameReport::repaint_requested`](crate::FrameReport::repaint_requested).
     pub repaint_requested: bool,
-    /// See [`FrameReport::repaint_after`](crate::FrameReport::repaint_after).
-    pub repaint_after: Option<Duration>,
+    /// See [`FrameReport::repaint_at`](crate::FrameReport::repaint_at).
+    pub repaint_at: Option<Duration>,
     /// What [`App::is_busy`](crate::App::is_busy) said after the frame.
     pub busy: bool,
 }

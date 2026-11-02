@@ -8,7 +8,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
-use crate::input::shortcut::ShortcutMods;
+use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::input_state::capture::DRAG_THRESHOLD;
 use glam::Vec2;
 use std::fmt::Debug;
@@ -41,7 +41,8 @@ pub(crate) trait Stage<X> {
 
 /// Play `action` on `stage` and settle. Every locator resolves before any input goes in, and
 /// nothing between a press or a modifier and its release can fail but a closed window, which
-/// releases them anyway, so an error leaves nothing held for the next step.
+/// releases them anyway, so an error leaves nothing held for the next step. A
+/// [`Action::KeyDown`] step leaves its key held by intent.
 pub(crate) fn play<X: Debug>(
     stage: &mut impl Stage<X>,
     action: &Action<X>,
@@ -114,22 +115,38 @@ pub(crate) fn play<X: Debug>(
             stage.input(InputEvent::Zoom(*factor));
         }
         Action::Key(shortcut) => {
-            stage.input(InputEvent::ModifiersChanged(shortcut.mods.held()));
-            stage.input(InputEvent::KeyDown {
-                key: shortcut.key,
-                repeat: false,
-                physical: Key::Other,
-                text: shortcut.typed(),
-            });
-            stage.frame()?;
+            key_down(stage, *shortcut)?;
             // A hand lets go, so no key reads as held after the step.
             stage.input(InputEvent::KeyUp { key: shortcut.key });
             stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
         }
-        Action::Type(text) => stage.input(InputEvent::ImeCommit(text)),
+        Action::KeyDown(shortcut) => {
+            key_down(stage, *shortcut)?;
+            stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
+        }
+        Action::KeyUp(shortcut) => {
+            stage.input(InputEvent::ModifiersChanged(shortcut.mods.held()));
+            stage.input(InputEvent::KeyUp { key: shortcut.key });
+            stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
+        }
+        Action::Type(text) => {
+            for c in text.chars() {
+                let key = Key::Char(c);
+                stage.input(Shortcut::key(key).key_down());
+                stage.input(InputEvent::KeyUp { key });
+            }
+        }
+        Action::InsertText(text) => stage.input(InputEvent::ImeCommit(text)),
         Action::Wait(dt) => stage.wait(*dt)?,
     }
     stage.settle(action)
+}
+
+/// Press `shortcut` with its modifiers held, and run the frame that reads it held.
+fn key_down<X>(stage: &mut impl Stage<X>, shortcut: Shortcut) -> Result<(), PlayError> {
+    stage.input(InputEvent::ModifiersChanged(shortcut.mods.held()));
+    stage.input(shortcut.key_down());
+    stage.frame()
 }
 
 /// Move the pointer to `point` and settle, so the next press hits what it hovers.

@@ -5,10 +5,9 @@
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section};
-use palantir::widget::Span;
 use palantir::{
-    Align, Button, ComboBox, Configure, DragValue, EditEnd, EditableLabel, HAlign, Sizing, Switch,
-    Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
+    Align, Button, ComboBox, Configure, DragValue, EditEnd, EditableLabel, HAlign, Sizing, Span,
+    Switch, Text, TextEdit, TextEditResponse, Ui, VAlign, WidgetId, fmt,
 };
 
 #[derive(Debug)]

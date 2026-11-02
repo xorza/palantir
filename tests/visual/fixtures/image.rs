@@ -105,7 +105,7 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
                 format_args!("pixel ({x}, {y})"),
             );
         }
-        clone.update(&image);
+        clone.update(&image).unwrap();
         image.texels_mut().fill(SrgbaU8::default());
         assert_eq!(h.host.gpu_image_cache_len(), 1);
     }

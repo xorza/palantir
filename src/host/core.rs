@@ -250,7 +250,6 @@ mod tests {
     use crate::widgets::block::Block;
     use crate::window::window_token::WindowToken;
     use glam::UVec2;
-    use std::cell::Cell;
     use std::time::Duration;
 
     /// What every test core is built with: bundled fonts, no GPU timing.
@@ -289,8 +288,7 @@ mod tests {
     }
 
     /// A recovery reaches every window of a host, as the windowed host attaches all of them: after
-    /// a loss, each of two windows paints its own fill on the new device in its first frame, and
-    /// sees the device restored in that frame alone.
+    /// a loss, each of two windows paints its own fill on the new device in its first frame.
     #[test]
     fn attaching_a_new_device_reaches_every_window() {
         const FILLS: [u32; 2] = [0xd23f7a, 0x2f6fd0];
@@ -310,9 +308,7 @@ mod tests {
                 size,
                 TargetFormat::RGBA8_SRGB,
             );
-            let restored = Cell::new(false);
             let mut app = |ui: &mut Ui| {
-                restored.set(ui.device_restored());
                 Block::new()
                     .id_salt("fill")
                     .size(Sizing::FILL)
@@ -323,7 +319,7 @@ mod tests {
                 core.record(driver, spec_on(&target), &mut app, FrameDepth::Paint);
             core.submit(driver, target.as_target(), mode);
             let [r, g, b, _] = target.read_back().get_pixel(4, 4).0;
-            (restored.get(), u32::from_be_bytes([0, r, g, b]))
+            u32::from_be_bytes([0, r, g, b])
         };
 
         let first = isolated_headless_test_gpu();
@@ -333,15 +329,14 @@ mod tests {
             core.open(WindowToken(1), PresentStrategy::BackbufferCopy),
         ];
         for (window, fill) in windows.iter_mut().zip(FILLS) {
-            assert_eq!(paint(&mut core, window, &first, fill), (false, fill));
+            assert_eq!(paint(&mut core, window, &first, fill), fill);
         }
         first.lose();
 
         let second = isolated_headless_test_gpu();
         core.attach(second.handles(), windows.iter_mut());
         for (window, fill) in windows.iter_mut().zip(FILLS) {
-            assert_eq!(paint(&mut core, window, &second, fill), (true, fill));
-            assert_eq!(paint(&mut core, window, &second, fill), (false, fill));
+            assert_eq!(paint(&mut core, window, &second, fill), fill);
         }
     }
 }

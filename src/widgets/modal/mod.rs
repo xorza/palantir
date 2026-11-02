@@ -2,6 +2,7 @@
 
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
@@ -17,22 +18,28 @@ use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
 use crate::widgets::close_handle::CloseHandle;
+use crate::widgets::popup::click_outside::ClickOutside;
 use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
-/// The backdrop or Esc sets [`OverlayResponse::dismissed`]; the body's
-/// [`CloseHandle`] closes it from inside.
+/// The backdrop or Esc sets [`OverlayResponse::dismissed`] unless
+/// [`Self::click_outside`] blocks them; the body's [`CloseHandle`] closes it from inside.
 ///
 /// On the frame it opens, focus moves to its first Tab stop, however it was opened, as
 /// WAI-ARIA's dialog pattern asks (<https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/>),
 /// and returns to the widget that held it when the modal closes. A popup moves focus only when
 /// opened from the keyboard, as a native menu opened by a click highlights no row.
+///
+/// A modal is open while it records. Stop recording it only on the frame its response reads
+/// [`closed`](OverlayResponse::closed), or after [`Self::close`]: a modal that merely stops
+/// recording keeps every key and press one more frame, so the next key goes nowhere.
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Modal<'a> {
     widget: Widget,
     chrome: Option<Chrome>,
     backdrop: Option<RgbaF32>,
+    click_outside: ClickOutside,
     style: Option<&'a ModalTheme>,
 }
 
@@ -44,6 +51,7 @@ impl<'a> Modal<'a> {
             widget: Widget::vstack().sense(Sense::ABSORB_POINTER),
             chrome: None,
             backdrop: None,
+            click_outside: ClickOutside::Dismiss,
             style: None,
         }
     }
@@ -62,6 +70,23 @@ impl<'a> Modal<'a> {
     #[track_caller]
     pub const fn backdrop(mut self, color: RgbaF32) -> Self {
         self.backdrop = Some(domain::color(color));
+        self
+    }
+
+    /// What a press on the backdrop and Esc do: [`ClickOutside::Dismiss`], the default, sets
+    /// [`OverlayResponse::dismissed`]; [`ClickOutside::Block`] swallows both and stays open, for a
+    /// dialog the user must answer, as a confirmation of unsaved work is.
+    ///
+    /// # Panics
+    ///
+    /// Panics on [`ClickOutside::PassThrough`]: a modal blocks the layers below it by definition.
+    #[track_caller]
+    pub const fn click_outside(mut self, click_outside: ClickOutside) -> Self {
+        assert!(
+            !matches!(click_outside, ClickOutside::PassThrough),
+            "a modal blocks the layers below it; use a popup for an overlay presses pass through"
+        );
+        self.click_outside = click_outside;
         self
     }
 
@@ -110,7 +135,8 @@ impl<'a> Modal<'a> {
         let response = OverlayResponse {
             id: root_id,
             opened,
-            dismissed: turn.pressed_outside || turn.escape_pressed,
+            dismissed: self.click_outside == ClickOutside::Dismiss
+                && (turn.pressed_outside || turn.escape_pressed),
             close_requested: handle.requested(),
             inner: turn.inner,
         };
@@ -119,6 +145,13 @@ impl<'a> Modal<'a> {
 }
 
 impl Modal<'_> {
+    /// Close the modal `id` from outside, as a caller does when a choice in its body ends it: the
+    /// input it took from the layers below goes back at once. No-op for a modal its response
+    /// already closed.
+    pub fn close(ui: &mut Ui, id: WidgetId) {
+        ui.release_input_scope(id);
+    }
+
     /// Paints `chrome` as the panel chrome; [`Chrome::NONE`] suppresses the themed chrome.
     ///
     /// # Panics

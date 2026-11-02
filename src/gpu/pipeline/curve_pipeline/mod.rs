@@ -127,7 +127,7 @@ impl CurvePipeline {
         rec.group(0, gradient_bind_group);
         rec.vertex(0, self.family.instances());
         rec.index(&self.idx_buffer, wgpu::IndexFormat::Uint16);
-        rec.draw_indexed(0..IDXS_PER_INSTANCE, 0, instances.into());
+        rec.draw_indexed(0..IDXS_PER_INSTANCE, 0, instances.u32_range());
     }
 }
 

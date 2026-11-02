@@ -422,16 +422,16 @@ impl QuadPipeline {
                 binding.bind_through(rec, &self.backdrop_layout, buffer);
                 let backdrops = backdrops.expect("a frame that draws a pane prepared its results");
                 rec.group(2, backdrops);
-                rec.draw(0..4, instances.into());
+                rec.draw(0..4, instances.u32_range());
             }
             QuadDraw::Form(_) => {
                 binding.bind_through(rec, &self.pipeline_layout, buffer);
-                rec.draw(0..4, instances.into());
+                rec.draw(0..4, instances.u32_range());
             }
             QuadDraw::Shadow(_) => {
                 binding.bind_through(rec, &self.shadow_layout, buffer);
                 self.cutouts.bind(rec);
-                rec.draw(0..SHADOW_GRID_VERTICES, instances.into());
+                rec.draw(0..SHADOW_GRID_VERTICES, instances.u32_range());
             }
         }
     }

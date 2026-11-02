@@ -62,7 +62,8 @@ impl<K> Default for ColorSurface<K> {
 }
 
 impl<K: PartialEq> ColorSurface<K> {
-    /// The handle to paint with, refilled first when `size` or `key` moved. `fill` writes every texel
+    /// The handle to paint with, refilled first when `size` or `key` moved, and written again when a
+    /// new device holds no texture for it. `fill` writes every texel
     /// **sRGB-encoded**: `.into()` from an `RgbaF32` is the exact encode.
     pub(crate) fn ensure(
         &mut self,
@@ -76,10 +77,16 @@ impl<K: PartialEq> ColorSurface<K> {
             .as_mut()
             .filter(|built| built.image.size() == size)
         {
-            if built.key != key {
+            let moved = built.key != key;
+            if moved {
                 fill(&mut built.image);
-                built.handle.update(&built.image);
                 built.key = key;
+            }
+            if moved || !built.handle.is_resident() {
+                built
+                    .handle
+                    .update(&built.image)
+                    .expect("a color surface is clamped to the device texture cap");
             }
         } else {
             let mut image = Image::blank(size);

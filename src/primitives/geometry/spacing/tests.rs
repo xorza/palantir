@@ -1,24 +1,9 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::*;
-use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
-
-/// A NaN edge is reported per lane: the four share one `u64`, so checking only the first would pass a NaN bottom corner.
-#[test]
-fn a_nan_on_any_corner_is_screened() {
-    assert!(!Corners::all(4.0).has_nan(), "a whole corner set is finite");
-    for lane in 0..4 {
-        let mut lanes = [1.0, 2.0, 3.0, 4.0];
-        lanes[lane] = f32::NAN;
-        assert!(
-            NanCheck::has_nan(&Corners::new(lanes[0], lanes[1], lanes[2], lanes[3])),
-            "lane {lane} went unseen",
-        );
-    }
-}
 
 /// Every constructor refuses an edge that does not pack to a finite f16, on any lane: NaN, an
 /// infinity, and 65520, the first magnitude f16 rounds to infinity. 65519 rounds down to 65504

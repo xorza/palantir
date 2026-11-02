@@ -3,6 +3,7 @@ use crate::image_registry::image_handle::ImageHandle;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
+use crate::renderer::error::ImageTooLarge;
 use glam::UVec2;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,8 +21,13 @@ struct CallLog {
 }
 
 impl ImageStore for CallLog {
-    fn write(&self, id: TextureId, _: &Image) {
+    fn write(&self, id: TextureId, _: &Image) -> Result<(), ImageTooLarge> {
         self.calls.borrow_mut().push(Call::Write(id));
+        Ok(())
+    }
+
+    fn holds(&self, _: TextureId) -> bool {
+        true
     }
 
     fn free(&self, id: TextureId) {
@@ -40,7 +46,7 @@ fn a_registry_and_its_clones_reach_one_store() {
     let first = ImageHandle::new(TextureId(7), &image, registry.clone());
     let second = ImageHandle::new(TextureId(8), &image, registry);
     drop(first);
-    second.update(&image);
+    second.update(&image).unwrap();
     drop(second);
 
     assert_eq!(

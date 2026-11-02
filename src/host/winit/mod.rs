@@ -279,8 +279,9 @@ where
     /// and stays closed.
     ///
     /// A lost device is replaced before the next frame: every window keeps its UI state and paints
-    /// whole, and [`Ui::device_restored`] is true in that frame, as the textures of registered
-    /// images went with the old device. [`WinitHostError::DeviceLost`] when no new device opens.
+    /// whole, and every registered image is not [resident](crate::ImageHandle::is_resident), as
+    /// its texture went with the old device. [`WinitHostError::DeviceLost`] when no new device
+    /// opens.
     pub fn run(mut self) -> Result<(), WinitHostError> {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
         let event_loop_result = event_loop.run_app(&mut self);

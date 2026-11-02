@@ -105,7 +105,7 @@ impl GpuViewTargets {
                 physical_size: draw.used,
                 physical_full_size: draw.full,
                 physical_offset: draw.offset,
-                display_scale,
+                scale_factor: display_scale,
                 raster_factor: draw.raster_factor,
                 dt,
             });

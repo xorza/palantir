@@ -158,7 +158,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     let mut h = Harness::mono(UVec2::new(400, 400));
     h.frame(build_hover_target);
 
-    let delta = h.key(Key::Enter);
+    let delta = h.key_down(Key::Enter);
     assert!(!delta.repaint_requested, "idle key must skip the frame");
     assert!(
         !h.ui().input_mut().take_action_flag(),
@@ -166,7 +166,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     );
 
     h.set_focus(forged_focus());
-    let delta = h.key(Key::Enter);
+    let delta = h.key_down(Key::Enter);
     assert!(delta.repaint_requested);
 
     // Watches are cleared pre-record, so re-assert it.
@@ -177,7 +177,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
         // Keeps the `PointerWake` import used.
         let _ = PointerWake::BUTTONS;
     });
-    let delta = h.key(Key::Escape);
+    let delta = h.key_down(Key::Escape);
     assert!(delta.repaint_requested);
 }
 
@@ -235,14 +235,14 @@ fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
     h.set_focus(WidgetId::from_hash("field"));
     h.frame(field);
 
-    let modifier = h.key(Key::Other);
+    let modifier = h.key_down(Key::Other);
     assert!(!modifier.repaint_requested, "a bare modifier wakes nothing");
     assert!(
         !h.ui().input_mut().take_action_flag(),
         "and settles nothing"
     );
 
-    let typed = h.key(Key::Char('c'));
+    let typed = h.key_down(Key::Char('c'));
     assert!(
         typed.repaint_requested,
         "control: a typed key reaches the focus"

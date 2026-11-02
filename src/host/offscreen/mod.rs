@@ -252,8 +252,9 @@ impl OffscreenHost {
 
     /// Draw with `gpu` from now on, in place of a lost device: every GPU object the host holds is
     /// built again on it, as [`OffscreenHostBuilder::build`] builds it, and the UI state stays. The
-    /// next frame records and paints whole, and [`Ui::device_restored`] is true in it. The
-    /// textures of registered images went with the old device, so the app fills them again with
+    /// next frame records and paints whole. The textures of registered images went with the old
+    /// device, so the app fills each image that is not
+    /// [resident](crate::ImageHandle::is_resident) again with
     /// [`ImageHandle::update`](crate::ImageHandle::update). Targets made on the old device are
     /// gone too: the app makes them again on `gpu`.
     ///

@@ -26,11 +26,7 @@ struct Case {
     close_requested: bool,
     /// What the retained tree was recorded under, against `BASELINE` this frame.
     recorded: Option<RecordBaseline>,
-    /// The device epoch the window was made under, which a frame with no record compares with.
-    made_under: u32,
     expected: FramePlan,
-    /// Whether the frame reads as one after a device recovery.
-    restored: bool,
 }
 
 /// The baseline every case's frame runs under.
@@ -52,9 +48,7 @@ const QUIET: Case = Case {
     input_signal: InputSignal::None,
     close_requested: false,
     recorded: Some(BASELINE),
-    made_under: BASELINE.device_epoch,
     expected: FramePlan::PaintOnly,
-    restored: false,
 };
 
 #[test]
@@ -155,19 +149,6 @@ fn frame_classification_covers_external_entry_facts() {
             expected: FramePlan::FullRecord {
                 base: DamageBase::Prev,
             },
-            restored: true,
-            ..QUIET
-        },
-        Case {
-            label: "device attached before the first frame",
-            prev: false,
-            wake: WakeReasons::default(),
-            recorded: None,
-            made_under: 0,
-            expected: FramePlan::FullRecord {
-                base: DamageBase::Discarded,
-            },
-            restored: true,
             ..QUIET
         },
         Case {
@@ -194,7 +175,7 @@ fn frame_classification_covers_external_entry_facts() {
                 .then_some(FrameStamp::new(base_display, Duration::ZERO)),
             repaint_requested: case.repaint_requested,
             recorded: case.recorded,
-            ..FrameRuntime::new(case.made_under)
+            ..FrameRuntime::default()
         };
         if case.wake != WakeReasons::default() {
             runtime.schedule_wake(Duration::from_millis(10), case.wake, None);
@@ -210,7 +191,6 @@ fn frame_classification_covers_external_entry_facts() {
         });
 
         assert_eq!(actual, case.expected, "{}", case.label);
-        assert_eq!(runtime.device_restored(), case.restored, "{}", case.label);
         if actual != FramePlan::PaintOnly {
             assert_eq!(
                 runtime.recorded,

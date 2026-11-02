@@ -1,5 +1,5 @@
 //! f16 pack/unpack: the crate's SIMD path against `half`'s scalar one, plus
-//! the fused [`F16x4::scaled`]; each is a standing claim in [`super`]'s docs.
+//! the fused [`F16x4::scaled_saturating`]; each is a standing claim in [`super`]'s docs.
 //!
 //! ## Why there is no `const` arm
 //!
@@ -112,12 +112,12 @@ pub(crate) fn atomic(c: &mut Criterion) {
         });
     });
 
-    // The fused decode-multiply-encode against the two-step form; keeps `F16x4::scaled`'s quoted ratio honest.
+    // The fused decode-multiply-encode against the two-step form; keeps `F16x4::scaled_saturating`'s quoted ratio honest.
     g.bench_function(Backend::Cpu.case("scaled/fused"), |b| {
         b.iter(|| {
             let mut acc = F16x4::ZERO;
             for v in black_box(&bits) {
-                acc = black_box(*v).scaled(black_box(1.75));
+                acc = black_box(*v).scaled_saturating(black_box(1.75));
             }
             acc
         });
@@ -127,7 +127,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
             let mut acc = F16x4::ZERO;
             for v in black_box(&bits) {
                 let k = black_box(1.75);
-                acc = F16x4::from_lanes(black_box(*v).lanes().map(|x| x * k));
+                acc = F16x4::from_lanes_saturating(black_box(*v).lanes().map(|x| x * k));
             }
             acc
         });

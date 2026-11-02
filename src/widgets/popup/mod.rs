@@ -36,6 +36,10 @@ use std::rc::Rc;
 /// the popup owns keyboard and pointer watches for everything below it.
 /// Focus is unchanged. Use [`ClickOutside::PassThrough`] to take neither.
 ///
+/// A popup the caller shows is open while it records. Stop recording it only on the frame its
+/// response reads [`closed`](OverlayResponse::closed), or after [`Self::close`]: a popup that
+/// merely stops recording keeps the keys and the pointer of the layers below one more frame.
+///
 /// Implements [`Configure`].
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
@@ -79,6 +83,13 @@ impl Popup {
     pub const fn anchor(mut self, anchor: Anchor) -> Self {
         self.anchor = anchor;
         self
+    }
+
+    /// Close the popup `id` from outside, as a caller does when it stops showing it for a reason
+    /// of its own: the input the popup took from the layers below goes back at once. No-op for a
+    /// popup that holds none ([`ClickOutside::PassThrough`]), or one its response already closed.
+    pub fn close(ui: &mut Ui, id: WidgetId) {
+        ui.release_input_scope(id);
     }
 
     /// Record the overlay and its `body`, which gets a [`CloseHandle`].

@@ -1,6 +1,7 @@
 use crate::image_registry::ImageRegistry;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
+use crate::renderer::error::ImageTooLarge;
 use glam::UVec2;
 use std::cell::Cell;
 use std::rc::Rc;
@@ -32,8 +33,11 @@ impl Drop for ImageToken {
 }
 
 impl ImageHandle {
+    /// The registration of `image`, which the caller measured against the device's limit.
     pub(crate) fn new(id: TextureId, image: &Image, registry: ImageRegistry) -> Self {
-        registry.write(id, image);
+        registry
+            .write(id, image)
+            .expect("registration measured the image against this device's limit");
         Self {
             inner: Rc::new(ImageToken {
                 id,
@@ -64,19 +68,34 @@ impl ImageHandle {
     /// Overwrites the texture with `image`'s texels and repaints every shape drawing it, keeping the id;
     /// call before recording the shape, in the frame the change must show.
     ///
+    /// # Errors
+    ///
+    /// A device attached after a loss is smaller than the one the image registered on, and `image`
+    /// exceeds its 2D texture limit: the image paints nothing and stays not
+    /// [resident](Self::is_resident).
+    ///
     /// # Panics
     ///
     /// Panics unless `image` is the registered size (a 2×3 and 3×2 image have equal byte counts, so wgpu would
     /// accept the write and scramble the rows).
-    pub fn update(&self, image: &Image) {
+    pub fn update(&self, image: &Image) -> Result<(), ImageTooLarge> {
         assert_eq!(
             image.size, self.inner.size,
             "an image update must match the registered size",
         );
+        self.inner.registry.write(self.inner.id, image)?;
         self.inner
             .generation
             .set(self.inner.generation.get().wrapping_add(1));
-        self.inner.registry.write(self.inner.id, image);
+        Ok(())
+    }
+
+    /// Whether the device attached now holds the image's texture. A device lost takes every
+    /// texture with it, and the image paints nothing until [`Self::update`] fills it again, so an
+    /// app that keeps the texels of an image it shows calls `update` when this is `false`.
+    /// Always `true` for a recorder with no device.
+    pub fn is_resident(&self) -> bool {
+        self.inner.registry.holds(self.inner.id)
     }
 }
 
@@ -94,10 +113,14 @@ mod tests {
         let handle = ImageHandle::new(TextureId(1), &image, ImageRegistry::default());
         let clone = handle.clone();
         assert_eq!(handle.generation(), 0);
-        handle.update(&image);
+        handle.update(&image).unwrap();
         assert_eq!(clone.generation(), 1);
-        clone.update(&image);
+        clone.update(&image).unwrap();
         assert_eq!(handle.generation(), 2);
+        assert!(
+            handle.is_resident(),
+            "a recorder with no device holds every image"
+        );
     }
 
     #[test]
@@ -108,6 +131,6 @@ mod tests {
             &Image::blank(UVec2::splat(2)),
             ImageRegistry::default(),
         );
-        handle.update(&Image::blank(UVec2::new(2, 3)));
+        handle.update(&Image::blank(UVec2::new(2, 3))).ok();
     }
 }

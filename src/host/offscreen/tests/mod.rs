@@ -98,7 +98,7 @@ fn a_manual_host_stamps_frames_with_the_time_it_was_moved_to() {
     let texture = gpu.target("palantir.offscreen.time", UVec2::new(8, 8));
     let mut app = |ui: &mut Ui| ui.request_repaint_after(Duration::from_secs(1));
     let mut wake =
-        |host: &mut OffscreenHost| host.frame(texture.as_target(), 1.0, &mut app).repaint_after;
+        |host: &mut OffscreenHost| host.frame(texture.as_target(), 1.0, &mut app).repaint_at;
     assert_eq!(
         wake(&mut host),
         Some(Duration::from_secs(1)),

@@ -101,7 +101,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
         ui.request_repaint_after(Duration::from_secs_f32(1.5));
     });
     assert_eq!(
-        report.repaint_after,
+        report.repaint_at,
         Some(Duration::from_secs_f32(0.5)),
         "FrameReport must surface the earliest pending wake",
     );
@@ -113,14 +113,14 @@ fn request_repaint_after_queues_distinct_deadlines() {
 
     let report = h.at(Duration::from_secs_f32(0.5)).frame(|_| {});
     assert_eq!(
-        report.repaint_after,
+        report.repaint_at,
         Some(Duration::from_secs_f32(1.5)),
         "second deadline survives the first frame's drain",
     );
     assert_eq!(h.ui().frame_runtime.repaint_wakes().len(), 1);
 
     let report = h.at(Duration::from_secs_f32(1.5)).frame(|_| {});
-    assert_eq!(report.repaint_after, None);
+    assert_eq!(report.repaint_at, None);
     assert!(h.ui().frame_runtime.repaint_wakes().is_empty());
 }
 
@@ -213,7 +213,7 @@ fn request_repaint_after_drains_fired_entries() {
 
     let report = h.at(Duration::from_secs_f32(1.0)).frame(|_| {});
     assert_eq!(h.ui().frame_runtime.repaint_wakes().len(), 1);
-    assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
+    assert_eq!(report.repaint_at, Some(Duration::from_secs_f32(2.0)));
 }
 
 /// Anim-only fast path: a lone paint-anim quantum wake skips record and post-record and emits `FrameProcessing::PaintOnly`.
@@ -235,7 +235,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
-    assert_eq!(r0.repaint_after, Some(half));
+    assert_eq!(r0.repaint_at, Some(half));
     let (rendered, recorded) = (h.ui().render_frame_id(), h.ui().frame_id());
 
     let r1 = h.at(half).frame(|ui| body(ui, half));
@@ -261,7 +261,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         }
         other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
     }
-    assert_eq!(r1.repaint_after, Some(half + half));
+    assert_eq!(r1.repaint_at, Some(half + half));
     let r2 = h.at(half + half).frame(|ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
@@ -403,12 +403,11 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     );
 }
 
-/// A new device shows to each window once, on its next frame, which records though only an
-/// animation woke it, so the app's record can upload its images again; the frame after reads false.
-/// A window made on the new device reads false from its first frame. The limit is the new
+/// A new device makes each window record on its next frame, though only an animation woke it, so
+/// the app's record can upload its images again; the frame after paints only. The limit is the new
 /// device's.
 #[test]
-fn a_new_device_restores_each_window_once_and_records() {
+fn a_new_device_makes_each_window_record_once() {
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             support::add_blink_shape(ui, half);
@@ -421,7 +420,6 @@ fn a_new_device_restores_each_window_once_and_records() {
     let half = Duration::from_millis(500);
     a.frame(|ui| body(ui, half));
     b.frame(|ui| body(ui, half));
-    assert!(!a.ui().device_restored() && !b.ui().device_restored());
     assert_eq!(
         a.at(half).frame(|ui| body(ui, half)).processing,
         FrameProcessing::PaintOnly
@@ -429,21 +427,12 @@ fn a_new_device_restores_each_window_once_and_records() {
 
     let limit = NonZeroU32::new(4096).unwrap();
     shared.device().attach(TextureLimit::from_device(limit));
-    let report = a.at(half * 2).frame(|ui| body(ui, half));
-    assert_eq!(report.processing, FrameProcessing::SingleLayout);
-    assert!(a.ui().device_restored());
+    for ui in [&mut a, &mut b] {
+        let processing = |ui: &mut Harness, at| ui.at(at).frame(|ui| body(ui, half)).processing;
+        assert_eq!(processing(ui, half * 2), FrameProcessing::SingleLayout);
+        assert_eq!(processing(ui, half * 3), FrameProcessing::PaintOnly);
+    }
     assert_eq!(a.ui().max_image_dimension(), Some(limit));
-    a.at(half * 3).frame(|ui| body(ui, half));
-    assert!(!a.ui().device_restored());
-
-    b.at(half * 2).frame(|ui| body(ui, half));
-    assert!(b.ui().device_restored());
-    b.at(half * 3).frame(|ui| body(ui, half));
-    assert!(!b.ui().device_restored());
-
-    let mut c = support::ui_with_shared(&shared);
-    c.frame(|ui| body(ui, half));
-    assert!(!c.ui().device_restored());
 }
 
 /// `request_repaint` co-firing with an anim wake gives `REAL | ANIMATION`, so the classifier picks Full.

@@ -21,7 +21,7 @@ fn a_key_reads_pressed_held_and_released_whatever_the_modifiers() {
     let mut h = Harness::mono(UVec2::new(64, 48));
     states(&mut h, Key::Escape);
     h.set_modifiers(Modifiers::CTRL);
-    h.key(Key::Escape);
+    h.key_down(Key::Escape);
     let chord = h.frame_value(|ui: &mut Ui| {
         [
             ui.key_pressed(Key::Escape),
@@ -53,10 +53,9 @@ fn a_hold_counts_each_press_once() {
     let space = Key::Char(' ');
     states(&mut h, space);
     h.key(space);
-    h.key_up(space);
     assert_eq!(states(&mut h, space), [true, false, true], "a tap");
 
-    h.key(space);
+    h.key_down(space);
     h.on_input(InputEvent::KeyDown {
         key: space,
         repeat: true,
@@ -67,7 +66,7 @@ fn a_hold_counts_each_press_once() {
     h.key_up(space);
     assert_eq!(states(&mut h, space), [false, false, true], "a repeat");
 
-    h.key(Key::Enter);
+    h.key_down(Key::Enter);
     h.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
@@ -84,8 +83,8 @@ fn a_hold_counts_each_press_once() {
     h.key_up(Key::Enter);
     assert_eq!(states(&mut h, Key::Enter), [false, false, true]);
 
-    h.key(Key::F2);
-    h.key(Key::F2);
+    h.key_down(Key::F2);
+    h.key_down(Key::F2);
     states(&mut h, Key::F2);
     h.key_up(Key::F2);
     assert_eq!(
@@ -110,7 +109,7 @@ fn a_letter_reads_whatever_shift_does_to_it() {
     let w = Key::Char('w');
     states(&mut h, w);
     h.set_modifiers(Modifiers::SHIFT);
-    h.key(Key::Char('W'));
+    h.key_down(Key::Char('W'));
     assert_eq!(states(&mut h, w), [true, true, false]);
     h.set_modifiers(Modifiers::NONE);
     h.key_up(Key::Char('W'));
@@ -132,8 +131,8 @@ fn focus_loss_releases_every_held_key() {
         })
     };
     both(&mut h);
-    h.key(Key::Char('w'));
-    h.key(Key::ArrowUp);
+    h.key_down(Key::Char('w'));
+    h.key_down(Key::ArrowUp);
     assert_eq!(both(&mut h), [true, false, true, false]);
     h.on_input(InputEvent::SurfaceFocusLost);
     assert_eq!(both(&mut h), [false, true, false, true]);
@@ -146,11 +145,11 @@ fn a_read_key_wakes_on_its_press_and_release() {
     let mut h = Harness::mono(UVec2::new(64, 48));
     let space = Key::Char(' ');
     states(&mut h, space);
-    assert!(h.key(space).repaint_requested, "the press");
+    assert!(h.key_down(space).repaint_requested, "the press");
     states(&mut h, space);
     assert!(h.key_up(space).repaint_requested, "the release");
     states(&mut h, space);
-    h.key(Key::Char('q'));
+    h.key_down(Key::Char('q'));
     states(&mut h, space);
     assert!(
         !h.key_up(Key::Char('q')).repaint_requested,

@@ -14,6 +14,7 @@
 //! [`KeyPress`]: crate::KeyPress
 
 use crate::common::platform::{PLATFORM, Platform};
+use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::key_text::KeyText;
@@ -208,6 +209,17 @@ impl Shortcut {
         ShortcutLabel {
             shortcut: self,
             platform,
+        }
+    }
+
+    /// The event a press of this shortcut sends from a keyboard with no physical key, typing
+    /// [`Self::typed`]; the modifiers go in their own event before it.
+    pub(crate) fn key_down(self) -> InputEvent<'static> {
+        InputEvent::KeyDown {
+            key: self.key,
+            repeat: false,
+            physical: Key::Other,
+            text: self.typed(),
         }
     }
 

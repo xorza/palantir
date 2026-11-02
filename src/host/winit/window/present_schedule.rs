@@ -98,7 +98,7 @@ impl PresentSchedule {
             Wake::After(delay)
         } else if repaint {
             Wake::Now
-        } else if let Some(due) = report.repaint_after {
+        } else if let Some(due) = report.repaint_at {
             Wake::At(due)
         } else {
             Wake::Idle

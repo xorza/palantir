@@ -287,7 +287,7 @@ impl Ordering<'_> {
                 let end = higher_end[tier.idx()];
                 if end > start {
                     self.out.batches_mut(tier).push(GroupBatch {
-                        items: (start..end).into(),
+                        items: Span::try_from(start..end).unwrap(),
                         last_group,
                     });
                 }
@@ -295,7 +295,7 @@ impl Ordering<'_> {
             self.out.groups.push(DrawGroup {
                 scissor: self.clip.scissor(),
                 rounded_clips: self.clip.chain(),
-                quads: (order.cursors.quads..q_end).into(),
+                quads: Span::try_from(order.cursors.quads..q_end).unwrap(),
             });
         }
         order.cursors = GroupCursors {
@@ -334,7 +334,7 @@ impl Ordering<'_> {
                 .is_none_or(|prev| prev.texts.start + prev.texts.len == b.texts_start),
         );
         self.out.text_batches.push(TextBatch {
-            texts: (b.texts_start..texts_end).into(),
+            texts: Span::try_from(b.texts_start..texts_end).unwrap(),
             last_group: b.last_group,
             // Already physical and clamped to every run's clip-narrowed bounds, so it is the
             // batch's GPU scissor (the text backend has no per-run clipping).

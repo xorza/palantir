@@ -1,4 +1,5 @@
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::brush::Brush;
@@ -39,7 +40,8 @@ fn nan_chromes() -> [(&'static str, Chrome); 6] {
     [
         (
             "corners",
-            with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
+            // The constructors refuse a NaN radius; a blend at a NaN weight still makes one.
+            with_corners(Corners::lerp(Corners::ZERO, Corners::all(4.0), f32::NAN)),
         ),
         (
             "fill",

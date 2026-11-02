@@ -30,6 +30,7 @@ use crate::window::window_config::WindowConfig;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use half::f16;
+use std::cell::Cell;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -241,11 +242,38 @@ fn play_acts_as_a_person() {
         &[
             Action::click(edit()),
             Action::Type("hello".to_owned()),
+            Action::InsertText(", world".to_owned()),
             Action::key(Shortcut::key(Key::Enter)),
         ],
     )
     .unwrap();
-    assert_eq!(app.committed.as_deref(), Some("hello"));
+    assert_eq!(app.committed.as_deref(), Some("hello, world"));
+}
+
+/// A `KeyDown` step leaves its key held across steps and lets its modifiers go; a `KeyUp` step
+/// releases the key.
+#[test]
+fn a_key_down_step_holds_its_key_until_a_key_up_step() {
+    let mut h = Harness::mono(UVec2::new(64, 32));
+    let space = Key::Char(' ');
+    let held = Cell::new(false);
+    let mut app = |ui: &mut Ui| held.set(ui.key_held(space));
+    h.play(
+        &mut app,
+        &[Action::<Infallible>::KeyDown(Shortcut::new(
+            ShortcutMods::SHIFT,
+            space,
+        ))],
+    )
+    .unwrap();
+    assert!(held.get());
+    assert_eq!(
+        h.ui_ref().input().modifiers_after_held_input(),
+        Modifiers::NONE
+    );
+    h.play(&mut app, &[Action::<Infallible>::KeyUp(space.into())])
+        .unwrap();
+    assert!(!held.get());
 }
 
 /// Each step settles: a `Wait` runs frames of one frame's time until it passed, and a click with

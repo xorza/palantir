@@ -242,11 +242,13 @@ fn default_chrome_yields_to_an_explicit_one_on_every_chrome_widget() {
 }
 
 /// Chrome values are checked where they enter a widget through either setter: NaN fill, negative border
-/// width, NaN or f16-overflowing corner and NaN shadow blur each panic with their kind's rule.
+/// width, a NaN or negative corner and NaN shadow blur each panic with their kind's rule. The
+/// corner constructors refuse both, so the corners come from blends, which can make them.
 #[test]
 fn chrome_setters_check_the_chrome() {
     use crate::internals::panic_probe;
     use crate::primitives::geometry::corners::Corners;
+    use crate::primitives::math::animatable::Animatable;
     use crate::primitives::math::domain;
     use crate::primitives::packed::serde::LaneCodec;
     use crate::primitives::paint::shadow::Shadow;
@@ -263,11 +265,17 @@ fn chrome_setters_check_the_chrome() {
         ),
         (
             <Corners as LaneCodec>::LANE_RULE,
-            Chrome::rounded(RgbaF32::WHITE, Corners::all(f32::NAN)),
+            Chrome::rounded(
+                RgbaF32::WHITE,
+                Corners::lerp(Corners::ZERO, Corners::all(1.0), f32::NAN),
+            ),
         ),
         (
             <Corners as LaneCodec>::LANE_RULE,
-            Chrome::rounded(RgbaF32::WHITE, Corners::all(1.0e5)),
+            Chrome::rounded(
+                RgbaF32::WHITE,
+                Animatable::sub(Corners::all(1.0), Corners::all(2.0)),
+            ),
         ),
         (
             domain::LENGTH_RULE,

@@ -92,8 +92,8 @@ fn unrouted_keyboard_input_is_not_delivered_after_focus_changes() {
 
     h.frame(Field::EDITOR.scene(&mut buf));
     assert!(h.focus().is_none());
-    assert!(!h.key(Key::Escape).repaint_requested);
-    assert!(!h.key(Key::Char('s')).repaint_requested);
+    assert!(!h.key_down(Key::Escape).repaint_requested);
+    assert!(!h.key_down(Key::Char('s')).repaint_requested);
 
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id));

@@ -327,26 +327,26 @@ fn key_chord_watcher_wakes_only_exact_chord() {
     h.frame(empty_watch_escape);
     assert_eq!(h.focus(), None);
 
-    let delta = h.key(Key::Enter);
+    let delta = h.key_down(Key::Enter);
     assert!(!delta.repaint_requested);
 
     // Alt+Escape against a bare-Escape watcher: no match (not ctrl, which matches on macOS).
     let alt = Modifiers::ALT;
     h.set_modifiers(alt);
-    let delta = h.key(Key::Escape);
+    let delta = h.key_down(Key::Escape);
     assert!(!delta.repaint_requested);
 
     h.set_modifiers(Modifiers::NONE);
-    let delta = h.key(Key::Escape);
+    let delta = h.key_down(Key::Escape);
     assert!(delta.repaint_requested);
 
     h.frame(|ui| {
         empty_watch_escape(ui);
         ui.watch_shortcut(Key::Escape);
     });
-    let delta = h.key(Key::Enter);
+    let delta = h.key_down(Key::Enter);
     assert!(!delta.repaint_requested);
-    let delta = h.key(Key::Escape);
+    let delta = h.key_down(Key::Escape);
     assert!(delta.repaint_requested);
 }
 
@@ -369,7 +369,7 @@ fn a_shortcut_read_skipped_behind_one_that_fired_stays_watched() {
         [true, false],
         "the press, then the pass with no input"
     );
-    assert!(h.key(Key::Enter).repaint_requested);
+    assert!(h.key_down(Key::Enter).repaint_requested);
 }
 
 #[test]

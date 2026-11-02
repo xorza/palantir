@@ -21,6 +21,7 @@ pub(crate) mod image_store;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
+use crate::renderer::error::ImageTooLarge;
 use std::rc::Rc;
 
 /// Cheap to clone: every clone reaches the one store. `Default` is a deviceless recorder's.
@@ -37,10 +38,15 @@ impl ImageRegistry {
         Self { store: Some(store) }
     }
 
-    fn write(&self, id: TextureId, image: &Image) {
-        if let Some(store) = &self.store {
-            store.write(id, image);
-        }
+    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageTooLarge> {
+        self.store
+            .as_ref()
+            .map_or(Ok(()), |store| store.write(id, image))
+    }
+
+    /// A deviceless recorder holds every image it registered, as it draws none.
+    fn holds(&self, id: TextureId) -> bool {
+        self.store.as_ref().is_none_or(|store| store.holds(id))
     }
 
     fn free(&self, id: TextureId) {

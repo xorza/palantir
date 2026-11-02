@@ -1,6 +1,7 @@
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
+use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -15,6 +16,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::button::Button;
 use crate::widgets::modal::Modal;
 use crate::widgets::popup::Popup;
+use crate::widgets::popup::click_outside::ClickOutside;
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -79,35 +81,50 @@ fn the_backdrop_root_covers_the_whole_surface_in_the_scrim() {
     }
 }
 
-/// What one frame of [`a_backdrop_click_dismisses_and_reaches_nothing_below`] reports.
+/// What one frame of [`a_backdrop_click_or_escape_dismisses_unless_blocked`] reports.
 #[derive(Clone, Copy, Debug)]
 struct BackdropPass {
     under_clicked: bool,
     dismissed: bool,
 }
 
-/// A click on the backdrop dismisses the modal, and the button under it hears nothing: the
-/// backdrop covers the window and takes every pointer.
+/// A click on the backdrop and Esc each dismiss the modal under `Dismiss`, the default, and
+/// neither does under `Block`; the button under it hears nothing either way, as the backdrop
+/// covers the window and takes every pointer. `PassThrough` is no modal and panics.
 #[test]
-fn a_backdrop_click_dismisses_and_reaches_nothing_below() {
-    let under = WidgetId::from_hash("under-the-modal");
-    let mut record = |ui: &mut Ui| BackdropPass {
-        under_clicked: Button::new().id(under).label("under").show(ui).clicked(),
-        dismissed: Modal::new()
-            .id(WidgetId::from_hash("modal"))
-            .show(ui, |_, _| {})
-            .dismissed,
-    };
-    let mut h = Harness::mono(UVec2::new(400, 300));
-    h.frame_value(&mut record);
-    let at = h.center_of(under);
-    h.click(at);
-    let pass = h.frame_value(&mut record);
-    assert!(pass.dismissed, "the backdrop click dismisses the modal");
-    assert!(
-        !pass.under_clicked,
-        "the button under the backdrop hears nothing"
-    );
+fn a_backdrop_click_or_escape_dismisses_unless_blocked() {
+    for (click_outside, dismisses) in [(ClickOutside::Dismiss, true), (ClickOutside::Block, false)]
+    {
+        for by_escape in [false, true] {
+            let under = WidgetId::from_hash("under-the-modal");
+            let mut record = |ui: &mut Ui| BackdropPass {
+                under_clicked: Button::new().id(under).label("under").show(ui).clicked(),
+                dismissed: Modal::new()
+                    .id(WidgetId::from_hash("modal"))
+                    .click_outside(click_outside)
+                    .show(ui, |_, _| {})
+                    .dismissed,
+            };
+            let mut h = Harness::mono(UVec2::new(400, 300));
+            h.frame_value(&mut record);
+            if by_escape {
+                h.key(Key::Escape);
+            } else {
+                let at = h.center_of(under);
+                h.click(at);
+            }
+            let pass = h.frame_value(&mut record);
+            let case = format!("{click_outside:?}, escape {by_escape}");
+            assert_eq!(pass.dismissed, dismisses, "{case}");
+            assert!(
+                !pass.under_clicked,
+                "{case}: the button under hears nothing"
+            );
+        }
+    }
+    panic_probe::assert_panics_with("a modal blocks the layers below it", || {
+        Modal::new().click_outside(ClickOutside::PassThrough)
+    });
 }
 
 /// A modal paints above every popup, so it must also hear Escape, which holds
@@ -262,4 +279,60 @@ fn opened_marks_the_first_frame_an_overlay_shows() {
     assert_eq!(show(&mut h, true), Some([false, false]));
     assert_eq!(show(&mut h, false), None);
     assert_eq!(show(&mut h, true), Some([true, true]), "shown again");
+}
+
+/// A caller that ends a modal or a popup itself, as a choice in its body does, gives the input
+/// back with `close` on that frame: the key pressed on the next frame reaches the layer below. One
+/// that only stops recording keeps the keys that next frame, so the key goes nowhere.
+#[test]
+fn closing_from_outside_gives_the_input_back_at_once() {
+    use crate::input::watch::KeyboardWake;
+    use crate::primitives::layout::anchor::Anchor;
+
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    enum Overlay {
+        Modal,
+        Popup,
+    }
+    let id = WidgetId::from_hash("ended-overlay");
+    for overlay in [Overlay::Modal, Overlay::Popup] {
+        for close in [true, false] {
+            let mut h = Harness::mono(UVec2::new(400, 300));
+            let mut open = true;
+            let mut scene = |ui: &mut Ui, ending: bool| {
+                ui.watch_keyboard(KeyboardWake::KEY);
+                if open {
+                    match overlay {
+                        Overlay::Modal => {
+                            Modal::new().id(id).show(ui, |_, _| {});
+                        }
+                        Overlay::Popup => {
+                            Popup::new(Anchor::at_point(Vec2::new(20.0, 20.0)))
+                                .id(id)
+                                .show(ui, |_, _| {});
+                        }
+                    }
+                    if ending {
+                        open = false;
+                        if close {
+                            match overlay {
+                                Overlay::Modal => Modal::close(ui, id),
+                                Overlay::Popup => Popup::close(ui, id),
+                            }
+                        }
+                    }
+                }
+                ui.keyboard_events().len()
+            };
+            h.frame(|ui| {
+                scene(ui, false);
+            });
+            h.frame(|ui| {
+                scene(ui, true);
+            });
+            h.key(Key::Char('a'));
+            let heard = h.frame_value(|ui| scene(ui, false));
+            assert_eq!(heard, usize::from(close), "{overlay:?}, close: {close}");
+        }
+    }
 }

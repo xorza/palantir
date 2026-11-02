@@ -35,6 +35,13 @@ impl AnchorSide {
     }
 }
 
+/// What an anchor places the body beside: a rect it keeps clear, or a point, as the pointer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AnchorTarget {
+    Rect,
+    Point,
+}
+
 /// Where an anchored body sits across its anchored side; it still shifts back inside the surface if pushed off.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -66,6 +73,7 @@ impl AnchorAlign {
 #[must_use]
 pub struct Anchor {
     rect: Rect,
+    target: AnchorTarget,
     side: AnchorSide,
     align: AnchorAlign,
     gap: f32,
@@ -78,6 +86,7 @@ impl Anchor {
         rect.validate();
         Self {
             rect,
+            target: AnchorTarget::Rect,
             side,
             align: AnchorAlign::Start,
             gap: 0.0,
@@ -92,13 +101,16 @@ impl Anchor {
     #[track_caller]
     pub const fn at_point(point: Vec2) -> Self {
         let point = vec2::offset(point);
-        Self::below(Rect::new(point.x, point.y, 0.0, 0.0))
+        Self {
+            target: AnchorTarget::Point,
+            ..Self::below(Rect::new(point.x, point.y, 0.0, 0.0))
+        }
     }
 
-    /// Whether the anchor is a point, as [`Self::at_point`] makes one: a rect with nothing in it
-    /// for the body to keep clear of.
+    /// Whether [`Self::at_point`] made the anchor. A rect that collapsed to no size stays a rect,
+    /// so a list under a button that shrank still places each frame.
     pub(crate) const fn is_point(self) -> bool {
-        self.rect.size.w == 0.0 && self.rect.size.h == 0.0
+        matches!(self.target, AnchorTarget::Point)
     }
 
     /// Above `rect`, falling back to below it.

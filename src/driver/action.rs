@@ -55,8 +55,17 @@ pub enum Action<X = Infallible> {
     },
     /// Press and release one key with its modifiers, as `ctrl+z` or `enter`.
     Key(Shortcut),
-    /// Type text into whatever holds the keyboard focus, as an input method commits it.
+    /// Press one key with its modifiers and leave the key down until a [`Self::KeyUp`] step, for
+    /// an app that reads [`Ui::key_held`](crate::Ui::key_held). The modifiers come up at the end
+    /// of the step.
+    KeyDown(Shortcut),
+    /// Release a key a [`Self::KeyDown`] step left down, with its modifiers held for the release.
+    KeyUp(Shortcut),
+    /// Type text as key taps, one a character, each typing it.
     Type(String),
+    /// Commit text to whatever holds the keyboard focus, as an input method commits it: no key
+    /// event.
+    InsertText(String),
     /// Let this much time pass, frames running, as a person waits for an animation.
     Wait(Duration),
 }

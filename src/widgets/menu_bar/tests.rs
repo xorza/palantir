@@ -217,7 +217,7 @@ fn a_pick_escape_or_an_outside_click_shuts_the_menu() {
         frame(&mut h);
         assert_eq!(open(&h), Some(1), "{shut}");
         match shut {
-            "escape" => drop(h.key(Key::Escape)),
+            "escape" => h.key(Key::Escape),
             _ => h.click(Vec2::new(500.0, 350.0)),
         }
         frame(&mut h);

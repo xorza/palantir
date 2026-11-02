@@ -36,7 +36,7 @@ pub(super) fn from_f32x4(src: [f32; 4]) -> [u16; 4] {
 }
 
 /// Decode, scale, clamp to `±limit` and re-encode in one pass; see
-/// [`F16x4::scaled`](crate::primitives::packed::half_simd::F16x4::scaled).
+/// [`F16x4::scaled_saturating`](crate::primitives::packed::half_simd::F16x4::scaled_saturating).
 #[inline]
 pub(super) fn scaled(bits: [u16; 4], k: f32, limit: f32) -> [u16; 4] {
     #[cfg(target_feature = "f16c")]

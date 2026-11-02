@@ -124,7 +124,7 @@ impl InputQueue {
         }
         self.pending.push_back(HeldEvent {
             event: event.with_text(""),
-            text: Span::from(start..self.text.len()),
+            text: Span::try_from(start..self.text.len()).unwrap(),
             at: now,
         });
     }

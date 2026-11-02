@@ -166,7 +166,7 @@ impl<'a> FrameCycle<'a> {
 
         let report = FrameReport {
             repaint_requested: self.ui.frame_runtime.repaint_requested(),
-            repaint_after: self.ui.frame_runtime.next_wake(),
+            repaint_at: self.ui.frame_runtime.next_wake(),
             plan: RenderPlan::from_damage(damage, baseline.clear),
             processing,
         };

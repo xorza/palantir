@@ -9,6 +9,8 @@ use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
+use crate::renderer::error::ImageTooLarge;
+use crate::renderer::texture_limit::TextureLimit;
 use glam::UVec2;
 use rustc_hash::FxHashMap;
 use std::array;
@@ -127,18 +129,10 @@ fn create(gpu: &Gpu, binding: &TextureBinding, id: TextureId, size: UVec2) -> Im
 }
 
 impl ImageStore for WgpuImageStore {
-    fn write(&self, id: TextureId, image: &Image) {
+    fn write(&self, id: TextureId, image: &Image) -> Result<(), ImageTooLarge> {
         let mut attached = self.attached_mut();
         // Registration checks the device it ran on; a later device can be smaller.
-        let max_dimension = attached.gpu.max_texture_dim().get();
-        if image.size.max_element() > max_dimension {
-            tracing::warn!(
-                size = ?image.size,
-                max_dimension,
-                "an image exceeds this device's texture limit and paints nothing"
-            );
-            return;
-        }
+        TextureLimit::from_device(attached.gpu.max_texture_dim()).accepts(image.size)?;
         let AttachedStore {
             gpu,
             binding,
@@ -178,7 +172,7 @@ impl ImageStore for WgpuImageStore {
         let texels = image.texels();
         if texels.iter().all(|texel| texel.a == u8::MAX) {
             write(0, &image.pixels);
-            return;
+            return Ok(());
         }
         let mut staged = self.staged.borrow_mut();
         let width = image.size.x as usize;
@@ -187,6 +181,11 @@ impl ImageStore for WgpuImageStore {
             premultiply_into(&self.premultiply, band, &mut staged);
             write(rows.start, bytemuck::cast_slice(&staged));
         }
+        Ok(())
+    }
+
+    fn holds(&self, id: TextureId) -> bool {
+        self.attached().textures.contains_key(&id)
     }
 
     fn free(&self, id: TextureId) {
@@ -346,7 +345,7 @@ mod tests {
         let registered = store.read()[&TextureId(1)].bind_group.clone();
         assert!(!store.read().contains_key(&TextureId(2)));
         image.texels_mut().fill(SrgbaU8::hex(0x4cd3ff));
-        handle.update(&image);
+        handle.update(&image).unwrap();
         assert_eq!(handle.generation(), 1);
         assert_eq!(
             store.read()[&TextureId(1)].bind_group,
@@ -367,10 +366,12 @@ mod tests {
             0,
             "an attach drops the textures of the old device"
         );
-        survivor.update(&image);
+        assert!(!survivor.is_resident());
+        survivor.update(&image).unwrap();
         assert_eq!(store.resident(), 1, "a write fills the image again");
+        assert!(survivor.is_resident());
         drop(store);
-        survivor.update(&image);
+        survivor.update(&image).unwrap();
         assert_eq!(survivor.generation(), 2);
         assert_eq!(weak.upgrade().unwrap().resident(), 1);
         drop(survivor);
@@ -400,7 +401,7 @@ mod tests {
             a: 128,
             ..SrgbaU8::hex(0x4cd3ff)
         });
-        store.write(TextureId(1), &image);
+        store.write(TextureId(1), &image).unwrap();
         let staged = store.staged.borrow().capacity() * 4;
         assert!(staged <= STAGED_BYTES as usize, "{staged} bytes staged");
     }

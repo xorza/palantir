@@ -488,31 +488,45 @@ impl Harness {
         self.on_input(InputEvent::Zoom(factor))
     }
 
-    /// Press a key, typing what it types. A shortcut with modifiers holds them for the press and
-    /// then restores the ones held before; a bare key presses under the modifiers held
-    /// ([`Self::set_modifiers`]). The key stays down until [`Self::key_up`].
-    pub fn key(&mut self, key: impl Into<Shortcut>) -> InputDelta {
+    /// Press and release a key in one frame, a tap: [`Self::key_down`], then [`Self::key_up`].
+    pub fn key(&mut self, key: impl Into<Shortcut>) {
         let shortcut = key.into();
-        let held = self.driver.ui.input().modifiers_after_held_input();
-        let mods = shortcut.mods != ShortcutMods::NONE;
-        if mods {
-            self.set_modifiers(shortcut.mods.held());
-        }
-        let delta = self.on_input(InputEvent::KeyDown {
-            key: shortcut.key,
-            repeat: false,
-            physical: Key::Other,
-            text: shortcut.typed(),
-        });
-        if mods {
-            self.set_modifiers(held);
-        }
-        delta
+        self.key_down(shortcut);
+        self.key_up(shortcut);
     }
 
-    /// Release `key`.
-    pub fn key_up(&mut self, key: Key) -> InputDelta {
-        self.on_input(InputEvent::KeyUp { key })
+    /// Press a key, typing what it types, and leave it down until [`Self::key_up`]. A shortcut
+    /// with modifiers holds them for the press and then restores the ones held before; a bare key
+    /// presses under the modifiers held ([`Self::set_modifiers`]).
+    pub fn key_down(&mut self, key: impl Into<Shortcut>) -> InputDelta {
+        let shortcut = key.into();
+        self.under_mods(shortcut.mods, |h| h.on_input(shortcut.key_down()))
+    }
+
+    /// Release a key. A shortcut with modifiers holds them for the release and then restores the
+    /// ones held before, as [`Self::key_down`] does for the press.
+    pub fn key_up(&mut self, key: impl Into<Shortcut>) -> InputDelta {
+        let shortcut = key.into();
+        self.under_mods(shortcut.mods, |h| {
+            h.on_input(InputEvent::KeyUp { key: shortcut.key })
+        })
+    }
+
+    /// Run `send` with `mods` held, then restore the modifiers held before; with no modifiers,
+    /// under the ones held.
+    fn under_mods(
+        &mut self,
+        mods: ShortcutMods,
+        send: impl FnOnce(&mut Self) -> InputDelta,
+    ) -> InputDelta {
+        if mods == ShortcutMods::NONE {
+            return send(self);
+        }
+        let held = self.driver.ui.input().modifiers_after_held_input();
+        self.set_modifiers(mods.held());
+        let delta = send(self);
+        self.set_modifiers(held);
+        delta
     }
 
     /// Hold `mods` from now on. Sends nothing when they are held already, counting input that
@@ -523,11 +537,17 @@ impl Harness {
         }
     }
 
-    /// Type `text` as key presses, one a character, each typing it.
+    /// Type `text` as key taps, one a character, each typing it.
     pub fn type_text(&mut self, text: &str) {
         for c in text.chars() {
             self.key(Key::Char(c));
         }
+    }
+
+    /// Commit `text` to whatever holds the keyboard focus, as an input method commits it: no key
+    /// event.
+    pub fn insert_text(&mut self, text: &str) -> InputDelta {
+        self.on_input(InputEvent::ImeCommit(text))
     }
 
     /// The one place `at` names in `app`'s last frame. See [`Locator::find`].

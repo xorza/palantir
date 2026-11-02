@@ -69,3 +69,20 @@ fn impossible_fit_clamps_inside_bounds() {
         Anchor::on_side(Rect::new(390.0, 140.0, 10.0, 20.0), AnchorSide::Below).with_gap(6.0);
     assert_eq!(anchor.resolve(Size::new(500.0, 400.0), BOUNDS), Vec2::ZERO,);
 }
+
+/// A point anchor is what `at_point` makes, whatever its rect: a rect that collapsed to no size
+/// below a button stays a rect, and both resolve to the same origin.
+#[test]
+fn a_point_is_what_at_point_makes_not_an_empty_rect() {
+    let point = Vec2::new(30.0, 40.0);
+    let at_point = Anchor::at_point(point);
+    let collapsed = Anchor::below(Rect::new(point.x, point.y, 0.0, 0.0));
+    assert!(at_point.is_point());
+    assert!(!collapsed.is_point());
+    assert!(!Anchor::below(RECT).is_point());
+    assert_ne!(at_point, collapsed);
+    assert_eq!(
+        at_point.resolve(BODY, BOUNDS),
+        collapsed.resolve(BODY, BOUNDS)
+    );
+}

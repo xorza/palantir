@@ -148,7 +148,7 @@ fn ime_event(ime: &Ime) -> Option<InputEvent<'_>> {
     match ime {
         Ime::Preedit(text, cursor) => Some(InputEvent::ImePreedit(ImePreedit {
             text,
-            cursor: cursor.map(|(a, b)| Span::from(a.min(b)..a.max(b))),
+            cursor: cursor.and_then(|(a, b)| Span::try_from(a.min(b)..a.max(b)).ok()),
         })),
         Ime::Commit(text) => Some(InputEvent::ImeCommit(text)),
         Ime::Disabled => Some(InputEvent::ImePreedit(ImePreedit {

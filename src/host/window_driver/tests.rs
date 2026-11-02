@@ -273,7 +273,7 @@ mod output_validity_tests {
     fn report(plan: Option<RenderPlan>) -> FrameReport {
         FrameReport {
             repaint_requested: false,
-            repaint_after: None,
+            repaint_at: None,
             plan,
             processing: FrameProcessing::SingleLayout,
         }

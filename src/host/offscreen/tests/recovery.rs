@@ -34,6 +34,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::renderer::error::ImageTooLarge;
 use crate::shape::Shape;
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
@@ -100,7 +101,7 @@ impl GpuPaint for ClearView {
 /// (gradient atlas), four shadows of one key (cutout tables), a rounded clip (stencil), text
 /// (glyph atlas), a mask and a color icon (raster atlases), a mesh, a curve, a polyline, a
 /// registered image (image store), a `GpuView` (view target), and a backdrop pane (backdrop atlas
-/// and blur). It fills its image again on the frame the device is restored.
+/// and blur). It fills its image again when the image is not resident.
 #[derive(Debug)]
 struct Scene {
     tile: RgbaF32,
@@ -110,7 +111,8 @@ struct Scene {
     held: Option<IconSet>,
     view: Rc<RefCell<ClearView>>,
     mesh: Mesh,
-    restored_frames: u32,
+    /// Fills of the image after its registration.
+    refills: u32,
 }
 
 impl Scene {
@@ -134,18 +136,18 @@ impl Scene {
             held: None,
             view: Rc::default(),
             mesh,
-            restored_frames: 0,
+            refills: 0,
         }
     }
 }
 
 impl App for Scene {
     fn update(&mut self, _window: WindowToken, ui: &Ui) {
-        if ui.device_restored() {
-            self.restored_frames += 1;
-            if let Some(handle) = &self.handle {
-                handle.update(&self.image);
-            }
+        if let Some(handle) = &self.handle
+            && !handle.is_resident()
+        {
+            self.refills += 1;
+            handle.update(&self.image).unwrap();
         }
         if self.handle.is_none() {
             self.handle = Some(ui.load_image(&self.image).unwrap());
@@ -254,16 +256,15 @@ fn paint_twice(
 }
 
 /// `host`, recovered onto `device`, paints what a fresh host on `device` paints, pixel for pixel,
-/// in its first frame and in the partial frame after, which proves its backbuffer new; the
-/// recovery showed to the app in the first frame alone, and the view's init ran again on
-/// `device`.
+/// in its first frame and in the partial frame after, which proves its backbuffer new; the app
+/// filled its image again once, and the view's init ran again on `device`.
 fn assert_paints_as_fresh(
     host: &mut OffscreenHost,
     scene: &mut Scene,
     device: &HeadlessTestGpuLease,
     shaper: &TextShaper,
 ) {
-    let restored = scene.restored_frames;
+    let refills = scene.refills;
     let inits = scene.view.borrow().inits;
     let target = device.target("palantir.test.recovery", SIZE);
     let got = paint_twice(host, scene, &target);
@@ -274,14 +275,14 @@ fn assert_paints_as_fresh(
         &device.target("palantir.test.recovery.fresh", SIZE),
     );
     assert_eq!(got, want);
-    assert_eq!(scene.restored_frames, restored + 1);
+    assert_eq!(scene.refills, refills + 1);
     let view = scene.view.borrow();
     assert_eq!(view.inits, inits + 1);
     assert_eq!(view.device.as_ref(), Some(&device.device));
 }
 
 /// Startup and a recovery are one flow: a host attached again to the device it holds paints what
-/// it painted before, whole and then partial, and the attach shows to the app once. No loss is
+/// it painted before, whole and then partial, and the app fills its image again once. No loss is
 /// needed for the attach steps to run.
 #[test]
 fn attaching_the_same_device_again_paints_as_before() {
@@ -290,10 +291,10 @@ fn attaching_the_same_device_again_paints_as_before() {
     let mut scene = Scene::new();
     let target = device.target("palantir.test.recovery.again", SIZE);
     let before = paint_twice(&mut host, &mut scene, &target);
-    assert_eq!(scene.restored_frames, 0, "a first attach restores nothing");
+    assert_eq!(scene.refills, 0, "a first attach keeps the image resident");
     host.recover(device.handles());
     assert_eq!(paint_twice(&mut host, &mut scene, &target), before);
-    assert_eq!(scene.restored_frames, 1);
+    assert_eq!(scene.refills, 1);
     assert_eq!(scene.view.borrow().inits, 2);
 }
 
@@ -311,7 +312,10 @@ fn a_host_recovers_from_a_loss_between_frames() {
     assert!(host.is_device_lost());
     host.frame(target.as_target(), 1.0, &mut scene);
     assert!(!host.driver.output_valid(), "the frame submitted nothing");
-    assert_eq!(scene.restored_frames, 0);
+    assert_eq!(
+        scene.refills, 0,
+        "a lost device keeps its textures until the next attach"
+    );
 
     let device = headless_test_gpu();
     host.recover(device.handles());
@@ -348,7 +352,7 @@ fn a_host_recovers_from_a_second_loss_inside_a_frame() {
     second.lose();
     host.core.submit(&mut host.driver, lost.as_target(), mode);
     assert!(host.is_device_lost());
-    assert_eq!(scene.restored_frames, 1);
+    assert_eq!(scene.refills, 1);
 
     let device = headless_test_gpu();
     host.recover(device.handles());
@@ -445,7 +449,7 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
 
 /// A recovery onto a smaller device takes its limit: `max_image_dimension` reads 2048, the
 /// floor Palantir runs on; an image registered at 4096 × 1 on the larger device no longer fits,
-/// so its update writes nothing, while a 2048 × 1 one fits and is written; a new 4096 × 1 image
+/// so its update is refused and writes nothing, while a 2048 × 1 one fits and is written; a new 4096 × 1 image
 /// is refused; and the gradient atlas grows to 2048 rows at most.
 #[test]
 fn a_recovery_onto_a_smaller_device_takes_its_limit() {
@@ -467,8 +471,16 @@ fn a_recovery_onto_a_smaller_device_takes_its_limit() {
         "the textures went with the old device"
     );
     assert_eq!(host.ui().max_image_dimension().unwrap().get(), 2048);
-    wide_handle.update(&wide);
-    fits_handle.update(&fits);
+    assert_eq!(
+        wide_handle.update(&wide),
+        Err(ImageTooLarge {
+            size: wide.size,
+            max_dimension: 2048,
+        })
+    );
+    assert!(!wide_handle.is_resident());
+    fits_handle.update(&fits).unwrap();
+    assert!(fits_handle.is_resident());
     assert_eq!(host.gpu_image_cache_len(), 1);
     assert!(host.ui().load_image(&wide).is_err());
     assert_eq!(host.core.resources.gradient_atlas().max_rows(), 2048);

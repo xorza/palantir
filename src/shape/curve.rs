@@ -155,7 +155,7 @@ impl sealed::LowerShape for CurveShape {
             let color = ramp.map_or(stroke.color, |ramp| stroke.color.tinted(ramp.color_at(0.0)));
             let half = stroke.width * 0.5;
             let corners = match cap {
-                LineCap::Round => Corners::all(half),
+                LineCap::Round => Corners::saturating([half; 4]),
                 LineCap::Square => Corners::ZERO,
                 LineCap::Butt => unreachable!("a zero-length butt-capped curve is a no-op"),
             };

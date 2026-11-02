@@ -305,7 +305,7 @@ fn paint_only_frames_advance_the_shared_text_clock() {
     let shaper = ui.ui().resources.text().clone();
 
     let first = ui.frame(|ui| blinking_text(ui, "paint-only clock"));
-    assert_eq!(first.repaint_after, Some(HALF));
+    assert_eq!(first.repaint_at, Some(HALF));
     let recorded = shaper.frame();
 
     // Several paint-only frames in a row.
@@ -361,7 +361,7 @@ fn shared_cache_eviction_preserves_idle_windows_paint_only_text_source() {
     let mut active = Harness::from_resources(shared, SURFACE);
 
     let idle_first = idle.frame(|ui| blinking_text(ui, "idle interned window text"));
-    assert_eq!(idle_first.repaint_after, Some(HALF));
+    assert_eq!(idle_first.repaint_at, Some(HALF));
     let idle_key = idle.ui().layout[Plane::MAIN].text_shapes[0].buffer_key();
 
     active.frame(|ui| {
