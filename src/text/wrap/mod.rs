@@ -53,10 +53,11 @@ impl LineFit {
     /// Whether resolving this fit at `target_width_px` reproduces the
     /// unbounded root, so the caller can skip the second shape.
     ///
-    /// Shared by `TextSystem::measure` and `CosmicMeasure::shape_truncated`
-    /// because the latter's cut is not a no-op on a run that fits: it reserves
-    /// the ellipsis and may drop a cluster. Never true for [`Self::Wrap`],
-    /// whose buffers bake in per-line halign offsets.
+    /// Decided once, in `FittedWrap::commit`, which both binders call, as a
+    /// truncating cut is not a no-op on a run that fits: it reserves the ellipsis
+    /// and may drop a cluster. `CosmicMeasure::shape_truncated` asserts it never
+    /// cuts such a run. Never true for [`Self::Wrap`], whose buffers bake in
+    /// per-line halign offsets.
     ///
     /// `width_px` must be canonical (quantized once by `commit`); quantizing
     /// again could split the fit test from the key it decides about.

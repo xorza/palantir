@@ -126,31 +126,6 @@ widgets). No real sleep where the code under test takes a clock or a waker.
 Batches run most impactful first. Each leaves `cargo drive check` and `cargo drive test` green. A
 rendering change also runs `cargo drive run visual`. Whoever addresses an item deletes it.
 
-### Batch 6: Text and icons
-
-Files: `src/text/{probe,cosmic,key.rs,system.rs,request.rs}`, `src/icons/icon_table.rs`.
-
-- [ ] `probe/mod.rs:316-332`: selection inside an RTL multi-grapheme glyph steps rightward from
-  `glyph.x`, while the caret measures from `glyph.x + glyph.w`. Target: step from the right edge
-  when `glyph.level.is_rtl()`. Add a lam-alef case to the RTL table in `text/tests/geometry.rs`.
-- [ ] `cosmic/mod.rs:8-9`, `key.rs:31-34`, `cosmic/cache_entry.rs:47-64`, `system.rs:253`: the
-  collision policy is stated three ways. The byte compare runs where it cannot protect the reuse
-  rows (`system.rs:253`) or the probe's `resident_run`. Target: no layer serves a collision. The
-  reuse rows and `resident_run` compare the request's text with the bytes the entry holds, as
-  `CacheEntry::holds` does on a hit. The policy is recorded once in `key.rs`, and the contradicting
-  doc in `cosmic/mod.rs:8-9` goes. Add a test that forces two texts onto one key and gets each
-  text's own layout. Decided: verify everywhere, as cosmic-text's `ShapeRunCache` keys by the text
-  and Chromium's `ShapeCache` by the characters. Refused: hash only, as egui's `GalleyCache` does,
-  which shows another string's layout with no error on a collision. Cost: an O(len) compare per
-  reused text node per frame.
-- [ ] `cosmic/mod.rs:638-650`: the "fits whole" branch of `shape_truncated` never runs in
-  production, because `FittedWrap::commit` already decided it. Target:
-  `debug_assert!(!fit.resolves_to_unbounded(&root, width))`. Route the truncation fixtures through
-  `FittedWrap::commit`.
-- [ ] `icon_table.rs:106-133`: every SVG is parsed (about 180 µs each) before the count, duplicate
-  and blob-size checks that reject the set. Target: count, then sorted duplicate check, then
-  `blob_len`, then parse. `flawed_sources_are_errors` (63 ms) drops its 65,537 parses.
-
 ### Batch 7: Cut the undocumented top-level cycles
 
 Files: `src/common/clipboard/` → `src/clipboard/`, `src/primitives/math/domain/`,

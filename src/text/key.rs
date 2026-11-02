@@ -32,9 +32,16 @@ pub(crate) struct QuantizedFace {
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
 pub(crate) struct TextShapeKey {
     /// Source hash, kept off zero by [`Self::content_hash`] so `Option<TextShapeKey>` stays 24 bytes.
-    /// A hit compares the cached source bytes, so a collision is never served. Refused: an
-    /// exact hasher in its place (none is exact), and the source itself here (the key would be
-    /// neither `Copy` nor small).
+    ///
+    /// **No layer serves a collision.** Two texts can share a hash, so every layer that answers
+    /// from a `TextShapeKey` compares the bytes: the shaped-buffer cache on each hit, a reuse row
+    /// against the text it holds, a probe through the verified lookup, and the encoded-run cache
+    /// against the text it stores. Decided as cosmic-text's
+    /// `ShapeRunCache` keys by the text and Chromium's `ShapeCache` by the characters. Refused:
+    /// the hash alone, as egui's `GalleyCache` keys, which shows another string's layout with no
+    /// error; an exact hasher in its place (none is exact); the source itself here (the key would
+    /// be neither `Copy` nor small). Cost: an O(len) compare per reused run per frame, and a copy
+    /// of each reused run's text in its row.
     pub(crate) text_hash: NonZeroU64,
     /// `font_size * 64`, rounded.
     size_q: u32,

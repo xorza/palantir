@@ -4,9 +4,6 @@
 //! cosmic types: `TextShaper::glyphs` lends a `RefMut<CosmicMeasure>` whose
 //! [`CosmicMeasure::extract_glyphs`] / [`CosmicMeasure::rasterize_glyph`] return
 //! palantir-native placements and bitmaps.
-//!
-//! The key holds a 64-bit text hash, not the string; verifying on every hit would
-//! cost more than the negligible collision risk.
 
 use crate::primitives::math::num::F32Px;
 use crate::primitives::paint::content_type::ContentType;
@@ -368,13 +365,6 @@ impl CosmicMeasure {
         self.cache.shaped_run(request.key, request.text)
     }
 
-    /// The run resident under `key`, whatever text it holds: for a caller that shaped or
-    /// looked up the text through [`Self::root`] or [`Self::resolve`] and held the measurer
-    /// since.
-    pub(super) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-        self.cache.resident_run(key)
-    }
-
     /// The run's unbounded shape, the root every wrap policy reasons from. `floor`
     /// opts into the segment scan behind [`TextRoot::intrinsic_min`]; it takes no width
     /// because the floor belongs to the unbounded root.
@@ -635,94 +625,86 @@ impl CosmicMeasure {
             width
         };
         let probe_key = unbounded.key;
-        let fits_whole = fit.resolves_to_unbounded(&root, width);
-
-        // Unbounded on one line: binding to `Some(w)` plus align would measure the aligned
-        // position, inflating a fits-anyway label.
+        debug_assert!(
+            !fit.resolves_to_unbounded(&root, width),
+            "a run that fits whole keeps its unbounded shape, as `FittedWrap::commit` decides"
+        );
         let Recycled {
             mut buffer,
             mut source,
         } = self.acquire(metrics_of(key), None);
-        let (geometry, cut) = if fits_whole {
-            buffer.set_text(request.text, &attrs, Shaping::Advanced, None);
+        // The cut spends advances from the whole run's shaping, but the prefix reshapes
+        // in its own context (a joining script's last letter takes a wider final form). So
+        // verify and retire one more cluster while it overruns; `max_end` guarantees
+        // termination.
+        self.cut_glyphs.clear();
+        if let Some(run) = self.cache.probe(probe_key).buffer.layout_runs().next() {
+            self.cut_glyphs.reserve_exact(run.glyphs.len());
+            self.cut_glyphs
+                .extend(run.glyphs.iter().map(|g| ClusterGlyph {
+                    start: g.start,
+                    end: g.end,
+                    advance: g.w,
+                }));
+        }
+        // The buffer holds a cut, so the entry keeps what it was cut from.
+        source.push_str(request.text);
+        // Without room for the marker a middle cut has nothing to join its ends with, so it
+        // clips flush like the trailing one.
+        let middle = append_ellipsis && matches!(fit, LineFit::EllipsisMiddle);
+        // The probe's first run is the line a truncating fit keeps, so a middle cut's suffix
+        // ends where that line does, not at the end of the text.
+        let line_end = self.cut_glyphs.iter().map(|g| g.end).max().unwrap_or(0);
+        let mut max_end = usize::MAX;
+        let mut min_start = 0;
+        let (geometry, cut) = loop {
+            let glyphs = &mut self.cut_glyphs;
+            let (cut, tail) = if middle {
+                let cut = cluster_glyph::fitting_prefix(glyphs, avail * 0.5, max_end);
+                let head_w = cluster_glyph::span_advance(glyphs, 0..cut);
+                let tail =
+                    cluster_glyph::fitting_suffix(glyphs, avail - head_w, min_start.max(cut));
+                (cut, tail)
+            } else {
+                (cluster_glyph::fitting_prefix(glyphs, avail, max_end), None)
+            };
+            self.truncate_scratch.clear();
+            let prefix = request.text[..cut].trim_end();
+            self.truncate_scratch.push_str(prefix);
+            if append_ellipsis {
+                self.truncate_scratch.push('…');
+            }
+            let kept = tail.map_or("", |tail| request.text[tail..line_end].trim_start());
+            let suffix = (!kept.is_empty()).then(|| CutSuffix {
+                buf_start: self.truncate_scratch.len(),
+                src_start: line_end - kept.len(),
+                len: kept.len(),
+            });
+            self.truncate_scratch.push_str(kept);
+            let text_cut = TextCut {
+                prefix_end: prefix.len(),
+                suffix,
+            };
+            buffer.set_text(
+                self.truncate_scratch.as_str(),
+                &attrs,
+                Shaping::Advanced,
+                None,
+            );
             buffer.shape_until_scroll(&mut self.font_system, false);
             let geometry = ShapedGeometry::of(&buffer, WrapFloor::Skip, &mut self.break_scratch);
-            (geometry, None)
-        } else {
-            // The cut spends advances from the whole run's shaping, but the prefix reshapes
-            // in its own context (a joining script's last letter takes a wider final form). So
-            // verify and retire one more cluster while it overruns; `max_end` guarantees
-            // termination.
-            self.cut_glyphs.clear();
-            if let Some(run) = self.cache.probe(probe_key).buffer.layout_runs().next() {
-                self.cut_glyphs.reserve_exact(run.glyphs.len());
-                self.cut_glyphs
-                    .extend(run.glyphs.iter().map(|g| ClusterGlyph {
-                        start: g.start,
-                        end: g.end,
-                        advance: g.w,
-                    }));
+            if geometry.size.w <= width || (cut == 0 && tail.is_none()) {
+                break (geometry, Some(text_cut));
             }
-            // The buffer holds a cut, so the entry keeps what it was cut from.
-            source.push_str(request.text);
-            // Without room for the marker a middle cut has nothing to join its ends with, so it
-            // clips flush like the trailing one.
-            let middle = append_ellipsis && matches!(fit, LineFit::EllipsisMiddle);
-            // The probe's first run is the line a truncating fit keeps, so a middle cut's suffix
-            // ends where that line does, not at the end of the text.
-            let line_end = self.cut_glyphs.iter().map(|g| g.end).max().unwrap_or(0);
-            let mut max_end = usize::MAX;
-            let mut min_start = 0;
-            loop {
-                let glyphs = &mut self.cut_glyphs;
-                let (cut, tail) = if middle {
-                    let cut = cluster_glyph::fitting_prefix(glyphs, avail * 0.5, max_end);
-                    let head_w = cluster_glyph::span_advance(glyphs, 0..cut);
-                    let tail =
-                        cluster_glyph::fitting_suffix(glyphs, avail - head_w, min_start.max(cut));
-                    (cut, tail)
-                } else {
-                    (cluster_glyph::fitting_prefix(glyphs, avail, max_end), None)
-                };
-                self.truncate_scratch.clear();
-                let prefix = request.text[..cut].trim_end();
-                self.truncate_scratch.push_str(prefix);
-                if append_ellipsis {
-                    self.truncate_scratch.push('…');
+            match tail {
+                Some(tail)
+                    if cut == 0
+                        || cluster_glyph::span_advance(glyphs, tail..line_end)
+                            >= cluster_glyph::span_advance(glyphs, 0..cut) =>
+                {
+                    min_start = tail + 1;
                 }
-                let kept = tail.map_or("", |tail| request.text[tail..line_end].trim_start());
-                let suffix = (!kept.is_empty()).then(|| CutSuffix {
-                    buf_start: self.truncate_scratch.len(),
-                    src_start: line_end - kept.len(),
-                    len: kept.len(),
-                });
-                self.truncate_scratch.push_str(kept);
-                let text_cut = TextCut {
-                    prefix_end: prefix.len(),
-                    suffix,
-                };
-                buffer.set_text(
-                    self.truncate_scratch.as_str(),
-                    &attrs,
-                    Shaping::Advanced,
-                    None,
-                );
-                buffer.shape_until_scroll(&mut self.font_system, false);
-                let geometry =
-                    ShapedGeometry::of(&buffer, WrapFloor::Skip, &mut self.break_scratch);
-                if geometry.size.w <= width || (cut == 0 && tail.is_none()) {
-                    break (geometry, Some(text_cut));
-                }
-                match tail {
-                    Some(tail)
-                        if cut == 0
-                            || cluster_glyph::span_advance(glyphs, tail..line_end)
-                                >= cluster_glyph::span_advance(glyphs, 0..cut) =>
-                    {
-                        min_start = tail + 1;
-                    }
-                    _ => max_end = cut,
-                }
+                _ => max_end = cut,
             }
         };
 
@@ -812,6 +794,8 @@ pub(crate) mod internals {
     use crate::text::root::internals::TestMeasure;
     #[cfg(test)]
     use crate::text::shaping_font::ShapingFont;
+    #[cfg(test)]
+    use crate::text::wrap::{TextWrap, WrapCommit};
 
     /// A truncating measure and the unbounded probe it cuts from.
     #[cfg(test)]
@@ -828,6 +812,13 @@ pub(crate) mod internals {
     }
 
     impl CosmicMeasure {
+        /// The run resident under `key`, whatever text it holds, for a test that watches
+        /// residency.
+        #[cfg(test)]
+        pub(crate) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
+            self.cache.resident_run(key)
+        }
+
         #[cfg(test)]
         pub(crate) fn measure(&mut self, text: &str, shape: TestShape) -> TestMeasure {
             let request = shape.request_in(&self.families, text, LineFit::Wrap);
@@ -847,7 +838,9 @@ pub(crate) mod internals {
             }
         }
 
-        /// `text` under `fit`; the unbounded probe it cuts from must be resident.
+        /// `text` under `fit`, bound to the shape's width through `FittedWrap::commit` as
+        /// production binds it, so a run that fits whole keeps its unbounded shape; the unbounded
+        /// probe it cuts from must be resident.
         #[cfg(test)]
         pub(crate) fn measure_with_fit(
             &mut self,
@@ -855,12 +848,27 @@ pub(crate) mod internals {
             shape: TestShape,
             fit: LineFit,
         ) -> TestMeasure {
-            let request = shape.request_in(&self.families, text, fit);
+            let unbounded = shape.unbounded_request_in(&self.families, text);
             debug_assert!(
-                self.shaped_run(request.unbounded_version()).is_some(),
+                self.shaped_run(unbounded).is_some(),
                 "measure the unbounded probe first",
             );
-            self.measure_with_fit_key(request)
+            let Some(width) = shape.max_width else {
+                return self.measure_with_fit_key(unbounded);
+            };
+            let wrap = match fit {
+                LineFit::Clip => TextWrap::Truncate,
+                LineFit::Ellipsis => TextWrap::Ellipsis,
+                LineFit::EllipsisMiddle => TextWrap::EllipsisMiddle,
+                LineFit::Wrap => TextWrap::Wrap,
+            };
+            let fitted = wrap.fitted().expect("every fit binds");
+            match fitted.commit(width, shape.halign, || {
+                self.root(unbounded, WrapFloor::Skip)
+            }) {
+                WrapCommit::Unbounded { .. } => self.measure_with_fit_key(unbounded),
+                WrapCommit::Bound(bound) => self.measure_with_fit_key(unbounded.with_bound(bound)),
+            }
         }
 
         /// `text` under `fit`, after the unbounded probe it cuts from.

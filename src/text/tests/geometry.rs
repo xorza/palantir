@@ -253,6 +253,53 @@ fn selection_rects_match_cosmic_highlight_spans() {
     }
 }
 
+/// A selection inside one glyph of several graphemes splits the glyph in reading order, as the
+/// carets inside it fall: from the right edge for a right-to-left glyph. No test face shapes an
+/// RTL ligature, so the glyph is lam-alef's two Arabic glyphs merged into one over both
+/// graphemes at x 0, w 5.808 + 3.504 = 9.312: the lam, bytes 0..2, is the right half,
+/// `4.656..9.312`, and the alef, bytes 2..4, the left, `0..4.656`. cosmic-text's own
+/// `LayoutRun::highlight` walks a glyph left to right and mirrors the two, so the oracle above
+/// holds only for left-to-right clusters.
+#[test]
+fn a_selection_inside_an_rtl_ligature_follows_its_carets() {
+    let m = TextShaper::new();
+    m.load_font(ARABIC).expect("the Arabic test face loads");
+    let text = "\u{644}\u{627}";
+    m.probe_layout(text, ui_shape(16.0), |layout| {
+        let buffer = layout.buffer_for_test().unwrap();
+        let run = buffer.layout_runs().next().unwrap();
+        assert_eq!(
+            run.glyphs.len(),
+            2,
+            "fixture: the face shapes lam and alef apart"
+        );
+        let w = run.glyphs[0].w + run.glyphs[1].w;
+        let merged = [cosmic_text::LayoutGlyph {
+            start: 0,
+            end: text.len(),
+            x: 0.0,
+            w,
+            ..run.glyphs[0].clone()
+        }];
+        assert!(merged[0].level.is_rtl(), "fixture: an RTL glyph");
+        let ligature = cosmic_text::LayoutRun {
+            glyphs: &merged,
+            ..run
+        };
+        let half = w / 2.0;
+        for (bytes, want) in [(0..2, (half, w)), (2..4, (0.0, half))] {
+            let selection =
+                cosmic_text::Cursor::new(0, bytes.start)..cosmic_text::Cursor::new(0, bytes.end);
+            let mut spans = Vec::new();
+            probe::run_selection_rects(&ligature, &selection, &mut |rect: Rect| {
+                spans.push((rect.min.x, rect.max().x));
+            });
+            assert_eq!(spans.len(), 1, "{bytes:?}: one rect");
+            assert_eq!(spans.first(), Some(&want), "{bytes:?}");
+        }
+    });
+}
+
 /// Byte offsets map to cosmic cursors through the shaped buffer's own lines,
 /// so every ending cosmic splits at (`\n`, `\r`, `\r\n`, `\n\r`) starts a
 /// line there. Rows are `(offset, line, idx, back)`: the cursor an offset

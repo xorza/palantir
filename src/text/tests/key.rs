@@ -355,6 +355,31 @@ fn a_mismatched_key_and_source_are_rejected() {
     let _ = ShapedTextRef::new(key, &other);
 }
 
+/// A reuse row compares the text it holds as well as its key, so a row asked for another text
+/// under its key shapes that text: forged here by pairing the first text's key with a longer one,
+/// whose root then measures as the longer text alone does.
+#[test]
+fn a_reuse_row_is_verified_against_the_bytes() {
+    let mut text = TextSystem::cosmic();
+    let s = slot(WidgetId::from_hash("forged"));
+    let face = shape(14.0).leading(18.0);
+    let keys = text.shaper().family_keys();
+    let first = face.unbounded_request_in(&keys, "short");
+    let short = text.root(s, first, TextWrap::Wrap);
+    let other = "a much longer text";
+    let forged = TextShapeRequest {
+        text: other,
+        key: first.key,
+    };
+    let long = text.root(s, forged, TextWrap::Wrap);
+    let fresh = CosmicMeasure::default().measure(other, face);
+    assert_ne!(short.extent.size, long.extent.size, "fixture: two widths");
+    assert_eq!(
+        long.extent.size, fresh.size,
+        "the row shaped the other text"
+    );
+}
+
 /// A key carries a hash of its text, so two texts can share one. A hit compares the bytes, and a
 /// lookup that finds another text's buffer evicts it and shapes its own. Forged here by pairing one
 /// key with two texts: each line ending is part of the bytes. A truncated entry compares the source

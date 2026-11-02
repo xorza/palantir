@@ -9,6 +9,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::HAlign;
 use crate::text::cosmic::text_cut::{CutSuffix, TextCut};
 use crate::text::key::TextShapeKey;
+use crate::text::request::TextShapeRequest;
 use crate::text::run::TextRun;
 use crate::text::shaper::ShaperInner;
 use glam::Vec2;
@@ -101,7 +102,8 @@ impl<'a> TextProbe<'a> {
         if self.text.is_empty() || self.inner.is_mono() {
             return None;
         }
-        let run = self.inner.cosmic().resident_run(self.key?)?;
+        let request = TextShapeRequest::for_key(self.text, self.key?)?;
+        let run = self.inner.cosmic().shaped_run(request)?;
         Some(Shaped {
             left: run.left,
             lines: LineMap::new(run.buffer, self.text, run.cut),
@@ -321,13 +323,21 @@ fn push_run_selection_rects(
             grapheme(glyph.start, glyph.end, glyph.x, glyph.w);
             continue;
         }
+        // The graphemes share the glyph's width in reading order, from the edge the glyph's
+        // direction starts on, as `LayoutRun::cursor_position` places their carets: an RTL
+        // glyph's first grapheme sits at its right edge.
         let total = cluster.grapheme_indices(true).count().max(1);
         let grapheme_width = glyph.w / total as f32;
-        let mut x = glyph.x;
-        for (i, text) in cluster.grapheme_indices(true) {
+        let rtl = glyph.level.is_rtl();
+        for (k, (i, text)) in cluster.grapheme_indices(true).enumerate() {
             let start = glyph.start + i;
+            let step = k as f32 * grapheme_width;
+            let x = if rtl {
+                glyph.x + glyph.w - step - grapheme_width
+            } else {
+                glyph.x + step
+            };
             grapheme(start, start + text.len(), x, grapheme_width);
-            x += grapheme_width;
         }
     }
     flush(&mut selected);
@@ -421,6 +431,16 @@ pub(crate) mod internals {
         pub(crate) fn shaped_key(&self) -> Option<TextShapeKey> {
             self.shaped().and(self.key)
         }
+    }
+
+    /// The rects `selection` covers on `run`, for `text::tests::geometry` to run over a run it
+    /// builds.
+    pub(crate) fn run_selection_rects(
+        run: &cosmic_text::LayoutRun<'_>,
+        selection: &Range<cosmic_text::Cursor>,
+        out: &mut impl FnMut(Rect),
+    ) {
+        push_run_selection_rects(run, selection, out);
     }
 
     /// The byte/`Cursor` mapping over a shaped `buffer`, for `text::tests::geometry`.

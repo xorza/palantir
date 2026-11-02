@@ -28,7 +28,6 @@ use crate::text::shaped_text::ShapedText;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::{TextWrap, WrapCommit, WrapFloor};
 use rustc_hash::FxHashMap;
-use std::mem;
 
 /// Both entry points take the run's unbounded request and derive every bounded key
 /// from it; a pre-bounded one would key a row off the wrong identity, so it is
@@ -244,14 +243,18 @@ impl TextSystem {
             request,
             floor,
         } = row;
-        let fresh = || TextReuseEntry {
+        let entry = entries.entry(slot).or_insert_with(|| TextReuseEntry {
             key: request.key,
+            text: request.text.to_owned(),
             root: shaper.root(request, floor),
             wrap: None,
-        };
-        let entry = entries.entry(slot).or_insert_with(&fresh);
-        if entry.key != request.key {
-            mem::replace(entry, fresh()).retire(shaper);
+        });
+        if !entry.answers(request) {
+            entry.retire(shaper);
+            entry.key = request.key;
+            entry.text.clear();
+            entry.text.push_str(request.text);
+            entry.root = shaper.root(request, floor);
         } else if floor == WrapFloor::Scan && entry.root.intrinsic_min.is_none() {
             entry.root = shaper.root(request, WrapFloor::Scan);
         }
@@ -292,9 +295,13 @@ pub(crate) struct RunMeasure {
     pub(crate) stable_from_w: f32,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 struct TextReuseEntry {
     key: TextShapeKey,
+    /// The text the row answers, which a request under the same key must match: a key carries a
+    /// hash of its text, and two texts can share one. Refilled in place, so a row allocates only
+    /// for a longer text than it held.
+    text: String,
     root: TextRoot,
     /// `None` until the row has answered a bounded width. An `Option`, not a reserved
     /// bound: an "empty" bound re-attached via [`TextShapeKey::with_bound`] becomes the
@@ -313,11 +320,15 @@ impl TextReuseEntry {
         }
     }
 
-    /// Demote every buffer this row was the last reference to. Takes the row by
-    /// value because a retired row is gone.
-    fn retire(mut self, shaper: &TextShaper) {
+    /// Demote every buffer this row was the last reference to, as it moves to another run.
+    fn retire(&mut self, shaper: &TextShaper) {
         self.release_bound(shaper);
         shaper.supersede(self.key);
+    }
+
+    /// Whether the row answers `request`: its key and its bytes.
+    fn answers(&self, request: TextShapeRequest<'_>) -> bool {
+        self.key == request.key && self.text == request.text
     }
 }
 

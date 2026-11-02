@@ -145,12 +145,6 @@ impl ShapedBufferCache {
             .map(CacheEntry::run)
     }
 
-    /// The run resident under `key`, whatever text it holds: for a caller that checked the text
-    /// through [`Self::shaped_run`] or [`Self::hit`] and held the cache since.
-    pub(super) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
-        self.entries.get(&key).map(CacheEntry::run)
-    }
-
     /// The resident entry of `text` under `key`, its deadline pushed to the protected window.
     /// Being asked for is the evidence of reuse over scan traffic. An entry shaped from other
     /// text under the same key is evicted, so the caller's miss files its own.
@@ -352,6 +346,12 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     impl ShapedBufferCache {
+        /// The run resident under `key`, whatever text it holds, for a test that watches
+        /// residency.
+        pub(crate) fn resident_run(&self, key: TextShapeKey) -> Option<ShapedRun<'_>> {
+            self.entries.get(&key).map(CacheEntry::run)
+        }
+
         /// Outstanding expiry tickets. Grows by one per demote if a supplanted ticket
         /// re-files itself.
         pub(crate) fn pending_tickets(&self) -> usize {
