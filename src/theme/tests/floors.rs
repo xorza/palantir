@@ -28,6 +28,8 @@ use crate::theme::splitter::SplitterTheme;
 use crate::theme::tabs::TabsTheme;
 use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
+use crate::theme::toggle::ToggleTheme;
+use crate::theme::toggle_kind::ToggleKind;
 use crate::theme::tooltip::TooltipTheme;
 
 /// WCAG 1.4.3: text against what it sits on
@@ -225,6 +227,17 @@ fn each_parts_stock_is_the_stock_themes_part() {
         assert_eq!(ExpanderTheme::stock(scheme), t.expander, "{scheme:?}");
         assert_eq!(FocusRingTheme::stock(scheme), t.focus_ring, "{scheme:?}");
         assert_eq!(TextStyle::stock(scheme), t.text, "{scheme:?}");
+        for (kind, part) in [
+            (ToggleKind::Checkbox, &t.checkbox),
+            (ToggleKind::Radio, &t.radio),
+            (ToggleKind::Switch, &t.switch),
+        ] {
+            assert_eq!(
+                &ToggleTheme::stock(kind, scheme),
+                part,
+                "{kind:?} {scheme:?}"
+            );
+        }
     }
     assert_ne!(
         TextStyle::stock(ColorScheme::Dark).color,

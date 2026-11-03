@@ -23,6 +23,7 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
+use crate::theme::toggle_kind::ToggleKind;
 use std::ptr;
 
 /// A response hovered, pressed and disabled as the flags say.
@@ -165,7 +166,7 @@ fn a_flat_text_edit_keeps_only_its_text_and_caret() {
 /// [`ToggleTheme`]'s pick needs an input the response can't supply: `Pick = CheckState` chooses the look pack, then the four-state precedence runs inside it. Asserts the pack switching on the check state, the precedence within each, and that the packs never resolve to the same slot (so `Pick` is load-bearing).
 #[test]
 fn toggle_theme_pick_selects_pack_then_state() {
-    let theme = ToggleTheme::checkbox(&Palette::DARK, &Metrics::DEFAULT);
+    let theme = ToggleTheme::stock(ToggleKind::Checkbox, ColorScheme::Dark);
     let cases: &[(ResponseState, CheckState, &WidgetLook, &str)] = &[
         (
             response(false, false, false),

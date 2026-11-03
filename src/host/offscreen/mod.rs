@@ -92,6 +92,8 @@ pub struct OffscreenHostBuilder {
     time: OffscreenTime,
     system_scale: SystemScale,
     refresh_millihertz: Option<u32>,
+    system_color_scheme: Option<ColorScheme>,
+    motion_reduced: bool,
 }
 
 impl OffscreenHostBuilder {
@@ -152,6 +154,22 @@ impl OffscreenHostBuilder {
         self
     }
 
+    /// The color scheme the system reports, as the winit host reports the desktop's; none by
+    /// default, so [`SchemePreference::System`](crate::SchemePreference::System) shows the
+    /// fallback. The host's [`set_system_color_scheme`](OffscreenHost::set_system_color_scheme) changes
+    /// it later.
+    pub const fn system_color_scheme(mut self, scheme: ColorScheme) -> Self {
+        self.system_color_scheme = Some(scheme);
+        self
+    }
+
+    /// Whether the system asks for less motion, as the winit host reports the desktop's; `false`
+    /// by default. The host's [`set_motion_reduced`](OffscreenHost::set_motion_reduced) changes it later.
+    pub const fn motion_reduced(mut self, reduced: bool) -> Self {
+        self.motion_reduced = reduced;
+        self
+    }
+
     /// Whether axis-aligned paint edges snap to physical pixels.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.options.pixel_snap = pixel_snap;
@@ -180,6 +198,8 @@ impl OffscreenHostBuilder {
         let mut driver = core.open(OffscreenHost::WINDOW, self.strategy);
         let wake = Arc::<WakeSignal>::default();
         driver.ui.set_waker(wake.waker());
+        driver.ui.set_system_color_scheme(self.system_color_scheme);
+        driver.ui.set_motion_reduced(self.motion_reduced);
         let time = match self.time {
             OffscreenTime::Realtime => HostTime::Realtime(RealtimeClock::new()),
             OffscreenTime::Manual => HostTime::Manual(Duration::ZERO),
@@ -209,6 +229,8 @@ impl OffscreenHost {
             time: OffscreenTime::Realtime,
             system_scale: SystemScale::ONE,
             refresh_millihertz: None,
+            system_color_scheme: None,
+            motion_reduced: false,
         }
     }
 

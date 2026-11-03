@@ -387,6 +387,7 @@ pub use theme::text_edit::TextEditTheme;
 pub use theme::text_style::TextStyle;
 pub use theme::text_style_overrides::TextStyleOverrides;
 pub use theme::toggle::ToggleTheme;
+pub use theme::toggle_kind::ToggleKind;
 pub use theme::tooltip::TooltipTheme;
 pub use ui::Ui;
 pub use ui::app::App;

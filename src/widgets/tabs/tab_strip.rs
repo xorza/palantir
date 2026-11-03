@@ -66,6 +66,10 @@ pub struct TabStripResponse<'a> {
     /// A chip a drag moved onto another slot: move the item in the collection, as
     /// [`TabMove::apply`] does.
     pub reordered: Option<TabMove>,
+    /// The chip a drag carries, from the frame it starts to the frame before it drops or Escape
+    /// ends it, so the app can show its own drop targets meanwhile. `None` when the strip
+    /// belongs to a dock, which carries its chips itself.
+    pub dragging: Option<usize>,
     /// The activation a scan of last frame's chip responses cannot see, a keyboard move or a
     /// menu pick, for the dock, whose scan acts on clicks a phase earlier.
     pub(crate) unscanned: Option<usize>,
@@ -352,11 +356,13 @@ impl<'a> TabStrip<'a> {
             }
         }
         let unscanned = keyed.or(menu_picked);
+        let dragging = carried.and_then(|key| items.iter().position(|item| item.key == key));
         TabStripResponse {
             response: Response::new(ui, response),
             activated: clicked.or(unscanned),
             closed,
             reordered,
+            dragging,
             unscanned,
         }
     }

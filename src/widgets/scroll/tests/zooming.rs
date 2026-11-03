@@ -438,14 +438,9 @@ fn zoom_by_composes_across_calls() {
     );
 }
 
-/// An impossible zoom factor is a caller error.
+/// Zoom needs both axes to pan.
 #[test]
-fn zoom_by_rejects_a_factor_that_cannot_scale() {
-    for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
-        panic_probe::assert_panics_with("a positive value must be finite and above zero", || {
-            let _ = Scroll::both().zoom_by(bad);
-        });
-    }
+fn zoomable_needs_both_axes() {
     for scroll in [Scroll::vertical, Scroll::horizontal] {
         panic_probe::assert_panics_with("a zoomable scroll must pan on both axes", || {
             let _ = scroll().zoomable();
@@ -465,7 +460,7 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
         Scroll::both()
             .id(scroll_id)
             .zoomable()
-            .zoom_by(zoom)
+            .zoom_by(ZoomFactor::new(zoom).expect("a test zoom is a factor"))
             .pan_by(pan)
             .padding(10.0)
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))

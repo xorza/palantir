@@ -248,14 +248,7 @@ impl<'a> Scroll<'a> {
 
     /// Multiply the zoom by `factor` on the frame this is shown, through the wheel's
     /// clamp and [`ZoomPivot`]. Ignored without [`Self::zoomable`]; calls compose.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless `factor` is [positive](crate::widget::domain::positive).
-    #[track_caller]
-    pub fn zoom_by(mut self, factor: f32) -> Self {
-        let factor =
-            ZoomFactor::new(domain::positive(factor)).expect("a positive value is a zoom factor");
+    pub fn zoom_by(mut self, factor: ZoomFactor) -> Self {
         self.zoom_request = self.zoom_request.combine(factor);
         self
     }

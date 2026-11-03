@@ -346,8 +346,10 @@ impl<T: DockTab> DockState<T> {
         self.normalize();
     }
 
-    /// Whether `group`'s pane may still split (the nesting cap).
-    pub(crate) fn can_split(&self, group: TabGroupId) -> bool {
+    /// Whether a [`DockDrop::Split`] on `group` takes effect: `false` for a group at the
+    /// [`Self::with_max_depth`] cap, whose split [`Self::apply`] ignores, and for a group the
+    /// state does not hold. A menu item that splits a pane reads it to show disabled.
+    pub fn can_split(&self, group: TabGroupId) -> bool {
         self.group_depth(group).is_some_and(|d| d < self.max_depth)
     }
 

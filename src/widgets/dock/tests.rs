@@ -518,12 +518,17 @@ fn split_depth_is_capped_without_losing_the_tab() {
     // Each split nests one level deeper, up to the default cap of four.
     let mut target = primary;
     for n in 1..=4 {
+        assert!(d.can_split(target), "depth {} is under the cap", n - 1);
         split_off(&mut d, viewer(n), target, SplitSide::Right);
         target = d.focused();
     }
     d.validate().unwrap();
     assert_eq!(d.groups().count(), 5);
     assert!(!d.can_split(target), "the chain reached the cap");
+    assert!(
+        !d.can_split(TabGroupId(u64::MAX)),
+        "a group the state does not hold"
+    );
 
     // The fifth split exceeds the cap: refused, tree untouched.
     let before = d.clone();

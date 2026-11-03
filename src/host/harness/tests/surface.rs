@@ -44,6 +44,21 @@ fn resize_and_set_system_scale_move_the_surface_between_frames() {
     );
 }
 
+/// The builder seeds the scheme and the motion the system reports, as the setters set them.
+#[test]
+fn the_builder_seeds_the_scheme_and_motion() {
+    let seeded = Harness::builder(SURFACE)
+        .mono()
+        .system_color_scheme(ColorScheme::Light)
+        .motion_reduced(true)
+        .build();
+    assert_eq!(seeded.ui().system_color_scheme(), Some(ColorScheme::Light));
+    assert!(seeded.ui().is_motion_reduced());
+    let plain = Harness::builder(SURFACE).mono().build();
+    assert_eq!(plain.ui().system_color_scheme(), None);
+    assert!(!plain.ui().is_motion_reduced());
+}
+
 #[test]
 fn scale_makes_the_surface_physical_and_positions_logical() {
     let harness = Harness::builder(SURFACE)

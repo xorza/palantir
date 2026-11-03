@@ -12,6 +12,7 @@ use crate::host::offscreen;
 use crate::host::window_driver::{FrameDepth, PresentStrategy};
 use crate::text::font_scope::FontScope;
 use crate::text::shaper::TextShaper;
+use crate::theme::color_scheme::ColorScheme;
 use crate::window::window_token::WindowToken;
 use glam::UVec2;
 use std::time::Duration;
@@ -64,6 +65,8 @@ pub struct HarnessBuilder {
     size: UVec2,
     system_scale: SystemScale,
     refresh_millihertz: Option<u32>,
+    system_color_scheme: Option<ColorScheme>,
+    motion_reduced: bool,
     options: HostOptions,
     depth: Depth,
     strategy: PresentStrategy,
@@ -78,6 +81,8 @@ impl HarnessBuilder {
             size,
             system_scale: SystemScale::ONE,
             refresh_millihertz: None,
+            system_color_scheme: None,
+            motion_reduced: false,
             options: HostOptions::new(FontScope::Bundled),
             depth: Depth::Record,
             strategy: PresentStrategy::Retained,
@@ -101,6 +106,22 @@ impl HarnessBuilder {
     /// harness's [`set_refresh_millihertz`](Harness::set_refresh_millihertz) changes it later.
     pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
         self.refresh_millihertz = Some(millihertz);
+        self
+    }
+
+    /// The color scheme the system reports, as the winit host reports the desktop's; none by
+    /// default, so [`SchemePreference::System`](crate::SchemePreference::System) shows the
+    /// fallback. The harness's [`set_system_color_scheme`](Harness::set_system_color_scheme) changes
+    /// it later.
+    pub const fn system_color_scheme(mut self, scheme: ColorScheme) -> Self {
+        self.system_color_scheme = Some(scheme);
+        self
+    }
+
+    /// Whether the system asks for less motion, as the winit host reports the desktop's; `false`
+    /// by default. The harness's [`set_motion_reduced`](Harness::set_motion_reduced) changes it later.
+    pub const fn motion_reduced(mut self, reduced: bool) -> Self {
+        self.motion_reduced = reduced;
         self
     }
 
@@ -206,7 +227,9 @@ impl HarnessBuilder {
         Harness::assert_frame_dt(self.frame_dt);
         assert!(self.frame_dt > Duration::ZERO, "a frame takes some time");
         assert!(self.settle_frames > 0, "a settle runs at least one frame");
-        let driver = core.open(token, self.strategy);
+        let mut driver = core.open(token, self.strategy);
+        driver.ui.set_system_color_scheme(self.system_color_scheme);
+        driver.ui.set_motion_reduced(self.motion_reduced);
         Harness::open(
             core,
             driver,

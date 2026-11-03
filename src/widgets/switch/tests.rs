@@ -7,9 +7,10 @@ use crate::primitives::math::lerp::Lerp;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
-use crate::theme::metrics::Metrics;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::palette::Palette;
 use crate::theme::toggle::ToggleTheme;
+use crate::theme::toggle_kind::ToggleKind;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::switch::{Switch, SwitchTrack};
@@ -17,7 +18,7 @@ use crate::widgets::switch::{Switch, SwitchTrack};
 use glam::UVec2;
 use std::time;
 
-/// The aspect `ToggleTheme::switch` ships; expected numbers derive from it.
+/// The aspect the stock switch ships; expected numbers derive from it.
 const ASPECT: f32 = 1.75;
 
 const fn track(height: f32, inset: f32, aspect: f32) -> SwitchTrack {
@@ -159,7 +160,7 @@ fn the_knob_wears_the_ink_of_its_state() {
 /// into its 15 px travel, and its fill is the off ink 16 % of the way to the on ink.
 #[test]
 fn one_share_places_the_knob_and_blends_its_ink() {
-    let mut style = ToggleTheme::switch(&Palette::DARK, &Metrics::DEFAULT);
+    let mut style = ToggleTheme::stock(ToggleKind::Switch, ColorScheme::Dark);
     style.defaults.transition =
         AnimationSpec::duration(time::Duration::from_millis(100), Easing::Linear);
     let mut h = Harness::mono(UVec2::new(400, 400));

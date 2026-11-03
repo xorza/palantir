@@ -771,6 +771,7 @@ struct Edges {
     activated: Option<usize>,
     closed: Option<usize>,
     reordered: Option<TabMove>,
+    dragging: Option<usize>,
 }
 
 impl<R> From<TabbedViewResponse<'_, R>> for Edges {
@@ -780,6 +781,7 @@ impl<R> From<TabbedViewResponse<'_, R>> for Edges {
             activated: response.activated,
             closed: response.closed,
             reordered: response.reordered,
+            dragging: response.dragging,
         }
     }
 }
@@ -945,8 +947,8 @@ fn a_draggable_view_reports_the_slot_a_drag_released_over() {
     }
 }
 
-/// A drag shows the strip's caret at the slot under the pointer, and Escape cancels it: the
-/// caret goes and the release reorders nothing.
+/// A drag shows the strip's caret at the slot under the pointer and reports the carried page,
+/// and Escape cancels it: the caret and the report go, and the release reorders nothing.
 #[test]
 fn an_escape_cancels_a_view_drag_and_its_caret() {
     let view = WidgetId::from_hash("test.cancel");
@@ -971,12 +973,16 @@ fn an_escape_cancels_a_view_drag_and_its_caret() {
         record(ui, &mut page);
     });
     assert!(h.rect(caret).is_some(), "the carried chip marks its slot");
+    assert_eq!(
+        h.frame_value(|ui| record(ui, &mut page)).dragging,
+        Some(0),
+        "the carried page"
+    );
 
     h.key(Key::Escape);
-    h.frame(|ui| {
-        record(ui, &mut page);
-    });
+    let cancelled = h.frame_value(|ui| record(ui, &mut page));
     assert!(h.rect(caret).is_none(), "Escape takes the caret away");
+    assert_eq!(cancelled.dragging, None, "Escape ends the carry");
     h.release(PointerButton::Left);
     assert_eq!(h.frame_value(|ui| record(ui, &mut page)), Edges::default());
     assert_eq!(page, 0, "the cancelled drag moved nothing");

@@ -1,6 +1,7 @@
 //! The scroll panel a test drives, and what its offsets are read back through.
 
 use crate::host::harness::Harness;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -49,7 +50,7 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
         .zoomable()
         .size((Sizing::fixed(200.0), Sizing::fixed(200.0)));
     for factor in factors {
-        scroll = scroll.zoom_by(*factor);
+        scroll = scroll.zoom_by(ZoomFactor::new(*factor).expect("a test factor is a zoom factor"));
     }
     scroll.show(ui, |ui| {
         fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0);

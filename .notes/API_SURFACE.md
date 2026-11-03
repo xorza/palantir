@@ -600,6 +600,7 @@ DockState
             pub fn group(&self, id: TabGroupId) -> Option<&TabGroup<T>>
             pub fn apply(&mut self, operation: DockOperation<T>)
             pub fn retain_tabs(&mut self, keep: impl FnMut(T) -> bool)
+            pub fn can_split(&self, group: TabGroupId) -> bool
         impl<T: Clone> Clone for DockState<T>
         impl<T: Debug> Debug for DockState<T>
         impl<T: PartialEq> PartialEq for DockState<T>
@@ -1047,6 +1048,8 @@ HarnessBuilder
     struct HarnessBuilder: Debug
         pub const fn system_scale(self, scale: SystemScale) -> Self
         pub const fn refresh_millihertz(self, millihertz: u32) -> Self
+        pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
+        pub const fn motion_reduced(self, reduced: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
@@ -1567,6 +1570,8 @@ OffscreenHostBuilder
         pub const fn retained_target(self, retained_target: bool) -> Self
         pub const fn system_scale(self, scale: SystemScale) -> Self
         pub const fn refresh_millihertz(self, millihertz: u32) -> Self
+        pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
+        pub const fn motion_reduced(self, reduced: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn system_clipboard(self, system_clipboard: bool) -> Self  [features: system-clipboard or winit]
         pub fn build(self) -> OffscreenHost
@@ -1918,7 +1923,7 @@ Scroll
         pub fn both() -> Self
         pub fn pan_by(self, delta: Vec2) -> Self
         pub const fn reveal(self, child: WidgetId) -> Self
-        pub fn zoom_by(self, factor: f32) -> Self
+        pub fn zoom_by(self, factor: ZoomFactor) -> Self
         pub fn style(self, s: impl Into<Option<&'a ScrollbarTheme>>) -> Self
         pub const fn bar_mode(self, mode: BarMode) -> Self
         pub const fn overlay_bars(self) -> Self
@@ -2359,6 +2364,7 @@ TabStripResponse
         pub activated: Option<usize>
         pub closed: Option<usize>
         pub reordered: Option<TabMove>
+        pub dragging: Option<usize>
 
 TabbedView
     struct TabbedView<'a, S, L, K = fn(usize, &S) -> u64>: ThemeDefaults (blanket)
@@ -2385,6 +2391,7 @@ TabbedViewResponse
         pub activated: Option<usize>
         pub closed: Option<usize>
         pub reordered: Option<TabMove>
+        pub dragging: Option<usize>
         impl<'a, R: Debug> Debug for TabbedViewResponse<'a, R>
 
 TabsTheme
@@ -2585,6 +2592,12 @@ Theme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 
+ToggleKind
+    enum ToggleKind: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+        Checkbox
+        Radio
+        Switch
+
 ToggleTheme
     struct ToggleTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub unchecked: StatefulLook
@@ -2598,9 +2611,8 @@ ToggleTheme
         pub gap: f32
         pub track_aspect: f32
         pub defaults: SlotDefaults
-        pub fn checkbox(p: &Palette, m: &Metrics) -> Self
-        pub fn radio(p: &Palette, m: &Metrics) -> Self
-        pub fn switch(p: &Palette, m: &Metrics) -> Self
+        pub fn from_parts(kind: ToggleKind, p: &Palette, m: &Metrics) -> Self
+        pub fn stock(kind: ToggleKind, scheme: ColorScheme) -> Self
 
 Tooltip
     struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)

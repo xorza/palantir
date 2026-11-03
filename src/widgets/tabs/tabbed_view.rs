@@ -39,6 +39,9 @@ pub struct TabbedViewResponse<'a, R> {
     /// A chip dragged onto another slot: move the page in the collection, as
     /// [`TabMove::apply`] does.
     pub reordered: Option<TabMove>,
+    /// The page whose chip a drag carries, until it drops; see
+    /// [`TabStripResponse::dragging`](crate::TabStripResponse::dragging).
+    pub dragging: Option<usize>,
 }
 
 /// A tab strip over a content area, bound to a `&mut usize` page index. Mirrors
@@ -217,6 +220,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                     activated: strip.activated,
                     closed: strip.closed,
                     reordered: strip.reordered,
+                    dragging: strip.dragging,
                 }
             });
             let activated = hit.activated.filter(|_| hit.closed.is_none());
@@ -239,6 +243,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
                 activated,
                 closed: hit.closed,
                 reordered: hit.reordered,
+                dragging: hit.dragging,
                 bound,
                 inner,
             }
@@ -254,6 +259,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> u64> TabbedView<'a, S, L, K> 
             activated: pass.activated,
             closed: pass.closed,
             reordered: pass.reordered,
+            dragging: pass.dragging,
         }
     }
 }
@@ -272,6 +278,7 @@ struct ViewPass<R> {
     activated: Option<usize>,
     closed: Option<usize>,
     reordered: Option<TabMove>,
+    dragging: Option<usize>,
     bound: Option<usize>,
     inner: Option<R>,
 }
@@ -281,6 +288,7 @@ struct StripHit {
     activated: Option<usize>,
     closed: Option<usize>,
     reordered: Option<TabMove>,
+    dragging: Option<usize>,
 }
 
 const fn idx_key<S>(idx: usize, _: &S) -> u64 {

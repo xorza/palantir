@@ -34,6 +34,7 @@ pub(crate) mod text_edit;
 pub(crate) mod text_style;
 pub(crate) mod text_style_overrides;
 pub(crate) mod toggle;
+pub(crate) mod toggle_kind;
 pub(crate) mod tooltip;
 
 use crate::animation::animation_spec::AnimationSpec;
@@ -70,6 +71,7 @@ use crate::theme::text_edit::TextEditTheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
+use crate::theme::toggle_kind::ToggleKind;
 use crate::theme::tooltip::TooltipTheme;
 use glam::Vec2;
 use std::time::Duration;
@@ -395,9 +397,9 @@ impl Theme {
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let mut theme = Self {
             button: ButtonTheme::from_parts(p, m),
-            checkbox: ToggleTheme::checkbox(p, m),
-            radio: ToggleTheme::radio(p, m),
-            switch: ToggleTheme::switch(p, m),
+            checkbox: ToggleTheme::from_parts(ToggleKind::Checkbox, p, m),
+            radio: ToggleTheme::from_parts(ToggleKind::Radio, p, m),
+            switch: ToggleTheme::from_parts(ToggleKind::Switch, p, m),
             scrollbar: ScrollbarTheme::from_parts(p, m),
             text_edit: TextEditTheme::from_parts(p, m),
             drag_value: DragValueTheme::from_parts(p, m),
