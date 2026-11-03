@@ -5,6 +5,7 @@ use crate::input_state::capture::DRAG_THRESHOLD;
 use glam::Vec2;
 use std::error;
 use std::fmt::{self, Display, Formatter};
+use std::time::Duration;
 
 /// Why a [`Locator`](crate::Locator) found no one place in the last frame. Each case says what
 /// corrects the locator, as an agent or a script reads it.
@@ -95,18 +96,12 @@ impl error::Error for LocateError {}
 pub enum PlayError {
     /// A locator names no one place.
     Locate(LocateError),
-    /// The window still asked for frames after `frames` of them, past the step `step`: an
-    /// animation that never ends, or an app that asks a repaint every frame.
+    /// The window still asked for frames after `frames` of them: an animation that never ends,
+    /// or an app that asks a repaint every frame. The step that failed is the caller's to name, as
+    /// an [`ActError`] does by its index.
     Unsettled {
-        /// The step, as its `Debug` writes it.
-        step: String,
         /// The frames run.
         frames: u32,
-    },
-    /// A pinch by a factor that is not finite and above 0, which the window would drop.
-    BadPinch {
-        /// The factor asked.
-        factor: f32,
     },
     /// A drag that moves `travel` logical pixels, under the threshold a drag starts at, so the
     /// window would read it as a click.
@@ -126,19 +121,17 @@ pub enum PlayError {
     GpuTimedOut,
     /// The window closed, or its host stopped.
     Disconnected,
-    /// The window ran no frame in `seconds` of real time: it is hidden or minimized, and its host
+    /// The window ran no frame in `waited` of real time: it is hidden or minimized, and its host
     /// runs no frames for it until it shows.
     NoFrame {
         /// The time waited.
-        seconds: f32,
+        waited: Duration,
     },
-    /// The app stayed [busy](crate::App::is_busy) past the step `step` and sent no
-    /// [wake](crate::Waker) in `seconds` of real time: its work hangs, or ends with no wake.
+    /// The app stayed [busy](crate::App::is_busy) and sent no [wake](crate::Waker) in `waited` of
+    /// real time: its work hangs, or ends with no wake.
     Busy {
-        /// The step, as its `Debug` writes it.
-        step: String,
         /// The time waited.
-        seconds: f32,
+        waited: Duration,
     },
     /// A remote query panicked on the window's thread, which went on; `message` is the panic's.
     Panicked {
@@ -151,14 +144,11 @@ impl Display for PlayError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Locate(error) => error.fmt(f),
-            Self::Unsettled { step, frames } => write!(
+            Self::Unsettled { frames } => write!(
                 f,
-                "the window still asks for frames {frames} frames after {step}; an animation \
-                 runs on, or the app asks a repaint each frame"
+                "the window still asks for frames after {frames} frames; an animation runs on, \
+                 or the app asks a repaint each frame"
             ),
-            Self::BadPinch { factor } => {
-                write!(f, "a pinch takes a finite factor above 0, not {factor}")
-            }
             Self::ShortDrag { travel } => write!(
                 f,
                 "a drag of {travel} px is under the {DRAG_THRESHOLD} px a drag starts at, so it \
@@ -171,15 +161,16 @@ impl Display for PlayError {
                 f.write_str("the device did not finish the frame in time, and hangs unreset")
             }
             Self::Disconnected => f.write_str("the window closed"),
-            Self::NoFrame { seconds } => write!(
+            Self::NoFrame { waited } => write!(
                 f,
-                "the window ran no frame in {seconds} s; show it, as a hidden or minimized \
-                 window runs none"
+                "the window ran no frame in {} s; show it, as a hidden or minimized window runs \
+                 none",
+                waited.as_secs_f32()
             ),
-            Self::Busy { step, seconds } => write!(
+            Self::Busy { waited } => write!(
                 f,
-                "the app stayed busy {seconds} s after {step} and sent no wake; its work hangs, \
-                 or ends with no wake"
+                "the app stayed busy {} s and sent no wake; its work hangs, or ends with no wake",
+                waited.as_secs_f32()
             ),
             Self::Panicked { message } => write!(f, "the query panicked: {message}"),
         }

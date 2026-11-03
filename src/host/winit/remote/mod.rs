@@ -5,7 +5,6 @@
 pub(crate) mod remote_end;
 
 use std::any::Any;
-use std::cell::Cell;
 use std::fmt::{self, Debug};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
@@ -18,19 +17,20 @@ use glam::Vec2;
 
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, PlayError};
-use crate::driver::locator::{Locate, Locator, Reach};
+use crate::driver::locator::{Found, Locate, Locator, Reach};
 use crate::driver::play::{self, Stage};
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{HostHandle, UserEvent};
+use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::input::input_event::InputEvent;
-use crate::input::owned_input_event::OwnedInputEvent;
 use crate::primitives::geometry::rect::Rect;
 use crate::ui::Ui;
 use crate::ui::inspected_widget::InspectedWidget;
 use crate::window::screenshot::Screenshot;
 use crate::window::window_token::WindowToken;
 
-/// The longest real time a remote waits for the window: for an answer, a frame, or a settle.
+/// The longest real time a remote waits for the window by default: for an answer, a frame, or a
+/// settle.
 const WAIT: Duration = Duration::from_secs(30);
 
 /// How often a wait checks whether the window's thread is held, between the frames and answers
@@ -60,9 +60,12 @@ pub struct Remote<T: 'static> {
     /// Whether something outside the host holds the window's thread, as a native dialog does.
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
     /// The events sent, which a frame that saw them all counts.
-    sent: Cell<u64>,
+    sent: u64,
     /// The last press's real time, which the next press waits out the double-click window from.
-    last_press: Cell<Option<Instant>>,
+    last_press: Option<Instant>,
+    /// The longest real time a wait for the window lasts: [`WAIT`] unless [`Self::with_wait`]
+    /// sets it.
+    wait: Duration,
     /// How often a wait checks whether it may go on: [`TICK`], shorter in tests.
     tick: Duration,
 }
@@ -71,7 +74,7 @@ impl<T: 'static> Debug for Remote<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Remote")
             .field("window", &self.window)
-            .field("sent", &self.sent.get())
+            .field("sent", &self.sent)
             .finish_non_exhaustive()
     }
 }
@@ -85,8 +88,9 @@ impl<T: 'static> Remote<T> {
             handle,
             window,
             blocked: None,
-            sent: Cell::new(sent),
-            last_press: Cell::new(None),
+            sent,
+            last_press: None,
+            wait: WAIT,
             tick: TICK,
         }
     }
@@ -100,6 +104,14 @@ impl<T: 'static> Remote<T> {
         self
     }
 
+    /// Wait for the window at most `wait` of real time, for an answer, a frame or a settle; 30 s
+    /// by default.
+    #[must_use]
+    pub const fn with_wait(mut self, wait: Duration) -> Self {
+        self.wait = wait;
+        self
+    }
+
     /// Run `f` between two frames of the window with `&mut` the app and the window's `Ui`, which
     /// holds the last frame; a frame follows. Returns what `f` returns. A query given up on never
     /// runs later, unless it had begun.
@@ -107,7 +119,7 @@ impl<T: 'static> Remote<T> {
     /// # Errors
     ///
     /// [`PlayError::Disconnected`] when the window closed or the loop ended,
-    /// [`PlayError::NoFrame`] when no answer came in 30 s, and [`PlayError::Panicked`] when `f`
+    /// [`PlayError::NoFrame`] when no answer came within the [wait](Self::with_wait), and [`PlayError::Panicked`] when `f`
     /// panicked: the panic ends the query alone, and the window goes on.
     pub fn query<R: Send + 'static>(
         &self,
@@ -145,12 +157,13 @@ impl<T: 'static> Remote<T> {
     ///
     /// # Errors
     ///
-    /// [`PlayError::Unsettled`] when the window still asks for frames after 30 s,
+    /// [`PlayError::Unsettled`] when the window still asks for frames after the
+    /// [wait](Self::with_wait),
     /// [`PlayError::Busy`] when a busy app runs no frame for as long, [`PlayError::NoFrame`] when
     /// the window runs none, and [`PlayError::Disconnected`] when it closed.
-    pub fn settle(&self) -> Result<u32, PlayError> {
+    pub fn settle(&mut self) -> Result<u32, PlayError> {
         let first = self.frame_id();
-        self.wait_frame(true, &"the settle")?;
+        self.wait_frame(true)?;
         Ok(u32::try_from(self.frame_id().saturating_sub(first)).unwrap_or(u32::MAX))
     }
 
@@ -162,7 +175,7 @@ impl<T: 'static> Remote<T> {
     ///
     /// [`ActError`], naming the step it stopped at.
     pub fn play<X: Locate<T> + Clone + Send + 'static>(
-        &self,
+        &mut self,
         actions: &[Action<X>],
     ) -> Result<u32, ActError> {
         let first = self.frame_id();
@@ -170,7 +183,7 @@ impl<T: 'static> Remote<T> {
         for (ran, action) in actions.iter().enumerate() {
             play::play(&mut stage, action).map_err(|error| ActError { ran, error })?;
         }
-        let frames = self.frame_id().saturating_sub(first);
+        let frames = stage.remote.frame_id().saturating_sub(first);
         Ok(u32::try_from(frames).unwrap_or(u32::MAX))
     }
 
@@ -179,14 +192,29 @@ impl<T: 'static> Remote<T> {
     /// # Errors
     ///
     /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::Disconnected`]
-    /// when the window closed, and [`PlayError::NoFrame`] when no picture landed in 30 s.
-    pub fn shot(&self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
+    /// when the window closed, and [`PlayError::NoFrame`] when no picture landed within the
+    /// [wait](Self::with_wait).
+    pub fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
         self.check_waiting(Instant::now(), Answer::InFrame)?;
         let (reply, answer) = mpsc::sync_channel(1);
         self.handle
             .send(UserEvent::Shot(self.window, ShotAsk { region, reply }))
             .map_err(|_| PlayError::Disconnected)?;
         self.receive(&answer, Answer::InFrame)?
+    }
+
+    /// The one place `at` names in the last frame, as [`Harness::find`](crate::Harness::find)
+    /// finds it.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::Locate`] when `at` names no one place, and as [`Self::query`].
+    pub fn find<X: Locate<T> + Clone + Send + 'static>(
+        &self,
+        at: &Locator<X>,
+    ) -> Result<Found, PlayError> {
+        let at = at.clone();
+        Ok(self.query(move |app, ui| at.find(&*app, ui))??)
     }
 
     /// The visible interactive widgets of the last frame whose text holds `filter`, ignoring
@@ -213,16 +241,15 @@ impl<T: 'static> Remote<T> {
         }
     }
 
-    /// Whether a wait that began at `start` may go on: not past [`WAIT`], its thread not held,
+    /// Whether a wait that began at `start` may go on: not past the remote's wait, its thread not
+    /// held,
     /// and the window shown, for an answer a frame gives.
     fn check_waiting(&self, start: Instant, comes: Answer) -> Result<(), PlayError> {
         let waited = start.elapsed();
         let blocked = self.blocked.as_ref().is_some_and(|blocked| blocked());
         let hidden = comes == Answer::InFrame && self.handle.is_hidden(self.window);
-        if waited > WAIT || blocked || hidden {
-            return Err(PlayError::NoFrame {
-                seconds: waited.as_secs_f32(),
-            });
+        if waited > self.wait || blocked || hidden {
+            return Err(PlayError::NoFrame { waited });
         }
         Ok(())
     }
@@ -242,7 +269,7 @@ impl<T: 'static> Remote<T> {
     /// Wait for a frame that saw every event sent and, when `settled`, asks no repaint and finds
     /// the app not busy. A busy app's wait for its next frame starts again at each, as its work
     /// goes on.
-    fn wait_frame(&self, settled: bool, step: &dyn Debug) -> Result<(), PlayError> {
+    fn wait_frame(&self, settled: bool) -> Result<(), PlayError> {
         let start = Instant::now();
         let first = self.frame_id();
         let mut seen = first;
@@ -250,7 +277,7 @@ impl<T: 'static> Remote<T> {
         loop {
             let last = self.last_frame()?;
             let unsettled = settled && (last.repaint_requested || last.busy);
-            if last.sent_inputs >= self.sent.get() && !unsettled {
+            if last.sent_inputs >= self.sent && !unsettled {
                 return Ok(());
             }
             let working = settled && last.busy && !last.repaint_requested;
@@ -262,14 +289,10 @@ impl<T: 'static> Remote<T> {
             if let Err(error) = self.check_waiting(since, Answer::InFrame) {
                 let frames = last.frame_id.saturating_sub(first);
                 let waited = since.elapsed();
-                return Err(if working && waited > WAIT {
-                    PlayError::Busy {
-                        step: format!("{step:?}"),
-                        seconds: waited.as_secs_f32(),
-                    }
-                } else if settled && frames > 0 && waited > WAIT {
+                return Err(if working && waited > self.wait {
+                    PlayError::Busy { waited }
+                } else if settled && frames > 0 && waited > self.wait {
                     PlayError::Unsettled {
-                        step: format!("{step:?}"),
                         frames: u32::try_from(frames).unwrap_or(u32::MAX),
                     }
                 } else {
@@ -292,7 +315,7 @@ enum Answer {
 
 /// A remote as the [`Stage`] the shared rules play on, in real time.
 struct RemoteStage<'a, T: 'static> {
-    remote: &'a Remote<T>,
+    remote: &'a mut Remote<T>,
 }
 
 impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage<'_, T> {
@@ -304,19 +327,18 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
     }
 
     fn input(&mut self, event: InputEvent<'_>) {
-        let remote = self.remote;
-        remote
+        self.remote
             .handle
-            .send_input(remote.window, OwnedInputEvent::from(event));
-        remote.sent.set(remote.sent.get() + 1);
+            .send_input(self.remote.window, OwnedInputEvent::from(event));
+        self.remote.sent += 1;
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {
-        self.remote.wait_frame(false, &"a frame")
+        self.remote.wait_frame(false)
     }
 
-    fn settle(&mut self, step: &dyn Debug) -> Result<(), PlayError> {
-        self.remote.wait_frame(true, step)
+    fn settle(&mut self) -> Result<(), PlayError> {
+        self.remote.wait_frame(true)
     }
 
     fn wait(&mut self, dt: Duration) -> Result<(), PlayError> {
@@ -325,7 +347,7 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
     }
 
     fn space_press(&mut self) -> Result<(), PlayError> {
-        let Some(pressed) = self.remote.last_press.get() else {
+        let Some(pressed) = self.remote.last_press else {
             return Ok(());
         };
         let window = self.remote.query(|_, ui| ui.double_click_window())?;
@@ -337,7 +359,7 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
     }
 
     fn note_press(&mut self) -> Result<(), PlayError> {
-        self.remote.last_press.set(Some(Instant::now()));
+        self.remote.last_press = Some(Instant::now());
         Ok(())
     }
 }

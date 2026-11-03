@@ -151,7 +151,7 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **Methods are input; `play` is a person.** A method queues events and panics on a missed
   locator; `play` settles, spaces presses and returns an error an agent reads.
 - **`play` refuses a step that would pass with no sign**: a press on a disabled widget, a drag
-  under the drag threshold, a pinch that is not a positive factor, as Playwright's actionability
+  under the drag threshold, as Playwright's actionability
   check refuses a target that is not enabled. A hover still reaches a disabled widget.
 - **A busy app holds a settle while it wakes the window**: the wait for a wake starts again at
   each, and only frames that ask for another count against `settle_frames`.

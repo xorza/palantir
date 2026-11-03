@@ -161,7 +161,7 @@ fn keydown_wakes_only_when_focus_or_watch_exists() {
     let delta = h.key_down(Key::Enter);
     assert!(!delta.repaint_requested, "idle key must skip the frame");
     assert!(
-        !h.ui().input_mut().take_action_flag(),
+        !h.ui_mut().input_mut().take_action_flag(),
         "unrouted key must not schedule a settling pass",
     );
 
@@ -197,7 +197,7 @@ fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
         "stray release (no capture) → no repaint",
     );
     assert!(
-        !h.ui().input_mut().take_action_flag(),
+        !h.ui_mut().input_mut().take_action_flag(),
         "unrouted button events must not schedule a settling pass",
     );
 }
@@ -238,7 +238,7 @@ fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
     let modifier = h.key_down(Key::Other);
     assert!(!modifier.repaint_requested, "a bare modifier wakes nothing");
     assert!(
-        !h.ui().input_mut().take_action_flag(),
+        !h.ui_mut().input_mut().take_action_flag(),
         "and settles nothing"
     );
 
@@ -247,5 +247,5 @@ fn a_bare_modifier_press_wakes_nothing_while_a_widget_is_focused() {
         typed.repaint_requested,
         "control: a typed key reaches the focus"
     );
-    assert!(h.ui().input_mut().take_action_flag(), "and settles");
+    assert!(h.ui_mut().input_mut().take_action_flag(), "and settles");
 }

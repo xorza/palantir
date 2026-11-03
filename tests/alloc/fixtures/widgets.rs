@@ -290,7 +290,7 @@ fn theme_transition_alloc_free() {
         Rc::new(Theme::stock(ColorScheme::Light)),
     ];
     let mut h = harness::new_ui();
-    h.ui()
+    h.ui_mut()
         .set_theme_for(ColorScheme::Dark, Rc::clone(&themes[0]));
     let mut scene = |ui: &mut Ui| {
         Button::new().id_salt("apply").label("Apply").show(ui);
@@ -311,7 +311,7 @@ fn theme_transition_alloc_free() {
             _ => None,
         };
         if let Some(set) = set {
-            h.ui()
+            h.ui_mut()
                 .set_theme_for(ColorScheme::Dark, Rc::clone(&themes[set]));
         }
         frame += 1;

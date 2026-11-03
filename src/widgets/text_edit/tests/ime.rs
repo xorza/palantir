@@ -28,11 +28,11 @@ fn record(ui: &mut Ui, buf: &mut String) {
 
 fn painted(h: &Harness, caret_width: f32) -> (String, usize) {
     let node = h.node_of(field()).expect("recorded").node;
-    let block = block_of(h.ui_ref(), node);
-    let text = h.ui_ref().record_store().interned_text();
+    let block = block_of(h.ui(), node);
+    let text = h.ui().record_store().interned_text();
     let mut shown = String::new();
     let mut underlines = 0;
-    for shape in h.ui_ref().tree(Layer::Main).shapes_of(block) {
+    for shape in h.ui().tree(Layer::Main).shapes_of(block) {
         match shape {
             ShapeRecord::Text { text: run, .. } => shown.push_str(text.resolve(run.span)),
             ShapeRecord::Quad(QuadShape::Rect {
@@ -83,10 +83,10 @@ fn a_composition_shows_in_place_and_types_on_commit() {
 #[test]
 fn a_composition_starting_over_a_selection_deletes_it() {
     let (mut h, mut buf) = focused_at("hello", 0);
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.frame(|ui| record(ui, &mut buf));
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     for text in ["x", "xy"] {
         h.on_input(InputEvent::ImePreedit(ImePreedit { text, cursor: None }));
         h.frame(|ui| record(ui, &mut buf));

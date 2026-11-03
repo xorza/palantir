@@ -137,7 +137,7 @@ impl InputState {
     fn traversal(&self, press: KeyPress, cascade: &Cascade) -> Option<Traversal> {
         match KeyClass::of(press) {
             KeyClass::Focus if !self.scopes.path_takes(KeyClass::Focus) => {
-                let direction = if press.mods.shift {
+                let direction = if press.mods.contains(Modifiers::SHIFT) {
                     TabDirection::Prev
                 } else {
                     TabDirection::Next
@@ -525,7 +525,7 @@ impl InputState {
             InputEvent::PointerReleased(btn) => self.on_pointer_released(btn, ctx.cascade),
             InputEvent::ScrollPixels(d) => self.on_scroll(d, Vec2::ZERO),
             InputEvent::ScrollLines(d) => self.on_scroll(Vec2::ZERO, d),
-            InputEvent::Zoom(f) => self.on_zoom(f),
+            InputEvent::Pinch(factor) => self.on_pinch(factor),
             InputEvent::KeyDown {
                 key,
                 repeat,
@@ -573,7 +573,7 @@ impl InputState {
         let prev_pinch = self.pointer.pinch_target;
         let latched = self.pointer.move_to(p);
         self.refresh_pointer_targets(cascade);
-        let move_subbed = self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Move);
+        let move_subbed = self.push_pointer_event(PointerWake::MOVE, Some(p), PointerEvent::Moved);
         EventOutcome {
             repaint: self.pointer.hovered != prev_hover
                 || self.pointer.scroll_targets != prev_scroll
@@ -591,7 +591,7 @@ impl InputState {
             || self.pointer.any_press();
         self.pointer.pos = None;
         self.refresh_pointer_targets(cascade);
-        let pointer_subbed = self.push_unclassed(PointerEvent::Leave);
+        let pointer_subbed = self.push_unclassed(PointerEvent::Left);
         EventOutcome::repaint(observable || pointer_subbed)
     }
 
@@ -609,7 +609,7 @@ impl InputState {
         let targets = pointer_pos.map(|p| cascade.hit_test_press(p));
         let hit = targets.and_then(|t| t.click);
         let buttons_subbed = self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
-            PointerEvent::Down { pos, button: btn }
+            PointerEvent::Pressed { pos, button: btn }
         });
         // Any press breaks every other button's multi-click run.
         for (idx, cap) in self.pointer.captures.iter_mut().enumerate() {
@@ -674,7 +674,7 @@ impl InputState {
             kind
         });
         let buttons_subbed = self.push_pointer_event(PointerWake::BUTTONS, pointer_pos, |pos| {
-            PointerEvent::Up { pos, button: btn }
+            PointerEvent::Released { pos, button: btn }
         });
         EventOutcome {
             repaint: was_captured || buttons_subbed,
@@ -682,16 +682,16 @@ impl InputState {
         }
     }
 
-    fn on_zoom(&mut self, f: f32) -> EventOutcome {
+    fn on_pinch(&mut self, factor: ZoomFactor) -> EventOutcome {
         let target = self.pointer.pinch_target;
-        let factor =
-            ZoomFactor::new(f).expect("`InputEvent::is_valid` screened the zoom factor above");
         if let Some(target) = target {
             let delta = self.pointer.delta_mut(target);
             delta.zoom = delta.zoom.combine(factor);
         }
-        let subbed =
-            self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Zoom { pos, factor });
+        let subbed = self.push_positioned(PointerWake::PINCH, |pos| PointerEvent::Pinch {
+            pos,
+            factor,
+        });
         if target.is_some() || subbed {
             self.queue.note_delta();
         }

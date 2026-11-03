@@ -1,5 +1,6 @@
 //! Off-target wake gates (`PointerWake` flags and key chords): no watcher means
 //! no wake and no `frame_pointer_events` entry; pre-record clear drops stale watches.
+use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::tests::{Stream, sample_layers};
 use crate::primitives::identity::widget_id::WidgetId;
 
@@ -58,7 +59,7 @@ fn buttons_watcher_wakes_press_on_inert() {
     assert_eq!(events.len(), 1);
     assert!(matches!(
         events[0],
-        PointerEvent::Down {
+        PointerEvent::Pressed {
             pos,
             button: PointerButton::Left,
         } if pos == Vec2::new(50.0, 50.0)
@@ -97,8 +98,8 @@ fn press_and_release_both_captured() {
 
     let events = h.ui().pointer_events();
     assert_eq!(events.len(), 2);
-    assert!(matches!(events[0], PointerEvent::Down { .. }));
-    assert!(matches!(events[1], PointerEvent::Up { .. }));
+    assert!(matches!(events[0], PointerEvent::Pressed { .. }));
+    assert!(matches!(events[1], PointerEvent::Released { .. }));
 }
 
 #[test]
@@ -113,7 +114,7 @@ fn move_watcher_wakes_on_inert_move() {
     assert_eq!(events.len(), 1);
     assert!(matches!(
         events[0],
-        PointerEvent::Move(p) if p == Vec2::new(50.0, 50.0)
+        PointerEvent::Moved(p) if p == Vec2::new(50.0, 50.0)
     ));
 }
 
@@ -173,7 +174,7 @@ fn scroll_and_pinch_wake_categories_are_independent() {
             ui.watch_pointer(*watched);
         });
         let scroll = h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 7.0));
-        let zoom = h.on_input(InputEvent::Zoom(1.25));
+        let zoom = h.on_input(InputEvent::Pinch(ZoomFactor::new(1.25).unwrap()));
 
         assert_eq!(
             scroll.repaint_requested, *wants_scroll,
@@ -191,7 +192,7 @@ fn scroll_and_pinch_wake_categories_are_independent() {
             .ui()
             .pointer_events()
             .iter()
-            .filter(|e| matches!(e, PointerEvent::Zoom { .. }))
+            .filter(|e| matches!(e, PointerEvent::Pinch { .. }))
             .count();
         assert_eq!(
             scrolls,
@@ -249,7 +250,7 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
     let id = WidgetId::from_hash("pointer-local-indicator");
     let surface = UVec2::new(200, 200);
     let mut h = Harness::mono(surface);
-    h.ui().set_input_policy(InputPolicy::OnDelta);
+    h.ui_mut().set_input_policy(InputPolicy::OnDelta);
     let mut painted_at = None;
     h.frame(|ui| indicator(ui, id, &mut painted_at));
 
@@ -273,11 +274,11 @@ fn pointer_local_read_keeps_hover_local_indicator_reactive() {
 fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
     fn visual(ui: &mut Ui, painted: &mut RgbaF32) {
         let modifiers = ui.modifiers();
-        let color = if modifiers.alt && modifiers.ctrl {
+        let color = if modifiers.contains(Modifiers::ALT) && modifiers.contains(Modifiers::CTRL) {
             RgbaF32::WHITE
-        } else if modifiers.alt {
+        } else if modifiers.contains(Modifiers::ALT) {
             RgbaF32::srgb(1.0, 0.0, 0.0)
-        } else if modifiers.ctrl {
+        } else if modifiers.contains(Modifiers::CTRL) {
             RgbaF32::srgb(0.0, 0.0, 1.0)
         } else {
             RgbaF32::BLACK
@@ -292,21 +293,14 @@ fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
 
     let surface = UVec2::new(200, 200);
     let mut h = Harness::mono(surface);
-    h.ui().set_input_policy(InputPolicy::OnDelta);
+    h.ui_mut().set_input_policy(InputPolicy::OnDelta);
     let mut painted = RgbaF32::TRANSPARENT;
     h.frame(|ui| visual(ui, &mut painted));
     assert_eq!(painted, RgbaF32::BLACK);
 
     let states = [
         (Modifiers::ALT, RgbaF32::srgb(1.0, 0.0, 0.0)),
-        (
-            Modifiers {
-                alt: true,
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-            RgbaF32::WHITE,
-        ),
+        (Modifiers::ALT | Modifiers::CTRL, RgbaF32::WHITE),
         (Modifiers::CTRL, RgbaF32::srgb(0.0, 0.0, 1.0)),
         (Modifiers::NONE, RgbaF32::BLACK),
     ];
@@ -332,11 +326,11 @@ fn key_chord_watcher_wakes_only_exact_chord() {
 
     // Alt+Escape against a bare-Escape watcher: no match (not ctrl, which matches on macOS).
     let alt = Modifiers::ALT;
-    h.set_modifiers(alt);
+    h.hold_modifiers(alt);
     let delta = h.key_down(Key::Escape);
     assert!(!delta.repaint_requested);
 
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     let delta = h.key_down(Key::Escape);
     assert!(delta.repaint_requested);
 
@@ -516,7 +510,7 @@ fn peeks_return_the_watched_value_without_asserting_the_watch() {
         peeked.ui().peek_pointer_pos(),
         watched.ui().peek_pointer_pos()
     );
-    assert!(peeked.ui().peek_modifiers().shift);
+    assert!(peeked.ui().peek_modifiers().contains(Modifiers::SHIFT));
     assert_eq!(peeked.ui().peek_modifiers(), watched.ui().peek_modifiers());
     assert_eq!(
         peeked.ui().peek_pointer_local(id),

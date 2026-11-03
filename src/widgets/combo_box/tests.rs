@@ -135,7 +135,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             });
     };
     h.frame(|ui| build(ui, &mut selected));
-    ComboBox::open(h.ui(), id);
+    ComboBox::open(h.ui_mut(), id);
 
     assert_eq!(
         h.frame(|ui| build(ui, &mut selected)).processing,
@@ -173,8 +173,8 @@ fn trigger_geometry_follows_the_combo_box_theme() {
 
     let measure = |arrow: Vec2, gap: f32, instance: Option<&ComboBoxTheme>, caller: Option<f32>| {
         let mut h = Harness::mono(SURFACE);
-        h.ui().theme_mut().combo_box.arrow_size = arrow;
-        h.ui().theme_mut().combo_box.gap = gap;
+        h.ui_mut().theme_mut().combo_box.arrow_size = arrow;
+        h.ui_mut().theme_mut().combo_box.gap = gap;
         let mut selected = &options[0];
         h.frame(|ui| {
             Panel::hstack()
@@ -283,7 +283,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
                 menu: menu.clone(),
                 ..Theme::default()
             };
-            h.ui().set_theme_for(ColorScheme::Dark, theme);
+            h.ui_mut().set_theme_for(ColorScheme::Dark, theme);
         }
         let mut selected = &options[0];
         let mut build = |ui: &mut Ui| {
@@ -300,7 +300,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
                 });
         };
         h.frame(&mut build);
-        ComboBox::open(h.ui(), id);
+        ComboBox::open(h.ui_mut(), id);
         h.frame(&mut build);
         h.rect(ComboBox::menu_id(id))
             .expect("combo list arranged")
@@ -403,28 +403,28 @@ fn the_keys_open_a_closed_list_and_change_no_pick() {
             let what = format!("{start}: {mods:?} {key:?}");
             frame(&mut h, &mut selected);
             assert_eq!(h.focus(), Some(id), "{what}: the combo box holds focus");
-            h.set_modifiers(mods);
+            h.hold_modifiers(mods);
             h.key(key);
             assert_eq!(frame(&mut h, &mut selected), (false, false), "{what}");
-            h.set_modifiers(Modifiers::NONE);
-            assert!(ComboBox::is_open(h.ui_ref(), id), "{what} opens it");
+            h.hold_modifiers(Modifiers::NONE);
+            assert!(ComboBox::is_open(h.ui(), id), "{what} opens it");
             assert!(
-                !Menu::is_open(h.ui_ref(), id),
+                !Menu::is_open(h.ui(), id),
                 "{what}: the combo's row is its own, not a menu's"
             );
             frame(&mut h, &mut selected);
             assert_eq!(h.focus(), row(&h, lands), "{what} lands on {lands}");
             assert!(h.focus().is_some(), "{what}: a row holds focus");
-            ComboBox::close(h.ui(), id);
+            ComboBox::close(h.ui_mut(), id);
             frame(&mut h, &mut selected);
         }
         assert_eq!(selected, start, "no key changed the pick");
     }
 
     let mut selected = &OPTIONS[1];
-    ComboBox::open(h.ui(), id);
+    ComboBox::open(h.ui_mut(), id);
     frame(&mut h, &mut selected);
-    assert!(ComboBox::is_open(h.ui_ref(), id), "an outside open records");
+    assert!(ComboBox::is_open(h.ui(), id), "an outside open records");
     assert!(h.rect(ComboBox::menu_id(id)).is_some());
 }
 
@@ -447,7 +447,7 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
 
     h.key(Key::Enter);
     frame(&mut h, &mut selected);
-    assert!(ComboBox::is_open(h.ui_ref(), id));
+    assert!(ComboBox::is_open(h.ui(), id));
     let first = h.focus().expect("focus moved into the list");
     assert_ne!(first, id);
 
@@ -467,10 +467,7 @@ fn the_keyboard_alone_picks_from_the_dropdown() {
     let changed = frame(&mut h, &mut selected);
     assert!(changed && *selected == "B", "Enter picks the second row");
     frame(&mut h, &mut selected);
-    assert!(
-        !ComboBox::is_open(h.ui_ref(), id),
-        "the pick closes the list"
-    );
+    assert!(!ComboBox::is_open(h.ui(), id), "the pick closes the list");
     assert_eq!(h.focus(), Some(id), "focus goes back to the combo box");
 }
 
@@ -497,7 +494,7 @@ fn a_callers_justify_wins_over_the_space_between() {
     });
     let justify = |id| {
         let node = h.node_for_widget_id(id);
-        h.ui_ref().tree(Layer::Main).panel(node).justify
+        h.ui().tree(Layer::Main).panel(node).justify
     };
     assert_eq!(justify(plain), Justify::SpaceBetween);
     assert_eq!(justify(centered), Justify::Center);

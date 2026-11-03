@@ -271,7 +271,11 @@ fn incremental_scroll_matches_full() {
     };
     let mut h = Harness::mono(UVec2::splat(300));
     h.frame(build);
-    Scroll::set_offset(h.ui(), WidgetId::from_hash("scroll"), Vec2::new(0.0, 40.0));
+    Scroll::set_offset(
+        h.ui_mut(),
+        WidgetId::from_hash("scroll"),
+        Vec2::new(0.0, 40.0),
+    );
     let rebuilds = h.engines_mut().cascade.counters.full_rebuilds();
     h.frame(build);
 
@@ -280,7 +284,7 @@ fn incremental_scroll_matches_full() {
         rebuilds,
         "a scroll must refresh the cascade in place",
     );
-    assert_cascades_match_full(h.ui_ref(), "scroll");
+    assert_cascades_match_full(h.ui(), "scroll");
 }
 
 /// A widget that adds a shape without moving goes straight to the full
@@ -435,7 +439,7 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
             abandoned,
             "`{label}` should be caught by `CascadeKey::keeps_structure`, not discovered mid-walk",
         );
-        assert_cascades_match_full(h.ui_ref(), label);
+        assert_cascades_match_full(h.ui(), label);
     }
 
     let mut h = Harness::mono(UVec2::new(200, 200));
@@ -525,7 +529,7 @@ fn refresh_recomputes_only_what_moved() {
             1,
             "{label}: scratch holds one node's rows",
         );
-        assert_cascades_match_full(h.ui_ref(), label);
+        assert_cascades_match_full(h.ui(), label);
     }
 }
 
@@ -556,5 +560,5 @@ fn assert_incremental_case(label: &str, base: impl Fn(&mut Ui), changed: impl Fn
     let mut h = Harness::mono(UVec2::splat(300));
     h.frame(base);
     h.frame(changed);
-    assert_cascades_match_full(h.ui_ref(), label);
+    assert_cascades_match_full(h.ui(), label);
 }

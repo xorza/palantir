@@ -270,7 +270,9 @@ fn keys_typed_before_a_focus_move_stay_with_their_field() {
             FocusMover::Tab => {
                 h.key(Key::Tab);
             }
-            FocusMover::PressOnB => h.click(field_b()),
+            FocusMover::PressOnB => {
+                h.click(field_b());
+            }
         }
         h.frame(|ui| record_two_fields(ui, &mut a, &mut b));
         assert_eq!((a.as_str(), b.as_str()), ("a", ""), "{mover:?}");
@@ -284,9 +286,9 @@ fn keys_typed_before_a_focus_move_stay_with_their_field() {
 fn a_press_reads_the_modifiers_it_came_under() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.prime(2, scene);
-    h.set_modifiers(Modifiers::SHIFT);
+    h.hold_modifiers(Modifiers::SHIFT);
     h.press(TARGET, PointerButton::Left);
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     let seen = sample_until_idle(&mut h, scene, |ui| {
         (ui.response_for(target()).left, ui.peek_modifiers())
     });
@@ -316,7 +318,7 @@ fn step_watched_until_idle(h: &mut Harness) -> Vec<LeftFrame> {
         ups: ui
             .pointer_events()
             .iter()
-            .filter(|e| matches!(e, PointerEvent::Up { .. }))
+            .filter(|e| matches!(e, PointerEvent::Released { .. }))
             .count(),
     })
 }
@@ -344,7 +346,7 @@ fn a_press_of_a_held_button_ends_the_lost_capture_without_a_click() {
     h.prime(2, watched_scene);
     h.press(TARGET, PointerButton::Left);
     h.step(watched_scene);
-    h.ui().on_input(
+    h.ui_mut().on_input(
         InputEvent::PointerPressed(PointerButton::Left),
         Duration::ZERO,
     );

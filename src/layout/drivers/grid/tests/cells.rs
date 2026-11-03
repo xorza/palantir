@@ -74,8 +74,11 @@ fn a_cell_past_the_tracks_is_held_inside_them() {
     });
     let grid = h.arranged(WidgetId::from_hash("grid"));
     let far = h.arranged(WidgetId::from_hash("far"));
-    assert_eq!(far.min - grid.min, glam::Vec2::new(50.0, 50.0));
-    assert_eq!((far.size.w, far.size.h), (50.0, 50.0));
+    assert_eq!(
+        far.unwrap().min - grid.unwrap().min,
+        glam::Vec2::new(50.0, 50.0)
+    );
+    assert_eq!((far.unwrap().size.w, far.unwrap().size.h), (50.0, 50.0));
     let tall = h.arranged(WidgetId::from_hash("tall"));
-    assert_eq!((tall.size.w, tall.size.h), (50.0, 100.0));
+    assert_eq!((tall.unwrap().size.w, tall.unwrap().size.h), (50.0, 100.0));
 }

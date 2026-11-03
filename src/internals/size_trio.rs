@@ -41,7 +41,7 @@ impl SizeTrio {
                 })
                 .inner
         });
-        let size = |node: NodeId| h.ui_ref().arranged_rect(Layer::Main, node).size;
+        let size = |node: NodeId| h.ui().arranged_rect(Layer::Main, node).size;
         Self {
             sized: size(nodes[0]),
             hug: size(nodes[1]),

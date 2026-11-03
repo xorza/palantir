@@ -219,7 +219,7 @@ fn the_readouts_and_channel_edits_start_from_the_bound_color() {
     let mut color = RgbaF32::hex(0x0000ff);
     frame(&mut h, id, &mut color);
     frame(&mut h, id, &mut color);
-    assert_eq!(h.state::<PickerState>(id).hex, "#0000FF");
+    assert_eq!(h.state::<PickerState>(id).unwrap().hex, "#0000FF");
 
     let r_value = h.center_of(id.with("R").with("value"));
     h.press(id.with("R").with("value"), PointerButton::Left);
@@ -283,7 +283,7 @@ fn keyboard_nudges_leave_the_history_alone() {
     frame(&mut h, &mut color);
     h.click(Vec2::new(100.0, 60.0));
     frame(&mut h, &mut color);
-    let row = h.state::<PickerState>(id).history.peek().to_vec();
+    let row = h.state::<PickerState>(id).unwrap().history.peek().to_vec();
     assert_eq!(row[0], color, "the click is a pick");
 
     let mut committed = 0;
@@ -292,7 +292,7 @@ fn keyboard_nudges_leave_the_history_alone() {
         committed += usize::from(frame(&mut h, &mut color));
     }
     assert!(committed > 0, "premise: a nudge commits");
-    assert_eq!(h.state::<PickerState>(id).history.peek(), &*row);
+    assert_eq!(h.state::<PickerState>(id).unwrap().history.peek(), &*row);
 }
 
 #[test]

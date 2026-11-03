@@ -11,7 +11,9 @@
 use glam::{UVec2, Vec2};
 use image::RgbaImage;
 use palantir::widget::{IconFit, IconShape, Shape};
-use palantir::{Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, Text, TextStyle, Ui};
+use palantir::{
+    Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale, Text, TextStyle, Ui,
+};
 use std::ops;
 use std::rc::Rc;
 
@@ -73,7 +75,7 @@ fn assert_solid_pane(img: &RgbaImage, at: Vec2, tint: [f32; 3]) {
 }
 
 /// One frame on black at `scale`, with `scene` on a full-surface canvas and the [`atlas`] loaded.
-fn render(size: UVec2, scale: f32, mut scene: impl FnMut(&mut Ui, &IconSet)) -> RgbaImage {
+fn render(size: UVec2, scale: SystemScale, mut scene: impl FnMut(&mut Ui, &IconSet)) -> RgbaImage {
     let atlas = atlas();
     VisualRig::new()
         .size(size)
@@ -105,7 +107,7 @@ fn pane(ui: &mut Ui, at: Rect, icon: IconShape) {
 #[test]
 fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
     let tint = RgbaF32::srgb(0.2, 0.8, 0.4);
-    let img = render(UVec2::new(48, 48), 1.0, |ui, icons| {
+    let img = render(UVec2::new(48, 48), SystemScale::ONE, |ui, icons| {
         pane(
             ui,
             Rect::new(6.0, 6.0, 20.0, 20.0),
@@ -120,7 +122,7 @@ fn tintable_icon_fills_its_exact_pixel_box_with_the_tint() {
 /// its alpha applies, so a saturated red tint must leave the halves red and blue.
 #[test]
 fn color_icon_keeps_its_own_colors_under_a_tint() {
-    let img = render(UVec2::new(48, 32), 1.0, |ui, icons| {
+    let img = render(UVec2::new(48, 32), SystemScale::ONE, |ui, icons| {
         pane(
             ui,
             Rect::new(8.0, 4.0, 32.0, 24.0),
@@ -145,13 +147,17 @@ fn color_icon_keeps_its_own_colors_under_a_tint() {
 /// present at 6 and 35 and absent at 5 and 36.
 #[test]
 fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
-    let img = render(UVec2::new(48, 48), 1.5, |ui, icons| {
-        pane(
-            ui,
-            Rect::new(4.0, 4.0, 20.0, 20.0),
-            icon(icons, "solid").tint(RgbaF32::WHITE),
-        );
-    });
+    let img = render(
+        UVec2::new(48, 48),
+        SystemScale::new(1.5).unwrap(),
+        |ui, icons| {
+            pane(
+                ui,
+                Rect::new(4.0, 4.0, 20.0, 20.0),
+                icon(icons, "solid").tint(RgbaF32::WHITE),
+            );
+        },
+    );
 
     let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;
     let dark = |x: u32, y: u32| img.get_pixel(x, y).0[0] < 40;
@@ -177,7 +183,7 @@ fn icon_rasterizes_to_whole_physical_pixels_at_fractional_scale() {
 /// asserts values, not an ordering.
 #[test]
 fn desaturate_grays_a_color_icon_by_its_luminance() {
-    let img = render(UVec2::new(48, 32), 1.0, |ui, icons| {
+    let img = render(UVec2::new(48, 32), SystemScale::ONE, |ui, icons| {
         pane(
             ui,
             Rect::new(8.0, 4.0, 32.0, 24.0),
@@ -232,7 +238,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
                     .show(ui);
             });
     };
-    let img = render(UVec2::new(96, 72), 1.0, |ui, icons| {
+    let img = render(UVec2::new(96, 72), SystemScale::ONE, |ui, icons| {
         label(ui, "under", Vec2::new(6.0, 6.0));
         pane(
             ui,
@@ -271,13 +277,17 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
 #[test]
 fn an_icon_past_the_raster_cap_fills_its_box() {
     let capped = |name| {
-        render(UVec2::new(680, 680), 2.0, |ui, icons| {
-            pane(
-                ui,
-                Rect::new(20.0, 20.0, 300.0, 300.0),
-                icon(icons, name).tint(RgbaF32::WHITE),
-            );
-        })
+        render(
+            UVec2::new(680, 680),
+            SystemScale::new(2.0).unwrap(),
+            |ui, icons| {
+                pane(
+                    ui,
+                    Rect::new(20.0, 20.0, 300.0, 300.0),
+                    icon(icons, name).tint(RgbaF32::WHITE),
+                );
+            },
+        )
     };
     let img = capped("solid");
     let lit = |x: u32, y: u32| img.get_pixel(x, y).0[0] > 200;

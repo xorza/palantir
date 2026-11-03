@@ -184,7 +184,7 @@ fn the_surface_leaves_with_the_bar() {
     h.frame(|ui| {
         ColorStrip::hue(&mut coords).id(id).show(ui);
     });
-    let surface = |h: &Harness| h.ui_ref().state::<ColorSurface<StripPaint>>(id).is_some();
+    let surface = |h: &Harness| h.ui().state::<ColorSurface<StripPaint>>(id).is_some();
     assert!(surface(&h), "built while the bar records");
     h.frame(|_| {});
     assert!(!surface(&h), "swept with the bar");

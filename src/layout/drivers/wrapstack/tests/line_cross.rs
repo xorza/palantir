@@ -82,13 +82,33 @@ fn zero_main_child_still_occupies_the_line_on_both_axes() {
         });
 
         let wrap = h.arranged(WidgetId::from_hash("wrap"));
-        assert_eq!(wrap.size, case.expected_wrap, "case: {}", case.label);
+        assert_eq!(
+            wrap.unwrap().size,
+            case.expected_wrap,
+            "case: {}",
+            case.label
+        );
         let zero = h.arranged(WidgetId::from_hash("zero"));
-        assert_eq!(zero.min, Vec2::ZERO, "case: {} zero origin", case.label);
-        assert_eq!(zero.size, zero_size, "case: {} zero size", case.label);
+        assert_eq!(
+            zero.unwrap().min,
+            Vec2::ZERO,
+            "case: {} zero origin",
+            case.label
+        );
+        assert_eq!(
+            zero.unwrap().size,
+            zero_size,
+            "case: {} zero size",
+            case.label
+        );
         if let Some(expected) = case.expected_normal_min {
             let normal = h.arranged(WidgetId::from_hash("normal"));
-            assert_eq!(normal.min, expected, "case: {} normal origin", case.label);
+            assert_eq!(
+                normal.unwrap().min,
+                expected,
+                "case: {} normal origin",
+                case.label
+            );
         }
     }
 }
@@ -112,9 +132,9 @@ fn wrap_hstack_line_height_is_max_child_cross() {
     let tall = h.arranged(WidgetId::from_hash("tall"));
     let short = h.arranged(WidgetId::from_hash("short"));
     let next = h.arranged(WidgetId::from_hash("next-line"));
-    assert_eq!(tall.min.y, 0.0);
-    assert_eq!(short.min.y, 0.0);
-    assert_eq!(next.min.y, 60.0);
+    assert_eq!(tall.unwrap().min.y, 0.0);
+    assert_eq!(short.unwrap().min.y, 0.0);
+    assert_eq!(next.unwrap().min.y, 60.0);
 }
 
 /// Cross-axis `Sizing::fill` stretches to the tallest child, as in Stack.
@@ -137,9 +157,10 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     });
     let tall = h.arranged(WidgetId::from_hash("tall"));
     let filler = h.arranged(WidgetId::from_hash("filler"));
-    assert_eq!(tall.size.h, 60.0);
+    assert_eq!(tall.unwrap().size.h, 60.0);
     assert_eq!(
-        filler.size.h, 60.0,
+        filler.unwrap().size.h,
+        60.0,
         "Fill-on-cross child stretches to row height"
     );
 }
@@ -196,13 +217,13 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
 
             let wrap_rect = h.arranged(WidgetId::from_hash("all-fill-wrap"));
             assert_eq!(
-                axis.main(wrap_rect.size),
+                axis.main(wrap_rect.unwrap().size),
                 125.0,
                 "{axis:?} {} wrap main",
                 case.label
             );
             assert_eq!(
-                axis.cross(wrap_rect.size),
+                axis.cross(wrap_rect.unwrap().size),
                 case.expected_wrap_cross,
                 "{axis:?} {} wrap cross",
                 case.label
@@ -214,25 +235,25 @@ fn all_fill_lines_preserve_measured_cross_floors_on_both_axes() {
             {
                 let rect = h.arranged(WidgetId::from_hash(name));
                 assert_eq!(
-                    axis.main_v(rect.min),
+                    axis.main_v(rect.unwrap().min),
                     [0.0, 65.0, 0.0][idx],
                     "{axis:?} {} child {idx} main position",
                     case.label
                 );
                 assert_eq!(
-                    axis.cross_v(rect.min),
+                    axis.cross_v(rect.unwrap().min),
                     case.expected_cross_poss[idx],
                     "{axis:?} {} child {idx} cross position",
                     case.label
                 );
                 assert_eq!(
-                    axis.main(rect.size),
+                    axis.main(rect.unwrap().size),
                     60.0,
                     "{axis:?} {} child {idx} main size",
                     case.label
                 );
                 assert_eq!(
-                    axis.cross(rect.size),
+                    axis.cross(rect.unwrap().size),
                     case.expected_cross_sizes[idx],
                     "{axis:?} {} child {idx} cross size",
                     case.label
@@ -268,13 +289,25 @@ fn fill_floor_can_establish_a_mixed_line_cross_extent() {
         });
 
         let wrap_rect = h.arranged(WidgetId::from_hash("mixed-fill-wrap"));
-        assert_eq!(axis.cross(wrap_rect.size), 57.0, "{axis:?} wrap cross");
+        assert_eq!(
+            axis.cross(wrap_rect.unwrap().size),
+            57.0,
+            "{axis:?} wrap cross"
+        );
         let fill = h.arranged(WidgetId::from_hash("mixed-fill"));
         let fixed = h.arranged(WidgetId::from_hash("mixed-fixed"));
         let next = h.arranged(WidgetId::from_hash("mixed-next"));
-        assert_eq!(axis.cross(fill.size), 40.0, "{axis:?} fill cross");
-        assert_eq!(axis.cross(fixed.size), 20.0, "{axis:?} fixed cross");
-        assert_eq!(axis.cross_v(next.min), 47.0, "{axis:?} second line origin");
+        assert_eq!(axis.cross(fill.unwrap().size), 40.0, "{axis:?} fill cross");
+        assert_eq!(
+            axis.cross(fixed.unwrap().size),
+            20.0,
+            "{axis:?} fixed cross"
+        );
+        assert_eq!(
+            axis.cross_v(next.unwrap().min),
+            47.0,
+            "{axis:?} second line origin"
+        );
     }
 }
 
@@ -312,18 +345,34 @@ fn all_fill_line_cross_floors_respect_explicit_min_and_max() {
         });
 
         let wrap_rect = h.arranged(WidgetId::from_hash("bounded-fill-wrap"));
-        assert_eq!(axis.cross(wrap_rect.size), 55.0, "{axis:?} wrap cross");
+        assert_eq!(
+            axis.cross(wrap_rect.unwrap().size),
+            55.0,
+            "{axis:?} wrap cross"
+        );
         let min_fill = h.arranged(WidgetId::from_hash("min-fill"));
         let max_fill = h.arranged(WidgetId::from_hash("max-fill"));
         let next_fill = h.arranged(WidgetId::from_hash("next-fill"));
-        assert_eq!(axis.cross(min_fill.size), 35.0, "{axis:?} min fill");
-        assert_eq!(axis.cross(max_fill.size), 35.0, "{axis:?} max fill");
         assert_eq!(
-            axis.cross_v(next_fill.min),
+            axis.cross(min_fill.unwrap().size),
+            35.0,
+            "{axis:?} min fill"
+        );
+        assert_eq!(
+            axis.cross(max_fill.unwrap().size),
+            35.0,
+            "{axis:?} max fill"
+        );
+        assert_eq!(
+            axis.cross_v(next_fill.unwrap().min),
             40.0,
             "{axis:?} second line origin"
         );
-        assert_eq!(axis.cross(next_fill.size), 15.0, "{axis:?} next fill");
+        assert_eq!(
+            axis.cross(next_fill.unwrap().size),
+            15.0,
+            "{axis:?} next fill"
+        );
     }
 }
 

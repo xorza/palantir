@@ -57,13 +57,13 @@ fn frame(h: &mut Harness) {
 }
 
 fn open(h: &Harness) -> Option<u16> {
-    let open = h.ui_ref().state::<MenuBarRow>(bar())?.open?;
+    let open = h.ui().state::<MenuBarRow>(bar())?.open?;
     (0..MENUS.len() as u16).find(|&idx| title(idx) == open.title)
 }
 
 /// Whether menu `idx` recorded this frame.
 fn recorded(h: &Harness, idx: u16) -> bool {
-    h.ui_ref()
+    h.ui()
         .tree(Layer::Menu)
         .records
         .widget_id()
@@ -134,7 +134,7 @@ fn a_resting_pointer_over_another_title_does_not_switch() {
     });
     h.hover(title(1));
     frame(&mut h);
-    h.ui().set_focus(title(0));
+    h.ui_mut().set_focus(title(0));
     frame(&mut h);
     h.key(Key::Enter);
     frame(&mut h);
@@ -221,7 +221,7 @@ fn a_pick_escape_or_an_outside_click_closes_the_menu() {
         match how {
             "escape" => h.key(Key::Escape),
             _ => h.click(Vec2::new(500.0, 350.0)),
-        }
+        };
         frame(&mut h);
         assert_eq!(open(&h), None, "{how} closes the menu");
     }
@@ -298,7 +298,7 @@ fn the_bar_spans_its_parent_on_the_band() {
     let [left, top, ..] = theme.bar_padding.to_array();
     assert_eq!((first.min.x, first.min.y), (left, top));
     let chrome = h
-        .ui_ref()
+        .ui()
         .tree(Layer::Main)
         .chrome(h.node_for_widget_id(bar()))
         .expect("the bar paints its band");
@@ -347,20 +347,20 @@ fn open_close_and_is_open_drive_the_bar_from_outside() {
     h.prime(2, |ui| {
         build(ui);
     });
-    assert!(!MenuBar::is_open(h.ui_ref(), bar()));
-    MenuBar::open(h.ui(), bar(), "Edit");
+    assert!(!MenuBar::is_open(h.ui(), bar()));
+    MenuBar::open(h.ui_mut(), bar(), "Edit");
     frame(&mut h);
     assert_eq!(open(&h), Some(1));
-    assert!(recorded(&h, 1) && MenuBar::is_open(h.ui_ref(), bar()));
-    MenuBar::open(h.ui(), bar(), "View");
+    assert!(recorded(&h, 1) && MenuBar::is_open(h.ui(), bar()));
+    MenuBar::open(h.ui_mut(), bar(), "View");
     frame(&mut h);
     assert_eq!(open(&h), Some(2));
     assert!(!recorded(&h, 1) && recorded(&h, 2));
-    MenuBar::close(h.ui(), bar());
+    MenuBar::close(h.ui_mut(), bar());
     frame(&mut h);
     assert_eq!(open(&h), None);
-    assert!(!recorded(&h, 2) && !MenuBar::is_open(h.ui_ref(), bar()));
-    MenuBar::open(h.ui(), bar(), "Help");
+    assert!(!recorded(&h, 2) && !MenuBar::is_open(h.ui(), bar()));
+    MenuBar::open(h.ui_mut(), bar(), "Help");
     frame(&mut h);
     assert_eq!(open(&h), None, "a label the bar does not show");
 }

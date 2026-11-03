@@ -98,7 +98,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     fn widths_at(surface_w: u32) -> Section<f32> {
         let mut h = Harness::new(UVec2::new(surface_w, 400));
         let nodes = h.frame_value(build);
-        let width = |node| h.ui_ref().arranged_rect(Layer::Main, node).size.w;
+        let width = |node| h.ui().arranged_rect(Layer::Main, node).size.w;
         Section {
             grid: width(nodes.grid),
             section: width(nodes.section),

@@ -510,13 +510,13 @@ fn widget_text_inputs_lower_exact_bytes() {
             .show(ui);
     });
 
-    let store = &h.ui_ref().forest.record_store;
+    let store = &h.ui().forest.record_store;
     let interned_text = store.interned_text();
     assert_eq!(
         interned_text.all(),
         "borrowedownedowned internedinternedformatted 7"
     );
-    let records = &h.ui_ref().forest.trees[Plane::MAIN].shapes.records;
+    let records = &h.ui().forest.trees[Plane::MAIN].shapes.records;
     assert_eq!(records.len(), 5);
     for (record, expected) in records.iter().zip([
         "borrowed",
@@ -608,9 +608,9 @@ fn interning_per_pass_records_the_expected_bytes() {
     });
     assert_eq!(passes, 2, "cold first frame must record exactly twice");
 
-    let store = &h.ui_ref().forest.record_store;
+    let store = &h.ui().forest.record_store;
     let interned_text = store.interned_text();
-    let records = &h.ui_ref().forest.trees[Plane::MAIN].shapes.records;
+    let records = &h.ui().forest.trees[Plane::MAIN].shapes.records;
     let [ShapeRecord::Text { text, .. }] = records.as_slice() else {
         panic!("expected one text shape, got {records:?}");
     };
@@ -756,7 +756,7 @@ fn every_window_keys_a_family_in_its_shapers_table() {
         (&second, [beta_key, alpha_key]),
     ] {
         let recorded = ids.map(|id| {
-            h.ui_ref()
+            h.ui()
                 .tree(Layer::Main)
                 .shapes_of(h.node_for_widget_id(id))
                 .find_map(|shape| match shape {
@@ -779,7 +779,7 @@ fn a_transparent_label_measures_as_an_opaque_one() {
         h.frame(|ui| {
             Text::new("fade").id(id).color(color).show(ui);
         });
-        h.arranged(id).size
+        h.arranged(id).unwrap().size
     };
     let opaque = measure(RgbaF32::WHITE);
     assert!(opaque.w > 0.0 && opaque.h > 0.0, "{opaque:?}");

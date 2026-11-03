@@ -184,7 +184,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
 }
 
 /// A 60 px checker, so an image drawn past its node shows.
-fn picture(h: &mut VisualRig) -> ImageHandle {
+fn picture(h: &VisualRig) -> ImageHandle {
     let mut image = Image::from_srgba8(UVec2::splat(60), vec![0; 60 * 60 * 4]).unwrap();
     image.fill_with(|at| {
         let cell = at / 10;
@@ -200,7 +200,7 @@ fn run(name: &str, script: &[Knobs]) {
     let mut full = VisualRig::new();
     partial.size(SURFACE);
     full.size(SURFACE);
-    let (partial_picture, full_picture) = (picture(&mut partial), picture(&mut full));
+    let (partial_picture, full_picture) = (picture(&partial), picture(&full));
     for (frame, k) in [Knobs::BASE, Knobs::BASE].iter().chain(script).enumerate() {
         let repainted = partial.frame(|ui| scene(ui, *k, &partial_picture)).image;
         full.host.invalidate_target_contents();

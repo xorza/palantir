@@ -55,7 +55,7 @@ fn raster_eq_compares_every_raster_axis_and_only_those() {
         (
             "system scale",
             Display {
-                system_scale: 1.0,
+                system_scale: SystemScale::ONE,
                 ..base
             },
             false,
@@ -113,30 +113,24 @@ fn scale_factor_is_valid_from_eps_up() {
     }
 }
 
-/// The windowed door replaces an unusable platform scale with 1.
-#[cfg(feature = "winit")]
-#[test]
-fn sanitize_system_scale_keeps_a_usable_scale_or_falls_back_to_one() {
-    for (reported, kept) in [
-        (2.0_f64, 2.0_f32),
-        (1.5, 1.5),
-        (0.0, 1.0),
-        (-2.0, 1.0),
-        (f64::NAN, 1.0),
-        (1e40, 1.0),
-    ] {
-        assert_eq!(sanitize_system_scale(reported), kept, "{reported}");
-    }
-}
-
 #[test]
 fn from_physical_checks_its_scale() {
-    use crate::display::SCALE_RULE;
+    use crate::display::system_scale::SystemScale;
     use crate::internals::panic_probe;
 
-    assert_eq!(Display::from_physical(UVec2::ONE, 2.0).system_scale, 2.0);
-    assert_eq!(Display::from_physical(UVec2::ONE, 1e-4).system_scale, 1e-4);
-    for bad in [0.0, 5e-5, -1.0, f32::NAN, f32::INFINITY] {
-        panic_probe::assert_panics_with(SCALE_RULE, || Display::from_physical(UVec2::ONE, bad));
+    assert_eq!(
+        Display::from_physical(UVec2::ONE, 2.0).system_scale.get(),
+        2.0
+    );
+    assert_eq!(
+        Display::from_physical(UVec2::ONE, SystemScale::MIN)
+            .system_scale
+            .get(),
+        SystemScale::MIN
+    );
+    for bad in [0.0, 1e-4, -1.0, f32::NAN, f32::INFINITY] {
+        panic_probe::assert_panics_with("a system scale must be from", || {
+            Display::from_physical(UVec2::ONE, bad)
+        });
     }
 }

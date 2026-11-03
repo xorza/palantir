@@ -30,7 +30,7 @@ fn a_scrub_focuses_the_chip_and_stays_a_scrub() {
     assert_eq!(h.focus(), Some(id), "the press focused the chip");
     assert!(
         !matches!(
-            h.state::<DragValueState>(id),
+            h.state::<DragValueState>(id).unwrap(),
             DragValueState::Editing { .. }
         ),
         "and opened no editor",
@@ -70,7 +70,7 @@ fn the_arrows_step_a_focused_chip() {
         (Modifiers::NONE, Key::Home, 0.0),
         (Modifiers::NONE, Key::End, 5.15),
     ] {
-        h.set_modifiers(mods);
+        h.hold_modifiers(mods);
         h.key(key);
         assert!(frame(&mut h, &mut value), "{mods:?} {key:?} commits");
         assert_eq!(value, want, "{mods:?} {key:?}");
@@ -78,7 +78,7 @@ fn the_arrows_step_a_focused_chip() {
 
     let int_id = WidgetId::from_hash("dv-spin-int");
     let mut count = 7_i64;
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     let record = |h: &mut Harness, count: &mut i64| {
         h.frame(|ui| {
             DragValue::new(&mut *count).id(int_id).size(40.0).show(ui);
@@ -132,7 +132,7 @@ fn typing_into_the_focused_chip_replaces_the_value() {
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     h.key(Key::Char('7'));
     deferred_frame(&mut h, id, &mut canonical, TYPED);
-    match h.state::<DragValueState>(id) {
+    match h.state::<DragValueState>(id).unwrap() {
         DragValueState::Editing { buffer, .. } => assert_eq!(buffer, "7"),
         state => panic!("the typed character opened no editor: {state:?}"),
     }

@@ -1,6 +1,7 @@
 //! A self-transform's effect on composed rects, stroke fringe and anchoring.
 
 use crate::damage::Damage;
+use crate::display::system_scale::SystemScale;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -45,7 +46,7 @@ fn shape_rect_composes_self_transform() {
         });
     });
 
-    let shape_rect = first_paint_screen(h.ui_ref(), "xpanel");
+    let shape_rect = first_paint_screen(h.ui(), "xpanel");
     // Shape (0, 0, 30, 30) under parent ∘ self: min = (0,0)*3 + (10,20), size = 30*3 = 90.
     assert_eq!(shape_rect, Rect::new(10.0, 20.0, 90.0, 90.0));
 }
@@ -99,7 +100,7 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
     for case in cases {
         let mut h = Harness::builder(UVec2::splat(400))
             .mono()
-            .scale(case.display_scale)
+            .system_scale(SystemScale::new(case.display_scale).unwrap())
             .build();
         h.frame(|ui| {
             let mut panel = Panel::canvas()
@@ -123,7 +124,7 @@ fn stroke_bbox_inflates_after_transform_with_physical_fringe() {
         });
 
         assert_eq!(
-            first_paint_screen(h.ui_ref(), "stroke"),
+            first_paint_screen(h.ui(), "stroke"),
             case.expected,
             "{case:?}"
         );
@@ -157,7 +158,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
         });
     });
 
-    let shape_rect = first_paint_screen(h.ui_ref(), "xpanel");
+    let shape_rect = first_paint_screen(h.ui(), "xpanel");
     // The panel's top-left is the fixed point of its scale: shape at (50, 0),
     // size 10 * 2 = 20. Unanchored it would be (100, 0).
     assert_eq!(
@@ -191,14 +192,14 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
         });
     });
 
-    let cascade_rect = first_paint_screen(h.ui_ref(), "xpanel");
+    let cascade_rect = first_paint_screen(h.ui(), "xpanel");
 
     // Surface scale 1, so physical equals logical; the child's rounded rect is the only quad.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        h.ui_ref().frame_scene(),
+        h.ui().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: h.ui_ref().theme().window_clear,
+            clear: h.ui().theme().window_clear,
             damage: Damage::Full,
         }),
     );

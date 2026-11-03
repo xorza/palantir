@@ -20,7 +20,7 @@ fn states(h: &mut Harness, key: Key) -> [bool; 3] {
 fn a_key_reads_pressed_held_and_released_whatever_the_modifiers() {
     let mut h = Harness::mono(UVec2::new(64, 48));
     states(&mut h, Key::Escape);
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.key_down(Key::Escape);
     let chord = h.frame_value(|ui: &mut Ui| {
         [
@@ -32,7 +32,7 @@ fn a_key_reads_pressed_held_and_released_whatever_the_modifiers() {
     });
     assert_eq!(chord, [true, true, false, false]);
     assert_eq!(states(&mut h, Key::Escape), [false, true, false]);
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     assert_eq!(
         states(&mut h, Key::Escape),
         [false, true, false],
@@ -108,10 +108,10 @@ fn a_letter_reads_whatever_shift_does_to_it() {
     let mut h = Harness::mono(UVec2::new(64, 48));
     let w = Key::Char('w');
     states(&mut h, w);
-    h.set_modifiers(Modifiers::SHIFT);
+    h.hold_modifiers(Modifiers::SHIFT);
     h.key_down(Key::Char('W'));
     assert_eq!(states(&mut h, w), [true, true, false]);
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     h.key_up(Key::Char('W'));
     assert_eq!(states(&mut h, w), [false, false, true]);
 }

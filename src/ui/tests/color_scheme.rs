@@ -23,9 +23,9 @@ fn record(ui: &mut Ui) {
 #[test]
 fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
     let mut h = Harness::mono(SURFACE);
-    h.ui().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(None);
     h.frame(record);
-    assert_eq!(h.ui_ref().color_scheme(), Dark, "nothing reports a scheme");
+    assert_eq!(h.ui().color_scheme(), Dark, "nothing reports a scheme");
 
     let mut shown = None;
     let report = h.frame(|ui| {
@@ -35,12 +35,12 @@ fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
     });
     assert_eq!(shown, Some(Dark), "the frame that picked keeps its scheme");
     assert!(report.repaint_requested, "the pick asks for a frame");
-    assert!(Rc::ptr_eq(h.ui_ref().theme(), h.ui_ref().theme_for(Dark)));
+    assert!(Rc::ptr_eq(h.ui().theme(), h.ui().theme_for(Dark)));
 
     let report = h.frame(record);
-    assert_eq!(h.ui_ref().color_scheme(), Light);
-    assert!(Rc::ptr_eq(h.ui_ref().theme(), h.ui_ref().theme_for(Light)));
-    assert_eq!(*h.ui_ref().theme_for(Light).as_ref(), Theme::stock(Light));
+    assert_eq!(h.ui().color_scheme(), Light);
+    assert!(Rc::ptr_eq(h.ui().theme(), h.ui().theme_for(Light)));
+    assert_eq!(*h.ui().theme_for(Light).as_ref(), Theme::stock(Light));
     assert_eq!(
         report.paint(),
         FramePaint::Full,
@@ -53,18 +53,18 @@ fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
 #[test]
 fn the_system_scheme_shows_under_system_only() {
     let mut h = Harness::mono(SURFACE);
-    assert_eq!(h.ui_ref().system_color_scheme(), None);
+    assert_eq!(h.ui().system_color_scheme(), None);
 
     h.set_system_color_scheme(Some(Light)).frame(record);
-    assert_eq!(h.ui_ref().color_scheme(), Light);
+    assert_eq!(h.ui().color_scheme(), Light);
 
     h.set_system_color_scheme(Some(Dark)).frame(record);
-    assert_eq!(h.ui_ref().color_scheme(), Dark);
+    assert_eq!(h.ui().color_scheme(), Dark);
 
     h.frame(|ui| ui.set_scheme_preference(SchemePreference::Light));
     h.frame(record);
-    assert_eq!(h.ui_ref().color_scheme(), Light);
-    assert_eq!(h.ui_ref().system_color_scheme(), Some(Dark));
+    assert_eq!(h.ui().color_scheme(), Light);
+    assert_eq!(h.ui().system_color_scheme(), Some(Dark));
 }
 
 /// The preference is app-global: a pick in one window shows in another window of the host from
@@ -76,23 +76,19 @@ fn a_pick_in_one_window_shows_in_another() {
     let mut first = Harness::from_resources(shared.clone(), SURFACE);
     let mut second = Harness::from_resources(shared.clone(), SURFACE);
     second.frame(record);
-    assert_eq!(second.ui_ref().color_scheme(), Dark);
+    assert_eq!(second.ui().color_scheme(), Dark);
 
     first.frame(|ui| ui.set_scheme_preference(SchemePreference::Light));
     second.frame(record);
-    assert_eq!(second.ui_ref().scheme_preference(), SchemePreference::Light);
-    assert_eq!(second.ui_ref().color_scheme(), Light);
+    assert_eq!(second.ui().scheme_preference(), SchemePreference::Light);
+    assert_eq!(second.ui().color_scheme(), Light);
     assert!(!Rc::ptr_eq(
-        first.ui_ref().theme_for(Light),
-        second.ui_ref().theme_for(Light)
+        first.ui().theme_for(Light),
+        second.ui().theme_for(Light)
     ));
 
     let third = Harness::from_resources(shared, SURFACE);
-    assert_eq!(
-        third.ui_ref().color_scheme(),
-        Light,
-        "before its first frame"
-    );
+    assert_eq!(third.ui().color_scheme(), Light, "before its first frame");
 }
 
 /// The theme epoch moves only when the shown theme does: a write to the hidden slot and a pick
@@ -101,29 +97,29 @@ fn a_pick_in_one_window_shows_in_another() {
 #[test]
 fn the_theme_epoch_moves_only_with_the_shown_theme() {
     let mut h = Harness::mono(SURFACE);
-    h.ui().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(None);
     h.frame(record);
-    let epoch = h.ui_ref().window_theme.epoch();
+    let epoch = h.ui().window_theme.epoch();
 
     let light = Rc::new(Theme::stock(Light));
-    h.ui().set_theme_for(Light, Rc::clone(&light));
+    h.ui_mut().set_theme_for(Light, Rc::clone(&light));
     assert_eq!(
-        h.ui_ref().window_theme.epoch(),
+        h.ui().window_theme.epoch(),
         epoch,
         "the light slot is hidden"
     );
-    assert!(Rc::ptr_eq(h.ui_ref().theme_for(Light), &light));
+    assert!(Rc::ptr_eq(h.ui().theme_for(Light), &light));
 
     h.frame(|ui| ui.set_scheme_preference(SchemePreference::Dark));
     h.frame(record);
     assert_eq!(
-        h.ui_ref().window_theme.epoch(),
+        h.ui().window_theme.epoch(),
         epoch,
         "dark resolves to dark again"
     );
 
-    h.ui().set_theme_for(Dark, Theme::stock(Dark));
-    assert_eq!(h.ui_ref().window_theme.epoch(), epoch.wrapping_add(1));
+    h.ui_mut().set_theme_for(Dark, Theme::stock(Dark));
+    assert_eq!(h.ui().window_theme.epoch(), epoch.wrapping_add(1));
 }
 
 /// A write to the shown slot during a record asks for the frame that records the rest under it;
@@ -132,7 +128,7 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
 #[test]
 fn a_shown_theme_write_asks_for_a_frame() {
     let mut h = Harness::mono(SURFACE);
-    h.ui().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(None);
     h.frame(record);
     let shown = Rc::new(Theme::stock(Dark));
     let report = h.frame(|ui| {
@@ -141,12 +137,12 @@ fn a_shown_theme_write_asks_for_a_frame() {
     });
     assert!(report.repaint_requested);
     h.frame(record);
-    let epoch = h.ui_ref().window_theme.epoch();
+    let epoch = h.ui().window_theme.epoch();
     let report = h.frame(|ui| {
         record(ui);
         ui.set_theme_for(Dark, Rc::clone(&shown));
         ui.set_theme_for(Light, Theme::stock(Light));
     });
     assert!(!report.repaint_requested);
-    assert_eq!(h.ui_ref().window_theme.epoch(), epoch);
+    assert_eq!(h.ui().window_theme.epoch(), epoch);
 }

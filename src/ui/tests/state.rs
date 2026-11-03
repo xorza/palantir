@@ -128,7 +128,7 @@ fn a_singleton_is_lent_across_widget_calls_and_kept() {
     assert_eq!(h.ui().singleton::<Shared>(), Some(&Shared(11)));
     h.frame(|_| {});
     h.frame(|_| {});
-    h.ui()
+    h.ui_mut()
         .with_singleton::<Shared, _>(|_, shared| shared.0 += 100);
     assert_eq!(
         h.ui().singleton::<Shared>(),

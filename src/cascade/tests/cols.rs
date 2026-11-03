@@ -108,7 +108,7 @@ fn per_node_columns_track_tree_size() {
         });
         let plane = Plane::MAIN;
         let nodes = h.ui().tree(plane).records.len();
-        let cascade = &h.ui_ref().cascade().planes[plane];
+        let cascade = &h.ui().cascade().planes[plane];
         assert_eq!(cascade.cascade_inputs.len(), nodes);
         assert_eq!(cascade.subtree_paint_rects.len(), nodes);
         assert_eq!(cascade.subtree_ends.len(), nodes);

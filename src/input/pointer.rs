@@ -46,16 +46,16 @@ const _: () = {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum PointerEvent {
     /// Cursor moved; gated on [`PointerWake::MOVE`](crate::PointerWake::MOVE).
-    Move(Vec2),
+    Moved(Vec2),
     /// Button pressed; gated on [`PointerWake::BUTTONS`](crate::PointerWake::BUTTONS).
-    Down {
+    Pressed {
         /// Cursor position, logical px.
         pos: Vec2,
         /// Which button went down.
         button: PointerButton,
     },
-    /// Button released; gated like `Down`.
-    Up {
+    /// Button released; gated like `Pressed`.
+    Released {
         /// Cursor position, logical px.
         pos: Vec2,
         /// Which button came up.
@@ -71,12 +71,12 @@ pub enum PointerEvent {
         lines: Vec2,
     },
     /// Pinch-zoom; gated on [`PointerWake::PINCH`](crate::input::watch::PointerWake::PINCH).
-    Zoom {
+    Pinch {
         /// Pinch centroid, logical px.
         pos: Vec2,
         /// Multiplicative zoom delta; [`ZoomFactor::ONE`] is no change.
         factor: ZoomFactor,
     },
     /// Pointer left the surface; no position.
-    Leave,
+    Left,
 }

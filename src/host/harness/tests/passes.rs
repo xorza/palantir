@@ -33,8 +33,11 @@ fn warm_constructors_run_one_pass_and_cold_runs_two() {
     assert_eq!(passes.take(), 1);
 
     // A builder on a cold harness keeps it cold.
-    let mut scaled = Harness::builder(SURFACE).mono().scale(2.0).build();
-    scaled.ui().set_prev_stamp(None);
+    let mut scaled = Harness::builder(SURFACE)
+        .mono()
+        .system_scale(SystemScale::new(2.0).unwrap())
+        .build();
+    scaled.ui_mut().set_prev_stamp(None);
     scaled.frame(|ui| {
         passes.0 += 1;
         support::button(ui);

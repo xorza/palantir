@@ -87,7 +87,7 @@ enum Press {
 
 /// One Tab (or Shift+Tab) press and a recorded frame; the trickle queue admits one command key per frame.
 fn press(h: &mut Harness, back: bool, record: &mut impl FnMut(&mut Ui)) {
-    h.set_modifiers(if back {
+    h.hold_modifiers(if back {
         Modifiers::SHIFT
     } else {
         Modifiers::NONE
@@ -286,7 +286,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
     let rings = |h: &Harness| {
         ["a", "b"].map(|name| {
             let node = h.node_of(id(name)).expect("recorded").node;
-            h.ui_ref()
+            h.ui()
                 .tree(Layer::Main)
                 .chrome(node)
                 .is_some_and(|row| row.ring)
@@ -294,7 +294,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
     };
     let padding = |h: &Harness| {
         let node = h.node_of(id("a")).expect("recorded").node;
-        h.ui_ref().tree(Layer::Main).records.layout()[node.idx()].padding
+        h.ui().tree(Layer::Main).records.layout()[node.idx()].padding
     };
 
     let mut h = Harness::mono(SURFACE);
@@ -303,9 +303,9 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
 
     press(&mut h, false, &mut record);
     assert_eq!(rings(&h), [true, false], "Tab rings the stop it reaches");
-    let theme = &h.ui_ref().theme().focus_ring;
+    let theme = &h.ui().theme().focus_ring;
     assert_eq!(
-        h.ui_ref().tree(Layer::Main).focus_ring,
+        h.ui().tree(Layer::Main).focus_ring,
         ShapeStroke::from(Stroke::new(theme.color, theme.width)),
     );
     assert_eq!(padding(&h), unringed, "the ring moves no layout");
@@ -444,7 +444,9 @@ fn focus_entering_an_overlay_by_any_path_returns_as_it_closes() {
         h.set_focus(id("a"));
         h.frame(popup_scene(true));
         match entry {
-            Entry::Pointer => h.click(id("p1")),
+            Entry::Pointer => {
+                h.click(id("p1"));
+            }
             Entry::Program => h.set_focus(id("p1")),
         }
         h.frame(popup_scene(true));
@@ -478,7 +480,7 @@ fn arrows_walk_an_arrow_group() {
         }
     };
     let arrow = |h: &mut Harness, mods: Modifiers, key: Key, record: &mut dyn FnMut(&mut Ui)| {
-        h.set_modifiers(mods);
+        h.hold_modifiers(mods);
         h.key(key);
         h.frame(&mut *record);
     };

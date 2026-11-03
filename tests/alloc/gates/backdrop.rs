@@ -60,7 +60,7 @@ fn backdrop_cpu_frames_alloc_free() {
         for flips in [false, true] {
             let mut state = FrameFixture::default();
             let mut frontend = Harness::builder(BENCH_SURFACE)
-                .scale(BENCH_DPR)
+                .system_scale(BENCH_DPR)
                 .depth(Depth::Compose)
                 .build();
             let mut odd = false;

@@ -112,7 +112,13 @@ fn frame_pass_count_matches_action_trigger() {
             },
             2,
         ),
-        ("unrouted click", |h| h.click(Vec2::new(150.0, 150.0)), 1),
+        (
+            "unrouted click",
+            |h| {
+                h.click(Vec2::new(150.0, 150.0));
+            },
+            1,
+        ),
         (
             "unrouted keydown",
             |h| {
@@ -373,7 +379,7 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     assert_eq!(app.records, 2, "cold-start warmup and pass A both record");
 
     app.relayout_on_next_record = true;
-    h.ui().request_repaint();
+    h.ui_mut().request_repaint();
     let processing = h
         .at(Duration::from_millis(16))
         .frame_app(&mut app)
@@ -382,7 +388,7 @@ fn app_lifecycle_follows_frame_plan_and_record_replays() {
     assert_eq!(app.updates, 2, "relayout frame adds one update");
     assert_eq!(app.records, 4, "relayout frame records pass A and pass B");
 
-    h.ui()
+    h.ui_mut()
         .frame_runtime
         .schedule_wake(Duration::from_millis(32), WakeReasons::ANIMATION, None);
     let processing = h
@@ -413,14 +419,14 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
             .label("label")
             .show(ui);
     };
-    h.ui().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(None);
     h.prime(2, record);
     other.prime(2, record);
     let mut ms = 16;
     let mut animation_frame = |h: &mut Harness| {
         ms += 16;
         let at = Duration::from_millis(ms);
-        h.ui()
+        h.ui_mut()
             .frame_runtime
             .schedule_wake(at, WakeReasons::ANIMATION, None);
         h.at(at).frame(record).processing
@@ -431,7 +437,8 @@ fn a_theme_or_font_move_records_where_an_animation_frame_would_only_paint() {
         "premise"
     );
 
-    h.ui().set_theme_for(ColorScheme::Dark, Theme::default());
+    h.ui_mut()
+        .set_theme_for(ColorScheme::Dark, Theme::default());
     assert_ne!(
         animation_frame(&mut h),
         FrameProcessing::PaintOnly,

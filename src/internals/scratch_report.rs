@@ -30,7 +30,7 @@ struct Report {
 impl Report {
     fn run(scale: usize) -> Self {
         let mut h = Harness::builder(BENCH_SURFACE)
-            .scale(BENCH_DPR)
+            .system_scale(BENCH_DPR)
             .depth(Depth::Compose)
             .build();
         let mut state = FrameFixture::default();
@@ -51,9 +51,9 @@ impl Report {
         let engines = h.engines();
         Self {
             scale,
-            nodes: h.ui_ref().forest().total_nodes(),
+            nodes: h.ui().forest().total_nodes(),
             phases: [
-                ("record", h.ui_ref().forest().scratch_bytes()),
+                ("record", h.ui().forest().scratch_bytes()),
                 ("layout", engines.layout.scratch.scratch_bytes()),
                 ("cascade", engines.cascade.scratch_bytes()),
                 ("damage", engines.damage.scratch_bytes()),

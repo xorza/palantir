@@ -92,8 +92,8 @@ fn modifiers_are_sticky_until_set_back() {
     let mut harness = Harness::mono(SURFACE);
 
     // The set under test is `InputState`'s, not a harness copy: a copy desyncs once one modifier goes
-    // through `on_input`, and `set_modifiers` would then suppress the emit that clears it.
-    harness.set_modifiers(ctrl);
+    // through `on_input`, and `hold_modifiers` would then suppress the emit that clears it.
+    harness.hold_modifiers(ctrl);
     harness.key(Key::Char('b'));
     assert_eq!(
         harness.ui().input().modifiers(),
@@ -101,7 +101,7 @@ fn modifiers_are_sticky_until_set_back() {
         "the key does not consume the chord",
     );
 
-    harness.set_modifiers(Modifiers::NONE);
+    harness.hold_modifiers(Modifiers::NONE);
     harness.key(Key::Char('c'));
     assert_eq!(
         harness.ui().input().modifiers(),
@@ -112,11 +112,11 @@ fn modifiers_are_sticky_until_set_back() {
     // Mixing the raw door with the helper stays coherent: the raw event moves the real set, so the
     // helper still sees a change and emits the clearing event instead of leaving ctrl held.
     harness.on_input(InputEvent::ModifiersChanged(ctrl));
-    harness.set_modifiers(Modifiers::NONE);
+    harness.hold_modifiers(Modifiers::NONE);
     assert_eq!(
         harness.ui().input().modifiers(),
         Modifiers::NONE,
-        "set_modifiers clears a set the raw door installed",
+        "hold_modifiers clears a set the raw door installed",
     );
 }
 
@@ -127,7 +127,7 @@ fn typed_text_arrives_as_one_press_per_char() {
     let mut harness = Harness::mono(SURFACE);
     // Keyboard events are dropped at *ingress* when nothing holds focus and no subscriber matches, so a
     // keyboard test has to establish focus before it drives anything.
-    harness.ui().set_focus(support::target());
+    harness.ui_mut().set_focus(support::target());
 
     harness.type_text("hi");
 
@@ -198,7 +198,9 @@ fn scroll_routes_to_whatever_the_pointer_moved_over() {
     let mut pinched = Harness::mono(SURFACE);
     pinched.prime(2, zoom_build);
     assert!(
-        pinched.pinch(INSIDE, 1.5).repaint_requested,
+        pinched
+            .pinch(INSIDE, ZoomFactor::new(1.5).unwrap())
+            .repaint_requested,
         "a pinch that lands on a zoom target wakes the next frame",
     );
     assert_eq!(

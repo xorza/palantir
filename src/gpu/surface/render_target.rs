@@ -58,6 +58,9 @@ impl TargetFormat {
     /// 8-bit sRGB RGBA, what an image file holds: the format of the crate's own window targets.
     pub(crate) const RGBA8_SRGB: Self = Self(wgpu::TextureFormat::Rgba8UnormSrgb);
 
+    /// 16-bit float RGBA, which keeps linear values past 8 bits.
+    pub(crate) const RGBA16_FLOAT: Self = Self(wgpu::TextureFormat::Rgba16Float);
+
     /// Name a format directly, under [`RenderTarget::new`]'s rule.
     ///
     /// # Panics

@@ -28,10 +28,10 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 fn tooltip_near_right_edge_keeps_natural_width() {
     const TEXT: &str = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";
     let reference = visible_tooltip_at(40.0, TEXT);
-    let mut ui = visible_tooltip_at(350.0, TEXT);
+    let ui = visible_tooltip_at(350.0, TEXT);
     let bubble_id = Tooltip::bubble_id(WidgetId::from_hash("edge-trigger"));
     let reference_bubble = reference
-        .ui_ref()
+        .ui()
         .response_for(bubble_id)
         .rect
         .expect("reference tooltip bubble");
@@ -104,7 +104,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     let bubble_id = Tooltip::bubble_id(WidgetId::from_hash("edge-trigger"));
     let bubble = ui.rect(bubble_id).expect("tooltip bubble");
     let shaped = ui
-        .ui_ref()
+        .ui()
         .layout(Layer::Tooltip)
         .text_shapes
         .first()
@@ -113,7 +113,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
     assert_eq!(shaped.extent.size, Size::new(252.0, 2.0 * 14.40625));
     assert_eq!(bubble.size.w, 252.0 + 26.0);
     assert!(
-        shaped.extent.size.w <= bubble.size.w - ui.ui_ref().theme().tooltip.padding.sums().w,
+        shaped.extent.size.w <= bubble.size.w - ui.ui().theme().tooltip.padding.sums().w,
         "text width {} must fit inside bubble width {}",
         shaped.extent.size.w,
         bubble.size.w,
@@ -126,7 +126,7 @@ fn tooltip_breaks_long_tokens_inside_bubble() {
 #[test]
 fn tooltip_text_inherits_the_ambient_leading() {
     let mut h = Harness::mono(SURFACE);
-    h.ui().theme_mut().text.line_height_factor = 2.0;
+    h.ui_mut().theme_mut().text.line_height_factor = 2.0;
     let snapshot = ResponseSnapshot {
         id: WidgetId::from_hash("leading-trigger"),
         state: ResponseState {
@@ -232,8 +232,8 @@ fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Harness {
 /// which makes the empty layer meaningful.
 #[test]
 fn empty_label_records_no_bubble() {
-    let mut empty = visible_tooltip_at(20.0, "");
-    let baseline = empty.ui_ref().tree(Layer::Tooltip).records.len();
+    let empty = visible_tooltip_at(20.0, "");
+    let baseline = empty.ui().tree(Layer::Tooltip).records.len();
     assert!(
         !empty
             .ui()
@@ -242,10 +242,11 @@ fn empty_label_records_no_bubble() {
         "an empty tooltip must never become visible",
     );
 
-    let mut shown = visible_tooltip_at(20.0, "tip");
+    let shown = visible_tooltip_at(20.0, "tip");
     assert!(
         shown
             .state::<TooltipState>(WidgetId::from_hash("edge-trigger"))
+            .unwrap()
             .visible,
         "control: the same fixture with text turns its row visible",
     );
@@ -378,7 +379,7 @@ fn delay_gates_visibility() {
     record_at_secs(&mut h, 0.05, &mut captured);
     h.hover(trigger_id);
     record_at_secs(&mut h, 0.1, &mut captured);
-    let early = *h.state::<TooltipState>(trigger_id);
+    let early = *h.state::<TooltipState>(trigger_id).unwrap();
     assert!(
         !early.visible,
         "tooltip must stay hidden before delay elapses"
@@ -398,7 +399,7 @@ fn delay_gates_visibility() {
         t += 0.1;
         h.hover(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
-        if first_visible.is_none() && h.state::<TooltipState>(trigger_id).visible {
+        if first_visible.is_none() && h.state::<TooltipState>(trigger_id).unwrap().visible {
             first_visible = Some(tick);
         }
     }
@@ -407,14 +408,14 @@ fn delay_gates_visibility() {
         Some(2),
         "the first visible frame is the 0.4 s one"
     );
-    assert!(h.state::<TooltipState>(trigger_id).visible);
+    assert!(h.state::<TooltipState>(trigger_id).unwrap().visible);
     assert_eq!(
         h.ui().tree(Layer::Tooltip).records.len(),
         2,
         "the Tooltip layer holds the bubble and its label",
     );
 
-    h.ui().theme_mut().tooltip.warmup = Duration::ZERO;
+    h.ui_mut().theme_mut().tooltip.warmup = Duration::ZERO;
     t += 0.1;
     h.hover(Vec2::new(350.0, 250.0));
     record_at_secs(&mut h, t, &mut captured);
@@ -463,7 +464,7 @@ fn hover_clears_after_tooltip_visible() {
         h.hover(trigger_id);
         record_at_secs(&mut h, t, &mut captured);
     }
-    let state = *h.state::<TooltipState>(trigger_id);
+    let state = *h.state::<TooltipState>(trigger_id).unwrap();
     assert!(
         state.visible,
         "precondition: tooltip visible while hovering"
@@ -474,7 +475,7 @@ fn hover_clears_after_tooltip_visible() {
     t += 0.1;
     record_at_secs(&mut h, t, &mut captured);
 
-    let state = *h.state::<TooltipState>(trigger_id);
+    let state = *h.state::<TooltipState>(trigger_id).unwrap();
     assert_ne!(
         h.hit_at(away),
         Some(trigger_id),
@@ -533,7 +534,7 @@ fn tooltip_inside_popup_records_without_panic() {
         record_at_secs(&mut h, t, &mut captured);
     }
 
-    let state = *h.state::<TooltipState>(trigger_id);
+    let state = *h.state::<TooltipState>(trigger_id).unwrap();
     assert!(
         state.visible,
         "tooltip on a popup-nested trigger must become visible after the delay (started_at={:?})",
@@ -622,5 +623,5 @@ fn an_authored_min_above_the_themed_max_width_wins() {
             .min_size((300.0, 0.0))
             .show(ui);
     });
-    assert!(h.state::<TooltipState>(trigger_id).visible);
+    assert!(h.state::<TooltipState>(trigger_id).unwrap().visible);
 }

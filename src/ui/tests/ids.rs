@@ -102,7 +102,7 @@ fn duplicate_explicit_widget_ids_are_outlined() {
     let mut h = Harness::mono(UVec2::new(100, 100));
     let button_node = record_duplicate_ids(&mut h).first_node;
     let button_rect = h.ui().layout[Plane::MAIN].rect[button_node.idx()];
-    let outlines = collision_outlines(h.ui_ref());
+    let outlines = collision_outlines(h.ui());
     assert_eq!(outlines.len(), 2, "expected 2 magenta collision outlines");
     let matched = outlines.iter().any(|rect| {
         (rect.min.x - button_rect.min.x).abs() < 1.0
@@ -139,7 +139,7 @@ fn a_collision_under_a_transform_is_outlined_where_it_paints() {
                 }
             });
     });
-    let mut outlines = collision_outlines(h.ui_ref());
+    let mut outlines = collision_outlines(h.ui());
     outlines.sort_by(|a, b| a.min.x.total_cmp(&b.min.x));
     assert_eq!(
         outlines,
@@ -184,7 +184,7 @@ fn cross_layer_duplicate_widget_ids_are_outlined_per_layer() {
     let pair = h.ui().forest.collisions[0];
     let main_rect = h.ui().layout[Plane::MAIN].rect[pair.first.node.idx()];
     let popup_rect = h.ui().layout[Plane::base(Layer::Popup)].rect[pair.second.node.idx()];
-    let outlines = collision_outlines(h.ui_ref());
+    let outlines = collision_outlines(h.ui());
     assert_eq!(
         outlines,
         [main_rect, popup_rect],

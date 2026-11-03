@@ -64,7 +64,7 @@ fn the_theme_popup_slot_is_the_last_resort() {
     ];
     for (label, build, want, padding) in cases {
         let mut h = Harness::mono(SURFACE);
-        let theme = h.ui().theme_mut();
+        let theme = h.ui_mut().theme_mut();
         theme.popup.panel = Chrome::fill(theme_fill);
         theme.popup.padding = theme_padding;
         theme.panel_chrome = Some(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)));

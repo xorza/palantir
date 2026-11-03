@@ -24,8 +24,8 @@ fn scroll_layout_records_viewport_and_content_after_arrange() {
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| build(ui, 200.0, 800.0));
     let id = WidgetId::from_hash("scroll");
-    assert_eq!(scroll_viewport(h.ui_ref(), id).h, 200.0);
-    assert_eq!(scroll_content(h.ui_ref(), id).h, 800.0);
+    assert_eq!(scroll_viewport(h.ui(), id).h, 200.0);
+    assert_eq!(scroll_content(h.ui(), id).h, 800.0);
     assert_eq!(
         read_state(&h).offset(),
         Vec2::ZERO,
@@ -54,7 +54,7 @@ fn explicit_no_clip_overrides_scroll_default() {
         let viewport = h
             .node_of(id.with("viewport"))
             .expect("scroll viewport node");
-        h.ui_ref().tree(viewport.plane.layer).records.attrs()[viewport.node.idx()].clip_mode()
+        h.ui().tree(viewport.plane.layer).records.attrs()[viewport.node.idx()].clip_mode()
     };
     assert_eq!(clip_for(unclipped_id), ClipMode::None);
     assert_eq!(clip_for(clipped_id), ClipMode::Rect);
@@ -77,7 +77,7 @@ fn state_is_swept_when_scroll_disappears() {
         h.ui().state::<ScrollState>(id).is_some(),
         "the scroll stored its row"
     );
-    h.ui().with_state::<ScrollState, _>(id, |_, state| {
+    h.ui_mut().with_state::<ScrollState, _>(id, |_, state| {
         state.set_zoom(2.0);
         state.set_offset(Vec2::new(12.0, 34.0));
     });
@@ -239,7 +239,7 @@ fn scroll_records_content_extent() {
         });
         let scroll_id = WidgetId::from_hash(scroll_key);
         assert_eq!(
-            scroll_content(h.ui_ref(), scroll_id),
+            scroll_content(h.ui(), scroll_id),
             *expected,
             "case: {label} content"
         );
@@ -285,13 +285,13 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
     h.frame(build);
     h.frame(build);
     let scroll_id = WidgetId::from_hash("scroll");
-    let after_first = scroll_content(h.ui_ref(), scroll_id);
-    let viewport_first = scroll_viewport(h.ui_ref(), scroll_id);
+    let after_first = scroll_content(h.ui(), scroll_id);
+    let viewport_first = scroll_viewport(h.ui(), scroll_id);
     assert_eq!(after_first.h, 92.0);
 
     h.engines_mut().layout.forget_last_run();
     h.frame(build);
-    let after_second = scroll_content(h.ui_ref(), scroll_id);
+    let after_second = scroll_content(h.ui(), scroll_id);
     assert!(
         h.engines_mut()
             .layout
@@ -305,7 +305,7 @@ fn scroll_content_is_restored_on_measure_cache_hit() {
         after_second, after_first,
         "scroll content survives a measure-cache hit",
     );
-    assert_eq!(scroll_viewport(h.ui_ref(), scroll_id), viewport_first);
+    assert_eq!(scroll_viewport(h.ui(), scroll_id), viewport_first);
 }
 
 /// A scroll-offset change must bust the cascade skip through the subtree hash.

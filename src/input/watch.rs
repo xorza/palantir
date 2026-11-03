@@ -7,13 +7,13 @@
 flag_set! {
     /// Wake-gate categories, granular so a click watcher doesn't wake on every move.
     pub struct PointerWake: u8 {
-        /// Wakes on [`PointerEvent::Down`](crate::PointerEvent::Down) and [`PointerEvent::Up`](crate::PointerEvent::Up).
+        /// Wakes on [`PointerEvent::Pressed`](crate::PointerEvent::Pressed) and [`PointerEvent::Released`](crate::PointerEvent::Released).
         const BUTTONS = 1 << 0;
-        /// Wakes on [`PointerEvent::Move`](crate::PointerEvent::Move); expensive in event count.
+        /// Wakes on [`PointerEvent::Moved`](crate::PointerEvent::Moved); expensive in event count.
         const MOVE = 1 << 1;
         /// Wakes on [`PointerEvent::Scroll`](crate::PointerEvent::Scroll).
         const SCROLL = 1 << 2;
-        /// Wakes on [`PointerEvent::Zoom`](crate::PointerEvent::Zoom), separate from `SCROLL` like [`Sense::PINCH`](crate::Sense::PINCH).
+        /// Wakes on [`PointerEvent::Pinch`](crate::PointerEvent::Pinch), separate from `SCROLL` like [`Sense::PINCH`](crate::Sense::PINCH).
         const PINCH = 1 << 3;
     }
 }

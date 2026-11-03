@@ -42,7 +42,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_at_200(h.ui_ref(), node.unwrap());
+    assert_wrapped_at_200(h.ui(), node.unwrap());
 }
 
 /// As above for Canvas, also a child-positioner layout.
@@ -58,7 +58,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
                 node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
             });
     });
-    assert_wrapped_at_200(h.ui_ref(), node.unwrap());
+    assert_wrapped_at_200(h.ui(), node.unwrap());
 }
 
 /// A `Hug` ZStack containing a `Fill` child must not recursively size to it; Hug axes keep `INFINITY`.
@@ -83,8 +83,8 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
         });
     });
     let r = h.arranged(WidgetId::from_hash("hug-z"));
-    assert_eq!(r.size.w, 60.0);
-    assert_eq!(r.size.h, 40.0);
+    assert_eq!(r.unwrap().size.w, 60.0);
+    assert_eq!(r.unwrap().size.h, 40.0);
 }
 
 /// A `Hug` grid's Fill column collapses to 0 at arrange; its cells get `INFINITY` width so text stays single-line
@@ -213,7 +213,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                     });
             });
     });
-    let h = h.arranged(WidgetId::from_hash("pg")).size.h;
+    let h = h.arranged(WidgetId::from_hash("pg")).unwrap().size.h;
     // Single-line rows would total two lines; the wrapped rows hold four between them.
     assert_eq!(
         h,
@@ -259,7 +259,11 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     });
             });
     });
-    let h = h.arranged(WidgetId::from_hash("nested-grid")).size.h;
+    let h = h
+        .arranged(WidgetId::from_hash("nested-grid"))
+        .unwrap()
+        .size
+        .h;
     assert_eq!(
         h,
         support::lines_h(2, 14.0),

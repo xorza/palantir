@@ -8,8 +8,8 @@ use std::time::Duration;
 pub struct FrameSummary {
     /// The frame's [`Ui::frame_id`](crate::Ui::frame_id).
     pub frame_id: u64,
-    /// How many events [`HostHandle::send_input`](crate::HostHandle::send_input) delivered to the
-    /// window before this frame. A sender that counts what it sent knows a frame ran after its
+    /// How many events a [`Remote`](crate::Remote) sent through the handle reached the window
+    /// before this frame. A sender that counts what it sent knows a frame ran after its
     /// last event once this reaches the count, whatever frames were already due when it sent.
     /// The count starts at the window's open: a window opened again under the same token counts
     /// from zero.

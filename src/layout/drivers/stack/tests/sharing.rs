@@ -14,7 +14,7 @@ use glam::UVec2;
 const SURFACE: UVec2 = UVec2::new(800, 600);
 
 fn rect(h: &Harness, name: &'static str) -> Rect {
-    h.arranged(WidgetId::from_hash(name))
+    h.arranged(WidgetId::from_hash(name)).unwrap()
 }
 
 fn header(ui: &mut Ui, name: &'static str) {

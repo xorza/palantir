@@ -1,9 +1,11 @@
 //! Window requests a frame queues, and the close veto's one-frame life.
 
+use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
 use crate::ui::tests::support::SURFACE;
 use crate::window::window_commands::WindowCommand;
+use crate::window::window_geometry::WindowGeometry;
 use crate::window::window_placement::WindowPlacement;
 use crate::window::window_token::WindowToken;
 use glam::{IVec2, UVec2};
@@ -51,7 +53,7 @@ fn window_requests_reach_the_host_after_the_frame() {
         physical_pos: Some(IVec2::new(-120, 48)),
         maximized: true,
     };
-    h.ui().window_frame.facts.placement = placed;
+    h.ui_mut().window_frame.facts.placement = placed;
     let geometry = h.ui().window_geometry();
     assert_eq!(
         geometry.inner_size, SURFACE,
@@ -59,13 +61,20 @@ fn window_requests_reach_the_host_after_the_frame() {
     );
     assert_eq!(geometry.placement, placed);
     // A maximized window persists the size it returns to, not the screen it fills.
-    h.ui().window_frame.facts.restored_size = Some(UVec2::new(640, 360));
-    assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(640, 360));
+    h.ui_mut().window_frame.facts.restored_size = Some(UVec2::new(640, 360));
+    let restored = h.ui().window_geometry();
+    assert_eq!(restored.inner_size, UVec2::new(640, 360));
+    let config = WindowConfig::new("restored").with_geometry(restored);
     assert_eq!(
-        WindowConfig::new("restored")
-            .with_placement(geometry.placement)
-            .placement,
-        placed,
+        (config.inner_size, config.placement),
+        (Some(UVec2::new(640, 360)), placed),
+    );
+    assert_eq!(
+        restored,
+        WindowGeometry {
+            inner_size: UVec2::new(640, 360),
+            placement: placed
+        }
     );
 }
 
@@ -82,7 +91,7 @@ fn close_request_veto_protocol() {
     );
 
     // Host signals a close; an app that vetoes keeps the window open.
-    h.ui().window_frame.facts.close_requested = true;
+    h.ui_mut().window_frame.facts.close_requested = true;
     let requested = h.frame_value(|ui| {
         ui.keep_open();
         ui.close_requested()
@@ -98,7 +107,7 @@ fn close_request_veto_protocol() {
     );
 
     // Same signal, app ignores it: a real close.
-    h.ui().window_frame.facts.close_requested = true;
+    h.ui_mut().window_frame.facts.close_requested = true;
     assert!(h.frame_value(|ui| ui.close_requested()));
     assert!(
         matches!(h.window_commands(), [WindowCommand::Close(WindowToken(0))]),
@@ -109,18 +118,23 @@ fn close_request_veto_protocol() {
 /// `window_geometry` answers in the window manager's logical pixels, so a persisted geometry reopens the same window whatever the user scale: a 200×200 surface at dpr 2 is 100×100 to the platform at any scale, while dividing by the product would shrink it 20% per launch at 125%. A restored size takes the same division: 641 × 361 physical px at dpr 2 is 321 × 181, halves rounding up.
 #[test]
 fn window_geometry_reports_the_platform_space_not_the_ui_space() {
-    let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+    let mut h = Harness::builder(SURFACE)
+        .mono()
+        .system_scale(SystemScale::new(2.0).unwrap())
+        .build();
     h.frame(|_| {});
     assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(100, 100));
-    h.ui().window_frame.facts.restored_size = Some(UVec2::new(641, 361));
+    h.ui_mut().window_frame.facts.restored_size = Some(UVec2::new(641, 361));
     assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(321, 181));
-    h.ui().window_frame.facts.restored_size = None;
+    h.ui_mut().window_frame.facts.restored_size = None;
 
     let mut zoomed = Harness::builder(SURFACE)
         .mono()
-        .scale(2.0)
-        .user_scale(UserScale::new(1.25).unwrap())
+        .system_scale(SystemScale::new(2.0).unwrap())
         .build();
+    zoomed
+        .ui_mut()
+        .set_user_scale(UserScale::new(1.25).unwrap());
     zoomed.frame(|_| {});
     assert_eq!(
         zoomed.ui().display().logical_size().w,

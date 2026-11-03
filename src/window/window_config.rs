@@ -1,6 +1,7 @@
 //! The backend-agnostic options a window opens with.
 
 use crate::primitives::paint::image::Image;
+use crate::window::window_geometry::WindowGeometry;
 use crate::window::window_placement::WindowPlacement;
 use glam::{IVec2, UVec2};
 
@@ -56,9 +57,11 @@ impl WindowConfig {
         self
     }
 
-    /// Position and maximized state together, for restoring a persisted [`WindowGeometry::placement`](crate::WindowGeometry).
-    pub const fn with_placement(mut self, placement: WindowPlacement) -> Self {
-        self.placement = placement;
+    /// The size, position and maximized state a persisted [`WindowGeometry`] holds, to open the
+    /// window where it was.
+    pub const fn with_geometry(mut self, geometry: WindowGeometry) -> Self {
+        self.inner_size = Some(geometry.inner_size);
+        self.placement = geometry.placement;
         self
     }
 

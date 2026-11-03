@@ -1,5 +1,6 @@
 //! What the cache retains for the bench's adversarial trees, and which subtrees a localized change still hits.
 
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::internals::cache_fixture::{
     BROAD_DEPTH, BROAD_FANOUT, BroadChange, DEEP_DEPTH, build_broad, build_broad_variant,
@@ -12,7 +13,7 @@ use crate::ui::Ui;
 fn first_frame(build: fn(&mut Ui)) -> Harness {
     let mut h = Harness::builder(glam::UVec2::new(1280, 800))
         .mono()
-        .scale(2.0)
+        .system_scale(SystemScale::new(2.0).unwrap())
         .build();
     let _ = h.frame(build);
     h
@@ -20,7 +21,7 @@ fn first_frame(build: fn(&mut Ui)) -> Harness {
 
 #[test]
 fn adversarial_workloads_retain_one_row_per_node() {
-    let mut deep = first_frame(build_deep);
+    let deep = first_frame(build_deep);
     let deep_nodes = DEEP_DEPTH + 2;
     assert_eq!(
         deep.ui().tree(Layer::Main).records.len(),
@@ -33,7 +34,7 @@ fn adversarial_workloads_retain_one_row_per_node() {
         "deep trees retain one row per node",
     );
 
-    let mut broad = first_frame(build_broad);
+    let broad = first_frame(build_broad);
     let panel_count = (0..=BROAD_DEPTH)
         .map(|depth| BROAD_FANOUT.pow(depth as u32))
         .sum::<usize>();
@@ -60,7 +61,7 @@ fn localized_change_hits_unchanged_sibling_subtrees() {
     for change in [BroadChange::FillWeight, BroadChange::LeafHeight] {
         let mut h = Harness::builder(glam::UVec2::new(1280, 800))
             .mono()
-            .scale(2.0)
+            .system_scale(SystemScale::new(2.0).unwrap())
             .build();
         let _ = h.frame(|ui| build_broad_variant(ui, None));
         let _ = h.frame(|ui| build_broad_variant(ui, Some(change)));

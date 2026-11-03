@@ -57,7 +57,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
 
     fn recorded(theme: SpinnerTheme, diameter: f32, width: Option<f32>) -> Recorded {
         let mut h = Harness::mono(UVec2::new(200, 200));
-        h.ui().theme_mut().spinner = theme;
+        h.ui_mut().theme_mut().spinner = theme;
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let spinner = Spinner::new()
@@ -289,7 +289,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
     assert_eq!(visible.repaint_at, Some(Duration::ZERO));
     assert_eq!(h.ui().tree(Layer::Main).paint_animations.entries.len(), 1);
 
-    h.ui().request_repaint();
+    h.ui_mut().request_repaint();
     let hidden_at = Duration::from_millis(16);
     let hidden = h.at(hidden_at).frame(|ui| {
         show_spinner(ui, Visibility::Hidden);
@@ -305,7 +305,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         "hiding must drop the active animation row",
     );
 
-    h.ui().request_repaint();
+    h.ui_mut().request_repaint();
     let shown_at = Duration::from_millis(32);
     let shown = h.at(shown_at).frame(|ui| {
         show_spinner(ui, Visibility::Visible);

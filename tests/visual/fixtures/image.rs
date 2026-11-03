@@ -25,7 +25,7 @@ const STAR: [u8; 4] = [255, 255, 255, 255];
 const SKY: [u8; 4] = [0, 0, 0, 255];
 
 /// `texels` as one row, loaded into `h`'s host.
-fn load(h: &mut VisualRig, texels: &[[u8; 4]]) -> ImageHandle {
+fn load(h: &VisualRig, texels: &[[u8; 4]]) -> ImageHandle {
     let image = Image::from_srgba8(UVec2::new(texels.len() as u32, 1), texels.concat()).unwrap();
     h.host
         .ui()
@@ -123,7 +123,7 @@ fn image_updates_copy_pixels_and_repaint_every_clone() {
 fn minification_and_magnification_filters_are_independent() {
     use ImageFilter::{Linear, Nearest};
     let mut h = VisualRig::new();
-    let two = load(&mut h, &[RED, BLUE]);
+    let two = load(&h, &[RED, BLUE]);
     let magnified = render(&mut h, UVec2::new(256, 64), |ui| {
         let size = Vec2::new(128.0, 64.0);
         pane(
@@ -151,7 +151,7 @@ fn minification_and_magnification_filters_are_independent() {
     );
     assert_blend(magnified.get_pixel(64, 32).0, "linear magnification seam");
 
-    let four = load(&mut h, &[RED, BLUE, RED, BLUE]);
+    let four = load(&h, &[RED, BLUE, RED, BLUE]);
     let minified = render(&mut h, UVec2::new(4, 16), |ui| {
         let size = Vec2::new(2.0, 16.0);
         pane(
@@ -194,7 +194,7 @@ fn minification_and_magnification_filters_are_independent() {
 fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     use ImageFilter::{Linear, Nearest};
     let mut h = VisualRig::new();
-    let three = load(&mut h, &[RED, BLUE, RED]);
+    let three = load(&h, &[RED, BLUE, RED]);
     let strips = render(&mut h, UVec2::new(200, 32), |ui| {
         let size = Vec2::new(100.0, 32.0);
         pane(
@@ -222,7 +222,7 @@ fn bilinear_both_nearest_and_tiled_sampling_paths_are_pinned() {
     );
     assert_blend(strips.get_pixel(32, 16).0, "bilinear seam");
 
-    let two = load(&mut h, &[RED, BLUE]);
+    let two = load(&h, &[RED, BLUE]);
     let tile = ImageFit::Tile {
         offset: Vec2::ZERO,
         scale: Vec2::new(2.5, 1.0),
@@ -295,7 +295,7 @@ fn downsample_modes_recover_a_texel_the_single_tap_misses() {
     ];
 
     let mut h = VisualRig::new();
-    let source = load(&mut h, &[[STAR, SKY, SKY]; 8].concat());
+    let source = load(&h, &[[STAR, SKY, SKY]; 8].concat());
     let out = render(&mut h, UVec2::new(24, 16), |ui| {
         for (i, (mode, _, _)) in cases.iter().enumerate() {
             let image = Shape::image(source.clone())
@@ -356,7 +356,7 @@ fn downsample_combines_taps_in_premultiplied_space() {
     ];
 
     let mut h = VisualRig::new();
-    let sources = cases.map(|(triple, _, _, _)| load(&mut h, &[triple; 8].concat()));
+    let sources = cases.map(|(triple, _, _, _)| load(&h, &[triple; 8].concat()));
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
         for (i, (_, mode, _, _)) in cases.iter().enumerate() {
             let image = Shape::image(sources[i].clone())
@@ -385,7 +385,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
     const PURE_RED: [u8; 4] = [255, 0, 0, 255];
 
     let mut h = VisualRig::new();
-    let source = load(&mut h, &[PURE_RED, CLEAR]);
+    let source = load(&h, &[PURE_RED, CLEAR]);
     let out = render(&mut h, UVec2::new(16, 16), |ui| {
         pane(
             ui,
@@ -412,7 +412,7 @@ fn a_magnified_transparent_edge_keeps_its_color() {
 #[test]
 fn downsample_taps_wrap_with_the_tile_instead_of_clamping() {
     let mut h = VisualRig::new();
-    let source = load(&mut h, &[STAR, SKY, SKY, SKY]);
+    let source = load(&h, &[STAR, SKY, SKY, SKY]);
     let out = render(&mut h, UVec2::new(8, 16), |ui| {
         let image = Shape::image(source.clone())
             .fit(ImageFit::Tile {
@@ -447,7 +447,7 @@ fn adjacent_same_texture_runs_composite_identically_to_per_draw() {
     const PANE: f32 = 32.0;
 
     let mut h = VisualRig::new();
-    let handles = SOURCES.map(|texel| load(&mut h, &[texel]));
+    let handles = SOURCES.map(|texel| load(&h, &[texel]));
     let out = render(&mut h, UVec2::new(192, 32), |ui| {
         for (pane_idx, &source) in PATTERN.iter().enumerate() {
             let image = filled(&handles[source])

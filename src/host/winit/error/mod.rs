@@ -10,7 +10,7 @@ use winit::error;
 
 /// The event loop has exited, so a [`HostHandle`](crate::HostHandle) can no longer deliver to it.
 ///
-/// Reported only by [`HostHandle::run_on_main`](crate::HostHandle::run_on_main), the one poke carrying **owned work**: a lost send destroys the closure and its state mutation unobservably. `request_repaint` and `quit` carry no payload and stay fire-and-forget.
+/// Reported only by [`HostHandle::run_on_main`](crate::HostHandle::run_on_main), the one poke carrying **owned work**: a lost send destroys the closure and its state mutation unobservably. `quit` carries no payload and stays fire-and-forget.
 ///
 /// Zero-sized; the closure isn't handed back since no `&mut T` remains to run it against.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

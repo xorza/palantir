@@ -61,7 +61,7 @@ fn a_command_chord_types_nothing_it_reports() {
     h.click(h.point_in(WidgetId::from_hash("editor"), Vec2::new(50.0, 20.0)));
     assert_eq!(h.focus(), Some(id));
 
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.on_input(InputEvent::KeyDown {
         key: Key::Char('a'),
         repeat: false,
@@ -194,7 +194,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
 #[test]
 fn pressed_button_under_preserve_policy_keeps_focus() {
     let mut h = Harness::new(WIDE);
-    h.ui().set_focus_policy(FocusPolicy::PreserveOnMiss);
+    h.ui_mut().set_focus_policy(FocusPolicy::PreserveOnMiss);
     let mut buf = String::new();
 
     h.frame(Field::EDITOR.with_button().scene(&mut buf));
@@ -290,16 +290,17 @@ fn drag_select_continues_past_editor_bounds() {
         PointerButton::Left,
     );
     h.frame(|ui| body(ui, &mut buf));
-    let anchor = h.state::<TextEditState>(ed_id).edit.caret;
+    let anchor = h.state::<TextEditState>(ed_id).unwrap().edit.caret;
     assert!(
         anchor > 0 && anchor < buf.len(),
         "press should land mid-text (room to extend both ways), got {anchor}",
     );
     {
         let st = h.state::<TextEditState>(ed_id);
-        assert_eq!(st.edit.drag_anchor, Some(anchor));
+        assert_eq!(st.unwrap().edit.drag_anchor, Some(anchor));
         assert_eq!(
-            st.edit.selection, None,
+            st.unwrap().edit.selection,
+            None,
             "a single press selects nothing yet"
         );
     }
@@ -309,17 +310,17 @@ fn drag_select_continues_past_editor_bounds() {
     {
         let st = h.state::<TextEditState>(ed_id);
         assert_eq!(
-            st.edit.caret,
+            st.unwrap().edit.caret,
             buf.len(),
             "caret rides to the clamped end past the right edge"
         );
         assert_eq!(
-            st.edit.selection,
+            st.unwrap().edit.selection,
             Some(anchor),
             "selection extends from the anchor — not lost"
         );
         assert_eq!(
-            st.edit.drag_anchor,
+            st.unwrap().edit.drag_anchor,
             Some(anchor),
             "anchor survives the out-of-bounds drag"
         );
@@ -329,9 +330,13 @@ fn drag_select_continues_past_editor_bounds() {
     h.frame(|ui| body(ui, &mut buf));
     {
         let st = h.state::<TextEditState>(ed_id);
-        assert_eq!(st.edit.caret, 0, "caret clamps to 0 past the left edge");
         assert_eq!(
-            st.edit.selection,
+            st.unwrap().edit.caret,
+            0,
+            "caret clamps to 0 past the left edge"
+        );
+        assert_eq!(
+            st.unwrap().edit.selection,
             Some(anchor),
             "still selected — the anchor held"
         );
@@ -342,12 +347,12 @@ fn drag_select_continues_past_editor_bounds() {
     {
         let st = h.state::<TextEditState>(ed_id);
         assert_eq!(
-            st.edit.selection,
+            st.unwrap().edit.selection,
             Some(anchor),
             "off-surface must not drop the selection"
         );
         assert_eq!(
-            st.edit.drag_anchor,
+            st.unwrap().edit.drag_anchor,
             Some(anchor),
             "off-surface must not drop the anchor"
         );
@@ -358,11 +363,15 @@ fn drag_select_continues_past_editor_bounds() {
     {
         let st = h.state::<TextEditState>(ed_id);
         assert_eq!(
-            st.edit.selection,
+            st.unwrap().edit.selection,
             Some(anchor),
             "selection survives release"
         );
-        assert_eq!(st.edit.drag_anchor, None, "release clears the drag anchor");
+        assert_eq!(
+            st.unwrap().edit.drag_anchor,
+            None,
+            "release clears the drag anchor"
+        );
     }
 }
 
@@ -434,12 +443,12 @@ fn select_all_on_focus_gates_on_the_flag() {
     {
         let st = h.state::<TextEditState>(on_id);
         assert_eq!(
-            st.edit.selection,
+            st.unwrap().edit.selection,
             Some(0),
             "flag on: focus selects from the start"
         );
         assert_eq!(
-            st.edit.caret,
+            st.unwrap().edit.caret,
             "1.985".len(),
             "flag on: ...to the end of the buffer"
         );
@@ -448,14 +457,14 @@ fn select_all_on_focus_gates_on_the_flag() {
     h.set_focus(off_id);
     h.frame(|ui| render(ui, &mut on, &mut off));
     assert_eq!(
-        h.state::<TextEditState>(off_id).edit.selection,
+        h.state::<TextEditState>(off_id).unwrap().edit.selection,
         None,
         "flag off: focus leaves the selection untouched"
     );
 
     // A click past the text: the press puts a bare caret at the end, the release selects all.
     let selection = |h: &Harness| {
-        let st = &h.state::<TextEditState>(on_id).edit;
+        let st = &h.state::<TextEditState>(on_id).unwrap().edit;
         (st.selection, st.caret)
     };
     h.press(
@@ -530,7 +539,7 @@ fn select_all_on_focus_gates_on_the_flag() {
     h.click(h.point_in(off_id, Vec2::new(110.0, 20.0)));
     h.frame(|ui| render(ui, &mut on, &mut off));
     h.frame(|ui| render(ui, &mut on, &mut off));
-    let st = &h.state::<TextEditState>(off_id).edit;
+    let st = &h.state::<TextEditState>(off_id).unwrap().edit;
     assert_eq!(
         (st.selection, st.caret),
         (None, 4),
@@ -562,7 +571,7 @@ fn caret_click_is_scale_invariant_under_zoom() {
         h.frame(|ui| render(ui, &mut buf));
         h.press(h.point_in(id, Vec2::new(80.0, 20.0)), PointerButton::Left);
         h.frame(|ui| render(ui, &mut buf));
-        h.state::<TextEditState>(id).edit.caret
+        h.state::<TextEditState>(id).unwrap().edit.caret
     }
 
     let full = caret_at_scale(1.0);
@@ -641,21 +650,21 @@ fn a_tap_places_the_caret() {
     h.set_focus(ed_id);
     h.key(Key::End);
     h.frame(Field::PADDED.scene(&mut buf));
-    assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 5);
+    assert_eq!(h.state::<TextEditState>(ed_id).unwrap().edit.caret, 5);
 
     // Mono, 8 px per char: x = inner.min + 14 is 1.75 glyphs in, so caret 2.
     let rect = h.arranged(ed_id);
     let inner_left = h.ui().theme().text_edit.defaults.padding.to_array()[0];
-    let mid = rect.size.h * 0.5;
+    let mid = rect.unwrap().size.h * 0.5;
     h.click(h.point_in(ed_id, Vec2::new(inner_left + 14.0, mid)));
     h.frame(Field::PADDED.scene(&mut buf));
-    assert_eq!(h.state::<TextEditState>(ed_id).edit.caret, 2);
+    assert_eq!(h.state::<TextEditState>(ed_id).unwrap().edit.caret, 2);
 
     // Shift held, a tap at inner.min + 30 extends from 2: selection 2..4.
-    h.set_modifiers(Modifiers::SHIFT);
+    h.hold_modifiers(Modifiers::SHIFT);
     h.click(h.point_in(ed_id, Vec2::new(inner_left + 30.0, mid)));
     h.frame(Field::PADDED.scene(&mut buf));
-    let edit = &h.state::<TextEditState>(ed_id).edit;
+    let edit = &h.state::<TextEditState>(ed_id).unwrap().edit;
     assert_eq!(
         (edit.selection, edit.caret),
         (Some(2), 4),

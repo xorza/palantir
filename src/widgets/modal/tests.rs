@@ -261,7 +261,7 @@ fn an_authored_max_below_the_themed_min_width_wins() {
             .show(ui, |_, _| {});
     });
     let panel = h.arranged(root_id.with("panel"));
-    assert_eq!(panel.size.w, 240.0);
+    assert_eq!(panel.unwrap().size.w, 240.0);
 }
 
 /// `opened` marks the first frame an overlay shows: a modal's and a popup's, again after a frame

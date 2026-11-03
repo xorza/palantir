@@ -150,10 +150,7 @@ fn the_clear_a_pane_shows_is_the_one_the_target_holds() {
     let float = RgbaF32::from(CLEAR.to_f16());
     assert_ne!(float.r, byte.r, "the byte rounds the clear");
     assert_eq!(
-        held_clear(
-            CLEAR.to_f16(),
-            TargetFormat::new(wgpu::TextureFormat::Rgba16Float)
-        ),
+        held_clear(CLEAR.to_f16(), TargetFormat::RGBA16_FLOAT),
         [float.r, float.g, float.b]
     );
 }

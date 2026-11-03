@@ -112,14 +112,14 @@ fn shift(key: Key) -> KeyPress {
     KeyPress::with(key, Modifiers::SHIFT)
 }
 
-/// Primary-modifier + key, the chord for select-all / copy / cut / paste. `Modifiers::ctrl` is the platform command bit (Cmd on macOS).
+/// Primary-modifier + key, the chord for select-all / copy / cut / paste. `Modifiers::CTRL` is the platform command bit (Cmd on macOS).
 fn ctrl_press(key: Key) -> KeyPress {
     KeyPress::with(key, Modifiers::CTRL)
 }
 
 fn ctrl_shift_press(key: Key) -> KeyPress {
     let mut kp = ctrl_press(key);
-    kp.mods.shift = true;
+    kp.mods.insert(Modifiers::SHIFT);
     kp
 }
 

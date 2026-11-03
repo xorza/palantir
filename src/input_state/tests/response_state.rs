@@ -359,8 +359,8 @@ fn quiescent_and_full_paths_agree_on_geometry() {
 
     let at = h.ui().cascade().locate(focusable_id());
     let frame = ArrangedFrame {
-        cascade: h.ui_ref().cascade(),
-        layout: h.ui_ref().layout_tables(),
+        cascade: h.ui().cascade(),
+        layout: h.ui().layout_tables(),
     };
     s.frame_quiescent = true;
     let quiet = s.response_for(focusable_id(), at, frame);

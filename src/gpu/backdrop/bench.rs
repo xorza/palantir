@@ -17,6 +17,7 @@ use crate::bench::backends::{Backend, Backends};
 use crate::bench::case_group::CaseGroup;
 use crate::bench::fixture;
 use crate::bench::kind::{Kind, Scale};
+use crate::display::system_scale::SystemScale;
 use crate::gpu::bench_gpu::{BenchGpu, Timing};
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::host::harness::Harness;
@@ -109,13 +110,13 @@ impl WholeFrames {
     /// One frame of `record` on `target`, under a clear unlike the last one's, waited for.
     fn frame(&mut self, gpu: &BenchGpu, target: &OwnedTarget, record: impl FnMut(&mut Ui)) {
         self.odd = !self.odd;
-        self.host.ui().theme_mut().window_clear = if self.odd {
+        self.host.ui_mut().theme_mut().window_clear = if self.odd {
             RgbaF32::BLACK
         } else {
             RgbaF32::srgb(0.0, 0.0, 0.01)
         };
         let mut app = record;
-        let paint = self.host.frame(target.as_target(), 1.0, &mut app).paint();
+        let paint = self.host.frame(target.as_target(), &mut app).paint();
         assert_eq!(
             paint,
             FramePaint::Full,
@@ -139,7 +140,7 @@ fn capture(c: &mut Criterion, backends: &Backends, backend: Backend) {
             let mut frame = || {
                 state.scroll = (state.scroll + 1.0) % 64.0;
                 frames.frame(gpu, &target, |ui| state.record(ui));
-                let times = frames.host.gpu_pass_stats().last_backdrops();
+                let times = frames.host.ui().gpu_pass_stats().last_backdrops();
                 times.captures.map(Duration::from_nanos)
             };
             fixture::settle_timestamps(&mut frame);
@@ -247,7 +248,7 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                     assert_eq!(host.last_render_buffer().backdrops.len(), 1, "one pane");
                     // The main pass spans the pane's capture and blur, which `backdrop_capture`
                     // and `backdrop_blur` time.
-                    let stats = host.gpu_pass_stats();
+                    let stats = host.ui().gpu_pass_stats();
                     let backdrop = stats.last_backdrops();
                     let between = backdrop.captures? + backdrop.blurs?;
                     Some(stats.last_pass()? - Duration::from_nanos(between))
@@ -303,7 +304,7 @@ impl Arm {
     /// The paint a settled frame of `look` plans, and on the device the blurs it runs. A slide
     /// keeps its capture only on a lattice coarser than a pixel, which glass's light blur is not.
     fn expected(self, look: Look) -> (FramePaint, usize) {
-        let sigma = look.backdrop(FRAME_SIGMA).0.blur * FRAME_DPR;
+        let sigma = look.backdrop(FRAME_SIGMA).0.blur * FRAME_DPR.get();
         let slides_inside = BlurPlan::new(sigma).lattice() > 1;
         match self {
             Self::Cached => (FramePaint::Skip, 0),
@@ -318,7 +319,7 @@ impl Arm {
 
 /// The surface of `integration/backdrop_frame`, a 1280 × 720 window at 2×.
 const FRAME_SURFACE: UVec2 = UVec2::new(2560, 1440);
-const FRAME_DPR: f32 = 2.0;
+const FRAME_DPR: SystemScale = SystemScale::new(2.0).unwrap();
 /// The frame bench's σ in logical px, where a look blurs at its own.
 const FRAME_SIGMA: f32 = 16.0;
 const TOOLBAR: Rect = Rect::new(0.0, 0.0, 1280.0, 48.0);
@@ -402,7 +403,7 @@ pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
                 group.bench_function(case, |bencher| match backend {
                     Backend::Cpu => {
                         let mut h = Harness::builder(FRAME_SURFACE)
-                            .scale(FRAME_DPR)
+                            .system_scale(FRAME_DPR)
                             .depth(Depth::Compose)
                             .build();
                         let start = Instant::now();
@@ -441,7 +442,10 @@ fn pane_frames(bencher: &mut Bencher<'_>, backends: &Backends, look: Look, arm: 
     let mut frame = || {
         state.n += 1;
         let mut app = |ui: &mut Ui| state.record(look, arm, ui);
-        let paint = host.frame(target.as_target(), FRAME_DPR, &mut app).paint();
+        let paint = host
+            .set_system_scale(FRAME_DPR)
+            .frame(target.as_target(), &mut app)
+            .paint();
         gpu.wait();
         (paint, host.backdrop_blurs())
     };
@@ -675,7 +679,10 @@ fn scenes(group: &mut CaseGroup<'_>, backends: &Backends, backend: Backend) {
             let mut frame = || {
                 n += 1;
                 let mut app = |ui: &mut Ui| (scene.record)(&mut fixture, n, ui);
-                let paint = host.frame(target.as_target(), FRAME_DPR, &mut app).paint();
+                let paint = host
+                    .set_system_scale(FRAME_DPR)
+                    .frame(target.as_target(), &mut app)
+                    .paint();
                 gpu.wait();
                 (paint, host.backdrop_blurs())
             };

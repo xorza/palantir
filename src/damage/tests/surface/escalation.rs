@@ -3,7 +3,7 @@
 use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, frame_without_baseline, one_frame};
-use crate::display::Display;
+use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -21,46 +21,27 @@ use glam::UVec2;
 /// and a partial paint over it would leave the rest clear color.
 #[test]
 fn display_change_forces_full_repaint() {
-    let cases: &[(&str, Display)] = &[
-        (
-            "resize_1px",
-            Display {
-                physical: UVec2::new(199, 200),
-                ..DISPLAY
-            },
-        ),
-        (
-            "system_scale",
-            Display {
-                system_scale: 2.0,
-                ..DISPLAY
-            },
-        ),
+    type Move = fn(&mut Harness);
+    let cases: [(&str, Move); 5] = [
+        ("resize_1px", |h| {
+            h.resize(UVec2::new(199, 200));
+        }),
+        ("system_scale", |h| {
+            h.set_system_scale(SystemScale::new(2.0).unwrap());
+        }),
         // The user scale rasterizes like the system one and can move alone.
-        (
-            "user_scale",
-            Display {
-                user_scale: UserScale::new(1.25).unwrap(),
-                ..DISPLAY
-            },
-        ),
+        ("user_scale", |h| {
+            h.ui_mut().set_user_scale(UserScale::new(1.25).unwrap());
+        }),
         // A DPI-monitor move leaves `logical_rect` identical, yet the swapchain
         // reconfigures; comparing logical rects alone gave Skip and stale content.
-        (
-            "dpi_move_constant_logical",
-            Display {
-                physical: UVec2::new(400, 400),
-                system_scale: 2.0,
-                ..DISPLAY
-            },
-        ),
-        (
-            "pixel_snap_flip",
-            Display {
-                pixel_snap: false,
-                ..DISPLAY
-            },
-        ),
+        ("dpi_move_constant_logical", |h| {
+            h.resize(UVec2::new(400, 400))
+                .set_system_scale(SystemScale::new(2.0).unwrap());
+        }),
+        ("pixel_snap_flip", |h| {
+            h.set_pixel_snap(false);
+        }),
     ];
     for (label, mutated) in cases {
         let mut h = Harness::mono(DISPLAY.physical);
@@ -76,7 +57,8 @@ fn display_change_forces_full_repaint() {
             h.engines_mut().damage.counters.dirty().is_empty(),
             "case: {label} steady"
         );
-        let mutated_plan = frame(h.set_display(*mutated), &mut build);
+        mutated(&mut h);
+        let mutated_plan = frame(&mut h, &mut build);
         assert!(
             matches!(mutated_plan, Some(Damage::Full)),
             "case: {label} display change"
@@ -186,7 +168,7 @@ fn a_new_clear_color_forces_full_damage() {
         "premise: an unchanged scene skips",
     );
 
-    h.ui().theme_mut().window_clear = RED;
+    h.ui_mut().theme_mut().window_clear = RED;
     assert_eq!(
         h.frame(|ui| one_frame(ui, BLUE)).plan,
         Some(RenderPlan {

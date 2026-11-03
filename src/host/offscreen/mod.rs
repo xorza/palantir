@@ -4,8 +4,7 @@
 //!
 //! Every rejection is a caller mistake, so `frame` panics rather than returning a `Result`.
 
-use crate::diagnostics::gpu_pass_stats::GpuPassStats;
-use crate::display;
+use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::render_target::RenderTarget;
@@ -36,6 +35,10 @@ pub struct OffscreenHost {
     time: HostTime,
     /// The wakes the window's [`Waker`](crate::Waker) sends, which the next frame takes.
     wake: Arc<WakeSignal>,
+    system_scale: SystemScale,
+    refresh_millihertz: Option<u32>,
+    /// The windows the last frame opened or closed, which this host records and applies none of.
+    window_commands: WindowCommands,
 }
 
 /// What an [`OffscreenHost`]'s frames and input are stamped with.
@@ -84,6 +87,8 @@ pub struct OffscreenHostBuilder {
     options: HostOptions,
     strategy: PresentStrategy,
     time: OffscreenTime,
+    system_scale: SystemScale,
+    refresh_millihertz: Option<u32>,
 }
 
 impl OffscreenHostBuilder {
@@ -128,6 +133,22 @@ impl OffscreenHostBuilder {
         self
     }
 
+    /// Physical pixels per logical pixel, standing in for the platform's device pixel ratio;
+    /// [`SystemScale::ONE`] by default. The app's own scale goes on top through
+    /// [`Ui::set_user_scale`](crate::Ui::set_user_scale); the host's
+    /// [`set_system_scale`](OffscreenHost::set_system_scale) changes this one later.
+    pub const fn system_scale(mut self, scale: SystemScale) -> Self {
+        self.system_scale = scale;
+        self
+    }
+
+    /// The display's refresh rate, which repaint wakes coalesce to; none by default. The host's
+    /// [`set_refresh_millihertz`](OffscreenHost::set_refresh_millihertz) changes it later.
+    pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
+        self.refresh_millihertz = Some(millihertz);
+        self
+    }
+
     /// Whether axis-aligned paint edges snap to physical pixels.
     pub const fn pixel_snap(mut self, pixel_snap: bool) -> Self {
         self.options.pixel_snap = pixel_snap;
@@ -165,6 +186,9 @@ impl OffscreenHostBuilder {
             driver,
             time,
             wake,
+            system_scale: self.system_scale,
+            refresh_millihertz: self.refresh_millihertz,
+            window_commands: WindowCommands::default(),
         }
     }
 }
@@ -180,11 +204,18 @@ impl OffscreenHost {
             options: HostOptions::new(FontScope::Bundled),
             strategy: PresentStrategy::BackbufferCopy,
             time: OffscreenTime::Realtime,
+            system_scale: SystemScale::ONE,
+            refresh_millihertz: None,
         }
     }
 
-    /// Mutable access to the window's `Ui`.
-    pub const fn ui(&mut self) -> &mut Ui {
+    /// The window's `Ui`, for what no method here reads.
+    pub const fn ui(&self) -> &Ui {
+        &self.driver.ui
+    }
+
+    /// The window's `Ui`, to change what no method here changes.
+    pub const fn ui_mut(&mut self) -> &mut Ui {
         &mut self.driver.ui
     }
 
@@ -240,6 +271,13 @@ impl OffscreenHost {
         self.core.wait_for_gpu(&self.driver)
     }
 
+    /// The windows the last frame opened or closed with [`Ui::open_window`] and
+    /// [`Ui::close_window`], in the order called: this host has one window and opens or closes
+    /// none, so an app that drives other windows reads them here.
+    pub fn window_commands(&self) -> &[WindowCommand] {
+        self.window_commands.as_slice()
+    }
+
     /// Whether the device this host draws with is lost: a GPU reset, a driver update or a removed
     /// GPU took it. [`Self::frame`] then runs the app and paints nothing, leaving the target as it
     /// is, until the app gives the host a new device through [`Self::recover`].
@@ -266,50 +304,50 @@ impl OffscreenHost {
         self.core.attach(gpu, [&mut self.driver]);
     }
 
+    /// Report `scale` physical pixels per logical pixel from the next frame on, standing in for
+    /// the platform's device pixel ratio, as a move to a monitor of another density changes it.
+    pub const fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self {
+        self.system_scale = scale;
+        self
+    }
+
+    /// Report the display's refresh rate, which repaint wakes coalesce to, from the next frame
+    /// on; `None` reports none.
+    pub const fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
+        self.refresh_millihertz = millihertz;
+        self
+    }
+
     /// Runs one offscreen application frame against `target`, filling it even when the UI is unchanged. The target may change between calls, unless the builder promised [`OffscreenHostBuilder::retained_target`], whose one target keeps what a still frame leaves in it. [`Self::WINDOW`] goes to [`App::update`] and [`App::record`], with the semantics of [`crate::WinitHost`]. On a lost device it paints nothing ([`Self::is_device_lost`]).
     ///
-    /// `system_scale` stands in for the platform's device pixel ratio; the app's scale multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200% render).
-    ///
-    /// # Panics
-    ///
-    /// Panics if `system_scale` is non-finite or below `1e-4`, or if the frame recorded [`Ui::open_window`] / [`Ui::close_window`].
-    pub fn frame(
-        &mut self,
-        target: RenderTarget<'_>,
-        system_scale: f32,
-        app: &mut impl App,
-    ) -> FrameReport {
+    /// The frame runs at the host's [system scale](Self::set_system_scale); the app's scale
+    /// multiplies onto it (use [`Ui::set_user_scale`](crate::Ui::set_user_scale) for a 200%
+    /// render).
+    pub fn frame(&mut self, target: RenderTarget<'_>, app: &mut impl App) -> FrameReport {
         if self.wake.take() {
             self.driver.ui.request_repaint();
         }
-        let spec = self.spec(target, system_scale);
+        let spec = self.spec(target);
         let CpuFrame { report, mode } =
             self.core
                 .record(&mut self.driver, spec, app, FrameDepth::Paint);
-        // Before submitting, so the failure leaves the target untouched.
-        deny_window_commands(&mut self.driver);
+        record_window_commands(&mut self.driver, &mut self.window_commands);
         if !self.is_device_lost() {
             self.core.submit(&mut self.driver, target, mode);
         }
         report
     }
 
-    /// The frame a texture target describes, at `system_scale` and the host's time.
-    #[track_caller]
-    fn spec(&self, target: RenderTarget<'_>, system_scale: f32) -> FrameSpec {
+    /// The frame a texture target describes, at the host's scale, refresh rate and time.
+    fn spec(&self, target: RenderTarget<'_>) -> FrameSpec {
         FrameSpec {
             physical: target.size(),
             format: target.format(),
             gives_copy: target.gives_copy(),
-            system_scale: display::scale_factor(system_scale),
-            refresh_millihertz: None,
+            system_scale: self.system_scale,
+            refresh_millihertz: self.refresh_millihertz,
             now: self.time.now(),
         }
-    }
-
-    /// Handle to the window's most recent GPU instrumentation sample, as the debug overlay reads.
-    pub const fn gpu_pass_stats(&self) -> &GpuPassStats {
-        self.driver.ui.gpu_pass_stats()
     }
 }
 
@@ -322,30 +360,12 @@ pub(super) fn assert_runs_palantir(gpu: &Gpu) {
     }
 }
 
-/// Drain a frame's window output on a host with no window lifecycle. Levels (cursor, vsync) stay
-/// with the recorder and are inert here; commands (open, close) mean nothing unserviced, so they
-/// are a caller error.
-///
-/// # Panics
-///
-/// Panics if the frame recorded any window open or close request.
-fn deny_window_commands(driver: &mut WindowDriver) {
-    // Empty by contract, so the drain's `append` moves nothing and nothing allocates.
-    let mut denied = WindowCommands::default();
-    driver.drain_window_output(&mut denied);
-    match denied.first() {
-        None => {}
-        Some(WindowCommand::Open { token, .. }) => panic!(
-            "Ui::open_window({token:?}) during an offscreen frame: the offscreen \
-             host drives one window and has no window lifecycle — use \
-             WinitHost if the app needs to open windows"
-        ),
-        Some(WindowCommand::Close(token)) => panic!(
-            "Ui::close_window({token:?}) during an offscreen frame: the offscreen \
-             host drives one window and has no window lifecycle — drop the \
-             host to release it"
-        ),
-    }
+/// Drain a frame's window output into `commands` on a host with no window lifecycle, which keeps
+/// one frame's: levels (cursor, vsync) stay with the recorder and are inert here, and the opens
+/// and closes are kept for the app to read, as a harness keeps them.
+fn record_window_commands(driver: &mut WindowDriver, commands: &mut WindowCommands) {
+    commands.clear();
+    driver.drain_window_output(commands);
 }
 
 /// Peepholes for the visual suite and the benches.

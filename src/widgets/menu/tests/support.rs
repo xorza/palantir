@@ -17,7 +17,7 @@ pub(super) fn trigger_id() -> WidgetId {
 pub(super) fn menu_body(h: &Harness, for_id: WidgetId) -> NodeId {
     let body_id = Menu::menu_id(for_id);
     let idx = h
-        .ui_ref()
+        .ui()
         .tree(Layer::Menu)
         .records
         .widget_id()
@@ -37,11 +37,11 @@ pub(super) struct MenuRow {
 /// The open menu's direct children in record order (separators included) with their arranged rects; `subtree_end` skips a row's own label and shortcut leaves.
 pub(super) fn menu_rows(h: &Harness, for_id: WidgetId) -> Vec<MenuRow> {
     let body = menu_body(h, for_id).idx();
-    let tree = h.ui_ref().tree(Layer::Menu);
+    let tree = h.ui().tree(Layer::Menu);
     let ends = tree.records.subtree_end();
     let body_end = ends[body].end() as usize;
     let ids = tree.records.widget_id();
-    let rects = &h.ui_ref().layout(Layer::Menu).rect;
+    let rects = &h.ui().layout(Layer::Menu).rect;
     let mut rows = Vec::new();
     let mut i = body + 1;
     while i < body_end {

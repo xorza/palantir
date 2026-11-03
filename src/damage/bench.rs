@@ -8,6 +8,7 @@ use crate::damage::Damage;
 use crate::damage::dirty_panes::DirtyPanes;
 use crate::damage::pane_walk::PaneWalk;
 use crate::damage::region::DamageRegion;
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::pane_key::PaneKey;
@@ -133,7 +134,10 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
 
     // Skip path: nothing dirty; non-painting rows, so the diff walks every painting leaf.
     group.bench_function(Backend::Cpu.case("skip"), |b| {
-        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+        let mut h = Harness::builder(SURFACE)
+            .mono()
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         warm_and_assert(
             &mut h,
             |ui| build_hot(ui, None, &[], cold),
@@ -148,7 +152,10 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
 
     // Skip path with painting rows: the subtree-skip fires at every row; compare against `skip` to isolate its win.
     group.bench_function(Backend::Cpu.case("skip_painted_rows"), |b| {
-        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+        let mut h = Harness::builder(SURFACE)
+            .mono()
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         warm_and_assert(
             &mut h,
             |ui| build_hot(ui, Some(ROW_BG), &[], cold),
@@ -166,7 +173,10 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
     });
 
     group.bench_function(Backend::Cpu.case("single_button_change"), |b| {
-        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+        let mut h = Harness::builder(SURFACE)
+            .mono()
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         let cell = [42usize];
         warm_and_assert(
             &mut h,
@@ -185,7 +195,10 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
 
     // Partial multi-rect: two distant cells flip; the LVGL merge rule rejects (huge bbox waste), driving the multi-pass path.
     group.bench_function(Backend::Cpu.case("two_corner_change"), |b| {
-        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+        let mut h = Harness::builder(SURFACE)
+            .mono()
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
             &mut h,
@@ -204,7 +217,10 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
     });
 
     group.bench_function(Backend::Cpu.case("full_repaint"), |b| {
-        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+        let mut h = Harness::builder(SURFACE)
+            .mono()
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         let varying = |frame_n: u32| {
             move |ui: &mut Ui| {
                 build_grid(ui, None, |i| {
@@ -284,7 +300,10 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             }
         };
 
-        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+        let mut h = Harness::builder(SURFACE)
+            .mono()
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         let settled = warm_until_arena_settles(&mut h, build, 0);
         assert!(
             settled.entries >= CANVASES * (STABLE_COUNT as usize - 1),
@@ -323,7 +342,10 @@ fn bench_workloads(group: &mut CaseGroup<'_>) {
             }
         };
 
-        let mut h = Harness::builder(SURFACE).mono().scale(2.0).build();
+        let mut h = Harness::builder(SURFACE)
+            .mono()
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         let settled = warm_until_arena_settles(&mut h, build, 0);
         assert!(
             settled.entries >= CANVASES * BASE_SHAPES as usize,

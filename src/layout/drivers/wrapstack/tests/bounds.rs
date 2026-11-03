@@ -68,7 +68,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
         let wrap_right = wrap_rect.min.x + wrap_rect.size.w;
         for label in LABELS {
             let r = h.arranged(WidgetId::from_hash(label));
-            let right = r.min.x + r.size.w;
+            let right = r.unwrap().min.x + r.unwrap().size.w;
             assert!(
                 right <= wrap_right,
                 "button overflows wrapstack at surface_w={surface_w}: \
@@ -177,14 +177,14 @@ fn wrap_vstack_wraps_against_a_main_bound_wherever_it_lives() {
             let col = (i / 2) as f32;
             let row = (i % 2) as f32;
             assert_eq!(
-                h.arranged(WidgetId::from_hash(("f", i))).min,
+                h.arranged(WidgetId::from_hash(("f", i))).unwrap().min,
                 Vec2::new(col * 62.0, case.header + row * 50.0),
                 "{}: cell {i}",
                 case.name,
             );
         }
         assert_eq!(
-            h.arranged(WidgetId::from_hash("wrap")).max().y,
+            h.arranged(WidgetId::from_hash("wrap")).unwrap().max().y,
             case.header + 90.0,
             "{}",
             case.name,
@@ -225,12 +225,15 @@ fn a_fill_wrap_under_a_header_wraps_against_what_is_left() {
     });
     for i in 0..5u32 {
         assert_eq!(
-            h.arranged(WidgetId::from_hash(("f", i))).min,
+            h.arranged(WidgetId::from_hash(("f", i))).unwrap().min,
             Vec2::new(i as f32 * 62.0, 15.0),
             "cell {i}"
         );
     }
-    assert_eq!(h.arranged(WidgetId::from_hash("wrap")).max().y, 55.0);
+    assert_eq!(
+        h.arranged(WidgetId::from_hash("wrap")).unwrap().max().y,
+        55.0
+    );
 }
 
 /// A Hug wrap offered less height than its lines keeps every line (floor = tallest child per line plus line gaps) and overflows its parent. Five 40 × 20 blocks, 10 px gap, 100 px width: lines of 2, 2, 1, so 3 × 20 + 2 × 5 = 70 in a 30 px parent.
@@ -257,9 +260,15 @@ fn a_hug_wrap_stack_keeps_its_lines_under_a_short_parent() {
                     });
             });
     });
-    assert_eq!(h.arranged(WidgetId::from_hash("wrap")).size.h, 70.0);
     assert_eq!(
-        h.arranged(WidgetId::from_hash(("item", 4u32))).min.y,
+        h.arranged(WidgetId::from_hash("wrap")).unwrap().size.h,
+        70.0
+    );
+    assert_eq!(
+        h.arranged(WidgetId::from_hash(("item", 4u32)))
+            .unwrap()
+            .min
+            .y,
         50.0,
         "the third line starts below two lines and two gaps"
     );

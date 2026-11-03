@@ -10,7 +10,7 @@ use image::RgbaImage;
 use palantir::internals::{HeadlessTestGpuLease, OwnedTarget, TargetSpec, headless_test_gpu};
 use palantir::{
     ColorScheme, DebugOverlayConfig, FramePaint, OffscreenHost, OffscreenTime, Palette, RgbaF32,
-    SchemePreference, TextShaper, Ui,
+    SchemePreference, SystemScale, TextShaper, Ui,
 };
 
 use crate::fixtures::DARK_BG;
@@ -51,7 +51,7 @@ pub(crate) struct VisualRig {
     target_usages: wgpu::TextureUsages,
     /// Unset until [`Self::size`]: no surface is right for every fixture.
     physical: Option<UVec2>,
-    scale: f32,
+    scale: SystemScale,
     clear: RgbaF32,
     format: wgpu::TextureFormat,
 }
@@ -75,9 +75,9 @@ impl VisualRig {
             .time(OffscreenTime::Manual)
             .build();
         // Pinned, so neither the system's report nor `SchemePreference::FALLBACK` picks the scheme.
-        host.ui().set_scheme_preference(SchemePreference::Dark);
+        host.ui_mut().set_scheme_preference(SchemePreference::Dark);
         for scheme in [ColorScheme::Dark, ColorScheme::Light] {
-            host.ui().set_theme_for(scheme, theme::fixture(scheme));
+            host.ui_mut().set_theme_for(scheme, theme::fixture(scheme));
         }
 
         Self {
@@ -85,7 +85,7 @@ impl VisualRig {
             gpu,
             target_usages: OwnedTarget::USAGES,
             physical: None,
-            scale: 1.0,
+            scale: SystemScale::ONE,
             clear: DARK_BG,
             format: FORMAT,
         }
@@ -102,7 +102,7 @@ impl VisualRig {
         self
     }
 
-    pub(crate) const fn scale(&mut self, scale: f32) -> &mut Self {
+    pub(crate) const fn scale(&mut self, scale: SystemScale) -> &mut Self {
         self.scale = scale;
         self
     }
@@ -124,13 +124,13 @@ impl VisualRig {
             ColorScheme::Dark => SchemePreference::Dark,
             ColorScheme::Light => SchemePreference::Light,
         };
-        self.host.ui().set_scheme_preference(preference);
+        self.host.ui_mut().set_scheme_preference(preference);
         self
     }
 
     /// The debug overlay every following frame draws, until set again.
     pub(crate) fn overlay(&mut self, overlay: DebugOverlayConfig) -> &mut Self {
-        self.host.ui().set_debug_overlay(overlay);
+        self.host.ui_mut().set_debug_overlay(overlay);
         self
     }
 
@@ -149,8 +149,11 @@ impl VisualRig {
             },
         );
 
-        self.host.ui().theme_mut().window_clear = self.clear;
-        let report = self.host.frame(target.as_target(), self.scale, &mut scene);
+        self.host.ui_mut().theme_mut().window_clear = self.clear;
+        let report = self
+            .host
+            .set_system_scale(self.scale)
+            .frame(target.as_target(), &mut scene);
 
         let image = target.read_back();
         Capture {

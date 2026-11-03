@@ -133,8 +133,8 @@ fn render(theme: Theme, shaper: &TextShaper) -> Harness {
     let mut h = Harness::builder(UVec2::new(640, 480))
         .shaper(shaper.clone())
         .build();
-    h.ui().set_theme_for(ColorScheme::Dark, theme);
-    Menu::open(h.ui(), menu_id(), Vec2::new(20.0, 20.0));
+    h.ui_mut().set_theme_for(ColorScheme::Dark, theme);
+    Menu::open(h.ui_mut(), menu_id(), Vec2::new(20.0, 20.0));
     let mut scene = Scene {
         color: RgbaF32::srgb(0.2, 0.4, 0.6),
         ..Scene::default()
@@ -207,7 +207,7 @@ fn every_number_at_the_length_bound_at_once_renders() {
 /// their theme values.
 #[test]
 fn the_probe_draws_the_overlays() {
-    let mut h = render(
+    let h = render(
         Theme::default(),
         &TextShaper::with_fonts(FontScope::Bundled),
     );

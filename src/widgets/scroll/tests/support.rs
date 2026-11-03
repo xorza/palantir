@@ -57,7 +57,7 @@ pub(super) fn zoom_driven(ui: &mut Ui, factors: &[f32]) {
 }
 
 pub(super) fn read_state(h: &Harness) -> ScrollState {
-    h.ui_ref()
+    h.ui()
         .state::<ScrollState>(WidgetId::from_hash("scroll"))
         .copied()
         .unwrap_or_default()

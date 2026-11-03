@@ -201,7 +201,7 @@ struct Fixture {
 
 impl Fixture {
     fn new(gpu: &BenchGpu, workload: Workload) -> Self {
-        let mut window = fixture::plain_window(gpu, PHYSICAL, false);
+        let window = fixture::plain_window(gpu, PHYSICAL, false);
         let handles = (0..workload.textures())
             .map(|seed| {
                 window
@@ -257,7 +257,7 @@ impl Fixture {
 
     fn record_time(&self) -> Duration {
         self.window
-            .ui_ref()
+            .ui()
             .gpu_pass_stats()
             .last_main_pass_cpu()
             .expect("the main pass publishes its CPU time on every submitted frame")

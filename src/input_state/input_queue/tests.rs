@@ -41,7 +41,7 @@ fn admit(queue: &mut InputQueue, event: &InputEvent<'_>) -> bool {
         InputEvent::PointerPressed(button) | InputEvent::PointerReleased(button) => {
             queue.note_capture(button);
         }
-        InputEvent::ScrollPixels(_) | InputEvent::ScrollLines(_) | InputEvent::Zoom(_) => {
+        InputEvent::ScrollPixels(_) | InputEvent::ScrollLines(_) | InputEvent::Pinch(_) => {
             queue.note_delta();
         }
         InputEvent::KeyDown { key, text, .. } => queue.note_key(key, text),

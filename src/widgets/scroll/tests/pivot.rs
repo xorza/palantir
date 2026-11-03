@@ -1,6 +1,7 @@
 //! One sweep: the point under the cursor stays under it at every scale.
 
 use crate::host::harness::Harness;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -44,10 +45,10 @@ fn pointer_zoom_pivot_is_scale_invariant() {
         h.frame(build);
 
         let pointer = h.point_in(id, logical_pointer);
-        h.pinch(pointer, 1.5);
+        h.pinch(pointer, ZoomFactor::new(1.5).unwrap());
         h.frame(build);
 
-        let state = *h.state::<ScrollState>(id);
+        let state = *h.state::<ScrollState>(id).unwrap();
         assert_eq!(state.zoom(), 1.5, "zoom at {scale}×, padding {padding}");
         assert_eq!(
             state.offset(),

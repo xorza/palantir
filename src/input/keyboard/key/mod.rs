@@ -1,5 +1,9 @@
 //! A key's identity, logical or physical.
 
+use crate::input::keyboard::key::error::ControlCharError;
+
+pub(crate) mod error;
+
 /// A key identity: the **logical** key ([`KeyPress::key`](crate::KeyPress::key),
 /// after layout; Shift+'a' is `Char('A')`) or the layout-independent
 /// **physical** key ([`KeyPress::physical`](crate::KeyPress::physical), the
@@ -65,6 +69,19 @@ pub enum Key {
     Other,
 }
 
+/// `c` as the key that types it; a control character types nothing and is refused.
+impl TryFrom<char> for Key {
+    type Error = ControlCharError;
+
+    fn try_from(c: char) -> Result<Self, Self::Error> {
+        if c.is_control() {
+            Err(ControlCharError { found: c })
+        } else {
+            Ok(Self::Char(c))
+        }
+    }
+}
+
 impl Key {
     /// Whether `self` and `other` name one key whatever Shift does to a letter: a `Char` compares
     /// ignoring ASCII case, since it arrives post-shift (`Shift+a` is `Char('A')`).
@@ -75,3 +92,6 @@ impl Key {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

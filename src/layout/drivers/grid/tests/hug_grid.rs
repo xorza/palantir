@@ -40,8 +40,12 @@ fn grid_hug_grid_collapses_empty_fill_tracks() {
             });
     });
     let r = h.arranged(WidgetId::from_hash("hug-grid"));
-    assert_eq!(r.size.w, 80.0, "empty Fill col contributes no floor");
-    assert_eq!(r.size.h, 40.0);
+    assert_eq!(
+        r.unwrap().size.w,
+        80.0,
+        "empty Fill col contributes no floor"
+    );
+    assert_eq!(r.unwrap().size.h, 40.0);
 }
 
 #[test]
@@ -74,7 +78,7 @@ fn hug_grid_fill_track_contributes_nested_rigid_floor() {
     let rigid = h.arranged(WidgetId::from_hash("rigid"));
     assert_eq!(grid.size, Size::new(120.0, 20.0));
     assert_eq!(cell.size, Size::new(120.0, 20.0));
-    assert_eq!(rigid.size, Size::new(120.0, 20.0));
+    assert_eq!(rigid.unwrap().size, Size::new(120.0, 20.0));
 }
 
 #[test]
@@ -116,7 +120,7 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
     assert_eq!(siblings[0].size.w, 200.0);
     assert_eq!(siblings[1].min.x, 200.0);
     assert_eq!(siblings[1].size.w, 100.0);
-    assert_eq!(rigid.size.w, 200.0);
+    assert_eq!(rigid.unwrap().size.w, 200.0);
 }
 
 /// A hugging grid's Fill column takes its cells' max-content width, as a Stack's Fill child does:
@@ -148,12 +152,17 @@ fn hug_grid_fill_column_holds_its_wrapping_text() {
     let label = h.arranged(WidgetId::from_hash("label"));
     let shaped = h.ui().layout(Layer::Main).text_shapes[0].extent.size;
     assert_eq!(
-        label.size.w, shaped.w,
+        label.unwrap().size.w,
+        shaped.w,
         "the column is the label's one-line width"
     );
-    assert_eq!(grid.size.w, 40.0 + shaped.w);
-    assert_eq!(grid.size.h, shaped.h, "the row holds the label it measured");
-    assert_eq!(label.size.h, shaped.h);
+    assert_eq!(grid.unwrap().size.w, 40.0 + shaped.w);
+    assert_eq!(
+        grid.unwrap().size.h,
+        shaped.h,
+        "the row holds the label it measured"
+    );
+    assert_eq!(label.unwrap().size.h, shaped.h);
 }
 
 /// A hugging grid's Fill columns each take at least their cells' width, sized by CSS Grid's
@@ -205,7 +214,11 @@ fn hug_grid_fill_columns_each_hold_their_cells() {
             });
         });
         let grid = h.arranged(WidgetId::from_hash("hug-grid"));
-        assert_eq!(grid.size.w, want[0] + want[1], "{weights:?} {cells:?}");
+        assert_eq!(
+            grid.unwrap().size.w,
+            want[0] + want[1],
+            "{weights:?} {cells:?}"
+        );
         let node = h.node_for_widget_id(WidgetId::from_hash("hug-grid"));
         assert_eq!(
             h.intrinsic(node, Axis::X, LenReq::MaxContent),
@@ -215,9 +228,12 @@ fn hug_grid_fill_columns_each_hold_their_cells() {
         for &(col, span, w) in cells {
             let cell = h.arranged(WidgetId::from_hash(("cell", col)));
             let left: f32 = want[..usize::from(col)].iter().sum();
-            assert_eq!(cell.min.x, left, "{weights:?} cell {col}");
+            assert_eq!(cell.unwrap().min.x, left, "{weights:?} cell {col}");
             let room: f32 = want[usize::from(col)..usize::from(col + span)].iter().sum();
-            assert!(cell.size.w <= room, "{weights:?} cell {col}: {w} in {room}");
+            assert!(
+                cell.unwrap().size.w <= room,
+                "{weights:?} cell {col}: {w} in {room}"
+            );
         }
     }
 }

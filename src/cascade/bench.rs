@@ -10,6 +10,7 @@ use crate::cascade::engine::CascadeEngine;
 use crate::cascade::rows::entry_row::EntryRow;
 use crate::cascade::rows::hit_row::HitRow;
 use crate::display::Display;
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::input::sense::Sense;
 use crate::internals::frame_fixture::{BENCH_SCALE, FrameFixture};
@@ -151,15 +152,17 @@ impl CascadeRunFixture {
 /// What the frame hands each run; the run builds its key from it, so the cost is what a frame pays.
 fn source_of(h: &Harness, display: Display) -> CascadeSource<'_> {
     CascadeSource {
-        forest: h.ui_ref().forest(),
-        layout: h.ui_ref().layout_tables(),
+        forest: h.ui().forest(),
+        layout: h.ui().layout_tables(),
         display,
-        font_epoch: h.ui_ref().font_epoch(),
+        font_epoch: h.ui().font_epoch(),
     }
 }
 
 fn record_fixture(mut state: FrameFixture) -> Harness {
-    let mut h = Harness::builder(FRAME_SIZE).scale(DISPLAY_SCALE).build();
+    let mut h = Harness::builder(FRAME_SIZE)
+        .system_scale(SystemScale::new(DISPLAY_SCALE).unwrap())
+        .build();
     let _ = h.frame(|ui| {
         state.render(BENCH_SCALE, ui);
     });

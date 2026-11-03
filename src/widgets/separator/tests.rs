@@ -22,8 +22,8 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     };
     let mut h = Harness::mono(UVec2::new(400, 300));
     // Loudly different global slot; a styled rule must not reach it.
-    h.ui().theme_mut().separator.thickness = 11.0;
-    h.ui().theme_mut().separator.margin = Spacing::all(9.0);
+    h.ui_mut().theme_mut().separator.thickness = 11.0;
+    h.ui_mut().theme_mut().separator.margin = Spacing::all(9.0);
 
     let [inherited, explicit, global, thick] = h.frame_value(|ui| {
         let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
@@ -46,8 +46,8 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
         .inner
     });
 
-    let layouts = h.ui_ref().tree(Layer::Main).records.layout();
-    let rects = &h.ui_ref().layout(Layer::Main).rect;
+    let layouts = h.ui().tree(Layer::Main).records.layout();
+    let rects = &h.ui().layout(Layer::Main).rect;
     assert_eq!(
         layouts[inherited.idx()].margin,
         Spacing::xy(0.0, 5.0),
@@ -119,7 +119,7 @@ fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
             })
             .inner
     });
-    let rects = &h.ui_ref().layout(Layer::Main).rect;
+    let rects = &h.ui().layout(Layer::Main).rect;
     let d = rects[default.idx()];
     assert_eq!(
         (d.min.x, d.size.w),

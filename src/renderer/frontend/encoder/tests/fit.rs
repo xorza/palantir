@@ -106,9 +106,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
             "{fit:?} draw"
         );
         let mut rows = Vec::new();
-        h.ui_ref()
-            .cascade()
-            .owned_paints(h.ui_ref().forest(), &mut rows);
+        h.ui().cascade().owned_paints(h.ui().forest(), &mut rows);
         let screens: Vec<Rect> = rows
             .iter()
             .filter(|row| row.owner == WidgetId::from_hash("frame"))

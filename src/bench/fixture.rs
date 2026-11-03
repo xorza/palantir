@@ -2,6 +2,7 @@
 
 use crate::gpu::bench_gpu::BenchGpu;
 use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use glam::UVec2;
 use std::time::Duration;
 
@@ -11,9 +12,9 @@ pub(crate) fn plain_window(gpu: &BenchGpu, size: UVec2, collect_gpu_stats: bool)
     let mut window = Harness::builder(size)
         .swapchain_present()
         .collect_gpu_stats(collect_gpu_stats)
-        .gpu(gpu.handles())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
-    window.ui().theme_mut().panel_chrome = None;
+    window.ui_mut().theme_mut().panel_chrome = None;
     window
 }
 

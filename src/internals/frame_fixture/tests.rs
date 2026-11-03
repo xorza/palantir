@@ -224,7 +224,9 @@ fn footer_counter_alone_yields_partial_damage() {
         (UVec2::new(2560, 1600), 6),
         (UVec2::new(3840, 4800), 32),
     ] {
-        let mut h = Harness::builder(px).scale(2.0).build();
+        let mut h = Harness::builder(px)
+            .system_scale(SystemScale::new(2.0).unwrap())
+            .build();
         let mut state = FrameFixture::default();
         let mut paint = FramePaint::Full;
         // Two frames settle the caches and the popup's anchor, which reads last frame's status-bar rect.

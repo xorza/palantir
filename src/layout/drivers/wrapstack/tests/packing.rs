@@ -34,8 +34,8 @@ fn wrap_hstack_justify_per_line() {
         });
         // 130 used, 70 to place; every x is a multiple of 0.5, exact in f32.
         let xs = [
-            h.arranged(WidgetId::from_hash("a")).min.x,
-            h.arranged(WidgetId::from_hash("b")).min.x,
+            h.arranged(WidgetId::from_hash("a")).unwrap().min.x,
+            h.arranged(WidgetId::from_hash("b")).unwrap().min.x,
         ];
         assert_eq!(xs, *expected, "case: {label}");
     }
@@ -62,5 +62,5 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     });
     let r = h.arranged(WidgetId::from_hash("filler"));
     // The Fill child gets its min_size width (40), not the row leftover (300 - 60 - 10 - 10 = 220); distribution would flip this and make the test the spec.
-    assert_eq!(r.size.w, 40.0, "Fill main treated as Hug today");
+    assert_eq!(r.unwrap().size.w, 40.0, "Fill main treated as Hug today");
 }

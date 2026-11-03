@@ -130,7 +130,7 @@ fn layout_rect_is_pre_transform_and_rect_is_what_the_pointer_hits() {
     let mut harness = Harness::mono(SURFACE);
     harness.prime(2, scaled);
 
-    let arranged = harness.arranged(inner);
+    let arranged = harness.arranged(inner).unwrap();
     let visible = harness.rect(inner).expect("the button is on screen");
     assert_eq!(
         arranged.size,

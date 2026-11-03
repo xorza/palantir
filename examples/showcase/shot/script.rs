@@ -5,7 +5,10 @@ use std::fmt::{self, Display, Formatter};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{Action, ColorScheme, Locator, PointerButton, Rect, Shortcut, ShortcutMods};
+use palantir::{
+    Action, ColorScheme, Locator, PointerButton, Rect, Shortcut, ShortcutMods, SystemScale,
+    ZoomFactor,
+};
 
 /// What a script sets before its first step; each has the default [`Header::default`] names.
 #[derive(Clone, Debug, PartialEq)]
@@ -13,7 +16,7 @@ pub(crate) struct Header {
     /// The window, in physical pixels.
     pub(crate) size: UVec2,
     /// Physical pixels per logical pixel.
-    pub(crate) scale: f32,
+    pub(crate) scale: SystemScale,
     /// The page the shell opens on, by its label; the first page for none.
     pub(crate) page: Option<String>,
     /// The longest side a picture is written at.
@@ -28,7 +31,7 @@ impl Default for Header {
     fn default() -> Self {
         Self {
             size: UVec2::new(1600, 1000),
-            scale: 1.0,
+            scale: SystemScale::ONE,
             page: None,
             max_side: 2576,
             scheme: None,
@@ -119,7 +122,7 @@ impl Display for ParseError {
             ParseErrorKind::Unknown(word) => write!(
                 f,
                 "unknown instruction `{word}`; expected size, scale, page, max-side, scheme, click, \
-                 double-click, hover, drag, scroll, pinch, key, type, wait, shot, probe or widgets"
+                 double-click, hover, drag, scroll-pixels, scroll-lines, pinch, key, type, wait, shot, probe or widgets"
             ),
             ParseErrorKind::LateHeader(word) => {
                 write!(f, "`{word}` sets the header, before the first step")
@@ -164,7 +167,7 @@ impl Script {
                     None
                 }
                 "scale" => {
-                    header.scale = words.positive("a scale above 0").map_err(fail)?;
+                    header.scale = words.system_scale().map_err(fail)?;
                     None
                 }
                 "page" => {
@@ -214,14 +217,19 @@ fn step(head: &str, words: &mut Words) -> Result<StepKind, ParseErrorKind> {
                 steps: Action::DRAG_STEPS,
             })
         }
-        "scroll" => {
+        "scroll-pixels" => {
             let at = words.locator()?;
-            let delta = words.pair("a scroll dx,dy")?;
-            act(Action::Scroll { at, delta })
+            let delta = words.pair("a scroll dx,dy in pixels")?;
+            act(Action::ScrollPixels { at, delta })
+        }
+        "scroll-lines" => {
+            let at = words.locator()?;
+            let delta = words.pair("a scroll dx,dy in notches")?;
+            act(Action::ScrollLines { at, delta })
         }
         "pinch" => {
             let at = words.locator()?;
-            let factor = words.positive("a pinch factor above 0")?;
+            let factor = words.zoom("a pinch factor above 0")?;
             act(Action::Pinch { at, factor })
         }
         "key" => {
@@ -368,10 +376,21 @@ impl Words {
         text.unwrap_or(word)
     }
 
-    fn positive(&mut self, expected: &'static str) -> Result<f32, ParseErrorKind> {
+    fn system_scale(&mut self) -> Result<SystemScale, ParseErrorKind> {
+        let expected = "a scale of 2e-4 or more";
         let word = self.next_word(expected)?;
         number(&word)
-            .filter(|value| *value > 0.0)
+            .and_then(SystemScale::new)
+            .ok_or(ParseErrorKind::Bad {
+                expected,
+                found: word,
+            })
+    }
+
+    fn zoom(&mut self, expected: &'static str) -> Result<ZoomFactor, ParseErrorKind> {
+        let word = self.next_word(expected)?;
+        number(&word)
+            .and_then(ZoomFactor::new)
             .ok_or(ParseErrorKind::Bad {
                 expected,
                 found: word,
@@ -548,7 +567,7 @@ fn locator(word: &str) -> Option<Locator> {
         if let Some(rest) = rest.strip_prefix('#') {
             let end = rest.find('+').unwrap_or(rest.len());
             let nth = rest[..end].parse::<usize>().ok()?;
-            (Locator::Nth(Box::new(text), nth), &rest[end..])
+            (text.nth(nth), &rest[end..])
         } else {
             (text, rest)
         }
@@ -562,5 +581,5 @@ fn locator(word: &str) -> Option<Locator> {
         return Some(base);
     }
     let by = pair(offset.strip_prefix('+')?)?;
-    Some(Locator::Offset(Box::new(base), by))
+    Some(base.offset(by))
 }

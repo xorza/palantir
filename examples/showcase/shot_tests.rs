@@ -5,8 +5,8 @@ use std::{env, fs, process};
 use palantir::glam::{UVec2, Vec2};
 use palantir::internals::headless_test_gpu;
 use palantir::{
-    Action, ColorScheme, Harness, Key, Locator, Palette, PointerButton, Rect, Shortcut,
-    ShortcutMods,
+    Action, ColorScheme, Depth, Harness, Key, Locator, Palette, PointerButton, Rect, Shortcut,
+    ShortcutMods, SystemScale, ZoomFactor,
 };
 
 use crate::shell::Shell;
@@ -43,7 +43,7 @@ fn the_header_sets_the_window() {
         script.header,
         Header {
             size: UVec2::new(800, 600),
-            scale: 1.5,
+            scale: SystemScale::new(1.5).unwrap(),
             page: Some("overlays".to_owned()),
             max_side: 1024,
             scheme: Some(ColorScheme::Light),
@@ -61,16 +61,10 @@ fn locators_read_each_form() {
     let by = Vec2::new(-3.0, 4.0);
     for (word, want) in [
         ("\"Open popup\"", text("Open popup")),
-        ("\"Twin\"#2", Locator::Nth(Box::new(text("Twin")), 2)),
+        ("\"Twin\"#2", text("Twin").nth(2)),
         ("10,20.5", Locator::Point(point)),
-        (
-            "\"Twin\"#1+-3,4",
-            Locator::Offset(Box::new(Locator::Nth(Box::new(text("Twin")), 1)), by),
-        ),
-        (
-            "10,20.5+-3,4",
-            Locator::Offset(Box::new(Locator::Point(point)), by),
-        ),
+        ("\"Twin\"#1+-3,4", text("Twin").nth(1).offset(by)),
+        ("10,20.5+-3,4", Locator::Point(point).offset(by)),
         ("\"say \\\"hi\\\"\"", text("say \"hi\"")),
     ] {
         assert_eq!(
@@ -102,7 +96,7 @@ fn each_instruction_reads_its_words() {
                   click \"A\" button right mods ctrl+shift\n\
                   double-click \"A\"\n\
                   drag \"A\" to 5,6 mods alt\n\
-                  scroll \"A\" 0,-40\n\
+                  scroll-pixels \"A\" 0,-40\n\
                   pinch \"A\" 1.25\n\
                   key ctrl+z\n\
                   type \"hello world\"\n\
@@ -121,7 +115,7 @@ fn each_instruction_reads_its_words() {
             StepKind::Act(Action::Click {
                 at: at(),
                 button: PointerButton::Right,
-                mods: ShortcutMods::CTRL_SHIFT,
+                mods: ShortcutMods::CTRL | ShortcutMods::SHIFT,
             }),
             StepKind::Act(Action::DoubleClick(at())),
             StepKind::Act(Action::Drag {
@@ -131,13 +125,13 @@ fn each_instruction_reads_its_words() {
                 mods: ShortcutMods::ALT,
                 steps: Action::DRAG_STEPS,
             }),
-            StepKind::Act(Action::Scroll {
+            StepKind::Act(Action::ScrollPixels {
                 at: at(),
                 delta: Vec2::new(0.0, -40.0),
             }),
             StepKind::Act(Action::Pinch {
                 at: at(),
-                factor: 1.25,
+                factor: ZoomFactor::new(1.25).unwrap(),
             }),
             StepKind::Act(Action::Key(Shortcut::ctrl('z'))),
             StepKind::Act(Action::Type("hello world".to_owned())),
@@ -215,6 +209,14 @@ fn each_refusal_names_its_line() {
             1,
             ParseErrorKind::Bad {
                 expected: "a zoom of 1 or more",
+                found: "0".to_owned(),
+            },
+        ),
+        (
+            "scale 0",
+            1,
+            ParseErrorKind::Bad {
+                expected: "a scale of 2e-4 or more",
                 found: "0".to_owned(),
             },
         ),
@@ -409,7 +411,7 @@ fn page_opens_the_window_on_a_page() {
 fn draws_every_page(scheme: ColorScheme) {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(480, 320))
-        .gpu(gpu.handles())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
     h.set_system_color_scheme(Some(scheme));
     let palette = Palette::for_scheme(scheme);

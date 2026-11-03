@@ -6,7 +6,7 @@ use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
 
 /// The word, line and document chords of one platform's text fields. On
-/// macOS `Modifiers::ctrl` is Cmd, the line chord, so the word chord moves to
+/// macOS `Modifiers::CTRL` is Cmd, the line chord, so the word chord moves to
 /// Alt.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct TextNav(Platform);
@@ -29,18 +29,21 @@ impl TextNav {
     /// [`Self::word_chord`] held without the other of Ctrl and Alt.
     pub(super) const fn is_word(self, modifiers: Modifiers) -> bool {
         let chord = self.word_chord();
-        modifiers.ctrl == chord.ctrl && modifiers.alt == chord.alt
+        modifiers.contains(Modifiers::CTRL) == chord.contains(Modifiers::CTRL)
+            && modifiers.contains(Modifiers::ALT) == chord.contains(Modifiers::ALT)
     }
 
     /// The line chord, macOS only: Cmd with Left / Right or Backspace.
     pub(super) const fn is_line(self, modifiers: Modifiers) -> bool {
-        self.0.has_cmd_arrow_chords() && modifiers.ctrl && !modifiers.alt
+        self.0.has_cmd_arrow_chords()
+            && modifiers.contains(Modifiers::CTRL)
+            && !modifiers.contains(Modifiers::ALT)
     }
 
     /// Ctrl with Home / End everywhere, Cmd with Up / Down on macOS.
     pub(super) const fn is_document(self, keypress: KeyPress) -> bool {
         let mods = keypress.mods;
-        if !mods.ctrl || mods.alt {
+        if !mods.contains(Modifiers::CTRL) || mods.contains(Modifiers::ALT) {
             return false;
         }
         match keypress.key {
@@ -64,10 +67,7 @@ mod tests {
     #[test]
     fn every_chord_binds_on_the_platforms_that_own_it() {
         const PLATFORMS: [Platform; 3] = [Platform::Mac, Platform::Windows, Platform::Linux];
-        let ctrl_alt = Modifiers {
-            alt: true,
-            ..Modifiers::CTRL
-        };
+        let ctrl_alt = Modifiers::CTRL | Modifiers::ALT;
         let word: [(Modifiers, [bool; 3]); 4] = [
             (Modifiers::NONE, [false, false, false]),
             (Modifiers::CTRL, [false, true, true]),

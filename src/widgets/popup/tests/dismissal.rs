@@ -150,7 +150,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     });
 
     // Escape dismisses it; focus makes the wake-gate deliver the chord.
-    h.ui().input_mut().set_focus(Some(content));
+    h.ui_mut().input_mut().set_focus(Some(content));
     h.key(Key::Escape);
     assert!(
         h.frame_value(|ui| build(ui, true)),
@@ -158,7 +158,7 @@ fn a_dismissed_popup_stops_owning_input_the_next_frame() {
     );
 
     // Host stops showing it. `Main` must read again at once, though the popup is still in last frame's cascade; counted inside the record, the only place the queue is live.
-    h.ui()
+    h.ui_mut()
         .input_mut()
         .set_focus(Some(WidgetId::from_hash("main-bg")));
     h.key(Key::Escape);

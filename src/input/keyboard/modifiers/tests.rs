@@ -6,14 +6,11 @@ fn any_command_excludes_shift() {
     assert!(!Modifiers::SHIFT.has_command());
     assert!(Modifiers::CTRL.has_command());
     assert!(Modifiers::ALT.has_command());
-    let meta = Modifiers {
-        meta: true,
-        ..Modifiers::NONE
-    };
+    let meta = Modifiers::META;
     assert!(meta.has_command(), "the Windows / Super key commands");
 }
 
-/// Every modifier combination per platform, hand-derived: (shift, ctrl, alt, mac_ctrl, meta) → composes on (Mac, Windows, Linux). `meta` is never set on macOS.
+/// Every modifier combination per platform, hand-derived: (shift, ctrl, alt, mac_ctrl, meta) → composes on (Mac, Windows, Linux). `META` is never held on macOS.
 #[test]
 fn compose_text_follows_each_platforms_rule() {
     let rows = [
@@ -31,13 +28,16 @@ fn compose_text_follows_each_platforms_rule() {
         ((false, true, true, false, true), [false, false, false]),
     ];
     for ((shift, ctrl, alt, mac_ctrl, meta), expected) in rows {
-        let mods = Modifiers {
-            ctrl,
-            shift,
-            alt,
-            mac_ctrl,
-            meta,
-        };
+        let mut mods = Modifiers::NONE;
+        for (flag, held) in [
+            (Modifiers::SHIFT, shift),
+            (Modifiers::CTRL, ctrl),
+            (Modifiers::ALT, alt),
+            (Modifiers::MAC_CTRL, mac_ctrl),
+            (Modifiers::META, meta),
+        ] {
+            mods.set(flag, held);
+        }
         let got = [Platform::Mac, Platform::Windows, Platform::Linux].map(|p| mods.compose_text(p));
         assert_eq!(got, expected, "{mods:?}");
     }

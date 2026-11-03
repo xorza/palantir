@@ -432,7 +432,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
 
     h.ui().shaper().drop_cosmic_buffers();
     let measure_calls = h.ui().shaper().measure_calls();
-    h.ui().request_repaint();
+    h.ui_mut().request_repaint();
     h.frame(body);
     let replayed_key = h.ui().layout(Layer::Main).text_shapes[0].buffer_key();
     assert_eq!(replayed_key, key);

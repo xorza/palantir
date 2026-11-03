@@ -6,7 +6,8 @@ use std::vec::Drain;
 
 /// One window opened or closed by [`Ui::open_window`](crate::Ui::open_window) or
 /// [`Ui::close_window`](crate::Ui::close_window), which [`WinitHost`](crate::WinitHost) applies
-/// after the frame and a [`Harness`](crate::Harness) records.
+/// after the frame, and a [`Harness`](crate::Harness) and an
+/// [`OffscreenHost`](crate::OffscreenHost), which have one window, record.
 #[derive(Debug)]
 pub enum WindowCommand {
     /// Open the window `token`; a host ignores it, with a warning, where `token` is open.
@@ -78,8 +79,14 @@ impl WindowCommands {
         self.ops.drain(..)
     }
 
-    pub(crate) fn first(&self) -> Option<&WindowCommand> {
-        self.ops.first()
+    /// The commands in the order to apply them.
+    pub(crate) fn as_slice(&self) -> &[WindowCommand] {
+        &self.ops
+    }
+
+    /// Drop every command, keeping the capacity.
+    pub(crate) fn clear(&mut self) {
+        self.ops.clear();
     }
 }
 

@@ -37,9 +37,9 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                 });
         });
         let grid = h.arranged(WidgetId::from_hash("empty-grid"));
-        assert_eq!(grid.size, Size::ZERO, "{label}: the grid");
+        assert_eq!(grid.unwrap().size, Size::ZERO, "{label}: the grid");
         let ghost = h.arranged(WidgetId::from_hash("ghost"));
-        assert_eq!(ghost.size, Size::ZERO, "{label}: its child");
+        assert_eq!(ghost.unwrap().size, Size::ZERO, "{label}: its child");
     }
 }
 
@@ -72,13 +72,13 @@ fn zero_extent_grid_keeps_fixed_track_when_arrange_reuses_the_resolution() {
         let fixed = h.arranged(WidgetId::from_hash("fixed-cell"));
         let fill = h.arranged(WidgetId::from_hash("fill-cell"));
 
-        assert_eq!((grid.size.w, grid.size.h), (0.0, 0.0));
+        assert_eq!((grid.unwrap().size.w, grid.unwrap().size.h), (0.0, 0.0));
         // Phase 1 commits Fixed tracks before sharing leftover, so the zero total leaves the 30×20 cell whole and overflowing its parent (contains-content rule).
-        assert_eq!((fixed.size.w, fixed.size.h), (30.0, 20.0));
-        assert_eq!(fixed.min, grid.min);
+        assert_eq!((fixed.unwrap().size.w, fixed.unwrap().size.h), (30.0, 20.0));
+        assert_eq!(fixed.unwrap().min, grid.unwrap().min);
         // Nothing left after the Fixed column, but the row stands.
-        assert_eq!((fill.size.w, fill.size.h), (0.0, 20.0));
-        assert_eq!(fill.min.x, grid.min.x + 30.0);
+        assert_eq!((fill.unwrap().size.w, fill.unwrap().size.h), (0.0, 20.0));
+        assert_eq!(fill.unwrap().min.x, grid.unwrap().min.x + 30.0);
         frames.push((fixed, fill));
     }
     assert_eq!(
@@ -109,10 +109,10 @@ fn large_inline_track_definition_has_exact_extent_and_last_cell_position() {
 
     // Sum 1..=64 = 2,080; 63 gaps × 2 = 126.
     let grid = h.arranged(WidgetId::from_hash("large-grid"));
-    assert_eq!(grid.size, Size::new(2_206.0, 10.0));
+    assert_eq!(grid.unwrap().size, Size::new(2_206.0, 10.0));
 
     // Sum 1..=63 = 2,016; 63 preceding gaps × 2 = 126.
     let last = h.arranged(WidgetId::from_hash("last-cell"));
-    assert_eq!(last.min, glam::Vec2::new(2_142.0, 0.0));
-    assert_eq!(last.size, Size::new(64.0, 10.0));
+    assert_eq!(last.unwrap().min, glam::Vec2::new(2_142.0, 0.0));
+    assert_eq!(last.unwrap().size, Size::new(64.0, 10.0));
 }

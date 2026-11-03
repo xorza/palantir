@@ -45,7 +45,6 @@ fn builder_setters_override_the_defaults() {
     let defaults = WinitHost::<Inert>::builder(WindowToken(3));
 
     assert_eq!(builder.first_token, WindowToken(9));
-    assert_eq!(builder.config.window.title, "title");
     assert_eq!(
         (builder.config.vsync, defaults.config.vsync),
         (Vsync::Off, Vsync::On)
@@ -69,6 +68,23 @@ fn builder_setters_override_the_defaults() {
     );
     assert!(!set.pixel_snap && unset.pixel_snap);
     assert!(!set.system_clipboard && unset.system_clipboard);
+    assert_eq!(builder.sealed_config().window.title, "title");
+}
+
+/// The title wins over the window config's whichever is set first, and the config's stands
+/// without one.
+#[test]
+fn the_title_wins_over_the_window_config_in_either_order() {
+    let title_first = WinitHost::<Inert>::builder(WindowToken(1))
+        .title("title")
+        .window(WindowConfig::new("window"));
+    let window_first = WinitHost::<Inert>::builder(WindowToken(1))
+        .window(WindowConfig::new("window"))
+        .title("title");
+    let untitled = WinitHost::<Inert>::builder(WindowToken(1)).window(WindowConfig::new("window"));
+    assert_eq!(title_first.sealed_config().window.title, "title");
+    assert_eq!(window_first.sealed_config().window.title, "title");
+    assert_eq!(untitled.sealed_config().window.title, "window");
 }
 
 #[test]

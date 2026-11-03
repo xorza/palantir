@@ -59,7 +59,7 @@ fn caret_blinks_on_and_off_while_focused() {
         .at(Duration::from_secs_f32(0.0))
         .frame_value(|ui| body(ui, &mut buf));
     assert!(
-        !caret_painted(h.ui_ref(), leaf),
+        !caret_painted(h.ui(), leaf),
         "unfocused editor paints no caret",
     );
 
@@ -70,7 +70,7 @@ fn caret_blinks_on_and_off_while_focused() {
         body(ui, &mut buf);
     });
     assert!(
-        caret_painted(h.ui_ref(), leaf),
+        caret_painted(h.ui(), leaf),
         "freshly focused: caret visible"
     );
 
@@ -79,7 +79,7 @@ fn caret_blinks_on_and_off_while_focused() {
         body(ui, &mut buf);
     });
     assert!(
-        caret_painted(h.ui_ref(), leaf),
+        caret_painted(h.ui(), leaf),
         "first half of blink cycle: caret visible",
     );
 
@@ -88,7 +88,7 @@ fn caret_blinks_on_and_off_while_focused() {
         body(ui, &mut buf);
     });
     assert!(
-        !caret_painted(h.ui_ref(), leaf),
+        !caret_painted(h.ui(), leaf),
         "second half of blink cycle: caret hidden",
     );
 
@@ -97,7 +97,7 @@ fn caret_blinks_on_and_off_while_focused() {
         body(ui, &mut buf);
     });
     assert!(
-        caret_painted(h.ui_ref(), leaf),
+        caret_painted(h.ui(), leaf),
         "after a full period: caret visible again",
     );
 
@@ -106,7 +106,7 @@ fn caret_blinks_on_and_off_while_focused() {
         body(ui, &mut buf);
     });
     assert!(
-        !caret_painted(h.ui_ref(), leaf),
+        !caret_painted(h.ui(), leaf),
         "precondition: hidden phase before keystroke",
     );
     h.key(Key::Char('a'));
@@ -114,7 +114,7 @@ fn caret_blinks_on_and_off_while_focused() {
         body(ui, &mut buf);
     });
     assert!(
-        caret_painted(h.ui_ref(), leaf),
+        caret_painted(h.ui(), leaf),
         "keystroke resets blink: caret immediately visible",
     );
 
@@ -126,7 +126,7 @@ fn caret_blinks_on_and_off_while_focused() {
         body(ui, &mut buf);
     });
     assert!(
-        caret_painted(h.ui_ref(), leaf),
+        caret_painted(h.ui(), leaf),
         "long-idle blink stops on the visible phase",
     );
     assert_eq!(
@@ -169,6 +169,7 @@ fn caret_motion_alone_resets_blink() {
     });
     let caret_at_click = h
         .state::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
+        .unwrap()
         .edit
         .caret;
     assert!(
@@ -181,7 +182,7 @@ fn caret_motion_alone_resets_blink() {
         body(ui, &mut buf);
     });
     assert!(
-        !caret_painted(h.ui_ref(), leaf),
+        !caret_painted(h.ui(), leaf),
         "precondition: hidden phase before the caret moves",
     );
 
@@ -191,11 +192,12 @@ fn caret_motion_alone_resets_blink() {
     });
     let state = h
         .state::<TextEditState>(WidgetId::from_hash("caret-move-blink"))
+        .unwrap()
         .clone();
     assert_eq!(buf, "abcdefghij", "`End` must not edit the buffer");
     assert_eq!(state.edit.caret, buf.len(), "`End` moves caret to the end");
     assert!(
-        caret_painted(h.ui_ref(), leaf),
+        caret_painted(h.ui(), leaf),
         "caret movement alone resets blink: caret immediately visible",
     );
 }

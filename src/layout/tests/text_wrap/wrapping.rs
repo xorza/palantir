@@ -20,7 +20,7 @@ use glam::UVec2;
 
 /// The wrap mode `node`'s first text shape records.
 fn text_wrap_of(h: &Harness, node: NodeId) -> TextWrap {
-    h.ui_ref()
+    h.ui()
         .tree(Layer::Main)
         .shapes_of(node)
         .find_map(|s| match s {
@@ -174,7 +174,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
         for h in [800u32, 400, 300, 200, 150, 100, 50] {
             let mut harness = Harness::new(UVec2::new(800, h));
             let [chrome, inner, text] = harness.frame_value(|ui| build(ui, inner_kind));
-            let height = |node| harness.ui_ref().arranged_rect(Layer::Main, node).size.h;
+            let height = |node| harness.ui().arranged_rect(Layer::Main, node).size.h;
             // Three 14 px lines plus 2 × 8 padding at every surface height; the chrome grows past the surface to its inner container plus 2 × 16 padding.
             assert_eq!(height(text), lines_h(3, 14.0), "{label} surface_h={h}");
             assert_eq!(

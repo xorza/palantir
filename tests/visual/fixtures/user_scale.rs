@@ -2,7 +2,7 @@
 
 use glam::UVec2;
 use image::{Rgba, RgbaImage};
-use palantir::{Block, Chrome, Configure, Panel, RgbaF32, Sizing, Ui, UserScale};
+use palantir::{Block, Chrome, Configure, Panel, RgbaF32, Sizing, SystemScale, Ui, UserScale};
 
 use crate::goldens;
 use crate::visual_rig::VisualRig;
@@ -40,9 +40,13 @@ fn painted_extent(img: &RgbaImage, bg: Rgba<u8>) -> UVec2 {
 fn the_two_halves_of_the_scale_factor_are_interchangeable() {
     let mut h = VisualRig::new();
 
-    let system = h.size(SURFACE).scale(2.0).frame(block).image;
-    h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
-    let user = h.scale(1.0).frame(block).image;
+    let system = h
+        .size(SURFACE)
+        .scale(SystemScale::new(2.0).unwrap())
+        .frame(block)
+        .image;
+    h.host.ui_mut().set_user_scale(UserScale::new(2.0).unwrap());
+    let user = h.scale(SystemScale::ONE).frame(block).image;
 
     goldens::assert_same("user_scale_halves", &user, &system);
 }
@@ -60,7 +64,7 @@ fn a_larger_user_scale_paints_a_larger_block() {
     let plain = h.frame(block).image;
     assert_eq!(painted_extent(&plain, bg), UVec2::new(40, 24));
 
-    h.host.ui().set_user_scale(UserScale::new(2.0).unwrap());
+    h.host.ui_mut().set_user_scale(UserScale::new(2.0).unwrap());
     let doubled = h.frame(block).image;
     assert_eq!(painted_extent(&doubled, bg), UVec2::new(80, 48));
 }

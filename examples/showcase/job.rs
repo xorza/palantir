@@ -76,7 +76,7 @@ mod tests {
     /// The worker counts every step, and the job reads done once the last step lands.
     #[test]
     fn the_worker_counts_every_step() {
-        let mut h = Harness::builder(UVec2::new(16, 16)).mono().build();
+        let h = Harness::builder(UVec2::new(16, 16)).mono().build();
         let mut job = Job::stepping(h.ui().waker(), Duration::ZERO);
         let worker = job.worker.take().expect("a started job holds its worker");
         worker.join().expect("the worker counts and never panics");

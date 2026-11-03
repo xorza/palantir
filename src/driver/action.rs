@@ -4,6 +4,7 @@
 use crate::driver::locator::Locator;
 use crate::input::pointer::PointerButton;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
+use crate::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 use std::convert::Infallible;
 use std::time::Duration;
@@ -39,19 +40,28 @@ pub enum Action<X = Infallible> {
         /// The moves from `from` to `to`; 0 moves as 1.
         steps: u32,
     },
-    /// Scroll there by `delta` logical pixels; positive `y` scrolls content down.
-    Scroll {
+    /// Scroll there by `delta` logical pixels, as a touchpad does; positive `y` scrolls content
+    /// down.
+    ScrollPixels {
         /// Where the pointer rests while it scrolls.
         at: Locator<X>,
         /// The scroll, in logical pixels.
+        delta: Vec2,
+    },
+    /// Scroll there by `delta` wheel notches, as a mouse wheel does; positive `y` scrolls content
+    /// down.
+    ScrollLines {
+        /// Where the pointer rests while it scrolls.
+        at: Locator<X>,
+        /// The scroll, in notches.
         delta: Vec2,
     },
     /// Pinch there by `factor`: above 1 zooms in.
     Pinch {
         /// Where the pointer rests while it pinches.
         at: Locator<X>,
-        /// The zoom step, finite and above 0.
-        factor: f32,
+        /// The zoom step.
+        factor: ZoomFactor,
     },
     /// Press and release one key with its modifiers, as `ctrl+z` or `enter`.
     Key(Shortcut),
@@ -84,10 +94,5 @@ impl Action {
             button: PointerButton::Left,
             mods: ShortcutMods::NONE,
         }
-    }
-
-    /// A press of `shortcut`.
-    pub const fn key(shortcut: Shortcut) -> Self {
-        Self::Key(shortcut)
     }
 }

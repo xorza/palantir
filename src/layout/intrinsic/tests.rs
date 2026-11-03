@@ -151,7 +151,7 @@ fn parent_intrinsic_query_populates_descendant_cache() {
     let cached = |node: NodeId| h.engines().layout.scratch.intrinsics[node.idx()][slot];
     assert_eq!(cached(root), 64.0, "root slot must be cached");
     let children: Vec<_> = h
-        .ui_ref()
+        .ui()
         .tree(Layer::Main)
         .children(root)
         .map(|c| c.id)

@@ -212,7 +212,7 @@ interaction test costs microseconds, so UI behavior stays a plain `cargo test`.
 
 - **Act like a user** — `click("Save")` by text, `click(id)` by id or
   `click(point)`, `right_click`, `drag_to`, `scroll_lines`, `pinch`,
-  `type_text("hi")`, `key("ctrl+z".parse()?)`, `set_modifiers`.
+  `type_text("hi")`, `key("ctrl+z".parse()?)`, `hold_modifiers`.
 - **Ask what happened** — a widget's arranged rect and response, the widget at
   a point, the visible widgets and their text, and the clipboard.
 - **Own the clock** — step animations frame by frame, or move past the

@@ -146,8 +146,8 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     let child = child_id.unwrap().idx();
 
     assert_eq!(
-        h.ui_ref().tree(Layer::Main).records.subtree_end()[parent],
-        h.ui_ref().tree(Layer::Main).records.subtree_end()[child],
+        h.ui().tree(Layer::Main).records.subtree_end()[parent],
+        h.ui().tree(Layer::Main).records.subtree_end()[child],
         "test setup: parent's only child shares the parent's end NodeId"
     );
     assert_eq!(h.ui().tree(Layer::Main).records.shape_span()[parent].len, 2);

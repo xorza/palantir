@@ -1,6 +1,5 @@
 use glam::{UVec2, Vec2};
 
-use crate::display::Display;
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
@@ -44,13 +43,7 @@ fn record(ui: &mut Ui, id: WidgetId, editable: bool) -> Shown {
 /// A harness whose display does not snap, so rects compare exactly.
 fn harness() -> Harness {
     let surface = UVec2::new(300, 100);
-    let mut h = Harness::builder(surface).mono().build();
-    h.set_display(Display {
-        physical: surface,
-        pixel_snap: false,
-        ..Display::default()
-    });
-    h
+    Harness::builder(surface).mono().pixel_snap(false).build()
 }
 
 /// Double-click the label `id` and run the frame its editor opens in.
@@ -169,9 +162,9 @@ fn a_caller_opens_the_editor() {
     h.frame(|ui| {
         record(ui, id, true);
     });
-    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
-    EditableLabel::start_editing(h.ui(), id);
-    assert!(EditableLabel::is_editing(h.ui_ref(), id));
+    assert!(!EditableLabel::is_editing(h.ui(), id));
+    EditableLabel::start_editing(h.ui_mut(), id);
+    assert!(EditableLabel::is_editing(h.ui(), id));
     assert!(h.frame_value(|ui| record(ui, id, true)).editing);
     assert_eq!(h.ui().focus(), Some(id));
     h.key(Key::Char('Z'));
@@ -181,11 +174,11 @@ fn a_caller_opens_the_editor() {
     h.key(Key::Enter);
     let committed = h.frame_value(|ui| record(ui, id, true));
     assert_eq!(committed.committed_text.as_deref(), Some("Z"));
-    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    assert!(!EditableLabel::is_editing(h.ui(), id));
 
-    EditableLabel::start_editing(h.ui(), id);
+    EditableLabel::start_editing(h.ui_mut(), id);
     assert!(!h.frame_value(|ui| record(ui, id, false)).editing);
-    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    assert!(!EditableLabel::is_editing(h.ui(), id));
     assert_eq!(
         h.ui().focus(),
         None,
@@ -193,7 +186,7 @@ fn a_caller_opens_the_editor() {
     );
 
     // A disabled label stays a label too, and its keys reach no editor.
-    EditableLabel::start_editing(h.ui(), id);
+    EditableLabel::start_editing(h.ui_mut(), id);
     let disabled = |ui: &mut Ui| {
         EditableLabel::new("Alpha")
             .id(id)
@@ -205,7 +198,7 @@ fn a_caller_opens_the_editor() {
     h.key(Key::Char('Q'));
     h.key(Key::Enter);
     assert!(!h.frame_value(disabled));
-    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    assert!(!EditableLabel::is_editing(h.ui(), id));
     assert_eq!(h.ui().focus(), None);
 
     // So does one a disabled ancestor holds; the ancestor is known from the frame before.
@@ -219,9 +212,9 @@ fn a_caller_opens_the_editor() {
     h.frame(|ui| {
         in_disabled(ui);
     });
-    EditableLabel::start_editing(h.ui(), id);
+    EditableLabel::start_editing(h.ui_mut(), id);
     assert!(!h.frame_value(in_disabled));
-    assert!(!EditableLabel::is_editing(h.ui_ref(), id));
+    assert!(!EditableLabel::is_editing(h.ui(), id));
     assert_eq!(h.ui().focus(), None);
 }
 
@@ -246,7 +239,7 @@ fn escape_keeps_the_text() {
     assert!(!h.frame_value(|ui| record(ui, id, true)).editing);
     // Opened by the caller: a double click here would land as the third and fourth clicks of a
     // run, which open nothing.
-    EditableLabel::start_editing(h.ui(), id);
+    EditableLabel::start_editing(h.ui_mut(), id);
     assert!(h.frame_value(|ui| record(ui, id, true)).editing);
     h.key(Key::Enter);
     let unchanged = h.frame_value(|ui| record(ui, id, true));
@@ -310,7 +303,7 @@ fn a_caller_ends_the_edit_and_the_keys_open_it() {
         record(ui, id, true);
     });
     for (end, want) in [(EditEnd::Submitted, Some("Z")), (EditEnd::Canceled, None)] {
-        EditableLabel::start_editing(h.ui(), id);
+        EditableLabel::start_editing(h.ui_mut(), id);
         h.frame(|ui| {
             record(ui, id, true);
         });
@@ -318,16 +311,16 @@ fn a_caller_ends_the_edit_and_the_keys_open_it() {
         h.frame(|ui| {
             record(ui, id, true);
         });
-        EditableLabel::stop_editing(h.ui(), id, end);
+        EditableLabel::stop_editing(h.ui_mut(), id, end);
         let ended = h.frame_value(|ui| record(ui, id, true));
         assert_eq!(ended.committed_text.as_deref(), want, "{end:?}");
         assert_eq!(ended.committed, want.is_some(), "{end:?}");
-        assert!(!EditableLabel::is_editing(h.ui_ref(), id), "{end:?}");
+        assert!(!EditableLabel::is_editing(h.ui(), id), "{end:?}");
         assert!(!h.frame_value(|ui| record(ui, id, true)).editing, "{end:?}");
     }
 
     for key in [Key::Enter, Key::F2] {
-        h.ui().set_focus(id);
+        h.ui_mut().set_focus(id);
         h.frame(|ui| {
             record(ui, id, true);
         });
@@ -335,11 +328,8 @@ fn a_caller_ends_the_edit_and_the_keys_open_it() {
         h.frame(|ui| {
             record(ui, id, true);
         });
-        assert!(
-            EditableLabel::is_editing(h.ui_ref(), id),
-            "{key:?} opens it"
-        );
-        EditableLabel::stop_editing(h.ui(), id, EditEnd::Canceled);
+        assert!(EditableLabel::is_editing(h.ui(), id), "{key:?} opens it");
+        EditableLabel::stop_editing(h.ui_mut(), id, EditEnd::Canceled);
         h.frame(|ui| {
             record(ui, id, true);
         });

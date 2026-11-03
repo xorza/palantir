@@ -126,8 +126,12 @@ fn committed_fires_once_per_finished_edit() {
             .iter()
             .map(|step| {
                 match *step {
-                    Type(c) => h.key(Key::Char(c)),
-                    Press(key) => h.key(key),
+                    Type(c) => {
+                        h.key(Key::Char(c));
+                    }
+                    Press(key) => {
+                        h.key(key);
+                    }
                     Blur => h.clear_focus(),
                 }
                 frame(&mut h, &mut buf).a().committed
@@ -182,9 +186,9 @@ fn reports_changed_on_same_length_overwrite() {
 
     h.set_focus(id);
     let _ = frame(&mut h, &mut buf); // settle focus
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     let _ = frame(&mut h, &mut buf);
     h.key(Key::Char('b'));
     let sig = frame(&mut h, &mut buf);
@@ -232,7 +236,6 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
 fn every_edit_action_chord_is_edit_class() {
     use crate::input::key_class::KeyClass;
     use crate::input::keyboard::key_press::KeyPress;
-    use crate::input::keyboard::modifiers::Modifiers;
     use crate::widgets::text_edit::action::EditAction;
 
     let actions = [
@@ -252,13 +255,7 @@ fn every_edit_action_chord_is_edit_class() {
         // `Shortcut` matches on the physical key, so classify the press as the router sees it.
         let press = KeyPress {
             key: shortcut.key,
-            mods: Modifiers {
-                ctrl: shortcut.mods.ctrl,
-                shift: shortcut.mods.shift,
-                alt: shortcut.mods.alt,
-                mac_ctrl: false,
-                meta: shortcut.mods.meta,
-            },
+            mods: shortcut.mods.held(),
             repeat: false,
             physical: shortcut.key,
             text: KeyText::EMPTY,
@@ -316,7 +313,7 @@ fn a_focused_field_yields_the_keys_it_does_not_act_on() {
         h.frame(|ui| {
             scene(ui, &mut buf, probe);
         });
-        h.set_modifiers(mods);
+        h.hold_modifiers(mods);
         h.key(key);
         let at_root = h.frame_value(|ui| scene(ui, &mut buf, probe));
         assert_eq!(at_root, reaches_root, "{key:?} under {mods:?}");
@@ -407,8 +404,12 @@ fn a_buffered_field_hands_over_a_changed_draft_on_commit() {
             .map(|step| {
                 match *step {
                     Focus => h.set_focus(id),
-                    Type(c) => h.key(Key::Char(c)),
-                    Press(key) => h.key(key),
+                    Type(c) => {
+                        h.key(Key::Char(c));
+                    }
+                    Press(key) => {
+                        h.key(key);
+                    }
                     Blur => h.clear_focus(),
                     Value(value) => current = value,
                 }

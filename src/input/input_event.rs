@@ -9,9 +9,10 @@ use crate::input::zoom_factor::ZoomFactor;
 use glam::Vec2;
 
 /// Palantir-native input event, independent of any windowing toolkit. Coordinates
-/// are **logical pixels**. Scalars are screened at ingress (non-finite values and
-/// non-positive zoom are discarded), so a host may forward whatever its platform
-/// reported. The IME variants borrow the host's text; the event stays `Copy`.
+/// are **logical pixels**. Scalars are screened at ingress (non-finite values are
+/// discarded), so a host may forward whatever its platform reported; a pinch's factor is a
+/// [`ZoomFactor`], which the host builds through [`ZoomFactor::new`], refusing a factor no zoom
+/// can be. The IME variants borrow the host's text; the event stays `Copy`.
 #[derive(Clone, Copy, Debug)]
 pub enum InputEvent<'a> {
     /// Pointer position, relative to the surface origin.
@@ -29,9 +30,9 @@ pub enum InputEvent<'a> {
     /// sign-flipped to match `ScrollPixels`; the consuming widget applies its line
     /// step.
     ScrollLines(Vec2),
-    /// Multiplicative zoom factor from a pinch gesture: `1.0` is identity, `1.05`
-    /// zooms in 5%. Wheel zoom is not translated into `Zoom`.
-    Zoom(f32),
+    /// A pinch gesture's multiplicative step: [`ZoomFactor::ONE`] is none, `1.05` zooms in 5%.
+    /// Wheel zoom is not translated into `Pinch`.
+    Pinch(ZoomFactor),
     /// Logical key pressed; `repeat` reflects OS key repeat. Modifiers are not carried: read
     /// [`Modifiers`] from `InputState`.
     KeyDown {
@@ -88,7 +89,7 @@ impl<'a> InputEvent<'a> {
             Self::PointerReleased(button) => InputEvent::PointerReleased(button),
             Self::ScrollPixels(delta) => InputEvent::ScrollPixels(delta),
             Self::ScrollLines(delta) => InputEvent::ScrollLines(delta),
-            Self::Zoom(factor) => InputEvent::Zoom(factor),
+            Self::Pinch(factor) => InputEvent::Pinch(factor),
             Self::KeyDown {
                 key,
                 repeat,
@@ -111,13 +112,12 @@ impl<'a> InputEvent<'a> {
     /// [`InputState::on_input`](crate::input_state::InputState): a
     /// non-finite scalar would poison retained state (NaN fails every hit-test; an
     /// offset holding one trips [`TranslateScale::new`](crate::TranslateScale)'s
-    /// finite check later). Zoom composes by multiplication, so it must be a
-    /// [`ZoomFactor`]: positive and normal, so its inverse is finite.
+    /// finite check later). A pinch's [`ZoomFactor`] is valid by construction.
     pub(crate) fn is_valid(&self) -> bool {
         match self {
             Self::PointerMoved(p) | Self::ScrollPixels(p) | Self::ScrollLines(p) => p.is_finite(),
-            Self::Zoom(factor) => ZoomFactor::new(*factor).is_some(),
-            Self::PointerLeft
+            Self::Pinch(_)
+            | Self::PointerLeft
             | Self::PointerPressed(_)
             | Self::PointerReleased(_)
             | Self::KeyDown { .. }
@@ -162,6 +162,7 @@ mod tests {
     use crate::input::keyboard::key_text::KeyText;
     use crate::input::keyboard::modifiers::Modifiers;
     use crate::input::pointer::PointerButton;
+    use crate::input::zoom_factor::ZoomFactor;
     use glam::Vec2;
 
     /// Every scalar-carrying variant is screened and the rest pass; payload-free
@@ -179,18 +180,14 @@ mod tests {
                     assert!(!event.is_valid(), "{event:?}");
                 }
             }
-            assert!(!InputEvent::Zoom(value).is_valid(), "zoom {value}");
-        }
-        for factor in [0.0, -0.0, -1.0, 1.0e-40] {
-            assert!(!InputEvent::Zoom(factor).is_valid(), "zoom {factor}");
         }
 
         let ok: &[InputEvent<'_>] = &[
             InputEvent::PointerMoved(Vec2::new(-3.5, 12.0)),
             InputEvent::ScrollPixels(Vec2::new(0.0, -40.0)),
             InputEvent::ScrollLines(Vec2::ZERO),
-            InputEvent::Zoom(f32::MIN_POSITIVE),
-            InputEvent::Zoom(1.05),
+            InputEvent::Pinch(ZoomFactor::new(f32::MIN_POSITIVE).unwrap()),
+            InputEvent::Pinch(ZoomFactor::new(1.05).unwrap()),
             InputEvent::PointerLeft,
             InputEvent::PointerPressed(PointerButton::Left),
             InputEvent::PointerReleased(PointerButton::Right),
@@ -230,7 +227,7 @@ mod tests {
                 InputEvent::PointerReleased(_) => 3,
                 InputEvent::ScrollPixels(_) => 4,
                 InputEvent::ScrollLines(_) => 5,
-                InputEvent::Zoom(_) => 6,
+                InputEvent::Pinch(_) => 6,
                 InputEvent::KeyDown { .. } => 7,
                 InputEvent::ModifiersChanged(_) => 8,
                 InputEvent::SurfaceFocusLost => 9,

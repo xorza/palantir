@@ -39,11 +39,11 @@ use std::time::Duration;
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
     let mut h = Harness::mono(SURFACE);
-    let theme = h.ui().theme_mut();
+    let theme = h.ui_mut().theme_mut();
     theme.panel_chrome = Some(Chrome::fill(RgbaF32::srgb(0.0, 0.0, 1.0)));
     theme.panel_clip = ClipMode::Rounded;
-    let overlay = h.ui_ref().debug_overlay();
-    h.ui().set_debug_overlay(DebugOverlayConfig {
+    let overlay = h.ui().debug_overlay();
+    h.ui_mut().set_debug_overlay(DebugOverlayConfig {
         frame_stats: true,
         ..overlay
     });
@@ -56,7 +56,7 @@ fn frame_stats_overlay_records_partial_damage() {
     };
     h.frame(&mut body);
     assert_eq!(h.ui().frame_runtime.fps_ema, 0.0);
-    let debug = &h.ui_ref().forest.trees[Plane::base(Layer::Debug)];
+    let debug = &h.ui().forest.trees[Plane::base(Layer::Debug)];
     assert_eq!(debug.records.len(), 3, "row, chip and text leaf");
     assert_eq!(debug.chrome_table.len(), 1, "the chip's fill alone");
 
@@ -78,8 +78,8 @@ fn frame_stats_overlay_records_partial_damage() {
         "the first reading seeds fps_ema with the instantaneous rate",
     );
 
-    let overlay = h.ui_ref().debug_overlay();
-    h.ui().set_debug_overlay(DebugOverlayConfig {
+    let overlay = h.ui().debug_overlay();
+    h.ui_mut().set_debug_overlay(DebugOverlayConfig {
         frame_stats: false,
         ..overlay
     });
@@ -266,10 +266,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 
     // A pending close request vetoes the fast path: the app reads `close_requested` only during record.
-    h.ui().window_frame.facts.close_requested = true;
+    h.ui_mut().window_frame.facts.close_requested = true;
     let r3 = h.at(half * 3).frame(|ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
-    h.ui().window_frame.facts.close_requested = false;
+    h.ui_mut().window_frame.facts.close_requested = false;
     let r4 = h.at(half * 4).frame(|ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 
@@ -309,7 +309,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
-        let store = &h.ui_ref().forest.record_store;
+        let store = &h.ui().forest.record_store;
         assert_eq!(store.interned_text().all(), "retained 7");
     }
 
@@ -323,7 +323,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
          ShapeBrush::Gradient indices remain valid",
     );
     {
-        let store = &h.ui_ref().forest.record_store;
+        let store = &h.ui().forest.record_store;
         assert_eq!(
             store.interned_text().all(),
             "retained 7",
@@ -369,7 +369,7 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
     let half = Duration::from_millis(500);
 
     a.frame(|ui| window_a(ui, half));
-    let original_row = rows(a.ui_ref(), &atlas)[0];
+    let original_row = rows(a.ui(), &atlas)[0];
     atlas.flush_with(|_| ());
 
     b.frame(|ui| {
@@ -389,14 +389,14 @@ fn paint_only_reresolves_gradient_after_other_window_evicts_its_row() {
             }
         });
     });
-    let b_rows: HashSet<LutRow> = rows(b.ui_ref(), &atlas).into_iter().collect();
+    let b_rows: HashSet<LutRow> = rows(b.ui(), &atlas).into_iter().collect();
     assert_eq!(b_rows.len(), (INITIAL_ATLAS_ROWS - 1) as usize);
     assert!(b_rows.contains(&original_row));
     atlas.flush_with(|_| ());
 
     let report = a.at(half).frame(|ui| window_a(ui, half));
     assert_eq!(report.processing, FrameProcessing::PaintOnly);
-    let resolved_row = rows(a.ui_ref(), &atlas)[0];
+    let resolved_row = rows(a.ui(), &atlas)[0];
     assert_ne!(
         resolved_row, original_row,
         "PaintOnly must resolve retained gradient content after its old row is reused",
@@ -481,7 +481,7 @@ fn input_policy_routes_paint_only_gate() {
 
     {
         let mut h = Harness::mono(SURFACE);
-        h.ui().set_input_policy(InputPolicy::OnDelta);
+        h.ui_mut().set_input_policy(InputPolicy::OnDelta);
         let r0 = h.frame(|ui| body(ui, half));
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
@@ -504,7 +504,7 @@ fn input_policy_routes_paint_only_gate() {
 
     {
         let mut h = Harness::mono(SURFACE);
-        h.ui().set_input_policy(InputPolicy::Always);
+        h.ui_mut().set_input_policy(InputPolicy::Always);
         let _ = h.frame(|ui| body(ui, half));
 
         h.hover(Vec2::new(40.0, 40.0));
@@ -519,9 +519,11 @@ fn input_policy_routes_paint_only_gate() {
     {
         use crate::primitives::identity::widget_id::WidgetId;
         let mut h = Harness::mono(SURFACE);
-        h.ui().set_input_policy(InputPolicy::OnDelta);
+        h.ui_mut().set_input_policy(InputPolicy::OnDelta);
         let _ = h.frame(|ui| body(ui, half));
-        h.ui().input.set_focus(Some(WidgetId::from_hash("editor")));
+        h.ui_mut()
+            .input
+            .set_focus(Some(WidgetId::from_hash("editor")));
 
         h.key(Key::Enter);
         assert_eq!(
@@ -556,7 +558,7 @@ fn fps_ema_reads_unclamped_frame_delta() {
 fn request_relayout_between_frames_is_a_caller_error() {
     let mut h = Harness::mono(SURFACE);
     h.frame(|_| {});
-    h.ui().request_relayout();
+    h.ui_mut().request_relayout();
 }
 
 #[test]

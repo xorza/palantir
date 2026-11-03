@@ -102,9 +102,9 @@ fn pinch_products_accumulate_independently_per_event_time_target() {
     let surface = UVec2::new(200, 100);
     let mut h = Harness::mono(surface);
     h.frame(build_two_gesture_targets);
-    h.pinch(Vec2::new(50.0, 50.0), 1.1);
-    h.on_input(InputEvent::Zoom(1.05));
-    h.pinch(Vec2::new(150.0, 50.0), 0.5);
+    h.pinch(Vec2::new(50.0, 50.0), ZoomFactor::new(1.1).unwrap());
+    h.on_input(InputEvent::Pinch(ZoomFactor::new(1.05).unwrap()));
+    h.pinch(Vec2::new(150.0, 50.0), ZoomFactor::new(0.5).unwrap());
 
     let [a, b] = h.frame_value(|ui| {
         build_two_gesture_targets(ui);
@@ -258,7 +258,7 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
     };
     h.frame(build);
     h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
-    h.on_input(InputEvent::Zoom(1.5));
+    h.on_input(InputEvent::Pinch(ZoomFactor::new(1.5).unwrap()));
     let scroll = h.frame_value(|ui| {
         build(ui);
         ui.response_for(id).scroll
@@ -290,7 +290,7 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
     };
     h.frame(build);
     h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 9.0));
-    h.on_input(InputEvent::Zoom(1.5));
+    h.on_input(InputEvent::Pinch(ZoomFactor::new(1.5).unwrap()));
     let scroll = h.frame_value(|ui| {
         build(ui);
         ui.response_for(id).scroll

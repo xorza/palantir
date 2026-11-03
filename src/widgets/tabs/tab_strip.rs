@@ -708,7 +708,10 @@ impl StripPass<'_> {
         let first = ui.shortcut_pressed(Key::Home);
         let last = ui.shortcut_pressed(Key::End);
         let cycle = ui.shortcut_pressed(Shortcut::new(ShortcutMods::CTRL, Key::Tab));
-        let cycle_back = ui.shortcut_pressed(Shortcut::new(ShortcutMods::CTRL_SHIFT, Key::Tab));
+        let cycle_back = ui.shortcut_pressed(Shortcut::new(
+            ShortcutMods::CTRL | ShortcutMods::SHIFT,
+            Key::Tab,
+        ));
         let target = if back || cycle_back {
             Some(step(false))
         } else if forward || cycle {

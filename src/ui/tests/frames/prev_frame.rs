@@ -1,5 +1,6 @@
 //! The snapshot a frame leaves for the next one to diff against.
 
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -49,11 +50,11 @@ fn prev_frame_captures_nodes_with_rows() {
             .damage
             .prev_paint_rect(WidgetId::from_hash("a"))
             .unwrap(),
-        h.ui_ref().layout[Plane::MAIN].rect[frame_node.idx()],
+        h.ui().layout[Plane::MAIN].rect[frame_node.idx()],
     );
     assert_eq!(
         snap.hash,
-        h.ui_ref().forest.trees[Plane::MAIN].rollups.node[frame_node.idx()],
+        h.ui().forest.trees[Plane::MAIN].rollups.node[frame_node.idx()],
     );
 }
 
@@ -114,17 +115,17 @@ fn prev_frame_updates_on_authoring_change() {
 #[test]
 fn the_laid_out_scale_moves_with_the_frame_not_the_write() {
     use crate::display::user_scale::UserScale;
-    let mut h = Harness::cold(glam::UVec2::new(200, 100));
+    let h = Harness::cold(glam::UVec2::new(200, 100));
     assert_eq!(h.ui().laid_out_scale(), None, "nothing laid out yet");
     let mut h = Harness::builder(glam::UVec2::new(200, 100))
         .mono()
-        .scale(2.0)
+        .system_scale(SystemScale::new(2.0).unwrap())
         .build();
     h.frame(|_| {});
     assert_eq!(h.ui().laid_out_scale(), Some(2.0));
 
     let bigger = UserScale::ONE.stepped_up();
-    h.ui().set_user_scale(bigger);
+    h.ui_mut().set_user_scale(bigger);
     assert_eq!(
         h.ui().laid_out_scale(),
         Some(2.0),

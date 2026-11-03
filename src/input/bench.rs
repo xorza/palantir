@@ -10,6 +10,7 @@
 
 use crate::bench::backends::Backend;
 use crate::bench::kind::{Kind, Scale};
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::pointer::PointerButton;
@@ -27,7 +28,7 @@ use glam::{UVec2, Vec2};
 use std::hint::black_box;
 
 const SIZE: UVec2 = UVec2::new(1280, 800);
-const SCALE: f32 = 2.0;
+const SCALE: SystemScale = SystemScale::new(2.0).unwrap();
 const OVERLAP_LAYERS: usize = 64;
 const GRID_COLS: usize = 12;
 const GRID_ROWS: usize = 8;
@@ -105,7 +106,7 @@ fn build_ui(ui: &mut Ui) {
 }
 
 fn warmed_ui() -> Harness {
-    let mut h = Harness::builder(SIZE).mono().scale(SCALE).build();
+    let mut h = Harness::builder(SIZE).mono().system_scale(SCALE).build();
     // Two frames: the first builds the cascade, the second latches the scroll target.
     h.frame(build_ui);
     h.hover(Vec2::new(320.0, 200.0));
@@ -141,9 +142,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
         b.iter(|| {
             // Each press lands on a different cell, so focus moves every click.
             ui.press(pointer_at(i), PointerButton::Left);
-            ui.ui().end_input_frame();
+            ui.ui_mut().end_input_frame();
             let d = ui.release(PointerButton::Left);
-            ui.ui().end_input_frame();
+            ui.ui_mut().end_input_frame();
             i = i.wrapping_add(1);
             black_box(d);
         });
@@ -173,10 +174,10 @@ pub(crate) fn atomic(c: &mut Criterion) {
             ui.scroll_pixels(pointer_at(i.wrapping_add(2)), Vec2::new(0.0, 3.0));
             if i.is_multiple_of(16) {
                 ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-                ui.ui().end_input_frame();
+                ui.ui_mut().end_input_frame();
                 ui.release(PointerButton::Left);
             }
-            ui.ui().end_input_frame();
+            ui.ui_mut().end_input_frame();
             i = i.wrapping_add(3);
             black_box(&ui);
         });

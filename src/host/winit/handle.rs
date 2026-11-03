@@ -10,13 +10,13 @@ use winit::event_loop::EventLoopProxy;
 use crate::host::winit::error::HostDisconnected;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::frame_summary::FrameSummary;
+use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::host::winit::remote::{QueryTask, Remote, ShotAsk};
 use crate::host::winit::system_preferences::SystemPreferences;
-use crate::input::owned_input_event::OwnedInputEvent;
 use crate::window::window_token::WindowToken;
 
 /// A main-thread closure scheduled via [`HostHandle::run_on_main`].
-pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) -> bool + Send>;
+pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) + Send>;
 
 /// Events delivered through [`HostHandle`] to the event loop. Generic over `T`
 /// so [`Self::RunOnMain`] carries a typed closure. Window lifecycle is an
@@ -105,16 +105,18 @@ impl<T: 'static> fmt::Debug for HostHandle<T> {
 }
 
 impl<T: 'static> HostHandle<T> {
-    /// Requests one frame of `window`. Lock-free; dropped silently if the loop or window is gone.
-    pub fn request_repaint(&self, window: WindowToken) {
+    /// Requests one frame of `window`, behind the window's [`Waker`](crate::Waker), the one
+    /// cross-thread wake an app holds. Lock-free; dropped silently if the loop or window is gone.
+    pub(crate) fn request_repaint(&self, window: WindowToken) {
         self.send(UserEvent::Repaint(window)).ok();
     }
 
     /// Delivers `event` to `window` before its next frame, as the window's OS input is, stamped
     /// with the window's input clock, then runs a frame; [`FrameSummary::sent_inputs`] counts the
     /// event. Events reach the window in the order they are sent. Dropped silently unless the
-    /// window is open.
-    pub fn send_input(&self, window: WindowToken, event: OwnedInputEvent) {
+    /// window is open. Crate-private, so a [`Remote`], which counts what it sends,
+    /// is the one sender: input from another made its settle end early.
+    pub(crate) fn send_input(&self, window: WindowToken, event: OwnedInputEvent) {
         self.send(UserEvent::Input(window, event)).ok();
     }
 
@@ -131,7 +133,7 @@ impl<T: 'static> HostHandle<T> {
     }
 
     /// Schedules `f` on the main thread with `&mut` the app before the next
-    /// frame; return `true` to repaint every window.
+    /// frame, and repaints every window after it, so what `f` changed shows.
     ///
     /// # Errors
     ///
@@ -140,7 +142,7 @@ impl<T: 'static> HostHandle<T> {
     /// whose loss discards a state mutation.
     pub fn run_on_main(
         &self,
-        f: impl FnOnce(&mut T) -> bool + Send + 'static,
+        f: impl FnOnce(&mut T) + Send + 'static,
     ) -> Result<(), HostDisconnected> {
         self.send(UserEvent::RunOnMain(Box::new(f)))
     }
@@ -170,7 +172,7 @@ mod tests {
     #[test]
     fn user_event_debug_formats_every_variant_without_an_app_bound() {
         let repaint: UserEvent<()> = UserEvent::Repaint(WindowToken(7));
-        let task = UserEvent::RunOnMain(Box::new(|(): &mut ()| true));
+        let task = UserEvent::RunOnMain(Box::new(|(): &mut ()| {}));
         let quit: UserEvent<()> = UserEvent::Quit;
         let input: UserEvent<()> =
             UserEvent::Input(WindowToken(2), InputEvent::ImeCommit("ok").into());

@@ -63,7 +63,7 @@ fn primed() -> Harness {
     h
 }
 
-fn find(h: &mut Harness, locator: &Locator) -> Result<Found, LocateError> {
+fn find(h: &Harness, locator: &Locator) -> Result<Found, LocateError> {
     locator.find(&(), h.ui())
 }
 
@@ -75,23 +75,20 @@ fn text(text: &str) -> Locator {
 /// itself with an empty rect; an offset moves both the rect and the point.
 #[test]
 fn a_locator_finds_a_widget_by_text_id_and_point() {
-    let mut h = primed();
-    let one = Found::rect(Rect::new(10.0, 10.0, 60.0, 20.0));
-    assert_eq!(find(&mut h, &text("One")), Ok(one));
-    assert_eq!(find(&mut h, &WidgetId::from_hash("one").into()), Ok(one));
+    let h = primed();
+    let one = Found::center_of(Rect::new(10.0, 10.0, 60.0, 20.0));
+    assert_eq!(find(&h, &text("One")), Ok(one));
+    assert_eq!(find(&h, &WidgetId::from_hash("one").into()), Ok(one));
     let point = Vec2::new(3.0, 4.0);
     assert_eq!(
-        find(&mut h, &point.into()),
+        find(&h, &point.into()),
         Ok(Found {
             rect: Rect::new(3.0, 4.0, 0.0, 0.0),
             point,
         })
     );
     assert_eq!(
-        find(
-            &mut h,
-            &Locator::Offset(Box::new(text("One")), Vec2::new(5.0, -2.0))
-        ),
+        find(&h, &text("One").offset(Vec2::new(5.0, -2.0))),
         Ok(Found {
             rect: Rect::new(15.0, 8.0, 60.0, 20.0),
             point: Vec2::new(45.0, 18.0),
@@ -103,9 +100,9 @@ fn a_locator_finds_a_widget_by_text_id_and_point() {
 /// order and refuses an index past them, or around a locator that names one place.
 #[test]
 fn nth_picks_among_ambiguous_matches() {
-    let mut h = primed();
+    let h = primed();
     assert_eq!(
-        find(&mut h, &text("Twin")),
+        find(&h, &text("Twin")),
         Err(LocateError::Ambiguous {
             locator: r#"Text("Twin")"#.to_owned(),
             matches: vec![
@@ -114,21 +111,21 @@ fn nth_picks_among_ambiguous_matches() {
             ],
         })
     );
-    let nth = |n| Locator::Nth(Box::new(text("Twin")), n);
+    let nth = |n| text("Twin").nth(n);
     assert_eq!(
-        find(&mut h, &nth(1)),
-        Ok(Found::rect(Rect::new(10.0, 100.0, 60.0, 20.0)))
+        find(&h, &nth(1)),
+        Ok(Found::center_of(Rect::new(10.0, 100.0, 60.0, 20.0)))
     );
     assert_eq!(
-        find(&mut h, &nth(2)),
+        find(&h, &nth(2)),
         Err(LocateError::NoNth {
             locator: r#"Nth(Text("Twin"), 2)"#.to_owned(),
             count: 2,
         })
     );
-    let of_id = Locator::Nth(Box::new(WidgetId::from_hash("one").into()), 0);
+    let of_id = Locator::from(WidgetId::from_hash("one")).nth(0);
     assert!(matches!(
-        find(&mut h, &of_id),
+        find(&h, &of_id),
         Err(LocateError::NoNth { count: 1, .. })
     ));
 }
@@ -139,39 +136,39 @@ fn nth_picks_among_ambiguous_matches() {
 /// nothing. A press refuses a disabled widget, which a hover still finds.
 #[test]
 fn a_locator_says_why_it_found_nothing() {
-    let mut h = primed();
+    let h = primed();
     assert_eq!(
-        find(&mut h, &text("Under")),
+        find(&h, &text("Under")),
         Err(LocateError::Covered {
             locator: r#"Text("Under")"#.to_owned(),
             point: Vec2::new(130.0, 20.0),
         })
     );
-    assert!(find(&mut h, &text("Over")).is_ok());
+    assert!(find(&h, &text("Over")).is_ok());
     assert_eq!(
-        find(&mut h, &text("Dup")),
-        Ok(Found::rect(Rect::new(100.0, 100.0, 60.0, 20.0)))
+        find(&h, &text("Dup")),
+        Ok(Found::center_of(Rect::new(100.0, 100.0, 60.0, 20.0)))
     );
     assert!(
-        find(&mut h, &text("Behind")).is_ok(),
+        find(&h, &text("Behind")).is_ok(),
         "a label that only hovers takes no press from the button under it"
     );
     assert_eq!(
-        find(&mut h, &text("Hidden")),
+        find(&h, &text("Hidden")),
         Err(LocateError::OffScreen {
             locator: r#"Text("Hidden")"#.to_owned()
         })
     );
     let listed = |texts: &[&str]| texts.iter().map(|text| (*text).to_owned()).collect();
     assert_eq!(
-        find(&mut h, &text("tw")),
+        find(&h, &text("tw")),
         Err(LocateError::NotFound {
             locator: r#"Text("tw")"#.to_owned(),
             nearest: listed(&["Two", "Twin", "Twin"]),
         })
     );
     assert_eq!(
-        find(&mut h, &text("zzz")),
+        find(&h, &text("zzz")),
         Err(LocateError::NotFound {
             locator: r#"Text("zzz")"#.to_owned(),
             nearest: listed(&[
@@ -180,7 +177,7 @@ fn a_locator_says_why_it_found_nothing() {
         })
     );
     assert!(matches!(
-        find(&mut h, &WidgetId::from_hash("absent").into()),
+        find(&h, &WidgetId::from_hash("absent").into()),
         Err(LocateError::NotFound { nearest, .. }) if nearest.is_empty()
     ));
     let off = text("Off");
@@ -206,7 +203,7 @@ struct Slot(usize);
 
 impl Locate<Vec<Rect>> for Slot {
     fn find_all(&self, app: &Vec<Rect>, _ui: &Ui, out: &mut Vec<Found>) -> Result<(), LocateError> {
-        out.extend(app.iter().skip(self.0).map(|rect| Found::rect(*rect)));
+        out.extend(app.iter().skip(self.0).map(|rect| Found::center_of(*rect)));
         if out.is_empty() {
             return Err(LocateError::NotFound {
                 locator: format!("{self:?}"),
@@ -221,22 +218,19 @@ impl Locate<Vec<Rect>> for Slot {
 /// `Nth` picks one, and its own error passes through.
 #[test]
 fn an_app_names_its_own_places() {
-    let mut h = primed();
+    let h = primed();
     let app = vec![
         Rect::new(0.0, 0.0, 10.0, 10.0),
         Rect::new(20.0, 0.0, 10.0, 10.0),
     ];
     let slot = |n| Locator::App(Slot(n));
     let ui = h.ui();
-    assert_eq!(slot(1).find(&app, ui), Ok(Found::rect(app[1])));
+    assert_eq!(slot(1).find(&app, ui), Ok(Found::center_of(app[1])));
     assert!(matches!(
         slot(0).find(&app, ui),
         Err(LocateError::Ambiguous { matches, .. }) if matches.len() == 2
     ));
-    assert_eq!(
-        Locator::Nth(Box::new(slot(0)), 1).find(&app, ui),
-        Ok(Found::rect(app[1]))
-    );
+    assert_eq!(slot(0).nth(1).find(&app, ui), Ok(Found::center_of(app[1])));
     assert!(matches!(
         slot(2).find(&app, ui),
         Err(LocateError::NotFound { .. })

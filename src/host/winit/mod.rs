@@ -35,6 +35,7 @@ pub(crate) mod frame_summary;
 pub(crate) mod handle;
 mod input;
 mod native;
+pub(crate) mod owned_input_event;
 #[cfg_attr(target_os = "macos", path = "platform/macos.rs")]
 #[cfg_attr(target_os = "windows", path = "platform/windows.rs")]
 #[cfg_attr(
@@ -67,6 +68,7 @@ mod system_preferences;
 mod window;
 mod window_set;
 
+use crate::display::system_scale::SystemScale;
 use crate::gpu::device::power_preference::PowerPreference;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -78,7 +80,6 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::WindowId;
 
-use crate::display;
 use crate::gpu::surface::surface_manager::SurfaceManager;
 use crate::gpu::wgpu_backend::FrameTiming;
 use crate::host::winit::config::WinitHostConfig;
@@ -157,6 +158,9 @@ impl<T: 'static> fmt::Debug for WinitHost<T> {
 pub struct WinitHostBuilder<T> {
     first_token: WindowToken,
     config: WinitHostConfig,
+    /// The title [`Self::title`] set, laid over [`Self::window`]'s at build, so the order of the
+    /// two calls does not matter.
+    title: Option<String>,
     marker: PhantomData<fn() -> T>,
 }
 
@@ -170,9 +174,10 @@ where
         self
     }
 
-    /// Set the bootstrap window's title; shorthand for the field of [`Self::window`] nearly every app sets.
+    /// Set the bootstrap window's title; shorthand for the field of [`Self::window`] nearly every
+    /// app sets, which wins over that config's title whichever is called first.
     pub fn title(mut self, title: impl Into<String>) -> Self {
-        self.config.window.title = title.into();
+        self.title = Some(title.into());
         self
     }
 
@@ -235,10 +240,12 @@ where
             .build()
             .map_err(|source| WinitHostError::CreateEventLoop { source })?;
         let proxy = event_loop.create_proxy();
+        let token = self.first_token;
+        let config = self.sealed_config();
         Ok(WinitHost {
             phase: HostPhase::Bootstrap(Bootstrap {
-                token: self.first_token,
-                config: self.config,
+                token,
+                config,
                 create_app: Some(Box::new(create_app)),
                 pending_tasks: Vec::new(),
             }),
@@ -246,6 +253,16 @@ where
             proxy,
             frames: Arc::default(),
         })
+    }
+
+    /// The config the bootstrap window opens with: [`Self::window`]'s, under [`Self::title`]'s
+    /// title when one is set.
+    fn sealed_config(self) -> WinitHostConfig {
+        let mut config = self.config;
+        if let Some(title) = self.title {
+            config.window.title = title;
+        }
+        config
     }
 }
 
@@ -258,6 +275,7 @@ where
         WinitHostBuilder {
             first_token,
             config: WinitHostConfig::default(),
+            title: None,
             marker: PhantomData,
         }
     }
@@ -360,9 +378,8 @@ where
             UserEvent::RunOnMain(task) => match &mut self.phase {
                 HostPhase::Bootstrap(bootstrap) => bootstrap.pending_tasks.push(task),
                 HostPhase::Running(runtime) => {
-                    if task(&mut runtime.app) {
-                        runtime.repaint_all();
-                    }
+                    task(&mut runtime.app);
+                    runtime.repaint_all();
                 }
                 HostPhase::Failed(_) => {}
             },
@@ -433,7 +450,7 @@ where
             }
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                win.system_scale = display::sanitize_system_scale(scale_factor);
+                win.system_scale = SystemScale::from_platform(scale_factor);
                 win.invalidate_system_facts();
                 win.next = FramePresent::Immediate;
             }

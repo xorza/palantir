@@ -98,10 +98,10 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
         let track = h.arranged(id.with("box"));
         let knob = h.arranged(id.with("knob"));
         [
-            knob.min.x - track.min.x,
-            knob.min.y - track.min.y,
-            track.max().x - knob.max().x,
-            track.max().y - knob.max().y,
+            knob.unwrap().min.x - track.unwrap().min.x,
+            knob.unwrap().min.y - track.unwrap().min.y,
+            track.unwrap().max().x - knob.unwrap().max().x,
+            track.unwrap().max().y - knob.unwrap().max().y,
         ]
     };
     h.frame(&mut record);
@@ -134,7 +134,7 @@ fn the_knob_wears_the_ink_of_its_state() {
     };
     let knob_fill = |h: &Harness| {
         let chrome = h
-            .ui_ref()
+            .ui()
             .tree(Layer::Main)
             .chrome(h.node_for_widget_id(id.with("knob")))
             .expect("the knob paints a fill");
@@ -180,15 +180,15 @@ fn one_share_places_the_knob_and_blends_its_ink() {
     let knob = h.arranged(id.with("knob"));
     // The look moves the track's border on the check too, here 1.00015625 px, which the layout's
     // f16 padding stores as 1: the knob keeps its 3 px inset from the edge it sits against.
-    assert_eq!(knob.min.y - track.min.y, 3.0);
+    assert_eq!(knob.unwrap().min.y - track.unwrap().min.y, 3.0);
     assert_close(
-        knob.min.x - track.min.x,
+        knob.unwrap().min.x - track.unwrap().min.x,
         3.0 + 15.0 * 0.16,
         1e-6,
         "the share is 0.016 / 0.1, rounded in f32",
     );
     let chrome = h
-        .ui_ref()
+        .ui()
         .tree(Layer::Main)
         .chrome(h.node_for_widget_id(id.with("knob")))
         .expect("the knob paints a fill");

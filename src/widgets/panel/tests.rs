@@ -98,8 +98,8 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 #[test]
 fn explicit_no_chrome_and_no_clip_override_panel_theme() {
     let mut h = Harness::mono(UVec2::new(200, 120));
-    h.ui().theme_mut().panel_chrome = Some(Chrome::fill(RgbaF32::WHITE));
-    h.ui().theme_mut().panel_clip = ClipMode::Rect;
+    h.ui_mut().theme_mut().panel_chrome = Some(Chrome::fill(RgbaF32::WHITE));
+    h.ui_mut().theme_mut().panel_clip = ClipMode::Rect;
     let [explicit, inherited] = h.frame_value(|ui| {
         [
             Panel::vstack()

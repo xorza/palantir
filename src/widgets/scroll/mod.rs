@@ -9,6 +9,7 @@ pub(crate) mod scroll_state;
 pub(crate) mod zoom_config;
 
 use crate::input::interaction::response_state::ResponseState;
+use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::sense::Sense;
 use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::size::Size;
@@ -338,10 +339,10 @@ impl<'a> Scroll<'a> {
         // A theme with no line metric contributes no notches.
         let notches_per_px = domain::share_of(1.0, line_px);
         let notches = scroll.lines + scroll.pixels * notches_per_px;
-        // `ctrl` is the primary command modifier: Cmd on macOS, Ctrl elsewhere.
+        // `CTRL` is the primary command modifier: Cmd on macOS, Ctrl elsewhere.
         let mods = ui.peek_modifiers();
         let wheel_zooms = self.zoom.is_some_and(|cfg| match cfg.modifier() {
-            ZoomModifier::Ctrl => mods.ctrl,
+            ZoomModifier::Ctrl => mods.contains(Modifiers::CTRL),
             ZoomModifier::Always => true,
             ZoomModifier::PinchOnly => false,
         });

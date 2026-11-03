@@ -214,7 +214,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                 gpu.poll();
                 fixture
                     .window
-                    .ui_ref()
+                    .ui()
                     .gpu_pass_stats()
                     .last_kind(BatchKind::Image)
                     .is_some()
@@ -230,7 +230,7 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                         gpu.poll();
                         fixture
                             .window
-                            .ui_ref()
+                            .ui()
                             .gpu_pass_stats()
                             .last_kind(BatchKind::Image)
                             .expect("an image batch timestamp every frame once one arrived")

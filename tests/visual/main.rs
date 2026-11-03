@@ -32,7 +32,7 @@ mod theme;
 mod visual_rig;
 
 use glam::UVec2;
-use palantir::{FramePaint, RgbaF32, Ui, WindowConfig, WindowToken};
+use palantir::{FramePaint, RgbaF32, Ui, WindowCommand, WindowConfig, WindowToken};
 
 use crate::visual_rig::VisualRig;
 
@@ -71,26 +71,25 @@ fn readback_returns_clear_color_for_empty_scene() {
     }
 }
 
-/// The offscreen host has no window lifecycle, so a recorded open is a caller error.
+/// The offscreen host has no window lifecycle: a frame's opens and closes are recorded for the
+/// app to read, and the frame paints as any other.
 #[test]
-#[should_panic(expected = "Ui::open_window(WindowToken(1))")]
-fn opening_a_window_offscreen_panics() {
+fn an_offscreen_frame_records_its_window_commands() {
     let mut h = VisualRig::new();
     h.size(UVec2::new(16, 16))
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
-            ui.open_window(WindowToken(1), WindowConfig::new("unservable"));
-        });
-}
-
-/// Closing is denied on the same grounds as opening.
-#[test]
-#[should_panic(expected = "Ui::close_window(WindowToken(2))")]
-fn closing_a_window_offscreen_panics() {
-    let mut h = VisualRig::new();
-    h.size(UVec2::new(16, 16))
-        .clear(RgbaF32::BLACK)
-        .frame(|ui| {
+            ui.open_window(WindowToken(1), WindowConfig::new("other"));
             ui.close_window(WindowToken(2));
         });
+    assert!(matches!(
+        h.host.window_commands(),
+        [
+            WindowCommand::Open {
+                token: WindowToken(1),
+                ..
+            },
+            WindowCommand::Close(WindowToken(2))
+        ]
+    ));
 }

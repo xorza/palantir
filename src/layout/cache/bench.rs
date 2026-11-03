@@ -17,6 +17,7 @@
 use crate::bench::backends::Backend;
 use crate::bench::case_group::CaseGroup;
 use crate::bench::kind::{Kind, Scale};
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::internals::cache_fixture::{BroadChange, build_broad, build_broad_variant, build_deep};
 use crate::primitives::geometry::corners::Corners;
@@ -107,12 +108,17 @@ const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
 
 /// The surface every arm renders at, with mono-fallback text.
 fn mono() -> Harness {
-    Harness::builder(SURFACE).mono().scale(2.0).build()
+    Harness::builder(SURFACE)
+        .mono()
+        .system_scale(SystemScale::new(2.0).unwrap())
+        .build()
 }
 
 /// [`mono`] with real cosmic shaping.
 fn shaped() -> Harness {
-    Harness::builder(SURFACE).scale(2.0).build()
+    Harness::builder(SURFACE)
+        .system_scale(SystemScale::new(2.0).unwrap())
+        .build()
 }
 
 fn build_grid_intrinsics(ui: &mut Ui) {

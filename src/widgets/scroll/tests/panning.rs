@@ -155,17 +155,12 @@ fn a_wheel_pans_only_the_scrolled_axes() {
         h.scroll_pixels(Vec2::new(50.0, 20.0), Vec2::new(75.0, 200.0));
         h.frame(|ui| build(ui, case.disabled));
         assert_eq!(
-            h.state::<ScrollState>(id).offset(),
+            h.state::<ScrollState>(id).unwrap().offset(),
             case.offset,
             "{}",
             case.label
         );
-        assert_eq!(
-            scroll_viewport(h.ui_ref(), id),
-            case.viewport,
-            "{}",
-            case.label
-        );
+        assert_eq!(scroll_viewport(h.ui(), id), case.viewport, "{}", case.label);
     }
 }
 
@@ -203,7 +198,7 @@ fn drag_thumb_pans_proportionally() {
         // viewport = 200, content = 800 ⇒ max_offset = 600.
         // thumb_size = 200 * 200/800 = 50 ⇒ travel = 200 - 50 = 150.
         // factor = 600 / 150 = 4.0 ⇒ offset.y = 30 * 4.0 = 120.
-        let offset_y = h.state::<ScrollState>(outer_id).offset().y;
+        let offset_y = h.state::<ScrollState>(outer_id).unwrap().offset().y;
         assert_eq!(
             offset_y, 120.0,
             "30 logical px at {scale}× should produce offset 120, got {offset_y}"
@@ -212,7 +207,7 @@ fn drag_thumb_pans_proportionally() {
         h.hover(press + Vec2::new(0.0, 9_999.0 * scale));
         h.frame(build);
         assert_eq!(
-            h.state::<ScrollState>(outer_id).offset().y,
+            h.state::<ScrollState>(outer_id).unwrap().offset().y,
             600.0,
             "drag past end at {scale}× clamps to max offset",
         );
@@ -276,7 +271,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             h.press(forward_press, PointerButton::Left);
             h.release(PointerButton::Left);
             h.frame(build_axis);
-            let offset = h.state::<ScrollState>(outer_id).offset();
+            let offset = h.state::<ScrollState>(outer_id).unwrap().offset();
             let forward = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,
@@ -291,7 +286,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
             h.press(back_press, PointerButton::Left);
             h.release(PointerButton::Left);
             h.frame(build_axis);
-            let offset = h.state::<ScrollState>(outer_id).offset();
+            let offset = h.state::<ScrollState>(outer_id).unwrap().offset();
             let back = match axis {
                 AxisCase::V => offset.y,
                 AxisCase::H => offset.x,

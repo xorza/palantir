@@ -130,7 +130,7 @@ fn arrange_with(driver: Driver, case: ArrangeCase) -> Rect {
                 .show(ui, |ui| add_child(ui, child, case));
         }
     });
-    h.arranged(child)
+    h.arranged(child).unwrap()
 }
 
 /// One sizing resolves to one extent under every driver, either axis, with or without margin (which alone moves the child off the slot start). Fill floors at its measured minimum in a small slot and stops at its maximum in a larger one; fixed holds under stretch, loses to a larger minimum, and min == max pins it. A hugging node stops at its maximum below its content and floors at its minimum above content and slot (a stretching driver grows a hugging child to the slot).
@@ -285,7 +285,7 @@ fn an_empty_driver_hugs_its_padding() {
             panel.id(id).size(hug).padding(5.0).show(ui, |_| {});
         });
         assert_eq!(
-            h.arranged(id),
+            h.arranged(id).unwrap(),
             Rect::new(0.0, 0.0, 10.0, 10.0),
             "{driver:?}"
         );
@@ -348,22 +348,22 @@ fn a_collapsed_child_takes_no_room() {
             _ => (30.0, 60.0),
         };
         assert_eq!(
-            h.arranged(panel_id),
+            h.arranged(panel_id).unwrap(),
             Rect::new(0.0, 0.0, panel_w, 20.0),
             "{driver:?}: the panel"
         );
         assert_eq!(
-            h.arranged(a_id),
+            h.arranged(a_id).unwrap(),
             Rect::new(0.0, 0.0, 20.0, 20.0),
             "{driver:?}: a"
         );
         assert_eq!(
-            h.arranged(b_id),
+            h.arranged(b_id).unwrap(),
             Rect::new(b_x, 0.0, 30.0, 20.0),
             "{driver:?}: b"
         );
         assert_eq!(
-            h.arranged(gone_id).size,
+            h.arranged(gone_id).unwrap().size,
             Size::ZERO,
             "{driver:?}: the collapsed child"
         );
@@ -383,8 +383,11 @@ fn a_hidden_child_keeps_its_slot() {
             Block::new().id(b_id).size(40.0).show(ui);
         });
     });
-    assert_eq!(h.arranged(hid_id), Rect::new(50.0, 0.0, 40.0, 40.0));
-    assert_eq!(h.arranged(b_id), Rect::new(100.0, 0.0, 40.0, 40.0));
+    assert_eq!(
+        h.arranged(hid_id).unwrap(),
+        Rect::new(50.0, 0.0, 40.0, 40.0)
+    );
+    assert_eq!(h.arranged(b_id).unwrap(), Rect::new(100.0, 0.0, 40.0, 40.0));
 }
 
 /// A collapsed fill child drops its weight: beside it, two weight-1 fills split a 400-wide row
@@ -409,6 +412,6 @@ fn a_collapsed_child_drops_its_fill_weight() {
             });
     });
     let (a, b) = (h.arranged(a_id), h.arranged(b_id));
-    assert_eq!((a.min.x, a.size.w), (0.0, 200.0));
-    assert_eq!((b.min.x, b.size.w), (200.0, 200.0));
+    assert_eq!((a.unwrap().min.x, a.unwrap().size.w), (0.0, 200.0));
+    assert_eq!((b.unwrap().min.x, b.unwrap().size.w), (200.0, 200.0));
 }

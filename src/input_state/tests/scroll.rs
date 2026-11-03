@@ -53,7 +53,7 @@ fn end_frame_clears_target_deltas_without_releasing_capacity() {
     assert_eq!(state.pointer.target_deltas.capacity(), capacity);
 }
 
-/// Every invalid scalar payload is refused at the door and never reaches retained state: NaN passes `pan_delta.x != 0.0` and `f32::clamp`, and the poisoned offset later trips `TranslateScale::new`'s finite assert; a zoom factor must also be positive. A refused event mutates nothing and asks for no frame.
+/// Every invalid scalar payload is refused at the door and never reaches retained state: NaN passes `pan_delta.x != 0.0` and `f32::clamp`, and the poisoned offset later trips `TranslateScale::new`'s finite assert; a pinch's factor is a `ZoomFactor`, valid by construction. A refused event mutates nothing and asks for no frame.
 #[test]
 fn an_invalid_payload_is_refused_and_mutates_nothing() {
     let id = WidgetId::from_hash("scroll");
@@ -63,7 +63,7 @@ fn an_invalid_payload_is_refused_and_mutates_nothing() {
     state.pointer.pinch_target = Some(id);
     state.feed(InputEvent::ScrollPixels(Vec2::new(0.0, 5.0)));
     state.feed(InputEvent::ScrollLines(Vec2::new(1.0, 0.0)));
-    state.feed(InputEvent::Zoom(1.5));
+    state.feed(InputEvent::Pinch(ZoomFactor::new(1.5).unwrap()));
     state.signal_since_last_frame = InputSignal::None;
 
     let mut refused = Vec::new();
@@ -75,9 +75,6 @@ fn an_invalid_payload_is_refused_and_mutates_nothing() {
                 InputEvent::PointerMoved(axis),
             ]);
         }
-    }
-    for factor in [0.0, -0.0, -1.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
-        refused.push(InputEvent::Zoom(factor));
     }
     for event in refused {
         assert!(!state.feed(event).repaint_requested, "{event:?}");

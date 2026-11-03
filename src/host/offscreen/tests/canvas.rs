@@ -85,7 +85,7 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
             .shaper(TextShaper::test_mono())
             .swapchain_present()
             .build();
-        host.ui().theme_mut().window_clear = RgbaF32::BLACK;
+        host.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
         host.core.backend_mut().paint_as(traffic);
         host
     };
@@ -102,8 +102,8 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
         } else {
             FramePaint::Partial
         };
-        let backbuffer_paint = on_backbuffer.frame(backbuffer_target.as_target(), 1.0, &mut app);
-        let canvas_paint = on_canvas.frame(canvas_target.as_target(), 1.0, &mut app);
+        let backbuffer_paint = on_backbuffer.frame(backbuffer_target.as_target(), &mut app);
+        let canvas_paint = on_canvas.frame(canvas_target.as_target(), &mut app);
         assert_eq!(backbuffer_paint.paint(), want, "frame {frame}");
         assert_eq!(canvas_paint.paint(), want, "frame {frame}");
         assert!(

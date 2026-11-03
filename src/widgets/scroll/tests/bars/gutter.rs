@@ -31,7 +31,7 @@ fn vertical_overflow_reserves_bar_thickness_on_inner() {
     };
     h.prime(2, build);
     assert_eq!(
-        scroll_viewport(h.ui_ref(), WidgetId::from_hash("scroll")),
+        scroll_viewport(h.ui(), WidgetId::from_hash("scroll")),
         Size::new(188.0, 200.0),
         "V overflow reserves theme.thickness + theme.gap = 12px on the right; H axis untouched"
     );
@@ -56,7 +56,7 @@ fn user_padding_is_preserved_when_bar_reserves() {
     };
     h.prime(2, build);
     assert_eq!(
-        scroll_viewport(h.ui_ref(), WidgetId::from_hash("scroll")),
+        scroll_viewport(h.ui(), WidgetId::from_hash("scroll")),
         Size::new(156.0, 168.0)
     );
 }
@@ -79,7 +79,7 @@ fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
     });
     let theme = theme();
     let expected_x = 200.0 - theme.thickness;
-    let overlays = thumb_rects(ui.ui_ref(), "scroll");
+    let overlays = thumb_rects(ui.ui(), "scroll");
     assert_eq!(overlays.len(), 1, "one vertical thumb");
     for r in &overlays {
         assert_eq!(
@@ -152,13 +152,13 @@ fn overlay_mode_skips_gutter_reservation() {
     };
     h.prime(2, scene);
     assert_eq!(
-        scroll_viewport(h.ui_ref(), scroll_id),
+        scroll_viewport(h.ui(), scroll_id),
         Size::new(200.0, 200.0),
         "Overlay: viewport = full outer (no gutter reservation), \
          even when content overflows and the bar is drawn",
     );
     assert_eq!(
-        scroll_content(h.ui_ref(), scroll_id),
+        scroll_content(h.ui(), scroll_id),
         Size::new(180.0, 800.0),
         "the content overflows the viewport on Y, so the bar is drawn"
     );

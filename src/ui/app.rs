@@ -44,8 +44,8 @@ mod tests {
         let mut records = 0;
         let mut app = |_: &mut Ui| records += 1;
         app.update(WindowToken(0), h.ui());
-        app.record(WindowToken(0), h.ui());
-        app.record(WindowToken(7), h.ui());
+        app.record(WindowToken(0), h.ui_mut());
+        app.record(WindowToken(7), h.ui_mut());
         assert_eq!(records, 2);
     }
 }

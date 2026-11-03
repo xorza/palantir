@@ -30,14 +30,14 @@ fn double_and_triple_click_select_word_and_all() {
     h.release(PointerButton::Left);
     h.at(Duration::from_secs_f32(0.0))
         .frame(|ui| body(ui, &mut buf));
-    let st = h.state::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).unwrap().clone();
     assert_eq!(st.edit.caret, 3, "single click places the caret");
     assert_eq!(st.edit.selection, None);
 
     h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     h.at(Duration::from_secs_f32(0.1))
         .frame(|ui| body(ui, &mut buf));
-    let st = h.state::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).unwrap().clone();
     assert_eq!(
         st.edit.selection_range(),
         Some(0..5),
@@ -50,7 +50,7 @@ fn double_and_triple_click_select_word_and_all() {
     h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     h.at(Duration::from_secs_f32(0.2))
         .frame(|ui| body(ui, &mut buf));
-    let st = h.state::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).unwrap().clone();
     assert_eq!(
         st.edit.selection_range(),
         Some(0..buf.len()),
@@ -66,7 +66,7 @@ fn double_and_triple_click_select_word_and_all() {
     h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     h.at(Duration::from_secs_f32(5.0))
         .frame(|ui| body(ui, &mut buf));
-    let st = h.state::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).unwrap().clone();
     assert_eq!(st.edit.caret, 3, "pause resets the run to a single click");
     assert_eq!(
         st.edit.selection, None,

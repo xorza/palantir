@@ -172,7 +172,7 @@ struct Press<'a> {
 /// - A synthetic press is dropped: X11 and Windows send one per held key on
 ///   focus gain, which could submit a form nobody pressed a key at.
 /// - Text typed with Super held is cleared: Super is a command modifier
-///   everywhere (Cmd on macOS reaches `Modifiers::ctrl`), and `Modifiers` has
+///   everywhere (Cmd on macOS reaches `Modifiers::CTRL`), and `Modifiers` has
 ///   no Super bit on Windows and Linux.
 /// - Text past [`KeyText::CAPACITY`], as an emoji joined of several, overflows between two
 ///   characters into an [`InputEvent::ImeCommit`], which types it in place after the press.
@@ -207,17 +207,20 @@ fn key_down(facts: KeyDownFacts<'_>, modifiers: ModifiersState) -> Option<Press<
 
 fn normalize_modifiers(modifiers: ModifiersState, platform: Platform) -> Modifiers {
     let mac = platform.commands_with_super();
-    Modifiers {
-        shift: modifiers.shift_key(),
-        ctrl: if mac {
+    let mut held = Modifiers::NONE;
+    held.set(Modifiers::SHIFT, modifiers.shift_key());
+    held.set(
+        Modifiers::CTRL,
+        if mac {
             modifiers.super_key()
         } else {
             modifiers.control_key()
         },
-        alt: modifiers.alt_key(),
-        mac_ctrl: mac && modifiers.control_key(),
-        meta: !mac && modifiers.super_key(),
-    }
+    );
+    held.set(Modifiers::ALT, modifiers.alt_key());
+    held.set(Modifiers::MAC_CTRL, mac && modifiers.control_key());
+    held.set(Modifiers::META, !mac && modifiers.super_key());
+    held
 }
 
 #[cfg(test)]

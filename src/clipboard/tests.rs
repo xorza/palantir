@@ -14,8 +14,11 @@ fn memory_clipboards_roundtrip_and_are_isolated() {
 
     first.set_text("clipboard-test-roundtrip-✓").unwrap();
 
-    assert_eq!(first.text().unwrap(), "clipboard-test-roundtrip-✓");
-    assert_eq!(second.text().unwrap(), "");
+    assert_eq!(
+        first.text().unwrap().as_deref(),
+        Some("clipboard-test-roundtrip-✓")
+    );
+    assert_eq!(second.text().unwrap(), None);
 }
 
 #[test]
@@ -25,7 +28,7 @@ fn clones_share_one_clipboard() {
 
     first.set_text("shared").unwrap();
 
-    assert_eq!(second.text().unwrap(), "shared");
+    assert_eq!(second.text().unwrap().as_deref(), Some("shared"));
 }
 
 /// The error crosses the public surface, so it owes the impls a caller needs to box and print it.
@@ -77,20 +80,20 @@ fn failed_primary_write_holds_until_another_copy() {
 
     clipboard.set_text("fresh").unwrap();
     assert_eq!(primary.borrow().reads, 1);
-    assert_eq!(clipboard.text().unwrap(), "fresh");
-    assert_eq!(clipboard.text().unwrap(), "fresh");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("fresh"));
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("fresh"));
     assert_eq!(primary.borrow().reads, 3);
 
     primary.borrow_mut().text = String::from("external");
-    assert_eq!(clipboard.text().unwrap(), "external");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("external"));
 
     primary.borrow_mut().text = String::from("later");
-    assert_eq!(clipboard.text().unwrap(), "later");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("later"));
 
     primary.borrow_mut().reject_writes = false;
     clipboard.set_text("replacement").unwrap();
     assert_eq!(primary.borrow().text, "replacement");
-    assert_eq!(clipboard.text().unwrap(), "replacement");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("replacement"));
 }
 
 /// A primary unreadable at write time takes its first later answer as the reference.
@@ -102,13 +105,13 @@ fn unread_primary_takes_its_next_answer_as_the_reference() {
     primary.borrow_mut().reject_reads = true;
 
     clipboard.set_text("fresh").unwrap();
-    assert_eq!(clipboard.text().unwrap(), "fresh");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("fresh"));
 
     primary.borrow_mut().reject_reads = false;
-    assert_eq!(clipboard.text().unwrap(), "fresh");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("fresh"));
 
     primary.borrow_mut().text = String::from("external");
-    assert_eq!(clipboard.text().unwrap(), "external");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("external"));
 }
 
 /// Only a backend error falls back, and only to text mirrored from or written beside the primary.
@@ -120,16 +123,16 @@ fn unreadable_primary_answers_from_a_current_fallback() {
     assert_eq!(clipboard.text(), Err(ClipboardUnavailable));
 
     primary.borrow_mut().reject_reads = false;
-    assert_eq!(clipboard.text().unwrap(), "seen");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("seen"));
 
     primary.borrow_mut().text = String::new();
-    assert_eq!(clipboard.text().unwrap(), "");
+    assert_eq!(clipboard.text().unwrap(), None);
 
     primary.borrow_mut().reject_reads = true;
-    assert_eq!(clipboard.text().unwrap(), "");
+    assert_eq!(clipboard.text().unwrap(), None);
 
     clipboard.set_text("copied").unwrap();
-    assert_eq!(clipboard.text().unwrap(), "copied");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("copied"));
 }
 
 /// An image copy replaces the text and reads back, and a text copy replaces the image: in
@@ -144,7 +147,7 @@ fn an_image_copy_replaces_the_text_and_reads_back() {
     assert_eq!(memory.image(), Ok(None), "empty");
     memory.set_text("text").unwrap();
     memory.set_image(&image).unwrap();
-    assert_eq!(memory.text().unwrap(), "");
+    assert_eq!(memory.text().unwrap(), None);
     assert_eq!(memory.image(), Ok(Some(image.clone())));
     assert!(memory.buffer_has_image());
     memory.set_text("text").unwrap();
@@ -155,7 +158,7 @@ fn an_image_copy_replaces_the_text_and_reads_back() {
     clipboard.set_image(&image).unwrap();
     assert_eq!(taking.borrow().image, Some(image.clone()));
     assert!(!clipboard.buffer_has_image(), "the primary holds it");
-    assert_eq!(clipboard.text().unwrap(), "");
+    assert_eq!(clipboard.text().unwrap(), None);
     assert_eq!(clipboard.image(), Ok(Some(image.clone())));
     taking.borrow_mut().reject_reads = true;
     assert_eq!(clipboard.image(), Err(ClipboardUnavailable));
@@ -167,7 +170,7 @@ fn an_image_copy_replaces_the_text_and_reads_back() {
     clipboard.set_image(&image).unwrap();
     assert_eq!(refusing.borrow().image, None);
     assert!(clipboard.buffer_has_image(), "no primary took it");
-    assert_eq!(clipboard.text().unwrap(), "");
+    assert_eq!(clipboard.text().unwrap(), None);
     assert_eq!(clipboard.image(), Ok(Some(image)), "the fallback holds it");
     refusing.borrow_mut().text = String::from("external");
     assert_eq!(
@@ -175,5 +178,5 @@ fn an_image_copy_replaces_the_text_and_reads_back() {
         Ok(None),
         "another application copied text"
     );
-    assert_eq!(clipboard.text().unwrap(), "external");
+    assert_eq!(clipboard.text().unwrap().as_deref(), Some("external"));
 }

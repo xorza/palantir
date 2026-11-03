@@ -231,6 +231,7 @@ impl BackendSpec {
 
 #[cfg(test)]
 mod tests {
+    use crate::display::system_scale::SystemScale;
     use crate::gpu::device::gpu::Gpu;
     use crate::gpu::surface::owned_target::OwnedTarget;
     use crate::gpu::surface::render_target::TargetFormat;
@@ -272,7 +273,7 @@ mod tests {
             physical: size,
             format: TargetFormat::RGBA8_SRGB,
             gives_copy: target.as_target().gives_copy(),
-            system_scale: 1.0,
+            system_scale: SystemScale::ONE,
             refresh_millihertz: None,
             now: Duration::ZERO,
         };
@@ -297,7 +298,7 @@ mod tests {
             physical: size,
             format: TargetFormat::RGBA8_SRGB,
             gives_copy: target.as_target().gives_copy(),
-            system_scale: 1.0,
+            system_scale: SystemScale::ONE,
             refresh_millihertz: None,
             now: Duration::ZERO,
         };

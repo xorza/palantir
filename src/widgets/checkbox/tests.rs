@@ -16,7 +16,7 @@ fn checkmark_polyline_is_themed_and_scales_with_box_size() {
 
     fn drawn(theme: ToggleTheme) -> Vec<Vec2> {
         let mut h = Harness::mono(UVec2::new(200, 100));
-        h.ui().theme_mut().checkbox = theme;
+        h.ui_mut().theme_mut().checkbox = theme;
         let mut v = true;
         h.frame(|ui| {
             Panel::hstack().auto_id().show(ui, |ui| {

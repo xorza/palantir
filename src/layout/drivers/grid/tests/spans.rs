@@ -349,17 +349,21 @@ fn a_spanning_cell_grows_the_hug_tracks_it_crosses() {
         });
     });
     let cols = h.arranged(WidgetId::from_hash("cols"));
-    assert_eq!(cols.size.w, 200.0);
+    assert_eq!(cols.unwrap().size.w, 200.0);
     let second = h.arranged(WidgetId::from_hash(("cell", 1)));
     assert_eq!(
-        second.min.x - cols.min.x,
+        second.unwrap().min.x - cols.unwrap().min.x,
         85.0 + 10.0,
         "column 0 is 85 wide"
     );
     let rows = h.arranged(WidgetId::from_hash("rows"));
-    assert_eq!(rows.size.h, 100.0);
+    assert_eq!(rows.unwrap().size.h, 100.0);
     let lower = h.arranged(WidgetId::from_hash(("row-cell", 1)));
-    assert_eq!(lower.min.y - rows.min.y, 45.0, "row 0 is 45 high");
+    assert_eq!(
+        lower.unwrap().min.y - rows.unwrap().min.y,
+        45.0,
+        "row 0 is 45 high"
+    );
 }
 
 /// A spanning cell's share stops at a Hug track's `max`, as the track solve holds it, and the rest
@@ -395,11 +399,15 @@ fn a_spanning_share_stops_at_the_track_max() {
     let grid = h.arranged(WidgetId::from_hash("grid"));
     let second = h.arranged(WidgetId::from_hash(("cell", 1)));
     assert_eq!(
-        second.min.x - grid.min.x,
+        second.unwrap().min.x - grid.unwrap().min.x,
         40.0 + 10.0,
         "column 0 holds at its max"
     );
-    assert_eq!(grid.size.w, 200.0, "column 1 takes the rest, to 150");
+    assert_eq!(
+        grid.unwrap().size.w,
+        200.0,
+        "column 1 takes the rest, to 150"
+    );
 }
 
 /// A spanning cell that crosses a Fill column grows only its Fill columns, by weight, and holds the
@@ -484,8 +492,13 @@ fn a_span_over_a_fill_column_grows_only_its_fill_columns() {
             });
         });
         let grid = h.arranged(WidgetId::from_hash("grid"));
-        let starts = [0u16, 1, 2]
-            .map(|col| h.arranged(WidgetId::from_hash(("cell", col))).min.x - grid.min.x);
+        let starts = [0u16, 1, 2].map(|col| {
+            h.arranged(WidgetId::from_hash(("cell", col)))
+                .unwrap()
+                .min
+                .x
+                - grid.unwrap().min.x
+        });
         assert_eq!(starts, case.starts, "{}", case.what);
     }
 }

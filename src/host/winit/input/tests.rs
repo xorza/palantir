@@ -63,7 +63,7 @@ fn physical_keys_map_layout_independent_identities() {
     );
 }
 
-/// Each winit modifier per platform: macOS Cmd is the command bit and Control is `mac_ctrl`; elsewhere Control is.
+/// Each winit modifier per platform: macOS Cmd is the command bit and Control is `MAC_CTRL`; elsewhere Control is.
 #[test]
 fn modifier_normalization_translates_each_bit() {
     let none = Modifiers::NONE;
@@ -75,21 +75,18 @@ fn modifier_normalization_translates_each_bit() {
         (
             ModifiersState::CONTROL,
             Platform::Mac,
-            Modifiers {
-                mac_ctrl: true,
-                ..none
-            },
+            none | Modifiers::MAC_CTRL,
         ),
         (ModifiersState::CONTROL, Platform::Windows, Modifiers::CTRL),
         (
             ModifiersState::SUPER,
             Platform::Linux,
-            Modifiers { meta: true, ..none },
+            none | Modifiers::META,
         ),
         (
             ModifiersState::SHIFT | ModifiersState::CONTROL,
             Platform::Linux,
-            Modifiers::CTRL_SHIFT,
+            Modifiers::CTRL | Modifiers::SHIFT,
         ),
     ];
     for (state, platform, expected) in rows {

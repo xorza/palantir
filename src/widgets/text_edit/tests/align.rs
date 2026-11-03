@@ -119,7 +119,7 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
         let mut h = Harness::mono(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(Align::CENTER), None);
-        shape_origins(h.ui_ref(), node)
+        shape_origins(h.ui(), node)
             .text
             .expect("text shape emitted")
     };
@@ -132,7 +132,7 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
     let mut h = Harness::mono(NARROW);
     let mut buf = String::from("abcd");
     let node = frame(&mut h, &mut buf, Some(Align::CENTER), None);
-    let first = shape_origins(h.ui_ref(), node)
+    let first = shape_origins(h.ui(), node)
         .text
         .expect("text shape emitted");
     assert_eq!(
@@ -153,7 +153,7 @@ fn single_line_default_is_left_vcenter() {
     let mut h = Harness::mono(NARROW);
     let mut buf = String::from("abcd");
     let node = warmup_then(&mut h, &mut buf, None, None);
-    let origin = shape_origins(h.ui_ref(), node).text;
+    let origin = shape_origins(h.ui(), node).text;
     let o = origin.expect("text shape emitted for non-empty buffer");
     assert_eq!(o.x, PAD_L, "x = {}", o.x);
     let dy = (INNER_H - LINE_H) * 0.5;
@@ -182,7 +182,7 @@ fn single_line_text_align_table() {
         let mut h = Harness::mono(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
-        let origin = shape_origins(h.ui_ref(), node).text;
+        let origin = shape_origins(h.ui(), node).text;
         let o = origin.expect("text shape emitted");
         assert_eq!(
             o.x,
@@ -214,7 +214,7 @@ fn caret_tracks_aligned_text() {
     let Origins {
         text: text_origin,
         caret: caret_origin,
-    } = shape_origins(h.ui_ref(), node);
+    } = shape_origins(h.ui(), node);
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
     let dx = ALIGN_W - TEXT_W_4CH; // 233.5
@@ -245,7 +245,7 @@ fn empty_focused_caret_vcenters_against_one_line() {
     h.click(Vec2::new(50.0, 20.0));
     frame(&mut h, &mut buf, None, None);
     let node = frame(&mut h, &mut buf, None, None);
-    let caret_origin = shape_origins(h.ui_ref(), node).caret;
+    let caret_origin = shape_origins(h.ui(), node).caret;
     let c = caret_origin.expect("focused empty editor still paints caret");
     let line_height = 1229.0 / 64.0;
     assert_eq!(
@@ -263,7 +263,7 @@ fn placeholder_uses_own_measured_size_for_alignment() {
     let mut h = Harness::mono(NARROW);
     let mut buf = String::new();
     let node = warmup_then(&mut h, &mut buf, Some(Align::RIGHT), Some("wxyz"));
-    let origin = shape_origins(h.ui_ref(), node).text;
+    let origin = shape_origins(h.ui(), node).text;
     let o = origin.expect("placeholder paints when unfocused + empty");
     let dx = ALIGN_W - TEXT_W_4CH;
     assert_eq!(
@@ -274,8 +274,8 @@ fn placeholder_uses_own_measured_size_for_alignment() {
         PAD_L + dx
     );
     // The offset stored for hit-testing is that same placement.
-    let stored = h.state::<TextEditState>(ed_id()).view.block_offset;
-    let placed = block_at(h.ui_ref(), node) - Vec2::new(PAD_L, PAD_T);
+    let stored = h.state::<TextEditState>(ed_id()).unwrap().view.block_offset;
+    let placed = block_at(h.ui(), node) - Vec2::new(PAD_L, PAD_T);
     assert_eq!(
         stored, placed,
         "stored {stored:?} is not where the block was placed, {placed:?}"
@@ -293,7 +293,7 @@ fn click_compensates_for_right_align() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.release(PointerButton::Left);
     let id = WidgetId::from_hash("align-ed");
-    let caret = h.state::<TextEditState>(id).edit.caret;
+    let caret = h.state::<TextEditState>(id).unwrap().edit.caret;
     assert!(
         (1..=2).contains(&caret),
         "click on right-aligned glyph 'b' must land near byte 1 (got {caret})",
@@ -307,7 +307,7 @@ fn align_overflow_clamps_to_zero() {
         let mut h = Harness::mono(NARROW);
         let mut buf = "a".repeat(100);
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
-        let origin = shape_origins(h.ui_ref(), node).text;
+        let origin = shape_origins(h.ui(), node).text;
         let o = origin.expect("text shape");
         assert_eq!(
             o.x, PAD_L,
@@ -326,14 +326,14 @@ fn selection_rects_offset_matches_text() {
     frame(&mut h, &mut buf, Some(Align::RIGHT), None);
     h.click(Vec2::new(260.0, 20.0));
     h.key(Key::Home);
-    h.set_modifiers(Modifiers::SHIFT);
+    h.hold_modifiers(Modifiers::SHIFT);
     h.key(Key::ArrowRight);
     h.key(Key::ArrowRight);
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     let node = frame(&mut h, &mut buf, Some(Align::RIGHT), None);
 
-    let at = block_at(h.ui_ref(), node);
-    let block = block_of(h.ui_ref(), node);
+    let at = block_at(h.ui(), node);
+    let block = block_of(h.ui(), node);
     let first_rounded = h
         .ui()
         .tree(Layer::Main)
@@ -376,7 +376,7 @@ fn multiline_default_is_top_left() {
         });
     };
     h.prime(2, &mut record);
-    let origin = shape_origins(h.ui_ref(), node.unwrap()).text;
+    let origin = shape_origins(h.ui(), node.unwrap()).text;
     let o = origin.expect("text shape");
     assert_eq!(o.x, PAD_L, "x = {}", o.x);
     assert_eq!(o.y, PAD_T, "y = {}", o.y);
@@ -405,7 +405,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
                 });
         };
         h.prime(2, &mut record);
-        let origin = shape_origins(h.ui_ref(), node.unwrap()).text;
+        let origin = shape_origins(h.ui(), node.unwrap()).text;
         origin.expect("text shape emitted for non-empty buffer")
     }
     let unscaled = run(1.0);
@@ -461,14 +461,15 @@ fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
 
     let field = h.arranged(ed_id());
     assert_eq!(
-        field.min, corner,
+        field.unwrap().min,
+        corner,
         "the field was put at {:?} having been placed at {corner:?}",
-        field.min
+        field.unwrap().min
     );
-    let origin = shape_origins(h.ui_ref(), node.unwrap())
+    let origin = shape_origins(h.ui(), node.unwrap())
         .text
         .expect("text shape emitted");
-    let center = field.min + origin + Vec2::new(text.w, text.h) * 0.5;
+    let center = field.unwrap().min + origin + Vec2::new(text.w, text.h) * 0.5;
     assert_eq!(
         center, at,
         "the glyphs centered on {center:?} for a field asked to center them on {at:?}"

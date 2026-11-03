@@ -244,7 +244,7 @@ fn paint_twice(
 ) -> [RgbaImage; 2] {
     [RgbaF32::WHITE, RgbaF32::hex(0xd23f7a)].map(|tile| {
         scene.tile = tile;
-        let report = host.frame(target.as_target(), 1.0, scene);
+        let report = host.frame(target.as_target(), scene);
         let want = if tile == RgbaF32::WHITE {
             FramePaint::Full
         } else {
@@ -307,10 +307,10 @@ fn a_host_recovers_from_a_loss_between_frames() {
     let mut host = host_on(&lost, &shaper);
     let mut scene = Scene::new();
     let target = lost.target("palantir.test.recovery.lost", SIZE);
-    host.frame(target.as_target(), 1.0, &mut scene);
+    host.frame(target.as_target(), &mut scene);
     lost.lose();
     assert!(host.is_device_lost());
-    host.frame(target.as_target(), 1.0, &mut scene);
+    host.frame(target.as_target(), &mut scene);
     assert!(!host.driver.output_valid(), "the frame submitted nothing");
     assert_eq!(
         scene.refills, 0,
@@ -337,7 +337,6 @@ fn a_host_recovers_from_a_second_loss_inside_a_frame() {
         first
             .target("palantir.test.recovery.first", SIZE)
             .as_target(),
-        1.0,
         &mut scene,
     );
     first.lose();
@@ -345,7 +344,7 @@ fn a_host_recovers_from_a_second_loss_inside_a_frame() {
     let second = isolated_headless_test_gpu();
     host.recover(second.handles());
     let lost = second.target("palantir.test.recovery.second", SIZE);
-    let spec = host.spec(lost.as_target(), 1.0);
+    let spec = host.spec(lost.as_target());
     let CpuFrame { mode, .. } =
         host.core
             .record(&mut host.driver, spec, &mut scene, FrameDepth::Paint);
@@ -386,8 +385,8 @@ fn a_loss_inside_a_frame_that_grows_a_buffer_submits_nothing_that_panics() {
         });
     };
     let target = gpu.target("palantir.test.recovery.grow", UVec2::splat(SIDE));
-    host.frame(target.as_target(), 1.0, &mut |_: &mut Ui| {});
-    let spec = host.spec(target.as_target(), 1.0);
+    host.frame(target.as_target(), &mut |_: &mut Ui| {});
+    let spec = host.spec(target.as_target());
     let CpuFrame { mode, .. } =
         host.core
             .record(&mut host.driver, spec, &mut blocks, FrameDepth::Paint);
@@ -422,7 +421,6 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
         first
             .target("palantir.test.recovery.shot", size)
             .as_target(),
-        1.0,
         &mut app,
     );
     let id = asked.borrow().expect("the ask holds pixels");
@@ -431,14 +429,14 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
     let second = headless_test_gpu();
     host.recover(second.handles());
     let target = second.target("palantir.test.recovery.shot", size);
-    host.frame(target.as_target(), 1.0, &mut app);
+    host.frame(target.as_target(), &mut app);
     assert!(
         host.ui().screenshot_taken(id).is_none(),
         "its copy is on its way"
     );
     let pixels = target.read_back();
     host.wait_for_gpu();
-    host.frame(target.as_target(), 1.0, &mut app);
+    host.frame(target.as_target(), &mut app);
     let shot = host
         .ui()
         .screenshot_taken(id)

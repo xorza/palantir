@@ -349,9 +349,13 @@ impl Clipboard {
         Self::new(primary, Backend::Memory(MemoryBackend::default()))
     }
 
-    /// The clipboard's text. An empty clipboard is `Ok("")`, so test the string, not the `Result`.
-    pub fn text(&self) -> Result<String, ClipboardUnavailable> {
-        self.state.borrow_mut().text()
+    /// The clipboard's text, `None` when it holds none, as [`Self::image`] answers an empty
+    /// clipboard.
+    pub fn text(&self) -> Result<Option<String>, ClipboardUnavailable> {
+        self.state
+            .borrow_mut()
+            .text()
+            .map(|text| (!text.is_empty()).then_some(text))
     }
 
     /// Replace the clipboard's text. An action that deletes what it copied (cut) must check the result first.

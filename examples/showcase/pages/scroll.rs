@@ -244,7 +244,7 @@ mod tests {
         h.frame(&mut record);
         assert_eq!(offset(&mut h), 668.0 - view);
 
-        h.ui()
+        h.ui_mut()
             .with_state::<State, _>(state_id(), |_, s| s.reveal = 0);
         h.click("Reveal");
         h.frame(&mut record);

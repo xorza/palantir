@@ -19,7 +19,7 @@ fn context_menu_cut_copy_paste_clear() {
     }
 
     fn open_menu_and_record(h: &mut Harness, buf: &mut String) {
-        Menu::open(h.ui(), editor_id(), Vec2::new(20.0, 10.0));
+        Menu::open(h.ui_mut(), editor_id(), Vec2::new(20.0, 10.0));
         h.frame(|ui| body(ui, buf));
     }
 
@@ -43,31 +43,33 @@ fn context_menu_cut_copy_paste_clear() {
     h.set_clipboard_text("");
     let mut buf = String::from("hello");
     h.frame(|ui| body(ui, &mut buf));
-    h.ui().with_state::<TextEditState, _>(editor_id(), |_, st| {
-        st.edit.caret = 4;
-        st.edit.selection = Some(1);
-    });
+    h.ui_mut()
+        .with_state::<TextEditState, _>(editor_id(), |_, st| {
+            st.edit.caret = 4;
+            st.edit.selection = Some(1);
+        });
 
     // Copy: clipboard holds "ell", buffer unchanged, menu closes.
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 1); // row 1 == Copy
     assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
-    assert_eq!(h.clipboard_text(), "ell");
+    assert_eq!(h.clipboard_text().as_deref(), Some("ell"));
     assert!(
-        !Menu::is_open(h.ui_ref(), editor_id()),
+        !Menu::is_open(h.ui(), editor_id()),
         "item click auto-closes menu",
     );
 
     // Cut → buffer drops "ell", caret collapses to selection start.
-    h.ui().with_state::<TextEditState, _>(editor_id(), |_, st| {
-        st.edit.caret = 4;
-        st.edit.selection = Some(1);
-    });
+    h.ui_mut()
+        .with_state::<TextEditState, _>(editor_id(), |_, st| {
+            st.edit.caret = 4;
+            st.edit.selection = Some(1);
+        });
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
-    assert_eq!(h.clipboard_text(), "ell");
-    let st = h.state::<TextEditState>(editor_id()).clone();
+    assert_eq!(h.clipboard_text().as_deref(), Some("ell"));
+    let st = h.state::<TextEditState>(editor_id()).unwrap().clone();
     assert_eq!(st.edit.caret, 1);
     assert_eq!(st.edit.selection, None);
 
@@ -75,14 +77,14 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 2); // row 2 == Paste
     assert_eq!(buf, "hello", "paste inserts clipboard at caret");
-    let st = h.state::<TextEditState>(editor_id()).clone();
+    let st = h.state::<TextEditState>(editor_id()).unwrap().clone();
     assert_eq!(st.edit.caret, 4, "caret advances past pasted text");
 
     // Clear: row 5 (3 is the separator, 4 Select All).
     open_menu_and_record(&mut h, &mut buf);
     click_menu_row(&mut h, &mut buf, 5);
     assert_eq!(buf, "");
-    let st = h.state::<TextEditState>(editor_id()).clone();
+    let st = h.state::<TextEditState>(editor_id()).unwrap().clone();
     assert_eq!(st.edit.caret, 0);
 
     // Regression: a `\n`-bearing clipboard pasted via the menu is sanitized like Cmd+V.
@@ -96,13 +98,13 @@ fn context_menu_cut_copy_paste_clear() {
 
     // Select All is menu-owned while the popup is open; the command stream executes it once and closes.
     open_menu_and_record(&mut h, &mut buf);
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
     h.frame(|ui| body(ui, &mut buf));
-    let state = h.state::<TextEditState>(editor_id()).clone();
+    let state = h.state::<TextEditState>(editor_id()).unwrap().clone();
     assert_eq!(state.edit.selection_range(), Some(0..buf.len()));
     assert!(
-        !Menu::is_open(h.ui_ref(), editor_id()),
+        !Menu::is_open(h.ui(), editor_id()),
         "Select All shortcut closes the menu",
     );
 }
@@ -110,7 +112,7 @@ fn context_menu_cut_copy_paste_clear() {
 /// Only the platform-primary command modifier triggers clipboard shortcuts (Cmd on macOS, Ctrl elsewhere).
 #[test]
 fn clipboard_shortcuts_apply_keypresses() {
-    // Primary command modifier (`Modifiers::ctrl` is platform-normalized).
+    // Primary command modifier (`Modifiers::CTRL` is platform-normalized).
     fn primary(c: char) -> KeyPress {
         KeyPress::with(Key::Char(c), Modifiers::CTRL)
     }
@@ -132,11 +134,11 @@ fn clipboard_shortcuts_apply_keypresses() {
 
     keys.apply(&mut text, &mut state, primary('c'));
     assert_eq!(text, "hello");
-    assert_eq!(keys.clipboard.text().unwrap(), "ell");
+    assert_eq!(keys.clipboard.text().unwrap().as_deref(), Some("ell"));
 
     keys.apply(&mut text, &mut state, primary('x'));
     assert_eq!(text, "ho");
-    assert_eq!(keys.clipboard.text().unwrap(), "ell");
+    assert_eq!(keys.clipboard.text().unwrap().as_deref(), Some("ell"));
     assert_eq!(state.caret, 1);
     assert_eq!(state.selection, None);
 
@@ -154,8 +156,8 @@ fn clipboard_shortcuts_apply_keypresses() {
     };
     keys.apply(&mut text2, &mut state2, non_primary('c'));
     assert_eq!(
-        keys.clipboard.text().unwrap(),
-        "CLIP",
+        keys.clipboard.text().unwrap().as_deref(),
+        Some("CLIP"),
         "non-primary must not copy"
     );
     keys.apply(&mut text2, &mut state2, non_primary('v'));
@@ -256,12 +258,12 @@ fn secondary_click_opens_text_edit_menu() {
     let mut h = Harness::mono(SMALL);
     let mut buf = String::from("hi");
     h.frame(|ui| body(ui, &mut buf));
-    assert!(!Menu::is_open(h.ui_ref(), editor_id));
+    assert!(!Menu::is_open(h.ui(), editor_id));
 
     h.right_click(Vec2::new(40.0, 20.0));
     h.frame(|ui| body(ui, &mut buf));
     assert!(
-        Menu::is_open(h.ui_ref(), editor_id),
+        Menu::is_open(h.ui(), editor_id),
         "secondary click on TextEdit opens its default menu",
     );
 }
@@ -289,16 +291,16 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
     };
     h.frame(|ui| body(ui, &mut a, &mut b));
     h.set_focus(a_id);
-    h.ui().with_state::<TextEditState, _>(a_id, |_, state| {
+    h.ui_mut().with_state::<TextEditState, _>(a_id, |_, state| {
         state.edit.caret = a.len();
         state.edit.selection = Some(0);
     });
-    Menu::open(h.ui(), b_id, Vec2::new(200.0, 20.0));
+    Menu::open(h.ui_mut(), b_id, Vec2::new(200.0, 20.0));
     h.frame(|ui| {
         body(ui, &mut a, &mut b);
     });
 
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     for key in [Key::Char('a'), Key::Char('x')] {
         h.key(key);
     }
@@ -311,6 +313,6 @@ fn open_menu_exclusively_owns_ordered_edit_shortcuts() {
         "the focused editor must not see menu commands"
     );
     assert_eq!(b, "", "Select All then Cut must execute in arrival order");
-    assert_eq!(h.clipboard_text(), "menu");
-    assert!(!Menu::is_open(h.ui_ref(), b_id));
+    assert_eq!(h.clipboard_text().as_deref(), Some("menu"));
+    assert!(!Menu::is_open(h.ui(), b_id));
 }

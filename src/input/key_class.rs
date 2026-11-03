@@ -194,13 +194,7 @@ mod tests {
         assert!(!yields_escape.takes_press(escape));
         assert!(yields_escape.takes_press(typed));
 
-        let save = KeyPress::with(
-            Key::Char('S'),
-            Modifiers {
-                ctrl: true,
-                ..Modifiers::default()
-            },
-        );
+        let save = KeyPress::with(Key::Char('S'), Modifiers::CTRL);
         assert_eq!(KeyClass::of(save), KeyClass::Accel);
         assert!(!field.takes_press(save));
         let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
@@ -246,12 +240,9 @@ mod tests {
         let none = Modifiers::NONE;
         let shift = Modifiers::SHIFT;
         let ctrl = Modifiers::CTRL;
-        let ctrl_shift = Modifiers::CTRL_SHIFT;
+        let ctrl_shift = Modifiers::CTRL | Modifiers::SHIFT;
         let alt = Modifiers::ALT;
-        let mac_ctrl = Modifiers {
-            mac_ctrl: true,
-            ..none
-        };
+        let mac_ctrl = none | Modifiers::MAC_CTRL;
         let cases = [
             (Key::ArrowLeft, none, KeyClass::Caret, true),
             (Key::ArrowRight, shift, KeyClass::Caret, true),

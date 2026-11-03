@@ -121,7 +121,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
         group.bench_function(Backend::Cpu.case(label), |b| {
             let mut state = FrameFixture::default();
             let mut h = Harness::builder(BENCH_SURFACE)
-                .scale(BENCH_DPR)
+                .system_scale(BENCH_DPR)
                 .depth(Depth::Compose)
                 .build();
             h.frame(|ui| state.render(BENCH_SCALE, ui));

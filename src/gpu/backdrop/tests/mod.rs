@@ -3,6 +3,7 @@
 
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -320,8 +321,11 @@ impl Reference {
 
 /// A fresh window on `gpu` of `size` at scale 1 that clears to `clear`.
 fn window(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> Harness {
-    let mut window = Harness::builder(size).mono().gpu(gpu.handles()).build();
-    window.ui().theme_mut().window_clear = clear;
+    let mut window = Harness::builder(size)
+        .mono()
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
+    window.ui_mut().theme_mut().window_clear = clear;
     window
 }
 

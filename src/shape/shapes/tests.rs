@@ -398,7 +398,7 @@ fn builders_refuse_what_they_check() {
         || drop(Shape::shadow(Shadow::NONE).at(Rect::new(0.0, 0.0, N, 8.0))),
         || {
             let mut h = Harness::mono(UVec2::ONE);
-            let text = h.ui().intern("t");
+            let text = h.ui_mut().intern("t");
             drop(Shape::text(text, GlyphFont::new(16.0)).at_origin(Vec2::new(N, 0.0)));
         },
     ];

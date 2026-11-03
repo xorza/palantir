@@ -44,7 +44,7 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{Harness, PowerPreference, RequestedGpu, Scroll, TargetFormat};
+use palantir::{Depth, Harness, PowerPreference, RequestedGpu, Scroll, SystemScale};
 
 use crate::deck::{Deck, SLIDE, SLIDES};
 use crate::downscale::{Linear, Shrink};
@@ -157,15 +157,19 @@ fn run(args: &Args) -> Result<(), String> {
     let gpu = RequestedGpu::headless(PowerPreference::HighPerformance, Default::default())
         .map_err(|error| error.to_string())?
         .gpu;
-    let mut builder = Harness::builder(render.size()).scale(render.scale).gpu(gpu);
-    if render.float {
-        builder = builder.format(TargetFormat::new(wgpu::TextureFormat::Rgba16Float));
-    }
-    let mut h = builder.build();
+    let depth = if render.float {
+        Depth::gpu_float(gpu)
+    } else {
+        Depth::gpu(gpu)
+    };
+    let mut h = Harness::builder(render.size())
+        .system_scale(SystemScale::new(render.scale).unwrap())
+        .depth(depth)
+        .build();
     let mut sink = Sink::open(args)?;
     let slides = args.slide.map_or(0..SLIDES, |k| k..k + 1);
     let mut deck = Deck::new();
-    deck::dress(h.ui());
+    deck::dress(h.ui_mut());
     let first = slides.start;
     let mut camera = deck::slide_view(first);
     let mut cursor = SLIDE / 2.0 + Vec2::new(180.0, 120.0);
@@ -221,8 +225,8 @@ fn place_camera(h: &mut Harness, view: View) {
     let size = Vec2::new(view.width as f32, view.width as f32 * SLIDE.y / SLIDE.x);
     let corner = Vec2::new(view.center.x as f32, view.center.y as f32) - size / 2.0;
     let id = deck::canvas_id();
-    Scroll::set_zoom(h.ui(), id, zoom);
-    Scroll::set_offset(h.ui(), id, corner * zoom);
+    Scroll::set_zoom(h.ui_mut(), id, zoom);
+    Scroll::set_offset(h.ui_mut(), id, corner * zoom);
 }
 
 /// Where frames go.
@@ -448,7 +452,7 @@ impl Encoder {
 #[cfg(test)]
 mod tests {
     use palantir::glam::{UVec2, Vec2};
-    use palantir::{Harness, RequestedGpu};
+    use palantir::{Depth, Harness, RequestedGpu, SystemScale};
 
     use crate::deck::{self, Deck};
     use crate::script::Runner;
@@ -463,11 +467,11 @@ mod tests {
             .gpu;
         let render = |gpu| {
             let mut h = Harness::builder(UVec2::new(320, 180))
-                .scale(0.25)
-                .gpu(gpu)
+                .system_scale(SystemScale::new(0.25).unwrap())
+                .depth(Depth::gpu(gpu))
                 .build();
             let mut d = Deck::new();
-            deck::dress(h.ui());
+            deck::dress(h.ui_mut());
             crate::place_camera(&mut h, deck::slide_view(3));
             h.capture(&mut d, &mut Vec::new()).unwrap();
             let mut runner = Runner::new(

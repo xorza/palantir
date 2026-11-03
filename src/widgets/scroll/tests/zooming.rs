@@ -2,6 +2,7 @@
 
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -42,11 +43,14 @@ fn nested_non_zoom_scroll_routes_pinch_to_zoomable_ancestor() {
     h.hover(Vec2::new(50.0, 50.0));
     assert_eq!(h.ui().input().scroll_targets().y, Some(inner_id));
     assert_eq!(h.ui().input().pinch_target(), Some(outer_id));
-    assert!(h.on_input(InputEvent::Zoom(1.5)).repaint_requested);
+    assert!(
+        h.on_input(InputEvent::Pinch(ZoomFactor::new(1.5).unwrap()))
+            .repaint_requested
+    );
     h.frame(build);
 
-    let outer_zoom = h.state::<ScrollState>(outer_id).zoom();
-    let inner_zoom = h.state::<ScrollState>(inner_id).zoom();
+    let outer_zoom = h.state::<ScrollState>(outer_id).unwrap().zoom();
+    let inner_zoom = h.state::<ScrollState>(inner_id).unwrap().zoom();
     assert_eq!(outer_zoom, 1.5);
     assert_eq!(inner_zoom, 1.0);
 }
@@ -144,7 +148,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         }
 
         let id = WidgetId::from_hash("xy");
-        let before = *h.state::<ScrollState>(id);
+        let before = *h.state::<ScrollState>(id).unwrap();
         let pivot_local = Vec2::new(pointer.0 - OUTER_PAD, pointer.1 - (OUTER_PAD + TEXT_GAP));
         let world_before = Vec2::new(
             (pivot_local.x + before.offset().x) / before.zoom(),
@@ -152,11 +156,11 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         );
 
         for &pinch in pinches {
-            h.on_input(InputEvent::Zoom(pinch));
+            h.on_input(InputEvent::Pinch(ZoomFactor::new(pinch).unwrap()));
             h.frame(build);
         }
 
-        let after = *h.state::<ScrollState>(id);
+        let after = *h.state::<ScrollState>(id).unwrap();
         let world_after = Vec2::new(
             (pivot_local.x + after.offset().x) / after.zoom(),
             (pivot_local.y + after.offset().y) / after.zoom(),
@@ -226,14 +230,14 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     h.frame(build);
 
     let id = WidgetId::from_hash("xy");
-    h.ui().with_state::<ScrollState, _>(id, |_, row| {
+    h.ui_mut().with_state::<ScrollState, _>(id, |_, row| {
         row.set_offset(Vec2::new(0.0, -50.0));
     });
 
     h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 5.0));
     h.frame(build);
 
-    let after = *h.state::<ScrollState>(id);
+    let after = *h.state::<ScrollState>(id).unwrap();
     assert_eq!(
         after.offset().y,
         -45.0,
@@ -243,7 +247,7 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -5.0)));
     h.frame(build);
-    let after2 = *h.state::<ScrollState>(id);
+    let after2 = *h.state::<ScrollState>(id).unwrap();
     assert_eq!(
         after2.offset().y,
         -45.0,
@@ -266,18 +270,18 @@ fn pivot_zoom_preserves_underflow_pan_range() {
             });
     };
     h.frame(build);
-    h.pinch(Vec2::new(50.0, 50.0), 0.5);
+    h.pinch(Vec2::new(50.0, 50.0), ZoomFactor::new(0.5).unwrap());
     h.frame(build);
 
     let id = WidgetId::from_hash("scroll");
-    let zoomed = *h.state::<ScrollState>(id);
+    let zoomed = *h.state::<ScrollState>(id).unwrap();
     let expected_zoomed_offset = f32::midpoint(0.0, 50.0) - 50.0;
     assert_eq!(zoomed.zoom(), 0.5);
     assert_eq!(zoomed.offset().y, expected_zoomed_offset);
 
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, -10.0)));
     h.frame(build);
-    let panned = *h.state::<ScrollState>(id);
+    let panned = *h.state::<ScrollState>(id).unwrap();
     assert_eq!(panned.offset().y, expected_zoomed_offset - 10.0);
     assert_ne!(panned.offset().y, zoomed.offset().y);
 }
@@ -304,16 +308,16 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     h.frame(build_zoom);
 
     let scroll_id = WidgetId::from_hash("zoomy");
-    let before_zoom = h.state::<ScrollState>(scroll_id).zoom();
+    let before_zoom = h.state::<ScrollState>(scroll_id).unwrap().zoom();
 
     // 1.03^-2 ≈ 0.9426.
     h.hover(scroll_id);
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     let line_px = TextStyle::default().with_font_size(16.0).line_height();
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 2.0 * line_px)));
     h.frame(build_zoom);
 
-    let after_zoom = h.state::<ScrollState>(scroll_id).zoom();
+    let after_zoom = h.state::<ScrollState>(scroll_id).unwrap().zoom();
     let expected = before_zoom * 1.03_f32.powf(-2.0);
     assert_eq!(
         after_zoom, expected,
@@ -329,7 +333,7 @@ fn wheel_zoom_step_is_font_independent() {
         use crate::input::keyboard::modifiers::Modifiers;
 
         let mut h = Harness::mono(SURFACE);
-        h.ui().theme_mut().text.font_size = font_size;
+        h.ui_mut().theme_mut().text.font_size = font_size;
         let build_zoom = |ui: &mut Ui| {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
@@ -346,12 +350,12 @@ fn wheel_zoom_step_is_font_independent() {
         h.frame(build_zoom);
 
         h.hover(WidgetId::from_hash("fz"));
-        h.set_modifiers(Modifiers::CTRL);
+        h.hold_modifiers(Modifiers::CTRL);
         h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
         h.frame(build_zoom);
 
         let scroll_id = WidgetId::from_hash("fz");
-        let zoom = h.state::<ScrollState>(scroll_id).zoom();
+        let zoom = h.state::<ScrollState>(scroll_id).unwrap().zoom();
         assert_eq!(
             zoom, expected,
             "one wheel line is one zoom step at font_size {font_size}: expected {expected}, got {zoom}"
@@ -368,7 +372,7 @@ fn line_wheel_step_scales_with_theme_font_size() {
     ];
     for (label, font_size, line_height_factor, expected_px) in cases {
         let mut h = Harness::mono(SURFACE);
-        let text = &mut h.ui().theme_mut().text;
+        let text = &mut h.ui_mut().theme_mut().text;
         text.font_size = *font_size;
         text.line_height_factor = *line_height_factor;
         let build_v = |ui: &mut Ui| build(ui, 200.0, 800.0);
@@ -377,7 +381,7 @@ fn line_wheel_step_scales_with_theme_font_size() {
         h.frame(build_v);
 
         let scroll_id = WidgetId::from_hash("scroll");
-        let offset_y = h.state::<ScrollState>(scroll_id).offset().y;
+        let offset_y = h.state::<ScrollState>(scroll_id).unwrap().offset().y;
         assert_eq!(
             offset_y, *expected_px,
             "case: {label} — expected {expected_px} px after 1 line wheel, got {offset_y}"
@@ -477,13 +481,13 @@ fn zoomed_padding_keeps_both_content_ends_reachable() {
         h.frame(|ui| show(ui, 1.0, pan));
         h.frame(|ui| show(ui, 1.0, Vec2::ZERO));
         assert_eq!(
-            h.state::<ScrollState>(scroll_id).offset(),
+            h.state::<ScrollState>(scroll_id).unwrap().offset(),
             Vec2::splat(offset)
         );
         let laid = h.arranged(content_id);
         let transform = h.transform(content_id);
-        let start = transform.apply_point(laid.min);
-        let end = transform.apply_point(laid.max());
+        let start = transform.apply_point(laid.unwrap().min);
+        let end = transform.apply_point(laid.unwrap().max());
         let reached = if offset == 0.0 { start } else { end };
         assert_eq!(reached, Vec2::splat(edge), "panned by {pan:?}");
     }
@@ -508,9 +512,9 @@ fn zoom_config_clamps_to_its_own_range() {
                 });
         };
         h.frame(build);
-        h.pinch(Vec2::new(50.0, 50.0), 0.25);
+        h.pinch(Vec2::new(50.0, 50.0), ZoomFactor::new(0.25).unwrap());
         h.frame(build);
-        assert_eq!(h.state::<ScrollState>(id).zoom(), want);
+        assert_eq!(h.state::<ScrollState>(id).unwrap().zoom(), want);
     }
 }
 
@@ -542,11 +546,11 @@ fn zoom_modifier_picks_which_wheel_zooms() {
             };
             h.frame(build);
             h.hover(id);
-            h.set_modifiers(held);
+            h.hold_modifiers(held);
             h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 1.0)));
             h.frame(build);
             assert_eq!(
-                h.state::<ScrollState>(id).zoom(),
+                h.state::<ScrollState>(id).unwrap().zoom(),
                 want,
                 "{modifier:?} with {held:?}",
             );
@@ -573,11 +577,11 @@ fn zoom_pivot_picks_the_point_a_step_holds() {
                 });
         };
         h.frame(build);
-        h.pinch(Vec2::new(50.0, 50.0), 2.0);
+        h.pinch(Vec2::new(50.0, 50.0), ZoomFactor::new(2.0).unwrap());
         h.frame(build);
         let state = h.state::<ScrollState>(id);
-        assert_eq!(state.zoom(), 2.0, "{pivot:?}");
-        assert_eq!(state.offset(), Vec2::splat(want), "{pivot:?}");
+        assert_eq!(state.unwrap().zoom(), 2.0, "{pivot:?}");
+        assert_eq!(state.unwrap().offset(), Vec2::splat(want), "{pivot:?}");
     }
 }
 
@@ -602,40 +606,40 @@ fn a_narrowed_or_dropped_config_coerces_the_stored_zoom() {
     };
     let mut h = Harness::mono(SURFACE);
     assert_eq!(
-        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Scroll::offset(h.ui(), id), Scroll::zoom(h.ui(), id)),
         (Vec2::ZERO, 1.0),
         "before the first frame",
     );
     h.frame(|ui| zoom_driven(ui, &[1.0]));
     h.frame(|ui| zoom_driven(ui, &[2.0]));
-    Scroll::set_offset(h.ui(), id, Vec2::new(120.0, 80.0));
+    Scroll::set_offset(h.ui_mut(), id, Vec2::new(120.0, 80.0));
     assert_eq!(
-        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Scroll::offset(h.ui(), id), Scroll::zoom(h.ui(), id)),
         (Vec2::new(120.0, 80.0), 2.0),
     );
 
     h.frame(|ui| record(ui, Some(ZoomConfig::new(0.5..=1.5, 1.03))));
     assert_eq!(
-        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Scroll::offset(h.ui(), id), Scroll::zoom(h.ui(), id)),
         (Vec2::new(90.0, 60.0), 1.5),
         "the narrowed range",
     );
     h.frame(|ui| record(ui, None));
     assert_eq!(
-        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Scroll::offset(h.ui(), id), Scroll::zoom(h.ui(), id)),
         (Vec2::new(60.0, 40.0), 1.0),
         "no config",
     );
 
-    Scroll::set_zoom(h.ui(), id, 4.0);
+    Scroll::set_zoom(h.ui_mut(), id, 4.0);
     assert_eq!(
-        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Scroll::offset(h.ui(), id), Scroll::zoom(h.ui(), id)),
         (Vec2::new(240.0, 160.0), 4.0),
         "set from outside",
     );
     h.frame(|ui| record(ui, Some(ZoomConfig::new(0.5..=3.0, 1.03))));
     assert_eq!(
-        (Scroll::offset(h.ui_ref(), id), Scroll::zoom(h.ui_ref(), id)),
+        (Scroll::offset(h.ui(), id), Scroll::zoom(h.ui(), id)),
         (Vec2::new(180.0, 120.0), 3.0),
         "clamped by its range",
     );

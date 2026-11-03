@@ -65,7 +65,7 @@ fn vertical_scroll_records_content_extent() {
                 }
             });
     });
-    assert_eq!(layout_for(h.ui_ref(), "scroll").content.h, 5.0 * 50.0);
+    assert_eq!(layout_for(h.ui(), "scroll").content.h, 5.0 * 50.0);
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn horizontal_scroll_records_content_extent() {
                     });
             });
     });
-    assert_eq!(layout_for(h.ui_ref(), "scroll").content.w, 436.0);
+    assert_eq!(layout_for(h.ui(), "scroll").content.w, 436.0);
 }
 
 #[test]
@@ -107,7 +107,7 @@ fn both_axis_scroll_records_content_extent() {
             });
     });
     assert_eq!(
-        layout_for(h.ui_ref(), "scroll").content,
+        layout_for(h.ui(), "scroll").content,
         Size::new(300.0, 250.0)
     );
 }
@@ -133,9 +133,9 @@ fn layout_output_survives_across_frames() {
             });
     };
     h.frame(build);
-    let f1 = layout_for(h.ui_ref(), "scroll");
+    let f1 = layout_for(h.ui(), "scroll");
     h.frame(build);
-    let f2 = layout_for(h.ui_ref(), "scroll");
+    let f2 = layout_for(h.ui(), "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);
     assert_eq!(f1.outer, f2.outer);
@@ -160,16 +160,13 @@ fn content_margin_leaves_content_size_unchanged() {
                     .show(ui);
             });
     });
-    assert_eq!(
-        layout_for(h.ui_ref(), "scroll").content,
-        Size::new(80.0, 160.0)
-    );
+    assert_eq!(layout_for(h.ui(), "scroll").content, Size::new(80.0, 160.0));
 }
 
 /// Arranged height of the scroll widget's outer wrapper (the node carrying the
 /// user's `id`).
 fn scroll_height(h: &Harness, id_salt: &'static str) -> f32 {
-    h.arranged(WidgetId::from_hash(id_salt)).size.h
+    h.arranged(WidgetId::from_hash(id_salt)).unwrap().size.h
 }
 
 /// A harness holding a `count`-row vertical **Hug** scroll (50px rows) with the
@@ -216,7 +213,7 @@ fn hug_scroll_clamps_viewport_to_content() {
         let h = hug_scroll(count, min_h, max_h);
         assert_eq!(scroll_height(&h, "scroll"), want, "case: {label}");
         assert_eq!(
-            layout_for(h.ui_ref(), "scroll").content.h,
+            layout_for(h.ui(), "scroll").content.h,
             count as f32 * 50.0,
             "case: {label}: content extent",
         );
@@ -250,7 +247,7 @@ fn hug_scroll_viewport_follows_parent_cap() {
             .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
             .show(ui, scroll);
     });
-    let st = layout_for(h.ui_ref(), "parent-capped-scroll");
+    let st = layout_for(h.ui(), "parent-capped-scroll");
     assert_eq!(st.viewport.h, 100.0, "viewport follows the parent cap");
     assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
 
@@ -272,11 +269,14 @@ fn hug_scroll_viewport_follows_parent_cap() {
             });
     });
     assert_eq!(
-        h.arranged(WidgetId::from_hash("hug-around-scroll")).size.h,
+        h.arranged(WidgetId::from_hash("hug-around-scroll"))
+            .unwrap()
+            .size
+            .h,
         100.0,
         "the Hug stack shrinks to the parent cap",
     );
-    let st = layout_for(h.ui_ref(), "parent-capped-scroll");
+    let st = layout_for(h.ui(), "parent-capped-scroll");
     assert_eq!(
         st.viewport.h, 70.0,
         "the viewport takes what the header leaves"

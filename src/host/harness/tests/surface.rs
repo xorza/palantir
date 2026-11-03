@@ -1,12 +1,13 @@
 //! Moving the surface between frames, and the physical/logical split.
 
+use crate::display::user_scale::UserScale;
 use crate::host::harness::tests::support::{self, SURFACE};
 use crate::host::harness::*;
 use crate::primitives::geometry::size::Size;
 use crate::ui::frame_report::FramePaint;
 
 #[test]
-fn resize_and_set_display_move_the_surface_between_frames() {
+fn resize_and_set_system_scale_move_the_surface_between_frames() {
     // These two are the whole surface-mutation surface; both must read as a display change.
     let mut harness = Harness::mono(SURFACE);
     harness.prime(2, support::button);
@@ -21,18 +22,21 @@ fn resize_and_set_display_move_the_surface_between_frames() {
     assert_eq!(harness.physical, bigger);
     assert_eq!(harness.ui().display().physical, bigger);
 
-    // A DPI move changes `physical` and `system_scale` together, which `resize` can't express.
-    let dpi_move = Display {
-        physical: bigger * 2,
-        system_scale: 2.0,
-        ..harness.ui().display()
-    };
+    // A DPI move changes `physical` and `system_scale` together.
     assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
     assert_eq!(
-        harness.set_display(dpi_move).frame(support::button).paint(),
+        harness
+            .resize(bigger * 2)
+            .set_system_scale(SystemScale::new(2.0).unwrap())
+            .frame(support::button)
+            .paint(),
         FramePaint::Full,
     );
-    assert_eq!(harness.ui().display(), dpi_move);
+    assert_eq!(harness.ui().display().physical, bigger * 2);
+    assert_eq!(
+        harness.ui().display().system_scale,
+        SystemScale::new(2.0).unwrap()
+    );
     assert_eq!(
         harness.ui().display().logical_size().w,
         bigger.x as f32,
@@ -42,7 +46,10 @@ fn resize_and_set_display_move_the_surface_between_frames() {
 
 #[test]
 fn scale_makes_the_surface_physical_and_positions_logical() {
-    let mut harness = Harness::builder(SURFACE).mono().scale(2.0).build();
+    let harness = Harness::builder(SURFACE)
+        .mono()
+        .system_scale(SystemScale::new(2.0).unwrap())
+        .build();
     let display = harness.ui().display();
 
     assert_eq!(display.physical, SURFACE);
@@ -51,14 +58,18 @@ fn scale_makes_the_surface_physical_and_positions_logical() {
     assert_eq!(display.logical_size().h, 60.0);
 }
 
-/// At dpr 2 and 125% the 200×120 surface is 80×48 logical; the window manager sees 100×60.
+/// At dpr 2 and 125% the 200×120 surface is 80×48 logical; the window manager sees 100×60. A
+/// user scale of 1.5 takes the factor to 3.
 #[test]
 fn user_scale_multiplies_onto_the_dpr() {
     let mut harness = Harness::builder(SURFACE)
         .mono()
-        .scale(2.0)
-        .user_scale(UserScale::new(1.25).unwrap())
+        .system_scale(SystemScale::new(2.0).unwrap())
         .build();
+    harness
+        .ui_mut()
+        .set_user_scale(UserScale::new(1.25).unwrap());
+    harness.frame(support::button);
     let display = harness.ui().display();
 
     assert_eq!(display.scale_factor(), 2.5);
@@ -68,14 +79,6 @@ fn user_scale_multiplies_onto_the_dpr() {
     harness.frame(|ui| ui.set_user_scale(UserScale::new(1.5).unwrap()));
     harness.frame(support::button);
     assert_eq!(harness.ui().display().scale_factor(), 3.0);
-
-    let swapped = Display {
-        user_scale: UserScale::new(2.0).unwrap(),
-        ..harness.ui().display()
-    };
-    harness.set_display(swapped);
-    assert_eq!(harness.ui().user_scale(), UserScale::new(2.0).unwrap());
-    assert_eq!(harness.ui().display().scale_factor(), 4.0);
 }
 
 #[test]
@@ -84,13 +87,9 @@ fn a_user_scale_move_repaints_in_full() {
     harness.prime(2, support::button);
     assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
 
-    let zoomed = Display {
-        user_scale: UserScale::new(1.5).unwrap(),
-        ..harness.ui().display()
-    };
-    assert_eq!(
-        harness.set_display(zoomed).frame(support::button).paint(),
-        FramePaint::Full,
-    );
+    harness
+        .ui_mut()
+        .set_user_scale(UserScale::new(1.5).unwrap());
+    assert_eq!(harness.frame(support::button).paint(), FramePaint::Full);
     assert_eq!(harness.frame(support::button).paint(), FramePaint::Skip);
 }

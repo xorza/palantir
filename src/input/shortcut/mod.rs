@@ -1,10 +1,10 @@
 //! Keyboard shortcuts: one value drives both display ("Ctrl+C") and matching
 //! against [`KeyPress`] events.
 //!
-//! - The primary command modifier (`ShortcutMods::ctrl`) is **Cmd on macOS, Ctrl
+//! - The primary command modifier (`ShortcutMods::CTRL`) is **Cmd on macOS, Ctrl
 //!   elsewhere**, so one binding fires on ⌘S and Ctrl+S; for raw Ctrl on macOS
 //!   match a `KeyPress` directly.
-//! - The Super modifier (`ShortcutMods::meta`) is the Windows / Super key, and **Cmd
+//! - The Super modifier (`ShortcutMods::META`) is the Windows / Super key, and **Cmd
 //!   on macOS**, where that key is Command: there it is the same key as the primary
 //!   modifier, as Electron's `Super` and VS Code's `meta` read it.
 //! - [`Shortcut::matches`] compares modifiers *exactly* (Ctrl+A does not match
@@ -25,61 +25,46 @@ use std::str::FromStr;
 
 pub(crate) mod error;
 
-/// Modifier set for declaring shortcuts: `ctrl` is the primary command key (Cmd on
-/// macOS, Ctrl elsewhere), `shift` and `alt` are literal. Distinct from event-state
-/// [`Modifiers`], which also carries `mac_ctrl`: a held macOS Control is ignored by
-/// a chord declaring a command modifier and rejects every other, as
-/// [`Modifiers::has_command`] classes it.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct ShortcutMods {
-    /// The primary command key: Cmd on macOS, Ctrl on Windows and Linux.
-    pub ctrl: bool,
-    /// Shift, literally.
-    pub shift: bool,
-    /// Alt / Option, literally.
-    pub alt: bool,
-    /// The Windows / Super key; on macOS, where that key is Command, the same key as
-    /// [`Self::ctrl`].
-    pub meta: bool,
+flag_set! {
+    /// Modifier set for declaring shortcuts: [`Self::CTRL`] is the primary command key (Cmd on
+    /// macOS, Ctrl elsewhere), [`Self::SHIFT`] and [`Self::ALT`] are literal. Distinct from
+    /// event-state [`Modifiers`], which also carries [`Modifiers::MAC_CTRL`]: a held macOS
+    /// Control is ignored by a chord declaring a command modifier and rejects every other, as
+    /// [`Modifiers::has_command`] classes it.
+    pub struct ShortcutMods: u8 {
+        /// The primary command key: Cmd on macOS, Ctrl on Windows and Linux.
+        const CTRL = 1 << 0;
+        /// Shift, literally.
+        const SHIFT = 1 << 1;
+        /// Alt / Option, literally.
+        const ALT = 1 << 2;
+        /// The Windows / Super key; on macOS, where that key is Command, the same key as
+        /// [`Self::CTRL`].
+        const META = 1 << 4;
+    }
 }
 
 impl ShortcutMods {
     /// True if this chord declares any command modifier, as
     /// [`Modifiers::has_command`](crate::Modifiers::has_command) asks of what is
     /// *held*. Shift alone does not count (`Shift+Z` is a capital Z). No
-    /// `mac_ctrl`: a chord is declared once for every platform.
+    /// `MAC_CTRL`: a chord is declared once for every platform.
     pub const fn has_command(self) -> bool {
-        self.ctrl || self.alt || self.meta
+        self.intersects(Self::CTRL.union(Self::ALT).union(Self::META))
     }
 
     /// The chord modifiers of a held set. Lossy, so not a `From`: raw macOS Control has no twin,
-    /// and [`Shortcut::matches`] reads it off the press.
+    /// and [`Shortcut::matches`] reads it off the press. The two sets share their bits, and a
+    /// test holds each flag to its twin.
     const fn from_modifiers(m: Modifiers) -> Self {
-        // Exhaustive, so a new `Modifiers` field is a compile error here.
-        let Modifiers {
-            ctrl,
-            shift,
-            alt,
-            mac_ctrl: _,
-            meta,
-        } = m;
-        Self {
-            ctrl,
-            shift,
-            alt,
-            meta,
-        }
+        Self(m.difference(Modifiers::MAC_CTRL).bits())
     }
 
     /// The set a press holds to fire this chord on `platform`: on macOS the host reports
-    /// Command as `ctrl`, so a declared `meta` folds into it.
+    /// Command as `CTRL`, so a declared `META` folds into it.
     const fn held_on(self, platform: Platform) -> Self {
-        if platform.commands_with_super() {
-            Self {
-                ctrl: self.ctrl || self.meta,
-                meta: false,
-                ..self
-            }
+        if platform.commands_with_super() && self.contains(Self::META) {
+            self.difference(Self::META).union(Self::CTRL)
         } else {
             self
         }
@@ -88,56 +73,8 @@ impl ShortcutMods {
     /// The modifiers a person holds on this platform to press this chord, as a host reports
     /// them.
     pub(crate) const fn held(self) -> Modifiers {
-        let Self {
-            ctrl,
-            shift,
-            alt,
-            meta,
-        } = self.held_on(PLATFORM);
-        Modifiers {
-            ctrl,
-            shift,
-            alt,
-            mac_ctrl: false,
-            meta,
-        }
+        Modifiers::from_bits_truncate(self.held_on(PLATFORM).0)
     }
-
-    /// No modifiers: a bare key.
-    pub const NONE: Self = Self {
-        ctrl: false,
-        shift: false,
-        alt: false,
-        meta: false,
-    };
-    /// Shift alone.
-    pub const SHIFT: Self = Self {
-        ctrl: false,
-        shift: true,
-        alt: false,
-        meta: false,
-    };
-    /// Primary command key alone.
-    pub const CTRL: Self = Self {
-        ctrl: true,
-        shift: false,
-        alt: false,
-        meta: false,
-    };
-    /// Alt / Option alone.
-    pub const ALT: Self = Self {
-        ctrl: false,
-        shift: false,
-        alt: true,
-        meta: false,
-    };
-    /// Primary command key plus Shift.
-    pub const CTRL_SHIFT: Self = Self {
-        ctrl: true,
-        shift: true,
-        alt: false,
-        meta: false,
-    };
 }
 
 /// A keyboard shortcut: modifier set + key; the `const fn` constructors let
@@ -167,11 +104,6 @@ impl Shortcut {
         Self::new(ShortcutMods::CTRL, Key::Char(c))
     }
 
-    /// `Ctrl+Shift+<c>`; same casing as [`Self::ctrl`].
-    pub const fn ctrl_shift(c: char) -> Self {
-        Self::new(ShortcutMods::CTRL_SHIFT, Key::Char(c))
-    }
-
     /// True iff `press` matches. Modifiers compare exactly, `Char` keys
     /// ignore-case, `repeat` is ignored, and a held macOS Control rejects a
     /// shortcut with no command modifier.
@@ -191,7 +123,7 @@ impl Shortcut {
             mods: self.mods.held_on(platform),
             ..self
         };
-        if press.mods.mac_ctrl && !chord.mods.has_command() {
+        if press.mods.contains(Modifiers::MAC_CTRL) && !chord.mods.has_command() {
             return false;
         }
         if chord.matches_key(press.key, press.mods) {
@@ -228,7 +160,9 @@ impl Shortcut {
     pub(crate) fn typed(self) -> KeyText {
         match self.key {
             Key::Char(_) if self.mods.has_command() => KeyText::EMPTY,
-            Key::Char(c) if self.mods.shift => KeyText::new(&c.to_uppercase().to_string()),
+            Key::Char(c) if self.mods.contains(ShortcutMods::SHIFT) => {
+                KeyText::new(&c.to_uppercase().to_string())
+            }
             key => KeyText::of_key(key),
         }
     }
@@ -270,10 +204,10 @@ impl FromStr for Shortcut {
         let mut mods = ShortcutMods::NONE;
         for named in mods_text.into_iter().flat_map(|mods| mods.split('+')) {
             match named.trim().to_ascii_lowercase().as_str() {
-                "ctrl" | "cmd" => mods.ctrl = true,
-                "shift" => mods.shift = true,
-                "alt" => mods.alt = true,
-                "meta" | "super" | "win" => mods.meta = true,
+                "ctrl" | "cmd" => mods.insert(ShortcutMods::CTRL),
+                "shift" => mods.insert(ShortcutMods::SHIFT),
+                "alt" => mods.insert(ShortcutMods::ALT),
+                "meta" | "super" | "win" => mods.insert(ShortcutMods::META),
                 _ => return Err(ParseShortcutError::Modifier),
             }
         }
@@ -425,13 +359,13 @@ impl fmt::Display for ShortcutLabel {
         if self.platform.labels_with_symbols() {
             // Canonical macOS order ⌥ ⇧ ⌘ <key>; the primary modifier is Cmd there,
             // so it sits last.
-            if mods.alt {
+            if mods.contains(ShortcutMods::ALT) {
                 f.write_str("⌥")?;
             }
-            if mods.shift {
+            if mods.contains(ShortcutMods::SHIFT) {
                 f.write_str("⇧")?;
             }
-            if mods.ctrl {
+            if mods.contains(ShortcutMods::CTRL) {
                 f.write_str("⌘")?;
             }
             return write_key(f, key, self.platform);
@@ -444,19 +378,19 @@ impl fmt::Display for ShortcutLabel {
             *first = false;
             Ok(())
         };
-        if mods.ctrl {
+        if mods.contains(ShortcutMods::CTRL) {
             sep(f, &mut first)?;
             f.write_str("Ctrl")?;
         }
-        if mods.shift {
+        if mods.contains(ShortcutMods::SHIFT) {
             sep(f, &mut first)?;
             f.write_str("Shift")?;
         }
-        if mods.alt {
+        if mods.contains(ShortcutMods::ALT) {
             sep(f, &mut first)?;
             f.write_str("Alt")?;
         }
-        if mods.meta {
+        if mods.contains(ShortcutMods::META) {
             sep(f, &mut first)?;
             f.write_str(self.platform.super_label())?;
         }

@@ -41,12 +41,12 @@ impl Oracle {
     /// Rows in one frame and not the other, and overlaps whose paint order flipped, must sit inside the painted damage; compared per owner as a multiset of `(hash, screen)`.
     fn check_damage(&mut self, h: &Harness, report: &FrameReport) {
         self.cur.clear();
-        h.ui_ref()
+        h.ui()
             .cascade()
-            .owned_paints(h.ui_ref().forest(), &mut self.cur);
+            .owned_paints(h.ui().forest(), &mut self.cur);
         if self.primed {
-            let surface = h.ui_ref().display().logical_rect();
-            let margin = RenderPlan::cull_margin(h.ui_ref().display().scale_factor());
+            let surface = h.ui().display().logical_rect();
+            let margin = RenderPlan::cull_margin(h.ui().display().scale_factor());
             let damage: Vec<Rect> = match report.plan.as_ref().map(|plan| &plan.damage) {
                 None => Vec::new(),
                 Some(Damage::Full) => vec![surface],
@@ -104,15 +104,11 @@ impl Oracle {
 /// each shaped run's extent and buffer key, as a stale measure can arrange at the right rect while
 /// it paints the text it was shaped to. `msg` names the failure.
 pub(crate) fn assert_layout_matches_cold(h: &Harness, msg: &str) {
-    let mut engine = LayoutEngine::new(h.ui_ref().shaper().clone());
+    let mut engine = LayoutEngine::new(h.ui().shaper().clone());
     let mut cold = Layout::default();
-    engine.run(
-        h.ui_ref().forest(),
-        h.ui_ref().display().logical_rect(),
-        &mut cold,
-    );
-    for (plane, tree) in h.ui_ref().forest().trees.iter_paint_order() {
-        let (warm, cold) = (h.ui_ref().layout(plane), &cold[plane]);
+    engine.run(h.ui().forest(), h.ui().display().logical_rect(), &mut cold);
+    for (plane, tree) in h.ui().forest().trees.iter_paint_order() {
+        let (warm, cold) = (h.ui().layout(plane), &cold[plane]);
         for (node, id) in tree.records.widget_id().iter().enumerate() {
             let at = || format!("{msg}: {plane:?} node {node} ({id:?})");
             assert_eq!(warm.rect[node], cold.rect[node], "rect of {}", at());
@@ -138,19 +134,19 @@ fn assert_cascade_matches_cold(h: &Harness) {
     let mut cold = Cascade::default();
     CascadeEngine::default().run(
         CascadeSource {
-            forest: h.ui_ref().forest(),
-            layout: h.ui_ref().layout_tables(),
-            display: h.ui_ref().display(),
-            font_epoch: h.ui_ref().font_epoch(),
+            forest: h.ui().forest(),
+            layout: h.ui().layout_tables(),
+            display: h.ui().display(),
+            font_epoch: h.ui().font_epoch(),
         },
         &mut cold,
     );
-    h.ui_ref()
+    h.ui()
         .cascade()
-        .assert_same_as(&cold, h.ui_ref().forest(), "the retained cascade");
+        .assert_same_as(&cold, h.ui().forest(), "the retained cascade");
     assert_eq!(
-        *h.ui_ref().cascade().by_id(),
-        h.ui_ref().forest().ids.last_frame(),
+        *h.ui().cascade().by_id(),
+        h.ui().forest().ids.last_frame(),
         "id lookup"
     );
 }

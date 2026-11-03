@@ -1,9 +1,8 @@
-use crate::display::Display;
+use crate::display::system_scale::SystemScale;
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, LocateError, PlayError};
 use crate::driver::locator::Locator;
 use crate::gpu::device::gpu_wait::GpuWait;
-use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{headless_test_gpu, isolated_headless_test_gpu};
 use crate::host::harness::Harness;
 use crate::host::harness::harness_builder::Depth;
@@ -172,7 +171,7 @@ impl App for Board {
 fn play_acts_as_a_person() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(400, 200))
-        .gpu(gpu.handles())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
     h.settle(&mut app).unwrap();
@@ -189,8 +188,7 @@ fn play_acts_as_a_person() {
         panic!("two buttons show \"Twin\"");
     };
     assert_eq!(matches.len(), 2);
-    h.play(&mut app, &[Action::click(Locator::Nth(Box::new(twin), 1))])
-        .unwrap();
+    h.play(&mut app, &[Action::click(twin.nth(1))]).unwrap();
     assert_eq!(app.twin_b, 1);
 
     assert!(matches!(
@@ -216,7 +214,7 @@ fn play_acts_as_a_person() {
     ));
     let short = Action::<Infallible>::Drag {
         from: "One".into(),
-        to: Locator::Offset(Box::new("One".into()), Vec2::new(2.0, 0.0)),
+        to: Locator::from("One").offset(Vec2::new(2.0, 0.0)),
         button: PointerButton::Left,
         mods: ShortcutMods::NONE,
         steps: Action::DRAG_STEPS,
@@ -243,7 +241,7 @@ fn play_acts_as_a_person() {
             Action::click(edit()),
             Action::Type("hello".to_owned()),
             Action::InsertText(", world".to_owned()),
-            Action::key(Shortcut::key(Key::Enter)),
+            Action::Key(Shortcut::key(Key::Enter)),
         ],
     )
     .unwrap();
@@ -267,10 +265,7 @@ fn a_key_down_step_holds_its_key_until_a_key_up_step() {
     )
     .unwrap();
     assert!(held.get());
-    assert_eq!(
-        h.ui_ref().input().modifiers_after_held_input(),
-        Modifiers::NONE
-    );
+    assert_eq!(h.ui().input().modifiers_after_held_input(), Modifiers::NONE);
     h.play(&mut app, &[Action::<Infallible>::KeyUp(space.into())])
         .unwrap();
     assert!(!held.get());
@@ -295,29 +290,23 @@ fn a_step_settles_and_lets_go() {
         &[Action::<Infallible>::Click {
             at: "One".into(),
             button: PointerButton::Left,
-            mods: ShortcutMods::CTRL_SHIFT,
+            mods: ShortcutMods::CTRL | ShortcutMods::SHIFT,
         }],
     )
     .unwrap();
     assert_eq!(app.one, 1);
-    assert_eq!(
-        h.ui_ref().input().modifiers_after_held_input(),
-        Modifiers::NONE
-    );
+    assert_eq!(h.ui().input().modifiers_after_held_input(), Modifiers::NONE);
 }
 
 /// An app that asks a repaint each frame never settles: the settle stops at the builder's bound,
-/// 600 frames, and names the step.
+/// 600 frames.
 #[test]
 fn an_app_that_always_repaints_is_unsettled() {
     let mut h = Harness::mono(UVec2::new(64, 32));
     let mut app = |ui: &mut Ui| ui.request_repaint();
     assert_eq!(
         h.settle(&mut app),
-        Err(PlayError::Unsettled {
-            step: "the settle".to_owned(),
-            frames: 600
-        })
+        Err(PlayError::Unsettled { frames: 600 })
     );
 }
 
@@ -406,8 +395,7 @@ fn a_settle_waits_for_a_busy_apps_wake() {
     assert_eq!(
         stuck.settle(&mut app),
         Err(PlayError::Busy {
-            step: "the settle".to_owned(),
-            seconds: 0.01
+            waited: Duration::from_millis(10)
         })
     );
 
@@ -426,20 +414,31 @@ fn a_settle_waits_for_a_busy_apps_wake() {
 }
 
 /// On a lost device a shot, and a settle that waits on a screenshot, report the loss: no copy
-/// comes back, where both ran out their frames and read as an animation that runs on.
+/// comes back, where both ran out their frames and read as an animation that runs on. A new
+/// device recovers the harness, whose next shot is the window at its size again.
 #[test]
 fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
     let gpu = isolated_headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(64, 32))
-        .gpu(gpu.handles())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = tile;
     h.settle(&mut app).unwrap();
     gpu.lose();
     assert_eq!(h.shot(&mut app, None), Err(PlayError::DeviceLost));
     assert_eq!(h.wait_for_gpu(), GpuWait::DeviceLost);
-    h.ui().request_screenshot(None).unwrap();
+    h.ui_mut().request_screenshot(None).unwrap();
     assert_eq!(h.settle(&mut app), Err(PlayError::DeviceLost));
+    assert!(h.is_device_lost());
+
+    let fresh = isolated_headless_test_gpu();
+    h.recover(fresh.handles());
+    assert!(!h.is_device_lost());
+    h.settle(&mut app).unwrap();
+    let shot = h
+        .shot(&mut app, None)
+        .expect("the recovered harness paints");
+    assert_eq!(shot.image().size(), UVec2::new(64, 32));
 }
 
 /// A shot at scale 1.5 of a 400 × 200 logical window is 600 × 300 texels; a shot of the logical
@@ -449,8 +448,8 @@ fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
 fn a_shot_is_the_painted_window() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(600, 300))
-        .scale(1.5)
-        .gpu(gpu.handles())
+        .system_scale(SystemScale::new(1.5).unwrap())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
     h.settle(&mut app).unwrap();
@@ -477,8 +476,8 @@ fn a_shot_is_the_painted_window() {
 fn a_capture_is_one_frame_at_the_parked_clock() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(120, 80))
-        .scale(2.0)
-        .gpu(gpu.handles())
+        .system_scale(SystemScale::new(2.0).unwrap())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
     h.settle(&mut app).unwrap();
@@ -510,10 +509,9 @@ fn a_capture_is_one_frame_at_the_parked_clock() {
 fn a_float_window_captures_its_linear_values() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(16, 8))
-        .gpu(gpu.handles())
-        .format(TargetFormat::new(wgpu::TextureFormat::Rgba16Float))
+        .depth(Depth::gpu_float(gpu.handles()))
         .build();
-    h.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    h.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
     let mut app = |ui: &mut Ui| {
         Block::new()
             .id_salt("fill")
@@ -567,9 +565,9 @@ fn a_new_display_reads_back_the_new_size_and_scale() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(8, 6))
         .mono()
-        .gpu(gpu.handles())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
-    h.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    h.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
     let app = |ui: &mut Ui| {
         Block::new()
             .id_salt("white")
@@ -584,12 +582,8 @@ fn a_new_display_reads_back_the_new_size_and_scale() {
         (UVec2::new(8, 6), 1.0, white(0, 2, 0, 1)),
         (UVec2::new(4, 4), 2.0, white(0, 4, 0, 2)),
     ] {
-        let display = Display {
-            physical: size,
-            system_scale: scale,
-            ..h.ui().display()
-        };
-        h.set_display(display);
+        h.resize(size)
+            .set_system_scale(SystemScale::new(scale).unwrap());
         h.frame(app);
         let image = h.read_back();
         assert_eq!(image.dimensions(), (size.x, size.y), "{size}");

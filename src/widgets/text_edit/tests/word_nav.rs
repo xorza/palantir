@@ -79,7 +79,7 @@ fn apply_key_word_nav_cases() {
 
     fn word_nav_shift(key: Key) -> KeyPress {
         let mut kp = word_nav(key);
-        kp.mods.shift = true;
+        kp.mods.insert(Modifiers::SHIFT);
         kp
     }
 

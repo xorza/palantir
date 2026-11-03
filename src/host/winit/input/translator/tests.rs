@@ -77,27 +77,23 @@ fn wheel_deltas_are_logical_and_point_in_scroll_direction() {
     }
 }
 
-/// A pinch delta is a displacement, so the factor is `1 + delta`; this layer only converts and ingress rejects
-/// factors no zoom can use (`InputEvent::is_valid`).
+/// A pinch delta is a displacement, so the factor is `1 + delta`; a delta that makes no zoom
+/// factor, not finite or not above 0, emits nothing.
 #[test]
-fn pinch_translation_converts_and_leaves_the_screen_to_ingress() {
+fn pinch_translation_converts_and_drops_a_factor_no_zoom_can_be() {
     let half = pinch(0.5);
     let mut emitted = Vec::new();
     Translator::new(PLATFORM).translate(&half, 1.0, |event| emitted.push(event));
-    assert!(matches!(emitted.as_slice(), [InputEvent::Zoom(1.5)]));
-    assert!(emitted[0].is_valid());
+    assert!(
+        matches!(emitted.as_slice(), [InputEvent::Pinch(factor)] if factor.get() == 1.5),
+        "{emitted:?}"
+    );
 
     for delta in [-1.0, -2.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         let event = pinch(delta);
         let mut emitted = Vec::new();
         Translator::new(PLATFORM).translate(&event, 1.0, |event| emitted.push(event));
-        let [event] = emitted.as_slice() else {
-            panic!("translation emits exactly one event, got {emitted:?}");
-        };
-        assert!(
-            !event.is_valid(),
-            "pinch delta {delta:?} produced a usable factor",
-        );
+        assert!(emitted.is_empty(), "pinch delta {delta:?}: {emitted:?}");
     }
 }
 

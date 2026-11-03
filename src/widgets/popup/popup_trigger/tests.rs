@@ -33,13 +33,13 @@ fn trigger_center(h: &Harness) -> Vec2 {
 fn a_click_toggles_and_the_body_runs_only_while_open() {
     let mut h = Harness::mono(SURFACE);
     assert_eq!(h.frame_value(|ui| scene(ui, false)).map(|r| r.inner), None);
-    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui(), trigger_id()));
 
     let at = trigger_center(&h);
     h.click(at);
     let opened = h.frame_value(|ui| scene(ui, false));
     assert_eq!(opened.map(|r| r.inner), Some(7), "the click opens it");
-    assert!(PopupTrigger::is_open(h.ui_ref(), trigger_id()));
+    assert!(PopupTrigger::is_open(h.ui(), trigger_id()));
 
     assert_eq!(
         h.frame_value(|ui| scene(ui, false)).map(|r| r.inner),
@@ -53,7 +53,7 @@ fn a_click_toggles_and_the_body_runs_only_while_open() {
             .is_some_and(|r| r.closed()),
         "a second click closes it"
     );
-    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui(), trigger_id()));
     assert_eq!(h.frame_value(|ui| scene(ui, false)).map(|r| r.inner), None);
 }
 
@@ -65,7 +65,7 @@ fn open_close_and_a_disabled_trigger() {
         scene(ui, false);
     });
 
-    PopupTrigger::open(h.ui(), trigger_id());
+    PopupTrigger::open(h.ui_mut(), trigger_id());
     assert_eq!(
         h.frame_value(|ui| scene(ui, false)).map(|r| r.inner),
         Some(7)
@@ -76,15 +76,15 @@ fn open_close_and_a_disabled_trigger() {
         None,
         "disabled closes it"
     );
-    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui(), trigger_id()));
     assert_eq!(
         h.frame_value(|ui| scene(ui, false)).map(|r| r.inner),
         None,
         "and it stays closed once enabled again",
     );
 
-    PopupTrigger::open(h.ui(), trigger_id());
-    PopupTrigger::close(h.ui(), trigger_id());
+    PopupTrigger::open(h.ui_mut(), trigger_id());
+    PopupTrigger::close(h.ui_mut(), trigger_id());
     assert_eq!(h.frame_value(|ui| scene(ui, false)).map(|r| r.inner), None);
 }
 
@@ -113,12 +113,12 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
     assert_eq!(h.focus(), Some(trigger_id()));
     h.key(Key::Enter);
     h.frame(record);
-    assert!(PopupTrigger::is_open(h.ui_ref(), trigger_id()));
+    assert!(PopupTrigger::is_open(h.ui(), trigger_id()));
     assert_eq!(h.focus(), Some(item), "the keyboard's open moves focus in");
     h.key(Key::Escape);
     h.frame(record);
     h.frame(record);
-    assert!(!PopupTrigger::is_open(h.ui_ref(), trigger_id()));
+    assert!(!PopupTrigger::is_open(h.ui(), trigger_id()));
     assert_eq!(h.focus(), Some(trigger_id()), "closing gives it back");
 
     let mut h = Harness::mono(SURFACE);
@@ -126,7 +126,7 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
     let at = trigger_center(&h);
     h.click(at);
     h.frame(record);
-    assert!(PopupTrigger::is_open(h.ui_ref(), trigger_id()));
+    assert!(PopupTrigger::is_open(h.ui(), trigger_id()));
     h.frame(record);
     assert_eq!(h.focus(), Some(trigger_id()), "a click's open leaves focus");
 }
@@ -179,13 +179,13 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
         h.frame(|ui| {
             record(ui);
         });
-        (this.open)(h.ui());
+        (this.open)(h.ui_mut());
         h.frame(|ui| {
             record(ui);
         });
-        assert!((this.is_open)(h.ui_ref()), "{name}: open");
+        assert!((this.is_open)(h.ui()), "{name}: open");
         assert!(
-            !(other.is_open)(h.ui_ref()),
+            !(other.is_open)(h.ui()),
             "{name}: the other kind's row stays closed"
         );
 
@@ -195,8 +195,8 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
             "{name}: premise, the open overlay holds the keys"
         );
 
-        (this.close)(h.ui());
-        assert!(!(this.is_open)(h.ui_ref()), "{name}: closed");
+        (this.close)(h.ui_mut());
+        assert!(!(this.is_open)(h.ui()), "{name}: closed");
         h.key(Key::Char('x'));
         assert!(
             h.frame_value(record),

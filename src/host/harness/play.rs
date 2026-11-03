@@ -14,7 +14,6 @@ use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::window::screenshot::Screenshot;
 use glam::Vec2;
-use std::fmt::Debug;
 use std::time::{Duration, Instant};
 
 impl Harness {
@@ -55,14 +54,14 @@ impl Harness {
     /// [`background_wait`](crate::HarnessBuilder::background_wait), and
     /// [`PlayError::DeviceLost`] when the window asks for frames or screenshots of a lost device.
     pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
-        self.settle_after(app, &format_args!("the settle"))
+        self.settle_frames_of(app)
     }
 
-    /// Block until a [`Waker`](crate::Waker) of this window wakes it, or `deadline` passes, in
+    /// Block until a [`Waker`](crate::Waker) of this window wakes it, or `timeout` passes, in
     /// real time; whether a wake waits for the next frame. For a caller that waits on work it
     /// knows of, past what [`Self::settle`] waits for.
-    pub fn wait_for_wake(&self, deadline: Instant) -> bool {
-        self.wake.wait(deadline)
+    pub fn wait_for_wake(&self, timeout: Duration) -> bool {
+        self.wake.wait(Instant::now() + timeout)
     }
 
     /// Whether a [`Waker`](crate::Waker) of this window woke it since the last frame, which the
@@ -112,14 +111,13 @@ impl Harness {
             return Err(PlayError::DeviceLost);
         }
         Err(PlayError::Unsettled {
-            step: format!("the shot of {region:?}"),
             frames: self.settle_frames,
         })
     }
 
     /// Render one frame of `app` at the clock as it stands, where [`Self::at`] parks it, and write
     /// the window's pixels into `pixels` in the target's format
-    /// ([`HarnessBuilder::format`](crate::HarnessBuilder::format)): rows top down with no
+    /// ([`Depth::Gpu`](crate::Depth::Gpu)'s `format`): rows top down with no
     /// padding, 4 bytes a pixel of 8-bit sRGB RGBA by default, 8 of `Rgba16Float`. That frame
     /// alone: no held input is delivered, the clock does not move, and no frame waits for the
     /// picture to land, as [`Self::shot`] does. For a recording, which sets each frame's time.
@@ -146,11 +144,10 @@ impl Harness {
         }
     }
 
-    /// Frames of `app` until it settles, as [`Self::settle`] runs them, naming `step` when it
-    /// does not. Only a frame that asks for another counts against
+    /// Frames of `app` until it settles, as [`Self::settle`] runs them. Only a frame that asks for another counts against
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames): a frame a busy app's wake brought
     /// is its progress, and the wait for the next wake starts again after each.
-    fn settle_after(&mut self, app: &mut impl App, step: &dyn Debug) -> Result<u32, PlayError> {
+    fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
         let start = self.frames;
         let mut asking = 0;
         loop {
@@ -166,7 +163,6 @@ impl Harness {
                 asking += 1;
                 if asking == self.settle_frames {
                     return Err(PlayError::Unsettled {
-                        step: format!("{step:?}"),
                         frames: self.settle_frames,
                     });
                 }
@@ -184,8 +180,7 @@ impl Harness {
             }
             if !self.wake.wait(Instant::now() + self.background_wait) {
                 return Err(PlayError::Busy {
-                    step: format!("{step:?}"),
-                    seconds: self.background_wait.as_secs_f32(),
+                    waited: self.background_wait,
                 });
             }
         }
@@ -212,11 +207,9 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
     /// A modifier change that holds what is held already sends nothing, which would wait a frame.
     fn input(&mut self, event: InputEvent<'_>) {
         match event {
-            InputEvent::ModifiersChanged(mods) => self.h.set_modifiers(mods),
-            event => {
-                self.h.on_input(event);
-            }
-        }
+            InputEvent::ModifiersChanged(mods) => self.h.hold_modifiers(mods),
+            event => self.h.on_input(event),
+        };
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {
@@ -224,8 +217,8 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
         Ok(())
     }
 
-    fn settle(&mut self, step: &dyn Debug) -> Result<(), PlayError> {
-        self.h.settle_after(self.app, step).map(drop)
+    fn settle(&mut self) -> Result<(), PlayError> {
+        self.h.settle_frames_of(self.app).map(drop)
     }
 
     fn wait(&mut self, dt: Duration) -> Result<(), PlayError> {

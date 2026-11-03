@@ -5,59 +5,25 @@
 //! [`Display::user_scale`] what the application chose on top. Rasterizing
 //! multiplies by [`Display::scale_factor`], their product; anything talking
 //! back to the window manager (a saved window size, a size handed to winit)
-//! uses `system_scale` alone, via [`Display::system_logical_size`]. The system
-//! factor is screened by [`sanitize_system_scale`](crate::display::sanitize_system_scale)
-//! so nothing divides by a value the platform never promised; the user factor
-//! carries its range in its type.
+//! uses `system_scale` alone, via [`Display::system_logical_size`]. Each factor
+//! carries its range in its type, and the two ranges keep the product finite and at
+//! least `1e-4`.
 
 pub(crate) mod frame_stamp;
 pub(crate) mod host_display;
+pub(crate) mod system_scale;
 pub(crate) mod user_scale;
 
+use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::EPS;
 use glam::{UVec2, Vec2};
 
-/// What every entry point for a scale factor says when
-/// [`scale_factor_is_valid`] fails.
-pub(crate) const SCALE_RULE: &str = "a scale factor must be finite and at least 1e-4";
-
 #[inline]
 pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
     scale_factor.is_finite() && scale_factor >= EPS
-}
-
-/// `scale_factor`, checked by [`scale_factor_is_valid`].
-///
-/// # Panics
-///
-/// Panics with [`SCALE_RULE`] when the check fails.
-#[track_caller]
-pub(crate) fn scale_factor(scale_factor: f32) -> f32 {
-    assert!(
-        scale_factor_is_valid(scale_factor),
-        "{SCALE_RULE}, got {scale_factor}"
-    );
-    scale_factor
-}
-
-/// `system_scale` when the platform reported a usable one, else `1.0`.
-///
-/// The windowed host's door: winit's `f64` promises nothing, and a bad one
-/// would corrupt every pointer coordinate layers before the
-/// [`scale_factor_is_valid`] assert. Gated with that host.
-#[cfg(feature = "winit")]
-#[inline]
-pub(crate) fn sanitize_system_scale(system_scale: f64) -> f32 {
-    let system_scale = system_scale as f32;
-    if scale_factor_is_valid(system_scale) {
-        system_scale
-    } else {
-        tracing::warn!(system_scale, "display.system_scale_rejected");
-        1.0
-    }
 }
 
 /// Display state for the current output, read by the renderer at submit, by
@@ -71,11 +37,9 @@ pub(crate) fn sanitize_system_scale(system_scale: f64) -> f32 {
 pub struct Display {
     /// Physical surface size in pixels, as in `wgpu::SurfaceConfiguration`.
     pub physical: UVec2,
-    /// The device pixel ratio the platform reported (`2.0` on a 2× display).
-    /// Finite and at least `domain::EPS`; hosts validate external values and
-    /// `Ui::frame` checks the product. For the window manager's space; paint
-    /// with [`Self::scale_factor`].
-    pub system_scale: f32,
+    /// The device pixel ratio the platform reported (`2.0` on a 2× display). For
+    /// the window manager's space; paint with [`Self::scale_factor`].
+    pub system_scale: SystemScale,
     /// The application's own scale, multiplied onto [`Self::system_scale`].
     /// Set through [`Ui::set_user_scale`](crate::Ui::set_user_scale), which is
     /// app-global.
@@ -95,7 +59,7 @@ impl Default for Display {
     fn default() -> Self {
         Self {
             physical: UVec2::ZERO,
-            system_scale: 1.0,
+            system_scale: SystemScale::ONE,
             user_scale: UserScale::ONE,
             pixel_snap: true,
             refresh_millihertz: None,
@@ -132,7 +96,7 @@ impl Display {
     /// read; round-tripping through [`Self::logical_size`] would shrink the
     /// window by the user scale each launch.
     pub fn system_logical_size(&self) -> Size {
-        self.divided_by(self.system_scale)
+        self.divided_by(self.system_scale.get())
     }
 
     fn divided_by(&self, scale: f32) -> Size {
@@ -166,8 +130,9 @@ impl Display {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::display::Display;
+    use crate::display::system_scale::SystemScale;
     use crate::display::user_scale::UserScale;
-    use crate::display::{Display, SCALE_RULE, scale_factor_is_valid};
     use glam::UVec2;
 
     impl Display {
@@ -176,14 +141,15 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// Panics unless `system_scale` is finite and at least `1e-4`.
+        /// Panics with [`SystemScaleError`](crate::SystemScaleError)'s message outside
+        /// [`SystemScale`]'s range.
         #[track_caller]
-        pub(crate) const fn from_physical(physical: UVec2, system_scale: f32) -> Self {
+        pub(crate) fn from_physical(physical: UVec2, system_scale: f32) -> Self {
             Self {
                 physical,
-                system_scale: {
-                    assert!(scale_factor_is_valid(system_scale), "{}", SCALE_RULE);
-                    system_scale
+                system_scale: match SystemScale::try_from(system_scale) {
+                    Ok(scale) => scale,
+                    Err(refused) => panic!("{refused}"),
                 },
                 user_scale: UserScale::ONE,
                 pixel_snap: true,

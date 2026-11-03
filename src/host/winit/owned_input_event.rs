@@ -3,9 +3,9 @@
 use crate::input::input_event::InputEvent;
 
 /// An [`InputEvent`] whose IME text is owned, so it outlives the text it was built from and
-/// crosses threads, as [`HostHandle::send_input`](crate::HostHandle::send_input) takes it.
+/// crosses threads, as a [`Remote`](crate::Remote) sends it.
 #[derive(Clone, Debug)]
-pub struct OwnedInputEvent {
+pub(crate) struct OwnedInputEvent {
     /// The event with its text emptied; `text` holds it.
     event: InputEvent<'static>,
     text: String,
@@ -13,7 +13,7 @@ pub struct OwnedInputEvent {
 
 impl OwnedInputEvent {
     /// The event, its text lent from `self`.
-    pub fn as_event(&self) -> InputEvent<'_> {
+    pub(crate) fn as_event(&self) -> InputEvent<'_> {
         self.event.with_text(&self.text)
     }
 }
@@ -30,10 +30,10 @@ impl From<InputEvent<'_>> for OwnedInputEvent {
 #[cfg(test)]
 mod tests {
     use crate::common::span::Span;
+    use crate::host::winit::owned_input_event::OwnedInputEvent;
     use crate::input::ime_preedit::ImePreedit;
     use crate::input::input_event::InputEvent;
     use crate::input::keyboard::key::Key;
-    use crate::input::owned_input_event::OwnedInputEvent;
     use crate::input::pointer::PointerButton;
     use glam::Vec2;
 

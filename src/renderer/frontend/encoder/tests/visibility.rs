@@ -133,7 +133,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             })
             .inner
     });
-    let cascade = h.ui_ref().cascade();
+    let cascade = h.ui().cascade();
     let child = cascade.location(Endpoint {
         plane: Plane::MAIN,
         node: child,

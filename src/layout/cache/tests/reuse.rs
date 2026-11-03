@@ -61,7 +61,7 @@ pub(super) fn assert_snapshot_is_linear(h: &Harness) {
     assert_eq!(snapshot.nodes.available.len(), len);
     let recorded = Layer::PAINT_ORDER
         .iter()
-        .map(|layer| h.ui_ref().tree(*layer).records.len())
+        .map(|layer| h.ui().tree(*layer).records.len())
         .sum::<usize>();
     assert_eq!(
         len, recorded,

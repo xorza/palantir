@@ -6,7 +6,7 @@
 /// apply it already.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Platform {
-    /// macOS, where Cmd is the command modifier [`ShortcutMods::ctrl`](crate::ShortcutMods) names.
+    /// macOS, where Cmd is the command modifier [`ShortcutMods::CTRL`](crate::ShortcutMods) names.
     Mac,
     /// Windows.
     Windows,
@@ -17,7 +17,7 @@ pub enum Platform {
 /// Each input convention that differs between platforms, named for what it does, so a caller
 /// reads why it branches.
 impl Platform {
-    /// Whether Super (Cmd) is the command modifier, which a host reports as `ctrl`, leaving
+    /// Whether Super (Cmd) is the command modifier, which a host reports as `Modifiers::CTRL`, leaving
     /// Control a key of its own: macOS.
     pub(crate) const fn commands_with_super(self) -> bool {
         matches!(self, Self::Mac)

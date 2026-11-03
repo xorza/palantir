@@ -289,7 +289,7 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
     let (mut h, id, (value, repaint)) = retarget(false);
     assert!(value < 1.0 && repaint, "{value}");
 
-    h.ui().window_frame_mut().facts.shown_again = true;
+    h.ui_mut().window_frame_mut().facts.shown_again = true;
     assert_eq!(step(h.at(Duration::from_millis(32)), id, 1.0), (1.0, false));
     assert_eq!(step(h.at(Duration::from_millis(48)), id, 1.0), (1.0, false));
 }
@@ -325,12 +325,12 @@ fn a_look_follows_a_theme_change_and_fades_a_state_change() {
     let (look, want) = wear(&mut h);
     assert_eq!(look, want, "first touch rests on its look");
 
-    let shown = h.ui_ref().color_scheme();
+    let shown = h.ui().color_scheme();
     let other = match shown {
         ColorScheme::Light => ColorScheme::Dark,
         ColorScheme::Dark => ColorScheme::Light,
     };
-    h.ui().set_theme_for(shown, Theme::stock(other));
+    h.ui_mut().set_theme_for(shown, Theme::stock(other));
     let (look, want) = wear(h.advance(Duration::from_millis(16)));
     assert_eq!(look, want, "a theme change is followed at once");
 

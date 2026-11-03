@@ -77,9 +77,10 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     assert_eq!(*held.a(), QUIET, "the binding did not move this frame");
     let rect = h.arranged(split_id().with("first"));
     assert_eq!(
-        rect.size.w, 350.0,
+        rect.unwrap().size.w,
+        350.0,
         "min_pane(50) stops the current layout at 350 px, got {}",
-        rect.size.w
+        rect.unwrap().size.w
     );
 
     h.drag_to(Vec2::new(998.0, 50.0));
@@ -160,7 +161,7 @@ fn divider_drag_is_scale_invariant() {
         // Drag targets along the splitter's x, read before the drag.
         let layout = h.arranged(split_id());
         let transform = h.transform(split_id());
-        let target = |x: f32| transform.apply_point(layout.min + Vec2::new(x, 50.0));
+        let target = |x: f32| transform.apply_point(layout.unwrap().min + Vec2::new(x, 50.0));
         h.hover(target(300.5));
         frame(&mut h, &mut ratio);
 
@@ -172,7 +173,7 @@ fn divider_drag_is_scale_invariant() {
         h.hover(target(380.0));
         frame(&mut h, &mut ratio);
         assert_eq!(
-            h.arranged(split_id().with("first")).size.w,
+            h.arranged(split_id().with("first")).unwrap().size.w,
             350.0,
             "50 px second-pane minimum at {scale}×",
         );
@@ -282,9 +283,9 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
         let rigid_rect = h.arranged(split_id().with("rigid"));
         assert_eq!(
             if row {
-                rigid_rect.size.w
+                rigid_rect.unwrap().size.w
             } else {
-                rigid_rect.size.h
+                rigid_rect.unwrap().size.h
             },
             180.0,
             "rigid content remains laid out"
@@ -299,9 +300,9 @@ fn divider_and_pane_stop_together_when_content_is_rigid() {
             divider_rect.center().y
         };
         let first_edge = if row {
-            first_rect.max().x
+            first_rect.unwrap().max().x
         } else {
-            first_rect.max().y
+            first_rect.unwrap().max().y
         };
         assert_eq!(
             divider_center,
@@ -417,7 +418,7 @@ fn divider_requests_the_resize_cursor() {
         assert_eq!(divider_rect.size.w, grab_thickness);
         assert_eq!(
             divider_rect.center().x,
-            first_rect.max().x + rule_thickness * 0.5,
+            first_rect.unwrap().max().x + rule_thickness * 0.5,
             "grab bar stays centered whether narrower or wider than the rule"
         );
     }
@@ -441,7 +442,7 @@ fn a_splitter_disabled_mid_drag_lets_go() {
     let divider = split_id().with("divider");
     let fill = |h: &Harness| {
         let node = h.node_of(divider).expect("the divider records").node;
-        h.ui_ref().tree(Layer::Main).chrome(node).is_some()
+        h.ui().tree(Layer::Main).chrome(node).is_some()
     };
     let mut h = Harness::mono(SURFACE);
     let mut ratio = 0.5;
@@ -458,7 +459,7 @@ fn a_splitter_disabled_mid_drag_lets_go() {
     assert!(!fill(&h), "a disabled divider paints no drag fill");
     assert_eq!(h.ui().window_requests().levels.cursor, CursorIcon::Default);
     assert_eq!(ratio, 0.75, "the pointer no longer steers");
-    assert_eq!(h.arranged(split_id().with("first")).size.w, 300.0);
+    assert_eq!(h.arranged(split_id().with("first")).unwrap().size.w, 300.0);
     assert_eq!(disabled.count_where(|e| *e != QUIET), 0, "{disabled:?}");
 
     h.release(PointerButton::Left);
@@ -527,7 +528,7 @@ fn endpoint_ratios_collapse_exactly_one_pane() {
         });
         let first = h.node_for_widget_id(split_id().with("first"));
         let second = h.node_for_widget_id(split_id().with("second"));
-        let rects = &h.ui_ref().layout(Layer::Main).rect;
+        let rects = &h.ui().layout(Layer::Main).rect;
         assert_eq!(
             [rects[first.idx()].size.w, rects[second.idx()].size.w],
             expected,
@@ -557,7 +558,7 @@ fn a_focused_divider_moves_by_the_keys_within_the_floors() {
         (Modifiers::NONE, Key::Home, 0.125),
         (Modifiers::SHIFT, Key::ArrowRight, 0.375),
     ] {
-        h.set_modifiers(mods);
+        h.hold_modifiers(mods);
         h.key(key);
         let first = frame_with(&mut h, &mut ratio);
         let second = frame_with(&mut h, &mut ratio);

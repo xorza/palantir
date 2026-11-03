@@ -139,7 +139,8 @@ fn bench_host(g: &BenchGpu, time: OffscreenTime) -> OffscreenHost {
         .swapchain_present()
         .time(time)
         .build();
-    host.ui().set_theme_for(ColorScheme::Dark, bench_theme());
+    host.ui_mut()
+        .set_theme_for(ColorScheme::Dark, bench_theme());
     host
 }
 
@@ -165,10 +166,10 @@ enum CpuClock {
 impl CpuHarness {
     fn new(time: OffscreenTime) -> Self {
         let mut h = Harness::builder(BENCH_SURFACE)
-            .scale(BENCH_DPR)
+            .system_scale(BENCH_DPR)
             .depth(Depth::Compose)
             .build();
-        h.ui().set_theme_for(ColorScheme::Dark, bench_theme());
+        h.ui_mut().set_theme_for(ColorScheme::Dark, bench_theme());
         Self {
             h,
             clock: match time {
@@ -402,7 +403,8 @@ fn main_pass_batch(c: &mut Criterion, backends: &Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui().set_theme_for(ColorScheme::Dark, bench_theme());
+            host.ui_mut()
+                .set_theme_for(ColorScheme::Dark, bench_theme());
             let mut state = FrameFixture::default();
             let mut n = 0u32;
             let mut frame = || {
@@ -411,7 +413,7 @@ fn main_pass_batch(c: &mut Criterion, backends: &Backends) {
                 let paint = gpu_frame(&mut host, &target, &mut state);
                 g.wait();
                 g.poll();
-                (paint, host.gpu_pass_stats().last_kind(kind))
+                (paint, host.ui().gpu_pass_stats().last_kind(kind))
             };
             for _ in 0..SETTLE_FRAMES {
                 frame();
@@ -454,7 +456,9 @@ fn gpu_frame(
     state: &mut FrameFixture,
 ) -> FramePaint {
     let mut app = |ui: &mut Ui| state.render(BENCH_SCALE, ui);
-    host.frame(target.as_target(), BENCH_DPR, &mut app).paint()
+    host.set_system_scale(BENCH_DPR)
+        .frame(target.as_target(), &mut app)
+        .paint()
 }
 
 /// `integration/frame/<backend>/<scenario>`: one whole frame of the frame fixture.
@@ -471,8 +475,8 @@ pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
                             h.h.resize(sizes[n as usize % sizes.len()]);
                         }
                         let harness = &mut h.h;
-                        arm.prepare(harness.ui());
-                        if let Some(event) = arm.input(state, harness.ui(), n) {
+                        arm.prepare(harness.ui_mut());
+                        if let Some(event) = arm.input(state, harness.ui_mut(), n) {
                             harness.on_input(event);
                             release(event, |up| {
                                 harness.on_input(up);
@@ -490,8 +494,8 @@ pub(crate) fn integration(c: &mut Criterion, backends: &Backends) {
                         if arm.clock() == OffscreenTime::Manual {
                             host.advance(THEMING_FRAME);
                         }
-                        arm.prepare(host.ui());
-                        if let Some(event) = arm.input(state, host.ui(), n) {
+                        arm.prepare(host.ui_mut());
+                        if let Some(event) = arm.input(state, host.ui_mut(), n) {
                             host.on_input(event);
                             release(event, |up| {
                                 host.on_input(up);
@@ -521,7 +525,9 @@ fn record(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "record", Scale::Sample);
     group.bench_function(Backend::Cpu.case("frame"), |b| {
         let mut state = FrameFixture::default();
-        let mut h = Harness::builder(BENCH_SURFACE).scale(BENCH_DPR).build();
+        let mut h = Harness::builder(BENCH_SURFACE)
+            .system_scale(BENCH_DPR)
+            .build();
         h.frame(|ui| state.render(BENCH_SCALE, ui));
         let mut app = |ui: &mut Ui| state.render(BENCH_SCALE, ui);
         let mut pass = || {
@@ -555,7 +561,8 @@ fn main_pass(c: &mut Criterion, backends: &Backends) {
                 .collect_gpu_stats(true)
                 .swapchain_present()
                 .build();
-            host.ui().set_theme_for(ColorScheme::Dark, bench_theme());
+            host.ui_mut()
+                .set_theme_for(ColorScheme::Dark, bench_theme());
             let mut state = FrameFixture::default();
             let mut n = 0u32;
             let mut frame = || {
@@ -564,7 +571,7 @@ fn main_pass(c: &mut Criterion, backends: &Backends) {
                 let paint = gpu_frame(&mut host, &target, &mut state);
                 g.wait();
                 g.poll();
-                (paint, host.gpu_pass_stats().last_pass())
+                (paint, host.ui().gpu_pass_stats().last_pass())
             };
             for _ in 0..SETTLE_FRAMES {
                 frame();

@@ -40,7 +40,7 @@ const ALL: [HAlign; 3] = [HAlign::Left, HAlign::Center, HAlign::Right];
 /// under every halign.
 #[test]
 fn a_single_line_caret_is_halign_independent() {
-    let mut ui = cosmic_ui();
+    let ui = cosmic_ui();
     let text = "hi";
     let xs: Vec<f32> = ALL
         .iter()
@@ -69,7 +69,7 @@ fn a_single_line_caret_is_halign_independent() {
 /// to the block's right edge, Center to half the slack, Left not at all.
 #[test]
 fn a_narrow_line_shifts_within_the_block() {
-    let mut ui = cosmic_ui();
+    let ui = cosmic_ui();
     let text = "wwwwww\ni";
     let wrap = 300.0;
     let block = ui
@@ -80,7 +80,7 @@ fn a_narrow_line_shifts_within_the_block() {
         .size
         .w;
     let caret = |halign| {
-        ui.ui_ref()
+        ui.ui()
             .shaper()
             .cursor_xy(text, text.len(), shape(wrap, halign))
             .x
@@ -124,7 +124,7 @@ fn measured_width_is_the_content_extent_not_the_wrap_target() {
 
 #[test]
 fn an_empty_buffer_caret_is_at_the_block_origin() {
-    let mut ui = cosmic_ui();
+    let ui = cosmic_ui();
     for halign in ALL {
         let x = ui.ui().shaper().cursor_xy("", 0, shape(300.0, halign)).x;
         assert_eq!(x, 0.0, "{halign:?} empty caret");
@@ -249,7 +249,7 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
     let node = h.frame_value(&mut record);
     // `text_spans[node]` has one entry per `ShapeRecord::Text`: a single text
     // shape, on the block child carrying the alignment.
-    let node = block_of(h.ui_ref(), node);
+    let node = block_of(h.ui(), node);
     let main = h.ui().layout(Layer::Main);
     let span = main.text_spans[node.idx()];
     assert_eq!(span.len, 1, "one Shape::Text expected on the block");
@@ -332,10 +332,10 @@ fn placeholder_per_line_aligns_under_wrap() {
     };
     h.frame_value(&mut record);
     let node = h.frame_value(&mut record);
-    let store = h.ui_ref().record_store();
+    let store = h.ui().record_store();
     let interned_text = store.interned_text();
-    let node = block_of(h.ui_ref(), node);
-    let tree = h.ui_ref().tree(Layer::Main);
+    let node = block_of(h.ui(), node);
+    let tree = h.ui().tree(Layer::Main);
     let shape_align = tree.shapes_of(node).find_map(|s| match s {
         ShapeRecord::Text { align, text, .. } => {
             Some((*align, interned_text.resolve(text.span).to_owned()))
@@ -381,7 +381,7 @@ fn multiline_widget_right_aligns_each_line() {
         });
     };
     h.frame(&mut record);
-    h.ui()
+    h.ui_mut()
         .with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 5);
     h.frame(&mut record);
     let wrap = 290.0;

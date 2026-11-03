@@ -14,6 +14,7 @@ use crate::host::winit::input::{
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
+use crate::input::zoom_factor::ZoomFactor;
 
 /// The pointer's **physical** position, retained across events because a
 /// scale change invalidates the logical one and re-deriving needs it before
@@ -102,7 +103,7 @@ impl Translator {
         debug_assert!(
             display::scale_factor_is_valid(scale_factor),
             "the host screens the platform's half through \
-             display::sanitize_system_scale and the app's half carries its range \
+             SystemScale::from_platform and the app's half carries its range \
              in UserScale; got {scale_factor}",
         );
         match event {
@@ -139,10 +140,12 @@ impl Translator {
                     ElementState::Released => InputEvent::PointerReleased(button),
                 });
             }
-            // A pinch delta is a displacement, so the factor is `1 + delta`. Emitted
-            // unscreened; `InputEvent::is_valid` decides what a factor must satisfy.
+            // A pinch delta is a displacement, so the factor is `1 + delta`; one no zoom can be,
+            // not finite or not above 0, is dropped here.
             WindowEvent::PinchGesture { delta, .. } => {
-                emit(InputEvent::Zoom(1.0 + *delta as f32));
+                if let Some(factor) = ZoomFactor::new(1.0 + *delta as f32) {
+                    emit(InputEvent::Pinch(factor));
+                }
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 let (event, delta) = match *delta {

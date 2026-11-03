@@ -1,6 +1,7 @@
 //! The panes the cascade lists: each one's plan and footprint, which every later stage reads.
 
 use crate::cascade::pane_row::PaneRow;
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
@@ -29,7 +30,7 @@ fn listed(scale: f32, rect: Rect, filter: BackdropFilter) -> Listed {
 fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: BackdropFilter) -> Listed {
     let mut h = Harness::builder(UVec2::splat(200))
         .mono()
-        .scale(scale)
+        .system_scale(SystemScale::new(scale).unwrap())
         .build();
     h.frame(|ui: &mut Ui| {
         let canvas = Panel::canvas().id_salt("panes");

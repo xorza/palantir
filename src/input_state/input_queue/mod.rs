@@ -80,7 +80,7 @@ impl InputQueue {
             | InputEvent::PointerLeft
             | InputEvent::ScrollPixels(_)
             | InputEvent::ScrollLines(_)
-            | InputEvent::Zoom(_)
+            | InputEvent::Pinch(_)
             | InputEvent::ImePreedit(_) => true,
         }
     }

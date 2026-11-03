@@ -38,19 +38,20 @@ fn driver(token: WindowToken, shared: &UiResources) -> WindowDriver {
     )
 }
 
-/// A host with no window lifecycle drains a quiet frame as a windowed one does
-/// (the veto lives a frame either way) and keeps the *levels* the recorder
-/// reads back.
+/// A host with no window lifecycle drains a quiet frame as a windowed one does (the veto lives a
+/// frame either way), keeps the *levels* the recorder reads back, and records no command.
 #[test]
-fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
+fn a_quiet_frame_records_no_command_and_clears_the_veto() {
     let shared = UiResources::isolated_mono();
     let mut quiet = driver(WindowToken(1), &shared);
     quiet.ui.keep_open();
     quiet.ui.set_vsync(Vsync::Off);
     quiet.ui.set_cursor(CursorIcon::Text);
+    let mut commands = WindowCommands::default();
 
-    deny_window_commands(&mut quiet);
+    record_window_commands(&mut quiet, &mut commands);
 
+    assert!(commands.as_slice().is_empty());
     assert!(
         !quiet.ui.window_requests().close_vetoed,
         "a veto against a close that was never requested must not persist"
@@ -63,26 +64,31 @@ fn deny_window_commands_accepts_a_quiet_frame_and_clears_the_veto() {
     assert_eq!(quiet.ui.window_requests().levels.cursor, CursorIcon::Text);
 }
 
+/// A frame's opens and closes are recorded in the order called, and the next frame's replace
+/// them: a quiet frame after leaves none.
 #[test]
-#[should_panic(expected = "Ui::open_window(WindowToken(9))")]
-fn deny_window_commands_rejects_an_open() {
+fn a_frame_records_its_window_commands_and_the_next_replaces_them() {
     let shared = UiResources::isolated_mono();
-    let mut opener = driver(WindowToken(1), &shared);
-    opener
-        .ui
-        .open_window(WindowToken(9), WindowConfig::new("unservable"));
+    let mut host = driver(WindowToken(1), &shared);
+    let mut commands = WindowCommands::default();
+    host.ui
+        .open_window(WindowToken(9), WindowConfig::new("other"));
+    host.ui.close_window(WindowToken(4));
 
-    deny_window_commands(&mut opener);
-}
+    record_window_commands(&mut host, &mut commands);
+    assert!(matches!(
+        commands.as_slice(),
+        [
+            WindowCommand::Open {
+                token: WindowToken(9),
+                ..
+            },
+            WindowCommand::Close(WindowToken(4))
+        ]
+    ));
 
-#[test]
-#[should_panic(expected = "Ui::close_window(WindowToken(4))")]
-fn deny_window_commands_rejects_a_close() {
-    let shared = UiResources::isolated_mono();
-    let mut closer = driver(WindowToken(1), &shared);
-    closer.ui.close_window(WindowToken(4));
-
-    deny_window_commands(&mut closer);
+    record_window_commands(&mut host, &mut commands);
+    assert!(commands.as_slice().is_empty(), "{commands:?}");
 }
 
 /// A manual host stamps each frame with the time it was moved to: a wake asked for 1 s on
@@ -97,8 +103,7 @@ fn a_manual_host_stamps_frames_with_the_time_it_was_moved_to() {
         .build();
     let texture = gpu.target("palantir.offscreen.time", UVec2::new(8, 8));
     let mut app = |ui: &mut Ui| ui.request_repaint_after(Duration::from_secs(1));
-    let mut wake =
-        |host: &mut OffscreenHost| host.frame(texture.as_target(), 1.0, &mut app).repaint_at;
+    let mut wake = |host: &mut OffscreenHost| host.frame(texture.as_target(), &mut app).repaint_at;
     assert_eq!(
         wake(&mut host),
         Some(Duration::from_secs(1)),
@@ -128,7 +133,7 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
         .shaper(TextShaper::test_mono())
         .retained_target(true)
         .build();
-    host.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    host.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
     let texture = gpu.target("palantir.offscreen.retained", UVec2::new(32, 8));
     let color = Cell::new(RgbaF32::WHITE);
     let mut app = |ui: &mut Ui| {
@@ -140,7 +145,7 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
     };
     let mut frame = |host: &mut OffscreenHost| {
         let target = texture.as_target();
-        let spec = host.spec(target, 1.0);
+        let spec = host.spec(target);
         let CpuFrame { mode, .. } =
             host.core
                 .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
@@ -213,7 +218,7 @@ fn a_retained_target_keeps_no_damage_outline() {
             .shaper(TextShaper::test_mono())
             .retained_target(retained)
             .build();
-        host.ui().theme_mut().window_clear = RgbaF32::BLACK;
+        host.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
         host
     };
     let mut retained = host(true);
@@ -239,12 +244,12 @@ fn a_retained_target_keeps_no_damage_outline() {
         (3, false, true, true),
         (4, false, false, true),
     ] {
-        retained.ui().set_debug_overlay(DebugOverlayConfig {
+        retained.ui_mut().set_debug_overlay(DebugOverlayConfig {
             damage_rect: outline,
             ..DebugOverlayConfig::default()
         });
         let target = texture.as_target();
-        let spec = retained.spec(target, 1.0);
+        let spec = retained.spec(target);
         let mut app = scene(frame % 2 == 1);
         let CpuFrame { mode, .. } =
             retained
@@ -261,7 +266,7 @@ fn a_retained_target_keeps_no_damage_outline() {
         retained.core.submit(&mut retained.driver, target, mode);
     }
     let reference = gpu.target("palantir.offscreen.unoutlined", UVec2::new(32, 16));
-    host(false).frame(reference.as_target(), 1.0, &mut scene(false));
+    host(false).frame(reference.as_target(), &mut scene(false));
     assert_eq!(texture.read_back(), reference.read_back());
 }
 
@@ -300,7 +305,7 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
         (false, true, true, false),
     ] {
         let target = texture.as_target();
-        let spec = host.spec(target, 1.0);
+        let spec = host.spec(target);
         let mut app = scene(under, away);
         let CpuFrame { mode, .. } =
             host.core
@@ -335,7 +340,7 @@ fn the_gpu_half_completes_what_the_cpu_half_leaves_pending() {
 
     for (frame, paints) in [(0, true), (1, false)] {
         let target = texture.as_target();
-        let spec = host.spec(target, 1.0);
+        let spec = host.spec(target);
         let CpuFrame { mode, .. } =
             host.core
                 .record(&mut host.driver, spec, &mut app, FrameDepth::Paint);
@@ -382,7 +387,7 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
     };
 
     let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
-    let spec = host.spec(large.as_target(), 1.0);
+    let spec = host.spec(large.as_target());
     let mut asking = |ui: &mut Ui| scene(ui, true);
     let CpuFrame { report, .. } =
         host.core
@@ -394,10 +399,10 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
 
     let small = gpu.target("palantir.offscreen.capture.small", UVec2::new(32, 24));
     let mut still = |ui: &mut Ui| scene(ui, false);
-    host.frame(small.as_target(), 1.0, &mut still);
+    host.frame(small.as_target(), &mut still);
     let target = small.read_back();
     host.wait_for_gpu();
-    host.frame(small.as_target(), 1.0, &mut still);
+    host.frame(small.as_target(), &mut still);
     let shot = host
         .ui()
         .screenshot_taken(asked.get().unwrap())
@@ -420,7 +425,7 @@ fn a_carried_request_the_window_shrank_past_lands_nothing() {
         .build();
     let asked = Cell::new(None);
     let large = gpu.target("palantir.offscreen.capture.large", UVec2::new(64, 48));
-    let spec = host.spec(large.as_target(), 1.0);
+    let spec = host.spec(large.as_target());
     let mut asking = |ui: &mut Ui| {
         asked.set(ui.request_screenshot(Some(Rect::new(40.0, 30.0, 10.0, 10.0))));
     };
@@ -433,9 +438,9 @@ fn a_carried_request_the_window_shrank_past_lands_nothing() {
 
     let small = gpu.target("palantir.offscreen.capture.small", UVec2::new(32, 24));
     let mut still = |_: &mut Ui| {};
-    host.frame(small.as_target(), 1.0, &mut still);
+    host.frame(small.as_target(), &mut still);
     host.wait_for_gpu();
-    host.frame(small.as_target(), 1.0, &mut still);
+    host.frame(small.as_target(), &mut still);
     assert!(host.ui().screenshot_taken(id).is_none());
 }
 
@@ -443,3 +448,32 @@ mod canvas;
 mod held_cutouts;
 mod recovery;
 mod theme_transition;
+
+/// The builder seeds the system scale and refresh rate, and the host's setters change them from
+/// the next frame on: 2 and 60 Hz, then 1.5 and none.
+#[test]
+fn the_system_facts_seed_at_build_and_change_by_setter() {
+    let gpu = headless_test_gpu();
+    let mut host = OffscreenHost::builder(gpu.handles())
+        .shaper(TextShaper::test_mono())
+        .system_scale(SystemScale::new(2.0).unwrap())
+        .refresh_millihertz(60_000)
+        .build();
+    let texture = gpu.target("palantir.offscreen.facts", UVec2::new(8, 8));
+    let mut app = |_: &mut Ui| {};
+    host.frame(texture.as_target(), &mut app);
+    let display = host.ui().display();
+    assert_eq!(
+        (display.system_scale, display.refresh_millihertz),
+        (SystemScale::new(2.0).unwrap(), Some(60_000))
+    );
+
+    host.set_system_scale(SystemScale::new(1.5).unwrap())
+        .set_refresh_millihertz(None);
+    host.frame(texture.as_target(), &mut app);
+    let display = host.ui().display();
+    assert_eq!(
+        (display.system_scale, display.refresh_millihertz),
+        (SystemScale::new(1.5).unwrap(), None)
+    );
+}

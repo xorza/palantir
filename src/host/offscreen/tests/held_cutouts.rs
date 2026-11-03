@@ -47,7 +47,7 @@ fn a_held_table_paints_what_a_fresh_bake_paints() {
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::test_mono())
             .build();
-        host.ui().theme_mut().window_clear = RgbaF32::WHITE;
+        host.ui_mut().theme_mut().window_clear = RgbaF32::WHITE;
         host
     };
     let size = UVec2::new(340, 240);
@@ -56,14 +56,14 @@ fn a_held_table_paints_what_a_fresh_bake_paints() {
     let mut across = host();
     for step in 0..5 {
         let x = 1.25 * step as f32;
-        across.frame(held.as_target(), 1.0, &mut |ui: &mut Ui| scene(ui, x));
+        across.frame(held.as_target(), &mut |ui: &mut Ui| scene(ui, x));
     }
     assert_eq!(
         across.core.backend().held_cutout_tables(),
         2,
         "a table for each key the blocks' corners share"
     );
-    host().frame(fresh.as_target(), 1.0, &mut |ui: &mut Ui| scene(ui, 5.0));
+    host().frame(fresh.as_target(), &mut |ui: &mut Ui| scene(ui, 5.0));
     assert!(
         held.read_back() == fresh.read_back(),
         "the held tables paint other pixels"

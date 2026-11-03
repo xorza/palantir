@@ -40,12 +40,12 @@ fn editing_a_long_value_holds_the_field_width() {
 
     let mut h = Harness::mono(surface);
     h.frame(|ui| render(ui, &mut v));
-    let display_w = h.arranged(id).size.w;
+    let display_w = h.arranged(id).unwrap().size.w;
 
     h.set_focus(id);
     h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut v));
-    let edit_w = h.arranged(id).size.w;
+    let edit_w = h.arranged(id).unwrap().size.w;
 
     // "1.985": five 8 px chars + 2 × 12 padding + 2 × 1 border, above the 40 px floor.
     assert_eq!(display_w, 40.0 + 24.0 + 2.0);
@@ -138,12 +138,12 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 
     let mut h = Harness::mono(UVec2::new(300, 100));
     h.frame(scene);
-    let chip = placement(h.ui_ref(), id);
+    let chip = placement(h.ui(), id);
 
     h.set_focus(id);
     h.key(Key::Enter);
     h.frame(scene);
-    let editor = placement(h.ui_ref(), id);
+    let editor = placement(h.ui(), id);
 
     assert_eq!(
         chip, editor,
@@ -153,7 +153,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
     // Guards against both frames being chips and matching trivially.
     assert!(
         matches!(
-            h.state::<DragValueState>(id),
+            h.state::<DragValueState>(id).unwrap(),
             DragValueState::Editing { .. }
         ),
         "second frame must have recorded the inline editor",
@@ -185,13 +185,13 @@ fn entering_edit_mode_keeps_the_chips_box() {
 
     let mut h = Harness::mono(UVec2::new(400, 120));
     h.frame(|ui| render(ui, &mut fps));
-    let chip = h.arranged(id).size;
+    let chip = h.arranged(id).unwrap().size;
 
     h.set_focus(id);
 
     h.key(Key::Enter);
     h.frame(|ui| render(ui, &mut fps));
-    let editor = h.arranged(id).size;
+    let editor = h.arranged(id).unwrap().size;
 
     assert_eq!(
         (chip.w, chip.h),
@@ -231,7 +231,7 @@ fn every_text_form_labels_the_same_suffix() {
                 });
             });
         }
-        (label, h.arranged(id).size.w)
+        (label, h.arranged(id).unwrap().size.w)
     });
     let [none, borrowed, rest @ ..] = widths;
     assert!(borrowed.1 > none.1, "premise: the suffix widens the chip");

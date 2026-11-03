@@ -37,7 +37,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
             })
             .inner
     });
-    let tree = h.ui_ref().tree(Layer::Main);
+    let tree = h.ui().tree(Layer::Main);
     let mut shapes = tree.shapes_of(node);
     assert!(
         matches!(
@@ -50,7 +50,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
         "records exactly one view-sourced image shape",
     );
     assert!(shapes.next().is_none());
-    let r = h.ui_ref().arranged_rect(Layer::Main, node);
+    let r = h.ui().arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (150.0, 90.0));
 }
 
@@ -109,15 +109,15 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 
     let mut frontend = Frontend::for_test();
     let plan = |damage| RenderPlan {
-        clear: h.ui_ref().theme().window_clear,
+        clear: h.ui().theme().window_clear,
         damage,
     };
 
     frontend.build(
-        h.ui_ref().frame_scene(),
+        h.ui().frame_scene(),
         BuildPlan::without_panes(plan(Damage::Full)),
     );
-    h.ui_ref()
+    h.ui()
         .gpu_views()
         .collect_live_targets(&mut frontend.buffer.live_targets);
     assert_eq!(
@@ -135,10 +135,10 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
     // Damage confined to the corner opposite the bottom-right view.
     let elsewhere = DamageRegion::from(Rect::new(0.0, 0.0, 20.0, 20.0)).unmeasured();
     frontend.build(
-        h.ui_ref().frame_scene(),
+        h.ui().frame_scene(),
         BuildPlan::without_panes(plan(Damage::Partial(elsewhere))),
     );
-    h.ui_ref()
+    h.ui()
         .gpu_views()
         .collect_live_targets(&mut frontend.buffer.live_targets);
     assert!(

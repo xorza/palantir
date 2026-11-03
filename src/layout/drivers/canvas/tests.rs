@@ -133,7 +133,7 @@ fn canvas_fill_axis_has_no_floor() {
     let canvas_rect = h.ui().arranged_rect(Layer::Main, canvas);
     assert_eq!((canvas_rect.min.y, canvas_rect.size.h), (50.0, 150.0));
     let tall = h.arranged(WidgetId::from_hash("tall"));
-    assert_eq!((tall.min.y, tall.size.h), (70.0, 300.0));
+    assert_eq!((tall.unwrap().min.y, tall.unwrap().size.h), (70.0, 300.0));
 }
 
 #[test]
@@ -256,6 +256,6 @@ fn canvas_ignores_child_align() {
             });
     });
     let r = h.arranged(WidgetId::from_hash("aligned"));
-    assert_eq!((r.min.x, r.min.y), (30.0, 40.0));
-    assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
+    assert_eq!((r.unwrap().min.x, r.unwrap().min.y), (30.0, 40.0));
+    assert_eq!((r.unwrap().size.w, r.unwrap().size.h), (50.0, 50.0));
 }

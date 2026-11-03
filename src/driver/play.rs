@@ -25,8 +25,8 @@ pub(crate) trait Stage<X> {
     /// One frame that saw every event sent so far.
     fn frame(&mut self) -> Result<(), PlayError>;
 
-    /// Frames until one saw every event sent and asks no repaint, naming `step` when none does.
-    fn settle(&mut self, step: &dyn Debug) -> Result<(), PlayError>;
+    /// Frames until one saw every event sent and asks no repaint.
+    fn settle(&mut self) -> Result<(), PlayError>;
 
     /// Let `dt` pass, frames running as they do.
     fn wait(&mut self, dt: Duration) -> Result<(), PlayError>;
@@ -54,14 +54,14 @@ pub(crate) fn play<X: Debug>(
         }
         Action::Click { at, button, mods } => {
             let point = stage.point(at, Reach::Press)?;
-            hover(stage, point, action)?;
+            hover(stage, point)?;
             stage.space_press()?;
             press_and_release(stage, *button, *mods)?;
             stage.note_press()?;
         }
         Action::DoubleClick(at) => {
             let point = stage.point(at, Reach::Press)?;
-            hover(stage, point, action)?;
+            hover(stage, point)?;
             stage.space_press()?;
             for _ in 0..2 {
                 press_and_release(stage, PointerButton::Left, ShortcutMods::NONE)?;
@@ -82,7 +82,7 @@ pub(crate) fn play<X: Debug>(
             if travel < DRAG_THRESHOLD {
                 return Err(PlayError::ShortDrag { travel });
             }
-            hover(stage, start, action)?;
+            hover(stage, start)?;
             stage.space_press()?;
             stage.input(InputEvent::ModifiersChanged(mods.held()));
             stage.input(InputEvent::PointerPressed(*button));
@@ -99,20 +99,20 @@ pub(crate) fn play<X: Debug>(
             stage.input(InputEvent::ModifiersChanged(Modifiers::NONE));
             stage.note_press()?;
         }
-        Action::Scroll { at, delta } => {
+        Action::ScrollPixels { at, delta } => {
             let point = stage.point(at, Reach::Hover)?;
-            hover(stage, point, action)?;
+            hover(stage, point)?;
             stage.input(InputEvent::ScrollPixels(*delta));
         }
-        Action::Pinch { at, factor } => {
-            // The window drops a zoom that is not a positive factor, which would pass with no
-            // sign.
-            if !(factor.is_finite() && *factor > 0.0) {
-                return Err(PlayError::BadPinch { factor: *factor });
-            }
+        Action::ScrollLines { at, delta } => {
             let point = stage.point(at, Reach::Hover)?;
-            hover(stage, point, action)?;
-            stage.input(InputEvent::Zoom(*factor));
+            hover(stage, point)?;
+            stage.input(InputEvent::ScrollLines(*delta));
+        }
+        Action::Pinch { at, factor } => {
+            let point = stage.point(at, Reach::Hover)?;
+            hover(stage, point)?;
+            stage.input(InputEvent::Pinch(*factor));
         }
         Action::Key(shortcut) => {
             key_down(stage, *shortcut)?;
@@ -139,7 +139,7 @@ pub(crate) fn play<X: Debug>(
         Action::InsertText(text) => stage.input(InputEvent::ImeCommit(text)),
         Action::Wait(dt) => stage.wait(*dt)?,
     }
-    stage.settle(action)
+    stage.settle()
 }
 
 /// Press `shortcut` with its modifiers held, and run the frame that reads it held.
@@ -150,13 +150,9 @@ fn key_down<X>(stage: &mut impl Stage<X>, shortcut: Shortcut) -> Result<(), Play
 }
 
 /// Move the pointer to `point` and settle, so the next press hits what it hovers.
-fn hover<X: Debug>(
-    stage: &mut impl Stage<X>,
-    point: Vec2,
-    action: &Action<X>,
-) -> Result<(), PlayError> {
+fn hover<X>(stage: &mut impl Stage<X>, point: Vec2) -> Result<(), PlayError> {
     stage.input(InputEvent::PointerMoved(point));
-    stage.settle(action)
+    stage.settle()
 }
 
 /// Press and release `button` where the pointer is, with `mods` held, a frame each.

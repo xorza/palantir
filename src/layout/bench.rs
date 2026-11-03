@@ -17,7 +17,9 @@ pub(crate) fn atomic(c: &mut Criterion) {
     for (label, miss) in [("cached", false), ("forced_miss", true)] {
         group.bench_function(Backend::Cpu.case(label), |b| {
             let mut state = FrameFixture::default();
-            let mut h = Harness::builder(BENCH_SURFACE).scale(BENCH_DPR).build();
+            let mut h = Harness::builder(BENCH_SURFACE)
+                .system_scale(BENCH_DPR)
+                .build();
             h.frame(|ui| state.render(BENCH_SCALE, ui));
             let surface = h.ui().display().logical_rect();
             let mut out = Layout::default();

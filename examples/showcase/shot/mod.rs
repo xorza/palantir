@@ -15,7 +15,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use palantir::glam::UVec2;
-use palantir::{Gpu, Harness, Image, PlayError, PowerPreference, Rect, RequestedGpu};
+use palantir::{Depth, Gpu, Harness, Image, PlayError, PowerPreference, Rect, RequestedGpu};
 
 use crate::shell::Shell;
 use crate::shot::report::Legend;
@@ -249,8 +249,8 @@ pub(crate) fn play(
     let header = &script.header;
     let page = UnknownPage::find(header.page.as_deref())?;
     let mut h = Harness::builder(header.size)
-        .scale(header.scale)
-        .gpu(gpu)
+        .system_scale(header.scale)
+        .depth(Depth::gpu(gpu))
         .build();
     h.set_system_color_scheme(header.scheme);
     let mut shell = Shell::open(page);

@@ -8,17 +8,17 @@ use crate::ui::resources::UiResources;
 #[test]
 fn clipboard_round_trips_through_the_harness() {
     let mut harness = Harness::mono(SURFACE);
-    assert_eq!(harness.clipboard_text(), "");
+    assert_eq!(harness.clipboard_text(), None);
     harness.set_clipboard_text("copied");
-    assert_eq!(harness.clipboard_text(), "copied");
+    assert_eq!(harness.clipboard_text().as_deref(), Some("copied"));
 }
 
 #[test]
 fn arena_interns_without_ever_recording() {
     let mut harness = Harness::mono(UVec2::ONE);
-    let interned = harness.ui().intern("label");
+    let interned = harness.ui_mut().intern("label");
     // Lowered through the real path: `InternedStr` is a span plus an epoch and owns nothing, so only the store resolves it, which is what this harness makes reachable without a frame.
-    let store = &harness.ui_ref().forest().record_store;
+    let store = &harness.ui().forest().record_store;
     let recorded = store.record_text(interned);
     assert_eq!(store.interned_text().resolve(recorded.span), "label");
 }
@@ -32,8 +32,8 @@ fn from_resources_shares_one_resource_set_between_harnesses() {
 
     first.set_clipboard_text("shared");
     assert_eq!(
-        second.clipboard_text(),
-        "shared",
+        second.clipboard_text().as_deref(),
+        Some("shared"),
         "one UiResources, one clipboard",
     );
 }

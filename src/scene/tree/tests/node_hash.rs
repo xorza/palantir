@@ -541,7 +541,7 @@ fn each_edit_moves_the_half_it_belongs_to() {
                 .response
                 .node()
         });
-        let rollups = &h.ui_ref().tree(Layer::Main).rollups;
+        let rollups = &h.ui().tree(Layer::Main).rollups;
         (
             rollups.subtree[node.idx()],
             rollups.layout_subtree[node.idx()],

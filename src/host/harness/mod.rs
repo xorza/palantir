@@ -53,16 +53,16 @@ pub(crate) mod harness_builder;
 mod play;
 
 use crate::common::time::MAX_ANIMATION_DT;
-use crate::display;
-use crate::display::Display;
-use crate::display::user_scale::UserScale;
+use crate::display::system_scale::SystemScale;
 use crate::driver::error::LocateError;
 use crate::driver::locator::{Found, Locate, Locator};
+use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::host::core::HostCore;
 use crate::host::harness::harness_builder::{HarnessBuilder, TARGET_LABEL};
+use crate::host::offscreen;
 use crate::host::wake_signal::WakeSignal;
 use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, WindowDriver};
 use crate::input::input_event::InputEvent;
@@ -73,6 +73,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
+use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::capture::DRAG_THRESHOLD;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -84,12 +85,8 @@ use crate::ui::inspected_widget::InspectedWidget;
 use crate::window::window_commands::{WindowCommand, WindowCommands};
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
-use std::any;
 use std::sync::Arc;
 use std::time::Duration;
-
-/// The token of a harness's one window, as [`App::update`] and [`App::record`] receive it.
-const WINDOW: WindowToken = WindowToken(0);
 
 /// The ambient font size this crate's unit tests frame at, pinned so the default text size can
 /// move without their hand-computed text metrics moving with it, as the visual suite pins its
@@ -126,7 +123,7 @@ pub struct Harness {
     /// between frames, so a still frame paints nothing.
     target: Option<OwnedTarget>,
     physical: UVec2,
-    system_scale: f32,
+    system_scale: SystemScale,
     refresh_millihertz: Option<u32>,
     /// Moves only on [`Self::advance`] and [`Self::at`], and the frames [`Self::settle`] and
     /// [`Self::play`] run.
@@ -157,8 +154,7 @@ struct Seal {
     depth: FrameDepth,
     target: Option<OwnedTarget>,
     physical: UVec2,
-    system_scale: f32,
-    user_scale: UserScale,
+    system_scale: SystemScale,
     refresh_millihertz: Option<u32>,
     frame_dt: Duration,
     settle_frames: u32,
@@ -172,6 +168,9 @@ struct PressOrigin {
 }
 
 impl Harness {
+    /// The token of a harness's one window, as [`App::update`] and [`App::record`] receive it.
+    pub const WINDOW: WindowToken = WindowToken(0);
+
     /// A window of `size` physical pixels at scale 1 that records and builds no draw list,
     /// shaping with the bundled faces.
     pub fn new(size: UVec2) -> Self {
@@ -203,7 +202,6 @@ impl Harness {
             drained: WindowCommands::default(),
             frames: 0,
         };
-        harness.driver.ui.set_user_scale(seal.user_scale);
         let waker = harness.wake.waker();
         harness.driver.ui.set_waker(waker);
         #[cfg(test)]
@@ -327,18 +325,21 @@ impl Harness {
         self
     }
 
-    /// Swap the whole display from the next frame on, as a move to another monitor or a change of
-    /// pixel snapping does; the frame reads the change.
-    ///
-    /// # Panics
-    ///
-    /// As [`Self::resize`], and when the scale is not finite or below `1e-4`.
-    pub fn set_display(&mut self, display: Display) -> &mut Self {
-        self.system_scale = display::scale_factor(display.system_scale);
-        self.refresh_millihertz = display.refresh_millihertz;
-        self.driver.set_pixel_snap(display.pixel_snap);
-        self.driver.ui.set_user_scale(display.user_scale);
-        self.resize(display.physical)
+    /// Report `scale` physical pixels per logical pixel from the next frame on, as a move to a
+    /// monitor of another density does; the window keeps its physical size, which
+    /// [`Self::resize`] moves. The app's own scale stays on top.
+    pub fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self {
+        self.system_scale = scale;
+        self.sync_display();
+        self
+    }
+
+    /// Report the monitor's refresh rate, which repaint wakes coalesce to, from the next frame
+    /// on; `None` reports none.
+    pub fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self {
+        self.refresh_millihertz = millihertz;
+        self.sync_display();
+        self
     }
 
     /// Report `scheme` as the system's, as the winit host reports the desktop's; `None`, the
@@ -407,9 +408,10 @@ impl Harness {
     ///
     /// As [`Self::press`].
     #[track_caller]
-    pub fn click(&mut self, at: impl Into<Locator>) {
-        self.press(at, PointerButton::Left);
-        self.release(PointerButton::Left);
+    pub fn click(&mut self, at: impl Into<Locator>) -> InputDelta {
+        let pressed = self.press(at, PointerButton::Left);
+        let released = self.release(PointerButton::Left);
+        either(pressed, released)
     }
 
     /// [`Self::click`] with the right button.
@@ -418,9 +420,10 @@ impl Harness {
     ///
     /// As [`Self::press`].
     #[track_caller]
-    pub fn right_click(&mut self, at: impl Into<Locator>) {
-        self.press(at, PointerButton::Right);
-        self.release(PointerButton::Right);
+    pub fn right_click(&mut self, at: impl Into<Locator>) -> InputDelta {
+        let pressed = self.press(at, PointerButton::Right);
+        let released = self.release(PointerButton::Right);
+        either(pressed, released)
     }
 
     /// Move the pointer to `at` with a button held.
@@ -476,28 +479,24 @@ impl Harness {
     ///
     /// # Panics
     ///
-    /// As [`Self::hover`], and unless `factor` is finite and above 0: the window drops any other,
-    /// which would pass with no sign.
+    /// As [`Self::hover`].
     #[track_caller]
-    pub fn pinch(&mut self, at: impl Into<Locator>, factor: f32) -> InputDelta {
-        assert!(
-            factor.is_finite() && factor > 0.0,
-            "pinch takes a finite factor above 0, not {factor}"
-        );
+    pub fn pinch(&mut self, at: impl Into<Locator>, factor: ZoomFactor) -> InputDelta {
         self.hover(at);
-        self.on_input(InputEvent::Zoom(factor))
+        self.on_input(InputEvent::Pinch(factor))
     }
 
     /// Press and release a key in one frame, a tap: [`Self::key_down`], then [`Self::key_up`].
-    pub fn key(&mut self, key: impl Into<Shortcut>) {
+    pub fn key(&mut self, key: impl Into<Shortcut>) -> InputDelta {
         let shortcut = key.into();
-        self.key_down(shortcut);
-        self.key_up(shortcut);
+        let down = self.key_down(shortcut);
+        let up = self.key_up(shortcut);
+        either(down, up)
     }
 
     /// Press a key, typing what it types, and leave it down until [`Self::key_up`]. A shortcut
     /// with modifiers holds them for the press and then restores the ones held before; a bare key
-    /// presses under the modifiers held ([`Self::set_modifiers`]).
+    /// presses under the modifiers held ([`Self::hold_modifiers`]).
     pub fn key_down(&mut self, key: impl Into<Shortcut>) -> InputDelta {
         let shortcut = key.into();
         self.under_mods(shortcut.mods, |h| h.on_input(shortcut.key_down()))
@@ -523,25 +522,27 @@ impl Harness {
             return send(self);
         }
         let held = self.driver.ui.input().modifiers_after_held_input();
-        self.set_modifiers(mods.held());
+        self.hold_modifiers(mods.held());
         let delta = send(self);
-        self.set_modifiers(held);
+        self.hold_modifiers(held);
         delta
     }
 
     /// Hold `mods` from now on. Sends nothing when they are held already, counting input that
     /// waits for a later frame.
-    pub fn set_modifiers(&mut self, mods: Modifiers) {
-        if self.driver.ui.input().modifiers_after_held_input() != mods {
-            self.on_input(InputEvent::ModifiersChanged(mods));
+    pub fn hold_modifiers(&mut self, mods: Modifiers) -> InputDelta {
+        if self.driver.ui.input().modifiers_after_held_input() == mods {
+            InputDelta::default()
+        } else {
+            self.on_input(InputEvent::ModifiersChanged(mods))
         }
     }
 
     /// Type `text` as key taps, one a character, each typing it.
-    pub fn type_text(&mut self, text: &str) {
-        for c in text.chars() {
-            self.key(Key::Char(c));
-        }
+    pub fn type_text(&mut self, text: &str) -> InputDelta {
+        text.chars().fold(InputDelta::default(), |delta, c| {
+            either(delta, self.key(Key::Char(c)))
+        })
     }
 
     /// Commit `text` to whatever holds the keyboard focus, as an input method commits it: no key
@@ -572,18 +573,10 @@ impl Harness {
         self.driver.ui.response_for(id).rect
     }
 
-    /// `id`'s arranged rect in the last frame: before transforms, not clipped.
-    ///
-    /// # Panics
-    ///
-    /// When `id` did not arrange in the last frame.
-    #[track_caller]
-    pub fn arranged(&self, id: WidgetId) -> Rect {
-        self.driver
-            .ui
-            .response_for(id)
-            .layout_rect
-            .unwrap_or_else(|| panic!("{id:?} did not arrange last frame"))
+    /// `id`'s arranged rect in the last frame: before transforms, not clipped; `None` when `id`
+    /// did not arrange in it.
+    pub fn arranged(&self, id: WidgetId) -> Option<Rect> {
+        self.driver.ui.response_for(id).layout_rect
     }
 
     /// The window point of `local`, a point in `id`'s arranged space, through every ancestor
@@ -623,19 +616,10 @@ impl Harness {
         self.driver.ui.cascade().hit_test(pos, Sense::hovers)
     }
 
-    /// `id`'s state row of type `S`.
-    ///
-    /// # Panics
-    ///
-    /// When there is no such row.
-    #[track_caller]
-    pub fn state<S: 'static>(&self, id: WidgetId) -> &S {
-        self.driver.ui.state::<S>(id).unwrap_or_else(|| {
-            panic!(
-                "no `{}` row for {id:?}: a wrong id, a wrong type, or it never recorded",
-                any::type_name::<S>(),
-            )
-        })
+    /// `id`'s state row of type `S`, as [`Ui::state`] reads it; `None` when there is no such
+    /// row.
+    pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
+        self.driver.ui.state::<S>(id)
     }
 
     /// Every window the frames opened or closed, oldest first: a harness has one window, and
@@ -644,12 +628,12 @@ impl Harness {
         &self.window_commands
     }
 
-    /// The text on the window's clipboard.
+    /// The text on the window's clipboard, `None` when it holds none.
     ///
     /// # Panics
     ///
     /// When no clipboard answers; the harness's own, in memory, always does.
-    pub fn clipboard_text(&self) -> String {
+    pub fn clipboard_text(&self) -> Option<String> {
         self.driver
             .ui
             .clipboard()
@@ -658,12 +642,13 @@ impl Harness {
     }
 
     /// Put `text` on the window's clipboard, for a paste to come.
-    pub fn set_clipboard_text(&mut self, text: &str) {
+    pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self {
         self.driver
             .ui
             .clipboard()
             .set_text(text)
             .expect("the harness clipboard is in memory");
+        self
     }
 
     /// Block until the device finished every frame painted so far, and the copies of their
@@ -678,14 +663,46 @@ impl Harness {
         }
     }
 
-    /// Whether the device this harness paints with is lost; never below
-    /// [`Depth::Gpu`](crate::Depth::Gpu).
-    fn is_device_lost(&self) -> bool {
+    /// Whether the device this harness paints with is lost, as
+    /// [`OffscreenHost::is_device_lost`](crate::OffscreenHost::is_device_lost) reads it; never
+    /// below [`Depth::Gpu`](crate::Depth::Gpu). A frame then runs the app and paints nothing
+    /// until [`Self::recover`] hands the harness a new device.
+    pub fn is_device_lost(&self) -> bool {
         self.core.paints() && self.core.gpu().is_lost()
     }
 
+    /// Paint with `gpu` from now on, in place of a lost device, as
+    /// [`OffscreenHost::recover`](crate::OffscreenHost::recover) does: every GPU object the
+    /// harness holds is built again on it, the window's target included at its size and format,
+    /// and the UI state stays.
+    ///
+    /// # Panics
+    ///
+    /// Below [`Depth::Gpu`](crate::Depth::Gpu), which paints with no device, and if `gpu` cannot
+    /// run Palantir's pipelines, as [`HarnessBuilder::build`] says.
+    pub fn recover(&mut self, gpu: Gpu) {
+        assert!(
+            self.core.paints(),
+            "a harness below Depth::Gpu paints with no device to recover"
+        );
+        offscreen::assert_runs_palantir(&gpu);
+        let lost = self
+            .target
+            .as_ref()
+            .expect("a harness that paints holds a target");
+        let target =
+            OwnedTarget::window(&gpu, TARGET_LABEL, lost.size(), lost.as_target().format());
+        self.core.attach(gpu, [&mut self.driver]);
+        self.target = Some(target);
+    }
+
     /// The window's `Ui`, for what no method here reads.
-    pub const fn ui(&mut self) -> &mut Ui {
+    pub const fn ui(&self) -> &Ui {
+        &self.driver.ui
+    }
+
+    /// The window's `Ui`, to change what no method here changes.
+    pub const fn ui_mut(&mut self) -> &mut Ui {
         &mut self.driver.ui
     }
 
@@ -763,6 +780,13 @@ impl Harness {
     }
 }
 
+/// Whether either of two inputs asked a repaint.
+const fn either(a: InputDelta, b: InputDelta) -> InputDelta {
+    InputDelta {
+        repaint_requested: a.repaint_requested || b.repaint_requested,
+    }
+}
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::damage::Damage;
@@ -773,7 +797,6 @@ pub(crate) mod internals {
     use crate::renderer::frontend::BuildPlan;
     use crate::renderer::render_buffer::RenderBuffer;
     use crate::renderer::render_plan::RenderPlan;
-    use crate::ui::Ui;
     use crate::ui::frame_engines::FrameEngines;
     #[cfg(test)]
     use crate::{
@@ -784,8 +807,8 @@ pub(crate) mod internals {
         primitives::layout::sizing::Sizing, primitives::math::animatable::Animatable,
         renderer::frontend::Frontend, renderer::frontend::encoder,
         renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas,
-        scene::endpoint::Endpoint, scene::layer::Layer, scene::tree::node_id::NodeId, ui::app::App,
-        ui::frame_report::FrameReport, ui::resources::UiResources,
+        scene::endpoint::Endpoint, scene::layer::Layer, scene::tree::node_id::NodeId, ui::Ui,
+        ui::app::App, ui::frame_report::FrameReport, ui::resources::UiResources,
         widget_core::configure::Configure, widgets::panel::Panel,
         window::window_token::WindowToken,
     };
@@ -794,6 +817,15 @@ pub(crate) mod internals {
     use image::RgbaImage;
 
     impl Harness {
+        /// Snap paint edges to physical pixels from the next frame on, or not, as a host's
+        /// options flip it.
+        #[cfg(test)]
+        pub(crate) fn set_pixel_snap(&mut self, pixel_snap: bool) -> &mut Self {
+            self.driver.set_pixel_snap(pixel_snap);
+            self.sync_display();
+            self
+        }
+
         /// The draw list the last composed or painted frame built.
         pub(crate) const fn render_buffer(&self) -> &RenderBuffer {
             &self.core.frontend.buffer
@@ -842,11 +874,6 @@ pub(crate) mod internals {
         /// The window's `Ui` and the engines its frames run on, borrowed at once.
         pub(crate) const fn parts(&mut self) -> DriverParts<'_> {
             self.driver.parts()
-        }
-
-        /// The window's `Ui`, borrowed shared.
-        pub(crate) const fn ui_ref(&self) -> &Ui {
-            &self.driver.ui
         }
 
         pub(crate) const fn set_focus(&mut self, id: WidgetId) {

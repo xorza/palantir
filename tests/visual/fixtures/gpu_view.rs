@@ -14,7 +14,8 @@ use std::rc::Rc;
 
 use glam::UVec2;
 use palantir::{
-    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sizing, TranslateScale,
+    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sizing, SystemScale,
+    TranslateScale,
 };
 
 use crate::fixtures;
@@ -230,7 +231,7 @@ fn gpu_view_callback_receives_composed_raster_factor() {
     let paint = Rc::new(RefCell::new(DepthTriangle::new(Some(16.0))));
     let img = VisualRig::new()
         .size(UVec2::new(96, 96))
-        .scale(2.0)
+        .scale(SystemScale::new(2.0).unwrap())
         .frame(|ui| {
             Panel::zstack()
                 .auto_id()

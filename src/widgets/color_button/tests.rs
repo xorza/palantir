@@ -26,7 +26,7 @@ fn harness() -> Harness {
 
 /// Nodes the popup layer holds; zero while closed.
 fn panel_nodes(h: &Harness) -> usize {
-    h.ui_ref().layout(Layer::Popup).rect.len()
+    h.ui().layout(Layer::Popup).rect.len()
 }
 
 /// One click on a chip at the surface's corner; press and release take a frame each.
@@ -57,24 +57,24 @@ fn the_chip_toggles_its_panel() {
         "the click opened this chip's panel"
     );
 
-    assert!(ColorButton::is_open(h.ui_ref(), id));
+    assert!(ColorButton::is_open(h.ui(), id));
     assert!(
-        !PopupTrigger::is_open(h.ui_ref(), id),
+        !PopupTrigger::is_open(h.ui(), id),
         "the button's row is its own, not a popup trigger's"
     );
 
     h.advance_past_double_click();
     click_chip(&mut h, |h| frame(h, &mut color));
     assert_eq!(panel_nodes(&h), 0, "the second click closed it");
-    assert!(!ColorButton::is_open(h.ui_ref(), id));
+    assert!(!ColorButton::is_open(h.ui(), id));
 
-    ColorButton::open(h.ui(), id);
+    ColorButton::open(h.ui_mut(), id);
     frame(&mut h, &mut color);
     assert!(
         h.rect(ColorButton::popup_id(id)).is_some(),
         "open shows the panel"
     );
-    ColorButton::close(h.ui(), id);
+    ColorButton::close(h.ui_mut(), id);
     frame(&mut h, &mut color);
     assert_eq!(panel_nodes(&h), 0, "close hides it");
 }
@@ -206,7 +206,7 @@ fn open_with(button: Option<&ColorPickerTheme>, picker: Option<&ColorPickerTheme
     let body = h.node_of(body_id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
     let chrome = h
-        .ui_ref()
+        .ui()
         .tree(body.plane.layer)
         .chrome(body.node)
         .expect("the popup body paints chrome");

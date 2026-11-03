@@ -50,10 +50,10 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     let presses = &state.keyboard.presses;
     assert_eq!(presses.len(), 2);
     assert_eq!(presses[0].key, Key::Char('a'));
-    assert!(presses[0].mods.ctrl);
+    assert!(presses[0].mods.contains(Modifiers::CTRL));
     assert!(!presses[0].repeat);
     assert_eq!(presses[1].key, Key::Char('b'));
-    assert!(!presses[1].mods.ctrl);
+    assert!(!presses[1].mods.contains(Modifiers::CTRL));
     assert!(presses[1].repeat);
 }
 
@@ -337,7 +337,7 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
     for _ in 0..3 {
         h.frame(|ui| scene(ui, false, 60.0, false));
     }
-    let rebuilds = |h: &Harness| h.ui_ref().input().scopes.rebuilds();
+    let rebuilds = |h: &Harness| h.ui().input().scopes.rebuilds();
     let mut last = rebuilds(&h);
     let mut step = |h: &mut Harness, label: &str, want: u32, extra: bool, closes: bool| {
         h.frame(|ui| scene(ui, extra, 80.0, closes));
@@ -395,7 +395,7 @@ fn focus_policy_routing() {
     };
     for (label, policy, expect_focus) in cases {
         let mut h = Harness::mono(BUTTON_SURFACE);
-        h.ui().set_focus_policy(*policy);
+        h.ui_mut().set_focus_policy(*policy);
         h.frame(build);
         h.click(editable_id);
         assert_eq!(h.focus(), Some(editable_id), "{label}: initial focus");
@@ -418,7 +418,7 @@ fn focus_policy_routing() {
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     let surface = glam::UVec2::new(400, 80);
     let mut h = Harness::mono(surface);
-    h.ui().set_focus_policy(FocusPolicy::PreserveOnMiss);
+    h.ui_mut().set_focus_policy(FocusPolicy::PreserveOnMiss);
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             fixed_button(WidgetId::from_hash("editable"))
@@ -530,5 +530,5 @@ fn post_record_clears_keys_but_preserves_modifiers() {
 
     assert!(state.keyboard.presses.is_empty());
     assert_eq!(state.keyboard.presses.capacity(), buf_cap_before);
-    assert!(state.keyboard.modifiers.shift);
+    assert!(state.keyboard.modifiers.contains(Modifiers::SHIFT));
 }

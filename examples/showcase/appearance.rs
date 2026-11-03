@@ -308,7 +308,7 @@ mod tests {
         let mut h = Harness::builder(UVec2::new(64, 64)).mono().build();
         let mut look = Appearance::new();
         let scheme = h.ui().color_scheme();
-        look.apply(h.ui());
+        look.apply(h.ui_mut());
         assert_eq!(h.ui().theme().focus_ring, look.ring(scheme));
         assert_eq!(
             h.ui().theme().focus_ring.color,
@@ -316,7 +316,7 @@ mod tests {
         );
 
         look.set_seed(Some(SEEDS[0]));
-        look.apply(h.ui());
+        look.apply(h.ui_mut());
         let accent = accent_for(SEEDS[0], scheme);
         assert_eq!(look.palette(scheme).accent, accent);
         assert_eq!(look.palette(scheme).border_focused, accent);
@@ -330,14 +330,14 @@ mod tests {
         let red = RgbaF32::hex(0xff0000);
         look.set_ring_color(red);
         look.set_ring_width(3.0);
-        look.apply(h.ui());
+        look.apply(h.ui_mut());
         assert_eq!(h.ui().theme().focus_ring.color, red);
         assert_eq!(h.ui().theme().focus_ring.width, 3.0);
         assert_eq!(h.ui().theme_transition(), None, "a drag");
 
         look.reset_ring();
         look.set_seed(None);
-        look.apply(h.ui());
+        look.apply(h.ui_mut());
         assert_eq!(
             h.ui().theme_transition(),
             Some(AnimationSpec::THEME),
@@ -349,7 +349,7 @@ mod tests {
         // Frosted by default; off, the floats wear the stock opaque panel.
         assert!(!h.ui().theme().menu.panel.backdrop_filter.is_noop());
         look.set_frosted(false);
-        look.apply(h.ui());
+        look.apply(h.ui_mut());
         let stock = Theme::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT);
         assert_eq!(h.ui().theme().menu.panel, stock.menu.panel);
     }

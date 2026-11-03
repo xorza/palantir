@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use glam::UVec2;
 
+use crate::display::system_scale::SystemScale;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::offscreen::{OffscreenHost, OffscreenTime};
 use crate::text::shaper::TextShaper;
@@ -38,7 +39,8 @@ fn a_transition_of_font_sizes_neither_grows_nor_evicts_the_glyph_atlas() {
     let target = gpu.target("palantir.test.theme_atlas", UVec2::new(1280, 1600));
     let frame = |host: &mut OffscreenHost| {
         host.advance(Duration::from_millis(16));
-        host.frame(target.as_target(), 2.0, &mut |ui: &mut Ui| scene(ui));
+        host.set_system_scale(SystemScale::new(2.0).unwrap())
+            .frame(target.as_target(), &mut |ui: &mut Ui| scene(ui));
         host.ui().theme().text.font_size
     };
     for _ in 0..3 {
@@ -56,7 +58,7 @@ fn a_transition_of_font_sizes_neither_grows_nor_evicts_the_glyph_atlas() {
             ..d
         },
     );
-    host.ui().set_theme_for(ColorScheme::Dark, roomy);
+    host.ui_mut().set_theme_for(ColorScheme::Dark, roomy);
     let sizes: Vec<f32> = (0..24).map(|_| frame(&mut host)).collect();
     let moving = &sizes[..18];
     assert!(

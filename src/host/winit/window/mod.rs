@@ -14,7 +14,7 @@ use winit::window::Window as WinitWindow;
 
 use crate::common::platform::PLATFORM;
 use crate::common::tracy::{self, FrameSet};
-use crate::display;
+use crate::display::system_scale::SystemScale;
 use crate::gpu::surface::window_surface::{Acquired, Prepared, WindowSurface};
 use crate::host::clock::RealtimeClock;
 use crate::host::core::HostCore;
@@ -94,7 +94,7 @@ pub(super) struct Window {
     pub(super) surface: WindowSurface,
     pub(super) driver: WindowDriver,
     /// The device pixel ratio winit reports; the drawn scale is [`Self::effective_scale`].
-    pub(super) system_scale: f32,
+    pub(super) system_scale: SystemScale,
     pub(super) next: FramePresent,
     pub(super) close_requested: bool,
     levels: AppliedLevels,
@@ -143,9 +143,9 @@ impl Window {
             decorations,
             inner_size,
         } = opened;
-        let system_scale = display::sanitize_system_scale(window.scale_factor());
+        let system_scale = SystemScale::from_platform(window.scale_factor());
         let restored = inner_size.map(|size| {
-            (size.as_vec2() * system_scale)
+            (size.as_vec2() * system_scale.get())
                 .round()
                 .as_uvec2()
                 .max(UVec2::ONE)

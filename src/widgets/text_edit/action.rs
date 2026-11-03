@@ -1,8 +1,10 @@
 //! Host-backed editing actions shared by keyboard and menu dispatch.
 
 use crate::clipboard::Clipboard;
+use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::shortcut::Shortcut;
+use crate::input::shortcut::ShortcutMods;
 use crate::widgets::text_edit::editor::Editor;
 use crate::widgets::text_edit::history::HistoryStep;
 
@@ -69,7 +71,10 @@ impl EditAction {
     pub(super) const fn shortcut(self) -> Option<Shortcut> {
         match self {
             Self::Undo => Some(Shortcut::ctrl('Z')),
-            Self::Redo => Some(Shortcut::ctrl_shift('Z')),
+            Self::Redo => Some(Shortcut::new(
+                ShortcutMods::CTRL.union(ShortcutMods::SHIFT),
+                Key::Char('Z'),
+            )),
             Self::SelectAll => Some(Shortcut::ctrl('A')),
             Self::Cut => Some(Shortcut::ctrl('X')),
             Self::Copy => Some(Shortcut::ctrl('C')),
@@ -115,7 +120,7 @@ impl EditAction {
                 }
             }
             Self::Paste => {
-                if let Ok(text) = clipboard.text() {
+                if let Ok(Some(text)) = clipboard.text() {
                     editor.paste(&text);
                 }
             }

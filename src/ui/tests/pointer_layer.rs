@@ -4,6 +4,7 @@ use glam::{UVec2, Vec2};
 
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -30,7 +31,7 @@ fn block(ui: &mut Ui, layer: Layer, color: RgbaF32) {
 fn the_pointer_layer_paints_over_tooltip_and_debug() {
     let gpu = headless_test_gpu();
     let mut h = Harness::builder(UVec2::new(16, 16))
-        .gpu(gpu.handles())
+        .depth(Depth::gpu(gpu.handles()))
         .build();
     let blue = RgbaF32::new(0.0, 0.0, 1.0, 1.0);
     let mut app = |ui: &mut Ui| {

@@ -27,7 +27,7 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
         )
     };
     let mut h = Harness::mono(UVec2::new(400, 300));
-    let theme = h.ui().theme_mut();
+    let theme = h.ui_mut().theme_mut();
     let kinds = [
         (Toggle::Checkbox, &mut theme.checkbox, spacing(7.0)),
         (Toggle::Radio, &mut theme.radio, spacing(23.0)),
@@ -61,15 +61,23 @@ fn theme_spacing_reaches_every_toggle_row_and_explicit_wins() {
             let row = h.arranged(id);
             let boxed = h.arranged(id.with("box"));
             let text = h.arranged(id.with("label"));
-            assert_eq!(text.min.x - boxed.max().x, gap, "{label}: gap");
+            assert_eq!(
+                text.unwrap().min.x - boxed.unwrap().max().x,
+                gap,
+                "{label}: gap"
+            );
             let [_, top, _, bottom] = padding.to_array();
             let content_h = 120.0 - top - bottom;
             let below = if center {
-                (content_h - boxed.size.h) / 2.0
+                (content_h - boxed.unwrap().size.h) / 2.0
             } else {
                 0.0
             };
-            assert_eq!(boxed.min.y - row.min.y - top, below, "{label}: child align");
+            assert_eq!(
+                boxed.unwrap().min.y - row.unwrap().min.y - top,
+                below,
+                "{label}: child align"
+            );
         }
     }
 }

@@ -158,50 +158,6 @@ Batches run most harmful first. A batch changes palantir and darkroom together a
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
 
-### Batch 6: Input, players and hosts
-
-- [ ] `PlayError`: `step` reads differently from the two players and darkroom overwrites it;
-  `NoFrame` and `Busy` carry `f32` seconds. Target: drop `step` from `Unsettled` and `Busy`;
-  `Duration` in `NoFrame` and `Busy`. Callers: 5 / 3.
-- [ ] Pinch: `InputEvent::Zoom(f32)`, `PointerEvent::Zoom`, `Harness::pinch(at, f32)` and
-  `Action::Pinch { factor: f32 }` become `InputEvent::Pinch(ZoomFactor)`, `PointerEvent::Pinch`,
-  `pinch(at, ZoomFactor)` and `Action::Pinch { factor: ZoomFactor }`. Remove `PlayError::BadPinch`
-  and the pinch assert; darkroom checks at its MCP boundary.
-- [ ] `PointerEvent` names: `Down`, `Up`, `Move`, `Leave` become `Pressed`, `Released`, `Moved`,
-  `Left`, as `InputEvent` names them. Callers: 7 / 1.
-- [ ] `Modifiers` and `ShortcutMods` become `flag_set!`; `CTRL_SHIFT` and `Shortcut::ctrl_shift` go.
-- [ ] `Action::Scroll` becomes `ScrollPixels` and `ScrollLines`, as the harness names its methods.
-  Remove `Action::key`, the twin of the variant `Action::Key`, and keep `Action::click`, which
-  fills the button and modifiers a variant needs.
-- [ ] `Locator::offset(self, by)` and `nth(self, n)` in place of boxing by hand; `Found::rect` the
-  constructor renamed `center_of`.
-- [ ] Harness recovery: public `Harness::is_device_lost` and `recover(&mut self, gpu: Gpu)`, which
-  rebuilds the target and asserts `Depth::Gpu`.
-- [ ] `Remote::find(&self, at) -> Result<Found, PlayError>`, `with_wait(Duration)`, and `&mut self`
-  on `play`, `settle` and `shot` in place of `Cell`s.
-- [ ] Window token: public `Harness::WINDOW`, as `OffscreenHost::WINDOW`.
-- [ ] `OffscreenHost` records window commands, with `window_commands(&self) -> &[WindowCommand]`,
-  as the harness does, in place of a panic; fix the `Ui::open_window` and `close_window` docs.
-- [ ] System facts: `HarnessBuilder::scale` renamed `system_scale`; `HarnessBuilder::user_scale`
-  removed (2 test callers); `Harness::set_display` replaced by `set_system_scale(f32)` and
-  `set_refresh_millihertz(Option<u32>)`, each returning `&mut Self`. The same setters land on
-  `OffscreenHost`, seeded by its builder, and `frame` loses its scale (decided, 4).
-- [ ] `HarnessBuilder::gpu(gpu)` repeats `depth(Depth::Gpu(gpu))`, and `format` matters only at
-  that depth. Target: `Depth::Gpu { gpu, format }`, and `gpu()` and `format()` go. Callers: 21 / 1.
-- [ ] Harness shapes: `state` returns `Option<&S>`, as `Ui::state`; `arranged` returns `Option`, as
-  `rect`; `ui(&self) -> &Ui` beside `ui_mut`; every input method returns `InputDelta` and every
-  setter `&mut Self`; `wait_for_wake(timeout: Duration)`.
-- [ ] `Ui::gpu_pass_stats` public; `OffscreenHost::gpu_pass_stats` goes.
-- [ ] `HostHandle::request_repaint` and `send_input`, with `OwnedInputEvent`, become crate-private:
-  `Waker` is the one cross-thread wake, and a second input path makes a `Remote` settle early.
-- [ ] `HostHandle::run_on_main` takes `FnOnce(&mut T)` and always repaints, in place of a `bool`.
-- [ ] `WinitHostBuilder::title` writes into the `WindowConfig` that `window` sets, so their order
-  no longer drops the title.
-- [ ] `Clipboard::text() -> Result<Option<String>, ClipboardUnavailable>`, as `image()` answers an
-  empty clipboard.
-- [ ] `WindowGeometry` derives `PartialEq`, `Eq`; `WindowConfig::with_geometry` replaces
-  `with_placement`.
-
 ### Batch 7: The Ui and animation
 
 - [ ] `Ui::set_cursor` renamed `request_cursor`, as it lasts one frame. Callers: 10 / 1.

@@ -161,7 +161,7 @@ mod tests {
 
         let shapes = |h: &Harness| {
             let node = h.node_of(id).expect("the area recorded").node;
-            h.ui_ref().tree(Layer::Main).shapes_of(node).count()
+            h.ui().tree(Layer::Main).shapes_of(node).count()
         };
         let enabled = shapes(&h);
         let before = read(&value);

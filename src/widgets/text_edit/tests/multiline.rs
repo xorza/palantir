@@ -7,14 +7,14 @@ fn multiline_enter_inserts_newline() {
     let ed_id = WidgetId::from_hash("ml-ed");
     // Focus + caret after "abc".
     h.set_focus(ed_id);
-    h.ui().with_state::<TextEditState, _>(ed_id, |_, st| {
+    h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
     });
     h.frame(Field::MULTILINE.scene(&mut buf));
     h.key(Key::Enter);
     h.frame(Field::MULTILINE.scene(&mut buf));
     assert_eq!(buf, "abc\n");
-    let st = h.state::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).unwrap().clone();
     assert_eq!(st.edit.caret, 4);
 
     // A subsequent printable char goes on the new visual line.
@@ -59,11 +59,11 @@ fn multiline_paste_keeps_newlines() {
     let ed_id = WidgetId::from_hash("ml-ed");
     h.set_focus(ed_id);
     h.frame(Field::MULTILINE.scene(&mut buf));
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
     h.frame(Field::MULTILINE.scene(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
-    let st = h.state::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).unwrap().clone();
     assert_eq!(st.edit.caret, buf.len());
 }
 
@@ -75,14 +75,14 @@ fn multiline_selection_crosses_newline() {
     let ed_id = WidgetId::from_hash("ml-ed");
     h.set_focus(ed_id);
     // Caret on line 1, column 3.
-    h.ui().with_state::<TextEditState, _>(ed_id, |_, st| {
+    h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
         st.edit.caret = 3;
     });
     h.frame(Field::MULTILINE.scene(&mut buf));
-    h.set_modifiers(Modifiers::SHIFT);
+    h.hold_modifiers(Modifiers::SHIFT);
     h.key(Key::ArrowDown);
     h.frame(Field::MULTILINE.scene(&mut buf));
-    let st = h.state::<TextEditState>(ed_id).clone();
+    let st = h.state::<TextEditState>(ed_id).unwrap().clone();
     assert!(
         st.edit.selection.is_some(),
         "shift+down across newline establishes a selection",
@@ -117,14 +117,14 @@ fn soft_wrapped_motions_move_by_visual_row() {
         let mut h = Harness::new(UVec2::new(300, 200));
         let mut buf = text.clone();
         h.set_focus(ed_id);
-        h.ui().with_state::<TextEditState, _>(ed_id, |_, st| {
+        h.ui_mut().with_state::<TextEditState, _>(ed_id, |_, st| {
             st.edit.caret = before;
         });
         h.frame(Field::MULTILINE.scene(&mut buf));
         h.frame(Field::MULTILINE.scene(&mut buf));
         h.key(key);
         h.frame(Field::MULTILINE.scene(&mut buf));
-        let caret = h.state::<TextEditState>(ed_id).edit.caret;
+        let caret = h.state::<TextEditState>(ed_id).unwrap().edit.caret;
         assert_eq!(caret, after, "{key:?} from {before}");
     }
 }

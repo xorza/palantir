@@ -1,6 +1,7 @@
 //! Driver tests, grouped by the decision each pins: present-mode selection, output
 //! validity, record-store lifecycle.
 
+use crate::display::system_scale::SystemScale;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::host::window_driver::{DriverConfig, FrameSpec, PresentStrategy, WindowDriver};
 use crate::ui::resources::UiResources;
@@ -28,7 +29,7 @@ const fn spec(physical: UVec2, system_scale: f32) -> FrameSpec {
         physical,
         format: TargetFormat::RGBA8_SRGB,
         gives_copy: true,
-        system_scale,
+        system_scale: SystemScale::new(system_scale).unwrap(),
         refresh_millihertz: None,
         now: Duration::ZERO,
     }
@@ -159,6 +160,7 @@ mod present_mode_tests {
 }
 
 mod output_validity_tests {
+    use crate::display::system_scale::SystemScale;
     use crate::host::window_driver::tests::new_driver;
     use glam::UVec2;
 
@@ -304,7 +306,7 @@ mod output_validity_tests {
             ..reformatted
         };
         let rescaled = FrameSpec {
-            system_scale: 2.0,
+            system_scale: SystemScale::new(2.0).unwrap(),
             refresh_millihertz: Some(120_000),
             now: Duration::from_secs(1),
             ..uncopyable
@@ -670,6 +672,7 @@ mod record_store_tests {
 
 /// The one place both host-owned display settings reach a frame.
 mod display_tests {
+    use crate::display::system_scale::SystemScale;
     use crate::host::window_driver::tests::new_driver;
     use glam::UVec2;
 
@@ -693,14 +696,18 @@ mod display_tests {
         );
 
         let plain = driver.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
-        assert_eq!(plain.system_scale, 2.0);
+        assert_eq!(plain.system_scale, SystemScale::new(2.0).unwrap());
         assert_eq!(plain.user_scale, UserScale::ONE);
         assert_eq!(plain.scale_factor(), 2.0);
         assert!(!plain.pixel_snap, "the snap comes from the host, not here");
 
         driver.ui.set_user_scale(UserScale::new(1.25).unwrap());
         let zoomed = driver.stamp(&spec(UVec2::new(800, 600), 2.0)).display;
-        assert_eq!(zoomed.system_scale, 2.0, "the platform's half is untouched");
+        assert_eq!(
+            zoomed.system_scale,
+            SystemScale::new(2.0).unwrap(),
+            "the platform's half is untouched"
+        );
         assert_eq!(zoomed.user_scale, UserScale::new(1.25).unwrap());
         assert_eq!(zoomed.scale_factor(), 2.5);
         assert_eq!(zoomed.logical_size(), Size::new(320.0, 240.0));
@@ -857,6 +864,7 @@ mod cutout_census_tests {
     reason = "the targets are made in the formats under test, which only wgpu names"
 )]
 mod screenshot_tests {
+    use crate::display::system_scale::SystemScale;
     use std::cell::Cell;
 
     use glam::{UVec2, Vec2};
@@ -865,6 +873,7 @@ mod screenshot_tests {
     use crate::gpu::surface::render_target::TargetFormat;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::host::harness::Harness;
+    use crate::host::harness::harness_builder::Depth;
     use crate::primitives::geometry::rect::Rect;
     use crate::primitives::geometry::size::Size;
     use crate::primitives::paint::chrome::Chrome;
@@ -905,10 +914,12 @@ mod screenshot_tests {
         fn new(format: wgpu::TextureFormat, scale: f32) -> Self {
             let gpu = headless_test_gpu();
             let window = Harness::builder(PHYSICAL)
-                .scale(scale)
+                .system_scale(SystemScale::new(scale).unwrap())
                 .mono()
-                .format(TargetFormat::new(format))
-                .gpu(gpu.handles())
+                .depth(Depth::Gpu {
+                    gpu: gpu.handles(),
+                    format: TargetFormat::new(format),
+                })
                 .build();
             Self {
                 window,
@@ -917,7 +928,7 @@ mod screenshot_tests {
         }
 
         /// The image of the last ask, in the frame it lands in.
-        fn landed(&mut self) -> Option<&Screenshot> {
+        fn landed(&self) -> Option<&Screenshot> {
             self.window.ui().screenshot_taken(self.asked?)
         }
 
@@ -1057,7 +1068,7 @@ mod screenshot_tests {
             size: Size::new(0.0, 3.0),
         };
         assert_eq!(
-            scene.window.ui().request_screenshot(Some(empty)),
+            scene.window.ui_mut().request_screenshot(Some(empty)),
             None,
             "an empty region asks nothing"
         );

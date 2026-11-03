@@ -18,7 +18,7 @@ use std::sync::mpsc::SyncSender;
 #[derive(Debug, Default)]
 pub(crate) struct RemoteEnd {
     pending: Vec<PendingShot>,
-    /// How many events [`HostHandle::send_input`](crate::HostHandle::send_input) delivered.
+    /// How many events a remote sent through the handle delivered.
     sent_inputs: u64,
 }
 

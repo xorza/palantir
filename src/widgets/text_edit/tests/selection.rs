@@ -205,9 +205,9 @@ fn click_without_drag_clears_prior_selection() {
 
     h.frame(Field::PADDED.scene(&mut buf));
     h.click(Vec2::new(60.0, 20.0));
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('a'));
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     h.frame(Field::PADDED.scene(&mut buf));
 
     h.press(Vec2::new(24.0, 20.0), PointerButton::Left);

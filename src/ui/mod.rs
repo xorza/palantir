@@ -662,21 +662,16 @@ impl Ui {
     /// `config` replaces an earlier one, a later [`Self::close_window`] cancels the open,
     /// and an open after a close of a live window recreates it. An open of a live
     /// `token` is ignored with a warning. A window the platform or GPU cannot open is
-    /// logged and stays closed, so [`Self::is_window_open`] answers `false`.
-    ///
-    /// # Panics
-    ///
-    /// Panics on a host with no window lifecycle ([`OffscreenHost`](crate::OffscreenHost)).
+    /// logged and stays closed, so [`Self::is_window_open`] answers `false`. A host with one
+    /// window, as [`OffscreenHost`](crate::OffscreenHost) and [`Harness`](crate::Harness), opens
+    /// none and records the command in its `window_commands`.
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
         self.window_requests.commands.open(token, config);
     }
 
     /// Request that the window addressed by `token` close, deferred and ordered like
-    /// [`Self::open_window`]. No-op for an unknown `token`.
-    ///
-    /// # Panics
-    ///
-    /// Panics on a host with no window lifecycle.
+    /// [`Self::open_window`]. No-op for an unknown `token`. A host with one window records the
+    /// command, as [`Self::open_window`] says.
     #[inline]
     pub fn close_window(&mut self, token: WindowToken) {
         self.window_requests.commands.close(token);
@@ -765,7 +760,7 @@ impl Ui {
             .restored_size
             .unwrap_or(display.physical);
         WindowGeometry {
-            inner_size: (physical.as_vec2() / display.system_scale)
+            inner_size: (physical.as_vec2() / display.system_scale.get())
                 .round()
                 .as_uvec2()
                 .max(UVec2::ONE),
@@ -795,8 +790,9 @@ impl Ui {
         self.resources.settings().set_debug_overlay(overlay);
     }
 
-    /// The handle the backend publishes this window's GPU timings into.
-    pub(crate) const fn gpu_pass_stats(&self) -> &GpuPassStats {
+    /// This window's most recent GPU instrumentation sample, which the backend publishes and the
+    /// debug overlay reads; empty unless the host collects GPU stats.
+    pub const fn gpu_pass_stats(&self) -> &GpuPassStats {
         &self.gpu_pass_stats
     }
 

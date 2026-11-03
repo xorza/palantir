@@ -43,11 +43,9 @@ impl<'a> FrameCycle<'a> {
             damage_baseline_valid,
             window: win,
         } = input;
-        // Screened here too, at the hosts' strictness: the `internals` harness stamps a display directly, and pointer coordinates are divided by the product passes later.
-        assert!(
+        debug_assert!(
             display::scale_factor_is_valid(stamp.display.scale_factor()),
-            "{}, got {}",
-            display::SCALE_RULE,
+            "SystemScale's range keeps the product with any UserScale valid, got {}",
             stamp.display.scale_factor(),
         );
 

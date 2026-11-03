@@ -244,11 +244,11 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
 
     // Read the host node's first shape's cascaded screen rect: it must be clamped
     // to (host_width - padding-fold), not span 400 px.
-    let cascade = h.ui_ref().cascade();
+    let cascade = h.ui().cascade();
     let host = cascade.locate(host_id).expect("host node recorded");
     let host_ep = host.endpoint;
     let host_rect = cascade.entry(host).rect;
-    let tree = h.ui_ref().tree(Layer::Main);
+    let tree = h.ui().tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert_eq!(shape_span.len, 1, "the fixture adds one shape to the host");
     // The host paints chrome (the BLUE fill), so row 0 is the chrome `Paint`,

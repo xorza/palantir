@@ -30,13 +30,16 @@ fn hug_parent_with_fill_children_hugs_to_content() {
     let button = h.arranged(button_id);
     let button_content = h.intrinsic(h.node_for_widget_id(button_id), Axis::X, LenReq::MaxContent);
     assert_eq!(
-        parent.size.w, button_content,
+        parent.unwrap().size.w,
+        button_content,
         "Hug parent must hug to its Fill child's content, not balloon to the 800 px surface",
     );
     assert_eq!(
-        button.size.w, parent.size.w,
+        button.unwrap().size.w,
+        parent.unwrap().size.w,
         "Fill child arranges to fill parent's inner; got button.w={} parent.w={}",
-        button.size.w, parent.size.w,
+        button.unwrap().size.w,
+        parent.unwrap().size.w,
     );
 }
 
@@ -57,7 +60,7 @@ fn fill_child_stretches_to_fixed_parent() {
             });
     });
     let r = h.arranged(child_id);
-    assert_eq!(r.size.w, 400.0);
+    assert_eq!(r.unwrap().size.w, 400.0);
 }
 
 /// Two equal-weight Fill siblings in a Fixed-width HStack each get half the inner width at arrange.
@@ -83,8 +86,8 @@ fn equal_weight_fill_siblings_split_fixed_parent_equally() {
     });
     let ra = h.arranged(a);
     let rb = h.arranged(b);
-    assert_eq!(ra.size.w, 200.0);
-    assert_eq!(rb.size.w, 200.0);
+    assert_eq!(ra.unwrap().size.w, 200.0);
+    assert_eq!(rb.unwrap().size.w, 200.0);
 }
 
 /// A Hug VStack in a Fill canvas hugs its content, even with an internal Fill row, which arranges to the hugged width.
@@ -118,8 +121,8 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
     });
     let node = h.arranged(node_id);
     let row = h.arranged(row_id);
-    assert_eq!(node.size.w, 50.0, "Hug node must hug to content");
-    assert_eq!(row.size.w, node.size.w);
+    assert_eq!(node.unwrap().size.w, 50.0, "Hug node must hug to content");
+    assert_eq!(row.unwrap().size.w, node.unwrap().size.w);
 }
 
 /// A Hug HStack with a Hug button and a Fill spacer sizes to the button only: the spacer has zero leftover.
@@ -141,6 +144,6 @@ fn hug_hstack_with_fill_spacer_hugs_to_button() {
     let r_root = h.arranged(root);
     let r_button = h.arranged(button);
     let r_spacer = h.arranged(spacer);
-    assert_eq!(r_root.size.w, r_button.size.w);
-    assert_eq!(r_spacer.size.w, 0.0);
+    assert_eq!(r_root.unwrap().size.w, r_button.unwrap().size.w);
+    assert_eq!(r_spacer.unwrap().size.w, 0.0);
 }

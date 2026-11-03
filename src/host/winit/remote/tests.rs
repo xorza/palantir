@@ -2,6 +2,7 @@
 //! its thread as the event loop serves a window's: a query between two frames, sent input before
 //! a frame, a shot handed back in the frame it lands in, a frame summary after each frame.
 
+use std::convert::Infallible;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
@@ -11,16 +12,18 @@ use std::time::{Duration, Instant};
 use glam::{UVec2, Vec2};
 
 use crate::driver::action::Action;
-use crate::driver::error::PlayError;
+use crate::driver::error::{LocateError, PlayError};
 use crate::driver::locator::Locator;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::host::winit::frame_log::FrameLog;
 use crate::host::winit::handle::{EventSender, HostHandle, UserEvent};
 use crate::host::winit::remote::remote_end::RemoteEnd;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::input::shortcut::{Shortcut, ShortcutMods};
+use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -116,7 +119,7 @@ impl Loop {
         let report = self.h.frame_app(&mut self.app);
         let summary = self
             .remote
-            .after_frame(self.h.ui_ref(), &report, self.app.is_busy());
+            .after_frame(self.h.ui(), &report, self.app.is_busy());
         self.repaint = report.repaint_requested;
         if self.repaint {
             self.h.wait_for_gpu();
@@ -144,13 +147,13 @@ impl Loop {
                 }
             };
             match event {
-                UserEvent::Query(WINDOW, task) => task(&mut self.app, self.h.ui()),
+                UserEvent::Query(WINDOW, task) => task(&mut self.app, self.h.ui_mut()),
                 UserEvent::Input(WINDOW, event) => {
                     self.h.at(self.start.elapsed());
                     self.h.on_input(event.as_event());
                     self.remote.note_input();
                 }
-                UserEvent::Shot(WINDOW, ask) => self.remote.ask_shot(self.h.ui(), ask),
+                UserEvent::Shot(WINDOW, ask) => self.remote.ask_shot(self.h.ui_mut(), ask),
                 UserEvent::RunOnMain(task) => {
                     task(&mut self.app);
                 }
@@ -176,7 +179,9 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
     let thread = thread::spawn(move || {
         let gpu = headless_test_gpu();
         let window = Loop {
-            h: Harness::builder(SIZE).gpu(gpu.handles()).build(),
+            h: Harness::builder(SIZE)
+                .depth(Depth::gpu(gpu.handles()))
+                .build(),
             app: Counter::default(),
             remote: RemoteEnd::default(),
             frames,
@@ -198,12 +203,13 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
 }
 
 /// A query reads the app and the `Ui` between two frames; play clicks a button by text, once;
-/// a shot lands at the window's size; a query to a window that is not open, or after the loop
-/// ended, is disconnected.
+/// `find` names the button's rect and center, and refuses a text no widget shows; a shot lands at
+/// the window's size; a wait past the remote's own bound gives up; a query to a window that is
+/// not open, or after the loop ended, is disconnected.
 #[test]
 fn a_remote_plays_and_reads_a_live_window() {
     let (handle, thread) = serve();
-    let remote = handle.remote(WINDOW).with_tick(TICK);
+    let mut remote = handle.remote(WINDOW).with_tick(TICK);
 
     let (clicks, frame) = remote.query(|app, ui| (app.clicks, ui.frame_id())).unwrap();
     assert_eq!(clicks, 0);
@@ -219,6 +225,15 @@ fn a_remote_plays_and_reads_a_live_window() {
         .map(|widget| widget.text)
         .collect();
     assert_eq!(texts, ["Press me"]);
+    let button = remote.widgets(Some("press")).unwrap()[0].rect;
+    let found = remote
+        .find(&Locator::<Infallible>::from("Press me"))
+        .unwrap();
+    assert_eq!((found.rect, found.point), (button, button.center()));
+    assert!(matches!(
+        remote.find(&Locator::<Infallible>::from("Missing")),
+        Err(PlayError::Locate(LocateError::NotFound { .. }))
+    ));
 
     let shot = remote.shot(None).unwrap();
     assert_eq!(shot.image().size(), SIZE);
@@ -231,6 +246,16 @@ fn a_remote_plays_and_reads_a_live_window() {
         handle.remote(WindowToken(5)).query(|_, _| ()),
         Err(PlayError::Disconnected)
     );
+
+    // A query slower than a 50 ms wait gives up after it.
+    let short = handle
+        .remote(WINDOW)
+        .with_tick(TICK)
+        .with_wait(Duration::from_millis(50));
+    assert!(matches!(
+        short.query(|_, _| thread::sleep(Duration::from_millis(300))),
+        Err(PlayError::NoFrame { waited }) if waited >= Duration::from_millis(50)
+    ));
 
     // A query gives up at once while the window's thread is held, and never runs.
     let held = handle.remote(WINDOW).with_tick(TICK).with_blocked(|| true);
@@ -256,7 +281,7 @@ fn a_remote_plays_and_reads_a_live_window() {
 #[test]
 fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
     let (handle, thread) = serve();
-    let remote = handle.remote(WINDOW).with_tick(TICK);
+    let mut remote = handle.remote(WINDOW).with_tick(TICK);
     assert_eq!(
         remote.query(|_, _| -> u32 { panic!("boom") }),
         Err(PlayError::Panicked {
@@ -275,29 +300,19 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
     handle.frames.set_hidden(WINDOW, false);
 
     remote.settle().unwrap();
-    handle
-        .run_on_main(|app| {
-            app.busy = true;
-            true
-        })
-        .unwrap();
+    handle.run_on_main(|app| app.busy = true).unwrap();
     remote.query(|app, _| assert!(app.busy)).unwrap();
     // The settle asks whether the window is held at each check it makes while the app is busy,
     // so the first ask starts the work's end after the settle began.
     let (began, settle_began) = mpsc::channel();
-    let settling = handle.remote(WINDOW).with_tick(TICK).with_blocked(move || {
+    let mut settling = handle.remote(WINDOW).with_tick(TICK).with_blocked(move || {
         began.send(()).ok();
         false
     });
     let worker = handle.clone();
     let work = thread::spawn(move || {
         settle_began.recv().unwrap();
-        worker
-            .run_on_main(|app| {
-                app.busy = false;
-                true
-            })
-            .unwrap();
+        worker.run_on_main(|app| app.busy = false).unwrap();
     });
     settling.settle().unwrap();
     assert!(
@@ -311,19 +326,19 @@ fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
 
 /// One table of steps a person takes, played on a [`Harness`] and on a served [`Remote`] alike,
 /// each step reading back the same: a drag of 40 px in 8 moves ends once and travels exactly
-/// (40, 0); a scroll of (0, 30) px reaches the pad whole; a pinch of 1.5 reaches it, one that is
-/// not a positive factor fails as `BadPinch` and leaves nothing; a chord with two modifiers fires
+/// (40, 0); a scroll of (0, 30) px reaches the pad whole; a pinch of 1.5 reaches it; a chord with
+/// two modifiers fires
 /// the app's read once. A wait of 10 ms runs the harness's stepped clock that far on, and takes
 /// that much real time on the remote, whose idle window runs no frame meanwhile, as the desktop
 /// host paints only what changes.
 #[test]
 fn both_players_play_each_gesture_alike() {
     let pad = || Locator::Id(pad_id());
-    let steps: [(Action, Result<Gestures, PlayError>); 5] = [
+    let steps: [(Action, Result<Gestures, PlayError>); 4] = [
         (
             Action::Drag {
                 from: pad(),
-                to: Locator::Offset(Box::new(pad()), Vec2::new(40.0, 0.0)),
+                to: pad().offset(Vec2::new(40.0, 0.0)),
                 button: PointerButton::Left,
                 mods: ShortcutMods::NONE,
                 steps: Action::DRAG_STEPS,
@@ -335,7 +350,7 @@ fn both_players_play_each_gesture_alike() {
             }),
         ),
         (
-            Action::Scroll {
+            Action::ScrollPixels {
                 at: pad(),
                 delta: Vec2::new(0.0, 30.0),
             },
@@ -349,7 +364,7 @@ fn both_players_play_each_gesture_alike() {
         (
             Action::Pinch {
                 at: pad(),
-                factor: 1.5,
+                factor: ZoomFactor::new(1.5).unwrap(),
             },
             Ok(Gestures {
                 drags: 1,
@@ -358,13 +373,6 @@ fn both_players_play_each_gesture_alike() {
                 pinches: vec![1.5],
                 ..Gestures::default()
             }),
-        ),
-        (
-            Action::Pinch {
-                at: pad(),
-                factor: -1.0,
-            },
-            Err(PlayError::BadPinch { factor: -1.0 }),
         ),
         (
             Action::Key(CHORD.parse().unwrap()),
@@ -378,12 +386,14 @@ fn both_players_play_each_gesture_alike() {
         ),
     ];
     let gpu = headless_test_gpu();
-    let mut h = Harness::builder(SIZE).gpu(gpu.handles()).build();
+    let mut h = Harness::builder(SIZE)
+        .depth(Depth::gpu(gpu.handles()))
+        .build();
     let mut app = Counter::default();
     // The first frame, which the served window runs at its open, before a step locates in it.
     h.frame_app(&mut app);
     let (handle, thread) = serve();
-    let remote = handle.remote(WINDOW).with_tick(TICK);
+    let mut remote = handle.remote(WINDOW).with_tick(TICK);
     let mut last = Gestures::default();
     for (i, (action, want)) in steps.into_iter().enumerate() {
         let on_harness = h
@@ -420,17 +430,15 @@ fn both_players_play_each_gesture_alike() {
     }
 
     let wait = Duration::from_millis(10);
-    let before = h.ui_ref().now();
-    h.play(&mut app, &[Action::<std::convert::Infallible>::Wait(wait)])
+    let before = h.ui().now();
+    h.play(&mut app, &[Action::<Infallible>::Wait(wait)])
         .unwrap();
     assert!(
-        h.ui_ref().now() >= before + wait,
+        h.ui().now() >= before + wait,
         "the harness's clock ran {wait:?}"
     );
     let started = Instant::now();
-    remote
-        .play(&[Action::<std::convert::Infallible>::Wait(wait)])
-        .unwrap();
+    remote.play(&[Action::<Infallible>::Wait(wait)]).unwrap();
     assert!(
         started.elapsed() >= wait,
         "the remote waited {wait:?} of real time"

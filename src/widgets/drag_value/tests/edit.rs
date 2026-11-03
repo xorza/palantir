@@ -25,7 +25,7 @@ fn click_to_edit_types_and_commits_on_enter() {
 
     let s = deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert!(!s.a().committed);
-    assert_eq!(edit_buffer(h.ui_ref(), id), "5.0", "seeded on entry");
+    assert_eq!(edit_buffer(h.ui(), id), "5.0", "seeded on entry");
 
     h.key(Key::Char('7'));
     deferred_frame(&mut h, id, &mut canonical, TYPED);
@@ -120,7 +120,7 @@ fn a_new_edit_seeds_a_fresh_buffer() {
     h.set_focus(id);
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
-    assert_eq!(edit_buffer(h.ui_ref(), id), "99.0");
+    assert_eq!(edit_buffer(h.ui(), id), "99.0");
 
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
@@ -142,7 +142,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     h.key(Key::Enter);
     deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert!(matches!(
-        h.state::<DragValueState>(id),
+        h.state::<DragValueState>(id).unwrap(),
         DragValueState::Editing { .. }
     ));
 
@@ -154,7 +154,7 @@ fn focusing_mid_scrub_cannot_overwrite_the_typed_commit() {
     );
 
     // A hand-set draft + Enter commits exactly once; the stale scrubbed 30 must not overwrite it.
-    set_edit_buffer(h.ui(), id, "42");
+    set_edit_buffer(h.ui_mut(), id, "42");
     h.key(Key::Enter);
     let s = deferred_frame(&mut h, id, &mut canonical, TYPED);
     assert!(s.a().committed && s.count_where(|e| e.committed) == 1);
@@ -180,7 +180,7 @@ fn unparseable_and_non_finite_drafts_commit_without_writing() {
         h.set_focus(id);
         h.key(Key::Enter);
         deferred_frame(&mut h, id, &mut canonical, TYPED);
-        set_edit_buffer(h.ui(), id, bad);
+        set_edit_buffer(h.ui_mut(), id, bad);
         h.clear_focus();
         let s = deferred_frame(&mut h, id, &mut canonical, TYPED);
         assert!(
@@ -211,7 +211,7 @@ fn disabling_mid_edit_discards_the_draft() {
     assert_eq!(h.focus(), None, "disable kicks the editor's focus");
     assert_eq!(canonical, 5.0);
     assert!(matches!(
-        h.state::<DragValueState>(id),
+        h.state::<DragValueState>(id).unwrap(),
         DragValueState::Idle
     ));
 
@@ -241,7 +241,7 @@ fn toggling_editable_off_mid_edit_cannot_replay_the_draft() {
     let s = deferred_frame(&mut h, id, &mut canonical, SCRUB);
     assert!(!s.a().committed, "read-only frame commits nothing");
     assert!(matches!(
-        h.state::<DragValueState>(id),
+        h.state::<DragValueState>(id).unwrap(),
         DragValueState::Idle
     ));
 
@@ -323,20 +323,16 @@ fn a_caller_starts_and_stops_the_edit() {
     ] {
         let mut value = 5.0_f64;
         frame(&mut h, &mut value);
-        DragValue::start_editing(h.ui(), id);
-        assert!(DragValue::is_editing(h.ui_ref(), id), "{end:?}");
+        DragValue::start_editing(h.ui_mut(), id);
+        assert!(DragValue::is_editing(h.ui(), id), "{end:?}");
         frame(&mut h, &mut value);
-        assert_eq!(
-            edit_buffer(h.ui_ref(), id),
-            "5.0",
-            "{end:?}: seeded on entry"
-        );
+        assert_eq!(edit_buffer(h.ui(), id), "5.0", "{end:?}: seeded on entry");
         for c in ['7', '2'] {
             h.key(Key::Char(c));
             frame(&mut h, &mut value);
         }
-        DragValue::stop_editing(h.ui(), id, end);
-        assert!(!DragValue::is_editing(h.ui_ref(), id), "{end:?}");
+        DragValue::stop_editing(h.ui_mut(), id, end);
+        assert!(!DragValue::is_editing(h.ui(), id), "{end:?}");
         let edges = frame(&mut h, &mut value);
         assert_eq!((value, edges.committed), (want, committed), "{end:?}");
         assert!(

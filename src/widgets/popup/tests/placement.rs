@@ -197,7 +197,7 @@ fn popup_with_scroll_settles_in_one_frame() {
             .expect("popup body has a rect")
     };
     h.frame(scene);
-    let first = body_rect(h.ui_ref());
+    let first = body_rect(h.ui());
     let viewport_id = WidgetId::from_hash("popup-scroll").with("viewport");
     let viewport = h
         .ui()
@@ -211,7 +211,7 @@ fn popup_with_scroll_settles_in_one_frame() {
         h.hover(Vec2::new(50.0, 50.0));
         h.frame(scene);
         assert_eq!(
-            body_rect(h.ui_ref()),
+            body_rect(h.ui()),
             first,
             "popup must hold its settled position from the opening frame on",
         );
@@ -353,7 +353,7 @@ fn dynamic_body_size_repositions_at_every_viewport_edge_without_settling() {
 fn body_rect(h: &Harness, id: WidgetId) -> Rect {
     let body = h.node_of(id).expect("popup body recorded");
     assert_eq!(body.plane.layer, Layer::Popup);
-    h.ui_ref().layout(Layer::Popup).rect[body.node.idx()]
+    h.ui().layout(Layer::Popup).rect[body.node.idx()]
 }
 
 /// An open popup stays where its first frame landed it: near the bottom edge a 200 px body in a

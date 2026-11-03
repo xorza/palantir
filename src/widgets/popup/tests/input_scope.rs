@@ -5,6 +5,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
@@ -51,7 +52,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         let outside = Vec2::new(300.0, 300.0);
         h.scroll_pixels(outside, Vec2::new(0.0, 25.0));
         h.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
-        h.on_input(InputEvent::Zoom(1.4));
+        h.on_input(InputEvent::Pinch(ZoomFactor::new(1.4).unwrap()));
         h.on_input(InputEvent::PointerPressed(PointerButton::Middle));
         h.hover(outside + Vec2::new(40.0, 0.0));
 

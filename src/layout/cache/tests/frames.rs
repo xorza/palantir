@@ -1,6 +1,7 @@
 //! Cache × full-frame integration: a frame on the measure cache lays out as a cold engine does,
 //! every column the layout oracle compares.
 
+use crate::display::system_scale::SystemScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::text::font_scope::internals::INTER;
@@ -673,7 +674,7 @@ fn measure_cache_hit_restores_the_floor_its_parent_reads() {
     for tick in 0..2 {
         h.frame(|ui| build(ui, tick));
         assert_eq!(
-            h.arranged(WidgetId::from_hash("mid")).size.h,
+            h.arranged(WidgetId::from_hash("mid")).unwrap().size.h,
             51.0,
             "tick {tick}"
         );
@@ -735,11 +736,11 @@ fn moved_subtree_replays_translated_rects() {
     let mut h = Harness::mono(size);
     let mut before_nodes = Vec::new();
     h.frame(|ui| record(ui, 10.0, &mut before_nodes));
-    let before = rects(h.ui_ref(), &before_nodes);
+    let before = rects(h.ui(), &before_nodes);
 
     let mut after_nodes = Vec::new();
     h.frame(|ui| record(ui, 30.0, &mut after_nodes));
-    let after = rects(h.ui_ref(), &after_nodes);
+    let after = rects(h.ui(), &after_nodes);
 
     assert!(
         h.engines_mut()
@@ -921,7 +922,9 @@ fn fractional_offers_at_scale_one_and_a_half_match_cold() {
                 }
             });
     };
-    let mut h = Harness::builder(UVec2::new(1501, 600)).scale(1.5).build();
+    let mut h = Harness::builder(UVec2::new(1501, 600))
+        .system_scale(SystemScale::new(1.5).unwrap())
+        .build();
     for (step, width) in [1501, 1502, 1501, 1503, 1502].into_iter().enumerate() {
         h.resize(UVec2::new(width, 600));
         h.frame(record);

@@ -2,6 +2,7 @@
 
 use crate::damage::Damage;
 use crate::display::Display;
+use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
@@ -15,7 +16,7 @@ use glam::UVec2;
 
 pub(super) const DISPLAY: Display = Display {
     physical: UVec2::new(200, 200),
-    system_scale: 1.0,
+    system_scale: SystemScale::ONE,
     user_scale: UserScale::ONE,
     pixel_snap: true,
     refresh_millihertz: None,

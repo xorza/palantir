@@ -17,8 +17,9 @@ Action
         Click { at: Locator<X>, button: PointerButton, mods: ShortcutMods }
         DoubleClick(Locator<X>)
         Drag { from: Locator<X>, to: Locator<X>, button: PointerButton, mods: ShortcutMods, steps: u32 }
-        Scroll { at: Locator<X>, delta: Vec2 }
-        Pinch { at: Locator<X>, factor: f32 }
+        ScrollPixels { at: Locator<X>, delta: Vec2 }
+        ScrollLines { at: Locator<X>, delta: Vec2 }
+        Pinch { at: Locator<X>, factor: ZoomFactor }
         Key(Shortcut)
         KeyDown(Shortcut)
         KeyUp(Shortcut)
@@ -28,7 +29,6 @@ Action
         impl Action
             pub const DRAG_STEPS: u32
             pub fn click(at: impl Into<Locator>) -> Self
-            pub const fn key(shortcut: Shortcut) -> Self
         impl<X: Clone> Clone for Action<X>
         impl<X: Debug> Debug for Action<X>
         impl<X: PartialEq> PartialEq for Action<X>
@@ -259,7 +259,7 @@ ClipMode
 
 Clipboard
     struct Clipboard: Clone, Debug
-        pub fn text(&self) -> Result<String, ClipboardUnavailable>
+        pub fn text(&self) -> Result<Option<String>, ClipboardUnavailable>
         pub fn set_text(&self, text: &str) -> Result<(), ClipboardUnavailable>
         pub fn image(&self) -> Result<Option<Image>, ClipboardUnavailable>
         pub fn set_image(&self, image: &Image) -> Result<(), ClipboardUnavailable>
@@ -450,6 +450,10 @@ ConicGradient
 ConicGradientBuilder
     type ConicGradientBuilder = GradientBuilder<ConicGeometry>
 
+ControlCharError
+    struct ControlCharError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
+        pub found: char
+
 Corners
     struct Corners: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
@@ -489,7 +493,9 @@ Depth
     enum Depth: Debug
         Record
         Compose
-        Gpu(Gpu)
+        Gpu { gpu: Gpu, format: TargetFormat }
+        pub const fn gpu(gpu: Gpu) -> Self
+        pub const fn gpu_float(gpu: Gpu) -> Self
 
 DeviceFeatures
     struct DeviceFeatures: BitOr, Clone, Copy, Debug, Default, Display, DockTab (blanket), Eq, Hash, PartialEq
@@ -517,7 +523,7 @@ DeviceRequirements
 Display
     struct Display: Clone, Copy, Debug, Default, PartialEq
         pub physical: UVec2
-        pub system_scale: f32
+        pub system_scale: SystemScale
         pub user_scale: UserScale
         pub pixel_snap: bool
         pub refresh_millihertz: Option<u32>
@@ -831,7 +837,7 @@ Found
     struct Found: Clone, Copy, Debug, PartialEq
         pub rect: Rect
         pub point: Vec2
-        pub const fn rect(rect: Rect) -> Self
+        pub const fn center_of(rect: Rect) -> Self
 
 FramePaint
     enum FramePaint: Clone, Copy, Debug, Eq, PartialEq
@@ -1000,10 +1006,11 @@ Harness
     struct Harness: Debug
         pub fn play<A: App, X: Locate<A>>(&mut self, app: &mut A, actions: &[Action<X>]) -> Result<u32, ActError>
         pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError>
-        pub fn wait_for_wake(&self, deadline: Instant) -> bool
+        pub fn wait_for_wake(&self, timeout: Duration) -> bool
         pub fn has_pending_wake(&self) -> bool
         pub fn shot(&mut self, app: &mut impl App, region: Option<Rect>) -> Result<Screenshot, PlayError>
         pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError>
+        pub const WINDOW: WindowToken
         pub fn new(size: UVec2) -> Self
         pub const fn builder(size: UVec2) -> HarnessBuilder
         pub fn frame(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport
@@ -1017,49 +1024,50 @@ Harness
         pub fn advance_frames(&mut self, frames: u32, dt: Duration, record: impl FnMut(&mut Ui))
         pub fn advance_past_double_click(&mut self) -> &mut Self
         pub fn resize(&mut self, size: UVec2) -> &mut Self
-        pub fn set_display(&mut self, display: Display) -> &mut Self
+        pub fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self
+        pub fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn hover(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn press(&mut self, at: impl Into<Locator>, button: PointerButton) -> InputDelta
         pub fn release(&mut self, button: PointerButton) -> InputDelta
-        pub fn click(&mut self, at: impl Into<Locator>)
-        pub fn right_click(&mut self, at: impl Into<Locator>)
+        pub fn click(&mut self, at: impl Into<Locator>) -> InputDelta
+        pub fn right_click(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn drag_to(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn scroll_pixels(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta
         pub fn scroll_lines(&mut self, at: impl Into<Locator>, delta: Vec2) -> InputDelta
-        pub fn pinch(&mut self, at: impl Into<Locator>, factor: f32) -> InputDelta
-        pub fn key(&mut self, key: impl Into<Shortcut>)
+        pub fn pinch(&mut self, at: impl Into<Locator>, factor: ZoomFactor) -> InputDelta
+        pub fn key(&mut self, key: impl Into<Shortcut>) -> InputDelta
         pub fn key_down(&mut self, key: impl Into<Shortcut>) -> InputDelta
         pub fn key_up(&mut self, key: impl Into<Shortcut>) -> InputDelta
-        pub fn set_modifiers(&mut self, mods: Modifiers)
-        pub fn type_text(&mut self, text: &str)
+        pub fn hold_modifiers(&mut self, mods: Modifiers) -> InputDelta
+        pub fn type_text(&mut self, text: &str) -> InputDelta
         pub fn insert_text(&mut self, text: &str) -> InputDelta
         pub fn find<A, X: Locate<A>>(&self, app: &A, at: &Locator<X>) -> Result<Found, LocateError>
         pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget>
         pub fn rect(&self, id: WidgetId) -> Option<Rect>
-        pub fn arranged(&self, id: WidgetId) -> Rect
+        pub fn arranged(&self, id: WidgetId) -> Option<Rect>
         pub fn point_in(&self, id: WidgetId, local: Vec2) -> Vec2
         pub fn hit_at(&self, pos: Vec2) -> Option<WidgetId>
-        pub fn state<S: 'static>(&self, id: WidgetId) -> &S
+        pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
         pub fn window_commands(&self) -> &[WindowCommand]
-        pub fn clipboard_text(&self) -> String
-        pub fn set_clipboard_text(&mut self, text: &str)
+        pub fn clipboard_text(&self) -> Option<String>
+        pub fn set_clipboard_text(&mut self, text: &str) -> &mut Self
         pub fn wait_for_gpu(&self) -> GpuWait
-        pub const fn ui(&mut self) -> &mut Ui
+        pub fn is_device_lost(&self) -> bool
+        pub fn recover(&mut self, gpu: Gpu)
+        pub const fn ui(&self) -> &Ui
+        pub const fn ui_mut(&mut self) -> &mut Ui
 
 HarnessBuilder
     struct HarnessBuilder: Debug
-        pub const fn scale(self, scale: f32) -> Self
-        pub const fn user_scale(self, scale: UserScale) -> Self
+        pub const fn system_scale(self, scale: SystemScale) -> Self
         pub const fn refresh_millihertz(self, millihertz: u32) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
         pub fn depth(self, depth: Depth) -> Self
-        pub const fn format(self, format: TargetFormat) -> Self
-        pub fn gpu(self, gpu: Gpu) -> Self
         pub const fn frame_dt(self, dt: Duration) -> Self
         pub const fn settle_frames(self, frames: u32) -> Self
         pub const fn background_wait(self, wait: Duration) -> Self
@@ -1070,11 +1078,9 @@ HostDisconnected  [features: winit]
 
 HostHandle  [features: winit]
     struct HostHandle<T: 'static>: Clone, Debug
-        pub fn request_repaint(&self, window: WindowToken)
-        pub fn send_input(&self, window: WindowToken, event: OwnedInputEvent)
         pub fn last_frame(&self, window: WindowToken) -> Option<FrameSummary>
         pub fn is_hidden(&self, window: WindowToken) -> bool
-        pub fn run_on_main(&self, f: impl FnOnce(&mut T) -> bool + Send + 'static) -> Result<(), HostDisconnected>
+        pub fn run_on_main(&self, f: impl FnOnce(&mut T) + Send + 'static) -> Result<(), HostDisconnected>
         pub fn quit(&self)
         pub fn remote(&self, window: WindowToken) -> Remote<T>
 
@@ -1190,14 +1196,13 @@ InputEvent
         PointerReleased(PointerButton)
         ScrollPixels(Vec2)
         ScrollLines(Vec2)
-        Zoom(f32)
+        Pinch(ZoomFactor)
         KeyDown { key: Key, repeat: bool, physical: Key, text: KeyText }
         KeyUp { key: Key }
         ModifiersChanged(Modifiers)
         ImePreedit(ImePreedit<'a>)
         ImeCommit(&'a str)
         SurfaceFocusLost
-        impl From<InputEvent<'_>> for OwnedInputEvent
 
 InputPolicy
     enum InputPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1233,7 +1238,7 @@ Justify
         SpaceAround
 
 Key
-    enum Key: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
+    enum Key: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq, TryFrom<char>
         ArrowLeft
         ArrowRight
         ArrowUp
@@ -1395,6 +1400,8 @@ Locator
         Nth(Box<Self>, usize)
         App(X)
         impl<X> Locator<X>
+            pub fn offset(self, by: Vec2) -> Self
+            pub fn nth(self, n: usize) -> Self
             pub fn find<A>(&self, app: &A, ui: &Ui) -> Result<Found, LocateError> where X: Locate<A>
         impl<X: Clone> Clone for Locator<X>
         impl<X: Debug> Debug for Locator<X>
@@ -1521,17 +1528,22 @@ ModalTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
 
 Modifiers
-    struct Modifiers: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
-        pub ctrl: bool
-        pub shift: bool
-        pub alt: bool
-        pub mac_ctrl: bool
-        pub meta: bool
-        pub const NONE: Self
-        pub const SHIFT: Self
+    struct Modifiers: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const CTRL: Self
+        pub const SHIFT: Self
         pub const ALT: Self
-        pub const CTRL_SHIFT: Self
+        pub const MAC_CTRL: Self
+        pub const META: Self
+        pub const NONE: Self
+        pub const ALL: Self
+        pub const fn is_empty(self) -> bool
+        pub const fn contains(self, other: Self) -> bool
+        pub const fn intersects(self, other: Self) -> bool
+        pub const fn union(self, other: Self) -> Self
+        pub const fn difference(self, other: Self) -> Self
+        pub const fn insert(&mut self, other: Self)
+        pub const fn remove(&mut self, other: Self)
+        pub const fn set(&mut self, other: Self, on: bool)
         pub const fn has_command(self) -> bool
 
 Number
@@ -1542,17 +1554,20 @@ OffscreenHost
     struct OffscreenHost: Debug
         pub const WINDOW: WindowToken
         pub const fn builder(gpu: Gpu) -> OffscreenHostBuilder
-        pub const fn ui(&mut self) -> &mut Ui
+        pub const fn ui(&self) -> &Ui
+        pub const fn ui_mut(&mut self) -> &mut Ui
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn advance(&mut self, dt: Duration) -> &mut Self
         pub fn at(&mut self, time: Duration) -> &mut Self
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
         pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn wait_for_gpu(&self) -> GpuWait
+        pub fn window_commands(&self) -> &[WindowCommand]
         pub fn is_device_lost(&self) -> bool
         pub fn recover(&mut self, gpu: Gpu)
-        pub fn frame(&mut self, target: RenderTarget<'_>, system_scale: f32, app: &mut impl App) -> FrameReport
-        pub const fn gpu_pass_stats(&self) -> &GpuPassStats
+        pub const fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self
+        pub const fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self
+        pub fn frame(&mut self, target: RenderTarget<'_>, app: &mut impl App) -> FrameReport
 
 OffscreenHostBuilder
     struct OffscreenHostBuilder: Debug
@@ -1561,6 +1576,8 @@ OffscreenHostBuilder
         pub const fn collect_gpu_stats(self, collect_gpu_stats: bool) -> Self
         pub const fn time(self, time: OffscreenTime) -> Self
         pub const fn retained_target(self, retained_target: bool) -> Self
+        pub const fn system_scale(self, scale: SystemScale) -> Self
+        pub const fn refresh_millihertz(self, millihertz: u32) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn system_clipboard(self, system_clipboard: bool) -> Self  [features: system-clipboard or winit]
         pub fn build(self) -> OffscreenHost
@@ -1594,10 +1611,6 @@ OverlayResponse
         impl<R: Clone> Clone for OverlayResponse<R>
         impl<R: Copy> Copy for OverlayResponse<R>
         impl<R: Debug> Debug for OverlayResponse<R>
-
-OwnedInputEvent
-    struct OwnedInputEvent: Clone, Debug, From<InputEvent<'_>>
-        pub fn as_event(&self) -> InputEvent<'_>
 
 PLATFORM
     const PLATFORM: Platform
@@ -1669,16 +1682,15 @@ Platform
 PlayError
     enum PlayError: Clone, Debug, Display, Error, From<LocateError>, PartialEq
         Locate(LocateError)
-        Unsettled { step: String, frames: u32 }
-        BadPinch { factor: f32 }
+        Unsettled { frames: u32 }
         ShortDrag { travel: f32 }
         EmptyRegion
         NoPixels
         DeviceLost
         GpuTimedOut
         Disconnected
-        NoFrame { seconds: f32 }
-        Busy { step: String, seconds: f32 }
+        NoFrame { waited: Duration }
+        Busy { waited: Duration }
         Panicked { message: String }
 
 PointerAction
@@ -1702,12 +1714,12 @@ PointerEdge
 
 PointerEvent
     enum PointerEvent: Clone, Copy, Debug, PartialEq
-        Move(Vec2)
-        Down { pos: Vec2, button: PointerButton }
-        Up { pos: Vec2, button: PointerButton }
+        Moved(Vec2)
+        Pressed { pos: Vec2, button: PointerButton }
+        Released { pos: Vec2, button: PointerButton }
         Scroll { pos: Vec2, pixels: Vec2, lines: Vec2 }
-        Zoom { pos: Vec2, factor: ZoomFactor }
-        Leave
+        Pinch { pos: Vec2, factor: ZoomFactor }
+        Left
 
 PointerWake
     struct PointerWake: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1828,10 +1840,12 @@ Rect
 Remote  [features: winit]
     struct Remote<T: 'static>: Debug
         pub fn with_blocked(self, blocked: impl Fn() -> bool + Send + 'static) -> Self
+        pub const fn with_wait(self, wait: Duration) -> Self
         pub fn query<R: Send + 'static>(&self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
-        pub fn settle(&self) -> Result<u32, PlayError>
-        pub fn play<X: Locate<T> + Clone + Send + 'static>(&self, actions: &[Action<X>]) -> Result<u32, ActError>
-        pub fn shot(&self, region: Option<Rect>) -> Result<Screenshot, PlayError>
+        pub fn settle(&mut self) -> Result<u32, PlayError>
+        pub fn play<X: Locate<T> + Clone + Send + 'static>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>
+        pub fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError>
+        pub fn find<X: Locate<T> + Clone + Send + 'static>(&self, at: &Locator<X>) -> Result<Found, PlayError>
         pub fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>
 
 RenderTarget
@@ -2024,21 +2038,25 @@ Shortcut
         pub const fn new(mods: ShortcutMods, key: Key) -> Self
         pub const fn key(key: Key) -> Self
         pub const fn ctrl(c: char) -> Self
-        pub const fn ctrl_shift(c: char) -> Self
         pub fn matches(self, press: KeyPress) -> bool
 
 ShortcutMods
-    struct ShortcutMods: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
-        pub ctrl: bool
-        pub shift: bool
-        pub alt: bool
-        pub meta: bool
-        pub const fn has_command(self) -> bool
-        pub const NONE: Self
-        pub const SHIFT: Self
+    struct ShortcutMods: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const CTRL: Self
+        pub const SHIFT: Self
         pub const ALT: Self
-        pub const CTRL_SHIFT: Self
+        pub const META: Self
+        pub const NONE: Self
+        pub const ALL: Self
+        pub const fn is_empty(self) -> bool
+        pub const fn contains(self, other: Self) -> bool
+        pub const fn intersects(self, other: Self) -> bool
+        pub const fn union(self, other: Self) -> Self
+        pub const fn difference(self, other: Self) -> Self
+        pub const fn insert(&mut self, other: Self)
+        pub const fn remove(&mut self, other: Self)
+        pub const fn set(&mut self, other: Self, on: bool)
+        pub const fn has_command(self) -> bool
 
 Size
     struct Size: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Hash, PartialEq, Pod, Serialize, Zeroable
@@ -2281,6 +2299,18 @@ Switch
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+
+SystemScale
+    struct SystemScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd, TryFrom<f32>
+        pub const ONE: Self
+        pub const MIN: f32
+        pub const MAX: f32
+        pub const fn new(factor: f32) -> Option<Self>
+        pub const fn get(self) -> f32
+
+SystemScaleError
+    struct SystemScaleError: Clone, Copy, Debug, Display, Error, PartialEq
+        pub found: f32
 
 TabAddress
     struct TabAddress: Clone, Copy, Debug, Eq, PartialEq
@@ -2688,6 +2718,7 @@ Ui
         pub fn window_geometry(&self) -> WindowGeometry
         pub fn debug_overlay(&self) -> DebugOverlayConfig
         pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig)
+        pub const fn gpu_pass_stats(&self) -> &GpuPassStats
         pub fn is_window_open(&self, token: WindowToken) -> bool
         pub fn add_shape(&mut self, shape: impl Lower)
         pub fn load_icons(&self, table: impl Into<Rc<IconTable>>) -> IconSet
@@ -2752,7 +2783,7 @@ UserScale
         pub const MAX: f32
         pub const fn new(factor: f32) -> Option<Self>
         pub const fn get(self) -> f32
-        pub const fn applied_to(self, system_scale: f32) -> f32
+        pub const fn applied_to(self, system_scale: SystemScale) -> f32
         pub fn stepped_up(self) -> Self
         pub fn stepped_down(self) -> Self
         pub const fn percent(self) -> u32
@@ -2818,13 +2849,13 @@ WindowConfig
         pub const fn with_inner_size(self, size: UVec2) -> Self
         pub const fn with_min_inner_size(self, size: UVec2) -> Self
         pub const fn with_physical_pos(self, pos: IVec2) -> Self
-        pub const fn with_placement(self, placement: WindowPlacement) -> Self
+        pub const fn with_geometry(self, geometry: WindowGeometry) -> Self
         pub const fn with_maximized(self, maximized: bool) -> Self
         pub fn with_icon(self, icon: Image) -> Self
         pub fn with_app_id(self, app_id: impl Into<String>) -> Self
 
 WindowGeometry
-    struct WindowGeometry: Clone, Copy, Debug, Default
+    struct WindowGeometry: Clone, Copy, Debug, Default, Eq, PartialEq
         pub inner_size: UVec2
         pub placement: WindowPlacement
 
@@ -2882,12 +2913,16 @@ ZoomConfig
         pub const fn pivot(self) -> ZoomPivot
 
 ZoomFactor
-    struct ZoomFactor: Clone, Copy, Debug, Default, PartialEq, PartialOrd
+    struct ZoomFactor: Clone, Copy, Debug, Default, PartialEq, PartialOrd, TryFrom<f32>
         pub const ONE: Self
         pub const fn new(factor: f32) -> Option<Self>
         pub fn from_wheel(step: f32, notches: f32) -> Self
         pub fn combine(self, rhs: Self) -> Self
         pub const fn get(self) -> f32
+
+ZoomFactorError
+    struct ZoomFactorError: Clone, Copy, Debug, Display, Error, PartialEq
+        pub found: f32
 
 ZoomModifier
     enum ZoomModifier: Clone, Copy, Debug, Eq, PartialEq

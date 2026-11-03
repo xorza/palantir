@@ -282,13 +282,18 @@ fn negative_left_margin_spills_outside_slot() {
         });
     });
     let r = h.arranged(WidgetId::from_hash("spill"));
-    assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
-    assert_eq!(r.min.y, 0.0);
     assert_eq!(
-        r.size.w, 50.0,
+        r.unwrap().min.x,
+        -10.0,
+        "rendered rect spills 10px left of slot"
+    );
+    assert_eq!(r.unwrap().min.y, 0.0);
+    assert_eq!(
+        r.unwrap().size.w,
+        50.0,
         "Fixed value is the rendered width, margin doesn't shrink it"
     );
-    assert_eq!(r.size.h, 30.0);
+    assert_eq!(r.unwrap().size.h, 30.0);
 }
 
 /// Pass 2 must not double-count non-Fill children in `total_main` (a double-count gives ~242).
@@ -416,7 +421,8 @@ fn hstack_fill_max_size_caps_arranged_share() {
     });
     let arranged = h.arranged(WidgetId::from_hash("fill"));
     assert_eq!(
-        arranged.size.w, 50.0,
+        arranged.unwrap().size.w,
+        50.0,
         "Fill arrange must clamp to max_size when leftover share > cap"
     );
 }
@@ -445,7 +451,8 @@ fn parent_max_size_clamps_children_available() {
     );
     let inner_rect = h.arranged(WidgetId::from_hash("inner"));
     assert_eq!(
-        inner_rect.size.w, 200.0,
+        inner_rect.unwrap().size.w,
+        200.0,
         "Fill child must not bleed past parent's max_size cap",
     );
 }

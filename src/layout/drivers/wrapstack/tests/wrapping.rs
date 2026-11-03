@@ -1,5 +1,6 @@
 //! Where the break falls on each axis, and what an oversize child does to its line.
 
+use crate::display::system_scale::SystemScale;
 use crate::host::harness::Harness;
 use crate::layout::drivers::wrapstack::tests::support::cell;
 use crate::primitives::geometry::size::Size;
@@ -44,7 +45,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
         for (i, (want_x, want_y)) in expected.iter().enumerate() {
             let r = h.arranged(WidgetId::from_hash(["a", "b", "c", "d"][i]));
             assert_eq!(
-                (r.min.x, r.min.y),
+                (r.unwrap().min.x, r.unwrap().min.y),
                 (*want_x, *want_y),
                 "case: {label} child[{i}]"
             );
@@ -72,9 +73,9 @@ fn wrap_hstack_oversize_child_owns_its_line() {
     let wide = h.arranged(WidgetId::from_hash("wide"));
     let tail = h.arranged(WidgetId::from_hash("tail"));
     // line 0: small alone (50+10+200 > 100, wide overflows → wraps)
-    assert_eq!((small.min.x, small.min.y), (0.0, 0.0));
-    assert_eq!((wide.min.x, wide.min.y), (0.0, 28.0));
-    assert_eq!((tail.min.x, tail.min.y), (0.0, 56.0));
+    assert_eq!((small.unwrap().min.x, small.unwrap().min.y), (0.0, 0.0));
+    assert_eq!((wide.unwrap().min.x, wide.unwrap().min.y), (0.0, 28.0));
+    assert_eq!((tail.unwrap().min.x, tail.unwrap().min.y), (0.0, 56.0));
 }
 
 /// Pin: WrapVStack, same code via `Axis::Y`; children flow top-to-bottom and wrap to a new column.
@@ -100,9 +101,21 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
         let a = h.arranged(WidgetId::from_hash("a"));
         let b = h.arranged(WidgetId::from_hash("b"));
         let c = h.arranged(WidgetId::from_hash("c"));
-        assert_eq!((a.min.x, a.min.y), (0.0, 0.0), "maker {n}");
-        assert_eq!((b.min.x, b.min.y), (0.0, 50.0), "maker {n}");
-        assert_eq!((c.min.x, c.min.y), (28.0, 0.0), "maker {n}");
+        assert_eq!(
+            (a.unwrap().min.x, a.unwrap().min.y),
+            (0.0, 0.0),
+            "maker {n}"
+        );
+        assert_eq!(
+            (b.unwrap().min.x, b.unwrap().min.y),
+            (0.0, 50.0),
+            "maker {n}"
+        );
+        assert_eq!(
+            (c.unwrap().min.x, c.unwrap().min.y),
+            (28.0, 0.0),
+            "maker {n}"
+        );
     }
 }
 
@@ -130,8 +143,8 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
         wrap_node.unwrap()
     });
     let r = h.arranged(WidgetId::from_hash("w"));
-    assert_eq!(r.size.w, 200.0, "Fixed main width is honored");
-    assert_eq!(r.size.h, 48.0);
+    assert_eq!(r.unwrap().size.w, 200.0, "Fixed main width is honored");
+    assert_eq!(r.unwrap().size.h, 48.0);
 }
 
 /// Pin: nested WrapStacks don't trample each other's per-line scratch; `LayoutEngine.wrap` is depth-stacked.
@@ -159,12 +172,16 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
     let ia = h.arranged(WidgetId::from_hash("ia"));
     let ib = h.arranged(WidgetId::from_hash("ib"));
     let ob = h.arranged(WidgetId::from_hash("ob"));
-    assert_eq!(ia.min.x, 0.0);
-    assert_eq!(ib.min.x, 55.0);
-    assert_eq!(ia.min.y, ib.min.y, "inner cells share a row");
+    assert_eq!(ia.unwrap().min.x, 0.0);
+    assert_eq!(ib.unwrap().min.x, 55.0);
+    assert_eq!(
+        ia.unwrap().min.y,
+        ib.unwrap().min.y,
+        "inner cells share a row"
+    );
     // Outer's second child is placed after the inner card, so the outer kept its count despite the inner's scratch use.
     let inner_card_w = 120.0;
-    assert_eq!(ob.min.x, inner_card_w + 10.0); // outer gap=10
+    assert_eq!(ob.unwrap().min.x, inner_card_w + 10.0); // outer gap=10
 }
 
 /// A subpixel resize must not move where a line breaks, since the measure cache key cannot see it: the cold frame and a warm restore from a quarter-pixel earlier must agree. Two 50.0625-wide cells total 100.125; at scale 4 a 400 px surface is 100.0 and a 401 px one 100.25, both rounding to a 100 px budget, so the pair fits one line. A Hug stack arranged at its own width keeps its lines too (two 100.2 px cells: 200.4 rounds to 200).
@@ -179,17 +196,17 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
                 cell(ui, "b", Size::new(50.0625, 20.0));
             });
     }
-    let height = |h: &Harness| h.arranged(WidgetId::from_hash("w")).size.h;
+    let height = |h: &Harness| h.arranged(WidgetId::from_hash("w")).unwrap().size.h;
 
     let mut cold = Harness::builder(UVec2::new(401, 300))
         .mono()
-        .scale(4.0)
+        .system_scale(SystemScale::new(4.0).unwrap())
         .build();
     cold.frame(build);
 
     let mut warm = Harness::builder(UVec2::new(400, 300))
         .mono()
-        .scale(4.0)
+        .system_scale(SystemScale::new(4.0).unwrap())
         .build();
     warm.frame(build);
     warm.resize(UVec2::new(401, 300));
@@ -217,13 +234,13 @@ fn a_subpixel_resize_keeps_the_break_its_cache_key_stands_for() {
             });
     });
     assert_eq!(
-        h.arranged(WidgetId::from_hash("w")).size.h,
+        h.arranged(WidgetId::from_hash("w")).unwrap().size.h,
         20.0,
         "one line, as measured"
     );
     assert_eq!(
-        h.arranged(WidgetId::from_hash("b")).min.y,
-        h.arranged(WidgetId::from_hash("a")).min.y,
+        h.arranged(WidgetId::from_hash("b")).unwrap().min.y,
+        h.arranged(WidgetId::from_hash("a")).unwrap().min.y,
         "b beside a"
     );
 }

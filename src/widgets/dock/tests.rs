@@ -902,7 +902,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
                 ..pane
             }
         );
-        let content = h.arranged(DockView::content_id(dock(), group));
+        let content = h.arranged(DockView::content_id(dock(), group)).unwrap();
         assert_eq!(
             content,
             Rect::new(
@@ -941,7 +941,10 @@ fn an_over_dragged_divider_keeps_its_width_through_the_release() {
     let mut tabs = Labels;
     let mut run = |h: &mut Harness, d: &mut DockState<Tab>| {
         h.frame(|ui| DockView::run(ui, dock(), d, &mut tabs));
-        h.arranged(DockView::pane_id(dock(), primary)).size.w
+        h.arranged(DockView::pane_id(dock(), primary))
+            .unwrap()
+            .size
+            .w
     };
     for _ in 0..3 {
         run(&mut h, &mut d);
@@ -1030,7 +1033,7 @@ fn a_chip_click_switches_the_pane_on_the_same_frame() {
 fn a_close_click_removes_the_tab_and_does_not_activate_it() {
     let mut d = seeded();
     let mut h = Harness::mono(SURFACE);
-    h.ui().theme_mut().tabs.close_shown = CloseShown::Always;
+    h.ui_mut().theme_mut().tabs.close_shown = CloseShown::Always;
     let mut tabs = Labels;
     h.prime(3, |ui| DockView::run(ui, dock(), &mut d, &mut tabs));
 
@@ -1162,7 +1165,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .center();
     h.right_click(at);
     h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
-    assert!(!Menu::is_open(h.ui_ref(), chip(Tab::Main)));
+    assert!(!Menu::is_open(h.ui(), chip(Tab::Main)));
     assert!(h.rect(MenuOn::item_id()).is_none(), "Main has no menu");
 
     let at = h
@@ -1171,7 +1174,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .center();
     h.right_click(at);
     h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
-    assert!(Menu::is_open(h.ui_ref(), chip(Tab::Prefs)));
+    assert!(Menu::is_open(h.ui(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_some(),
         "Prefs's menu shows its item"
@@ -1185,7 +1188,7 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         [Tab::Main, viewer(1)],
         "the item closed the right-clicked tab"
     );
-    assert!(!Menu::is_open(h.ui_ref(), chip(Tab::Prefs)));
+    assert!(!Menu::is_open(h.ui(), chip(Tab::Prefs)));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
         "the menu closed with its pick"
@@ -1198,10 +1201,10 @@ fn a_right_click_opens_the_tab_menu_only_where_one_is_declared() {
         .center();
     h.right_click(at);
     h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
-    assert!(Menu::is_open(h.ui_ref(), chip(viewer(1))));
+    assert!(Menu::is_open(h.ui(), chip(viewer(1))));
     d.retain_tabs(|tab| tab != viewer(1));
     h.frame(|ui| DockView::run(ui, dock(), &mut d, &mut tabs));
-    assert!(!Menu::is_open(h.ui_ref(), chip(viewer(1))));
+    assert!(!Menu::is_open(h.ui(), chip(viewer(1))));
     assert!(
         h.rect(MenuOn::item_id()).is_none(),
         "a menu whose tab the app removed closes"
@@ -1258,7 +1261,7 @@ fn a_carried_tab_leaves_with_the_dock() {
     h.drag_to(at + Vec2::new(0.0, 60.0));
     record(&mut h, &mut d, &mut tabs);
     let carried = |h: &Harness| {
-        let drag = h.ui_ref().state::<TabDrag<Tab>>(dock_id)?;
+        let drag = h.ui().state::<TabDrag<Tab>>(dock_id)?;
         drag.tab
     };
     assert_eq!(carried(&h), Some(Tab::Prefs), "the drag carries the tab");

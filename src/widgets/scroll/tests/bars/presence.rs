@@ -2,6 +2,7 @@
 
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
+use crate::input::zoom_factor::ZoomFactor;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -55,13 +56,10 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
     }
 
     h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(40.0, 60.0));
-    h.on_input(InputEvent::Zoom(1.5));
+    h.on_input(InputEvent::Pinch(ZoomFactor::new(1.5).unwrap()));
     h.frame(build);
-    let state = *h.state::<ScrollState>(outer_id);
-    assert_eq!(
-        scroll_viewport(h.ui_ref(), outer_id),
-        Size::new(200.0, 200.0)
-    );
+    let state = *h.state::<ScrollState>(outer_id).unwrap();
+    assert_eq!(scroll_viewport(h.ui(), outer_id), Size::new(200.0, 200.0));
     assert_eq!(state.zoom(), 1.5);
     assert_eq!(
         state.offset(),
@@ -85,7 +83,7 @@ fn vertical_overflow_emits_thumb_shape_after_settle() {
             });
     });
     assert_eq!(
-        thumb_rects(ui.ui_ref(), "scroll"),
+        thumb_rects(ui.ui(), "scroll"),
         [Rect::new(
             200.0 - theme().thickness,
             0.0,
@@ -124,13 +122,13 @@ fn content_that_stops_overflowing_retires_its_bar() {
     let mut h = Harness::mono(surface);
     h.prime(2, build(true));
     assert_eq!(
-        thumb_rects(h.ui_ref(), "scroll").len(),
+        thumb_rects(h.ui(), "scroll").len(),
         1,
         "900px of content in a 300px viewport must show a thumb",
     );
 
     h.frame(build(false));
-    for (tag, rect) in raw_bar_rects(h.ui_ref(), "scroll") {
+    for (tag, rect) in raw_bar_rects(h.ui(), "scroll") {
         assert_eq!(
             rect.size,
             Size::ZERO,
@@ -140,7 +138,7 @@ fn content_that_stops_overflowing_retires_its_bar() {
 
     h.frame(build(true));
     assert_eq!(
-        thumb_rects(h.ui_ref(), "scroll").len(),
+        thumb_rects(h.ui(), "scroll").len(),
         1,
         "the thumb must return when the content overflows again",
     );
@@ -161,7 +159,7 @@ fn no_bar_when_content_fits_viewport() {
             });
     });
     assert!(
-        thumb_rects(ui.ui_ref(), "scroll").is_empty(),
+        thumb_rects(ui.ui(), "scroll").is_empty(),
         "non-overflowing content should show no thumb"
     );
 }
@@ -181,7 +179,7 @@ fn both_axes_overflow_emits_two_thumbs() {
             });
     });
     assert_eq!(
-        thumb_rects(ui.ui_ref(), "scroll").len(),
+        thumb_rects(ui.ui(), "scroll").len(),
         2,
         "ScrollXY with overflow on both axes should emit two thumbs"
     );
@@ -205,7 +203,7 @@ fn both_axes_bars_dont_overlap_at_corner() {
     let theme = theme();
     let inner = 200.0 - theme.thickness - theme.gap;
     let outer_far = 200.0 - theme.thickness;
-    let overlays = thumb_rects(ui.ui_ref(), "scroll");
+    let overlays = thumb_rects(ui.ui(), "scroll");
     assert_eq!(overlays.len(), 2, "expected V + H thumbs");
     let v = overlays
         .iter()

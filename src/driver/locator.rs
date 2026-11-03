@@ -70,7 +70,7 @@ pub struct Found {
 
 impl Found {
     /// A widget's place: its visible rect, pressed at the center.
-    pub const fn rect(rect: Rect) -> Self {
+    pub const fn center_of(rect: Rect) -> Self {
         Self {
             rect,
             point: rect.center(),
@@ -79,6 +79,18 @@ impl Found {
 }
 
 impl<X> Locator<X> {
+    /// This place moved by `by` logical pixels.
+    #[must_use]
+    pub fn offset(self, by: Vec2) -> Self {
+        Self::Offset(Box::new(self), by)
+    }
+
+    /// The `n`th place, from 0, of the several this names.
+    #[must_use]
+    pub fn nth(self, n: usize) -> Self {
+        Self::Nth(Box::new(self), n)
+    }
+
     /// The one place this names in the last frame `ui` ran of `app`. A widget must be visible
     /// and the topmost interactive widget at its center, so a press there reaches it.
     ///
@@ -229,7 +241,7 @@ fn reached(
     widget: &InspectedWidget,
     locator: impl Fn() -> String,
 ) -> Result<Found, LocateError> {
-    let found = Found::rect(widget.rect);
+    let found = Found::center_of(widget.rect);
     let Some(routes) = widget.sense.routing() else {
         return Ok(found);
     };

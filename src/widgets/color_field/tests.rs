@@ -119,7 +119,7 @@ fn keys_walk_both_axes() {
         let mut state = coords(0.3, 0.5, 0.5);
         frame(&mut h, id, &mut state);
         h.set_focus(id);
-        h.set_modifiers(mods);
+        h.hold_modifiers(mods);
         h.key(key);
         let ValueEdges { changed, committed } = frame(&mut h, id, &mut state);
         assert_eq!(
@@ -348,7 +348,7 @@ fn the_surface_leaves_with_the_field() {
         ColorField::new(&mut coords).id(id).show(ui);
     });
     let surface = |h: &Harness| {
-        h.ui_ref()
+        h.ui()
             .state::<ColorSurface<(ColorModel, f32)>>(id)
             .is_some()
     };

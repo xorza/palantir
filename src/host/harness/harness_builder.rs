@@ -1,13 +1,12 @@
 //! [`HarnessBuilder`]: the settings a [`Harness`] seals at build, and the [`Depth`] its frames
 //! run to.
 
-use crate::display;
-use crate::display::user_scale::UserScale;
+use crate::display::system_scale::SystemScale;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::host::core::HostCore;
-use crate::host::harness::{Harness, Seal, WINDOW};
+use crate::host::harness::{Harness, Seal};
 use crate::host::host_options::HostOptions;
 use crate::host::offscreen;
 use crate::host::window_driver::{FrameDepth, PresentStrategy};
@@ -28,8 +27,33 @@ pub enum Depth {
     Record,
     /// Build the draw list too, on the CPU, and paint nothing.
     Compose,
-    /// Paint on this device into a texture of the window's size, which a shot reads.
-    Gpu(Gpu),
+    /// Paint on a device into a texture of the window's size, which a shot reads.
+    Gpu {
+        /// The device the window paints on.
+        gpu: Gpu,
+        /// The texture format of the window: [`Depth::gpu`] takes 8-bit sRGB RGBA, and a float
+        /// format keeps linear values past 8 bits, for a [`Harness::capture`] that blends frames.
+        format: TargetFormat,
+    },
+}
+
+impl Depth {
+    /// [`Self::Gpu`] on `gpu` in 8-bit sRGB RGBA, the format a shot reads.
+    pub const fn gpu(gpu: Gpu) -> Self {
+        Self::Gpu {
+            gpu,
+            format: TargetFormat::RGBA8_SRGB,
+        }
+    }
+
+    /// [`Self::Gpu`] on `gpu` in 16-bit float RGBA, which keeps linear values past 8 bits, for
+    /// a [`Harness::capture`] that blends frames.
+    pub const fn gpu_float(gpu: Gpu) -> Self {
+        Self::Gpu {
+            gpu,
+            format: TargetFormat::RGBA16_FLOAT,
+        }
+    }
 }
 
 /// The settings a [`Harness`] opens with. [`Harness::builder`] sets the defaults each setter
@@ -38,8 +62,7 @@ pub enum Depth {
 #[must_use]
 pub struct HarnessBuilder {
     size: UVec2,
-    scale: f32,
-    user_scale: UserScale,
+    system_scale: SystemScale,
     refresh_millihertz: Option<u32>,
     options: HostOptions,
     depth: Depth,
@@ -47,15 +70,13 @@ pub struct HarnessBuilder {
     frame_dt: Duration,
     settle_frames: u32,
     background_wait: Duration,
-    format: TargetFormat,
 }
 
 impl HarnessBuilder {
     pub(super) const fn new(size: UVec2) -> Self {
         Self {
             size,
-            scale: 1.0,
-            user_scale: UserScale::ONE,
+            system_scale: SystemScale::ONE,
             refresh_millihertz: None,
             options: HostOptions::new(FontScope::Bundled),
             depth: Depth::Record,
@@ -63,29 +84,21 @@ impl HarnessBuilder {
             frame_dt: Duration::from_nanos(16_666_667),
             settle_frames: 600,
             background_wait: Duration::from_secs(30),
-            format: TargetFormat::RGBA8_SRGB,
         }
     }
 
-    /// Physical pixels per logical pixel, as the platform would report it; 1 by default. The
-    /// window stays `size` physical pixels, so at 2 a 600 × 200 window is 300 × 100 logical.
-    ///
-    /// # Panics
-    ///
-    /// At [`Self::build`], when `scale` is not finite or below `1e-4`.
-    pub const fn scale(mut self, scale: f32) -> Self {
-        self.scale = scale;
+    /// Physical pixels per logical pixel, as the platform would report it; [`SystemScale::ONE`] by
+    /// default. The window stays `size` physical pixels, so at 2 a 600 × 200 window is 300 × 100
+    /// logical. The app's own scale goes on top through
+    /// [`Ui::set_user_scale`](crate::Ui::set_user_scale); the harness's
+    /// [`set_system_scale`](Harness::set_system_scale) changes this one later.
+    pub const fn system_scale(mut self, scale: SystemScale) -> Self {
+        self.system_scale = scale;
         self
     }
 
-    /// The app's own scale on top of [`Self::scale`], as [`Ui::set_user_scale`](crate::Ui::set_user_scale)
-    /// sets it; 1 by default.
-    pub const fn user_scale(mut self, scale: UserScale) -> Self {
-        self.user_scale = scale;
-        self
-    }
-
-    /// The monitor's refresh rate, which repaint wakes coalesce to; none by default.
+    /// The monitor's refresh rate, which repaint wakes coalesce to; none by default. The
+    /// harness's [`set_refresh_millihertz`](Harness::set_refresh_millihertz) changes it later.
     pub const fn refresh_millihertz(mut self, millihertz: u32) -> Self {
         self.refresh_millihertz = Some(millihertz);
         self
@@ -114,18 +127,6 @@ impl HarnessBuilder {
     pub fn depth(mut self, depth: Depth) -> Self {
         self.depth = depth;
         self
-    }
-
-    /// The texture format of the window at [`Depth::Gpu`]; 8-bit sRGB RGBA by default. A float
-    /// format keeps linear values past 8 bits, for a [`Harness::capture`] that blends frames.
-    pub const fn format(mut self, format: TargetFormat) -> Self {
-        self.format = format;
-        self
-    }
-
-    /// [`Self::depth`] at [`Depth::Gpu`] on `gpu`.
-    pub fn gpu(self, gpu: Gpu) -> Self {
-        self.depth(Depth::Gpu(gpu))
     }
 
     /// The time one frame of [`Harness::settle`] and [`Harness::play`] takes; 1/60 s by
@@ -182,9 +183,9 @@ impl HarnessBuilder {
                 FrameDepth::Compose,
                 None,
             ),
-            Depth::Gpu(gpu) => {
+            Depth::Gpu { gpu, format } => {
                 offscreen::assert_runs_palantir(gpu);
-                let target = OwnedTarget::window(gpu, TARGET_LABEL, self.size, self.format);
+                let target = OwnedTarget::window(gpu, TARGET_LABEL, self.size, *format);
                 (
                     HostCore::new(gpu.clone(), &self.options, shaper),
                     FrameDepth::Paint,
@@ -192,7 +193,7 @@ impl HarnessBuilder {
                 )
             }
         };
-        self.open(core, depth, target, WINDOW)
+        self.open(core, depth, target, Harness::WINDOW)
     }
 
     fn open(
@@ -202,7 +203,6 @@ impl HarnessBuilder {
         target: Option<OwnedTarget>,
         token: WindowToken,
     ) -> Harness {
-        let scale = display::scale_factor(self.scale);
         Harness::assert_frame_dt(self.frame_dt);
         assert!(self.frame_dt > Duration::ZERO, "a frame takes some time");
         assert!(self.settle_frames > 0, "a settle runs at least one frame");
@@ -214,8 +214,7 @@ impl HarnessBuilder {
                 depth,
                 target,
                 physical: self.size,
-                system_scale: scale,
-                user_scale: self.user_scale,
+                system_scale: self.system_scale,
                 refresh_millihertz: self.refresh_millihertz,
                 frame_dt: self.frame_dt,
                 settle_frames: self.settle_frames,
@@ -274,7 +273,7 @@ pub(crate) mod internals {
             let depth = match self.depth {
                 Depth::Record => FrameDepth::Record,
                 Depth::Compose => FrameDepth::Compose,
-                Depth::Gpu(_) => unreachable!("a window over shared resources has no device"),
+                Depth::Gpu { .. } => unreachable!("a window over shared resources has no device"),
             };
             self.open(core, depth, None, token)
         }

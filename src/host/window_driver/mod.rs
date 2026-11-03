@@ -9,6 +9,7 @@ use crate::damage::{Damage, FULL_REPAINT_THRESHOLD};
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
 use crate::display::host_display::HostDisplay;
+use crate::display::system_scale::SystemScale;
 use crate::gpu::frame::submission::{FrameOverlay, Route, Submission};
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode};
 use crate::gpu::surface::capture::Capture;
@@ -123,7 +124,7 @@ pub(super) struct FrameSpec {
     pub(super) format: TargetFormat,
     /// Whether pixels can be copied out of the target, as a pane's capture is.
     pub(super) gives_copy: bool,
-    pub(super) system_scale: f32,
+    pub(super) system_scale: SystemScale,
     pub(super) refresh_millihertz: Option<u32>,
     pub(super) now: Duration,
 }
@@ -297,11 +298,6 @@ impl WindowDriver {
             refresh_millihertz: spec.refresh_millihertz,
         };
         self.ui.frame_stamp(host, spec.now)
-    }
-
-    /// Snap paint edges to physical pixels from the next frame on, or not.
-    pub(super) const fn set_pixel_snap(&mut self, pixel_snap: bool) {
-        self.pixel_snap = pixel_snap;
     }
 
     /// Whether a screenshot is on its way back from the device, which a later frame lands.
@@ -744,6 +740,12 @@ pub(crate) mod internals {
             self.engines
                 .layout
                 .main_intrinsic(self.ui.forest(), node, query)
+        }
+
+        /// Snap paint edges to physical pixels from the next frame on, or not.
+        #[cfg(test)]
+        pub(crate) const fn set_pixel_snap(&mut self, pixel_snap: bool) {
+            self.pixel_snap = pixel_snap;
         }
 
         /// Whether the target holds this driver's last output; read by offscreen tests.

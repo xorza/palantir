@@ -53,8 +53,8 @@ fn ui_layer_records_popup_into_separate_tree() {
                 });
         });
     });
-    let main_tree = h.ui_ref().tree(Layer::Main);
-    let popup_tree = h.ui_ref().tree(Layer::Popup);
+    let main_tree = h.ui().tree(Layer::Main);
+    let popup_tree = h.ui().tree(Layer::Popup);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node.idx(), 0);
@@ -206,10 +206,10 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     });
     let _cmds = h.encode_paint();
 
-    let store = h.ui_ref().record_store();
+    let store = h.ui().record_store();
     let interned_text = store.interned_text();
-    let main_tree = h.ui_ref().tree(Layer::Main);
-    let popup_tree = h.ui_ref().tree(Layer::Popup);
+    let main_tree = h.ui().tree(Layer::Main);
+    let popup_tree = h.ui().tree(Layer::Popup);
 
     let outer_span = main_tree.records.shape_span()[0];
     let main_texts: Vec<&str> = main_tree.shapes.records
@@ -299,8 +299,8 @@ fn mid_recording_popup_keeps_trees_independent() {
             .response
             .node()
     });
-    let main_tree = h.ui_ref().tree(Layer::Main);
-    let popup_tree = h.ui_ref().tree(Layer::Popup);
+    let main_tree = h.ui().tree(Layer::Main);
+    let popup_tree = h.ui().tree(Layer::Popup);
 
     assert_eq!(main_tree.records.len(), 6);
     assert_eq!(main_tree.roots.len(), 1);
@@ -390,7 +390,7 @@ fn a_nested_overlay_records_one_plane_above_its_opener() {
     for &(label, kinds, planes) in rows {
         let mut h = Harness::mono(SURFACE);
         h.frame(|ui| nest(ui, kinds, 0));
-        let cascade = h.ui_ref().cascade();
+        let cascade = h.ui().cascade();
         for (depth, (&kind, &want)) in kinds.iter().zip(planes).enumerate() {
             let id = WidgetId::from_hash(("nested", depth));
             let at = cascade.endpoint(id).expect("recorded");
@@ -412,7 +412,7 @@ fn a_nested_overlay_records_one_plane_above_its_opener() {
             "{label}: the deepest overlay takes the press",
         );
         let mut paints = Vec::new();
-        cascade.owned_paints(h.ui_ref().forest(), &mut paints);
+        cascade.owned_paints(h.ui().forest(), &mut paints);
         let painted: Vec<WidgetId> = paints.iter().map(|paint| paint.owner).collect();
         let nested: Vec<WidgetId> = (0..kinds.len())
             .map(|depth| WidgetId::from_hash(("nested", depth)))

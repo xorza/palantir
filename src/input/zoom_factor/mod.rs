@@ -1,5 +1,9 @@
 //! [`ZoomFactor`]: a multiplicative zoom that stays invertible.
 
+use crate::input::zoom_factor::error::ZoomFactorError;
+
+pub(crate) mod error;
+
 /// A view zoom as a factor. [`Self::ONE`] is identity and factors compose by
 /// multiplication; every product is clamped to stay invertible, as a naive
 /// `f32` running product underflows or overflows and never recovers. An
@@ -22,6 +26,15 @@ pub struct ZoomFactor(f32);
 impl Default for ZoomFactor {
     fn default() -> Self {
         Self::ONE
+    }
+}
+
+/// [`ZoomFactor::new`] with the factor refused as an error.
+impl TryFrom<f32> for ZoomFactor {
+    type Error = ZoomFactorError;
+
+    fn try_from(factor: f32) -> Result<Self, Self::Error> {
+        Self::new(factor).ok_or(ZoomFactorError { found: factor })
     }
 }
 

@@ -236,7 +236,7 @@ impl Runner {
                 self.step_end = start + TYPE_STEP * text.chars().count() as u32;
             }
             Step::Act(act) => {
-                act(deck, h.ui());
+                act(deck, h.ui_mut());
                 self.step_end = start;
             }
             Step::Hold(length) => self.step_end = start + length,

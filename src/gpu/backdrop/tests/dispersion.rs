@@ -1,9 +1,9 @@
 //! Glass that spreads the spectrum at its rim, read back in linear `f16`, with no dither.
 
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
-use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::headless_test_gpu;
 use crate::host::harness::Harness;
+use crate::host::harness::harness_builder::Depth;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::layout::sizing::Sizing;
@@ -40,10 +40,9 @@ fn lens(refractive_index: f32, dispersion: f32) -> Lens {
 fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
     let gpu = headless_test_gpu();
     let mut window = Harness::builder(SIZE)
-        .gpu(gpu.handles())
-        .format(TargetFormat::new(wgpu::TextureFormat::Rgba16Float))
+        .depth(Depth::gpu_float(gpu.handles()))
         .build();
-    window.ui().theme_mut().window_clear = RgbaF32::BLACK;
+    window.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
     let mut app = |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("dispersion-scene")

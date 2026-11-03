@@ -7,7 +7,7 @@ use std::ops::RangeInclusive;
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ZoomModifier {
     /// The primary command modifier + wheel (default): Cmd on macOS, Ctrl elsewhere, as
-    /// [`Modifiers::ctrl`](crate::Modifiers::ctrl) reads it. A bare wheel pans.
+    /// [`Modifiers::CTRL`](crate::Modifiers::CTRL) reads it. A bare wheel pans.
     Ctrl,
     /// Plain wheel always zooms (image viewers without pan).
     Always,

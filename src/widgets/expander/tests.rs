@@ -89,7 +89,11 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
     assert!(h.rect(label()).is_some(), "the body's own content records");
 
     // The section fills the width by default, and a wrapper's `default_size` replaces that.
-    assert_eq!(h.arranged(root()).size.w, 320.0, "FILL across the surface");
+    assert_eq!(
+        h.arranged(root()).unwrap().size.w,
+        320.0,
+        "FILL across the surface"
+    );
     h.prime(2, |ui| {
         Expander::new("section")
             .id(root())
@@ -97,7 +101,7 @@ fn a_closed_body_is_not_recorded_and_an_open_one_is() {
             .show(ui, |_| {});
     });
     assert_eq!(
-        h.arranged(root()).size.w,
+        h.arranged(root()).unwrap().size.w,
         100.0,
         "a default size wins over FILL"
     );
@@ -198,11 +202,13 @@ fn keep_body_records_a_collapsed_body_and_holds_its_state() {
 
     let body_rect = h.arranged(body());
     assert_eq!(
-        body_rect.size.h, 0.0,
+        body_rect.unwrap().size.h,
+        0.0,
         "a collapsed body takes no space: {body_rect:?}",
     );
     assert!(
-        h.hit_at(body_rect.min).is_none() || h.hit_at(body_rect.min) != Some(label()),
+        h.hit_at(body_rect.unwrap().min).is_none()
+            || h.hit_at(body_rect.unwrap().min) != Some(label()),
         "and is not hit-tested",
     );
     assert!(
@@ -225,27 +231,27 @@ fn open_close_and_is_open_drive_it_from_outside() {
                 Text::new("body").id(label()).show(ui);
             });
     };
-    assert!(!Expander::is_open(h.ui_ref(), root()));
+    assert!(!Expander::is_open(h.ui(), root()));
     assert!(
         h.ui().state::<ExpanderState>(header()).is_none(),
         "no row minted"
     );
     h.prime(2, record);
-    assert!(Expander::is_open(h.ui_ref(), root()), "start_open opens it");
+    assert!(Expander::is_open(h.ui(), root()), "start_open opens it");
     assert!(h.rect(body()).is_some());
 
     h.click(header());
     h.frame(record);
-    assert!(!Expander::is_open(h.ui_ref(), root()), "a click closes it");
+    assert!(!Expander::is_open(h.ui(), root()), "a click closes it");
 
-    Expander::open(h.ui(), root());
+    Expander::open(h.ui_mut(), root());
     h.prime(2, record);
-    assert!(Expander::is_open(h.ui_ref(), root()));
+    assert!(Expander::is_open(h.ui(), root()));
     assert!(h.rect(body()).is_some(), "open reveals the body");
 
-    Expander::close(h.ui(), root());
+    Expander::close(h.ui_mut(), root());
     h.prime(2, record);
-    assert!(!Expander::is_open(h.ui_ref(), root()));
+    assert!(!Expander::is_open(h.ui(), root()));
     assert!(h.rect(body()).is_none(), "close hides the body");
 }
 
@@ -453,7 +459,7 @@ fn a_settling_reveal_stores_the_whole_height() {
         record(ui);
     });
     // One mono line, 19.2 snapped to 19.203125, under 4 + 4 padding.
-    let whole = h.arranged(body()).size.h;
+    let whole = h.arranged(body()).unwrap().size.h;
     assert_eq!(whole, 19.203125 + 8.0);
     toggle(&mut h, &mut record);
     while h.frame_value(&mut record) > 0.0 {
@@ -467,7 +473,7 @@ fn a_settling_reveal_stores_the_whole_height() {
         openness = h.frame_value(&mut record);
         if openness < 1.0 {
             assert_eq!(
-                h.arranged(body()).size.h,
+                h.arranged(body()).unwrap().size.h,
                 whole,
                 "the body lays out whole under the clip at {openness}",
             );

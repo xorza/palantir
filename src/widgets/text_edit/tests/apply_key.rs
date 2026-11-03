@@ -305,7 +305,7 @@ fn max_chars_caps_typing_and_paste_through_show() {
     h.frame(|ui| record(ui, &mut buf));
     h.click(id);
     h.frame(|ui| record(ui, &mut buf));
-    h.ui()
+    h.ui_mut()
         .with_state::<TextEditState, _>(id, |_, s| s.edit.caret = 2);
 
     for c in ['c', 'd'] {
@@ -315,12 +315,12 @@ fn max_chars_caps_typing_and_paste_through_show() {
     assert_eq!(buf, "abcd", "typing below the cap lands");
 
     h.set_clipboard_text("xyz");
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.key(Key::Char('v'));
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(buf, "abcdx", "the paste is cut to the one char that fits");
 
-    h.set_modifiers(Modifiers::NONE);
+    h.hold_modifiers(Modifiers::NONE);
     h.key(Key::Char('q'));
     h.frame(|ui| record(ui, &mut buf));
     assert_eq!(buf, "abcdx", "at the cap a typed key is dropped");
@@ -406,7 +406,7 @@ fn ctrl_home_and_end_reach_the_document_ends() {
     );
 }
 
-/// The platform's line and word chords. macOS (Cmd is `Modifiers::ctrl`): Cmd+Right / Left go to
+/// The platform's line and word chords. macOS (Cmd is `Modifiers::CTRL`): Cmd+Right / Left go to
 /// line end / start, Cmd+Backspace deletes to line start, and Option+Backspace / Delete delete a
 /// word. Elsewhere Ctrl+Arrow is the word motion and Ctrl+Backspace / Delete delete a word.
 #[test]

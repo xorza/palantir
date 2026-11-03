@@ -2,66 +2,46 @@
 
 use crate::common::platform::Platform;
 
-/// Modifier-key state, sent as `InputEvent::ModifiersChanged` when the held set changes. `ctrl` is the primary command modifier, normalized at the input boundary (Cmd on macOS, Ctrl elsewhere); `mac_ctrl` is the raw macOS Control key, for rare Mac-specific bindings.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub struct Modifiers {
-    /// The primary command modifier is held: Cmd (⌘) on macOS, Ctrl elsewhere.
-    pub ctrl: bool,
-    /// Shift is held.
-    pub shift: bool,
-    /// Alt is held.
-    pub alt: bool,
-    /// The raw macOS Control key is held; always `false` off macOS. For Mac-specific bindings.
-    pub mac_ctrl: bool,
-    /// The Windows / Super key is held (W3C `metaKey`; `super` is a Rust keyword). Always `false` on macOS, where Command lands in [`Self::ctrl`].
-    pub meta: bool,
+flag_set! {
+    /// Modifier-key state, sent as `InputEvent::ModifiersChanged` when the held set changes.
+    /// [`Self::CTRL`] is the primary command modifier, normalized at the input boundary (Cmd on
+    /// macOS, Ctrl elsewhere); [`Self::MAC_CTRL`] is the raw macOS Control key, for rare
+    /// Mac-specific bindings.
+    pub struct Modifiers: u8, packed {
+        /// The primary command modifier: Cmd (⌘) on macOS, Ctrl elsewhere.
+        const CTRL = 1 << 0;
+        /// Shift.
+        const SHIFT = 1 << 1;
+        /// Alt.
+        const ALT = 1 << 2;
+        /// The raw macOS Control key; never held off macOS. For Mac-specific bindings.
+        const MAC_CTRL = 1 << 3;
+        /// The Windows / Super key (W3C `metaKey`). Never held on macOS, where Command lands in
+        /// [`Self::CTRL`].
+        const META = 1 << 4;
+    }
 }
 
 impl Modifiers {
-    /// No modifier.
-    pub const NONE: Self = Self {
-        ctrl: false,
-        shift: false,
-        alt: false,
-        mac_ctrl: false,
-        meta: false,
-    };
-    /// Shift only.
-    pub const SHIFT: Self = Self {
-        shift: true,
-        ..Self::NONE
-    };
-    /// Ctrl only.
-    pub const CTRL: Self = Self {
-        ctrl: true,
-        ..Self::NONE
-    };
-    /// Alt only.
-    pub const ALT: Self = Self {
-        alt: true,
-        ..Self::NONE
-    };
-    /// Ctrl and Shift.
-    pub const CTRL_SHIFT: Self = Self {
-        ctrl: true,
-        shift: true,
-        ..Self::NONE
-    };
-
     /// True if any command modifier (primary ctrl, alt, raw macOS Control, Super) is held: the "shortcut, not text" predicate. Shift alone doesn't count.
     pub const fn has_command(self) -> bool {
-        self.ctrl || self.alt || self.mac_ctrl || self.meta
+        self.intersects(
+            Self::CTRL
+                .union(Self::ALT)
+                .union(Self::MAC_CTRL)
+                .union(Self::META),
+        )
     }
 
     /// Whether a press under these modifiers on `platform` composes text rather than commanding:
     ///
-    /// - macOS: Option composes (`@` is Option+L on a German layout), so only Cmd (`ctrl` here) and raw Control command.
+    /// - macOS: Option composes (`@` is Option+L on a German layout), so only Cmd (`CTRL` here) and raw Control command.
     /// - Windows and Linux: Ctrl+Alt is AltGr and composes; Ctrl or Alt alone, or anything with Super, commands.
     pub(crate) const fn compose_text(self, platform: Platform) -> bool {
         if platform.option_composes() {
-            !self.ctrl && !self.mac_ctrl
+            !self.intersects(Self::CTRL.union(Self::MAC_CTRL))
         } else {
-            self.ctrl == self.alt && !self.meta
+            self.contains(Self::CTRL) == self.contains(Self::ALT) && !self.contains(Self::META)
         }
     }
 }

@@ -115,7 +115,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         .counters
         .dirty()
         .iter()
-        .map(|n| h.ui_ref().tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| h.ui().tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert_eq!(
         dirty_widget_ids,
@@ -157,7 +157,7 @@ fn transform_animation_keeps_far_positions_split() {
     let rects: Vec<Rect> = DamageRegion::collapse_from(
         &h.engines().damage.raw_rects,
         0.0,
-        h.ui_ref().display().logical_rect(),
+        h.ui().display().logical_rect(),
     )
     .region
     .iter_rects()

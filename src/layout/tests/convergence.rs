@@ -72,14 +72,17 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         // end flush with the row.
         let share = (outer_w as f32 - 12.0) / 2.0;
         assert_eq!(
-            right.size.w,
+            right.unwrap().size.w,
             share.max(204.0),
             "outer_w={outer_w}: left.w={} right.w={}",
-            left.size.w,
-            right.size.w,
+            left.unwrap().size.w,
+            right.unwrap().size.w,
         );
         assert_eq!(
-            [row.min.x + row.size.w, right.min.x + right.size.w],
+            [
+                row.min.x + row.size.w,
+                right.unwrap().min.x + right.unwrap().size.w
+            ],
             [outer_w as f32; 2],
             "outer_w={outer_w}: right cell must end at the row's edge",
         );
@@ -170,9 +173,9 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
         // the window (the cells below have a rigid 536 px floor).
         let toolbar = h.arranged(WidgetId::from_hash("toolbar"));
         for label in LABELS {
-            let button = h.arranged(WidgetId::from_hash(*label));
+            let button = h.arranged(WidgetId::from_hash(*label)).unwrap();
             assert!(
-                toolbar.contains_rect(button),
+                toolbar.unwrap().contains_rect(button),
                 "w={w}: {label} at {button:?} leaves the toolbar at {toolbar:?}",
             );
         }

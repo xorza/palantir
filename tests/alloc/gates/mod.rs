@@ -32,7 +32,7 @@ const MEASURE_FRAMES: usize = 256;
 fn full_tree_cpu_frame_alloc_free() {
     let mut state = FrameFixture::default();
     let mut frontend = Harness::builder(BENCH_SURFACE)
-        .scale(BENCH_DPR)
+        .system_scale(BENCH_DPR)
         .depth(Depth::Compose)
         .build();
     Audit::new()

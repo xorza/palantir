@@ -54,7 +54,11 @@ fn explicit_size_overrides_fill_default() {
             slider.show(ui);
         });
         let knob = h.arranged(id.with("knob"));
-        assert_eq!(knob.min.y - h.arranged(id).min.y, y, "{align:?}");
+        assert_eq!(
+            knob.unwrap().min.y - h.arranged(id).unwrap().min.y,
+            y,
+            "{align:?}"
+        );
     }
 }
 
@@ -266,7 +270,7 @@ fn a_focused_slider_walks_by_key() {
         };
         frame(&mut h, &mut value);
         h.set_focus(id);
-        h.set_modifiers(mods);
+        h.hold_modifiers(mods);
         h.key(key);
         let edges = frame(&mut h, &mut value);
         assert_eq!(value, want, "{mods:?} {key:?} over {min}..={max}");
@@ -376,7 +380,7 @@ fn a_disabled_slider_wears_the_disabled_colors() {
                 .disabled(disabled)
                 .show(ui);
         });
-        let theme = h.ui_ref().theme().slider.clone();
+        let theme = h.ui().theme().slider.clone();
         assert_ne!(theme.enabled, theme.disabled, "premise: the states differ");
         let want = if disabled {
             theme.disabled
@@ -390,7 +394,7 @@ fn a_disabled_slider_wears_the_disabled_colors() {
         ] {
             let node = h.node_of(id.with(part)).expect("part recorded").node;
             let fill = h
-                .ui_ref()
+                .ui()
                 .tree(Layer::Main)
                 .chrome(node)
                 .expect("the part paints chrome")

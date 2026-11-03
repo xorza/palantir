@@ -1,6 +1,7 @@
 //! [`HostDisplay`]: what a host knows of the surface a frame paints onto.
 
 use crate::display::Display;
+use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use glam::UVec2;
 
@@ -9,7 +10,7 @@ use glam::UVec2;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HostDisplay {
     pub(crate) physical: UVec2,
-    pub(crate) system_scale: f32,
+    pub(crate) system_scale: SystemScale,
     pub(crate) pixel_snap: bool,
     pub(crate) refresh_millihertz: Option<u32>,
 }

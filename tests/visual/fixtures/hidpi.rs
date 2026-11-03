@@ -3,7 +3,7 @@
 use glam::UVec2;
 use palantir::{
     Block, Button, Chrome, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing, Stroke,
-    Text, TextStyle, Track,
+    SystemScale, Text, TextStyle, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -15,7 +15,7 @@ fn dashboard_matches_golden() {
     let mut h = VisualRig::new();
     let img = h
         .size(UVec2::new(800, 600))
-        .scale(2.0)
+        .scale(SystemScale::new(2.0).unwrap())
         .frame(|ui| {
             Grid::new()
                 .id_salt("shell")

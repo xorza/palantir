@@ -26,9 +26,9 @@ fn empty_ui_drives_a_frame_safely() {
     // Empty first frame has damage `None`; force `Full`.
     let mut frontend = Frontend::for_test();
     frontend.build(
-        h.ui_ref().frame_scene(),
+        h.ui().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: h.ui_ref().theme().window_clear,
+            clear: h.ui().theme().window_clear,
             damage: Damage::Full,
         }),
     );
@@ -55,17 +55,6 @@ fn empty_then_populated_frame() {
     assert_eq!(h.ui().forest.trees[Plane::MAIN].records.len(), 2);
     // The rowless user Panel gets no prev entry; the viewport root tracks it as a child marker.
     assert_eq!(h.engines_mut().damage.prev().len(), 1);
-}
-
-/// Pin: `Ui::frame` panics if `display.scale_factor()` is below `EPS`.
-#[test]
-#[should_panic(expected = "a scale factor must be finite and at least 1e-4")]
-fn frame_rejects_zero_scale_factor() {
-    let mut h = Harness::builder(UVec2::new(800, 600))
-        .mono()
-        .scale(0.0)
-        .build();
-    let _ = h.frame(|_| {});
 }
 
 /// Pin: `Display::logical_rect` divides by both scale factors.

@@ -52,7 +52,7 @@ fn settled(text: &mut String, case: &Case) -> Harness {
         Selection::Nothing => {}
         Selection::All => {
             h.set_focus(editor_id());
-            h.ui()
+            h.ui_mut()
                 .with_state::<TextEditState, _>(editor_id(), |_, state| {
                     state.edit.selection = Some(0);
                     state.edit.caret = text.len();

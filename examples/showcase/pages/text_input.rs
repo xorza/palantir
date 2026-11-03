@@ -142,7 +142,7 @@ fn page(ui: &mut Ui, k: Kit, s: &mut Page) {
                         .label("Paste into the second")
                         .show(ui)
                         .clicked()
-                        && let Ok(text) = ui.clipboard().text()
+                        && let Ok(Some(text)) = ui.clipboard().text()
                     {
                         s.b = text;
                     }

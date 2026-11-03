@@ -42,7 +42,7 @@ pub(super) enum CaretMove {
 impl From<Modifiers> for CaretMove {
     /// Shift extends, as every platform's text fields do.
     fn from(mods: Modifiers) -> Self {
-        if mods.shift {
+        if mods.contains(Modifiers::SHIFT) {
             Self::Extend
         } else {
             Self::Collapse

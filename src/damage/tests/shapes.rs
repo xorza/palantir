@@ -106,7 +106,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
         .counters
         .dirty()
         .iter()
-        .map(|n| h.ui_ref().tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| h.ui().tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
@@ -169,7 +169,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .counters
         .dirty()
         .iter()
-        .map(|n| h.ui_ref().tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| h.ui().tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
     assert!(!h.damage_region().is_empty());
@@ -204,7 +204,7 @@ fn button_hover_and_unhover_damage_cover_only_the_button() {
     for entering in [true, false] {
         let direction = if entering { "hover" } else { "unhover" };
         let mut h = Harness::mono(UVec2::new(400, 400));
-        h.ui().theme_mut().button.defaults.animation = None;
+        h.ui_mut().theme_mut().button.defaults.animation = None;
         let hot = build(&mut h);
         let hot_rect = h.ui().arranged_rect(Layer::Main, hot);
         let (off, on) = (Vec2::new(380.0, 380.0), hot_rect.min + Vec2::new(5.0, 5.0));
@@ -385,7 +385,7 @@ fn node_snapshot_decomposition_matches_cascade() {
         .node
         .idx();
     let node_span = h.ui().cascade().planes[plane].paint_arena.node_spans[node_idx];
-    let layer_paints = &h.ui_ref().cascade().planes[plane].paint_arena.rows;
+    let layer_paints = &h.ui().cascade().planes[plane].paint_arena.rows;
 
     let chrome_paint = layer_paints[node_span.start as usize];
     assert!(

@@ -119,7 +119,7 @@ fn stable_editor_uses_one_direct_layout_probe() {
         h.prime(2, &mut record);
         if selected {
             h.set_focus(id);
-            h.ui().with_state::<TextEditState, _>(id, |_, state| {
+            h.ui_mut().with_state::<TextEditState, _>(id, |_, state| {
                 state.edit.selection = Some(0);
                 state.edit.caret = text_len;
             });

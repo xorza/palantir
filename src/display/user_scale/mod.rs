@@ -1,5 +1,6 @@
 //! The scale the *user* chose, held apart from the scale the *system* reported.
 
+use crate::display::system_scale::SystemScale;
 use crate::primitives::math::domain::EPS;
 
 /// An interface scale the application chooses, multiplied onto the platform's;
@@ -71,8 +72,8 @@ impl UserScale {
     /// of the product, so the host's per-event copy and a frame's
     /// [`Display`](crate::Display) can't disagree.
     #[inline]
-    pub const fn applied_to(self, system_scale: f32) -> f32 {
-        system_scale * self.0
+    pub const fn applied_to(self, system_scale: SystemScale) -> f32 {
+        system_scale.get() * self.0
     }
 
     /// The next rung above, or this value at [`Self::MAX`]. Strictly above, so a

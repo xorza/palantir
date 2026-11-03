@@ -54,7 +54,7 @@ fn commits_and_keys_type_in_arrival_order() {
 fn a_commit_splits_between_characters_and_types_whole() {
     let FocusedField { mut h, mut buf } = focused_field();
     let text = "日本語の文章を入力する";
-    h.set_modifiers(Modifiers::CTRL);
+    h.hold_modifiers(Modifiers::CTRL);
     h.on_input(InputEvent::ImeCommit("日本語の文章を入力する\tz\n"));
     let pieces = h.frame_value(|ui| {
         let pieces: Vec<String> = ui

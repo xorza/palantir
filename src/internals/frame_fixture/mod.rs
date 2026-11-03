@@ -27,6 +27,7 @@ mod stat_strip;
 mod swatches;
 mod tokens;
 
+use crate::display::system_scale::SystemScale;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -43,7 +44,7 @@ use glam::{UVec2, Vec2};
 pub const BENCH_SCALE: usize = 32;
 
 /// Device pixel ratio of the bench surface.
-pub const BENCH_DPR: f32 = 2.0;
+pub const BENCH_DPR: SystemScale = SystemScale::new(2.0).unwrap();
 
 /// One 1440p display. `BENCH_SCALE` content is far taller, so the CPU arms
 /// record, measure and arrange everything while paint and the GPU arms see

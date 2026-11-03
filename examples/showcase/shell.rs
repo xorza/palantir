@@ -790,7 +790,10 @@ fn handle_shortcuts(ui: &mut Ui) {
     let mut scale = ui.user_scale();
     let up = ui.shortcut_pressed(Shortcut::ctrl('='))
         || ui.shortcut_pressed(Shortcut::ctrl('+'))
-        || ui.shortcut_pressed(Shortcut::ctrl_shift('+'));
+        || ui.shortcut_pressed(Shortcut::new(
+            ShortcutMods::CTRL | ShortcutMods::SHIFT,
+            Key::Char('+'),
+        ));
     if up {
         scale = scale.stepped_up();
     }
