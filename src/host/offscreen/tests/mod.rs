@@ -386,7 +386,7 @@ fn a_screenshot_request_carries_to_the_frame_that_paints_it() {
     let scene = |ui: &mut Ui, ask: bool| {
         Block::new()
             .id_salt("tile")
-            .pos((18.0, 8.0))
+            .at((18.0, 8.0))
             .size(10.0)
             .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
             .show(ui);

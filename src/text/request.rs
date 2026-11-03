@@ -127,9 +127,12 @@ pub(crate) mod internals {
     /// Builders for the one or two overrides a case wants; named for the field each
     /// sets. Assertion-side: only a test overrides a field or binds a width.
     impl TestShape {
-        pub(crate) fn font_size(self, size: f32) -> Self {
+        pub(crate) fn font_size(self, font_size: f32) -> Self {
             Self {
-                font: GlyphFont { size, ..self.font },
+                font: GlyphFont {
+                    font_size,
+                    ..self.font
+                },
                 ..self
             }
         }

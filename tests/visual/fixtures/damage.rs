@@ -130,13 +130,13 @@ fn corner_pair_scene(salt: &'static str) -> impl FnMut(&mut Ui) + Copy {
             .show(ui, |ui| {
                 Block::new()
                     .id_salt(("tl", salt))
-                    .pos(Vec2::new(0.0, 0.0))
+                    .at(Vec2::new(0.0, 0.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .chrome(Chrome::fill(TOP_LEFT))
                     .show(ui);
                 Block::new()
                     .id_salt(("br", salt))
-                    .pos(Vec2::new(180.0, 180.0))
+                    .at(Vec2::new(180.0, 180.0))
                     .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                     .chrome(Chrome::fill(BOTTOM_RIGHT))
                     .show(ui);
@@ -289,7 +289,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("sliver")
-                        .pos(Vec2::new(60.0, 20.0))
+                        .at(Vec2::new(60.0, 20.0))
                         .size((Sizing::fixed(2.0), Sizing::fixed(40.0)))
                         .chrome(Chrome::fill(if on {
                             RgbaF32::srgb(0.9, 0.5, 0.2)

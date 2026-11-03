@@ -21,7 +21,8 @@ use std::ops::RangeInclusive;
 /// [`DragValue`](crate::DragValue). The knob sits between two `Fill` leaves
 /// weighted `fraction` and `1 − fraction`, so it tracks the resolved width without
 /// knowing it at record time; pointer mapping uses last frame's width. The parts are
-/// `id.with("fill")`, `id.with("knob")` and `id.with("track")`. Visuals come from
+/// `id.with("fill")`, `id.with("knob")` and `id.with("rest")`, the unfilled remainder, which
+/// wears the track's color, as a progress bar's remainder is its `rest`. Visuals come from
 /// [`crate::SliderTheme`] (slot `slider`).
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
@@ -143,7 +144,7 @@ impl<'a> Slider<'a> {
                 .size((knob, knob))
                 .record(ui, Some(&knob_chrome), |_| {});
             Widget::leaf()
-                .id(id.with("track"))
+                .id(id.with("rest"))
                 .size((remainder, track))
                 .record(ui, Some(&track_chrome), |_| {});
         });

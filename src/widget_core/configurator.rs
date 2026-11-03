@@ -110,10 +110,10 @@ impl Configurator<'_> {
         self
     }
 
-    /// See [`Configure::pos`](crate::widget_core::configure::Configure::pos).
+    /// See [`Configure::at`](crate::widget_core::configure::Configure::at).
     #[inline]
     #[track_caller]
-    pub fn pos(&mut self, p: impl Into<Vec2>) -> &mut Self {
+    pub fn at(&mut self, p: impl Into<Vec2>) -> &mut Self {
         self.widget.node.pos = vec2::offset(p.into());
         self
     }

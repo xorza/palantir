@@ -21,7 +21,7 @@ fn scene(ui: &mut Ui) {
     for row in 0..40 {
         Text::new("The quick brown fox jumps over the lazy dog")
             .id_salt(row)
-            .pos((8.0, 8.0 + 18.0 * row as f32))
+            .at((8.0, 8.0 + 18.0 * row as f32))
             .show(ui);
     }
 }

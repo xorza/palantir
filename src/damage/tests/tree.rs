@@ -40,7 +40,7 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                 for i in 0..child_count {
                     Block::new()
                         .id(WidgetId::from_hash(("child", i)))
-                        .pos((10.0 + i as f32 * 50.0, 10.0))
+                        .at((10.0 + i as f32 * 50.0, 10.0))
                         .size(20.0)
                         .chrome(Chrome::fill(RED))
                         .show(ui);
@@ -70,7 +70,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     fn node(ui: &mut Ui, key: &str, pos: (f32, f32)) {
         Panel::vstack()
             .id(WidgetId::from_hash(key))
-            .pos(pos)
+            .at(pos)
             .size((Sizing::fixed(30.0), Sizing::fixed(30.0)))
             .show(ui, |ui| {
                 Block::new().size(10.0).chrome(Chrome::fill(RED)).show(ui);
@@ -124,7 +124,7 @@ fn raising_an_overlapping_node_redamages_only_the_overlap() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for (key, r) in order {
-                    block(key, r.size.w).pos((r.min.x, r.min.y)).show(ui);
+                    block(key, r.size.w).at((r.min.x, r.min.y)).show(ui);
                 }
             });
     };
@@ -181,7 +181,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
         Button::new()
             .id(WidgetId::from_hash(key))
             .label("Node label")
-            .pos((-300.0, y))
+            .at((-300.0, y))
             .show(ui);
     }
     let canvas = |ui: &mut Ui, order: [(&str, f32); 2]| {
@@ -264,7 +264,7 @@ fn shape_crossing_child_boundary_is_redamaged() {
     let child = |ui: &mut Ui| {
         Block::new()
             .id(WidgetId::from_hash("child"))
-            .pos((CHILD.min.x, CHILD.min.y))
+            .at((CHILD.min.x, CHILD.min.y))
             .size(CHILD.size.w)
             .chrome(Chrome::fill(RED))
             .show(ui);
@@ -350,7 +350,7 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
     fn node(ui: &mut Ui, key: &str, r: Rect) {
         Block::new()
             .id(WidgetId::from_hash(key))
-            .pos((r.min.x, r.min.y))
+            .at((r.min.x, r.min.y))
             .size(r.size.w)
             .chrome(Chrome::fill(BLUE))
             .show(ui);
@@ -403,7 +403,7 @@ fn rekeying_a_child_damages_only_the_child() {
             .show(ui, |ui| {
                 Block::new()
                     .id(WidgetId::from_hash(key))
-                    .pos((CHILD.min.x, CHILD.min.y))
+                    .at((CHILD.min.x, CHILD.min.y))
                     .size(CHILD.size.w)
                     .chrome(Chrome::fill(BLUE))
                     .show(ui);
@@ -797,7 +797,7 @@ fn reversing_a_deck_pushes_one_rect_per_card() {
                     let card = if reversed { 199 - i } else { i };
                     Block::new()
                         .id(WidgetId::from_hash(("card", card)))
-                        .pos((CARD.min.x, CARD.min.y))
+                        .at((CARD.min.x, CARD.min.y))
                         .size(CARD.size.w)
                         .chrome(Chrome::fill(BLUE))
                         .show(ui);

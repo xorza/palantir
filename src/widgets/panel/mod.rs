@@ -79,7 +79,7 @@ impl Panel {
         Self::auto(Widget::zstack())
     }
 
-    /// Children at their `.pos(Vec2)`; hugs the bounding box of the placed children.
+    /// Children at their `.at(Vec2)`; hugs the bounding box of the placed children.
     #[track_caller]
     pub fn canvas() -> Self {
         Self::auto(Widget::canvas())

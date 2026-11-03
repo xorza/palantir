@@ -149,7 +149,7 @@ fn a_pane_inside_a_rounded_clip_blurs_inside_it() {
             stripes(ui, 64);
             Panel::zstack()
                 .id_salt("backdrop-clipped")
-                .pos((clip.min.x, clip.min.y))
+                .at((clip.min.x, clip.min.y))
                 .size((Sizing::fixed(clip.size.w), Sizing::fixed(clip.size.h)))
                 .chrome(Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(radius)))
                 .clip_rounded()

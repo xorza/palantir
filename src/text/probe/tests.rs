@@ -17,7 +17,7 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
         TextRun {
             text,
             font: GlyphFont {
-                size: 16.0,
+                font_size: 16.0,
                 line_height: 20.0,
                 family: FontFamily::SANS,
                 weight: FontWeight::REGULAR,
@@ -96,7 +96,7 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
     let run = |wrap, max_width| TextRun {
         text: "hello world",
         font: GlyphFont {
-            size: 16.0,
+            font_size: 16.0,
             line_height: 20.0,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
@@ -138,10 +138,10 @@ fn a_wrapping_run_binds_its_width_and_a_single_line_run_does_not() {
 #[test]
 fn an_unusable_face_probes_to_nothing() {
     let shaper = TextShaper::test_mono();
-    let run = |size, line_height| TextRun {
+    let run = |font_size, line_height| TextRun {
         text: "hello",
         font: GlyphFont {
-            size,
+            font_size,
             line_height,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,

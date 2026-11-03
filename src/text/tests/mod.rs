@@ -45,7 +45,7 @@ mod wrap;
 /// leading equal to the font size. Override via the `TestShape` builders: `shape(16.0).width(32.0)`.
 fn shape(font_size: f32) -> TestShape {
     TestShape::new(GlyphFont {
-        size: font_size,
+        font_size,
         line_height: font_size,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,

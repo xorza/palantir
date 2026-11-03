@@ -220,9 +220,9 @@ impl Widget {
     }
 
     /// Fills the padding and margin the builder left unset from `plan`, then animates toward its
-    /// look. The look is not stashed on the widget: a toggle paints it on its inner box (see
-    /// `ToggleRow::show`); widgets that wear it pass `Some(&look.chrome)` to
-    /// [`Self::record`].
+    /// look. The look is not stashed on the widget: a widget that wears it whole passes
+    /// `Some(&look.chrome)` to [`Self::record`], and one that paints a part in it, as a checkbox
+    /// paints its box, records that part with the chrome.
     // Forced inline across the theme/widget codegen-unit boundary: left outlined, the resolver cost
     // 3.9% self-time in the frame bench.
     #[inline(always)]

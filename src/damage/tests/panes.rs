@@ -203,7 +203,7 @@ fn a_chrome_pane_goes_stale_as_a_shape_pane() {
                     ui.add_shape(Shape::rect().at(UNDER).fill(under));
                     Panel::canvas()
                         .id(WidgetId::from_hash("chrome-pane"))
-                        .pos(PANE.min)
+                        .at(PANE.min)
                         .size((Sizing::fixed(PANE.size.w), Sizing::fixed(PANE.size.h)))
                         .chrome(Chrome::NONE.with_backdrop_filter(BackdropFilter::blur(SIGMA)))
                         .show(ui, |_| {});

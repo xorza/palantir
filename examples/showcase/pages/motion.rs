@@ -401,7 +401,7 @@ impl Card {
             let r = Block::new()
                 .id(id)
                 .size((Sizing::fixed(CARD_W), Sizing::fixed(CARD_H)))
-                .pos(*pos)
+                .at(*pos)
                 .sense(Sense::DRAG)
                 .chrome(
                     Chrome::rounded((self.accent)(&k.swatch), Corners::all(6.0))

@@ -76,7 +76,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .show(ui, |ui| {
                     Block::new()
                         .id(WidgetId::from_hash("mover"))
-                        .pos((k.nudge, 5.0))
+                        .at((k.nudge, 5.0))
                         .size(20.0)
                         .chrome(fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
                         .show(ui);

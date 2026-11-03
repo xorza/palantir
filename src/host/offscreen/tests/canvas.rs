@@ -35,7 +35,7 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
         .show(ui, |ui| {
             Block::new()
                 .id_salt("shadowed")
-                .pos((30.0, 40.0))
+                .at((30.0, 40.0))
                 .size(16.0)
                 .chrome(Chrome {
                     fill: RgbaF32::hex(0x30364a).into(),
@@ -50,7 +50,7 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
                 .show(ui);
             Panel::canvas()
                 .id_salt("rounded")
-                .pos((52.0, 24.0))
+                .at((52.0, 24.0))
                 .size(24.0)
                 .chrome(Chrome::rounded(RgbaF32::hex(0x4cd3ff), Corners::all(9.0)))
                 .clip(ClipMode::Rounded)
@@ -61,7 +61,7 @@ fn scene(ui: &mut Ui, tile: RgbaF32, mesh: &Mesh) {
                             .fill(RgbaF32::BLACK),
                     );
                 });
-            Text::new("Canvas").pos((22.0, 26.0)).show(ui);
+            Text::new("Canvas").at((22.0, 26.0)).show(ui);
             ui.add_shape(Shape::mesh(mesh));
             ui.add_shape(Shape::line(
                 Vec2::new(22.5, 22.25),

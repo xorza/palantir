@@ -36,7 +36,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                     .show(ui, |ui| {
                         let v = Block::new()
                             .id(WidgetId::from_hash("V"))
-                            .pos((0.0, 0.0))
+                            .at((0.0, 0.0))
                             .size(30.0)
                             .chrome(Chrome::fill(v_color))
                             .sense(Sense::CLICK)
@@ -45,7 +45,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .clicked();
                         let d = Block::new()
                             .id(WidgetId::from_hash("D"))
-                            .pos((40.0, 0.0))
+                            .at((40.0, 0.0))
                             .size(30.0)
                             .chrome(Chrome::fill(d_color))
                             .sense(Sense::CLICK)
@@ -55,7 +55,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                             .clicked();
                         let h = Block::new()
                             .id(WidgetId::from_hash("H"))
-                            .pos((80.0, 0.0))
+                            .at((80.0, 0.0))
                             .size(30.0)
                             .chrome(Chrome::fill(h_color))
                             .sense(Sense::CLICK)

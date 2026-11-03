@@ -393,7 +393,7 @@ impl ShapeRecord {
             return false;
         };
         text.hash(h);
-        font.size.hash_visual(h);
+        font.font_size.hash_visual(h);
         font.line_height.hash_visual(h);
         let face = (u64::from(font.family.get()) << 40)
             | (u64::from(font.weight.get()) << 24)

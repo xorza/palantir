@@ -104,7 +104,7 @@ fn hug_node_in_canvas_fill_children_arrange_to_hug_width() {
             .show(ui, |ui| {
                 Panel::vstack()
                     .id(node_id)
-                    .pos(Vec2::new(40.0, 40.0))
+                    .at(Vec2::new(40.0, 40.0))
                     .size((Sizing::HUG, Sizing::HUG))
                     .show(ui, |ui| {
                         Panel::hstack()

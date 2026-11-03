@@ -318,7 +318,7 @@ fn shape_image_hash_distinguishes_handle_dimensions_tint_and_filters() {
 fn text_shape(line_height: f32, weight: FontWeight, local_origin: Option<Vec2>) -> ShapeRecord {
     text_face(
         ShapingFont {
-            size: 16.0,
+            font_size: 16.0,
             line_height,
             family: FamilyKey::from_raw(0),
             weight,
@@ -351,7 +351,7 @@ fn text_shape_hash_distinguishes_each_authoring_field() {
     let o_a = Some(Vec2::new(0.0, 0.0));
     let o_b = Some(Vec2::new(5.0, 5.0));
     let upright = ShapingFont {
-        size: 16.0,
+        font_size: 16.0,
         line_height: 16.0,
         family: FamilyKey::from_raw(0),
         weight: FontWeight::REGULAR,

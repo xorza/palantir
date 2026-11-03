@@ -140,7 +140,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
             fixtures::canvas(ui, |ui| {
                 let panel = Panel::zstack()
                     .id_salt("rounded")
-                    .pos(Vec2::new(-6.0, -6.0))
+                    .at(Vec2::new(-6.0, -6.0))
                     .size((Sizing::fixed(200.0), Sizing::fixed(150.0)))
                     .chrome(green_rim(4.0, Corners::all(24.0)));
                 rounded_clip(ui, panel);
@@ -233,7 +233,7 @@ fn progress_bar_half_matches_golden() {
 }
 
 /// Switch on and off, animation disabled: knob rest positions and the
-/// `Canvas` track with `.pos`ed knob.
+/// `Canvas` track with its knob placed by `.at`.
 #[test]
 fn toggle_switch_states_matches_golden() {
     let mut style = theme::fixture(ColorScheme::Dark).switch;

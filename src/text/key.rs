@@ -91,7 +91,7 @@ impl TextShapeKey {
     /// Callers screen the face first, so an invalid one is a logic error (debug-asserted); unscreened, a NaN size would quantize silently.
     pub(crate) fn unbounded(text_hash: u64, font: ShapingFont) -> Self {
         let ShapingFont {
-            size: font_size,
+            font_size,
             line_height,
             family,
             weight,
@@ -353,7 +353,7 @@ pub(crate) mod internals {
             Self::unbounded(
                 1,
                 ShapingFont {
-                    size: 16.0,
+                    font_size: 16.0,
                     line_height: 16.0,
                     family: FamilyKey::from_raw(0),
                     weight: FontWeight::REGULAR,

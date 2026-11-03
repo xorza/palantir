@@ -389,7 +389,7 @@ fn a_disabled_slider_wears_the_disabled_colors() {
         };
         for (part, color) in [
             ("fill", want.fill),
-            ("track", want.track),
+            ("rest", want.track),
             ("knob", want.knob),
         ] {
             let node = h.node_of(id.with(part)).expect("part recorded").node;

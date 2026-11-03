@@ -22,7 +22,7 @@ fn scene(ui: &mut Ui) {
             .id(WidgetId::from_hash(id))
             .label(label)
             .size((Sizing::fixed(60.0), Sizing::fixed(20.0)))
-            .pos(pos)
+            .at(pos)
             .disabled(label == "Off")
             .show(ui);
     };
@@ -40,7 +40,7 @@ fn scene(ui: &mut Ui) {
             Text::new("Label")
                 .id(WidgetId::from_hash("label"))
                 .sense(Sense::HOVER)
-                .pos(Vec2::new(100.0, 40.0))
+                .at(Vec2::new(100.0, 40.0))
                 .show(ui);
             button(ui, "dup-covered", "Dup", Vec2::new(100.0, 70.0));
             button(ui, "cover", "Cover", Vec2::new(100.0, 70.0));
@@ -49,7 +49,7 @@ fn scene(ui: &mut Ui) {
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-                .pos(Vec2::new(200.0, 10.0))
+                .at(Vec2::new(200.0, 10.0))
                 .clip_rect()
                 .show(ui, |ui| {
                     button(ui, "hidden", "Hidden", Vec2::new(0.0, 50.0));

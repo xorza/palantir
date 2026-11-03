@@ -26,7 +26,7 @@ impl LayoutDriver for Canvas {
 
     /// Canvas: children placed at their declared `Layout.pos` (parent-inner coords, default `(0, 0)`), each measured against the room past where it sits; see [`per_axis_hug::measure`].
     ///
-    /// **Content size per axis depends on the canvas's sizing on that axis.** A `Hug` axis reports `max(child_pos + child_desired)`; a `Fill` axis reports `max(child_desired)`, so `.pos(...)` cannot inflate the canvas past its available and flicker `Damage::Full` while dragging.
+    /// **Content size per axis depends on the canvas's sizing on that axis.** A `Hug` axis reports `max(child_pos + child_desired)`; a `Fill` axis reports `max(child_desired)`, so `.at(...)` cannot inflate the canvas past its available and flicker `Damage::Full` while dragging.
     /// Negative positions render outside `inner` either way (the running max starts at 0); build scrollable negative-origin canvases on [`crate::widgets::scroll::Scroll`].
     ///
     /// A bounded axis has no floor: a child larger than the canvas overflows it rather than holding it open, as CSS gives a scroll container no content-based minimum and WPF's Canvas does not size to its children. A floor here would rise through every `Fill` parent, so one tall child would push its window's layout past the window.
@@ -60,7 +60,7 @@ impl LayoutDriver for Canvas {
         }
     }
 
-    /// Intrinsic size of a Canvas, mirroring `measure`: `Hug` returns `max(child.pos + child.intrinsic)`; `Fill` drops the offset so a `.pos(...)` past `available` cannot floor it, and has no min-content, as `measure` gives it no floor.
+    /// Intrinsic size of a Canvas, mirroring `measure`: `Hug` returns `max(child.pos + child.intrinsic)`; `Fill` drops the offset so a `.at(...)` past `available` cannot floor it, and has no min-content, as `measure` gives it no floor.
     fn intrinsic(self, pass: &mut IntrinsicPass<'_>, query: IntrinsicQuery) -> IntrinsicRange {
         let axis = query.axis();
         let hug = axis

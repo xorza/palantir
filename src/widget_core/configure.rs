@@ -172,8 +172,8 @@ pub trait Configure: Sized {
     #[inline]
     #[must_use]
     #[track_caller]
-    fn pos(mut self, p: impl Into<Vec2>) -> Self {
-        self.configure().pos(p);
+    fn at(mut self, p: impl Into<Vec2>) -> Self {
+        self.configure().at(p);
         self
     }
 

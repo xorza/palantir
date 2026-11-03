@@ -10,7 +10,7 @@ use crate::text::glyph_font::GlyphFont;
 /// a cache key carry, so neither holds a family's name.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct ShapingFont {
-    pub(crate) size: f32,
+    pub(crate) font_size: f32,
     pub(crate) line_height: f32,
     pub(crate) family: FamilyKey,
     pub(crate) weight: FontWeight,
@@ -21,14 +21,14 @@ impl ShapingFont {
     /// `font` with its family keyed in `keys`.
     pub(crate) fn new(font: GlyphFont, keys: &FamilyKeys) -> Self {
         let GlyphFont {
-            size,
+            font_size,
             line_height,
             family,
             weight,
             slant,
         } = font;
         Self {
-            size,
+            font_size,
             line_height,
             family: keys.key(family),
             weight,
@@ -37,13 +37,13 @@ impl ShapingFont {
     }
 
     pub(crate) const fn metrics_valid(&self) -> bool {
-        GlyphFont::metrics_are_valid(self.size, self.line_height)
+        GlyphFont::metrics_are_valid(self.font_size, self.line_height)
     }
 }
 
 impl NanCheck for ShapingFont {
     /// Only the two metrics can be NaN; the three face axes are integral.
     fn has_nan(&self) -> bool {
-        self.size.is_nan() || self.line_height.is_nan()
+        self.font_size.is_nan() || self.line_height.is_nan()
     }
 }

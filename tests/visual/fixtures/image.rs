@@ -45,7 +45,7 @@ fn render(h: &mut VisualRig, size: UVec2, mut scene: impl FnMut(&mut Ui)) -> Rgb
 fn pane(ui: &mut Ui, at: Rect, image: ImageShape) {
     Panel::zstack()
         .id_salt(("pane", at.min.x as i32))
-        .pos(at.min)
+        .at(at.min)
         .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
         .show(ui, |ui| ui.add_shape(image));
 }

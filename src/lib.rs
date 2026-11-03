@@ -148,7 +148,7 @@ pub use diagnostics::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 pub use wgpu;
 
 // Re-exported whole for the same reason: points, sizes and screen coordinates are `glam` vectors
-// (`Configure::pos`, `Display::physical`, polyline points), so a consumer names them from the
+// (`Configure::at`, `Display::physical`, polyline points), so a consumer names them from the
 // version palantir is built against.
 pub use glam;
 

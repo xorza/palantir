@@ -313,8 +313,10 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
 
 ### Widgets
 
-- **Lifecycle.** Constructor, setters, `show(self, ui)` or `show(self, ui, body)`. `Configure`
-  carries every node setting; a widget does not repeat one.
+- **Lifecycle.** Constructor, setters, `show(self, ui)` or `show(self, ui, body)`. A widget that
+  also shows alone keeps `show(self, ui)` and takes its body through `show_with(self, ui, body)`,
+  as `Button::show_with` does; `show` calls it with an empty body. `Configure` carries every node
+  setting; a widget does not repeat one.
 - **Theme.** `style(s)` takes the slot as `impl Into<Option<&Theme>>`, a second slot
   `<slot>_style`; an override of one axis is a named setter. `chrome` and `default_chrome` are
   held in step by a test in `widgets::tests`.

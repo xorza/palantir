@@ -165,7 +165,7 @@ impl App for Deck {
                     for k in 0..SLIDES {
                         Panel::zstack()
                             .id(id(k, "frame"))
-                            .pos(slide_origin(k))
+                            .at(slide_origin(k))
                             .size((Sizing::fixed(SLIDE.x), Sizing::fixed(SLIDE.y)))
                             .chrome(Chrome::rounded(ground, Corners::all(24.0)))
                             .clip(ClipMode::Rounded)
@@ -396,7 +396,7 @@ impl Deck {
                         {
                             Block::new()
                                 .id(id_at(5, "blob", i))
-                                .pos((60.0 + 210.0 * i as f32, 40.0 + 90.0 * (i % 2) as f32))
+                                .at((60.0 + 210.0 * i as f32, 40.0 + 90.0 * (i % 2) as f32))
                                 .size(170.0)
                                 .chrome(Chrome::rounded(RgbaF32::hex(hex), Corners::all(85.0)))
                                 .show(ui);
@@ -414,7 +414,7 @@ impl Deck {
                         };
                         Block::new()
                             .id(id(5, "pane"))
-                            .pos((x, 70.0))
+                            .at((x, 70.0))
                             .size((Sizing::fixed(360.0), Sizing::fixed(220.0)))
                             .chrome(Chrome {
                                 fill: RgbaF32::WHITE.with_alpha(0.12).into(),
@@ -447,7 +447,7 @@ impl Deck {
                     Panel::canvas().id(id(6, "art")).show(ui, |ui| {
                         Block::new()
                             .id(id(6, "gradient"))
-                            .pos((40.0, 20.0))
+                            .at((40.0, 20.0))
                             .size((Sizing::fixed(320.0), Sizing::fixed(200.0)))
                             .chrome(Chrome {
                                 fill: Brush::Linear(LinearGradient::two_stop(
@@ -471,7 +471,7 @@ impl Deck {
                             Stroke::new(RgbaF32::hex(0xfacc15), 6.0),
                         ));
                         Text::new("Aa")
-                            .pos((440.0, 220.0))
+                            .at((440.0, 220.0))
                             .font_size(72.0)
                             .bold()
                             .show(ui);

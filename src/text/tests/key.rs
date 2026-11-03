@@ -317,7 +317,7 @@ fn key_for(recorded: &RecordedText) -> TextShapeKey {
     TextShapeKey::unbounded(
         recorded.hash,
         keyed(GlyphFont {
-            size: 16.0,
+            font_size: 16.0,
             line_height: 19.2,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,

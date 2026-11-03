@@ -228,7 +228,7 @@ ButtonTheme
         pub fn subtle(p: &Palette, m: &Metrics) -> Self
 
 CheckState
-    enum CheckState: Clone, Copy, Debug, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
+    enum CheckState: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
         Unchecked
         Checked
 
@@ -430,7 +430,7 @@ Configure
         fn padding(self, p: impl Into<Spacing>) -> Self { .. }
         fn margin(self, m: impl Into<Spacing>) -> Self { .. }
         fn transform(self, t: TranslateScale) -> Self { .. }
-        fn pos(self, p: impl Into<Vec2>) -> Self { .. }
+        fn at(self, p: impl Into<Vec2>) -> Self { .. }
         fn grid_cell(self, cell: impl Into<GridCell>) -> Self { .. }
         fn adopt_placement(self, from: &Widget) -> Self { .. }
         fn gap(self, g: f32) -> Self { .. }
@@ -845,7 +845,7 @@ FramePaint
         Partial
 
 FrameReport
-    struct FrameReport: Debug
+    struct FrameReport: Clone, Debug, PartialEq
         pub repaint_requested: bool
         pub repaint_at: Option<Duration>
         pub const fn paint(&self) -> FramePaint
@@ -1129,7 +1129,7 @@ Image
 ImageDataError
     enum ImageDataError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
         ZeroSize { size: UVec2 }
-        TooLarge { size: UVec2 }
+        LengthOverflow { size: UVec2 }
         LengthMismatch { size: UVec2, expected: usize, actual: usize }
 
 ImageDownsample
@@ -1847,12 +1847,12 @@ Response
         pub fn snapshot(&self) -> ResponseSnapshot
 
 ResponseSnapshot
-    struct ResponseSnapshot: Clone, Copy, Debug, Deref
+    struct ResponseSnapshot: Clone, Copy, Debug, Deref, PartialEq
         pub id: WidgetId
         pub state: ResponseState
 
 ResponseState
-    struct ResponseState: Clone, Copy, Debug, Default
+    struct ResponseState: Clone, Copy, Debug, Default, PartialEq
         pub rect: Option<Rect>
         pub layout_rect: Option<Rect>
         pub transform: TranslateScale
@@ -3017,7 +3017,7 @@ widget::Configurator
         pub fn padding(&mut self, p: impl Into<Spacing>) -> &mut Self
         pub fn margin(&mut self, m: impl Into<Spacing>) -> &mut Self
         pub const fn transform(&mut self, t: TranslateScale) -> &mut Self
-        pub fn pos(&mut self, p: impl Into<Vec2>) -> &mut Self
+        pub fn at(&mut self, p: impl Into<Vec2>) -> &mut Self
         pub fn grid_cell(&mut self, cell: impl Into<GridCell>) -> &mut Self
         pub fn adopt_placement(&mut self, from: &Widget) -> &mut Self
         pub fn gap(&mut self, g: f32) -> &mut Self
@@ -3070,12 +3070,12 @@ widget::CurveShape
 
 widget::GlyphFont
     struct GlyphFont: Clone, Copy, Debug, PartialEq
-        pub size: f32
+        pub font_size: f32
         pub line_height: f32
         pub family: FontFamily
         pub weight: FontWeight
         pub slant: FontSlant
-        pub const fn new(size: f32) -> Self
+        pub const fn new(font_size: f32) -> Self
 
 widget::GlyphLine
     struct GlyphLine<'a>: Clone, Copy, Debug

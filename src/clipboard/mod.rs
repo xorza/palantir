@@ -198,7 +198,7 @@ fn image_or_none(
     match image {
         Ok(image) => Ok(Some(image)),
         Err(ImageDataError::ZeroSize { .. }) => Ok(None),
-        Err(ImageDataError::TooLarge { .. } | ImageDataError::LengthMismatch { .. }) => {
+        Err(ImageDataError::LengthOverflow { .. } | ImageDataError::LengthMismatch { .. }) => {
             Err(ClipboardUnavailable)
         }
     }

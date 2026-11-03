@@ -129,7 +129,7 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
                     .padding(padding)
                     .margin(margin)
                     .align(Align::CENTER)
-                    .pos(POS)
+                    .at(POS)
                     .min_size(Size::new(40.0, 20.0))
                     .max_size(Size::new(200.0, 60.0))
                     .show(ui);

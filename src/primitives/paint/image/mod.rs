@@ -316,7 +316,7 @@ fn rgba8_len(size: UVec2) -> Result<usize, ImageDataError> {
         .checked_mul(u64::from(size.y))
         .and_then(|texels| texels.checked_mul(4))
         .and_then(|len| usize::try_from(len).ok())
-        .ok_or(ImageDataError::TooLarge { size })
+        .ok_or(ImageDataError::LengthOverflow { size })
 }
 
 /// Where a fitted image paints, and which part of the texture shows.

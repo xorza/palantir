@@ -22,7 +22,7 @@ fn scene(ui: &mut Ui, x: f32) {
     for (i, r, sigma, at_x, at_y) in blocks {
         Block::new()
             .id_salt(("shadowed", i))
-            .pos((x + 12.0 + at_x, 12.0 + at_y))
+            .at((x + 12.0 + at_x, 12.0 + at_y))
             .size(22.0)
             .chrome(Chrome {
                 fill: RgbaF32::hex(0x30364a).into(),

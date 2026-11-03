@@ -103,7 +103,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
         .max_size(max_size)
         .padding(padding)
         .margin(margin)
-        .pos(pos)
+        .at(pos)
         .grid_cell(GridCell::at(2, 3).with_span(4, 5))
         .gap(6.0)
         .line_gap(7.0)
@@ -442,12 +442,12 @@ fn a_border_past_an_f16_lane_draws() {
 #[test]
 fn position_and_grid_span_validate_their_kinds() {
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
-        Widget::leaf().pos(Vec2::new(f32::NAN, 0.0))
+        Widget::leaf().at(Vec2::new(f32::NAN, 0.0))
     });
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
-        Widget::leaf().pos(Vec2::new(0.0, f32::INFINITY))
+        Widget::leaf().at(Vec2::new(0.0, f32::INFINITY))
     });
-    let at = Widget::leaf().pos(Vec2::new(-5.0, 7.0));
+    let at = Widget::leaf().at(Vec2::new(-5.0, 7.0));
     assert_eq!(at.node.pos, Vec2::new(-5.0, 7.0));
 
     for (rows, cols) in [(0, 1), (1, 0)] {

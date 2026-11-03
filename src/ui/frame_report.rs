@@ -30,7 +30,7 @@ pub enum FramePaint {
 
 /// What one call to [`Ui::frame`](crate::Ui) did, and what the host owes
 /// the next one.
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct FrameReport {
     /// Whether another frame is owed after this one: an animation still moving, a widget or the app that asked ([`Ui::request_repaint`](crate::Ui::request_repaint)), a screenshot that landed or input held for the next frame. A host requests a redraw after present.
     pub repaint_requested: bool,

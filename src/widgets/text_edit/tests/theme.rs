@@ -42,7 +42,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
     let read_fs = |node: NodeId| -> f32 {
         painted_shapes(h.ui(), node)
             .find_map(|s| match s {
-                ShapeRecord::Text { font, .. } => Some(font.size),
+                ShapeRecord::Text { font, .. } => Some(font.font_size),
                 _ => None,
             })
             .unwrap()
@@ -334,7 +334,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
             .inner
     });
     let text_shape = painted_shapes(h.ui(), leaf_node).find_map(|s| match s {
-        ShapeRecord::Text { font, .. } => Some((font.size, font.line_height)),
+        ShapeRecord::Text { font, .. } => Some((font.font_size, font.line_height)),
         _ => None,
     });
     let (fs, lh) = text_shape.expect("TextEdit pushes a ShapeRecord::Text for non-empty buffer");

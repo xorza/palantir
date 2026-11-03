@@ -131,7 +131,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                     );
                     Block::new()
                         .id(WidgetId::from_hash("child"))
-                        .pos((50.0, 60.0))
+                        .at((50.0, 60.0))
                         .size(40.0)
                         .chrome(Chrome::fill(child_color))
                         .show(ui);

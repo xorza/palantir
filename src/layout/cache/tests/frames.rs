@@ -272,7 +272,7 @@ fn cache_hit_preserves_per_driver_rects() {
                         ] {
                             Text::new(label)
                                 .id(WidgetId::from_hash(("pin", i)))
-                                .pos(pos)
+                                .at(pos)
                                 .font_size(14.0)
                                 .show(ui);
                         }
@@ -522,7 +522,7 @@ fn cache_rects_match_cold_oracle_across_resizes() {
                             .show(ui, |ui| {
                                 Scroll::vertical()
                                     .id(WidgetId::from_hash("canvas-scroll"))
-                                    .pos((20.0, 30.0))
+                                    .at((20.0, 30.0))
                                     .show(ui, |ui| rows(ui, "canvas-row"));
                             });
                     });

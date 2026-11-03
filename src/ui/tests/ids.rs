@@ -133,7 +133,7 @@ fn a_collision_under_a_transform_is_outlined_where_it_paints() {
                 for x in [10.0, 60.0] {
                     Block::new()
                         .id(WidgetId::from_hash("dup"))
-                        .pos((x, 10.0))
+                        .at((x, 10.0))
                         .size(40.0)
                         .show(ui);
                 }

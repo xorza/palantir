@@ -823,7 +823,7 @@ mod cutout_census_tests {
                     };
                     Block::new()
                         .id_salt("tick")
-                        .pos((500.0, 150.0))
+                        .at((500.0, 150.0))
                         .size(10.0)
                         .chrome(Chrome::fill(fill))
                         .show(ui);
@@ -942,13 +942,13 @@ mod screenshot_tests {
                 }
                 Block::new()
                     .id_salt("red")
-                    .pos((2.0, 2.0))
+                    .at((2.0, 2.0))
                     .size(10.0)
                     .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
                     .show(ui);
                 Block::new()
                     .id_salt("blue")
-                    .pos((14.0, 6.0))
+                    .at((14.0, 6.0))
                     .size(8.0)
                     .chrome(Chrome::fill(RgbaF32::hex(0x2f6fd0)))
                     .show(ui);

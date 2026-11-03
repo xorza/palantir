@@ -288,13 +288,13 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                         Block::new()
                             .id(WidgetId::from_hash("a"))
                             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-                            .pos(Vec2::new(10.0, 5.0))
+                            .at(Vec2::new(10.0, 5.0))
                             .show(ui)
                             .node(),
                         Block::new()
                             .id(WidgetId::from_hash("b"))
                             .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
-                            .pos(Vec2::new(80.0, 40.0))
+                            .at(Vec2::new(80.0, 40.0))
                             .show(ui)
                             .node(),
                     ]

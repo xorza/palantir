@@ -91,7 +91,7 @@ impl TextStyle {
     #[inline]
     pub fn font(&self) -> GlyphFont {
         GlyphFont {
-            size: self.font_size,
+            font_size: self.font_size,
             line_height: self.line_height(),
             family: self.family,
             weight: self.weight,

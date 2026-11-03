@@ -28,7 +28,7 @@ fn oversized_radii_fit_their_box() {
                 }
                 Panel::zstack()
                     .id_salt("clip")
-                    .pos((10.0, 110.0))
+                    .at((10.0, 110.0))
                     .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                     .chrome(Chrome::rounded(RgbaF32::TRANSPARENT, Corners::all(9999.0)))
                     .clip_rounded()

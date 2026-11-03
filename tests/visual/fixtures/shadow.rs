@@ -259,7 +259,7 @@ fn inset_chrome_shadow_paints_over_the_fill_inside_the_border() {
         render(CLEAR, |ui| {
             Panel::zstack()
                 .id_salt("chrome")
-                .pos((40.0, 40.0))
+                .at((40.0, 40.0))
                 .size((Sizing::fixed(140.0), Sizing::fixed(100.0)))
                 .chrome(
                     Chrome::rounded(RgbaF32::srgb(0.9, 0.9, 0.9), Corners::all(16.0))
@@ -299,7 +299,7 @@ fn a_drop_shadow_is_clipped_inside_a_translucent_box() {
             if chrome {
                 Panel::zstack()
                     .id_salt("box")
-                    .pos(source.min)
+                    .at(source.min)
                     .size((Sizing::fixed(source.size.w), Sizing::fixed(source.size.h)))
                     .chrome(Chrome::rounded(fill, Corners::all(radius)).with_shadow(shadow))
                     .show(ui, |_| {});
@@ -757,7 +757,7 @@ fn grid_sweep(ui: &mut Ui) {
         for (x, rounded) in [(0.0, false), (GRID_CELL, true)] {
             Panel::canvas()
                 .id_salt(("clip", rounded))
-                .pos((x + 40.0, row + 40.0))
+                .at((x + 40.0, row + 40.0))
                 .size((Sizing::fixed(170.0), Sizing::fixed(150.0)))
                 .chrome(Chrome::rounded(
                     RgbaF32::TRANSPARENT,

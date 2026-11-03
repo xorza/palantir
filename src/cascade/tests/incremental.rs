@@ -131,7 +131,7 @@ fn incremental_matches_full_across_cascade_input_classes() {
                 Block::new()
                     .id(WidgetId::from_hash("overflow"))
                     .size(50.0)
-                    .pos((80.0, 0.0))
+                    .at((80.0, 0.0))
                     .show(ui);
             });
     }
@@ -500,7 +500,7 @@ fn refresh_recomputes_only_what_moved() {
                                 Block::new()
                                     .id_salt((name, k))
                                     .size(size)
-                                    .pos((f32::from(k) * 30.0, 0.0))
+                                    .at((f32::from(k) * 30.0, 0.0))
                                     .chrome(Chrome::fill(RgbaF32::WHITE))
                                     .show(ui);
                             }

@@ -174,7 +174,7 @@ impl App for Scene {
                 for i in 0..4 {
                     Block::new()
                         .id_salt(("shadowed", i))
-                        .pos((4.0 + 24.0 * i as f32, 24.0))
+                        .at((4.0 + 24.0 * i as f32, 24.0))
                         .size(16.0)
                         .chrome(Chrome {
                             fill: RgbaF32::hex(0x30364a).into(),
@@ -190,7 +190,7 @@ impl App for Scene {
                 }
                 Panel::canvas()
                     .id_salt("rounded")
-                    .pos((100.0, 4.0))
+                    .at((100.0, 4.0))
                     .size(28.0)
                     .chrome(Chrome::rounded(RgbaF32::hex(0x4cd3ff), Corners::all(10.0)))
                     .clip(ClipMode::Rounded)
@@ -201,7 +201,7 @@ impl App for Scene {
                                 .fill(RgbaF32::BLACK),
                         );
                     });
-                Text::new("Recover").pos((4.0, 48.0)).show(ui);
+                Text::new("Recover").at((4.0, 48.0)).show(ui);
                 ui.add_shape(Shape::icon(mask).at(Rect::new(60.0, 48.0, 24.0, 12.0)));
                 ui.add_shape(Shape::icon(color).at(Rect::new(88.0, 48.0, 16.0, 16.0)));
                 ui.add_shape(Shape::mesh(&self.mesh));
@@ -221,7 +221,7 @@ impl App for Scene {
                 ui.add_shape(Shape::image(image).at(Rect::new(112.0, 48.0, 12.0, 8.0)));
                 GpuView::new(&self.view)
                     .id_salt("view")
-                    .pos((112.0, 64.0))
+                    .at((112.0, 64.0))
                     .size(20.0)
                     .show(ui);
                 ui.add_shape(
@@ -383,7 +383,7 @@ fn a_loss_inside_a_frame_that_grows_a_buffer_submits_nothing_that_panics() {
                 for x in 0..SIDE {
                     Block::new()
                         .id_salt((x, y))
-                        .pos((x as f32, y as f32))
+                        .at((x as f32, y as f32))
                         .size(1.0)
                         .chrome(Chrome::fill(RgbaF32::hex(CHECKER[((x + y) % 2) as usize])))
                         .show(ui);
@@ -415,7 +415,7 @@ fn a_screenshot_asked_before_the_loss_lands_after_it() {
     let mut app = |ui: &mut Ui| {
         Block::new()
             .id_salt("tile")
-            .pos((4.0, 4.0))
+            .at((4.0, 4.0))
             .size(4.0)
             .chrome(Chrome::fill(RgbaF32::hex(0xd23f7a)))
             .show(ui);

@@ -38,13 +38,13 @@ fn ramp(ui: &mut Ui) {
             let x = i as f32 * COL;
             Block::new()
                 .id_salt(("block", v))
-                .pos(Vec2::new(x, BLOCK_Y))
+                .at(Vec2::new(x, BLOCK_Y))
                 .size((Sizing::fixed(COL), Sizing::fixed(10.0)))
                 .chrome(Chrome::fill(gray(v)))
                 .show(ui);
             Text::new("\u{2588}")
                 .id_salt(("text", v))
-                .pos(Vec2::new(x + 4.0, TEXT_Y))
+                .at(Vec2::new(x + 4.0, TEXT_Y))
                 .family(FontFamily::MONO)
                 .font_size(16.0)
                 .color(gray(v))
@@ -64,7 +64,7 @@ fn ramp(ui: &mut Ui) {
             ui.add_shape(Shape::mesh(&Mesh::filled_polygon(&quad, gray(v))));
             Panel::zstack()
                 .id_salt(("icon", v))
-                .pos(Vec2::new(x + 5.0, ICON_Y))
+                .at(Vec2::new(x + 5.0, ICON_Y))
                 .size((Sizing::fixed(10.0), Sizing::fixed(10.0)))
                 .show(ui, |ui| {
                     ui.add_shape(Shape::icon(solid).fit(IconFit::Fill).tint(gray(v)));

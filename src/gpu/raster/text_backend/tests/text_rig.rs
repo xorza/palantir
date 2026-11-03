@@ -51,7 +51,7 @@ impl TextRig {
         let run = TextRun {
             text,
             font: GlyphFont {
-                size: FONT_PX,
+                font_size: FONT_PX,
                 line_height,
                 family: FontFamily::SANS,
                 weight: FontWeight::REGULAR,

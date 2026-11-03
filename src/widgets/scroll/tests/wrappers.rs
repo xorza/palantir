@@ -69,7 +69,7 @@ fn split_routes_every_setter_to_one_wrapper() {
         ),
         (
             "position",
-            |s| s.pos(Vec2::new(7.0, 9.0)),
+            |s| s.at(Vec2::new(7.0, 9.0)),
             Side::Outer,
             |n| n.pos = Vec2::new(7.0, 9.0),
         ),

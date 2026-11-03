@@ -8,8 +8,8 @@ use crate::text::font_weight::FontWeight;
 /// Which face to shape in, and how big. Sizes are logical pixels.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GlyphFont {
-    /// Size in logical px.
-    pub size: f32,
+    /// Font size in logical px.
+    pub font_size: f32,
     /// Leading is the caller's choice; defaults to the size itself.
     pub line_height: f32,
     /// Font family.
@@ -21,22 +21,22 @@ pub struct GlyphFont {
 }
 
 impl GlyphFont {
-    /// Whether `(size, leading)` names a face the shaper accepts, each a
+    /// Whether `(font_size, leading)` names a face the shaper accepts, each a
     /// [font length](domain::is_font_length); scalars, so the theme can check a derived line
     /// height before a face exists.
-    pub(crate) const fn metrics_are_valid(size: f32, line_height: f32) -> bool {
-        domain::is_font_length(size) && domain::is_font_length(line_height)
+    pub(crate) const fn metrics_are_valid(font_size: f32, line_height: f32) -> bool {
+        domain::is_font_length(font_size) && domain::is_font_length(line_height)
     }
 
     pub(crate) const fn metrics_valid(&self) -> bool {
-        Self::metrics_are_valid(self.size, self.line_height)
+        Self::metrics_are_valid(self.font_size, self.line_height)
     }
 
-    /// `size` in the default family, weight and style, led at its own size.
-    pub const fn new(size: f32) -> Self {
+    /// `font_size` in the default family, weight and style, led at its own size.
+    pub const fn new(font_size: f32) -> Self {
         Self {
-            size,
-            line_height: size,
+            font_size,
+            line_height: font_size,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,

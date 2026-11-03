@@ -136,7 +136,7 @@ mod tests {
     }
 
     const FACE: ShapingFont = ShapingFont {
-        size: 16.0,
+        font_size: 16.0,
         line_height: 19.2,
         family: FamilyKey::from_raw(0),
         weight: FontWeight::REGULAR,

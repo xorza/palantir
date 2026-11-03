@@ -68,7 +68,7 @@ const WRAPPED: RunBinding = RunBinding {
 
 /// The face every arm shapes in.
 const UI_FACE: GlyphFont = GlyphFont {
-    size: BODY_PX,
+    font_size: BODY_PX,
     line_height: BODY_PX * LEADING_RATIO,
     family: FontFamily::SANS,
     weight: FontWeight::REGULAR,
@@ -103,7 +103,7 @@ impl TruncatedRun {
                 ordinal: 0,
             },
             font: keyed(GlyphFont {
-                size: font_size,
+                font_size,
                 line_height: font_size * LEADING_RATIO,
                 weight,
                 ..UI_FACE

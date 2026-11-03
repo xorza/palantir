@@ -13,7 +13,7 @@ pub enum ImageDataError {
         size: UVec2,
     },
     /// The byte length of the size overflows the address space.
-    TooLarge {
+    LengthOverflow {
         /// The size given.
         size: UVec2,
     },
@@ -38,7 +38,7 @@ impl Display for ImageDataError {
                     size.x, size.y
                 )
             }
-            Self::TooLarge { size } => write!(
+            Self::LengthOverflow { size } => write!(
                 f,
                 "RGBA8 dimensions {}x{} overflow addressable byte length",
                 size.x, size.y

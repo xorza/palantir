@@ -158,7 +158,7 @@ impl Scene<'_> {
                 for i in 0..ITEMS {
                     let cell = Panel::zstack()
                         .id_salt(("record-bench-cell", i))
-                        .pos(cell_origin(i))
+                        .at(cell_origin(i))
                         .size((Sizing::fixed(CELL), Sizing::fixed(CELL)));
                     let cell = if workload.clipped() {
                         cell.clip_rect()

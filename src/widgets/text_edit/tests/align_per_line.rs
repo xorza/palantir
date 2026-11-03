@@ -24,7 +24,7 @@ fn cosmic_ui() -> Harness {
 
 fn shape(wrap: f32, halign: HAlign) -> TestShape {
     TestShape::new(GlyphFont {
-        size: FS,
+        font_size: FS,
         line_height: LH,
         family: FontFamily::SANS,
         weight: FontWeight::REGULAR,
@@ -141,7 +141,7 @@ fn cache_key_distinguishes_halign() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size: 16.0,
+                    font_size: 16.0,
                     line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
@@ -157,7 +157,7 @@ fn cache_key_distinguishes_halign() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size: 16.0,
+                    font_size: 16.0,
                     line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
@@ -186,7 +186,7 @@ fn unbounded_halign_collapses_to_auto_in_key() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size: 16.0,
+                    font_size: 16.0,
                     line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,
@@ -202,7 +202,7 @@ fn unbounded_halign_collapses_to_auto_in_key() {
             "hi",
             TestShape {
                 font: GlyphFont {
-                    size: 16.0,
+                    font_size: 16.0,
                     line_height: 19.2,
                     family: FontFamily::SANS,
                     weight: FontWeight::REGULAR,

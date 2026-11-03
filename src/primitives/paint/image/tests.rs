@@ -155,7 +155,7 @@ fn image_rejects_invalid_rgba8_dimensions_and_lengths() {
         ImageDataError::ZeroSize {
             size: UVec2::new(1, 0),
         },
-        ImageDataError::TooLarge {
+        ImageDataError::LengthOverflow {
             size: UVec2::new(u32::MAX, u32::MAX),
         },
         ImageDataError::LengthMismatch {

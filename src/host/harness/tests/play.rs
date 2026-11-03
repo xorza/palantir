@@ -114,7 +114,7 @@ fn button<'a>(ui: &'a mut Ui, id: &str, label: &str, pos: Vec2) -> Response<'a> 
         .id(WidgetId::from_hash(id))
         .label(label)
         .size((Sizing::fixed(80.0), Sizing::fixed(24.0)))
-        .pos(pos)
+        .at(pos)
         .show(ui)
 }
 
@@ -135,7 +135,7 @@ impl App for Board {
                     .id(WidgetId::from_hash("off"))
                     .label("Off")
                     .size((Sizing::fixed(80.0), Sizing::fixed(24.0)))
-                    .pos(Vec2::new(200.0, 40.0))
+                    .at(Vec2::new(200.0, 40.0))
                     .disabled(true)
                     .show(ui);
                 button(ui, "twin-a", "Twin", Vec2::new(10.0, 40.0));
@@ -145,7 +145,7 @@ impl App for Board {
                 let edit = TextEdit::new(&mut self.text)
                     .id(edit())
                     .size((Sizing::fixed(120.0), Sizing::fixed(24.0)))
-                    .pos(Vec2::new(10.0, 100.0))
+                    .at(Vec2::new(10.0, 100.0))
                     .show(ui);
                 if edit.committed {
                     self.committed = Some(self.text.clone());
@@ -153,7 +153,7 @@ impl App for Board {
                 Panel::canvas()
                     .auto_id()
                     .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
-                    .pos(Vec2::new(200.0, 10.0))
+                    .at(Vec2::new(200.0, 10.0))
                     .clip_rect()
                     .show(ui, |ui| {
                         button(ui, "hidden", "Hidden", Vec2::new(0.0, 50.0));

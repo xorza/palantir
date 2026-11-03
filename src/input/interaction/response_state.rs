@@ -9,10 +9,11 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::math::domain::vec2;
 use glam::Vec2;
 
-/// Snapshot of one widget's interaction state for the current frame.
+/// Snapshot of one widget's interaction state for the current frame. Plain data: the docs below
+/// state what the crate produces, which a value built by hand need not keep.
 ///
 /// `disabled` is the cascaded flag (self or any ancestor), one frame stale, with the widget's own `NodeFlags::is_disabled` folded on top by `Widget::response`. `focused` is current, not stale.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct ResponseState {
     /// Last frame's *visible* rect in surface space, after ancestor transforms and clipping; `None` on the first frame. See [`Self::layout_rect`] for untrimmed geometry.
     pub rect: Option<Rect>,
@@ -28,7 +29,8 @@ pub struct ResponseState {
     pub pointer_over: bool,
     /// Disabled: this widget or any ancestor.
     ///
-    /// **`true` empties the interaction half:** `left`, `right`, `middle` and `scroll` are default, so `clicked()`, `held()`, `pressed()` and drags read `false`; guarding with `!state.disabled &&` is dead code. `pointer_over`, `rect` and `pointer_local` survive as geometry.
+    /// **In a state the crate produces, `true` empties the interaction half:** `left`, `right`,
+    /// `middle` and `scroll` are default, so `clicked()`, `held()`, `pressed()` and drags read `false`; guarding with `!state.disabled &&` is dead code. `pointer_over`, `rect` and `pointer_local` survive as geometry.
     pub disabled: bool,
     /// This widget holds keyboard focus; current, not one frame stale.
     pub focused: bool,

@@ -411,7 +411,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     };
     // A struct update varies one metric without restating the rest.
     let face = ShapingFont {
-        size: 12.0,
+        font_size: 12.0,
         line_height: 14.0,
         family: FamilyKey::from_raw(0),
         weight: FontWeight::REGULAR,
@@ -470,13 +470,16 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ),
     );
     moves(
-        "Text.font.size",
+        "Text.font.font_size",
         &base,
         &text(
             None,
             recorded(1),
             white,
-            ShapingFont { size: 13.0, ..face },
+            ShapingFont {
+                font_size: 13.0,
+                ..face
+            },
             TextWrap::SingleLine,
             Align::CENTER,
         ),

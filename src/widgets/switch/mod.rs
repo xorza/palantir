@@ -107,7 +107,7 @@ impl ToggleKind for Knob<'_> {
         Widget::leaf()
             .id(knob_id)
             .size((Sizing::fixed(geometry.knob), Sizing::fixed(geometry.knob)))
-            .pos(Vec2::new(knob_x, geometry.knob_y))
+            .at(Vec2::new(knob_x, geometry.knob_y))
             .record(ui, Some(&knob_chrome), |_| {});
     }
 }

@@ -203,7 +203,7 @@ fn chrome_card(ui: &mut Ui, chrome: Chrome) {
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
             Block::new()
-                .pos((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
+                .at((CARD.min.x - CELL_PADDING, CARD.min.y - CELL_PADDING))
                 .size((Sizing::fixed(CARD.size.w), Sizing::fixed(CARD.size.h)))
                 .chrome(chrome)
                 .show(ui);

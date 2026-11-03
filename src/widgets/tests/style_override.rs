@@ -148,12 +148,12 @@ fn per_axis_setters_outrank_the_style_bundle() {
 
     // Unset axes keep the ambient value; a set axis replaces it.
     let face = face_of(&h, plain);
-    assert_eq!(face.font.size, AMBIENT);
+    assert_eq!(face.font.font_size, AMBIENT);
     assert_eq!(face.font.weight, FontWeight::REGULAR);
     assert_eq!(face.color, ambient_color.to_f16());
 
     let face = face_of(&h, axes);
-    assert_eq!(face.font.size, PER_AXIS);
+    assert_eq!(face.font.font_size, PER_AXIS);
     // `line_height_factor(2.0)` multiplies the overridden size.
     assert_eq!(face.font.line_height, PER_AXIS * 2.0);
     assert_eq!(face.font.weight, FontWeight::BOLD);
@@ -161,15 +161,15 @@ fn per_axis_setters_outrank_the_style_bundle() {
     assert_eq!(face.color, axis_color.to_f16());
 
     assert_eq!(
-        face_of(&h, over_bundle).font.size,
+        face_of(&h, over_bundle).font.font_size,
         PER_AXIS,
         "a per-axis setter wins over the bundle `style` supplied",
     );
 
     let plain_face = face_of(&h, edit_plain.with("text-block"));
-    assert_eq!(plain_face.font.size, AMBIENT);
+    assert_eq!(plain_face.font.font_size, AMBIENT);
     let axes_face = face_of(&h, edit_axes.with("text-block"));
-    assert_eq!(axes_face.font.size, PER_AXIS);
+    assert_eq!(axes_face.font.font_size, PER_AXIS);
     assert_eq!(axes_face.color, axis_color.to_f16());
 }
 

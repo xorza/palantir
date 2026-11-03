@@ -71,7 +71,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .show(ui, |ui| {
                     Block::new()
                         .id_salt("mover")
-                        .pos((k.nudge, 5.0))
+                        .at((k.nudge, 5.0))
                         .size(20.0)
                         .chrome(Chrome::fill(RgbaF32::srgb(0.9, 0.2, 0.2)))
                         .show(ui);
@@ -160,7 +160,7 @@ fn shadows(ui: &mut Ui, k: Knobs) {
     let cast = |ui: &mut Ui, id: usize, at: Rect, blur: f32, radius: f32| {
         Panel::canvas()
             .id_salt(("shadow", id))
-            .pos(at.min)
+            .at(at.min)
             .size((Sizing::fixed(at.size.w), Sizing::fixed(at.size.h)))
             .show(ui, |ui| {
                 ui.add_shape(

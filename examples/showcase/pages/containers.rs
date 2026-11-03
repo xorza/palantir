@@ -250,7 +250,7 @@ fn sw(w: f32, h: f32, c: RgbaF32) -> Block {
 }
 
 fn positioned(x: f32, y: f32, c: RgbaF32) -> Block {
-    Block::new().pos((x, y)).size(44.0).chrome(Chrome::fill(c))
+    Block::new().at((x, y)).size(44.0).chrome(Chrome::fill(c))
 }
 
 fn chip<H: Hash>(ui: &mut Ui, k: Kit, key: H, label: &'static str) {

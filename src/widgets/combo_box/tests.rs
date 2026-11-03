@@ -129,7 +129,7 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
             .show(ui, |ui| {
                 ComboBox::new(selected, &OPTIONS)
                     .id(id)
-                    .pos(Vec2::new(120.0, 250.0))
+                    .at(Vec2::new(120.0, 250.0))
                     .size((Sizing::fixed(140.0), Sizing::fixed(30.0)))
                     .show(ui);
             });
@@ -298,7 +298,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
                     ComboBox::new(&mut selected, &options)
                         .id(id)
                         .menu_style(styled.then_some(&menu))
-                        .pos(Vec2::new(40.0, 40.0))
+                        .at(Vec2::new(40.0, 40.0))
                         .size((Sizing::fixed(140.0), Sizing::fixed(30.0)))
                         .show(ui);
                 });
