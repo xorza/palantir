@@ -1202,19 +1202,28 @@ fn lens_spectrum(p: vec2<f32>, outward: vec2<f32>, inward: f32, slot: BackdropSl
     return XYZ_TO_RGB * xyz;
 }
 
-// The glint a top-left lamp leaves on the bezel `inward` px in, its outward
-// normal `outward` on the screen: Schlick's Fresnel at the surface's tilt,
-// times how squarely the bezel faces the lamp.
+// The glint a lamp low at the top left leaves on the bezel `inward` px in,
+// its outward normal `outward` on the screen: Schlick's Fresnel at the
+// surface's tilt `θ`, times how squarely the surface's normal faces the
+// lamp, `sin θ` of it along `outward`. A flat face takes none, so the glint
+// fades to 0 where the bezel meets the flat top (`gpu::backdrop`, "The glint
+// fades into the flat top").
+//
+// The slope `k · g³ · r^(−¾)` is vertical at the edge, so the normal comes
+// from `(k · g³, r^¾)`, the slope times `r^¾`, which no edge overflows:
+// `f32` holds no square of the slope there.
 fn lens_glint(lens: vec4<f32>, inward: f32, outward: vec2<f32>) -> f32 {
-    let x = clamp(inward / lens.x, 0.0, 1.0);
-    let g = 1.0 - x;
-    let rise = max(1.0 - g * g * g * g, 1e-30);
-    let slope = select(lens.y / lens.x * g * g * g * pow(rise, -0.75), 0.0, x >= 1.0);
-    let cos_in = 1.0 / sqrt(slope * slope + 1.0);
+    let g = 1.0 - clamp(inward / lens.x, 0.0, 1.0);
+    let rise = 1.0 - g * g * g * g;
+    let across = lens.y / lens.x * g * g * g;
+    let up = sqrt(rise * sqrt(rise));
+    let norm = sqrt(across * across + up * up);
+    let cos_in = up / norm;
+    let sin_in = across / norm;
     let f0 = pow((lens.z - 1.0) / (lens.z + 1.0), 2.0);
     let fresnel = f0 + (1.0 - f0) * pow(1.0 - cos_in, 5.0);
     let facing = max(dot(outward, vec2<f32>(-0.70710678, -0.70710678)), 0.0);
-    return fresnel * facing;
+    return fresnel * sin_in * facing;
 }
 
 // A pane over the pixels painted before it (`FillKind::BACKDROP`): its

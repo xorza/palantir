@@ -54,13 +54,17 @@
 //! - **Glass refracts by a closed form.** The bezel's height is a squircle
 //!   `(1 − (1 − x)⁴)^¼` of the inward distance; its slope along the SDF gradient is the normal,
 //!   Snell's law gives the bent ray, and thickness times its tangent the displacement (kube.io
-//!   bakes the same into a map). The highlight is Schlick's Fresnel toward a fixed top-left lamp.
-//!   Its reach is the closed bound `thickness · √(n² − 1)` at the densest index, so no frame
-//!   samples the bezel to find it, and a pane wider than its bezel, that reach and a pixel
-//!   together reads only itself (`LensOptics::margin`), so its footprint grows by a pixel, not
-//!   the reach: glass frames 7 to 10 % faster on a handheld and the Apple laptop. A pane a clip cuts or a
-//!   paint animation turns, and glass chrome, keep the reach, as the cascade knows only their
-//!   screen rect.
+//!   bakes the same into a map). The bent sample's reach is the closed bound
+//!   `thickness · √(n² − 1)` at the densest index, so no frame samples the bezel to find it, and
+//!   a pane wider than its bezel, that reach and a pixel together reads only itself
+//!   (`LensOptics::margin`), so its footprint grows by a pixel, not the reach: glass frames 7 to
+//!   10 % faster on a handheld and the Apple laptop. A pane a clip cuts or a paint animation turns, and glass
+//!   chrome, keep the reach, as the cascade knows only their screen rect.
+//! - **The glint fades into the flat top.** Schlick's Fresnel at the bezel's tilt, times the 3D
+//!   normal against a fixed lamp low at the top left: the flat top faces it with none, so the
+//!   glint reaches 0 where the bezel meets it. Refused: facing by the screen normal alone, which
+//!   lit the flat face's Fresnel across the inner bezel and stepped at its edge, 5 sRGB levels
+//!   over the reel's grey pane.
 //! - **Dispersion spreads the whole spectrum** (`lens_spectrum` in `quad_pipeline/shader.wgsl`).
 //!   Each wavelength refracts at its index by Cauchy's model through `n_D`, and the reads sum
 //!   back to color in CIE XYZ under the 1931 observer, normalized so a field of one color keeps

@@ -1,4 +1,5 @@
-//! Glass that spreads the spectrum at its rim, read back in linear `f16`, with no dither.
+//! Glass at its rim: the spectrum it spreads, read back in linear `f16` with no dither, and the
+//! shader's lens functions probed against their closed forms.
 
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
 use crate::gpu::test_gpu::headless_test_gpu;
@@ -165,6 +166,58 @@ fn the_index_runs_along_the_spectrum_and_never_below_one() {
         assert!(
             (got - want).abs() <= 8.0 * f32::EPSILON * want,
             "{input:?}: {got} against {want}"
+        );
+    }
+}
+
+const LENS_GLINT_PROBE: &str = "
+@group(0) @binding(14) var<storage, read> probe_in: array<vec4<f32>>;
+@group(0) @binding(15) var<storage, read_write> probe_out: array<f32>;
+@compute @workgroup_size(1)
+fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
+    let q = probe_in[id.x];
+    probe_out[id.x] = lens_glint(vec4<f32>(16.0, 12.0, 1.5, 0.0), q.x, q.yz);
+}
+";
+
+/// The shader's glint, `(inward, outward)` in, on a bezel 16 px wide and 12 px high at index
+/// 1.5, against the lamp's own closed form in `f64`: Schlick's Fresnel at the surface's tilt
+/// `θ`, `f0 = ((n − 1) / (n + 1))² = 0.04`, times `sin θ · max(outward · lamp, 0)`, the 3D
+/// normal against a lamp low at the top left. It reaches 0 where the bezel meets the flat top,
+/// which takes no glint, so the pane shows no step there, and holds 0 on a bezel facing away.
+/// The edge itself, where the slope is vertical, takes the whole facing. Within 1e-6, through
+/// the shader's `pow`.
+#[test]
+fn the_glint_fades_to_nothing_where_the_bezel_meets_the_flat_top() {
+    let (bezel, thickness, f0) = (16.0_f64, 12.0_f64, 0.04_f64);
+    let glint = |inward: f64, facing: f64| {
+        let g = 1.0 - (inward / bezel).clamp(0.0, 1.0);
+        let rise = (1.0 - g.powi(4)).max(1e-30);
+        let slope = thickness / bezel * g.powi(3) * rise.powf(-0.75);
+        let cos = 1.0 / slope.hypot(1.0);
+        let sin = slope / slope.hypot(1.0);
+        (f0 + (1.0 - f0) * (1.0 - cos).powi(5)) * sin * facing.max(0.0)
+    };
+    let diagonal = std::f32::consts::FRAC_1_SQRT_2;
+    let (left, top_left, right) = ([-1.0, 0.0], [-diagonal, -diagonal], [1.0, 0.0]);
+    let facing_left = f64::from(diagonal);
+    let cases = [
+        (0.0, left, glint(0.0, facing_left)),
+        (8.0, left, glint(8.0, facing_left)),
+        (8.0, top_left, glint(8.0, 1.0)),
+        (15.9, left, glint(15.9, facing_left)),
+        (16.0, left, 0.0),
+        (4.0, right, 0.0),
+    ];
+    let inputs: Vec<[f32; 4]> = cases
+        .iter()
+        .map(|&(inward, [x, y], _)| [inward, x, y, 0.0])
+        .collect();
+    let got: Vec<f32> = QuadPipeline::SHADER.probe(LENS_GLINT_PROBE, &inputs);
+    for (&(inward, outward, want), got) in cases.iter().zip(got) {
+        assert!(
+            (f64::from(got) - want).abs() <= 1e-6,
+            "inward {inward}, outward {outward:?}: {got} against {want}"
         );
     }
 }
