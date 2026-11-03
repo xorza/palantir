@@ -62,8 +62,7 @@ impl PaintArena {
     }
 
     /// The index into [`Self::rows`] of the row `entry`'s shape painted, or `None` where a clip
-    /// or the `surface` edge hides all of it. A hidden row is clamped to an empty rect that keeps
-    /// its place, which `Rect::intersects` still reads as inside a rect around it.
+    /// or the `surface` edge hides all of it.
     #[inline]
     pub(crate) fn shown_animation_row(
         &self,

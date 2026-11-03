@@ -50,6 +50,27 @@ fn intersects_cases() {
             Rect::new(0.0, 0.0, 10.0, 10.0),
             false,
         ),
+        // An empty rect inside the other shares no area, though its min lies inside.
+        (
+            "zero_height_inside",
+            Rect::new(2.0, 3.0, 4.0, 0.0),
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            false,
+        ),
+        (
+            "zero_width_inside",
+            Rect::new(5.0, 2.0, 0.0, 4.0),
+            Rect::new(0.0, 0.0, 10.0, 10.0),
+            false,
+        ),
+        // f32 holds multiples of 8 at 1e8, so `1e8 + 1` rounds to 1e8 and the rect has no
+        // extent, as `clamp_to` computes it.
+        (
+            "width_lost_to_rounding",
+            Rect::new(1e8, 0.0, 1.0, 10.0),
+            Rect::new(0.0, 0.0, 2e8, 10.0),
+            false,
+        ),
     ];
     for (label, a, b, want) in cases {
         assert_eq!(a.intersects(*b), *want, "case: {label}");
@@ -62,9 +83,18 @@ fn intersects_cases() {
         }
     }
 
+    // `intersect` asserts on a NaN; `intersects` reads it as no overlap.
+    let outer = Rect::new(0.0, 0.0, 10.0, 10.0);
+    for nan in [
+        Rect::new(f32::NAN, 2.0, 4.0, 4.0),
+        Rect::new(2.0, 2.0, f32::NAN, 4.0),
+    ] {
+        assert!(!nan.intersects(outer), "{nan:?}");
+        assert!(!outer.intersects(nan), "{nan:?} (swapped)");
+    }
+
     // Clamping keeps the overlap's origin, so it is not symmetric.
     let inner = Rect::new(2.0, 3.0, 4.0, 5.0);
-    let outer = Rect::new(0.0, 0.0, 10.0, 10.0);
     assert_eq!(inner.clamp_to(outer), inner);
     assert_eq!(outer.clamp_to(inner), inner);
 

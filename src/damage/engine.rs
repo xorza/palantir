@@ -232,7 +232,6 @@ impl DamageEngine {
                 if e.animation.next_wake(prev).is_none_or(|wake| wake > now) {
                     continue;
                 }
-                // A hidden flip paints nothing, and its empty rect would still stale a pane around it.
                 let Some(row) = arena.shown_animation_row(e, surface) else {
                     continue;
                 };

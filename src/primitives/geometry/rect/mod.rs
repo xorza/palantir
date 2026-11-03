@@ -284,15 +284,16 @@ impl Rect {
         }
     }
 
-    /// True if `self` and `other` overlap on both axes; touching edges don't count.
+    /// True if `self` and `other` share an area: the larger min is below the smaller max on both
+    /// axes, as Skia's `SkRect::Intersects` reads it. Touching edges, an empty operand and a NaN
+    /// don't count; the predicate [`Self::intersect`] answers `Some` for.
     #[inline]
     pub const fn intersects(self, other: Self) -> bool {
-        let a_max = self.max();
-        let b_max = other.max();
-        self.min.x < b_max.x
-            && other.min.x < a_max.x
-            && self.min.y < b_max.y
-            && other.min.y < a_max.y
+        const fn overlaps(a_min: f32, a_max: f32, b_min: f32, b_max: f32) -> bool {
+            a_min < a_max && b_min < b_max && a_min < b_max && b_min < a_max
+        }
+        let (a, b) = (self.max(), other.max());
+        overlaps(self.min.x, a.x, other.min.x, b.x) && overlaps(self.min.y, a.y, other.min.y, b.y)
     }
 
     /// Strict intersection: `None` when the inputs don't overlap, touching included. [`Self::clamp_to`] is the saturating one.

@@ -33,10 +33,29 @@ fn intersect_cases() {
             URect::new(5, 7, 11, 13),
             Some(URect::new(5, 7, 11, 13)),
         ),
+        // An empty rect inside the other shares no area, though its min lies inside.
+        (
+            "zero_height_inside",
+            URect::new(2, 3, 4, 0),
+            URect::new(0, 0, 10, 10),
+            None,
+        ),
+        (
+            "zero_width_inside",
+            URect::new(5, 2, 0, 4),
+            URect::new(0, 0, 10, 10),
+            None,
+        ),
     ];
     for (label, a, b, want) in cases {
         assert_eq!(a.intersect(*b), *want, "case: {label}");
         assert_eq!(b.intersect(*a), *want, "case: {label} (swapped)");
+        assert_eq!(a.intersects(*b), want.is_some(), "predicate: {label}");
+        assert_eq!(
+            b.intersects(*a),
+            want.is_some(),
+            "predicate: {label} (swapped)"
+        );
     }
 }
 

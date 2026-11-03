@@ -11,4 +11,3 @@
 - `Staging::unpad_into` unmaps the buffer and leaves its `MapState` mapped.
 - `SingleQuadBuffer::is_uploaded` stays true after the first upload, so the `bind_clear` assert cannot catch a missed upload.
 - `CutoutPlan` packs per window into the backend-wide `CutoutTables` atlas, so two windows with different shadow sets overwrite each other's tables every frame.
-- `Rect::intersects` returns `true` for a zero-area rect whose position lies strictly inside the other rect, so an empty rect reads as an overlap.

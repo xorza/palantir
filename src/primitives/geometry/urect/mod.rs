@@ -102,12 +102,14 @@ impl URect {
         self.size.x == 0 || self.size.y == 0
     }
 
-    /// True if `self` and `other` overlap on both axes, strictly (touching edges
-    /// don't count); the predicate [`Self::intersect`] answers `Some` for.
+    /// True if `self` and `other` share an area: the larger min is below the smaller max on both
+    /// axes, so touching edges and an empty operand don't count; the predicate
+    /// [`Self::intersect`] answers `Some` for.
     #[inline]
     pub(crate) const fn intersects(self, other: Self) -> bool {
         let (a, b) = (self.max(), other.max());
-        self.min.x < b.x && other.min.x < a.x && self.min.y < b.y && other.min.y < a.y
+        larger(self.min.x, other.min.x) < smaller(a.x, b.x)
+            && larger(self.min.y, other.min.y) < smaller(a.y, b.y)
     }
 
     /// Strict intersection; `None` when the inputs don't overlap, touching edges
