@@ -59,7 +59,8 @@ A short screen recording of the
 [showcase](https://github.com/xorza/palantir/tree/master/examples/showcase), a tour of every
 widget:
 
-https://github.com/user-attachments/assets/66d64697-de78-4e01-be3e-8874b5a00b0b
+https://github.com/user-attachments/assets/6ae8305c-dba6-4998-8fb1-9522f9331e02
+
 
 Built with Palantir: [Darkroom](https://github.com/xorza/Darkroom), a
 node-graph editor for image and data pipelines.
