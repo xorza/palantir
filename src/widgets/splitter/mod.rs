@@ -146,8 +146,8 @@ impl<'a> Splitter<'a> {
         let grab_thickness = domain::length_at_least(theme.grab_thickness, 1.0);
         let rule_thickness = domain::length_at_least(theme.rule_thickness, 0.0);
         let rule_color = theme.rule;
-        let hovered_color = theme.hovered;
-        let active_color = theme.active;
+        let hovered_color = theme.rule_hovered;
+        let active_color = theme.rule_active;
 
         let divider_id = id.with("divider");
         // The splitter's own `disabled` reaches its divider through the cascade only next

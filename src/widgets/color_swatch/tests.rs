@@ -6,6 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::color_picker::ColorPickerTheme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_swatch::ColorSwatch;
 use glam::UVec2;
@@ -17,9 +18,9 @@ fn a_chip_is_a_themed_square_with_a_checker_behind_translucency() {
     let styled = ColorPickerTheme {
         swatch_size: 24.0,
         checker_cell: 6.0,
-        ..ColorPickerTheme::default()
+        ..ColorPickerTheme::stock(ColorScheme::Dark)
     };
-    let stock = ColorPickerTheme::default().swatch_size;
+    let stock = ColorPickerTheme::stock(ColorScheme::Dark).swatch_size;
     assert_ne!(stock, 24.0, "premise: the style moves the side");
     for (style, color, side, shapes) in [
         (None, RgbaF32::srgb(0.2, 0.4, 0.6), stock, 1),
@@ -106,8 +107,8 @@ fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
     use crate::shape::paint::shape_stroke::ShapeStroke;
 
     let id = WidgetId::from_hash("chip-states");
-    let mut style = ColorPickerTheme::default();
-    style.chip.defaults.animation = AnimationSpec::SNAP;
+    let mut style = ColorPickerTheme::stock(ColorScheme::Dark);
+    style.chip.defaults.transition = AnimationSpec::SNAP;
     let looks = style.chip.unselected.clone();
     let rings = [
         &looks.normal,

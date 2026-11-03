@@ -7,7 +7,7 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
-use crate::theme::ThemeText;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -27,7 +27,13 @@ pub(crate) const ACCENT_PRESS: f32 = 0.24;
 /// for a [selected](crate::Button::selected) button, plus container knobs, picked via
 /// [`ThemeSlot::look`]. `padding`/`margin` apply when the builder set none.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct ButtonTheme {
     /// The four per-state looks of a button that is not selected; `flatten` keeps theme files
@@ -82,9 +88,14 @@ impl ButtonTheme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(m.space.md, m.space.xs),
                 margin: Spacing::ZERO,
-                animation: m.transition,
+                transition: m.transition,
             },
         }
+    }
+
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 
     /// The filled call to action: the accent under `on_accent` ink, as WinUI's accent button and
@@ -122,21 +133,6 @@ impl ButtonTheme {
         }
     }
 
-    /// Visit every text slot this theme owns (drives `Theme::scale_text`); destructured so a new field fails to compile here.
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        mut other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            unselected,
-            selected,
-            defaults: _,
-        } = self;
-        unselected.for_each_text(other.as_deref_mut().map(|o| &mut o.unselected), f);
-        selected.for_each_text(other.map(|o| &mut o.selected), f);
-    }
-
     /// The subtle button, as Fluent 2's subtle appearance: transparent at rest, hover-only fill, no border or shadow, inset as a menu row; disabled, its label takes `text_disabled`. Selected, it rests at the hovered fill, as an open menu's title does. [`MenuBarTheme`](crate::MenuBarTheme)'s titles start from it; hand it to [`Button::style`] for a flat button anywhere (<https://fluent2.microsoft.design/components/web/react/core/button/usage>).
     ///
     /// [`Button::style`]: crate::Button::style
@@ -165,7 +161,7 @@ impl ButtonTheme {
             defaults: SlotDefaults {
                 padding: m.row_padding(),
                 margin: Spacing::ZERO,
-                animation: m.transition,
+                transition: m.transition,
             },
         }
     }
@@ -186,11 +182,5 @@ impl ThemeSlot for ButtonTheme {
 
     fn defaults(&self) -> SlotDefaults {
         self.defaults
-    }
-}
-
-impl Default for ButtonTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

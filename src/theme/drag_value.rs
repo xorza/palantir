@@ -1,64 +1,101 @@
-//! What a drag value wears: the scrub chip and the text field it becomes while typed into.
+//! What a drag value wears: one set of looks for the scrub chip and the text field it becomes
+//! while typed into, and the field's caret, selection and placeholder.
 
-use crate::theme::ThemeText;
+use crate::input::interaction::response_state::ResponseState;
+use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
+use crate::theme::color_scheme::ColorScheme;
+use crate::theme::look::WidgetLook;
+use crate::theme::look::engagement::Engagement;
+use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::look::stateful_look::StatefulLook;
+use crate::theme::look::theme_slot::ThemeSlot;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_edit::TextEditTheme;
 
-/// Theme for [`crate::DragValue`]: scrub `chip` ([`ButtonTheme`]) and inline `editor` ([`TextEditTheme`]) used under [`crate::DragValue::editable`]. Built from one source via [`Self::from_chip`], so both modes share a box size and edit mode doesn't resize or restyle.
+/// Theme for [`crate::DragValue`]: one set of `looks` the scrub chip wears and the inline editor
+/// under [`crate::DragValue::editable`] wears too, so editing neither resizes nor restyles the
+/// field; the editor's caret, selection and placeholder beside them. The chip's `active` look is
+/// pressed; the editor wears `hovered` while it is focused, as the pointer that clicked it is
+/// already over it ([`Self::editor`]).
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct DragValueTheme {
-    /// Chrome for the scrub chip: the DragValue-specific `ButtonTheme` slot (`Button`/`ComboBox` use `Theme::button`).
-    pub chip: ButtonTheme,
-    /// Chrome for the inline editor; box mirrors `chip`, caret / selection come from the text-edit look.
-    pub editor: TextEditTheme,
+    /// The four per-state looks (`active` = pressed on the chip). `flatten` keeps theme files
+    /// flat (`[drag_value.hovered]`).
+    #[serde(flatten)]
+    pub looks: StatefulLook,
+    /// Spacing and transition spec — see [`SlotDefaults`].
+    #[serde(flatten)]
+    pub defaults: SlotDefaults,
+    /// Ink for the editor's caret.
+    pub caret: RgbaF32,
+    /// Width of the editor's caret in logical px.
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    pub caret_width: f32,
+    /// The editor's selection wash, behind the selected glyphs.
+    pub selection: RgbaF32,
+    /// Ink for the placeholder an empty editor shows.
+    pub placeholder: RgbaF32,
 }
 
 impl DragValueTheme {
-    /// Derive from a `chip`: the editor inherits its box for pixel-identical modes, caret / selection / placeholder come from `text_edit`. The editor's `active` (focused) maps to the chip's `hovered` look, since the pointer that clicked it is already over it.
-    pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self {
-        let editor = TextEditTheme {
-            looks: StatefulLook {
-                normal: chip.unselected.normal.clone(),
-                hovered: chip.unselected.hovered.clone(),
-                active: chip.unselected.hovered.clone(),
-                disabled: chip.unselected.disabled.clone(),
-            },
-            defaults: chip.defaults,
-            caret: text_edit.caret,
-            caret_width: text_edit.caret_width,
-            selection: text_edit.selection,
-            placeholder: text_edit.placeholder,
-        };
-        Self { chip, editor }
-    }
-
-    /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        mut other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self { chip, editor } = self;
-        chip.for_each_text(other.as_deref_mut().map(|o| &mut o.chip), f);
-        editor.for_each_text(other.map(|o| &mut o.editor), f);
-    }
-
-    /// One palette and one set of metrics drive both: the chip from the button recipe, the editor via [`Self::from_chip`].
+    /// The button recipe's resting pack and defaults over `p` and `m`, with the text-edit recipe's
+    /// caret, selection and placeholder.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        Self::from_chip(
-            ButtonTheme::from_parts(p, m),
-            &TextEditTheme::from_parts(p, m),
-        )
+        let chip = ButtonTheme::from_parts(p, m);
+        let field = TextEditTheme::from_parts(p, m);
+        Self {
+            looks: chip.unselected,
+            defaults: chip.defaults,
+            caret: field.caret,
+            caret_width: field.caret_width,
+            selection: field.selection,
+            placeholder: field.placeholder,
+        }
+    }
+
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
+    }
+
+    /// The text field the editor shows: these looks, with focus worn as hover, and the caret,
+    /// selection and placeholder.
+    pub fn editor(&self) -> TextEditTheme {
+        TextEditTheme {
+            looks: StatefulLook {
+                normal: self.looks.normal.clone(),
+                hovered: self.looks.hovered.clone(),
+                active: self.looks.hovered.clone(),
+                disabled: self.looks.disabled.clone(),
+            },
+            placeholder: self.placeholder,
+            caret: self.caret,
+            caret_width: self.caret_width,
+            selection: self.selection,
+            defaults: self.defaults,
+        }
     }
 }
 
-impl Default for DragValueTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+impl ThemeSlot for DragValueTheme {
+    type Pick = ();
+
+    /// The state's look: `active` = pressed, as a button's.
+    fn look(&self, response: &ResponseState, (): ()) -> &WidgetLook {
+        self.looks.pick(response, Engagement::Pressed)
+    }
+
+    fn defaults(&self) -> SlotDefaults {
+        self.defaults
     }
 }

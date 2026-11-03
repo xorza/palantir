@@ -9,6 +9,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use glam::Vec2;
 
@@ -45,19 +46,19 @@ pub(super) fn well_chrome() -> Chrome {
     }
 }
 
-pub(super) fn section_style() -> TextStyle {
-    TextStyle::default()
+pub(super) const fn section_style() -> TextStyle {
+    TextStyle::stock(ColorScheme::Dark)
         .with_font_size(11.0)
         .with_color(TEXT_DIM)
         .bold()
 }
 
-pub(super) fn caption_style() -> TextStyle {
-    TextStyle::default()
+pub(super) const fn caption_style() -> TextStyle {
+    TextStyle::stock(ColorScheme::Dark)
         .with_font_size(11.0)
         .with_color(TEXT_DIM)
 }
 
-pub(super) fn body_style() -> TextStyle {
-    TextStyle::default().with_font_size(13.0)
+pub(super) const fn body_style() -> TextStyle {
+    TextStyle::stock(ColorScheme::Dark).with_font_size(13.0)
 }

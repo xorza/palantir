@@ -1,6 +1,7 @@
 use crate::host::harness::Harness;
 use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
+use crate::theme::color_scheme::ColorScheme;
 use std::f32::consts::TAU;
 
 use crate::primitives::identity::widget_id::WidgetId;
@@ -42,10 +43,10 @@ fn arc_geometry_insets_by_half_width() {
     );
     assert_eq!(ArcGeometry::new(Vec2::splat(4.0), 4.0, 8.0).radius, 0.0);
     // The default sweep leaves a gap; a full turn would read as a static ring.
-    assert!(SpinnerTheme::default().sweep < TAU);
+    assert!(SpinnerTheme::stock(ColorScheme::Dark).sweep < TAU);
 }
 
-/// Sweep, period and stroke come from `Theme::spinner`. Stroke is `diameter * width_ratio` floored at `min_width`.
+/// Sweep, period and stroke come from `Theme::spinner`. Stroke is `diameter * width_ratio` floored at `min_stroke_width`.
 #[test]
 fn arc_and_spin_follow_the_spinner_theme() {
     use crate::primitives::geometry::circular_arc::CircularArc;
@@ -99,7 +100,7 @@ fn arc_and_spin_follow_the_spinner_theme() {
         }
     }
 
-    let stock = SpinnerTheme::default();
+    let stock = SpinnerTheme::stock(ColorScheme::Dark);
     let Recorded {
         sweep,
         width,
@@ -115,22 +116,22 @@ fn arc_and_spin_follow_the_spinner_theme() {
     assert_eq!(small, expected_small);
     assert_ne!(width, small);
 
-    let tiny = stock.min_width / stock.width_ratio * 0.5;
+    let tiny = stock.min_stroke_width / stock.width_ratio * 0.5;
     let floored = recorded(stock.clone(), tiny, None).width;
     assert_eq!(
-        floored, stock.min_width,
-        "tiny spinner floors at min_width, got {floored}"
+        floored, stock.min_stroke_width,
+        "tiny spinner floors at min_stroke_width, got {floored}"
     );
 
     // An explicit width replaces the derived one, floor included.
-    let explicit = stock.min_width * 0.5;
+    let explicit = stock.min_stroke_width * 0.5;
     assert_eq!(recorded(stock, 50.0, Some(explicit)).width, explicit);
 
     let loud = SpinnerTheme {
         sweep: 1.0,
         period: Duration::from_millis(700),
         width_ratio: 0.5,
-        ..SpinnerTheme::default()
+        ..SpinnerTheme::stock(ColorScheme::Dark)
     };
     let Recorded {
         sweep: sweep_b,
@@ -165,7 +166,7 @@ fn comet_fades_tail_to_head() {
 /// 30 × 40 draws a 30 px arc around (15, 20); `HUG` draws the theme's.
 #[test]
 fn a_fixed_size_sets_the_box_and_the_arc() {
-    let stock = SpinnerTheme::default();
+    let stock = SpinnerTheme::stock(ColorScheme::Dark);
     let trio = SizeTrio::of((Sizing::fixed(30.0), Sizing::fixed(40.0)), |ui, size| {
         let mut spinner = Spinner::new();
         if let Some(size) = size {
@@ -204,12 +205,12 @@ fn a_fixed_size_sets_the_box_and_the_arc() {
             })
             .expect("spinner records one arc")
     };
-    let width = (30.0 * stock.width_ratio).max(stock.min_width);
+    let width = (30.0 * stock.width_ratio).max(stock.min_stroke_width);
     let fixed = arc((Sizing::fixed(30.0), Sizing::fixed(40.0)));
     assert_eq!(fixed.center, Vec2::new(15.0, 20.0));
     assert_eq!(fixed.radius, (30.0 - width) * 0.5);
     let hug = arc((Sizing::HUG, Sizing::HUG));
-    let theme_width = (stock.diameter * stock.width_ratio).max(stock.min_width);
+    let theme_width = (stock.diameter * stock.width_ratio).max(stock.min_stroke_width);
     assert_eq!(hug.radius, (stock.diameter - theme_width) * 0.5);
 }
 

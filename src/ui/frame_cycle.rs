@@ -125,7 +125,7 @@ impl<'a> FrameCycle<'a> {
         let surface = self.ui.frame_runtime.stamp().display.logical_rect();
         let prev_time = self.ui.frame_runtime.prev_stamp.map(|s| s.time);
         let baseline = FrameBaseline {
-            clear: self.ui.theme().window_clear,
+            clear: self.ui.theme().window_bg,
             font_epoch: self.ui.resources.text().font_epoch(),
         };
         let input = DamageInput {

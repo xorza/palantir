@@ -20,6 +20,7 @@ pub(crate) mod srgba_u8;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num;
 use crate::primitives::paint::color::error::ParseColorError;
@@ -48,7 +49,7 @@ use std::str;
 /// Components may exceed `1.0` for HDR-shaped tween outputs. `Hash` is exact
 /// but for signed zeros; `FloatHash::hash_visual` is the tolerant one.
 ///
-/// [`Animatable::lerp`] and springs blend in Oklab, premultiplied, unclamped, as CSS Color 4
+/// [`Lerp::lerp`] and springs blend in Oklab, premultiplied, unclamped, as CSS Color 4
 /// interpolates by default (§12): a dark-to-light change is even to the eye, and a fade to
 /// [`Self::TRANSPARENT`] keeps its hue instead of passing through a darker one. A blend of two
 /// in-gamut colors can leave the gamut a little, as red to white peaks 11 % over in red; the
@@ -74,7 +75,7 @@ const SETTLE_EPS: f32 = 1.0 / 16384.0;
 
 /// Motion space is Oklab premultiplied by alpha, an `RgbaF32` holding `(L·α, a·α, b·α, α)`, so a
 /// spring blends as a tween does; the arithmetic is per lane there, alpha one more lane.
-impl Animatable for RgbaF32 {
+impl Lerp for RgbaF32 {
     /// The ends are exact: `t` of 0 or 1, or two equal ends, return an end with no round trip
     /// through Oklab, so a color two themes share stays itself through their lerp.
     #[inline]
@@ -87,7 +88,9 @@ impl Animatable for RgbaF32 {
         }
         Self::from_motion(a.to_motion().mix(b.to_motion(), t))
     }
+}
 
+impl Animatable for RgbaF32 {
     #[inline]
     fn sub(self, other: Self) -> Self {
         Self::new(

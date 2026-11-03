@@ -17,7 +17,7 @@ impl OffscreenTarget {
         let mut host = OffscreenHost::builder(gpu.handles())
             .time(OffscreenTime::Manual)
             .build();
-        host.ui_mut().theme_mut().window_clear = RgbaF32::TRANSPARENT;
+        host.ui_mut().theme_mut().window_bg = RgbaF32::TRANSPARENT;
         let target = gpu.target(label, surface);
         Self { host, target }
     }

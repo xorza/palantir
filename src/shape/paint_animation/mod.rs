@@ -23,9 +23,9 @@ pub mod curves;
 pub(crate) mod paint_mod;
 
 use crate::animation::easing::Easing;
-use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
+use crate::primitives::math::lerp::Lerp;
 use crate::shape::paint_animation::paint_mod::PaintMod;
 use std::f32::consts::TAU;
 use std::hash;

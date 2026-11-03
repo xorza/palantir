@@ -28,7 +28,7 @@ fn empty_ui_drives_a_frame_safely() {
     frontend.build(
         h.ui().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: h.ui().theme().window_clear,
+            clear: h.ui().theme().window_bg,
             damage: Damage::Full,
         }),
     );

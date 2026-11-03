@@ -1,10 +1,11 @@
-//! Vocabulary for "things that can animate." An `Animatable` type supports
-//! interpolation, spring displacement arithmetic, and a squared distance in its
+//! Vocabulary for "things that can animate." An `Animatable` type blends through its
+//! [`Lerp`] and adds spring displacement arithmetic, and a squared distance in its
 //! own settle tolerance; value-dependent snap-only fields normalize first.
 //! Built-in impls cover `f32`, `Vec2`, arrays and `RgbaF32`; domain types opt in via
-//! `#[derive(Animatable)]` (`palantir-anim-derive`, type-erased `AnimationMap`).
+//! `#[derive(Lerp, Animatable)]` (`palantir-anim-derive`, type-erased `AnimationMap`).
 
 use crate::primitives::math::domain::EPS;
+use crate::primitives::math::lerp::Lerp;
 use glam::Vec2;
 
 /// Math-only trait; storage is the type-erased `AnimationMap` keyed on `TypeId`.
@@ -22,11 +23,7 @@ use glam::Vec2;
 /// measurably costly. A `Copy` supertrait would bring that back, so copies
 /// spell `.clone()`; small `Copy` types still cost nothing. Sizes are pinned
 /// by `hot_struct_sizes_are_pinned`.
-pub trait Animatable: Clone + PartialEq + 'static {
-    /// Interpolate from `a` to `b` at phase `t`, normally `0.0..=1.0`, returning `a` at 0 and
-    /// `b` at 1 exactly, so a tween ends on its target. A curve may overshoot, so
-    /// implementations must not clamp.
-    fn lerp(a: Self, b: Self, t: f32) -> Self;
+pub trait Animatable: Lerp + Clone + PartialEq + 'static {
     #[must_use]
     /// Difference `self - other`.
     fn sub(self, other: Self) -> Self;
@@ -88,7 +85,7 @@ pub trait Animatable: Clone + PartialEq + 'static {
 // such type: `Animatable` is each type's decision.
 /// `a + (b − a)·t`, which can miss `b` at `t = 1` by a rounding and makes a NaN of two equal
 /// infinities, so both ends and an equal pair return an end.
-impl Animatable for f32 {
+impl Lerp for f32 {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         if t == 0.0 {
@@ -99,6 +96,9 @@ impl Animatable for f32 {
             a + (b - a) * t
         }
     }
+}
+
+impl Animatable for f32 {
     #[inline]
     fn sub(self, other: Self) -> Self {
         self - other
@@ -121,12 +121,15 @@ impl Animatable for f32 {
     }
 }
 
-impl Animatable for Vec2 {
+impl Lerp for Vec2 {
     /// Per axis, as `f32` blends.
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         Self::new(f32::lerp(a.x, b.x, t), f32::lerp(a.y, b.y, t))
     }
+}
+
+impl Animatable for Vec2 {
     #[inline]
     fn sub(self, other: Self) -> Self {
         self - other
@@ -149,13 +152,17 @@ impl Animatable for Vec2 {
     }
 }
 
-/// Element by element, each settling in its own unit, as a derive sums its fields.
-impl<T: Animatable, const N: usize> Animatable for [T; N] {
+/// Element by element.
+impl<T: Lerp, const N: usize> Lerp for [T; N] {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         let mut b = b.into_iter();
         a.map(|a| T::lerp(a, b.next().expect("arrays of one length"), t))
     }
+}
+
+/// Element by element, each settling in its own unit, as a derive sums its fields.
+impl<T: Animatable, const N: usize> Animatable for [T; N] {
     #[inline]
     fn sub(self, other: Self) -> Self {
         let mut other = other.into_iter();
@@ -208,6 +215,7 @@ impl<T: Animatable, const N: usize> Animatable for [T; N] {
 #[cfg(test)]
 mod tests {
     use crate::primitives::math::animatable::Animatable;
+    use crate::primitives::math::lerp::Lerp;
     use glam::Vec2;
 
     /// `0.32 + (1.32 − 0.32)·1` rounds to `1.3199999`, one ulp short of `1.32`, so the end needs

@@ -10,6 +10,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record::ShapeRecord;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::menu::MenuTheme;
 use crate::theme::menu::menu_item::MenuItemTheme;
@@ -253,15 +254,15 @@ fn per_instance_style_overrides_global_menu_theme() {
             defaults: SlotDefaults {
                 padding: Spacing::all(9.0),
                 margin: Spacing::xy(2.0, 6.0),
-                ..MenuItemTheme::default().defaults
+                ..MenuItemTheme::stock(ColorScheme::Dark).defaults
             },
-            ..MenuItemTheme::default()
+            ..MenuItemTheme::stock(ColorScheme::Dark)
         },
         separator: SeparatorTheme {
             thickness: 5.0,
-            ..SeparatorTheme::default()
+            ..SeparatorTheme::stock(ColorScheme::Dark)
         },
-        ..MenuTheme::default()
+        ..MenuTheme::stock(ColorScheme::Dark)
     };
 
     let mut h = Harness::mono(SURFACE);
@@ -315,7 +316,7 @@ fn per_instance_style_overrides_global_menu_theme() {
         "explicit row margin wins over the theme's 2/6"
     );
 
-    let default = MenuTheme::default();
+    let default = MenuTheme::stock(ColorScheme::Dark);
     let global = &h.ui().theme().menu;
     assert_eq!(global.padding, default.padding);
     assert_eq!(global.min_width, default.min_width);

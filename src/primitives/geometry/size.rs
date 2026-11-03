@@ -3,6 +3,7 @@
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::math::num::Number;
 use glam::{BVec2, Vec2};
@@ -188,7 +189,7 @@ impl NanCheck for Size {
 
 /// Per axis, as `f32` blends; an infinite axis, the "no bound" of [`Size::INF`], has no blend, so
 /// a lerp against one switches at `t = 0.5` and motion takes the target at once, its offset zero.
-impl Animatable for Size {
+impl Lerp for Size {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         let axis = |a: f32, b: f32| {
@@ -202,6 +203,9 @@ impl Animatable for Size {
         };
         Self::new(axis(a.w, b.w), axis(a.h, b.h))
     }
+}
+
+impl Animatable for Size {
     #[inline]
     fn sub(self, other: Self) -> Self {
         let axis = |a: f32, b: f32| {
@@ -234,6 +238,7 @@ impl Animatable for Size {
 #[cfg(test)]
 mod tests {
     use crate::primitives::geometry::size::Size;
+    use crate::primitives::math::lerp::Lerp;
     use glam::Vec2;
 
     #[test]

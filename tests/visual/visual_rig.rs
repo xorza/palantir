@@ -149,7 +149,7 @@ impl VisualRig {
             },
         );
 
-        self.host.ui_mut().theme_mut().window_clear = self.clear;
+        self.host.ui_mut().theme_mut().window_bg = self.clear;
         let report = self
             .host
             .set_system_scale(self.scale)

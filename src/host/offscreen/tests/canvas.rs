@@ -93,7 +93,7 @@ fn a_canvas_paints_what_the_backbuffer_paints() {
             .shaper(TextShaper::test_mono())
             .swapchain_present()
             .build();
-        host.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
+        host.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
         host.core.backend_mut().paint_as(traffic);
         host
     };

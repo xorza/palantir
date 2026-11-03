@@ -131,18 +131,18 @@ fn a_snap_is_the_default_a_theme_file_leaves_out() {
     use crate::theme::look::slot_defaults::SlotDefaults;
 
     assert_eq!(AnimationSpec::default(), AnimationSpec::SNAP);
-    let defaults = |animation| SlotDefaults {
+    let defaults = |transition| SlotDefaults {
         padding: Spacing::ZERO,
         margin: Spacing::ZERO,
-        animation,
+        transition,
     };
     let snap = ser::to_string(&defaults(AnimationSpec::SNAP)).expect("serialize");
-    assert!(!snap.contains("animation"), "{snap}");
+    assert!(!snap.contains("transition"), "{snap}");
     let back: SlotDefaults = ron::from_str(&snap).expect("parse");
     assert_eq!(back, defaults(AnimationSpec::SNAP));
 
     let fast = ser::to_string(&defaults(AnimationSpec::FAST)).expect("serialize");
-    assert!(fast.contains("animation"), "{fast}");
+    assert!(fast.contains("transition"), "{fast}");
     let back: SlotDefaults = ron::from_str(&fast).expect("parse");
     assert_eq!(back, defaults(AnimationSpec::FAST));
 }

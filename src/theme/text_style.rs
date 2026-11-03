@@ -8,6 +8,8 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::key::TextShapeKey;
+use crate::theme::color_scheme::ColorScheme;
+use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Default [`TextStyle::line_height_factor`]. A widget convention; the shaper
@@ -28,6 +30,7 @@ pub(crate) const LINE_HEIGHT_FACTOR: f32 = 1.2;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
+    palantir_anim_derive::Lerp,
     palantir_anim_derive::Animatable,
 )]
 #[serde(try_from = "UncheckedTextStyle")]
@@ -59,20 +62,25 @@ pub struct TextStyle {
     pub slant: FontSlant,
 }
 
-impl Default for TextStyle {
-    fn default() -> Self {
+impl TextStyle {
+    /// A theme's body text over `p` and `m`: [`Metrics`]' body size in the palette's ink, in the
+    /// bundled sans at its regular weight, upright.
+    pub const fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
-            font_size: 14.0,
-            color: Palette::DARK.text,
+            font_size: m.text.body,
+            color: p.text,
             line_height_factor: LINE_HEIGHT_FACTOR,
             family: FontFamily::SANS,
             weight: FontWeight::REGULAR,
             slant: FontSlant::Normal,
         }
     }
-}
 
-impl TextStyle {
+    /// The built-in body text of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub const fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
+    }
+
     pub(crate) fn metrics_valid(&self) -> bool {
         GlyphFont::metrics_are_valid(self.font_size, self.line_height())
     }

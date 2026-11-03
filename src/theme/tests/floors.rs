@@ -4,11 +4,31 @@ use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::Theme;
 use crate::theme::button::ButtonTheme;
+use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
+use crate::theme::combo_box::ComboBoxTheme;
+use crate::theme::dock::DockTheme;
+use crate::theme::drag_value::DragValueTheme;
+use crate::theme::expander::ExpanderTheme;
+use crate::theme::focus_ring::FocusRingTheme;
 use crate::theme::look::WidgetLook;
+use crate::theme::menu::MenuTheme;
+use crate::theme::menu::menu_item::MenuItemTheme;
+use crate::theme::menu_bar::MenuBarTheme;
 use crate::theme::metrics::Metrics;
+use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
+use crate::theme::popup::PopupTheme;
+use crate::theme::progress_bar::ProgressBarTheme;
+use crate::theme::scrollbar::ScrollbarTheme;
+use crate::theme::separator::SeparatorTheme;
+use crate::theme::slider::SliderTheme;
+use crate::theme::spinner::SpinnerTheme;
+use crate::theme::splitter::SplitterTheme;
+use crate::theme::tabs::TabsTheme;
 use crate::theme::text_edit::TextEditTheme;
+use crate::theme::text_style::TextStyle;
+use crate::theme::tooltip::TooltipTheme;
 
 /// WCAG 1.4.3: text against what it sits on
 /// (<https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum>).
@@ -155,18 +175,61 @@ fn for_scheme_picks_each_built_in_palette() {
     assert_ne!(Palette::DARK, Palette::LIGHT);
 }
 
-/// `Theme::stock` assembles each scheme's palette, and `Theme::default` is the dark one.
+/// `Theme::stock` assembles each scheme's palette, the dark one from `Palette::DARK`.
 #[test]
 fn stock_themes_wear_their_scheme_palette() {
     let light = Theme::stock(ColorScheme::Light);
-    assert_eq!(light.window_clear, Palette::LIGHT.window_bg);
+    assert_eq!(light.window_bg, Palette::LIGHT.window_bg);
     assert_eq!(light.switch.indicator, Palette::LIGHT.on_accent);
     assert_eq!(
         light.tooltip.panel.shadow,
         Palette::LIGHT.float_shadow(&Metrics::DEFAULT)
     );
-    assert_eq!(Theme::default(), Theme::stock(ColorScheme::Dark));
-    assert_ne!(light, Theme::default());
+    let dark = Theme::stock(ColorScheme::Dark);
+    assert_eq!(dark.window_bg, Palette::DARK.window_bg);
+    assert_ne!(light, dark);
+}
+
+/// Each part's `stock(scheme)` is the part `Theme::stock(scheme)` holds, in either scheme.
+#[test]
+fn each_parts_stock_is_the_stock_themes_part() {
+    for scheme in [ColorScheme::Dark, ColorScheme::Light] {
+        let t = Theme::stock(scheme);
+        assert_eq!(ButtonTheme::stock(scheme), t.button, "{scheme:?}");
+        assert_eq!(ScrollbarTheme::stock(scheme), t.scrollbar, "{scheme:?}");
+        assert_eq!(TextEditTheme::stock(scheme), t.text_edit, "{scheme:?}");
+        assert_eq!(DragValueTheme::stock(scheme), t.drag_value, "{scheme:?}");
+        assert_eq!(MenuTheme::stock(scheme), t.menu, "{scheme:?}");
+        assert_eq!(MenuItemTheme::stock(scheme), t.menu.item, "{scheme:?}");
+        assert_eq!(MenuBarTheme::stock(scheme), t.menu_bar, "{scheme:?}");
+        assert_eq!(ComboBoxTheme::stock(scheme), t.combo_box, "{scheme:?}");
+        assert_eq!(ModalTheme::stock(scheme), t.modal, "{scheme:?}");
+        assert_eq!(PopupTheme::stock(scheme), t.popup, "{scheme:?}");
+        assert_eq!(
+            ColorPickerTheme::stock(scheme),
+            t.color_picker,
+            "{scheme:?}"
+        );
+        assert_eq!(TooltipTheme::stock(scheme), t.tooltip, "{scheme:?}");
+        assert_eq!(
+            ProgressBarTheme::stock(scheme),
+            t.progress_bar,
+            "{scheme:?}"
+        );
+        assert_eq!(SeparatorTheme::stock(scheme), t.separator, "{scheme:?}");
+        assert_eq!(SliderTheme::stock(scheme), t.slider, "{scheme:?}");
+        assert_eq!(SpinnerTheme::stock(scheme), t.spinner, "{scheme:?}");
+        assert_eq!(SplitterTheme::stock(scheme), t.splitter, "{scheme:?}");
+        assert_eq!(TabsTheme::stock(scheme), t.tabs, "{scheme:?}");
+        assert_eq!(DockTheme::stock(scheme), t.dock, "{scheme:?}");
+        assert_eq!(ExpanderTheme::stock(scheme), t.expander, "{scheme:?}");
+        assert_eq!(FocusRingTheme::stock(scheme), t.focus_ring, "{scheme:?}");
+        assert_eq!(TextStyle::stock(scheme), t.text, "{scheme:?}");
+    }
+    assert_ne!(
+        TextStyle::stock(ColorScheme::Dark).color,
+        TextStyle::stock(ColorScheme::Light).color
+    );
 }
 
 /// `frost_floats` frosts exactly the five floating surfaces: each keeps its fill's color at the
@@ -180,7 +243,7 @@ fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
         let p = Palette::for_scheme(scheme);
         let stock = Theme::from_parts(p, &Metrics::DEFAULT);
         let mut frosted = stock.clone();
-        frosted.frost_floats(p, 20.0, 0.6);
+        frosted.frost_floats(20.0, 0.6);
         let panels = |theme: &Theme| {
             [
                 theme.menu.panel.clone(),
@@ -214,6 +277,29 @@ fn frost_floats_frosts_each_floating_surface_and_nothing_else() {
         frosted.modal.panel = stock.modal.panel.clone();
         assert_eq!(frosted, stock, "{scheme:?}: nothing else moved");
     }
+
+    // The bound reads the theme's ink, not a palette's: a menu whose shortcuts take the full ink
+    // gets the full ink's ceiling, which the muted one's is not.
+    let mut theme = Theme::stock(ColorScheme::Dark);
+    let ink = Palette::DARK.text;
+    theme.menu.item.shortcut = ink;
+    let tint = theme
+        .menu
+        .panel
+        .fill
+        .as_solid()
+        .expect("solid")
+        .with_alpha(0.6);
+    theme.frost_floats(20.0, 0.6);
+    let frosted = BackdropFilter::frosted(20.0);
+    assert_eq!(
+        theme.menu.panel.backdrop_filter,
+        frosted.with_max_luminance_for(ink, tint)
+    );
+    assert_ne!(
+        theme.menu.panel.backdrop_filter,
+        frosted.with_max_luminance_for(Palette::DARK.text_muted, tint)
+    );
 }
 
 /// A blur that is no length, and a tint the glass could not see through, are refused.
@@ -225,7 +311,7 @@ fn frost_floats_refuses_a_bad_blur_or_tint() {
         (20.0, 1.0, "a fraction under 1"),
     ] {
         let panic = std::panic::catch_unwind(|| {
-            Theme::from_parts(p, &Metrics::DEFAULT).frost_floats(p, sigma, alpha);
+            Theme::from_parts(p, &Metrics::DEFAULT).frost_floats(sigma, alpha);
         })
         .expect_err("refused");
         let message = panic

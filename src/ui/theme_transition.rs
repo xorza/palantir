@@ -5,7 +5,7 @@ use std::rc::Rc;
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::phase::{Phase, PhaseEnd};
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::theme::Theme;
 
 /// A window's theme transition: the spec a change runs under, and the blend while one runs.

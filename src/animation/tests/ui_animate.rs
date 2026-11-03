@@ -164,7 +164,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         chrome: chrome.clone(),
         text: TextStyleOverrides::NONE,
     };
-    let fallback = TextStyle::default();
+    let fallback = TextStyle::stock(ColorScheme::Dark);
 
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {

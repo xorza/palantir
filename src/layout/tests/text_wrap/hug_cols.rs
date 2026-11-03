@@ -11,6 +11,7 @@ use crate::primitives::layout::track::Track;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -72,8 +73,10 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                         Text::new("right column")
                                                             .auto_id()
                                                             .style(
-                                                                &TextStyle::default()
-                                                                    .with_font_size(14.0),
+                                                                &TextStyle::stock(
+                                                                    ColorScheme::Dark,
+                                                                )
+                                                                .with_font_size(14.0),
                                                             )
                                                             .text_wrap(TextWrap::SingleLine)
                                                             .grid_cell((0, 1))

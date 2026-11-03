@@ -31,18 +31,18 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
         button: ButtonTheme {
             defaults: SlotDefaults {
                 padding: Spacing::all(4.0),
-                ..ButtonTheme::default().defaults
+                ..ButtonTheme::stock(ColorScheme::Dark).defaults
             },
-            ..ButtonTheme::default()
+            ..ButtonTheme::stock(ColorScheme::Dark)
         },
-        ..Theme::default()
+        ..Theme::stock(ColorScheme::Dark)
     };
     let wide = ButtonTheme {
         defaults: SlotDefaults {
             padding: Spacing::all(20.0),
-            ..ButtonTheme::default().defaults
+            ..ButtonTheme::stock(ColorScheme::Dark).defaults
         },
-        ..ButtonTheme::default()
+        ..ButtonTheme::stock(ColorScheme::Dark)
     };
 
     let styled_id = WidgetId::from_hash("style-override-styled");
@@ -72,12 +72,12 @@ fn style_takes_an_option_and_none_falls_back_to_the_slot() {
 #[test]
 fn text_style_none_inherits_the_ambient_text_style() {
     let theme = Theme {
-        text: TextStyle::default()
+        text: TextStyle::stock(ColorScheme::Dark)
             .with_font_size(31.0)
             .with_color(RgbaF32::srgb(1.0, 0.0, 0.0)),
-        ..Theme::default()
+        ..Theme::stock(ColorScheme::Dark)
     };
-    let big = TextStyle::default().with_font_size(62.0);
+    let big = TextStyle::stock(ColorScheme::Dark).with_font_size(62.0);
 
     let plain_id = WidgetId::from_hash("style-text-plain");
     let styled_id = WidgetId::from_hash("style-text-styled");
@@ -106,12 +106,12 @@ fn per_axis_setters_outrank_the_style_bundle() {
     let ambient_color = RgbaF32::srgb(1.0, 0.0, 0.0);
     let axis_color = RgbaF32::srgb(0.0, 1.0, 0.0);
     let theme = Theme {
-        text: TextStyle::default()
+        text: TextStyle::stock(ColorScheme::Dark)
             .with_font_size(AMBIENT)
             .with_color(ambient_color),
-        ..Theme::default()
+        ..Theme::stock(ColorScheme::Dark)
     };
-    let bundle = TextStyle::default().with_font_size(BUNDLE);
+    let bundle = TextStyle::stock(ColorScheme::Dark).with_font_size(BUNDLE);
 
     let plain = WidgetId::from_hash("axis-plain");
     let axes = WidgetId::from_hash("axis-set");

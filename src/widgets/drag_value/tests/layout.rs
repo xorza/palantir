@@ -161,9 +161,9 @@ fn entering_edit_mode_preserves_the_callers_node_placement() {
 }
 
 /// Clicking into the field must not change its box. An unstyled `TextEdit`
-/// inherits `theme.text_edit` padding, so the editor must use the
-/// `drag_value.editor` slot that `DragValueTheme::from_chip` mirrors the chip
-/// padding onto. Height moved; width is pinned to the chip's last rect.
+/// inherits `theme.text_edit` padding, so the editor wears
+/// `DragValueTheme::editor`, the chip's own looks and padding. Height moved; width is pinned to
+/// the chip's last rect.
 #[test]
 fn entering_edit_mode_keeps_the_chips_box() {
     let id = WidgetId::from_hash("dv-box");

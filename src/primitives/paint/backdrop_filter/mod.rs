@@ -45,6 +45,7 @@
 
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
@@ -322,7 +323,7 @@ impl Default for BackdropFilter {
 /// neutral, as an absent chrome blends through `Chrome::NONE`: a floor of 0 lifts nothing, and
 /// `Lens::FLAT` bends nothing. The ceiling switches at `t = 0.5`, as its neutral, no bound, is
 /// no lane value. In motion the three take the target at once, as a `lerp_only` field does.
-impl Animatable for BackdropFilter {
+impl Lerp for BackdropFilter {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         if t == 0.0 {
@@ -354,6 +355,9 @@ impl Animatable for BackdropFilter {
             },
         }
     }
+}
+
+impl Animatable for BackdropFilter {
     #[inline]
     fn sub(self, other: Self) -> Self {
         Self {

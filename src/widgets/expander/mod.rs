@@ -150,7 +150,7 @@ impl<'a> Expander<'a> {
             let spec = if now_open && height.is_none() {
                 AnimationSpec::SNAP
             } else {
-                t.defaults.animation
+                t.defaults.transition
             };
             let swing = ui.animate(
                 AnimationRequest::new(header_id, SLOT_OPEN, f32::from(now_open)),

@@ -10,7 +10,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
@@ -21,7 +21,7 @@ use crate::theme::close_shown::CloseShown;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
-use crate::theme::{Theme, ThemeText};
+use crate::theme::{TextSlots, Theme, ThemeText};
 
 const RED: RgbaF32 = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
 
@@ -29,7 +29,7 @@ const RED: RgbaF32 = RgbaF32::new(1.0, 0.0, 0.0, 1.0);
 fn resolved_text(theme: &mut Theme) -> Vec<TextStyle> {
     let ambient = theme.text;
     let mut styles = Vec::new();
-    theme.for_each_text(None, |text, _| {
+    theme.for_each_text(None, &mut |text, _| {
         styles.push(match text {
             ThemeText::Style(style) => *style,
             ThemeText::Overrides(o) => o.apply(&ambient),
@@ -85,7 +85,7 @@ fn the_midpoint_of_a_built_pair_blends_every_value() {
     b.menu.panel.corners = Corners::all(8.0);
     a.tooltip.max_size = Size::new(280.0, f32::INFINITY);
     b.tooltip.max_size = Size::new(320.0, 200.0);
-    b.window_clear = RED;
+    b.window_bg = RED;
 
     let mid = Theme::lerp(a.clone(), b, 0.5);
     // 1 + 2·½ = 2.
@@ -106,8 +106,8 @@ fn the_midpoint_of_a_built_pair_blends_every_value() {
     assert_eq!(mid.menu.panel.corners, Corners::all(6.0));
     // 280 + 40·½ = 300; the unbounded height switches to `b`'s at ½.
     assert_eq!(mid.tooltip.max_size, Size::new(300.0, 200.0));
-    assert_eq!(mid.window_clear, RgbaF32::lerp(a.window_clear, RED, 0.5),);
-    assert_ne!(mid.window_clear, a.window_clear);
+    assert_eq!(mid.window_bg, RgbaF32::lerp(a.window_bg, RED, 0.5),);
+    assert_ne!(mid.window_bg, a.window_bg);
     assert_eq!(mid.slider, a.slider);
     assert_eq!(mid.tabs, a.tabs);
 }
@@ -125,8 +125,8 @@ fn values_with_no_blend_switch_halfway() {
     b.spinner.period = Duration::from_secs(2);
     a.tooltip.delay = Duration::from_millis(500);
     b.tooltip.delay = Duration::from_millis(900);
-    a.button.defaults.animation = AnimationSpec::FAST;
-    b.button.defaults.animation = AnimationSpec::SNAP;
+    a.button.defaults.transition = AnimationSpec::FAST;
+    b.button.defaults.transition = AnimationSpec::SNAP;
     b.text.family = FontFamily::MONO;
     b.text.weight = FontWeight::BOLD;
     b.text.slant = FontSlant::Italic;
@@ -140,7 +140,7 @@ fn values_with_no_blend_switch_halfway() {
         assert_eq!(mix.spinner.period, want.spinner.period, "{t}");
         assert_eq!(mix.tooltip.delay, want.tooltip.delay, "{t}");
         assert_eq!(
-            mix.button.defaults.animation, want.button.defaults.animation,
+            mix.button.defaults.transition, want.button.defaults.transition,
             "{t}"
         );
         assert_eq!(mix.text.family, want.text.family, "{t}");

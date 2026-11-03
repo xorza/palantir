@@ -12,6 +12,7 @@ use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::wrap::TextWrap;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -107,7 +108,7 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
                                                 Text::new(name)
                                                     .id_salt(("from", i))
                                                     .style(
-                                                        &TextStyle::default()
+                                                        &TextStyle::stock(ColorScheme::Dark)
                                                             .with_font_size(12.0)
                                                             .bold(),
                                                     )

@@ -1,6 +1,7 @@
 //! What a spinner wears, and how fast it turns.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use std::f32::consts;
@@ -8,7 +9,13 @@ use std::time::Duration;
 
 /// Visuals and motion for [`crate::Spinner`]. Builder overrides (`.color(...)`, `.width(...)` and a fixed `.size(...)`) win.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct SpinnerTheme {
     /// Arc color at the comet's head; the tail fades to transparent.
@@ -29,7 +36,7 @@ pub struct SpinnerTheme {
     pub width_ratio: f32,
     /// Floor on the derived stroke width in logical px.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub min_width: f32,
+    pub min_stroke_width: f32,
 }
 
 impl SpinnerTheme {
@@ -41,13 +48,12 @@ impl SpinnerTheme {
             sweep: 1.5 * consts::PI,
             period: Duration::from_millis(1400),
             width_ratio: 0.12,
-            min_width: m.stroke.fine,
+            min_stroke_width: m.stroke.fine,
         }
     }
-}
 
-impl Default for SpinnerTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub const fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

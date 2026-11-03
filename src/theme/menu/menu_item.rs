@@ -5,7 +5,7 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::theme::ThemeText;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -20,7 +20,13 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 /// not the pick and one for the row that is, as the current choice of a combo list. `active`
 /// defaults to `hovered`: a click closes the menu.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct MenuItemTheme {
     /// The four per-state looks of a row that is not the pick; `flatten` keeps theme files flat
@@ -41,24 +47,6 @@ pub struct MenuItemTheme {
 }
 
 impl MenuItemTheme {
-    /// Destructured so a new field fails to compile here, see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            unselected,
-            selected,
-            shortcut: _,
-            gap: _,
-            defaults: _,
-        } = self;
-        let mut other = other;
-        unselected.for_each_text(other.as_deref_mut().map(|o| &mut o.unselected), f);
-        selected.for_each_text(other.map(|o| &mut o.selected), f);
-    }
-
     /// Rows transparent at rest, one surface step brighter on hover, under the metrics'
     /// `transition` as a button is. The pick reads in the accent ink in every live state, as
     /// the selection wash does, and keeps the row's fills.
@@ -96,9 +84,14 @@ impl MenuItemTheme {
             defaults: SlotDefaults {
                 padding: m.row_padding(),
                 margin: Spacing::ZERO,
-                animation: m.transition,
+                transition: m.transition,
             },
         }
+    }
+
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }
 
@@ -115,11 +108,5 @@ impl ThemeSlot for MenuItemTheme {
 
     fn defaults(&self) -> SlotDefaults {
         self.defaults
-    }
-}
-
-impl Default for MenuItemTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

@@ -6,8 +6,8 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
-use crate::theme::ThemeText;
 use crate::theme::close_shown::CloseShown;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -24,13 +24,19 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 /// picked by [`StatefulLook::pick`]. The selected chip wears a top cap:
 /// [`Self::cap_focused`] while the strip holds focus, else [`Self::cap_unfocused`].
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct TabsTheme {
-    /// Look pack for the selected chip; its fill defaults to the window ground.
-    pub selected: StatefulLook,
     /// Look pack for every other chip; a ghost by default, filled only under the pointer.
     pub unselected: StatefulLook,
+    /// Look pack for the selected chip; its fill defaults to the window ground.
+    pub selected: StatefulLook,
     /// Selection cap on the focused strip.
     pub cap_focused: RgbaF32,
     /// Selection cap on a strip that does not hold focus.
@@ -98,43 +104,6 @@ pub struct TabsTheme {
 }
 
 impl TabsTheme {
-    /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        mut other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            selected,
-            unselected,
-            close,
-            cap_focused: _,
-            cap_unfocused: _,
-            cap_thickness: _,
-            strip: _,
-            strip_padding: _,
-            gap: _,
-            rule: _,
-            rule_thickness: _,
-            radius: _,
-            chip_padding: _,
-            trailing_inset: _,
-            min_width: _,
-            max_width: _,
-            close_size: _,
-            close_glyph_span: _,
-            close_glyph_width: _,
-            close_shown: _,
-            caret: _,
-            caret_width: _,
-            label_gap: _,
-            defaults: _,
-        } = self;
-        selected.for_each_text(other.as_deref_mut().map(|o| &mut o.selected), f);
-        unselected.for_each_text(other.as_deref_mut().map(|o| &mut o.unselected), f);
-        close.for_each_text(other.map(|o| &mut o.close), f);
-    }
-
     /// The cap color a strip paints under its selected chip.
     pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32 {
         match focus {
@@ -158,17 +127,17 @@ impl TabsTheme {
             text,
         };
         Self {
-            selected: StatefulLook {
-                normal: chip(p.window_bg, TextStyleOverrides::NONE),
-                hovered: chip(p.window_bg, TextStyleOverrides::NONE),
-                active: chip(p.window_bg, TextStyleOverrides::NONE),
-                disabled: chip(p.window_bg, disabled_text),
-            },
             unselected: StatefulLook {
                 normal: chip(RgbaF32::TRANSPARENT, inactive_text),
                 hovered: chip(p.element_mid, TextStyleOverrides::NONE),
                 active: chip(p.element_strong, TextStyleOverrides::NONE),
                 disabled: chip(RgbaF32::TRANSPARENT, disabled_text),
+            },
+            selected: StatefulLook {
+                normal: chip(p.window_bg, TextStyleOverrides::NONE),
+                hovered: chip(p.window_bg, TextStyleOverrides::NONE),
+                active: chip(p.window_bg, TextStyleOverrides::NONE),
+                disabled: chip(p.window_bg, disabled_text),
             },
             cap_focused: p.accent,
             cap_unfocused: p.element_strong,
@@ -212,26 +181,25 @@ impl TabsTheme {
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
-                animation: m.transition,
+                transition: m.transition,
             },
         }
     }
-}
 
-impl Default for TabsTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }
 
 impl ThemeSlot for TabsTheme {
     type Pick = Selection;
 
-    /// The selected or unselected pack, then its state (`active` = pressed).
+    /// The unselected or selected pack, then its state (`active` = pressed).
     fn look(&self, response: &ResponseState, selection: Selection) -> &WidgetLook {
         let pack = match selection {
-            Selection::Selected => &self.selected,
             Selection::Unselected => &self.unselected,
+            Selection::Selected => &self.selected,
         };
         pack.pick(response, Engagement::Pressed)
     }

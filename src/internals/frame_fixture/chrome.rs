@@ -21,6 +21,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -61,7 +62,11 @@ pub(super) fn app_bar(ui: &mut Ui) {
                 .show(ui);
             Text::new("Palantir")
                 .id_salt("title")
-                .style(&TextStyle::default().with_font_size(19.0).bold())
+                .style(
+                    &TextStyle::stock(ColorScheme::Dark)
+                        .with_font_size(19.0)
+                        .bold(),
+                )
                 .show(ui);
             Text::new("frame bench")
                 .id_salt("subtitle")
@@ -174,7 +179,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
                     // Live counter: the partial-damage arm mutates `state.tick`; fixed width keeps digits from shifting siblings, so damage is this Text's rect.
                     Text::new(fmt!(ui, "Frame {:08}", state.tick))
                         .id_salt("footer-status")
-                        .style(&TextStyle::default().with_font_size(12.0))
+                        .style(&TextStyle::stock(ColorScheme::Dark).with_font_size(12.0))
                         .size((Sizing::fixed(120.0), Sizing::HUG))
                         .show(ui);
                     Block::new()

@@ -5,12 +5,13 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::is_invisible;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use palantir_anim_derive::Animatable;
+use palantir_anim_derive::{Animatable, Lerp};
 
 /// Paint data shared by container widgets (`Block`, `Panel`, `Grid`) and per-state
 /// widget visuals. [`Self::NONE`] is transparent fill, no border, square corners:
@@ -33,7 +34,7 @@ use palantir_anim_derive::Animatable;
 // Intentionally **not `Copy`**: it is the largest of the three types
 // `primitives::math::animatable::Animatable` discusses, and the recording chain takes it
 // by reference.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable)]
 #[must_use]
 pub struct Chrome {
     /// Interior paint. [`Brush::TRANSPARENT`] fills nothing.
@@ -198,7 +199,7 @@ impl Default for Chrome {
 /// appears fades in, its radii and shadow growing from zero. Motion reads a `None` value as
 /// `NONE` too, a fixed point of [`Animatable::to_motion`], and a `None` offset or velocity as
 /// zero.
-impl Animatable for Option<Chrome> {
+impl Lerp for Option<Chrome> {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         if t == 0.0 {
@@ -216,6 +217,9 @@ impl Animatable for Option<Chrome> {
             )),
         }
     }
+}
+
+impl Animatable for Option<Chrome> {
     #[inline]
     fn sub(self, other: Self) -> Self {
         match (self, other) {

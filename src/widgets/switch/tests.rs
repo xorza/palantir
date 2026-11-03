@@ -1,8 +1,8 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::host::harness::Harness;
-use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::internals::assert_close;
+use crate::primitives::math::lerp::Lerp;
 
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
@@ -160,7 +160,7 @@ fn the_knob_wears_the_ink_of_its_state() {
 #[test]
 fn one_share_places_the_knob_and_blends_its_ink() {
     let mut style = ToggleTheme::switch(&Palette::DARK, &Metrics::DEFAULT);
-    style.defaults.animation =
+    style.defaults.transition =
         AnimationSpec::duration(time::Duration::from_millis(100), Easing::Linear);
     let mut h = Harness::mono(UVec2::new(400, 400));
     let id = WidgetId::from_hash("wifi");
@@ -193,6 +193,6 @@ fn one_share_places_the_knob_and_blends_its_ink() {
     let ShapeBrush::Solid(fill) = chrome.fill else {
         panic!("the knob is a solid fill");
     };
-    let ink = Animatable::lerp(Palette::DARK.text, Palette::DARK.on_accent, 0.16);
+    let ink = Lerp::lerp(Palette::DARK.text, Palette::DARK.on_accent, 0.16);
     assert_eq!(fill, ink.to_f16());
 }

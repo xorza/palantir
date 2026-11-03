@@ -205,7 +205,7 @@ fn button_hover_and_unhover_damage_cover_only_the_button() {
     for entering in [true, false] {
         let direction = if entering { "hover" } else { "unhover" };
         let mut h = Harness::mono(UVec2::new(400, 400));
-        h.ui_mut().theme_mut().button.defaults.animation = AnimationSpec::SNAP;
+        h.ui_mut().theme_mut().button.defaults.transition = AnimationSpec::SNAP;
         let hot = build(&mut h);
         let hot_rect = h.ui().arranged_rect(Layer::Main, hot);
         let (off, on) = (Vec2::new(380.0, 380.0), hot_rect.min + Vec2::new(5.0, 5.0));

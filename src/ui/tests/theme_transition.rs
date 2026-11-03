@@ -8,7 +8,7 @@ use glam::UVec2;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
 use crate::host::harness::Harness;
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme::{Dark, Light};
 use crate::ui::Ui;

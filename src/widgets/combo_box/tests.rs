@@ -212,7 +212,7 @@ fn trigger_geometry_follows_the_combo_box_theme() {
     let instance = ComboBoxTheme {
         arrow_size: Vec2::new(20.0, 14.0),
         gap: 30.0,
-        ..ComboBoxTheme::default()
+        ..ComboBoxTheme::stock(ColorScheme::Dark)
     };
     let c = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance), None);
     assert_eq!(c, b, "`style` overrides the slot's arrow_size and gap");
@@ -226,10 +226,14 @@ fn trigger_chrome_follows_button_style() {
     let options = ["One"];
     let id = WidgetId::from_hash("styled-combo");
     let custom = RgbaF32::srgb(0.9, 0.2, 0.1);
-    let mut restyled = ButtonTheme::default();
+    let mut restyled = ButtonTheme::stock(ColorScheme::Dark);
     restyled.unselected.normal.chrome.fill = custom.into();
     assert_ne!(
-        ButtonTheme::default().unselected.normal.chrome.fill,
+        ButtonTheme::stock(ColorScheme::Dark)
+            .unselected
+            .normal
+            .chrome
+            .fill,
         custom.into(),
         "premise: the custom fill differs from the stock one",
     );
@@ -273,7 +277,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
     let list_height = |padding: f32, gap: f32, styled: bool| {
         let options = ["One", "Two"];
         let id = WidgetId::from_hash("combo");
-        let mut menu = Theme::default().menu;
+        let mut menu = Theme::stock(ColorScheme::Dark).menu;
         menu.padding = Spacing::all(padding);
         menu.gap = gap;
 
@@ -281,7 +285,7 @@ fn the_dropdown_takes_the_menu_theme_it_documents() {
         if !styled {
             let theme = Theme {
                 menu: menu.clone(),
-                ..Theme::default()
+                ..Theme::stock(ColorScheme::Dark)
             };
             h.ui_mut().set_theme_for(ColorScheme::Dark, theme);
         }

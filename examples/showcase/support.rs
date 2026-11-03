@@ -164,15 +164,15 @@ impl Swatches {
 }
 
 /// A section's title: `Metrics`' 16 px title, semibold, as Fluent 2's Subtitle 2.
-fn section_style(k: Kit) -> TextStyle {
+const fn section_style(k: Kit) -> TextStyle {
     k.t.body()
         .with_font_size(M.text.title)
         .with_weight(FontWeight::SEMI_BOLD)
 }
 
 /// [`SWATCH_INK`] at the caption size, for a label on a swatch fill.
-pub(crate) fn on_swatch_style() -> TextStyle {
-    TextStyle::default()
+pub(crate) const fn on_swatch_style() -> TextStyle {
+    TextStyle::stock(ColorScheme::Dark)
         .with_font_size(M.text.caption)
         .with_color(SWATCH_INK)
 }

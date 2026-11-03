@@ -1,12 +1,13 @@
-//! `#[derive(Animatable)]`, read back field by field on probe structs.
+//! `#[derive(Lerp, Animatable)]`, read back field by field on probe structs.
 
 use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
-use palantir_anim_derive::Animatable;
+use palantir_anim_derive::{Animatable, Lerp};
 
 /// Two animated fields, a lerp-only field and two snap fields.
-#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
 struct Probe {
     x: f32,
     v: Vec2,
@@ -19,7 +20,7 @@ struct Probe {
 }
 
 /// Every field snaps.
-#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
 struct AllSnap {
     #[animate(snap)]
     a: u8,
@@ -28,7 +29,7 @@ struct AllSnap {
 }
 
 /// One tolerance for the whole struct: `0.5`, a power of two, so its square divides exactly.
-#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
 #[animate(settle_eps = 0.5)]
 struct Scaled {
     a: f32,
@@ -36,7 +37,7 @@ struct Scaled {
 }
 
 /// Two fields, each settling in its own unit.
-#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
 struct Mixed {
     color: RgbaF32,
     scaled: Scaled,
@@ -45,14 +46,14 @@ struct Mixed {
 }
 
 /// Generic over the animated field.
-#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
 struct Pair<T: Animatable + Copy> {
     first: T,
     second: T,
 }
 
 /// A hook that swaps the ends, so a lerp it runs in reads backwards.
-#[derive(Clone, Copy, Debug, PartialEq, Animatable)]
+#[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
 #[animate(before_lerp = Self::swap)]
 struct Hooked {
     x: f32,

@@ -1,13 +1,20 @@
 //! A combo box's geometry; colors come from the button and popup themes it is built from.
 
 use crate::primitives::geometry::arrow::Arrow;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use glam::Vec2;
 
 /// Geometry for [`crate::ComboBox`]. Colors and chrome read `Theme::button` and `Theme::menu` (trigger as button, dropdown as context menu), so restyling either moves the combo. Left: the label-to-arrow gutter and the chevron.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct ComboBoxTheme {
     /// Gutter between label and chevron; the trigger justifies its children apart, so this is the minimum gap.
@@ -31,17 +38,16 @@ impl ComboBoxTheme {
         }
     }
 
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub const fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
+    }
+
     /// The chevron's three points (`v`) in a box of [`Self::arrow_size`], origin top-left; the middle point is the tip.
     pub(crate) fn chevron_points(&self) -> [Vec2; 3] {
         Arrow {
             size: self.arrow_size,
         }
         .points()
-    }
-}
-
-impl Default for ComboBoxTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

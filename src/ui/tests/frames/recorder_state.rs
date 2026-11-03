@@ -85,7 +85,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
 
     let mut h = Harness::mono(SURFACE);
     let clear = RgbaF32::srgb(0.25, 0.5, 0.75);
-    h.ui_mut().theme_mut().window_clear = clear;
+    h.ui_mut().theme_mut().window_bg = clear;
 
     let handle = Rc::clone(h.ui().theme());
     assert!(
@@ -95,10 +95,10 @@ fn theme_reads_share_and_writes_copy_on_write() {
 
     // Write with the handle alive: the `Ui` moves, the handle doesn't.
     let recolored = RgbaF32::srgb(0.1, 0.2, 0.3);
-    h.ui_mut().theme_mut().window_clear = recolored;
-    assert_eq!(h.ui().theme().window_clear, recolored);
+    h.ui_mut().theme_mut().window_bg = recolored;
+    assert_eq!(h.ui().theme().window_bg, recolored);
     assert_eq!(
-        handle.window_clear, clear,
+        handle.window_bg, clear,
         "an outstanding handle must keep the values it was taken with",
     );
     assert!(
@@ -109,7 +109,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
     // With the handle dropped, the next write mutates in place.
     drop(handle);
     let before = Rc::as_ptr(h.ui().theme());
-    h.ui_mut().theme_mut().window_clear = clear;
+    h.ui_mut().theme_mut().window_bg = clear;
     assert_eq!(
         Rc::as_ptr(h.ui().theme()),
         before,
@@ -118,7 +118,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
 
     // `set_theme_for` takes the handle, so swapping themes is a move.
     h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
-    let swapped: Rc<Theme> = Rc::new(Theme::default());
+    let swapped: Rc<Theme> = Rc::new(Theme::stock(ColorScheme::Dark));
     let swapped_ptr = Rc::as_ptr(&swapped);
     h.ui_mut().set_theme_for(ColorScheme::Dark, swapped);
     assert_eq!(Rc::as_ptr(h.ui().theme()), swapped_ptr);

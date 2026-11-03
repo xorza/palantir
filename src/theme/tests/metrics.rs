@@ -93,7 +93,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ),
         (
             "drag value",
-            t.drag_value.chip.defaults.padding,
+            t.drag_value.defaults.padding,
             Spacing::xy(5.0, 1.0),
         ),
         ("menu", t.menu.padding, Spacing::all(1.0)),
@@ -127,7 +127,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("popup", t.popup.padding, Spacing::all(3.0)),
         (
             "picker value",
-            t.color_picker.value.chip.defaults.padding,
+            t.color_picker.value.defaults.padding,
             Spacing::all(1.0),
         ),
         (
@@ -150,7 +150,11 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("expander indent", t.expander.indent, 11.0 + 3.0),
         ("combo gap", t.combo_box.gap, 5.0),
         ("scrollbar gap", t.scrollbar.gap, 1.0),
-        ("dock preview radius", t.dock.preview_radius, 11.0),
+        (
+            "dock preview radius",
+            t.dock.preview.corners.to_array()[0],
+            11.0,
+        ),
         ("tab radius", t.tabs.radius, 15.0),
         ("separator", t.separator.thickness, 0.25),
         ("splitter rule", t.splitter.rule_thickness, 0.25),
@@ -161,10 +165,10 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ),
         ("picker gap", t.color_picker.gap, 3.0),
         ("caret", t.text_edit.caret_width, 0.5),
-        ("dock preview", t.dock.preview_stroke.width, 0.5),
+        ("dock preview", t.dock.preview.border.width, 0.5),
         ("tab close", t.tabs.close_glyph_width, 0.5),
         ("combo arrow", t.combo_box.arrow_width, 0.5),
-        ("spinner floor", t.spinner.min_width, 0.5),
+        ("spinner floor", t.spinner.min_stroke_width, 0.5),
         ("picker handle", t.color_picker.handle_width, 0.5),
         ("focus ring", t.focus_ring.width, 0.75),
         ("tab cap", t.tabs.cap_thickness, 0.75),
@@ -181,7 +185,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         ("picker label", t.color_picker.label.font_size),
         (
             "picker value",
-            t.color_picker.value.chip.unselected.normal.text.font_size,
+            t.color_picker.value.looks.normal.text.font_size,
         ),
         (
             "picker hex",
@@ -212,11 +216,11 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
     assert_eq!(t.tabs.close.hovered.chrome.corners, Corners::all(13.0));
     assert_eq!(t.tabs.selected.normal.chrome.corners, Corners::top(15.0));
     for (slot, animation) in [
-        ("button", t.button.defaults.animation),
-        ("menu bar title", t.menu_bar.defaults.animation),
-        ("menu item", t.menu.item.defaults.animation),
-        ("tab chip", t.tabs.defaults.animation),
-        ("drag value", t.drag_value.chip.defaults.animation),
+        ("button", t.button.defaults.transition),
+        ("menu bar title", t.menu_bar.defaults.transition),
+        ("menu item", t.menu.item.defaults.transition),
+        ("tab chip", t.tabs.defaults.transition),
+        ("drag value", t.drag_value.defaults.transition),
     ] {
         assert_eq!(animation, DISTINCT.transition, "{slot} transition");
     }

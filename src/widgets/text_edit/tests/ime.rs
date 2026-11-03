@@ -12,6 +12,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_edit::TextEditTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -63,7 +64,7 @@ fn focused_at(text: &str, back: usize) -> (Harness, String) {
 /// A composition shows spliced in and underlined without touching the buffer; commit types it.
 #[test]
 fn a_composition_shows_in_place_and_types_on_commit() {
-    let caret_width = TextEditTheme::default().caret_width;
+    let caret_width = TextEditTheme::stock(ColorScheme::Dark).caret_width;
     let (mut h, mut buf) = focused_at("abcd", 2);
     h.on_input(InputEvent::ImePreedit(ImePreedit {
         text: "かな",
@@ -97,7 +98,7 @@ fn a_composition_starting_over_a_selection_deletes_it() {
 /// While focused the field asks for IME text with its caret in screen space, and stops when focus leaves.
 #[test]
 fn a_focused_field_asks_for_ime_at_its_caret() {
-    let caret_width = TextEditTheme::default().caret_width;
+    let caret_width = TextEditTheme::stock(ColorScheme::Dark).caret_width;
     let (mut h, mut buf) = focused_at("abcd", 0);
     h.frame(|ui| record(ui, &mut buf));
     let area = h.ui().ime_area().expect("a focused field asks");

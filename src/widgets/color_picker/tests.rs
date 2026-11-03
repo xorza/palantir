@@ -7,6 +7,7 @@ use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::okhsv::Okhsv;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::theme::color_picker::ColorPickerTheme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::value_response::ValueEdges;
 use crate::widgets::color_picker::ColorPicker;
@@ -162,7 +163,7 @@ struct Measured {
 /// not stock, and a caller's `.gap(..)` wins over either.
 #[test]
 fn the_style_reaches_the_panel_and_a_caller_gap_wins() {
-    let stock = ColorPickerTheme::default();
+    let stock = ColorPickerTheme::stock(ColorScheme::Dark);
     let custom = ColorPickerTheme {
         field_height: stock.field_height + 30.0,
         swatch_size: stock.swatch_size + 7.0,

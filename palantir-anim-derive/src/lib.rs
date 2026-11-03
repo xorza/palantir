@@ -1,36 +1,53 @@
-//! Derive for `palantir::widget::Animatable`: animated fields forward to their own impls;
-//! `#[animate(snap)]` and `#[animate(lerp_only)]` fields take the target at once in motion and are
-//! left out of its arithmetic, a snap field switching halfway through a `lerp` and a `lerp_only`
-//! field blending there.
+//! Derives for `palantir::widget::Lerp` and `palantir::widget::Animatable`. `Lerp` blends a struct
+//! fieldwise; `Animatable` adds the spring arithmetic, where animated fields forward to their own
+//! impls and `#[animate(snap)]` and `#[animate(lerp_only)]` fields take the target at once and are
+//! left out of it. A snap field switches halfway through a `lerp`; a `lerp_only` field blends
+//! there. `TextSlots` is palantir's own: a theme part's text walk.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, quote};
 use std::fmt;
+use syn::punctuated::Punctuated;
+use syn::token::Comma;
 use syn::{
     Data, DataStruct, DeriveInput, Expr, ExprPath, Field, Fields, Ident, Type, parse_macro_input,
 };
 
-/// `#[derive(Animatable)]` on a struct with named fields. `lerp` returns either end exactly at
-/// `t` of 0 or 1. `to_motion` and `from_motion` forward to each animated field, so a struct of
-/// colors springs in premultiplied Oklab as its colors do.
+/// `#[derive(Lerp)]` on a struct with named fields: `lerp` returns either end exactly at `t` of 0
+/// or 1, and blends each field through its own `Lerp` between them.
 ///
-/// Field attributes, one at most:
+/// Field attributes:
 /// - `#[animate(snap)]`, a value with no blend: `lerp` takes `a`'s below `t = 0.5` and `b`'s
-///   from it, as Flutter's `ThemeData.lerp` and CSS's discrete animation type switch; motion
-///   takes the target at once, as its arithmetic keeps `self`, and the magnitude excludes it.
-///   `zero` is its `Default`.
-/// - `#[animate(lerp_only)]`, a value that blends in `lerp` through its own impl but takes the
-///   target at once in motion, as a snap field does: one whose every step costs work a fade
-///   should not pay, as a font size reshapes its text. `zero` is its own.
+///   from it, as Flutter's `ThemeData.lerp` and CSS's discrete animation type switch.
+/// - `#[animate(lerp_only)]` blends as an unmarked field does; it matters to `Animatable`.
 ///
-/// Struct attributes:
-/// - `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own unit
-///   (`settle_distance_squared` = `magnitude_squared / EXPR²`); without it, the animated fields'
-///   own sum.
-/// - `#[animate(before_lerp = PATH)]` names a `fn(&mut Self, &mut Self)` that `lerp` runs on its
-///   two ends before it blends them, past the exact ends: a value whose fields blend against
-///   context another field holds, as a theme's text overrides fold onto its ambient style.
+/// Struct attribute: `#[animate(before_lerp = PATH)]` names a `fn(&mut Self, &mut Self)` that
+/// `lerp` runs on its two ends before it blends them, past the exact ends: a value whose fields
+/// blend against context another field holds, as a theme's text overrides fold onto its
+/// ambient style.
+#[proc_macro_derive(Lerp, attributes(animate))]
+pub fn derive_lerp(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    expand_lerp(&input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// `#[derive(Animatable)]` on a struct with named fields that also implements `Lerp`, as
+/// `#[derive(Lerp)]` gives it. `to_motion` and `from_motion` forward to each animated field, so a
+/// struct of colors springs in premultiplied Oklab as its colors do.
+///
+/// Field attributes, one at most of `snap` and `lerp_only`:
+/// - `#[animate(snap)]` takes the target at once in motion, as its arithmetic keeps `self`, and
+///   the magnitude excludes it. `zero` is its `Default`.
+/// - `#[animate(lerp_only)]`, a value that blends in `lerp` but takes the target at once in
+///   motion, as a snap field does: one whose every step costs work a fade should not pay, as a
+///   font size reshapes its text. `zero` is its own.
+///
+/// Struct attribute: `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own
+/// unit (`settle_distance_squared` = `magnitude_squared / EXPR²`); without it, the animated
+/// fields' own sum.
 #[proc_macro_derive(Animatable, attributes(animate))]
 pub fn derive_animatable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -39,27 +56,106 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
         .into()
 }
 
+/// `#[derive(TextSlots)]`, palantir's own, on a theme part: its text walk visits every field in
+/// field order, each through the field type's own `TextSlots`, so a field whose type has no walk
+/// fails to compile until it gets one, as serde's and `gc`'s derives ask of each field.
+#[proc_macro_derive(TextSlots)]
+pub fn derive_text_slots(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    expand_text_slots(&input)
+        .unwrap_or_else(syn::Error::into_compile_error)
+        .into()
+}
+
+/// The named fields of a struct, or the error each derive gives any other input.
+fn named_fields<'a>(
+    input: &'a DeriveInput,
+    derive: &str,
+) -> syn::Result<&'a Punctuated<Field, Comma>> {
+    match &input.data {
+        Data::Struct(DataStruct {
+            fields: Fields::Named(named),
+            ..
+        }) => Ok(&named.named),
+        _ => Err(syn::Error::new_spanned(
+            input,
+            format!("{derive} can only be derived on structs with named fields"),
+        )),
+    }
+}
+
+fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let fields = named_fields(input, "Lerp")?;
+    let ContainerOptions { before_lerp, .. } = ContainerOptions::of(input)?;
+
+    let mut blend = Vec::new();
+    for f in fields {
+        let ident = f.ident.as_ref().expect("named fields have idents");
+        blend.push(match FieldKind::of(f)? {
+            FieldKind::Snap => quote! { #ident: if t < 0.5 { a.#ident } else { b.#ident }, },
+            FieldKind::Animated | FieldKind::LerpOnly => {
+                quote! { #ident: ::palantir::widget::Lerp::lerp(a.#ident, b.#ident, t), }
+            }
+        });
+    }
+    let before_lerp_call = before_lerp.map(|path| {
+        quote! {
+            let (mut a, mut b) = (a, b);
+            #path(&mut a, &mut b);
+        }
+    });
+    Ok(quote! {
+        impl #impl_generics ::palantir::widget::Lerp for #name #ty_generics #where_clause {
+            #[inline]
+            fn lerp(a: Self, b: Self, t: f32) -> Self {
+                if t == 0.0 {
+                    return a;
+                }
+                if t == 1.0 {
+                    return b;
+                }
+                #before_lerp_call
+                Self {
+                    #(#blend)*
+                }
+            }
+        }
+    })
+}
+
+fn expand_text_slots(input: &DeriveInput) -> syn::Result<TokenStream2> {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+    let fields = named_fields(input, "TextSlots")?
+        .iter()
+        .map(|f| f.ident.as_ref().expect("named fields have idents"));
+    Ok(quote! {
+        impl #impl_generics crate::theme::TextSlots for #name #ty_generics #where_clause {
+            #[inline]
+            fn for_each_text<F>(&mut self, mut other: ::core::option::Option<&mut Self>, f: &mut F)
+            where
+                F: FnMut(crate::theme::ThemeText<'_>, ::core::option::Option<crate::theme::ThemeText<'_>>),
+            {
+                #(
+                    crate::theme::TextSlots::for_each_text(
+                        &mut self.#fields,
+                        other.as_deref_mut().map(|o| &mut o.#fields),
+                        f,
+                    );
+                )*
+            }
+        }
+    })
+}
+
 fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    let fields = match &input.data {
-        Data::Struct(DataStruct {
-            fields: Fields::Named(named),
-            ..
-        }) => &named.named,
-        _ => {
-            return Err(syn::Error::new_spanned(
-                input,
-                "Animatable can only be derived on structs with named fields",
-            ));
-        }
-    };
-
-    let ContainerOptions {
-        settle_eps,
-        before_lerp,
-    } = ContainerOptions::of(input)?;
+    let fields = named_fields(input, "Animatable")?;
+    let ContainerOptions { settle_eps, .. } = ContainerOptions::of(input)?;
 
     let mut animation: Vec<(&Ident, &Type)> = Vec::new();
     let mut lerp_only: Vec<(&Ident, &Type)> = Vec::new();
@@ -73,18 +169,6 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         }
     }
 
-    let lerp_blend = animation.iter().chain(&lerp_only).map(|(f, _)| {
-        quote! { #f: ::palantir::widget::Animatable::lerp(a.#f, b.#f, t), }
-    });
-    let lerp_snap = snap.iter().map(|(f, _)| {
-        quote! { #f: if t < 0.5 { a.#f } else { b.#f }, }
-    });
-    let before_lerp_call = before_lerp.map(|path| {
-        quote! {
-            let (mut a, mut b) = (a, b);
-            #path(&mut a, &mut b);
-        }
-    });
     // A lerp-only field keeps `self` in motion, as a snap field does.
     let keep_snap: Vec<TokenStream2> = lerp_only
         .iter()
@@ -151,20 +235,6 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     // `#[inline]` on each method so cross-crate callers (palantir's `tick` into user impls) can inline.
     let expanded = quote! {
         impl #impl_generics ::palantir::widget::Animatable for #name #ty_generics #where_clause {
-            #[inline]
-            fn lerp(a: Self, b: Self, t: f32) -> Self {
-                if t == 0.0 {
-                    return a;
-                }
-                if t == 1.0 {
-                    return b;
-                }
-                #before_lerp_call
-                Self {
-                    #(#lerp_blend)*
-                    #(#lerp_snap)*
-                }
-            }
             #[inline]
             fn sub(self, other: Self) -> Self {
                 Self {
@@ -288,10 +358,10 @@ impl ContainerOptions {
     }
 }
 
-/// How the derive treats one field.
+/// How a field blends and moves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum FieldKind {
-    /// Forwarded to the field's own `Animatable` impl.
+    /// Forwarded to the field's own `Lerp` and `Animatable` impls.
     Animated,
     /// `#[animate(lerp_only)]`: blends in `lerp`, takes the target at once in motion.
     LerpOnly,
@@ -329,7 +399,7 @@ impl FieldKind {
 
 #[cfg(test)]
 mod tests {
-    use crate::expand;
+    use crate::{expand, expand_lerp, expand_text_slots};
     use syn::{DeriveInput, parse_quote};
 
     /// Refused inputs and their messages.
@@ -383,5 +453,43 @@ mod tests {
             let error = expand(&input).expect_err(label);
             assert_eq!(error.to_string(), message, "{label}");
         }
+    }
+
+    /// `Lerp` refuses what `Animatable` refuses, naming itself.
+    #[test]
+    fn lerp_names_itself_when_it_refuses() {
+        let error = expand_lerp(&parse_quote! { enum E { A } }).expect_err("an enum");
+        assert_eq!(
+            error.to_string(),
+            "Lerp can only be derived on structs with named fields"
+        );
+    }
+
+    /// The walk visits every field, in field order, and refuses what is not a struct with named
+    /// fields.
+    #[test]
+    fn text_slots_walks_every_field_in_order() {
+        let walked = expand_text_slots(&parse_quote! {
+            struct S { a: f32, #[animate(snap)] b: u8, c: u16 }
+        })
+        .expect("a text walk")
+        .to_string();
+        assert!(walked.contains("TextSlots for S"), "{walked}");
+        let visits: Vec<usize> = ["self . a", "self . b", "self . c"]
+            .iter()
+            .map(|field| walked.find(field).expect(field))
+            .collect();
+        assert!(visits.is_sorted(), "{walked}");
+        assert_eq!(
+            walked.matches("for_each_text (").count(),
+            3,
+            "one call a field"
+        );
+
+        let error = expand_text_slots(&parse_quote! { struct T(f32); }).expect_err("tuple");
+        assert_eq!(
+            error.to_string(),
+            "TextSlots can only be derived on structs with named fields"
+        );
     }
 }

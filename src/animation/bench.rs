@@ -14,6 +14,7 @@ use crate::bench::kind::{Kind, Scale};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::text_style::TextStyle;
 use criterion::{Criterion, Throughput};
@@ -48,7 +49,7 @@ impl Motion {
 fn look(bg: RgbaF32, text: RgbaF32) -> AnimatedLook {
     AnimatedLook {
         chrome: Chrome::fill(bg),
-        text: TextStyle::default().with_color(text),
+        text: TextStyle::stock(ColorScheme::Dark).with_color(text),
     }
 }
 

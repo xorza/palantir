@@ -238,7 +238,7 @@ fn progress_bar_half_matches_golden() {
 fn toggle_switch_states_matches_golden() {
     let mut style = theme::fixture(ColorScheme::Dark).switch;
     // At the rest position, with no first-frame transient.
-    style.defaults.animation = AnimationSpec::SNAP;
+    style.defaults.transition = AnimationSpec::SNAP;
     GoldenName::ToggleSwitchStates.assert_scene(UVec2::new(220, 110), |ui| {
         Panel::vstack()
             .auto_id()
@@ -263,7 +263,7 @@ fn toggle_switch_states_matches_golden() {
 fn light_theme_widgets_match_golden() {
     let img = VisualRig::new()
         .color_scheme(ColorScheme::Light)
-        .clear(theme::fixture(ColorScheme::Light).window_clear)
+        .clear(theme::fixture(ColorScheme::Light).window_bg)
         .size(UVec2::new(320, 260))
         .frame(|ui| {
             Panel::vstack()

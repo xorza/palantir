@@ -131,7 +131,7 @@ pub(crate) fn atomic(c: &mut Criterion) {
                 report.plan.expect("a tick paints")
             } else {
                 RenderPlan {
-                    clear: h.ui().theme().window_clear,
+                    clear: h.ui().theme().window_bg,
                     damage: Damage::Full,
                 }
             };

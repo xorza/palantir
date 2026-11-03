@@ -7,6 +7,7 @@ use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::splitter::SplitterTheme;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
@@ -399,7 +400,7 @@ fn divider_requests_the_resize_cursor() {
                 let style = SplitterTheme {
                     grab_thickness,
                     rule_thickness,
-                    ..SplitterTheme::default()
+                    ..SplitterTheme::stock(ColorScheme::Dark)
                 };
                 Splitter::row(ratio)
                     .id(split_id())

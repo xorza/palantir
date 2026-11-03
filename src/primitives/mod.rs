@@ -44,7 +44,7 @@ macro_rules! f16x4_lanes {
 
         /// Per lane in f32, as `f32` blends, each result packed back saturating at ±65504: an f16
         /// rounds it to a relative 2^-11, under 0.01 px a frame below 16 px.
-        impl $crate::primitives::math::animatable::Animatable for $t {
+        impl $crate::primitives::math::lerp::Lerp for $t {
             #[inline]
             fn lerp(a: Self, b: Self, t: f32) -> Self {
                 if t == 0.0 {
@@ -54,9 +54,13 @@ macro_rules! f16x4_lanes {
                     return b;
                 }
                 Self::lanewise(a, b, |a, b| {
-                    <f32 as $crate::primitives::math::animatable::Animatable>::lerp(a, b, t)
+                    <f32 as $crate::primitives::math::lerp::Lerp>::lerp(a, b, t)
                 })
             }
+        }
+
+        /// Per lane, packed back saturating as [`Lerp`](crate::widget::Lerp) is.
+        impl $crate::primitives::math::animatable::Animatable for $t {
             #[inline]
             fn sub(self, other: Self) -> Self {
                 Self::lanewise(self, other, |a, b| a - b)

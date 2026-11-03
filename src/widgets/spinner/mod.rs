@@ -90,7 +90,7 @@ impl<'a> Spinner<'a> {
         let extent = fixed.unwrap_or_else(|| Vec2::splat(diameter));
         let width = self
             .width
-            .unwrap_or_else(|| (diameter * theme.width_ratio).max(theme.min_width));
+            .unwrap_or_else(|| (diameter * theme.width_ratio).max(theme.min_stroke_width));
         let color = self.color.unwrap_or(theme.color);
         let sweep = theme.sweep;
         let period = theme.period;

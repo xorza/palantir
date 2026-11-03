@@ -109,7 +109,7 @@ impl WholeFrames {
     /// One frame of `record` on `target`, under a clear unlike the last one's, waited for.
     fn frame(&mut self, gpu: &BenchGpu, target: &OwnedTarget, record: impl FnMut(&mut Ui)) {
         self.odd = !self.odd;
-        self.host.ui_mut().theme_mut().window_clear = if self.odd {
+        self.host.ui_mut().theme_mut().window_bg = if self.odd {
             RgbaF32::BLACK
         } else {
             RgbaF32::srgb(0.0, 0.0, 0.01)

@@ -14,6 +14,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -104,12 +105,16 @@ pub(super) fn show(ui: &mut Ui) {
                                     .show(ui);
                                 Text::new(*value)
                                     .id_salt(("stat-v", i))
-                                    .style(&TextStyle::default().with_font_size(22.0).bold())
+                                    .style(
+                                        &TextStyle::stock(ColorScheme::Dark)
+                                            .with_font_size(22.0)
+                                            .bold(),
+                                    )
                                     .show(ui);
                                 Text::new(*delta)
                                     .id_salt(("stat-d", i))
                                     .style(
-                                        &TextStyle::default()
+                                        &TextStyle::stock(ColorScheme::Dark)
                                             .with_font_size(11.0)
                                             .with_color(DELTA[i]),
                                     )

@@ -24,6 +24,7 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::image::{Image, ImageFit};
 use crate::shape::Shape;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
@@ -149,7 +150,7 @@ impl Scene<'_> {
             workload,
             color,
         } = *self;
-        let style = TextStyle::default().with_color(color);
+        let style = TextStyle::stock(ColorScheme::Dark).with_color(color);
         Panel::canvas()
             .id_salt("record-bench-root")
             .size((Sizing::FILL, Sizing::FILL))

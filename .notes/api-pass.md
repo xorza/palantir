@@ -158,26 +158,6 @@ Batches run most harmful first. A batch changes palantir and darkroom together a
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
 
-### Batch 9: Theme
-
-- [ ] `Default` (decided, 9): remove `Default` from every theme bundle, `Theme` and `TextStyle`;
-  a caller names the scheme (`Theme::stock(scheme)`), and `SchemePreference::FALLBACK` stays the
-  one named dark choice. Callers: about 150 test sites, 2 example sites.
-- [ ] `Lerp` split from `Animatable`, with its own derive, then `#[animate(text)]` on the derive,
-  which emits `for_each_text`, so the 15 hand-written walks go.
-- [ ] `DragValueTheme` reshaped to `{ looks, defaults, caret, caret_width, selection, placeholder }`,
-  the editor slot derived at `show`; the 8 copied looks and `from_chip` go. Darkroom's
-  `const_editor_theme.rs` edits one copy.
-- [ ] `Theme::frost_floats` without the `Palette`: the inks come from the theme; a bare popup's ink
-  is `context_menu.item.shortcut`.
-- [ ] Names: `DockTheme`'s
-  `preview_fill`, `preview_stroke`, `preview_radius` become `preview: Chrome`; `SplitterTheme`'s
-  `hovered`, `active` become `rule_hovered`, `rule_active`; `SpinnerTheme::min_width` becomes
-  `min_stroke_width`; `Palette::window_bg` and `Theme::window_clear` take one name;
-  `SlotDefaults::animation` becomes `transition`, as `Metrics::transition`; slots list
-  `unselected` before `selected` everywhere.
-- [ ] `Palette::popup_panel` and `float_shadow` become crate-private.
-
 ### Batch 10: GPU
 
 - [ ] Remove `DeviceFeatures`, `SurfaceUsages` and `PowerPreference`: the error variants and
@@ -206,6 +186,8 @@ Each item has no caller outside palantir's own definition and tests, or a newer 
   crate-private and `GridCell`'s `NoUninit` derive replaced by a hand pack;
   `EditableLabel::label_id` goes; `Scroll::zoom_by` and `content_margin` go, as tests alone call
   them; `Scroll::hide_bars` renamed `hidden_bars`.
+- [ ] Animation (decided): `impl Animatable for TextStyleOverrides` goes. Overrides blend and
+  never spring, as a theme does; `Lerp` stays.
 
 ### Batch 12: Names and polish
 

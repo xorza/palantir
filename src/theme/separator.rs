@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -9,7 +10,13 @@ use crate::theme::palette::Palette;
 ///
 /// Also the bundle for [`crate::MenuSeparator`] via [`crate::MenuTheme::separator`]: the same rule with different values.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct SeparatorTheme {
     /// Rule color.
@@ -32,17 +39,16 @@ impl SeparatorTheme {
         }
     }
 
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub const fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
+    }
+
     /// The [`crate::MenuSeparator`] recipe: the same rule, held off the rows around it.
     pub fn menu(p: &Palette, m: &Metrics) -> Self {
         Self {
             margin: Spacing::xy(0.0, m.space.xs),
             ..Self::from_parts(p, m)
         }
-    }
-}
-
-impl Default for SeparatorTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

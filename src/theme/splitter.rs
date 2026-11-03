@@ -1,12 +1,19 @@
 //! What a splitter's divider wears, and how wide it is to grab.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
-/// Visuals for [`crate::Splitter`]: layout reserves the `rule_thickness` seam (painted in `rule`); the `grab_thickness` drag target is an invisible overlay straddling it, filled `hovered` or `active`.
+/// Visuals for [`crate::Splitter`]: layout reserves the `rule_thickness` seam (painted in `rule`); the `grab_thickness` drag target is an invisible overlay straddling it, filled `rule_hovered` or `rule_active`.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct SplitterTheme {
     /// Grab-bar breadth in logical px.
@@ -18,9 +25,9 @@ pub struct SplitterTheme {
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
     pub rule_thickness: f32,
     /// Full-bar fill while hovered.
-    pub hovered: RgbaF32,
+    pub rule_hovered: RgbaF32,
     /// Full-bar fill while a resize drag is in flight.
-    pub active: RgbaF32,
+    pub rule_active: RgbaF32,
 }
 
 impl SplitterTheme {
@@ -30,14 +37,13 @@ impl SplitterTheme {
             grab_thickness: 6.0,
             rule: p.border_soft(),
             rule_thickness: m.stroke.hairline,
-            hovered: p.element_mid,
-            active: p.accent.with_alpha8(153),
+            rule_hovered: p.element_mid,
+            rule_active: p.accent.with_alpha8(153),
         }
     }
-}
 
-impl Default for SplitterTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub const fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

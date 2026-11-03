@@ -190,6 +190,7 @@ pub mod widget {
     pub use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     pub use crate::primitives::math::animatable::Animatable;
     pub use crate::primitives::math::domain;
+    pub use crate::primitives::math::lerp::Lerp;
     pub use crate::primitives::paint::content_type::ContentType;
     pub use crate::primitives::paint::raster_image::RasterImage;
     /// The bound on [`Ui::add_shape`](crate::Ui::add_shape); sealed.
@@ -226,7 +227,7 @@ pub mod widget {
     pub use crate::widget_core::configure::ThemeDefaults;
     pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec, OverlayTurn};
     pub use crate::widget_core::widget::Widget;
-    pub use palantir_anim_derive::Animatable;
+    pub use palantir_anim_derive::{Animatable, Lerp};
 }
 
 pub use animation::animated::Animated;

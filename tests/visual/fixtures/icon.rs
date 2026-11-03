@@ -13,7 +13,8 @@ use image::RgbaImage;
 use palantir::IconFit;
 use palantir::widget::{IconShape, Shape};
 use palantir::{
-    Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale, Text, TextStyle, Ui,
+    ColorScheme, Configure, IconSet, IconTable, Panel, Rect, RgbaF32, Sizing, SystemScale, Text,
+    TextStyle, Ui,
 };
 use std::ops;
 use std::rc::Rc;
@@ -232,7 +233,7 @@ fn an_icon_recorded_over_a_label_stays_on_top_of_it() {
                 Text::new("AgAgAg")
                     .id_salt(salt)
                     .style(
-                        &TextStyle::default()
+                        &TextStyle::stock(ColorScheme::Dark)
                             .with_font_size(12.0)
                             .with_color(RgbaF32::WHITE),
                     )

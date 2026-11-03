@@ -7,7 +7,7 @@ use crate::damage::Damage;
 use crate::host::harness::Harness;
 use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
@@ -225,7 +225,7 @@ fn sample(texels: &[RgbaF32], size: UVec2, u: f32, v: f32) -> RgbaF32 {
     } = axis(v, size.y);
     let x1 = (x + 1).min(size.x - 1);
     let y1 = (y + 1).min(size.y - 1);
-    let mix = |a: RgbaF32, b: RgbaF32, t: f32| Animatable::lerp(a, b, t);
+    let mix = |a: RgbaF32, b: RgbaF32, t: f32| Lerp::lerp(a, b, t);
     let top = mix(
         texels[(y * size.x + x) as usize],
         texels[(y * size.x + x1) as usize],

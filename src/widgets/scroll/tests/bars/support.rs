@@ -4,12 +4,13 @@ use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::scene::layer::Layer;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use glam::UVec2;
 
 pub(super) fn theme() -> ScrollbarTheme {
-    ScrollbarTheme::default()
+    ScrollbarTheme::stock(ColorScheme::Dark)
 }
 
 /// Build a scroll over two frames so the second settles `ScrollState`.

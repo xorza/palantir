@@ -6,8 +6,8 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::text::font_family::FontFamily;
-use crate::theme::ThemeText;
 use crate::theme::button::ButtonTheme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -25,7 +25,13 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 /// The field and bars are sized here, not by layout: they paint a CPU-built
 /// texture whose size must be known at record time.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px; also the bars' and rows' width.
@@ -129,7 +135,7 @@ fn chip(p: &Palette, m: &Metrics) -> ButtonTheme {
         defaults: SlotDefaults {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
-            animation: m.transition,
+            transition: m.transition,
         },
     }
 }
@@ -142,44 +148,6 @@ fn mono_edit(p: &Palette, m: &Metrics) -> TextEditTheme {
 }
 
 impl ColorPickerTheme {
-    /// Visit the two text-bearing bundles. Destructures the whole struct so a new
-    /// field must be classified here, which [`Theme::scale_text`](crate::Theme::scale_text)
-    /// relies on.
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        mut other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            value,
-            hex,
-            label,
-            chip,
-            field_width: _,
-            field_height: _,
-            bar_thickness: _,
-            chip_size: _,
-            swatch_size: _,
-            handle_radius: _,
-            handle_width: _,
-            handle_outer: _,
-            handle_inner: _,
-            checker_light: _,
-            checker_dark: _,
-            checker_cell: _,
-            disabled_veil: _,
-            gap: _,
-            popup: _,
-        } = self;
-        value.for_each_text(other.as_deref_mut().map(|o| &mut o.value), f);
-        hex.for_each_text(other.as_deref_mut().map(|o| &mut o.hex), f);
-        chip.for_each_text(other.as_deref_mut().map(|o| &mut o.chip), f);
-        f(
-            ThemeText::Overrides(label),
-            other.map(|o| ThemeText::Overrides(&mut o.label)),
-        );
-    }
-
     /// The control's own sizes and the handle's ink are fixed; its lines and popup geometry come from `m`, its checker, border, popup fill and text from `p`.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
@@ -199,13 +167,13 @@ impl ColorPickerTheme {
             disabled_veil: p.element.with_alpha8(128),
             gap: m.space.sm,
             popup: PopupTheme::from_parts(p, m),
-            // The editor derives from the chip, as `DragValueTheme` promises, so an
-            // editable value keeps its box and text in place.
+            // One set of looks for the chip and its editor, so an editable value keeps its box
+            // and text in place.
             value: {
-                let mut chip = DragValueTheme::from_parts(p, m).chip;
-                mono_states(&mut chip.unselected, m);
-                chip.defaults.padding = value_padding(m);
-                DragValueTheme::from_chip(chip, &TextEditTheme::from_parts(p, m))
+                let mut value = DragValueTheme::from_parts(p, m);
+                mono_states(&mut value.looks, m);
+                value.defaults.padding = value_padding(m);
+                value
             },
             hex: mono_edit(p, m),
             label: TextStyleOverrides {
@@ -216,10 +184,9 @@ impl ColorPickerTheme {
             },
         }
     }
-}
 
-impl Default for ColorPickerTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

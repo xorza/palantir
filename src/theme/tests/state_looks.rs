@@ -9,6 +9,7 @@ use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::theme::button::ButtonTheme;
 use crate::theme::check_state::CheckState;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::look::engagement::Engagement;
@@ -46,7 +47,7 @@ fn response(pointer_over: bool, pressed: bool, disabled: bool) -> ResponseState 
 /// resting pack at rest and under the pointer.
 #[test]
 fn button_theme_pick_precedence() {
-    let theme = ButtonTheme::default();
+    let theme = ButtonTheme::stock(ColorScheme::Dark);
     for (selection, pack) in [
         (Selection::Unselected, &theme.unselected),
         (Selection::Selected, &theme.selected),
@@ -85,7 +86,7 @@ fn button_theme_pick_precedence() {
 
 #[test]
 fn text_edit_theme_pick_precedence() {
-    let theme = TextEditTheme::default();
+    let theme = TextEditTheme::stock(ColorScheme::Dark);
     let state = |focused, pointer_over, disabled| ResponseState {
         pointer_over,
         disabled,
@@ -135,11 +136,11 @@ fn text_edit_theme_pick_precedence() {
 /// selection and every state's text.
 #[test]
 fn a_flat_text_edit_keeps_only_its_text_and_caret() {
-    let field = TextEditTheme::default();
+    let field = TextEditTheme::stock(ColorScheme::Dark);
     let flat = field.flat();
     assert_eq!(flat.defaults.padding, Spacing::ZERO);
     assert_eq!(flat.defaults.margin, Spacing::ZERO);
-    assert_eq!(flat.defaults.animation, field.defaults.animation);
+    assert_eq!(flat.defaults.transition, field.defaults.transition);
     let (mut flat_looks, mut looks) = (flat.looks.clone(), field.looks.clone());
     for (flat_look, look) in flat_looks.each_mut().into_iter().zip(looks.each_mut()) {
         assert_eq!(flat_look.chrome, Chrome::NONE);
@@ -227,7 +228,7 @@ fn toggle_theme_pick_selects_pack_then_state() {
 /// strip's focus picks the cap color.
 #[test]
 fn tabs_theme_pick_selects_pack_then_state_and_cap() {
-    let theme = TabsTheme::default();
+    let theme = TabsTheme::stock(ColorScheme::Dark);
     let idle = ResponseState::default();
     let pressed = response(true, true, false);
     let cases: &[(&ResponseState, Selection, &WidgetLook, &str)] = &[
@@ -293,19 +294,45 @@ fn animated_look_line_height_delegates_to_text_style() {
     assert_eq!(look.text.font().line_height, 24.0);
 }
 
-/// The picker's channel values keep `DragValueTheme`'s promise: the editor a value turns into is the chip, look for look and padding for padding. The picker's text names face and size and inherits the rest.
+/// A drag value's editor is its chip: the same looks with focus worn as hover, the same box, and
+/// the caret, selection and placeholder the theme names; the picker's channel values name the
+/// mono face and caption size, and inherit every other text axis.
 #[test]
-fn the_picker_value_editor_is_its_chip() {
+fn a_drag_value_editor_wears_its_chips_looks() {
     use crate::theme::Theme;
 
     let theme = Theme::from_parts(&Palette::DARK, &Metrics::DEFAULT);
-    let value = &theme.color_picker.value;
-    assert_eq!(value.editor.looks.normal, value.chip.unselected.normal);
-    assert_eq!(value.editor.looks.hovered, value.chip.unselected.hovered);
-    assert_eq!(value.editor.looks.disabled, value.chip.unselected.disabled);
-    assert_eq!(value.editor.defaults.padding, value.chip.defaults.padding);
+    for value in [&theme.drag_value, &theme.color_picker.value] {
+        let editor = value.editor();
+        assert_eq!(editor.looks.normal, value.looks.normal);
+        assert_eq!(editor.looks.hovered, value.looks.hovered);
+        assert_eq!(
+            editor.looks.active, value.looks.hovered,
+            "focus wears hover"
+        );
+        assert_eq!(editor.looks.disabled, value.looks.disabled);
+        assert_eq!(editor.defaults, value.defaults);
+        assert_eq!(
+            (
+                editor.caret,
+                editor.caret_width,
+                editor.selection,
+                editor.placeholder
+            ),
+            (
+                value.caret,
+                value.caret_width,
+                value.selection,
+                value.placeholder
+            )
+        );
+    }
+    assert_ne!(
+        theme.drag_value.looks.active, theme.drag_value.looks.hovered,
+        "the chip's pressed look is its own, so the mapping shows"
+    );
     assert_eq!(
-        value.chip.unselected.normal.text,
+        theme.color_picker.value.looks.normal.text,
         TextStyleOverrides {
             family: Some(FontFamily::MONO),
             font_size: Some(12.0),
@@ -315,21 +342,21 @@ fn the_picker_value_editor_is_its_chip() {
     );
 }
 
-/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order: the tooltip's 12 px; the picker's mono 12 px values on the value chip, its editor and hex field (four states each); the picker's mono 12 px captions.
+/// Every bundled text slot past `Theme::text` names at most the color, so size, face and leading follow `Theme::text` even when set after `from_parts`. By-design exceptions, in walk order, which is field order: the picker's mono 12 px values on the value chip and the hex field (four states each) and its mono 12 px captions; the tooltip's 12 px.
 #[test]
 fn bundled_text_inherits_every_axis_but_color() {
-    use crate::theme::{Theme, ThemeText};
+    use crate::theme::{TextSlots, Theme, ThemeText};
 
     let mono = TextStyleOverrides {
         family: Some(FontFamily::MONO),
         ..TextStyleOverrides::NONE
     };
-    let mut expected = vec![TextStyleOverrides::NONE.with_font_size(12.0)];
-    expected.extend([mono.with_font_size(12.0); 13]);
+    let mut expected = vec![mono.with_font_size(12.0); 9];
+    expected.push(TextStyleOverrides::NONE.with_font_size(12.0));
 
-    let mut theme = Theme::default();
+    let mut theme = Theme::stock(ColorScheme::Dark);
     let mut named = Vec::new();
-    theme.for_each_text(None, |text, _| {
+    theme.for_each_text(None, &mut |text, _| {
         if let ThemeText::Overrides(o) = text {
             let past_color = TextStyleOverrides { color: None, ..*o };
             if !past_color.is_empty() {

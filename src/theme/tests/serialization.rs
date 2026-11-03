@@ -9,6 +9,7 @@ use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
 use crate::theme::Theme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
@@ -18,9 +19,9 @@ use super::pretty;
 /// 8-bit grid, so its file is all hex.
 #[test]
 fn default_theme_roundtrips_through_ron() {
-    let serialized = pretty(&Theme::default());
+    let serialized = pretty(&Theme::stock(ColorScheme::Dark));
     let loaded: Theme = ron::from_str(&serialized).expect("parse");
-    assert_eq!(loaded, Theme::default());
+    assert_eq!(loaded, Theme::stock(ColorScheme::Dark));
     assert_eq!(pretty(&loaded), serialized);
     assert!(!serialized.contains("color("), "an off-grid default color");
 }

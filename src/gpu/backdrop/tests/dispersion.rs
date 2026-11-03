@@ -42,7 +42,7 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
     let mut window = Harness::builder(SIZE)
         .depth(Depth::gpu_float(gpu.handles()))
         .build();
-    window.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
+    window.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
     let mut app = |ui: &mut Ui| {
         Panel::canvas()
             .id_salt("dispersion-scene")

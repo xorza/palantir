@@ -109,7 +109,7 @@ fn the_live_roster_lists_a_view_the_damage_plan_culls() {
 
     let mut frontend = Frontend::for_test();
     let plan = |damage| RenderPlan {
-        clear: h.ui().theme().window_clear,
+        clear: h.ui().theme().window_bg,
         damage,
     };
 

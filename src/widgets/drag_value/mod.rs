@@ -14,7 +14,6 @@ use crate::shape::Shape;
 use crate::text::wrap::TextWrap;
 use crate::theme::drag_value::DragValueTheme;
 use crate::theme::look::theme_slot::ThemeSlot;
-use crate::theme::selection::Selection;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
@@ -27,7 +26,6 @@ use crate::widgets::text_edit::TextEdit;
 use crate::widgets::text_edit::edit_end::EditEnd;
 use std::mem;
 use std::ops::RangeInclusive;
-use std::rc::Rc;
 
 /// One exclusive interaction per [`DragValue`] id: a live [`Scrub`], or an edit whose draft outlives its focus until the chip resolves it.
 #[derive(Debug, Default)]
@@ -60,9 +58,9 @@ impl Scrub {
     }
 }
 
-/// A numeric field you scrub by dragging horizontally: each pixel of left-button travel changes the value by `speed`, optionally clamped. Binds any [`BoundNum`]: an integer moves by whole steps, a float snaps to `decimals`. Chip theme slot `drag_value.chip`.
+/// A numeric field you scrub by dragging horizontally: each pixel of left-button travel changes the value by `speed`, optionally clamped. Binds any [`BoundNum`]: an integer moves by whole steps, a float snaps to `decimals`. Theme slot `drag_value`.
 ///
-/// Unless [`Self::editable`] is off, a plain click swaps in an inline `TextEdit` (slot `drag_value.editor`, same box) for exact entry; Enter or click-away commits, Escape restores the opening value. The editor holds the chip's width and scrolls longer values.
+/// Unless [`Self::editable`] is off, a plain click swaps in an inline `TextEdit` ([`DragValueTheme::editor`], same looks and box) for exact entry; Enter or click-away commits, Escape restores the opening value. The editor holds the chip's width and scrolls longer values.
 ///
 /// The value is written live; [`ValueResponse`] reports `changed` per differing write and `committed` once per gesture (release, Enter, blur). An undo-aware caller can re-seed every frame and apply on `committed`; the widget re-writes the final value on that frame. A gesture ending while disabled is dropped.
 #[derive(Debug)]
@@ -306,8 +304,10 @@ impl<'a> DragValue<'a> {
         };
 
         let theme = ui.theme();
-        let chip = &self.style.unwrap_or(&theme.drag_value).chip;
-        let plan = chip.plan(&response, Selection::Unselected, theme.text);
+        let plan = self
+            .style
+            .unwrap_or(&theme.drag_value)
+            .plan(&response, (), theme.text);
         let look = self.widget.wear(ui, plan);
 
         self.widget.record(ui, Some(&look.chrome), |ui| {
@@ -332,12 +332,9 @@ impl<'a> DragValue<'a> {
         id: WidgetId,
         prev_rect: Option<Rect>,
     ) -> ValueResponse<'_> {
-        // The editor must wear the chip's box or the field resizes on click: `DragValueTheme::from_chip` mirrors the chip padding onto `drag_value.editor`, whereas an unstyled `TextEdit` inherits `theme.text_edit`. A handle avoids copying ~700 bytes of `TextEditTheme`.
-        let ui_theme = Rc::clone(ui.theme());
-        let editor = match self.style {
-            Some(s) => &s.editor,
-            None => &ui_theme.drag_value.editor,
-        };
+        // The editor wears the chip's looks and box, or the field resizes on click; an unstyled
+        // `TextEdit` would wear `theme.text_edit`.
+        let editor = self.style.unwrap_or(&ui.theme().drag_value).editor();
         // Hold the editor at the chip's last width: as a `Scroll` field it reports zero content width, so a plain cap would collapse to `min_size`. `Fixed` (floored at `min_size.w`) makes long values scroll. Before the first chip frame, use the field's own sizing.
         let min_size = self.widget.authored_min_size().unwrap_or(Size::ZERO);
         let sizes = self.widget.authored_size().unwrap_or_default();
@@ -357,7 +354,7 @@ impl<'a> DragValue<'a> {
                 .id(id)
                 .text_align(self.text_align)
                 .select_all_on_focus(true)
-                .style(editor)
+                .style(&editor)
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));

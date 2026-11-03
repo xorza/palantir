@@ -11,6 +11,7 @@ use crate::primitives::layout::track::Track;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -300,7 +301,7 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
                 Text::new("lorem ipsum dolor sit amet")
                     .id_salt("msg")
                     .style(
-                        &TextStyle::default()
+                        &TextStyle::stock(ColorScheme::Dark)
                             .with_font_size(16.0)
                             .with_line_height_factor(1.0),
                     )

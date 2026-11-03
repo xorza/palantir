@@ -35,7 +35,8 @@ use std::time::Duration;
 
 /// The default theme as RON text, the document each number is edited in.
 fn default_theme_text() -> String {
-    ser::to_string_pretty(&Theme::default(), PrettyConfig::default()).expect("serialize")
+    ser::to_string_pretty(&Theme::stock(ColorScheme::Dark), PrettyConfig::default())
+        .expect("serialize")
 }
 
 /// The values each number is set to in turn. `8192.0` is the largest length a file holds
@@ -208,7 +209,7 @@ fn every_number_at_the_length_bound_at_once_renders() {
 #[test]
 fn the_probe_draws_the_overlays() {
     let h = render(
-        Theme::default(),
+        Theme::stock(ColorScheme::Dark),
         &TextShaper::with_fonts(FontScope::Bundled),
     );
     for layer in [Layer::Popup, Layer::Tooltip] {

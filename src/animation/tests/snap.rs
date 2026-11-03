@@ -9,6 +9,7 @@ use crate::host::harness::Harness;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_scheme::ColorScheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -157,7 +158,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     let AnimationUi { mut h, id } = support::setup_animation_ui("gradient-look-settle");
     let start = AnimatedLook {
         chrome: Chrome::fill(RgbaF32::BLACK),
-        text: TextStyle::default().with_color(RgbaF32::BLACK),
+        text: TextStyle::stock(ColorScheme::Dark).with_color(RgbaF32::BLACK),
     };
     let gradient = Brush::Radial(RadialGradient::two_stop(
         Vec2::splat(0.5),
@@ -167,7 +168,7 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
     ));
     let target = AnimatedLook {
         chrome: Chrome::fill(gradient.clone()),
-        text: TextStyle::default().with_color(RgbaF32::WHITE),
+        text: TextStyle::stock(ColorScheme::Dark).with_color(RgbaF32::WHITE),
     };
 
     let frame = |h: &mut Harness, look: &AnimatedLook| {

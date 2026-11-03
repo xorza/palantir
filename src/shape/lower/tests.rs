@@ -1,5 +1,5 @@
 use crate::primitives::geometry::corners::Corners;
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::brush::Brush;

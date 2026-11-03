@@ -15,11 +15,12 @@ const ROW: RgbaF32 = RgbaF32::srgb(0.42, 0.55, 0.78);
 
 /// Light translucent thumb so it shows on the dark fixture background.
 fn light_thumb_theme(ui: &mut Ui) {
+    let suite = ui.theme().scrollbar.clone();
     ui.theme_mut().scrollbar = ScrollbarTheme {
         thumb: RgbaF32::srgba(1.0, 1.0, 1.0, 0.55),
         thumb_hovered: RgbaF32::srgba(1.0, 1.0, 1.0, 0.75),
         thumb_active: RgbaF32::srgba(1.0, 1.0, 1.0, 0.9),
-        ..Default::default()
+        ..suite
     };
 }
 

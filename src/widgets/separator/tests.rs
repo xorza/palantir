@@ -1,6 +1,7 @@
 use crate::host::harness::Harness;
 use crate::internals::size_trio::SizeTrio;
 use crate::primitives::geometry::size::Size;
+use crate::theme::color_scheme::ColorScheme;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::align::{Align, HAlign, VAlign};
@@ -18,7 +19,7 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
     let styled = SeparatorTheme {
         thickness: 3.0,
         margin: Spacing::xy(0.0, 5.0),
-        ..SeparatorTheme::default()
+        ..SeparatorTheme::stock(ColorScheme::Dark)
     };
     let mut h = Harness::mono(UVec2::new(400, 300));
     // Loudly different global slot; a styled rule must not reach it.

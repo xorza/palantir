@@ -6,6 +6,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::text::font_scope::internals::INTER;
 use crate::text::wrap::TextWrap;
+use crate::theme::color_scheme::ColorScheme;
 
 use crate::host::harness::Harness;
 use crate::internals::oracle;
@@ -109,7 +110,8 @@ fn cache_hit_preserves_grid_cell_rects() {
                                                 Text::new(label)
                                                     .id(WidgetId::from_hash(("inner-cell", col)))
                                                     .style(
-                                                        &TextStyle::default().with_font_size(14.0),
+                                                        &TextStyle::stock(ColorScheme::Dark)
+                                                            .with_font_size(14.0),
                                                     )
                                                     .grid_cell((0, col))
                                                     .show(ui);

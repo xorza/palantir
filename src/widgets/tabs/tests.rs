@@ -20,6 +20,7 @@ use crate::shape::record::ShapeRecord;
 use crate::shape::style::LineCap;
 use crate::theme::Theme;
 use crate::theme::close_shown::CloseShown;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::palette::Palette;
 use crate::theme::tabs::TabsTheme;
 use crate::ui::Ui;
@@ -685,7 +686,7 @@ fn the_insertion_slot_counts_the_centers_passed() {
 /// the gutter before its slot's chip, and inside the band where that gutter is out of sight.
 #[test]
 fn a_drop_slot_and_its_caret_read_uncut_chip_extents() {
-    let theme = TabsTheme::default();
+    let theme = TabsTheme::stock(ColorScheme::Dark);
     let (width, half_gap) = (theme.caret_width, theme.gap * 0.5);
     let caret = strip_id().with("caret");
     let build = |slot: usize| {
@@ -1244,7 +1245,7 @@ fn a_new_strip_and_view_have_no_authored_size() {
 fn the_overflow_menu_opens_on_the_selected_chip_in_its_menu_style() {
     let chevron = strip_id().with("overflow");
     let open = |styled: bool| {
-        let mut menu = Theme::default().menu;
+        let mut menu = Theme::stock(ColorScheme::Dark).menu;
         menu.padding = menu.padding + Spacing::all(9.0);
         let mut build = |ui: &mut Ui| {
             let items = items(ui);
@@ -1284,7 +1285,7 @@ fn a_tabbed_view_restyles_its_overflow_menu() {
     let view = WidgetId::from_hash("view");
     let chevron = view.with("strip").with("overflow");
     let height = |styled: bool| {
-        let mut menu = Theme::default().menu;
+        let mut menu = Theme::stock(ColorScheme::Dark).menu;
         menu.padding = menu.padding + Spacing::all(9.0);
         let mut page = 0;
         let mut build = |ui: &mut Ui| {

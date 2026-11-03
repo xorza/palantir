@@ -133,7 +133,7 @@ fn a_retained_partial_frame_repaints_the_target_in_place() {
         .shaper(TextShaper::test_mono())
         .retained_target(true)
         .build();
-    host.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
+    host.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
     let texture = gpu.target("palantir.offscreen.retained", UVec2::new(32, 8));
     let color = Cell::new(RgbaF32::WHITE);
     let mut app = |ui: &mut Ui| {
@@ -218,7 +218,7 @@ fn a_retained_target_keeps_no_damage_outline() {
             .shaper(TextShaper::test_mono())
             .retained_target(retained)
             .build();
-        host.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
+        host.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
         host
     };
     let mut retained = host(true);

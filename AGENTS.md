@@ -202,7 +202,7 @@ Facts and sources: `.notes/research/2026-11-01-reel.md`.
   method for a choice the setting holds; a spec in `Metrics`, a field the transition itself
   would snap; a spec per call, which a system change has no call to carry.
 - **No motion is `AnimationSpec::SNAP`**, the spec's `Default`, at every door: `Ui::animate`,
-  `set_theme_transition`, `Metrics::transition` and a slot's `animation`, which a theme file
+  `set_theme_transition`, `Metrics::transition` and a slot's `transition`, which a theme file
   that leaves it out reads as a snap. Refused: `Option<AnimationSpec>` beside `SNAP`, two
   spellings of one choice that each caller had to check.
 - **Font sizes move unquantized.** The glyph atlas neither grows nor evicts over a 300 ms move

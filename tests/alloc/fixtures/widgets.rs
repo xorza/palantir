@@ -80,10 +80,10 @@ fn expander_alloc_free() {
 /// invalidates the measure cache each frame until its arenas have grown once.
 #[test]
 fn expander_mid_reveal_alloc_free() {
-    let base = ExpanderTheme::default();
+    let base = ExpanderTheme::stock(ColorScheme::Dark);
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            animation: AnimationSpec::duration(Duration::from_secs(60), Easing::Linear),
+            transition: AnimationSpec::duration(Duration::from_secs(60), Easing::Linear),
             ..base.defaults
         },
         ..base

@@ -153,7 +153,7 @@ impl Deck {
 
 impl App for Deck {
     fn record(&mut self, _win: WindowToken, ui: &mut Ui) {
-        let ground = ui.theme().window_clear;
+        let ground = ui.theme().window_bg;
         let bars = hidden_bars(ui);
         Scroll::both()
             .id(canvas_id())

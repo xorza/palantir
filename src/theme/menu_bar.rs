@@ -3,8 +3,8 @@
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
-use crate::theme::ThemeText;
 use crate::theme::button::ButtonTheme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -19,7 +19,13 @@ use crate::theme::palette::Palette;
 /// as a hovered one, as macOS, Windows and GNOME light the open menu's title. The menus themselves
 /// wear [`Theme::menu`](crate::Theme::menu).
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct MenuBarTheme {
     /// A title whose menu is closed, in each state.
@@ -78,22 +84,9 @@ impl MenuBarTheme {
         }
     }
 
-    /// Visit every text slot this theme owns; destructured so a new field fails to compile here.
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        mut other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            title,
-            open,
-            bar: _,
-            bar_padding: _,
-            gap: _,
-            defaults: _,
-        } = self;
-        title.for_each_text(other.as_deref_mut().map(|o| &mut o.title), f);
-        open.for_each_text(other.map(|o| &mut o.open), f);
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }
 
@@ -110,11 +103,5 @@ impl ThemeSlot for MenuBarTheme {
 
     fn defaults(&self) -> SlotDefaults {
         self.defaults
-    }
-}
-
-impl Default for MenuBarTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }

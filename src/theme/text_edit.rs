@@ -9,7 +9,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 use crate::primitives::paint::stroke::Stroke;
-use crate::theme::ThemeText;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -28,7 +28,13 @@ use glam::Vec2;
 /// `selection`, `padding`, `margin`) are flat on the theme. `padding`/`margin`
 /// apply when the builder didn't set them; an explicit zero overrides.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct TextEditTheme {
     /// The four per-state looks (`active` = focused). `flatten` keeps theme files
@@ -51,25 +57,6 @@ pub struct TextEditTheme {
 }
 
 impl TextEditTheme {
-    /// `placeholder` / `caret` / `selection` are bare `RgbaF32`s that take their
-    /// size from the resolved look. Destructured so a new field fails to compile
-    /// here; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            looks,
-            placeholder: _,
-            caret: _,
-            caret_width: _,
-            selection: _,
-            defaults: _,
-        } = self;
-        looks.for_each_text(other.map(|o| &mut o.looks), f);
-    }
-
     /// Where a field must put its own corner for a run measuring `text` to come out
     /// centered on `at`.
     ///
@@ -135,9 +122,14 @@ impl TextEditTheme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(m.space.sm, m.space.xs),
                 margin: Spacing::ZERO,
-                animation: AnimationSpec::SNAP,
+                transition: AnimationSpec::SNAP,
             },
         }
+    }
+
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 
     /// This theme with no padding, margin or chrome in any state, for a field that reads as the
@@ -173,12 +165,6 @@ impl ThemeSlot for TextEditTheme {
 
     fn defaults(&self) -> SlotDefaults {
         self.defaults
-    }
-}
-
-impl Default for TextEditTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
     }
 }
 

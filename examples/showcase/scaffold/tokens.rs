@@ -1,7 +1,8 @@
 //! The scaffold's colors and type ramp.
 
 use palantir::{
-    Chrome, Corners, FontFamily, FontWeight, Metrics, Palette, RgbaF32, Stroke, TextStyle,
+    Chrome, ColorScheme, Corners, FontFamily, FontWeight, Metrics, Palette, RgbaF32, Stroke,
+    TextStyle,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -15,7 +16,7 @@ pub(crate) const MEASURE: f32 = 680.0;
 
 /// The scaffold's colors this frame: roles of the palette the shown scheme wears, so a scheme
 /// switch or an edit restyles the scaffold with palantir's widgets. A text style sets its ink
-/// from here, as `TextStyle::default` holds the stock dark ink whatever the scheme.
+/// from here, as `TextStyle::stock` holds one scheme's ink whatever the window shows.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Tokens {
     pub(crate) ground: RgbaF32,
@@ -44,39 +45,39 @@ impl Tokens {
         }
     }
 
-    pub(crate) fn title(self) -> TextStyle {
-        TextStyle::default()
+    pub(crate) const fn title(self) -> TextStyle {
+        TextStyle::stock(ColorScheme::Dark)
             .with_font_size(PAGE_TITLE_PX)
             .with_weight(FontWeight::SEMI_BOLD)
             .with_color(self.ink)
     }
 
     /// A small-caps group label: the caption size, semibold, in the faint ink.
-    pub(crate) fn heading(self) -> TextStyle {
-        TextStyle::default()
+    pub(crate) const fn heading(self) -> TextStyle {
+        TextStyle::stock(ColorScheme::Dark)
             .with_font_size(M.text.caption)
             .with_weight(FontWeight::SEMI_BOLD)
             .with_color(self.ink_faint)
     }
 
-    pub(crate) fn body(self) -> TextStyle {
-        TextStyle::default()
+    pub(crate) const fn body(self) -> TextStyle {
+        TextStyle::stock(ColorScheme::Dark)
             .with_font_size(M.text.body)
             .with_color(self.ink)
     }
 
-    pub(crate) fn dim(self) -> TextStyle {
+    pub(crate) const fn dim(self) -> TextStyle {
         self.body().with_color(self.ink_dim)
     }
 
-    pub(crate) fn caption(self) -> TextStyle {
-        TextStyle::default()
+    pub(crate) const fn caption(self) -> TextStyle {
+        TextStyle::stock(ColorScheme::Dark)
             .with_font_size(M.text.caption)
             .with_color(self.ink_dim)
     }
 
-    pub(crate) fn mono(self, color: RgbaF32) -> TextStyle {
-        TextStyle::default()
+    pub(crate) const fn mono(self, color: RgbaF32) -> TextStyle {
+        TextStyle::stock(ColorScheme::Dark)
             .with_family(FontFamily::MONO)
             .with_font_size(M.text.caption)
             .with_color(color)

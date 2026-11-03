@@ -1,7 +1,6 @@
 //! The four-state look pack (normal, hovered, active, disabled) every state-styled widget theme is built from.
 
 use crate::input::interaction::response_state::ResponseState;
-use crate::theme::ThemeText;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 
@@ -14,7 +13,8 @@ use crate::theme::look::engagement::Engagement;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Animatable,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct StatefulLook {
     /// At rest.
@@ -56,23 +56,5 @@ impl StatefulLook {
             disabled,
         } = self;
         [normal, hovered, active, disabled]
-    }
-
-    /// Destructured so a new state fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        mut other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            normal,
-            hovered,
-            active,
-            disabled,
-        } = self;
-        normal.for_each_text(other.as_deref_mut().map(|o| &mut o.normal), f);
-        hovered.for_each_text(other.as_deref_mut().map(|o| &mut o.hovered), f);
-        active.for_each_text(other.as_deref_mut().map(|o| &mut o.active), f);
-        disabled.for_each_text(other.map(|o| &mut o.disabled), f);
     }
 }

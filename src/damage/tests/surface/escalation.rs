@@ -168,7 +168,7 @@ fn a_new_clear_color_forces_full_damage() {
         "premise: an unchanged scene skips",
     );
 
-    h.ui_mut().theme_mut().window_clear = RED;
+    h.ui_mut().theme_mut().window_bg = RED;
     assert_eq!(
         h.frame(|ui| one_frame(ui, BLUE)).plan,
         Some(RenderPlan {

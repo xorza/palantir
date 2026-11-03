@@ -93,7 +93,7 @@ Animated
         impl<T: PartialEq + Animatable> PartialEq for Animated<T>
 
 AnimatedLook
-    struct AnimatedLook: Animatable, Clone, Debug, Default, PartialEq
+    struct AnimatedLook: Animatable, Clone, Debug, Lerp, PartialEq
         pub chrome: Chrome
         pub text: TextStyle
 
@@ -121,7 +121,7 @@ Axis
         Y
 
 BackdropFilter
-    struct BackdropFilter: Animatable, Clone, Copy, Debug, Default, PartialEq, Serialize
+    struct BackdropFilter: Animatable, Clone, Copy, Debug, Default, Lerp, PartialEq, Serialize
         pub blur: f32
         pub saturation: f32
         pub noise: f32
@@ -180,7 +180,7 @@ BoundNum
         F64(&'a mut f64)
 
 Brush
-    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, PartialEq, Serialize
+    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, Lerp, PartialEq, Serialize
         Solid(RgbaF32)
         Linear(LinearGradient)
         Radial(RadialGradient)
@@ -219,11 +219,12 @@ ButtonState
         pub const fn double_clicked(self) -> bool
 
 ButtonTheme
-    struct ButtonTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+    struct ButtonTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub unselected: StatefulLook
         pub selected: StatefulLook
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
         pub fn accent(p: &Palette, m: &Metrics) -> Self
         pub fn subtle(p: &Palette, m: &Metrics) -> Self
 
@@ -240,7 +241,7 @@ Checkbox
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
 Chrome
-    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub fill: Brush
         pub border: Stroke
         pub corners: Corners
@@ -341,7 +342,7 @@ ColorPicker
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
 ColorPickerTheme
-    struct ColorPickerTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct ColorPickerTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub field_width: f32
         pub field_height: f32
         pub bar_thickness: f32
@@ -362,6 +363,7 @@ ColorPickerTheme
         pub hex: TextEditTheme
         pub label: TextStyleOverrides
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 ColorRamp
     struct ColorRamp: Clone, Copy, Debug, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -410,11 +412,12 @@ ComboBox
         impl<'a, 'o, S: Debug, L: Debug> Debug for ComboBox<'a, 'o, S, L>
 
 ComboBoxTheme
-    struct ComboBoxTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct ComboBoxTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub gap: f32
         pub arrow_size: Vec2
         pub arrow_width: f32
         pub const fn from_parts(_p: &Palette, m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
 
 Configure
     trait Configure: Sized
@@ -464,7 +467,7 @@ ControlCharError
         pub found: char
 
 Corners
-    struct Corners: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
+    struct Corners: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
         pub fn to_array(self) -> [f32; 4]
         pub fn all(r: f32) -> Self
@@ -640,14 +643,13 @@ DockTabs
         fn tab_menu(&mut self, _ui: &mut Ui, _menu: DockTabMenu<'_, Self::Tab>) { .. }
 
 DockTheme
-    struct DockTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
-        pub preview_fill: RgbaF32
-        pub preview_stroke: Stroke
-        pub preview_radius: f32
+    struct DockTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
+        pub preview: Chrome
         pub ghost: WidgetLook
         pub ghost_padding: Spacing
         pub ghost_offset: Vec2
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 DockView
     struct DockView<'a, T>: Configure, ThemeDefaults (blanket)
@@ -700,11 +702,16 @@ DragValue
         pub fn is_editing(ui: &Ui, id: WidgetId) -> bool
 
 DragValueTheme
-    struct DragValueTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
-        pub chip: ButtonTheme
-        pub editor: TextEditTheme
-        pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self
+    struct DragValueTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
+        pub looks: StatefulLook
+        pub defaults: SlotDefaults
+        pub caret: RgbaF32
+        pub caret_width: f32
+        pub selection: RgbaF32
+        pub placeholder: RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
+        pub fn editor(&self) -> TextEditTheme
 
 Easing
     enum Easing: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
@@ -775,7 +782,7 @@ ExpanderResponse
         impl<'a, R: Debug> Debug for ExpanderResponse<'a, R>
 
 ExpanderTheme
-    struct ExpanderTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+    struct ExpanderTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub arrow_size: Vec2
         pub arrow_radius: f32
@@ -786,6 +793,7 @@ ExpanderTheme
         pub body_padding: Spacing
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 FocusPolicy
     enum FocusPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -793,10 +801,11 @@ FocusPolicy
         ClearOnMiss
 
 FocusRingTheme
-    struct FocusRingTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct FocusRingTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub color: RgbaF32
         pub width: f32
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
 
 FontFamily
     struct FontFamily: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -1437,7 +1446,7 @@ MenuBarMenus
         pub fn menu<'l, R>(&mut self, label: impl Into<TextInput<'l>>, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> Option<OverlayResponse<R>>
 
 MenuBarTheme
-    struct MenuBarTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+    struct MenuBarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub title: StatefulLook
         pub open: WidgetLook
         pub bar: Chrome
@@ -1445,6 +1454,7 @@ MenuBarTheme
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 MenuItem
     struct MenuItem<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1456,13 +1466,14 @@ MenuItem
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 MenuItemTheme
-    struct MenuItemTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+    struct MenuItemTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub unselected: StatefulLook
         pub selected: StatefulLook
         pub shortcut: RgbaF32
         pub gap: f32
         pub defaults: SlotDefaults
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 MenuLanding
     enum MenuLanding: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1482,7 +1493,7 @@ MenuState
         Open
 
 MenuTheme
-    struct MenuTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct MenuTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
         pub padding: Spacing
         pub min_width: f32
@@ -1490,6 +1501,7 @@ MenuTheme
         pub item: MenuItemTheme
         pub separator: SeparatorTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 Metrics
     struct Metrics: Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
@@ -1513,12 +1525,13 @@ Modal
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 ModalTheme
-    struct ModalTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct ModalTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
         pub scrim: RgbaF32
         pub padding: Spacing
         pub min_width: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 Modifiers
     struct Modifiers: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1744,10 +1757,11 @@ Popup
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
 PopupTheme
-    struct PopupTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct PopupTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
         pub padding: Spacing
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 PopupTrigger
     struct PopupTrigger<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -1774,11 +1788,12 @@ ProgressBar
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 ProgressBarTheme
-    struct ProgressBarTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct ProgressBarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub track: RgbaF32
         pub fill: RgbaF32
         pub thickness: f32
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
 
 RadialGeometry
     struct RadialGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
@@ -1881,7 +1896,7 @@ ResponseState
         pub fn press_fraction(&self, band: f32) -> Option<Vec2>
 
 RgbaF32
-    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, PartialEq, Pod, Serialize, Zeroable
+    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub r: f32
         pub g: f32
         pub b: f32
@@ -1950,7 +1965,7 @@ ScrollDelta
         pub fn pan(self, line_height: f32) -> Vec2
 
 ScrollbarTheme
-    struct ScrollbarTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct ScrollbarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub thickness: f32
         pub gap: f32
         pub min_thumb: f32
@@ -1959,6 +1974,7 @@ ScrollbarTheme
         pub thumb_hovered: RgbaF32
         pub thumb_active: RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 Selection
     enum Selection: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
@@ -1996,15 +2012,16 @@ Separator
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 SeparatorTheme
-    struct SeparatorTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct SeparatorTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub color: RgbaF32
         pub thickness: f32
         pub margin: Spacing
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
         pub fn menu(p: &Palette, m: &Metrics) -> Self
 
 Shadow
-    struct Shadow: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct Shadow: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub color: RgbaF32
         pub offset: Vec2
         pub blur: f32
@@ -2049,7 +2066,7 @@ ShortcutMods
         pub const fn has_command(self) -> bool
 
 Size
-    struct Size: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Hash, PartialEq, Pod, Serialize, Zeroable
+    struct Size: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub w: f32
         pub h: f32
         pub const ZERO: Self
@@ -2096,24 +2113,25 @@ Slider
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
 SliderColors
-    struct SliderColors: Animatable, Clone, Debug, Deserialize<'de>, PartialEq, Serialize
+    struct SliderColors: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub track: RgbaF32
         pub fill: RgbaF32
         pub knob: RgbaF32
 
 SliderTheme
-    struct SliderTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct SliderTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub enabled: SliderColors
         pub disabled: SliderColors
         pub knob_size: f32
         pub track_thickness: f32
         pub const fn from_parts(p: &Palette, _m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
 
 SlotDefaults
-    struct SlotDefaults: Animatable, Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+    struct SlotDefaults: Clone, Copy, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub padding: Spacing
         pub margin: Spacing
-        pub animation: AnimationSpec
+        pub transition: AnimationSpec
 
 SpaceSteps
     struct SpaceSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -2125,7 +2143,7 @@ SpaceSteps
         pub xl: f32
 
 Spacing
-    struct Spacing: Add, Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Pod, Serialize, Zeroable
+    struct Spacing: Add, Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, Lerp, PartialEq, Pod, Serialize, Zeroable
         pub const ZERO: Self
         pub fn to_array(self) -> [f32; 4]
         pub fn all(v: f32) -> Self
@@ -2158,14 +2176,15 @@ Spinner
         pub fn show(self, ui: &mut Ui) -> Response<'_>
 
 SpinnerTheme
-    struct SpinnerTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct SpinnerTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub color: RgbaF32
         pub diameter: f32
         pub sweep: f32
         pub period: Duration
         pub width_ratio: f32
-        pub min_width: f32
+        pub min_stroke_width: f32
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
 
 SplitDirection
     enum SplitDirection: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
@@ -2196,13 +2215,14 @@ Splitter
         pub fn show(self, ui: &mut Ui, body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse<'_>
 
 SplitterTheme
-    struct SplitterTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct SplitterTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub grab_thickness: f32
         pub rule: RgbaF32
         pub rule_thickness: f32
-        pub hovered: RgbaF32
-        pub active: RgbaF32
+        pub rule_hovered: RgbaF32
+        pub rule_active: RgbaF32
         pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
 
 Spread
     enum Spread: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -2224,7 +2244,7 @@ SrgbaU8
         impl From<SrgbaU8> for RgbaF32
 
 StatefulLook
-    struct StatefulLook: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct StatefulLook: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub normal: WidgetLook
         pub hovered: WidgetLook
         pub active: WidgetLook
@@ -2239,7 +2259,7 @@ Stop
         pub const fn color(self) -> RgbaF32
 
 Stroke
-    struct Stroke: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct Stroke: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub color: RgbaF32
         pub width: f32
         pub const NONE: Self
@@ -2405,9 +2425,9 @@ TabbedViewResponse
         impl<'a, R: Debug> Debug for TabbedViewResponse<'a, R>
 
 TabsTheme
-    struct TabsTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
-        pub selected: StatefulLook
+    struct TabsTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub unselected: StatefulLook
+        pub selected: StatefulLook
         pub cap_focused: RgbaF32
         pub cap_unfocused: RgbaF32
         pub cap_thickness: f32
@@ -2432,6 +2452,7 @@ TabsTheme
         pub defaults: SlotDefaults
         pub const fn cap(&self, focus: TabStripFocus) -> RgbaF32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 TargetFormat
     struct TargetFormat: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -2485,7 +2506,7 @@ TextEditResponse
         pub focus_lost: bool
 
 TextEditTheme
-    struct TextEditTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+    struct TextEditTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
         pub placeholder: RgbaF32
         pub caret: RgbaF32
@@ -2494,6 +2515,7 @@ TextEditTheme
         pub defaults: SlotDefaults
         pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
         pub fn flat(&self) -> Self
 
 TextInput
@@ -2519,13 +2541,15 @@ TextSteps
         pub title: f32
 
 TextStyle
-    struct TextStyle: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct TextStyle: Animatable, Clone, Copy, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub font_size: f32
         pub color: RgbaF32
         pub line_height_factor: f32
         pub family: FontFamily
         pub weight: FontWeight
         pub slant: FontSlant
+        pub const fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub const fn stock(scheme: ColorScheme) -> Self
         pub fn font(&self) -> GlyphFont
         pub fn line_height(&self) -> f32
         pub const fn with_font_size(self, px: f32) -> Self
@@ -2538,7 +2562,7 @@ TextStyle
         pub const fn italic(self) -> Self
 
 TextStyleOverrides
-    struct TextStyleOverrides: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct TextStyleOverrides: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub color: Option<RgbaF32>
         pub font_size: Option<f32>
         pub line_height_factor: Option<f32>
@@ -2565,7 +2589,7 @@ TextWrap
         WrapWithOverflow
 
 Theme
-    struct Theme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct Theme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub button: ButtonTheme
         pub checkbox: ToggleTheme
         pub radio: ToggleTheme
@@ -2590,16 +2614,16 @@ Theme
         pub expander: ExpanderTheme
         pub focus_ring: FocusRingTheme
         pub text: TextStyle
-        pub window_clear: RgbaF32
+        pub window_bg: RgbaF32
         pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
-        pub fn frost_floats(&mut self, p: &Palette, sigma: f32, tint_alpha: f32)
+        pub fn frost_floats(&mut self, sigma: f32, tint_alpha: f32)
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 
 ToggleTheme
-    struct ToggleTheme: Animatable, Clone, Debug, Deserialize<'de>, PartialEq, Serialize, ThemeSlot
+    struct ToggleTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub unchecked: StatefulLook
         pub checked: StatefulLook
         pub indicator: RgbaF32
@@ -2631,7 +2655,7 @@ TooltipResponse
         pub visible: bool
 
 TooltipTheme
-    struct TooltipTheme: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct TooltipTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub panel: Chrome
         pub text: TextStyleOverrides
         pub padding: Spacing
@@ -2640,6 +2664,7 @@ TooltipTheme
         pub warmup: Duration
         pub gap: f32
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
 
 Track
     struct Track: Clone, Copy, Debug, From<Sizing>, Hash, PartialEq
@@ -2815,7 +2840,7 @@ WidgetId
         impl<X> From<WidgetId> for Locator<X>
 
 WidgetLook
-    struct WidgetLook: Animatable, Clone, Debug, Default, Deserialize<'de>, PartialEq, Serialize
+    struct WidgetLook: Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub chrome: Chrome
         pub text: TextStyleOverrides
         pub fn to_animated(&self, ambient_text: TextStyle) -> AnimatedLook
@@ -2968,8 +2993,7 @@ widget::Activation
         Toggle
 
 widget::Animatable
-    trait Animatable: Clone + PartialEq + 'static
-        fn lerp(a: Self, b: Self, t: f32) -> Self
+    trait Animatable: Lerp + Clone + PartialEq + 'static
         fn sub(self, other: Self) -> Self
         fn add(self, other: Self) -> Self
         fn scale(self, k: f32) -> Self
@@ -3114,6 +3138,10 @@ widget::ImageShape
         pub const fn mag_filter(self, mag_filter: ImageFilter) -> Self
         pub const fn downsample(self, downsample: ImageDownsample) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
+
+widget::Lerp
+    trait Lerp: Sized
+        fn lerp(a: Self, b: Self, t: f32) -> Self
 
 widget::LineCap
     enum LineCap: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq

@@ -234,7 +234,7 @@ impl Widget {
                 SlotDefaults {
                     padding,
                     margin,
-                    animation,
+                    transition,
                 },
         } = plan;
         self.configure()
@@ -243,7 +243,7 @@ impl Widget {
         let id = self.resolve(ui);
         ui.animate(
             AnimationRequest::new(id, Self::LOOK_SLOT, target).with_key(key),
-            animation,
+            transition,
         )
         .value
     }

@@ -7,7 +7,6 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
-use crate::theme::ThemeText;
 use crate::theme::check_state::CheckState;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
@@ -21,7 +20,13 @@ use glam::Vec2;
 
 /// Visuals for [`crate::Checkbox`], [`crate::RadioButton`] and [`crate::Switch`]: a 4-state look pack per checked branch plus geometry knobs.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct ToggleTheme {
     /// Look when unchecked.
@@ -57,30 +62,6 @@ pub struct ToggleTheme {
 }
 
 impl ToggleTheme {
-    /// Destructured so a new field fails to compile here — see
-    /// [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        mut other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            unchecked,
-            checked,
-            indicator: _,
-            unchecked_indicator: _,
-            box_size: _,
-            indicator_width: _,
-            check_points: _,
-            indicator_inset: _,
-            gap: _,
-            track_aspect: _,
-            defaults: _,
-        } = self;
-        unchecked.for_each_text(other.as_deref_mut().map(|o| &mut o.unchecked), f);
-        checked.for_each_text(other.map(|o| &mut o.checked), f);
-    }
-
     /// [`Self::check_points`] scaled to [`Self::box_size`], in box-local pixels.
     pub(crate) fn check_polyline(&self) -> [Vec2; 3] {
         self.check_points.map(|p| p * self.box_size)
@@ -115,7 +96,7 @@ impl ToggleTheme {
         }
         .theme(p, m);
         t.track_aspect = 1.75;
-        t.defaults.animation = AnimationSpec::SPRING;
+        t.defaults.transition = AnimationSpec::SPRING;
         t
     }
 }
@@ -199,7 +180,7 @@ impl ToggleGeometry {
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
-                animation: AnimationSpec::SNAP,
+                transition: AnimationSpec::SNAP,
             },
         }
     }

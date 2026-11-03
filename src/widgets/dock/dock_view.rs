@@ -1,12 +1,10 @@
 //! The dock widget: the split walk, one strip-over-content pane per group, and the drag-docking gesture.
 
 use crate::input::keyboard::key::Key;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
-use crate::primitives::paint::chrome::Chrome;
 use crate::scene::layer::Layer;
 use crate::theme::dock::DockTheme;
 use crate::theme::menu::MenuTheme;
@@ -583,11 +581,7 @@ impl<T: DockTab, D: DockTabs<Tab = T>> DockCtx<'_, T, D> {
     fn drag_feedback(&mut self, ui: &mut Ui, tab: T) {
         let dock = self.dock;
         if let Some(DropTarget::Region { wash: r, .. }) = self.drop {
-            let preview = Chrome::rounded(
-                self.theme.preview_fill,
-                Corners::all(self.theme.preview_radius),
-            )
-            .with_border(self.theme.preview_stroke);
+            let preview = self.theme.preview.clone();
             ui.layer(Layer::Tooltip)
                 .fixed_at(r.min)
                 .max_size(r.size)

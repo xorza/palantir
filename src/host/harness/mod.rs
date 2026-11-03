@@ -844,7 +844,7 @@ pub(crate) mod internals {
         /// [`Depth::Compose`](crate::Depth::Compose), it paints nothing.
         pub fn paint_full(&mut self) {
             let plan = RenderPlan {
-                clear: self.driver.ui.theme().window_clear,
+                clear: self.driver.ui.theme().window_bg,
                 damage: Damage::Full,
             };
             self.driver.compose(&mut self.core.frontend, plan);
@@ -1106,7 +1106,7 @@ pub(crate) mod internals {
 
         fn encode(&self, damage: Damage) -> PaintCapture {
             let plan = RenderPlan {
-                clear: self.driver.ui.theme().window_clear,
+                clear: self.driver.ui.theme().window_bg,
                 damage,
             };
             encoder::internals::encode(

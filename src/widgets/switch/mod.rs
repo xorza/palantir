@@ -5,8 +5,8 @@ use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::text::text_input::TextInput;
 use crate::theme::Theme;
@@ -97,13 +97,12 @@ impl ToggleKind for Knob<'_> {
         let on = ui
             .animate(
                 AnimationRequest::new(knob_id, "on", f32::from(checked)),
-                slot.defaults.animation,
+                slot.defaults.transition,
             )
             .value;
-        let knob_x = Animatable::lerp(geometry.off_x, geometry.on_x, on);
+        let knob_x = Lerp::lerp(geometry.off_x, geometry.on_x, on);
         // A spring slides the knob past an end, but a color past an end leaves the two inks.
-        let knob_color =
-            Animatable::lerp(slot.unchecked_indicator, slot.indicator, on.clamp(0.0, 1.0));
+        let knob_color = Lerp::lerp(slot.unchecked_indicator, slot.indicator, on.clamp(0.0, 1.0));
         let knob_chrome = Chrome::rounded(knob_color, Corners::all(geometry.knob * 0.5));
         Widget::leaf()
             .id(knob_id)

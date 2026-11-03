@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -12,7 +13,13 @@ use crate::theme::palette::Palette;
 /// Refused: [`crate::Theme::panel_chrome`], the in-tree containers' fallback, which is unset in
 /// the stock themes and so left a popup's rows over the page.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct PopupTheme {
     /// Panel chrome behind the body.
@@ -30,10 +37,9 @@ impl PopupTheme {
             padding: Spacing::all(m.space.sm),
         }
     }
-}
 
-impl Default for PopupTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

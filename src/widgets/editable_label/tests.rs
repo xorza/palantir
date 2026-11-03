@@ -6,6 +6,7 @@ use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::paint::chrome::Chrome;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::slot_defaults::SlotDefaults;
 use crate::theme::text_edit::TextEditTheme;
 use crate::ui::Ui;
@@ -67,7 +68,7 @@ fn open(h: &mut Harness, id: WidgetId, editable: bool) {
 #[test]
 fn the_label_and_its_editor_take_one_rect() {
     let flat = {
-        let mut theme = TextEditTheme::default();
+        let mut theme = TextEditTheme::stock(ColorScheme::Dark);
         theme.defaults = SlotDefaults {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,

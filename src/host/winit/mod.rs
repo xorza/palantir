@@ -18,7 +18,7 @@
 //!     .build(|ui, _handle| {
 //!         for scheme in [ColorScheme::Light, ColorScheme::Dark] {
 //!             let mut theme = Theme::stock(scheme);
-//!             theme.button.defaults.animation = AnimationSpec::SPRING;
+//!             theme.button.defaults.transition = AnimationSpec::SPRING;
 //!             ui.set_theme_for(scheme, theme);
 //!         }
 //!         MyApp

@@ -4,7 +4,7 @@ pub(crate) mod menu_item;
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
-use crate::theme::ThemeText;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -23,7 +23,13 @@ const MIN_WIDTH: f32 = 208.0;
 ///
 /// Read globally through [`crate::Theme::menu`] or per instance through the `style` of [`crate::Menu`], [`crate::MenuItem`] and [`crate::MenuSeparator`], and the `menu_style` of a widget that drops one.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 #[must_use]
 pub struct MenuTheme {
@@ -45,23 +51,6 @@ pub struct MenuTheme {
 }
 
 impl MenuTheme {
-    /// Panel and separator are chrome only; rows carry the text. Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            item,
-            panel: _,
-            padding: _,
-            min_width: _,
-            gap: _,
-            separator: _,
-        } = self;
-        item.for_each_text(other.map(|o| &mut o.item), f);
-    }
-
     /// The popup panel, with a [`MenuItemTheme`] and the menu [`SeparatorTheme`].
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
@@ -73,10 +62,9 @@ impl MenuTheme {
             separator: SeparatorTheme::menu(p, m),
         }
     }
-}
 
-impl Default for MenuTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

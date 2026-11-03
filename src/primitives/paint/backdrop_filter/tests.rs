@@ -1,4 +1,4 @@
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens, bend_root, ceiling_bend};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;

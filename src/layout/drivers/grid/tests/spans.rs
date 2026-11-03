@@ -1,6 +1,7 @@
 //! A cell covering several tracks, and the internal gaps it measures against.
 
 use crate::primitives::layout::axis::Axis;
+use crate::theme::color_scheme::ColorScheme;
 
 use crate::host::harness::Harness;
 use crate::primitives::geometry::size::Size;
@@ -103,7 +104,7 @@ fn spanned_text_measures_against_track_sizes_plus_internal_column_gaps() {
                             Text::new(case.text)
                                 .auto_id()
                                 .style(
-                                    &TextStyle::default()
+                                    &TextStyle::stock(ColorScheme::Dark)
                                         .with_font_size(16.0)
                                         .with_line_height_factor(1.0),
                                 )

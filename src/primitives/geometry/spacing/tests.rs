@@ -1,6 +1,7 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::*;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;

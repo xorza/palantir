@@ -1,12 +1,19 @@
 //! What a progress bar wears: its track and the fill measuring the fraction.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::ProgressBar`]: a rounded `track` with an accent `fill` spanning the value; the pill radius is `thickness / 2`.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct ProgressBarTheme {
     /// Track color behind the fill.
@@ -27,10 +34,9 @@ impl ProgressBarTheme {
             thickness: 6.0,
         }
     }
-}
 
-impl Default for ProgressBarTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub const fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

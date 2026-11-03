@@ -13,7 +13,8 @@ use crate::primitives::geometry::spacing::Spacing;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Animatable,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct SlotDefaults {
     /// Padding the widget takes when its builder set none; explicit zero overrides it.
@@ -27,5 +28,5 @@ pub struct SlotDefaults {
     /// [`Metrics::transition`](crate::Metrics::transition).
     #[serde(default, skip_serializing_if = "AnimationSpec::is_snap")]
     #[animate(snap)]
-    pub animation: AnimationSpec,
+    pub transition: AnimationSpec,
 }

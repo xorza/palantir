@@ -5,7 +5,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
-use crate::theme::ThemeText;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
@@ -13,7 +13,13 @@ use std::time::Duration;
 
 /// Visuals and timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles paint into `Layer::Tooltip` after `delay` of hover; the `warmup` window keeps later tooltips instant after one is dismissed.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct TooltipTheme {
     /// Bubble chrome (fill + stroke + radius + optional shadow).
@@ -40,27 +46,6 @@ pub struct TooltipTheme {
 }
 
 impl TooltipTheme {
-    /// Visit every text slot this theme owns, driving `Theme::scale_text`. Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            text,
-            panel: _,
-            padding: _,
-            max_size: _,
-            delay: _,
-            warmup: _,
-            gap: _,
-        } = self;
-        f(
-            ThemeText::Overrides(text),
-            other.map(|o| ThemeText::Overrides(&mut o.text)),
-        );
-    }
-
     /// A small control-rounded bubble that floats as a menu does.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let panel = Chrome::rounded(p.element, Corners::all(m.radius.control))
@@ -78,10 +63,9 @@ impl TooltipTheme {
             gap: m.space.sm,
         }
     }
-}
 
-impl Default for TooltipTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

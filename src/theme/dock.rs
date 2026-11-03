@@ -3,9 +3,8 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
-use crate::theme::ThemeText;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
@@ -14,16 +13,17 @@ use glam::Vec2;
 
 /// Visuals for [`crate::DockView`], dock-specific only: dividers read [`Theme::splitter`](crate::Theme::splitter) and pane strips [`Theme::tabs`](crate::Theme::tabs), leaving the drag feedback.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct DockTheme {
-    /// Wash over the region a drop would occupy.
-    pub preview_fill: RgbaF32,
-    /// Outline around that region.
-    pub preview_stroke: Stroke,
-    /// Corner radius of the preview.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
-    pub preview_radius: f32,
+    /// The region a drop would occupy: its wash, outline and corners.
+    pub preview: Chrome,
     /// The chip trailing the pointer while a tab is dragged.
     pub ghost: WidgetLook,
     /// Inset between the ghost chip's edges and its label.
@@ -35,29 +35,11 @@ pub struct DockTheme {
 }
 
 impl DockTheme {
-    /// Destructured so a new field fails to compile; see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            ghost,
-            preview_fill: _,
-            preview_stroke: _,
-            preview_radius: _,
-            ghost_padding: _,
-            ghost_offset: _,
-        } = self;
-        ghost.for_each_text(other.map(|o| &mut o.ghost), f);
-    }
-
     /// Drop previews and the drag ghost, both drawn in the palette's accent. The ghost reads as a tab lifted off its strip: a tab's corners and inset, on the strip's `surround` band.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         Self {
-            preview_fill: p.accent.with_alpha8(46),
-            preview_stroke: Stroke::new(p.accent, m.stroke.fine),
-            preview_radius: m.radius.mark,
+            preview: Chrome::rounded(p.accent.with_alpha8(46), m.radius.mark)
+                .with_border(Stroke::new(p.accent, m.stroke.fine)),
             ghost: WidgetLook {
                 chrome: Chrome::rounded(p.surround, Corners::all(m.radius.card))
                     .with_border(Stroke::new(p.accent, m.stroke.hairline)),
@@ -67,10 +49,9 @@ impl DockTheme {
             ghost_offset: Vec2::new(m.space.md, m.space.lg),
         }
     }
-}
 
-impl Default for DockTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

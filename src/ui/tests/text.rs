@@ -26,6 +26,7 @@ use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::shaper::TextShaper;
 use crate::text::wrap::TextWrap;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::ui::frame_report::{FramePaint, FrameProcessing};
@@ -673,7 +674,7 @@ fn a_load_reaches_the_cascade_and_the_screen() {
             .id(id)
             .style(&TextStyle {
                 family: FontFamily::MONO,
-                ..TextStyle::default().with_font_size(16.0)
+                ..TextStyle::stock(ColorScheme::Dark).with_font_size(16.0)
             })
             .show(ui);
     };
@@ -735,7 +736,7 @@ fn every_window_keys_a_family_in_its_shapers_table() {
                     .id(id)
                     .style(&TextStyle {
                         family,
-                        ..TextStyle::default()
+                        ..TextStyle::stock(ColorScheme::Dark)
                     })
                     .show(ui);
             }

@@ -8,6 +8,7 @@ pub(crate) mod gradient;
 
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::{self, vec2};
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
 use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
@@ -120,7 +121,7 @@ impl From<ConicGradient> for Brush {
     }
 }
 
-impl Animatable for Brush {
+impl Lerp for Brush {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         // Match by reference so the gradient fallback can return an original without cloning.
@@ -136,7 +137,9 @@ impl Animatable for Brush {
             }
         }
     }
+}
 
+impl Animatable for Brush {
     #[inline]
     fn sub(self, other: Self) -> Self {
         match (&self, &other) {

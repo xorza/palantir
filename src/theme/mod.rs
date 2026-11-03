@@ -36,12 +36,16 @@ pub(crate) mod text_style_overrides;
 pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
+use crate::animation::animation_spec::AnimationSpec;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::domain;
 use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
+use crate::theme::close_shown::CloseShown;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::combo_box::ComboBoxTheme;
@@ -67,6 +71,8 @@ use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::theme::toggle::ToggleTheme;
 use crate::theme::tooltip::TooltipTheme;
+use glam::Vec2;
+use std::time::Duration;
 
 /// Global theme, aggregating per-widget themes. Widgets read it from `Ui::theme`.
 ///
@@ -82,7 +88,7 @@ use crate::theme::tooltip::TooltipTheme;
 ///
 /// # Blending
 ///
-/// [`Animatable::lerp`](crate::widget::Animatable::lerp) blends two themes as Flutter's
+/// [`Lerp::lerp`](crate::widget::Lerp::lerp) blends two themes as Flutter's
 /// `ThemeData.lerp` does: colors, lengths, spacings, radii and font sizes blend, and a value with
 /// no blend switches at `t = 0.5`. A [`Self::panel_chrome`] one end lacks blends through
 /// [`Chrome::NONE`](crate::Chrome::NONE), and a text axis one end's overrides leave to
@@ -94,7 +100,8 @@ use crate::theme::tooltip::TooltipTheme;
     PartialEq,
     ::serde::Serialize,
     ::serde::Deserialize,
-    palantir_anim_derive::Animatable,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 #[serde(try_from = "UncheckedTheme")]
 #[animate(before_lerp = Self::share_text_axes)]
@@ -109,9 +116,10 @@ pub struct Theme {
     pub switch: ToggleTheme,
     /// Track, thumb and gutter of every [`crate::Scroll`].
     pub scrollbar: ScrollbarTheme,
-    /// What every [`crate::TextEdit`] wears; [`Self::drag_value`]'s editor derives from it.
+    /// What every [`crate::TextEdit`] wears; a stock [`Self::drag_value`] takes its caret,
+    /// selection and placeholder.
     pub text_edit: TextEditTheme,
-    /// [`crate::DragValue`]'s chip and editor, derived from `button` + `text_edit` via [`DragValueTheme::from_chip`].
+    /// [`crate::DragValue`]'s chip, and the editor it becomes ([`DragValueTheme::editor`]).
     pub drag_value: DragValueTheme,
     /// Panel and rows of every [`crate::Menu`], which every widget that drops a menu shows.
     pub menu: MenuTheme,
@@ -147,8 +155,9 @@ pub struct Theme {
     pub focus_ring: FocusRingTheme,
     /// Ambient text style every [`Text`](crate::Text) falls back to; other text slots are [`TextStyleOverrides`] over this.
     pub text: TextStyle,
-    /// Window/swapchain clear color, passed to `WgpuBackend::submit`.
-    pub window_clear: RgbaF32,
+    /// The window's background, which each frame clears to; [`Palette::window_bg`] in a stock
+    /// theme.
+    pub window_bg: RgbaF32,
     /// Default chrome for in-tree containers (`Panel`, `Grid`) without chrome of their own. `None` leaves them unpainted; a popup reads [`Self::popup`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub panel_chrome: Option<Chrome>,
@@ -158,11 +167,71 @@ pub struct Theme {
     pub panel_clip: ClipMode,
 }
 
-/// One text-bearing slot of a theme, as [`Theme::for_each_text`] hands it over: a whole style, or a look's overrides folded onto [`Theme::text`].
+/// One text-bearing slot of a theme, as [`TextSlots::for_each_text`] hands it over: a whole style, or a look's overrides folded onto [`Theme::text`].
 #[derive(Debug)]
 pub(crate) enum ThemeText<'a> {
     Style(&'a mut TextStyle),
     Overrides(&'a mut TextStyleOverrides),
+}
+
+/// A theme part's text slots: [`Self::for_each_text`] visits each, beside the same slot of
+/// `other` when one is given, in field order. [`Theme::faces_valid`], [`Theme::scale_text`] and
+/// [`Theme::share_text_axes`] drive it. A part derives it and walks every field, so each field's
+/// type implements it, a value that holds no text through `no_text_slots!`, and a field of a new
+/// type fails to compile until its type says whether it holds text.
+pub(crate) trait TextSlots {
+    fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>);
+}
+
+/// A walk that visits nothing, for each value type that holds no text slot.
+macro_rules! no_text_slots {
+    ($($ty:ty),* $(,)?) => {$(
+        impl TextSlots for $ty {
+            #[inline]
+            fn for_each_text<F>(&mut self, _: Option<&mut Self>, _: &mut F)
+            where
+                F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+            {
+            }
+        }
+    )*};
+}
+
+no_text_slots!(
+    f32,
+    Vec2,
+    [Vec2; 3],
+    Size,
+    Spacing,
+    Duration,
+    RgbaF32,
+    Chrome,
+    Option<Chrome>,
+    AnimationSpec,
+    ClipMode,
+    CloseShown,
+);
+
+/// A whole style.
+impl TextSlots for TextStyle {
+    fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+    {
+        f(ThemeText::Style(self), other.map(ThemeText::Style));
+    }
+}
+
+/// A look's overrides, folded onto [`Theme::text`].
+impl TextSlots for TextStyleOverrides {
+    fn for_each_text<F>(&mut self, other: Option<&mut Self>, f: &mut F)
+    where
+        F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
+    {
+        f(ThemeText::Overrides(self), other.map(ThemeText::Overrides));
+    }
 }
 
 const TEXT_SCALE_ERROR: &str = "text scale factor must be finite and positive";
@@ -193,7 +262,7 @@ impl Theme {
         assert!(text_scale_is_valid(factor), "{TEXT_SCALE_ERROR}");
         assert!(self.faces_valid(factor), "{SCALED_TEXT_METRICS_ERROR}");
         let scale = |px: f32| px * factor;
-        self.for_each_text(None, |text, _| match text {
+        self.for_each_text(None, &mut |text, _| match text {
             ThemeText::Style(style) => style.font_size = scale(style.font_size),
             ThemeText::Overrides(o) => o.font_size = o.font_size.map(scale),
         });
@@ -202,10 +271,10 @@ impl Theme {
     /// Frost every floating surface: the panels of menus and combo lists, the color picker's
     /// popup, a bare popup's panel, tooltips and the modal's panel. Each keeps its fill's color
     /// at `tint_alpha` over [`BackdropFilter::frosted`]`(sigma)`, held so the weakest ink its
-    /// recipe paints reads at WCAG 4.5:1 over any backdrop: `p`'s muted ink on a menu (a
-    /// shortcut), on the picker (a channel's name) and on a bare popup, which an app fills with
-    /// rows like a menu's, the full ink on a tooltip and on the modal, whose content is the
-    /// app's. A ceiling holds ink lighter than the tint, a floor darker. The stock themes stay opaque, as a
+    /// recipe paints reads at WCAG 4.5:1 over any backdrop, read from this theme: a menu row's
+    /// shortcut ink on a menu and on a bare popup, which an app fills with rows like a menu's,
+    /// the picker's channel-name ink, the tooltip's text, and the ambient text on the modal,
+    /// whose content is the app's. A ceiling holds ink lighter than the tint, a floor darker. The stock themes stay opaque, as a
     /// frosted float costs a capture under each open one; an app opts in here, as WinUI's flyouts,
     /// menus and tooltips wear acrylic
     /// (<https://learn.microsoft.com/windows/apps/design/style/acrylic>) and macOS's menus and
@@ -219,8 +288,12 @@ impl Theme {
     /// ink lighter than its fill is light enough for a ceiling, as
     /// [`BackdropFilter::with_max_luminance_for`] and its floor twin require.
     #[track_caller]
-    pub fn frost_floats(&mut self, p: &Palette, sigma: f32, tint_alpha: f32) {
+    pub fn frost_floats(&mut self, sigma: f32, tint_alpha: f32) {
         let sigma = domain::length(sigma);
+        let shortcut = self.menu.item.shortcut;
+        let channel = self.color_picker.label.apply(&self.text).color;
+        let tooltip_ink = self.tooltip.text.apply(&self.text).color;
+        let ambient = self.text.color;
         let Self {
             menu,
             color_picker,
@@ -247,16 +320,16 @@ impl Theme {
             dock: _,
             expander: _,
             focus_ring: _,
-            window_clear: _,
+            window_bg: _,
             panel_chrome: _,
             panel_clip: _,
         } = self;
         for (panel, ink) in [
-            (&mut menu.panel, p.text_muted),
-            (&mut color_picker.popup.panel, p.text_muted),
-            (&mut popup.panel, p.text_muted),
-            (&mut tooltip.panel, p.text),
-            (&mut modal.panel, p.text),
+            (&mut menu.panel, shortcut),
+            (&mut color_picker.popup.panel, channel),
+            (&mut popup.panel, shortcut),
+            (&mut tooltip.panel, tooltip_ink),
+            (&mut modal.panel, ambient),
         ] {
             let fill = panel
                 .fill
@@ -276,13 +349,13 @@ impl Theme {
     /// Whether every text slot, its font sizes scaled by `factor`, makes a face the shaper accepts:
     /// a whole style alone, an override as the face it makes over the scaled [`Self::text`]. An
     /// override valid alone can make an invalid face, as a leading factor of 1e-6 over a 14 px
-    /// ambient makes a 1.4e-5 px line. Mutable only because [`Self::for_each_text`] walks so;
+    /// ambient makes a 1.4e-5 px line. Mutable only because [`TextSlots::for_each_text`] walks so;
     /// nothing changes.
     pub(crate) fn faces_valid(&mut self, factor: f32) -> bool {
         let scale = |px: f32| px * factor;
         let ambient = self.text.with_font_size(scale(self.text.font_size));
         let mut valid = true;
-        self.for_each_text(None, |text, _| {
+        self.for_each_text(None, &mut |text, _| {
             valid &= match text {
                 ThemeText::Style(style) => {
                     style.with_font_size(scale(style.font_size)).metrics_valid()
@@ -298,72 +371,13 @@ impl Theme {
         valid
     }
 
-    /// Visit every text-bearing slot, each beside the same slot of `other` when one is given;
-    /// [`Self::faces_valid`], [`Self::scale_text`] and [`Self::share_text_axes`] drive it.
-    ///
-    /// Every `for_each_text` destructures its whole struct, so a new field fails to compile until classified.
-    fn for_each_text(
-        &mut self,
-        mut other: Option<&mut Self>,
-        mut f: impl FnMut(ThemeText<'_>, Option<ThemeText<'_>>),
-    ) {
-        let Self {
-            text,
-            button,
-            checkbox,
-            radio,
-            switch,
-            text_edit,
-            drag_value,
-            menu,
-            menu_bar,
-            tooltip,
-            tabs,
-            dock,
-            expander,
-            color_picker,
-            // Chrome, geometry and scalars: no text slot.
-            scrollbar: _,
-            combo_box: _,
-            modal: _,
-            popup: _,
-            progress_bar: _,
-            separator: _,
-            slider: _,
-            spinner: _,
-            splitter: _,
-            focus_ring: _,
-            window_clear: _,
-            panel_chrome: _,
-            panel_clip: _,
-        } = self;
-        let f = &mut f;
-        f(
-            ThemeText::Style(text),
-            other.as_deref_mut().map(|o| ThemeText::Style(&mut o.text)),
-        );
-        button.for_each_text(other.as_deref_mut().map(|o| &mut o.button), f);
-        checkbox.for_each_text(other.as_deref_mut().map(|o| &mut o.checkbox), f);
-        radio.for_each_text(other.as_deref_mut().map(|o| &mut o.radio), f);
-        switch.for_each_text(other.as_deref_mut().map(|o| &mut o.switch), f);
-        text_edit.for_each_text(other.as_deref_mut().map(|o| &mut o.text_edit), f);
-        drag_value.for_each_text(other.as_deref_mut().map(|o| &mut o.drag_value), f);
-        menu.for_each_text(other.as_deref_mut().map(|o| &mut o.menu), f);
-        menu_bar.for_each_text(other.as_deref_mut().map(|o| &mut o.menu_bar), f);
-        tooltip.for_each_text(other.as_deref_mut().map(|o| &mut o.tooltip), f);
-        tabs.for_each_text(other.as_deref_mut().map(|o| &mut o.tabs), f);
-        dock.for_each_text(other.as_deref_mut().map(|o| &mut o.dock), f);
-        expander.for_each_text(other.as_deref_mut().map(|o| &mut o.expander), f);
-        color_picker.for_each_text(other.map(|o| &mut o.color_picker), f);
-    }
-
     /// Give each end of a lerp the text axes only the other end's overrides name, from its own
     /// [`Self::text`]: an absent axis shows the ambient value, so the lerp blends from what each
     /// end shows, as an absent value blends through its neutral. What either end shows is
     /// unchanged. The derived `lerp` runs it.
     fn share_text_axes(a: &mut Self, b: &mut Self) {
         let (ambient_a, ambient_b) = (a.text, b.text);
-        a.for_each_text(Some(b), |a, b| match (a, b) {
+        a.for_each_text(Some(b), &mut |a, b| match (a, b) {
             (ThemeText::Overrides(a), Some(ThemeText::Overrides(b))) => {
                 a.share_axes(&ambient_a, b, &ambient_b);
             }
@@ -403,10 +417,8 @@ impl Theme {
             dock: DockTheme::from_parts(p, m),
             expander: ExpanderTheme::from_parts(p, m),
             focus_ring: FocusRingTheme::from_parts(p, m),
-            text: TextStyle::default()
-                .with_font_size(m.text.body)
-                .with_color(p.text),
-            window_clear: p.window_bg,
+            text: TextStyle::from_parts(p, m),
+            window_bg: p.window_bg,
             panel_chrome: None,
             panel_clip: ClipMode::None,
         };
@@ -417,13 +429,6 @@ impl Theme {
     /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
     pub fn stock(scheme: ColorScheme) -> Self {
         Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
-    }
-}
-
-impl Default for Theme {
-    /// The dark stock look, [`Self::stock`] of [`ColorScheme::Dark`].
-    fn default() -> Self {
-        Self::stock(ColorScheme::Dark)
     }
 }
 
@@ -456,7 +461,7 @@ struct UncheckedTheme {
     expander: ExpanderTheme,
     focus_ring: FocusRingTheme,
     text: TextStyle,
-    window_clear: RgbaF32,
+    window_bg: RgbaF32,
     // This and the next are left out of a file when absent, as `Theme` writes them.
     #[serde(default)]
     panel_chrome: Option<Chrome>,
@@ -493,7 +498,7 @@ impl TryFrom<UncheckedTheme> for Theme {
             expander,
             focus_ring,
             text,
-            window_clear,
+            window_bg,
             panel_chrome,
             panel_clip,
         } = unchecked;
@@ -522,7 +527,7 @@ impl TryFrom<UncheckedTheme> for Theme {
             expander,
             focus_ring,
             text,
-            window_clear,
+            window_bg,
             panel_chrome,
             panel_clip,
         };

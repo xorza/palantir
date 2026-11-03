@@ -9,19 +9,19 @@ use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::Duration;
 
 /// How a value moves toward its target. [`Self::SNAP`], also the [`Default`], is no motion: pass
-/// it to [`crate::Ui::animate`], or leave a theme slot's `animation` unset, to snap. The stock
+/// it to [`crate::Ui::animate`], or leave a theme slot's `transition` unset, to snap. The stock
 /// buttons, menu-bar titles, menu rows and tab chips take
 /// [`Metrics::transition`](crate::Metrics::transition), [`Self::FAST`] by default.
 ///
 /// Wire format is internally tagged on `kind` (snake_case):
 ///
 /// ```toml
-/// [theme.button.defaults.animation]
+/// [theme.button.defaults.transition]
 /// kind = "duration"
 /// secs = 0.12
 /// ease = "out_cubic"
 ///
-/// [theme.button.defaults.animation]
+/// [theme.button.defaults.transition]
 /// kind = "spring"
 /// stiffness = 170.0
 /// damping = 26.0

@@ -1,4 +1,5 @@
 use crate::internals::panic_probe;
+use crate::theme::color_scheme::ColorScheme;
 use ron::Value;
 
 use super::pretty;
@@ -30,8 +31,7 @@ fn value_size(theme: &Theme) -> f32 {
     theme
         .color_picker
         .value
-        .chip
-        .unselected
+        .looks
         .normal
         .text
         .font_size
@@ -40,7 +40,7 @@ fn value_size(theme: &Theme) -> f32 {
 
 #[test]
 fn scale_text_is_relative_and_total() {
-    let mut theme = Theme::default();
+    let mut theme = Theme::stock(ColorScheme::Dark);
     let body = theme.text.font_size;
     let tooltip = tooltip_size(&theme);
     let value = value_size(&theme);
@@ -111,7 +111,7 @@ fn scale_text_reaches_every_font_size() {
         ron::from_str(&ser::to_string(theme).expect("serialize")).expect("reparse")
     }
 
-    let mut theme = Theme::default();
+    let mut theme = Theme::stock(ColorScheme::Dark);
     let before = tree(&theme);
     theme.scale_text(2.0);
     walk("theme", &before, &tree(&theme));
@@ -121,7 +121,7 @@ fn scale_text_reaches_every_font_size() {
 fn theme_deserialization_rejects_invalid_text_metrics() {
     use crate::primitives::math::domain;
 
-    let valid = pretty(&Theme::default());
+    let valid = pretty(&Theme::stock(ColorScheme::Dark));
     let cases = [
         ("zero font", "font_size: 14.0", "font_size: 0.0"),
         ("negative font", "font_size: 14.0", "font_size: -1.0"),
@@ -183,7 +183,7 @@ fn theme_deserialization_rejects_invalid_text_metrics() {
 
     // An override valid alone is checked as the face it makes over the ambient text: a leading
     // factor of 1e-6 over 14 px leads at 1.4e-5 px, under the 1e-4 epsilon, so the theme refuses it.
-    let mut tight = Theme::default();
+    let mut tight = Theme::stock(ColorScheme::Dark);
     tight.button.unselected.disabled.text.line_height_factor = Some(0.000001);
     let error = ron::from_str::<Theme>(&pretty(&tight)).expect_err("a leading under the epsilon");
     assert!(
@@ -235,7 +235,7 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
         ("override size overflow", &big_override, 4.0, RESULT),
         ("override leading", &tight_override, 0.001, RESULT),
     ] {
-        let mut theme = Theme::default();
+        let mut theme = Theme::stock(ColorScheme::Dark);
         setup(&mut theme);
         let before = pretty(&theme);
         panic_probe::assert_panics_with(expected, || theme.scale_text(factor));
@@ -244,14 +244,14 @@ fn scale_text_rejects_invalid_factors_without_partial_mutation() {
     }
     // The default theme takes both factors, so the override is what each rejects.
     for factor in [4.0, 0.001] {
-        Theme::default().scale_text(factor);
+        Theme::stock(ColorScheme::Dark).scale_text(factor);
     }
 }
 
 /// A scaled theme is just a theme with bigger fonts: a TOML round-trip reproduces it exactly and a further scale composes off the parsed sizes.
 #[test]
 fn scaled_theme_survives_a_serde_roundtrip() {
-    let baseline = Theme::default();
+    let baseline = Theme::stock(ColorScheme::Dark);
     let body_font_size = baseline.text.font_size;
     let tooltip_font_size = tooltip_size(&baseline);
     let value_font_size = value_size(&baseline);

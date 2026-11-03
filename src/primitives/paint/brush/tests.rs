@@ -1,6 +1,7 @@
 use crate::internals::panic_probe;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;

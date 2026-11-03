@@ -1,5 +1,6 @@
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::rect::RectKind;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::{LINE_HEIGHT_FACTOR, TextStyle};
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::widgets::text_edit::tests::*;
@@ -98,7 +99,10 @@ fn text_widget_color_override_wins_over_theme() {
             .show(ui, |ui| {
                 Text::new("hi")
                     .auto_id()
-                    .style(&TextStyle::default().with_color(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                    .style(
+                        &TextStyle::stock(ColorScheme::Dark)
+                            .with_color(RgbaF32::srgb(0.0, 1.0, 0.0)),
+                    )
                     .show(ui)
                     .node()
             })
@@ -194,7 +198,7 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
         let style = TextStyle {
             font_size,
             line_height_factor,
-            ..TextStyle::default()
+            ..TextStyle::stock(ColorScheme::Dark)
         };
         let editor_id = WidgetId::from_hash("invalid editor");
         let mut h = Harness::mono(UVec2::new(600, 200));
@@ -281,11 +285,11 @@ fn textedit_style_override_replaces_default_theme() {
             looks: StatefulLook {
                 normal: WidgetLook {
                     text: TextStyleOverrides::NONE.with_line_height_factor(factor),
-                    ..TextEditTheme::default().looks.normal
+                    ..TextEditTheme::stock(ColorScheme::Dark).looks.normal
                 },
-                ..TextEditTheme::default().looks
+                ..TextEditTheme::stock(ColorScheme::Dark).looks
             },
-            ..TextEditTheme::default()
+            ..TextEditTheme::stock(ColorScheme::Dark)
         };
         let leaf = h.frame_value(|ui| {
             Panel::hstack()
@@ -480,11 +484,11 @@ fn line_height_override_changes_caret_rect_height() {
         looks: StatefulLook {
             active: WidgetLook {
                 text: TextStyleOverrides::NONE.with_line_height_factor(2.0),
-                ..TextEditTheme::default().looks.active
+                ..TextEditTheme::stock(ColorScheme::Dark).looks.active
             },
-            ..TextEditTheme::default().looks
+            ..TextEditTheme::stock(ColorScheme::Dark).looks
         },
-        ..TextEditTheme::default()
+        ..TextEditTheme::stock(ColorScheme::Dark)
     }));
     let canonical_default: f32 = (16.0 * LINE_HEIGHT_FACTOR * 64.0).round() / 64.0;
     assert_eq!(

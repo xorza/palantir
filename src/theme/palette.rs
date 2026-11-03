@@ -17,7 +17,7 @@ pub struct Palette {
     pub text_muted: RgbaF32,
     /// Disabled-state foreground.
     pub text_disabled: RgbaF32,
-    /// Window background (`Theme::window_clear`); also the active tab chip's fill, so the chip
+    /// Window background (`Theme::window_bg`); also the active tab chip's fill, so the chip
     /// joins the content under its strip.
     pub window_bg: RgbaF32,
     /// The band the window's controls sit on, a step off `window_bg`: a menu bar, a tab strip, and
@@ -40,7 +40,7 @@ pub struct Palette {
 }
 
 impl Palette {
-    /// Built-in neutral dark palette: the values `Theme::default` assembles from.
+    /// Built-in neutral dark palette: the values `Theme::stock(ColorScheme::Dark)` assembles from.
     ///
     /// The semantic layer of Ayu Graphite, the palette darkroom paints with: content on
     /// `window_bg`, a ramp step under the `surround` band its menu bar and tab strips sit on, the

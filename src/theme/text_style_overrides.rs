@@ -3,10 +3,12 @@
 
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::color::RgbaF32;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 
 /// Per-axis overrides folded onto a resolved [`TextStyle`].
@@ -172,7 +174,9 @@ impl TextStyleOverrides {
     /// the whole face is checked.
     fn metrics_valid(&self) -> bool {
         match (self.font_size, self.line_height_factor) {
-            (Some(_), Some(_)) => self.apply(&TextStyle::default()).metrics_valid(),
+            (Some(_), Some(_)) => self
+                .apply(&TextStyle::stock(ColorScheme::Dark))
+                .metrics_valid(),
             (Some(px), None) => domain::is_font_length(px),
             (None, Some(factor)) => factor.is_finite() && factor > 0.0,
             (None, None) => true,
@@ -185,7 +189,7 @@ impl TextStyleOverrides {
 /// and the other leaves to the ambient style switches at `t = 0.5` as well, as the overrides alone
 /// hold no ambient to blend from; a whole theme's lerp first gives that end its ambient's value
 /// (`Theme::share_text_axes`), and motion takes the target's at once.
-impl Animatable for TextStyleOverrides {
+impl Lerp for TextStyleOverrides {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         if t == 0.0 {
@@ -203,6 +207,9 @@ impl Animatable for TextStyleOverrides {
             slant: switch_axis(a.slant, b.slant, t),
         }
     }
+}
+
+impl Animatable for TextStyleOverrides {
     #[inline]
     fn sub(self, other: Self) -> Self {
         Self {
@@ -316,13 +323,14 @@ impl TryFrom<UncheckedTextStyleOverrides> for TextStyleOverrides {
 #[cfg(test)]
 mod tests {
     use crate::text::font_family::FontFamily;
+    use crate::theme::color_scheme::ColorScheme;
     use crate::theme::text_style::TextStyle;
     use crate::theme::text_style_overrides::TextStyleOverrides;
 
     /// The family chainers set that axis only, on a style and an override set alike: the override replaces the base's `SANS` and keeps its size.
     #[test]
     fn with_family_sets_only_the_family_axis() {
-        let base = TextStyle::default();
+        let base = TextStyle::stock(ColorScheme::Dark);
         assert_eq!(base.family, FontFamily::SANS);
         let mono = base.with_family(FontFamily::MONO);
         assert_eq!(mono.family, FontFamily::MONO);

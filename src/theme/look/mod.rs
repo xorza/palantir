@@ -18,7 +18,6 @@ pub(crate) mod stateful_look;
 pub(crate) mod theme_slot;
 
 use crate::primitives::paint::chrome::Chrome;
-use crate::theme::ThemeText;
 use crate::theme::look::animated_look::AnimatedLook;
 use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
@@ -35,7 +34,8 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Animatable,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct WidgetLook {
     /// Fill, stroke, corners and shadow.
@@ -56,18 +56,5 @@ impl WidgetLook {
             chrome: self.chrome.clone(),
             text: self.text.apply(&ambient_text),
         }
-    }
-
-    /// Visits this look's text overrides; destructured so a new field fails to compile.
-    pub(crate) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self { text, chrome: _ } = self;
-        f(
-            ThemeText::Overrides(text),
-            other.map(|o| ThemeText::Overrides(&mut o.text)),
-        );
     }
 }

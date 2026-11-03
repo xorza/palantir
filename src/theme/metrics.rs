@@ -116,7 +116,7 @@ impl Metrics {
     }
 
     /// A 4 px grid with a 2 px step under it, and the Fluent 2 type ramp (Caption 12, Body 14,
-    /// Subtitle 16, <https://fluent2.microsoft.design/typography>): the values `Theme::default`
+    /// Subtitle 16, <https://fluent2.microsoft.design/typography>): the values `Theme::stock`
     /// assembles from.
     pub const DEFAULT: Self = Self {
         text: TextSteps {

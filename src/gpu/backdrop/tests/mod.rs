@@ -350,7 +350,7 @@ fn window(gpu: &HeadlessTestGpuLease, size: UVec2, clear: RgbaF32) -> Harness {
         .mono()
         .depth(Depth::gpu(gpu.handles()))
         .build();
-    window.ui_mut().theme_mut().window_clear = clear;
+    window.ui_mut().theme_mut().window_bg = clear;
     window
 }
 

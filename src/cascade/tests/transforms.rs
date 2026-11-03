@@ -202,7 +202,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     frontend.build(
         h.ui().frame_scene(),
         BuildPlan::without_panes(RenderPlan {
-            clear: h.ui().theme().window_clear,
+            clear: h.ui().theme().window_bg,
             damage: Damage::Full,
         }),
     );

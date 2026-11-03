@@ -1,13 +1,20 @@
 //! What a slider wears: the two-tone track, and the knob that rides it.
 
 use crate::primitives::paint::color::RgbaF32;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
 /// Visuals for [`crate::Slider`]: a two-tone track (`fill` left of the knob, `track` right) with a
 /// round knob, in one set of colors while enabled and one while disabled.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct SliderTheme {
     /// The colors of a slider that takes input.
@@ -24,7 +31,13 @@ pub struct SliderTheme {
 
 /// The three colors of a [`crate::Slider`] in one state.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct SliderColors {
     /// Unfilled track color (right of the knob).
@@ -56,10 +69,9 @@ impl SliderTheme {
             track_thickness: 4.0,
         }
     }
-}
 
-impl Default for SliderTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub const fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }

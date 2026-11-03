@@ -4,6 +4,7 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::palette::Palette;
 use crate::widgets::menu::menu_item::MenuItem;
 use glam::UVec2;
@@ -275,7 +276,7 @@ fn a_menu_dropped_before_the_open_one_leaves_it_open() {
 /// closed one; a closed title picks from [`MenuBarTheme::title`] by state.
 #[test]
 fn the_open_title_wears_the_open_look() {
-    let theme = MenuBarTheme::default();
+    let theme = MenuBarTheme::stock(ColorScheme::Dark);
     let rest = ResponseState::default();
     assert_eq!(theme.look(&rest, MenuState::Open), &theme.open);
     assert_eq!(theme.look(&rest, MenuState::Closed), &theme.title.normal);
@@ -313,7 +314,7 @@ fn the_bar_spans_its_parent_on_the_band() {
 #[test]
 fn menu_style_restyles_the_menus() {
     let height = |styled: bool| {
-        let mut menu = Theme::default().menu;
+        let mut menu = Theme::stock(ColorScheme::Dark).menu;
         menu.padding = menu.padding + Spacing::all(9.0);
         let mut scene = |ui: &mut Ui| {
             MenuBar::new()

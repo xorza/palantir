@@ -193,7 +193,7 @@ impl Appearance {
                 let mut theme = Theme::from_parts(palette, &M);
                 theme.focus_ring = self.ring(scheme);
                 if self.frosted {
-                    theme.frost_floats(palette, FROST_SIGMA, FROST_TINT);
+                    theme.frost_floats(FROST_SIGMA, FROST_TINT);
                 }
                 ui.set_theme_for(scheme, theme);
             }

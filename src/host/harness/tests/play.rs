@@ -511,7 +511,7 @@ fn a_float_window_captures_its_linear_values() {
     let mut h = Harness::builder(UVec2::new(16, 8))
         .depth(Depth::gpu_float(gpu.handles()))
         .build();
-    h.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
+    h.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
     let mut app = |ui: &mut Ui| {
         Block::new()
             .id_salt("fill")
@@ -567,7 +567,7 @@ fn a_new_display_reads_back_the_new_size_and_scale() {
         .mono()
         .depth(Depth::gpu(gpu.handles()))
         .build();
-    h.ui_mut().theme_mut().window_clear = RgbaF32::BLACK;
+    h.ui_mut().theme_mut().window_bg = RgbaF32::BLACK;
     let app = |ui: &mut Ui| {
         Block::new()
             .id_salt("white")

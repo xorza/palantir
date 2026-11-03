@@ -4,7 +4,7 @@ use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::{self, NanCheck};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
-use palantir_anim_derive::Animatable;
+use palantir_anim_derive::{Animatable, Lerp};
 
 /// A single drop or inset shadow, embedded in `Shape::Shadow` or used as
 /// `Chrome::shadow`. `Shadow::NONE` (also `Default`) is the "no shadow"
@@ -13,7 +13,7 @@ use palantir_anim_derive::Animatable;
 /// (inset) the source rect. As in CSS a drop shadow is clipped inside the box
 /// casting it.
 #[derive(
-    Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
+    Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable,
 )]
 #[must_use]
 pub struct Shadow {

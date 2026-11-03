@@ -12,6 +12,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::color_picker::ColorPickerTheme;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::popup::PopupTheme;
 use crate::widget_core::configure::Configure;
 use crate::widgets::color_button::ColorButton;
@@ -223,7 +224,7 @@ fn open_with(button: Option<&ColorPickerTheme>, picker: Option<&ColorPickerTheme
 /// stock: the button's style adds the gained padding, the picker's the chip growth.
 #[test]
 fn the_button_styles_the_popup_and_the_picker_keeps_its_own() {
-    let stock = ColorPickerTheme::default();
+    let stock = ColorPickerTheme::stock(ColorScheme::Dark);
     let custom = ColorPickerTheme {
         // Same stroke as stock, so the folded band matches on both sides.
         popup: PopupTheme {

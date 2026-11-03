@@ -2,8 +2,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Block, Button, Chrome, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing, Stroke,
-    SystemScale, Text, TextStyle, Track,
+    Block, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing,
+    Stroke, SystemScale, Text, TextStyle, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -41,7 +41,7 @@ fn dashboard_matches_golden() {
                             Text::new("Palantir")
                                 .id_salt("brand")
                                 .style(
-                                    &TextStyle::default()
+                                    &TextStyle::stock(ColorScheme::Dark)
                                         .with_font_size(16.0)
                                         .with_color(RgbaF32::srgb(0.92, 0.94, 1.00)),
                                 )
@@ -110,7 +110,7 @@ fn dashboard_matches_golden() {
                                         Text::new("Card")
                                             .id_salt(("card-title", i))
                                             .style(
-                                                &TextStyle::default()
+                                                &TextStyle::stock(ColorScheme::Dark)
                                                     .with_font_size(14.0)
                                                     .with_color(RgbaF32::srgb(0.95, 0.96, 1.00)),
                                             )
@@ -118,7 +118,7 @@ fn dashboard_matches_golden() {
                                         Text::new("Some metric here")
                                             .id_salt(("card-body", i))
                                             .style(
-                                                &TextStyle::default()
+                                                &TextStyle::stock(ColorScheme::Dark)
                                                     .with_font_size(11.0)
                                                     .with_color(RgbaF32::srgba(
                                                         1.0, 1.0, 1.0, 0.75,
@@ -142,7 +142,7 @@ fn dashboard_matches_golden() {
                             Text::new("ready · 4 cards · scale 2.0")
                                 .id_salt("status")
                                 .style(
-                                    &TextStyle::default()
+                                    &TextStyle::stock(ColorScheme::Dark)
                                         .with_font_size(11.0)
                                         .with_color(RgbaF32::srgb(0.65, 0.70, 0.80)),
                                 )

@@ -429,7 +429,7 @@ impl WindowDriver {
         if capturing {
             report.plan = Some(report.plan.map_or(
                 RenderPlan {
-                    clear: self.ui.theme().window_clear,
+                    clear: self.ui.theme().window_bg,
                     damage: Damage::Full,
                 },
                 RenderPlan::to_full,

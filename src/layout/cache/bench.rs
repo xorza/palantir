@@ -27,6 +27,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::text::wrap::TextWrap;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -67,7 +68,7 @@ fn build_list(ui: &mut Ui) {
                     .show(ui, |ui| {
                         Text::new("Group header — interesting copy that wraps")
                             .id_salt(("h-g-hdr", g))
-                            .style(&TextStyle::default().with_font_size(15.0))
+                            .style(&TextStyle::stock(ColorScheme::Dark).with_font_size(15.0))
                             .show(ui);
                         for r in 0..LIST_ROWS_PER_GROUP {
                             Panel::hstack()
@@ -91,11 +92,17 @@ fn build_list(ui: &mut Ui) {
                                         });
                                     Text::new("row name with longer text content")
                                         .id_salt(("h-name", g, r))
-                                        .style(&TextStyle::default().with_font_size(13.0))
+                                        .style(
+                                            &TextStyle::stock(ColorScheme::Dark)
+                                                .with_font_size(13.0),
+                                        )
                                         .show(ui);
                                     Text::new("meta info — secondary detail")
                                         .id_salt(("h-meta", g, r))
-                                        .style(&TextStyle::default().with_font_size(11.0))
+                                        .style(
+                                            &TextStyle::stock(ColorScheme::Dark)
+                                                .with_font_size(11.0),
+                                        )
                                         .show(ui);
                                 });
                         }

@@ -68,7 +68,7 @@ const WINDOW_CLEAR: RgbaF32 = RgbaF32::BLACK;
 /// frame, would plan none.
 fn bench_theme() -> Theme {
     Theme {
-        window_clear: WINDOW_CLEAR,
+        window_bg: WINDOW_CLEAR,
         ..Theme::from_parts(
             &Palette::DARK,
             &Metrics {
@@ -93,7 +93,7 @@ const THEMING_FRAME: Duration = Duration::from_nanos(16_666_667);
 fn roomy_theme() -> Theme {
     let d = Metrics::DEFAULT;
     Theme {
-        window_clear: WINDOW_CLEAR,
+        window_bg: WINDOW_CLEAR,
         ..Theme::from_parts(
             &Palette::LIGHT,
             &Metrics {

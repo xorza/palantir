@@ -1,7 +1,7 @@
 //! Text rendering fixtures.
 
 use glam::UVec2;
-use palantir::{Chrome, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
+use palantir::{Chrome, ColorScheme, Configure, Panel, RgbaF32, Sizing, Text, TextStyle};
 
 use crate::golden_name::GoldenName;
 
@@ -17,7 +17,7 @@ fn text_paragraph_matches_golden() {
                 Text::new("Palantir")
                     .id_salt("title")
                     .style(
-                        &TextStyle::default()
+                        &TextStyle::stock(ColorScheme::Dark)
                             .with_font_size(20.0)
                             .with_color(RgbaF32::srgb(0.92, 0.94, 1.00)),
                     )
@@ -25,7 +25,7 @@ fn text_paragraph_matches_golden() {
                 Text::new("Immediate-mode UI with WPF-style layout.")
                     .id_salt("body")
                     .style(
-                        &TextStyle::default()
+                        &TextStyle::stock(ColorScheme::Dark)
                             .with_font_size(13.0)
                             .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
                     )
@@ -33,7 +33,7 @@ fn text_paragraph_matches_golden() {
                 Text::new("Rendered headlessly through wgpu.")
                     .id_salt("body2")
                     .style(
-                        &TextStyle::default()
+                        &TextStyle::stock(ColorScheme::Dark)
                             .with_font_size(13.0)
                             .with_color(RgbaF32::srgb(0.72, 0.76, 0.84)),
                     )
@@ -69,7 +69,7 @@ fn text_row_list_batches_into_one_render() {
                             Text::new(label)
                                 .auto_id()
                                 .style(
-                                    &TextStyle::default()
+                                    &TextStyle::stock(ColorScheme::Dark)
                                         .with_font_size(14.0)
                                         .with_color(RgbaF32::srgb(0.95, 0.95, 1.00)),
                                 )

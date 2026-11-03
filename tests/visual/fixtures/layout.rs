@@ -3,8 +3,8 @@
 use glam::UVec2;
 use palantir::internals::frame_fixture::FrameFixture;
 use palantir::{
-    Align, Block, Button, Chrome, Configure, Corners, Grid, GridCell, Panel, RgbaF32, Sizing,
-    Stroke, Text, TextStyle, TextWrap, Track,
+    Align, Block, Button, Chrome, ColorScheme, Configure, Corners, Grid, GridCell, Panel, RgbaF32,
+    Sizing, Stroke, Text, TextStyle, TextWrap, Track,
 };
 
 use crate::golden_name::GoldenName;
@@ -127,7 +127,7 @@ fn grid_two_hug_cols_label_not_clipped_matches_golden() {
                     .line_gap(16.0)
                     .gap(0.0)
                     .show(ui, |ui| {
-                        let style = TextStyle::default()
+                        let style = TextStyle::stock(ColorScheme::Dark)
                             .with_font_size(14.0)
                             .with_color(FIXTURE_PALETTE.text);
                         Text::new(

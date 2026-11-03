@@ -6,6 +6,7 @@ use crate::input::zoom_factor::ZoomFactor;
 use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -313,7 +314,9 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // 1.03^-2 ≈ 0.9426.
     h.hover(scroll_id);
     h.hold_modifiers(Modifiers::CTRL);
-    let line_px = TextStyle::default().with_font_size(16.0).line_height();
+    let line_px = TextStyle::stock(ColorScheme::Dark)
+        .with_font_size(16.0)
+        .line_height();
     h.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 2.0 * line_px)));
     h.frame(build_zoom);
 

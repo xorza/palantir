@@ -4,9 +4,9 @@ use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::chrome::Chrome;
-use crate::theme::ThemeText;
+use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
 use crate::theme::look::engagement::Engagement;
 use crate::theme::look::slot_defaults::SlotDefaults;
@@ -20,7 +20,13 @@ use std::f32::consts::FRAC_PI_2;
 
 /// Visuals for [`crate::Expander`]; the header takes button-style four-state looks.
 #[derive(
-    Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, palantir_anim_derive::Animatable,
+    Clone,
+    Debug,
+    PartialEq,
+    serde::Serialize,
+    serde::Deserialize,
+    palantir_anim_derive::Lerp,
+    palantir_anim_derive::TextSlots,
 )]
 pub struct ExpanderTheme {
     /// The header's four per-state looks; `flatten` keeps theme files flat (`[expander.normal]`).
@@ -54,28 +60,8 @@ pub struct ExpanderTheme {
 }
 
 impl ExpanderTheme {
-    /// Destructured so a new field fails to compile here, see [`Theme::for_each_text`](crate::Theme).
-    pub(super) fn for_each_text<F: FnMut(ThemeText<'_>, Option<ThemeText<'_>>)>(
-        &mut self,
-        other: Option<&mut Self>,
-        f: &mut F,
-    ) {
-        let Self {
-            looks,
-            arrow_size: _,
-            arrow_radius: _,
-            arrow_closed_angle: _,
-            arrow_open_angle: _,
-            gap: _,
-            indent: _,
-            body_padding: _,
-            defaults: _,
-        } = self;
-        looks.for_each_text(other.map(|o| &mut o.looks), f);
-    }
-
     pub(crate) fn arrow_angle(&self, openness: f32) -> f32 {
-        Animatable::lerp(
+        Lerp::lerp(
             self.arrow_closed_angle,
             self.arrow_open_angle,
             openness.clamp(0.0, 1.0),
@@ -118,15 +104,14 @@ impl ExpanderTheme {
             defaults: SlotDefaults {
                 padding: Spacing::all(m.space.xs),
                 margin: Spacing::ZERO,
-                animation: AnimationSpec::SNAP,
+                transition: AnimationSpec::SNAP,
             },
         }
     }
-}
 
-impl Default for ExpanderTheme {
-    fn default() -> Self {
-        Self::from_parts(&Palette::DARK, &Metrics::DEFAULT)
+    /// The built-in look of `scheme`: its built-in palette over [`Metrics::DEFAULT`].
+    pub fn stock(scheme: ColorScheme) -> Self {
+        Self::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT)
     }
 }
 

@@ -47,7 +47,7 @@ fn a_held_table_paints_what_a_fresh_bake_paints() {
         let mut host = OffscreenHost::builder(gpu.handles())
             .shaper(TextShaper::test_mono())
             .build();
-        host.ui_mut().theme_mut().window_clear = RgbaF32::WHITE;
+        host.ui_mut().theme_mut().window_bg = RgbaF32::WHITE;
         host
     };
     let size = UVec2::new(340, 240);
