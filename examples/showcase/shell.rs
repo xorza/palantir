@@ -569,11 +569,11 @@ impl Shell {
         Some(item)
     }
 
-    /// The scheme, the accent and the UI scale, and the diagnostics behind one button.
+    /// The tour's preferences, the accent and the UI scale, and the diagnostics behind one button.
     fn footer(&mut self, ui: &mut Ui, k: Kit) {
         Separator::horizontal().show(ui);
         rail::label(ui, k.t, "APPEARANCE");
-        rail::scheme_switch(ui);
+        rail::preferences(ui, k.t);
         accent_row(ui, k, &mut self.app.appearance);
         ui_scale_row(ui, k);
         diagnostics(ui);

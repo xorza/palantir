@@ -71,26 +71,16 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
 
 fn material_section(ui: &mut Ui, k: Kit) {
     Section::new("Frosted glass")
-        .apis(&[
-            api!(Ui::set_transparency_preference),
-            api!(Theme::dress_floats),
-        ])
+        .apis(&[api!(Theme::dress_floats)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
                 "Menus, combo lists, popups, the picker, tooltips and the modal float on frosted \
                  glass, its blur held so their text keeps 4.5:1 over any page. Reduce \
-                 transparency, as the system's setting or a pick here asks, and every pane paints \
-                 its solid fill with no blur; every page follows.",
+                 transparency, as the system's setting or the rail's Reduce transparency row \
+                 asks, and every pane paints its solid fill with no blur; every page follows.",
             );
-            support::well(ui, k, |ui| {
-                let mut transparency = ui.transparency_preference();
-                support::reduce_picker(ui, "transparency", &mut transparency);
-                if transparency != ui.transparency_preference() {
-                    ui.set_transparency_preference(transparency);
-                }
-            });
         });
 }
 

@@ -8,9 +8,8 @@ use palantir::widget::AnimationRequest;
 use palantir::{
     Align, Animated, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ColorScheme, ComboBox,
     Configure, Corners, DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar,
-    RadioButton, RgbaF32, SchemePreference, Separator, Sizing, Slider, SlotDefaults, Spinner,
-    StatefulLook, Stroke, Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, VAlign,
-    WidgetId, WidgetLook, fmt,
+    RadioButton, RgbaF32, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
+    Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -23,6 +22,15 @@ static REGIONS: [&str; 5] = [
     "Oceania",
 ];
 
+/// The form's radio group: when updates download. Page state, as the tour's own preferences sit
+/// in the rail.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Updates {
+    Automatic,
+    Ask,
+    Never,
+}
+
 #[derive(Debug)]
 struct State {
     airplane: bool,
@@ -30,6 +38,7 @@ struct State {
     bluetooth: bool,
     metered: bool,
     region: &'static &'static str,
+    updates: Updates,
     volume: f64,
     fps: i64,
     syncing: bool,
@@ -48,6 +57,7 @@ impl Default for State {
             bluetooth: false,
             metered: false,
             region: &REGIONS[0],
+            updates: Updates::Automatic,
             volume: 0.6,
             fps: 120,
             syncing: false,
@@ -181,31 +191,19 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                 });
 
             Separator::horizontal().show(ui);
-            group(ui, k, "APPEARANCE");
-            // The real preference: a pick here restyles the whole tour, as the rail's switch does.
-            let mut scheme = ui.scheme_preference();
+            group(ui, k, "UPDATES");
             Panel::hstack().gap(M.space.md).show(ui, |ui| {
                 for (value, label) in [
-                    (SchemePreference::System, "System"),
-                    (SchemePreference::Light, "Light"),
-                    (SchemePreference::Dark, "Dark"),
+                    (Updates::Automatic, "Automatic"),
+                    (Updates::Ask, "Ask"),
+                    (Updates::Never, "Never"),
                 ] {
-                    RadioButton::new(&mut scheme, value)
+                    RadioButton::new(&mut s.updates, value)
                         .id_salt(label)
                         .label(label)
                         .show(ui);
                 }
             });
-            if scheme != ui.scheme_preference() {
-                ui.set_scheme_preference(scheme);
-            }
-            // The real preference: reduced, every transition snaps and decorative motion stops.
-            Text::new("Motion").style(&k.t.caption()).show(ui);
-            let mut motion = ui.motion_preference();
-            support::reduce_picker(ui, "motion", &mut motion);
-            if motion != ui.motion_preference() {
-                ui.set_motion_preference(motion);
-            }
 
             Separator::horizontal().show(ui);
             group(ui, k, "AUDIO & VIDEO");

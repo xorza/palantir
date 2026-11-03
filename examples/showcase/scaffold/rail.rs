@@ -5,8 +5,8 @@
 
 use palantir::{
     Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Metrics,
-    Panel, SchemePreference, Scroll, Sizing, SlotDefaults, Spacing, StatefulLook, Text,
-    TextStyleOverrides, Theme, Tooltip, Ui, WidgetId, WidgetLook,
+    Panel, ReducePreference, SchemePreference, Scroll, Sizing, SlotDefaults, Spacing, StatefulLook,
+    Text, TextStyleOverrides, Theme, Tooltip, Ui, WidgetId, WidgetLook,
 };
 
 use crate::scaffold::tokens::Tokens;
@@ -133,44 +133,120 @@ impl Nav {
     }
 }
 
-/// The scheme preference as three segments; a press sets it for every window. System's tooltip
-/// says what the system reports, as the segment alone cannot.
-pub(crate) fn scheme_switch(ui: &mut Ui) {
-    let current = ui.scheme_preference();
-    let system = match ui.system_color_scheme() {
+/// The tour's three preferences, each a captioned row of segments: the scheme, motion and
+/// transparency. A press sets one for every window. Here alone, apart from the pages, so no demo
+/// reads as one of them.
+pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
+    let scheme = ui.scheme_preference();
+    let follows_scheme = match ui.system_color_scheme() {
         Some(ColorScheme::Light) => "Follows the system, light now",
         Some(ColorScheme::Dark) => "Follows the system, dark now",
         None => "Follows the system, which reports no scheme: dark until it does",
     };
+    let picked = segments(
+        ui,
+        t,
+        "Theme",
+        [
+            (SchemePreference::System, "System"),
+            (SchemePreference::Light, "Light"),
+            (SchemePreference::Dark, "Dark"),
+        ],
+        scheme,
+        follows_scheme,
+    );
+    if picked != scheme {
+        ui.set_scheme_preference(picked);
+    }
+
+    let motion = ui.motion_preference();
+    let picked = segments(
+        ui,
+        t,
+        "Reduce motion",
+        REDUCE,
+        motion,
+        follows_reduction(ui.system_motion_reduced()),
+    );
+    if picked != motion {
+        ui.set_motion_preference(picked);
+    }
+
+    let transparency = ui.transparency_preference();
+    let picked = segments(
+        ui,
+        t,
+        "Reduce transparency",
+        REDUCE,
+        transparency,
+        follows_reduction(ui.system_transparency_reduced()),
+    );
+    if picked != transparency {
+        ui.set_transparency_preference(picked);
+    }
+}
+
+/// The choices of a [`ReducePreference`] under a "Reduce …" caption, as macOS names the
+/// switches: off is full, on reduced. Short, as "Reduced" overflows a third of the rail.
+const REDUCE: [(ReducePreference, &str); 3] = [
+    (ReducePreference::System, "System"),
+    (ReducePreference::Full, "Off"),
+    (ReducePreference::Reduced, "On"),
+];
+
+/// What following the system shows now, where the system asks for a reduction or not.
+const fn follows_reduction(reduced: bool) -> &'static str {
+    if reduced {
+        "Follows the system, reduced now"
+    } else {
+        "Follows the system, full now"
+    }
+}
+
+/// `label` over a segment per choice, `current`'s selected; the choice pressed this frame, else
+/// `current`. The first segment follows the system, and its tooltip, `follows`, says what that
+/// shows now, as the segment alone cannot.
+fn segments<T: Copy + PartialEq>(
+    ui: &mut Ui,
+    t: Tokens,
+    label: &'static str,
+    choices: [(T, &'static str); 3],
+    current: T,
+    follows: &'static str,
+) -> T {
     let mut next = current;
-    Panel::hstack()
-        .id_salt("scheme switch")
+    Panel::vstack()
+        .id_salt(label)
         .size((Sizing::FILL, Sizing::HUG))
         .gap(M.space.xxs)
         .show(ui, |ui| {
-            for (preference, label) in [
-                (SchemePreference::System, "System"),
-                (SchemePreference::Light, "Light"),
-                (SchemePreference::Dark, "Dark"),
-            ] {
-                // A narrower inset than a button's, so three labels share the rail's width.
-                let segment = Button::new()
-                    .id_salt(label)
-                    .label(label)
-                    .selected(current == preference)
-                    .padding(Spacing::xy(M.space.xs, M.space.xs))
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui);
-                if segment.clicked() {
-                    next = preference;
-                }
-                if preference == SchemePreference::System {
-                    let segment = segment.snapshot();
-                    Tooltip::on(&segment, system).show(ui);
-                }
-            }
+            Text::new(label)
+                .style(&t.caption())
+                .margin((INSET, 0.0, 0.0, 0.0))
+                .show(ui);
+            Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::HUG))
+                .gap(M.space.xxs)
+                .show(ui, |ui| {
+                    for (idx, (choice, text)) in choices.into_iter().enumerate() {
+                        // A narrower inset than a button's, so three labels share the rail's width.
+                        let segment = Button::new()
+                            .id_salt(text)
+                            .label(text)
+                            .selected(current == choice)
+                            .padding(Spacing::xy(M.space.xs, M.space.xs))
+                            .size((Sizing::FILL, Sizing::HUG))
+                            .show(ui);
+                        if segment.clicked() {
+                            next = choice;
+                        }
+                        if idx == 0 {
+                            let segment = segment.snapshot();
+                            Tooltip::on(&segment, follows).show(ui);
+                        }
+                    }
+                });
         });
-    if next != current {
-        ui.set_scheme_preference(next);
-    }
+    next
 }

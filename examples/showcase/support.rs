@@ -13,9 +13,8 @@ use std::panic::Location;
 
 use palantir::{
     Align, Block, Checkbox, Chrome, CloseHandle, ColorScheme, Configure, Corners, Expander,
-    FontWeight, Justify, Metrics, Modal, Okhsv, OverlayResponse, Palette, Panel, RadioButton,
-    ReducePreference, RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui,
-    VAlign, WidgetId, fmt,
+    FontWeight, Justify, Metrics, Modal, Okhsv, OverlayResponse, Palette, Panel, RgbaF32, Sizing,
+    Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId, fmt,
 };
 
 use crate::scaffold::chip::Chip;
@@ -250,23 +249,6 @@ pub(crate) fn note(ui: &mut Ui, k: Kit, text: &'static str) {
         .max_size((MEASURE, f32::INFINITY))
         .text_wrap(TextWrap::WrapWithOverflow)
         .show(ui);
-}
-
-#[track_caller]
-/// A row of three radios over `preference`: follow the system, or hold full or reduced by hand.
-pub(crate) fn reduce_picker(ui: &mut Ui, salt: &str, preference: &mut ReducePreference) {
-    row(ui, |ui| {
-        for (value, label) in [
-            (ReducePreference::System, "System"),
-            (ReducePreference::Full, "Full"),
-            (ReducePreference::Reduced, "Reduced"),
-        ] {
-            RadioButton::new(preference, value)
-                .id_salt((salt, label))
-                .label(label)
-                .show(ui);
-        }
-    });
 }
 
 pub(crate) fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
