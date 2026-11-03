@@ -37,9 +37,16 @@
 //! - **Linear light.** The capture, the blur and the composite run in linear light, as the rest
 //!   of the pipeline blends, so a blur keeps the energy of bright detail. Refused: blurring
 //!   sRGB-encoded values to imitate a browser's look.
-//! - **The default themes keep opaque popups and menus.** A filter costs nothing until an author
-//!   asks for one. Refused: frosted defaults, which charge every app a capture under each open
-//!   menu.
+//! - **The default themes frost their floats, and reduced transparency paints every pane
+//!   solid.** The stock menus, popups, tooltips and modal wear `Metrics::float_frost`, as WinUI's
+//!   flyouts wear acrylic. While transparency is reduced, by the system's setting or
+//!   `Ui::set_transparency_preference`, a pane paints its `fallback` or its fill made opaque, and
+//!   no capture or blur runs, as WinUI's acrylic falls back to its `FallbackColor` when
+//!   transparency effects or Battery Saver turn it off
+//!   (<https://learn.microsoft.com/windows/apps/design/style/acrylic>). Refused: opaque
+//!   defaults, which made every app rebuild its themes to frost them and again to stop; a switch
+//!   in the theme, as the choice is the person's or the system's, as CSS's
+//!   `prefers-reduced-transparency` is.
 //!
 //! [`RectShape::backdrop_filter`]: crate::widget::RectShape::backdrop_filter
 
@@ -47,6 +54,7 @@ use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 
@@ -70,15 +78,15 @@ use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 #[must_use]
 pub struct BackdropFilter {
     /// The blur's Gaussian σ in logical px, as CSS `blur()` takes it; 0 leaves the pixels sharp.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::lane_length")]
     pub blur: f32,
     /// The color's saturation as CSS `saturate()` scales it: 1 leaves it, 0 is gray, above 1
     /// deepens it.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::factor")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::lane_factor")]
     pub saturation: f32,
     /// The amplitude of a grain fixed to the pane, so frosted glass does not read as a flat
     /// color; 0 is none, and a few hundredths show it.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::factor")]
+    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::lane_factor")]
     pub noise: f32,
     /// The highest relative luminance the pane shows under its tint, if any: a brighter pixel is
     /// scaled down to it, its hue and chroma kept. The lane it packs into rounds it down, never
@@ -86,7 +94,7 @@ pub struct BackdropFilter {
     /// half a step of dither and half of the rounding to a byte.
     #[serde(
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::primitives::packed::serde::checked::optional_factor"
+        deserialize_with = "crate::primitives::packed::serde::checked::optional_lane_factor"
     )]
     pub max_luminance: Option<f32>,
     /// The lowest relative luminance the pane shows under its tint, if any: a darker pixel is
@@ -95,12 +103,21 @@ pub struct BackdropFilter {
     /// cross.
     #[serde(
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::primitives::packed::serde::checked::optional_factor"
+        deserialize_with = "crate::primitives::packed::serde::checked::optional_lane_factor"
     )]
     pub min_luminance: Option<f32>,
     /// Glass that bends what the pane shows across a rounded bezel at its edge, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lens: Option<Lens>,
+    /// The solid color the pane paints in place of the filter and its tint while transparency is
+    /// reduced ([`Ui::is_transparency_reduced`](crate::Ui::is_transparency_reduced)), as WinUI's
+    /// `AcrylicBrush::FallbackColor`; `None` paints the pane's fill made opaque, which suits a
+    /// tinted pane and leaves a pane with no tint black, so glass with no tint names one. Stored
+    /// as sRGB bytes, as a gradient stop stores its color, so it adds 8 bytes to a
+    /// [`Chrome`](crate::Chrome) and to every look a widget animates, not 20; a file holds it as
+    /// a color.
+    #[serde(skip_serializing_if = "Option::is_none", with = "fallback_color")]
+    pub fallback: Option<SrgbaU8>,
 }
 
 /// Glass over a pane, refracting what it shows across a rounded bezel at its edge. The bezel
@@ -145,6 +162,7 @@ impl BackdropFilter {
         max_luminance: None,
         min_luminance: None,
         lens: None,
+        fallback: None,
     };
 
     /// The pixels behind blurred by σ `sigma` logical px, as CSS `backdrop-filter: blur()`.
@@ -165,6 +183,7 @@ impl BackdropFilter {
             max_luminance: None,
             min_luminance: None,
             lens: None,
+            fallback: None,
         }
     }
 
@@ -217,24 +236,25 @@ impl BackdropFilter {
     /// is exact: a luminance of about 0.237 or more, a grey of `#868686` or lighter.
     #[track_caller]
     pub fn with_max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self {
+        self.max_luminance_for(ink, tint)
+            .unwrap_or_else(|refusal| refusal.refuse())
+    }
+
+    /// [`Self::with_max_luminance_for`], or why it cannot hold `ink`.
+    pub(crate) fn max_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Result<Self, InkBound> {
         let alpha = tint.a;
-        assert!(
-            (0.0..1.0).contains(&alpha),
-            "a tint's alpha is a fraction under 1: {alpha}"
-        );
+        if !(0.0..1.0).contains(&alpha) {
+            return Err(InkBound::TintNotTranslucent { alpha });
+        }
         let wanted = (ink.luminance() + 0.05) / TEXT_CONTRAST - 0.05;
         let Some(ground) = before_storing(wanted).filter(|&ground| ground >= ceiling_bend()) else {
-            panic!(
-                "the ink is too dark for a ceiling: its ground {wanted} lies where a colored pixel \
-                 can store brighter than a neutral one"
-            );
+            return Err(InkBound::InkTooDark { ground: wanted });
         };
         let tint_luminance = tint.luminance();
-        assert!(
-            tint_luminance <= ground,
-            "the ink holds its contrast on the opaque tint"
-        );
-        self.with_max_luminance((ground - alpha * tint_luminance) / (1.0 - alpha))
+        if tint_luminance > ground {
+            return Err(InkBound::InkFailsOnTint);
+        }
+        Ok(self.with_max_luminance((ground - alpha * tint_luminance) / (1.0 - alpha)))
     }
 
     /// This filter with what it shows held to at least `luminance`, a relative luminance.
@@ -262,24 +282,52 @@ impl BackdropFilter {
     /// opaque.
     #[track_caller]
     pub fn with_min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self {
+        self.min_luminance_for(ink, tint)
+            .unwrap_or_else(|refusal| refusal.refuse())
+    }
+
+    /// [`Self::with_min_luminance_for`], or why it cannot hold `ink`.
+    pub(crate) fn min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Result<Self, InkBound> {
         let alpha = tint.a;
-        assert!(
-            (0.0..1.0).contains(&alpha),
-            "a tint's alpha is a fraction under 1: {alpha}"
-        );
+        if !(0.0..1.0).contains(&alpha) {
+            return Err(InkBound::TintNotTranslucent { alpha });
+        }
         let ground = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05);
         let tint_luminance = tint.luminance();
-        assert!(
-            tint_luminance >= ground,
-            "the ink holds its contrast on the opaque tint"
-        );
-        self.with_min_luminance(((ground - alpha * tint_luminance) / (1.0 - alpha)).max(0.0))
+        if tint_luminance < ground {
+            return Err(InkBound::InkFailsOnTint);
+        }
+        Ok(self.with_min_luminance(((ground - alpha * tint_luminance) / (1.0 - alpha)).max(0.0)))
+    }
+
+    /// The bound that holds `ink` at 4.5:1 over any backdrop under `tint`: a ceiling for ink
+    /// lighter than the tint, a floor for ink darker, or why neither can.
+    pub(crate) fn holding(self, ink: RgbaF32, tint: RgbaF32) -> Result<Self, InkBound> {
+        if ink.luminance() > tint.luminance() {
+            self.max_luminance_for(ink, tint)
+        } else {
+            self.min_luminance_for(ink, tint)
+        }
     }
 
     /// This filter seen through `lens`.
     pub const fn with_lens(mut self, lens: Lens) -> Self {
         self.lens = Some(lens);
         self
+    }
+
+    /// This filter with `color` as the solid pane it paints while transparency is reduced; see
+    /// [`Self::fallback`].
+    pub const fn with_fallback(mut self, color: RgbaF32) -> Self {
+        self.fallback = Some(color.to_srgba8());
+        self
+    }
+
+    /// The solid fill a pane of fill `fill` paints in place of this filter while transparency
+    /// is reduced: [`Self::fallback`], else `fill` made opaque.
+    pub(crate) fn solid_infill(&self, fill: &Brush) -> Brush {
+        self.fallback
+            .map_or_else(|| fill.opaque(), |color| Brush::Solid(color.into()))
     }
 
     /// True when the filter changes nothing it shows, so a rect with it makes no pane. Takes
@@ -309,6 +357,59 @@ impl BackdropFilter {
         }
         if let Some(lens) = &self.lens {
             lens.validate();
+        }
+    }
+}
+
+/// [`BackdropFilter::fallback`] in a file: a color, held as the bytes it stores.
+mod fallback_color {
+    use crate::primitives::paint::color::RgbaF32;
+    use crate::primitives::paint::color::srgba_u8::SrgbaU8;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[expect(
+        clippy::ref_option,
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's `with` hands the field by reference, as it is stored"
+    )]
+    pub(super) fn serialize<S: Serializer>(
+        color: &Option<SrgbaU8>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        color.map(RgbaF32::from).serialize(serializer)
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Option<SrgbaU8>, D::Error> {
+        Ok(Option::<RgbaF32>::deserialize(deserializer)?.map(RgbaF32::to_srgba8))
+    }
+}
+
+/// Why a luminance bound cannot hold an ink at 4.5:1 over any backdrop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum InkBound {
+    /// The tint is opaque or not a fraction: nothing shows through it to bound.
+    TintNotTranslucent { alpha: f32 },
+    /// The ground the ink needs lies where a colored pixel can store brighter than a neutral one.
+    InkTooDark { ground: f32 },
+    /// The ink misses its contrast on the tint made opaque, so no bound reaches it.
+    InkFailsOnTint,
+}
+
+impl InkBound {
+    /// Panic with the reason, as a caller that promised the bound holds.
+    #[track_caller]
+    pub(crate) fn refuse(self) -> ! {
+        match self {
+            Self::TintNotTranslucent { alpha } => {
+                panic!("a tint's alpha is a fraction under 1: {alpha}")
+            }
+            Self::InkTooDark { ground } => panic!(
+                "the ink is too dark for a ceiling: its ground {ground} lies where a colored pixel \
+                 can store brighter than a neutral one"
+            ),
+            Self::InkFailsOnTint => panic!("the ink holds its contrast on the opaque tint"),
         }
     }
 }
@@ -353,6 +454,7 @@ impl Lerp for BackdropFilter {
                     t,
                 )),
             },
+            fallback: if t < 0.5 { a.fallback } else { b.fallback },
         }
     }
 }
@@ -398,6 +500,7 @@ impl Animatable for BackdropFilter {
             max_luminance: None,
             min_luminance: None,
             lens: None,
+            fallback: None,
         }
     }
 }

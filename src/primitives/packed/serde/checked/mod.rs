@@ -73,6 +73,48 @@ pub(crate) fn factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, 
     read(deserializer, domain::is_factor, domain::FACTOR_RULE)
 }
 
+/// A [length](domain::length) a file may hold that packs into an f16
+/// [lane](domain::lane), as a backdrop filter's blur does.
+pub(crate) fn lane_length<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let px = length(deserializer)?;
+    if domain::is_lane(px) {
+        Ok(px)
+    } else {
+        Err(D::Error::custom(format_args!(
+            "{}, got {px}",
+            domain::LANE_RULE
+        )))
+    }
+}
+
+/// A [factor](domain::factor) that packs into an f16 [lane](domain::lane), as a backdrop
+/// filter's saturation and grain do.
+pub(crate) fn lane_factor<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f32, D::Error> {
+    let value = factor(deserializer)?;
+    if domain::is_lane(value) {
+        Ok(value)
+    } else {
+        Err(D::Error::custom(format_args!(
+            "{}, got {value}",
+            domain::LANE_RULE
+        )))
+    }
+}
+
+/// An optional [`lane_factor`], as a backdrop filter's luminance bounds.
+pub(crate) fn optional_lane_factor<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<f32>, D::Error> {
+    let value = optional_factor(deserializer)?;
+    match value {
+        Some(v) if !domain::is_lane(v) => Err(D::Error::custom(format_args!(
+            "{}, got {v}",
+            domain::LANE_RULE
+        ))),
+        _ => Ok(value),
+    }
+}
+
 /// An optional [factor](domain::factor).
 pub(crate) fn optional_factor<'de, D: Deserializer<'de>>(
     deserializer: D,

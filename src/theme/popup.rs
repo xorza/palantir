@@ -3,6 +3,7 @@
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::theme::color_scheme::ColorScheme;
+use crate::theme::menu::menu_item::MenuItemTheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 
@@ -30,10 +31,13 @@ pub struct PopupTheme {
 }
 
 impl PopupTheme {
-    /// [`Palette::popup_panel`], the menus' and the picker's surface, at the picker's inset.
+    /// [`Palette::popup_panel`], the menus' and the picker's surface, at the picker's inset, in
+    /// [`Metrics::float_frost`] held for a menu row's shortcut ink, as an app fills a bare popup
+    /// with rows like a menu's.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
+        let ink = MenuItemTheme::from_parts(p, m).shortcut;
         Self {
-            panel: p.popup_panel(m),
+            panel: m.frosted_float(p.popup_panel(m), ink),
             padding: Spacing::all(m.space.sm),
         }
     }

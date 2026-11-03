@@ -67,6 +67,7 @@ use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::image::Image;
 use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::reduce_preference::{ReducePreference, Reduction};
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
 use crate::renderer::error::ImageTooLarge;
@@ -328,21 +329,99 @@ impl Ui {
         self.resources.settings().system_color_scheme()
     }
 
-    /// Whether the system asks for less motion: then every [`Self::animate`] snaps to its target,
-    /// as CSS `prefers-reduced-motion` asks of transitions
-    /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). A paint
-    /// animation that shows progress, as a spinner's turn and a caret's blink, still runs.
-    /// App-global; `false` where nothing reports it.
+    /// Whether motion is reduced: the [motion preference](Self::motion_preference) resolved
+    /// against [`Self::system_motion_reduced`], read when a motion starts, so a theme set between
+    /// two frames snaps as the setting stands. Then every [`Self::animate`] and theme
+    /// transition snaps to its target, as CSS `prefers-reduced-motion` asks of transitions, and a
+    /// [decorative](crate::widget::PaintMotion::Decorative) paint animation holds still; one that
+    /// shows progress, as a spinner's turn, still runs, as WCAG 2.3.3 lets essential motion stay
+    /// (<https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions>). App-global.
     #[inline]
     pub fn is_motion_reduced(&self) -> bool {
-        self.resources.settings().motion_reduced()
+        self.resources.settings().motion().is_reduced()
     }
 
-    /// A host's report of the system's reduced-motion preference; a change asks this window for
-    /// a frame.
-    pub(crate) fn set_motion_reduced(&mut self, reduced: bool) {
-        if self.is_motion_reduced() != reduced {
-            self.resources.settings().set_motion_reduced(reduced);
+    /// Whether the system asks for less motion, whatever the preference; `false` where nothing
+    /// reports it, as in a [`Harness`](crate::Harness) until its test sets it.
+    #[inline]
+    pub fn system_motion_reduced(&self) -> bool {
+        self.resources.settings().system_motion().is_reduced()
+    }
+
+    /// The motion the person picked; [`ReducePreference::System`] until set. App-global.
+    #[inline]
+    pub fn motion_preference(&self) -> ReducePreference {
+        self.resources.settings().motion_preference()
+    }
+
+    /// Follow the system's ask for less motion, or hold full or reduced motion by hand, as an
+    /// app's own "Reduce motion" setting does. App-global, and at once: a motion that starts or
+    /// steps after this call runs under it, and every window is asked for a frame. Persisting the
+    /// pick is the app's.
+    pub fn set_motion_preference(&mut self, preference: ReducePreference) {
+        if self.motion_preference() != preference {
+            self.resources.settings().set_motion_preference(preference);
+            self.frame_runtime.request_repaint();
+        }
+    }
+
+    /// A host's report of the system's reduced-motion setting; a change asks this window for a
+    /// frame.
+    pub(crate) fn set_system_motion_reduced(&mut self, reduced: bool) {
+        if self.system_motion_reduced() != reduced {
+            self.resources
+                .settings()
+                .set_system_motion(Reduction::from(reduced));
+            self.frame_runtime.request_repaint();
+        }
+    }
+
+    /// Whether this frame paints with transparency reduced: the
+    /// [transparency preference](Self::transparency_preference) resolved against
+    /// [`Self::system_transparency_reduced`] at the frame's start, so no frame mixes two. Then
+    /// every [`BackdropFilter`](crate::BackdropFilter) paints as a solid fill, as CSS
+    /// `prefers-reduced-transparency` asks and as WinUI's acrylic falls back to its
+    /// `FallbackColor`: no capture and no blur run, which is also the switch a low-power app
+    /// turns. App-global.
+    #[inline]
+    pub const fn is_transparency_reduced(&self) -> bool {
+        self.frame_runtime.transparency().is_reduced()
+    }
+
+    /// Whether the system asks for less transparency, whatever the preference; `false` where
+    /// nothing reports it, as on Linux, which has no such setting, and in a
+    /// [`Harness`](crate::Harness) until its test sets it.
+    #[inline]
+    pub fn system_transparency_reduced(&self) -> bool {
+        self.resources.settings().system_transparency().is_reduced()
+    }
+
+    /// The transparency the person picked; [`ReducePreference::System`] until set. App-global.
+    #[inline]
+    pub fn transparency_preference(&self) -> ReducePreference {
+        self.resources.settings().transparency_preference()
+    }
+
+    /// Follow the system's ask for less transparency, or hold full or reduced transparency by
+    /// hand, as an app's "Transparency effects" or performance setting does. App-global: every
+    /// window paints the resolved transparency from its next frame, which this call asks for.
+    /// Persisting the pick is the app's.
+    pub fn set_transparency_preference(&mut self, preference: ReducePreference) {
+        if self.transparency_preference() != preference {
+            self.resources
+                .settings()
+                .set_transparency_preference(preference);
+            self.frame_runtime.request_repaint();
+        }
+    }
+
+    /// A host's report of the system's reduced-transparency setting; a change asks this window
+    /// for a frame.
+    pub(crate) fn set_system_transparency_reduced(&mut self, reduced: bool) {
+        if self.system_transparency_reduced() != reduced {
+            self.resources
+                .settings()
+                .set_system_transparency(Reduction::from(reduced));
             self.frame_runtime.request_repaint();
         }
     }

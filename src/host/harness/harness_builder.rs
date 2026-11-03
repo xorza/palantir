@@ -66,7 +66,8 @@ pub struct HarnessBuilder {
     system_scale: SystemScale,
     refresh_millihertz: Option<u32>,
     system_color_scheme: Option<ColorScheme>,
-    motion_reduced: bool,
+    system_motion_reduced: bool,
+    system_transparency_reduced: bool,
     options: HostOptions,
     depth: Depth,
     strategy: PresentStrategy,
@@ -82,7 +83,8 @@ impl HarnessBuilder {
             system_scale: SystemScale::ONE,
             refresh_millihertz: None,
             system_color_scheme: None,
-            motion_reduced: false,
+            system_motion_reduced: false,
+            system_transparency_reduced: false,
             options: HostOptions::new(FontScope::Bundled),
             depth: Depth::Record,
             strategy: PresentStrategy::Retained,
@@ -119,9 +121,19 @@ impl HarnessBuilder {
     }
 
     /// Whether the system asks for less motion, as the winit host reports the desktop's; `false`
-    /// by default. The harness's [`set_motion_reduced`](Harness::set_motion_reduced) changes it later.
-    pub const fn motion_reduced(mut self, reduced: bool) -> Self {
-        self.motion_reduced = reduced;
+    /// by default. The harness's
+    /// [`set_system_motion_reduced`](Harness::set_system_motion_reduced) changes it later.
+    pub const fn system_motion_reduced(mut self, reduced: bool) -> Self {
+        self.system_motion_reduced = reduced;
+        self
+    }
+
+    /// Whether the system asks for less transparency, as the winit host reports the desktop's;
+    /// `false` by default. The harness's
+    /// [`set_system_transparency_reduced`](Harness::set_system_transparency_reduced) changes it
+    /// later.
+    pub const fn system_transparency_reduced(mut self, reduced: bool) -> Self {
+        self.system_transparency_reduced = reduced;
         self
     }
 
@@ -229,7 +241,12 @@ impl HarnessBuilder {
         assert!(self.settle_frames > 0, "a settle runs at least one frame");
         let mut driver = core.open(token, self.strategy);
         driver.ui.set_system_color_scheme(self.system_color_scheme);
-        driver.ui.set_motion_reduced(self.motion_reduced);
+        driver
+            .ui
+            .set_system_motion_reduced(self.system_motion_reduced);
+        driver
+            .ui
+            .set_system_transparency_reduced(self.system_transparency_reduced);
         Harness::open(
             core,
             driver,

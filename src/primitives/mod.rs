@@ -125,4 +125,5 @@ pub(crate) mod layout;
 pub(crate) mod math;
 pub(crate) mod packed;
 pub(crate) mod paint;
+pub(crate) mod reduce_preference;
 pub(crate) mod text;

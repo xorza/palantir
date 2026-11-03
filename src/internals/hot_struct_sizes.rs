@@ -109,7 +109,7 @@ const fn pin<T>(name: &'static str, want_size: usize, want_align: usize) -> Pin 
 /// Expected `size_of::<Ui>()` under `cfg(test)`. One value for both profiles: the scene's
 /// `cfg(debug_assertions)` check fields sit on each plane's `Tree`, which `Forest` keeps on the
 /// heap.
-const UI_SIZE: usize = 3104;
+const UI_SIZE: usize = 3112;
 
 /// Expected `size_of::<FrameEngines>()` under `cfg(test)`, the only build this
 /// module compiles in. Test-only and bench-only cells are zero-sized in
@@ -145,8 +145,8 @@ const PINS: &[Pin] = &[
     pin::<LoweredShadow>("shape::LoweredShadow", 18, 2),
     pin::<RecordedGradient>("shapes::RecordedGradient", 56, 4),
     pin::<ResolvedGradient>("payload::ResolvedGradient", 16, 4),
-    // 44 of them the backdrop filter, its ceiling and lens optional.
-    pin::<Chrome>("primitives::Chrome", 176, 4),
+    // 52 of them the backdrop filter, its ceiling, lens and fallback optional.
+    pin::<Chrome>("primitives::Chrome", 184, 4),
     // Align 2, so embedding either in `Quad` keeps its alignment at 4 and
     // `Pod` free of padding.
     pin::<Spacing>("primitives::Spacing", 8, 2),
@@ -175,22 +175,22 @@ const PINS: &[Pin] = &[
     pin::<ProgressBar<'static>>("widgets::ProgressBar", 136, 8),
     pin::<Splitter<'static>>("widgets::Splitter", 152, 8),
     // 40 of them the chrome's backdrop filter.
-    pin::<Panel>("widgets::Panel", 296, 8),
-    pin::<Block>("widgets::Block", 296, 8),
-    pin::<Grid>("widgets::Grid", 296, 8),
-    pin::<Scroll<'static>>("widgets::Scroll", 360, 8),
+    pin::<Panel>("widgets::Panel", 304, 8),
+    pin::<Block>("widgets::Block", 304, 8),
+    pin::<Grid>("widgets::Grid", 304, 8),
+    pin::<Scroll<'static>>("widgets::Scroll", 368, 8),
     pin::<Separator<'static>>("widgets::Separator", 152, 8),
     pin::<Spinner<'static>>("widgets::Spinner", 160, 8),
-    pin::<Popup<'static>>("widgets::Popup", 336, 8),
-    pin::<Modal<'static>>("widgets::Modal", 328, 8),
-    pin::<Tooltip<'static>>("widgets::Tooltip", 496, 8),
+    pin::<Popup<'static>>("widgets::Popup", 344, 8),
+    pin::<Modal<'static>>("widgets::Modal", 336, 8),
+    pin::<Tooltip<'static>>("widgets::Tooltip", 504, 8),
     pin::<GpuView>("widgets::GpuView", 144, 8),
-    pin::<Menu<'static>>("widgets::Menu", 416, 8),
+    pin::<Menu<'static>>("widgets::Menu", 424, 8),
     pin::<MenuItem<'static>>("widgets::MenuItem", 168, 8),
     pin::<ShapedText>("layout::ShapedText", 40, 8),
     pin::<TextShapeKey>("text::TextShapeKey", 24, 8),
     pin::<MeasureSnapshot>("layout::MeasureSnapshot", 360, 8),
-    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 856, 8),
+    pin::<AnimationRow<AnimatedLook>>("animation::AnimationRow<AnimatedLook>", 880, 8),
     pin::<ContentHash>("common::ContentHash", 8, 8),
     pin::<CascadeInputHash>("cascade::CascadeInputHash", 8, 8),
     pin::<EntryRow>("cascade::EntryRow", 32, 4),

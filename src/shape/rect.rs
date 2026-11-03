@@ -133,13 +133,19 @@ impl sealed::LowerShape for RectShape {
             border,
             backdrop_filter,
         } = self;
+        // A pane under reduced transparency paints its solid infill and no filter.
+        let (fill, backdrop) = if store.transparency.is_reduced() && !backdrop_filter.is_noop() {
+            (backdrop_filter.solid_infill(&fill), None)
+        } else {
+            (fill, LoweredBackdrop::of(backdrop_filter))
+        };
         ShapeRecord::Quad(QuadShape::Rect {
             kind,
             local_rect,
             corners,
             fill: lower::brush(store, &fill),
             border: ShapeStroke::from(border),
-            backdrop: LoweredBackdrop::of(backdrop_filter),
+            backdrop,
         })
     }
 }

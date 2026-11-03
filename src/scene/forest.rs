@@ -9,6 +9,7 @@ use crate::primitives::layout::placement::Placement;
 use crate::primitives::layout::track::Track;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::reduce_preference::Reduction;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
@@ -123,8 +124,10 @@ impl Forest {
         }
     }
 
-    pub(crate) fn pre_record(&mut self) {
+    /// Open a record pass whose backdrop filters lower under `transparency`.
+    pub(crate) fn pre_record(&mut self, transparency: Reduction) {
         self.record_store.clear();
+        self.record_store.transparency = transparency;
         self.plane_stack.clear();
         self.ids.pre_record();
         self.collisions.clear();

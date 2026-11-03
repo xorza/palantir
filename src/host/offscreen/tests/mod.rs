@@ -459,7 +459,8 @@ mod recovery;
 mod theme_transition;
 
 /// The builder seeds every system fact, and the host's setters change them from the next frame
-/// on: 2, 60 Hz, light and reduced motion, then 1.5, none, no scheme and full motion.
+/// on: 2, 60 Hz, light, reduced motion and reduced transparency, then 1.5, none, no scheme, full
+/// motion and full transparency.
 #[test]
 fn the_system_facts_seed_at_build_and_change_by_setter() {
     let gpu = headless_test_gpu();
@@ -468,7 +469,8 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
         .system_scale(SystemScale::new(2.0).unwrap())
         .refresh_millihertz(60_000)
         .system_color_scheme(ColorScheme::Light)
-        .motion_reduced(true)
+        .system_motion_reduced(true)
+        .system_transparency_reduced(true)
         .build();
     let texture = gpu.target("palantir.offscreen.facts", UVec2::new(8, 8));
     let mut app = |_: &mut Ui| {};
@@ -480,11 +482,13 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
     );
     assert_eq!(host.ui().system_color_scheme(), Some(ColorScheme::Light));
     assert!(host.ui().is_motion_reduced());
+    assert!(host.ui().system_transparency_reduced());
 
     host.set_system_scale(SystemScale::new(1.5).unwrap())
         .set_refresh_millihertz(None)
         .set_system_color_scheme(None)
-        .set_motion_reduced(false);
+        .set_system_motion_reduced(false)
+        .set_system_transparency_reduced(false);
     host.frame(texture.as_target(), &mut app);
     let display = host.ui().display();
     assert_eq!(
@@ -493,4 +497,5 @@ fn the_system_facts_seed_at_build_and_change_by_setter() {
     );
     assert_eq!(host.ui().system_color_scheme(), None);
     assert!(!host.ui().is_motion_reduced());
+    assert!(!host.ui().system_transparency_reduced());
 }

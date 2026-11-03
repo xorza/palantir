@@ -10,7 +10,7 @@ use palantir::{
     Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, ClickOutside, CloseHandle,
     Configure, Justify, Key, Menu, MenuBar, MenuItem, MenuSeparator, MenuTheme, Metrics, Modal,
     Panel, Popup, PopupTrigger, RadioButton, ResponseSnapshot, Sense, Shortcut, Sizing, Slider,
-    Spacing, Switch, Text, Theme, Tooltip, Ui, WidgetId, fmt,
+    Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -60,7 +60,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     let state_id = WidgetId::from_hash("showcase::overlays::state");
     ui.with_state::<State, _>(state_id, |ui, s| {
         popup_section(ui, k, s);
-        material_section(ui, k, look);
+        material_section(ui, k);
         anchor_section(ui, k, s);
         modal_section(ui, k, s, look);
         tooltip_section(ui, k, s);
@@ -69,23 +69,27 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
     });
 }
 
-fn material_section(ui: &mut Ui, k: Kit, look: &mut Appearance) {
+fn material_section(ui: &mut Ui, k: Kit) {
     Section::new("Frosted glass")
-        .apis(&[api!(Theme::frost_floats)])
+        .apis(&[
+            api!(Ui::set_transparency_preference),
+            api!(Theme::frost_floats),
+        ])
         .show(ui, k, |ui| {
             support::note(
                 ui,
                 k,
                 "Menus, combo lists, popups, the picker, tooltips and the modal float on frosted \
-                 glass, its blur held so their text keeps 4.5:1 over any page. Switch it off to \
-                 compare with the opaque surfaces the stock themes wear; every page follows.",
+                 glass, its blur held so their text keeps 4.5:1 over any page. Reduce \
+                 transparency, as the system's setting or a pick here asks, and every pane paints \
+                 its solid fill with no blur; every page follows.",
             );
             support::well(ui, k, |ui| {
-                let mut frosted = look.frosted();
-                Switch::new(&mut frosted)
-                    .label("Frosted floating surfaces")
-                    .show(ui);
-                look.set_frosted(frosted);
+                let mut transparency = ui.transparency_preference();
+                support::reduce_picker(ui, "transparency", &mut transparency);
+                if transparency != ui.transparency_preference() {
+                    ui.set_transparency_preference(transparency);
+                }
             });
         });
 }

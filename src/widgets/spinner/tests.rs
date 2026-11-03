@@ -326,7 +326,7 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
 #[test]
 fn a_spinner_turns_under_reduced_motion_and_decoration_does_not() {
     let mut h = Harness::mono(UVec2::new(200, 200));
-    h.set_motion_reduced(true);
+    h.set_system_motion_reduced(true);
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Spinner::new().id(WidgetId::from_hash("spin")).show(ui);

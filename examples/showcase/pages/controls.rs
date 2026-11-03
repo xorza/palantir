@@ -199,12 +199,13 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             if scheme != ui.scheme_preference() {
                 ui.set_scheme_preference(scheme);
             }
-            // The system's own setting, which every animation snaps under; the app reads it.
-            let mut reduced = ui.is_motion_reduced();
-            Checkbox::new(&mut reduced)
-                .label("Reduce motion, as the system asks")
-                .disabled(true)
-                .show(ui);
+            // The real preference: reduced, every transition snaps and decorative motion stops.
+            Text::new("Motion").style(&k.t.caption()).show(ui);
+            let mut motion = ui.motion_preference();
+            support::reduce_picker(ui, "motion", &mut motion);
+            if motion != ui.motion_preference() {
+                ui.set_motion_preference(motion);
+            }
 
             Separator::horizontal().show(ui);
             group(ui, k, "AUDIO & VIDEO");

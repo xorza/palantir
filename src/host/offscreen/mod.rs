@@ -93,7 +93,8 @@ pub struct OffscreenHostBuilder {
     system_scale: SystemScale,
     refresh_millihertz: Option<u32>,
     system_color_scheme: Option<ColorScheme>,
-    motion_reduced: bool,
+    system_motion_reduced: bool,
+    system_transparency_reduced: bool,
 }
 
 impl OffscreenHostBuilder {
@@ -164,9 +165,19 @@ impl OffscreenHostBuilder {
     }
 
     /// Whether the system asks for less motion, as the winit host reports the desktop's; `false`
-    /// by default. The host's [`set_motion_reduced`](OffscreenHost::set_motion_reduced) changes it later.
-    pub const fn motion_reduced(mut self, reduced: bool) -> Self {
-        self.motion_reduced = reduced;
+    /// by default. The host's
+    /// [`set_system_motion_reduced`](OffscreenHost::set_system_motion_reduced) changes it later.
+    pub const fn system_motion_reduced(mut self, reduced: bool) -> Self {
+        self.system_motion_reduced = reduced;
+        self
+    }
+
+    /// Whether the system asks for less transparency, as the winit host reports the desktop's;
+    /// `false` by default. The host's
+    /// [`set_system_transparency_reduced`](OffscreenHost::set_system_transparency_reduced)
+    /// changes it later.
+    pub const fn system_transparency_reduced(mut self, reduced: bool) -> Self {
+        self.system_transparency_reduced = reduced;
         self
     }
 
@@ -199,7 +210,12 @@ impl OffscreenHostBuilder {
         let wake = Arc::<WakeSignal>::default();
         driver.ui.set_waker(wake.waker());
         driver.ui.set_system_color_scheme(self.system_color_scheme);
-        driver.ui.set_motion_reduced(self.motion_reduced);
+        driver
+            .ui
+            .set_system_motion_reduced(self.system_motion_reduced);
+        driver
+            .ui
+            .set_system_transparency_reduced(self.system_transparency_reduced);
         let time = match self.time {
             OffscreenTime::Realtime => HostTime::Realtime(RealtimeClock::new()),
             OffscreenTime::Manual => HostTime::Manual(Duration::ZERO),
@@ -230,7 +246,8 @@ impl OffscreenHost {
             system_scale: SystemScale::ONE,
             refresh_millihertz: None,
             system_color_scheme: None,
-            motion_reduced: false,
+            system_motion_reduced: false,
+            system_transparency_reduced: false,
         }
     }
 
@@ -282,8 +299,15 @@ impl OffscreenHost {
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
-    pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.driver.ui.set_motion_reduced(reduced);
+    pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
+        self.driver.ui.set_system_motion_reduced(reduced);
+        self
+    }
+
+    /// Report the system as asking for less transparency, or not, as the winit host reports the
+    /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
+    pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
+        self.driver.ui.set_system_transparency_reduced(reduced);
         self
     }
 

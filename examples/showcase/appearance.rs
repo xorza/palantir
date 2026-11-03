@@ -10,12 +10,6 @@ use crate::support;
 
 const M: Metrics = Metrics::DEFAULT;
 
-/// The blur of a frosted float, in logical px: Apple's regular material reads as about this
-/// much, and the tint below keeps the text's bound from leaving little to see through.
-const FROST_SIGMA: f32 = 20.0;
-/// How much of a float's own fill covers the frosted backdrop.
-const FROST_TINT: f32 = 0.6;
-
 /// The accent seeds the rail offers beside the stock accent: Tailwind's 500 step of blue, teal,
 /// green, orange, pink and violet (<https://tailwindcss.com/docs/colors>), each solved per scheme
 /// as any seed is.
@@ -37,8 +31,6 @@ pub(crate) struct Appearance {
     /// The focus page's ring: its color, `None` for the accent's, and its width.
     ring_color: Option<RgbaF32>,
     ring_width: f32,
-    /// Whether menus, combo lists, the picker, tooltips and the modal wear frosted glass.
-    frosted: bool,
     light: Palette,
     dark: Palette,
     /// Each seed of [`SEEDS`] solved for the light and the dark scheme, once, for the rail to show.
@@ -69,7 +61,6 @@ impl Appearance {
             seed: None,
             ring_color: None,
             ring_width: M.stroke.line,
-            frosted: true,
             light: Palette::LIGHT,
             dark: Palette::DARK,
             light_seeds: SEEDS.map(|seed| accent_for(seed, ColorScheme::Light)),
@@ -152,18 +143,6 @@ impl Appearance {
         }
     }
 
-    pub(crate) const fn frosted(&self) -> bool {
-        self.frosted
-    }
-
-    /// Frost the floating surfaces, or set them opaque as the stock themes are.
-    pub(crate) const fn set_frosted(&mut self, frosted: bool) {
-        if self.frosted != frosted {
-            self.frosted = frosted;
-            self.edited(Edit::Pick);
-        }
-    }
-
     /// A new generation of edits, the last one made by `edit`.
     const fn edited(&mut self, edit: Edit) {
         self.generation += 1;
@@ -192,9 +171,6 @@ impl Appearance {
                 let palette = self.palette(scheme);
                 let mut theme = Theme::from_parts(palette, &M);
                 theme.focus_ring = self.ring(scheme);
-                if self.frosted {
-                    theme.frost_floats(FROST_SIGMA, FROST_TINT);
-                }
                 ui.set_theme_for(scheme, theme);
             }
             *applied = self.generation;
@@ -299,10 +275,10 @@ mod tests {
         assert!(blue.s < Okhsv::from_color(RgbaF32::hex(0x0000ff), 0.0).s);
     }
 
-    /// A seed, a ring or a frost edit moves the generation, so each window builds both themes
-    /// once from the solved palettes: the ring follows the accent until a color of its own is set,
-    /// a reset gives it back, and the floats are frosted until switched off. A pick's themes
-    /// blend in and a drag's snap.
+    /// A seed or a ring edit moves the generation, so each window builds both themes once from
+    /// the solved palettes: the ring follows the accent until a color of its own is set, and a
+    /// reset gives it back. A pick's themes blend in and a drag's snap. The floats wear the
+    /// stock frost.
     #[test]
     fn an_edit_builds_the_themes_once() {
         let mut h = Harness::builder(UVec2::new(64, 64)).mono().build();
@@ -338,11 +314,8 @@ mod tests {
         assert_eq!(h.ui().theme().focus_ring, look.ring(scheme));
         assert_eq!(*look.palette(scheme), *Palette::for_scheme(scheme));
 
-        // Frosted by default; off, the floats wear the stock opaque panel.
-        assert!(!h.ui().theme().menu.panel.backdrop_filter.is_noop());
-        look.set_frosted(false);
-        look.apply(h.ui_mut());
         let stock = Theme::from_parts(Palette::for_scheme(scheme), &Metrics::DEFAULT);
+        assert!(!stock.menu.panel.backdrop_filter.is_noop());
         assert_eq!(h.ui().theme().menu.panel, stock.menu.panel);
     }
 }

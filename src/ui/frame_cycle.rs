@@ -53,6 +53,7 @@ impl<'a> FrameCycle<'a> {
         let device_epoch = self.ui.resources.device().epoch();
         self.ui.frame_runtime.begin_frame(stamp);
         self.ui.advance_theme();
+        self.ui.frame_runtime.transparency = self.ui.resources.settings().transparency();
         self.ui
             .frame_runtime
             .tick_text_clock(self.ui.resources.text());
@@ -60,6 +61,7 @@ impl<'a> FrameCycle<'a> {
             theme_epoch: self.ui.window_theme.epoch(),
             font_epoch: self.ui.resources.text().font_epoch(),
             device_epoch,
+            transparency: self.ui.frame_runtime.transparency,
         };
         let plan = self.ui.frame_runtime.take_frame_plan(FrameClassifyInput {
             display: stamp.display,
@@ -234,7 +236,9 @@ impl<'a> FrameCycle<'a> {
     /// All three resets are per *pass* because the closure re-asserts each; a `PaintOnly` frame runs no closure and must keep the previous values. State the closure does not re-assert belongs in `finalize_frame`'s sweep. A fourth per-pass reset goes here.
     fn pre_record(&mut self) {
         tracy::zone!("Ui::pre_record");
-        self.ui.forest.pre_record();
+        self.ui
+            .forest
+            .pre_record(self.ui.frame_runtime.transparency);
         self.ui.input.pre_record(&self.ui.cascade);
         self.ui.window_requests.begin_pass();
     }

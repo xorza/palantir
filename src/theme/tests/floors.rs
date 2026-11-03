@@ -238,6 +238,21 @@ fn each_parts_stock_is_the_stock_themes_part() {
                 "{kind:?} {scheme:?}"
             );
         }
+        // The stock floats wear the frost, none left opaque by an ink it cannot hold.
+        for (float, panel) in [
+            ("menu", &t.menu.panel),
+            ("popup", &t.popup.panel),
+            ("picker popup", &t.color_picker.popup.panel),
+            ("tooltip", &t.tooltip.panel),
+            ("modal", &t.modal.panel),
+        ] {
+            assert_eq!(panel.backdrop_filter.blur, 20.0, "{float} {scheme:?}");
+            assert_eq!(
+                panel.fill.as_solid().map(|fill| fill.a),
+                Some(184.0 / 255.0),
+                "{float} {scheme:?}"
+            );
+        }
     }
     assert_ne!(
         TextStyle::stock(ColorScheme::Dark).color,

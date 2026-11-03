@@ -151,7 +151,7 @@ fn a_scheme_change_blends_from_the_next_frame() {
     // epoch stays, so nothing records again, whether the change would run or snap.
     for reduced in [false, true] {
         let (mut h, dark) = running();
-        h.set_motion_reduced(reduced);
+        h.set_system_motion_reduced(reduced);
         h.ui_mut().set_theme_for(Light, Rc::clone(&dark));
         let epoch = h.ui().window_theme.epoch();
         h.set_system_color_scheme(Some(Light));
@@ -180,7 +180,7 @@ fn a_change_snaps_where_nothing_should_move() {
     assert!(shows(&h, &light), "no transition");
 
     let (mut h, _) = running();
-    h.set_motion_reduced(true);
+    h.set_system_motion_reduced(true);
     h.ui_mut().set_theme_for(Dark, Rc::clone(&light));
     assert!(shows(&h, &light), "motion reduced");
 
@@ -193,7 +193,7 @@ fn a_change_snaps_where_nothing_should_move() {
     let (mut h, _) = running();
     h.ui_mut().set_theme_for(Dark, Rc::clone(&light));
     h.advance(QUARTER).frame(record);
-    h.set_motion_reduced(true);
+    h.set_system_motion_reduced(true);
     h.advance(QUARTER).frame(record);
     assert!(shows(&h, &light), "reduced mid-way");
 

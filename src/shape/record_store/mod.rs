@@ -17,6 +17,7 @@ use crate::common::span::Span;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
+use crate::primitives::reduce_preference::Reduction;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::interned_text::InternedText;
 use crate::primitives::text::recorded_text::RecordedText;
@@ -48,6 +49,9 @@ pub(crate) struct RecordStore {
     /// The families of the shaper that shapes what this store records, keyed as a text shape
     /// lowers. `Default` gives a table of its own, for a store no shaper reads.
     families: FamilyKeys,
+    /// Whether a backdrop filter lowers as a solid fill this pass
+    /// ([`crate::Ui::is_transparency_reduced`]).
+    pub(crate) transparency: Reduction,
 }
 
 /// Where [`RecordStore::stage_mesh`] put one mesh's geometry.
@@ -92,6 +96,7 @@ impl RecordStore {
             gradients,
             text,
             families: _,
+            transparency: _,
         } = self;
         meshes.clear();
         polyline_points.clear();

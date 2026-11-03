@@ -19,6 +19,7 @@ fn the_looks_and_setters_set_their_own_fields() {
             max_luminance: None,
             min_luminance: None,
             lens: None,
+            fallback: None,
         }
     );
     assert_eq!(
@@ -30,6 +31,7 @@ fn the_looks_and_setters_set_their_own_fields() {
             max_luminance: None,
             min_luminance: None,
             lens: None,
+            fallback: None,
         }
     );
     let lens = Lens::WINDOW_GLASS;
@@ -45,7 +47,8 @@ fn the_looks_and_setters_set_their_own_fields() {
         .with_saturation(0.5)
         .with_noise(0.1)
         .with_max_luminance(0.2)
-        .with_lens(lens);
+        .with_lens(lens)
+        .with_fallback(RgbaF32::WHITE);
     assert_eq!(
         set,
         BackdropFilter {
@@ -55,6 +58,7 @@ fn the_looks_and_setters_set_their_own_fields() {
             max_luminance: Some(0.2),
             min_luminance: None,
             lens: Some(lens),
+            fallback: Some(RgbaF32::WHITE.to_srgba8()),
         }
     );
     assert_eq!(BackdropFilter::default(), BackdropFilter::NONE);
@@ -219,6 +223,7 @@ fn a_filter_coerces_into_its_kinds_where_it_paints() {
             dispersion: 0.0,
             highlight: 0.0,
         }),
+        fallback: None,
     })
     .unwrap();
     assert_eq!(past.sigma(), 0.0);

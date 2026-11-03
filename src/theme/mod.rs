@@ -42,7 +42,6 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::math::domain;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::theme::button::ButtonTheme;
@@ -56,7 +55,7 @@ use crate::theme::expander::ExpanderTheme;
 use crate::theme::focus_ring::FocusRingTheme;
 use crate::theme::menu::MenuTheme;
 use crate::theme::menu_bar::MenuBarTheme;
-use crate::theme::metrics::Metrics;
+use crate::theme::metrics::{Frost, Metrics};
 use crate::theme::modal::ModalTheme;
 use crate::theme::palette::Palette;
 use crate::theme::popup::PopupTheme;
@@ -272,13 +271,14 @@ impl Theme {
 
     /// Frost every floating surface: the panels of menus and combo lists, the color picker's
     /// popup, a bare popup's panel, tooltips and the modal's panel. Each keeps its fill's color
-    /// at `tint_alpha` over [`BackdropFilter::frosted`]`(sigma)`, held so the weakest ink its
+    /// at `tint_alpha` over [`BackdropFilter::frosted`](crate::BackdropFilter::frosted)`(sigma)`,
+    /// held so the weakest ink its
     /// recipe paints reads at WCAG 4.5:1 over any backdrop, read from this theme: a menu row's
     /// shortcut ink on a menu and on a bare popup, which an app fills with rows like a menu's,
     /// the picker's channel-name ink, the tooltip's text, and the ambient text on the modal,
-    /// whose content is the app's. A ceiling holds ink lighter than the tint, a floor darker. The stock themes stay opaque, as a
-    /// frosted float costs a capture under each open one; an app opts in here, as WinUI's flyouts,
-    /// menus and tooltips wear acrylic
+    /// whose content is the app's. A ceiling holds ink lighter than the tint, a floor darker.
+    /// The stock themes frost them already at [`Metrics::float_frost`]; an app frosts them at its
+    /// own blur and tint here, as WinUI's flyouts, menus and tooltips wear acrylic
     /// (<https://learn.microsoft.com/windows/apps/design/style/acrylic>) and macOS's menus and
     /// popovers vibrancy, one material for every float. Refused: a helper in each app, which a new
     /// floating slot would miss with no error.
@@ -288,7 +288,8 @@ impl Theme {
     /// Unless `sigma` is a [length](crate::widget::domain::length), `tint_alpha` a fraction under
     /// 1, each surface's fill a solid color, each ink holds 4.5:1 on its fill made opaque, and an
     /// ink lighter than its fill is light enough for a ceiling, as
-    /// [`BackdropFilter::with_max_luminance_for`] and its floor twin require.
+    /// [`BackdropFilter::with_max_luminance_for`](crate::BackdropFilter::with_max_luminance_for)
+    /// and its floor twin require.
     #[track_caller]
     pub fn frost_floats(&mut self, sigma: f32, tint_alpha: f32) {
         let sigma = domain::length(sigma);
@@ -333,18 +334,13 @@ impl Theme {
             (&mut tooltip.panel, tooltip_ink),
             (&mut modal.panel, ambient),
         ] {
-            let fill = panel
-                .fill
-                .as_solid()
-                .expect("a floating surface to frost has a solid fill");
-            let tint = fill.with_alpha(tint_alpha);
-            let frosted = BackdropFilter::frosted(sigma);
-            panel.backdrop_filter = if ink.luminance() > tint.luminance() {
-                frosted.with_max_luminance_for(ink, tint)
-            } else {
-                frosted.with_min_luminance_for(ink, tint)
+            let frost = Frost {
+                blur: sigma,
+                tint_alpha,
             };
-            panel.fill = tint.into();
+            *panel = frost
+                .dress(panel, ink)
+                .unwrap_or_else(|refusal| refusal.refuse());
         }
     }
 

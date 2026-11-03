@@ -3,6 +3,7 @@
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
 use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
+use crate::primitives::reduce_preference::{ReducePreference, Reduction};
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::scheme_preference::SchemePreference;
 use std::cell::Cell;
@@ -27,9 +28,16 @@ pub(crate) struct AppSettings {
     /// The scheme the system reports, which the winit host writes; `None` where nothing reports
     /// one.
     system_color_scheme: Cell<Option<ColorScheme>>,
-    /// Whether the system asks for less motion, which the winit host writes; `false` where
+    /// Whether the person wants motion reduced: the system's ask, or a pick by hand.
+    motion_preference: Cell<ReducePreference>,
+    /// Whether the system asks for less motion, which the winit host writes; full where nothing
+    /// reports it.
+    system_motion: Cell<Reduction>,
+    /// Whether the person wants transparency reduced: the system's ask, or a pick by hand.
+    transparency_preference: Cell<ReducePreference>,
+    /// Whether the system asks for less transparency, which the winit host writes; full where
     /// nothing reports it.
-    motion_reduced: Cell<bool>,
+    system_transparency: Cell<Reduction>,
     /// How soon a second press on the same target makes a double click: the platform's, where
     /// the winit host reads one, else [`DOUBLE_CLICK_WINDOW`]. Its change shows nothing, and
     /// repaints the windows only as every setting's does.
@@ -44,7 +52,10 @@ impl Default for AppSettings {
             user_scale: Cell::default(),
             scheme_preference: Cell::default(),
             system_color_scheme: Cell::default(),
-            motion_reduced: Cell::default(),
+            motion_preference: Cell::default(),
+            system_motion: Cell::default(),
+            transparency_preference: Cell::default(),
+            system_transparency: Cell::default(),
             double_click_window: Cell::new(DOUBLE_CLICK_WINDOW),
             changed: Cell::default(),
         }
@@ -84,12 +95,47 @@ impl AppSettings {
         self.write(&self.system_color_scheme, scheme);
     }
 
-    pub(crate) const fn motion_reduced(&self) -> bool {
-        self.motion_reduced.get()
+    pub(crate) const fn motion_preference(&self) -> ReducePreference {
+        self.motion_preference.get()
     }
 
-    pub(crate) fn set_motion_reduced(&self, reduced: bool) {
-        self.write(&self.motion_reduced, reduced);
+    pub(crate) fn set_motion_preference(&self, preference: ReducePreference) {
+        self.write(&self.motion_preference, preference);
+    }
+
+    pub(crate) const fn system_motion(&self) -> Reduction {
+        self.system_motion.get()
+    }
+
+    pub(crate) fn set_system_motion(&self, motion: Reduction) {
+        self.write(&self.system_motion, motion);
+    }
+
+    /// The motion every window runs now: the preference resolved against the system's.
+    pub(crate) const fn motion(&self) -> Reduction {
+        self.motion_preference().resolve(self.system_motion())
+    }
+
+    pub(crate) const fn transparency_preference(&self) -> ReducePreference {
+        self.transparency_preference.get()
+    }
+
+    pub(crate) fn set_transparency_preference(&self, preference: ReducePreference) {
+        self.write(&self.transparency_preference, preference);
+    }
+
+    pub(crate) const fn system_transparency(&self) -> Reduction {
+        self.system_transparency.get()
+    }
+
+    pub(crate) fn set_system_transparency(&self, transparency: Reduction) {
+        self.write(&self.system_transparency, transparency);
+    }
+
+    /// The transparency every window paints now: the preference resolved against the system's.
+    pub(crate) const fn transparency(&self) -> Reduction {
+        self.transparency_preference()
+            .resolve(self.system_transparency())
     }
 
     pub(crate) const fn double_click_window(&self) -> Duration {
@@ -123,6 +169,7 @@ impl AppSettings {
 mod tests {
     use crate::diagnostics::DebugOverlayConfig;
     use crate::display::user_scale::UserScale;
+    use crate::primitives::reduce_preference::{ReducePreference, Reduction};
     use crate::theme::color_scheme::ColorScheme;
     use crate::theme::scheme_preference::SchemePreference;
     use crate::ui::resources::app_settings::AppSettings;
@@ -133,7 +180,7 @@ mod tests {
     fn a_move_of_any_setting_signals_once_and_a_repeat_not_at_all() {
         let settings = AppSettings::default();
         assert!(!settings.take_change(), "nothing has written yet");
-        let writes: [&dyn Fn(&AppSettings); 5] = [
+        let writes: [&dyn Fn(&AppSettings); 8] = [
             &|s| {
                 s.set_debug_overlay(DebugOverlayConfig {
                     frame_stats: true,
@@ -143,7 +190,10 @@ mod tests {
             &|s| s.set_user_scale(UserScale::new(1.25).unwrap()),
             &|s| s.set_scheme_preference(SchemePreference::Light),
             &|s| s.set_system_color_scheme(Some(ColorScheme::Dark)),
-            &|s| s.set_motion_reduced(true),
+            &|s| s.set_system_motion(Reduction::Reduced),
+            &|s| s.set_motion_preference(ReducePreference::Full),
+            &|s| s.set_system_transparency(Reduction::Reduced),
+            &|s| s.set_transparency_preference(ReducePreference::Reduced),
         ];
         for (i, write) in writes.iter().enumerate() {
             write(&settings);
@@ -155,6 +205,11 @@ mod tests {
         assert!(settings.debug_overlay().frame_stats);
         assert_eq!(settings.user_scale(), UserScale::new(1.25).unwrap());
         assert_eq!(settings.color_scheme(), ColorScheme::Light, "the pick wins");
-        assert!(settings.motion_reduced());
+        assert_eq!(
+            settings.motion(),
+            Reduction::Full,
+            "the pick wins over the system"
+        );
+        assert_eq!(settings.transparency(), Reduction::Reduced);
     }
 }

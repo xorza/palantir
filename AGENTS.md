@@ -324,6 +324,18 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
 - **`Metrics` carries the type ramp**, Fluent 2 by default. Refused: a size a recipe sets by
   hand, which an app's ramp cannot reach
   ([Fluent 2 typography](https://fluent2.microsoft.design/typography)).
+- **Reduced motion and reduced transparency are preferences on the `Ui`**, each a
+  `ReducePreference` (`System`, `Full`, `Reduced`) resolved against the system's setting, as
+  `SchemePreference` is: the host reports the system's answer, and the app's pick overrides it.
+  One theme holds every transition and every frost; reduced motion snaps them and stops
+  decorative paint motion, and reduced transparency paints every backdrop filter as its
+  `fallback` or its fill made opaque, with no capture or blur, as WinUI's acrylic falls back to
+  its `FallbackColor` ([acrylic](https://learn.microsoft.com/windows/apps/design/style/acrylic)).
+  Refused: two switches in the `Theme`, a person's or a system's choice in a theme file that a
+  transition would blend; a third "performance" flag, which reduced transparency already is, as
+  Windows's transparency effects are.
+- **The stock themes frost their floats** at `Metrics::float_frost`. Refused: opaque defaults,
+  which made an app build its themes again to frost them and again to stop.
 - **Frosted glass holds its ink at WCAG 4.5:1**; palantir owns the math, as it depends on its
   dither. Refused: `Chrome::with_frost` and a `Chrome` setter per `BackdropFilter` constructor
   ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).

@@ -13,11 +13,16 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::reduce_preference::Reduction;
+use crate::shape::Shape;
 use crate::shape::lower::{brush, chrome, ramp};
 use crate::shape::paint::curve_ramp::CurveRamp;
+use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::ShapeBrush;
+use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradients::GradientId;
+use crate::shape::sealed::LowerShape;
 use glam::Vec2;
 use std::collections::HashSet;
 use std::panic;
@@ -113,6 +118,59 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
 }
 
 /// A sane chrome reaches the row unchanged and every field reaches the hash.
+/// Under reduced transparency a pane lowers as a solid fill with no filter: its fill made opaque,
+/// or its fallback; a chrome with no filter, and a pane under full transparency, lower as they
+/// are. A rect shape lowers the same way.
+#[test]
+fn reduced_transparency_lowers_a_pane_as_a_solid_fill() {
+    let tint = RgbaF32::hex(0x204060).with_alpha8(184);
+    let frosted = Chrome::fill(tint).with_backdrop_filter(BackdropFilter::frosted(20.0));
+    let fallback = RgbaF32::hex(0x808080);
+    let glass = Chrome::fill(RgbaF32::TRANSPARENT)
+        .with_backdrop_filter(BackdropFilter::frosted(20.0).with_fallback(fallback));
+    let plain = Chrome::fill(tint);
+    let solid = |brush: ShapeBrush| match brush {
+        ShapeBrush::Solid(color) => color,
+        ShapeBrush::Gradient { .. } => panic!("a solid pane lowers to a solid brush"),
+    };
+
+    let mut full = RecordStore::default();
+    let row = chrome(&mut full, &frosted, Stroke::NONE);
+    assert!(row.backdrop.is_some(), "full transparency keeps the filter");
+    assert_eq!(solid(row.fill), tint.to_f16());
+
+    let mut reduced = RecordStore::default();
+    reduced.transparency = Reduction::Reduced;
+    for (label, pane, want) in [
+        ("tinted", &frosted, RgbaF32::hex(0x204060)),
+        ("fallback", &glass, fallback),
+        ("no filter", &plain, tint),
+    ] {
+        let row = chrome(&mut reduced, pane, Stroke::NONE);
+        assert!(
+            row.backdrop.is_none(),
+            "{label}: no filter under reduced transparency"
+        );
+        assert_eq!(solid(row.fill), want.to_f16(), "{label}");
+    }
+
+    let rect = |store: &mut RecordStore| {
+        Shape::rect()
+            .fill(tint)
+            .backdrop_filter(BackdropFilter::frosted(20.0))
+            .lower(store)
+    };
+    let ShapeRecord::Quad(QuadShape::Rect { fill, backdrop, .. }) = rect(&mut reduced) else {
+        panic!("a rect lowers to a rect quad");
+    };
+    assert!(backdrop.is_none());
+    assert_eq!(solid(fill), RgbaF32::hex(0x204060).to_f16());
+    let ShapeRecord::Quad(QuadShape::Rect { backdrop, .. }) = rect(&mut full) else {
+        panic!("a rect lowers to a rect quad");
+    };
+    assert!(backdrop.is_some());
+}
+
 #[test]
 fn chrome_lowering_keeps_an_authored_field() {
     let mut store = RecordStore::default();

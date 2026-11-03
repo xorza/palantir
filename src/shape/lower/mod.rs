@@ -91,10 +91,15 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
         !chrome.has_nan(),
         "NaN in a Chrome — it degrades to no rounding and no paint: {chrome:?}",
     );
+    // A pane under reduced transparency paints its solid infill and no filter.
+    let solid = (store.transparency.is_reduced()
+        && !chrome.backdrop_filter.is_noop()
+        && !chrome.backdrop_filter.has_nan())
+    .then(|| chrome.backdrop_filter.solid_infill(&chrome.fill));
     let fill_brush = if chrome.fill.has_nan() || chrome.is_noop() {
         &Brush::TRANSPARENT
     } else {
-        &chrome.fill
+        solid.as_ref().unwrap_or(&chrome.fill)
     };
     let fill = brush(store, fill_brush);
     let border = ShapeStroke {
@@ -115,7 +120,7 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
     } else {
         chrome.shadow.into()
     };
-    let backdrop = if chrome.backdrop_filter.has_nan() {
+    let backdrop = if chrome.backdrop_filter.has_nan() || solid.is_some() {
         None
     } else {
         LoweredBackdrop::of(chrome.backdrop_filter)

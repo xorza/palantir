@@ -8,6 +8,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{LayoutMode, ScrollbarsDefId};
 use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::reduce_preference::Reduction;
 use crate::scene::forest::{Forest, NodeChrome};
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
@@ -44,7 +45,7 @@ impl LayoutRig {
     /// Record `body` under the viewport root a frame opens, and lay it out on a surface of
     /// `surface` logical px.
     pub(crate) fn run(&mut self, surface: Size, body: impl FnOnce(&mut NodeRecorder<'_>)) {
-        self.forest.pre_record();
+        self.forest.pre_record(Reduction::Full);
         let mut rec = NodeRecorder {
             forest: &mut self.forest,
         };

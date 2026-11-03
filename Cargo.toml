@@ -162,6 +162,7 @@ mundy = { version = "0.2", default-features = false, features = [
     "color-scheme",
     "double-click-interval",
     "reduced-motion",
+    "reduced-transparency",
 ], optional = true }
 
 [dev-dependencies]

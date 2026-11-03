@@ -352,8 +352,15 @@ impl Harness {
 
     /// Report the system as asking for less motion, or not, as the winit host reports the
     /// desktop's; `false` at the start. See [`Ui::is_motion_reduced`].
-    pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self {
-        self.driver.ui.set_motion_reduced(reduced);
+    pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self {
+        self.driver.ui.set_system_motion_reduced(reduced);
+        self
+    }
+
+    /// Report the system as asking for less transparency, or not, as the winit host reports the
+    /// desktop's; `false` at the start. See [`Ui::is_transparency_reduced`].
+    pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self {
+        self.driver.ui.set_system_transparency_reduced(reduced);
         self
     }
 

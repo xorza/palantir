@@ -128,6 +128,7 @@ BackdropFilter
         pub max_luminance: Option<f32>
         pub min_luminance: Option<f32>
         pub lens: Option<Lens>
+        pub fallback: Option<SrgbaU8>
         pub const NONE: Self
         pub const fn blur(sigma: f32) -> Self
         pub const fn frosted(sigma: f32) -> Self
@@ -140,6 +141,7 @@ BackdropFilter
         pub const fn with_min_luminance(self, luminance: f32) -> Self
         pub fn with_min_luminance_for(self, ink: RgbaF32, tint: RgbaF32) -> Self
         pub const fn with_lens(self, lens: Lens) -> Self
+        pub const fn with_fallback(self, color: RgbaF32) -> Self
         pub const fn is_noop(&self) -> bool
         impl<'de> Deserialize<'de> where BackdropFilter: Default
 
@@ -859,6 +861,11 @@ FrameSummary  [features: winit]
         pub repaint_at: Option<Duration>
         pub busy: bool
 
+Frost
+    struct Frost: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub blur: f32
+        pub tint_alpha: f32
+
 Gpu
     struct Gpu: Clone, Debug
         pub fn new(device: Device, queue: Queue) -> Self
@@ -1011,7 +1018,8 @@ Harness
         pub fn set_system_scale(&mut self, scale: SystemScale) -> &mut Self
         pub fn set_refresh_millihertz(&mut self, millihertz: Option<u32>) -> &mut Self
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
-        pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self
+        pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self
+        pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn on_input(&mut self, event: InputEvent<'_>) -> InputDelta
         pub fn hover(&mut self, at: impl Into<Locator>) -> InputDelta
         pub fn press(&mut self, at: impl Into<Locator>, button: PointerButton) -> InputDelta
@@ -1049,7 +1057,8 @@ HarnessBuilder
         pub const fn system_scale(self, scale: SystemScale) -> Self
         pub const fn refresh_millihertz(self, millihertz: u32) -> Self
         pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
-        pub const fn motion_reduced(self, reduced: bool) -> Self
+        pub const fn system_motion_reduced(self, reduced: bool) -> Self
+        pub const fn system_transparency_reduced(self, reduced: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn fonts(self, scope: FontScope) -> Self
         pub fn shaper(self, shaper: TextShaper) -> Self
@@ -1495,6 +1504,7 @@ Metrics
         pub radius: RadiusSteps
         pub stroke: StrokeSteps
         pub float_shadow: ShadowGeometry
+        pub float_frost: Option<Frost>
         pub transition: AnimationSpec
         pub const DEFAULT: Self
 
@@ -1551,7 +1561,8 @@ OffscreenHost
         pub fn advance(&mut self, dt: Duration) -> &mut Self
         pub fn at(&mut self, time: Duration) -> &mut Self
         pub fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) -> &mut Self
-        pub fn set_motion_reduced(&mut self, reduced: bool) -> &mut Self
+        pub fn set_system_motion_reduced(&mut self, reduced: bool) -> &mut Self
+        pub fn set_system_transparency_reduced(&mut self, reduced: bool) -> &mut Self
         pub fn wait_for_gpu(&self) -> GpuWait
         pub fn window_commands(&self) -> &[WindowCommand]
         pub fn is_device_lost(&self) -> bool
@@ -1570,7 +1581,8 @@ OffscreenHostBuilder
         pub const fn system_scale(self, scale: SystemScale) -> Self
         pub const fn refresh_millihertz(self, millihertz: u32) -> Self
         pub const fn system_color_scheme(self, scheme: ColorScheme) -> Self
-        pub const fn motion_reduced(self, reduced: bool) -> Self
+        pub const fn system_motion_reduced(self, reduced: bool) -> Self
+        pub const fn system_transparency_reduced(self, reduced: bool) -> Self
         pub const fn pixel_snap(self, pixel_snap: bool) -> Self
         pub const fn system_clipboard(self, system_clipboard: bool) -> Self  [features: system-clipboard or winit]
         pub fn build(self) -> OffscreenHost
@@ -1822,6 +1834,12 @@ Rect
         pub const fn intersect(self, other: Self) -> Option<Self>
         pub const fn clamp_to(self, bounds: Self) -> Self
         pub const fn union(self, other: Self) -> Self
+
+ReducePreference
+    enum ReducePreference: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
+        System
+        Full
+        Reduced
 
 Remote  [features: winit]
     struct Remote<T: 'static>: Debug
@@ -2682,6 +2700,13 @@ Ui
         pub const fn color_scheme(&self) -> ColorScheme
         pub fn system_color_scheme(&self) -> Option<ColorScheme>
         pub fn is_motion_reduced(&self) -> bool
+        pub fn system_motion_reduced(&self) -> bool
+        pub fn motion_preference(&self) -> ReducePreference
+        pub fn set_motion_preference(&mut self, preference: ReducePreference)
+        pub const fn is_transparency_reduced(&self) -> bool
+        pub fn system_transparency_reduced(&self) -> bool
+        pub fn transparency_preference(&self) -> ReducePreference
+        pub fn set_transparency_preference(&mut self, preference: ReducePreference)
         pub const fn watch_pointer(&mut self, flags: PointerWake)
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
         pub fn pointer_events(&self) -> &[PointerEvent]
