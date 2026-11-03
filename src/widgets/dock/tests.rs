@@ -896,7 +896,8 @@ fn a_split_dock_tiles_its_panes_and_strips() {
     assert_eq!(left_pane, Rect::new(0.0, 0.0, 299.5, 400.0));
     assert_eq!(right_pane, Rect::new(300.5, 0.0, 299.5, 400.0));
 
-    // One 35.2 px chip row (19.2 px line, 8 px padding each side) under 4 px of top padding; content takes the rest.
+    // One 36 px chip row (the 19.2 px line's 20 px block, 8 px padding each side) under 4 px of top
+    // padding; content takes the rest.
     for (group, pane) in [(primary, left_pane), (right, right_pane)] {
         let strip = h
             .rect(DockView::strip_id(dock(), group))
@@ -904,7 +905,7 @@ fn a_split_dock_tiles_its_panes_and_strips() {
         assert_eq!(
             strip,
             Rect {
-                size: Size::new(pane.size.w, 39.203125),
+                size: Size::new(pane.size.w, 40.0),
                 ..pane
             }
         );

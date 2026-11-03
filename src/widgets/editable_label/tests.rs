@@ -64,7 +64,8 @@ fn open(h: &mut Harness, id: WidgetId, editable: bool) {
 /// The label holds its rect across the swap to its editor and back, for the default theme, with
 /// its padding and border, for a flat one, for a padding the caller sets, and for a font size the
 /// caller sets, which reaches the editor too; in the flat one the text sits on the label's leading
-/// edge, where the editor draws it.
+/// edge, where the editor draws it. An empty label is as high as one with text: the stock line,
+/// 19.203125 px, floors both at its 20 px block, inside the padding.
 #[test]
 fn the_label_and_its_editor_take_one_rect() {
     let flat = {
@@ -86,41 +87,48 @@ fn the_label_and_its_editor_take_one_rect() {
         ("padded", None, Some(Spacing::new(9.0, 3.0, 5.0, 7.0)), None),
         ("large", None, None, Some(30.0)),
     ] {
-        let id = WidgetId::from_hash(("label-rect", name));
-        let mut h = harness();
-        let show = |ui: &mut Ui| {
-            let mut label = EditableLabel::new("Ab").id(id).style(style);
-            if let Some(padding) = padding {
-                label = label.padding(padding);
+        for text in ["Ab", ""] {
+            let name = format!("{name} {text:?}");
+            let id = WidgetId::from_hash(("label-rect", name.as_str()));
+            let mut h = harness();
+            let show = |ui: &mut Ui| {
+                let mut label = EditableLabel::new(text).id(id).style(style);
+                if let Some(padding) = padding {
+                    label = label.padding(padding);
+                }
+                if let Some(px) = font_size {
+                    label = label.font_size(px);
+                }
+                label.show(ui).editing
+            };
+            assert!(!h.frame_value(show));
+            let idle = h.rect(id).expect("label arranged");
+            heights.push(idle.size.h);
+            if style.is_some() {
+                let text = h.rect(EditableLabel::label_id(id)).expect("text arranged");
+                assert_eq!(text.min.x, idle.min.x, "{name}: text on the leading edge");
             }
-            if let Some(px) = font_size {
-                label = label.font_size(px);
+            let hit = idle.center();
+            for _ in 0..2 {
+                h.click(hit);
+                h.frame_value(show);
             }
-            label.show(ui).editing
-        };
-        assert!(!h.frame_value(show));
-        let idle = h.rect(id).expect("label arranged");
-        heights.push(idle.size.h);
-        if style.is_some() {
-            let text = h.rect(EditableLabel::label_id(id)).expect("text arranged");
-            assert_eq!(text.min.x, idle.min.x, "{name}: text on the leading edge");
+            assert!(h.frame_value(show), "{name}: the editor opened");
+            assert_eq!(h.rect(id), Some(idle), "{name}: the editor's rect");
+            // The first Escape drops the selection the editor opened with, the second the edit.
+            for _ in 0..2 {
+                h.key(Key::Escape);
+                h.frame_value(show);
+            }
+            assert!(!h.frame_value(show), "{name}: Escape closed the editor");
+            assert_eq!(h.rect(id), Some(idle), "{name}: the label's rect again");
         }
-        let hit = idle.center();
-        for _ in 0..2 {
-            h.click(hit);
-            h.frame_value(show);
-        }
-        assert!(h.frame_value(show), "{name}: the editor opened");
-        assert_eq!(h.rect(id), Some(idle), "{name}: the editor's rect");
-        // The first Escape drops the selection the editor opened with, the second the edit.
-        for _ in 0..2 {
-            h.key(Key::Escape);
-            h.frame_value(show);
-        }
-        assert!(!h.frame_value(show), "{name}: Escape closed the editor");
-        assert_eq!(h.rect(id), Some(idle), "{name}: the label's rect again");
     }
-    assert!(heights[3] > heights[0], "the font size reached the label");
+    for [text, empty] in heights.as_chunks::<2>().0 {
+        assert_eq!(empty, text, "an empty label is as high as one with text");
+    }
+    assert_eq!(heights[2], 20.0, "the flat label is its one line's block");
+    assert!(heights[6] > heights[0], "the font size reached the label");
 }
 
 /// The editor opens with the whole text selected, so the first key replaces it; Enter commits

@@ -3,7 +3,7 @@
 //! paths call it while holding other measurer fields mutably.
 
 use crate::primitives::geometry::size::Size;
-use crate::text::extent::TextExtent;
+use crate::text::extent::{self, TextExtent};
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, WrapFloor};
 use cosmic_text::Buffer;
@@ -45,6 +45,12 @@ impl ShapedGeometry {
                 right = right.max(glyph.x + glyph.w);
             }
         }
+        let block_height = extent::block_height(buffer.metrics().line_height, runs);
+        debug_assert_eq!(
+            block_height,
+            total_h.ceil(),
+            "every run takes the buffer's one line height"
+        );
         // No glyphs anywhere (empty, or only newlines): an empty block at the origin.
         let (left, width) = if left <= right {
             (left, right - left)
@@ -52,7 +58,7 @@ impl ShapedGeometry {
             (0.0, 0.0)
         };
         Self {
-            size: Size::new(width.ceil(), total_h.ceil()),
+            size: Size::new(width.ceil(), block_height),
             intrinsic_min: (floor == WrapFloor::Scan).then(|| scratch.intrinsic_min_width(buffer)),
             single_line: runs <= 1,
             left,

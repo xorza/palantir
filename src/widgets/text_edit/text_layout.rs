@@ -4,6 +4,7 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::layout::align::{Align, HAlign};
+use crate::text::extent;
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use glam::Vec2;
@@ -44,8 +45,9 @@ impl TextLayout {
 
     /// The box the block aligns by for what is on show: floored at one line, widened on a single
     /// line by [`Self::caret_reserve`] (a wrapped block reserves none), [`Self::caret_lead`] of
-    /// it before the glyphs. Uses the shaper's line height, not the theme's leading, since it is
-    /// quantized to 1/64 px.
+    /// it before the glyphs. The floor is one line as the shaper measures one
+    /// ([`extent::block_height`]), so an empty field is as high as its first character, as
+    /// Flutter's `RenderEditable` floors at the engine's `preferredLineHeight`.
     ///
     /// The reserve is the one the field's `Hug` width and scroll extent take, so a field that
     /// hugs its text does not scroll, and a label that reserves the same around its text, as
@@ -54,7 +56,9 @@ impl TextLayout {
     pub(super) fn block_size(&self, display: Size) -> Size {
         Size::new(
             display.w + self.caret_reserve(),
-            display.h.max(self.ctx.font.line_height),
+            display
+                .h
+                .max(extent::block_height(self.ctx.font.line_height, 1)),
         )
     }
 

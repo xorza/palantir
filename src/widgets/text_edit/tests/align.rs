@@ -21,7 +21,9 @@ const CARET_W: f32 = 1.5;
 const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 262
 const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 30
 const ALIGN_W: f32 = INNER_W - 2.0 * CARET_W; // 259
-const LINE_H: f32 = 19.203_125;
+/// One line's block: the stock 19.203125 px line (16 × 1.2 on the 1/64 grid), rounded up to whole
+/// pixels as the shaper measures a block.
+const BLOCK_H: f32 = 20.0;
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
 /// Drive one frame of a single-line editor, returning the field's `NodeId`. One frame suffices for alignment; tests of hit-test or scroll use [`warmup_then`].
@@ -157,14 +159,14 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
 
 #[test]
 fn single_line_default_is_left_vcenter() {
-    // No `.text_align(...)`: mode default `Align::LEFT`. "abcd" (32×19.203125): dx = 0, dy = (inner height − line height) / 2.
+    // No `.text_align(...)`: mode default `Align::LEFT`. "abcd" (32 × 20): dx = 0, dy = (inner height − block height) / 2.
     let mut h = Harness::mono(NARROW);
     let mut buf = String::from("abcd");
     let node = warmup_then(&mut h, &mut buf, None, None);
     let origin = shape_origins(h.ui(), node).text;
     let o = origin.expect("text shape emitted for non-empty buffer");
     assert_eq!(o.x, PAD_L, "x = {}", o.x);
-    let dy = (INNER_H - LINE_H) * 0.5;
+    let dy = (INNER_H - BLOCK_H) * 0.5;
     assert_eq!(o.y, PAD_T + dy, "y = {}", o.y);
 }
 
@@ -173,8 +175,8 @@ fn single_line_text_align_table() {
     // Sweep every (HAlign × VAlign) on single-line "abcd"; overflow clamping does not fire.
     let cx = (INNER_W - TEXT_W_4CH) * 0.5; // 115
     let rx = ALIGN_W - TEXT_W_4CH; // 227
-    let cy = (INNER_H - LINE_H) * 0.5;
-    let by = INNER_H - LINE_H;
+    let cy = (INNER_H - BLOCK_H) * 0.5;
+    let by = INNER_H - BLOCK_H;
     let cases: &[(Align, f32, f32, &str)] = &[
         (Align::TOP_LEFT, 0.0, 0.0, "TOP_LEFT"),
         (Align::TOP, cx, 0.0, "TOP"),
@@ -226,7 +228,7 @@ fn caret_tracks_aligned_text() {
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
     let dx = ALIGN_W - TEXT_W_4CH; // 227
-    let dy = (INNER_H - LINE_H) * 0.5;
+    let dy = (INNER_H - BLOCK_H) * 0.5;
     assert_eq!(t.x, PAD_L + dx, "text.x = {}", t.x);
     assert_eq!(
         c.x,
@@ -246,7 +248,8 @@ fn caret_tracks_aligned_text() {
 
 #[test]
 fn empty_focused_caret_vcenters_against_one_line() {
-    // Pin: an empty buffer measures height 0; the widget floors it at `line_height`.
+    // Pin: an empty buffer measures height 0; the widget floors it at one line's block, the line
+    // height rounded up to whole pixels, as "abcd" measures.
     let mut h = Harness::mono(NARROW);
     let mut buf = String::new();
     frame(&mut h, &mut buf, None, None);
@@ -260,7 +263,8 @@ fn empty_focused_caret_vcenters_against_one_line() {
         line_height,
         (16.0 * LINE_HEIGHT_FACTOR * 64.0).round() / 64.0
     );
-    let dy = (INNER_H - line_height) * 0.5;
+    assert_eq!(BLOCK_H, line_height.ceil());
+    let dy = (INNER_H - BLOCK_H) * 0.5;
     assert_eq!(c.x, PAD_L, "caret.x = {}", c.x);
     assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);
 }
@@ -452,7 +456,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
     let mut h = Harness::mono(WIDE);
     // The line box height, floored at the leading by `resolve_geometry`.
-    let text = Size::new(TEXT_W_4CH, LINE_H);
+    let text = Size::new(TEXT_W_4CH, BLOCK_H);
     let at = Vec2::new(200.0, 40.0);
     let corner = h.ui().theme().text_edit.corner_centering(text, at);
 

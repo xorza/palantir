@@ -343,7 +343,9 @@ impl<'a> DragValue<'a> {
         // The editor wears the chip's looks and box, or the field resizes on click; an unstyled
         // `TextEdit` would wear `theme.text_edit`.
         let editor = self.style.unwrap_or(&ui.theme().drag_value).editor();
-        // Hold the editor at the chip's last width: as a `Scroll` field it reports zero content width, so a plain cap would collapse to `min_size`. `Fixed` (floored at `min_size.w`) makes long values scroll. Before the first chip frame, use the field's own sizing.
+        // Hold the editor at the chip's last width, so the field keeps its box on the click that
+        // opens it rather than hugging the draft. `Fixed` (floored at `min_size.w`) makes long
+        // values scroll. Before the first chip frame, use the field's own sizing.
         let min_size = self.widget.authored_min_size().unwrap_or(Size::ZERO);
         let sizes = self.widget.authored_size().unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));

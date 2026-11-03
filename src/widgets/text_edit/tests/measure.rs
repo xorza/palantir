@@ -184,3 +184,76 @@ fn every_text_form_measures_the_same_placeholder() {
         assert_eq!(w, borrowed, "{label}");
     }
 }
+
+/// A field over `text`, `height` its height and `max_h` its largest, and the height it takes,
+/// inside the stock 5 + 5 padding.
+#[derive(Debug)]
+struct HeightCase {
+    text: &'static str,
+    height: Sizing,
+    max_h: f32,
+    want: f32,
+}
+
+/// The height `case`'s field takes at 14 px with a 1.4 leading: 19.6 snapped to 19.59375 on the
+/// 1/64 grid, which no whole pixel holds.
+fn field_height(h: &mut Harness, case: &HeightCase, multiline: bool) -> f32 {
+    let mut buf = String::from(case.text);
+    let mut node = None;
+    h.prime(3, |ui: &mut Ui| {
+        Panel::vstack().auto_id().show(ui, |ui| {
+            node = Some(
+                TextEdit::new(&mut buf)
+                    .id(WidgetId::from_hash("editor"))
+                    .font_size(14.0)
+                    .line_height_factor(1.4)
+                    .multiline(multiline)
+                    .size((Sizing::fixed(200.0), case.height))
+                    .max_size((f32::INFINITY, case.max_h))
+                    .show(ui)
+                    .response
+                    .node(),
+            );
+        });
+    });
+    h.ui().arranged_rect(Layer::Main, node.unwrap()).size.h
+}
+
+/// A `Hug` field is as high as its block, under either metric: an empty one as high as its first
+/// character, one line of 19.59375 px rounded up to its 20 px block, and two lines a block of
+/// 39.1875 rounded up to 40, inside the stock 5 + 5 padding. An authored height wins: a `Fixed`
+/// 10 and a `Hug` held under 12 keep their height and scroll the line.
+#[test]
+fn a_hug_field_is_as_high_as_its_block_and_an_authored_height_wins() {
+    let case = |text, height, max_h, want| HeightCase {
+        text,
+        height,
+        max_h,
+        want,
+    };
+    let one_line = [
+        case("", Sizing::HUG, f32::INFINITY, 10.0 + 20.0),
+        case("x", Sizing::HUG, f32::INFINITY, 10.0 + 20.0),
+        case("x", Sizing::fixed(10.0), f32::INFINITY, 10.0),
+        case("x", Sizing::HUG, 12.0, 12.0),
+    ];
+    let two_lines = case("x\ny", Sizing::HUG, f32::INFINITY, 10.0 + 40.0);
+    for metric in ["mono", "cosmic"] {
+        let mut h = if metric == "mono" {
+            Harness::mono(SIZE)
+        } else {
+            Harness::builder(SIZE).build()
+        };
+        for multiline in [false, true] {
+            for case in &one_line {
+                let got = field_height(&mut h, case, multiline);
+                assert_eq!(got, case.want, "{metric}, multiline {multiline}: {case:?}");
+            }
+        }
+        assert_eq!(
+            field_height(&mut h, &two_lines, true),
+            two_lines.want,
+            "{metric}"
+        );
+    }
+}

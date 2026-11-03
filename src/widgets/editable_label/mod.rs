@@ -5,7 +5,6 @@ use std::rc::Rc;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
-use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, HAlign};
 use crate::primitives::layout::sizing::Sizing;
@@ -177,9 +176,10 @@ impl<'a> EditableLabel<'a> {
     }
 
     /// The label: the text in the editor's resting look, with the editor's padding and caret
-    /// room, floored at one line so an empty one keeps a target. A double click, or Enter or F2
-    /// while the label holds focus, opens the editor and gives it the focus. F2 is read as the
-    /// enclosing node reads it, as the label takes no accelerators from the app.
+    /// room, its text floored at one line's block as the editor's is, so an empty one keeps a
+    /// target and the label takes the editor's rect whatever it holds. A double click, or Enter
+    /// or F2 while the label holds focus, opens the editor and gives it the focus. F2 is read as
+    /// the enclosing node reads it, as the label takes no accelerators from the app.
     fn show_label(mut self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse<'_> {
         let keyed = self.editable
             && ui.focus() == Some(id)
@@ -189,7 +189,6 @@ impl<'a> EditableLabel<'a> {
         let text = self
             .overrides
             .apply(&slot.looks.normal.text.apply(&theme.text));
-        let min = self.floor(text.line_height());
         let padding = text_layout::label_padding(
             self.widget
                 .authored_padding()
@@ -202,13 +201,13 @@ impl<'a> EditableLabel<'a> {
         let response = self
             .widget
             .size(size)
-            .min_size(min)
             .padding(padding)
             .default_child_align(Align::LEFT)
             .show(ui, Some(&slot.looks.normal.chrome), |ui| {
                 Text::new(label)
                     .id(Self::label_id(id))
                     .style(&text)
+                    .min_size((0.0, text.block_height(1)))
                     .show(ui);
             })
             .response
@@ -229,22 +228,20 @@ impl<'a> EditableLabel<'a> {
     fn show_editor(self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse<'_> {
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.text_edit);
-        let text = self
-            .overrides
-            .apply(&slot.looks.normal.text.apply(&theme.text));
-        let min = self.floor(text.line_height());
         let extent = self.extent();
         let mut edit = TextEdit::buffered(self.text)
             .id(id)
             .style(slot)
             .select_all_on_focus(true)
             .text_align(Align::LEFT)
-            .size(extent)
-            .min_size(min);
+            .size(extent);
         if let Some(n) = self.max_chars {
             edit = edit.max_chars(n);
         }
         edit = with_overrides(edit, self.overrides);
+        if let Some(min) = self.widget.authored_min_size() {
+            edit = edit.min_size(min);
+        }
         if let Some(max) = self.widget.authored_max_size() {
             edit = edit.max_size(max);
         }
@@ -275,12 +272,6 @@ impl<'a> EditableLabel<'a> {
     fn extent(&self) -> (Sizing, Sizing) {
         let size = self.widget.authored_size().unwrap_or_default();
         (size.w(), size.h())
-    }
-
-    /// The caller's minimum, its height floored at `line_height`.
-    fn floor(&self, line_height: f32) -> Size {
-        let min = self.widget.authored_min_size().unwrap_or(Size::ZERO);
-        Size::new(min.w, min.h.max(line_height))
     }
 
     /// The id of the idle label's text inside `editable_label`, derived from it so the text keeps

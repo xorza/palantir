@@ -93,8 +93,47 @@ fn text_style_none_inherits_the_ambient_text_style() {
         let node = h.node_for_widget_id(id);
         h.ui().arranged_rect(Layer::Main, node).size.h
     };
-    // Twice the font size, twice the line height.
-    assert_eq!(height(styled_id), height(plain_id) * 2.0);
+    // Twice the font size, twice the line height, each block rounded up to whole pixels: 31 × 1.2
+    // is 37.203125 on the 1/64 grid, a 38 px block, and 62 × 1.2 is 74.40625, a 75 px one.
+    assert_eq!(height(plain_id), 38.0);
+    assert_eq!(height(styled_id), 75.0);
+}
+
+/// [`TextStyle::block_height`] is what a `Text` of that many lines measures, under the shaper
+/// and the mono metric alike: 16 px at 1.2 leads at 19.203125, a 20 px line and a 39 px pair,
+/// rounded once for the block; at 1.0 the lines are whole and stack exactly.
+#[test]
+fn a_text_block_is_as_high_as_its_style_says() {
+    let fractional = TextStyle::stock(ColorScheme::Dark).with_font_size(16.0);
+    assert_eq!(fractional.line_height(), 19.203_125);
+    assert_eq!(
+        [0, 1, 2].map(|n| fractional.block_height(n)),
+        [0.0, 20.0, 39.0]
+    );
+    let whole = fractional.with_line_height_factor(1.0);
+    assert_eq!([1, 2].map(|n| whole.block_height(n)), [16.0, 32.0]);
+    for mono in [true, false] {
+        let mut h = if mono {
+            Harness::mono(SURFACE)
+        } else {
+            Harness::builder(SURFACE).build()
+        };
+        for style in [fractional, whole, fractional.with_line_height_factor(1.4)] {
+            for (lines, text) in [(1, "m"), (2, "m\nm"), (3, "m\nm\nm")] {
+                let id = WidgetId::from_hash(("block", text));
+                h.frame(|ui| {
+                    Text::new(text).id(id).style(&style).show(ui);
+                });
+                let node = h.node_for_widget_id(id);
+                assert_eq!(
+                    h.ui().arranged_rect(Layer::Main, node).size.h,
+                    style.block_height(lines),
+                    "mono {mono}, {} px lines, {lines} of them",
+                    style.line_height()
+                );
+            }
+        }
+    }
 }
 
 /// A per-axis setter reaches the shaper and outranks the bundle beneath it, for [`Text`] and [`TextEdit`](crate::TextEdit) (which resolves its face through an animated look).

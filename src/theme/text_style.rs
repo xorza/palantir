@@ -3,6 +3,7 @@
 
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
+use crate::text::extent;
 use crate::text::font_family::FontFamily;
 use crate::text::font_slant::FontSlant;
 use crate::text::font_weight::FontWeight;
@@ -108,6 +109,16 @@ impl TextStyle {
     #[inline]
     pub fn line_height(&self) -> f32 {
         TextShapeKey::leading_on_grid(self.font_size * self.line_height_factor)
+    }
+
+    /// The height `line_count` lines of this style take as palantir lays out a block of text:
+    /// [`Self::line_height`] times the count, rounded up to whole pixels once for the block. What
+    /// a `Text` of that many lines measures, and what a `TextEdit` floors an empty line at, so a
+    /// custom widget sized by it sits flush with them: 16 px at 1.2 takes 20 px a line and 39 for
+    /// two, not 40. [`Self::line_height`] stays the step from one line to the next.
+    #[inline]
+    pub fn block_height(&self, line_count: usize) -> f32 {
+        extent::block_height(self.line_height(), line_count)
     }
 
     /// Chainable single-axis tweak: `theme.text.with_font_size(14.0)`.

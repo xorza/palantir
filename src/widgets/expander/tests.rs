@@ -457,9 +457,10 @@ fn a_settling_reveal_stores_the_whole_height() {
     h.advance_frames(2, tick, |ui| {
         record(ui);
     });
-    // One mono line, 19.2 snapped to 19.203125, under 4 + 4 padding.
+    // One mono line, 19.2 snapped to 19.203125 and its block rounded up to 20, under 4 + 4
+    // padding.
     let whole = h.arranged(body()).unwrap().size.h;
-    assert_eq!(whole, 19.203125 + 8.0);
+    assert_eq!(whole, 20.0 + 8.0);
     toggle(&mut h, &mut record);
     while h.frame_value(&mut record) > 0.0 {
         h.advance(tick);

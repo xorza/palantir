@@ -457,6 +457,23 @@ impl Widget {
         self.node.set_mode(LayoutMode::Scrollbars(id));
     }
 
+    /// Size this viewport's `Hug` panned axes to their content, as a `Hug`
+    /// [`Scroll`](crate::Scroll) does ([`ScrollAxes::fit_content`]): an authored `Fixed`,
+    /// `Fill` or max size still wins, and the content past it scrolls. Call it once the size is
+    /// authored.
+    ///
+    /// # Panics
+    ///
+    /// Panics on a widget that is not a [`Self::scroll`].
+    pub(crate) fn fit_scroll_content(&mut self) {
+        let NodeMode::Resolved(LayoutMode::Scroll(axes)) = self.node.mode else {
+            panic!("fit_scroll_content on a {:?} node", self.node.mode);
+        };
+        let size = self.authored_size().unwrap_or_default();
+        self.node
+            .set_mode(LayoutMode::Scroll(axes.fit_content(size)));
+    }
+
     /// Identity's half of "explicit wins, the theme fills in the rest". Silence is
     /// [`IdKind::Auto`], not an `Option`: every widget carries an auto id from
     /// construction.

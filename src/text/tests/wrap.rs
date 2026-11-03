@@ -3,9 +3,11 @@ use crate::primitives::layout::offer;
 
 #[test]
 fn mono_measure_cases() {
-    // Mono lays every `char` out `font_size * 0.5` wide on a `line_height` band, so expected sizes are arithmetic; heights pin the wrap. No empty case; see `an_empty_run_is_answered_at_the_boundary_and_shapes_nothing`.
+    // Mono lays every `char` out `font_size * 0.5` wide on a `line_height` band, so expected sizes are arithmetic; heights pin the wrap. A block rounds up to whole pixels on both axes, as the cosmic twin's does. No empty case; see `an_empty_run_is_answered_at_the_boundary_and_shapes_nothing`.
     let base = shape(16.0);
     let tall = base.leading(24.0);
+    // 19.2 snaps to 19.203125 on the 1/64 grid.
+    let fractional = base.leading(19.2);
     for (label, text, params, expected) in [
         ("unbroken_legacy_short", "Hi", base, Size::new(16.0, 16.0)),
         (
@@ -45,6 +47,26 @@ fn mono_measure_cases() {
             "12345678",
             tall.width(32.0),
             Size::new(32.0, 48.0),
+        ),
+        // Three 6.5 px chars, 19.5 rounded up; a 13 px line.
+        (
+            "fractional_width_rounds_up",
+            "abc",
+            shape(13.0),
+            Size::new(20.0, 13.0),
+        ),
+        (
+            "fractional_line_rounds_up",
+            "Hi",
+            fractional,
+            Size::new(16.0, 20.0),
+        ),
+        // Two lines, 38.40625 rounded up as one block, not each line.
+        (
+            "fractional_lines_round_up_as_a_block",
+            "12345678",
+            fractional.width(32.0),
+            Size::new(32.0, 39.0),
         ),
     ] {
         assert_eq!(

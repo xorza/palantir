@@ -148,7 +148,7 @@ pub(super) struct ViewUpdateInput {
     /// This pass's measured geometry: the box the text scrolls inside, shaping
     /// parameters, the caret's room, the run's measure, caret and block placement.
     /// Carried whole so the view reserves caret room through the same
-    /// [`caret_reserve`] the field's minimums use, and no caller can pair a caret
+    /// [`caret_reserve`] the field's content size uses, and no caller can pair a caret
     /// from one measurement with a content size from another.
     ///
     /// [`caret_reserve`]:

@@ -1,7 +1,7 @@
 //! Deterministic placeholder shaping for the mono fallback: every glyph is `font_size * 0.5` wide, so layout tests state widths as arithmetic. Reached only through [`TextShaper::test_mono`](crate::text::shaper::TextShaper), so the module is test-gated.
 
 use crate::primitives::geometry::size::Size;
-use crate::text::extent::TextExtent;
+use crate::text::extent::{self, TextExtent};
 use crate::text::request::TextShapeRequest;
 use crate::text::root::TextRoot;
 use crate::text::wrap::{self, LineFit, WrapFloor};
@@ -42,8 +42,8 @@ pub(super) fn root(request: TextShapeRequest<'_>, floor: WrapFloor) -> TextRoot 
     TextRoot {
         // Mono reads no outlines: a cell holds its glyph.
         extent: TextExtent::inked_within(Size::new(
-            lines.widest as f32 * glyph_w,
-            lines.count as f32 * request.key.line_height(),
+            (lines.widest as f32 * glyph_w).ceil(),
+            extent::block_height(request.key.line_height(), lines.count),
         )),
         intrinsic_min: (floor == WrapFloor::Scan)
             .then(|| intrinsic_min_width(request.text, glyph_w)),
@@ -65,7 +65,10 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
             let first = hard_lines(text)
                 .next()
                 .map_or(0, |line| line.chars().count());
-            Size::new((first as f32 * glyph_w).min(max), line_h)
+            Size::new(
+                (first as f32 * glyph_w).min(max),
+                extent::block_height(line_h, 1),
+            )
         }
         LineFit::Wrap => {
             #[expect(
@@ -74,7 +77,10 @@ pub(super) fn resolve(request: TextShapeRequest<'_>) -> TextExtent {
             )]
             let per_line = ((max / glyph_w).floor() as usize).max(1);
             let lines = Lines::of(text, Some(per_line));
-            Size::new(lines.widest as f32 * glyph_w, lines.count as f32 * line_h)
+            Size::new(
+                (lines.widest as f32 * glyph_w).ceil(),
+                extent::block_height(line_h, lines.count),
+            )
         }
     })
 }

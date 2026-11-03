@@ -2540,6 +2540,7 @@ TextStyle
         pub const fn stock(scheme: ColorScheme) -> Self
         pub fn font(&self) -> GlyphFont
         pub fn line_height(&self) -> f32
+        pub fn block_height(&self, line_count: usize) -> f32
         pub const fn with_font_size(self, px: f32) -> Self
         pub const fn with_color(self, color: RgbaF32) -> Self
         pub const fn with_line_height_factor(self, factor: f32) -> Self

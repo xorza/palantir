@@ -47,21 +47,15 @@ pub(super) struct CaretPaint {
 }
 
 impl PaintInput<'_> {
-    /// Applies the measured minimums to `widget`, then records it; the widget arrives here to keep one copy.
+    /// Records `widget`, its `Hug` axes sized to the block, so a field hugs its text, one line at
+    /// least, within the space it is offered; the widget arrives here to keep one copy. The block
+    /// is the field's content, not a minimum, so an authored `Fixed` or max size wins and the text
+    /// past it scrolls, as CSS's `height` beats an `<input>`'s line box. Refused: a minimum size
+    /// of the block, which outranked every authored size.
     pub(super) fn record(self, ui: &mut Ui, mut widget: Widget) {
         let layout = self.geometry.layout;
         let ctx = layout.ctx;
-        if !ctx.multiline {
-            let mut min_size = widget.authored_min_size().unwrap_or(Size::ZERO);
-            // The block's own height, not the theme's leading: a panned axis contributes no max-content, so this floor is the field's height and must match the shaper.
-            let padding = ctx.padding.sums();
-            let block = self.block_size(layout);
-            min_size.h = min_size.h.max(block.h + padding.h);
-            if widget.authored_size().unwrap_or_default().w().is_hug() {
-                min_size.w = min_size.w.max(block.w + padding.w);
-            }
-            widget.configure().min_size(min_size);
-        }
+        widget.fit_scroll_content();
 
         let block = self.block(layout);
         widget.record(ui, Some(&self.chrome), |ui| {
