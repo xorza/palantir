@@ -193,20 +193,81 @@ fn horizon_rounds_up_and_indexes_in_range() {
     assert_eq!(ExpiryWheel::<u32>::slots_for_keep(135), 256);
 }
 
-/// A full bucket grows every bucket to the next power of two of its load, floor 4.
+/// Buckets draw chunks of 16 from one pool: a burst of 4000 tickets in one bucket takes
+/// 4000 / 16 = 250 chunks and no more, and once drained, a burst of 4000 in another bucket takes
+/// the same 250 back, so the pool grows only past its peak. A 17th ticket opens a second chunk.
 #[test]
-fn buckets_grow_together() {
+fn buckets_share_one_pool_that_grows_only_past_its_peak() {
     let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
-    let capacities =
-        |wheel: &ExpiryWheel<u32>| wheel.buckets.iter().map(Vec::capacity).collect::<Vec<_>>();
-    assert_eq!(capacities(&wheel), [0; 16]);
+    assert_eq!(wheel.chunks(), 0, "an empty wheel holds no chunk");
 
-    wheel.schedule(0, 3);
-    assert_eq!(capacities(&wheel), [4; 16]);
-    for key in 1..4 {
+    for key in 0..16 {
         wheel.schedule(key, 3);
     }
-    assert_eq!(capacities(&wheel), [4; 16], "four fit without a growth");
-    wheel.schedule(4, 3);
-    assert_eq!(capacities(&wheel), [8; 16]);
+    assert_eq!(wheel.chunks(), 1, "sixteen fill one chunk");
+    wheel.schedule(16, 3);
+    assert_eq!(wheel.chunks(), 2, "the seventeenth opens a second");
+    wheel.schedule(17, 4);
+    assert_eq!(wheel.chunks(), 3, "another bucket takes a chunk of its own");
+    let mut drained = fired(&mut wheel, 4);
+    drained.sort_unstable();
+    assert_eq!(drained, (0..18).collect::<Vec<_>>());
+    assert_eq!(wheel.pending(), 0);
+
+    for key in 0..4000 {
+        wheel.schedule(key, 6);
+    }
+    assert_eq!(wheel.chunks(), 250, "the three free ones and 247 new");
+    assert_eq!(fired(&mut wheel, 6).len(), 4000);
+    let slots = wheel.tickets.capacity();
+    let free = wheel.free.capacity();
+    for key in 0..4000 {
+        wheel.schedule(key, 9);
+    }
+    assert_eq!(
+        wheel.chunks(),
+        250,
+        "a burst in another bucket reuses the pool"
+    );
+    assert_eq!(
+        wheel.tickets.capacity(),
+        slots,
+        "and allocates no ticket slot"
+    );
+    assert_eq!(
+        fired(&mut wheel, 9),
+        (0..4000).collect::<Vec<_>>(),
+        "in filed order"
+    );
+    assert_eq!(
+        wheel.free.capacity(),
+        free,
+        "handing every chunk back allocates nothing"
+    );
+    assert_eq!(wheel.free.len(), 250);
+}
+
+/// A clear drops every ticket and keeps every chunk in the pool.
+#[test]
+fn a_clear_keeps_the_pool() {
+    let mut wheel = ExpiryWheel::<u32>::with_horizon(8);
+    for key in 0..40 {
+        wheel.schedule(key, 2 + u64::from(key % 3));
+    }
+    assert_eq!(
+        wheel.chunks(),
+        3,
+        "40 over three buckets: 14, 13 and 13, a chunk each"
+    );
+    wheel.clear();
+    assert_eq!(wheel.pending(), 0);
+    assert!(fired(&mut wheel, 20).is_empty());
+    for key in 0..40 {
+        wheel.schedule(key, 21);
+    }
+    assert_eq!(
+        wheel.chunks(),
+        3,
+        "40 in one bucket fit the three pooled chunks"
+    );
 }

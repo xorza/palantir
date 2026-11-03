@@ -49,21 +49,66 @@ struct Ticket<K> {
     seq: TicketSeq,
 }
 
+/// Tickets in one chunk: 512 B of 32-byte tickets, eight cache lines, so a drain follows one
+/// link per eight lines it copies, and a partly filled chunk at the tail of each of 256 buckets
+/// keeps at most 128 KiB.
+const CHUNK_TICKETS: usize = 16;
+
+// A chunk's fill is a `u8`.
+const _: () = assert!(CHUNK_TICKETS <= u8::MAX as usize);
+
+/// No chunk: the end of a bucket's chain, or a bucket with none.
+const NO_CHUNK: u32 = u32::MAX;
+
+/// A chunk's fill, and its successor in its bucket's chain.
+#[derive(Clone, Copy, Debug)]
+struct ChunkLink {
+    len: u8,
+    next: u32,
+}
+
+/// A bucket's chain of chunks, filled at the tail and drained from the head, so a bucket hands
+/// its tickets back in the order they were filed.
+#[derive(Clone, Copy, Debug)]
+struct Chain {
+    head: u32,
+    tail: u32,
+}
+
+impl Chain {
+    const EMPTY: Self = Self {
+        head: NO_CHUNK,
+        tail: NO_CHUNK,
+    };
+}
+
 /// Ring of pending expiry tickets keyed by due frame, sized from the longest
 /// deadline the owner can hand out ([`Self::with_keep`]).
+///
+/// Every bucket draws fixed chunks from one pool the whole ring shares, so the memory follows
+/// the most tickets outstanding at once, and a burst in one bucket costs what it holds: 4000
+/// tickets take 250 chunks, 128 KiB, where a bucket of its own per frame held 256 times that
+/// for the session. A drain gives its chunks back to the pool, so once the pool reaches its
+/// peak no bucket allocates, whichever bucket a later burst lands in. Refused: a `Vec` per
+/// bucket grown together, which kept every bucket at the busiest bucket's load; one grown
+/// alone, which allocates in whichever later frame a bucket first meets that load.
 #[derive(Debug)]
 pub(crate) struct ExpiryWheel<K> {
-    /// Ring indexed by `due & mask`. Buckets keep capacity across drains, so a steady
-    /// workload doesn't allocate. One `Vec` per bucket makes a drain a memcpy; a flat
-    /// arena would cost a pointer chase per ticket on the hot path.
-    buckets: Box<[Vec<Ticket<K>>]>,
+    /// Ring indexed by `due & mask`: each bucket's chain of chunks.
+    buckets: Box<[Chain]>,
     mask: u64,
+    /// Every chunk's tickets, [`CHUNK_TICKETS`] a chunk, in one buffer; a chunk's unfilled
+    /// slots hold whatever ticket was filed there last, never read.
+    tickets: Vec<Ticket<K>>,
+    /// Each chunk's fill and link, by chunk index.
+    links: Vec<ChunkLink>,
+    /// The chunks no bucket holds. Its capacity is held at the chunk count, so handing a chunk
+    /// back never allocates.
+    free: Vec<u32>,
     /// Highest frame whose bucket has been drained. Tickets must be filed strictly
     /// after it, or they wait a full ring.
     drained_through: u64,
     next_seq: TicketSeq,
-    /// Landing area for the tickets [`Self::retire`] walks, so the ring can re-file meanwhile.
-    scratch: Vec<Ticket<K>>,
 }
 
 impl<K: Copy + Debug> ExpiryWheel<K> {
@@ -88,11 +133,13 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     fn with_horizon(horizon: u64) -> Self {
         let slots = Self::slots_for_horizon(horizon) as usize;
         Self {
-            buckets: (0..slots).map(|_| Vec::new()).collect(),
+            buckets: vec![Chain::EMPTY; slots].into_boxed_slice(),
             mask: slots as u64 - 1,
+            tickets: Vec::new(),
+            links: Vec::new(),
+            free: Vec::new(),
             drained_through: 0,
             next_seq: 0,
-            scratch: Vec::new(),
         }
     }
 
@@ -124,22 +171,46 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
     fn file(&mut self, ticket: Ticket<K>, due: u64) {
         let due = due.clamp(self.drained_through + 1, self.drained_through + self.mask);
         let idx = (due & self.mask) as usize;
-        let len = self.buckets[idx].len();
-        if len == self.buckets[idx].capacity() {
-            self.grow_buckets(len + 1);
-        }
-        self.buckets[idx].push(ticket);
+        let tail = self.buckets[idx].tail;
+        let chunk =
+            if tail != NO_CHUNK && usize::from(self.links[tail as usize].len) < CHUNK_TICKETS {
+                tail
+            } else {
+                let chunk = self.take_chunk(ticket);
+                match tail {
+                    NO_CHUNK => self.buckets[idx].head = chunk,
+                    tail => self.links[tail as usize].next = chunk,
+                }
+                self.buckets[idx].tail = chunk;
+                chunk
+            };
+        let link = &mut self.links[chunk as usize];
+        self.tickets[chunk as usize * CHUNK_TICKETS + usize::from(link.len)] = ticket;
+        link.len += 1;
     }
 
-    /// Give every bucket room for `len` tickets, doubling past it. All at once: tickets
-    /// drift across the ring, so a bucket can meet the busiest occupancy another
-    /// already saw and would allocate long after warmup.
+    /// An empty chunk: one the pool holds, else a new one.
+    fn take_chunk(&mut self, filler: Ticket<K>) -> u32 {
+        self.free.pop().unwrap_or_else(|| self.grow_chunk(filler))
+    }
+
+    /// A new chunk, its slots filled with `filler`, which no read reaches: the pool grows only
+    /// past the most tickets ever outstanding at once.
     #[cold]
-    fn grow_buckets(&mut self, len: usize) {
-        let capacity = len.next_power_of_two().max(4);
-        for bucket in &mut self.buckets {
-            bucket.reserve_exact(capacity - bucket.len());
-        }
+    fn grow_chunk(&mut self, filler: Ticket<K>) -> u32 {
+        let chunk = u32::try_from(self.links.len())
+            .ok()
+            .filter(|&chunk| chunk != NO_CHUNK)
+            .expect("a wheel holds fewer than 2^32 − 1 chunks");
+        self.tickets
+            .extend(std::iter::repeat_n(filler, CHUNK_TICKETS));
+        self.links.push(ChunkLink {
+            len: 0,
+            next: NO_CHUNK,
+        });
+        // Room for every chunk at once, so handing one back never allocates.
+        self.free.reserve(self.links.len() - self.free.len());
+        chunk
     }
 
     /// Hand every ticket due through `frame` to `settle`, re-filing each at the
@@ -155,9 +226,6 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
         if frame <= self.drained_through {
             return;
         }
-        // Out and back so the ring stays free to re-file; capacity is retained.
-        let mut due = mem::take(&mut self.scratch);
-
         // A clock jump past the ring has aliased every bucket, so all are due. Draining
         // early costs one re-file, never a wrong drop.
         let slots = self.buckets.len() as u64;
@@ -168,30 +236,50 @@ impl<K: Copy + Debug> ExpiryWheel<K> {
         };
         // `drained_through` moves first: re-filed tickets are all past `frame`.
         self.drained_through = frame;
-        // Empty every due bucket before the first re-file, or a re-filed ticket landing in
-        // a bucket not yet reached would fire again immediately.
+        // Detach every due bucket's chain into one before the first re-file, or a re-filed
+        // ticket landing in a bucket not yet reached would fire again immediately.
+        let mut due = Chain::EMPTY;
         for f in first..=frame {
-            due.append(&mut self.buckets[(f & self.mask) as usize]);
+            let chain = mem::replace(&mut self.buckets[(f & self.mask) as usize], Chain::EMPTY);
+            if chain.head == NO_CHUNK {
+                continue;
+            }
+            match due.tail {
+                NO_CHUNK => due.head = chain.head,
+                tail => self.links[tail as usize].next = chain.head,
+            }
+            due.tail = chain.tail;
         }
 
-        #[expect(
-            clippy::iter_with_drain,
-            reason = "the buffer goes back to `self.scratch` for the next drain"
-        )]
-        for ticket in due.drain(..) {
-            if let Some(next) = settle(ticket.key, ticket.seq) {
-                self.file(ticket, next);
+        let mut chunk = due.head;
+        while chunk != NO_CHUNK {
+            let ChunkLink { len, next } = self.links[chunk as usize];
+            let start = chunk as usize * CHUNK_TICKETS;
+            for i in start..start + usize::from(len) {
+                let ticket = self.tickets[i];
+                if let Some(next) = settle(ticket.key, ticket.seq) {
+                    self.file(ticket, next);
+                }
             }
+            self.links[chunk as usize] = ChunkLink {
+                len: 0,
+                next: NO_CHUNK,
+            };
+            self.free.push(chunk);
+            chunk = next;
         }
-        self.scratch = due;
     }
 
-    /// Drop every outstanding ticket, keeping bucket capacity, for an owner that
+    /// Drop every outstanding ticket, keeping every chunk in the pool, for an owner that
     /// cleared its whole map.
     pub(crate) fn clear(&mut self) {
-        for bucket in &mut self.buckets {
-            bucket.clear();
-        }
+        self.buckets.fill(Chain::EMPTY);
+        self.links.fill(ChunkLink {
+            len: 0,
+            next: NO_CHUNK,
+        });
+        self.free.clear();
+        self.free.extend(0..self.links.len() as u32);
     }
 }
 
@@ -211,7 +299,13 @@ pub(crate) mod internals {
         /// `EncodedCache`'s and `CosmicMeasure`'s tests assert against it.
         #[cfg(test)]
         pub(crate) fn pending(&self) -> usize {
-            self.buckets.iter().map(Vec::len).sum()
+            self.links.iter().map(|link| usize::from(link.len)).sum()
+        }
+
+        /// Chunks the pool has made, held by a bucket or free.
+        #[cfg(test)]
+        pub(crate) const fn chunks(&self) -> usize {
+            self.links.len()
         }
     }
 }
