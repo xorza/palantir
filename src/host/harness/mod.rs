@@ -140,7 +140,7 @@ pub struct Harness {
     background_wait: Duration,
     /// The wakes the window's [`Waker`](crate::Waker) sends, which the next frame takes.
     wake: Arc<WakeSignal>,
-    /// Every window command the frames recorded, oldest first.
+    /// Every change the frames made to a window, oldest first ([`log_window_command`]).
     window_commands: Vec<WindowCommand>,
     /// One frame's commands, drained into `window_commands`.
     drained: WindowCommands,
@@ -630,7 +630,10 @@ impl Harness {
     }
 
     /// Every window the frames opened or closed, oldest first: a harness has one window, and
-    /// records the rest.
+    /// records the rest. An open of a window the log holds open is not recorded, as a host ignores
+    /// it: an app that opens a window each frame, as one does here, where only the harness's own
+    /// window is open, records one open. Every close is recorded: the harness's own window can
+    /// close and come back with no open, as an app launched again in it does, and close again.
     pub fn window_commands(&self) -> &[WindowCommand] {
         &self.window_commands
     }
@@ -729,7 +732,9 @@ impl Harness {
         let spec = self.spec();
         let CpuFrame { report, mode } = self.core.record(&mut self.driver, spec, app, self.depth);
         self.driver.drain_window_output(&mut self.drained);
-        self.window_commands.extend(self.drained.drain());
+        for command in self.drained.drain() {
+            log_window_command(&mut self.window_commands, command);
+        }
         if let Some(target) = &self.target
             && !self.core.gpu().is_lost()
         {
@@ -784,6 +789,20 @@ impl Harness {
             "a {dt:?} step is past the {MAX_ANIMATION_DT} s an animation integrates, and would end \
              it short; run more, shorter frames",
         );
+    }
+}
+
+/// Append `command` to `log` unless it opens a window the log holds open: the last command for
+/// it is an open already.
+fn log_window_command(log: &mut Vec<WindowCommand>, command: WindowCommand) {
+    let token = command.token();
+    let held_open = matches!(command, WindowCommand::Open { .. })
+        && matches!(
+            log.iter().rev().find(|logged| logged.token() == token),
+            Some(WindowCommand::Open { .. })
+        );
+    if !held_open {
+        log.push(command);
     }
 }
 

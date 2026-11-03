@@ -133,10 +133,12 @@ pub enum PlayError {
         /// The time waited.
         waited: Duration,
     },
-    /// A remote query panicked on the window's thread, which went on; `message` is the panic's.
-    Panicked {
-        /// The panic's message, or a note that it had none.
-        message: String,
+    /// The app stayed [busy](crate::App::is_busy) through `waited` of real time while it kept
+    /// waking the window, past twenty of the settle's waits for a wake, ten minutes at a remote's
+    /// default: its work runs on past one step, which an agent waits for itself.
+    StillBusy {
+        /// The time waited.
+        waited: Duration,
     },
 }
 
@@ -172,7 +174,12 @@ impl Display for PlayError {
                 "the app stayed busy {} s and sent no wake; its work hangs, or ends with no wake",
                 waited.as_secs_f32()
             ),
-            Self::Panicked { message } => write!(f, "the query panicked: {message}"),
+            Self::StillBusy { waited } => write!(
+                f,
+                "the app stayed busy {} s while it woke the window; its work runs past one step, \
+                 so wait for it and settle again",
+                waited.as_secs_f32()
+            ),
         }
     }
 }

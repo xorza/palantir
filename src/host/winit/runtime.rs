@@ -17,6 +17,7 @@ use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::recovery_backoff::RecoveryBackoff;
 use crate::host::winit::remote::QueryTask;
 use crate::host::winit::system_preferences::SystemPreferences;
+use crate::host::winit::wake_latch::WakeLatch;
 use crate::host::winit::window::{FramePresent, OpenedWindow, Window};
 use crate::host::winit::window_set::{WindowSet, WindowSlot};
 use crate::host::winit::{Bootstrap, native};
@@ -144,10 +145,11 @@ impl<T: App + 'static> WinitRuntime<T> {
         Ok(runtime)
     }
 
-    /// The waker of the window `token`: a frame of it, through `handle`.
+    /// The waker of the window `token`: a frame of it, through `handle`, one event in flight.
     fn waker(handle: &HostHandle<T>, token: WindowToken) -> Waker {
         let handle = handle.clone();
-        Waker::new(move || handle.request_repaint(token))
+        let latch = WakeLatch::default();
+        Waker::new(move || handle.request_repaint(token, &latch))
     }
 
     /// Adopt the system's settings as `mundy` reports a change; [`Self::repaint_on_shared_change`]
@@ -170,11 +172,12 @@ impl<T: App + 'static> WinitRuntime<T> {
     }
 
     /// Run `task` with `&mut` the app and the `Ui` of `token`'s window, between two of its frames,
-    /// and ask that window for a frame; a window that is gone drops the task unrun.
+    /// and ask that window for a frame that records, as `task` may have changed the app; the
+    /// frame counts the query as a sent event, so a settle after it waits for it. A window that is
+    /// gone drops the task unrun.
     pub(super) fn query(&mut self, token: WindowToken, task: QueryTask<T>) {
         if let Some(win) = self.windows.by_token(token) {
-            task(&mut self.app, &mut win.driver.ui);
-            win.next = FramePresent::Immediate;
+            win.on_query(&mut self.app, task);
         }
     }
 
@@ -198,12 +201,12 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
         let single_window = self.windows.len() == 1;
         let win = self.windows.at(slot);
-        let leads = win.next.leads(Instant::now());
+        let due = win.next;
+        let now = Instant::now();
         // A hidden window skips its frame and runs nothing of the app, so none follows it.
-        if let Some(summary) = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)
-        {
-            self.frames.record(win.driver.token, summary);
-            if leads {
+        if let Some(ran) = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands) {
+            self.frames.record(win.driver.token, ran.summary);
+            if due.leads(now, ran.ran_app) {
                 self.windows.follow(slot, Instant::now());
             }
         }

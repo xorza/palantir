@@ -4,7 +4,7 @@
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, PlayError};
 use crate::driver::locator::{Locate, Locator, Reach};
-use crate::driver::play::{self, Stage};
+use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::host::harness::Harness;
 use crate::host::window_driver::FrameDepth;
@@ -149,6 +149,8 @@ impl Harness {
     /// is its progress, and the wait for the next wake starts again after each.
     fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
         let start = self.frames;
+        let began = Instant::now();
+        let busy_limit = self.background_wait * BUSY_SETTLE_WAITS;
         let mut asking = 0;
         loop {
             let report = self.next_frame(app);
@@ -171,6 +173,12 @@ impl Harness {
                     return Err(PlayError::DeviceLost);
                 }
                 continue;
+            }
+            if busy {
+                let waited = began.elapsed();
+                if waited > busy_limit {
+                    return Err(PlayError::StillBusy { waited });
+                }
             }
             if self.wake.is_pending() {
                 continue;

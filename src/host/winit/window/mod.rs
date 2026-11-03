@@ -22,8 +22,8 @@ use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentPath, W
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::input::translator::{PointerTrace, Translator};
 use crate::host::winit::native;
-use crate::host::winit::remote::ShotAsk;
 use crate::host::winit::remote::remote_end::RemoteEnd;
+use crate::host::winit::remote::{QueryTask, ShotAsk};
 use crate::host::winit::window::applied_levels::{AppliedLevels, ImeChange};
 use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedule, Wake};
 use crate::host::winit::window::visibility::Visibility;
@@ -203,7 +203,14 @@ impl Window {
         let now = self.input_epoch.elapsed();
         self.driver.ui.on_input(event, now);
         self.note_pointer(PointerTrace::of_input(event, scale), scale);
-        self.remote.note_input();
+        self.remote.note_sent();
+        self.next = FramePresent::Immediate;
+    }
+
+    /// Run `task` with `&mut` `app` and this window's `Ui`, then ask for a frame that records, as
+    /// [`Self::on_sent_input`] does for an input.
+    pub(super) fn on_query<T>(&mut self, app: &mut T, task: QueryTask<T>) {
+        self.remote.run_query(app, &mut self.driver.ui, task);
         self.next = FramePresent::Immediate;
     }
 
@@ -316,7 +323,7 @@ impl Window {
         core: &mut HostCore,
         app: &mut T,
         commands: &mut WindowCommands,
-    ) -> Option<FrameSummary> {
+    ) -> Option<RanFrame> {
         tracy::zone!("Window::frame");
 
         let facts = self.system_facts();
@@ -335,7 +342,7 @@ impl Window {
         // A hidden window skips its frame except the one carrying a close request:
         // only `App::update` / `App::record` can veto, and skipping would close a
         // minimized document past its "save changes?" prompt. One-shot.
-        let summary = if self.visibility.is_hidden() && !self.close_requested {
+        let ran = if self.visibility.is_hidden() && !self.close_requested {
             self.next = FramePresent::Idle;
             None
         } else {
@@ -363,8 +370,9 @@ impl Window {
             let summary = self
                 .remote
                 .after_frame(&self.driver.ui, &cpu.report, app.is_busy());
+            let ran_app = cpu.report.processing.ran_app();
             self.next = self.present(core, cpu);
-            Some(summary)
+            Some(RanFrame { summary, ran_app })
         };
 
         self.finish(commands);
@@ -372,7 +380,7 @@ impl Window {
         // made Tracy report slices as whole frames. Marked past every exit so an occluded
         // frame closes its own frame.
         self.frame_set.mark();
-        summary
+        ran
     }
 
     fn present(&mut self, core: &mut HostCore, cpu: CpuFrame) -> FramePresent {
@@ -488,6 +496,14 @@ impl Window {
     }
 }
 
+/// A frame a window ran: its summary, and whether it ran the app, which the other windows follow.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct RanFrame {
+    pub(super) summary: FrameSummary,
+    /// [`FrameProcessing::ran_app`](crate::ui::frame_report::FrameProcessing::ran_app).
+    pub(super) ran_app: bool,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum FramePresent {
     Immediate,
@@ -524,9 +540,11 @@ impl FramePresent {
         }
     }
 
-    /// Whether a frame due as this is the window's own, which the other windows follow.
-    pub(super) fn leads(self, now: Instant) -> bool {
-        self.resolve(now) != Self::Follow
+    /// Whether a frame due as this is the window's own, which the other windows follow when it
+    /// ran the app (`ran_app`): a paint-only frame, a caret's blink or a spinner's turn, ran none
+    /// of it, so it changed nothing another window shows.
+    pub(super) fn leads(self, now: Instant, ran_app: bool) -> bool {
+        ran_app && self.resolve(now) != Self::Follow
     }
 }
 

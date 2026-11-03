@@ -99,7 +99,7 @@ mod tests {
     const fn summary(record_frame_id: u64, repaint_requested: bool) -> FrameSummary {
         FrameSummary {
             record_frame_id,
-            sent_inputs: 0,
+            sent_events: 0,
             repaint_requested,
             repaint_at: None,
             busy: false,

@@ -862,7 +862,7 @@ FrameReport
 FrameSummary  [features: winit]
     struct FrameSummary: Clone, Copy, Debug, Eq, PartialEq
         pub record_frame_id: u64
-        pub sent_inputs: u64
+        pub sent_events: u64
         pub repaint_requested: bool
         pub repaint_at: Option<Duration>
         pub busy: bool
@@ -1697,7 +1697,7 @@ PlayError
         Disconnected
         NoFrame { waited: Duration }
         Busy { waited: Duration }
-        Panicked { message: String }
+        StillBusy { waited: Duration }
 
 PointerAction
     struct PointerAction: Clone, Copy, Debug, Eq, PartialEq

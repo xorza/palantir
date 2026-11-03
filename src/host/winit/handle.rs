@@ -13,6 +13,7 @@ use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::owned_input_event::OwnedInputEvent;
 use crate::host::winit::remote::{QueryTask, Remote, ShotAsk};
 use crate::host::winit::system_preferences::SystemPreferences;
+use crate::host::winit::wake_latch::WakeLatch;
 use crate::window::window_token::WindowToken;
 
 /// A main-thread closure scheduled via [`HostHandle::run_on_main`].
@@ -23,11 +24,13 @@ pub(super) type MainTask<T> = Box<dyn FnOnce(&mut T) + Send>;
 /// in-frame action ([`Ui::open_window`](crate::Ui::open_window)), so a
 /// background thread wanting a window pokes a `Repaint`.
 pub(crate) enum UserEvent<T> {
-    /// Wakes the loop for one redraw of the named window; coalesced.
-    Repaint(WindowToken),
+    /// Wakes the loop for one redraw of the named window; one in flight a window, which the
+    /// latch holds.
+    Repaint(WindowToken, WakeLatch),
     /// Input for the named window, delivered as its OS input is.
     Input(WindowToken, OwnedInputEvent),
-    /// Runs a closure on the main thread with `&mut` the app, then repaints every window if it returns `true`.
+    /// Runs a closure on the main thread with `&mut` the app, then every window follows what it
+    /// changed.
     RunOnMain(MainTask<T>),
     /// Runs a closure with `&mut` the app and the named window's `Ui` between two of its frames,
     /// then runs a frame; dropped unrun when the window is gone.
@@ -43,7 +46,10 @@ pub(crate) enum UserEvent<T> {
 impl<T> fmt::Debug for UserEvent<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Repaint(token) => f.debug_tuple("Repaint").field(token).finish(),
+            Self::Repaint(token, _) => f
+                .debug_tuple("Repaint")
+                .field(token)
+                .finish_non_exhaustive(),
             Self::Input(token, event) => f.debug_tuple("Input").field(token).field(event).finish(),
             Self::RunOnMain(_) => f.write_str("RunOnMain(..)"),
             Self::Query(token, _) => f.debug_tuple("Query").field(token).finish_non_exhaustive(),
@@ -106,13 +112,16 @@ impl<T: 'static> fmt::Debug for HostHandle<T> {
 
 impl<T: 'static> HostHandle<T> {
     /// Requests one frame of `window`, behind the window's [`Waker`](crate::Waker), the one
-    /// cross-thread wake an app holds. Lock-free; dropped silently if the loop or window is gone.
-    pub(crate) fn request_repaint(&self, window: WindowToken) {
-        self.send(UserEvent::Repaint(window)).ok();
+    /// cross-thread wake an app holds, unless `latch` holds one in flight. Lock-free; dropped
+    /// silently if the loop or window is gone.
+    pub(crate) fn request_repaint(&self, window: WindowToken, latch: &WakeLatch) {
+        if latch.raise() {
+            self.send(UserEvent::Repaint(window, latch.clone())).ok();
+        }
     }
 
     /// Delivers `event` to `window` before its next frame, as the window's OS input is, stamped
-    /// with the window's input clock, then runs a frame; [`FrameSummary::sent_inputs`] counts the
+    /// with the window's input clock, then runs a frame; [`FrameSummary::sent_events`] counts the
     /// event. Events reach the window in the order they are sent. Dropped silently unless the
     /// window is open. Crate-private, so a [`Remote`], which counts what it sends,
     /// is the one sender: input from another made its settle end early.
@@ -166,18 +175,19 @@ impl<T: 'static> HostHandle<T> {
 #[cfg(test)]
 mod tests {
     use crate::host::winit::handle::UserEvent;
+    use crate::host::winit::wake_latch::WakeLatch;
     use crate::input::input_event::InputEvent;
     use crate::window::window_token::WindowToken;
 
     #[test]
     fn user_event_debug_formats_every_variant_without_an_app_bound() {
-        let repaint: UserEvent<()> = UserEvent::Repaint(WindowToken(7));
+        let repaint: UserEvent<()> = UserEvent::Repaint(WindowToken(7), WakeLatch::default());
         let task = UserEvent::RunOnMain(Box::new(|(): &mut ()| {}));
         let quit: UserEvent<()> = UserEvent::Quit;
         let input: UserEvent<()> =
             UserEvent::Input(WindowToken(2), InputEvent::ImeCommit("ok").into());
 
-        assert_eq!(format!("{repaint:?}"), "Repaint(WindowToken(7))");
+        assert_eq!(format!("{repaint:?}"), "Repaint(WindowToken(7), ..)");
         assert_eq!(format!("{task:?}"), "RunOnMain(..)");
         assert_eq!(format!("{quit:?}"), "Quit");
         assert_eq!(

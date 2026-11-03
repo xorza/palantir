@@ -40,12 +40,13 @@ const SIZE: UVec2 = UVec2::new(320, 200);
 const TICK: Duration = Duration::from_millis(5);
 
 /// One button that counts its clicks, a pad that sums the gestures it takes, a chord it
-/// counts, and a flag a test sets for the work it reports busy.
+/// counts, a flag a test sets for the work it reports busy, and one for a second button.
 #[derive(Debug, Default)]
 struct Counter {
     clicks: u32,
     busy: bool,
     gestures: Gestures,
+    extra: bool,
 }
 
 /// What the pad took: drags ended and the travel of the last, the scroll, each pinch, and the
@@ -75,6 +76,12 @@ impl App for Counter {
                 .clicked()
             {
                 self.clicks += 1;
+            }
+            if self.extra {
+                Button::new()
+                    .id(WidgetId::from_hash("extra"))
+                    .label("Extra")
+                    .show(ui);
             }
             let pad = Panel::hstack()
                 .id(pad_id())
@@ -147,11 +154,13 @@ impl Loop {
                 }
             };
             match event {
-                UserEvent::Query(WINDOW, task) => task(&mut self.app, self.h.ui_mut()),
+                UserEvent::Query(WINDOW, task) => {
+                    self.remote.run_query(&mut self.app, self.h.ui_mut(), task);
+                }
                 UserEvent::Input(WINDOW, event) => {
                     self.h.at(self.start.elapsed());
                     self.h.on_input(event.as_event());
-                    self.remote.note_input();
+                    self.remote.note_sent();
                 }
                 UserEvent::Shot(WINDOW, ask) => self.remote.ask_shot(self.h.ui_mut(), ask),
                 UserEvent::RunOnMain(task) => {
@@ -277,19 +286,27 @@ fn a_remote_plays_and_reads_a_live_window() {
     assert_eq!(remote.query(|_, _| ()), Err(PlayError::Disconnected));
 }
 
-/// A query that panics answers with the panic's message, and the window goes on to answer the
-/// next; a slow query to a hidden window answers. A settle waits out a busy app until a frame
-/// finds it idle: work another thread ends after the settle began.
+/// A query that changes the app shows to the next settle: the frame after it records, and counts
+/// the query as a sent event, so the settle waits for that frame and a read finds what the query
+/// added.
 #[test]
-fn a_remote_survives_a_panicking_query_and_settles_a_busy_app() {
+fn a_settle_after_a_query_sees_what_it_changed() {
     let (handle, thread) = serve();
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
-    assert_eq!(
-        remote.query(|_, _| -> u32 { panic!("boom") }),
-        Err(PlayError::Panicked {
-            message: "boom".to_owned()
-        })
-    );
+    remote.settle().unwrap();
+    remote.query(|app, _| app.extra = true).unwrap();
+    remote.settle().unwrap();
+    assert_eq!(remote.widgets(Some("Extra")).unwrap().len(), 1);
+    handle.quit();
+    thread.join().unwrap();
+}
+
+/// A slow query to a hidden window answers. A settle waits out a busy app until a frame finds it
+/// idle: work another thread ends after the settle began.
+#[test]
+fn a_remote_answers_a_hidden_window_and_settles_a_busy_app() {
+    let (handle, thread) = serve();
+    let mut remote = handle.remote(WINDOW).with_tick(TICK);
     assert_eq!(remote.query(|app, _| app.clicks).unwrap(), 0);
     // A query runs between frames, a hidden window's too, so its answer outlasts the ticks that
     // give up a wait for a hidden window's frame.

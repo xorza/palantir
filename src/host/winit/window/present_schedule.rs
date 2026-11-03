@@ -57,7 +57,9 @@ pub(super) struct PresentSchedule {
     /// per loop iteration for nothing. Doubles to [`ACQUIRE_RETRY_MAX`].
     acquire_retry: Option<Duration>,
     /// The surface size a suboptimal acquire last rebuilt for: the swapchain rebuilds once per
-    /// size, not every frame while a resize is pending.
+    /// size, not every frame while a resize is pending. Cleared by an optimal present and by any
+    /// other rebuild, so a later suboptimal acquire at a size seen before, after an output or
+    /// transform change, rebuilds again.
     suboptimal_handled: Option<UVec2>,
 }
 
@@ -71,7 +73,11 @@ impl PresentSchedule {
         let retry = self.acquire_retry.take();
         let mut rebuild = false;
         let repaint = match outcome {
-            AcquireOutcome::Skipped | AcquireOutcome::Presented => report.repaint_requested,
+            AcquireOutcome::Skipped => report.repaint_requested,
+            AcquireOutcome::Presented => {
+                self.suboptimal_handled = None;
+                report.repaint_requested
+            }
             AcquireOutcome::Suboptimal(size) => {
                 if self.suboptimal_handled != Some(size) {
                     self.suboptimal_handled = Some(size);
@@ -80,12 +86,14 @@ impl PresentSchedule {
                 report.repaint_requested
             }
             AcquireOutcome::Outdated => {
+                self.suboptimal_handled = None;
                 rebuild = true;
                 true
             }
             AcquireOutcome::Timeout => true,
             // A surface made again can fail again, so a loss backs off as a rejection does.
             AcquireOutcome::Validation | AcquireOutcome::Lost => {
+                self.suboptimal_handled = None;
                 self.acquire_retry = Some(retry.map_or(ACQUIRE_RETRY_MIN, |delay| {
                     (delay * 2).min(ACQUIRE_RETRY_MAX)
                 }));

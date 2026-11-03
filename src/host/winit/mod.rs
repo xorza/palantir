@@ -65,6 +65,7 @@ mod recovery_backoff;
 pub(crate) mod remote;
 mod runtime;
 mod system_preferences;
+mod wake_latch;
 mod window;
 mod window_set;
 
@@ -352,7 +353,8 @@ where
                 Some(runtime) => runtime.close_all_windows(),
                 None => event_loop.exit(),
             },
-            UserEvent::Repaint(token) => {
+            UserEvent::Repaint(token, latch) => {
+                latch.lower();
                 if let Some(runtime) = self.running()
                     && let Some(win) = runtime.by_token(token)
                 {

@@ -21,6 +21,15 @@ pub enum WindowCommand {
     Close(WindowToken),
 }
 
+impl WindowCommand {
+    /// The window the command is for.
+    pub(crate) const fn token(&self) -> WindowToken {
+        match self {
+            Self::Open { token, .. } | Self::Close(token) => *token,
+        }
+    }
+}
+
 /// Deferred window lifecycle commands transferred from recorders to the host, in the order the
 /// host applies them against its live windows.
 ///

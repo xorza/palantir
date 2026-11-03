@@ -17,6 +17,15 @@ pub(crate) enum FrameProcessing {
     DoubleLayout,
 }
 
+impl FrameProcessing {
+    /// Whether the frame ran the app, `App::update` and its record: what may have changed the app
+    /// every window records from. A paint-only frame ran none of it.
+    #[cfg(feature = "winit")]
+    pub(crate) const fn ran_app(self) -> bool {
+        !matches!(self, Self::PaintOnly)
+    }
+}
+
 /// How much of the output this frame repaints.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FramePaint {

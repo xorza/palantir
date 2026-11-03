@@ -182,21 +182,6 @@ the reduction of complexity. Each batch stays inside one system, so one review c
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
 
-### Batch 4. Host scheduling and the agent protocol (`host/winit`, `host/harness`, `remote`, `window`)
-
-Root cause R5. CPU burn with several windows, and flaky agent steps.
-
-- A frame leads only when it recorded, from `FrameReport::processing` (HS-01). Add a runtime
-  scheduling test with a fake event loop and clock (HS-23).
-- Settle waits for a `record_frame_id` after the last query (HS-02). It waits out timed wakes
-  that are not animation, within a bound (HS-22). It has an overall cap (HS-21).
-- Remove `catch_unwind` and `PlayError::Panicked` from `Remote::query`, because the release
-  profile aborts (HS-03, **API**).
-- `Waker` sets a per-window "wake pending" flag, so at most one event is in flight (HS-04).
-- Clear `suboptimal_handled` on a present (HS-16). Fix the `RunOnMain` doc (HS-14).
-- Make `Harness::window_commands` bounded, with the same meaning as on the offscreen host
-  (HS-10).
-
 ### Batch 5. GPU memory and construction policy (`gpu/resource`, `gpu/pipeline`, `gpu/backdrop`, `wgpu_backend`)
 
 Root causes R3 and R8. Memory kept for the life of the window, slow startup and recovery,
@@ -337,7 +322,9 @@ Root cause R1. Settle decision 1 first.
 
 - A private `HeadlessWindow { core, driver, wake, display facts, clock }` and one settings
   struct, used by `OffscreenHost` and `Harness`. Their builders share it (HS-05).
-- Add `HostCore::frame(…)`, so each host keeps only its target and its present (HS-06).
+- Add `HostCore::frame(…)`, so each host keeps only its target and its present (HS-06). With
+  it, a test of `WinitRuntime`'s scheduling (draw, follow, recover) on a fake loop and clock,
+  and `Remote` on a clock it is handed in place of real sleeps (HS-23).
   `assert_runs_palantir` moves into `HostCore` (HS-09).
 - `FrameSpec { target: TargetKey, … }`. Delete `HostDisplay`, `HostCore.pixel_snap` and
   `DriverConfig` (HS-07).
@@ -428,14 +415,13 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 4 | HS-01, HS-02, HS-03 ✔, HS-04, HS-10, HS-14, HS-16, HS-21, HS-22, HS-23 |
 | 5 | GA-03, GA-04, GB-01, GB-02, GB-03, GB-05, GB-10, GB-11, GB-12, GB-16, GB-21, GB-22, GB-23 |
 | 6 | WG-01 ✔, WG-02, WG-03 ✔, WG-04, WG-05, WG-06, WG-07, WG-08, WG-19, WG-20, WG-21, WG-26 |
 | 7 | GB-15, LT-14 |
 | 8 | SC-04, SC-05, SC-11, LT-04, RD-03, RD-04, RD-06, RD-08, RD-09, RD-19, RD-20 |
 | 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
-| 11 | HS-05 to HS-09, HS-11 to HS-13, HS-15, HS-17 to HS-20, HS-24 to HS-26 |
+| 11 | HS-05 to HS-09, HS-23, HS-11 to HS-13, HS-15, HS-17 to HS-20, HS-24 to HS-26 |
 | 12 | LT-02, LT-03, LT-06, LT-07, LT-08, LT-11 to LT-13, LT-15 to LT-20 |
 | 13 | RD-01, RD-02, RD-05, RD-07, RD-10 to RD-18, RD-21, SC-06 to SC-10, SC-12 to SC-17 |
 | 14 | PR-05 to PR-07, PR-09 to PR-23, GA-14, UI-25 |

@@ -24,7 +24,8 @@ impl Waker {
         }
     }
 
-    /// Ask the window for a frame. Many wakes before that frame run it once.
+    /// Ask the window for a frame. Many wakes before that frame run it once, and the winit host
+    /// sends one event to its loop for them.
     pub fn wake(&self) {
         (self.wake)();
     }

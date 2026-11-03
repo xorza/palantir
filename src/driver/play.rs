@@ -14,6 +14,13 @@ use glam::Vec2;
 use std::fmt::Debug;
 use std::time::Duration;
 
+/// How many of its waits for a wake a settle gives a busy app that keeps waking the window, past
+/// which it ends with [`PlayError::StillBusy`]: ten minutes at a remote's default 30 s wait, as
+/// long as one agent step should hold. Work longer than that is the agent's to wait for with
+/// [`Action::Wait`] and settle again. Refused: no bound, a step that hangs while the app reports
+/// progress forever.
+pub(crate) const BUSY_SETTLE_WAITS: u32 = 20;
+
 /// A window a player acts on: where its locators land, its input door, and its frames.
 pub(crate) trait Stage<X> {
     /// The one point `at` names in the last frame, for `reach` ([`Locator::point_for`]).

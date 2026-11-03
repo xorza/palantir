@@ -91,6 +91,25 @@ fn a_frame_that_opens_a_window_records_the_command() {
         matches!(&commands[0], WindowCommand::Open { token: WindowToken(3), config } if config.title == "Inspector")
     );
     assert!(matches!(commands[1], WindowCommand::Close(WindowToken(3))));
+    // An app that opens the window each frame, as no window but the harness's opens here, records
+    // one open. Each close records, as the harness's own window closes, and closes again once an
+    // app launched again in it quits, with no open between.
+    for _ in 0..3 {
+        h.frame(|ui: &mut Ui| ui.open_window(WindowToken(3), WindowConfig::new("Inspector")));
+    }
+    h.frame(|ui: &mut Ui| ui.close_window(WindowToken(0)));
+    h.frame(|ui: &mut Ui| ui.close_window(WindowToken(0)));
+    let commands = h.window_commands();
+    assert_eq!(commands.len(), 5, "{commands:?}");
+    assert!(matches!(
+        commands[2],
+        WindowCommand::Open {
+            token: WindowToken(3),
+            ..
+        }
+    ));
+    assert!(matches!(commands[3], WindowCommand::Close(WindowToken(0))));
+    assert!(matches!(commands[4], WindowCommand::Close(WindowToken(0))));
 }
 
 /// The app a person plays: buttons 80 × 24 on a canvas, "One" at (10, 10) and two "Twin" at
@@ -354,7 +373,7 @@ impl App for Stepping {
 /// began, and the settle runs the woken frame and returns. A wake waits until a frame takes it.
 /// A busy app that never wakes the window fails the settle once the builder's background wait
 /// passes. Work that wakes the window as it goes holds the settle, and its woken frames count
-/// against no frame bound.
+/// against no frame bound, but the settle holds for twenty background waits at most.
 #[test]
 fn a_settle_waits_for_a_busy_apps_wake() {
     let mut h = Harness::builder(UVec2::new(64, 32))
@@ -411,6 +430,23 @@ fn a_settle_waits_for_a_busy_apps_wake() {
     };
     assert_eq!(progressing.settle(&mut app), Ok(11));
     assert_eq!((app.steps_left, app.frames), (0, 11));
+
+    // Work that never ends but wakes the window each frame holds a settle for twenty background
+    // waits, 20 ms at 1 ms, then fails it.
+    let mut endless = Harness::builder(UVec2::new(64, 32))
+        .mono()
+        .background_wait(Duration::from_millis(1))
+        .build();
+    let mut app = Stepping {
+        steps_left: u32::MAX,
+        frames: 0,
+    };
+    match endless.settle(&mut app) {
+        Err(PlayError::StillBusy { waited }) => {
+            assert!(waited > Duration::from_millis(20), "{waited:?}");
+        }
+        other => panic!("an endless busy app holds the settle to its bound: {other:?}"),
+    }
 }
 
 /// On a lost device a shot, and a settle that waits on a screenshot, report the loss: no copy

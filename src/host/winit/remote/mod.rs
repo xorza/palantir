@@ -4,9 +4,8 @@
 
 pub(crate) mod remote_end;
 
-use std::any::Any;
+use std::cell::Cell;
 use std::fmt::{self, Debug};
-use std::panic::{self, AssertUnwindSafe};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
@@ -18,7 +17,7 @@ use glam::Vec2;
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, PlayError};
 use crate::driver::locator::{Found, Locate, Locator, Reach};
-use crate::driver::play::{self, Stage};
+use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
 use crate::host::winit::frame_summary::FrameSummary;
 use crate::host::winit::handle::{HostHandle, UserEvent};
 use crate::host::winit::owned_input_event::OwnedInputEvent;
@@ -52,15 +51,16 @@ pub(crate) struct ShotAsk {
 /// run between two of its frames with `&mut` the app and its `Ui`, input goes in as the window's
 /// OS input does, and every wait is bounded in real time. Made by [`HostHandle::remote`].
 ///
-/// Its waits read the window's frame summaries, counting the input this remote sent: input other
-/// senders send meanwhile can make a step settle early.
+/// Its waits read the window's frame summaries, counting the inputs and queries this remote sent:
+/// input other senders send meanwhile can make a step settle early.
 pub struct Remote<T: 'static> {
     handle: HostHandle<T>,
     window: WindowToken,
     /// Whether something outside the host holds the window's thread, as a native dialog does.
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
-    /// The events sent, which a frame that saw them all counts.
-    sent: u64,
+    /// The events sent, inputs and queries, which a frame that saw them all counts; a cell, as a
+    /// query reads through `&self`.
+    sent: Cell<u64>,
     /// The last press's real time, which the next press waits out the double-click interval from.
     last_press: Option<Instant>,
     /// The longest real time a wait for the window lasts: [`WAIT`] unless [`Self::with_wait`]
@@ -74,7 +74,7 @@ impl<T: 'static> Debug for Remote<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Remote")
             .field("window", &self.window)
-            .field("sent", &self.sent)
+            .field("sent", &self.sent.get())
             .finish_non_exhaustive()
     }
 }
@@ -83,12 +83,12 @@ impl<T: 'static> Remote<T> {
     pub(crate) fn new(handle: HostHandle<T>, window: WindowToken) -> Self {
         let sent = handle
             .last_frame(window)
-            .map_or(0, |summary| summary.sent_inputs);
+            .map_or(0, |summary| summary.sent_events);
         Self {
             handle,
             window,
             blocked: None,
-            sent,
+            sent: Cell::new(sent),
             last_press: None,
             wait: WAIT,
             tick: TICK,
@@ -113,14 +113,17 @@ impl<T: 'static> Remote<T> {
     }
 
     /// Run `f` between two frames of the window with `&mut` the app and the window's `Ui`, which
-    /// holds the last frame; a frame follows. Returns what `f` returns. A query given up on never
-    /// runs later, unless it had begun.
+    /// holds the last frame; a frame that records follows, which the next [settle](Self::settle)
+    /// waits for, so a read after it sees what `f` changed; a hidden window runs that frame when
+    /// it shows, so a settle meanwhile ends with [`PlayError::NoFrame`]. Returns what `f`
+    /// returns. A query given up on never runs later, unless it had begun. A panic in `f` is the
+    /// window's: it ends the process under `panic = "abort"`, as any panic on the window's thread
+    /// does.
     ///
     /// # Errors
     ///
-    /// [`PlayError::Disconnected`] when the window closed or the loop ended,
-    /// [`PlayError::NoFrame`] when no answer came within the [wait](Self::with_wait), and [`PlayError::Panicked`] when `f`
-    /// panicked: the panic ends the query alone, and the window goes on.
+    /// [`PlayError::Disconnected`] when the window closed or the loop ended, and
+    /// [`PlayError::NoFrame`] when no answer came within the [wait](Self::with_wait).
     pub fn query<R: Send + 'static>(
         &self,
         f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static,
@@ -132,23 +135,18 @@ impl<T: 'static> Remote<T> {
         let skip = Arc::clone(&given_up);
         let task: QueryTask<T> = Box::new(move |app, ui| {
             if !skip.load(Ordering::Acquire) {
-                let answer =
-                    panic::catch_unwind(AssertUnwindSafe(|| f(app, ui))).map_err(|payload| {
-                        PlayError::Panicked {
-                            message: panic_message(&*payload).to_owned(),
-                        }
-                    });
-                reply.send(answer).ok();
+                reply.send(f(app, ui)).ok();
             }
         });
         self.handle
             .send(UserEvent::Query(self.window, task))
             .map_err(|_| PlayError::Disconnected)?;
+        self.sent.set(self.sent.get() + 1);
         let answered = self.receive(&answer, Answer::BetweenFrames);
         if answered.is_err() {
             given_up.store(true, Ordering::Release);
         }
-        answered?
+        answered
     }
 
     /// Wait for a frame that saw every event this remote sent, asks no repaint and finds the app
@@ -277,7 +275,7 @@ impl<T: 'static> Remote<T> {
         loop {
             let last = self.last_frame()?;
             let unsettled = settled && (last.repaint_requested || last.busy);
-            if last.sent_inputs >= self.sent && !unsettled {
+            if last.sent_events >= self.sent.get() && !unsettled {
                 return Ok(());
             }
             let working = settled && last.busy && !last.repaint_requested;
@@ -286,6 +284,11 @@ impl<T: 'static> Remote<T> {
                 progressed = Instant::now();
             }
             let since = if working { progressed } else { start };
+            if working && start.elapsed() > self.wait * BUSY_SETTLE_WAITS {
+                return Err(PlayError::StillBusy {
+                    waited: start.elapsed(),
+                });
+            }
             if let Err(error) = self.check_waiting(since, Answer::InFrame) {
                 let frames = last.record_frame_id.saturating_sub(first);
                 let waited = since.elapsed();
@@ -330,7 +333,7 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
         self.remote
             .handle
             .send_input(self.remote.window, OwnedInputEvent::from(event));
-        self.remote.sent += 1;
+        self.remote.sent.set(self.remote.sent.get() + 1);
     }
 
     fn frame(&mut self) -> Result<(), PlayError> {
@@ -362,15 +365,6 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
         self.remote.last_press = Some(Instant::now());
         Ok(())
     }
-}
-
-/// A panic payload's message: the `String` or `&str` a `panic!` carries.
-fn panic_message(payload: &(dyn Any + Send)) -> &str {
-    payload
-        .downcast_ref::<String>()
-        .map(String::as_str)
-        .or_else(|| payload.downcast_ref::<&str>().copied())
-        .unwrap_or("a panic with no message")
 }
 
 #[cfg(test)]

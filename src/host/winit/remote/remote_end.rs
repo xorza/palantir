@@ -3,7 +3,7 @@
 
 use crate::driver::error::PlayError;
 use crate::host::winit::frame_summary::FrameSummary;
-use crate::host::winit::remote::ShotAsk;
+use crate::host::winit::remote::{QueryTask, ShotAsk};
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameReport;
 use crate::window::screenshot::{Screenshot, ScreenshotId};
@@ -18,8 +18,8 @@ use std::sync::mpsc::SyncSender;
 #[derive(Debug, Default)]
 pub(crate) struct RemoteEnd {
     pending: Vec<PendingShot>,
-    /// How many events a remote sent through the handle delivered.
-    sent_inputs: u64,
+    /// How many events a remote sent through the handle delivered, inputs and queries.
+    sent_events: u64,
 }
 
 #[derive(Debug)]
@@ -43,9 +43,18 @@ impl RemoteEnd {
         }
     }
 
-    /// Note that a sent event reached the window's `Ui`.
-    pub(crate) const fn note_input(&mut self) {
-        self.sent_inputs += 1;
+    /// Run a query's `task` with `&mut` `app` and `ui`, between two frames, and ask for a frame
+    /// that records, as the task may have changed the app; the query counts as a sent event, so a
+    /// remote's settle after it waits for that frame.
+    pub(crate) fn run_query<T>(&mut self, app: &mut T, ui: &mut Ui, task: QueryTask<T>) {
+        task(app, ui);
+        ui.request_repaint();
+        self.note_sent();
+    }
+
+    /// Note that a sent event, an input or a query, reached the window's `Ui`.
+    pub(crate) const fn note_sent(&mut self) {
+        self.sent_events += 1;
     }
 
     /// Close the frame `ui` just ran, which reported `report`, the app `busy` or not: hand each
@@ -66,7 +75,7 @@ impl RemoteEnd {
             });
         FrameSummary {
             record_frame_id: ui.record_frame_id(),
-            sent_inputs: self.sent_inputs,
+            sent_events: self.sent_events,
             repaint_requested: report.repaint_requested,
             repaint_at: report.repaint_at,
             busy,

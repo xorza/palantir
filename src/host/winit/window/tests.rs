@@ -95,21 +95,26 @@ fn a_frame_of_another_window_is_followed_and_a_follow_leads_none() {
         (FramePresent::Idle, true),
         (FramePresent::Follow, false),
     ] {
-        assert_eq!(present.leads(now), leads, "{present:?}");
+        assert_eq!(present.leads(now, true), leads, "{present:?}");
+        assert!(
+            !present.leads(now, false),
+            "{present:?}: a paint-only frame leads none"
+        );
     }
 }
 
 /// How many frames each window runs from `nexts` until all are idle, as `WinitRuntime::draw`
 /// runs them: in order, each frame asking for none of its own, and one that leads making the
-/// others follow it. Bounded, so a policy that ping-pongs fails rather than hangs.
-fn frames_until_idle(mut nexts: Vec<FramePresent>, now: Instant) -> Vec<u32> {
+/// others follow it. A window `ran_app` says no for runs paint-only frames, a blinking caret's.
+/// Bounded, so a policy that ping-pongs fails rather than hangs.
+fn frames_until_idle(mut nexts: Vec<FramePresent>, ran_app: &[bool], now: Instant) -> Vec<u32> {
     let mut frames = vec![0; nexts.len()];
     for _ in 0..16 {
         let Some(ran) = nexts.iter().position(|next| *next != FramePresent::Idle) else {
             return frames;
         };
         frames[ran] += 1;
-        let leads = nexts[ran].leads(now);
+        let leads = nexts[ran].leads(now, ran_app[ran]);
         nexts[ran] = FramePresent::Idle;
         if leads {
             for (idx, next) in nexts.iter_mut().enumerate() {
@@ -124,7 +129,8 @@ fn frames_until_idle(mut nexts: Vec<FramePresent>, now: Instant) -> Vec<u32> {
 
 /// A frame of one window costs each other window one frame, and nothing more: input to one of
 /// two or three windows; input to both, where the first runs again for the second's frame; and a
-/// change every window follows, as `follow_all` sets, which leads none.
+/// change every window follows, as `follow_all` sets, which leads none. A paint-only frame, a
+/// caret's blink, costs the others none.
 #[test]
 fn windows_settle_after_one_follow_each() {
     let now = Instant::now();
@@ -133,17 +139,34 @@ fn windows_settle_after_one_follow_each() {
         FramePresent::Idle,
         FramePresent::Follow,
     );
-    for (label, nexts, frames) in [
-        ("input to one of two", vec![own, idle], vec![1, 1]),
+    for (label, nexts, ran_app, frames) in [
+        (
+            "input to one of two",
+            vec![own, idle],
+            vec![true; 2],
+            vec![1, 1],
+        ),
         (
             "input to one of three",
             vec![idle, own, idle],
+            vec![true; 3],
             vec![1, 1, 1],
         ),
-        ("input to both", vec![own, own], vec![2, 1]),
-        ("a change all follow", vec![follow, follow], vec![1, 1]),
+        ("input to both", vec![own, own], vec![true; 2], vec![2, 1]),
+        (
+            "a change all follow",
+            vec![follow, follow],
+            vec![true; 2],
+            vec![1, 1],
+        ),
+        (
+            "a caret blinks in one of two",
+            vec![own, idle],
+            vec![false, true],
+            vec![1, 0],
+        ),
     ] {
-        assert_eq!(frames_until_idle(nexts, now), frames, "{label}");
+        assert_eq!(frames_until_idle(nexts, &ran_app, now), frames, "{label}");
     }
 }
 
@@ -249,7 +272,8 @@ fn applied_levels_report_only_changes() {
 /// doubling to the 500 ms ceiling (16, 32, 64, 128, 256, 500, 500), ahead of any repaint the
 /// frame asked for; a lost surface backs off the same way and reconfigures nothing, as the host
 /// makes a new one; any other outcome clears the back-off. A suboptimal swapchain rebuilds once
-/// per size, an outdated one every time.
+/// per size, an outdated one every time; a present in between lets the size rebuild again, as an
+/// output or transform change makes a swapchain of a size seen before suboptimal.
 #[test]
 fn the_schedule_follows_each_acquire_outcome() {
     use crate::host::winit::window::present_schedule::{
@@ -334,6 +358,18 @@ fn the_schedule_follows_each_acquire_outcome() {
         ),
         (
             "stale at 80 × 48",
+            O::Suboptimal(UVec2::new(80, 48)),
+            report(false, None),
+            rebuild(Wake::Idle),
+        ),
+        (
+            "presented at last",
+            O::Presented,
+            report(false, None),
+            wake(Wake::Idle),
+        ),
+        (
+            "stale at 80 × 48 again",
             O::Suboptimal(UVec2::new(80, 48)),
             report(false, None),
             rebuild(Wake::Idle),
