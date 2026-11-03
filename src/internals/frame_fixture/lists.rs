@@ -21,6 +21,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
+use glam::Vec2;
 
 pub(super) fn filmstrip(ui: &mut Ui, cells: usize) {
     Card::new("recent", "RECENT CAPTURES").show(ui, |ui| {
@@ -82,6 +83,8 @@ pub(super) fn activity_card(ui: &mut Ui, messages: usize) {
                                     .size((Sizing::fixed(34.0), Sizing::fixed(34.0)))
                                     .chrome(Chrome {
                                         fill: Brush::Radial(RadialGradient::two_stop(
+                                            Vec2::splat(0.5),
+                                            Vec2::splat(0.5),
                                             RgbaF32::hex(0xfacc15),
                                             RgbaF32::hex(0x4c5cdb),
                                         )),

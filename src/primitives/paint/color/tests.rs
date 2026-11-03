@@ -38,9 +38,12 @@ struct RonRoundTrip {
     parsed: RgbaF32,
 }
 
+/// Through a file, and through `Display` and `FromStr`, which write and read the file's form.
 fn ron_roundtrip(c: RgbaF32) -> RonRoundTrip {
     let text = ser::to_string(&c).expect("serialize");
     let parsed = ron::from_str(&text).expect("parse");
+    assert_eq!(text, format!("\"{c}\""), "Display writes the file's form");
+    assert_eq!(c.to_string().parse::<RgbaF32>().expect("FromStr"), parsed);
     RonRoundTrip { text, parsed }
 }
 

@@ -24,8 +24,8 @@ fn switching_model_keeps_the_color() {
 /// Gray has no hue in either model, so a switch and back carries the retained hue through.
 #[test]
 fn switching_model_keeps_grays_hue() {
-    let mut coords = ColorCoords::from_color(RgbaF32::hex(0x808080), ColorModel::Okhsv, 0.0);
-    coords.set_hue(0.42);
+    let coords =
+        ColorCoords::from_color(RgbaF32::hex(0x808080), ColorModel::Okhsv, 0.0).with_hue(0.42);
     let round_trip = coords
         .with_model(ColorModel::Hsv)
         .with_model(ColorModel::Okhsv);
@@ -35,20 +35,18 @@ fn switching_model_keeps_grays_hue() {
 /// Switching to the model in use is the identity, axes included; re-deriving would move a gray's hue.
 #[test]
 fn switching_to_the_same_model_changes_nothing() {
-    let mut coords = ColorCoords::from_color(RgbaF32::BLACK, ColorModel::Okhsv, 0.0);
-    coords.set_hue(0.3);
+    let coords = ColorCoords::from_color(RgbaF32::BLACK, ColorModel::Okhsv, 0.0).with_hue(0.3);
     assert_eq!(coords.with_model(ColorModel::Okhsv), coords);
 }
 
-/// Every setter clamps, hue included: 1.0 stays 1.0 (red, as 0.0 is), 1.25 clamps to it.
+/// Every `with_*` clamps, hue included: 1.0 stays 1.0 (red, as 0.0 is), 1.25 clamps to it.
 #[test]
 fn setters_clamp() {
-    let mut coords = ColorCoords::default();
-    coords.set_hue(1.0);
-    assert_eq!(coords.hue(), 1.0);
-    coords.set_hue(1.25);
-    coords.set_saturation(2.0);
-    coords.set_value(-1.0);
+    assert_eq!(ColorCoords::default().with_hue(1.0).hue(), 1.0);
+    let coords = ColorCoords::default()
+        .with_hue(1.25)
+        .with_saturation(2.0)
+        .with_value(-1.0);
     assert_eq!(coords.hue(), 1.0);
     assert_eq!(coords.saturation(), 1.0);
     assert_eq!(coords.value(), 0.0);
@@ -58,10 +56,11 @@ fn setters_clamp() {
         "hue 1 is the color hue 0 is",
     );
 
-    // A non-finite axis is no value, so each setter reads it as 0.
-    coords.set_hue(f32::NAN);
-    coords.set_saturation(f32::INFINITY);
-    coords.set_value(f32::NAN);
+    // A non-finite axis is no value, so each `with_*` reads it as 0.
+    let coords = coords
+        .with_hue(f32::NAN)
+        .with_saturation(f32::INFINITY)
+        .with_value(f32::NAN);
     assert_eq!(
         (coords.hue(), coords.saturation(), coords.value()),
         (0.0, 0.0, 0.0)

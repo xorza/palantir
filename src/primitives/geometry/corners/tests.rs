@@ -110,7 +110,6 @@ fn a_radius_past_its_lane_is_refused_where_it_is_built() {
         for build in builds {
             panic_probe::assert_panics_with(rule, || build(bad));
         }
-        panic_probe::assert_panics_with(rule, || Corners::from((1.0, bad)));
     }
     assert_eq!(Corners::all(65519.0).to_array(), [65504.0; 4]);
     assert_eq!(
@@ -162,25 +161,24 @@ fn approx_zero_handles_edge_lane_patterns() {
     );
 }
 
+/// The 4-tuple is lane order, as `Corners::new` and CSS `border-radius` read: top-left, then
+/// clockwise.
 #[test]
-fn tuples_map_to_lanes() {
-    // The 2-tuple pairs by edge, like every other 2-value form here.
+fn a_four_tuple_maps_to_lanes() {
+    assert_eq!(Corners::from((1, 2, 3, 4)).to_array(), [1.0, 2.0, 3.0, 4.0]);
     assert_eq!(
-        Corners::from((3.0, 7.0)).to_array(),
-        [3.0, 3.0, 7.0, 7.0],
-        "(top, bottom) → (t,t,b,b)",
-    );
-    assert_eq!(
-        Corners::from((1, 2, 3, 4)).to_array(),
-        [1.0, 2.0, 3.0, 4.0],
-        "(tl, tr, br, bl) → lane order",
+        Corners::from((1, 2, 3, 4)),
+        Corners::new(1.0, 2.0, 3.0, 4.0)
     );
 }
 
 /// The packed chrome-hash form: four f16 lanes, little-endian `tl | tr | br | bl`. 1.0 is `0x3c00`, 2.0 `0x4000`, so `(1, 2, 1, 2)` packs to `0x4000_3c00_4000_3c00`.
 #[test]
 fn as_u64_packs_the_four_lanes() {
-    assert_eq!(Corners::from((1, 2, 1, 2)).as_u64(), 0x4000_3c00_4000_3c00);
+    assert_eq!(
+        Corners::new(1.0, 2.0, 1.0, 2.0).as_u64(),
+        0x4000_3c00_4000_3c00
+    );
     assert_eq!(Corners::ZERO.as_u64(), 0);
 }
 

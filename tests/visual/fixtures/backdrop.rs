@@ -21,7 +21,11 @@ fn backdrop_scene(ui: &mut Ui, size: UVec2) {
             _ => RgbaF32::srgb(0.1, 0.4, 1.0),
         };
         let width = 1.0 + (i % 3) as f32;
-        ui.add_shape(Shape::rect(Rect::new(i as f32 * 6.0, 0.0, width, size.y as f32)).fill(color));
+        ui.add_shape(
+            Shape::rect()
+                .at(Rect::new(i as f32 * 6.0, 0.0, width, size.y as f32))
+                .fill(color),
+        );
     }
     Text::new("Backdrop panes blur what lies under them")
         .id(WidgetId::from_hash("backdrop-text"))
@@ -41,36 +45,43 @@ fn backdrop_panes_match_golden() {
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(
-                    Shape::rect(Rect::new(10.0, 20.0, 90.0, 80.0))
+                    Shape::rect()
+                        .at(Rect::new(10.0, 20.0, 90.0, 80.0))
                         .backdrop_filter(BackdropFilter::blur(6.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(110.0, 20.0, 90.0, 80.0))
+                    Shape::rect()
+                        .at(Rect::new(110.0, 20.0, 90.0, 80.0))
                         .fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
                         .backdrop_filter(BackdropFilter::frosted(12.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(210.0, 20.0, 90.0, 80.0))
+                    Shape::rect()
+                        .at(Rect::new(210.0, 20.0, 90.0, 80.0))
                         .corners(Corners::all(16.0))
                         .border(Stroke::new(RgbaF32::WHITE, 2.0))
                         .backdrop_filter(BackdropFilter::blur(8.0)),
                 );
                 ui.add_shape(
-                    Shape::windowed_rect(Rect::new(310.0, 20.0, 90.0, 80.0))
+                    Shape::windowed_rect()
+                        .at(Rect::new(310.0, 20.0, 90.0, 80.0))
                         .corners(Corners::all(24.0))
                         .backdrop_filter(BackdropFilter::blur(8.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(410.0, 20.0, 90.0, 80.0))
+                    Shape::rect()
+                        .at(Rect::new(410.0, 20.0, 90.0, 80.0))
                         .backdrop_filter(BackdropFilter::blur(3.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(440.0, 40.0, 90.0, 40.0))
+                    Shape::rect()
+                        .at(Rect::new(440.0, 40.0, 90.0, 40.0))
                         .fill(RgbaF32::new(0.0, 0.0, 0.0, 0.3))
                         .backdrop_filter(BackdropFilter::blur(10.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(560.0, 0.0, 80.0, 60.0))
+                    Shape::rect()
+                        .at(Rect::new(560.0, 0.0, 80.0, 60.0))
                         .backdrop_filter(BackdropFilter::blur(16.0)),
                 );
             });
@@ -89,7 +100,8 @@ fn a_turned_pane_matches_golden() {
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape_animated(
-                    Shape::rect(Rect::new(40.0, 40.0, 120.0, 80.0))
+                    Shape::rect()
+                        .at(Rect::new(40.0, 40.0, 120.0, 80.0))
                         .corners(Corners::all(12.0))
                         .fill(RgbaF32::new(1.0, 1.0, 1.0, 0.15))
                         .border(Stroke::new(RgbaF32::WHITE, 2.0))
@@ -113,7 +125,8 @@ fn glass_matches_golden() {
             .show(ui, |ui| {
                 backdrop_scene(ui, size);
                 ui.add_shape(
-                    Shape::rect(Rect::new(16.0, 30.0, 130.0, 60.0))
+                    Shape::rect()
+                        .at(Rect::new(16.0, 30.0, 130.0, 60.0))
                         .corners(Corners::all(30.0))
                         .backdrop_filter(BackdropFilter::glass(Lens {
                             bezel: 30.0,
@@ -124,7 +137,8 @@ fn glass_matches_golden() {
                         })),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(170.0, 16.0, 130.0, 90.0))
+                    Shape::rect()
+                        .at(Rect::new(170.0, 16.0, 130.0, 90.0))
                         .corners(Corners::all(16.0))
                         .backdrop_filter(
                             BackdropFilter::glass(Lens {

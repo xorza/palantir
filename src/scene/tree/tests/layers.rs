@@ -239,7 +239,9 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
 fn mid_recording_popup_keeps_trees_independent() {
     fn marker(slot: u8) -> RectShape {
         let w = f32::from(slot + 1);
-        Shape::rect(Rect::new(0.0, 0.0, w, w)).fill(RgbaF32::srgb(1.0, 0.0, 0.0))
+        Shape::rect()
+            .at(Rect::new(0.0, 0.0, w, w))
+            .fill(RgbaF32::srgb(1.0, 0.0, 0.0))
     }
     fn marker_w(s: &ShapeRecord) -> u32 {
         match s {

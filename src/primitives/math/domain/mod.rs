@@ -14,11 +14,13 @@
 //! | [`lane`] | rounds to within `±65504` in f16 (below `65520`); on top of the kind of a value that packs into an f16 lane | panic |
 //! | [`positive`] | finite, `> 0` | panic |
 //! | [`factor`] | finite, `>= 0` | panic |
+//! | [`refractive_index`] | finite, `>= 1` | panic |
 //! | [`angle`] | finite | panic |
 //! | [`color`] | every channel a [`lane`] | panic |
 //! | [`count`] | `>= 1` | panic |
 //! | [`power_of_two_in`] | a power of two in `1..=max` | panic |
 //! | [`f64::range`] | both ends finite | panic; the order is kept |
+//! | [`f64::bounds`] | neither end NaN, infinity allowed | panic; the ends ordered low to high |
 //! | [`fraction`] | `0..=1` | clamped; non-finite is `0` |
 //! | [`turn`] | `0..1` | wrapped; non-finite is `0` |
 //! | [`idx`] | `0..len` | clamped; no index when `len == 0` |
@@ -59,6 +61,7 @@ pub(crate) const LANE_RULE: &str = "a value packed into an f16 lane must round t
 pub(crate) const POSITIVE_RULE: &str = "a positive value must be finite and above zero";
 pub(crate) const FACTOR_RULE: &str = "a factor must be finite and not negative";
 pub(crate) const ANGLE_RULE: &str = "an angle must be finite";
+pub(crate) const REFRACTIVE_INDEX_RULE: &str = "a refractive index must be finite and at least 1";
 pub(crate) const FRACTION_RULE: &str = "a fraction must be in 0..=1";
 pub(crate) const COLOR_RULE: &str =
     "a color must have finite channels that round to within ±65504 in f16";
@@ -249,6 +252,25 @@ pub const fn is_factor(v: f32) -> bool {
 pub const fn factor(v: f32) -> f32 {
     assert!(is_factor(v), "{}", FACTOR_RULE);
     v
+}
+
+/// True if `n` is a [`refractive_index`]: finite and at least 1.
+#[inline]
+pub const fn is_refractive_index(n: f32) -> bool {
+    n >= 1.0 && n <= f32::MAX
+}
+
+/// `n`, which must be a *refractive index*: finite and at least 1, as no glass bends light away
+/// from the normal on entry.
+///
+/// # Panics
+///
+/// Panics unless [`is_refractive_index`]`(n)`.
+#[inline]
+#[track_caller]
+pub const fn refractive_index(n: f32) -> f32 {
+    assert!(is_refractive_index(n), "{}", REFRACTIVE_INDEX_RULE);
+    n
 }
 
 /// True if `v` is an [`angle`]: finite.

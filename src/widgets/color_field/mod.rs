@@ -108,8 +108,7 @@ struct Field<'a>(&'a mut ColorCoords);
 impl Field<'_> {
     fn write(&mut self, sat: f32, val: f32) -> bool {
         let before = *self.0;
-        self.0.set_saturation(sat);
-        self.0.set_value(val);
+        *self.0 = self.0.with_saturation(sat).with_value(val);
         *self.0 != before
     }
 }

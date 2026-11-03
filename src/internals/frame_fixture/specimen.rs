@@ -24,6 +24,7 @@ use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
+use glam::Vec2;
 
 /// One captioned canvas per shape family, tiled through a `WrapHStack` so the sheet reflows to the column width.
 pub(super) fn sheet(ui: &mut Ui) {
@@ -98,33 +99,39 @@ impl SpecimenCell {
 /// Shape-level (not chrome-level) Solid / Linear / Radial / Conic fills.
 fn add_brush_swatches(ui: &mut Ui) {
     ui.add_shape(
-        Shape::rect(Rect::new(6.0, 6.0, 74.0, 38.0))
+        Shape::rect()
+            .at(Rect::new(6.0, 6.0, 74.0, 38.0))
             .corners(6.0)
             .fill(RgbaF32::hex(0xd9544c))
             .border(Stroke::new(RgbaF32::srgba(1.0, 1.0, 1.0, 0.5), 1.0)),
     );
     ui.add_shape(
-        Shape::rect(Rect::new(88.0, 6.0, 74.0, 38.0))
+        Shape::rect()
+            .at(Rect::new(88.0, 6.0, 74.0, 38.0))
             .corners(6.0)
-            .fill(
-                LinearGradient::builder(PI / 2.0)
-                    .stop(0.0, RgbaF32::hex(0x1a1a2e))
-                    .stop(1.0, RgbaF32::hex(0x4c5cdb)),
-            ),
+            .fill(LinearGradient::two_stop(
+                PI / 2.0,
+                RgbaF32::hex(0x1a1a2e),
+                RgbaF32::hex(0x4c5cdb),
+            )),
     );
     ui.add_shape(
-        Shape::rect(Rect::new(6.0, 52.0, 74.0, 38.0))
+        Shape::rect()
+            .at(Rect::new(6.0, 52.0, 74.0, 38.0))
             .corners(6.0)
             .fill(RadialGradient::two_stop(
+                Vec2::splat(0.5),
+                Vec2::splat(0.5),
                 RgbaF32::hex(0xfacc15),
                 RgbaF32::hex(0x1a1a2e),
             )),
     );
     ui.add_shape(
-        Shape::rect(Rect::new(88.0, 52.0, 74.0, 38.0))
+        Shape::rect()
+            .at(Rect::new(88.0, 52.0, 74.0, 38.0))
             .corners(6.0)
             .fill(ConicGradient::new(
-                glam::Vec2::splat(0.5),
+                Vec2::splat(0.5),
                 0.0,
                 [
                     Stop::new(0.0, RgbaF32::hex(0xff5e44)),
@@ -138,8 +145,8 @@ fn add_brush_swatches(ui: &mut Ui) {
 fn add_curves(ui: &mut Ui) {
     ui.add_shape(
         Shape::line(
-            glam::Vec2::new(12.0, 16.0),
-            glam::Vec2::new(156.0, 28.0),
+            Vec2::new(12.0, 16.0),
+            Vec2::new(156.0, 28.0),
             Stroke::new(tokens::ACCENT, 3.0),
         )
         .cap(LineCap::Round),
@@ -147,9 +154,9 @@ fn add_curves(ui: &mut Ui) {
     ui.add_shape(
         Shape::quadratic_bezier(
             QuadraticBezier {
-                p0: glam::Vec2::new(12.0, 50.0),
-                p1: glam::Vec2::new(84.0, 22.0),
-                p2: glam::Vec2::new(156.0, 50.0),
+                p0: Vec2::new(12.0, 50.0),
+                p1: Vec2::new(84.0, 22.0),
+                p2: Vec2::new(156.0, 50.0),
             },
             Stroke::new(tokens::WARN, 3.0),
         )
@@ -158,10 +165,10 @@ fn add_curves(ui: &mut Ui) {
     ui.add_shape(
         Shape::cubic_bezier(
             CubicBezier {
-                p0: glam::Vec2::new(12.0, 86.0),
-                p1: glam::Vec2::new(56.0, 56.0),
-                p2: glam::Vec2::new(112.0, 96.0),
-                p3: glam::Vec2::new(156.0, 68.0),
+                p0: Vec2::new(12.0, 86.0),
+                p1: Vec2::new(56.0, 56.0),
+                p2: Vec2::new(112.0, 96.0),
+                p3: Vec2::new(156.0, 68.0),
             },
             Stroke::new(tokens::OK, 4.0),
         )
@@ -170,13 +177,13 @@ fn add_curves(ui: &mut Ui) {
 }
 
 fn add_polyline(ui: &mut Ui) {
-    let pts: [glam::Vec2; 6] = [
-        glam::Vec2::new(14.0, 74.0),
-        glam::Vec2::new(42.0, 32.0),
-        glam::Vec2::new(70.0, 66.0),
-        glam::Vec2::new(98.0, 26.0),
-        glam::Vec2::new(126.0, 62.0),
-        glam::Vec2::new(154.0, 38.0),
+    let pts: [Vec2; 6] = [
+        Vec2::new(14.0, 74.0),
+        Vec2::new(42.0, 32.0),
+        Vec2::new(70.0, 66.0),
+        Vec2::new(98.0, 26.0),
+        Vec2::new(126.0, 62.0),
+        Vec2::new(154.0, 38.0),
     ];
     // The shared swatch set in order plus one green it lacks: six points need six distinct inks.
     let cols = [
@@ -198,7 +205,7 @@ fn add_arcs(ui: &mut Ui) {
     ui.add_shape(
         Shape::arc(
             CircularArc {
-                center: glam::Vec2::new(84.0, 78.0),
+                center: Vec2::new(84.0, 78.0),
                 radius: 40.0,
                 start_angle: PI,
                 sweep: PI,
@@ -208,7 +215,7 @@ fn add_arcs(ui: &mut Ui) {
         .cap(LineCap::Round),
     );
     ui.add_shape(Shape::circle(
-        glam::Vec2::new(84.0, 26.0),
+        Vec2::new(84.0, 26.0),
         12.0,
         Stroke::new(tokens::VIOLET, 3.0),
     ));
@@ -217,9 +224,9 @@ fn add_arcs(ui: &mut Ui) {
 fn add_solids(ui: &mut Ui) {
     ui.add_shape(
         Shape::triangle(
-            glam::Vec2::new(18.0, 82.0),
-            glam::Vec2::new(52.0, 20.0),
-            glam::Vec2::new(86.0, 82.0),
+            Vec2::new(18.0, 82.0),
+            Vec2::new(52.0, 20.0),
+            Vec2::new(86.0, 82.0),
         )
         .fill(tokens::WARN)
         .radius(2.0_f32),
@@ -233,14 +240,15 @@ fn add_shadow(ui: &mut Ui) {
     ui.add_shape(
         Shape::shadow(Shadow::drop(
             RgbaF32::srgba(0.0, 0.0, 0.0, 0.75),
-            glam::Vec2::new(0.0, 7.0),
+            Vec2::new(0.0, 7.0),
             9.0,
         ))
         .at(plate)
         .corners(10.0),
     );
     ui.add_shape(
-        Shape::rect(plate)
+        Shape::rect()
+            .at(plate)
             .corners(10.0)
             .fill(RgbaF32::hex(0x30364a))
             .border(Stroke::new(tokens::BORDER, 1.0)),
@@ -252,9 +260,9 @@ fn gradient_mesh(ui: &mut Ui) {
     ui.with_singleton::<GradientMesh, _>(|ui, GradientMesh(m)| {
         let m = m.get_or_insert_with(|| {
             let mut m = Mesh::with_capacity(3, 3);
-            let a = m.vertex(glam::Vec2::new(96.0, 82.0), RgbaF32::hex(0xff5e44));
-            let b = m.vertex(glam::Vec2::new(128.0, 22.0), RgbaF32::hex(0xfacc15));
-            let c = m.vertex(glam::Vec2::new(160.0, 82.0), RgbaF32::hex(0x46c46c));
+            let a = m.vertex(Vec2::new(96.0, 82.0), RgbaF32::hex(0xff5e44));
+            let b = m.vertex(Vec2::new(128.0, 22.0), RgbaF32::hex(0xfacc15));
+            let c = m.vertex(Vec2::new(160.0, 82.0), RgbaF32::hex(0x46c46c));
             m.triangle(a, b, c);
             m
         });

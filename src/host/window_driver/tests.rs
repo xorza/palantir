@@ -1164,8 +1164,16 @@ mod capture_path_tests {
                 .id_salt("panes")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 4.0, 4.0)).fill(RgbaF32::WHITE));
-                    ui.add_shape(Shape::rect(pane).backdrop_filter(BackdropFilter::blur(2.0)));
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 4.0, 4.0))
+                            .fill(RgbaF32::WHITE),
+                    );
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(pane)
+                            .backdrop_filter(BackdropFilter::blur(2.0)),
+                    );
                 });
         };
         let stamp = driver.stamp(&spec);

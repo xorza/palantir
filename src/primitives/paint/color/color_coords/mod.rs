@@ -85,32 +85,35 @@ impl ColorCoords {
         })
     }
 
-    /// Sets the hue as a fraction: clamped to `0..=1`, `0` if non-finite. Both ends name red and
-    /// both are kept, so a hue bar dragged to its right edge keeps its marker there.
-    pub const fn set_hue(&mut self, h: f32) {
+    /// These coordinates at hue `h`, a fraction: clamped to `0..=1`, `0` if non-finite. Both ends
+    /// name red and both are kept, so a hue bar dragged to its right edge keeps its marker there.
+    pub const fn with_hue(mut self, h: f32) -> Self {
         let h = domain::fraction(h);
-        match self {
+        match &mut self {
             Self::Okhsv(c) => c.h = h,
             Self::Hsv(c) => c.h = h,
         }
+        self
     }
 
-    /// Sets saturation.
-    pub const fn set_saturation(&mut self, s: f32) {
+    /// These coordinates at saturation `s`, a fraction as [`Self::with_hue`] takes one.
+    pub const fn with_saturation(mut self, s: f32) -> Self {
         let s = domain::fraction(s);
-        match self {
+        match &mut self {
             Self::Okhsv(c) => c.s = s,
             Self::Hsv(c) => c.s = s,
         }
+        self
     }
 
-    /// Sets value.
-    pub const fn set_value(&mut self, v: f32) {
+    /// These coordinates at value `v`, a fraction as [`Self::with_hue`] takes one.
+    pub const fn with_value(mut self, v: f32) -> Self {
         let v = domain::fraction(v);
-        match self {
+        match &mut self {
             Self::Okhsv(c) => c.v = v,
             Self::Hsv(c) => c.v = v,
         }
+        self
     }
 }
 

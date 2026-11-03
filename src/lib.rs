@@ -196,7 +196,7 @@ pub mod widget {
     pub use crate::shape::Lower;
     pub use crate::shape::Shape;
     pub use crate::shape::curve::CurveShape;
-    pub use crate::shape::icon::{IconFit, IconShape};
+    pub use crate::shape::icon::IconShape;
     pub use crate::shape::image::ImageShape;
     pub use crate::shape::mesh::MeshShape;
     /// The paint-time animation curves the crate ships; a custom curve is any
@@ -318,16 +318,9 @@ pub use primitives::math::num::Number;
 pub use primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 pub use primitives::paint::brush::Brush;
 pub use primitives::paint::brush::gradient::color_ramp::ColorRamp;
-pub use primitives::paint::brush::gradient::conic_geometry::{
-    ConicGeometry, ConicGradient, ConicGradientBuilder,
-};
-pub use primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
-pub use primitives::paint::brush::gradient::linear_geometry::{
-    LinearGeometry, LinearGradient, LinearGradientBuilder,
-};
-pub use primitives::paint::brush::gradient::radial_geometry::{
-    RadialGeometry, RadialGradient, RadialGradientBuilder,
-};
+pub use primitives::paint::brush::gradient::conic_geometry::{ConicGeometry, ConicGradient};
+pub use primitives::paint::brush::gradient::linear_geometry::{LinearGeometry, LinearGradient};
+pub use primitives::paint::brush::gradient::radial_geometry::{RadialGeometry, RadialGradient};
 pub use primitives::paint::brush::gradient::stops::{GradientStops, Stop};
 pub use primitives::paint::brush::gradient::{Gradient, GradientGeometry, Interpolation, Spread};
 pub use primitives::paint::chrome::Chrome;
@@ -339,6 +332,7 @@ pub use primitives::paint::color::hsv::Hsv;
 pub use primitives::paint::color::okhsv::Okhsv;
 pub use primitives::paint::color::srgba_u8::SrgbaU8;
 pub use primitives::paint::image::error::ImageDataError;
+pub use primitives::paint::image::icon_fit::IconFit;
 pub use primitives::paint::image::{Image, ImageDownsample, ImageFilter, ImageFit};
 pub use primitives::paint::shadow::Shadow;
 pub use primitives::paint::stroke::Stroke;

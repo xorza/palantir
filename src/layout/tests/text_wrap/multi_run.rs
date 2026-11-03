@@ -14,8 +14,6 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
-use crate::text::font_family::FontFamily;
-use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::internals::PROBATION_KEEP_FRAMES;
 use crate::text::wrap::TextWrap;
@@ -198,12 +196,11 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 .at_origin(glam::Vec2::new(0.0, 0.0))
                 .color(RgbaF32::WHITE)
                 .wrap(TextWrap::Truncate)
-                .align(Align::default())
-                .family(FontFamily::SANS)
-                .weight(FontWeight::REGULAR),
+                .align(Align::default()),
             );
             ui.add_shape(
-                Shape::rect(Rect::new(0.0, 20.0, 4.0, 2.0))
+                Shape::rect()
+                    .at(Rect::new(0.0, 20.0, 4.0, 2.0))
                     .corners(Corners::ZERO)
                     .fill(RgbaF32::WHITE)
                     .border(Stroke::NONE),
@@ -220,9 +217,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 .at_origin(glam::Vec2::new(0.0, 22.0))
                 .color(RgbaF32::WHITE)
                 .wrap(TextWrap::Truncate)
-                .align(Align::default())
-                .family(FontFamily::SANS)
-                .weight(FontWeight::REGULAR),
+                .align(Align::default()),
             );
         });
     });

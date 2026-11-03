@@ -14,7 +14,7 @@ const CLEAR: RgbaF32 = RgbaF32::WHITE;
 const LAYER_RECT: Rect = Rect::new(20.25, 20.25, 80.0, 80.0);
 
 fn add_layer(ui: &mut Ui, color: RgbaF32) {
-    ui.add_shape(Shape::rect(LAYER_RECT).fill(color));
+    ui.add_shape(Shape::rect().at(LAYER_RECT).fill(color));
 }
 
 /// Where the second layer records relative to the first.

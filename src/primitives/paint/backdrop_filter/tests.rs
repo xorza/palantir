@@ -32,7 +32,7 @@ fn the_looks_and_setters_set_their_own_fields() {
             lens: None,
         }
     );
-    let lens = Lens::default();
+    let lens = Lens::WINDOW_GLASS;
     assert_eq!(
         BackdropFilter::glass(lens),
         BackdropFilter {
@@ -79,7 +79,7 @@ fn the_looks_and_setters_set_their_own_fields() {
 /// A rect and a chrome take the same checks: each case panics with its kind's rule.
 #[test]
 fn a_filter_out_of_its_kinds_panics_where_it_enters() {
-    let lens = Lens::default();
+    let lens = Lens::WINDOW_GLASS;
     for (filter, rule) in [
         (BackdropFilter::blur(-1.0), "a length must"),
         (
@@ -112,7 +112,7 @@ fn a_filter_out_of_its_kinds_panics_where_it_enters() {
     ] {
         for entry in ["rect", "chrome"] {
             let panic = std::panic::catch_unwind(|| match entry {
-                "rect" => drop(Shape::rect(crate::Rect::ZERO).backdrop_filter(filter)),
+                "rect" => drop(Shape::rect().at(crate::Rect::ZERO).backdrop_filter(filter)),
                 _ => Chrome::NONE.with_backdrop_filter(filter).validate(),
             })
             .expect_err(entry);
@@ -188,7 +188,7 @@ fn a_filter_coerces_into_its_kinds_where_it_paints() {
         LoweredBackdrop::of(BackdropFilter::glass(Lens {
             dispersion,
             highlight,
-            ..Lens::default()
+            ..Lens::WINDOW_GLASS
         }))
         .unwrap()
         .lens()
@@ -250,7 +250,7 @@ fn an_absent_floor_or_lens_blends_through_its_neutral() {
     assert_eq!(
         BackdropFilter::lerp(
             BackdropFilter::NONE,
-            BackdropFilter::glass(Lens::default()),
+            BackdropFilter::glass(Lens::WINDOW_GLASS),
             0.25
         )
         .lens,

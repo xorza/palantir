@@ -165,12 +165,15 @@ fn endpoints_match_stops_exactly() {
 /// and 2 (bracketing).
 #[test]
 fn three_stop_quarter_brackets_first_pair() {
-    let g = LinearGradient::builder(0.0)
-        .stop(0.0, linear(0, 0, 0))
-        .stop(0.5, linear(255, 0, 0))
-        .stop(1.0, linear(0, 0, 255))
-        .interpolation(Interpolation::Linear)
-        .build();
+    let g = LinearGradient::new(
+        0.0,
+        [
+            Stop::new(0.0, linear(0, 0, 0)),
+            Stop::new(0.5, linear(255, 0, 0)),
+            Stop::new(1.0, linear(0, 0, 255)),
+        ],
+    )
+    .with_interpolation(Interpolation::Linear);
     let mut out = fresh_row();
     bake::row(&g.ramp, &mut out);
     // Stop offsets snap to the texel grid, so the 0.5 stop sits on texel 128

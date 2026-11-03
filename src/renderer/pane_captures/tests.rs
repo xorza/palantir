@@ -376,7 +376,7 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             let square = Rect::new(42.0, 42.0, 4.0, 4.0);
-                            ui.add_shape(Shape::rect(square).fill(RgbaF32::WHITE));
+                            ui.add_shape(Shape::rect().at(square).fill(RgbaF32::WHITE));
                         });
                     Panel::canvas()
                         .id(WidgetId::from_hash("moved"))
@@ -384,14 +384,16 @@ fn a_pane_whose_key_moves_takes_a_new_result() {
                         .show(ui, |ui| {
                             if lead {
                                 let lead = Rect::new(0.0, 0.0, 4.0, 4.0);
-                                ui.add_shape(Shape::rect(lead).fill(RgbaF32::WHITE));
+                                ui.add_shape(Shape::rect().at(lead).fill(RgbaF32::WHITE));
                             }
                             let pane = Rect::new(40.0, 40.0, 40.0, 40.0);
                             ui.add_shape(
-                                Shape::rect(pane).backdrop_filter(BackdropFilter::blur(4.0)),
+                                Shape::rect()
+                                    .at(pane)
+                                    .backdrop_filter(BackdropFilter::blur(4.0)),
                             );
                             let square = Rect::new(60.0, 60.0, 10.0, 10.0);
-                            ui.add_shape(Shape::rect(square).fill(over));
+                            ui.add_shape(Shape::rect().at(square).fill(over));
                         });
                 });
         }

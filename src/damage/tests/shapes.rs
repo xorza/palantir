@@ -313,7 +313,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
                                 ),
                                 Kind::Mesh => ui.add_shape_animated(Shape::mesh(&mesh), turn),
                                 Kind::Rect => ui.add_shape_animated(
-                                    Shape::rect(Rect::from_min_max(lo, hi)).fill(RED),
+                                    Shape::rect().at(Rect::from_min_max(lo, hi)).fill(RED),
                                     turn,
                                 ),
                                 Kind::Text => {
@@ -462,14 +462,18 @@ fn per_shape_damage_only_pushes_changed_shapes() {
             .chrome(Chrome::fill(BLUE))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 20.0, 10.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                    Shape::rect()
+                        .at(Rect::new(0.0, 0.0, 20.0, 10.0))
+                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(60.0, 0.0, 20.0, 10.0))
+                    Shape::rect()
+                        .at(Rect::new(60.0, 0.0, 20.0, 10.0))
                         .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, moving_y, 20.0, 10.0))
+                    Shape::rect()
+                        .at(Rect::new(0.0, moving_y, 20.0, 10.0))
                         .fill(RgbaF32::srgb(0.0, 0.0, 1.0)),
                 );
             });
@@ -632,8 +636,6 @@ fn chrome_only_owner_has_nonzero_paint_span() {
 #[test]
 fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::shape::Shape;
-    use crate::text::font_family::FontFamily;
-    use crate::text::font_weight::FontWeight;
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
 
@@ -661,9 +663,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                         )
                         .at_origin(ORIGIN)
                         .color(RgbaF32::WHITE)
-                        .wrap(TextWrap::Truncate)
-                        .family(FontFamily::SANS)
-                        .weight(FontWeight::REGULAR),
+                        .wrap(TextWrap::Truncate),
                     );
                 });
             });
@@ -718,7 +718,6 @@ fn a_text_run_damages_its_ink_past_the_block() {
     const ORIGIN: Vec2 = Vec2::new(20.0, 10.0);
     const FONT: f32 = 64.0;
 
-    use crate::text::font_family::FontFamily;
     use crate::text::font_slant::FontSlant;
     use crate::text::wrap::TextWrap;
     use crate::widget_core::widget::Widget;
@@ -742,8 +741,7 @@ fn a_text_run_damages_its_ink_past_the_block() {
                         )
                         .at_origin(ORIGIN)
                         .color(RgbaF32::WHITE)
-                        .wrap(TextWrap::SingleLine)
-                        .family(FontFamily::SANS),
+                        .wrap(TextWrap::SingleLine),
                     );
                 });
             });

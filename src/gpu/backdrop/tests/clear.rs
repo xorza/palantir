@@ -42,24 +42,33 @@ fn scene(
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 if let Some(background) = background {
-                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 64.0, 48.0)).fill(background));
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 64.0, 48.0))
+                            .fill(background),
+                    );
                 }
                 match before {
                     Before::Nothing => {}
                     Before::Speck => {
-                        ui.add_shape(Shape::rect(SPECK).fill(RgbaF32::srgb(1.0, 0.2, 0.1)));
+                        ui.add_shape(Shape::rect().at(SPECK).fill(RgbaF32::srgb(1.0, 0.2, 0.1)));
                     }
-                    Before::Veil => ui.add_shape(Shape::rect(VEIL).fill(CLEAR)),
+                    Before::Veil => ui.add_shape(Shape::rect().at(VEIL).fill(CLEAR)),
                 }
                 if let Some(under) = under {
-                    ui.add_shape(Shape::rect(Rect::new(24.0, 16.0, 8.0, 8.0)).fill(under));
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(24.0, 16.0, 8.0, 8.0))
+                            .fill(under),
+                    );
                 }
                 let filter = BackdropFilter {
                     saturation: 1.6,
                     ..BackdropFilter::blur(2.0)
                 };
                 ui.add_shape(
-                    Shape::rect(PANE)
+                    Shape::rect()
+                        .at(PANE)
                         .fill(RgbaF32::new(1.0, 1.0, 1.0, 0.25))
                         .backdrop_filter(filter),
                 );

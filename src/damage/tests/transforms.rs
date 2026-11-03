@@ -203,7 +203,8 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                                     // paint rect saturates and stays invariant
                                     // under small `dx`.
                                     ui.add_shape(
-                                        Shape::rect(Rect::new(-200.0, 0.0, 500.0, 50.0))
+                                        Shape::rect()
+                                            .at(Rect::new(-200.0, 0.0, 500.0, 50.0))
                                             .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                                     );
                                 });
@@ -251,7 +252,8 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
                                 .size((Sizing::fixed(50.0), Sizing::fixed(50.0)))
                                 .show(ui, |ui| {
                                     ui.add_shape(
-                                        Shape::rect(Rect::new(-200.0, 0.0, 500.0, 50.0))
+                                        Shape::rect()
+                                            .at(Rect::new(-200.0, 0.0, 500.0, 50.0))
                                             .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                                     );
                                 });
@@ -297,7 +299,8 @@ fn self_transform_shift_damages_direct_shapes() {
                         .show(ui, |ui| {
                             // Direct shape on the transformed panel, as darkroom's beziers.
                             ui.add_shape(
-                                Shape::rect(Rect::new(40.0, 40.0, 30.0, 30.0))
+                                Shape::rect()
+                                    .at(Rect::new(40.0, 40.0, 30.0, 30.0))
                                     .fill(RgbaF32::srgb(0.2, 0.6, 0.9)),
                             );
                         });

@@ -104,10 +104,10 @@ fn drag_value() -> Box<dyn DeferredCaller> {
 }
 
 fn color_field() -> Box<dyn DeferredCaller> {
-    let mut canonical = ColorCoords::default();
-    canonical.set_hue(0.3);
-    canonical.set_saturation(0.2);
-    canonical.set_value(0.2);
+    let canonical = ColorCoords::default()
+        .with_hue(0.3)
+        .with_saturation(0.2)
+        .with_value(0.2);
     Box::new(Deferred {
         canonical,
         show: |ui, coords| {

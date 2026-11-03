@@ -4,9 +4,7 @@ use crate::primitives::math::domain;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
-use crate::primitives::paint::brush::gradient::linear_geometry::{
-    LinearGradient, LinearGradientBuilder,
-};
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
 use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::brush::gradient::stops::{GradientStops, MAX_STOPS, Stop};
 use crate::primitives::paint::brush::gradient::{Gradient, Interpolation, Spread};
@@ -72,11 +70,14 @@ fn linear_gradient_hash_tracks_canonical_content() {
     }
 
     let two_stops = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
-    let three_stops = LinearGradient::builder(0.0)
-        .stop(0.0, RgbaF32::BLACK)
-        .stop(0.5, RgbaF32::new(0.5, 0.5, 0.5, 1.0))
-        .stop(1.0, RgbaF32::WHITE)
-        .build();
+    let three_stops = LinearGradient::new(
+        0.0,
+        [
+            Stop::new(0.0, RgbaF32::BLACK),
+            Stop::new(0.5, RgbaF32::new(0.5, 0.5, 0.5, 1.0)),
+            Stop::new(1.0, RgbaF32::WHITE),
+        ],
+    );
     let recolored = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::new(1.0, 0.0, 0.0, 1.0));
     assert_ne!(h(&two_stops), h(&three_stops));
     assert_ne!(h(&two_stops), h(&recolored));
@@ -86,11 +87,13 @@ fn linear_gradient_hash_tracks_canonical_content() {
 fn authoring_values_convert_to_their_brush_variants() {
     let color = RgbaF32::WHITE;
     let linear = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
-    let radial = RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
-    let conic = ConicGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE);
-    let linear_builder = LinearGradient::builder(0.25)
-        .stop(0.0, RgbaF32::BLACK)
-        .stop(1.0, RgbaF32::WHITE);
+    let radial = RadialGradient::two_stop(
+        Vec2::splat(0.5),
+        Vec2::splat(0.5),
+        RgbaF32::BLACK,
+        RgbaF32::WHITE,
+    );
+    let conic = ConicGradient::two_stop(Vec2::splat(0.5), 0.0, RgbaF32::BLACK, RgbaF32::WHITE);
 
     assert_eq!(Brush::from(color), Brush::Solid(color));
     // sRGB 0 and 255 decode to exactly 0.0 and 1.0; alpha is straight: 51 / 255 = 0.2.
@@ -100,10 +103,6 @@ fn authoring_values_convert_to_their_brush_variants() {
     assert_eq!(Brush::from(linear.clone()), Brush::Linear(linear));
     assert_eq!(Brush::from(radial.clone()), Brush::Radial(radial));
     assert_eq!(Brush::from(conic.clone()), Brush::Conic(conic));
-    assert_eq!(
-        Brush::from(linear_builder.clone()),
-        Brush::Linear(linear_builder.build()),
-    );
 }
 
 #[test]
@@ -121,7 +120,7 @@ fn solid_is_noop_iff_color_is_noop() {
     assert!(!Brush::Solid(RgbaF32::BLACK).is_noop());
 }
 
-/// Two through `MAX_STOPS` stops hold at every door: `GradientStops::new`, a gradient's builder (rejects a ninth, too few at `build`), its `new`, and deserialization.
+/// Two through `MAX_STOPS` stops hold at every door: `GradientStops::new`, a gradient's `new`, and deserialization.
 #[test]
 fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
     let offset = |idx: usize, count: usize| idx as f32 / count.max(1) as f32;
@@ -138,13 +137,6 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
         }
         document.push_str("])");
         document
-    };
-    let built = |count: usize| {
-        let mut builder = LinearGradient::builder(0.0);
-        for idx in 0..count {
-            builder = builder.stop(offset(idx, count), RgbaF32::WHITE);
-        }
-        builder.build()
     };
     let radial =
         |count: usize| RadialGradient::new(Vec2::splat(0.5), Vec2::splat(0.5), stops(count));
@@ -165,21 +157,18 @@ fn gradient_stop_count_is_enforced_by_construction_and_deserialization() {
         );
         if let Some(message) = rejection {
             panic_probe::assert_panics_with(message, || GradientStops::new(stops(count)));
-            panic_probe::assert_panics_with(message, || built(count));
             panic_probe::assert_panics_with(message, || radial(count));
         } else {
             assert!((2..=MAX_STOPS).contains(&count));
             assert_eq!(GradientStops::new(stops(count)).len(), count);
-            assert_eq!(built(count).ramp.stops.len(), count);
             assert_eq!(radial(count).ramp.stops.len(), count);
             assert_eq!(deserialized.unwrap(), count);
         }
     }
 }
 
-/// A bad stop count or stop color panics at the caller's line through every public door: the
-/// stop run, the ramp, each kind's `new` and `two_stop`, the builder's ninth `stop`, its `build`,
-/// and its `From`, into a gradient or straight into a brush.
+/// A bad stop count or stop color panics at the caller's line through every public door: a stop,
+/// the stop run, the ramp, and each kind's `new` and `two_stop`.
 #[test]
 fn a_bad_gradient_panics_at_the_call_site() {
     const NAN: RgbaF32 = RgbaF32::new(f32::NAN, 0.0, 0.0, 1.0);
@@ -188,29 +177,23 @@ fn a_bad_gradient_panics_at_the_call_site() {
     fn one() -> [Stop; 1] {
         [Stop::new(0.0, W)]
     }
-    fn empty() -> LinearGradientBuilder {
-        LinearGradient::builder(0.0)
+    fn nine() -> [Stop; MAX_STOPS + 1] {
+        [Stop::new(0.0, W); MAX_STOPS + 1]
     }
-    fn eight() -> LinearGradientBuilder {
-        (0..MAX_STOPS).fold(empty(), |b, _| b.stop(0.0, W))
-    }
-    let few: [(u32, fn()); 8] = [
+    let few: [(u32, fn()); 5] = [
         (line!(), || _ = GradientStops::new(one())),
         (line!(), || _ = ColorRamp::new(one())),
         (line!(), || _ = LinearGradient::new(0.0, one())),
         (line!(), || _ = RadialGradient::new(C, C, one())),
         (line!(), || _ = ConicGradient::new(C, 0.0, one())),
-        (line!(), || _ = empty().build()),
-        (line!(), || _ = LinearGradient::from(empty())),
-        (line!(), || _ = Brush::from(empty())),
     ];
-    let many: [(u32, fn()); 1] = [(line!(), || _ = eight().stop(1.0, W))];
+    let many: [(u32, fn()); 1] = [(line!(), || _ = LinearGradient::new(0.0, nine()))];
     let color: [(u32, fn()); 5] = [
-        (line!(), || _ = empty().stop(0.0, NAN)),
+        (line!(), || _ = Stop::new(0.0, NAN)),
         (line!(), || _ = ColorRamp::two_stop(NAN, W)),
         (line!(), || _ = LinearGradient::two_stop(0.0, W, NAN)),
-        (line!(), || _ = RadialGradient::two_stop(NAN, W)),
-        (line!(), || _ = ConicGradient::two_stop(W, NAN)),
+        (line!(), || _ = RadialGradient::two_stop(C, C, NAN, W)),
+        (line!(), || _ = ConicGradient::two_stop(C, 0.0, W, NAN)),
     ];
     for (fragment, cases) in [
         ("gradient requires at least 2 stops", &few[..]),
@@ -270,14 +253,36 @@ fn two_stop_gradients_take_their_kind_defaults() {
         |a, b| LinearGradient::two_stop(0.0, a, b),
         Interpolation::Oklab,
     );
-    check("radial", RadialGradient::two_stop, Interpolation::Oklab);
-    check("conic", ConicGradient::two_stop, Interpolation::Linear);
+    check(
+        "radial",
+        |a, b| RadialGradient::two_stop(Vec2::splat(0.5), Vec2::splat(0.5), a, b),
+        Interpolation::Oklab,
+    );
+    check(
+        "conic",
+        |a, b| ConicGradient::two_stop(Vec2::splat(0.5), 0.0, a, b),
+        Interpolation::Linear,
+    );
 
-    // A radial gradient defaults to the centered circle: center and radius 0.5, exact in f16.
-    let radial = RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK);
-    assert_eq!(radial.geometry.center, Vec2::splat(0.5));
-    assert_eq!(radial.geometry.radius, Vec2::splat(0.5));
-    assert_eq!(radial.axis().lanes(), [0.5, 0.5, 0.5, 0.5]);
+    // Each kind keeps the geometry its `two_stop` takes: center (0.25, 0.75) and radius
+    // (0.5, 0.125) are exact in f16, as is the conic's center; its angle π/4 rounds there.
+    let radial = RadialGradient::two_stop(
+        Vec2::new(0.25, 0.75),
+        Vec2::new(0.5, 0.125),
+        RgbaF32::WHITE,
+        RgbaF32::BLACK,
+    );
+    assert_eq!(radial.geometry.center, Vec2::new(0.25, 0.75));
+    assert_eq!(radial.geometry.radius, Vec2::new(0.5, 0.125));
+    assert_eq!(radial.axis().lanes(), [0.25, 0.75, 0.5, 0.125]);
+    let conic = ConicGradient::two_stop(
+        Vec2::new(0.25, 0.75),
+        FRAC_PI_4,
+        RgbaF32::WHITE,
+        RgbaF32::BLACK,
+    );
+    assert_eq!(conic.geometry.center, Vec2::new(0.25, 0.75));
+    assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
 }
 
 /// In code a stop offset is coerced (out of range clamps, non-finite reads 0) and a non-finite color channel panics. A file refuses any offset outside `0..=1`.
@@ -326,8 +331,18 @@ fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
             RgbaF32::BLACK,
             RgbaF32::WHITE,
         )),
-        Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
-        Brush::Conic(ConicGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
+        Brush::Radial(RadialGradient::two_stop(
+            Vec2::splat(0.5),
+            Vec2::splat(0.5),
+            RgbaF32::BLACK,
+            RgbaF32::WHITE,
+        )),
+        Brush::Conic(ConicGradient::two_stop(
+            Vec2::splat(0.5),
+            0.0,
+            RgbaF32::BLACK,
+            RgbaF32::WHITE,
+        )),
     ];
     for brush in brushes {
         let document = BrushDocument { brush };
@@ -364,13 +379,16 @@ fn every_gradient_variant_round_trips_and_files_refuse_bad_geometry() {
 
 #[test]
 fn gradient_builders_preserve_geometry_stops_and_options() {
-    let linear = LinearGradient::builder(PI / 2.0)
-        .stop(-1.0, RgbaF32::hex(0x000000))
-        .stop(0.5, RgbaF32::hex(0x808080))
-        .stop(2.0, RgbaF32::hex(0xffffff))
-        .spread(Spread::Reflect)
-        .interpolation(Interpolation::Linear)
-        .build();
+    let linear = LinearGradient::new(
+        PI / 2.0,
+        [
+            Stop::new(-1.0, RgbaF32::hex(0x000000)),
+            Stop::new(0.5, RgbaF32::hex(0x808080)),
+            Stop::new(2.0, RgbaF32::hex(0xffffff)),
+        ],
+    )
+    .with_spread(Spread::Reflect)
+    .with_interpolation(Interpolation::Linear);
     assert_eq!(linear.geometry.angle, PI / 2.0);
     assert_eq!(linear.ramp.stops.len(), 3);
     assert_eq!(linear.ramp.stops[0].offset(), 0.0);
@@ -381,18 +399,26 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
 
     let center = Vec2::new(0.25, 0.75);
     let radius = Vec2::new(0.4, 0.6);
-    let radial = RadialGradient::builder(center, radius)
-        .stop(0.0, RgbaF32::BLACK)
-        .stop(1.0, RgbaF32::WHITE)
-        .build();
+    let radial = RadialGradient::new(
+        center,
+        radius,
+        [
+            Stop::new(0.0, RgbaF32::BLACK),
+            Stop::new(1.0, RgbaF32::WHITE),
+        ],
+    );
     assert_eq!(radial.geometry.center, center);
     assert_eq!(radial.geometry.radius, radius);
     assert_eq!(radial.ramp.interpolation, Interpolation::Oklab);
 
-    let conic = ConicGradient::builder(center, FRAC_PI_4)
-        .stop(0.0, RgbaF32::BLACK)
-        .stop(1.0, RgbaF32::WHITE)
-        .build();
+    let conic = ConicGradient::new(
+        center,
+        FRAC_PI_4,
+        [
+            Stop::new(0.0, RgbaF32::BLACK),
+            Stop::new(1.0, RgbaF32::WHITE),
+        ],
+    );
     assert_eq!(conic.geometry.center, center);
     assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
     assert_eq!(conic.ramp.interpolation, Interpolation::Linear);
@@ -435,8 +461,18 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
             RgbaF32::BLACK,
             RgbaF32::WHITE,
         )),
-        Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
-        Brush::Conic(ConicGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE)),
+        Brush::Radial(RadialGradient::two_stop(
+            Vec2::splat(0.5),
+            Vec2::splat(0.5),
+            RgbaF32::BLACK,
+            RgbaF32::WHITE,
+        )),
+        Brush::Conic(ConicGradient::two_stop(
+            Vec2::splat(0.5),
+            0.0,
+            RgbaF32::BLACK,
+            RgbaF32::WHITE,
+        )),
     ];
     let replacement_gradients = [
         Brush::Linear(LinearGradient::two_stop(
@@ -444,8 +480,18 @@ fn gradient_brush_spring_normalization_is_direction_independent() {
             RgbaF32::WHITE,
             RgbaF32::BLACK,
         )),
-        Brush::Radial(RadialGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK)),
-        Brush::Conic(ConicGradient::two_stop(RgbaF32::WHITE, RgbaF32::BLACK)),
+        Brush::Radial(RadialGradient::two_stop(
+            Vec2::splat(0.5),
+            Vec2::splat(0.5),
+            RgbaF32::WHITE,
+            RgbaF32::BLACK,
+        )),
+        Brush::Conic(ConicGradient::two_stop(
+            Vec2::splat(0.5),
+            0.0,
+            RgbaF32::WHITE,
+            RgbaF32::BLACK,
+        )),
     ];
 
     for gradient in &gradients {

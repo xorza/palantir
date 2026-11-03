@@ -6,13 +6,13 @@ use crate::support::DemoCell;
 use crate::support::{Kit, Knob, Section, Swatches};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{
-    AnimationRequest, GlyphFont, IconFit, LineCap, LineJoin, Mesh, PaintAnimation, PaintRepeat,
-    RectShape, Shape,
+    AnimationRequest, GlyphFont, LineCap, LineJoin, Mesh, PaintAnimation, PaintRepeat, RectShape,
+    Shape,
 };
 use palantir::{
-    Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconHandle,
-    IconSet, IconTable, Image, ImageFit, ImageHandle, Metrics, Panel, Rect, RgbaF32, Sense, Shadow,
-    Sizing, Stroke, Text, Ui, WidgetId,
+    Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconFit,
+    IconHandle, IconSet, IconTable, Image, ImageFit, ImageHandle, Metrics, Panel, Rect, RgbaF32,
+    Sense, Shadow, Sizing, Stroke, Text, Ui, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
@@ -149,7 +149,8 @@ fn turn(ui: &mut Ui, k: Kit) {
                 };
                 cell(ui, "rect", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::rect(source)
+                        Shape::rect()
+                            .at(source)
                             .corners(Corners::all(10.0))
                             .fill(k.swatch.teal)
                             .border(Stroke::new(RgbaF32::WHITE, 2.0)),
@@ -164,7 +165,8 @@ fn turn(ui: &mut Ui, k: Kit) {
                         spin,
                     );
                     ui.add_shape_animated(
-                        Shape::rect(source)
+                        Shape::rect()
+                            .at(source)
                             .corners(Corners::all(6.0))
                             .fill(k.swatch.orange),
                         spin,
@@ -436,7 +438,8 @@ fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
     ui.add_shape(Shape::polyline(&points, Stroke::new(k.t.ink_dim, 1.5)).join(LineJoin::Round));
     let dot = at(t);
     ui.add_shape(
-        Shape::rect(Rect::new(dot.x - 5.0, dot.y - 5.0, 10.0, 10.0))
+        Shape::rect()
+            .at(Rect::new(dot.x - 5.0, dot.y - 5.0, 10.0, 10.0))
             .corners(Corners::all(5.0))
             .fill(k.swatch.orange),
     );

@@ -46,7 +46,7 @@ fn widget_look_serde_roundtrip() {
                         .with_max_luminance(0.05)
                         .with_lens(Lens {
                             dispersion: 0.0,
-                            ..Lens::default()
+                            ..Lens::WINDOW_GLASS
                         }),
                 ),
             text: TextStyleOverrides::NONE,
@@ -96,7 +96,7 @@ fn backdrop_filters_load_by_their_kinds() {
         (
             "default lens",
             "(lens: Some(()))",
-            Some(BackdropFilter::glass(Lens::default())),
+            Some(BackdropFilter::glass(Lens::WINDOW_GLASS)),
         ),
         ("negative blur", "(blur: -1.0)", None),
         ("NaN saturation", "(saturation: NaN)", None),

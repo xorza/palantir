@@ -51,11 +51,17 @@ fn scene(ui: &mut Ui, sigma: Option<f32>) {
                     _ => RgbaF32::srgb(0.0, 0.3, 1.0),
                 };
                 ui.add_shape(
-                    Shape::rect(Rect::new(x, 0.0, 1.0 + (i % 3) as f32, 48.0)).fill(color),
+                    Shape::rect()
+                        .at(Rect::new(x, 0.0, 1.0 + (i % 3) as f32, 48.0))
+                        .fill(color),
                 );
             }
             if let Some(sigma) = sigma {
-                ui.add_shape(Shape::rect(PANE).backdrop_filter(BackdropFilter::blur(sigma)));
+                ui.add_shape(
+                    Shape::rect()
+                        .at(PANE)
+                        .backdrop_filter(BackdropFilter::blur(sigma)),
+                );
             }
         });
 }
@@ -195,13 +201,18 @@ fn a_luminance_ceiling_holds_a_bright_backdrop_under_it() {
                 .id_salt("backdrop-ceiling")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 32.0, 48.0)).fill(RgbaF32::WHITE));
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 32.0, 48.0))
+                            .fill(RgbaF32::WHITE),
+                    );
                     let filter = BackdropFilter {
                         max_luminance: ceiling,
                         ..BackdropFilter::blur(1.0)
                     };
                     ui.add_shape(
-                        Shape::rect(Rect::new(0.0, 0.0, 64.0, 48.0))
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 64.0, 48.0))
                             .fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5))
                             .backdrop_filter(filter),
                     );
@@ -244,13 +255,18 @@ fn a_luminance_floor_lifts_a_dark_backdrop_to_it() {
                 .id_salt("backdrop-floor")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 32.0, 48.0)).fill(RgbaF32::WHITE));
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 32.0, 48.0))
+                            .fill(RgbaF32::WHITE),
+                    );
                     let filter = BackdropFilter {
                         min_luminance: floor,
                         ..BackdropFilter::blur(1.0)
                     };
                     ui.add_shape(
-                        Shape::rect(Rect::new(0.0, 0.0, 64.0, 48.0))
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 64.0, 48.0))
                             .fill(RgbaF32::new(0.2, 0.2, 0.2, 0.5))
                             .backdrop_filter(filter),
                     );
@@ -284,15 +300,24 @@ fn layered(ui: &mut Ui, under: RgbaF32, pane: Rect, sigma: f32, over: RgbaF32) {
         .id_salt("backdrop-layered")
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            ui.add_shape(Shape::rect(Rect::new(6.0, 10.0, 14.0, 14.0)).fill(under));
+            ui.add_shape(
+                Shape::rect()
+                    .at(Rect::new(6.0, 10.0, 14.0, 14.0))
+                    .fill(under),
+            );
             for i in 0..8 {
                 ui.add_shape(
-                    Shape::rect(Rect::new(4.0 + 8.0 * i as f32, 30.0, 3.0, 12.0))
+                    Shape::rect()
+                        .at(Rect::new(4.0 + 8.0 * i as f32, 30.0, 3.0, 12.0))
                         .fill(RgbaF32::WHITE),
                 );
             }
-            ui.add_shape(Shape::rect(pane).backdrop_filter(BackdropFilter::blur(sigma)));
-            ui.add_shape(Shape::rect(Rect::new(30.0, 20.0, 6.0, 6.0)).fill(over));
+            ui.add_shape(
+                Shape::rect()
+                    .at(pane)
+                    .backdrop_filter(BackdropFilter::blur(sigma)),
+            );
+            ui.add_shape(Shape::rect().at(Rect::new(30.0, 20.0, 6.0, 6.0)).fill(over));
         });
 }
 
@@ -400,24 +425,28 @@ fn a_pane_over_a_pane_repaints_as_a_whole_frame() {
                 .show(ui, |ui| {
                     for i in 0..8 {
                         ui.add_shape(
-                            Shape::rect(Rect::new(4.0 + 8.0 * i as f32, 2.0, 3.0, 44.0))
+                            Shape::rect()
+                                .at(Rect::new(4.0 + 8.0 * i as f32, 2.0, 3.0, 44.0))
                                 .fill(RgbaF32::WHITE),
                         );
                     }
-                    ui.add_shape(Shape::rect(Rect::new(8.0, 8.0, 6.0, 6.0)).fill(under));
+                    ui.add_shape(Shape::rect().at(Rect::new(8.0, 8.0, 6.0, 6.0)).fill(under));
                     ui.add_shape(
-                        Shape::rect(Rect::new(4.0, 4.0, 30.0, 30.0))
+                        Shape::rect()
+                            .at(Rect::new(4.0, 4.0, 30.0, 30.0))
                             .backdrop_filter(BackdropFilter::blur(3.0)),
                     );
                     ui.add_shape(
-                        Shape::rect(Rect::new(26.0, 6.0, 8.0, 8.0))
+                        Shape::rect()
+                            .at(Rect::new(26.0, 6.0, 8.0, 8.0))
                             .fill(RgbaF32::srgb(1.0, 0.2, 0.1)),
                     );
                     ui.add_shape(
-                        Shape::rect(Rect::new(20.0, 14.0, 36.0, 28.0))
+                        Shape::rect()
+                            .at(Rect::new(20.0, 14.0, 36.0, 28.0))
                             .backdrop_filter(BackdropFilter::blur(6.0)),
                     );
-                    ui.add_shape(Shape::rect(Rect::new(40.0, 30.0, 6.0, 6.0)).fill(over));
+                    ui.add_shape(Shape::rect().at(Rect::new(40.0, 30.0, 6.0, 6.0)).fill(over));
                 });
         }
     };
@@ -484,7 +513,7 @@ fn a_chrome_pane_paints_as_a_rect_pane() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::owner_rect()
+                            Shape::rect()
                                 .corners(8.0)
                                 .fill(tint)
                                 .backdrop_filter(filter),

@@ -1,7 +1,6 @@
 //! The linear gradient's axis: color runs along the direction an angle names.
 
 use crate::primitives::math::float_hash::FloatHash;
-use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
@@ -18,9 +17,6 @@ pub struct LinearGeometry {
 
 /// Linear gradient — see [`LinearGeometry`] for the axis convention.
 pub type LinearGradient = Gradient<LinearGeometry>;
-
-/// Authoring builder for a [`LinearGradient`].
-pub type LinearGradientBuilder = GradientBuilder<LinearGeometry>;
 
 impl Geometry for LinearGeometry {
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
@@ -46,11 +42,6 @@ impl Geometry for LinearGeometry {
 }
 
 impl LinearGradient {
-    /// Start an inline, allocation-free gradient builder.
-    pub fn builder(angle: f32) -> LinearGradientBuilder {
-        GradientBuilder::new(LinearGeometry { angle })
-    }
-
     /// General constructor.
     ///
     /// # Panics

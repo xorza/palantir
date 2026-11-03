@@ -33,7 +33,8 @@ fn a_fade_to_transparent_keeps_its_color_midway() {
                     Shape::polyline(&line, Stroke::new(white, 20.0)).per_point(&[white, clear]),
                 );
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 90.0, 200.0, 20.0))
+                    Shape::rect()
+                        .at(Rect::new(0.0, 90.0, 200.0, 20.0))
                         .fill(LinearGradient::two_stop(0.0, white, clear)),
                 );
             });

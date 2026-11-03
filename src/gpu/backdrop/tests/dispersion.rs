@@ -49,10 +49,11 @@ fn frame(under: &[(Rect, RgbaF32)], lens: Lens, blur: f32) -> Vec<[f32; 4]> {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 for &(rect, color) in under {
-                    ui.add_shape(Shape::rect(rect).fill(color));
+                    ui.add_shape(Shape::rect().at(rect).fill(color));
                 }
                 ui.add_shape(
-                    Shape::rect(PANE)
+                    Shape::rect()
+                        .at(PANE)
                         .corners(Corners::all(16.0))
                         .backdrop_filter(BackdropFilter::glass(lens).with_blur(blur)),
                 );

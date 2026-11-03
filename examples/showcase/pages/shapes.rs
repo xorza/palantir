@@ -1,5 +1,5 @@
 //! Filled shape primitives: triangles, meshes and
-//! `Shape::owner_windowed_rect`, the inverted-fill corner mask standing in for rounded clipping without a
+//! `Shape::windowed_rect`, the inverted-fill corner mask standing in for rounded clipping without a
 //! stencil pass.
 
 use crate::scaffold::api;
@@ -47,7 +47,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
         });
 
     Section::new("Windowed rect")
-        .apis(&[api!(Shape::owner_windowed_rect)])
+        .apis(&[api!(Shape::windowed_rect)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -174,15 +174,13 @@ fn gradient_quad(ui: &mut Ui, k: Kit) {
 /// The headline use: rounded-corner clipping without a stencil pass; the windowed rect fills the corner wedges
 /// with the tile background and strokes the boundary over a plain unclipped gradient.
 fn window_mask(ui: &mut Ui, k: Kit) {
+    ui.add_shape(Shape::rect().fill(LinearGradient::two_stop(
+        FRAC_PI_2,
+        RgbaF32::hex(0x1a1a2e),
+        RgbaF32::hex(0x4c5cdb),
+    )));
     ui.add_shape(
-        Shape::owner_rect().fill(
-            LinearGradient::builder(FRAC_PI_2)
-                .stop(0.0, RgbaF32::hex(0x1a1a2e))
-                .stop(1.0, RgbaF32::hex(0x4c5cdb)),
-        ),
-    );
-    ui.add_shape(
-        Shape::owner_windowed_rect()
+        Shape::windowed_rect()
             .corners(18.0)
             .fill(k.t.ground)
             .border(Stroke::new(k.swatch.teal, 2.0)),
@@ -192,7 +190,7 @@ fn window_mask(ui: &mut Ui, k: Kit) {
 /// A translucent fill exposes the geometry: only the corner wedges outside the rounded boundary are covered.
 fn window_anatomy(ui: &mut Ui, k: Kit) {
     ui.add_shape(
-        Shape::owner_windowed_rect()
+        Shape::windowed_rect()
             .corners(28.0)
             .fill(k.swatch.orange.with_alpha(0.75))
             .border(Stroke::new(k.swatch.lime, 4.0)),

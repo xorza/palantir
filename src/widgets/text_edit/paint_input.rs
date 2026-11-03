@@ -67,14 +67,15 @@ impl PaintInput<'_> {
             block.record(ui, None, |ui| {
                 for rect in self.selection_rects {
                     let shape = match self.preedit_underline {
-                        None => Shape::rect(*rect).fill(self.selection_color),
-                        Some(width) => Shape::rect(Rect::new(
-                            rect.min.x,
-                            rect.min.y + rect.size.h - width,
-                            rect.size.w,
-                            width,
-                        ))
-                        .fill(self.text_color),
+                        None => Shape::rect().at(*rect).fill(self.selection_color),
+                        Some(width) => Shape::rect()
+                            .at(Rect::new(
+                                rect.min.x,
+                                rect.min.y + rect.size.h - width,
+                                rect.size.w,
+                                width,
+                            ))
+                            .fill(self.text_color),
                     };
                     ui.add_shape(shape);
                 }
@@ -106,7 +107,7 @@ impl PaintInput<'_> {
                         caret.width,
                         caret.pos.line_height,
                     );
-                    let shape = Shape::rect(rect).fill(caret.color);
+                    let shape = Shape::rect().at(rect).fill(caret.color);
                     match caret.animation {
                         Some(animation) => ui.add_shape_animated(shape, animation),
                         None => ui.add_shape(shape),

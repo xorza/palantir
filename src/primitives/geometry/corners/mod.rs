@@ -194,16 +194,7 @@ impl Corners {
     }
 }
 
-/// `(top, bottom)`: both corners on each edge.
-impl<T: Number, B: Number> From<(T, B)> for Corners {
-    #[track_caller]
-    fn from((t, b): (T, B)) -> Self {
-        let (t, b) = (t.to_f32(), b.to_f32());
-        Self::new(t, t, b, b)
-    }
-}
-
-/// `(tl, tr, br, bl)`, in lane order.
+/// `(tl, tr, br, bl)`, in lane order, as [`Corners::new`] and CSS `border-radius` take them.
 impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for Corners {
     #[track_caller]
     fn from((tl, tr, br, bl): (TL, TR, BR, BL)) -> Self {

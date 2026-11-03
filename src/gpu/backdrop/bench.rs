@@ -68,8 +68,7 @@ impl State {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 ui.add_shape(
-                                    Shape::owner_rect()
-                                        .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                                    Shape::rect().backdrop_filter(BackdropFilter::blur(SIGMA)),
                                 );
                             });
                         Panel::canvas()
@@ -217,7 +216,7 @@ impl Look {
 
     fn pane(self) -> RectShape {
         let (backdrop, tint) = self.backdrop(SIGMA);
-        Shape::owner_rect().fill(tint).backdrop_filter(backdrop)
+        Shape::rect().fill(tint).backdrop_filter(backdrop)
     }
 }
 
@@ -238,7 +237,8 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
                                 ui.add_shape(
-                                    Shape::rect(Rect::new(10.0, 10.0, 100.0, 100.0))
+                                    Shape::rect()
+                                        .at(Rect::new(10.0, 10.0, 100.0, 100.0))
                                         .fill(RgbaF32::WHITE),
                                 );
                                 ui.add_shape(look.pane());
@@ -368,14 +368,16 @@ impl PaneFrame {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect(Rect::new(300.0, 20.0, 12.0, 12.0))
+                            Shape::rect()
+                                .at(Rect::new(300.0, 20.0, 12.0, 12.0))
                                 .fill(flip(arm == Arm::Under)),
                         );
                         for rect in [TOOLBAR, SIDEBAR, popup] {
                             ui.add_shape(look.pane_at(rect));
                         }
                         ui.add_shape(
-                            Shape::rect(Rect::new(400.0, 20.0, 12.0, 12.0))
+                            Shape::rect()
+                                .at(Rect::new(400.0, 20.0, 12.0, 12.0))
                                 .fill(flip(arm == Arm::Hover)),
                         );
                     });
@@ -386,7 +388,7 @@ impl PaneFrame {
 impl Look {
     fn pane_at(self, rect: Rect) -> RectShape {
         let (backdrop, tint) = self.backdrop(FRAME_SIGMA);
-        Shape::rect(rect).fill(tint).backdrop_filter(backdrop)
+        Shape::rect().at(rect).fill(tint).backdrop_filter(backdrop)
     }
 }
 
@@ -574,7 +576,11 @@ impl SceneCase {
                         RgbaF32::srgb(0.1, 0.3, 1.0)
                     };
                     for y in [150.0, 400.0] {
-                        ui.add_shape(Shape::rect(Rect::new(40.0, y, 1200.0, 12.0)).fill(color));
+                        ui.add_shape(
+                            Shape::rect()
+                                .at(Rect::new(40.0, y, 1200.0, 12.0))
+                                .fill(color),
+                        );
                     }
                     for i in 0..12 {
                         let at = Vec2::new(
@@ -635,7 +641,7 @@ fn first(fixture: &mut FrameFixture, ui: &mut Ui) {
                 .id_salt("backdrop-first-background")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::owner_rect().fill(RgbaF32::srgb(0.12, 0.13, 0.16)));
+                    ui.add_shape(Shape::rect().fill(RgbaF32::srgb(0.12, 0.13, 0.16)));
                 });
             Panel::hstack()
                 .id_salt("backdrop-first-row")

@@ -48,6 +48,8 @@ impl Knobs {
 fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
     // Translucent and varying in both axes, so every damaged pixel blends a value of its own over the clear.
     let veil = RadialGradient::two_stop(
+        Vec2::splat(0.5),
+        Vec2::splat(0.5),
         RgbaF32::srgba(1.0, 1.0, 1.0, 0.6),
         RgbaF32::srgba(0.3, 0.6, 1.0, 0.05),
     );

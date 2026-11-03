@@ -103,6 +103,7 @@ impl Track {
     }
 }
 
+/// [`Track::new`]: a track of `s` with no bounds.
 impl From<Sizing> for Track {
     fn from(s: Sizing) -> Self {
         Self::new(s)

@@ -53,7 +53,7 @@ impl Scene {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
                         if let Some((rect, color)) = self.under {
-                            ui.add_shape(Shape::rect(rect).fill(color));
+                            ui.add_shape(Shape::rect().at(rect).fill(color));
                         }
                     });
                 for (i, &rect) in self.panes.iter().enumerate() {
@@ -62,13 +62,16 @@ impl Scene {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             ui.add_shape(
-                                Shape::rect(rect).backdrop_filter(BackdropFilter::blur(SIGMA)),
+                                Shape::rect()
+                                    .at(rect)
+                                    .backdrop_filter(BackdropFilter::blur(SIGMA)),
                             );
                             if i == 0 {
-                                ui.add_shape(Shape::rect(OVER).fill(self.over));
+                                ui.add_shape(Shape::rect().at(OVER).fill(self.over));
                                 if self.blink {
                                     ui.add_shape_animated(
-                                        Shape::rect(Rect::new(60.0, 60.0, 2.0, 10.0))
+                                        Shape::rect()
+                                            .at(Rect::new(60.0, 60.0, 2.0, 10.0))
                                             .fill(RgbaF32::WHITE),
                                         PaintAnimation::alpha(0.0, 1.0)
                                             .with_period(Duration::from_millis(1000))
@@ -197,7 +200,7 @@ fn a_chrome_pane_goes_stale_as_a_shape_pane() {
                 .id(WidgetId::from_hash("chrome-scene"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(UNDER).fill(under));
+                    ui.add_shape(Shape::rect().at(UNDER).fill(under));
                     Panel::canvas()
                         .id(WidgetId::from_hash("chrome-pane"))
                         .pos(PANE.min)
@@ -234,9 +237,13 @@ fn a_pane_whose_row_moves_is_stale() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     if lead {
-                        ui.add_shape(Shape::rect(far).fill(BLUE));
+                        ui.add_shape(Shape::rect().at(far).fill(BLUE));
                     }
-                    ui.add_shape(Shape::rect(PANE).backdrop_filter(BackdropFilter::blur(SIGMA)));
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(PANE)
+                            .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                    );
                 });
         }
     };

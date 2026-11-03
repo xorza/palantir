@@ -962,7 +962,7 @@ impl Ui {
     /// # use std::time::Duration;
     /// # fn demo(ui: &mut Ui) {
     /// ui.add_shape_animated(
-    ///     Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
+    ///     Shape::rect().at(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
     ///     PaintAnimation::alpha(0.4, 1.0)
     ///         .with_period(Duration::from_secs(2))
     ///         .with_repeat(PaintRepeat::Forever)

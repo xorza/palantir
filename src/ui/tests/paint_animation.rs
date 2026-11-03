@@ -27,7 +27,9 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
             .size(20.0)
             .show(ui);
         ui.add_shape_animated(
-            Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+            Shape::rect()
+                .at(Rect::new(0.0, 0.0, 8.0, 8.0))
+                .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
             PaintAnimation::alpha(0.0, 1.0).with_period(Duration::from_secs(1)),
         );
     };
@@ -65,7 +67,9 @@ fn a_turn_records_on_every_kind() {
             quarter,
         );
         ui.add_shape_animated(
-            Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::WHITE),
+            Shape::rect()
+                .at(Rect::new(0.0, 0.0, 8.0, 8.0))
+                .fill(RgbaF32::WHITE),
             quarter,
         );
         let label = ui.intern("turned");

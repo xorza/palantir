@@ -585,7 +585,11 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
                 Block::new()
                     .size((Sizing::fixed(40.0), Sizing::fixed(10.0)))
                     .show(ui);
-                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 40.0, 10.0)).fill(gradient.clone()));
+                ui.add_shape(
+                    Shape::rect()
+                        .at(Rect::new(0.0, 0.0, 40.0, 10.0))
+                        .fill(gradient.clone()),
+                );
             });
     };
     h.frame(&mut scene);

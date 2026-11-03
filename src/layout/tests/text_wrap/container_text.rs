@@ -12,8 +12,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
-use crate::text::font_family::FontFamily;
-use crate::text::font_weight::FontWeight;
 use crate::text::glyph_font::GlyphFont;
 use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
@@ -303,9 +301,7 @@ impl DirectText {
         )
         .color(RgbaF32::WHITE)
         .wrap(self.wrap)
-        .align(Align::default())
-        .family(FontFamily::SANS)
-        .weight(FontWeight::REGULAR);
+        .align(Align::default());
         ui.add_shape(match self.local_origin {
             Some(origin) => shape.at_origin(origin),
             None => shape,

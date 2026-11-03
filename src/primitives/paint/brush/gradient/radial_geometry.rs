@@ -2,7 +2,6 @@
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
@@ -24,9 +23,6 @@ pub struct RadialGeometry {
 /// Radial gradient — see [`RadialGeometry`] for the projection.
 pub type RadialGradient = Gradient<RadialGeometry>;
 
-/// Authoring builder for a [`RadialGradient`].
-pub type RadialGradientBuilder = GradientBuilder<RadialGeometry>;
-
 impl Geometry for RadialGeometry {
     /// Radial fills are usually soft glows, where perceptual smoothness matters most.
     const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
@@ -47,11 +43,6 @@ impl Geometry for RadialGeometry {
 }
 
 impl RadialGradient {
-    /// Start an inline, allocation-free gradient builder.
-    pub fn builder(center: Vec2, radius: Vec2) -> RadialGradientBuilder {
-        GradientBuilder::new(RadialGeometry { center, radius })
-    }
-
     /// General constructor.
     ///
     /// # Panics
@@ -62,17 +53,14 @@ impl RadialGradient {
         Self::from_stops(RadialGeometry { center, radius }, stops)
     }
 
-    /// 2-stop centered shorthand: `center = (0.5, 0.5)`, `radius = (0.5, 0.5)` (the inscribed circle); `c0` at the center, `c1` at the edge.
+    /// 2-stop shorthand: `c0` at `center`, `c1` at `radius` out; `Vec2::splat(0.5)` for both is
+    /// the inscribed circle.
     ///
     /// # Panics
     ///
     /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
     #[track_caller]
-    pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
-        Self::new(
-            Vec2::splat(0.5),
-            Vec2::splat(0.5),
-            [Stop::new(0.0, c0), Stop::new(1.0, c1)],
-        )
+    pub fn two_stop(center: Vec2, radius: Vec2, c0: RgbaF32, c1: RgbaF32) -> Self {
+        Self::new(center, radius, [Stop::new(0.0, c0), Stop::new(1.0, c1)])
     }
 }

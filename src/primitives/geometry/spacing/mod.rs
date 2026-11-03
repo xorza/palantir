@@ -36,7 +36,7 @@ impl Spacing {
         Self::from_array([v, v, v, v])
     }
 
-    /// `x` on left and right, `y` on top and bottom (CSS two-value shorthand).
+    /// `x` on left and right, `y` on top and bottom: horizontal first, as a `Vec2` orders them.
     ///
     /// # Panics
     ///

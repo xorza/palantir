@@ -77,19 +77,19 @@ impl TextShape {
         self
     }
 
-    /// Font family.
+    /// Font family, over the one the run's font names.
     pub const fn family(mut self, family: FontFamily) -> Self {
         self.font.family = family;
         self
     }
 
-    /// Which weight to shape at, on the CSS 1–1000 scale.
+    /// Which weight to shape at, on the CSS 1–1000 scale, over the one the run's font names.
     pub const fn weight(mut self, weight: FontWeight) -> Self {
         self.font.weight = weight;
         self
     }
 
-    /// Font slant.
+    /// Font slant, over the one the run's font names.
     pub const fn slant(mut self, slant: FontSlant) -> Self {
         self.font.slant = slant;
         self

@@ -112,7 +112,8 @@ impl<T: PartialEq> ToggleKind for Pip<'_, T> {
             let inset = domain::length_at_least(slot.indicator_inset, 0.0);
             let dot = domain::length_at_least(pip - 2.0 * inset, 0.0);
             ui.add_shape(
-                Shape::rect(Rect::new(inset, inset, dot, dot))
+                Shape::rect()
+                    .at(Rect::new(inset, inset, dot, dot))
                     .corners(dot * 0.5)
                     .fill(slot.indicator),
             );

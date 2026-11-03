@@ -99,7 +99,7 @@ impl ValueArea<'_> {
             ui.add_shape(Shape::image(image).fit(ImageFit::Fill));
             value.marker(ui, theme, size);
             if response.disabled {
-                ui.add_shape(Shape::owner_rect().fill(theme.disabled_veil));
+                ui.add_shape(Shape::rect().fill(theme.disabled_veil));
             }
         });
         ValueResponse {
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn a_key_commits_at_once_and_a_disabled_area_takes_no_press() {
         let mut coords = ColorCoords::default();
-        coords.set_saturation(0.5);
+        coords = coords.with_saturation(0.5);
         check(
             "field",
             UVec2::new(208, 160),

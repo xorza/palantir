@@ -30,13 +30,14 @@ fn canvas(ui: &mut Ui, id: &'static str, shapes: u32) {
         .show(ui, |ui| {
             for s in 0..shapes {
                 ui.add_shape(
-                    Shape::rect(Rect::new(
-                        (s % 9) as f32 * 20.0,
-                        (s / 9) as f32 * 20.0,
-                        8.0,
-                        8.0,
-                    ))
-                    .fill(RgbaF32::srgb(0.1 * s as f32, 0.4, 0.6)),
+                    Shape::rect()
+                        .at(Rect::new(
+                            (s % 9) as f32 * 20.0,
+                            (s / 9) as f32 * 20.0,
+                            8.0,
+                            8.0,
+                        ))
+                        .fill(RgbaF32::srgb(0.1 * s as f32, 0.4, 0.6)),
                 );
             }
         });

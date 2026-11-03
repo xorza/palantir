@@ -124,7 +124,8 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                 .transform(transform)
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(Rect::new(0.0, 0.0, 30.0, 30.0))
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 30.0, 30.0))
                             .corners(0.0)
                             .fill(shape_color),
                     );

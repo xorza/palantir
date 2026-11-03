@@ -1,8 +1,9 @@
 //! A turn paint animation on each shape kind that turns, held at 30°.
 
 use glam::{UVec2, Vec2};
+use palantir::IconFit;
 use palantir::widget::LineCap;
-use palantir::widget::{GlyphFont, IconFit, Mesh, PaintAnimation, Shape};
+use palantir::widget::{GlyphFont, Mesh, PaintAnimation, Shape};
 use palantir::{
     Configure, Corners, Image, ImageFit, LinearGradient, Panel, Rect, RgbaF32, Shadow, Sizing,
     Stroke, Ui, WidgetId,
@@ -70,7 +71,8 @@ fn turned_quads_match_golden() {
         Panel::hstack().auto_id().padding(10.0).show(ui, |ui| {
             owner(ui, "rounded", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect(source)
+                    Shape::rect()
+                        .at(source)
                         .corners(Corners::all(10.0))
                         .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
                         .border(Stroke::new(RgbaF32::WHITE, 3.0)),
@@ -79,7 +81,7 @@ fn turned_quads_match_golden() {
             });
             owner(ui, "gradient", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect(source).fill(LinearGradient::two_stop(
+                    Shape::rect().at(source).fill(LinearGradient::two_stop(
                         0.0,
                         RgbaF32::hex(0xff5e44),
                         RgbaF32::hex(0xfacc15),
@@ -95,7 +97,8 @@ fn turned_quads_match_golden() {
                     thirty_degrees(),
                 );
                 ui.add_shape_animated(
-                    Shape::rect(source)
+                    Shape::rect()
+                        .at(source)
                         .corners(Corners::all(6.0))
                         .fill(RgbaF32::srgb(0.85, 0.85, 0.85)),
                     thirty_degrees(),
@@ -103,7 +106,8 @@ fn turned_quads_match_golden() {
             });
             owner(ui, "inset", |ui| {
                 ui.add_shape_animated(
-                    Shape::rect(source)
+                    Shape::rect()
+                        .at(source)
                         .corners(Corners::all(6.0))
                         .fill(RgbaF32::srgb(0.85, 0.85, 0.85)),
                     thirty_degrees(),
@@ -125,7 +129,8 @@ fn turned_quads_match_golden() {
             });
             owner(ui, "window", |ui| {
                 ui.add_shape_animated(
-                    Shape::windowed_rect(source)
+                    Shape::windowed_rect()
+                        .at(source)
                         .corners(Corners::all(14.0))
                         .fill(RgbaF32::srgb(0.2, 0.5, 1.0))
                         .border(Stroke::new(RgbaF32::WHITE, 2.0)),

@@ -22,13 +22,14 @@ fn windowed_rect_masks_corners_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 let card = Rect::new(0.0, 0.0, 180.0, 100.0);
-                ui.add_shape(Shape::rect(card).fill(LinearGradient::two_stop(
+                ui.add_shape(Shape::rect().at(card).fill(LinearGradient::two_stop(
                     0.0,
                     RgbaF32::hex(0xff5e44),
                     RgbaF32::hex(0xfacc15),
                 )));
                 ui.add_shape(
-                    Shape::windowed_rect(card)
+                    Shape::windowed_rect()
+                        .at(card)
                         .corners(20.0)
                         .fill(DARK_BG)
                         .border(Stroke::new(RgbaF32::srgb(0.65, 0.80, 1.00), 2.0)),
@@ -51,7 +52,9 @@ fn interleaved_shapes_paint_in_record_order() {
             .padding(0.0)
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 30.0, 60.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
+                    Shape::rect()
+                        .at(Rect::new(0.0, 0.0, 30.0, 60.0))
+                        .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                 );
                 Block::new()
                     .id_salt("cyan")
@@ -59,7 +62,8 @@ fn interleaved_shapes_paint_in_record_order() {
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(
-                    Shape::rect(Rect::new(30.0, 0.0, 60.0, 60.0))
+                    Shape::rect()
+                        .at(Rect::new(30.0, 0.0, 60.0, 60.0))
                         .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
                 );
                 Block::new()
@@ -68,7 +72,8 @@ fn interleaved_shapes_paint_in_record_order() {
                     .size((Sizing::fixed(60.0), Sizing::FILL))
                     .show(ui);
                 ui.add_shape(
-                    Shape::rect(Rect::new(90.0, 0.0, 60.0, 60.0))
+                    Shape::rect()
+                        .at(Rect::new(90.0, 0.0, 60.0, 60.0))
                         .fill(RgbaF32::srgb(0.2, 0.4, 1.0)),
                 );
             });
@@ -239,7 +244,8 @@ fn polyline_translucent_premultiplies_in_stroke_shader() {
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0))
+                    Shape::rect()
+                        .at(Rect::new(0.0, 0.0, 120.0, 120.0))
                         .fill(RgbaF32::srgb(1.0, 0.0, 1.0)),
                 );
                 let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
@@ -387,7 +393,11 @@ fn an_unsnapped_rect_covers_the_pixels_across_each_edge() {
         .clear(RgbaF32::WHITE)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
-                ui.add_shape(Shape::rect(Rect::new(40.75, 20.75, 59.5, 39.5)).fill(RgbaF32::BLACK));
+                ui.add_shape(
+                    Shape::rect()
+                        .at(Rect::new(40.75, 20.75, 59.5, 39.5))
+                        .fill(RgbaF32::BLACK),
+                );
             });
         })
         .image;

@@ -28,11 +28,10 @@ fn harness() -> Harness {
 }
 
 fn coords(hue: f32, sat: f32, val: f32) -> ColorCoords {
-    let mut c = ColorCoords::default();
-    c.set_hue(hue);
-    c.set_saturation(sat);
-    c.set_value(val);
-    c
+    ColorCoords::default()
+        .with_hue(hue)
+        .with_saturation(sat)
+        .with_value(val)
 }
 
 fn frame(h: &mut Harness, id: WidgetId, state: &mut ColorCoords) -> ValueEdges {
@@ -174,7 +173,7 @@ fn a_hue_change_repaints_the_whole_field() {
     let mut state = coords(0.3, 0.5, 0.5);
     frame(&mut h, id, &mut state);
     frame(&mut h, id, &mut state);
-    state.set_hue(0.9);
+    state = state.with_hue(0.9);
     let report = h.frame(|ui| {
         ColorField::new(&mut state).id(id).show(ui);
     });

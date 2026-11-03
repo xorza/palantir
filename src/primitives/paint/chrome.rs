@@ -137,15 +137,21 @@ impl Chrome {
         }
     }
 
-    /// Solid fill with rounded corners; no border or shadow.
-    pub fn rounded(brush: impl Into<Brush>, corners: Corners) -> Self {
-        Self {
-            fill: brush.into(),
-            border: Stroke::NONE,
-            corners,
-            shadow: Shadow::NONE,
-            backdrop_filter: BackdropFilter::NONE,
-        }
+    /// A fill with rounded corners: no border or shadow.
+    pub fn rounded(brush: impl Into<Brush>, corners: impl Into<Corners>) -> Self {
+        Self::fill(brush).with_corners(corners)
+    }
+
+    /// Set the fill, keeping the rest.
+    pub fn with_fill(mut self, brush: impl Into<Brush>) -> Self {
+        self.fill = brush.into();
+        self
+    }
+
+    /// Set the corner radii, keeping the rest.
+    pub fn with_corners(mut self, corners: impl Into<Corners>) -> Self {
+        self.corners = corners.into();
+        self
     }
 
     /// Set the border, keeping fill/corners/shadow.
@@ -258,6 +264,7 @@ impl Animatable for Option<Chrome> {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::color::RgbaF32;
 
     use super::*;
@@ -291,6 +298,37 @@ mod tests {
     fn none_is_the_default_noop_chrome() {
         assert_eq!(Chrome::default(), Chrome::NONE);
         assert!(Chrome::NONE.is_noop());
+    }
+
+    /// `rounded` is a fill with corners, a radius converting as a shape's does; `with_fill` and
+    /// `with_corners` replace their field alone, whatever brush the fill holds.
+    #[test]
+    fn rounded_and_the_with_setters_set_their_field_alone() {
+        let ink = RgbaF32::new(0.2, 0.4, 0.6, 1.0);
+        let rounded = Chrome::rounded(ink, 6.0);
+        assert_eq!(rounded, Chrome::fill(ink).with_corners(Corners::all(6.0)));
+        assert_eq!(rounded.corners, Corners::all(6.0));
+
+        let bordered = rounded.with_border(Stroke::new(RgbaF32::BLACK, 2.0));
+        let gradient = LinearGradient::two_stop(0.0, RgbaF32::BLACK, RgbaF32::WHITE);
+        let refilled = bordered.clone().with_fill(gradient.clone());
+        assert_eq!(refilled.fill, Brush::Linear(gradient));
+        assert_eq!(
+            Chrome {
+                fill: bordered.fill.clone(),
+                ..refilled
+            },
+            bordered
+        );
+        let recornered = bordered.clone().with_corners(Corners::top(3.0));
+        assert_eq!(recornered.corners, Corners::top(3.0));
+        assert_eq!(
+            Chrome {
+                corners: bordered.corners,
+                ..recornered
+            },
+            bordered
+        );
     }
 
     /// A chrome that appears blends from `NONE`: halfway its fill, border and shadow are at half

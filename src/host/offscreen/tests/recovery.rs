@@ -163,8 +163,12 @@ impl App for Scene {
             .id_salt("scene")
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ui.add_shape(Shape::rect(Rect::new(4.0, 4.0, 12.0, 12.0)).fill(self.tile));
-                ui.add_shape(Shape::rect(Rect::new(20.0, 4.0, 40.0, 12.0)).fill(
+                ui.add_shape(
+                    Shape::rect()
+                        .at(Rect::new(4.0, 4.0, 12.0, 12.0))
+                        .fill(self.tile),
+                );
+                ui.add_shape(Shape::rect().at(Rect::new(20.0, 4.0, 40.0, 12.0)).fill(
                     LinearGradient::two_stop(0.0, RgbaF32::hex(0xff0000), RgbaF32::hex(0x0000ff)),
                 ));
                 for i in 0..4 {
@@ -192,7 +196,9 @@ impl App for Scene {
                     .clip(ClipMode::Rounded)
                     .show(ui, |ui| {
                         ui.add_shape(
-                            Shape::rect(Rect::new(0.0, 0.0, 28.0, 14.0)).fill(RgbaF32::BLACK),
+                            Shape::rect()
+                                .at(Rect::new(0.0, 0.0, 28.0, 14.0))
+                                .fill(RgbaF32::BLACK),
                         );
                     });
                 Text::new("Recover").pos((4.0, 48.0)).show(ui);
@@ -219,7 +225,8 @@ impl App for Scene {
                     .size(20.0)
                     .show(ui);
                 ui.add_shape(
-                    Shape::rect(Rect::new(96.0, 60.0, 40.0, 30.0))
+                    Shape::rect()
+                        .at(Rect::new(96.0, 60.0, 40.0, 30.0))
                         .backdrop_filter(BackdropFilter::blur(2.0)),
                 );
             });

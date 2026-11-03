@@ -10,7 +10,7 @@ use crate::primitives::geometry::size::Size;
 /// discriminants are pinned because [`Align`] packs this into three bits and
 /// [`Align::halign`] unpacks it positionally.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum HAlign {
     /// Inherit: parent's `child_align`, then the child's cross-axis
     /// [`Sizing`](crate::Sizing).
@@ -29,7 +29,7 @@ pub enum HAlign {
 /// Vertical alignment of a child inside its parent's inner rect; see [`HAlign`] for
 /// `Auto` and the pinned discriminants.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub enum VAlign {
     /// Inherit, by the same rule as [`HAlign::Auto`].
     #[default]

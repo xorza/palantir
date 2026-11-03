@@ -28,21 +28,26 @@ fn panes(ui: &mut Ui, state: &mut FrameFixture, look: Look, under: RgbaF32) {
                 .id_salt("alloc-backdrop-panes")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(Rect::new(300.0, 20.0, 12.0, 12.0)).fill(under));
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(300.0, 20.0, 12.0, 12.0))
+                            .fill(under),
+                    );
                     for rect in [
                         Rect::new(0.0, 0.0, 1280.0, 48.0),
                         Rect::new(0.0, 48.0, 240.0, 672.0),
                         Rect::new(500.0, 200.0, 320.0, 220.0),
                     ] {
                         let shape = match look {
-                            Look::Plain => {
-                                Shape::rect(rect).backdrop_filter(BackdropFilter::blur(12.0))
-                            }
-                            Look::Frosted => Shape::rect(rect)
+                            Look::Plain => Shape::rect()
+                                .at(rect)
+                                .backdrop_filter(BackdropFilter::blur(12.0)),
+                            Look::Frosted => Shape::rect()
+                                .at(rect)
                                 .fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
                                 .backdrop_filter(BackdropFilter::frosted(16.0)),
-                            Look::Glass => Shape::rect(rect).backdrop_filter(
-                                BackdropFilter::glass(Lens::default()).with_blur(2.0),
+                            Look::Glass => Shape::rect().at(rect).backdrop_filter(
+                                BackdropFilter::glass(Lens::WINDOW_GLASS).with_blur(2.0),
                             ),
                         };
                         ui.add_shape(shape);

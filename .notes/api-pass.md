@@ -97,8 +97,8 @@ pass is a bug.
   `rule_hovered` and `rule_active`, as the scrollbar's are `thumb_*`.
 - **No mirror of a wgpu type.** `DeviceFeatures`, `SurfaceUsages` and `PowerPreference` go: the
   signatures that take them name wgpu anyway, and `pub use wgpu` serves the caller.
-- **Nothing public without a caller outside the crate's own tests**, unless a documented app use
-  needs it. Plumbing a widget needs is `pub(crate)`.
+- **No caller is no reason to remove** (AGENTS.md, "Public API"): an item goes when it is wrong
+  for the surface. Plumbing a widget needs is `pub(crate)`.
 
 ### Decided
 
@@ -157,30 +157,6 @@ follow it.
 Batches run most harmful first. A batch changes palantir and darkroom together and leaves both
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
-
-### Batch 8: Paint values and shapes
-
-- [ ] Gradients: remove `GradientBuilder`, its three aliases, the three `builder` functions and the
-  four panicking `From`s; `new(<geometry>, stops)` then `with_spread` and `with_interpolation`.
-  `two_stop` takes the geometry on every kind (decided, 5). Callers: about 13 builder sites,
-  19 `two_stop` sites.
-- [ ] `Chrome::rounded(impl Into<Brush>, impl Into<Corners>)`; `with_corners` and `with_fill`; the
-  doc stops saying "solid".
-- [ ] `Corners`: remove both tuple `From`s, which mean top and bottom where `Spacing`'s mean axes
-  and CSS's mean diagonals (0 callers outside tests).
-- [ ] `Spacing::from_array` becomes crate-private; `Spacing::xy`'s doc stops citing CSS, which puts
-  vertical first.
-- [ ] Shapes (decided, 2): `Shape::rect()` and `Shape::windowed_rect()` start at the owner rect
-  and take `.at(rect)`; `owner_rect` and `owner_windowed_rect` go.
-- [ ] `TextShape::family`, `weight` and `slant` go: the font goes through `Shape::text(text, font)`.
-- [ ] `IconFit` moves beside `ImageFit` at the root, with the shared variants in one order.
-- [ ] `RgbaF32: Display`, writing the form `FromStr` reads; `Serialize` goes through it.
-- [ ] `ColorCoords`: `with_hue`, `with_saturation`, `with_value` in place of the `set_*` methods.
-- [ ] `Lens::default` becomes `Lens::WINDOW_GLASS`; `Lens::is_refractive_index` moves into
-  `domain`.
-- [ ] `Track`'s `From<Sizing>` goes (0 callers); `HAlign` and `VAlign` derive `Hash`.
-- [ ] `domain::f64::bounds` and `is_bounds` published beside `range`, with a row in the kinds
-  table: neither end NaN, infinity allowed, ends ordered low to high where `range` keeps them.
 
 ### Batch 9: Theme
 

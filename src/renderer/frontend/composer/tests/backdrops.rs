@@ -268,7 +268,7 @@ fn a_panes_quad_names_the_form_of_its_glass() {
     let rect = Rect::new(20.0, 20.0, 40.0, 20.0);
     let lens = |dispersion| Lens {
         dispersion,
-        ..Lens::default()
+        ..Lens::WINDOW_GLASS
     };
     for (filter, kind) in [
         (BackdropFilter::blur(4.0), FillKind::BACKDROP),

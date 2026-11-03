@@ -41,7 +41,7 @@ fn listed_under(scale: f32, clip: Option<f32>, rect: Rect, filter: BackdropFilte
             None => canvas.size((Sizing::FILL, Sizing::FILL)),
         };
         canvas.show(ui, |ui| {
-            ui.add_shape(Shape::rect(rect).backdrop_filter(filter));
+            ui.add_shape(Shape::rect().at(rect).backdrop_filter(filter));
         });
     });
     let scene = h.ui().frame_scene();
@@ -105,7 +105,7 @@ fn a_pane_past_every_plan_coerces_to_the_widest() {
         BackdropFilter::blur(65504.0).with_lens(Lens {
             thickness: 65504.0,
             refractive_index: 65504.0,
-            ..Lens::default()
+            ..Lens::WINDOW_GLASS
         }),
     );
     assert_eq!(pane.plan, BlurPlan::new(BlurPlan::MAX_SIGMA));

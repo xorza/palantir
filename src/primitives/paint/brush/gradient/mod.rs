@@ -9,7 +9,6 @@ use std::hash;
 
 pub(crate) mod color_ramp;
 pub(crate) mod conic_geometry;
-pub(crate) mod gradient_builder;
 pub(crate) mod linear_geometry;
 pub(crate) mod radial_geometry;
 pub(crate) mod stops;

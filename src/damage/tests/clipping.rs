@@ -233,7 +233,8 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
                 .clip_rect()
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(Rect::new(0.0, 0.0, 400.0, 20.0))
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 400.0, 20.0))
                             .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
                     );
                 });

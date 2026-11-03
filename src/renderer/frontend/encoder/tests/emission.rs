@@ -145,12 +145,12 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(
-                Shape::owner_rect()
+                Shape::rect()
                     .corners(4.0)
                     .fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
             );
             ui.add_shape(
-                Shape::owner_windowed_rect()
+                Shape::windowed_rect()
                     .corners(6.0)
                     .fill(RgbaF32::srgb(0.0, 1.0, 0.0)),
             );

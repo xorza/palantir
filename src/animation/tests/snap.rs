@@ -12,6 +12,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
+use glam::Vec2;
 use std::time::Duration;
 
 /// Fields left out of the motion arithmetic update on retarget mid-spring, not on settle
@@ -158,7 +159,12 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
         chrome: Chrome::fill(RgbaF32::BLACK),
         text: TextStyle::default().with_color(RgbaF32::BLACK),
     };
-    let gradient = Brush::Radial(RadialGradient::two_stop(RgbaF32::BLACK, RgbaF32::WHITE));
+    let gradient = Brush::Radial(RadialGradient::two_stop(
+        Vec2::splat(0.5),
+        Vec2::splat(0.5),
+        RgbaF32::BLACK,
+        RgbaF32::WHITE,
+    ));
     let target = AnimatedLook {
         chrome: Chrome::fill(gradient.clone()),
         text: TextStyle::default().with_color(RgbaF32::WHITE),

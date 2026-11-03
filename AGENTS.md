@@ -226,6 +226,11 @@ Facts and sources: `.notes/research/2026-11-01-reel.md`.
 - **Never change it on your own.** Adding, renaming, removing or re-signing an
   exported item — a type, a method, an argument, a trait bound — waits for a
   go-ahead. Propose it, then stop.
+- **No caller is no reason to remove.** An item a well-made API of its kind would offer
+  stays, as `TextShape::weight` beside the font a run names and `Spacing::from_array` beside
+  `to_array`. An item goes when it is wrong for the surface: bad, a second spelling of the
+  canonical one, obsolete, inconvenient, unidiomatic or ambiguous, as a `(top, bottom)` tuple
+  for `Corners` that `Spacing` and CSS each read another way.
 - **Match its neighbors.** Before proposing new surface, read what it will
   sit beside — the widget's other setters, the sibling type's methods, the
   trait it joins, the `Response` its peers return — and match their names,

@@ -9,15 +9,9 @@ pub(crate) mod gradient;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::brush::gradient::conic_geometry::{
-    ConicGradient, ConicGradientBuilder,
-};
-use crate::primitives::paint::brush::gradient::linear_geometry::{
-    LinearGradient, LinearGradientBuilder,
-};
-use crate::primitives::paint::brush::gradient::radial_geometry::{
-    RadialGradient, RadialGradientBuilder,
-};
+use crate::primitives::paint::brush::gradient::conic_geometry::ConicGradient;
+use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
+use crate::primitives::paint::brush::gradient::radial_geometry::RadialGradient;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 
@@ -112,14 +106,6 @@ impl From<LinearGradient> for Brush {
     }
 }
 
-impl From<LinearGradientBuilder> for Brush {
-    #[inline]
-    #[track_caller]
-    fn from(builder: LinearGradientBuilder) -> Self {
-        Self::Linear(builder.build())
-    }
-}
-
 impl From<RadialGradient> for Brush {
     #[inline]
     fn from(gradient: RadialGradient) -> Self {
@@ -127,26 +113,10 @@ impl From<RadialGradient> for Brush {
     }
 }
 
-impl From<RadialGradientBuilder> for Brush {
-    #[inline]
-    #[track_caller]
-    fn from(builder: RadialGradientBuilder) -> Self {
-        Self::Radial(builder.build())
-    }
-}
-
 impl From<ConicGradient> for Brush {
     #[inline]
     fn from(gradient: ConicGradient) -> Self {
         Self::Conic(gradient)
-    }
-}
-
-impl From<ConicGradientBuilder> for Brush {
-    #[inline]
-    #[track_caller]
-    fn from(builder: ConicGradientBuilder) -> Self {
-        Self::Conic(builder.build())
     }
 }
 

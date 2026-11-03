@@ -132,7 +132,7 @@ fn probe(@builtin(global_invocation_id) id: vec3<u32>) {
 fn shadow_box_follows_the_shader() {
     let shadow = |kind: FillKind, size: Size, radii: [f32; 4], axis: [f32; 4]| Quad {
         rect: Rect::new(0.0, 0.0, size.w, size.h),
-        corners: Corners::from((radii[0], radii[1], radii[2], radii[3])),
+        corners: Corners::new(radii[0], radii[1], radii[2], radii[3]),
         fill_kind: kind,
         fill_axis: FillAxis::from_lanes(axis),
         ..Quad::default()

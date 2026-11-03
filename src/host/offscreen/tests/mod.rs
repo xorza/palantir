@@ -289,10 +289,19 @@ fn a_retained_target_without_copies_captures_through_the_backbuffer() {
                 .id_salt("uncopied")
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    ui.add_shape(Shape::rect(Rect::new(8.0, 8.0, 4.0, 4.0)).fill(color(under)));
-                    ui.add_shape(Shape::rect(Rect::new(50.0, 20.0, 4.0, 4.0)).fill(color(away)));
                     ui.add_shape(
-                        Shape::rect(Rect::new(4.0, 4.0, 16.0, 12.0))
+                        Shape::rect()
+                            .at(Rect::new(8.0, 8.0, 4.0, 4.0))
+                            .fill(color(under)),
+                    );
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(50.0, 20.0, 4.0, 4.0))
+                            .fill(color(away)),
+                    );
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(Rect::new(4.0, 4.0, 16.0, 12.0))
                             .backdrop_filter(BackdropFilter::blur(1.0)),
                     );
                 });

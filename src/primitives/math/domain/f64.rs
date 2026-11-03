@@ -42,7 +42,7 @@ pub const fn range(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
 
 /// True if neither end of `r` is NaN; an end may be infinite, in either order.
 #[inline]
-pub(crate) const fn is_bounds(r: &RangeInclusive<f64>) -> bool {
+pub const fn is_bounds(r: &RangeInclusive<f64>) -> bool {
     !r.start().is_nan() && !r.end().is_nan()
 }
 
@@ -54,7 +54,7 @@ pub(crate) const fn is_bounds(r: &RangeInclusive<f64>) -> bool {
 /// Panics unless [`is_bounds`]`(&r)`.
 #[inline]
 #[track_caller]
-pub(crate) const fn bounds(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
+pub const fn bounds(r: RangeInclusive<f64>) -> RangeInclusive<f64> {
     assert!(is_bounds(&r), "{}", domain::BOUNDS_RULE);
     let (start, end) = (*r.start(), *r.end());
     start.min(end)..=start.max(end)

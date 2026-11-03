@@ -20,7 +20,8 @@ fn oversized_radii_fit_their_box() {
             fixtures::canvas(ui, |ui| {
                 for (y, r) in [(10.0, 30.0), (60.0, 9999.0)] {
                     ui.add_shape(
-                        Shape::rect(Rect::new(10.0, y, 100.0, 40.0))
+                        Shape::rect()
+                            .at(Rect::new(10.0, y, 100.0, 40.0))
                             .fill(RgbaF32::WHITE)
                             .corners(r),
                     );

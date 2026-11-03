@@ -210,7 +210,8 @@ fn typed_builders_set_the_fields_they_name() {
     let rect = Rect::new(1.0, 2.0, 30.0, 40.0);
     let gradient = LinearGradient::two_stop(0.25, RgbaF32::BLACK, RgbaF32::WHITE);
     let stroke = Stroke::new(RgbaF32::WHITE, 2.0);
-    let rect_shape = Shape::windowed_rect(rect)
+    let rect_shape = Shape::windowed_rect()
+        .at(rect)
         .fill(gradient.clone())
         .border(stroke)
         .corners(6.0);
@@ -288,15 +289,13 @@ fn text_noop_rejects_invalid_metrics() {
             store.intern("visible"),
             GlyphFont {
                 line_height,
+                slant: FontSlant::Italic,
                 ..GlyphFont::new(font_size)
             },
         )
         .color(RgbaF32::WHITE)
         .wrap(TextWrap::SingleLine)
-        .align(Align::TOP_LEFT)
-        .family(FontFamily::SANS)
-        .weight(FontWeight::REGULAR)
-        .slant(FontSlant::Italic);
+        .align(Align::TOP_LEFT);
         assert_eq!(shape.is_noop(), expected_noop, "{label}");
         assert_eq!(
             shape.font.slant,
@@ -522,4 +521,38 @@ fn a_curve_of_no_length_paints_its_cap_alone() {
         "a butt cap has no extent"
     );
     assert!(dot.is_noop(), "nor on a cubic");
+}
+
+/// Each font axis setter overrides its own field of the run's font and leaves the size, the
+/// leading and the other axes as the font named them.
+#[test]
+fn text_font_axes_override_their_own_field() {
+    let mut store = RecordStore::default();
+    let font = GlyphFont {
+        line_height: 20.0,
+        ..GlyphFont::new(14.0)
+    };
+    let shape = |text| Shape::text(text, font);
+    let text = store.intern("axes");
+    assert_eq!(
+        shape(text).family(FontFamily::MONO).font,
+        GlyphFont {
+            family: FontFamily::MONO,
+            ..font
+        }
+    );
+    assert_eq!(
+        shape(text).weight(FontWeight::BOLD).font,
+        GlyphFont {
+            weight: FontWeight::BOLD,
+            ..font
+        }
+    );
+    assert_eq!(
+        shape(text).slant(FontSlant::Italic).font,
+        GlyphFont {
+            slant: FontSlant::Italic,
+            ..font
+        }
+    );
 }

@@ -183,7 +183,12 @@ fn diagonal(ui: &mut Ui) {
 fn radial_centered(ui: &mut Ui) {
     gradient_frame(
         ui,
-        filled(Brush::Radial(RadialGradient::two_stop(YELLOW, NAVY))),
+        filled(Brush::Radial(RadialGradient::two_stop(
+            Vec2::splat(0.5),
+            Vec2::splat(0.5),
+            YELLOW,
+            NAVY,
+        ))),
     );
 }
 
@@ -256,12 +261,8 @@ fn reflect(ui: &mut Ui) {
 
 /// Radial whose stops end at r = 0.125; past it the ramp starts over, giving rings. A linear axis spans the box exactly, so `t` never leaves 0..1 and no spread mode shows.
 fn repeat(ui: &mut Ui) {
-    let g = RadialGradient::new(
-        Vec2::splat(0.5),
-        Vec2::splat(0.125),
-        [Stop::new(0.0, NAVY), Stop::new(1.0, BLUE)],
-    )
-    .with_spread(Spread::Repeat);
+    let g = RadialGradient::two_stop(Vec2::splat(0.5), Vec2::splat(0.125), NAVY, BLUE)
+        .with_spread(Spread::Repeat);
     gradient_frame(ui, filled(Brush::Radial(g)));
 }
 

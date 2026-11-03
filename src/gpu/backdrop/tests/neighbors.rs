@@ -30,7 +30,9 @@ fn stripes(ui: &mut Ui, width: u32) {
             _ => RgbaF32::srgb(0.0, 0.3, 1.0),
         };
         ui.add_shape(
-            Shape::rect(Rect::new(i as f32 * 4.0, 0.0, 1.0 + (i % 3) as f32, 48.0)).fill(color),
+            Shape::rect()
+                .at(Rect::new(i as f32 * 4.0, 0.0, 1.0 + (i % 3) as f32, 48.0))
+                .fill(color),
         );
     }
 }
@@ -54,7 +56,11 @@ const RIGHT: Rect = Rect::new(30.0, 4.0, 30.0, 40.0);
 fn a_pane_beside_a_pane_shows_it_blurred() {
     let sigma = 3.0;
     let left = |ui: &mut Ui| {
-        ui.add_shape(Shape::rect(LEFT).backdrop_filter(BackdropFilter::blur(sigma)));
+        ui.add_shape(
+            Shape::rect()
+                .at(LEFT)
+                .backdrop_filter(BackdropFilter::blur(sigma)),
+        );
     };
     let gpu = headless_test_gpu();
     let mut reference = Reference::new(&gpu, SIZE, RgbaF32::BLACK);
@@ -68,7 +74,11 @@ fn a_pane_beside_a_pane_shows_it_blurred() {
         canvas(ui, |ui| {
             stripes(ui, 64);
             left(ui);
-            ui.add_shape(Shape::rect(RIGHT).backdrop_filter(BackdropFilter::blur(sigma)));
+            ui.add_shape(
+                Shape::rect()
+                    .at(RIGHT)
+                    .backdrop_filter(BackdropFilter::blur(sigma)),
+            );
         });
     });
     let at = |p: Vec2| {
@@ -97,7 +107,11 @@ fn panes_apart_blur_together() {
         canvas(ui, |ui| {
             stripes(ui, 64);
             for rect in [left, right] {
-                ui.add_shape(Shape::rect(rect).backdrop_filter(BackdropFilter::blur(sigma)));
+                ui.add_shape(
+                    Shape::rect()
+                        .at(rect)
+                        .backdrop_filter(BackdropFilter::blur(sigma)),
+                );
             }
         });
     });
@@ -141,7 +155,8 @@ fn a_pane_inside_a_rounded_clip_blurs_inside_it() {
                 .clip_rounded()
                 .show(ui, |ui| {
                     ui.add_shape(
-                        Shape::rect(Rect::new(0.0, 0.0, 64.0, 48.0))
+                        Shape::rect()
+                            .at(Rect::new(0.0, 0.0, 64.0, 48.0))
                             .backdrop_filter(BackdropFilter::blur(sigma)),
                     );
                 });
@@ -188,13 +203,16 @@ fn more_stale_panes_than_a_partial_frame_holds_paint_whole() {
                         RgbaF32::srgb(0.1, 0.3, 1.0)
                     };
                     ui.add_shape(
-                        Shape::rect(Rect::new(at.x + 6.0, at.y + 4.0, 4.0, 4.0)).fill(color),
+                        Shape::rect()
+                            .at(Rect::new(at.x + 6.0, at.y + 4.0, 4.0, 4.0))
+                            .fill(color),
                     );
                 }
                 for i in 0..9 {
                     let at = cell(i);
                     ui.add_shape(
-                        Shape::rect(Rect::new(at.x, at.y, 16.0, 12.0))
+                        Shape::rect()
+                            .at(Rect::new(at.x, at.y, 16.0, 12.0))
                             .fill(RgbaF32::new(1.0, 1.0, 1.0, 0.2))
                             .backdrop_filter(BackdropFilter::blur(1.0)),
                     );
@@ -235,17 +253,23 @@ fn a_result_past_the_atlas_grows_it_and_keeps_the_rest() {
             canvas(ui, |ui| {
                 stripes(ui, 1100);
                 ui.add_shape(
-                    Shape::rect(Rect::new(4.0, 4.0, 16.0, 40.0))
+                    Shape::rect()
+                        .at(Rect::new(4.0, 4.0, 16.0, 40.0))
                         .backdrop_filter(BackdropFilter::blur(2.0)),
                 );
                 if wide {
                     ui.add_shape(
-                        Shape::rect(Rect::new(36.0, 4.0, 1060.0, 40.0))
+                        Shape::rect()
+                            .at(Rect::new(36.0, 4.0, 1060.0, 40.0))
                             .backdrop_filter(BackdropFilter::blur(2.0)),
                     );
                 }
                 let dot = if dot { RgbaF32::WHITE } else { RgbaF32::BLACK };
-                ui.add_shape(Shape::rect(Rect::new(1096.0, 44.0, 2.0, 2.0)).fill(dot));
+                ui.add_shape(
+                    Shape::rect()
+                        .at(Rect::new(1096.0, 44.0, 2.0, 2.0))
+                        .fill(dot),
+                );
             });
         }
     };

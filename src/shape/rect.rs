@@ -35,15 +35,27 @@ pub struct RectShape {
 }
 
 impl RectShape {
-    pub(super) const fn new(kind: RectKind, local_rect: Option<Rect>) -> Self {
+    pub(super) const fn new(kind: RectKind) -> Self {
         Self {
             kind,
-            local_rect,
+            local_rect: None,
             corners: Corners::ZERO,
             fill: Brush::TRANSPARENT,
             border: Stroke::NONE,
             backdrop_filter: BackdropFilter::NONE,
         }
+    }
+
+    /// Paint into `rect` in owner-relative coords instead of the owner's arranged rect.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
+    #[track_caller]
+    pub const fn at(mut self, rect: Rect) -> Self {
+        rect.validate();
+        self.local_rect = Some(rect);
+        self
     }
 
     /// Interior paint.

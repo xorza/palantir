@@ -495,7 +495,7 @@ impl Rows<'_> {
                 } else {
                     let r = self.value_cell(ui, VALUE, &mut val);
                     if r.changed {
-                        self.state.coords.set_value(val as f32 / 100.0);
+                        self.state.coords = self.state.coords.with_value(val as f32 / 100.0);
                         self.writes.axes = true;
                     }
                     self.writes.typed(r);
@@ -503,7 +503,7 @@ impl Rows<'_> {
 
                 let r = self.value_cell(ui, HUE, &mut hue);
                 if r.changed {
-                    self.state.coords.set_hue(hue as f32 / 360.0);
+                    self.state.coords = self.state.coords.with_hue(hue as f32 / 360.0);
                     self.writes.axes = true;
                 }
                 self.writes.typed(r);
@@ -526,7 +526,7 @@ impl Rows<'_> {
 
                 let r = self.value_cell(ui, SATURATION, &mut sat);
                 if r.changed {
-                    self.state.coords.set_saturation(sat as f32 / 100.0);
+                    self.state.coords = self.state.coords.with_saturation(sat as f32 / 100.0);
                     self.writes.axes = true;
                 }
                 self.writes.typed(r);

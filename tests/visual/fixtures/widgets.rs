@@ -83,7 +83,8 @@ fn a_border_paints_inside_the_rect() {
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(4.0, 4.0, 12.0, 12.0))
+                    Shape::rect()
+                        .at(Rect::new(4.0, 4.0, 12.0, 12.0))
                         .fill(RgbaF32::srgb(1.0, 0.0, 0.0))
                         .border(Stroke::new(RgbaF32::WHITE, 2.0)),
                 );

@@ -107,11 +107,11 @@ pub struct BackdropFilter {
 /// Snell's law, and a fixed top-left lamp glints off it.
 ///
 /// Plain data: `bezel` and `thickness` are [lengths](crate::widget::domain::length), and
-/// `refractive_index` is finite and at least 1 ([`Self::is_refractive_index`]).
+/// `refractive_index` a [refractive index](crate::widget::domain::refractive_index).
 /// `dispersion` and `highlight` are [fractions](crate::widget::domain::fraction), clamped
 /// into `0..=1` where they paint.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(default)]
+#[serde(default = "Lens::window_glass")]
 #[must_use]
 pub struct Lens {
     /// The width of the rounded band at the edge, in logical px.
@@ -410,8 +410,20 @@ impl NanCheck for BackdropFilter {
 }
 
 impl Lens {
-    pub(crate) const REFRACTIVE_INDEX_RULE: &str =
-        "a refractive index must be finite and at least 1";
+    /// A pill of window glass: a 24 px bezel, 16 px thick, of index 1.5, with a thin rainbow at
+    /// the rim and a soft glint. What a theme file's lens holds where it leaves a field out.
+    pub const WINDOW_GLASS: Self = Self {
+        bezel: 24.0,
+        thickness: 16.0,
+        refractive_index: 1.5,
+        dispersion: 0.06,
+        highlight: 0.6,
+    };
+
+    /// [`Self::WINDOW_GLASS`], as serde's container default names a function.
+    const fn window_glass() -> Self {
+        Self::WINDOW_GLASS
+    }
 
     /// Glass that bends nothing: no bezel, no thickness, index 1, no fringe and no glint. An
     /// absent lens blends through it.
@@ -434,12 +446,6 @@ impl Lens {
         }
     }
 
-    /// True if `n` can be a refractive index: finite and at least 1, as no glass bends light
-    /// away from the normal on entry.
-    pub const fn is_refractive_index(n: f32) -> bool {
-        n.is_finite() && n >= 1.0
-    }
-
     /// Panics unless `bezel` and `thickness` are lengths and `refractive_index` a refractive
     /// index, each a [lane](domain::lane) as it packs into one.
     #[inline]
@@ -447,12 +453,7 @@ impl Lens {
     pub(crate) const fn validate(&self) {
         domain::lane(domain::length(self.bezel));
         domain::lane(domain::length(self.thickness));
-        assert!(
-            Self::is_refractive_index(self.refractive_index),
-            "{}",
-            Self::REFRACTIVE_INDEX_RULE
-        );
-        domain::lane(self.refractive_index);
+        domain::lane(domain::refractive_index(self.refractive_index));
     }
 
     fn has_nan(self) -> bool {
@@ -465,20 +466,6 @@ impl Lens {
         ]
         .iter()
         .any(|v| v.is_nan())
-    }
-}
-
-/// A pill of window glass: a 24 px bezel, 16 px thick, of index 1.5, with a thin rainbow at the
-/// rim and a soft glint.
-impl Default for Lens {
-    fn default() -> Self {
-        Self {
-            bezel: 24.0,
-            thickness: 16.0,
-            refractive_index: 1.5,
-            dispersion: 0.06,
-            highlight: 0.6,
-        }
     }
 }
 

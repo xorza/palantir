@@ -2,7 +2,6 @@
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
-use crate::primitives::paint::brush::gradient::gradient_builder::GradientBuilder;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
 use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
@@ -24,9 +23,6 @@ pub struct ConicGeometry {
 
 /// Conic (sweep) gradient — see [`ConicGeometry`] for the sweep.
 pub type ConicGradient = Gradient<ConicGeometry>;
-
-/// Authoring builder for a [`ConicGradient`].
-pub type ConicGradientBuilder = GradientBuilder<ConicGeometry>;
 
 impl Geometry for ConicGeometry {
     /// Conic gradients are usually color wheels, where linear-RGB interpolation gives the most predictable hue sweep; Oklab can shift hue at the midpoint. (An `Oklch{hue}` interpolation would be the right default.)
@@ -55,14 +51,6 @@ impl Geometry for ConicGeometry {
 }
 
 impl ConicGradient {
-    /// Start an inline, allocation-free gradient builder.
-    pub fn builder(center: Vec2, start_angle: f32) -> ConicGradientBuilder {
-        GradientBuilder::new(ConicGeometry {
-            center,
-            start_angle,
-        })
-    }
-
     /// General constructor.
     ///
     /// # Panics
@@ -79,16 +67,16 @@ impl ConicGradient {
         )
     }
 
-    /// Centered shorthand: `center = (0.5, 0.5)`, start angle 0 (+x, clockwise), 2 stops at offsets 0/1.
+    /// 2-stop shorthand: `c0` at `start_angle`, `c1` one turn on, swept around `center`.
     ///
     /// # Panics
     ///
     /// Panics unless `c0` and `c1` are [colors](crate::widget::domain::color).
     #[track_caller]
-    pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self {
+    pub fn two_stop(center: Vec2, start_angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self {
         Self::new(
-            Vec2::splat(0.5),
-            0.0,
+            center,
+            start_angle,
             [Stop::new(0.0, c0), Stop::new(1.0, c1)],
         )
     }

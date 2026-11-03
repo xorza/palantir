@@ -278,9 +278,7 @@ fn blinking_text(ui: &mut Ui, text: &str) {
             )
             .color(RgbaF32::WHITE)
             .wrap(TextWrap::SingleLine)
-            .align(Align::default())
-            .family(FontFamily::SANS)
-            .weight(FontWeight::REGULAR),
+            .align(Align::default()),
             PaintAnimation::alpha(0.0, 1.0)
                 .with_started_at(HALF)
                 .with_period(HALF * 2)

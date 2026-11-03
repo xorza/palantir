@@ -273,7 +273,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
                 .padding(3.0)
                 .sense(Sense::CLICK)
                 .focusable(true)
-                .chrome(Chrome::rounded(RgbaF32::WHITE, 4.0.into()))
+                .chrome(Chrome::rounded(RgbaF32::WHITE, 4.0))
                 .show(ui);
             Block::new()
                 .id(id("b"))

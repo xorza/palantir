@@ -29,7 +29,6 @@ use crate::primitives::geometry::circular_arc::CircularArc;
 use crate::primitives::geometry::cubic_bezier::CubicBezier;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
-use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::icon_handle::IconHandle;
 use crate::primitives::math::domain::vec2;
 use crate::primitives::paint::shadow::Shadow;
@@ -83,36 +82,16 @@ mod sealed {
 pub struct Shape;
 
 impl Shape {
-    /// A rounded rectangle painting `rect` (owner-relative); starts transparent, borderless, sharp.
-    ///
-    /// # Panics
-    ///
-    /// Panics unless every component of `rect` is an [offset](crate::widget::domain::offset).
-    #[track_caller]
-    pub const fn rect(rect: Rect) -> RectShape {
-        rect.validate();
-        RectShape::new(RectKind::Rounded, Some(rect))
+    /// A rounded rectangle over the owner's arranged rect, or [`RectShape::at`] a rect of its own;
+    /// starts transparent, borderless, sharp.
+    pub const fn rect() -> RectShape {
+        RectShape::new(RectKind::Rounded)
     }
 
-    /// A rounded rectangle painting the owner's full arranged rect.
-    pub const fn owner_rect() -> RectShape {
-        RectShape::new(RectKind::Rounded, None)
-    }
-
-    /// An inverse-mask rectangle over `rect`; chains like [`Self::rect`].
-    ///
-    /// # Panics
-    ///
-    /// As [`Self::rect`].
-    #[track_caller]
-    pub const fn windowed_rect(rect: Rect) -> RectShape {
-        rect.validate();
-        RectShape::new(RectKind::Windowed, Some(rect))
-    }
-
-    /// A windowed rectangle painting the owner's full arranged rect.
-    pub const fn owner_windowed_rect() -> RectShape {
-        RectShape::new(RectKind::Windowed, None)
+    /// An inverse-mask rectangle: it paints outside its rounded boundary. Placed and styled as
+    /// [`Self::rect`].
+    pub const fn windowed_rect() -> RectShape {
+        RectShape::new(RectKind::Windowed)
     }
 
     /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp, transparent, borderless.

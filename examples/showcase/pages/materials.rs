@@ -61,7 +61,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                         thickness: 28.0,
                         refractive_index: 1.6,
                         dispersion: 0.55,
-                        ..Lens::default()
+                        ..Lens::WINDOW_GLASS
                     })
                     .with_blur(1.0),
                     RgbaF32::new(1.0, 1.0, 1.0, 0.1),
@@ -157,7 +157,8 @@ fn live(ui: &mut Ui, k: Kit) {
                             .show(ui, |ui| {
                                 page(ui, k, Vec2::splat(CELL));
                                 ui.add_shape(
-                                    Shape::rect(PANE)
+                                    Shape::rect()
+                                        .at(PANE)
                                         .corners(Corners::all(14.0))
                                         .fill(tint)
                                         .backdrop_filter(filter),
@@ -184,7 +185,8 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, filter: BackdropFilter, tint: 
                 page(ui, k, Vec2::splat(CELL));
                 let corners = if filter.lens.is_some() { 50.0 } else { 14.0 };
                 ui.add_shape(
-                    Shape::rect(PANE)
+                    Shape::rect()
+                        .at(PANE)
                         .corners(Corners::all(corners))
                         .fill(tint)
                         .border(Stroke::new(RgbaF32::new(1.0, 1.0, 1.0, 0.25), 1.0))
@@ -199,7 +201,11 @@ fn look(ui: &mut Ui, k: Kit, label: &'static str, filter: BackdropFilter, tint: 
 fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     for (i, color) in (0..12).zip(k.swatch.all().iter().cycle()) {
         let x = i as f32 * size.x / 12.0;
-        ui.add_shape(Shape::rect(Rect::new(x, 0.0, size.x / 24.0, size.y)).fill(*color));
+        ui.add_shape(
+            Shape::rect()
+                .at(Rect::new(x, 0.0, size.x / 24.0, size.y))
+                .fill(*color),
+        );
     }
     let spin = PaintAnimation::turn(0.0, 1.0)
         .with_period(Duration::from_secs(8))
@@ -208,7 +214,7 @@ fn page(ui: &mut Ui, k: Kit, size: Vec2) {
     let bar = size.min_element() * 0.12;
     for (w, h) in [(arm, bar), (bar, arm)] {
         let rect = Rect::new((size.x - w) / 2.0, (size.y - h) / 2.0, w, h);
-        ui.add_shape_animated(Shape::rect(rect).fill(RgbaF32::WHITE), spin);
+        ui.add_shape_animated(Shape::rect().at(rect).fill(RgbaF32::WHITE), spin);
     }
 }
 

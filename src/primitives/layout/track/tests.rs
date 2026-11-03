@@ -14,6 +14,11 @@ fn bounds_accept_valid_ranges_in_either_order() {
     assert_eq!(Track::HUG.sizing(), Sizing::HUG);
     assert_eq!(Track::HUG.min(), 0.0);
     assert_eq!(Track::HUG.max(), f32::INFINITY);
+    assert_eq!(
+        Track::from(Sizing::HUG),
+        Track::HUG,
+        "a sizing converts unclamped"
+    );
     assert_eq!(MIN_THEN_MAX, MAX_THEN_MIN);
     assert_eq!(MIN_THEN_MAX.sizing(), Sizing::FILL);
     assert_eq!(MIN_THEN_MAX.min(), 10.0);

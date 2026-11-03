@@ -60,7 +60,9 @@ fn overflowing_gradient_atlas_paints_every_swatch() {
                         SWATCH as f32,
                     );
                     ui.add_shape(
-                        Shape::rect(rect).fill(LinearGradient::two_stop(0.0, color, color)),
+                        Shape::rect()
+                            .at(rect)
+                            .fill(LinearGradient::two_stop(0.0, color, color)),
                     );
                 }
             });
@@ -95,7 +97,7 @@ fn a_gradient_samples_its_lut_at_texel_centers() {
         .clear(RgbaF32::BLACK)
         .frame(|ui| {
             fixtures::canvas(ui, |ui| {
-                ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 1024.0, 16.0)).fill(
+                ui.add_shape(Shape::rect().at(Rect::new(0.0, 0.0, 1024.0, 16.0)).fill(
                     LinearGradient::new(0.0, [Stop::new(0.25, red), Stop::new(0.25, blue)]),
                 ));
             });
@@ -134,7 +136,8 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 ui.add_shape(
-                    Shape::rect(Rect::new(0.0, 0.0, 180.0, 100.0))
+                    Shape::rect()
+                        .at(Rect::new(0.0, 0.0, 180.0, 100.0))
                         .corners(12.0)
                         .fill(LinearGradient::two_stop(
                             0.0,

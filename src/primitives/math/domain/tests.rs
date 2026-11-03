@@ -207,7 +207,7 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
     const IN_CONST: f32 = domain::length(2.0);
     assert_eq!(IN_CONST, 2.0);
 
-    let rows: [(Kind, &[f32], &[f32]); 8] = [
+    let rows: [(Kind, &[f32], &[f32]); 9] = [
         (
             (domain::OFFSET_RULE, domain::is_offset, domain::offset),
             &[-1e30, -1.0, 0.0, 1e30],
@@ -262,6 +262,22 @@ fn each_validating_kind_takes_its_domain_and_refuses_the_rest() {
             (domain::POSITIVE_RULE, domain::is_positive, domain::positive),
             &[1e-40, f32::MIN_POSITIVE, 1.0, 1e30, f32::MAX],
             &[0.0, -0.0, -1e-40, -1.0, f32::NAN, f32::INFINITY],
+        ),
+        (
+            (
+                domain::REFRACTIVE_INDEX_RULE,
+                domain::is_refractive_index,
+                domain::refractive_index,
+            ),
+            &[1.0, 1.5, 4.0, f32::MAX],
+            &[
+                0.999_999_94,
+                0.0,
+                -1.0,
+                f32::NAN,
+                f32::INFINITY,
+                f32::NEG_INFINITY,
+            ],
         ),
         (
             (domain::ANGLE_RULE, domain::is_angle, domain::angle),
@@ -331,7 +347,8 @@ fn compound_kinds_check_every_part() {
 }
 
 /// The `f64` twins: a positive value is finite and above zero, subnormals and `f64::MAX`
-/// included; a range's ends are validated and its order kept.
+/// included; a range's ends are validated and its order kept; bounds take an infinite end and
+/// come back low to high.
 #[test]
 fn f64_twins_take_their_domain_and_refuse_the_rest() {
     for v in [1e-310, f64::MIN_POSITIVE, 1.0, f64::MAX] {
@@ -350,6 +367,19 @@ fn f64_twins_take_their_domain_and_refuse_the_rest() {
         panic_probe::assert_panics_with("a range must have finite ends", || {
             domain::f64::range(bad.clone())
         });
+    }
+    assert_eq!(domain::f64::bounds(3.0..=1.0), 1.0..=3.0);
+    assert_eq!(
+        domain::f64::bounds(f64::INFINITY..=0.0),
+        0.0..=f64::INFINITY
+    );
+    assert_eq!(
+        domain::f64::bounds(f64::NEG_INFINITY..=f64::INFINITY),
+        f64::NEG_INFINITY..=f64::INFINITY
+    );
+    for bad in [f64::NAN..=1.0, 0.0..=f64::NAN] {
+        assert!(!domain::f64::is_bounds(&bad), "{bad:?}");
+        panic_probe::assert_panics_with(domain::BOUNDS_RULE, || domain::f64::bounds(bad.clone()));
     }
 }
 

@@ -23,7 +23,7 @@ fn empty_frame_alloc_free() {
 fn color_field_hue_drag_alloc_free() {
     let mut coords = ColorCoords::default();
     Audit::new().warmup(4).run(|ui| {
-        coords.set_hue(coords.hue() + 0.01);
+        coords = coords.with_hue(coords.hue() + 0.01);
         ColorField::new(&mut coords).auto_id().show(ui);
     });
 }

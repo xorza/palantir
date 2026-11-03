@@ -20,6 +20,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
+use glam::Vec2;
 
 /// Four metric tiles. Each is a ZStack — gradient plate under a text
 /// column — so the strip carries all four `Brush` variants at once.
@@ -45,11 +46,13 @@ pub(super) fn show(ui: &mut Ui) {
                         RgbaF32::hex(0x2b3a63),
                     )),
                     1 => Brush::Radial(RadialGradient::two_stop(
+                        Vec2::splat(0.5),
+                        Vec2::splat(0.5),
                         RgbaF32::hex(0x2a2350),
                         RgbaF32::hex(0x171a2b),
                     )),
                     2 => Brush::Conic(ConicGradient::new(
-                        glam::Vec2::new(0.15, 0.9),
+                        Vec2::new(0.15, 0.9),
                         0.0,
                         [
                             Stop::new(0.0, RgbaF32::hex(0x1b2b2e)),
@@ -72,7 +75,7 @@ pub(super) fn show(ui: &mut Ui) {
                                 corners: Corners::all(8.0),
                                 shadow: Shadow::drop(
                                     RgbaF32::srgba(0.0, 0.0, 0.0, 0.45),
-                                    glam::Vec2::new(0.0, 2.0),
+                                    Vec2::new(0.0, 2.0),
                                     8.0,
                                 ),
                                 backdrop_filter: BackdropFilter::NONE,

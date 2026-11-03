@@ -18,6 +18,7 @@ use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradients::GradientId;
+use glam::Vec2;
 use std::collections::HashSet;
 use std::panic;
 
@@ -85,7 +86,7 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
         Stop::new(0.0, RgbaF32::BLACK),
         Stop::new(1.0, RgbaF32::WHITE),
     ];
-    let center = glam::Vec2::splat(0.5);
+    let center = Vec2::splat(0.5);
     let hashes = [
         brush(&mut store, &Brush::Linear(LinearGradient::new(0.0, stops)))
             .hash_parts()
@@ -146,7 +147,7 @@ fn chrome_lowering_keeps_an_authored_field() {
 
     let shadow = Shadow {
         color: RgbaF32::BLACK,
-        offset: glam::Vec2::new(1.0, 2.0),
+        offset: Vec2::new(1.0, 2.0),
         blur: 3.0,
         spread: 1.0,
         inset: false,
@@ -200,7 +201,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         (
             "shadow offset",
             with_shadow(Shadow {
-                offset: glam::Vec2::new(2.0, 1.0),
+                offset: Vec2::new(2.0, 1.0),
                 ..shadow
             }),
         ),
@@ -242,7 +243,7 @@ fn chrome_lowering_keeps_an_authored_field() {
         (
             "backdrop lens",
             base.clone()
-                .with_backdrop_filter(BackdropFilter::glass(Lens::default())),
+                .with_backdrop_filter(BackdropFilter::glass(Lens::WINDOW_GLASS)),
         ),
     ];
     let hashes: Vec<_> = variants
@@ -325,11 +326,21 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
 
     let radial = gradient_id(
         &mut store,
-        &Brush::Radial(RadialGradient::two_stop(colors[0], colors[1])),
+        &Brush::Radial(RadialGradient::two_stop(
+            Vec2::splat(0.5),
+            Vec2::splat(0.5),
+            colors[0],
+            colors[1],
+        )),
     );
     let conic = gradient_id(
         &mut store,
-        &Brush::Conic(ConicGradient::two_stop(colors[0], colors[1])),
+        &Brush::Conic(ConicGradient::two_stop(
+            Vec2::splat(0.5),
+            0.0,
+            colors[0],
+            colors[1],
+        )),
     );
     assert!(!mode_ids.contains(&radial));
     assert!(!mode_ids.contains(&conic));

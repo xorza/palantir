@@ -2,6 +2,7 @@
 //! lives in [`crate::image_registry`].
 
 pub(crate) mod error;
+pub(crate) mod icon_fit;
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;

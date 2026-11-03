@@ -180,7 +180,7 @@ BoundNum
         F64(&'a mut f64)
 
 Brush
-    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<GradientBuilder<ConicGeometry>>, From<GradientBuilder<LinearGeometry>>, From<GradientBuilder<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, PartialEq, Serialize
+    enum Brush: Animatable, Clone, Debug, Default, Deserialize<'de>, From<Gradient<ConicGeometry>>, From<Gradient<LinearGeometry>>, From<Gradient<RadialGeometry>>, From<RgbaF32>, From<SrgbaU8>, PartialEq, Serialize
         Solid(RgbaF32)
         Linear(LinearGradient)
         Radial(RadialGradient)
@@ -249,7 +249,9 @@ Chrome
         pub const NONE: Self
         pub const fn is_noop(&self) -> bool
         pub fn fill(brush: impl Into<Brush>) -> Self
-        pub fn rounded(brush: impl Into<Brush>, corners: Corners) -> Self
+        pub fn rounded(brush: impl Into<Brush>, corners: impl Into<Corners>) -> Self
+        pub fn with_fill(self, brush: impl Into<Brush>) -> Self
+        pub fn with_corners(self, corners: impl Into<Corners>) -> Self
         pub const fn with_border(self, border: Stroke) -> Self
         pub const fn with_shadow(self, shadow: Shadow) -> Self
         pub const fn with_backdrop_filter(self, filter: BackdropFilter) -> Self
@@ -308,9 +310,9 @@ ColorCoords
         pub const fn hue(self) -> f32
         pub const fn saturation(self) -> f32
         pub const fn value(self) -> f32
-        pub const fn set_hue(&mut self, h: f32)
-        pub const fn set_saturation(&mut self, s: f32)
-        pub const fn set_value(&mut self, v: f32)
+        pub const fn with_hue(self, h: f32) -> Self
+        pub const fn with_saturation(self, s: f32) -> Self
+        pub const fn with_value(self, v: f32) -> Self
 
 ColorField
     struct ColorField<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -457,9 +459,6 @@ ConicGeometry
 ConicGradient
     type ConicGradient = Gradient<ConicGeometry>
 
-ConicGradientBuilder
-    type ConicGradientBuilder = GradientBuilder<ConicGeometry>
-
 ControlCharError
     struct ControlCharError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
         pub found: char
@@ -476,7 +475,6 @@ Corners
         pub fn right(r: f32) -> Self
         pub fn scaled_by(self, factor: f32) -> Self
         pub const fn is_approx_zero(&self) -> bool
-        impl<T: Number, B: Number> From<(T, B)> for Corners
         impl<T: Number> From<T> for Corners
         impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for Corners
 
@@ -933,17 +931,14 @@ Gradient
         pub ramp: ColorRamp
         pub spread: Spread
         impl Gradient<ConicGeometry>
-            pub fn builder(center: Vec2, start_angle: f32) -> ConicGradientBuilder
             pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
-            pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
+            pub fn two_stop(center: Vec2, start_angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self
         impl Gradient<LinearGeometry>
-            pub fn builder(angle: f32) -> LinearGradientBuilder
             pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self
             pub fn two_stop(angle: f32, c0: RgbaF32, c1: RgbaF32) -> Self
         impl Gradient<RadialGeometry>
-            pub fn builder(center: Vec2, radius: Vec2) -> RadialGradientBuilder
             pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self
-            pub fn two_stop(c0: RgbaF32, c1: RgbaF32) -> Self
+            pub fn two_stop(center: Vec2, radius: Vec2, c0: RgbaF32, c1: RgbaF32) -> Self
         pub const fn with_spread(self, spread: Spread) -> Self
         pub const fn with_interpolation(self, interpolation: Interpolation) -> Self
         pub const fn is_noop(&self) -> bool
@@ -954,24 +949,9 @@ Gradient
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
         impl<G: Eq> Eq for Gradient<G>
-        impl<G: GradientGeometry> From<GradientBuilder<G>> for Gradient<G>
         impl<G: GradientGeometry> Hash for Gradient<G>
         impl<G: PartialEq> PartialEq for Gradient<G>
         impl<G> Serialize where G: Serialize
-
-GradientBuilder
-    struct GradientBuilder<G>
-        impl<G: GradientGeometry> GradientBuilder<G>
-            pub fn stop(self, offset: f32, color: RgbaF32) -> Self
-            pub const fn spread(self, spread: Spread) -> Self
-            pub const fn interpolation(self, interpolation: Interpolation) -> Self
-            pub fn build(self) -> Gradient<G>
-        impl From<GradientBuilder<ConicGeometry>> for Brush
-        impl From<GradientBuilder<LinearGeometry>> for Brush
-        impl From<GradientBuilder<RadialGeometry>> for Brush
-        impl<G: Clone> Clone for GradientBuilder<G>
-        impl<G: Debug> Debug for GradientBuilder<G>
-        impl<G: GradientGeometry> From<GradientBuilder<G>> for Gradient<G>
 
 GradientGeometry
     trait GradientGeometry: Geometry
@@ -1006,7 +986,7 @@ GridCell
         pub const fn along(axis: Axis, main: u16) -> Self
 
 HAlign
-    enum HAlign: Clone, Copy, Debug, Default, Eq, PartialEq
+    enum HAlign: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         Auto = 0
         Left = 1
         Center = 2
@@ -1114,6 +1094,12 @@ IconDefinition
         pub view_box: Vec2
         pub svg: Span
         pub tintable: bool
+
+IconFit
+    enum IconFit: Clone, Copy, Debug, Default, Eq, PartialEq
+        Fill
+        Contain
+        None
 
 IconHandle
     struct IconHandle: Clone, Copy, Debug, PartialEq
@@ -1369,14 +1355,13 @@ LayerScope
         pub fn show<R>(self, body: impl FnOnce(&mut Ui) -> R) -> R
 
 Lens
-    struct Lens: Clone, Copy, Debug, Default, PartialEq, Serialize
+    struct Lens: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub bezel: f32
         pub thickness: f32
         pub refractive_index: f32
         pub dispersion: f32
         pub highlight: f32
-        pub const fn is_refractive_index(n: f32) -> bool
-        impl<'de> Deserialize<'de> where Lens: Default
+        pub const WINDOW_GLASS: Self
 
 LinearGeometry
     struct LinearGeometry: Clone, Copy, Debug, Deserialize<'de>, GradientGeometry (blanket), PartialEq, Serialize
@@ -1384,9 +1369,6 @@ LinearGeometry
 
 LinearGradient
     type LinearGradient = Gradient<LinearGeometry>
-
-LinearGradientBuilder
-    type LinearGradientBuilder = GradientBuilder<LinearGeometry>
 
 Locate
     trait Locate<A>: Debug
@@ -1806,9 +1788,6 @@ RadialGeometry
 RadialGradient
     type RadialGradient = Gradient<RadialGeometry>
 
-RadialGradientBuilder
-    type RadialGradientBuilder = GradientBuilder<RadialGeometry>
-
 RadioButton
     struct RadioButton<'a, T>: Configure, ThemeDefaults (blanket)
         pub fn new(cur: &'a mut T, value: T) -> Self
@@ -1902,7 +1881,7 @@ ResponseState
         pub fn press_fraction(&self, band: f32) -> Option<Vec2>
 
 RgbaF32
-    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, From<SrgbaU8>, FromStr, Hash, PartialEq, Pod, Serialize, Zeroable
+    struct RgbaF32: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Display, From<SrgbaU8>, FromStr, Hash, PartialEq, Pod, Serialize, Zeroable
         pub r: f32
         pub g: f32
         pub b: f32
@@ -2798,7 +2777,7 @@ UserScale
         pub const fn percent(self) -> u32
 
 VAlign
-    enum VAlign: Clone, Copy, Debug, Default, Eq, PartialEq
+    enum VAlign: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         Auto = 0
         Top = 1
         Center = 2
@@ -3120,12 +3099,6 @@ widget::GlyphLine
 widget::GlyphRasterKey
     struct GlyphRasterKey: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
 
-widget::IconFit
-    enum IconFit: Clone, Copy, Debug, Default, Eq, PartialEq
-        Contain
-        Fill
-        None
-
 widget::IconShape
     struct IconShape: Clone, Copy, Debug, Lower (blanket)
         pub const fn at(self, rect: Rect) -> Self
@@ -3287,6 +3260,7 @@ widget::RasterImage
 
 widget::RectShape
     struct RectShape: Clone, Debug, Lower (blanket)
+        pub const fn at(self, rect: Rect) -> Self
         pub fn fill(self, fill: impl Into<Brush>) -> Self
         pub const fn border(self, border: Stroke) -> Self
         pub fn corners(self, corners: impl Into<Corners>) -> Self
@@ -3299,10 +3273,8 @@ widget::ShadowShape
 
 widget::Shape
     struct Shape: Clone, Copy, Debug
-        pub const fn rect(rect: Rect) -> RectShape
-        pub const fn owner_rect() -> RectShape
-        pub const fn windowed_rect(rect: Rect) -> RectShape
-        pub const fn owner_windowed_rect() -> RectShape
+        pub const fn rect() -> RectShape
+        pub const fn windowed_rect() -> RectShape
         pub const fn triangle(a: Vec2, b: Vec2, c: Vec2) -> TriangleShape
         pub const fn line(a: Vec2, b: Vec2, stroke: Stroke) -> CurveShape
         pub fn polyline(points: &[Vec2], stroke: Stroke) -> PolylineShape<'_>
@@ -3464,6 +3436,12 @@ widget::domain::extent
 widget::domain::f64
     mod
 
+widget::domain::f64::bounds
+    const fn bounds(r: RangeInclusive<f64>) -> RangeInclusive<f64>
+
+widget::domain::f64::is_bounds
+    const fn is_bounds(r: &RangeInclusive<f64>) -> bool
+
 widget::domain::f64::is_positive
     const fn is_positive(v: f64) -> bool
 
@@ -3533,6 +3511,9 @@ widget::domain::is_positive
 widget::domain::is_power_of_two_in
     const fn is_power_of_two_in(n: u32, max: u32) -> bool
 
+widget::domain::is_refractive_index
+    const fn is_refractive_index(n: f32) -> bool
+
 widget::domain::lane
     const fn lane(v: f32) -> f32
 
@@ -3550,6 +3531,9 @@ widget::domain::positive
 
 widget::domain::power_of_two_in
     const fn power_of_two_in(n: u32, max: u32) -> u32
+
+widget::domain::refractive_index
+    const fn refractive_index(n: f32) -> f32
 
 widget::domain::share_of
     const fn share_of(n: f32, d: f32) -> f32

@@ -8,7 +8,8 @@
 )]
 
 use glam::{UVec2, Vec2};
-use palantir::widget::{IconFit, Mesh, Shape};
+use palantir::IconFit;
+use palantir::widget::{Mesh, Shape};
 use palantir::{Block, Chrome, Configure, FontFamily, Panel, RgbaF32, Sizing, Text, Ui};
 
 use crate::fixtures;

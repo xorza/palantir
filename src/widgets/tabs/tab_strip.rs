@@ -769,7 +769,8 @@ impl GlyphButton {
             let x = side * 0.5 + step * pitch;
             let y = side * 0.5;
             ui.add_shape(
-                Shape::rect(Rect::new(x - radius, y - radius, diameter, diameter))
+                Shape::rect()
+                    .at(Rect::new(x - radius, y - radius, diameter, diameter))
                     .corners(radius)
                     .fill(self.ink),
             );

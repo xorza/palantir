@@ -29,6 +29,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
+use std::fmt;
 use std::hash;
 use std::str;
 
@@ -369,23 +370,33 @@ impl From<SrgbaU8> for RgbaF32 {
 /// the 8-bit sRGB grid; otherwise CSS Color 4's `color(srgb-linear r g b / a)`, the stored linear
 /// channels in shortest round-trip form, with `/ a` left out for an opaque one. Either way the
 /// color loads back the same. Refused: hex alone, which moves every color off the grid.
+/// The form [`FromStr`](str::FromStr) reads back to the same value: `#rrggbb`, or `#rrggbbaa`
+/// below full alpha, for a color on the 8-bit sRGB grid, else `color(srgb-linear r g b)`, with
+/// ` / a` below full alpha, in the shortest digits that round-trip.
+impl fmt::Display for RgbaF32 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bytes = self.to_srgba8();
+        if Self::from_srgba8(bytes) != *self {
+            let Self { r, g, b, a } = *self;
+            return if a == 1.0 {
+                write!(f, "color(srgb-linear {r} {g} {b})")
+            } else {
+                write!(f, "color(srgb-linear {r} {g} {b} / {a})")
+            };
+        }
+        let SrgbaU8 { r, g, b, a } = bytes;
+        if a == 0xff {
+            write!(f, "#{r:02x}{g:02x}{b:02x}")
+        } else {
+            write!(f, "#{r:02x}{g:02x}{b:02x}{a:02x}")
+        }
+    }
+}
+
+/// Through [`fmt::Display`], so a file and a format string write one form.
 impl Serialize for RgbaF32 {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let bytes = self.to_srgba8();
-        let SrgbaU8 { r, g, b, a } = bytes;
-        let text = if Self::from_srgba8(bytes) != *self {
-            let Self { r, g, b, a } = *self;
-            if a == 1.0 {
-                format!("color(srgb-linear {r} {g} {b})")
-            } else {
-                format!("color(srgb-linear {r} {g} {b} / {a})")
-            }
-        } else if a == 0xff {
-            format!("#{r:02x}{g:02x}{b:02x}")
-        } else {
-            format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
-        };
-        serializer.serialize_str(&text)
+        serializer.collect_str(self)
     }
 }
 

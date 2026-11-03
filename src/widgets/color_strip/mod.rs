@@ -101,7 +101,7 @@ impl StripKind<'_> {
     fn write(&mut self, at: f32) -> bool {
         let before = self.read();
         match self {
-            Self::Hue(coords) => coords.set_hue(at),
+            Self::Hue(coords) => **coords = coords.with_hue(at),
             Self::Alpha(color) => color.a = at.clamp(0.0, 1.0),
         }
         self.read() != before
@@ -158,7 +158,7 @@ impl AreaValue for StripKind<'_> {
         let mut at = travel.on_unit_axis(self.read(), UNIT_STEP, UNIT_PAGE);
         if travel.end.is_none() && matches!(self, Self::Hue(_)) && !(0.0..=1.0).contains(&at) {
             // Steps wrap round the hue circle; positions do not (drag, Home, End clamp in
-            // `ColorCoords::set_hue`).
+            // `ColorCoords::with_hue`).
             at = at.rem_euclid(1.0);
         }
         self.write(at)

@@ -105,7 +105,12 @@ fn shadow_shape(s: Shadow) -> ShadowShape {
 }
 
 fn card_fill(ui: &mut Ui) {
-    ui.add_shape(Shape::rect(CARD).fill(CARD_INK).corners(card_corners()));
+    ui.add_shape(
+        Shape::rect()
+            .at(CARD)
+            .fill(CARD_INK)
+            .corners(card_corners()),
+    );
 }
 
 /// Shadows painted more than once, so the shape and chrome routes use identical parameters.
