@@ -69,6 +69,82 @@ fn due_deadlines_resolve_to_immediate_and_future_ones_stand() {
         FramePresent::Immediate
     );
     assert_eq!(FramePresent::Idle.resolve(now), FramePresent::Idle);
+    assert_eq!(FramePresent::Follow.resolve(now), FramePresent::Follow);
+}
+
+/// Another window's frame makes every next frame due now: one due for itself stays its own, and
+/// leads, so the others follow it; any other turns into a follow, which leads none, so two
+/// windows stop after one follow each. A deadline still ahead folds in.
+#[test]
+fn a_frame_of_another_window_is_followed_and_a_follow_leads_none() {
+    let now = Instant::now();
+    let past = now - Duration::from_millis(1);
+    let future = now + Duration::from_millis(16);
+    for (before, after) in [
+        (FramePresent::Immediate, FramePresent::Immediate),
+        (FramePresent::At(past), FramePresent::Immediate),
+        (FramePresent::At(future), FramePresent::Follow),
+        (FramePresent::Idle, FramePresent::Follow),
+        (FramePresent::Follow, FramePresent::Follow),
+    ] {
+        assert_eq!(before.followed(now), after, "{before:?}");
+    }
+    for (present, leads) in [
+        (FramePresent::Immediate, true),
+        (FramePresent::At(past), true),
+        (FramePresent::Idle, true),
+        (FramePresent::Follow, false),
+    ] {
+        assert_eq!(present.leads(now), leads, "{present:?}");
+    }
+}
+
+/// How many frames each window runs from `nexts` until all are idle, as `WinitRuntime::draw`
+/// runs them: in order, each frame asking for none of its own, and one that leads making the
+/// others follow it. Bounded, so a policy that ping-pongs fails rather than hangs.
+fn frames_until_idle(mut nexts: Vec<FramePresent>, now: Instant) -> Vec<u32> {
+    let mut frames = vec![0; nexts.len()];
+    for _ in 0..16 {
+        let Some(ran) = nexts.iter().position(|next| *next != FramePresent::Idle) else {
+            return frames;
+        };
+        frames[ran] += 1;
+        let leads = nexts[ran].leads(now);
+        nexts[ran] = FramePresent::Idle;
+        if leads {
+            for (idx, next) in nexts.iter_mut().enumerate() {
+                if idx != ran {
+                    *next = next.followed(now);
+                }
+            }
+        }
+    }
+    panic!("the windows never settled: {frames:?}");
+}
+
+/// A frame of one window costs each other window one frame, and nothing more: input to one of
+/// two or three windows; input to both, where the first runs again for the second's frame; and a
+/// change every window follows, as `follow_all` sets, which leads none.
+#[test]
+fn windows_settle_after_one_follow_each() {
+    let now = Instant::now();
+    let (own, idle, follow) = (
+        FramePresent::Immediate,
+        FramePresent::Idle,
+        FramePresent::Follow,
+    );
+    for (label, nexts, frames) in [
+        ("input to one of two", vec![own, idle], vec![1, 1]),
+        (
+            "input to one of three",
+            vec![idle, own, idle],
+            vec![1, 1, 1],
+        ),
+        ("input to both", vec![own, own], vec![2, 1]),
+        ("a change all follow", vec![follow, follow], vec![1, 1]),
+    ] {
+        assert_eq!(frames_until_idle(nexts, now), frames, "{label}");
+    }
 }
 
 /// The IME caret goes to the platform in physical px: every component times the scale (10, 20, 2, 16 at 1.5 → 15, 30, 3, 24).

@@ -3,6 +3,7 @@
 use crate::host::winit::window::Window;
 use crate::window::window_token::WindowToken;
 use std::slice;
+use std::time::Instant;
 use winit::window::WindowId;
 
 /// The host's live windows, in registration order, addressed by winit [`WindowId`] on the event path and by
@@ -33,6 +34,22 @@ impl WindowSet {
 
     pub(super) fn at(&mut self, slot: WindowSlot) -> &mut Window {
         &mut self.windows[slot.0]
+    }
+
+    /// Every window but `ran` follows the frame `ran` ran ([`FramePresent::followed`]).
+    pub(super) fn follow(&mut self, ran: WindowSlot, now: Instant) {
+        for (idx, win) in self.windows.iter_mut().enumerate() {
+            if idx != ran.0 {
+                win.next = win.next.followed(now);
+            }
+        }
+    }
+
+    /// Every window follows a change made outside the windows' frames.
+    pub(super) fn follow_all(&mut self, now: Instant) {
+        for win in &mut self.windows {
+            win.next = win.next.followed(now);
+        }
     }
 
     pub(super) fn by_token(&mut self, token: WindowToken) -> Option<&mut Window> {

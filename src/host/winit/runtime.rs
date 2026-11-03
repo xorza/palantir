@@ -198,10 +198,16 @@ impl<T: App + 'static> WinitRuntime<T> {
         }
         let single_window = self.windows.len() == 1;
         let win = self.windows.at(slot);
+        let leads = win.next.leads(Instant::now());
+        // A hidden window skips its frame and runs nothing of the app, so none follows it.
         if let Some(summary) = win.frame(&mut self.core, &mut self.app, &mut self.pending_commands)
         {
             self.frames.record(win.driver.token, summary);
+            if leads {
+                self.windows.follow(slot, Instant::now());
+            }
         }
+        let win = self.windows.at(slot);
         if self.core.gpu().is_lost() {
             // Lost before the frame or found by its submit or present: every window shows its last
             // frame, which no wake of its own replaces.
@@ -226,7 +232,7 @@ impl<T: App + 'static> WinitRuntime<T> {
             Ok(()) if !self.core.gpu().is_lost() => {
                 tracing::info!("graphics device lost: a new one is attached");
                 self.recovery.succeeded();
-                self.repaint_all();
+                self.follow_all();
                 return Ok(());
             }
             Ok(()) => WinitHostError::DeviceKeptLost,
@@ -273,10 +279,11 @@ impl<T: App + 'static> WinitRuntime<T> {
         Ok(())
     }
 
-    pub(super) fn repaint_all(&mut self) {
-        for win in &mut self.windows {
-            win.next = FramePresent::Immediate;
-        }
+    /// Every window shows a change made outside the windows' frames: the app's, on the main
+    /// thread; a setting; a new device. Each follows it, so no window's frame for it asks the
+    /// others for another.
+    pub(super) fn follow_all(&mut self) {
+        self.windows.follow_all(Instant::now());
     }
 
     /// Apply every window's queued opens and closes in order, in `about_to_wait`. A window that
@@ -311,7 +318,7 @@ impl<T: App + 'static> WinitRuntime<T> {
     /// Repaint everything when an app-global setting changed.
     pub(super) fn repaint_on_shared_change(&mut self) {
         if self.core.resources.settings().take_change() {
-            self.repaint_all();
+            self.follow_all();
         }
     }
 
@@ -405,7 +412,7 @@ fn earliest_wake<W>(
     let mut earliest: Option<Instant> = None;
     for (window, present) in presents {
         match present {
-            FramePresent::Immediate => redraw(window),
+            FramePresent::Immediate | FramePresent::Follow => redraw(window),
             FramePresent::At(at) => earliest = Some(earliest.map_or(at, |best| best.min(at))),
             FramePresent::Idle => {}
         }
@@ -448,6 +455,12 @@ mod tests {
                 vec![FramePresent::Immediate; 2],
                 vec![0, 1],
                 None,
+            ),
+            (
+                "a follow redraws as an immediate does",
+                vec![FramePresent::Idle, FramePresent::Follow, at(5)],
+                vec![1],
+                Some(t0 + Duration::from_millis(5)),
             ),
         ] {
             let mut got = Vec::new();

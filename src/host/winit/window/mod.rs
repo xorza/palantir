@@ -493,6 +493,10 @@ pub(super) enum FramePresent {
     Immediate,
     At(Instant),
     Idle,
+    /// Due now, only to show what another window's frame changed in the app every window
+    /// records from. A frame run for this alone asks no window to follow it, so two windows
+    /// cannot keep each other running.
+    Follow,
 }
 
 impl FramePresent {
@@ -502,6 +506,27 @@ impl FramePresent {
             Self::At(t) if t <= now => Self::Immediate,
             other => other,
         }
+    }
+
+    /// This window's next frame once another window ran one of its own, which may have changed
+    /// the app: due now, as a [`Self::Follow`] unless it was due for itself. A deadline still
+    /// ahead folds in, as the follow frame reports it again.
+    ///
+    /// Every window follows each frame another window runs of its own, as iced rebuilds every
+    /// window's view after each update: the host cannot see what a frame changed in the app. Refused: a
+    /// repaint the app asks of each window it changes (egui's `request_repaint_of`), or a revision
+    /// it bumps (Druid's `Data` diff), which a missed call leaves stale with no sign. Cost: a
+    /// record and a layout of each other window a frame, where damage paints what changed.
+    pub(super) fn followed(self, now: Instant) -> Self {
+        match self.resolve(now) {
+            Self::Immediate => Self::Immediate,
+            Self::At(_) | Self::Idle | Self::Follow => Self::Follow,
+        }
+    }
+
+    /// Whether a frame due as this is the window's own, which the other windows follow.
+    pub(super) fn leads(self, now: Instant) -> bool {
+        self.resolve(now) != Self::Follow
     }
 }
 

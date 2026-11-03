@@ -382,7 +382,7 @@ where
                 HostPhase::Bootstrap(bootstrap) => bootstrap.pending_tasks.push(task),
                 HostPhase::Running(runtime) => {
                     task(&mut runtime.app);
-                    runtime.repaint_all();
+                    runtime.follow_all();
                 }
                 HostPhase::Failed(_) => {}
             },

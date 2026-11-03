@@ -4,6 +4,12 @@ use crate::ui::Ui;
 use crate::window::window_token::WindowToken;
 
 /// Application lifecycle driven by a host for each window that records.
+///
+/// Every window records from the one app, and a frame of any of them may change it, so the host
+/// records each other shown window after it: a value one window edits shows in all of them, with
+/// no wake to send. A hidden window records when it shows again. The frame a window records only
+/// to follow another's asks no window to follow it in turn, so a change a record pass makes with
+/// no input, wake or animation of its own shows in the other windows at their next frame.
 pub trait App {
     /// Runs once before the first record pass of a fully recorded frame, for work that must not replay. `ui` is read-only.
     fn update(&mut self, _window: WindowToken, _ui: &Ui) {}
