@@ -2,7 +2,7 @@
 
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
-use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
+use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
 use crate::primitives::reduce_preference::{ReducePreference, Reduction};
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::scheme_preference::SchemePreference;
@@ -39,9 +39,9 @@ pub(crate) struct AppSettings {
     /// nothing reports it.
     system_transparency: Cell<Reduction>,
     /// How soon a second press on the same target makes a double click: the platform's, where
-    /// the winit host reads one, else [`DOUBLE_CLICK_WINDOW`]. Its change shows nothing, and
+    /// the winit host reads one, else [`DOUBLE_CLICK_INTERVAL`]. Its change shows nothing, and
     /// repaints the windows only as every setting's does.
-    double_click_window: Cell<Duration>,
+    double_click_interval: Cell<Duration>,
     changed: Cell<bool>,
 }
 
@@ -56,7 +56,7 @@ impl Default for AppSettings {
             system_motion: Cell::default(),
             transparency_preference: Cell::default(),
             system_transparency: Cell::default(),
-            double_click_window: Cell::new(DOUBLE_CLICK_WINDOW),
+            double_click_interval: Cell::new(DOUBLE_CLICK_INTERVAL),
             changed: Cell::default(),
         }
     }
@@ -138,13 +138,13 @@ impl AppSettings {
             .resolve(self.system_transparency())
     }
 
-    pub(crate) const fn double_click_window(&self) -> Duration {
-        self.double_click_window.get()
+    pub(crate) const fn double_click_interval(&self) -> Duration {
+        self.double_click_interval.get()
     }
 
     #[cfg(any(test, feature = "winit"))]
-    pub(crate) fn set_double_click_window(&self, window: Duration) {
-        self.write(&self.double_click_window, window);
+    pub(crate) fn set_double_click_interval(&self, interval: Duration) {
+        self.write(&self.double_click_interval, interval);
     }
 
     /// The scheme every window shows now: the preference resolved against the system's.

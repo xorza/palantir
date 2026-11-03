@@ -211,7 +211,9 @@ fn a_remote_plays_and_reads_a_live_window() {
     let (handle, thread) = serve();
     let mut remote = handle.remote(WINDOW).with_tick(TICK);
 
-    let (clicks, frame) = remote.query(|app, ui| (app.clicks, ui.frame_id())).unwrap();
+    let (clicks, frame) = remote
+        .query(|app, ui| (app.clicks, ui.record_frame_id()))
+        .unwrap();
     assert_eq!(clicks, 0);
     assert!(frame > 0, "a frame ran before the query");
 

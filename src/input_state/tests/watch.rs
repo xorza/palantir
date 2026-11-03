@@ -1,5 +1,5 @@
 //! Off-target wake gates (`PointerWake` flags and key chords): no watcher means
-//! no wake and no `frame_pointer_events` entry; pre-record clear drops stale watches.
+//! no wake and no `Ui::pointer_events` entry; pre-record clear drops stale watches.
 use crate::input::zoom_factor::ZoomFactor;
 use crate::input_state::tests::{Stream, sample_layers};
 use crate::primitives::identity::widget_id::WidgetId;
@@ -31,12 +31,12 @@ fn empty(ui: &mut Ui) {
 
 fn empty_watch_buttons(ui: &mut Ui) {
     empty(ui);
-    ui.watch_pointer(PointerWake::BUTTONS);
+    let _ = ui.pointer_events(PointerWake::BUTTONS);
 }
 
 fn empty_watch_move(ui: &mut Ui) {
     empty(ui);
-    ui.watch_pointer(PointerWake::MOVE);
+    let _ = ui.pointer_events(PointerWake::MOVE);
 }
 
 fn empty_watch_escape(ui: &mut Ui) {
@@ -53,7 +53,7 @@ fn buttons_watcher_wakes_press_on_inert() {
     let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert!(delta.repaint_requested);
 
-    let events = h.ui().pointer_events();
+    let events = h.ui().captured_pointer_events();
     assert_eq!(events.len(), 1);
     assert!(matches!(
         events[0],
@@ -71,7 +71,7 @@ fn press_on_inert_with_no_watcher_does_not_wake() {
     h.hover(Vec2::new(50.0, 50.0));
     let delta = h.on_input(InputEvent::PointerPressed(PointerButton::Left));
     assert!(!delta.repaint_requested);
-    assert!(h.ui().pointer_events().is_empty());
+    assert!(h.ui().captured_pointer_events().is_empty());
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn press_and_release_both_captured() {
     let release = h.release(PointerButton::Left);
     assert!(release.repaint_requested);
 
-    let events = h.ui().pointer_events();
+    let events = h.ui().captured_pointer_events();
     assert_eq!(events.len(), 2);
     assert!(matches!(events[0], PointerEvent::Pressed { .. }));
     assert!(matches!(events[1], PointerEvent::Released { .. }));
@@ -108,7 +108,7 @@ fn move_watcher_wakes_on_inert_move() {
     let delta = h.hover(Vec2::new(50.0, 50.0));
     assert!(delta.repaint_requested);
 
-    let events = h.ui().pointer_events();
+    let events = h.ui().captured_pointer_events();
     assert_eq!(events.len(), 1);
     assert!(matches!(
         events[0],
@@ -122,14 +122,14 @@ fn move_without_watcher_does_not_log() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(empty);
     h.hover(Vec2::new(50.0, 50.0));
-    assert!(h.ui().pointer_events().is_empty());
+    assert!(h.ui().captured_pointer_events().is_empty());
 }
 
 #[test]
 fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
     fn empty_watch_scroll(ui: &mut Ui) {
         empty(ui);
-        ui.watch_pointer(PointerWake::SCROLL);
+        let _ = ui.pointer_events(PointerWake::SCROLL);
     }
 
     let mut h = Harness::mono(UVec2::new(200, 200));
@@ -139,7 +139,7 @@ fn scroll_watcher_receives_an_event_without_creating_a_widget_delta() {
     assert!(delta.repaint_requested);
     assert!(h.ui().input().pointer.target_deltas.is_empty());
     assert!(matches!(
-        h.ui().pointer_events(),
+        h.ui().captured_pointer_events(),
         [PointerEvent::Scroll {
             pos,
             pixels,
@@ -169,7 +169,7 @@ fn scroll_and_pinch_wake_categories_are_independent() {
         let mut h = Harness::mono(UVec2::new(200, 200));
         h.frame(|ui| {
             empty(ui);
-            ui.watch_pointer(*watched);
+            let _ = ui.pointer_events(*watched);
         });
         let scroll = h.scroll_pixels(Vec2::new(50.0, 50.0), Vec2::new(0.0, 7.0));
         let zoom = h.on_input(InputEvent::Pinch(ZoomFactor::new(1.25).unwrap()));
@@ -182,13 +182,13 @@ fn scroll_and_pinch_wake_categories_are_independent() {
 
         let scrolls = h
             .ui()
-            .pointer_events()
+            .captured_pointer_events()
             .iter()
             .filter(|e| matches!(e, PointerEvent::Scroll { .. }))
             .count();
         let zooms = h
             .ui()
-            .pointer_events()
+            .captured_pointer_events()
             .iter()
             .filter(|e| matches!(e, PointerEvent::Pinch { .. }))
             .count();
@@ -328,10 +328,10 @@ fn pointer_events_drain_between_frames() {
     h.frame(empty_watch_buttons);
 
     h.press(Vec2::new(50.0, 50.0), PointerButton::Left);
-    assert_eq!(h.ui().pointer_events().len(), 1);
+    assert_eq!(h.ui().captured_pointer_events().len(), 1);
 
     h.frame(empty_watch_buttons);
-    assert!(h.ui().pointer_events().is_empty());
+    assert!(h.ui().captured_pointer_events().is_empty());
 }
 
 /// The pointer watch stream is layer-gated like the keyboard's: an overlay's

@@ -2,7 +2,7 @@ use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
+use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
 use crate::input_state::tests::{BUTTON_SURFACE, build_button, fixed_button};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -12,10 +12,10 @@ use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
-/// A gap inside [`DOUBLE_CLICK_WINDOW`], explicit because the harness clock
+/// A gap inside [`DOUBLE_CLICK_INTERVAL`], explicit because the harness clock
 /// stands still until moved.
 const IN_WINDOW: Duration = Duration::from_millis(100);
-const _: () = assert!(IN_WINDOW.as_millis() < DOUBLE_CLICK_WINDOW.as_millis());
+const _: () = assert!(IN_WINDOW.as_millis() < DOUBLE_CLICK_INTERVAL.as_millis());
 
 #[test]
 fn input_state_press_release_emits_click() {

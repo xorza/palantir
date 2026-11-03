@@ -118,7 +118,6 @@ use crate::window::window_requests::WindowRequests;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
 use std::fmt;
-use std::mem;
 use std::num::NonZeroU32;
 use std::rc::Rc;
 use std::time::Duration;
@@ -236,10 +235,11 @@ impl Ui {
     /// Replace this window's theme for `scheme`; takes an `Rc` so swapping prebuilt themes copies
     /// nothing, and the handle the slot holds already changes nothing. The other scheme's waits
     /// until its scheme shows. The shown scheme's moves there under
-    /// [`Self::set_theme_transition`] from the next frame, this one keeping what it shows; under
-    /// `None`, before the window's second frame and with motion reduced, it applies at once, to the
-    /// widgets recorded after the call, and asks for a frame that records the rest under it. Set
-    /// it on a change, not every frame.
+    /// [`Self::set_theme_transition`] from the next frame, this one keeping what it shows. Under
+    /// [`AnimationSpec::SNAP`], before the window's second frame, in the first frame after the
+    /// window was hidden, or with motion reduced, it applies at once, to the widgets recorded
+    /// after the call, and asks for a frame that records the rest under it. Set it on a change,
+    /// not every frame.
     ///
     /// ```
     /// # use palantir::{ColorScheme, SchemePreference, Theme, Ui};
@@ -479,16 +479,10 @@ impl Ui {
             .on_input(event, input_ctx(&self.cascade, &self.resources), now)
     }
 
-    // `peek_*` reads without declaring a wake. `watch_*` and plain reads declare
+    // `peek_*` reads without declaring a wake. `watch_keyboard` and plain reads declare
     // "wake me when this changes"; forgetting that freezes pointer-derived paint,
     // while forgetting a peek only costs frames. Watches are cleared pre-record:
     // re-call each active frame.
-
-    /// Declare interest in off-target pointer events of `flags`.
-    #[inline]
-    pub const fn watch_pointer(&mut self, flags: PointerWake) {
-        self.input.watch_pointer(flags);
-    }
 
     /// Declare interest in off-focus keyboard categories. One key or chord needs no watch: its
     /// query keeps it watched.
@@ -504,11 +498,14 @@ impl Ui {
         self.input.watch_shortcut(shortcut.into());
     }
 
-    /// Pointer events captured this frame; empty without a [`PointerWake`] watcher.
-    /// Gated like [`Self::keyboard_events`]: an overlay's scope empties it for
+    /// This frame's pointer events, of every class a reader watched last frame, and a watch of
+    /// `wake`: an event of those classes, off-target too, is kept for the next frame and wakes
+    /// it. Watches are cleared before each record pass, so a reader reads in every frame it
+    /// wants events in. Gated like [`Self::keyboard_events`]: an overlay's scope empties it for
     /// the planes strictly below, since watches bypass hit-testing.
     #[inline]
-    pub fn pointer_events(&self) -> &[PointerEvent] {
+    pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent] {
+        self.input.watch_pointer(wake);
         self.input.pointer_events(self.forest.cur_plane())
     }
 
@@ -882,7 +879,7 @@ impl Ui {
     /// [`frame_stats`]: crate::diagnostics::frame_stats
     pub(crate) fn frame_stats(&self) -> FrameStats {
         FrameStats {
-            frame_id: self.frame_runtime.frame_id,
+            record_frame_id: self.frame_runtime.record_frame_id,
             render_frame_id: self.frame_runtime.render_frame_id,
             fps: self.frame_runtime.fps_ema,
             settle_frames: self.frame_runtime.settle_frames(),
@@ -1183,8 +1180,13 @@ impl Ui {
         endpoint.map(|endpoint| self.cascade.location(endpoint))
     }
 
-    /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored or is lent
-    /// out to a [`Self::with_state`] body. Creates nothing.
+    /// The cross-frame state row for `id`, or `None` if `(id, S)` was never stored. Creates
+    /// nothing.
+    ///
+    /// # Panics
+    ///
+    /// While the row is lent to a [`Self::with_state`] body, which holds it as `&mut S`.
+    #[track_caller]
     pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
         self.state.try_get::<S>(id)
     }
@@ -1208,15 +1210,19 @@ impl Ui {
     ///
     /// A row is dropped after a frame that recorded `id` is followed by one that does
     /// not; a row under an id no node records lives as long as the `Ui`. The row is lent, not
-    /// copied: `S::default()` is built only for a new row, and inside `body` the same `(id, S)`
-    /// reads `None` through [`Self::state`], and a re-entry sees a default row, overwritten on
-    /// restore.
+    /// copied: `S::default()` is built only for a new row.
+    ///
+    /// # Panics
+    ///
+    /// While the row is lent already: inside `body`, the same `(id, S)` is `body`'s `&mut S`, and
+    /// a second lend or a [`Self::state`] read of it panics, as `RefCell::borrow_mut` does.
+    #[track_caller]
     pub fn with_state<S: Default + 'static, R>(
         &mut self,
         id: WidgetId,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = self.state.take::<S>(id).unwrap_or_default();
+        let mut value = self.state.lend::<S>(id).unwrap_or_default();
         let out = body(self, &mut value);
         // Re-probed: `body` may have inserted rows of the same `S`, reallocating the store.
         self.state.put(id, value);
@@ -1225,19 +1231,28 @@ impl Ui {
 
     /// The one `S` this `Ui` holds, or `None`. For state a widget kind shares across
     /// instances; keyed by type, never swept.
+    ///
+    /// # Panics
+    ///
+    /// While `S` is lent to a [`Self::with_singleton`] body.
+    #[track_caller]
     pub fn singleton<S: 'static>(&self) -> Option<&S> {
         self.singletons.get::<S>()
     }
 
-    /// Lend the one `S` to `body` beside the `Ui`, as [`Self::with_state`]. A nested
-    /// call for the same `S` sees the default and its writes are lost.
+    /// Lend the one `S` to `body` beside the `Ui`, `S::default()` on first use.
+    ///
+    /// # Panics
+    ///
+    /// While `S` is lent already, as [`Self::with_state`] panics.
+    #[track_caller]
     pub fn with_singleton<S: Default + 'static, R>(
         &mut self,
         body: impl FnOnce(&mut Self, &mut S) -> R,
     ) -> R {
-        let mut value = mem::take(self.singletons.get_or_default::<S>());
+        let mut value = self.singletons.take::<S>();
         let out = body(self, &mut value);
-        *self.singletons.get_or_default::<S>() = value;
+        self.singletons.put(value);
         out
     }
 
@@ -1337,8 +1352,8 @@ impl Ui {
     /// state stamps it to notice a gap (it was skipped); paint-only frames advance
     /// nothing. See [`Self::render_frame_id`].
     #[inline]
-    pub const fn frame_id(&self) -> u64 {
-        self.frame_runtime.frame_id
+    pub const fn record_frame_id(&self) -> u64 {
+        self.frame_runtime.record_frame_id
     }
 
     /// The last frame's interactive widgets, in paint order, into `out`: what a tool that
@@ -1350,12 +1365,12 @@ impl Ui {
     /// How soon a second press on the same target makes a double click: what the winit host sets
     /// for the platform, else 500 ms. A driver that sends separate clicks spaces them past it.
     #[inline]
-    pub fn double_click_window(&self) -> Duration {
-        self.resources.settings().double_click_window()
+    pub fn double_click_interval(&self) -> Duration {
+        self.resources.settings().double_click_interval()
     }
 
     /// This frame's monotonic index among frames that reached the screen. Counts
-    /// paint-only frames, so use [`Self::frame_id`] to detect a skipped reader.
+    /// paint-only frames, so use [`Self::record_frame_id`] to detect a skipped reader.
     #[inline]
     pub const fn render_frame_id(&self) -> u64 {
         self.frame_runtime.render_frame_id
@@ -1395,22 +1410,22 @@ impl Ui {
         self.input.set_focus(None);
     }
 
-    /// Ask for IME text this frame, with `caret` (logical px) where the platform
-    /// places its candidate list. A level asked for every frame it is wanted; a frame
+    /// Ask for IME text this frame, with `area` (logical px) the caret's rect, beside which the
+    /// platform places its candidate list. A level asked for every frame it is wanted; a frame
     /// with no call turns IME off.
     ///
     /// # Panics
     ///
-    /// Panics unless every component of `caret` is an
+    /// Panics unless every component of `area` is an
     /// [offset](crate::widget::domain::offset).
     #[inline]
     #[track_caller]
-    pub const fn request_ime(&mut self, caret: Rect) {
-        caret.validate();
-        self.window_requests.levels.ime_area = Some(caret);
+    pub const fn request_ime_area(&mut self, area: Rect) {
+        area.validate();
+        self.window_requests.levels.ime_area = Some(area);
     }
 
-    /// The IME caret requested so far this record pass, `None` for off. Frame-scoped, like
+    /// The IME area requested so far this record pass, `None` for off. Frame-scoped, like
     /// [`Self::cursor`]: a host that embeds the UI enables its input method while it is `Some`
     /// after a frame; the winit host does it itself.
     #[inline]
@@ -1452,7 +1467,7 @@ impl Ui {
     /// [`Self::is_hover_within`].
     #[inline]
     pub const fn pointer_pos(&mut self) -> Option<Vec2> {
-        self.watch_pointer(PointerWake::MOVE);
+        self.input.watch_pointer(PointerWake::MOVE);
         self.input.pointer_pos()
     }
 
@@ -1536,7 +1551,7 @@ impl Ui {
 fn input_ctx<'a>(cascade: &'a Cascade, resources: &UiResources) -> InputCtx<'a> {
     InputCtx {
         cascade,
-        double_click: resources.settings().double_click_window(),
+        double_click: resources.settings().double_click_interval(),
     }
 }
 
@@ -1547,6 +1562,8 @@ pub(crate) mod internals {
 
     #[cfg(test)]
     use crate::animation::AnimationMap;
+    #[cfg(test)]
+    use crate::input::pointer::PointerEvent;
     #[cfg(test)]
     use crate::input_state::InputState;
     use crate::layout::Layout;
@@ -1643,6 +1660,11 @@ pub(crate) mod internals {
         /// The facts a host publishes before a frame, for tests that act as the host.
         pub(crate) fn window_frame_mut(&mut self) -> &mut WindowFrameState {
             &mut self.window_frame
+        }
+
+        /// [`Ui::pointer_events`] read between frames, where a read watches nothing.
+        pub(crate) fn captured_pointer_events(&self) -> &[PointerEvent] {
+            self.input.pointer_events(self.forest.cur_plane())
         }
     }
 

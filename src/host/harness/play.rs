@@ -20,7 +20,7 @@ impl Harness {
     /// Play `actions` on `app` in order, as a person at the window would, settling after each;
     /// the first that fails stops the rest. Every locator of a step resolves before its input
     /// goes in, and a button or a modifier it holds is always released, so a failed step leaves
-    /// nothing held. Separate presses wait out the double-click window, and a press moves the
+    /// nothing held. Separate presses wait out the double-click interval, and a press moves the
     /// pointer first and settles, so it lands on what the pointer hovers. Returns the frames run.
     ///
     /// # Errors
@@ -233,10 +233,10 @@ impl<A: App, X: Locate<A>> Stage<X> for HarnessStage<'_, A> {
         let Some(pressed) = self.h.last_press else {
             return Ok(());
         };
-        let window = self.h.driver.ui.double_click_window();
+        let interval = self.h.driver.ui.double_click_interval();
         let since = self.h.time.saturating_sub(pressed);
-        if since <= window {
-            self.h.advance(window - since + Duration::from_millis(1));
+        if since <= interval {
+            self.h.advance(interval - since + Duration::from_millis(1));
         }
         Ok(())
     }

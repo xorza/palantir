@@ -31,7 +31,7 @@ pub(crate) trait Stage<X> {
     /// Let `dt` pass, frames running as they do.
     fn wait(&mut self, dt: Duration) -> Result<(), PlayError>;
 
-    /// Wait out what is left of the double-click window since the last press, so the next press
+    /// Wait out what is left of the double-click interval since the last press, so the next press
     /// starts a new run of clicks.
     fn space_press(&mut self) -> Result<(), PlayError>;
 

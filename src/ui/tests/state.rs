@@ -1,24 +1,44 @@
 //! Cross-frame state rows and the scope that lends them.
 
 use crate::host::harness::Harness;
+use crate::internals::panic_probe;
 use crate::primitives::identity::widget_id::WidgetId;
+use crate::ui::singletons::LENT_SINGLETON;
+use crate::ui::state::LENT_ROW;
 use crate::ui::tests::support::SURFACE;
 use crate::widgets::{button::Button, panel::Panel, text::Text};
 
-/// Inside the body the row is lent, so `Ui::state` reads `None`; after it the value is back,
-/// carried across frames. `tests/alloc`'s `state_map_counter_alloc_free` holds that no default
-/// is built per lend.
+/// Inside the body the row is lent: a `Ui::state` read of it and a second lend panic, as a
+/// `RefCell` borrowed mutably does, and a singleton lent by `Ui::with_singleton` likewise. After
+/// the body the value is back, carried across frames. `tests/alloc`'s
+/// `state_map_counter_alloc_free` holds that no default is built per lend.
 #[test]
 fn with_state_lends_the_row_out_and_back() {
+    #[derive(Debug, Default, PartialEq)]
+    struct Shared(u32);
+
     let id = WidgetId::from_hash("with-state-lend");
     let mut h = Harness::mono(SURFACE);
     for frame in 1..=3_u32 {
         h.frame(|ui| {
             ui.with_state::<u32, _>(id, |ui, count| {
-                assert_eq!(ui.state::<u32>(id), None, "the row is lent");
+                panic_probe::assert_panics_with(LENT_ROW, || ui.state::<u32>(id).is_some());
+                panic_probe::assert_panics_with(LENT_ROW, || {
+                    ui.with_state::<u32, _>(id, |_, _| {});
+                });
                 *count += 1;
             });
             assert_eq!(ui.state::<u32>(id), Some(&frame));
+            ui.with_singleton::<Shared, _>(|ui, shared| {
+                panic_probe::assert_panics_with(LENT_SINGLETON, || {
+                    ui.singleton::<Shared>().is_some()
+                });
+                panic_probe::assert_panics_with(LENT_SINGLETON, || {
+                    ui.with_singleton::<Shared, _>(|_, _| {});
+                });
+                shared.0 += 1;
+            });
+            assert_eq!(ui.singleton::<Shared>(), Some(&Shared(frame)));
         });
     }
 }

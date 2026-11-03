@@ -236,14 +236,14 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r0 = h.frame(|ui| body(ui, half));
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_at, Some(half));
-    let (rendered, recorded) = (h.ui().render_frame_id(), h.ui().frame_id());
+    let (rendered, recorded) = (h.ui().render_frame_id(), h.ui().record_frame_id());
 
     let r1 = h.at(half).frame(|ui| body(ui, half));
     assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
-    // `frame_id` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
+    // `record_frame_id` must not count the painted frame, or retained state stamping it reads an idle blink as a skipped surface.
     assert_eq!(h.ui().render_frame_id(), rendered + 1);
-    assert_eq!(h.ui().frame_id(), recorded);
+    assert_eq!(h.ui().record_frame_id(), recorded);
 
     match r1.plan {
         Some(RenderPlan {
@@ -274,7 +274,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 
     assert_eq!(h.ui().render_frame_id(), rendered + 4);
-    assert_eq!(h.ui().frame_id(), recorded + 1);
+    assert_eq!(h.ui().record_frame_id(), recorded + 1);
 }
 
 /// Regression: `Ui::frame` cleared the record store on `PaintOnly` frames too, leaving retained `ShapeRecord`s' payload indices dangling and panicking the encoder. The clear now lives in `record_pass`. Pinned with a retained gradient, text and an animated shape forcing PaintOnly on frame 1.

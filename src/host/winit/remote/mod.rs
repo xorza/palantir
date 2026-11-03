@@ -61,7 +61,7 @@ pub struct Remote<T: 'static> {
     blocked: Option<Box<dyn Fn() -> bool + Send>>,
     /// The events sent, which a frame that saw them all counts.
     sent: u64,
-    /// The last press's real time, which the next press waits out the double-click window from.
+    /// The last press's real time, which the next press waits out the double-click interval from.
     last_press: Option<Instant>,
     /// The longest real time a wait for the window lasts: [`WAIT`] unless [`Self::with_wait`]
     /// sets it.
@@ -162,9 +162,9 @@ impl<T: 'static> Remote<T> {
     /// [`PlayError::Busy`] when a busy app runs no frame for as long, [`PlayError::NoFrame`] when
     /// the window runs none, and [`PlayError::Disconnected`] when it closed.
     pub fn settle(&mut self) -> Result<u32, PlayError> {
-        let first = self.frame_id();
+        let first = self.record_frame_id();
         self.wait_frame(true)?;
-        Ok(u32::try_from(self.frame_id().saturating_sub(first)).unwrap_or(u32::MAX))
+        Ok(u32::try_from(self.record_frame_id().saturating_sub(first)).unwrap_or(u32::MAX))
     }
 
     /// Play `actions` in order as a person at the window would, in real time, settling after
@@ -178,12 +178,12 @@ impl<T: 'static> Remote<T> {
         &mut self,
         actions: &[Action<X>],
     ) -> Result<u32, ActError> {
-        let first = self.frame_id();
+        let first = self.record_frame_id();
         let mut stage = RemoteStage { remote: self };
         for (ran, action) in actions.iter().enumerate() {
             play::play(&mut stage, action).map_err(|error| ActError { ran, error })?;
         }
-        let frames = stage.remote.frame_id().saturating_sub(first);
+        let frames = stage.remote.record_frame_id().saturating_sub(first);
         Ok(u32::try_from(frames).unwrap_or(u32::MAX))
     }
 
@@ -260,10 +260,10 @@ impl<T: 'static> Remote<T> {
             .ok_or(PlayError::Disconnected)
     }
 
-    fn frame_id(&self) -> u64 {
+    fn record_frame_id(&self) -> u64 {
         self.handle
             .last_frame(self.window)
-            .map_or(0, |summary| summary.frame_id)
+            .map_or(0, |summary| summary.record_frame_id)
     }
 
     /// Wait for a frame that saw every event sent and, when `settled`, asks no repaint and finds
@@ -271,7 +271,7 @@ impl<T: 'static> Remote<T> {
     /// goes on.
     fn wait_frame(&self, settled: bool) -> Result<(), PlayError> {
         let start = Instant::now();
-        let first = self.frame_id();
+        let first = self.record_frame_id();
         let mut seen = first;
         let mut progressed = start;
         loop {
@@ -281,13 +281,13 @@ impl<T: 'static> Remote<T> {
                 return Ok(());
             }
             let working = settled && last.busy && !last.repaint_requested;
-            if last.frame_id != seen {
-                seen = last.frame_id;
+            if last.record_frame_id != seen {
+                seen = last.record_frame_id;
                 progressed = Instant::now();
             }
             let since = if working { progressed } else { start };
             if let Err(error) = self.check_waiting(since, Answer::InFrame) {
-                let frames = last.frame_id.saturating_sub(first);
+                let frames = last.record_frame_id.saturating_sub(first);
                 let waited = since.elapsed();
                 return Err(if working && waited > self.wait {
                     PlayError::Busy { waited }
@@ -350,10 +350,10 @@ impl<T: 'static, X: Locate<T> + Clone + Send + 'static> Stage<X> for RemoteStage
         let Some(pressed) = self.remote.last_press else {
             return Ok(());
         };
-        let window = self.remote.query(|_, ui| ui.double_click_window())?;
+        let interval = self.remote.query(|_, ui| ui.double_click_interval())?;
         let since = pressed.elapsed();
-        if since <= window {
-            thread::sleep(window - since + Duration::from_millis(1));
+        if since <= interval {
+            thread::sleep(interval - since + Duration::from_millis(1));
         }
         Ok(())
     }

@@ -31,7 +31,7 @@ fn button(ui: &mut Ui) {
 
 fn button_watching_buttons(ui: &mut Ui) {
     button(ui);
-    ui.watch_pointer(PointerWake::BUTTONS);
+    let _ = ui.pointer_events(PointerWake::BUTTONS);
 }
 
 #[derive(Debug)]
@@ -135,7 +135,10 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
         button: rect,
     } = warm(button);
     let origin = rect.center();
-    let (base_settles, base_records) = (h.ui().frame_runtime().settle_frames(), h.ui().frame_id());
+    let (base_settles, base_records) = (
+        h.ui().frame_runtime().settle_frames(),
+        h.ui().record_frame_id(),
+    );
 
     h.press(origin, PointerButton::Left);
     h.hover(origin + Vec2::new(DRAG_THRESHOLD + 1.0, 0.0));
@@ -147,7 +150,7 @@ fn a_sustained_drag_tallies_one_settle_for_its_latch_and_none_after() {
     }
 
     assert_eq!(
-        h.ui().frame_id() - base_records,
+        h.ui().record_frame_id() - base_records,
         9,
         "nine full-record frames were driven",
     );

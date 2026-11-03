@@ -18,7 +18,7 @@ use crate::cascade::Cascade;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
-use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
+use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
 use crate::input_state::{InputCtx, InputState};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -34,7 +34,7 @@ impl InputState {
     fn feed(&mut self, event: InputEvent<'_>) -> InputDelta {
         let ctx = InputCtx {
             cascade: &Cascade::default(),
-            double_click: DOUBLE_CLICK_WINDOW,
+            double_click: DOUBLE_CLICK_INTERVAL,
         };
         self.on_input(event, ctx, Duration::ZERO)
     }

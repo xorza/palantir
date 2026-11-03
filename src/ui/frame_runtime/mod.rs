@@ -67,7 +67,7 @@ pub(crate) struct FrameRuntime {
     pub(super) dt: f32,
     /// Bumped once per [`crate::Ui::frame`], before either record pass, so a
     /// settling pass cannot double-advance animation. Counts `PaintOnly`
-    /// frames too, unlike [`Self::frame_id`].
+    /// frames too, unlike [`Self::record_frame_id`].
     pub(super) render_frame_id: u64,
     /// This frame's display and host-supplied monotonic time, set by [`Self::begin_frame`].
     pub(super) stamp: FrameStamp,
@@ -77,12 +77,12 @@ pub(crate) struct FrameRuntime {
     /// EMA of `1/raw_dt`; zero before a second timestamp. Uses unclamped wall
     /// time so stalls stay visible.
     pub(super) fps_ema: f32,
-    /// Full-record frames so far, published as [`crate::Ui::frame_id`].
+    /// Full-record frames so far, published as [`crate::Ui::record_frame_id`].
     /// Bumped in [`Self::note_processing`], so inside a record pass it counts
     /// the record frames before this one: consecutive frames see consecutive
     /// values and both passes of one frame see the same one.
-    pub(super) frame_id: u64,
-    /// How many of [`Self::frame_id`]'s frames needed a settling second pass.
+    pub(super) record_frame_id: u64,
+    /// How many of [`Self::record_frame_id`]'s frames needed a settling second pass.
     /// Cumulative so a caller reads the delta across a gesture. `PaintOnly`
     /// frames are excluded from both halves of the ratio. Shown by the
     /// frame-stats overlay.
@@ -126,15 +126,15 @@ impl FrameRuntime {
         self.text_frame = Some(text.frame());
     }
 
-    /// Fold this frame's outcome into [`Self::frame_id`] and the settle tally.
+    /// Fold this frame's outcome into [`Self::record_frame_id`] and the settle tally.
     /// Called once per [`crate::Ui::frame`] after the pass count is known, so
     /// the overlay always reads both through the previous frame.
     pub(super) const fn note_processing(&mut self, processing: FrameProcessing) {
         match processing {
             FrameProcessing::PaintOnly => {}
-            FrameProcessing::SingleLayout => self.frame_id += 1,
+            FrameProcessing::SingleLayout => self.record_frame_id += 1,
             FrameProcessing::DoubleLayout => {
-                self.frame_id += 1;
+                self.record_frame_id += 1;
                 self.settle_frames += 1;
             }
         }

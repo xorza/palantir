@@ -1,6 +1,6 @@
-//! The press-run rule on its own: whether a press chains onto the last one, at the window's and the radius's edges.
+//! The press-run rule on its own: whether a press chains onto the last one, at the interval's and the radius's edges.
 
-use crate::input_state::capture::{Capture, DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, PressRun};
+use crate::input_state::capture::{Capture, DOUBLE_CLICK_INTERVAL, DOUBLE_CLICK_RADIUS, PressRun};
 use crate::primitives::identity::widget_id::WidgetId;
 use glam::Vec2;
 use std::time::Duration;
@@ -10,8 +10,8 @@ fn target() -> WidgetId {
 }
 
 /// Each row presses once after a run of `count` presses on `target` at the origin at time zero,
-/// under the double-click `window`. The window is the press's to read, as a platform setting
-/// moves it: 300 ms after the last chains under a 400 ms window, as GNOME's default, and starts
+/// under the double-click `interval`. The interval is the press's to read, as a platform setting
+/// moves it: 300 ms after the last chains under a 400 ms interval, as GNOME's default, and starts
 /// over under a 200 ms one.
 #[test]
 fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
@@ -22,7 +22,7 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
         on: WidgetId,
         pos: Vec2,
         now: Duration,
-        window: Duration,
+        interval: Duration,
         want: u8,
     }
     let row = |label, count, pos, now, want| Row {
@@ -31,7 +31,7 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
         on: target(),
         pos,
         now,
-        window: DOUBLE_CLICK_WINDOW,
+        interval: DOUBLE_CLICK_INTERVAL,
         want,
     };
     let ms = Duration::from_millis;
@@ -44,17 +44,17 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
             2,
         ),
         row(
-            "exactly the window still chains",
+            "exactly the interval still chains",
             1,
             Vec2::ZERO,
-            DOUBLE_CLICK_WINDOW,
+            DOUBLE_CLICK_INTERVAL,
             2,
         ),
         row(
-            "a nanosecond past the window starts over",
+            "a nanosecond past the interval starts over",
             1,
             Vec2::ZERO,
-            DOUBLE_CLICK_WINDOW + Duration::from_nanos(1),
+            DOUBLE_CLICK_INTERVAL + Duration::from_nanos(1),
             1,
         ),
         row(
@@ -89,9 +89,9 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
             u8::MAX,
         ),
         Row {
-            window: ms(400),
+            interval: ms(400),
             ..row(
-                "a 400 ms window holds a 300 ms gap",
+                "a 400 ms interval holds a 300 ms gap",
                 1,
                 Vec2::ZERO,
                 ms(300),
@@ -99,8 +99,8 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
             )
         },
         Row {
-            window: ms(200),
-            ..row("a 200 ms window does not", 1, Vec2::ZERO, ms(300), 1)
+            interval: ms(200),
+            ..row("a 200 ms interval does not", 1, Vec2::ZERO, ms(300), 1)
         },
     ];
     for Row {
@@ -109,7 +109,7 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
         on,
         pos,
         now,
-        window,
+        interval,
         want,
     } in rows
     {
@@ -122,7 +122,7 @@ fn a_press_chains_inside_the_window_and_radius_on_the_same_target() {
             }),
             ..Capture::default()
         };
-        cap.begin_press(on, pos, now, window);
+        cap.begin_press(on, pos, now, interval);
         let press = cap.press.expect("a press latched");
         assert_eq!(press.count, want, "{label}");
         let run = cap.run.expect("the run follows the press");
@@ -138,7 +138,7 @@ fn a_first_press_starts_a_run_at_one() {
         target(),
         Vec2::ONE,
         Duration::from_secs(3),
-        DOUBLE_CLICK_WINDOW,
+        DOUBLE_CLICK_INTERVAL,
     );
     assert_eq!(cap.press.map(|press| press.count), Some(1));
 }

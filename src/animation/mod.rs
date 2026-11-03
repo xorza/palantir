@@ -82,10 +82,10 @@ pub(crate) mod internals {
         }
 
         /// Rows resident in the `T` map, zero when it has none.
-        pub(crate) fn row_count<T: Animatable>(&mut self) -> usize {
+        pub(crate) fn row_count<T: Animatable>(&self) -> usize {
             self.stores
-                .get_mut::<AnimationMapTyped<T>>()
-                .map_or(0, |rows| rows.len())
+                .get::<AnimationMapTyped<T>>()
+                .map_or(0, AnimationMapTyped::len)
         }
     }
 }

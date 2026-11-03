@@ -159,7 +159,7 @@ fn request_ime_is_a_per_pass_level() {
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
         assert_eq!(ui.ime_area(), None, "each pass starts with it off");
-        ui.request_ime(caret);
+        ui.request_ime_area(caret);
         assert_eq!(ui.ime_area(), Some(caret));
     });
     assert_eq!(h.ui().ime_area(), Some(caret), "it outlives the frame");
@@ -172,6 +172,6 @@ fn request_ime_is_a_per_pass_level() {
 
     panic_probe::assert_panics_with(domain::OFFSET_RULE, || {
         let mut h = Harness::mono(SURFACE);
-        h.frame(|ui| ui.request_ime(Rect::new(f32::NAN, 0.0, 2.0, 16.0)));
+        h.frame(|ui| ui.request_ime_area(Rect::new(f32::NAN, 0.0, 2.0, 16.0)));
     });
 }

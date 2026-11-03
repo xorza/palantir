@@ -109,7 +109,7 @@ impl TextEditState {
 /// click-to-place-caret. [`Self::new`] borrows `&'a mut String`, the host's storage, and edits it
 /// live; [`Self::buffered`] edits a draft of its own and hands the result back on commit.
 ///
-/// While focused it asks for IME text ([`Ui::request_ime`]): the composition shows
+/// While focused it asks for IME text ([`Ui::request_ime_area`]): the composition shows
 /// at the caret and the bound `String` changes only on commit. Commits type as keys
 /// do, so control characters (newlines included) are dropped.
 ///
@@ -587,7 +587,7 @@ impl<'a> TextEdit<'a> {
             let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
             let [left, top, _, _] = ctx.padding.to_array();
             let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
-            ui.request_ime(response.transform.apply_rect(Rect {
+            ui.request_ime_area(response.transform.apply_rect(Rect {
                 min: scrolled.min + origin,
                 size: scrolled.size,
             }));

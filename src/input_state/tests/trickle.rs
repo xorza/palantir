@@ -302,7 +302,7 @@ fn a_press_reads_the_modifiers_it_came_under() {
 
 fn watched_scene(ui: &mut Ui) {
     scene(ui);
-    ui.watch_pointer(PointerWake::BUTTONS);
+    let _ = ui.pointer_events(PointerWake::BUTTONS);
 }
 
 /// What one frame's pass A saw of the left button: the target's state, and the `Up`s watchers got.
@@ -316,7 +316,7 @@ fn step_watched_until_idle(h: &mut Harness) -> Vec<LeftFrame> {
     sample_until_idle(h, watched_scene, |ui| LeftFrame {
         state: ui.response_for(target()).left,
         ups: ui
-            .pointer_events()
+            .captured_pointer_events()
             .iter()
             .filter(|e| matches!(e, PointerEvent::Released { .. }))
             .count(),

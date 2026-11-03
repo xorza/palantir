@@ -109,8 +109,8 @@ impl SystemPreferences {
         resources
             .settings()
             .set_system_transparency(self.transparency);
-        if let Some(window) = self.double_click {
-            resources.settings().set_double_click_window(window);
+        if let Some(interval) = self.double_click {
+            resources.settings().set_double_click_interval(interval);
         }
     }
 }
@@ -121,7 +121,7 @@ mod tests {
 
     use crate::host::winit::platform;
     use crate::host::winit::system_preferences::SystemPreferences;
-    use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
+    use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
     use crate::primitives::reduce_preference::Reduction;
     use crate::theme::color_scheme::ColorScheme;
     use crate::ui::resources::UiResources;
@@ -178,8 +178,8 @@ mod tests {
     fn applying_writes_the_scheme_and_keeps_an_unreported_double_click_time() {
         let resources = UiResources::isolated_mono();
         assert_eq!(
-            resources.settings().double_click_window(),
-            DOUBLE_CLICK_WINDOW
+            resources.settings().double_click_interval(),
+            DOUBLE_CLICK_INTERVAL
         );
         let ms = Duration::from_millis;
         SystemPreferences {
@@ -193,7 +193,7 @@ mod tests {
             resources.settings().system_color_scheme(),
             Some(ColorScheme::Light)
         );
-        assert_eq!(resources.settings().double_click_window(), ms(250));
+        assert_eq!(resources.settings().double_click_interval(), ms(250));
         assert_eq!(resources.settings().system_motion(), Reduction::Reduced);
         assert_eq!(
             resources.settings().system_transparency(),
@@ -208,7 +208,7 @@ mod tests {
         }
         .apply(&resources);
         assert_eq!(resources.settings().system_color_scheme(), None);
-        assert_eq!(resources.settings().double_click_window(), ms(250));
+        assert_eq!(resources.settings().double_click_interval(), ms(250));
         assert_eq!(resources.settings().system_motion(), Reduction::Full);
         assert_eq!(resources.settings().system_transparency(), Reduction::Full);
     }

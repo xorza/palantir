@@ -346,7 +346,7 @@ fn live(ui: &mut Ui, k: Kit, l: &mut LiveField) {
 
 fn ime(ui: &mut Ui, k: Kit, s: &mut Page) {
     Section::new("IME composition")
-        .apis(&[api!(Ui::request_ime), api!(Ui::ime_preedit)])
+        .apis(&[api!(Ui::request_ime_area), api!(Ui::ime_preedit)])
         .show(ui, k, |ui| {
             support::note(
                 ui,

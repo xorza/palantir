@@ -2,7 +2,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::widgets::text_edit::tests::*;
 
-/// Double-click selects the word, triple-click the buffer; dispatch follows the input layer's `press_count` run (within `DOUBLE_CLICK_WINDOW`/`DOUBLE_CLICK_RADIUS` on the event-time clock, hence the idle frame before the pause press).
+/// Double-click selects the word, triple-click the buffer; dispatch follows the input layer's `press_count` run (within `DOUBLE_CLICK_INTERVAL`/`DOUBLE_CLICK_RADIUS` on the event-time clock, hence the idle frame before the pause press).
 #[test]
 fn double_and_triple_click_select_word_and_all() {
     fn body(ui: &mut Ui, buf: &mut String) {

@@ -29,7 +29,7 @@
 //!    reads pass A alone or is idempotent.
 //! 6. **One clock, two doors.** [`Harness::advance`] and [`Harness::at`] move the time that
 //!    stamps both frames and input.
-//! 7. **A frozen clock makes every click one run of clicks**: the double-click window is 500 ms
+//! 7. **A frozen clock makes every click one run of clicks**: the double-click interval is 500 ms
 //!    and 5 px, so [`Harness::advance_past_double_click`] goes between separate clicks.
 //!    [`Harness::play`] waits it out by itself.
 //! 8. **Animation time is not the frame clock.** An animation's step is the frame's delta clamped
@@ -132,7 +132,7 @@ pub struct Harness {
     /// [`Self::on_input`].
     held: [Option<PressOrigin>; PointerButton::COUNT],
     /// The time of the frame after [`Self::play`]'s last press, which its next press waits out
-    /// the double-click window from.
+    /// the double-click interval from.
     last_press: Option<Duration>,
     frame_dt: Duration,
     settle_frames: u32,
@@ -299,11 +299,11 @@ impl Harness {
         }
     }
 
-    /// Move the clock past the double-click window, so the next press starts a new run of
+    /// Move the clock past the double-click interval, so the next press starts a new run of
     /// clicks. Runs no frame.
     pub fn advance_past_double_click(&mut self) -> &mut Self {
-        let window = self.driver.ui.double_click_window();
-        self.advance(window + Duration::from_millis(1))
+        let interval = self.driver.ui.double_click_interval();
+        self.advance(interval + Duration::from_millis(1))
     }
 
     /// Give the window `size` physical pixels from the next frame on, which reads the change as a

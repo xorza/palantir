@@ -59,7 +59,7 @@ pub enum InputEvent<'a> {
     ModifiersChanged(Modifiers),
     /// An input method's uncommitted text changed; empty `text` ends the
     /// composition. Forwarded only while a widget asks, see
-    /// [`Ui::request_ime`](crate::Ui::request_ime).
+    /// [`Ui::request_ime_area`](crate::Ui::request_ime_area).
     ImePreedit(ImePreedit<'a>),
     /// An input method committed `text`, typed in place among the key presses.
     ImeCommit(&'a str),

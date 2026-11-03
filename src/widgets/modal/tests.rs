@@ -179,7 +179,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
     const SURFACE: UVec2 = UVec2::new(400, 300);
 
     let scene = |ui: &mut Ui, open: &mut bool| {
-        ui.watch_pointer(PointerWake::BUTTONS);
+        ui.pointer_events(PointerWake::BUTTONS);
         ui.watch_keyboard(KeyboardWake::KEY);
         if *open {
             *open = Modal::new()
@@ -202,7 +202,10 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
     h.key(Key::Char('a'));
     let [pointer, keyboard] = h.frame_value(|ui| {
         scene(ui, &mut open);
-        [ui.pointer_events().len(), ui.keyboard_events().len()]
+        [
+            ui.pointer_events(PointerWake::BUTTONS).len(),
+            ui.keyboard_events().len(),
+        ]
     });
     assert_eq!(pointer, 1, "the dismissed modal still held the pointer");
     assert_eq!(keyboard, 1, "the dismissed modal still held the keyboard");

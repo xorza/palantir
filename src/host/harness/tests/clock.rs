@@ -2,7 +2,7 @@
 
 use crate::host::harness::tests::support::{self, INSIDE, SURFACE};
 use crate::host::harness::*;
-use crate::input_state::capture::DOUBLE_CLICK_WINDOW;
+use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
 use crate::internals::panic_probe;
 use crate::ui::resources::UiResources;
 use std::cell;
@@ -31,10 +31,10 @@ fn one_clock_stamps_both_frames_and_input() {
     assert!(third.left.clicked());
     assert!(
         !third.left.double_clicked(),
-        "past DOUBLE_CLICK_WINDOW the run restarts",
+        "past DOUBLE_CLICK_INTERVAL the run restarts",
     );
 
-    harness.advance(DOUBLE_CLICK_WINDOW * 2);
+    harness.advance(DOUBLE_CLICK_INTERVAL * 2);
     harness.click(INSIDE);
     let fourth = harness.response_in(support::target(), support::button);
     assert!(
@@ -42,7 +42,7 @@ fn one_clock_stamps_both_frames_and_input() {
         "an advance reaches input timing without a frame to publish it",
     );
 
-    let parked = harness.time + DOUBLE_CLICK_WINDOW * 2;
+    let parked = harness.time + DOUBLE_CLICK_INTERVAL * 2;
     harness.at(parked).frame(support::button);
     assert_eq!(harness.time, parked, "at parks the clock absolutely");
     harness.click(INSIDE);
@@ -117,7 +117,7 @@ fn every_window_reads_the_hosts_double_click_time() {
     };
 
     let mut stock = Harness::mono(SURFACE);
-    assert_eq!(stock.ui().double_click_window(), DOUBLE_CLICK_WINDOW);
+    assert_eq!(stock.ui().double_click_interval(), DOUBLE_CLICK_INTERVAL);
     assert!(double_after_gap(&mut stock), "300 ms is inside 500 ms");
 
     let shared = UiResources::isolated_mono();
@@ -125,10 +125,10 @@ fn every_window_reads_the_hosts_double_click_time() {
     let mut second = Harness::from_resources(shared.clone(), SURFACE);
     shared
         .settings()
-        .set_double_click_window(Duration::from_millis(200));
+        .set_double_click_interval(Duration::from_millis(200));
     for harness in [&mut first, &mut second] {
         assert_eq!(
-            harness.ui().double_click_window(),
+            harness.ui().double_click_interval(),
             Duration::from_millis(200)
         );
     }

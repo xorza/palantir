@@ -57,15 +57,6 @@ impl<F: ?Sized> TypedStores<F> {
         })
     }
 
-    /// Mutable [`Self::get`]; does not create the store.
-    pub(crate) fn get_mut<S: TypedStore<F>>(&mut self) -> Option<&mut S> {
-        self.by_type.get_mut(&TypeId::of::<S>()).map(|store| {
-            (store.as_mut() as &mut dyn Any)
-                .downcast_mut::<S>()
-                .expect(DOWNCAST_ERROR)
-        })
-    }
-
     /// Sweep every store against `frame`, keeping or dropping drained ones per `drained`; one walk with the policy as an argument, so the difference stays visible at the call site.
     pub(crate) fn sweep(&mut self, frame: &F, drained: Drained) {
         self.by_type.retain(|_, store| {

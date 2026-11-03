@@ -1,6 +1,6 @@
 //! Cross-frame widget state: dense `Vec<Option<T>>` stores indexed by `WidgetId` in a [`TypedStores`], one boxed store per distinct `T`. Allocation-free after warmup; no `Any` downcast on the hot path.
 //!
-//! A row is lent out by [`StateMap::take`] and returned by [`StateMap::put`], so a lend leaves no value behind: no `T::default()` is built per lend, as one whose default allocates would per frame.
+//! A row is lent out by [`StateMap::lend`] and returned by [`StateMap::put`], so a lend leaves no value behind: no `T::default()` is built per lend, as one whose default allocates would per frame.
 //!
 //! A row is keyed by `(WidgetId, T)`: one id holds one row of each `T`, each in its own store, as an `EditableLabel` keeps its own row beside the `TextEditState` of the editor it records under the same id.
 //!
@@ -9,15 +9,25 @@
 use crate::primitives::identity::typed_stores::{Drained, TypedStore, TypedStores};
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 
+/// What a read or a lend of a lent row panics with.
+pub(crate) const LENT_ROW: &str =
+    "this state row is lent to a `Ui::with_state` body: read it through the body's `&mut S`";
+
 #[derive(Debug, Default)]
 pub(crate) struct StateMap {
     stores: TypedStores<WidgetIdSet>,
 }
 
 impl StateMap {
-    /// Lend `id`'s value out, leaving its row empty; `None` for no row or one already lent.
-    pub(super) fn take<T: 'static>(&mut self, id: WidgetId) -> Option<T> {
-        self.stores.get_mut::<Store<T>>()?.take(id)
+    /// Lend `id`'s value out, leaving its row empty until [`Self::put`]; `None` for a new row,
+    /// which the lend makes, so a first lend refuses a second as a later one does.
+    ///
+    /// # Panics
+    ///
+    /// While the row is lent already.
+    #[track_caller]
+    pub(super) fn lend<T: 'static>(&mut self, id: WidgetId) -> Option<T> {
+        self.stores.get_or_default::<Store<T>>().lend(id)
     }
 
     /// Store `value` as `id`'s, in its row or a new one.
@@ -25,6 +35,10 @@ impl StateMap {
         self.stores.get_or_default::<Store<T>>().put(id, value);
     }
 
+    /// # Panics
+    ///
+    /// While the row is lent out.
+    #[track_caller]
     pub(super) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
         self.stores.get::<Store<T>>()?.try_get(id)
     }
@@ -59,23 +73,31 @@ impl<T> Store<T> {
         self.map.get(&id).map(|&idx| idx as usize)
     }
 
+    #[track_caller]
     fn try_get(&self, id: WidgetId) -> Option<&T> {
-        self.data[self.idx_of(id)?].as_ref()
+        Some(self.data[self.idx_of(id)?].as_ref().expect(LENT_ROW))
     }
 
-    fn take(&mut self, id: WidgetId) -> Option<T> {
-        let idx = self.idx_of(id)?;
-        self.data[idx].take()
+    #[track_caller]
+    fn lend(&mut self, id: WidgetId) -> Option<T> {
+        if let Some(idx) = self.idx_of(id) {
+            return Some(self.data[idx].take().expect(LENT_ROW));
+        }
+        self.push(id, None);
+        None
     }
 
     fn put(&mut self, id: WidgetId, value: T) {
-        if let Some(idx) = self.idx_of(id) {
-            self.data[idx] = Some(value);
-            return;
+        match self.idx_of(id) {
+            Some(idx) => self.data[idx] = Some(value),
+            None => self.push(id, Some(value)),
         }
+    }
+
+    fn push(&mut self, id: WidgetId, value: Option<T>) {
         let idx = self.data.len();
         debug_assert!(idx < u32::MAX as usize, "StateMap store overflow");
-        self.data.push(Some(value));
+        self.data.push(value);
         self.owners.push(id);
         self.map.insert(id, idx as u32);
     }

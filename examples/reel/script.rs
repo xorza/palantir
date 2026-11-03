@@ -265,7 +265,7 @@ impl Runner {
     }
 
     /// Press where the cursor is, refusing a second press near the last one inside the
-    /// double-click window: a reel that reads as a double click where it means two clicks would
+    /// double-click interval: a reel that reads as a double click where it means two clicks would
     /// show a selection it never meant.
     fn press(&mut self, at: Duration, h: &mut Harness) {
         if let Some((last, place)) = self.last_press

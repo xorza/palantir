@@ -861,7 +861,7 @@ FrameReport
 
 FrameSummary  [features: winit]
     struct FrameSummary: Clone, Copy, Debug, Eq, PartialEq
-        pub frame_id: u64
+        pub record_frame_id: u64
         pub sent_inputs: u64
         pub repaint_requested: bool
         pub repaint_at: Option<Duration>
@@ -2708,9 +2708,8 @@ Ui
         pub fn system_transparency_reduced(&self) -> bool
         pub fn transparency_preference(&self) -> ReducePreference
         pub fn set_transparency_preference(&mut self, preference: ReducePreference)
-        pub const fn watch_pointer(&mut self, flags: PointerWake)
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
-        pub fn pointer_events(&self) -> &[PointerEvent]
+        pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
         pub fn keyboard_events(&self) -> &[KeyPress]
         pub fn key_pressed(&mut self, key: Key) -> bool
         pub fn key_held(&mut self, key: Key) -> bool
@@ -2761,15 +2760,15 @@ Ui
         pub const fn display(&self) -> Display
         pub fn user_scale(&self) -> UserScale
         pub fn set_user_scale(&mut self, scale: UserScale)
-        pub const fn frame_id(&self) -> u64
+        pub const fn record_frame_id(&self) -> u64
         pub fn inspect(&self, out: &mut Vec<InspectedWidget>)
-        pub fn double_click_window(&self) -> Duration
+        pub fn double_click_interval(&self) -> Duration
         pub const fn render_frame_id(&self) -> u64
         pub fn probe_text<'a>(&'a mut self, run: TextRun<'a>) -> TextProbe<'a>
         pub fn pointer_actions(&self) -> impl Iterator<Item = PointerAction> + '_
         pub const fn set_focus(&mut self, id: WidgetId)
         pub const fn clear_focus(&mut self)
-        pub const fn request_ime(&mut self, caret: Rect)
+        pub const fn request_ime_area(&mut self, area: Rect)
         pub const fn ime_area(&self) -> Option<Rect>
         pub fn ime_preedit(&self) -> Option<ImePreedit<'_>>
         pub const fn is_focus_visible(&self) -> bool

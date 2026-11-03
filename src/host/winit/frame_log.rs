@@ -96,9 +96,9 @@ mod tests {
     use crate::window::window_token::WindowToken;
     use std::time::Duration;
 
-    const fn summary(frame_id: u64, repaint_requested: bool) -> FrameSummary {
+    const fn summary(record_frame_id: u64, repaint_requested: bool) -> FrameSummary {
         FrameSummary {
-            frame_id,
+            record_frame_id,
             sent_inputs: 0,
             repaint_requested,
             repaint_at: None,

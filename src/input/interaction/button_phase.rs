@@ -4,7 +4,7 @@
 ///
 /// `Down`/`Held` follow the capture, not the rect: they keep reporting while the pointer drags off the widget, with no travel threshold.
 ///
-/// Presses on the same widget within the double-click window and radius form a run; `Down { count }` is the position in it and a completing click carries it in `Up { click }`, so `Up { click: Some(2) }` is the double-click.
+/// Presses on the same widget within the double-click interval and radius form a run; `Down { count }` is the position in it and a completing click carries it in `Up { click }`, so `Up { click: Some(2) }` is the double-click.
 ///
 /// Collapsed batches: press+release gives `Up` (the click outranks the lost press edge); release+re-press gives `Down` (the live capture outranks the release).
 ///

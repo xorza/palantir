@@ -216,7 +216,7 @@ interaction test costs microseconds, so UI behavior stays a plain `cargo test`.
 - **Ask what happened** — a widget's arranged rect and response, the widget at
   a point, the visible widgets and their text, and the clipboard.
 - **Own the clock** — step animations frame by frame, or move past the
-  double-click window. Every run is deterministic.
+  double-click interval. Every run is deterministic.
 - **Pick the surface** — size, DPI scale, user scale, pixel snap, refresh
   rate. Test a 4K HiDPI layout on any machine.
 - **Play it as a person** — `play` runs a list of `Action`s, settling after
