@@ -12,12 +12,12 @@ use crate::bench::kind::{Kind, Scale};
 use crate::gpu::backdrop::backdrop_blur::{BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT};
 use crate::gpu::bench_gpu::{BenchGpu, PassTimer, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::upload_staging::UploadStaging;
 use crate::primitives::geometry::urect::URect;
 use crate::shape::paint::blur_plan::BlurPlan;
 use criterion::{Bencher, Criterion, Throughput};
 use glam::UVec2;
 use std::time::Duration;
-use wgpu::util::StagingBelt;
 
 /// Each σ and the halvings it takes.
 const SIGMAS: [(u32, u8); 5] = [(1, 0), (4, 0), (16, 2), (48, 4), (160, 6)];
@@ -146,11 +146,13 @@ fn time_jobs(
     dest: &wgpu::TextureView,
 ) {
     let mut timer = PassTimer::new(gpu);
-    let mut belt = StagingBelt::new(gpu.gpu.device.clone(), 1 << 16);
+    let mut belt = UploadStaging::new(&gpu.gpu.device, 1 << 16);
     let handles = gpu.handles();
+    let mut frame = 0;
     let mut once = || {
+        frame += 1;
         let elapsed = timer.time(gpu, |encoder| {
-            let mut ctx = GpuCtx::new(&handles, &mut belt, encoder);
+            let mut ctx = GpuCtx::new(&handles, &mut belt, encoder, frame);
             blur.run(&mut ctx, jobs, dest);
             belt.finish();
         });

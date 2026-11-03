@@ -4,6 +4,7 @@
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod dynamic_buffer;
+pub(crate) mod expiry_window;
 pub(crate) mod gpu_gradient_atlas;
 pub(crate) mod gpu_view_targets;
 pub(crate) mod packed_atlas;

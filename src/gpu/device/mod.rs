@@ -10,4 +10,5 @@ pub(crate) mod gpu_init_ctx;
 pub(crate) mod gpu_wait;
 pub(crate) mod pass_traffic;
 pub(crate) mod requested_gpu;
+pub(crate) mod upload_staging;
 pub(crate) mod vendor;

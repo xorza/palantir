@@ -1,10 +1,10 @@
 use crate::display::Display;
-use crate::gpu::backdrop::backdrop_blur::EXPIRY_FRAMES;
 use crate::gpu::backdrop::backdrops::{
     BackdropFrame, BackdropSlot, Backdrops, Kept, SpectrumCell, held_clear,
 };
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
 use crate::primitives::geometry::urect::URect;
@@ -259,7 +259,7 @@ fn a_full_budget_evicts_before_the_atlas_grows_past_it() {
 
 /// An atlas grown past its budget packs its results back into the budget an expiry window after
 /// its last grow, once they fit: b's two panes take it to 64; when one leaves, the other is held,
-/// and after [`EXPIRY_FRAMES`] prepares the atlas is 32 wide again with that result inside it.
+/// and after [`EXPIRY_FRAMES`] frames the atlas is 32 wide again with that result inside it.
 #[test]
 fn an_atlas_past_its_budget_shrinks_back_after_idle() {
     let gpu = headless_test_gpu();

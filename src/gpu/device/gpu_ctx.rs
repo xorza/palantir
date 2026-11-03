@@ -2,21 +2,31 @@
 //! encoder; dropping it releases the borrows.
 
 use crate::gpu::device::gpu::Gpu;
-use wgpu::util;
+use crate::gpu::device::upload_staging::{StagedBytes, UploadStaging};
 #[derive(Debug)]
 pub(crate) struct GpuCtx<'a> {
     pub(crate) gpu: &'a Gpu,
-    belt: &'a mut util::StagingBelt,
+    staging: &'a mut UploadStaging,
     pub(crate) encoder: &'a mut wgpu::CommandEncoder,
+    /// The backend's display frame, one round in which each live render owner submits once:
+    /// the clock every piece of per-frame scratch ages against
+    /// ([`ExpiryWindow`](crate::gpu::resource::expiry_window::ExpiryWindow)).
+    pub(crate) frame: u64,
 }
 
 impl<'a> GpuCtx<'a> {
     pub(crate) const fn new(
         gpu: &'a Gpu,
-        belt: &'a mut util::StagingBelt,
+        staging: &'a mut UploadStaging,
         encoder: &'a mut wgpu::CommandEncoder,
+        frame: u64,
     ) -> Self {
-        Self { gpu, belt, encoder }
+        Self {
+            gpu,
+            staging,
+            encoder,
+            frame,
+        }
     }
 
     /// Schedule a belt-backed copy from staging to `dst@offset`. Empty `bytes` is a no-op; `offset` and length must be multiples of `COPY_BUFFER_ALIGNMENT` (4).
@@ -38,12 +48,15 @@ impl<'a> GpuCtx<'a> {
         let size = wgpu::BufferSize::new(bytes)?;
         let alignment =
             wgpu::BufferSize::new(alignment).expect("a staging alignment is a power of two");
-        let slice = self.belt.allocate(size, alignment);
-        let view = slice.get_mapped_range_mut().ok()?;
+        let StagedBytes {
+            view,
+            buffer,
+            offset,
+        } = self.staging.allocate(&self.gpu.device, size, alignment)?;
         Some(Staged {
             view,
-            buffer: slice.buffer(),
-            offset: slice.offset(),
+            buffer,
+            offset,
             encoder: self.encoder,
         })
     }

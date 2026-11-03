@@ -17,12 +17,12 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::device::requested_gpu::GpuRequest;
+#[cfg(test)]
+use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::owned_target::{OwnedTarget, TargetSpec};
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::surface::texel_readback::TexelReadback;
-#[cfg(test)]
-use wgpu::util::StagingBelt;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
 const TEST_POWER: wgpu::PowerPreference = wgpu::PowerPreference::HighPerformance;
@@ -59,6 +59,10 @@ impl Display for LeaseFailed {
 #[derive(Debug)]
 pub struct HeadlessTestGpuLease {
     device: Lent<OpenDevice>,
+    /// The display frame [`Self::frame`] runs next, one a call, so what decays by frames ages
+    /// across a test's frames.
+    #[cfg(test)]
+    frames: std::sync::atomic::AtomicU64,
 }
 
 impl Deref for HeadlessTestGpuLease {
@@ -111,13 +115,16 @@ impl HeadlessTestGpuLease {
     /// them: one frame of GPU work a test sets up alone. Returns what `encode` returns.
     #[cfg(test)]
     pub(crate) fn frame<R>(&self, encode: impl FnOnce(&mut GpuCtx<'_>) -> R) -> R {
-        let mut belt = StagingBelt::new(self.device.gpu.device.clone(), 1 << 16);
+        let mut belt = UploadStaging::new(&self.device.gpu.device, 1 << 16);
         let mut encoder = self
             .device
             .gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-        let encoded = encode(&mut GpuCtx::new(self, &mut belt, &mut encoder));
+        let frame = self
+            .frames
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let encoded = encode(&mut GpuCtx::new(self, &mut belt, &mut encoder, frame));
         belt.finish_and_recall_on_submit(&encoder);
         self.device.gpu.queue.submit([encoder.finish()]);
         self.wait();
@@ -219,6 +226,8 @@ impl Registry {
         });
         HeadlessTestGpuLease {
             device: Lent::new(device),
+            #[cfg(test)]
+            frames: std::sync::atomic::AtomicU64::new(0),
         }
     }
 
@@ -226,6 +235,8 @@ impl Registry {
     fn lend_isolated(&mut self, max_texture_dim: u32) -> HeadlessTestGpuLease {
         HeadlessTestGpuLease {
             device: Lent::new(self.open_device(max_texture_dim)),
+            #[cfg(test)]
+            frames: std::sync::atomic::AtomicU64::new(0),
         }
     }
 

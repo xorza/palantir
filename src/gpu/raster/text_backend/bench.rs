@@ -15,6 +15,7 @@ use crate::common::counters::CounterSet;
 use crate::gpu::bench_gpu::{BenchGpu, TARGET_FORMAT, Timing};
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::pipeline::pass_recorder::PassRecorder;
 use crate::gpu::pipeline::raster_pipeline::{RasterPipelines, RasterProgram, RasterVariants};
 use crate::gpu::pipeline::stencil_variant::StencilMode;
@@ -37,7 +38,6 @@ use glam::{UVec2, Vec2};
 use std::hint::black_box;
 use std::mem;
 use std::slice;
-use wgpu::util::StagingBelt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const BASE_SCALE: f32 = 2.0;
@@ -169,7 +169,7 @@ struct Fixture {
     backend: TextBackend,
     program: RasterProgram,
     pipelines: RasterVariants,
-    belt: StagingBelt,
+    belt: UploadStaging,
     store: RecordStore,
     runs: Vec<TextDrawRow>,
     target: wgpu::TextureView,
@@ -186,7 +186,7 @@ impl Fixture {
             backend: TextBackend::new(&g.gpu, &program, shaper),
             pipelines: program.build_variants(&g.gpu, TARGET_FORMAT.get()),
             program,
-            belt: StagingBelt::new(g.gpu.device.clone(), 1 << 20),
+            belt: UploadStaging::new(&g.gpu.device, 1 << 20),
             store,
             runs,
             target: g.target("palantir.text_atlas.target", PHYSICAL).view(),
@@ -210,7 +210,8 @@ impl Fixture {
                 label: Some("palantir.text_atlas.encoder"),
             });
         {
-            let mut ctx = GpuCtx::new(&self.gpu, &mut self.belt, &mut encoder);
+            // Frame 0 throughout: the bench measures a steady frame, which no expiry window ends.
+            let mut ctx = GpuCtx::new(&self.gpu, &mut self.belt, &mut encoder, 0);
             let interned_text = self.store.interned_text();
             for (idx, batch) in batches.iter().enumerate() {
                 self.backend.prepare_batch(TextBatchInput {

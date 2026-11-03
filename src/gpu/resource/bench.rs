@@ -6,12 +6,12 @@ use crate::bench::kind::{Kind, Scale};
 use crate::gpu::bench_gpu::Timing;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
+use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::resource::gpu_gradient_atlas;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
 use criterion::{Criterion, Throughput};
 use std::ops::Range;
-use wgpu::util::StagingBelt;
 
 /// Dirty rows each case uploads.
 const DIRTY: u32 = 32;
@@ -35,7 +35,7 @@ enum Upload {
 #[derive(Debug)]
 struct Fixture {
     texture: wgpu::Texture,
-    belt: StagingBelt,
+    belt: UploadStaging,
     source: Vec<u8>,
 }
 
@@ -58,7 +58,7 @@ impl Fixture {
         });
         Self {
             texture,
-            belt: StagingBelt::new(gpu.device.clone(), 1 << 20),
+            belt: UploadStaging::new(&gpu.device, 1 << 20),
             source: vec![0u8; (rows * ROW_BYTES) as usize],
         }
     }
@@ -105,7 +105,8 @@ pub(crate) fn atomic(c: &mut Criterion, backends: &Backends) {
                     let mut encoder = gpu
                         .device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
-                    let mut ctx = GpuCtx::new(&gpu, belt, &mut encoder);
+                    // Frame 0 throughout: a staging case ends no expiry window.
+                    let mut ctx = GpuCtx::new(&gpu, belt, &mut encoder, 0);
                     gpu_gradient_atlas::stage_rows(
                         &mut ctx,
                         texture,

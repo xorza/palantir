@@ -6,6 +6,8 @@ use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::vendor;
 use crate::gpu::pipeline::pipeline_recipe::{self, PipelineRecipe};
 use crate::gpu::pipeline::shader_body::{ShaderBody, ShaderConstant};
+use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::shelf_packer::ShelfPacker;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::texel;
@@ -186,14 +188,6 @@ impl BlurNeeds {
     }
 }
 
-/// The prepares an expiry window spans: at its end each texture the blur shares steps down to the
-/// most a frame of the window read, and one no frame read goes. Two seconds of a 60 Hz animation,
-/// so a pane that closes and opens again within one gesture keeps its textures; a window that
-/// paints no frame keeps them until it paints again, as no frame runs to shrink them. The decision
-/// is `Backdrops`': expire after idle, as Chromium's `cc::ResourcePool` and Flutter's
-/// `RasterCache` drop what recent frames did not use.
-pub(crate) const EXPIRY_FRAMES: u32 = 120;
-
 /// A target the frame's blurs read their level 0 from where it is sampled, in place of a capture:
 /// the group a pass reads it through, its extent, and whether its format filters.
 #[derive(Clone, Debug)]
@@ -232,7 +226,7 @@ struct Levels {
 /// The device side of the backdrop blur: its pipelines, the capture, the levels and the scratch
 /// the passes write, all grown to the largest batch seen, with slack, so a steady frame allocates
 /// nothing and a resize drag makes them again only now and then. Each texture steps down to what
-/// the last [`EXPIRY_FRAMES`] prepares read, and goes where none read it, so one full-screen pane
+/// the last [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames read, and goes where none read it, so one full-screen pane
 /// does not hold its textures for the session.
 ///
 /// None of them passes the device's edge. The capture and the levels hold what lies on one
@@ -245,10 +239,10 @@ pub(crate) struct BackdropBlur {
     vertical: wgpu::RenderPipeline,
     sampler: wgpu::Sampler,
     params_layout: wgpu::BindGroupLayout,
-    params: wgpu::Buffer,
+    params: DynamicBuffer<ParamsSlot>,
     params_group: wgpu::BindGroup,
-    /// The slots `params` holds.
-    params_capacity: usize,
+    /// The `params` capacity `params_group` binds, which a grow or a step down replaces.
+    params_bound: usize,
     /// This run's slots, one per pass, in pass order.
     slots: Vec<ParamsSlot>,
     captures: Vec<CaptureTarget>,
@@ -258,8 +252,8 @@ pub(crate) struct BackdropBlur {
     /// The most a frame of the current expiry window read of the levels and the scratch; each
     /// capture keeps its own.
     peak: BlurNeeds,
-    /// The prepares of the current expiry window so far.
-    window: u32,
+    /// The current expiry window over the display frames.
+    window: ExpiryWindow,
     /// Places a round's regions in the scratch, an edge of `ceiling` square.
     scratch_packer: ShelfPacker,
     /// The device's largest texture edge, which no texture of the blur passes.
@@ -382,9 +376,8 @@ impl BackdropBlur {
             min_filter: wgpu::FilterMode::Linear,
             ..Default::default()
         });
-        let params_capacity = 16;
-        let params = params_buffer(gpu, params_capacity);
-        let params_group = params_group(gpu, &params_layout, &params);
+        let params = DynamicBuffer::uniform(gpu, "palantir.backdrop.blur.params", 16);
+        let params_group = params_group(gpu, &params_layout, &params.buffer);
         let ceiling = gpu.max_texture_dim().get();
         Self {
             filtered,
@@ -392,15 +385,15 @@ impl BackdropBlur {
             vertical,
             sampler,
             params_layout,
+            params_bound: params.capacity(),
             params,
             params_group,
-            params_capacity,
             slots: Vec::new(),
             captures: Vec::new(),
             levels: None,
             scratch: None,
             peak: BlurNeeds::default(),
-            window: 0,
+            window: ExpiryWindow::default(),
             scratch_packer: ShelfPacker::within(ceiling),
             ceiling,
             target: None,
@@ -511,15 +504,6 @@ impl BackdropBlur {
         ));
     }
 
-    fn ensure_params(&mut self, gpu: &Gpu) {
-        if self.slots.len() <= self.params_capacity {
-            return;
-        }
-        self.params_capacity = self.slots.len().next_power_of_two();
-        self.params = params_buffer(gpu, self.params_capacity);
-        self.params_group = params_group(gpu, &self.params_layout, &self.params);
-    }
-
     fn sampled(
         &self,
         gpu: &Gpu,
@@ -574,7 +558,8 @@ impl BackdropBlur {
 
     /// Lay out `jobs` in `batches`, each the jobs [`Self::encode`] records together, make room for
     /// them once, at the most a batch reads, and write their parameters, ahead of the copies that
-    /// fill their captures and the passes. Ends an expiry window every [`EXPIRY_FRAMES`] calls.
+    /// fill their captures and the passes. Ends an expiry window every [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display
+    /// frames.
     pub(crate) fn prepare(
         &mut self,
         ctx: &mut GpuCtx<'_>,
@@ -593,7 +578,7 @@ impl BackdropBlur {
         debug_assert_eq!(laid_out, jobs.len(), "batches cover the jobs");
         self.make_room(ctx.gpu, needs);
         self.write_params(ctx, jobs);
-        self.expire(ctx.gpu, needs);
+        self.expire(ctx, needs);
     }
 
     /// Grow the capture, the levels and the scratch to hold `needs`.
@@ -611,7 +596,8 @@ impl BackdropBlur {
 
     /// Fold this frame's `needs` into the window's peak and, at the window's end, make each shared
     /// texture again at the window's peak where it holds more, or drop it where no frame read it.
-    fn expire(&mut self, gpu: &Gpu, needs: BlurNeeds) {
+    fn expire(&mut self, ctx: &GpuCtx<'_>, needs: BlurNeeds) {
+        let gpu = ctx.gpu;
         if let Some((format, size)) = needs.capture
             && let Some(capture) = self.captures.iter_mut().find(|c| c.format == format)
         {
@@ -621,11 +607,9 @@ impl BackdropBlur {
             capture: None,
             ..needs
         });
-        self.window += 1;
-        if self.window < EXPIRY_FRAMES {
+        if !self.window.ends(ctx.frame) {
             return;
         }
-        self.window = 0;
         let peak = std::mem::take(&mut self.peak);
         self.captures.retain(|capture| capture.peak != UVec2::ZERO);
         for at in 0..self.captures.len() {
@@ -727,15 +711,15 @@ impl BackdropBlur {
     /// Write the parameters of laid out `jobs`, and each one's first slot.
     fn write_params(&mut self, ctx: &mut GpuCtx<'_>, jobs: &mut [BlurJob]) {
         self.slots.clear();
-        if jobs.is_empty() {
-            return;
-        }
         for job in jobs {
             job.layout.first_slot = self.slots.len();
             self.push_params(*job);
         }
-        self.ensure_params(ctx.gpu);
-        ctx.write(&self.params, 0, bytemuck::cast_slice(&self.slots));
+        self.params.upload_instances(ctx, &self.slots);
+        if self.params.capacity() != self.params_bound {
+            self.params_group = params_group(ctx.gpu, &self.params_layout, &self.params.buffer);
+            self.params_bound = self.params.capacity();
+        }
     }
 
     /// Copy prepared `job`'s footprint of `color`, the target the main pass paints, into its
@@ -1063,15 +1047,6 @@ fn level_region(region: URect, levels: u8, level: u8, surface: UVec2) -> URect {
         UVec2::ZERO,
         level_extent(surface, level),
     ))
-}
-
-fn params_buffer(gpu: &Gpu, slots: usize) -> wgpu::Buffer {
-    gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("palantir.backdrop.blur.params"),
-        size: (slots * PARAMS_SLOT_BYTES) as u64,
-        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    })
 }
 
 fn params_group(

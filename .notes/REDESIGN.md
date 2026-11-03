@@ -182,26 +182,18 @@ the reduction of complexity. Each batch stays inside one system, so one review c
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
 
-### Batch 5. GPU memory and construction policy (`gpu/resource`, `gpu/pipeline`, `gpu/backdrop`, `wgpu_backend`)
+### Batch 5b. GPU construction and shared atlases (`gpu/pipeline`, `gpu/resource`, `gpu/backdrop`)
 
-Root causes R3 and R8. Memory kept for the life of the window, slow startup and recovery,
-and thrash between windows.
+What Batch 5 left. The decay policy, the display-frame clock and the oversize staging landed.
 
-- One growth-and-decay primitive. `DynamicBuffer` gets expiry-window peak tracking (as
-  `BackdropBlur::expire` has) and a `uniform` form. The blur params and the `Backdrops` group
-  use it (GB-02, GB-10).
-- An upload larger than the belt chunk gets its own buffer. Alternatively, rebuild the belt
-  after it is idle (GA-03). The stencil decays, and the canvas frames do not make the
-  full-window stencil (GA-04).
-- Build pipelines lazily: the backdrop composites, the shadow forms and the stencil-test
-  twins, on the first frame that needs them (GB-01). Build `Composite` with `PaneResources`
-  (GB-21).
-- Count the clocks per frame, not per caller (GB-23). Track the quad upload per frame
-  (GB-05).
-- Put the cutout tables in the shared atlas at stable `(r, σ)` placements, with
-  `ShelfPacker` and deallocation. Plan only the spans per window (GB-03, GB-12).
-- One atlas type with a soft and a hard budget (GB-11). One helper for row uploads on
-  `GpuCtx` (GB-22).
+- Build pipelines lazily: the backdrop composites, the shadow forms and the stencil-test twins,
+  on the first frame that draws one. This needs a census of the frame's draws before its passes
+  record, as the passes borrow the pipelines (GB-01).
+- Build the composite's sampler and spectrum buffer with `PaneResources` (GB-21).
+- Put the cutout tables in the shared atlas at stable `(r, σ)` placements, with `ShelfPacker`
+  and deallocation. Plan only the spans per window (GB-03, GB-12).
+- One atlas type with a soft and a hard budget (GB-11). One helper for row uploads on `GpuCtx`
+  (GB-22).
 - Decide on image bands (decision 5) (GB-16).
 
 ### Batch 6. Widget behavior parity (`widgets`, the text editor)
@@ -257,7 +249,8 @@ Root causes R4 and R11. Internal only.
 - `RasterAtlas` exposes operations, not fields: `touch_slot` and `RasterPass::push` (GB-04,
   GB-27).
 - Put the clear quad and the masks in the quad stream as spans, and delete
-  `SingleQuadBuffer` (GB-06).
+  `SingleQuadBuffer`, whose `is_uploaded` stays true past the first frame, so its
+  `bind_clear` assert catches no missed upload (GB-05, GB-06).
 - Merge or remove: `BoundSides`/`SidesLayout`, one sampler and one `texture_entry`,
   `ClipStencil`, static shader constants, `capture_blit` into `pipelines[fmt].blit`, one
   readback classifier, one 2D texture helper (GB-13, GB-14, GB-25, GB-26, GA-09, GA-10,
@@ -415,11 +408,11 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 5 | GA-03, GA-04, GB-01, GB-02, GB-03, GB-05, GB-10, GB-11, GB-12, GB-16, GB-21, GB-22, GB-23 |
+| 5b | GB-01, GB-03, GB-11, GB-12, GB-16, GB-21, GB-22 |
 | 6 | WG-01 ✔, WG-02, WG-03 ✔, WG-04, WG-05, WG-06, WG-07, WG-08, WG-19, WG-20, WG-21, WG-26 |
 | 7 | GB-15, LT-14 |
 | 8 | SC-04, SC-05, SC-11, LT-04, RD-03, RD-04, RD-06, RD-08, RD-09, RD-19, RD-20 |
-| 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |
+| 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-05, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11 | HS-05 to HS-09, HS-23, HS-11 to HS-13, HS-15, HS-17 to HS-20, HS-24 to HS-26 |
 | 12 | LT-02, LT-03, LT-06, LT-07, LT-08, LT-11 to LT-13, LT-15 to LT-20 |

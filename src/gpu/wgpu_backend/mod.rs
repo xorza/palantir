@@ -35,7 +35,7 @@
 //! # The staging belt
 //!
 //! The main encoder opens before the first upload, and every dynamic-buffer upload
-//! routes through `staging_belt`, which records its copies on that encoder instead of
+//! routes through `staging`, which records its copies on that encoder instead of
 //! a Metal blit encoder per `queue.write_buffer`. wgpu serializes in record order, so
 //! copies land before the passes that read them. `finish_and_recall_on_submit` must
 //! precede `encoder.finish()`.
@@ -58,6 +58,7 @@ use crate::gpu::backdrop::backdrops::{BackdropFrame, Backdrops, FrameBackbuffer}
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::device::pass_traffic::PassTraffic;
+use crate::gpu::device::upload_staging::UploadStaging;
 use crate::gpu::frame::debug_overlay::{DebugOverlay, OverlayDraw};
 use crate::gpu::frame::frame_passes::{ColorLoad, FramePasses, FrameShape, PassStep};
 use crate::gpu::frame::gpu_timings::{BackdropPhase, GpuTimings, Mark};
@@ -89,6 +90,7 @@ use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::{RenderTarget, TargetFormat};
 use crate::gpu::surface::stencil::Stencil;
 use crate::gpu::wgpu_backend::backend_resources::BackendResources;
+use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
 use crate::gpu::wgpu_backend::render_stream::RenderStream;
 use crate::primitives::geometry::urect::URect;
 use crate::primitives::identity::pane_key::PaneKey;
@@ -103,9 +105,9 @@ use rustc_hash::FxHashMap;
 use std::iter;
 use std::rc::Rc;
 use std::time::Instant;
-use wgpu::util::StagingBelt;
 
 pub(crate) mod backend_resources;
+pub(crate) mod display_frames;
 pub(crate) mod render_stream;
 
 /// Wgpu renderer owning its device/queue handles, pipelines and text backend.
@@ -116,7 +118,9 @@ pub(crate) struct WgpuBackend {
     gpu: Gpu,
     /// Routes per-frame dynamic-buffer uploads onto the main encoder, collapsing N
     /// `queue.write_buffer` calls (each a Metal blit encoder) into one.
-    staging_belt: StagingBelt,
+    staging: UploadStaging,
+    /// The display frame every submit's per-frame scratch ages against.
+    frames: DisplayFrames,
     /// Shared gradient LUT atlas lent to the quad and curve pipelines.
     gradient: GpuGradientAtlas,
     quad: QuadPipeline,
@@ -255,6 +259,8 @@ struct FrameUpload<'s, 'a> {
     format: TargetFormat,
     clear: RgbaF16,
     dims_undamaged: bool,
+    /// The display frame the submit belongs to ([`DisplayFrames`]).
+    frame: u64,
 }
 
 impl WgpuBackend {
@@ -280,7 +286,7 @@ impl WgpuBackend {
         let icon = IconBackend::new(&gpu, &raster, resources.icons.clone());
         let debug = DebugOverlay::new(&gpu);
         // 1 MiB chunks, above the resize-drag upload peak, so steady state uses 1-2 chunks.
-        let staging_belt = StagingBelt::new(gpu.device.clone(), 1 << 20);
+        let staging = UploadStaging::new(&gpu.device, 1 << 20);
         let timestamp_period = gpu.queue.get_timestamp_period();
         // A device whose timestamps have no period times frames on the CPU clock.
         let timing = (timing == FrameTiming::On).then(|| TimingSupport {
@@ -294,7 +300,8 @@ impl WgpuBackend {
         Self {
             pass_traffic: gpu.pass_traffic(),
             gpu,
-            staging_belt,
+            staging,
+            frames: DisplayFrames::default(),
             gradient,
             quad,
             backdrops,
@@ -383,9 +390,7 @@ impl WgpuBackend {
         }
         stream.backbuffer_fresh = via_backbuffer;
         let stencil = !buffer.rounded_clips.is_empty();
-        if stencil {
-            stream.ensure_stencil(&self.gpu, target.size());
-        }
+        let frame = self.frames.advance(stream.owner());
         let clear = submission.clear();
         let dims_undamaged = submission.dims_undamaged();
         tracing::trace!(
@@ -417,6 +422,7 @@ impl WgpuBackend {
                 format,
                 clear,
                 dims_undamaged,
+                frame,
             },
         );
 
@@ -445,6 +451,10 @@ impl WgpuBackend {
                 stream.ensure_canvas_stencil(&self.gpu);
             }
         }
+        // The window's stencil only where the main pass draws onto the backbuffer or the target:
+        // a canvas frame stamps the canvas's own.
+        let window_stencil = stencil && canvas_rect.is_none();
+        stream.age_stencil(&self.gpu, frame, window_stencil.then(|| target.size()));
         let canvas = canvas_rect.map(|_| stream.canvas().expect("made for the frame"));
         let origin = canvas_rect.map_or(UVec2::ZERO, |rect| rect.min);
 
@@ -581,7 +591,7 @@ impl WgpuBackend {
         if let Some(t) = &mut stream.timings {
             t.finish(&mut encoder);
         }
-        self.staging_belt.finish_and_recall_on_submit(&encoder);
+        self.staging.finish_and_recall_on_submit(&encoder);
         self.gpu.queue.submit(iter::once(encoder.finish()));
         if let Some(t) = &mut stream.timings {
             t.after_submit(&self.gpu, stats);
@@ -599,6 +609,7 @@ impl WgpuBackend {
             format,
             clear,
             dims_undamaged,
+            frame,
         } = upload;
         let Submission {
             store,
@@ -610,7 +621,7 @@ impl WgpuBackend {
             ..
         } = *submission;
         let owner = stream.owner();
-        let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging_belt, encoder);
+        let mut ctx = GpuCtx::new(&self.gpu, &mut self.staging, encoder, frame);
 
         self.gradient.upload(&mut ctx);
 
@@ -1048,6 +1059,7 @@ impl WgpuBackend {
         )
     )]
     pub(crate) fn retire_render_owner(&mut self, owner: RenderOwnerId) {
+        self.frames.retire(owner);
         self.gpu_view_targets.retire_owner(owner);
         self.backdrops.retire(owner);
     }

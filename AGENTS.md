@@ -55,9 +55,13 @@ common → primitives → {animation, text, input, display, window, clipboard, i
 ## GPU memory
 
 - **Scratch decays.** Per-frame GPU scratch grows once a frame to the frame's need and steps down
-  after it sits idle, as the blur textures do after 120 frames; a cache shrinks back to its
-  budget once its live set fits; a staging buffer moves an image in fixed bands. Refused: growth
-  to a high-water mark the window keeps for life, which one 4K glass pane put at about 240 MiB.
+  at the end of an expiry window, 120 display frames (`ExpiryWindow`), to the window's peak: the
+  blur textures, every `DynamicBuffer` and a window's stencil. A display frame is a round in
+  which each live window submits once (`DisplayFrames`), so a second window does not halve the
+  window. An upload past the staging belt's chunk stages in a buffer of its own, as the belt
+  keeps every chunk it makes. A cache shrinks back to its budget once its live set fits; a
+  staging buffer moves an image in fixed bands. Refused: growth to a high-water mark the window
+  keeps for life, which one 4K glass pane put at about 240 MiB.
 
 ## Swapchain
 

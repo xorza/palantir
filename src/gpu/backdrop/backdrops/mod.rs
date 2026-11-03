@@ -4,7 +4,7 @@
 //! # Decisions
 //!
 //! - **What a large pane grows expires after idle.** The results atlas packs its results back
-//!   into a texture of its budget [`EXPIRY_FRAMES`] prepares after it last grew past it, and every
+//!   into a texture of its budget [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames after it last grew past it, and every
 //!   as many after, once they fit; the blur's capture, levels and scratch step down at the end of
 //!   each such window to what its frames read. One full-window 4K glass pane otherwise holds about
 //!   240 MiB for the session, and two take the atlas to 8192², 512 MiB. Chromium's
@@ -15,11 +15,12 @@
 //!   budget, and a pane that comes back grows it again.
 
 use crate::gpu::backdrop::backdrop_blur::{
-    BackdropBlur, BlurJob, EXPIRY_FRAMES, JobLayout, LEVEL_FORMAT, TargetSource,
+    BackdropBlur, BlurJob, JobLayout, LEVEL_FORMAT, TargetSource,
 };
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_ctx::GpuCtx;
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
+use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::packed_atlas::{AtlasSpec, PackedAtlas};
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::backbuffer::Backbuffer;
@@ -196,12 +197,11 @@ pub(crate) struct Backdrops {
     breaks: Vec<BlurBreak>,
     slots: Vec<BackdropSlot>,
     composite: Composite,
-    /// The edge the results atlas grows to.
-    ceiling: u32,
-    /// The bytes the results atlas grows to before it evicts.
-    budget: u64,
-    /// Prepares since the results atlas last grew past its budget or last tried to shrink back.
-    past_budget: u32,
+    /// The results atlas the first frame with a pane makes, which takes it.
+    atlas_spec: Option<AtlasSpec>,
+    /// The expiry window since the results atlas last grew past its budget or last tried to
+    /// shrink back.
+    past_budget: ExpiryWindow,
     /// The results a shrink moves with their slots, tallest first, and the slots alone, which
     /// the shrink rewrites.
     moving: Vec<((RenderOwnerId, PaneKey), URect)>,
@@ -354,9 +354,15 @@ impl Backdrops {
             breaks: Vec::new(),
             slots: Vec::new(),
             composite: Composite::new(gpu),
-            ceiling,
-            budget,
-            past_budget: 0,
+            atlas_spec: Some(AtlasSpec {
+                label: "palantir.backdrop.results".to_owned(),
+                format: LEVEL_FORMAT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                ceiling,
+                max_bytes: budget,
+            }),
+            past_budget: ExpiryWindow::default(),
             moving: Vec::new(),
             moving_slots: Vec::new(),
             resources: None,
@@ -394,18 +400,11 @@ impl Backdrops {
             return;
         }
         self.resources.get_or_insert_with(|| {
-            PaneResources::new(
-                ctx.gpu,
-                &self.composite,
-                AtlasSpec {
-                    label: "palantir.backdrop.results".to_owned(),
-                    format: LEVEL_FORMAT,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                        | wgpu::TextureUsages::TEXTURE_BINDING,
-                    ceiling: self.ceiling,
-                    max_bytes: self.budget,
-                },
-            )
+            let spec = self
+                .atlas_spec
+                .take()
+                .expect("the results atlas is made once");
+            PaneResources::new(ctx.gpu, &self.composite, spec)
         });
         let shrank = self.shrink_atlas(ctx);
         // Every result the frame reads is stamped first, so making room for one never evicts
@@ -510,7 +509,7 @@ impl Backdrops {
     }
 
     /// Pack every result back into an atlas of the budget's edge once the atlas has spent
-    /// [`EXPIRY_FRAMES`] prepares past it, then every as many after, while the results do not fit;
+    /// [`EXPIRY_FRAMES`](crate::gpu::resource::expiry_window::EXPIRY_FRAMES) display frames past it, then every as many after, while the results do not fit;
     /// `true` when the atlas moved.
     fn shrink_atlas(&mut self, ctx: &mut GpuCtx<'_>) -> bool {
         let resources = self
@@ -518,14 +517,12 @@ impl Backdrops {
             .as_mut()
             .expect("made before a frame's panes");
         if !resources.atlas.is_past_budget() {
-            self.past_budget = 0;
+            self.past_budget = ExpiryWindow::default();
             return false;
         }
-        self.past_budget += 1;
-        if self.past_budget < EXPIRY_FRAMES {
+        if !self.past_budget.ends(ctx.frame) {
             return false;
         }
-        self.past_budget = 0;
         self.moving.clear();
         self.moving.extend(
             self.cache
@@ -609,7 +606,7 @@ impl Backdrops {
                 if !self.atlas().grow_past_budget() {
                     return None;
                 }
-                self.past_budget = 0;
+                self.past_budget = ExpiryWindow::default();
             }
         }
     }
