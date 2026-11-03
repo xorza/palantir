@@ -27,3 +27,4 @@
 - `BackdropBlur`'s expiry window counts prepares from every window, so with N windows it expires N times sooner.
 - `DynamicBuffer`, the staging belt and `RenderStream::stencil` keep their high-water size for the life of the window.
 - `WindowSet::follow`'s doc (`src/host/winit/window_set.rs`) links `FramePresent::followed`, which is not in scope there, so `cargo drive gate`'s doc step fails with an unresolved link.
+- `cargo drive gate`'s doc lane fails on master since `c53fea50f`: `src/host/winit/window_set.rs:39` links to `FramePresent::followed`, and no item named `FramePresent` is in scope there.

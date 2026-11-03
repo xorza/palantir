@@ -75,7 +75,18 @@ what was rejected and why, and what is still open. What was kept is in the commi
   RADV's RGP capture (`MESA_VK_TRACE=rgp`) frames at a present, so capture from the showcase;
   whether an offscreen bench triggers one is not tried.
 
+- **Run 8 hosts** (theming frame, 2026-11-03): local and fanless (a LAN host) as above; a bench
+  build peaks at 4.0 GB local and 2.8 GB on the fanless. A/A on `integration/frame/*/theming`: local
+  `cpu` ±0.8 %, `gpu` up to 10 % on one leg; fanless ±1 % on both.
+
 ## Where the time is
+
+- **The theming frame** (run 8, local `cpu/theming` 577 µs): shaping 37 % (`cosmic_text`
+  12.9, `harfrust` 12.4, `read_fonts` 9.4, `unicode_bidi` 1.6), layout 17 %, record about 20 %,
+  the theme blend 3 % (`Oklab::from_color` 1.5). A 60 s linear transition moves a font size by
+  one 1/64 px step about every 6 frames, and the layout measures a run again only on a frame its
+  measure cache misses: a run off screen shapes, is never rendered, and its buffer expires after
+  its 4 probation frames, so the next measure shapes it again at the same size.
 
 - **Run 6, the branch tip against its start**, medians (board one leg each, its A/A 0.0 to 0.3 %;
   mac and local ABBA):
@@ -228,7 +239,49 @@ what was rejected and why, and what is still open. What was kept is in the commi
   glass composite −2.5, +3.3 and −2.4 %, its frames −0.4 % at best; handheld: the first +1.2 % on
   the glass composite at 512² and +0.4 to +0.7 % on its frames; mac within its floor. A V3D path
   for 0.4 % of a frame is not worth its branch.
+- **cosmic-text's `shape-run-cache`** (run 8): its shapes are size-free too, and it took
+  `cpu/theming` −28.7 % local and −28.4 % on the fanless, but its key builds a `String` and clones
+  the attributes for every run it looks up, and its `trim` walks the whole map on every frame.
+  The shape store below beats it by 8.5 % local and 7.6 % on the fanless.
+- **Shapes from resident buffers alone** (run 8): −11 % on the fanless's `cpu/theming`; 62 % of the
+  misses found no resident buffer of their text, as the runs the frame never renders expire
+  after probation (Where the time is).
+- **Kept shapes on the entries' own expiry wheel** (run 8), a kept shape taking over the expired
+  entry's ticket serial, against a wheel of their own: `single_line_dispatch` moved −0.9 % local
+  and +0.6 % on the fanless, inside the floor, and the fanless's `resize_drag` +2.4 %. The 3 % that
+  `single_line_dispatch` reads against the branch start is not the second wheel's: the spike
+  without the counter and guards read +0.1 % on the fanless.
+
+- **A memo of the theme blend's Oklab conversions** (run 8). After the blend in place, the
+  fanless's `sample` puts `advance_theme` at 3.9 % of `cpu/theming`, most of it `Oklab::from_color`
+  for colors whose ends a run fixes. A memo per color slot needs a second form of the public
+  `Lerp` (a prepared type or a memo argument) through every derive, for a ceiling of about
+  3 %; a stateless one has nowhere to live.
+
 ## Decisions
+
+- **A shape outlives its size** (run 8). Shaping runs unhinted, so cosmic-text's glyphs are in
+  em units and a `TextShapeKey` of another size, leading or width shapes the same text alike: a
+  miss lays out the shaped lines of a resident buffer of its `ShapeIdentity` at another size or
+  leading, else the buffer an expired entry left, kept out of the pool as long as a rendered run,
+  at other metrics or under its own key, as cosmic-text's `Buffer::set_metrics` lays out again
+  and shapes nothing. A shape at the run's own metrics and another width shapes again into a
+  recycled buffer, as a copy of the lines allocates each of them where a reshape reuses the
+  pool's (`churn::width_drag_stays_flat`); the pool reserves room for every kept buffer when it
+  is kept and frees one that comes back with no room, so no still frame grows it. Refused:
+  cosmic-text's `shape-run-cache` and resident buffers alone (Rejected). Bit for bit: a test
+  lays out against a cold shape at four metrics. `cpu/theming` −34.9 % local, −34.3 % fanless;
+  `gpu/theming` −5.9 % local, −10.4 % fanless; every other frame case within each host's floor.
+  Sources: cosmic-text 0.19 `shape.rs` (`x_advance / font_scale`), `buffer.rs`
+  (`set_metrics` marks a relayout, not a reshape).
+- **A theme transition blends in place** (run 8). `Lerp::lerp_into`, a provided method the
+  derive overrides field by field, and a run that shares its ends' text axes once: a frame
+  cloned both 28 KiB themes for the by-value `lerp`, moved each part again at every nesting
+  level and walked every text slot to share axes the run's ends fix (the fanless's `sample`: 19 µs a
+  frame in `ThemeTransition::advance`, a third of it `memmove`). Refused: `lerp` by reference
+  in place of by value, a break of every impl for one caller. A test holds the blend in place to
+  `Theme::lerp`, bit for bit through RON. `cpu/theming` −2.6 % local, −2.0 % fanless; the rest
+  within each host's floor.
 
 - **The blur residual's loop follows the device** (run 6). `ResidualLoop::One` on Broadcom's
   VideoCore, one loop that mirrors each read where the window crosses the level's edge;
@@ -283,6 +336,15 @@ what was rejected and why, and what is still open. What was kept is in the commi
   capture moves the tent's normalized fetch coordinates.
 
 ## Open
+
+- **The theming frame is a resize frame now** (run 8): `cpu/theming` 374 µs against
+  `cpu/resizing` 342 µs local, 301 against 289 µs on the fanless; layout is 40 % and record 35 % of
+  the fanless's frame (`sample`). `FamilyKeys::key` and `TextSystem::refresh` compare a family name
+  and each reused run's text every frame (`memcmp`, 1.2 % and 1.3 % on the fanless), in every frame,
+  not only a theme's.
+- **`single_line_dispatch` +2.0 % local and +2.6 % on the fanless** since run 8 began, a case of 64
+  cache hits and one frame tick: the hit's code is the same, and the tick grew from 2.2 to 5.7
+  KiB with the kept shapes' wheel. Every frame case stays within its floor.
 
 - **The glass pipeline spills on V3D** (run 7): 1410 instructions, 32:74 spills:fills, two
   threads. The loop carries the last read, the running integrals and the sum; the variants

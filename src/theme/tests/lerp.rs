@@ -245,3 +245,47 @@ fn sharing_text_axes_keeps_what_each_end_shows() {
     assert_eq!(resolved_text(&mut a), shown_a);
     assert_eq!(resolved_text(&mut b), shown_b);
 }
+
+/// A blend in place is the blend, bit for bit: `Lerp::lerp_into` of borrowed ends, and
+/// `Theme::lerp_ends_into` of ends whose text axes were shared once, as a theme transition blends
+/// them, match `Theme::lerp` at every phase, between the stock pair and between ends whose
+/// overrides name different text axes. `out` starts as a third theme, so nothing it held stays.
+#[test]
+fn a_blend_in_place_is_the_blend() {
+    let mut a = Theme::stock(ColorScheme::Dark);
+    let mut b = Theme::stock(ColorScheme::Light);
+    b.scale_text(1.25);
+    let named = TextStyleOverrides {
+        color: Some(RED),
+        font_size: Some(20.0),
+        family: Some(FontFamily::MONO),
+        ..TextStyleOverrides::NONE
+    };
+    a.button.unselected.normal.text = TextStyleOverrides::NONE;
+    b.button.unselected.normal.text = named;
+    a.button.unselected.hovered.text = named;
+    b.button.unselected.hovered.text = TextStyleOverrides::NONE;
+    let exact = |theme: &Theme| ron::to_string(theme).unwrap();
+    let pairs = vec![
+        (
+            Theme::stock(ColorScheme::Dark),
+            Theme::stock(ColorScheme::Light),
+        ),
+        (a, b),
+    ];
+    for (from, to) in pairs {
+        let (mut shared_from, mut shared_to) = (from.clone(), to.clone());
+        Theme::share_text_axes(&mut shared_from, &mut shared_to);
+        for t in [0.0, 0.1, 0.37, 0.49, 0.5, 0.9, 1.0] {
+            let want = exact(&Theme::lerp(from.clone(), to.clone(), t));
+            let mut out = Theme::stock(ColorScheme::Light);
+            out.scale_text(0.5);
+            Theme::lerp_into(&from, &to, t, &mut out);
+            assert_eq!(exact(&out), want, "lerp_into at {t}");
+            if t != 0.0 && t != 1.0 {
+                Theme::lerp_ends_into(&shared_from, &shared_to, t, &mut out);
+                assert_eq!(exact(&out), want, "lerp_ends_into at {t}");
+            }
+        }
+    }
+}

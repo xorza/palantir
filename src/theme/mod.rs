@@ -362,7 +362,7 @@ impl Theme {
     /// [`Self::text`]: an absent axis shows the ambient value, so the lerp blends from what each
     /// end shows, as an absent value blends through its neutral. What either end shows is
     /// unchanged. The derived `lerp` runs it.
-    fn share_text_axes(a: &mut Self, b: &mut Self) {
+    pub(crate) fn share_text_axes(a: &mut Self, b: &mut Self) {
         let (ambient_a, ambient_b) = (a.text, b.text);
         a.for_each_text(Some(b), &mut |a, b| match (a, b) {
             (ThemeText::Overrides(a), Some(ThemeText::Overrides(b))) => {

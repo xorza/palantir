@@ -5,7 +5,6 @@ use std::rc::Rc;
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::phase::{Phase, PhaseEnd};
-use crate::primitives::math::lerp::Lerp;
 use crate::theme::Theme;
 
 /// A window's theme transition: the spec a change runs under, and the blend while one runs.
@@ -19,15 +18,60 @@ pub(crate) struct ThemeTransition {
     /// A finished run's buffers, its blend and the start a third theme gave it, which later runs
     /// write into, so only a window's first runs allocate, also when the app holds its themes.
     spares: [Option<Rc<Theme>>; 2],
+    /// A finished run's shared ends, which the next run writes into.
+    spare_ends: Option<Box<SharedEnds>>,
 }
 
-/// One run: `shown` is `lerp(from, to, phase)`.
+/// One run: `shown` is `lerp(from, to, phase)`, blended in place from `ends`, so a frame copies
+/// neither 28 KiB theme and shares no text axes again.
 #[derive(Debug)]
 struct ThemeRun {
     from: Rc<Theme>,
     to: Rc<Theme>,
     shown: Rc<Theme>,
     phase: Phase,
+    /// `from` and `to` with each one's text axes shared with the other, as `Theme::lerp` shares
+    /// them before it blends; [`Self::aim`] keeps them with the ends.
+    ends: Box<SharedEnds>,
+}
+
+impl ThemeRun {
+    /// Head for `to` from rest, from the start the run holds now.
+    fn aim(&mut self, to: Rc<Theme>, spec: AnimationSpec) {
+        self.to = to;
+        self.phase = Phase::start(spec);
+        self.ends.refill(&self.from, &self.to);
+    }
+}
+
+/// A run's ends, prepared for a blend in place.
+#[derive(Debug)]
+struct SharedEnds {
+    from: Theme,
+    to: Theme,
+}
+
+impl SharedEnds {
+    /// `from` and `to`, their text axes shared, in `spare` where one is kept.
+    fn of(spare: Option<Box<Self>>, from: &Theme, to: &Theme) -> Box<Self> {
+        if let Some(mut ends) = spare {
+            ends.refill(from, to);
+            return ends;
+        }
+        let mut ends = Box::new(Self {
+            from: from.clone(),
+            to: to.clone(),
+        });
+        Theme::share_text_axes(&mut ends.from, &mut ends.to);
+        ends
+    }
+
+    /// Hold `from` and `to` from now on, their text axes shared.
+    fn refill(&mut self, from: &Theme, to: &Theme) {
+        self.from.clone_from(from);
+        self.to.clone_from(to);
+        Theme::share_text_axes(&mut self.from, &mut self.to);
+    }
 }
 
 impl Default for ThemeTransition {
@@ -36,6 +80,7 @@ impl Default for ThemeTransition {
             spec: AnimationSpec::THEME,
             run: None,
             spares: [None, None],
+            spare_ends: None,
         }
     }
 }
@@ -88,11 +133,13 @@ impl ThemeTransition {
                     }
                     None => Rc::clone(&old),
                 };
+                let ends = SharedEnds::of(self.spare_ends.take(), &old, new);
                 self.run = Some(ThemeRun {
                     from: old,
                     to: Rc::clone(new),
                     shown,
                     phase: Phase::start(spec),
+                    ends,
                 });
             }
             Some(run) if Rc::ptr_eq(new, &run.from) => run.phase.turn(PhaseEnd::Start),
@@ -108,8 +155,7 @@ impl ThemeTransition {
                     run.shown = spare;
                 }
                 Rc::make_mut(&mut run.shown).clone_from(&run.from);
-                run.to = Rc::clone(new);
-                run.phase = Phase::start(spec);
+                run.aim(Rc::clone(new), spec);
             }
         }
     }
@@ -120,6 +166,7 @@ impl ThemeTransition {
             Some(run) => {
                 keep_spare(&mut self.spares, run.shown);
                 keep_spare(&mut self.spares, run.from);
+                self.spare_ends = Some(run.ends);
                 true
             }
             None => false,
@@ -159,12 +206,15 @@ impl ThemeTransition {
             self.snap();
             return true;
         }
-        let mix = Theme::lerp(
-            Theme::clone(&run.from),
-            Theme::clone(&run.to),
-            step.value.clamp(0.0, 1.0),
-        );
-        *Rc::make_mut(&mut run.shown) = mix;
+        let t = step.value.clamp(0.0, 1.0);
+        let shown = Rc::make_mut(&mut run.shown);
+        if t == 0.0 {
+            shown.clone_from(&run.from);
+        } else if t == 1.0 {
+            shown.clone_from(&run.to);
+        } else {
+            Theme::lerp_ends_into(&run.ends.from, &run.ends.to, t, shown);
+        }
         true
     }
 }

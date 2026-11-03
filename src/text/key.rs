@@ -131,6 +131,22 @@ impl TextShapeKey {
         }
     }
 
+    /// What the run's shape depends on: its text and face, not its size, leading, width or
+    /// fit. Shaping runs unhinted, so cosmic-text's glyphs are in em units, and two keys of
+    /// one identity shape alike.
+    pub(super) const fn shape_identity(self) -> ShapeIdentity {
+        ShapeIdentity {
+            text_hash: self.text_hash,
+            family_q: self.family_q,
+            face_q: self.face_q.face_only(),
+        }
+    }
+
+    /// Whether `other` lays out at this key's font size and leading.
+    pub(super) const fn shares_metrics(self, other: Self) -> bool {
+        self.size_q == other.size_q && self.lh_q == other.lh_q
+    }
+
     /// The face without text or width. Narrow, so an ellipsis memo survives width changes.
     pub(super) const fn face(self) -> QuantizedFace {
         QuantizedFace {
@@ -182,6 +198,14 @@ impl TextShapeKey {
     pub(super) const fn fit(self) -> LineFit {
         self.face_q.fit()
     }
+}
+
+/// A [`TextShapeKey`] less what changes only the layout of its shape.
+#[derive(Clone, Copy, Hash, Eq, PartialEq, Debug)]
+pub(super) struct ShapeIdentity {
+    text_hash: NonZeroU64,
+    family_q: u16,
+    face_q: u16,
 }
 
 /// Weight, slant, line align and line fit in one 16-bit field.

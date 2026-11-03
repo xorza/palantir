@@ -5,7 +5,7 @@ use crate::text::cosmic::shaped_buffer_cache::ShapedRun;
 use crate::text::cosmic::text_cut::TextCut;
 use crate::text::extent::TextExtent;
 use crate::text::root::TextRoot;
-use cosmic_text::Buffer;
+use cosmic_text::{Buffer, BufferLine};
 
 #[derive(Debug)]
 pub(super) struct CacheEntry {
@@ -51,17 +51,22 @@ impl CacheEntry {
         if self.cut.is_some() {
             return self.source == text;
         }
-        let mut rest = text.as_bytes();
-        for line in &self.buffer.lines {
-            for part in [line.text(), line.ending().as_str()] {
-                let Some(tail) = rest.strip_prefix(part.as_bytes()) else {
-                    return false;
-                };
-                rest = tail;
-            }
-        }
-        rest.is_empty()
+        lines_hold(&self.buffer.lines, text)
     }
+}
+
+/// Whether `lines` and their endings spell `text`.
+pub(super) fn lines_hold(lines: &[BufferLine], text: &str) -> bool {
+    let mut rest = text.as_bytes();
+    for line in lines {
+        for part in [line.text(), line.ending().as_str()] {
+            let Some(tail) = rest.strip_prefix(part.as_bytes()) else {
+                return false;
+            };
+            rest = tail;
+        }
+    }
+    rest.is_empty()
 }
 
 /// What one cached buffer measured to: an **unbounded** buffer is a

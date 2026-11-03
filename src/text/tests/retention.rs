@@ -404,3 +404,96 @@ fn a_promoted_burst_expires_across_frames_rather_than_on_one() {
         "premise: {RUNS} runs must not all share one offset — got {dropped:?}",
     );
 }
+
+/// A shape outlives its size: a run measured at another size or leading, at any width or
+/// alignment, lays out the lines it was shaped into first, from a resident buffer and from one
+/// that expired, and every glyph lands where a cold shape at those metrics puts it. A run
+/// measured again at its own metrics after its buffer expired lays out the kept shape too. A
+/// kept shape goes as a rendered run does, and the run shapes again after it.
+#[test]
+fn a_new_size_lays_out_the_shape_it_had() {
+    let text = "Office affine fluffy ligatures wrap across lines\nand a second paragraph";
+    let from = shape(14.0).leading(18.0);
+    for to in [
+        shape(15.25).leading(19.5),
+        shape(16.5).leading(20.0).width(90.0).halign(HAlign::Center),
+        shape(13.5).leading(18.0).width(120.0).halign(HAlign::Right),
+    ] {
+        let mut cold = CosmicMeasure::default();
+        let want = cold.measure(text, to);
+        let want_glyphs = glyph_poss(&cold, want.buffer_key());
+        assert_eq!(cold.cache_counts().relayouts, 0);
+
+        let mut warm = CosmicMeasure::default();
+        warm.measure(text, from);
+        let got = warm.measure(text, to);
+        assert_eq!(
+            warm.cache_counts().relayouts,
+            1,
+            "{to:?}: the resident shape"
+        );
+        assert_eq!(
+            (got.size, got.intrinsic_min),
+            (want.size, want.intrinsic_min)
+        );
+        assert_eq!(glyph_poss(&warm, got.buffer_key()), want_glyphs, "{to:?}");
+
+        let mut expired = CosmicMeasure::default();
+        let first = expired.measure(text, from).buffer_key();
+        idle_frames(&mut expired, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+        assert!(expired.resident_run(first).is_none());
+        let kept = expired.measure(text, to);
+        assert_eq!(
+            expired.cache_counts().relayouts,
+            1,
+            "{to:?}: the kept shape"
+        );
+        assert_eq!(
+            (kept.size, kept.intrinsic_min),
+            (want.size, want.intrinsic_min)
+        );
+        assert_eq!(
+            glyph_poss(&expired, kept.buffer_key()),
+            want_glyphs,
+            "{to:?}"
+        );
+    }
+
+    let mut drag = CosmicMeasure::default();
+    drag.measure(text, from.width(120.0));
+    drag.measure(text, from.width(110.0));
+    idle_frames(&mut drag, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+    drag.measure(text, from.width(100.0));
+    assert_eq!(
+        drag.cache_counts().relayouts,
+        0,
+        "a shape at the run's metrics, resident or kept, shapes again into recycled allocations",
+    );
+
+    let mut c = CosmicMeasure::default();
+    let first = c.measure(text, from).buffer_key();
+    let first_glyphs = glyph_poss(&c, first);
+    idle_frames(&mut c, shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1);
+    assert!(c.resident_run(first).is_none());
+    c.measure(text, from);
+    assert_eq!(
+        c.cache_counts().relayouts,
+        1,
+        "its own metrics, after its buffer expired"
+    );
+    assert_eq!(glyph_poss(&c, first), first_glyphs);
+
+    let mut gone = CosmicMeasure::default();
+    let first = gone.measure(text, from).buffer_key();
+    idle_frames(
+        &mut gone,
+        shaped_buffer_cache::PROBATION_KEEP_FRAMES + 1 + RENDERED_RUN_KEEP_FRAMES + 1,
+    );
+    assert!(gone.resident_run(first).is_none());
+    gone.measure(text, from);
+    assert_eq!(
+        gone.cache_counts().relayouts,
+        0,
+        "the kept shape went with its window"
+    );
+}

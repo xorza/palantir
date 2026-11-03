@@ -10,4 +10,14 @@ pub trait Lerp: Sized {
     /// `b` at 1 exactly, so a tween ends on its target. A curve may overshoot, so
     /// implementations must not clamp.
     fn lerp(a: Self, b: Self, t: f32) -> Self;
+
+    /// [`Self::lerp`] of borrowed ends, written into `out`, bit for bit: a derived `Lerp` blends
+    /// field by field in place, so a large value, as a whole theme, copies none of its ends.
+    #[inline]
+    fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self)
+    where
+        Self: Clone,
+    {
+        *out = Self::lerp(a.clone(), b.clone(), t);
+    }
 }

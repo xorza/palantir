@@ -3142,6 +3142,7 @@ widget::ImageShape
 widget::Lerp
     trait Lerp: Sized
         fn lerp(a: Self, b: Self, t: f32) -> Self
+        fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self) where Self: Clone { .. }
 
 widget::LineCap
     enum LineCap: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq

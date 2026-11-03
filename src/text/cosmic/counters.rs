@@ -18,6 +18,8 @@ counter_snapshot! {
 
     /// Runs actually pushed through cosmic (`set_text` plus `shape_until_scroll`), the cost the other counters explain.
     shapes: u32,
+    /// Of `shapes`, the runs laid out from another key's shaped lines, with no shaping.
+    relayouts: u32,
     /// Lookups answered from the cache, layout-side and render-side.
     hits: u32,
     /// Entries demoted to the probation window because their reuse slot moved to a different key.

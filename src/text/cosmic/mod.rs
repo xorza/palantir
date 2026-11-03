@@ -33,7 +33,7 @@ use crate::text::root::TextRoot;
 use crate::text::wrap::{LineFit, WrapFloor};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKey, CacheKeyFlags, Family, Font, FontSystem,
-    Metrics, Shaping, Style, Weight, fontdb,
+    Metrics, Scroll, Shaping, Style, Weight, fontdb,
 };
 use glam::{IVec2, UVec2};
 use std::fmt;
@@ -50,6 +50,7 @@ pub(super) mod counters;
 pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
 pub(super) mod glyph_ink;
+pub(super) mod shape_store;
 pub(super) mod shaped_buffer_cache;
 pub(crate) mod text_cut;
 
@@ -400,9 +401,26 @@ impl CosmicMeasure {
         // Per-line alignment goes through `set_text`'s `alignment` slot (setting it afterwards
         // tends to no-op). It needs a finite wrap target, else we pass `None`.
         let alignment = key.max_width().and_then(|_| cosmic_align(key.line_align()));
-        let family = self.family_of(key);
-        let attrs = attrs_named(family.name(), key.weight(), key.slant());
-        buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
+        if let Some(lines) = self.cache.donor_lines(key, request.text) {
+            // The metrics `acquire` set mark the buffer for a layout, which would lay the copied
+            // lines out a second time: it settles on no lines first.
+            buffer.lines.clear();
+            buffer.shape_until_scroll(&mut self.font_system, false);
+            buffer.lines.extend_from_slice(lines);
+            for line in &mut buffer.lines {
+                line.set_align(alignment);
+                line.reset_layout();
+            }
+            buffer.set_scroll(Scroll::default());
+            for line in 0..buffer.lines.len() {
+                buffer.line_layout(&mut self.font_system, line);
+            }
+            self.cache.counters.relayouts.bump();
+        } else {
+            let family = self.family_of(key);
+            let attrs = attrs_named(family.name(), key.weight(), key.slant());
+            buffer.set_text(request.text, &attrs, Shaping::Advanced, alignment);
+        }
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let geometry = ShapedGeometry::of(&buffer, floor, &mut self.break_scratch);

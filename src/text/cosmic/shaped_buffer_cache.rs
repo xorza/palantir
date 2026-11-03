@@ -8,14 +8,26 @@
 //! and [`ShapedBufferCache::tick_frame`] settles what came due; the
 //! [`ExpiryWheel`] contract ([`crate::common::expiry_wheel`]) holds only if all
 //! four agree.
+//!
+//! A shape outlives its size. Shaping runs unhinted, so cosmic-text's glyphs are in em
+//! units and a [`TextShapeKey`] of another size, leading or width shapes the same text
+//! alike: [`ShapedBufferCache::donor_lines`] hands a miss the shaped lines of a resident
+//! buffer of its identity, or of one that expired, which a [`ShapeStore`] keeps, to lay out
+//! at its own metrics, as cosmic-text's own `Buffer::set_metrics` lays out again and shapes
+//! nothing. A theme transition moves every font size on most frames, and a run the layout
+//! measures only when its size moves outlives the probation window of the buffer it shaped,
+//! so an expired buffer leaves its lines for as long as a rendered run is kept. Refused:
+//! cosmic-text's `shape-run-cache`, which builds a `String` key for every run it looks up
+//! and trims by walking its whole map each frame.
 
 use crate::common::expiry_wheel::ExpiryWheel;
 use crate::text::cosmic::cache_entry::{CacheEntry, CachedExtent};
 use crate::text::cosmic::counters::CacheCounters;
+use crate::text::cosmic::shape_store::ShapeStore;
 use crate::text::cosmic::text_cut::TextCut;
 use crate::text::key::TextShapeKey;
 use crate::text::{RENDERED_RUN_KEEP_FRAMES, RENDERED_RUN_KEEP_SPREAD_MASK};
-use cosmic_text::Buffer;
+use cosmic_text::{Buffer, BufferLine};
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -97,6 +109,8 @@ pub(crate) struct ShapedRun<'a> {
 #[derive(Debug)]
 pub(super) struct ShapedBufferCache {
     entries: FxHashMap<TextShapeKey, CacheEntry>,
+    /// Where a miss finds a shape of its text at other metrics.
+    shapes: ShapeStore,
     /// The frame clock every text cache in the crate ages against, advanced by
     /// [`Self::tick_frame`] and stamped on every entry. Downstream caches read it
     /// through [`TextShaper::frame`](crate::text::shaper::TextShaper) instead of
@@ -119,6 +133,7 @@ impl Default for ShapedBufferCache {
     fn default() -> Self {
         Self {
             entries: FxHashMap::default(),
+            shapes: ShapeStore::default(),
             frame: 0,
             expiry: ExpiryWheel::with_keep(KEEP_FRAMES),
             recycle_pool: RecyclePool::default(),
@@ -154,7 +169,11 @@ impl ShapedBufferCache {
         };
         if !slot.get().holds(text) {
             self.counters.collisions.bump();
-            self.recycle_pool.push(Recycled::of(slot.remove()));
+            let entry = slot.remove();
+            if entry.cut.is_none() {
+                self.shapes.left(key);
+            }
+            self.recycle_pool.push(Recycled::of(entry));
             return None;
         }
         let entry = slot.into_mut();
@@ -172,6 +191,22 @@ impl ShapedBufferCache {
             .expect("truncation requires the cached unbounded shape")
     }
 
+    /// The lines of a buffer that shaped `text` whole under `key`'s identity, to be laid out
+    /// again: a resident one of another size or leading, else, with none resident, the one an
+    /// expired entry left, at other metrics or under `key` itself. A shape at `key`'s metrics and
+    /// another width answers `None`, as a resize drag shapes into a recycled buffer's
+    /// allocations, where a copy of the lines allocates each of them.
+    pub(super) fn donor_lines(&mut self, key: TextShapeKey, text: &str) -> Option<&[BufferLine]> {
+        if let Some(donor) = self.shapes.donor(key)
+            && let Some(entry) = self.entries.get(&donor)
+            && entry.cut.is_none()
+            && entry.holds(text)
+        {
+            return (!donor.shares_metrics(key)).then_some(entry.buffer.lines.as_slice());
+        }
+        self.shapes.kept_lines(key, text, self.frame)
+    }
+
     /// File `shaped` under `key`, probationary until a [`Self::hit`] promotes it.
     pub(super) fn insert(&mut self, key: TextShapeKey, shaped: ShapedBuffer) {
         let ShapedBuffer {
@@ -186,6 +221,9 @@ impl ShapedBufferCache {
         self.counters.shapes.bump();
         let dies_at = self.probation_dies_at();
         let ticket_seq = self.expiry.schedule(key, dies_at);
+        if cut.is_none() {
+            self.shapes.filed(key);
+        }
         let displaced = self.entries.insert(
             key,
             CacheEntry {
@@ -235,6 +273,7 @@ impl ShapedBufferCache {
         self.frame += 1;
         let frame = self.frame;
         let entries = &mut self.entries;
+        let shapes = &mut self.shapes;
         let recycle_pool = &mut self.recycle_pool;
         let counters = &mut self.counters;
         self.expiry.retire(frame, |key, seq| {
@@ -254,8 +293,23 @@ impl ShapedBufferCache {
                 return Some(slot.get().dies_at);
             }
             counters.expiries.bump();
-            recycle_pool.push(Recycled::of(slot.remove()));
+            let entry = slot.remove();
+            let whole = entry.cut.is_none();
+            let recycled = Recycled::of(entry);
+            if !whole {
+                recycle_pool.push(recycled);
+                return None;
+            }
+            shapes.left(key);
+            match shapes.keep(key, recycled, frame) {
+                Some(recycled) => recycle_pool.push(recycled),
+                None => recycle_pool.reserve_for(shapes.kept_len()),
+            }
             None
+        });
+        let recycle_pool = &mut self.recycle_pool;
+        self.shapes.tick(frame, |recycled| {
+            recycle_pool.push_within_capacity(recycled);
         });
         self.recycle_pool.tick(frame);
     }
@@ -271,6 +325,7 @@ impl ShapedBufferCache {
         for (_, entry) in self.entries.drain() {
             recycle_pool.push(Recycled::of(entry));
         }
+        self.shapes.drain(|recycled| recycle_pool.push(recycled));
         self.expiry.clear();
     }
 
@@ -307,6 +362,22 @@ struct RecyclePool {
 impl RecyclePool {
     fn push(&mut self, recycled: Recycled) {
         self.buffers.push(recycled);
+    }
+
+    /// Room for `count` more buffers than the pool holds, every buffer a [`ShapeStore`] keeps, so
+    /// the pool grows in the frame a buffer leaves the cache for one, as it would without the
+    /// shape, and not in a later frame that shapes nothing.
+    fn reserve_for(&mut self, count: usize) {
+        self.buffers.reserve(count);
+    }
+
+    /// Pool `recycled` where the pool has room for it, else free it: a buffer back from
+    /// [`ShapeStore`] can come on top of the most the cache ever pooled, and growing the pool for
+    /// it would allocate in a frame that shapes nothing.
+    fn push_within_capacity(&mut self, recycled: Recycled) {
+        if self.buffers.len() < self.buffers.capacity() {
+            self.buffers.push(recycled);
+        }
     }
 
     fn pop(&mut self) -> Option<Recycled> {

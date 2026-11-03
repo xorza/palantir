@@ -15,7 +15,8 @@ use syn::{
 };
 
 /// `#[derive(Lerp)]` on a struct with named fields: `lerp` returns either end exactly at `t` of 0
-/// or 1, and blends each field through its own `Lerp` between them.
+/// or 1, and blends each field through its own `Lerp` between them. `lerp_into` does the same in
+/// place, each field through its own `lerp_into`, so a nested value copies none of its ends.
 ///
 /// Field attributes:
 /// - `#[animate(snap)]`, a value with no blend: `lerp` takes `a`'s below `t = 0.5` and `b`'s
@@ -25,7 +26,8 @@ use syn::{
 /// Struct attribute: `#[animate(before_lerp = PATH)]` names a `fn(&mut Self, &mut Self)` that
 /// `lerp` runs on its two ends before it blends them, past the exact ends: a value whose fields
 /// blend against context another field holds, as a theme's text overrides fold onto its
-/// ambient style.
+/// ambient style. `lerp_into` runs it on copies of the ends, and an inherent `lerp_ends_into`
+/// blends ends it already ran on, for a caller that blends one pair at many phases.
 #[proc_macro_derive(Lerp, attributes(animate))]
 pub fn derive_lerp(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -91,21 +93,68 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let ContainerOptions { before_lerp, .. } = ContainerOptions::of(input)?;
 
     let mut blend = Vec::new();
+    let mut blend_into = Vec::new();
     for f in fields {
         let ident = f.ident.as_ref().expect("named fields have idents");
-        blend.push(match FieldKind::of(f)? {
+        let kind = FieldKind::of(f)?;
+        blend.push(match kind {
             FieldKind::Snap => quote! { #ident: if t < 0.5 { a.#ident } else { b.#ident }, },
             FieldKind::Animated | FieldKind::LerpOnly => {
                 quote! { #ident: ::palantir::widget::Lerp::lerp(a.#ident, b.#ident, t), }
             }
         });
+        blend_into.push(match kind {
+            FieldKind::Snap => quote! {
+                ::core::clone::Clone::clone_from(&mut out.#ident, if t < 0.5 { &a.#ident } else { &b.#ident });
+            },
+            FieldKind::Animated | FieldKind::LerpOnly => quote! {
+                ::palantir::widget::Lerp::lerp_into(&a.#ident, &b.#ident, t, &mut out.#ident);
+            },
+        });
     }
-    let before_lerp_call = before_lerp.map(|path| {
-        quote! {
-            let (mut a, mut b) = (a, b);
-            #path(&mut a, &mut b);
+    let exact_ends_into = quote! {
+        if t == 0.0 {
+            ::core::clone::Clone::clone_from(out, a);
+            return;
         }
-    });
+        if t == 1.0 {
+            ::core::clone::Clone::clone_from(out, b);
+            return;
+        }
+    };
+    let (before_lerp_call, lerp_into_body, ends_into) = match before_lerp {
+        Some(path) => (
+            Some(quote! {
+                let (mut a, mut b) = (a, b);
+                #path(&mut a, &mut b);
+            }),
+            quote! {
+                #exact_ends_into
+                let (mut a, mut b) = (::core::clone::Clone::clone(a), ::core::clone::Clone::clone(b));
+                #path(&mut a, &mut b);
+                Self::lerp_ends_into(&a, &b, t, out);
+            },
+            Some(quote! {
+                impl #impl_generics #name #ty_generics #where_clause {
+                    /// [`Lerp::lerp_into`](::palantir::widget::Lerp::lerp_into) of ends the
+                    /// `before_lerp` hook already ran on, as a caller that blends one pair at many
+                    /// phases runs it once; the exact ends are the caller's.
+                    #[inline]
+                    pub(crate) fn lerp_ends_into(a: &Self, b: &Self, t: f32, out: &mut Self) {
+                        #(#blend_into)*
+                    }
+                }
+            }),
+        ),
+        None => (
+            None,
+            quote! {
+                #exact_ends_into
+                #(#blend_into)*
+            },
+            None,
+        ),
+    };
     Ok(quote! {
         impl #impl_generics ::palantir::widget::Lerp for #name #ty_generics #where_clause {
             #[inline]
@@ -121,7 +170,16 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
                     #(#blend)*
                 }
             }
+
+            #[inline]
+            fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self)
+            where
+                Self: ::core::clone::Clone,
+            {
+                #lerp_into_body
+            }
         }
+        #ends_into
     })
 }
 
