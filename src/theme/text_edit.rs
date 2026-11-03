@@ -62,14 +62,14 @@ impl TextEditTheme {
     ///
     /// Keeps a value from jumping when it becomes editable: a field is a box
     /// *around* the run, so placing it at the run's corner offsets the glyphs by
-    /// padding, stroke and caret room.
+    /// padding and stroke.
     ///
     /// Valid for a field that **hugs its content, centers it, and holds one line**,
     /// as an in-place edit does; wider fields spend alignment the theme can't know.
     ///
-    /// The run's width cancels, but the caret's room does not: it is reserved at the
-    /// trailing edge alone, so the glyphs sit half a caret to the leading side of
-    /// the box's middle.
+    /// The run's width cancels, and so does the caret's reserve, which the field hugs
+    /// with the run and splits around centered glyphs: they start one caret width past
+    /// the inner rect's leading edge.
     pub fn corner_centering(&self, text: Size, at: Vec2) -> Vec2 {
         // The inner rect sits inside the ring, as `Tree::open_node` folds it. Off `normal`: the
         // width is one number across states (see [`TextEditTheme::from_parts`]).
@@ -79,7 +79,7 @@ impl TextEditTheme {
             .chrome
             .fold_padding(self.defaults.padding)
             .to_array();
-        at - Vec2::new(text.w, text.h) * 0.5 - Vec2::new(left + self.caret_width * 0.5, top)
+        at - Vec2::new(text.w, text.h) * 0.5 - Vec2::new(left + self.caret_width, top)
     }
 
     /// A field whose stroke changes color on focus but never width.

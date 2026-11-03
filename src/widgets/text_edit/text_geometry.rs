@@ -69,7 +69,7 @@ impl TextGeometry {
         } else {
             measured
         };
-        // Same align and block box as the block node, so next frame's hit-test offset matches the placement.
+        // Same align, block box and lead as the block node, so next frame's hit-test offset matches the placement.
         let block = layout.block_align().place_in(
             Rect {
                 min: Vec2::ZERO,
@@ -79,7 +79,7 @@ impl TextGeometry {
         );
         Self {
             layout,
-            block_offset: block.min,
+            block_offset: block.min + Vec2::new(layout.caret_lead(), 0.0),
             content_size: measured,
             display_size: placeholder_measured,
             caret_pos,

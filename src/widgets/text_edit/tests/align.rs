@@ -15,11 +15,12 @@ const EDIT_H: f32 = 40.0;
 /// Theme padding (8, 4) plus chrome stroke (1), folded as the encoder's clip and TextEdit do.
 const PAD_L: f32 = 9.0;
 const PAD_T: f32 = 5.0;
-/// Default `TextEditTheme::caret_width`, reserved at each line's trailing edge.
+/// Default `TextEditTheme::caret_width`; a single line reserves twice it, after left- and
+/// right-aligned glyphs and half on each side of centered ones.
 const CARET_W: f32 = 1.5;
 const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 262
 const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 30
-const ALIGN_W: f32 = INNER_W - CARET_W; // 260.5
+const ALIGN_W: f32 = INNER_W - 2.0 * CARET_W; // 259
 const LINE_H: f32 = 19.203_125;
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
@@ -119,14 +120,21 @@ fn the_first_frame_aligns_like_the_ones_after_it() {
         let mut h = Harness::mono(NARROW);
         let mut buf = String::from("abcd");
         let node = warmup_then(&mut h, &mut buf, Some(Align::CENTER), None);
+        // The offset stored for hit-testing is where the block landed, its lead included.
+        let stored = h.state::<TextEditState>(ed_id()).unwrap().view.block_offset;
+        let placed = block_at(h.ui(), node) - Vec2::new(PAD_L, PAD_T);
+        assert_eq!(
+            stored, placed,
+            "stored {stored:?} is not where the block was placed, {placed:?}"
+        );
         shape_origins(h.ui(), node)
             .text
             .expect("text shape emitted")
     };
     assert_eq!(
         settled.x,
-        PAD_L + (ALIGN_W - TEXT_W_4CH) / 2.0,
-        "centered in the inner width less the caret room",
+        PAD_L + (INNER_W - TEXT_W_4CH) / 2.0,
+        "centered in the inner width, the caret reserve split around it",
     );
 
     let mut h = Harness::mono(NARROW);
@@ -163,8 +171,8 @@ fn single_line_default_is_left_vcenter() {
 #[test]
 fn single_line_text_align_table() {
     // Sweep every (HAlign × VAlign) on single-line "abcd"; overflow clamping does not fire.
-    let cx = (ALIGN_W - TEXT_W_4CH) * 0.5; // 113.75
-    let rx = ALIGN_W - TEXT_W_4CH; // 227.5
+    let cx = (INNER_W - TEXT_W_4CH) * 0.5; // 115
+    let rx = ALIGN_W - TEXT_W_4CH; // 227
     let cy = (INNER_H - LINE_H) * 0.5;
     let by = INNER_H - LINE_H;
     let cases: &[(Align, f32, f32, &str)] = &[
@@ -217,7 +225,7 @@ fn caret_tracks_aligned_text() {
     } = shape_origins(h.ui(), node);
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
-    let dx = ALIGN_W - TEXT_W_4CH; // 233.5
+    let dx = ALIGN_W - TEXT_W_4CH; // 227
     let dy = (INNER_H - LINE_H) * 0.5;
     assert_eq!(t.x, PAD_L + dx, "text.x = {}", t.x);
     assert_eq!(
@@ -228,10 +236,10 @@ fn caret_tracks_aligned_text() {
         PAD_L + dx + TEXT_W_4CH
     );
     assert_eq!(
-        c.x + CARET_W,
+        c.x + 2.0 * CARET_W,
         PAD_L + INNER_W,
-        "caret should reserve CARET_W before clip edge: caret.x + CARET_W = {}",
-        c.x + CARET_W
+        "the line should reserve 2 × CARET_W before the clip edge: caret.x + 2 × CARET_W = {}",
+        c.x + 2.0 * CARET_W
     );
     assert_eq!(c.y, PAD_T + dy, "caret.y = {}", c.y);
 }
@@ -302,17 +310,24 @@ fn click_compensates_for_right_align() {
 
 #[test]
 fn align_overflow_clamps_to_zero() {
-    // Text wider than the inner rect ("a" × 100 = 800 px > 262): offset clamps to zero, so x = padding.left.
-    for align in [Align::LEFT, Align::RIGHT, Align::CENTER] {
+    // Text wider than the inner rect ("a" × 100 = 800 px > 262): offset clamps to zero, so x =
+    // padding.left, past the caret reserve's lead on centered text: half of 2 × CARET_W.
+    for (align, lead) in [
+        (Align::LEFT, 0.0),
+        (Align::RIGHT, 0.0),
+        (Align::CENTER, CARET_W),
+    ] {
         let mut h = Harness::mono(NARROW);
         let mut buf = "a".repeat(100);
         let node = warmup_then(&mut h, &mut buf, Some(align), None);
         let origin = shape_origins(h.ui(), node).text;
         let o = origin.expect("text shape");
         assert_eq!(
-            o.x, PAD_L,
-            "overflow under {align:?}: text.x = {} (expected {PAD_L})",
-            o.x
+            o.x,
+            PAD_L + lead,
+            "overflow under {align:?}: text.x = {} (expected {})",
+            o.x,
+            PAD_L + lead
         );
     }
 }
@@ -432,7 +447,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
 
 /// **A field placed by [`TextEditTheme::corner_centering`](crate::TextEditTheme::corner_centering) lands its glyphs on the requested point.**
 ///
-/// The offset combines theme padding, the folded chrome stroke, the hug reservation and the caret room; checked against a laid-out field.
+/// The offset combines theme padding, the folded chrome stroke and the caret reserve's lead; checked against a laid-out field.
 #[test]
 fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
     let mut h = Harness::mono(WIDE);

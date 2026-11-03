@@ -47,8 +47,9 @@ fn editing_a_long_value_holds_the_field_width() {
     h.frame(|ui| render(ui, &mut v));
     let edit_w = h.arranged(id).unwrap().size.w;
 
-    // "1.985": five 8 px chars + 2 × 12 padding + 2 × 1 border, above the 40 px floor.
-    assert_eq!(display_w, 40.0 + 24.0 + 2.0);
+    // "1.985": five 8 px chars + 2 × 1.5 caret reserve + 2 × 12 padding + 2 × 1 border, above
+    // the 40 px floor.
+    assert_eq!(display_w, 40.0 + 3.0 + 24.0 + 2.0);
     assert_eq!(
         display_w, edit_w,
         "editing the full-precision value must not resize the field \
@@ -291,4 +292,76 @@ fn text_align_places_the_value_in_the_chip() {
     };
     assert_eq!(recorded(None), Align::CENTER);
     assert_eq!(recorded(Some(Align::LEFT)), Align::LEFT);
+}
+
+/// The value's glyphs keep their place when the editor takes the chip's box, under every
+/// alignment and with an authored padding: the chip keeps the caret reserve the editor keeps
+/// around its glyphs, and the editor wears the chip's padding.
+#[test]
+fn entering_edit_mode_keeps_the_glyphs_in_place() {
+    use crate::internals::paint_capture::PaintCall;
+    use crate::primitives::geometry::rect::Rect;
+
+    fn glyphs(h: &Harness) -> Rect {
+        h.encode_paint()
+            .calls
+            .iter()
+            .find_map(|call| match call {
+                PaintCall::Text(text) => Some(text.rect),
+                _ => None,
+            })
+            .expect("the value paints")
+    }
+
+    let id = WidgetId::from_hash("dv-glyphs");
+    // Stock theme: padding (12, 4) inside a 1 px ring, so a 100 px chip holds its value in
+    // 100 − 2 × 13 = 74 px from x = 13; an authored 6 px padding, 100 − 2 × 7 = 86 px from x = 7.
+    // A 1.5 px caret reserves 3 px: after left- and right-aligned values, half on each side of
+    // a centered one, which so keeps the box's center.
+    let paddings = [(None, 13.0, 74.0), (Some(Spacing::all(6.0)), 7.0, 86.0)];
+    for (padding, inset, inner) in paddings {
+        for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
+            let mut v = 189_i64;
+            let render = |ui: &mut Ui, v: &mut i64| {
+                Panel::hstack().auto_id().show(ui, |ui| {
+                    let chip = DragValue::new(v)
+                        .text_align(align)
+                        .size((Sizing::fixed(100.0), Sizing::HUG))
+                        .id(id);
+                    match padding {
+                        Some(padding) => chip.padding(padding),
+                        None => chip,
+                    }
+                    .show(ui);
+                });
+            };
+            let mut h = Harness::new(UVec2::new(200, 60));
+            h.prime(2, |ui| render(ui, &mut v));
+            let chip = glyphs(&h);
+            h.set_focus(id);
+            h.key(Key::Enter);
+            h.prime(2, |ui| render(ui, &mut v));
+            assert!(
+                matches!(
+                    h.state::<DragValueState>(id),
+                    Some(DragValueState::Editing { .. })
+                ),
+                "{padding:?} {align:?}: the editor shows",
+            );
+            let editor = glyphs(&h);
+
+            let label = format!("{padding:?} {align:?}");
+            let w = chip.size.w;
+            let expected = if align == Align::LEFT {
+                inset
+            } else if align == Align::CENTER {
+                inset + (inner - w) / 2.0
+            } else {
+                inset + inner - 3.0 - w
+            };
+            assert_eq!(chip.min.x, expected, "{label}: the chip's value");
+            assert_eq!(chip.min, editor.min, "{label}: the glyphs moved on edit");
+            assert_eq!(chip.size, editor.size, "{label}: the run changed on edit");
+        }
+    }
 }

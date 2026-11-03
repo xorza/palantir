@@ -6,9 +6,8 @@ use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::align::Align;
+use crate::primitives::layout::align::{Align, HAlign};
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
@@ -191,20 +190,20 @@ impl<'a> EditableLabel<'a> {
             .overrides
             .apply(&slot.looks.normal.text.apply(&theme.text));
         let min = self.floor(text.line_height());
-        let reserve =
-            text_layout::single_line_caret_reserve(text_layout::caret_room(slot.caret_width));
-        let padding = self
-            .widget
-            .authored_padding()
-            .unwrap_or(slot.defaults.padding);
-        let [left, top, right, bottom] = padding.to_array();
+        let padding = text_layout::label_padding(
+            self.widget
+                .authored_padding()
+                .unwrap_or(slot.defaults.padding),
+            slot.caret_width,
+            HAlign::Left,
+        );
         let size = self.extent();
         let label = self.text;
         let response = self
             .widget
             .size(size)
             .min_size(min)
-            .padding(Spacing::new(left, top, right + reserve, bottom))
+            .padding(padding)
             .default_child_align(Align::LEFT)
             .show(ui, Some(&slot.looks.normal.chrome), |ui| {
                 Text::new(label)

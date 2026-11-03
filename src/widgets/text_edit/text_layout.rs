@@ -3,7 +3,7 @@
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::layout::align::Align;
+use crate::primitives::layout::align::{Align, HAlign};
 use crate::text::glyph_font::GlyphFont;
 use crate::widgets::text_edit::shape_ctx::ShapeCtx;
 use glam::Vec2;
@@ -42,14 +42,20 @@ impl TextLayout {
         }
     }
 
-    /// The box the block occupies for what is on show: floored at one line, widened on a single line by the caret's room so an end-of-text caret falls inside the block (a wrapped block reserves none). Uses the shaper's line height, not the theme's leading, since it is quantized to 1/64 px.
+    /// The box the block aligns by for what is on show: floored at one line, widened on a single
+    /// line by [`Self::caret_reserve`] (a wrapped block reserves none), [`Self::caret_lead`] of
+    /// it before the glyphs. Uses the shaper's line height, not the theme's leading, since it is
+    /// quantized to 1/64 px.
+    ///
+    /// The reserve is the one the field's `Hug` width and scroll extent take, so a field that
+    /// hugs its text does not scroll, and a label that reserves the same around its text, as
+    /// [`EditableLabel`](crate::EditableLabel) and [`DragValue`](crate::DragValue) do, puts its
+    /// glyphs where the editor puts them under every alignment.
     pub(super) fn block_size(&self, display: Size) -> Size {
-        let room = if self.ctx.multiline {
-            0.0
-        } else {
-            self.caret_room
-        };
-        Size::new(display.w + room, display.h.max(self.ctx.font.line_height))
+        Size::new(
+            display.w + self.caret_reserve(),
+            display.h.max(self.ctx.font.line_height),
+        )
     }
 
     /// Room a single line keeps for the caret past its glyphs at both ends; none for a wrapped block.
@@ -59,6 +65,11 @@ impl TextLayout {
         } else {
             single_line_caret_reserve(self.caret_room)
         }
+    }
+
+    /// The part of [`Self::caret_reserve`] that sits before the glyphs.
+    pub(super) const fn caret_lead(&self) -> f32 {
+        single_line_caret_lead(self.caret_reserve(), self.text_align.halign())
     }
 
     /// [`Self::inner`]'s extent, collapsing the unarranged frame to nothing (sizing math; the scroll view wants the absence).
@@ -89,13 +100,32 @@ impl TextLayout {
 }
 
 /// The room a caret of `caret_width` takes past the text's end, a negative width taking none.
-pub(crate) const fn caret_room(caret_width: f32) -> f32 {
+const fn caret_room(caret_width: f32) -> f32 {
     caret_width.max(0.0)
 }
 
-/// What a single-line field adds to its text's width for the caret at either end, all of it after
-/// left-aligned text: the width an [`EditableLabel`](crate::EditableLabel)'s idle label reserves
-/// so the glyphs hold their place when it swaps to its editor.
-pub(crate) const fn single_line_caret_reserve(caret_room: f32) -> f32 {
+/// What a single-line field adds to its text's width for the caret at either end, placed around
+/// the glyphs by [`single_line_caret_lead`].
+const fn single_line_caret_reserve(caret_room: f32) -> f32 {
     2.0 * caret_room
+}
+
+/// The part of a single line's caret `reserve` that sits before glyphs aligned by `halign`: half
+/// of it before centered glyphs, so they keep the center of the box, and none before the others,
+/// so the reserve trails them and an end-of-text caret stays inside the box.
+const fn single_line_caret_lead(reserve: f32, halign: HAlign) -> f32 {
+    match halign {
+        HAlign::Center => reserve * 0.5,
+        HAlign::Auto | HAlign::Left | HAlign::Right | HAlign::Stretch => 0.0,
+    }
+}
+
+/// `padding` widened by the caret reserve a single-line editor with a caret of `caret_width`
+/// keeps around glyphs aligned by `halign`: a label in it puts its glyphs where that editor
+/// puts them, so a widget that swaps the one for the other moves no glyph.
+pub(crate) fn label_padding(padding: Spacing, caret_width: f32, halign: HAlign) -> Spacing {
+    let reserve = single_line_caret_reserve(caret_room(caret_width));
+    let lead = single_line_caret_lead(reserve, halign);
+    let [left, top, right, bottom] = padding.to_array();
+    Spacing::new(left + lead, top, right + reserve - lead, bottom)
 }

@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
+use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
@@ -54,10 +55,10 @@ impl PaintInput<'_> {
             let mut min_size = widget.authored_min_size().unwrap_or(Size::ZERO);
             // The block's own height, not the theme's leading: a panned axis contributes no max-content, so this floor is the field's height and must match the shaper.
             let padding = ctx.padding.sums();
-            min_size.h = min_size.h.max(self.block_size(layout).h + padding.h);
+            let block = self.block_size(layout);
+            min_size.h = min_size.h.max(block.h + padding.h);
             if widget.authored_size().unwrap_or_default().w().is_hug() {
-                let reserved = self.geometry.display_size.w + layout.caret_reserve() + padding.w;
-                min_size.w = min_size.w.max(reserved);
+                min_size.w = min_size.w.max(block.w + padding.w);
             }
             widget.configure().min_size(min_size);
         }
@@ -117,7 +118,7 @@ impl PaintInput<'_> {
         });
     }
 
-    /// The box the block occupies for this pass's one display measure; floors and caret room are [`TextLayout::block_size`]'s, so the node and the field's minimums agree.
+    /// The box the block occupies for this pass's one display measure; floors and caret reserve are [`TextLayout::block_size`]'s, so the node and the field's minimums agree.
     fn block_size(&self, layout: TextLayout) -> Size {
         layout.block_size(self.geometry.display_size)
     }
@@ -128,14 +129,16 @@ impl PaintInput<'_> {
     ///
     /// Pinned to what the probe measured, since left to hug the block would take the minimum a scrolling run reports (nothing). Not held to the field's width: a panned axis reports no min-content, so a wider block scrolls the field.
     ///
-    /// The caret's room is added, not deflated out of the aligned rect, so an end-of-line caret falls inside its block. Single-line only, as [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve).
+    /// The caret's reserve is added, not deflated out of the aligned rect, so an end-of-line caret falls inside its block. Its lead is a margin, not part of the block, so the block's origin is the glyphs'. Single-line only, as [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve).
     ///
     /// The scroll rides as a transform ([`ScrollState::transform`], as a `Scroll` viewport does), keeping the three shapes in one frame of reference.
     fn block(&self, layout: TextLayout) -> Widget {
         let size = self.block_size(layout);
+        let lead = layout.caret_lead();
         Widget::leaf()
             .id(self.block_id)
-            .size((Sizing::fixed(size.w), Sizing::fixed(size.h)))
+            .size((Sizing::fixed(size.w - lead), Sizing::fixed(size.h)))
+            .margin(Spacing::new(lead, 0.0, 0.0, 0.0))
             .align(layout.block_align())
             .transform(self.scroll.transform(Vec2::ZERO))
     }

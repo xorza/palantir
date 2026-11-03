@@ -24,6 +24,7 @@ use crate::widgets::axis_keys::{self, AxisEnd, AxisKeys, Travel};
 use crate::widgets::bound_num::{BoundNum, MAX_DECIMALS, Num, StoreRule};
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::text_edit::edit_end::EditEnd;
+use crate::widgets::text_edit::text_layout;
 use std::mem;
 use std::ops::RangeInclusive;
 
@@ -304,11 +305,18 @@ impl<'a> DragValue<'a> {
         };
 
         let theme = ui.theme();
-        let plan = self
-            .style
-            .unwrap_or(&theme.drag_value)
-            .plan(&response, (), theme.text);
+        let style = self.style.unwrap_or(&theme.drag_value);
+        let plan = style.plan(&response, (), theme.text);
+        let caret_width = style.caret_width;
         let look = self.widget.wear(ui, plan);
+        if self.editable {
+            let padding = text_layout::label_padding(
+                self.widget.authored_padding().unwrap(),
+                caret_width,
+                self.text_align.halign(),
+            );
+            self.widget.configure().padding(padding);
+        }
 
         self.widget.record(ui, Some(&look.chrome), |ui| {
             ui.add_shape(
@@ -355,6 +363,11 @@ impl<'a> DragValue<'a> {
                 .text_align(self.text_align)
                 .select_all_on_focus(true)
                 .style(&editor)
+                .padding(
+                    self.widget
+                        .authored_padding()
+                        .unwrap_or(editor.defaults.padding),
+                )
                 .size((width, sizes.h()))
                 .min_size(min_size)
                 .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
