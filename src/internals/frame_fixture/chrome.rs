@@ -24,12 +24,12 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::click_outside::ClickOutside;
 use crate::widgets::scroll::Scroll;
 use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
@@ -197,7 +197,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
 
     // Toast on the Popup layer above the right end of the status bar (anchoring to the full rect would cover the sidebar). Reading the bar's rect (last frame's, hence the frame-0 fallback) works at any viewport size.
     //
-    // `PassThrough`: re-recorded every frame, a modal toast would be a permanently dead host (the click-eater and key claim block `Main`), and the fixture shares a window with the showcase page.
+    // `PassThrough`: re-recorded every frame, a modal toast would be a permanently dead host (the barrier and key claim block `Main`), and the fixture shares a window with the showcase page.
     let bar_rect = bar.rect.unwrap_or(Rect::new(12.0, 12.0, 240.0, 34.0));
     let anchor = Rect::new(
         bar_rect.min.x + (bar_rect.size.w - TOAST_W).max(0.0),

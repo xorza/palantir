@@ -52,10 +52,10 @@ fn edit_char(key: Key) -> bool {
 }
 
 impl KeyClass {
-    /// Classify one press.
+    /// Classify one press; [`KeyPress::class`] is the door to it.
     ///
     /// Exhaustive over [`Key`] so a new variant must pick a class.
-    pub fn of(press: KeyPress) -> Self {
+    pub(super) fn of(press: KeyPress) -> Self {
         // Ahead of typed text, which they carry too, so a widget can take them alone.
         match press.key {
             Key::Char(' ') if !press.mods.has_command() => return Self::Space,
@@ -158,13 +158,6 @@ impl KeyFilter {
         })
     }
 
-    /// Whether this filter takes `press`'s class. Readers apply it to the
-    /// shared stream so a field that yielded a class does not also act on it.
-    #[inline]
-    pub fn takes_press(self, press: KeyPress) -> bool {
-        self.takes(KeyClass::of(press))
-    }
-
     /// [`Self::NONE`] stores "not a scope", fitting the filter in spare
     /// [`crate::scene::node::node_flags::NodeFlags`] bits.
     #[inline]
@@ -180,25 +173,25 @@ mod tests {
     use crate::input::keyboard::key_press::KeyPress;
     use crate::input::keyboard::modifiers::Modifiers;
 
-    /// `takes_press` classifies the press as [`KeyClass::of`] does.
+    /// A filter takes a press by its [`KeyPress::class`].
     #[test]
-    fn takes_press_gates_the_stream_on_the_declared_classes() {
+    fn a_filter_takes_a_press_by_its_class() {
         let field = KeyFilter::TEXT_FIELD;
         let typed = KeyPress::with(Key::Char('a'), Modifiers::default());
         let escape = KeyPress::with(Key::Escape, Modifiers::default());
 
-        assert!(field.takes_press(typed), "a field takes text");
-        assert!(field.takes_press(escape), "and Escape, to cancel");
+        assert!(field.takes(typed.class()), "a field takes text");
+        assert!(field.takes(escape.class()), "and Escape, to cancel");
 
         let yields_escape = field.difference(KeyFilter::ESCAPE);
-        assert!(!yields_escape.takes_press(escape));
-        assert!(yields_escape.takes_press(typed));
+        assert!(!yields_escape.takes(escape.class()));
+        assert!(yields_escape.takes(typed.class()));
 
         let save = KeyPress::with(Key::Char('S'), Modifiers::CTRL);
-        assert_eq!(KeyClass::of(save), KeyClass::Accel);
-        assert!(!field.takes_press(save));
+        assert_eq!(save.class(), KeyClass::Accel);
+        assert!(!field.takes(save.class()));
         let shifted = KeyPress::with(Key::Char('S'), Modifiers::default());
-        assert!(field.takes_press(shifted));
+        assert!(field.takes(shifted.class()));
     }
 
     /// Space and Enter are classes of their own under no command modifier, which a field takes
@@ -218,19 +211,22 @@ mod tests {
         let button = KeyFilter::SPACE.union(KeyFilter::ENTER);
         for (key, mods, class) in cases {
             let press = KeyPress::with(key, mods);
-            assert_eq!(KeyClass::of(press), class, "{key:?} under {mods:?}");
+            assert_eq!(press.class(), class, "{key:?} under {mods:?}");
             let typed = matches!(class, KeyClass::Text | KeyClass::Space | KeyClass::Enter);
             assert_eq!(
-                KeyFilter::TEXT_FIELD.takes_press(press),
+                KeyFilter::TEXT_FIELD.takes(press.class()),
                 typed,
                 "{key:?} under {mods:?}"
             );
             assert_eq!(
-                button.takes_press(press),
+                button.takes(press.class()),
                 matches!(class, KeyClass::Space | KeyClass::Enter),
                 "{key:?} under {mods:?}"
             );
-            assert_eq!(KeyFilter::TEXT.takes_press(press), class == KeyClass::Text);
+            assert_eq!(
+                KeyFilter::TEXT.takes(press.class()),
+                class == KeyClass::Text
+            );
         }
     }
 
@@ -261,9 +257,9 @@ mod tests {
         ];
         for (key, mods, class, field_takes) in cases {
             let press = KeyPress::with(key, mods);
-            assert_eq!(KeyClass::of(press), class, "{key:?} under {mods:?}");
+            assert_eq!(press.class(), class, "{key:?} under {mods:?}");
             assert_eq!(
-                KeyFilter::TEXT_FIELD.takes_press(press),
+                KeyFilter::TEXT_FIELD.takes(press.class()),
                 field_takes,
                 "{key:?} under {mods:?}",
             );

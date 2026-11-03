@@ -1272,7 +1272,6 @@ KeyClass
         Cycle
         Escape
         Accel
-        pub fn of(press: KeyPress) -> Self
 
 KeyFilter
     struct KeyFilter: BitOr, Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
@@ -1298,7 +1297,6 @@ KeyFilter
         pub const fn set(&mut self, other: Self, on: bool)
         pub const TEXT_FIELD: Self
         pub const fn takes(self, class: KeyClass) -> bool
-        pub fn takes_press(self, press: KeyPress) -> bool
 
 KeyPress
     struct KeyPress: Clone, Copy, Debug, Eq, PartialEq
@@ -1307,6 +1305,7 @@ KeyPress
         pub repeat: bool
         pub physical: Key
         pub text: KeyText
+        pub fn class(self) -> KeyClass
 
 KeyText
     struct KeyText: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -2723,7 +2722,7 @@ Ui
         pub fn text(&self, text: InternedStr) -> &str
         pub fn add_shape_animated(&mut self, shape: impl Lower, animation: PaintAnimation)
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
-        pub fn release_input_scope(&mut self, id: WidgetId)
+        pub fn withdraw_input_scope(&mut self, id: WidgetId)
         pub fn response_for(&self, id: WidgetId) -> ResponseState
         pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
         pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
@@ -3002,7 +3001,7 @@ widget::Backdrop
     enum Backdrop: Clone, Copy, Debug
         None
         Root
-        Eater(WidgetId)
+        Barrier(WidgetId)
 
 widget::Caret
     struct Caret: Clone, Copy, Debug, PartialEq
@@ -3158,7 +3157,7 @@ widget::MeshShape
 widget::OverlayScope
     struct OverlayScope: Debug
         pub fn claim(ui: &mut Ui, spec: OverlaySpec, root: &mut Widget) -> Self
-        pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> OverlayTurn<R>
+        pub fn record<R>(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &CloseHandle) -> R) -> OverlayTurn<R>
         pub fn finish<R>(self, ui: &mut Ui, response: OverlayResponse<R>) -> OverlayResponse<R>
 
 widget::OverlaySpec
@@ -3166,13 +3165,12 @@ widget::OverlaySpec
         pub layer: Layer
         pub anchor: Option<Anchor>
         pub backdrop: Backdrop
+        pub click_outside: ClickOutside
 
 widget::OverlayTurn
     struct OverlayTurn<R>
         pub inner: R
-        pub close_requested: bool
-        pub escape_pressed: bool
-        pub pressed_outside: bool
+        pub close: Option<OverlayClose>
         impl<R: Debug> Debug for OverlayTurn<R>
 
 widget::PaintAnimation

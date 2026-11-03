@@ -261,7 +261,7 @@ fn every_edit_action_chord_is_edit_class() {
             text: KeyText::EMPTY,
         };
         assert_eq!(
-            KeyClass::of(press),
+            press.class(),
             KeyClass::Edit,
             "{action:?} binds {shortcut:?}, which a focused field must take",
         );

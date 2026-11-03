@@ -5,7 +5,6 @@
 - flexbox
 - mcp
 - reduced motion/backdrops theme options selection
-- scope api
 - organize ui mod.rs
 - scrim: Option<RgbaF32> - to backdrop? for blur, etc?
 

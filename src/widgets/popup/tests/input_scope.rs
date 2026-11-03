@@ -10,15 +10,15 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::click_outside::ClickOutside;
 use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
 use glam::Vec2;
 
-/// Pointer gestures outside the popup body must be absorbed by the eater, not
+/// Pointer gestures outside the popup body must be absorbed by the barrier, not
 /// leak to a `Main` widget. `PassThrough` is the control: the burst reaches `Main` there.
 #[test]
 fn outside_pointer_gestures_do_not_leak_to_main() {

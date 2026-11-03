@@ -13,12 +13,12 @@ use crate::theme::menu::MenuTheme;
 use crate::theme::menu_bar::{MenuBarTheme, MenuState};
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
+use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::response::{InnerResponse, Response};
 use crate::widget_core::widget::Widget;
-use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::menu::Menu;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, TriggerState};
@@ -215,7 +215,7 @@ fn focused_title(ui: &Ui, titles: &[WidgetId]) -> Option<WidgetId> {
 
 /// Where the open menu `open` goes. Focus moved to another title, as the arrows walk the titles,
 /// opens that one's menu. Then the pointer over the titles: a click on the open title closes it
-/// and one on another title opens that one, both landing on the open menu's click-eater; a move
+/// and one on another title opens that one, both landing on the open menu's barrier; a move
 /// onto another title opens it. A pointer that rests where it was when the menu opened, as one
 /// the keyboard opened under it, moves nothing.
 fn switch(ui: &mut Ui, row: &MenuBarRow, open: WidgetId) -> Switch {
@@ -235,8 +235,8 @@ fn switch(ui: &mut Ui, row: &MenuBarRow, open: WidgetId) -> Switch {
     }) else {
         return Switch::Keep;
     };
-    let eater = Popup::eater_id(MenuBar::menu_id(open));
-    if ui.response_for(eater).left.clicked() {
+    let barrier = Popup::barrier_id(MenuBar::menu_id(open));
+    if ui.response_for(barrier).left.clicked() {
         if over == open {
             Switch::Close
         } else {

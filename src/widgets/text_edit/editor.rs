@@ -81,7 +81,7 @@ impl<'a> Editor<'a> {
     /// this and the keyboard pass in one comparison. One session serves the whole
     /// menu so undo history is reconciled once; `filter` is the field's own, as the
     /// menu drains the same layer-wide stream and owes the same
-    /// [`KeyFilter::takes_press`] gate.
+    /// gate, [`KeyFilter::takes`] of each press's [`class`](crate::KeyPress::class).
     pub(super) fn show_menu(
         &mut self,
         ui: &mut Ui,
@@ -92,7 +92,7 @@ impl<'a> Editor<'a> {
         let mut clicked_action = None;
         Menu::context(snapshot).show(ui, |ui, popup| {
             for &keypress in ui.keyboard_events() {
-                if !filter.takes_press(keypress) {
+                if !filter.takes(keypress.class()) {
                     continue;
                 }
                 if let Some(action) = EditAction::from_keypress(keypress) {

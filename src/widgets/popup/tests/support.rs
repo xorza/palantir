@@ -6,11 +6,11 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::click_outside::ClickOutside;
 use glam::{UVec2, Vec2};
 
 pub(super) const SURFACE: UVec2 = UVec2::new(400, 400);

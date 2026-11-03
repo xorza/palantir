@@ -212,7 +212,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
         press_escape(&mut h);
         h.frame(|ui| {
             two(ui);
-            ui.release_input_scope(WidgetId::from_hash(closed));
+            ui.withdraw_input_scope(WidgetId::from_hash(closed));
         });
 
         press_escape(&mut h);
@@ -232,7 +232,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
     }
 }
 
-/// A `release_input_scope` takes effect at the next resolution, like a focus move:
+/// A `withdraw_input_scope` takes effect at the next resolution, like a focus move:
 /// reads after it in the same pass get the answer reads before it got. Nested
 /// scopes `root` around `inner`, with a read at `root` and two inside `inner`
 /// either side of the release. With no focus anchor the grant falls to `root`; with
@@ -267,7 +267,7 @@ fn a_close_takes_effect_at_the_next_resolution() {
                         }
                         reads.inner_before = ui.shortcut_pressed(Key::Escape);
                         if closes {
-                            ui.release_input_scope(WidgetId::from_hash("inner"));
+                            ui.withdraw_input_scope(WidgetId::from_hash("inner"));
                         }
                         reads.inner_after = ui.shortcut_pressed(Key::Escape);
                     });
@@ -329,7 +329,7 @@ fn scopes_resolve_again_only_when_their_inputs_change() {
                         .show(ui, |_| {});
                 }
                 if closes {
-                    ui.release_input_scope(WidgetId::from_hash("root"));
+                    ui.withdraw_input_scope(WidgetId::from_hash("root"));
                 }
             });
     };

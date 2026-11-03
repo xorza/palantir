@@ -138,7 +138,7 @@ impl InputPass<'_> {
         // shared edit actions first, then `apply_key`.
         for i in 0..ui.keyboard_events().len() {
             let kp = ui.keyboard_events()[i];
-            if !filter.takes_press(kp) {
+            if !filter.takes(kp.class()) {
                 continue;
             }
             // A key taken mid-press acts on the caret the press placed; selecting all

@@ -250,7 +250,7 @@ fn warmup_keeps_scope_releases() {
                     .show(ui, |ui| {
                         Block::new().id(editor).size(10.0).show(ui);
                         if records == 0 {
-                            ui.release_input_scope(inner);
+                            ui.withdraw_input_scope(inner);
                         }
                     });
                 at_root

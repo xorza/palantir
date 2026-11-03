@@ -86,7 +86,7 @@ fn a_click_opens_switches_and_closes() {
     assert_eq!(open(&h), Some(0), "a click opens File");
     assert!(recorded(&h, 0));
 
-    // The open menu's click-eater lies over the titles, so aim by position.
+    // The open menu's barrier lies over the titles, so aim by position.
     h.click(h.center_of(title(2)));
     frame(&mut h);
     assert_eq!(open(&h), Some(2), "one click on View moves to it");

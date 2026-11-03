@@ -10,6 +10,7 @@ use crate::scene::layer::Layer;
 use crate::text::wrap::TextWrap;
 use crate::theme::tooltip::TooltipTheme;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
@@ -173,9 +174,10 @@ impl<'a> Tooltip<'a> {
                 layer: Layer::Tooltip,
                 anchor: Some(anchor),
                 backdrop: Backdrop::None,
+                click_outside: ClickOutside::PassThrough,
             };
             let scope = OverlayScope::claim(ui, spec, &mut bubble);
-            let _ = scope.record(ui, |ui| {
+            let _ = scope.record(ui, |ui, _| {
                 bubble.record(ui, Some(chrome), |ui| {
                     Text::new(label)
                         .style(&text)

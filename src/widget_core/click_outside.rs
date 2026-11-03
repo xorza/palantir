@@ -1,11 +1,10 @@
-//! What a click outside a popup does to it.
+//! What a click outside an overlay does to it.
 
-/// What a press outside the popup body does.
+/// What a press outside an overlay's body, and Escape, do.
 ///
-/// `Block` and `Dismiss` are modal: a full-surface click-eater in the `Popup`
-/// layer swallows outside presses, and the layer takes the whole key scope.
-/// `PassThrough` does neither, so a permanently recorded overlay can't lock
-/// the host.
+/// `Block` and `Dismiss` are modal: a [`Backdrop`](crate::widget::Backdrop) swallows outside
+/// presses, and the overlay's layer takes the whole key scope. `PassThrough` does neither, so a
+/// permanently recorded overlay can't lock the host.
 ///
 /// - `Block`: no dismissal signal; Esc is ignored.
 /// - `Dismiss`: an outside click or Esc closes it as `OverlayClose::Dismissed`.

@@ -5,8 +5,8 @@ use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::anchor::Anchor;
 use crate::ui::Ui;
+use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widgets::close_handle::CloseHandle;
 use crate::widgets::popup::Popup;
 use glam::Vec2;
 use std::marker::PhantomData;
@@ -97,7 +97,7 @@ impl<K: 'static> TriggerState<K> {
     /// Give back the input scope this state's popup held, as it closes.
     pub(crate) fn release(self, ui: &mut Ui) {
         if let Some(popup) = self.shown {
-            ui.release_input_scope(popup);
+            ui.withdraw_input_scope(popup);
         }
     }
 }
@@ -181,7 +181,7 @@ impl TriggerFrame {
             }
             resp = Some(shown_now);
         } else if let Some(popup) = state.shown {
-            ui.release_input_scope(popup);
+            ui.withdraw_input_scope(popup);
         }
         Settled {
             response: resp,

@@ -1004,8 +1004,8 @@ impl Ui {
     /// Holds through the end of the next frame; the current pass is unaffected, since
     /// scope paths resolve at pass start against a one-frame-old cascade.
     #[inline]
-    pub fn release_input_scope(&mut self, id: WidgetId) {
-        self.input.release_input_scope(id);
+    pub fn withdraw_input_scope(&mut self, id: WidgetId) {
+        self.input.withdraw_input_scope(id);
     }
 
     /// Resolve a widget's identity recipe against the open parent into its record

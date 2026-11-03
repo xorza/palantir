@@ -9,12 +9,12 @@ use crate::primitives::layout::anchor::Anchor;
 use crate::primitives::layout::sizing::Sizing;
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::click_outside::ClickOutside;
 use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
 use glam::Vec2;
 
@@ -36,7 +36,7 @@ fn click_inside_popup_does_not_dismiss() {
     );
 }
 
-/// Every pointer button dismisses, not just the primary: a right-click elsewhere must drop a context menu rather than be absorbed by the eater.
+/// Every pointer button dismisses, not just the primary: a right-click elsewhere must drop a context menu rather than be absorbed by the barrier.
 #[test]
 fn outside_click_dismisses_on_any_button_and_blocks_main() {
     for button in PointerButton::ALL {
@@ -52,7 +52,7 @@ fn outside_click_dismisses_on_any_button_and_blocks_main() {
         );
         assert!(
             !pass.main_clicked,
-            "{button:?} outside click must be eaten by the popup eater, not leak to Main",
+            "{button:?} outside click must be eaten by the popup barrier, not leak to Main",
         );
     }
 }
@@ -78,7 +78,7 @@ fn escape_dismisses_dismiss_popup_but_not_block() {
     );
 }
 
-/// `Ui::frame` settles dismissal in one host call: pass 1 sees the eater click and sets `dismissed`, the host flips `open`, pass 2 records no popup, so no stale frame reaches submit.
+/// `Ui::frame` settles dismissal in one host call: pass 1 sees the barrier click and sets `dismissed`, the host flips `open`, pass 2 records no popup, so no stale frame reaches submit.
 #[test]
 fn run_frame_settles_popup_dismissal_in_one_call() {
     let mut h = Harness::mono(SURFACE);

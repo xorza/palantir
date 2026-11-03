@@ -135,7 +135,7 @@ impl InputState {
 
     /// Where `press` moves focus, if the framework owns it.
     fn traversal(&self, press: KeyPress, cascade: &Cascade) -> Option<Traversal> {
-        match KeyClass::of(press) {
+        match press.class() {
             KeyClass::Focus if !self.scopes.path_takes(KeyClass::Focus) => {
                 let direction = if press.mods.contains(Modifiers::SHIFT) {
                     TabDirection::Prev
@@ -235,7 +235,7 @@ impl InputState {
         self.focus.move_to(id, FocusCause::Program);
     }
 
-    pub(crate) fn release_input_scope(&mut self, owner: WidgetId) {
+    pub(crate) fn withdraw_input_scope(&mut self, owner: WidgetId) {
         self.scopes.close(owner);
     }
 
@@ -322,7 +322,7 @@ impl InputState {
         self.keyboard
             .presses
             .iter()
-            .any(|press| matches(*press) && self.scopes.reaches(KeyClass::of(*press), scope))
+            .any(|press| matches(*press) && self.scopes.reaches(press.class(), scope))
     }
 
     /// Whether `key` is down now, whatever the modifiers. A fact of the keyboard, as the
@@ -712,7 +712,7 @@ impl InputState {
         // it, or a `KeyboardWake::KEY` watcher records raw keys. A bare modifier wakes only
         // a watcher that asked, since widgets get modifier state via `ModifiersChanged`.
         let bare_modifier = input_queue::is_bare_modifier(key, text);
-        let traverses = KeyClass::of(kp) == KeyClass::Focus && !cascade.tab_stops.is_empty();
+        let traverses = kp.class() == KeyClass::Focus && !cascade.tab_stops.is_empty();
         let observable = (self.focus.focused().is_some() && !bare_modifier)
             || traverses
             || self.subs.matches_press(kp)

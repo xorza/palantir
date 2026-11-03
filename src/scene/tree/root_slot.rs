@@ -7,7 +7,7 @@ use crate::scene::layer::Layer;
 use crate::scene::tree::node_id::NodeId;
 use glam::Vec2;
 
-/// One root within a plane's [`Tree`](crate::scene::tree::Tree); a popup records two (eater and body).
+/// One root within a plane's [`Tree`](crate::scene::tree::Tree); a popup records two (barrier and body).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RootSlot {
     pub(crate) first_node: NodeId,

@@ -12,12 +12,12 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::overlay_response::OverlayClose;
 use crate::widgets::button::Button;
 use crate::widgets::modal::Modal;
 use crate::widgets::popup::Popup;
-use crate::widgets::popup::click_outside::ClickOutside;
 use glam::{UVec2, Vec2};
 
 #[test]
@@ -171,7 +171,7 @@ fn modal_hears_escape_even_while_a_popup_below_holds_keyboard_claim() {
 
 /// A dismissed modal hands both streams back on the next frame; a dismissing
 /// frame's claim could otherwise swallow the click landing where it was.
-/// This does not pin `Ui::release_input_scope` (a second record pass already
+/// This does not pin `Ui::withdraw_input_scope` (a second record pass already
 /// drops the claim; `release` is pinned in `input::tests::keyboard`).
 #[test]
 fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {

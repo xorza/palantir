@@ -11,19 +11,19 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::theme::modal::ModalTheme;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
+use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::overlay_response::{OverlayClose, OverlayResponse};
+use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
-use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::popup::click_outside::ClickOutside;
 use std::rc::Rc;
 
 /// A centered dialog over a dimming, input-blocking backdrop in [`Layer::Modal`].
-/// The backdrop or Esc closes it as [`OverlayClose::Dismissed`] unless
-/// [`Self::click_outside`] blocks them; the body's [`CloseHandle`] closes it from inside.
+/// The backdrop or Esc closes it as [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed)
+/// unless [`Self::click_outside`] blocks them; the body's [`CloseHandle`] closes it from inside.
 ///
 /// On the frame it opens, focus moves to its first Tab stop, however it was opened, as
 /// WAI-ARIA's dialog pattern asks (<https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/>),
@@ -74,8 +74,9 @@ impl<'a> Modal<'a> {
     }
 
     /// What a press on the backdrop and Esc do: [`ClickOutside::Dismiss`], the default, closes it
-    /// as [`OverlayClose::Dismissed`]; [`ClickOutside::Block`] swallows both and stays open, for a
-    /// dialog the user must answer, as a confirmation of unsaved work is.
+    /// as [`OverlayClose::Dismissed`](crate::OverlayClose::Dismissed); [`ClickOutside::Block`]
+    /// swallows both and stays open, for a dialog the user must answer, as a confirmation of
+    /// unsaved work is.
     ///
     /// # Panics
     ///
@@ -122,24 +123,20 @@ impl<'a> Modal<'a> {
             layer: Layer::Modal,
             anchor: None,
             backdrop: Backdrop::Root,
+            click_outside: self.click_outside,
         };
         let scope = OverlayScope::claim(ui, spec, &mut root);
         // A root with no rect from the last frame did not record then.
         let opened = ui.response_for(root_id).rect.is_none();
-        let handle = CloseHandle::default();
-        let turn = scope.record(ui, |ui| {
+        let turn = scope.record(ui, |ui, handle| {
             root.record(ui, Some(&dim), |ui| {
-                panel.record(ui, Some(panel_chrome), |ui| body(ui, &handle))
+                panel.record(ui, Some(panel_chrome), |ui| body(ui, handle))
             })
         });
         let response = OverlayResponse {
             id: root_id,
             opened,
-            close: OverlayClose::of(
-                handle.requested() || turn.close_requested,
-                self.click_outside == ClickOutside::Dismiss
-                    && (turn.pressed_outside || turn.escape_pressed),
-            ),
+            close: turn.close,
             inner: turn.inner,
         };
         scope.finish(ui, response)
@@ -151,7 +148,7 @@ impl Modal<'_> {
     /// input it took from the layers below goes back at once. No-op for a modal its response
     /// already closed.
     pub fn close(ui: &mut Ui, id: WidgetId) {
-        ui.release_input_scope(id);
+        ui.withdraw_input_scope(id);
     }
 
     /// Paints `chrome` as the panel chrome; [`Chrome::NONE`] suppresses the themed chrome.

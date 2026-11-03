@@ -489,8 +489,8 @@ fn hover_clears_after_tooltip_visible() {
 /// `Ui::layer(Tooltip)` while the scope is `Popup`).
 #[test]
 fn tooltip_inside_popup_records_without_panic() {
+    use crate::widget_core::click_outside::ClickOutside;
     use crate::widgets::popup::Popup;
-    use crate::widgets::popup::click_outside::ClickOutside;
 
     let mut h = Harness::mono(SURFACE);
 

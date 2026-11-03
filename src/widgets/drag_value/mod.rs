@@ -469,7 +469,7 @@ impl Configure for DragValue<'_> {
 fn typed(ui: &Ui) -> bool {
     ui.keyboard_events()
         .iter()
-        .any(|press| KeyClass::of(*press) == KeyClass::Text && !press.text.is_empty())
+        .any(|press| press.class() == KeyClass::Text && !press.text.is_empty())
 }
 
 /// An interned suffix's characters copied out of the arena for formatting; retained, so a steady suffix allocates once.

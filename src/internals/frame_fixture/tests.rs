@@ -78,11 +78,6 @@ const EXCLUDED: &[(&str, &str)] = &[
         "needs a `wgpu::Device` the deviceless CPU/alloc harnesses don't have",
     ),
     (
-        "close_handle",
-        "the close request an overlay hands its body, not a widget — `popup` \
-             covers what hands it out",
-    ),
-    (
         "tabs",
         "shows one page at a time — putting any of the fixture's cards behind a \
              strip would stop the workload recording them, and a page of its own \
@@ -181,9 +176,9 @@ fn covered_and_excluded_account_for_every_public_widget() {
 }
 
 /// Nothing this tree records on an overlay layer may capture input aimed at a
-/// host beside it: `Popup::show` records a full-surface eater and the status
+/// host beside it: `Popup::show` records a full-surface barrier and the status
 /// bar's toast is recorded every frame, so routing it through `Popup` once
-/// left the window unclickable. A click by id fails on the eater's rect.
+/// left the window unclickable. A click by id fails on the barrier's rect.
 #[test]
 fn overlays_never_capture_input_aimed_at_a_host_beside_the_fixture() {
     let nav = WidgetId::from_hash("frame_fixture::tests::host-nav");

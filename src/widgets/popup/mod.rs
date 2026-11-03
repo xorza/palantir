@@ -1,6 +1,5 @@
 //! The anchored floating body: the widget and the press-outside policy.
 
-pub(crate) mod click_outside;
 pub(crate) mod popup_trigger;
 pub(crate) mod trigger_state;
 
@@ -15,13 +14,13 @@ use crate::scene::layer::Layer;
 use crate::theme::menu::MenuTheme;
 use crate::theme::popup::PopupTheme;
 use crate::ui::Ui;
+use crate::widget_core::click_outside::ClickOutside;
+use crate::widget_core::close_handle::CloseHandle;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
-use crate::widget_core::overlay_response::{OverlayClose, OverlayResponse};
+use crate::widget_core::overlay_response::OverlayResponse;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
 use crate::widget_core::widget::Widget;
-use crate::widgets::close_handle::CloseHandle;
-use crate::widgets::popup::click_outside::ClickOutside;
 use glam::Vec2;
 use std::rc::Rc;
 
@@ -33,7 +32,7 @@ use std::rc::Rc;
 /// overlay; a context menu is a popup on [`Layer::Menu`].
 ///
 /// Outside clicks follow [`ClickOutside`]. Under the modal pair (`Block` /
-/// `Dismiss`, the default) a full-surface click-eater sits under the body and
+/// `Dismiss`, the default) a full-surface barrier sits under the body and
 /// the popup owns keyboard and pointer watches for everything below it.
 /// Focus is unchanged. Use [`ClickOutside::PassThrough`] to take neither.
 ///
@@ -99,7 +98,7 @@ impl<'a> Popup<'a> {
     /// of its own: the input the popup took from the layers below goes back at once. No-op for a
     /// popup that holds none ([`ClickOutside::PassThrough`]), or one its response already closed.
     pub fn close(ui: &mut Ui, id: WidgetId) {
-        ui.release_input_scope(id);
+        ui.withdraw_input_scope(id);
     }
 
     /// Record the overlay and its `body`, which gets a [`CloseHandle`].
@@ -116,22 +115,23 @@ impl<'a> Popup<'a> {
             chrome,
             style,
         } = self;
-        // Resolved before the layer switch so the body and eater ids are scoped
+        // Resolved before the layer switch so the body and barrier ids are scoped
         // to the trigger's site, not the side layer's root.
         let id = widget.resolve(ui);
         let margin = widget.authored_margin().unwrap_or(Spacing::ZERO);
         let anchor = anchor.map(|anchor| Self::landed(ui, id, anchor, margin));
-        let eater_id = Self::eater_id(id);
+        let barrier_id = Self::barrier_id(id);
         // Takes the pointer and the keys from lower layers together, or neither.
         let backdrop = if click_outside == ClickOutside::PassThrough {
             Backdrop::None
         } else {
-            Backdrop::Eater(eater_id)
+            Backdrop::Barrier(barrier_id)
         };
         let spec = OverlaySpec {
             layer,
             anchor,
             backdrop,
+            click_outside,
         };
         let scope = OverlayScope::claim(ui, spec, &mut widget);
         // A body with no rect from the last frame did not record then.
@@ -142,19 +142,13 @@ impl<'a> Popup<'a> {
         let slot = style.unwrap_or(&theme.popup);
         widget.configure().default_padding(slot.padding);
         let chrome = chrome.as_ref().unwrap_or(&slot.panel);
-        let handle = CloseHandle::default();
-        let turn = scope.record(ui, |ui| {
-            widget.record(ui, Some(chrome), |ui| body(ui, &handle))
+        let turn = scope.record(ui, |ui, handle| {
+            widget.record(ui, Some(chrome), |ui| body(ui, handle))
         });
-        let dismiss_mode = click_outside == ClickOutside::Dismiss;
         let response = OverlayResponse {
             id,
             opened,
-            // `Dismiss` also closes on Esc so hosts read one `closed()` signal.
-            close: OverlayClose::of(
-                handle.requested() || turn.close_requested,
-                dismiss_mode && (turn.pressed_outside || turn.escape_pressed),
-            ),
+            close: turn.close,
             inner: turn.inner,
         };
         scope.finish(ui, response)
@@ -207,9 +201,9 @@ impl Popup<'_> {
         landed.map_or(asked, Anchor::at_point)
     }
 
-    /// The full-surface click-eater under the popup `id`, which takes a press outside its body.
-    pub(crate) fn eater_id(id: WidgetId) -> WidgetId {
-        id.with("eater")
+    /// The full-surface barrier under the popup `id`, which takes a press outside its body.
+    pub(crate) fn barrier_id(id: WidgetId) -> WidgetId {
+        id.with("barrier")
     }
 
     /// Dress the popup as a menu panel: the menu theme's chrome, padding, row gap and minimum

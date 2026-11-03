@@ -107,11 +107,11 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
     );
 }
 
-/// A popup's full-surface invisible click-eater leaf must not contribute to damage on add or remove,
+/// A popup's full-surface invisible barrier leaf must not contribute to damage on add or remove,
 /// or opening or dismissing a popup would blow past the full-repaint coverage threshold. The signal
 /// is that the filter stays `Partial`: no full-surface rect lands in `region`.
 #[test]
-fn popup_eater_does_not_force_full_repaint() {
+fn popup_barrier_does_not_force_full_repaint() {
     let mut h = Harness::mono(DISPLAY.physical);
     let anchor = Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
@@ -129,7 +129,7 @@ fn popup_eater_does_not_force_full_repaint() {
             });
     });
 
-    // Frame 2: popup gone, body and eater both removed. Without the paints-gate the eater's
+    // Frame 2: popup gone, body and barrier both removed. Without the paints-gate the barrier's
     // full-surface prev rect would dominate the region.
     let out = frame(&mut h, |ui| {
         Block::new()
@@ -139,13 +139,13 @@ fn popup_eater_does_not_force_full_repaint() {
     });
     let Some(Damage::Partial(damage)) = out else {
         panic!(
-            "popup dismissal escalated to {out:?}; eater contributed full-surface \
+            "popup dismissal escalated to {out:?}; barrier contributed full-surface \
              rect despite painting nothing",
         );
     };
     assert!(
         damage.coverage < 0.5,
-        "damage region covers {:.1}% of surface — eater leaked into damage",
+        "damage region covers {:.1}% of surface — barrier leaked into damage",
         100.0 * damage.coverage
     );
 }

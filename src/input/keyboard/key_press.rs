@@ -1,6 +1,7 @@
 //! One key-down as the input queue carries it: key, modifiers, repeat.
 
 use crate::common::platform::PLATFORM;
+use crate::input::key_class::KeyClass;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_text::KeyText;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -21,6 +22,11 @@ pub struct KeyPress {
 }
 
 impl KeyPress {
+    /// What kind of press this is, which decides the input scope that takes it.
+    pub fn class(self) -> KeyClass {
+        KeyClass::of(self)
+    }
+
     /// A press that typed `text` and is no key (an IME commit); no modifiers.
     pub(crate) const fn typed(text: KeyText) -> Self {
         Self {

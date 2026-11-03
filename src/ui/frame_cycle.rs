@@ -190,7 +190,7 @@ impl<'a> FrameCycle<'a> {
     /// - no watcher fires (`watch_*` bypasses hit-testing and would see pre-frame events twice),
     /// - no press resolves focus against an empty hit index ([`FocusPolicy`](crate::input::policy::FocusPolicy) would read it as a press on nothing).
     ///
-    /// The scratch starts with the real focus, and the real input keeps what the pass asked of it (`set_focus`, `clear_focus`, `release_input_scope`). Afterwards the real input is restored and `pointer_pos` re-routed against the new cascade. Relayout/repaint requests are withdrawn, else frame 1 runs three record passes instead of two.
+    /// The scratch starts with the real focus, and the real input keeps what the pass asked of it (`set_focus`, `clear_focus`, `withdraw_input_scope`). Afterwards the real input is restored and `pointer_pos` re-routed against the new cascade. Relayout/repaint requests are withdrawn, else frame 1 runs three record passes instead of two.
     ///
     /// [`InputState`]: crate::input_state::InputState
     fn warmup<T: App>(&mut self, win: WindowToken, app: &mut T) {
