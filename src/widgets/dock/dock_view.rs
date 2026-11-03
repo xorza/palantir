@@ -207,7 +207,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
             cx.node(ui, DockState::<T>::ROOT, DockPath::ROOT);
             cx.tab_menu(ui);
             if let Some(tab) = carried {
-                ui.set_cursor(CursorIcon::Grabbing);
+                ui.request_cursor(CursorIcon::Grabbing);
                 cx.drag_feedback(ui, tab);
             }
         });

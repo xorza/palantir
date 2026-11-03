@@ -54,11 +54,11 @@ fn validated_springs_remain_finite_and_settle() {
             let row = &map.rows[&(id, SLOT)];
             let velocity = *support::spring_velocity(row);
             assert!(
-                result.cur.is_finite() && velocity.is_finite(),
+                result.value.is_finite() && velocity.is_finite(),
                 "{label} became non-finite at step {i}: {row:?}",
             );
             if result.settled {
-                assert_eq!(result.cur, -100.0, "{label} did not snap to target");
+                assert_eq!(result.value, -100.0, "{label} did not snap to target");
                 assert_eq!(velocity, 0.0, "{label} retained settled velocity");
                 settled_at = Some(i);
                 break;
@@ -189,10 +189,10 @@ fn spring_parameters_change_trajectory() {
             AnimationSpec::SPRING,
             0.016,
         )
-        .cur;
+        .value;
     let custom = custom_map
         .step(AnimationRequest::new(id, SLOT, 1.0), custom, 0.016)
-        .cur;
+        .value;
     assert_ne!(default, custom);
 }
 
@@ -212,7 +212,7 @@ fn spring_step_at_max_dt_stays_bounded() {
         AnimationSpec::SPRING,
         0.1,
     );
-    assert_eq!(r.cur, 400.0);
+    assert_eq!(r.value, 400.0);
     let r = map.step(
         AnimationRequest::new(id, SLOT, 80.0),
         AnimationSpec::SPRING,
@@ -222,7 +222,7 @@ fn spring_step_at_max_dt_stays_bounded() {
     // 0.1 + 13 sin 0.1)` ≈ 279.96.
     let t = f64::from(0.1f32);
     let expected = 80.0 + 320.0 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
-    domain::internals::assert_close(r.cur, expected, 1e-4, "a few f32 ulps at 280");
+    domain::internals::assert_close(r.value, expected, 1e-4, "a few f32 ulps at 280");
 }
 
 /// A frame may run `build` twice; the guard on `render_frame_id` advances the
@@ -258,7 +258,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
             render_frame_id: frame - 1,
         },
     );
-    assert_eq!((from_rest_a.cur, from_rest_b.cur), (0.0, 0.0));
+    assert_eq!((from_rest_a.value, from_rest_b.value), (0.0, 0.0));
 
     let pass_a = map.tick(
         AnimationRequest::new(id, SLOT, 1.0),
@@ -269,8 +269,8 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         },
     );
     let eased = Easing::OutCubic.apply(0.016 / 0.12);
-    assert_eq!(pass_a.cur, eased, "FAST: 16 ms of 120 ms, out-cubic");
-    let pass_a_cur = pass_a.cur;
+    assert_eq!(pass_a.value, eased, "FAST: 16 ms of 120 ms, out-cubic");
+    let pass_a_cur = pass_a.value;
     let pass_a_elapsed = support::duration_motion(&map.rows[&(id, SLOT)]).elapsed;
 
     let pass_b = map.tick(
@@ -282,7 +282,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         },
     );
     assert_eq!(
-        pass_b.cur, pass_a_cur,
+        pass_b.value, pass_a_cur,
         "pass B with same render_frame_id must not advance current",
     );
     assert_eq!(
@@ -300,7 +300,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         },
     );
     assert_eq!(
-        pass_b_retarget.cur, pass_a_cur,
+        pass_b_retarget.value, pass_a_cur,
         "retargeting in pass B updates segment but doesn't re-step",
     );
     assert_eq!(map.rows[&(id, SLOT)].target, 5.0);
@@ -318,7 +318,7 @@ fn second_tick_in_same_frame_does_not_double_advance() {
         },
     );
     assert_eq!(
-        next.cur,
+        next.value,
         pass_a_cur + (5.0 - pass_a_cur) * eased,
         "next frame eases 16 ms toward 5.0 from pass A's current",
     );
@@ -420,7 +420,7 @@ fn a_spring_at_a_short_frame_settles_on_its_target() {
             DT,
         );
         if r.settled {
-            assert_eq!(r.cur, 400.0);
+            assert_eq!(r.value, 400.0);
             settled_at = Some(step);
             break;
         }
@@ -453,7 +453,7 @@ fn color_spring_converges_to_target() {
             AnimationSpec::SPRING,
             0.016,
         );
-        last = r.cur;
+        last = r.value;
         if r.settled {
             settled_at = Some(i);
             break;
@@ -510,7 +510,7 @@ fn solid_brush_spring_matches_color_trajectory() {
             AnimationSpec::SPRING,
             0.016,
         );
-        assert_eq!(brush.cur.as_solid(), Some(color.cur));
+        assert_eq!(brush.value.as_solid(), Some(color.value));
         assert_eq!(brush.settled, color.settled);
         if brush.settled {
             settled_at = Some(i);

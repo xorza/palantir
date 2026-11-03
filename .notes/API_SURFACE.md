@@ -82,13 +82,23 @@ AnchorAlign
         Center
         End
 
+Animated
+    struct Animated<T: Animatable>
+        pub value: T
+        pub settled: bool
+        impl<T: Clone + Animatable> Clone for Animated<T>
+        impl<T: Copy + Animatable> Copy for Animated<T>
+        impl<T: Debug + Animatable> Debug for Animated<T>
+        impl<T: Eq + Animatable> Eq for Animated<T>
+        impl<T: PartialEq + Animatable> PartialEq for Animated<T>
+
 AnimatedLook
     struct AnimatedLook: Animatable, Clone, Debug, Default, PartialEq
         pub chrome: Chrome
         pub text: TextStyle
 
 AnimationSpec
-    struct AnimationSpec: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+    struct AnimationSpec: Clone, Copy, Debug, Default, Deserialize<'de>, PartialEq, Serialize
         pub const FAST: Self
         pub const MEDIUM: Self
         pub const THEME: Self
@@ -706,6 +716,7 @@ Easing
         OutQuart
         OutBack
         pub const fn apply(self, t: f32) -> f32
+        pub const fn curve(self) -> fn(f32) -> f32
 
 EditEnd
     enum EditEnd: Clone, Copy, Debug, Eq, PartialEq
@@ -1505,7 +1516,7 @@ Metrics
         pub radius: RadiusSteps
         pub stroke: StrokeSteps
         pub float_shadow: ShadowGeometry
-        pub transition: Option<AnimationSpec>
+        pub transition: AnimationSpec
         pub const DEFAULT: Self
 
 Modal
@@ -2123,7 +2134,7 @@ SlotDefaults
     struct SlotDefaults: Animatable, Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
         pub padding: Spacing
         pub margin: Spacing
-        pub animation: Option<AnimationSpec>
+        pub animation: AnimationSpec
 
 SpaceSteps
     struct SpaceSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -2686,8 +2697,8 @@ Ui
         pub const fn theme(&self) -> &Rc<Theme>
         pub const fn theme_for(&self, scheme: ColorScheme) -> &Rc<Theme>
         pub fn set_theme_for(&mut self, scheme: ColorScheme, theme: impl Into<Rc<Theme>>)
-        pub const fn theme_transition(&self) -> Option<AnimationSpec>
-        pub fn set_theme_transition(&mut self, spec: impl Into<Option<AnimationSpec>>)
+        pub const fn theme_transition(&self) -> AnimationSpec
+        pub fn set_theme_transition(&mut self, spec: AnimationSpec)
         pub fn scheme_preference(&self) -> SchemePreference
         pub fn set_scheme_preference(&mut self, preference: SchemePreference)
         pub const fn color_scheme(&self) -> ColorScheme
@@ -2703,7 +2714,7 @@ Ui
         pub fn shortcut_pressed(&mut self, shortcut: impl Into<Shortcut>) -> bool
         pub fn request_relayout(&mut self)
         pub const fn now(&self) -> Duration
-        pub const fn set_cursor(&mut self, cursor: CursorIcon)
+        pub const fn request_cursor(&mut self, cursor: CursorIcon)
         pub const fn cursor(&self) -> CursorIcon
         pub const fn set_vsync(&mut self, vsync: Vsync)
         pub const fn vsync(&self) -> Vsync
@@ -2739,7 +2750,7 @@ Ui
         pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn singleton<S: 'static>(&self) -> Option<&S>
         pub fn with_singleton<S: Default + 'static, R>(&mut self, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
-        pub fn animate<V: Animatable>(&mut self, request: AnimationRequest<V>, spec: impl Into<Option<AnimationSpec>>) -> V
+        pub fn animate<V: Animatable>(&mut self, request: AnimationRequest<V>, spec: AnimationSpec) -> Animated<V>
         pub const fn focus(&self) -> Option<WidgetId>
         pub fn is_focus_within(&self, ancestor: WidgetId) -> bool
         pub fn is_hover_within(&self, ancestor: WidgetId) -> bool
@@ -2760,10 +2771,8 @@ Ui
         pub const fn is_focus_visible(&self) -> bool
         pub const fn focus_first_within(&mut self, ancestor: WidgetId)
         pub const fn pointer_pos(&mut self) -> Option<Vec2>
-        pub fn pointer_local(&mut self, id: WidgetId) -> Option<Vec2>
         pub const fn modifiers(&mut self) -> Modifiers
         pub const fn peek_pointer_pos(&self) -> Option<Vec2>
-        pub fn peek_pointer_local(&self, id: WidgetId) -> Option<Vec2>
         pub const fn peek_modifiers(&self) -> Modifiers
         pub const fn focus_policy(&self) -> FocusPolicy
         pub const fn set_focus_policy(&mut self, p: FocusPolicy)
@@ -3003,7 +3012,7 @@ widget::AnimationRequest
         pub target: T
         pub key: Option<AnimationKey>
         pub fn new(id: WidgetId, slot: impl Into<AnimationSlot>, target: T) -> Self
-        pub const fn key(self, key: AnimationKey) -> Self
+        pub const fn with_key(self, key: AnimationKey) -> Self
         impl<T: Clone + Animatable> Clone for AnimationRequest<T>
         impl<T: Debug + Animatable> Debug for AnimationRequest<T>
 
@@ -3202,6 +3211,7 @@ widget::PaintAnimation
         pub channel: PaintChannel
         pub timing: PaintTiming
         pub curve: PaintCurve
+        pub motion: PaintMotion
         pub fn alpha(from: f32, to: f32) -> Self
         pub fn turn(from: f32, to: f32) -> Self
         pub const fn with_alpha(self, from: f32, to: f32) -> Self
@@ -3211,6 +3221,7 @@ widget::PaintAnimation
         pub const fn with_repeat(self, repeat: PaintRepeat) -> Self
         pub const fn with_steps(self, n: u32) -> Self
         pub const fn with_curve(self, curve: PaintCurve) -> Self
+        pub const fn with_motion(self, motion: PaintMotion) -> Self
 
 widget::PaintChannel
     struct PaintChannel: Clone, Copy, Debug, PartialEq
@@ -3219,6 +3230,11 @@ widget::PaintChannel
 
 widget::PaintCurve
     type PaintCurve = fn(f32) -> f32
+
+widget::PaintMotion
+    enum PaintMotion: Clone, Copy, Debug, Default, Eq, PartialEq
+        Decorative
+        Progress
 
 widget::PaintRange
     struct PaintRange: Clone, Copy, Debug, PartialEq
@@ -3408,9 +3424,6 @@ widget::Widget
 
 widget::curves
     mod
-
-widget::curves::linear
-    const fn linear(t: f32) -> f32
 
 widget::curves::sine
     fn sine(t: f32) -> f32

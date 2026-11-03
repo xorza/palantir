@@ -1,5 +1,6 @@
 //! `Ui::animate` end to end: the repaint it requests and the rows it drops.
 
+use crate::animation::animated::Animated;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::tests::support::{self, AnimationUi, SLOT};
@@ -32,7 +33,7 @@ fn animate_drives_repaint_until_settle() {
         .frame(|ui| {
             let _ = ui.animate(
                 AnimationRequest::new(id, SLOT, 0.0_f32),
-                Some(AnimationSpec::FAST),
+                AnimationSpec::FAST,
             );
             Block::new().id(id).show(ui);
         })
@@ -47,7 +48,7 @@ fn animate_drives_repaint_until_settle() {
         .frame(|ui| {
             let _ = ui.animate(
                 AnimationRequest::new(id, SLOT, 1.0_f32),
-                Some(AnimationSpec::FAST),
+                AnimationSpec::FAST,
             );
             Block::new().id(id).show(ui);
         })
@@ -58,36 +59,44 @@ fn animate_drives_repaint_until_settle() {
     let frames = h.settled(&mut |ui: &mut Ui| {
         let _ = ui.animate(
             AnimationRequest::new(id, SLOT, 1.0_f32),
-            Some(AnimationSpec::FAST),
+            AnimationSpec::FAST,
         );
         Block::new().id(id).show(ui);
     });
     assert_eq!(frames, 8, "the 8th 16 ms frame passes 120 ms");
 }
 
-/// `Ui::animate(..., None)` returns `target`, allocates no row and requests
-/// no repaint. [`AnimationSpec::SNAP`] must behave the same.
+/// `Ui::animate(..., SNAP)` returns `target` at rest, allocates no row and requests no repaint.
 #[test]
-fn animate_with_none_spec_snaps_and_skips_repaint() {
-    for (label, spec) in [("none", None), ("snap", Some(AnimationSpec::SNAP))] {
-        let AnimationUi { mut h, id } = support::setup_animation_ui("anim-none");
-        let passes = h.at(Duration::from_millis(16)).frame_passes(|ui| {
-            let v1 = ui.animate(AnimationRequest::new(id, SLOT, 7.0_f32), spec);
-            let v2 = ui.animate(AnimationRequest::new(id, SLOT, 9.0_f32), spec);
-            Block::new().id(id).show(ui);
-            [v1, v2]
-        });
-        assert_eq!(*passes.a(), [7.0, 9.0], "{label}");
-        assert!(
-            !passes.report().repaint_requested,
-            "{label} spec must never request a repaint"
+fn animate_with_snap_spec_snaps_and_skips_repaint() {
+    let AnimationUi { mut h, id } = support::setup_animation_ui("anim-snap");
+    let passes = h.at(Duration::from_millis(16)).frame_passes(|ui| {
+        let first = ui.animate(
+            AnimationRequest::new(id, SLOT, 7.0_f32),
+            AnimationSpec::SNAP,
         );
-        assert_eq!(
-            h.animation_row_count::<f32>(),
-            0,
-            "{label} spec must not allocate a row",
+        let second = ui.animate(
+            AnimationRequest::new(id, SLOT, 9.0_f32),
+            AnimationSpec::SNAP,
         );
-    }
+        Block::new().id(id).show(ui);
+        [first, second]
+    });
+    assert_eq!(
+        *passes.a(),
+        [
+            Animated {
+                value: 7.0,
+                settled: true
+            },
+            Animated {
+                value: 9.0,
+                settled: true
+            }
+        ]
+    );
+    assert!(!passes.report().repaint_requested);
+    assert_eq!(h.animation_row_count::<f32>(), 0);
 }
 
 /// Switching from `Some(spec)` to `None` mid-flight drops the stale row, so a later retarget starts fresh.
@@ -97,14 +106,14 @@ fn animate_some_then_none_drops_stale_row() {
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
         let _ = ui.animate(
             AnimationRequest::new(id, SLOT, 0.0_f32),
-            Some(AnimationSpec::FAST),
+            AnimationSpec::FAST,
         );
         Block::new().id(id).show(ui);
     });
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
         let _ = ui.animate(
             AnimationRequest::new(id, SLOT, 1.0_f32),
-            Some(AnimationSpec::FAST),
+            AnimationSpec::FAST,
         );
         Block::new().id(id).show(ui);
     });
@@ -115,7 +124,10 @@ fn animate_some_then_none_drops_stale_row() {
     );
 
     let _ = h.at(Duration::from_millis(60)).frame(|ui| {
-        let _ = ui.animate(AnimationRequest::new(id, SLOT, 1.0_f32), None);
+        let _ = ui.animate(
+            AnimationRequest::new(id, SLOT, 1.0_f32),
+            AnimationSpec::SNAP,
+        );
         Block::new().id(id).show(ui);
     });
     assert_eq!(
@@ -158,7 +170,11 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let _ = h.at(Duration::from_millis(16)).frame(|ui| {
         let target = look.to_animated(fallback);
         captured.set(Some(
-            ui.animate(AnimationRequest::new(id, Widget::LOOK_SLOT, target), None),
+            ui.animate(
+                AnimationRequest::new(id, Widget::LOOK_SLOT, target),
+                AnimationSpec::SNAP,
+            )
+            .value,
         ));
         Block::new().id(id).show(ui);
     });
@@ -189,7 +205,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         let target = look2.to_animated(fallback);
         let _ = ui.animate(
             AnimationRequest::new(id, Widget::LOOK_SLOT, target),
-            Some(AnimationSpec::FAST),
+            AnimationSpec::FAST,
         );
         Block::new().id(id).show(ui);
     });
@@ -217,10 +233,13 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = h.at(Duration::from_millis(48)).frame(|ui| {
         let target = look3.to_animated(ambient);
-        captured.set(Some(ui.animate(
-            AnimationRequest::new(id.with("own"), Widget::LOOK_SLOT, target),
-            None,
-        )));
+        captured.set(Some(
+            ui.animate(
+                AnimationRequest::new(id.with("own"), Widget::LOOK_SLOT, target),
+                AnimationSpec::SNAP,
+            )
+            .value,
+        ));
         Block::new().id(id).show(ui);
     });
     let snap = captured.take().expect("animate ran");
@@ -243,10 +262,10 @@ fn a_motion_from_rest_starts_on_the_frame_of_the_change() {
     let record = |h: &mut Harness, at: Duration, target: f32| {
         let value = cell::Cell::new(f32::NAN);
         h.at(at).frame(|ui| {
-            value.set(ui.animate(
-                AnimationRequest::new(id, SLOT, target),
-                Some(AnimationSpec::FAST),
-            ));
+            value.set(
+                ui.animate(AnimationRequest::new(id, SLOT, target), AnimationSpec::FAST)
+                    .value,
+            );
             Block::new().id(id).show(ui);
         });
         value.get()
@@ -270,10 +289,9 @@ fn reduced_motion_and_a_hidden_span_snap_every_transition() {
     let step = |h: &mut Harness, id: WidgetId, target: f32| {
         let mut value = f32::NAN;
         let report = h.frame(|ui| {
-            value = ui.animate(
-                AnimationRequest::new(id, SLOT, target),
-                Some(AnimationSpec::FAST),
-            );
+            value = ui
+                .animate(AnimationRequest::new(id, SLOT, target), AnimationSpec::FAST)
+                .value;
             Block::new().id(id).show(ui);
         });
         (value, report.repaint_requested)

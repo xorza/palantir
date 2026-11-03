@@ -63,7 +63,7 @@ impl ResponseState {
         self.left.phase = ButtonPhase::Up { click: Some(1) };
     }
 
-    /// Everything the pointer and wheel contributed this frame, back to default. Geometry stays: `rect`, `transform`, `pointer_over`, and `pointer_local`, so it agrees with [`Ui::peek_pointer_local`](crate::Ui::peek_pointer_local).
+    /// Everything the pointer and wheel contributed this frame, back to default. Geometry stays: `rect`, `transform`, `pointer_over`, and `pointer_local`, which say where the pointer is, not what it did.
     #[inline]
     fn clear_interaction(&mut self) {
         self.left = ButtonState::default();

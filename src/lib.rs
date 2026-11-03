@@ -203,7 +203,8 @@ pub mod widget {
     /// `fn(f32) -> f32`, see [`PaintCurve`].
     pub use crate::shape::paint_animation::curves;
     pub use crate::shape::paint_animation::{
-        PaintAnimation, PaintChannel, PaintCurve, PaintRange, PaintRepeat, PaintSteps, PaintTiming,
+        PaintAnimation, PaintChannel, PaintCurve, PaintMotion, PaintRange, PaintRepeat, PaintSteps,
+        PaintTiming,
     };
     pub use crate::shape::polyline::PolylineShape;
     pub use crate::shape::rect::RectShape;
@@ -228,6 +229,7 @@ pub mod widget {
     pub use palantir_anim_derive::Animatable;
 }
 
+pub use animation::animated::Animated;
 pub use animation::animation_spec::AnimationSpec;
 pub use animation::easing::Easing;
 pub use clipboard::{Clipboard, ClipboardUnavailable};

@@ -1,6 +1,9 @@
 //! [`OffscreenHost`]: the headless peer of [`WinitHost`](crate::WinitHost), rendering into a caller-supplied [`RenderTarget`] with no winit and no swapchain.
 //!
-//! **One window, no window lifecycle.** A frame that records [`Ui::open_window`] or [`Ui::close_window`] panics rather than silently discarding the request. Window *settings* ([`Ui::set_cursor`](crate::Ui::set_cursor), [`Ui::set_vsync`](crate::Ui::set_vsync)) are accepted but inert.
+//! **One window, no window lifecycle.** A frame that records [`Ui::open_window`] or
+//! [`Ui::close_window`] leaves the command in [`OffscreenHost::window_commands`] for the caller.
+//! Window *settings* ([`Ui::request_cursor`](crate::Ui::request_cursor),
+//! [`Ui::set_vsync`](crate::Ui::set_vsync)) are accepted but inert.
 //!
 //! Every rejection is a caller mistake, so `frame` panics rather than returning a `Result`.
 

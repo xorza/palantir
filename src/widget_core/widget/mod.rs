@@ -242,9 +242,10 @@ impl Widget {
             .default_margin(margin);
         let id = self.resolve(ui);
         ui.animate(
-            AnimationRequest::new(id, Self::LOOK_SLOT, target).key(key),
+            AnimationRequest::new(id, Self::LOOK_SLOT, target).with_key(key),
             animation,
         )
+        .value
     }
 
     /// Whether `shortcut` was pressed and granted to this widget, for a widget that

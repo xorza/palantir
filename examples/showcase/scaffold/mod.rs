@@ -9,7 +9,7 @@ pub(crate) mod tokens;
 /// resolves it, so a rename breaks the build.
 ///
 /// - `api!(Ui::keep_open)`: a value path (function, method, associated const or unit variant).
-/// - `api!(Ui::animate as fn(&mut Ui, ..) -> f32)`: a generic function; the pointer type fixes
+/// - `api!(Ui::animate as fn(&mut Ui, ..) -> Animated<f32>)`: a generic function; the pointer type fixes
 ///   arguments a turbofish can't.
 /// - `api!(type TabbedView)`: a type, trait or module item, for a method whose generic receiver
 ///   neither form can name.

@@ -8,8 +8,8 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
+use crate::shape::paint_animation::PaintMotion;
 use crate::shape::paint_animation::PaintRepeat;
-use crate::shape::paint_animation::curves;
 use crate::shape::style::LineCap;
 use crate::theme::spinner::SpinnerTheme;
 use crate::ui::Ui;
@@ -119,7 +119,7 @@ impl<'a> Spinner<'a> {
                     PaintAnimation::turn(0.0, 1.0)
                         .with_period(period)
                         .with_repeat(PaintRepeat::Forever)
-                        .with_curve(curves::linear),
+                        .with_motion(PaintMotion::Progress),
                 );
             })
             .response

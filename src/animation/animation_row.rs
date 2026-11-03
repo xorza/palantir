@@ -1,5 +1,6 @@
 //! One animated value's cross-frame row: position, target and motion model.
 
+use crate::animation::animated::Animated;
 use crate::animation::animation_key::AnimationKey;
 use crate::animation::animation_spec::AnimationMotion;
 use crate::animation::duration;
@@ -195,7 +196,7 @@ impl<T: Animatable> MotionRow<T> {
         }
     }
 
-    pub(super) fn advance(&mut self, target: T, dt: f32) -> TickResult<T> {
+    pub(super) fn advance(&mut self, target: T, dt: f32) -> Animated<T> {
         match self {
             Self::Duration {
                 start_offset,
@@ -209,13 +210,13 @@ impl<T: Animatable> MotionRow<T> {
                 let progress = progress(*elapsed, *secs * *shortening);
                 if progress >= 1.0 {
                     *start_offset = T::zero();
-                    return TickResult {
-                        cur: target,
+                    return Animated {
+                        value: target,
                         settled: true,
                     };
                 }
-                TickResult {
-                    cur: placed(
+                Animated {
+                    value: placed(
                         &target,
                         &start_offset.clone().scale(1.0 - ease.apply(progress)),
                     ),
@@ -230,8 +231,8 @@ impl<T: Animatable> MotionRow<T> {
                 let step = spring.step(offset.clone(), velocity.clone(), dt);
                 *velocity = step.velocity;
                 *offset = step.offset;
-                TickResult {
-                    cur: if step.settled {
+                Animated {
+                    value: if step.settled {
                         target
                     } else {
                         placed(&target, offset)
@@ -265,13 +266,6 @@ fn progress(elapsed: f32, length: f32) -> f32 {
     if length > 0.0 { elapsed / length } else { 1.0 }
 }
 
-/// One tick's value, and whether the motion is at rest on its target.
-#[derive(Debug)]
-pub(crate) struct TickResult<T: Animatable> {
-    pub(crate) cur: T,
-    pub(crate) settled: bool,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct AnimationRow<T: Animatable> {
     pub(super) target: T,
@@ -295,15 +289,10 @@ impl<T: Animatable> AnimationRow<T> {
     /// One `dt` toward the target from `cur`, its value now, unless pass A of this frame already
     /// spent it: pass B only updates the target, the offset or the velocity, and another `dt`
     /// would double the speed on any input frame.
-    pub(super) fn advance_once(
-        &mut self,
-        cur: T,
-        already_advanced: bool,
-        dt: f32,
-    ) -> TickResult<T> {
+    pub(super) fn advance_once(&mut self, cur: T, already_advanced: bool, dt: f32) -> Animated<T> {
         if already_advanced {
-            return TickResult {
-                cur,
+            return Animated {
+                value: cur,
                 settled: false,
             };
         }

@@ -94,10 +94,12 @@ impl ToggleKind for Knob<'_> {
         // One row from off to on, as Flutter's `Switch` runs one position: the ends are read each
         // frame, so a theme that moves the track or changes an ink carries the knob with it, and
         // the row settles on a share of the travel, not on pixels.
-        let on = ui.animate(
-            AnimationRequest::new(knob_id, "on", f32::from(checked)),
-            slot.defaults.animation,
-        );
+        let on = ui
+            .animate(
+                AnimationRequest::new(knob_id, "on", f32::from(checked)),
+                slot.defaults.animation,
+            )
+            .value;
         let knob_x = Animatable::lerp(geometry.off_x, geometry.on_x, on);
         // A spring slides the knob past an end, but a color past an end leaves the two inks.
         let knob_color =

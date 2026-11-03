@@ -201,6 +201,10 @@ Facts and sources: `.notes/research/2026-11-01-reel.md`.
   Flutter's `MaterialApp.themeAnimationStyle`. Refused: a separate animating call, one more
   method for a choice the setting holds; a spec in `Metrics`, a field the transition itself
   would snap; a spec per call, which a system change has no call to carry.
+- **No motion is `AnimationSpec::SNAP`**, the spec's `Default`, at every door: `Ui::animate`,
+  `set_theme_transition`, `Metrics::transition` and a slot's `animation`, which a theme file
+  that leaves it out reads as a snap. Refused: `Option<AnimationSpec>` beside `SNAP`, two
+  spellings of one choice that each caller had to check.
 - **Font sizes move unquantized.** The glyph atlas neither grows nor evicts over a 300 ms move
   of 40 lines from 14 to 18 px at scale 2, and shape keys already quantize to 1/64 px. Refused:
   whole-pixel sizes during a transition, which step the layout visibly for no measured saving.
@@ -272,7 +276,9 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
   `hidden`). `default_*` is a fallback, `start_*` a first-frame state. Placement alone is a
   preposition: `at`, `at_origin`, `fixed_at`, `anchor`.
 - **Getters** are the noun, never `get_*`. `Ui` state pairs `x()` / `set_x(v)`; an action is a
-  verb; a read that wakes the next frame has a `peek_*` twin.
+  verb. A read of a level the pointer or the modifiers hold, `pointer_pos` and `modifiers`, wakes
+  the frame its change lands in, and has a `peek_*` twin that does not, for a read another event
+  already woke; no other read has one.
 - **Conversions** as std: `as_*` views, `to_*` computes, `from_*` goes back.
 - **Predicates.** `is_*`, `has_*`, `can_*` for a property; a third-person verb for a relation
   (`contains`, `approx_eq`).

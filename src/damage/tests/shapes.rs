@@ -1,5 +1,6 @@
 //! What one node redrawing damages, shape by shape.
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::damage::Damage;
 use crate::damage::tests::support::{BLUE, DISPLAY, RED, frame, one_frame};
 use crate::host::harness::Harness;
@@ -204,7 +205,7 @@ fn button_hover_and_unhover_damage_cover_only_the_button() {
     for entering in [true, false] {
         let direction = if entering { "hover" } else { "unhover" };
         let mut h = Harness::mono(UVec2::new(400, 400));
-        h.ui_mut().theme_mut().button.defaults.animation = None;
+        h.ui_mut().theme_mut().button.defaults.animation = AnimationSpec::SNAP;
         let hot = build(&mut h);
         let hot_rect = h.ui().arranged_rect(Layer::Main, hot);
         let (off, on) = (Vec2::new(380.0, 380.0), hot_rect.min + Vec2::new(5.0, 5.0));
@@ -262,7 +263,6 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
     use crate::primitives::geometry::mesh::Mesh;
     use crate::shape::paint_animation::PaintAnimation;
     use crate::shape::paint_animation::PaintRepeat;
-    use crate::shape::paint_animation::curves;
     use std::f32::consts::TAU;
     use std::time::Duration;
 
@@ -301,8 +301,7 @@ fn a_turning_shape_is_damaged_against_the_square_it_sweeps() {
                             let turn = PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs_f32(TAU / 1.0))
-                                .with_repeat(PaintRepeat::Forever)
-                                .with_curve(curves::linear);
+                                .with_repeat(PaintRepeat::Forever);
                             match kind {
                                 Kind::Line => ui.add_shape_animated(
                                     Shape::polyline(&[lo, hi], Stroke::new(RED, 1.0)),

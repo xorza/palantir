@@ -1,5 +1,6 @@
 //! Per-`(WidgetId, AnimationSlot)` animation rows, generic over [`Animatable`]. Storage is type-erased: [`AnimationMap`] holds one boxed [`AnimationMapTyped<T>`] per `TypeId` used, allocated by the first `Ui::animate::<T>` call.
 
+pub(crate) mod animated;
 pub(crate) mod animation_key;
 pub(crate) mod animation_map_typed;
 pub(crate) mod animation_request;
@@ -13,9 +14,9 @@ pub(crate) mod easing;
 pub(crate) mod phase;
 mod spring;
 
+use crate::animation::animated::Animated;
 use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped};
 use crate::animation::animation_request::AnimationRequest;
-use crate::animation::animation_row::TickResult;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::{Drained, TypedStores};
 use crate::primitives::math::animatable::Animatable;
@@ -43,10 +44,10 @@ impl AnimationMap {
         request: AnimationRequest<T>,
         spec: AnimationSpec,
         clock: AnimationClock,
-    ) -> TickResult<T> {
+    ) -> Animated<T> {
         if spec.is_instant() {
-            return TickResult {
-                cur: request.target,
+            return Animated {
+                value: request.target,
                 settled: true,
             };
         }

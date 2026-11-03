@@ -46,7 +46,7 @@ fn a_quiet_frame_records_no_command_and_clears_the_veto() {
     let mut quiet = driver(WindowToken(1), &shared);
     quiet.ui.keep_open();
     quiet.ui.set_vsync(Vsync::Off);
-    quiet.ui.set_cursor(CursorIcon::Text);
+    quiet.ui.request_cursor(CursorIcon::Text);
     let mut commands = WindowCommands::default();
 
     record_window_commands(&mut quiet, &mut commands);

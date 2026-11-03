@@ -1,5 +1,6 @@
 use std::rc::Rc;
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme::{Dark, Light};
 use crate::ui::window_theme::{Motion, WindowTheme};
@@ -65,7 +66,7 @@ fn an_animated_set_moves_the_epoch_with_each_blend() {
 #[test]
 fn every_end_of_a_run_moves_the_epoch() {
     let ends: [fn(&mut WindowTheme); 3] = [
-        |window| assert!(window.set_spec(None)),
+        |window| assert!(window.set_spec(AnimationSpec::SNAP)),
         |window| window.advance(0.1, Dark, Motion::Snap),
         |window| _ = window.edit(),
     ];

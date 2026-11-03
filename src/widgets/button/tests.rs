@@ -1,3 +1,4 @@
+use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
 
 use crate::primitives::geometry::spacing::Spacing;
@@ -168,7 +169,7 @@ fn show_with_hands_the_body_its_states_ink() {
         unselected: pack(0x100),
         selected: pack(0x200),
         defaults: SlotDefaults {
-            animation: None,
+            animation: AnimationSpec::SNAP,
             ..ButtonTheme::default().defaults
         },
     };

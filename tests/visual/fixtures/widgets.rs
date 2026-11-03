@@ -4,10 +4,10 @@ use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::widget::Shape;
 use palantir::{
-    Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel, ColorPicker, ColorScheme,
-    ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key, KeyText, Modal, Panel,
-    ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner, SrgbaU8, Stroke, SwatchRow,
-    Switch, Text, TextEdit, Ui,
+    AnimationSpec, Block, Button, Checkbox, Chrome, ColorCoords, ColorField, ColorModel,
+    ColorPicker, ColorScheme, ColorStrip, ComboBox, Configure, Corners, DragValue, InputEvent, Key,
+    KeyText, Modal, Panel, ProgressBar, RadioButton, Rect, RgbaF32, Sizing, Slider, Spinner,
+    SrgbaU8, Stroke, SwatchRow, Switch, Text, TextEdit, Ui,
 };
 
 use crate::fixtures;
@@ -237,7 +237,7 @@ fn progress_bar_half_matches_golden() {
 fn toggle_switch_states_matches_golden() {
     let mut style = theme::fixture(ColorScheme::Dark).switch;
     // At the rest position, with no first-frame transient.
-    style.defaults.animation = None;
+    style.defaults.animation = AnimationSpec::SNAP;
     GoldenName::ToggleSwitchStates.assert_scene(UVec2::new(220, 110), |ui| {
         Panel::vstack()
             .auto_id()

@@ -83,10 +83,7 @@ fn expander_mid_reveal_alloc_free() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            animation: Some(AnimationSpec::duration(
-                Duration::from_secs(60),
-                Easing::Linear,
-            )),
+            animation: AnimationSpec::duration(Duration::from_secs(60), Easing::Linear),
             ..base.defaults
         },
         ..base

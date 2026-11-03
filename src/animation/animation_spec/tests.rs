@@ -122,3 +122,27 @@ fn animation_spec_serde_validates_and_roundtrips() {
         );
     }
 }
+
+/// A snap is the neutral spec: the default, left out of a theme file on write, and read back
+/// from a file that leaves the field out; a moving spec is written.
+#[test]
+fn a_snap_is_the_default_a_theme_file_leaves_out() {
+    use crate::primitives::geometry::spacing::Spacing;
+    use crate::theme::look::slot_defaults::SlotDefaults;
+
+    assert_eq!(AnimationSpec::default(), AnimationSpec::SNAP);
+    let defaults = |animation| SlotDefaults {
+        padding: Spacing::ZERO,
+        margin: Spacing::ZERO,
+        animation,
+    };
+    let snap = ser::to_string(&defaults(AnimationSpec::SNAP)).expect("serialize");
+    assert!(!snap.contains("animation"), "{snap}");
+    let back: SlotDefaults = ron::from_str(&snap).expect("parse");
+    assert_eq!(back, defaults(AnimationSpec::SNAP));
+
+    let fast = ser::to_string(&defaults(AnimationSpec::FAST)).expect("serialize");
+    assert!(fast.contains("animation"), "{fast}");
+    let back: SlotDefaults = ron::from_str(&fast).expect("parse");
+    assert_eq!(back, defaults(AnimationSpec::FAST));
+}

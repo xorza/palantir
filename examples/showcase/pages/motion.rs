@@ -7,12 +7,12 @@ use crate::support::{Kit, Knob, Section, Swatches};
 use palantir::glam::{UVec2, Vec2};
 use palantir::widget::{
     AnimationRequest, GlyphFont, IconFit, LineCap, LineJoin, Mesh, PaintAnimation, PaintRepeat,
-    RectShape, Shape, curves,
+    RectShape, Shape,
 };
 use palantir::{
-    AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconHandle, IconSet,
-    IconTable, Image, ImageFit, ImageHandle, Metrics, Panel, Rect, RgbaF32, Sense, Shadow, Sizing,
-    Stroke, Text, Ui, WidgetId,
+    Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconHandle,
+    IconSet, IconTable, Image, ImageFit, ImageHandle, Metrics, Panel, Rect, RgbaF32, Sense, Shadow,
+    Sizing, Stroke, Text, Ui, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
@@ -131,8 +131,7 @@ fn turn(ui: &mut Ui, k: Kit) {
             );
             let spin = PaintAnimation::turn(0.0, 1.0)
                 .with_period(Duration::from_secs(6))
-                .with_repeat(PaintRepeat::Forever)
-                .with_curve(curves::linear);
+                .with_repeat(PaintRepeat::Forever);
             let source = Rect::new(20.0, 30.0, 60.0, 40.0);
             let mut mesh = Mesh::new();
             let a = mesh.vertex(Vec2::new(15.0, 80.0), RgbaF32::srgb(1.0, 0.3, 0.3));
@@ -230,7 +229,7 @@ fn easing(ui: &mut Ui, k: Kit) {
     let demo_id = WidgetId::from_hash("motion::bars");
     Section::new("Easing")
         .apis(&[
-            api!(Ui::animate as fn(&mut Ui, AnimationRequest<f32>, Option<AnimationSpec>) -> f32),
+            api!(Ui::animate as fn(&mut Ui, AnimationRequest<f32>, AnimationSpec) -> Animated<f32>),
             api!(AnimationSpec::duration),
         ])
         .show(ui, k, |ui| {
@@ -325,10 +324,9 @@ struct Bar {
 impl Bar {
     fn show(self, ui: &mut Ui, k: Kit, target_width: f32) {
         let id = WidgetId::from_hash(("motion::bar", self.key));
-        let width = ui.animate(
-            AnimationRequest::new(id, "width", target_width),
-            Some(self.spec),
-        );
+        let width = ui
+            .animate(AnimationRequest::new(id, "width", target_width), self.spec)
+            .value;
         Panel::hstack()
             .id_salt(self.key)
             .size((Sizing::FILL, Sizing::HUG))

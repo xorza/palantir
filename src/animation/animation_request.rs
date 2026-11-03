@@ -32,7 +32,7 @@ impl<T: Animatable> AnimationRequest<T> {
 
     /// The target's cause; see [`AnimationKey`].
     #[must_use]
-    pub const fn key(mut self, key: AnimationKey) -> Self {
+    pub const fn with_key(mut self, key: AnimationKey) -> Self {
         self.key = Some(key);
         self
     }

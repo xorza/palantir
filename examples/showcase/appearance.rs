@@ -185,8 +185,8 @@ impl Appearance {
                 return;
             }
             ui.set_theme_transition(match self.edit {
-                Edit::Pick => Some(AnimationSpec::THEME),
-                Edit::Drag => None,
+                Edit::Pick => AnimationSpec::THEME,
+                Edit::Drag => AnimationSpec::SNAP,
             });
             for scheme in [ColorScheme::Light, ColorScheme::Dark] {
                 let palette = self.palette(scheme);
@@ -321,11 +321,7 @@ mod tests {
         assert_eq!(look.palette(scheme).accent, accent);
         assert_eq!(look.palette(scheme).border_focused, accent);
         assert_eq!(h.ui().theme().focus_ring.color, accent);
-        assert_eq!(
-            h.ui().theme_transition(),
-            Some(AnimationSpec::THEME),
-            "a pick"
-        );
+        assert_eq!(h.ui().theme_transition(), AnimationSpec::THEME, "a pick");
 
         let red = RgbaF32::hex(0xff0000);
         look.set_ring_color(red);
@@ -333,16 +329,12 @@ mod tests {
         look.apply(h.ui_mut());
         assert_eq!(h.ui().theme().focus_ring.color, red);
         assert_eq!(h.ui().theme().focus_ring.width, 3.0);
-        assert_eq!(h.ui().theme_transition(), None, "a drag");
+        assert_eq!(h.ui().theme_transition(), AnimationSpec::SNAP, "a drag");
 
         look.reset_ring();
         look.set_seed(None);
         look.apply(h.ui_mut());
-        assert_eq!(
-            h.ui().theme_transition(),
-            Some(AnimationSpec::THEME),
-            "a reset"
-        );
+        assert_eq!(h.ui().theme_transition(), AnimationSpec::THEME, "a reset");
         assert_eq!(h.ui().theme().focus_ring, look.ring(scheme));
         assert_eq!(*look.palette(scheme), *Palette::for_scheme(scheme));
 

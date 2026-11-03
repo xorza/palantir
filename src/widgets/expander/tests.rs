@@ -261,7 +261,7 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            animation: Some(AnimationSpec::MEDIUM),
+            animation: AnimationSpec::MEDIUM,
             ..base.defaults
         },
         ..base
@@ -302,17 +302,18 @@ fn the_first_reveal_snaps_and_the_next_one_animates() {
     assert_eq!(h.frame_value(&mut record), 0.778688);
 }
 
-/// An underdamped close swings below 0 and back above it. The section reads closed from the
-/// frame the swing first reaches 0: openness 0 and no body, while the spring still swings.
+/// An underdamped close swings below 0 and back above it. The body stays recorded through the
+/// whole swing, clipped to the clamped openness, so its state is not swept and shown again; it
+/// goes only on the frame the spring rests at 0.
 #[test]
-fn a_spring_close_stays_closed_through_its_swing() {
+fn a_spring_close_keeps_the_body_until_it_rests() {
     let base = ExpanderTheme::default();
-    // Decay a = 3/s at ωd = sqrt(200 − 9) = 13.82 rad/s, from 1 at rest: e^(−at)(cos ωd·t +
-    // (a/ωd) sin ωd·t) reaches 0 at (π − atan(ωd/a))/ωd = 129 ms, −0.51 at π/ωd = 227 ms, and
-    // +0.26 at 2π/ωd = 455 ms.
+    // Decay h = 3/s at ωd = sqrt(200 − 9) = 13.82 rad/s, from 1 at rest: x(t) = e^(−ht)(cos ωd·t +
+    // (h/ωd) sin ωd·t) is −0.5051 at frame 14 (224 ms) and +0.2545 at frame 28 (448 ms). It
+    // rests once x² + v²/k < EPS² = 1e-8: 1.063e-8 at frame 192, 0.878e-8 at frame 193.
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            animation: Some(AnimationSpec::spring(200.0, 6.0)),
+            animation: AnimationSpec::spring(200.0, 6.0),
             ..base.defaults
         },
         ..base
@@ -339,21 +340,18 @@ fn a_spring_close_stays_closed_through_its_swing() {
     );
 
     let tick = time::Duration::from_millis(16);
-    let mut closed_at = None;
     for frame in 1..=200 {
         h.advance(tick);
         let openness = h.frame_value(&mut record);
-        let shown = h.rect(body()).is_some();
         assert!((0.0..=1.0).contains(&openness), "frame {frame}: {openness}");
-        assert_eq!(shown, openness > 0.0, "frame {frame}: {openness}");
-        match closed_at {
-            None if !shown => closed_at = Some(frame),
-            Some(at) => assert!(!shown, "closed at frame {at}, shown again at {frame}"),
-            None => {}
+        assert_eq!(h.rect(body()).is_some(), frame < 193, "frame {frame}");
+        match frame {
+            14 => assert_eq!(openness, 0.0, "the swing under 0 clamps"),
+            28 => assert_close(openness, 0.2545, 1e-4, "the closed form to four places"),
+            193.. => assert_eq!(openness, 0.0, "at rest"),
+            _ => {}
         }
     }
-    // Frame 8 at 128 ms is still above 0, frame 9 at 144 ms past it.
-    assert_eq!(closed_at, Some(9));
 }
 
 /// Space and Enter toggle a focused header, nothing else, and its response reads them as the
@@ -426,7 +424,7 @@ fn a_settling_reveal_stores_the_whole_height() {
     let base = ExpanderTheme::default();
     let theme = ExpanderTheme {
         defaults: SlotDefaults {
-            animation: Some(AnimationSpec::MEDIUM),
+            animation: AnimationSpec::MEDIUM,
             ..base.defaults
         },
         ..base

@@ -11,7 +11,6 @@ use crate::primitives::paint::image::{Image, ImageFit};
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
 use crate::shape::Shape;
-use crate::shape::paint_animation::curves;
 use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -97,8 +96,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                             PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs(4))
-                                .with_repeat(PaintRepeat::Forever)
-                                .with_curve(curves::linear),
+                                .with_repeat(PaintRepeat::Forever),
                         );
                     } else {
                         ui.add_shape(line);

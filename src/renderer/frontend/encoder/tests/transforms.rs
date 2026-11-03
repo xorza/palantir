@@ -24,7 +24,6 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
     use crate::display::Display;
     use crate::internals::paint_capture::PaintCall;
     use crate::shape::Shape;
-    use crate::shape::paint_animation::curves;
     use crate::shape::paint_animation::{PaintAnimation, PaintRepeat};
     use std::f32::consts::{PI, TAU};
     use std::time::Duration;
@@ -57,8 +56,7 @@ fn spun_shape_bounds_are_rotation_invariant_squares_about_owner_center() {
                         let turn = PaintAnimation::turn(0.0, 1.0)
                             .with_started_at(Duration::ZERO)
                             .with_period(Duration::from_secs_f32(TAU / 1.0))
-                            .with_repeat(PaintRepeat::Forever)
-                            .with_curve(curves::linear);
+                            .with_repeat(PaintRepeat::Forever);
                         match spun {
                             Spun::Polyline => ui.add_shape_animated(
                                 Shape::polyline(

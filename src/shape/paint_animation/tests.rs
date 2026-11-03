@@ -23,7 +23,7 @@ fn spinning(speed: f32) -> PaintAnimation {
         .with_started_at(START)
         .with_period(Duration::from_secs_f32(TAU / speed))
         .with_repeat(PaintRepeat::Forever)
-        .with_curve(curves::linear)
+        .with_curve(Easing::Linear.curve())
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn a_zero_period_settles_to_the_right_value() {
             .with_started_at(START)
             .with_period(Duration::ZERO)
             .with_repeat(repeat)
-            .with_curve(curves::linear);
+            .with_curve(Easing::Linear.curve());
         for (now, (alpha, wake)) in [before, START, settled].into_iter().zip(expected) {
             assert_eq!(
                 (a.sample(now).alpha, a.next_wake(now)),
@@ -194,7 +194,7 @@ fn spin_angle_is_elapsed_times_speed_wrapped() {
         .with_started_at(START)
         .with_period(Duration::from_secs_f32(TAU / speed))
         .with_repeat(PaintRepeat::Forever)
-        .with_curve(curves::linear);
+        .with_curve(Easing::Linear.curve());
     // Pre-start clamps to 0 (no negative elapsed).
     assert_eq!(a.sample(START - Duration::from_secs(1)).rotation, 0.0);
     // 0.25 s in → 1.0 rad, alpha untouched.
@@ -284,13 +284,13 @@ fn samples_are_coerced_where_they_are_read() {
             .with_curve(curve)
             .sample(half)
     };
-    let fine = linear((-1.0, 3.0), (0.0, 0.5), curves::linear);
+    let fine = linear((-1.0, 3.0), (0.0, 0.5), Easing::Linear.curve());
     assert_eq!((fine.alpha, fine.rotation), (1.0, 0.25 * TAU));
-    let nan_end = linear((f32::NAN, 1.0), (f32::NAN, 1.0), curves::linear);
+    let nan_end = linear((f32::NAN, 1.0), (f32::NAN, 1.0), Easing::Linear.curve());
     assert_eq!((nan_end.alpha, nan_end.rotation), (0.0, 0.0));
     let nan_curve = linear((0.0, 1.0), (0.0, 1.0), |_| f32::NAN);
     assert_eq!((nan_curve.alpha, nan_curve.rotation), (0.0, 0.0));
-    let huge = linear((0.0, 1.0), (0.0, f32::MAX), curves::linear);
+    let huge = linear((0.0, 1.0), (0.0, f32::MAX), Easing::Linear.curve());
     assert_eq!(
         huge.rotation, 0.0,
         "a turn whose radians overflow is no turn"
@@ -389,8 +389,34 @@ fn hash_static_covers_channel_timing_and_curve() {
         ("period", base.with_period(HP)),
         ("repeat", base.with_repeat(PaintRepeat::Forever)),
         ("steps", base.with_steps(3)),
-        ("curve", base.with_curve(curves::linear)),
+        ("curve", base.with_curve(Easing::Linear.curve())),
     ] {
         assert_ne!(hash(base), hash(other), "{label}");
     }
+}
+
+/// Under reduced motion progress runs on unchanged, a decorative single pass paints its end value
+/// from the first frame, and a decorative repeat, settling or not, goes.
+#[test]
+fn reduced_motion_keeps_progress_and_lands_decoration() {
+    let spinner = spinning(1.0).with_motion(PaintMotion::Progress);
+    let kept = spinner.reduced().expect("progress runs");
+    assert_eq!(
+        (kept.channel, kept.timing),
+        (spinner.channel, spinner.timing)
+    );
+    assert!(spinning(1.0).reduced().is_none(), "a decorative turn");
+    assert!(blink().reduced().is_none(), "a settling blink");
+
+    let fade = PaintAnimation::alpha(0.25, 1.0)
+        .with_started_at(START)
+        .with_period(HP);
+    let landed = fade.reduced().expect("a single pass lands");
+    assert_eq!(landed.sample(Duration::ZERO), fade.sample(START + HP));
+    assert_eq!(landed.sample(Duration::ZERO).alpha, 1.0, "the fade's end");
+    assert_ne!(
+        fade.sample(START).alpha,
+        1.0,
+        "unreduced, it starts at 0.25"
+    );
 }

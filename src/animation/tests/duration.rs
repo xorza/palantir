@@ -16,14 +16,16 @@ use crate::widgets::block::Block;
 use glam::Vec2;
 use std::time::Duration;
 
-/// A zero-second `Duration` spec behaves like `None` through `Ui::animate`: it snaps, drops any in-flight row.
+/// A zero-second `Duration` spec behaves like `SNAP` through `Ui::animate`: it snaps, drops any in-flight row.
 #[test]
 fn instant_duration_is_noop_and_drops_row() {
-    let instant = Some(AnimationSpec::duration(Duration::ZERO, Easing::Linear));
+    let instant = AnimationSpec::duration(Duration::ZERO, Easing::Linear);
     let AnimationUi { mut h, id } = support::setup_animation_ui("anim-instant");
 
     let passes = h.at(Duration::from_millis(0)).frame_passes(|ui| {
-        let v = ui.animate(AnimationRequest::new(id, SLOT, 1.0_f32), instant);
+        let v = ui
+            .animate(AnimationRequest::new(id, SLOT, 1.0_f32), instant)
+            .value;
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
@@ -36,7 +38,7 @@ fn instant_duration_is_noop_and_drops_row() {
     let _ = h.at(Duration::from_millis(0)).frame(|ui| {
         let _ = ui.animate(
             AnimationRequest::new(id, SLOT, 0.0_f32),
-            Some(AnimationSpec::FAST),
+            AnimationSpec::FAST,
         );
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
@@ -45,7 +47,7 @@ fn instant_duration_is_noop_and_drops_row() {
     let _ = h.at(Duration::from_millis(50)).frame(|ui| {
         let _ = ui.animate(
             AnimationRequest::new(id, SLOT, 1.0_f32),
-            Some(AnimationSpec::FAST),
+            AnimationSpec::FAST,
         );
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
@@ -54,7 +56,9 @@ fn instant_duration_is_noop_and_drops_row() {
     assert_eq!(h.animation_row_count::<f32>(), 1);
 
     let v = h.at(Duration::from_millis(60)).frame_value(|ui| {
-        let v = ui.animate(AnimationRequest::new(id, SLOT, 1.0_f32), instant);
+        let v = ui
+            .animate(AnimationRequest::new(id, SLOT, 1.0_f32), instant)
+            .value;
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
@@ -68,10 +72,12 @@ fn instant_duration_is_noop_and_drops_row() {
     );
 
     let v = h.at(Duration::from_millis(70)).frame_value(|ui| {
-        let v = ui.animate(
-            AnimationRequest::new(id, SLOT, 5.0_f32),
-            Some(AnimationSpec::FAST),
-        );
+        let v = ui
+            .animate(
+                AnimationRequest::new(id, SLOT, 5.0_f32),
+                AnimationSpec::FAST,
+            )
+            .value;
         Block::new()
             .id(WidgetId::from_hash("anim-instant"))
             .show(ui);
@@ -95,7 +101,7 @@ fn target_below_snap_floor_snaps_without_animating() {
         let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), *spec, 0.016);
         let r = map.step(AnimationRequest::new(id, SLOT, tiny), *spec, 0.016);
         assert_eq!(
-            r.cur, tiny,
+            r.value, tiny,
             "case {label}: snap-if-close must reach new target exactly",
         );
         assert!(
@@ -115,7 +121,7 @@ fn target_below_snap_floor_snaps_without_animating() {
         );
         let _ = colors.step(AnimationRequest::new(id, SLOT, gray), *spec, 0.016);
         let r = colors.step(AnimationRequest::new(id, SLOT, nudged), *spec, 0.016);
-        assert_eq!(r.cur, nudged, "case {label}: a color lands on target");
+        assert_eq!(r.value, nudged, "case {label}: a color lands on target");
         assert!(r.settled, "case {label}: 2e-4 on a color snaps");
     }
 }
@@ -135,7 +141,7 @@ fn one_floor_animates_a_small_change_under_either_motion() {
         let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), spec, 0.016);
         let start = map.step(AnimationRequest::new(id, SLOT, delta), spec, 0.016);
         assert_eq!(
-            start.cur, 0.0,
+            start.value, 0.0,
             "{label}: the change's frame shows the start"
         );
         assert!(!start.settled, "{label}: a change above the floor animates");
@@ -146,7 +152,7 @@ fn one_floor_animates_a_small_change_under_either_motion() {
             _ => f64::from(delta) * spring_travel,
         };
         domain::internals::assert_close(
-            moving.cur,
+            moving.value,
             expected,
             1e-10,
             "the f32 step's coefficients are each within an ulp of the \
@@ -178,7 +184,7 @@ fn one_floor_animates_a_small_change_under_either_motion() {
     let lightness = |c: RgbaF32| f64::from(c.r).cbrt();
     let expected = (lightness(rest) + (lightness(hover) - lightness(rest)) * spring_travel).powi(3);
     domain::internals::assert_close(
-        moving.cur.r,
+        moving.value.r,
         expected,
         1e-8,
         "the first step travels the closed form's share, to the f32 rounding of an Oklab trip \
@@ -195,7 +201,7 @@ fn first_touch_returns_target_and_settled() {
         let mut map = AnimationMapTyped::<f32>::default();
         let id = support::widget_id(label);
         let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.016);
-        assert_eq!(r.cur, 1.0, "{label}: first touch must snap");
+        assert_eq!(r.value, 1.0, "{label}: first touch must snap");
         assert!(r.settled, "{label}: first touch must report settled");
         let row = &map.rows[&(id, SLOT)];
         match &row.motion {
@@ -222,12 +228,12 @@ fn duration_settles_in_finite_steps() {
     let spec = support::linear_100ms();
     let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), spec, 0.016);
     let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.016);
-    assert_eq!(r.cur, 0.0);
+    assert_eq!(r.value, 0.0);
     let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.05);
-    assert_eq!(r.cur, 0.05 / 0.1, "linear: elapsed over secs");
+    assert_eq!(r.value, 0.05 / 0.1, "linear: elapsed over secs");
     assert!(!r.settled, "halfway is not settled");
     let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.05);
-    assert_eq!(r.cur, 1.0, "must snap to target on settle");
+    assert_eq!(r.value, 1.0, "must snap to target on settle");
     assert!(r.settled, "100ms total elapsed must settle");
 
     let mut boundary_map = AnimationMapTyped::<f32>::default();
@@ -242,9 +248,9 @@ fn duration_settles_in_finite_steps() {
             boundary,
             MAX_ANIMATION_DT,
         );
-        assert!(result.cur.is_finite());
+        assert!(result.value.is_finite());
         if result.settled {
-            assert_eq!(result.cur, 1.0);
+            assert_eq!(result.value, 1.0);
             settled = Some(step);
             break;
         }
@@ -260,7 +266,7 @@ fn dt_zero_does_not_advance_duration() {
     let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), spec, 0.0);
     let _ = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.0);
     let r = map.step(AnimationRequest::new(id, SLOT, 1.0), spec, 0.0);
-    assert_eq!(r.cur, 0.0, "dt=0 must not advance toward target");
+    assert_eq!(r.value, 0.0, "dt=0 must not advance toward target");
     assert!(!r.settled, "still in flight");
 }
 
@@ -282,7 +288,7 @@ fn vec2_duration_lerps_componentwise() {
     );
     let progress = 0.05 / 0.1;
     assert_eq!(
-        r.cur,
+        r.value,
         Vec2::new(10.0 * progress, 20.0 * progress),
         "each component lerps by the same linear progress",
     );
@@ -299,9 +305,9 @@ fn out_back_reaches_its_overshoot_on_a_small_change() {
     let mut peak = 0.0_f32;
     for _ in 0..30 {
         let r = map.step(AnimationRequest::new(id, SLOT, 0.01), spec, 1.0 / 60.0);
-        peak = peak.max(r.cur);
+        peak = peak.max(r.value);
         if r.settled {
-            assert_eq!(r.cur, 0.01);
+            assert_eq!(r.value, 0.01);
             break;
         }
     }
@@ -351,17 +357,43 @@ fn a_new_length_or_ease_keeps_the_value() {
         let _ = map.step(AnimationRequest::new(id, SLOT, 1.0), fast, 0.0);
         let at = map
             .step(AnimationRequest::new(id, SLOT, 1.0), fast, 0.06)
-            .cur;
+            .value;
         assert!((at - 0.875).abs() < 1e-6, "{at}");
         let held = map.step(AnimationRequest::new(id, SLOT, 1.0), switched, 0.0);
-        assert_eq!(held.cur, at, "{switched:?}");
+        assert_eq!(held.value, at, "{switched:?}");
         assert!(!held.settled);
         let on = map
             .step(AnimationRequest::new(id, SLOT, 1.0), switched, 0.01)
-            .cur;
+            .value;
         assert!(
             on > at && on < 1.0,
             "{switched:?} moves on from {at} to {on}"
         );
     }
+}
+
+/// Each easing's paint curve is its tween curve: `1 − 0.75³ = 0.578125` for `OutCubic` at a
+/// quarter, `4 · 0.25³ = 0.0625` for `InOutCubic`, `1 − 0.75⁴ = 0.68359375` for `OutQuart`, and
+/// `OutBack` past 1 at three quarters, `1 + 2.70158 · (−0.25)³ + 1.70158 · 0.25² ≈ 1.0641`.
+#[test]
+fn an_easing_curve_is_its_tween() {
+    let all = [
+        Easing::Linear,
+        Easing::OutCubic,
+        Easing::InOutCubic,
+        Easing::OutQuart,
+        Easing::OutBack,
+    ];
+    for easing in all {
+        for i in 0..=16 {
+            let t = i as f32 / 16.0;
+            assert_eq!(easing.curve()(t), easing.apply(t), "{easing:?} at {t}");
+        }
+    }
+    let quarter = all.map(|easing| easing.curve()(0.25));
+    assert_eq!(quarter[..4], [0.25, 0.578125, 0.0625, 0.68359375]);
+    assert!(
+        Easing::OutBack.curve()(0.75) > 1.0,
+        "the overshoot survives"
+    );
 }

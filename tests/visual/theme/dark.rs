@@ -69,10 +69,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(12.0, 4.0),
                 margin: Spacing::all(0.0),
-                animation: Some(AnimationSpec::duration(
-                    Duration::from_millis(120),
-                    Easing::OutCubic,
-                )),
+                animation: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
             },
         },
         checkbox: ToggleTheme {
@@ -138,7 +135,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         radio: ToggleTheme {
@@ -204,7 +201,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         switch: ToggleTheme {
@@ -270,7 +267,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: Some(AnimationSpec::spring(170.0, 26.0)),
+                animation: AnimationSpec::spring(170.0, 26.0),
             },
         },
         scrollbar: ScrollbarTheme {
@@ -315,7 +312,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(8.0, 4.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         drag_value: DragValueTheme {
@@ -373,10 +370,10 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 4.0),
                     margin: Spacing::all(0.0),
-                    animation: Some(AnimationSpec::duration(
+                    animation: AnimationSpec::duration(
                         Duration::from_millis(120),
                         Easing::OutCubic,
-                    )),
+                    ),
                 },
             },
             editor: TextEditTheme {
@@ -412,10 +409,10 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 4.0),
                     margin: Spacing::all(0.0),
-                    animation: Some(AnimationSpec::duration(
+                    animation: AnimationSpec::duration(
                         Duration::from_millis(120),
                         Easing::OutCubic,
-                    )),
+                    ),
                 },
             },
         },
@@ -478,10 +475,10 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 8.0),
                     margin: Spacing::all(0.0),
-                    animation: Some(AnimationSpec::duration(
+                    animation: AnimationSpec::duration(
                         Duration::from_millis(120),
                         Easing::OutCubic,
-                    )),
+                    ),
                 },
             },
             separator: SeparatorTheme {
@@ -525,10 +522,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(12.0, 8.0),
                 margin: Spacing::all(0.0),
-                animation: Some(AnimationSpec::duration(
-                    Duration::from_millis(120),
-                    Easing::OutCubic,
-                )),
+                animation: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
             },
         },
         combo_box: ComboBoxTheme {
@@ -611,7 +605,7 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::all(0.0),
                     margin: Spacing::all(0.0),
-                    animation: None,
+                    animation: AnimationSpec::SNAP,
                 },
             },
             disabled_veil: RgbaF32::hexa(0x2e1f3880),
@@ -695,10 +689,10 @@ pub(super) fn theme() -> Theme {
                     defaults: SlotDefaults {
                         padding: Spacing::all(5.0),
                         margin: Spacing::all(0.0),
-                        animation: Some(AnimationSpec::duration(
+                        animation: AnimationSpec::duration(
                             Duration::from_millis(120),
                             Easing::OutCubic,
-                        )),
+                        ),
                     },
                 },
                 editor: TextEditTheme {
@@ -748,10 +742,10 @@ pub(super) fn theme() -> Theme {
                     defaults: SlotDefaults {
                         padding: Spacing::all(5.0),
                         margin: Spacing::all(0.0),
-                        animation: Some(AnimationSpec::duration(
+                        animation: AnimationSpec::duration(
                             Duration::from_millis(120),
                             Easing::OutCubic,
-                        )),
+                        ),
                     },
                 },
             },
@@ -802,7 +796,7 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::all(5.0),
                     margin: Spacing::all(0.0),
-                    animation: None,
+                    animation: AnimationSpec::SNAP,
                 },
             },
             label: TextStyleOverrides {
@@ -963,10 +957,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: Some(AnimationSpec::duration(
-                    Duration::from_millis(120),
-                    Easing::OutCubic,
-                )),
+                animation: AnimationSpec::duration(Duration::from_millis(120), Easing::OutCubic),
             },
         },
         dock: DockTheme {
@@ -1013,7 +1004,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(4.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         focus_ring: FocusRingTheme {

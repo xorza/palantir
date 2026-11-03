@@ -64,12 +64,12 @@ impl WindowTheme {
         self.epoch
     }
 
-    pub(crate) const fn spec(&self) -> Option<AnimationSpec> {
+    pub(crate) const fn spec(&self) -> AnimationSpec {
         self.transition.spec()
     }
 
-    /// Whether a change animates under the spec: `None` and an instant spec snap.
-    pub(crate) fn animates(&self) -> bool {
+    /// Whether a change animates under the spec: an instant spec snaps.
+    pub(crate) const fn animates(&self) -> bool {
         self.transition.animates()
     }
 
@@ -93,9 +93,9 @@ impl WindowTheme {
         true
     }
 
-    /// Run on under `spec`. Returns whether the shown theme changed, as an instant or absent spec
-    /// ends a running transition where it heads.
-    pub(crate) fn set_spec(&mut self, spec: Option<AnimationSpec>) -> bool {
+    /// Run on under `spec`. Returns whether the shown theme changed, as an instant spec ends a
+    /// running transition where it heads.
+    pub(crate) fn set_spec(&mut self, spec: AnimationSpec) -> bool {
         let ended = self.transition.set_spec(spec);
         if ended {
             self.bump();

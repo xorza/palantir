@@ -22,6 +22,7 @@
 pub mod curves;
 pub(crate) mod paint_mod;
 
+use crate::animation::easing::Easing;
 use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::FloatHash;
@@ -33,7 +34,9 @@ use std::time::Duration;
 
 const NANOS_PER_SEC: u128 = 1_000_000_000;
 
-/// A phase in `[0, 1)` mapped to a unit value in `[0, 1]`.
+/// A phase in `[0, 1)` mapped to where the channel sits: `0` at its range's `from`, `1` at its
+/// `to`. A value may leave `[0, 1]`, as [`Easing::OutBack`]'s overshoot does: a turn then swings
+/// past its range, and an alpha clamps.
 ///
 /// A plain `fn`, so it cannot capture: the encoder samples with no accumulator, so a dropped frame or irregular `dt` must not make it drift.
 pub type PaintCurve = fn(f32) -> f32;
@@ -85,6 +88,23 @@ pub enum PaintRepeat {
     Settle(Duration),
 }
 
+/// What an animation's motion tells the person, which decides whether it runs while the system
+/// asks for reduced motion. [`Ui::animate`](crate::Ui::animate) snaps every motion then, as a
+/// value it moves is the widget's state, never progress.
+///
+/// WCAG 2.3.3 lets motion that is essential to what the content says stay on under that
+/// preference, and asks for the rest to stop
+/// ([WCAG 2.3.3](https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions)).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PaintMotion {
+    /// Motion that only decorates. Under reduced motion a single pass paints its end value and a
+    /// repeating one paints as if unanimated, as a caret holds still.
+    #[default]
+    Decorative,
+    /// Motion that shows work under way, as a spinner's turn: it runs whatever the preference.
+    Progress,
+}
+
 /// When an animation runs, and how finely.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PaintTiming {
@@ -104,12 +124,13 @@ pub struct PaintTiming {
 ///
 /// Hand one to [`Ui::add_shape_animated`](crate::Ui::add_shape_animated).
 /// ```
+/// # use palantir::Easing;
 /// # use palantir::widget::{PaintAnimation, PaintRepeat, curves};
 /// # use std::time::Duration;
-/// // Fade in over 240 ms and stay.
+/// // Fade in over 240 ms, easing out, and stay.
 /// let fade = PaintAnimation::alpha(0.0, 1.0)
 ///     .with_period(Duration::from_millis(240))
-///     .with_curve(curves::linear);
+///     .with_curve(Easing::OutCubic.curve());
 ///
 /// // Breathe, forever.
 /// let pulse = PaintAnimation::alpha(0.4, 1.0)
@@ -128,6 +149,8 @@ pub struct PaintAnimation {
     pub timing: PaintTiming,
     /// Phase in, value out.
     pub curve: PaintCurve,
+    /// Whether it runs under reduced motion; decorative by default.
+    pub motion: PaintMotion,
 }
 
 impl PaintAnimation {
@@ -176,7 +199,8 @@ impl PaintAnimation {
                 repeat: PaintRepeat::Once,
                 steps: PaintSteps::Continuous,
             },
-            curve: curves::linear,
+            curve: Easing::Linear.curve(),
+            motion: PaintMotion::Decorative,
         }
     }
 
@@ -238,10 +262,35 @@ impl PaintAnimation {
         self
     }
 
-    /// Set the curve; any `fn(f32) -> f32` over `0.0..=1.0`.
+    /// Set the curve, a [`PaintCurve`]; linear by default.
     pub const fn with_curve(mut self, curve: PaintCurve) -> Self {
         self.curve = curve;
         self
+    }
+
+    /// Say what the motion tells the person; [`PaintMotion::Decorative`] by default.
+    pub const fn with_motion(mut self, motion: PaintMotion) -> Self {
+        self.motion = motion;
+        self
+    }
+
+    /// This animation under reduced motion: `None` paints the shape as if unanimated. A
+    /// decorative single pass holds its end value at once through a zero period; a decorative
+    /// repeat goes; progress runs on.
+    pub(crate) const fn reduced(self) -> Option<Self> {
+        match (self.motion, self.timing.repeat) {
+            (PaintMotion::Progress, _) => Some(self),
+            (PaintMotion::Decorative, PaintRepeat::Once) => Some(Self {
+                timing: PaintTiming {
+                    started_at: Duration::ZERO,
+                    period: Duration::ZERO,
+                    repeat: PaintRepeat::Once,
+                    steps: PaintSteps::Continuous,
+                },
+                ..self
+            }),
+            (PaintMotion::Decorative, PaintRepeat::Forever | PaintRepeat::Settle(_)) => None,
+        }
     }
 
     #[inline]

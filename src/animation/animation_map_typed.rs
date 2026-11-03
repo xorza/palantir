@@ -1,7 +1,8 @@
 //! The per-`T` animation table, and the one tick that advances a row in it.
 
+use crate::animation::animated::Animated;
 use crate::animation::animation_request::AnimationRequest;
-use crate::animation::animation_row::{self, AnimationRow, MotionRow, Retarget, TickResult};
+use crate::animation::animation_row::{self, AnimationRow, MotionRow, Retarget};
 use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::primitives::identity::typed_stores::TypedStore;
@@ -61,7 +62,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
         request: AnimationRequest<T>,
         spec: AnimationSpec,
         clock: AnimationClock,
-    ) -> TickResult<T> {
+    ) -> Animated<T> {
         let AnimationRequest {
             id,
             slot,
@@ -83,8 +84,8 @@ impl<T: Animatable> AnimationMapTyped<T> {
                     ticked_at: render_frame_id,
                     settled: true,
                 });
-                return TickResult {
-                    cur: target,
+                return Animated {
+                    value: target,
                     settled: true,
                 };
             }
@@ -104,8 +105,8 @@ impl<T: Animatable> AnimationMapTyped<T> {
         if row.settled && row.target == target {
             debug_assert!(row.cur() == target, "settled row must sit at its target");
             row.key = key;
-            return TickResult {
-                cur: target,
+            return Animated {
+                value: target,
                 settled: true,
             };
         }
@@ -129,7 +130,10 @@ impl<T: Animatable> AnimationMapTyped<T> {
                 );
                 let cur = target.clone();
                 row.target = target;
-                return TickResult { cur, settled: true };
+                return Animated {
+                    value: cur,
+                    settled: true,
+                };
             }
             let cur = row.motion.cur(&target);
             row.motion.conform(spec.motion, &cur, &target);
@@ -171,14 +175,14 @@ impl<T: Animatable> AnimationMapTyped<T> {
             {
                 row.motion.stop();
                 row.settled = true;
-                return TickResult {
-                    cur: row.target.clone(),
+                return Animated {
+                    value: row.target.clone(),
                     settled: true,
                 };
             }
             if from_rest {
-                return TickResult {
-                    cur,
+                return Animated {
+                    value: cur,
                     settled: false,
                 };
             }
@@ -204,9 +208,9 @@ impl<T: Animatable> TypedStore<u64> for AnimationMapTyped<T> {
 /// the count.
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::animation::animated::Animated;
     use crate::animation::animation_map_typed::{AnimationClock, AnimationMapTyped};
     use crate::animation::animation_request::AnimationRequest;
-    use crate::animation::animation_row::TickResult;
     use crate::animation::animation_spec::AnimationSpec;
     use crate::primitives::math::animatable::Animatable;
 
@@ -222,7 +226,7 @@ pub(crate) mod internals {
             request: AnimationRequest<T>,
             spec: AnimationSpec,
             dt: f32,
-        ) -> TickResult<T> {
+        ) -> Animated<T> {
             let render_frame_id = self
                 .rows
                 .values()

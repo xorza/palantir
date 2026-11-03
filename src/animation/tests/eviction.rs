@@ -23,7 +23,7 @@ fn tick<T: Animatable>(
         dt: 0.016,
         render_frame_id: frame,
     };
-    map.animate(request, AnimationSpec::FAST, clock).cur
+    map.animate(request, AnimationSpec::FAST, clock).value
 }
 
 /// A sweep keeps exactly the rows its frame ticked, in every typed map: a slot its caller stops

@@ -72,7 +72,7 @@ const DISTINCT: Metrics = Metrics {
         offset: Vec2::new(19.0, 21.0),
         blur: 23.0,
     },
-    transition: Some(AnimationSpec::MEDIUM),
+    transition: AnimationSpec::MEDIUM,
 };
 
 #[test]

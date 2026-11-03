@@ -6,8 +6,8 @@ use crate::support;
 use crate::support::{Col, Kit, Knob, Section};
 use palantir::widget::AnimationRequest;
 use palantir::{
-    Align, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure, Corners,
-    DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar, RadioButton, RgbaF32,
+    Align, Animated, AnimationSpec, Button, ButtonTheme, Checkbox, Chrome, ComboBox, Configure,
+    Corners, DragValue, Expander, ExpanderTheme, Metrics, Panel, ProgressBar, RadioButton, RgbaF32,
     SchemePreference, Separator, Sizing, Slider, SlotDefaults, Spinner, StatefulLook, Stroke,
     Switch, Text, TextEdit, TextStyleOverrides, Tooltip, Ui, VAlign, WidgetId, WidgetLook, fmt,
 };
@@ -72,7 +72,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &Appearance) {
                     api!(Panel::disabled),
                     api!(
                         Ui::animate
-                            as fn(&mut Ui, AnimationRequest<f32>, Option<AnimationSpec>) -> f32
+                            as fn(&mut Ui, AnimationRequest<f32>, AnimationSpec) -> Animated<f32>
                     ),
                 ])
                 .show(ui, k, |ui| form(ui, k, s, &themes)),
@@ -89,7 +89,7 @@ fn disclosure(ui: &mut Ui, k: Kit, s: &mut State) {
     let base = ExpanderTheme::default();
     let animated = ExpanderTheme {
         defaults: SlotDefaults {
-            animation: Some(AnimationSpec::MEDIUM),
+            animation: AnimationSpec::MEDIUM,
             ..base.defaults
         },
         ..base
@@ -261,14 +261,16 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
             });
 
             let target = if s.syncing { 1.0 } else { 0.0 };
-            let frac = ui.animate(
-                AnimationRequest::new(
-                    WidgetId::from_hash("showcase::controls::sync"),
-                    "frac",
-                    target,
-                ),
-                Some(AnimationSpec::SPRING),
-            );
+            let frac = ui
+                .animate(
+                    AnimationRequest::new(
+                        WidgetId::from_hash("showcase::controls::sync"),
+                        "frac",
+                        target,
+                    ),
+                    AnimationSpec::SPRING,
+                )
+                .value;
             if s.syncing && frac > 0.995 {
                 s.syncing = false;
             }

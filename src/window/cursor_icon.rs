@@ -2,7 +2,7 @@
 
 use crate::primitives::layout::axis::Axis;
 
-/// The mouse cursor a widget wants shown this frame, requested via [`Ui::set_cursor`](crate::Ui::set_cursor). A backend-agnostic subset (the winit mapping lives in the host) that grows as widgets need.
+/// The mouse cursor a widget wants shown this frame, requested via [`Ui::request_cursor`](crate::Ui::request_cursor). A backend-agnostic subset (the winit mapping lives in the host) that grows as widgets need.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum CursorIcon {
     /// The platform arrow; every frame resets to it.

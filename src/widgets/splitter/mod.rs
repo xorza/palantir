@@ -254,7 +254,7 @@ impl<'a> Splitter<'a> {
         // Resize cursor while the divider is hot, keyed off the drag first:
         // mid-drag the pointer leaves the thin bar and `hovered` is capture-gated.
         if bar_fill.is_some() {
-            ui.set_cursor(CursorIcon::resize_along(axis));
+            ui.request_cursor(CursorIcon::resize_along(axis));
         }
         let bar_chrome = bar_fill.map(Chrome::fill).unwrap_or_default();
         let rule_chrome = Chrome::fill(rule_color);

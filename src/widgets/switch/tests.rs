@@ -160,10 +160,8 @@ fn the_knob_wears_the_ink_of_its_state() {
 #[test]
 fn one_share_places_the_knob_and_blends_its_ink() {
     let mut style = ToggleTheme::switch(&Palette::DARK, &Metrics::DEFAULT);
-    style.defaults.animation = Some(AnimationSpec::duration(
-        time::Duration::from_millis(100),
-        Easing::Linear,
-    ));
+    style.defaults.animation =
+        AnimationSpec::duration(time::Duration::from_millis(100), Easing::Linear);
     let mut h = Harness::mono(UVec2::new(400, 400));
     let id = WidgetId::from_hash("wifi");
     let mut on = false;

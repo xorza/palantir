@@ -115,7 +115,7 @@ impl ToggleTheme {
         }
         .theme(p, m);
         t.track_aspect = 1.75;
-        t.defaults.animation = Some(AnimationSpec::SPRING);
+        t.defaults.animation = AnimationSpec::SPRING;
         t
     }
 }
@@ -199,7 +199,7 @@ impl ToggleGeometry {
             defaults: SlotDefaults {
                 padding: Spacing::ZERO,
                 margin: Spacing::ZERO,
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         }
     }

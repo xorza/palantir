@@ -2,6 +2,7 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
+use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::sense::Sense;
 use crate::primitives::geometry::arrow::Arrow;
@@ -127,6 +128,7 @@ impl<'a> Expander<'a> {
             },
             toggled: false,
             openness: 0.0,
+            showing: false,
             inner: None,
         };
         widget.record(ui, None, |ui| {
@@ -146,20 +148,18 @@ impl<'a> Expander<'a> {
             // With no measured height there is nothing to clip against: snap, then
             // animate every later reveal.
             let spec = if now_open && height.is_none() {
-                None
+                AnimationSpec::SNAP
             } else {
                 t.defaults.animation
             };
-            // A spring swings past its ends. The clamp keeps the arrow and the clip in range, and a
-            // close that reached 0 is closed while the swing comes back above it.
-            let swing = ui
-                .animate(
-                    AnimationRequest::new(header_id, SLOT_OPEN, f32::from(now_open)),
-                    spec,
-                )
-                .clamp(0.0, 1.0);
-            let showing = swing > 0.0 && (now_open || stored.is_some_and(|s| s.shown));
-            let openness = if showing { swing } else { 0.0 };
+            let swing = ui.animate(
+                AnimationRequest::new(header_id, SLOT_OPEN, f32::from(now_open)),
+                spec,
+            );
+            // A spring swings past its ends, so the clamp keeps the arrow and the clip in range,
+            // and a close shows the body until it rests at 0, not while its swing dips under 0.
+            let openness = swing.value.clamp(0.0, 1.0);
+            let showing = now_open || !swing.settled;
             let [a, b, c] = Arrow { size: t.arrow_size }.rotated(t.arrow_angle(openness));
             let text = look.text;
             let label = ui.intern(label);
@@ -205,6 +205,7 @@ impl<'a> Expander<'a> {
             pass.header = state;
             pass.toggled = activated;
             pass.openness = openness;
+            pass.showing = showing;
         });
 
         let now_open = was_open != pass.toggled;
@@ -217,7 +218,7 @@ impl<'a> Expander<'a> {
         let row = ExpanderState {
             open: now_open,
             height: measured.or(height),
-            shown: pass.openness > 0.0,
+            shown: pass.showing,
         };
         // Written on a change, so an unopened section mints no row (the probe-don't-insert path
         // `ComboBox` takes). An open one always keeps a row, which `is_open` reads, as a section
@@ -272,12 +273,13 @@ struct Pass<R> {
     header: ResponseSnapshot,
     toggled: bool,
     openness: f32,
+    showing: bool,
     inner: Option<R>,
 }
 
 /// The open flag and the body height the reveal clips against. The height lives on
 /// the *header*, recorded every frame, because a skipped body has no response;
-/// `shown` is whether the body laid out showing.
+/// `shown` is whether the body laid out expanded, so its last rect is its height.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct ExpanderState {
     open: bool,

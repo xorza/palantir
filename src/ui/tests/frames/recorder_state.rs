@@ -1,5 +1,6 @@
 //! Theme sharing, and a subtree disabled between frames.
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::theme::color_scheme::ColorScheme;
 
 use crate::host::harness::Harness;
@@ -116,7 +117,7 @@ fn theme_reads_share_and_writes_copy_on_write() {
     );
 
     // `set_theme_for` takes the handle, so swapping themes is a move.
-    h.ui_mut().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     let swapped: Rc<Theme> = Rc::new(Theme::default());
     let swapped_ptr = Rc::as_ptr(&swapped);
     h.ui_mut().set_theme_for(ColorScheme::Dark, swapped);

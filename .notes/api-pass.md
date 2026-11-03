@@ -158,22 +158,6 @@ Batches run most harmful first. A batch changes palantir and darkroom together a
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
 
-### Batch 7: The Ui and animation
-
-- [ ] `Ui::set_cursor` renamed `request_cursor`, as it lasts one frame. Callers: 10 / 1.
-- [ ] One spelling of "no motion": `AnimationSpec` drops its `Option` everywhere
-  (`animate(request, spec)`, `set_theme_transition(spec)`, `Metrics::transition`,
-  `SlotDefaults::animation`), with `SNAP` and serde default `SNAP`; update AGENTS.md "Theme
-  transition".
-- [ ] An animate sibling returning `{ value, settled }`, replacing Expander's `stored.shown`.
-- [ ] Reduced motion for paint animations: a marker on `PaintAnimation`, decorative or progress,
-  that palantir honors as `animate` honors it.
-- [ ] `Easing::curve(self) -> PaintCurve`; `PaintCurve`'s doc allows the overshoot of `OutBack`;
-  `curves::linear` goes.
-- [ ] `AnimationRequest::key(self, ..)` renamed `with_key`, as a value's setter.
-- [ ] The `peek_*` rule in AGENTS.md covers pointer and modifier levels alone; the unused
-  `pointer_local` pair goes.
-
 ### Batch 8: Paint values and shapes
 
 - [ ] Gradients: remove `GradientBuilder`, its three aliases, the three `builder` functions and the

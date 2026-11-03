@@ -1,7 +1,8 @@
 //! [`Phase`]: a position between two ends that moves toward one of them under an
 //! [`AnimationSpec`], by the rules every animated value follows.
 
-use crate::animation::animation_row::{MotionRow, Retarget, TickResult};
+use crate::animation::animated::Animated;
+use crate::animation::animation_row::{MotionRow, Retarget};
 use crate::animation::animation_spec::AnimationSpec;
 
 /// Which end a [`Phase`] heads for.
@@ -71,7 +72,7 @@ impl Phase {
     }
 
     /// Move `dt` seconds on; settled once it rests on the end it heads for.
-    pub(crate) fn advance(&mut self, dt: f32) -> TickResult<f32> {
+    pub(crate) fn advance(&mut self, dt: f32) -> Animated<f32> {
         self.motion.advance(self.heads_for.at(), dt)
     }
 }
@@ -94,12 +95,12 @@ mod tests {
         ));
         assert_eq!(phase.at(), 0.0);
         let step = phase.advance(0.25);
-        assert_eq!((step.cur, step.settled), (0.25, false));
+        assert_eq!((step.value, step.settled), (0.25, false));
         phase.turn(PhaseEnd::Start);
         assert_eq!(phase.at(), 0.25);
-        assert_eq!(phase.advance(0.125).cur, 0.125);
+        assert_eq!(phase.advance(0.125).value, 0.125);
         let step = phase.advance(0.125);
-        assert_eq!((step.cur, step.settled), (0.0, true));
+        assert_eq!((step.value, step.settled), (0.0, true));
     }
 
     /// A turn keeps the position, so the blend does not jump; a turn toward the end it already
@@ -113,7 +114,10 @@ mod tests {
             twin.advance(1.0 / 60.0);
         }
         phase.turn(PhaseEnd::End);
-        assert_eq!(phase.advance(1.0 / 60.0).cur, twin.advance(1.0 / 60.0).cur);
+        assert_eq!(
+            phase.advance(1.0 / 60.0).value,
+            twin.advance(1.0 / 60.0).value
+        );
         let at = phase.at();
         phase.turn(PhaseEnd::Start);
         assert_eq!(phase.at(), at);

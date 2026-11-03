@@ -8,7 +8,9 @@ use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
+use crate::shape::Shape;
 use crate::shape::paint::curve_basis::CurveBasis;
+use crate::shape::paint_animation::{PaintAnimation, PaintMotion, PaintRepeat};
 use crate::shape::record::ShapeRecord;
 use crate::theme::spinner::SpinnerTheme;
 use crate::ui::Ui;
@@ -316,4 +318,35 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         1,
         "showing must restore the active animation row",
     );
+}
+
+/// Under reduced motion a spinner's turn shows progress and keeps running, and a decorative turn
+/// recorded beside it paints as if unanimated.
+#[test]
+fn a_spinner_turns_under_reduced_motion_and_decoration_does_not() {
+    let mut h = Harness::mono(UVec2::new(200, 200));
+    h.set_motion_reduced(true);
+    h.frame(|ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Spinner::new().id(WidgetId::from_hash("spin")).show(ui);
+            Panel::zstack()
+                .id(WidgetId::from_hash("decor"))
+                .size(10.0)
+                .show(ui, |ui| {
+                    ui.add_shape_animated(
+                        Shape::owner_rect().fill(RgbaF32::WHITE),
+                        PaintAnimation::turn(0.0, 1.0).with_repeat(PaintRepeat::Forever),
+                    );
+                });
+        });
+    });
+    let motions: Vec<PaintMotion> = h
+        .ui()
+        .tree(Layer::Main)
+        .paint_animations
+        .entries
+        .iter()
+        .map(|e| e.animation.motion)
+        .collect();
+    assert_eq!(motions, [PaintMotion::Progress]);
 }

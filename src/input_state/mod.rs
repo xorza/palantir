@@ -840,16 +840,6 @@ impl InputState {
                 .all(|c| c.press.is_none() && c.release.is_none());
     }
 
-    /// The pointer in `id`'s local space, the cheap path; shares `pointer_in_widget_space` with
-    /// [`Self::response_for`].
-    pub(crate) fn pointer_local_for(&self, id: WidgetId, frame: ArrangedFrame<'_>) -> Option<Vec2> {
-        let pointer = self.pointer.pos?;
-        let loc = frame.cascade.locate(id)?;
-        let layout_rect = frame.layout.arranged_rect(loc.endpoint);
-        let transform = frame.cascade.entry(loc).transform;
-        Some(pointer_in_widget_space(pointer, layout_rect.min, transform))
-    }
-
     pub(crate) fn response_for(
         &self,
         id: WidgetId,

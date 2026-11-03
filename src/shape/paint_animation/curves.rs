@@ -1,12 +1,6 @@
-//! The curves the crate ships, as plain `fn`s a [`PaintAnimation`](crate::widget::PaintAnimation) takes: a phase in `[0, 1)` to a value in `[0, 1]`.
+//! The repeating curves the crate ships, as plain `fn`s a [`PaintAnimation`](crate::widget::PaintAnimation) takes: a phase in `[0, 1)` to a value in `[0, 1]`. A one-way ease is an [`Easing::curve`](crate::Easing::curve).
 
 use std::f32::consts::TAU;
-
-/// The phase itself: a ramp.
-#[inline]
-pub const fn linear(t: f32) -> f32 {
-    t
-}
 
 /// One for the first half of the period, zero for the second (the caret blink); pair with [`PaintAnimation::with_steps(2)`](crate::widget::PaintAnimation::with_steps).
 #[inline]

@@ -20,6 +20,7 @@ mod theme_transition;
 mod window_theme;
 
 use crate::animation::AnimationMap;
+use crate::animation::animated::Animated;
 use crate::animation::animation_map_typed::AnimationClock;
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_spec::AnimationSpec;
@@ -256,21 +257,21 @@ impl Ui {
     }
 
     /// The spec a change of the shown theme runs under, a pick or the system's turn of the
-    /// scheme included; `None` snaps. Per window; [`AnimationSpec::THEME`] until set.
+    /// scheme included. Per window; [`AnimationSpec::THEME`] until set.
     #[inline]
-    pub const fn theme_transition(&self) -> Option<AnimationSpec> {
+    pub const fn theme_transition(&self) -> AnimationSpec {
         self.window_theme.spec()
     }
 
     /// Run every change of the shown theme under `spec`, as Flutter's `AnimatedTheme` does: each
     /// frame shows [`Theme`]'s lerp from the theme shown to the new one, so colors, lengths and
-    /// font sizes move with real layout. `None` snaps, as does any change before the window's
-    /// second frame, while the window is hidden, or with motion reduced
+    /// font sizes move with real layout. [`AnimationSpec::SNAP`] snaps, as does any change before
+    /// the window's second frame, while the window is hidden, or with motion reduced
     /// ([`Self::is_motion_reduced`]). A change mid-way starts from the blend shown. A live edit,
-    /// one theme a frame, sets `None` for its span: under 300 ms `OutCubic` it lags 89 ms behind.
-    /// A transition running when `None` is set ends where it heads.
-    pub fn set_theme_transition(&mut self, spec: impl Into<Option<AnimationSpec>>) {
-        if self.window_theme.set_spec(spec.into()) {
+    /// one theme a frame, sets `SNAP` for its span: under 300 ms `OutCubic` it lags 89 ms behind.
+    /// A transition running when `SNAP` is set ends where it heads.
+    pub fn set_theme_transition(&mut self, spec: AnimationSpec) {
+        if self.window_theme.set_spec(spec) {
             self.frame_runtime.request_repaint();
         }
     }
@@ -547,10 +548,11 @@ impl Ui {
         self.frame_runtime.stamp().time
     }
 
-    /// Request the mouse cursor. Last writer wins; reset to [`CursorIcon::Default`]
-    /// each record pass, so re-request every frame. Ignored headless.
+    /// Request the mouse cursor for this frame. Last writer wins; reset to
+    /// [`CursorIcon::Default`] each record pass, so request it again every frame. Ignored
+    /// headless.
     #[inline]
-    pub const fn set_cursor(&mut self, cursor: CursorIcon) {
+    pub const fn request_cursor(&mut self, cursor: CursorIcon) {
         self.window_requests.levels.cursor = cursor;
     }
 
@@ -950,7 +952,9 @@ impl Ui {
 
     /// Append `shape` to the active node and animate it at paint time. The recorded
     /// shape is identical every frame, so the widget never re-records. Drops silently
-    /// if the shape was noop-collapsed.
+    /// if the shape was noop-collapsed. With motion reduced ([`Self::is_motion_reduced`]), a
+    /// decorative animation lands at once, as
+    /// [`PaintMotion::Decorative`](crate::widget::PaintMotion::Decorative) says.
     ///
     /// ```
     /// # use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
@@ -967,7 +971,15 @@ impl Ui {
     /// # }
     /// ```
     pub fn add_shape_animated(&mut self, shape: impl Lower, animation: PaintAnimation) {
-        self.forest.add_shape_animated(shape, animation);
+        let animation = if self.is_motion_reduced() {
+            animation.reduced()
+        } else {
+            Some(animation)
+        };
+        match animation {
+            Some(animation) => self.forest.add_shape_animated(shape, animation),
+            None => self.forest.add_shape(shape),
+        }
     }
 
     /// Open a side layer that paints above `Main`, escapes ancestor clip and
@@ -1150,37 +1162,38 @@ impl Ui {
         out
     }
 
-    /// Advance the animation row `request` names toward its target and return the
-    /// current value. [`AnimationSpec::SNAP`] and `None` land on the target now and
-    /// request no repaint, as every spec does with motion reduced and on the first frame after
-    /// the window was hidden; a row they leave goes at the end of the frame.
+    /// Advance the animation row `request` names toward its target and return the current
+    /// value, and whether the motion is at rest there. [`AnimationSpec::SNAP`] lands on the
+    /// target now, settled, and requests no repaint, as every spec does with motion reduced and
+    /// on the first frame after the window was hidden; a row it leaves goes at the end of the
+    /// frame.
     ///
     /// # Panics
     ///
     /// When an animated target is not finite, which would never settle.
-    // Keep the no-map/no-spec return in the widget's block so a static theme does
-    // not pay an outlined call plus a large `V` return-slot handoff.
+    // Keep the snap's return in the widget's block so a static theme does not pay an
+    // outlined call plus a large `Animated<V>` return-slot handoff.
     #[inline(always)]
     #[track_caller]
     pub fn animate<V: Animatable>(
         &mut self,
         request: AnimationRequest<V>,
-        spec: impl Into<Option<AnimationSpec>>,
-    ) -> V {
+        spec: AnimationSpec,
+    ) -> Animated<V> {
         let spec = if self.motion_snaps() {
             AnimationSpec::SNAP
         } else {
-            spec.into().unwrap_or(AnimationSpec::SNAP)
+            spec
         };
         let clock = AnimationClock {
             dt: self.frame_runtime.dt,
             render_frame_id: self.frame_runtime.render_frame_id,
         };
-        let r = self.animation.animate(request, spec, clock);
-        if !r.settled {
+        let animated = self.animation.animate(request, spec, clock);
+        if !animated.settled {
             self.frame_runtime.request_repaint();
         }
-        r.cur
+        animated
     }
 
     /// Currently focused widget id, or `None`.
@@ -1364,15 +1377,6 @@ impl Ui {
         self.input.pointer_pos()
     }
 
-    /// Pointer position in `id`'s pre-transform local coordinates. `None` when
-    /// off-surface or the widget did not arrange last frame. Auto-watches
-    /// [`PointerWake::MOVE`]; see [`Self::peek_pointer_local`].
-    #[inline]
-    pub fn pointer_local(&mut self, id: WidgetId) -> Option<Vec2> {
-        self.watch_pointer(PointerWake::MOVE);
-        self.input.pointer_local_for(id, self.arranged_frame())
-    }
-
     /// Currently held modifier keys. Auto-watches [`KeyboardWake::MODIFIER`]; when
     /// gated on something that already woke the frame, use [`Self::peek_modifiers`].
     #[inline]
@@ -1386,13 +1390,6 @@ impl Ui {
     #[inline]
     pub const fn peek_pointer_pos(&self) -> Option<Vec2> {
         self.input.pointer_pos()
-    }
-
-    /// [`Self::pointer_local`] without the [`PointerWake::MOVE`] watch; same caveat as
-    /// [`Self::peek_pointer_pos`].
-    #[inline]
-    pub fn peek_pointer_local(&self, id: WidgetId) -> Option<Vec2> {
-        self.input.pointer_local_for(id, self.arranged_frame())
     }
 
     /// [`Self::modifiers`] without the [`KeyboardWake::MODIFIER`] watch. Use the

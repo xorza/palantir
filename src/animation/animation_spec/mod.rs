@@ -8,11 +8,10 @@ use ::serde::de::Error as _;
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::Duration;
 
-/// How a value moves toward its target. Pass `None` to [`crate::Ui::animate`],
-/// or leave a theme slot's `animation` unset, to snap; the stock buttons,
-/// menu-bar titles, menu rows and tab chips take [`Metrics::transition`](crate::Metrics::transition),
-/// [`Self::FAST`] by default. `AnimationSpec` only describes
-/// motion *when there is some*.
+/// How a value moves toward its target. [`Self::SNAP`], also the [`Default`], is no motion: pass
+/// it to [`crate::Ui::animate`], or leave a theme slot's `animation` unset, to snap. The stock
+/// buttons, menu-bar titles, menu rows and tab chips take
+/// [`Metrics::transition`](crate::Metrics::transition), [`Self::FAST`] by default.
 ///
 /// Wire format is internally tagged on `kind` (snake_case):
 ///
@@ -68,9 +67,8 @@ impl AnimationSpec {
             ease: Easing::OutCubic,
         },
     };
-    /// No motion: the value lands on its target in one frame. The named form of
-    /// "do not animate"; `None` in [`Ui::animate`](crate::Ui::animate) does the same,
-    /// and both short-circuit on [`Self::is_instant`].
+    /// No motion: the value lands on its target in one frame. The one spelling of "do not
+    /// animate"; [`Ui::animate`](crate::Ui::animate) short-circuits on [`Self::is_instant`].
     pub const SNAP: Self = Self::duration_from_validated(0.0, Easing::Linear);
     /// Near-critically-damped spring tuned as a general-purpose default.
     pub const SPRING: Self = Self {
@@ -123,13 +121,26 @@ impl AnimationSpec {
     }
 
     /// True when this spec is a single-frame snap (a `Duration` canonicalized to
-    /// zero); springs never are. `Ui::animate` short-circuits on this and `None`.
+    /// zero); springs never are. `Ui::animate` short-circuits on this.
     #[inline(always)]
     pub const fn is_instant(self) -> bool {
         match self.motion {
             AnimationMotion::Duration { secs, .. } => secs == 0.0,
             AnimationMotion::Spring(_) => false,
         }
+    }
+
+    /// Serde's `skip_serializing_if` for a spec field, which takes it by reference: a snap is the
+    /// default a file leaves out.
+    pub(crate) const fn is_snap(&self) -> bool {
+        self.is_instant()
+    }
+}
+
+/// [`AnimationSpec::SNAP`]: no motion is the neutral spec.
+impl Default for AnimationSpec {
+    fn default() -> Self {
+        Self::SNAP
     }
 }
 

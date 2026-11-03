@@ -72,7 +72,7 @@ fn bench_theme() -> Theme {
         ..Theme::from_parts(
             &Palette::DARK,
             &Metrics {
-                transition: None,
+                transition: AnimationSpec::SNAP,
                 ..Metrics::DEFAULT
             },
         )
@@ -110,7 +110,7 @@ fn roomy_theme() -> Theme {
                     lg: d.space.lg * 4.0 / 3.0,
                     xl: d.space.xl * 4.0 / 3.0,
                 },
-                transition: None,
+                transition: AnimationSpec::SNAP,
                 ..d
             },
         )

@@ -125,8 +125,8 @@ fn values_with_no_blend_switch_halfway() {
     b.spinner.period = Duration::from_secs(2);
     a.tooltip.delay = Duration::from_millis(500);
     b.tooltip.delay = Duration::from_millis(900);
-    a.button.defaults.animation = Some(AnimationSpec::FAST);
-    b.button.defaults.animation = None;
+    a.button.defaults.animation = AnimationSpec::FAST;
+    b.button.defaults.animation = AnimationSpec::SNAP;
     b.text.family = FontFamily::MONO;
     b.text.weight = FontWeight::BOLD;
     b.text.slant = FontSlant::Italic;

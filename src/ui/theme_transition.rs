@@ -14,8 +14,7 @@ use crate::theme::Theme;
 /// row in the `AnimationMap`, which would compare a whole `Theme` every frame.
 #[derive(Debug)]
 pub(crate) struct ThemeTransition {
-    /// `None` snaps.
-    spec: Option<AnimationSpec>,
+    spec: AnimationSpec,
     run: Option<ThemeRun>,
     /// A finished run's buffers, its blend and the start a third theme gave it, which later runs
     /// write into, so only a window's first runs allocate, also when the app holds its themes.
@@ -34,7 +33,7 @@ struct ThemeRun {
 impl Default for ThemeTransition {
     fn default() -> Self {
         Self {
-            spec: Some(AnimationSpec::THEME),
+            spec: AnimationSpec::THEME,
             run: None,
             spares: [None, None],
         }
@@ -42,27 +41,25 @@ impl Default for ThemeTransition {
 }
 
 impl ThemeTransition {
-    pub(crate) const fn spec(&self) -> Option<AnimationSpec> {
+    pub(crate) const fn spec(&self) -> AnimationSpec {
         self.spec
     }
 
-    /// Whether a change animates under the spec: `None` and an instant spec snap.
-    pub(crate) fn animates(&self) -> bool {
-        self.spec.is_some_and(|spec| !spec.is_instant())
+    /// Whether a change animates under the spec: an instant spec snaps.
+    pub(crate) const fn animates(&self) -> bool {
+        !self.spec.is_instant()
     }
 
-    /// Run on under `spec`. Returns whether a run ended, as an instant or absent spec ends one.
-    pub(crate) fn set_spec(&mut self, spec: Option<AnimationSpec>) -> bool {
+    /// Run on under `spec`. Returns whether a run ended, as an instant spec ends one.
+    pub(crate) fn set_spec(&mut self, spec: AnimationSpec) -> bool {
         self.spec = spec;
-        match spec {
-            Some(spec) if !spec.is_instant() => {
-                if let Some(run) = &mut self.run {
-                    run.phase.conform(spec);
-                }
-                false
-            }
-            _ => self.snap(),
+        if spec.is_instant() {
+            return self.snap();
         }
+        if let Some(run) = &mut self.run {
+            run.phase.conform(spec);
+        }
+        false
     }
 
     /// The blend this frame shows, while a run is on.
@@ -77,7 +74,11 @@ impl ThemeTransition {
     /// starts at `old`. A run heading for one of its own ends turns to `new` by the row rules; a
     /// third theme starts a new run from the blend shown now, from rest.
     pub(crate) fn follow(&mut self, old: Rc<Theme>, new: &Rc<Theme>) {
-        let spec = self.spec.expect("a change animates only under a spec");
+        let spec = self.spec;
+        debug_assert!(
+            !spec.is_instant(),
+            "a change animates only under a moving spec"
+        );
         match &mut self.run {
             None => {
                 let shown = match take_spare(&mut self.spares) {
@@ -144,7 +145,14 @@ impl ThemeTransition {
             )]
             {
                 debug_assert!(
-                    Rc::ptr_eq(if step.cur == 0.0 { &run.from } else { &run.to }, target),
+                    Rc::ptr_eq(
+                        if step.value == 0.0 {
+                            &run.from
+                        } else {
+                            &run.to
+                        },
+                        target
+                    ),
                     "a run lands on the theme the window shows at rest",
                 );
             }
@@ -154,7 +162,7 @@ impl ThemeTransition {
         let mix = Theme::lerp(
             Theme::clone(&run.from),
             Theme::clone(&run.to),
-            step.cur.clamp(0.0, 1.0),
+            step.value.clamp(0.0, 1.0),
         );
         *Rc::make_mut(&mut run.shown) = mix;
         true

@@ -1,5 +1,5 @@
 use crate::scene::tree::paint_animations::*;
-use crate::shape::paint_animation::{PaintRepeat, curves};
+use crate::shape::paint_animation::PaintRepeat;
 use std::f32::consts::TAU;
 
 const START: Duration = Duration::from_secs(1);
@@ -9,8 +9,7 @@ fn spinning(shape_idx: u32, speed: f32) -> PaintAnimationEntry {
         animation: PaintAnimation::turn(0.0, 1.0)
             .with_started_at(START)
             .with_period(Duration::from_secs_f32(TAU / speed))
-            .with_repeat(PaintRepeat::Forever)
-            .with_curve(curves::linear),
+            .with_repeat(PaintRepeat::Forever),
         shape_idx,
         row: 0,
         node: NodeId(0),

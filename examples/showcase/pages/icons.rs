@@ -297,7 +297,7 @@ const CURSORS: [(CursorIcon, &str); 10] = [
 /// A cell per pointer shape, each setting it while the pointer is over the cell.
 fn cursors(ui: &mut Ui, k: Kit) {
     Section::new("Cursors")
-        .apis(&[api!(Ui::set_cursor), api!(type CursorIcon)])
+        .apis(&[api!(Ui::request_cursor), api!(type CursorIcon)])
         .show(ui, k, |ui| {
             support::note(
                 ui,
@@ -319,7 +319,7 @@ fn cursors(ui: &mut Ui, k: Kit) {
                         .response
                         .hovered();
                     if hovered {
-                        ui.set_cursor(icon);
+                        ui.request_cursor(icon);
                     }
                 }
             });

@@ -9,7 +9,6 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::renderer::frontend::payload::draw_quad_payload::QuadGeometry;
 use crate::shape::Shape;
 use crate::shape::paint_animation::PaintAnimation;
-use crate::shape::paint_animation::curves;
 use crate::shape::style::LineCap;
 use crate::text::glyph_font::GlyphFont;
 use crate::ui::Ui;
@@ -19,7 +18,7 @@ use crate::widgets::block::Block;
 use glam::Vec2;
 use std::time::Duration;
 
-/// A fractional alpha survives the whole path (encoder sample, sink gate, payload color lane): opaque red with alpha lerping `0.0` → `1.0` over one second on [`curves::linear`] encodes a fill alpha of `0.5` at 500 ms. The crate's other animations answered only `0` or `1`.
+/// A fractional alpha survives the whole path (encoder sample, sink gate, payload color lane): opaque red with alpha lerping `0.0` → `1.0` over one second on a linear curve encodes a fill alpha of `0.5` at 500 ms. The crate's other animations answered only `0` or `1`.
 #[test]
 fn a_fractional_alpha_reaches_the_encoded_fill() {
     let record = |ui: &mut Ui| {
@@ -29,9 +28,7 @@ fn a_fractional_alpha_reaches_the_encoded_fill() {
             .show(ui);
         ui.add_shape_animated(
             Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)).fill(RgbaF32::srgb(1.0, 0.0, 0.0)),
-            PaintAnimation::alpha(0.0, 1.0)
-                .with_period(Duration::from_secs(1))
-                .with_curve(curves::linear),
+            PaintAnimation::alpha(0.0, 1.0).with_period(Duration::from_secs(1)),
         );
     };
 

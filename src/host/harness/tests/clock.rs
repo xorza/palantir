@@ -80,10 +80,7 @@ fn settle_counts_the_frames_a_motion_takes() {
 
     // 50 ms linear tween: the retarget frame spends nothing, 16/32/48 ms are in flight, 64 ms passes the end.
     let slot = AnimationSlot::new("idle-count");
-    let tween = Some(AnimationSpec::duration(
-        Duration::from_millis(50),
-        Easing::Linear,
-    ));
+    let tween = AnimationSpec::duration(Duration::from_millis(50), Easing::Linear);
     let tick = Duration::from_millis(16);
     let mut harness = Harness::builder(SURFACE).mono().frame_dt(tick).build();
     let to = cell::Cell::new(0.0_f32);

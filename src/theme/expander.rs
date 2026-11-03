@@ -1,5 +1,6 @@
 //! What a disclosure header wears, and how far its body is inset.
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
@@ -117,7 +118,7 @@ impl ExpanderTheme {
             defaults: SlotDefaults {
                 padding: Spacing::all(m.space.xs),
                 margin: Spacing::ZERO,
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         }
     }

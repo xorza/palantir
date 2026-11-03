@@ -1,3 +1,4 @@
+use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
@@ -106,7 +107,7 @@ fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
 
     let id = WidgetId::from_hash("chip-states");
     let mut style = ColorPickerTheme::default();
-    style.chip.defaults.animation = None;
+    style.chip.defaults.animation = AnimationSpec::SNAP;
     let looks = style.chip.unselected.clone();
     let rings = [
         &looks.normal,

@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use glam::UVec2;
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme::{Dark, Light};
@@ -23,7 +24,7 @@ fn record(ui: &mut Ui) {
 #[test]
 fn a_pick_shows_from_the_next_frame_and_repaints_it_whole() {
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     h.frame(record);
     assert_eq!(h.ui().color_scheme(), Dark, "nothing reports a scheme");
 
@@ -97,7 +98,7 @@ fn a_pick_in_one_window_shows_in_another() {
 #[test]
 fn the_theme_epoch_moves_only_with_the_shown_theme() {
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     h.frame(record);
     let epoch = h.ui().window_theme.epoch();
 
@@ -128,7 +129,7 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
 #[test]
 fn a_shown_theme_write_asks_for_a_frame() {
     let mut h = Harness::mono(SURFACE);
-    h.ui_mut().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     h.frame(record);
     let shown = Rc::new(Theme::stock(Dark));
     let report = h.frame(|ui| {

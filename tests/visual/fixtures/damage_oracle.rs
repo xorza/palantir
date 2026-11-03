@@ -5,7 +5,7 @@
 use std::time::Duration;
 
 use glam::{UVec2, Vec2};
-use palantir::widget::{PaintAnimation, PaintRepeat, Shape, curves};
+use palantir::widget::{PaintAnimation, PaintRepeat, Shape};
 use palantir::{
     Block, Chrome, Configure, Image, ImageFit, ImageHandle, Layer, Panel, RadialGradient, Rect,
     RgbaF32, Shadow, Sizing, SrgbaU8, Stroke, Text, Ui,
@@ -89,8 +89,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                             PaintAnimation::turn(0.0, 1.0)
                                 .with_started_at(Duration::ZERO)
                                 .with_period(Duration::from_secs(4))
-                                .with_repeat(PaintRepeat::Forever)
-                                .with_curve(curves::linear),
+                                .with_repeat(PaintRepeat::Forever),
                         );
                     } else {
                         ui.add_shape(line);

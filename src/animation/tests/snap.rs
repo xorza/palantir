@@ -51,7 +51,7 @@ fn spring_snap_fields_carry_target_immediately() {
         AnimationSpec::SPRING,
         0.016,
     );
-    assert_eq!(r.cur, start, "the change's frame shows the start");
+    assert_eq!(r.value, start, "the change's frame shows the start");
     let r = map.step(
         AnimationRequest::new(id, SLOT, target.clone()),
         AnimationSpec::SPRING,
@@ -62,13 +62,13 @@ fn spring_snap_fields_carry_target_immediately() {
         "spring with a real fill diff must remain in flight after one step",
     );
     assert_eq!(
-        r.cur.corners, target.corners,
+        r.value.corners, target.corners,
         "snap field must carry target value on the first stepped frame, not lag until settle",
     );
     assert!(
-        r.cur.fill.as_solid().unwrap().r < target.fill.as_solid().unwrap().r - 0.05,
+        r.value.fill.as_solid().unwrap().r < target.fill.as_solid().unwrap().r - 0.05,
         "animated fill should still be mid-flight; got {:?}",
-        r.cur.fill,
+        r.value.fill,
     );
 }
 
@@ -136,7 +136,7 @@ fn gradient_snap_clears_only_its_chrome_velocity() {
     );
     let row = &map.rows[&(id, SLOT)];
     let velocity = support::spring_velocity(row);
-    assert_eq!(result.cur.fill, gradient);
+    assert_eq!(result.value.fill, gradient);
     assert_eq!(velocity.fill, Brush::TRANSPARENT);
     assert_eq!(velocity.border.width, stroke_velocity);
     assert!(
@@ -166,10 +166,12 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
 
     let frame = |h: &mut Harness, look: &AnimatedLook| {
         h.frame_passes(|ui| {
-            let cur = ui.animate(
-                AnimationRequest::new(id, SLOT, look.clone()),
-                Some(AnimationSpec::SPRING),
-            );
+            let cur = ui
+                .animate(
+                    AnimationRequest::new(id, SLOT, look.clone()),
+                    AnimationSpec::SPRING,
+                )
+                .value;
             Block::new()
                 .id(WidgetId::from_hash("gradient-look-settle"))
                 .show(ui);
@@ -189,10 +191,12 @@ fn gradient_snap_inside_look_repaints_only_until_numeric_fields_settle() {
 
     let mut last = None;
     let frames = h.settled(&mut |ui: &mut Ui| {
-        let cur = ui.animate(
-            AnimationRequest::new(id, SLOT, target.clone()),
-            Some(AnimationSpec::SPRING),
-        );
+        let cur = ui
+            .animate(
+                AnimationRequest::new(id, SLOT, target.clone()),
+                AnimationSpec::SPRING,
+            )
+            .value;
         assert_eq!(cur.chrome.fill, gradient);
         Block::new()
             .id(WidgetId::from_hash("gradient-look-settle"))

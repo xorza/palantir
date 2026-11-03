@@ -44,7 +44,7 @@ fn shows(h: &Harness, theme: &Rc<Theme>) -> bool {
 #[test]
 fn the_default_is_300_ms_out_cubic() {
     let h = Harness::mono(SURFACE);
-    assert_eq!(h.ui().theme_transition(), Some(AnimationSpec::THEME));
+    assert_eq!(h.ui().theme_transition(), AnimationSpec::THEME);
     assert_eq!(
         AnimationSpec::THEME,
         AnimationSpec::duration(Duration::from_millis(300), Easing::OutCubic)
@@ -175,7 +175,7 @@ fn a_change_snaps_where_nothing_should_move() {
     assert!(shows(&fresh, &light), "before the first frame");
 
     let (mut h, _) = running();
-    h.ui_mut().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     h.ui_mut().set_theme_for(Dark, Rc::clone(&light));
     assert!(shows(&h, &light), "no transition");
 
@@ -187,7 +187,7 @@ fn a_change_snaps_where_nothing_should_move() {
     let (mut h, _) = running();
     h.ui_mut().set_theme_for(Dark, Rc::clone(&light));
     h.advance(QUARTER).frame(record);
-    h.ui_mut().set_theme_transition(None);
+    h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     assert!(shows(&h, &light), "`None` ends a running one");
 
     let (mut h, _) = running();

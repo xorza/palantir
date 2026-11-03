@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use glam::Vec2;
 use palantir::{
-    ButtonTheme, Chrome, ClipMode, CloseShown, ColorPickerTheme, ComboBoxTheme, Corners, DockTheme,
-    DragValueTheme, ExpanderTheme, FocusRingTheme, FontFamily, FontSlant, FontWeight, MenuBarTheme,
-    MenuItemTheme, MenuTheme, ModalTheme, PopupTheme, ProgressBarTheme, RgbaF32, ScrollbarTheme,
-    SeparatorTheme, Shadow, Size, SliderColors, SliderTheme, SlotDefaults, Spacing, SpinnerTheme,
-    SplitterTheme, StatefulLook, Stroke, TabsTheme, TextEditTheme, TextStyle, TextStyleOverrides,
-    Theme, ToggleTheme, TooltipTheme, WidgetLook,
+    AnimationSpec, ButtonTheme, Chrome, ClipMode, CloseShown, ColorPickerTheme, ComboBoxTheme,
+    Corners, DockTheme, DragValueTheme, ExpanderTheme, FocusRingTheme, FontFamily, FontSlant,
+    FontWeight, MenuBarTheme, MenuItemTheme, MenuTheme, ModalTheme, PopupTheme, ProgressBarTheme,
+    RgbaF32, ScrollbarTheme, SeparatorTheme, Shadow, Size, SliderColors, SliderTheme, SlotDefaults,
+    Spacing, SpinnerTheme, SplitterTheme, StatefulLook, Stroke, TabsTheme, TextEditTheme,
+    TextStyle, TextStyleOverrides, Theme, ToggleTheme, TooltipTheme, WidgetLook,
 };
 
 /// The light theme, with no motion, so its widgets show at rest.
@@ -68,7 +68,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(12.0, 4.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         checkbox: ToggleTheme {
@@ -134,7 +134,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         radio: ToggleTheme {
@@ -200,7 +200,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         switch: ToggleTheme {
@@ -266,7 +266,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         scrollbar: ScrollbarTheme {
@@ -311,7 +311,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(8.0, 4.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         drag_value: DragValueTheme {
@@ -369,7 +369,7 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 4.0),
                     margin: Spacing::all(0.0),
-                    animation: None,
+                    animation: AnimationSpec::SNAP,
                 },
             },
             editor: TextEditTheme {
@@ -405,7 +405,7 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 4.0),
                     margin: Spacing::all(0.0),
-                    animation: None,
+                    animation: AnimationSpec::SNAP,
                 },
             },
         },
@@ -468,7 +468,7 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::xy(12.0, 8.0),
                     margin: Spacing::all(0.0),
-                    animation: None,
+                    animation: AnimationSpec::SNAP,
                 },
             },
             separator: SeparatorTheme {
@@ -512,7 +512,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(12.0, 8.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         combo_box: ComboBoxTheme {
@@ -595,7 +595,7 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::all(0.0),
                     margin: Spacing::all(0.0),
-                    animation: None,
+                    animation: AnimationSpec::SNAP,
                 },
             },
             disabled_veil: RgbaF32::hexa(0xffffff80),
@@ -679,7 +679,7 @@ pub(super) fn theme() -> Theme {
                     defaults: SlotDefaults {
                         padding: Spacing::all(5.0),
                         margin: Spacing::all(0.0),
-                        animation: None,
+                        animation: AnimationSpec::SNAP,
                     },
                 },
                 editor: TextEditTheme {
@@ -729,7 +729,7 @@ pub(super) fn theme() -> Theme {
                     defaults: SlotDefaults {
                         padding: Spacing::all(5.0),
                         margin: Spacing::all(0.0),
-                        animation: None,
+                        animation: AnimationSpec::SNAP,
                     },
                 },
             },
@@ -780,7 +780,7 @@ pub(super) fn theme() -> Theme {
                 defaults: SlotDefaults {
                     padding: Spacing::all(5.0),
                     margin: Spacing::all(0.0),
-                    animation: None,
+                    animation: AnimationSpec::SNAP,
                 },
             },
             label: TextStyleOverrides {
@@ -941,7 +941,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(0.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         dock: DockTheme {
@@ -988,7 +988,7 @@ pub(super) fn theme() -> Theme {
             defaults: SlotDefaults {
                 padding: Spacing::all(4.0),
                 margin: Spacing::all(0.0),
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         },
         focus_ring: FocusRingTheme {

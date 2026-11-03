@@ -22,9 +22,9 @@ pub struct Metrics {
     /// [`shadow`](crate::Palette::shadow), as a light ground wants a fainter one.
     pub float_shadow: ShadowGeometry,
     /// What a control's state change runs under: a button's, a menu-bar title's, a menu row's and
-    /// a tab chip's. `None` snaps, and a file that leaves it out reads `None`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub transition: Option<AnimationSpec>,
+    /// a tab chip's. A file that leaves it out reads [`AnimationSpec::SNAP`].
+    #[serde(default, skip_serializing_if = "AnimationSpec::is_snap")]
+    pub transition: AnimationSpec,
 }
 
 /// The font sizes, by prominence rather than by the surface that uses one, so a new surface picks
@@ -151,7 +151,7 @@ impl Metrics {
         },
         // Fluent's button transitions its fill, border and ink over `durationFaster`, 100 ms:
         // https://github.com/microsoft/fluentui/blob/master/packages/react-components/react-button/library/src/components/Button/useButtonStyles.styles.ts
-        transition: Some(AnimationSpec::FAST),
+        transition: AnimationSpec::FAST,
     };
 }
 

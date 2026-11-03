@@ -15,9 +15,7 @@ use crate::input::watch::PointerWake;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
-use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::block::Block;
@@ -229,48 +227,6 @@ fn pointer_pos_read_asserts_move_watch() {
 }
 
 #[test]
-fn pointer_local_read_keeps_hover_local_indicator_reactive() {
-    fn indicator(ui: &mut Ui, id: WidgetId, painted_at: &mut Option<Vec2>) {
-        Panel::canvas()
-            .id(id)
-            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-            .show(ui, |ui| {
-                let local = ui.pointer_local(id);
-                if let Some(center) = local {
-                    ui.add_shape(Shape::circle(
-                        center,
-                        3.0,
-                        Stroke::new(RgbaF32::srgb(0.2, 0.8, 1.0), 2.0),
-                    ));
-                }
-                *painted_at = local;
-            });
-    }
-
-    let id = WidgetId::from_hash("pointer-local-indicator");
-    let surface = UVec2::new(200, 200);
-    let mut h = Harness::mono(surface);
-    h.ui_mut().set_input_policy(InputPolicy::OnDelta);
-    let mut painted_at = None;
-    h.frame(|ui| indicator(ui, id, &mut painted_at));
-
-    let response = h.ui().response_for(id);
-    let layout_rect = response.layout_rect.expect("indicator arranged");
-    let origin = response.transform.apply_point(layout_rect.min);
-    assert!(!response.hovered(), "the indicator surface is inert");
-
-    for expected in [Vec2::new(20.0, 25.0), Vec2::new(70.0, 60.0)] {
-        let delta = h.hover(origin + expected);
-        assert!(
-            delta.repaint_requested,
-            "pointer-local paint must wake on movement within one inert surface",
-        );
-        h.frame(|ui| indicator(ui, id, &mut painted_at));
-        assert_eq!(painted_at, Some(expected));
-    }
-}
-
-#[test]
 fn modifiers_read_keeps_alt_ctrl_visual_reactive_through_release() {
     fn visual(ui: &mut Ui, painted: &mut RgbaF32) {
         let modifiers = ui.modifiers();
@@ -459,7 +415,6 @@ fn only_a_scope_gates_the_stream_and_only_while_recorded() {
 #[test]
 fn peeks_return_the_watched_value_without_asserting_the_watch() {
     let surface = UVec2::new(200, 200);
-    let id = WidgetId::from_hash("root");
     let at = Vec2::new(50.0, 50.0);
 
     let mut watched = Harness::mono(surface);
@@ -512,12 +467,4 @@ fn peeks_return_the_watched_value_without_asserting_the_watch() {
     );
     assert!(peeked.ui().peek_modifiers().contains(Modifiers::SHIFT));
     assert_eq!(peeked.ui().peek_modifiers(), watched.ui().peek_modifiers());
-    assert_eq!(
-        peeked.ui().peek_pointer_local(id),
-        watched.ui().peek_pointer_local(id)
-    );
-    assert_eq!(
-        peeked.ui().peek_pointer_local(id),
-        Some(Vec2::new(60.0, 50.0))
-    );
 }

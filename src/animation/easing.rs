@@ -48,4 +48,17 @@ impl Easing {
             }
         }
     }
+
+    /// This easing as a [`PaintCurve`](crate::widget::PaintCurve), for a paint-time animation
+    /// that eases as a [`Ui::animate`](crate::Ui::animate) tween does. Each pass of the paint
+    /// animation runs the curve once over its phase.
+    pub const fn curve(self) -> fn(f32) -> f32 {
+        match self {
+            Self::Linear => |t| Self::Linear.apply(t),
+            Self::OutCubic => |t| Self::OutCubic.apply(t),
+            Self::InOutCubic => |t| Self::InOutCubic.apply(t),
+            Self::OutQuart => |t| Self::OutQuart.apply(t),
+            Self::OutBack => |t| Self::OutBack.apply(t),
+        }
+    }
 }

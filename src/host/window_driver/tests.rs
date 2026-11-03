@@ -209,7 +209,7 @@ mod output_validity_tests {
         driver
             .ui
             .open_window(opened, WindowConfig::new("inspector"));
-        driver.ui.set_cursor(CursorIcon::Pointer);
+        driver.ui.request_cursor(CursorIcon::Pointer);
         driver.ui.window_frame_mut().facts.close_requested = true;
 
         let output = driver.drain_window_output(&mut commands);

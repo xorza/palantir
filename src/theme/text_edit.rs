@@ -1,6 +1,7 @@
 //! What a text field wears in each of its four states, plus the caret and
 //! selection colors that have no state.
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::size::Size;
@@ -134,7 +135,7 @@ impl TextEditTheme {
             defaults: SlotDefaults {
                 padding: Spacing::xy(m.space.sm, m.space.xs),
                 margin: Spacing::ZERO,
-                animation: None,
+                animation: AnimationSpec::SNAP,
             },
         }
     }
