@@ -80,7 +80,8 @@ fn vector_rules_check_every_axis() {
     let error = check(|d| checked::margin(d), "-8200.0").expect_err("a long edge");
     assert!(error.contains(domain::FILE_OFFSET_RULE), "{error}");
     assert!(check(|d| checked::corners(d), "8192.0").is_ok());
-    let error = check(|d| checked::corners(d), "(0.0, 8200.0)").expect_err("a long radius");
+    let error =
+        check(|d| checked::corners(d), "(0.0, 0.0, 0.0, 8200.0)").expect_err("a long radius");
     assert!(error.contains(domain::FILE_LENGTH_RULE), "{error}");
     assert!(
         check(

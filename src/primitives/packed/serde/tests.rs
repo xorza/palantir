@@ -1,7 +1,7 @@
 use ::serde::de::value::{Error, MapDeserializer, SeqDeserializer};
 
 use crate::primitives::packed::serde::internals::{from_ron, ron_text};
-use crate::primitives::packed::serde::{LaneCodec, deserialize_lanes, serialize_lanes};
+use crate::primitives::packed::serde::{LaneCodec, TwoNode, deserialize_lanes, serialize_lanes};
 use ::serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::iter;
 
@@ -20,13 +20,7 @@ impl LaneCodec for TestLanes {
         self.0
     }
 
-    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
-        (lanes[0] == lanes[1] && lanes[2] == lanes[3]).then_some([lanes[0], lanes[2]])
-    }
-
-    fn expand_two([a, b]: [f32; 2]) -> [f32; 4] {
-        [a, a, b, b]
-    }
+    const TWO_NODE: TwoNode = TwoNode::Alternate;
 
     const LANE_RULE: &'static str = "a test lane must not be negative";
 
@@ -54,7 +48,7 @@ impl<'de> Deserialize<'de> for TestLanes {
 fn each_form_writes_and_reads_back() {
     for (lanes, text) in [
         (TestLanes([4.0; 4]), "4.0"),
-        (TestLanes([4.0, 4.0, 8.0, 8.0]), "[4.0,8.0]"),
+        (TestLanes([4.0, 8.0, 4.0, 8.0]), "[4.0,8.0]"),
         (TestLanes([1.0, 2.0, 3.0, 4.0]), "[1.0,2.0,3.0,4.0]"),
     ] {
         assert_eq!(ron_text(&lanes), text);
@@ -100,7 +94,7 @@ fn sequence_lengths_preserve_supported_forms_and_reject_others() {
     assert_eq!(deserialize_seq(&[4.0]).unwrap(), TestLanes([4.0; 4]));
     assert_eq!(
         deserialize_seq(&[1.0, 2.0]).unwrap(),
-        TestLanes([1.0, 1.0, 2.0, 2.0]),
+        TestLanes([1.0, 2.0, 1.0, 2.0]),
     );
     assert_eq!(
         deserialize_seq(&[1.0, 2.0, 3.0, 4.0]).unwrap(),

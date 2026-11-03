@@ -213,20 +213,30 @@ fn deserialize_rejects_a_radius_f16_cannot_hold() {
     }
 }
 
-/// Corners' own choices on the shared wire format: matched top and bottom pairs write as
-/// `[top, bottom]`, a diagonal match stays four lanes, and a table names `tl`, `tr`, `br`, `bl`.
-/// Each text reads back as the corners it was written from.
+/// Corners' own choices on the shared wire format: no pair writes as two nodes, the top pair
+/// and the diagonals alike, and a 2-node array is refused, as CSS and `Spacing` read it two other
+/// ways. A table names `tl`, `tr`, `br`, `bl`, and the corners it leaves out are square. Each text
+/// reads back as the corners it was written from.
 #[test]
-fn corners_pair_top_and_bottom_and_name_each_corner() {
+fn corners_write_no_pair_and_name_each_corner() {
     for (corners, text) in [
-        (Corners::new(4.0, 4.0, 8.0, 8.0), "[4.0,8.0]"),
+        (Corners::top(4.0), "[4.0,4.0,0.0,0.0]"),
         (Corners::new(1.0, 2.0, 1.0, 2.0), "[1.0,2.0,1.0,2.0]"),
     ] {
         assert_eq!(ron_text(&corners), text);
         assert_eq!(from_ron::<Corners>(text), corners, "{text}");
     }
+    let error = ron::from_str::<Corners>("[4.0,0.0]")
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("a number, a 1- or 4-node array, or a {tl, tr, br, bl} table")
+            && error.contains("found 2 elements"),
+        "{error}"
+    );
     assert_eq!(
         from_ron::<Corners>("(tl: 1.0, tr: 2.0, br: 3.0, bl: 4.0)"),
         Corners::new(1.0, 2.0, 3.0, 4.0)
     );
+    assert_eq!(from_ron::<Corners>("(tl: 4.0, tr: 4.0)"), Corners::top(4.0));
 }

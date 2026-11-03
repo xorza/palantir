@@ -5,7 +5,7 @@ use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::math::domain;
 use crate::primitives::math::num::Number;
 use crate::primitives::packed::half_simd::F16x4;
-use crate::primitives::packed::serde::LaneCodec;
+use crate::primitives::packed::serde::{LaneCodec, TwoNode};
 
 /// Per-corner radii, packed as four f16 lanes in a `u64`.
 ///
@@ -202,7 +202,9 @@ impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for 
     }
 }
 
-/// Wire format: see [`LaneCodec`]. The 2-node shorthand is `[top, bottom]`.
+/// Wire format: see [`LaneCodec`]. No 2-node array: CSS reads one as the two diagonals and
+/// `Spacing` as horizontal and vertical, so a file names all four corners, or the ones it rounds
+/// in a table, as WPF's `CornerRadius` takes one value or four.
 impl LaneCodec for Corners {
     const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
 
@@ -214,13 +216,7 @@ impl LaneCodec for Corners {
         self.to_array()
     }
 
-    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
-        (lanes[0] == lanes[1] && lanes[2] == lanes[3]).then_some([lanes[0], lanes[2]])
-    }
-
-    fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
-        [top, top, bottom, bottom]
-    }
+    const TWO_NODE: TwoNode = TwoNode::Refused;
 
     const LANE_RULE: &'static str =
         "a corner radius must be finite, not negative, and round to at most 65504 in f16";

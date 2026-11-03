@@ -1,6 +1,8 @@
-//! The shared four-lane wire format: a number, a 1-, 2- or 4-node array, or a named table.
+//! The shared four-lane wire format: a number, a 1- or 4-node array, a 2-node array for a type
+//! that takes one ([`TwoNode`]), or a named table.
 //! [`Corners`](crate::primitives::geometry::corners::Corners) and
-//! [`Spacing`](crate::primitives::geometry::spacing::Spacing) differ in lane names and 2-node expansion, which [`LaneCodec`] captures; the serde impls live beside each type.
+//! [`Spacing`](crate::primitives::geometry::spacing::Spacing) differ in lane names and pairing,
+//! which [`LaneCodec`] captures; the serde impls live beside each type.
 
 pub(crate) mod checked;
 
@@ -21,17 +23,23 @@ pub(crate) trait LaneCodec: Sized {
     fn from_lane_array(lanes: [f32; 4]) -> Self;
     fn to_lane_array(&self) -> [f32; 4];
 
-    /// The 2-node shorthand when the lanes collapse to one; the all-equal case is ruled out by callers.
-    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]>;
-
-    /// Expand a parsed 2-node array back to four lanes.
-    fn expand_two(pair: [f32; 2]) -> [f32; 4];
+    const TWO_NODE: TwoNode;
 
     /// Whether a parsed lane is holdable; failures are deserialization errors, not later NaN or f16 overflow.
     fn lane_is_valid(lane: f32) -> bool;
 
     /// What [`Self::lane_is_valid`] demands, for the error message.
     const LANE_RULE: &'static str;
+}
+
+/// What a 2-node array means for a lane type.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TwoNode {
+    /// Refused, for a type whose pairs readers read more than one way.
+    Refused,
+    /// `[a, b]` is lanes `[a, b, a, b]`: the first and third lanes take `a`, the second and
+    /// fourth `b`.
+    Alternate,
 }
 
 /// Build `T` from parsed lanes, refusing any lane `T` cannot hold.
@@ -48,10 +56,10 @@ pub(crate) fn serialize_lanes<T: LaneCodec, S: Serializer>(v: &T, s: S) -> Resul
     if a == b && b == c && c == d {
         return s.serialize_f32(a);
     }
-    if let Some([p, q]) = T::two_form(lanes) {
+    if T::TWO_NODE == TwoNode::Alternate && a == c && b == d {
         let mut seq = s.serialize_seq(Some(2))?;
-        seq.serialize_element(&p)?;
-        seq.serialize_element(&q)?;
+        seq.serialize_element(&a)?;
+        seq.serialize_element(&b)?;
         return seq.end();
     }
     let mut seq = s.serialize_seq(Some(4))?;
@@ -74,9 +82,13 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
     type Value = T;
 
     fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let arrays = match T::TWO_NODE {
+            TwoNode::Refused => "a 1- or 4-node array",
+            TwoNode::Alternate => "a 1-, 2-, or 4-node array",
+        };
         write!(
             f,
-            "a number, a 1-, 2-, or 4-node array, or a {{{}}} table",
+            "a number, {arrays}, or a {{{}}} table",
             T::FIELDS.join(", ")
         )
     }
@@ -99,7 +111,10 @@ impl<'de, T: LaneCodec> Visitor<'de> for LaneVisitor<T> {
             return checked_lanes([v0; 4]);
         };
         let Some(v2) = a.next_element::<f32>()? else {
-            return checked_lanes(T::expand_two([v0, v1]));
+            return match T::TWO_NODE {
+                TwoNode::Refused => Err(de::Error::invalid_length(2, &self)),
+                TwoNode::Alternate => checked_lanes([v0, v1, v0, v1]),
+            };
         };
         let v3: f32 = a
             .next_element()?

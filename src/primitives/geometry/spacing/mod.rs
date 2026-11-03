@@ -4,7 +4,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
 use crate::primitives::math::num::Number;
 use crate::primitives::packed::half_simd::F16x4;
-use crate::primitives::packed::serde::LaneCodec;
+use crate::primitives::packed::serde::{LaneCodec, TwoNode};
 use std::ops;
 
 /// Per-side spacing (padding / margin) as four f16 lanes in `[u16; 4]`, order `left | top | right | bottom`.
@@ -138,13 +138,7 @@ impl LaneCodec for Spacing {
         self.to_array()
     }
 
-    fn two_form(lanes: [f32; 4]) -> Option<[f32; 2]> {
-        (lanes[0] == lanes[2] && lanes[1] == lanes[3]).then_some([lanes[0], lanes[1]])
-    }
-
-    fn expand_two([horizontal, vertical]: [f32; 2]) -> [f32; 4] {
-        [horizontal, vertical, horizontal, vertical]
-    }
+    const TWO_NODE: TwoNode = TwoNode::Alternate;
 
     const LANE_RULE: &'static str =
         "a spacing lane must be finite and round to within ±65504 in f16";
