@@ -16,6 +16,11 @@ use crate::primitives::math::animatable::Animatable;
 /// A retarget follows the canonical models: a spring keeps its velocity (SwiftUI), a duration
 /// turning back uses CSS Transitions' reversing-adjusted start and shortening. Refused: zeroing
 /// an opposing velocity, a C¹ break; a full restart on reversal.
+///
+/// A run keeps the spec it started under until the next retarget, as CSS Transitions §2.3 keeps
+/// a started transition's duration and timing function. Refused: taking a new spec mid-way from
+/// the value shown, which stretched a run each frame the spec moved and broke C¹ on a change of
+/// model with no change of target.
 #[derive(Clone, Copy, Debug)]
 pub(super) enum MotionRow<T: Animatable> {
     Duration {
@@ -48,11 +53,12 @@ pub(super) enum ReversingStart<T> {
     Key(Option<AnimationKey>),
 }
 
-/// A row taking a new target or a new motion: where it is, what it headed for under which key,
-/// and what it heads for now.
+/// A row taking a new target: where it is, what it headed for under which key, and what it heads
+/// for now. A row that runs as a spring normalizes `cur` for spring arithmetic
+/// ([`Animatable::normalize_for_spring`]), which the caller reads back.
 #[derive(Debug)]
 pub(super) struct Retarget<'a, T> {
-    pub(super) cur: &'a T,
+    pub(super) cur: &'a mut T,
     pub(super) old_target: &'a T,
     pub(super) target: &'a T,
     pub(super) old_key: Option<AnimationKey>,
@@ -100,53 +106,42 @@ impl<T: Animatable> MotionRow<T> {
         }
     }
 
-    /// Runs under `motion` from `cur`, its value now, which no change moves. A spring takes new
-    /// parameters with its offset and velocity. A duration with a new length or ease starts again
-    /// from `cur`: keeping its elapsed time under them would jump the value (OutCubic at 60 ms
-    /// of 120 ms shows 87.5 % of the way, of 200 ms 65.7 %). Another kind starts fresh. Returns
-    /// whether the motion started again.
-    pub(super) fn conform(&mut self, motion: AnimationMotion, cur: &T, target: &T) -> bool {
-        match (self, motion) {
-            (
-                Self::Duration { secs, ease, .. },
-                AnimationMotion::Duration { secs: new, ease: e },
-            ) if *secs == new && *ease == e => false,
-            (Self::Spring { spring, .. }, AnimationMotion::Spring(new_spring)) => {
-                *spring = new_spring;
-                false
-            }
-            (this, motion) => {
-                *this = Self::new(motion, cur, target);
-                true
-            }
-        }
-    }
-
-    /// Restarts from `cur` toward `target`.
+    /// Restarts from `cur` toward `target` under `motion`, the spec in force at the change. A run
+    /// takes a spec only here, as CSS Transitions §2.3 runs a started transition "based on the
+    /// original timing function, duration, and delay" whatever they become, so a spec that
+    /// changes mid-way neither jumps the value nor stretches the run.
     ///
     /// A spring keeps its velocity, so the value moves on without a kink (C¹), as SwiftUI's
     /// springs do. A duration that turns back to its reversing-adjusted start runs from `cur`
     /// over the share of its length the interrupted segment covered, by CSS Transitions'
     /// faster reversing, so a toggle undone mid-way takes as long as it ran, not the whole
-    /// length again.
-    pub(super) fn retarget(&mut self, change: &Retarget<'_, T>) {
-        let Retarget {
-            cur,
-            old_target,
-            target,
-            old_key,
-            key,
-            at_rest,
-        } = *change;
-        match self {
-            Self::Duration {
-                start_offset,
-                elapsed,
-                secs,
-                ease,
-                reversing_start,
-                shortening,
-            } => {
+    /// length again; the share is measured under the old length and applied to the new one, as
+    /// CSS scales the new `transition-duration`. A change of model starts the new one from rest.
+    pub(super) fn retarget(&mut self, change: &mut Retarget<'_, T>, motion: AnimationMotion) {
+        match (self, motion) {
+            (
+                Self::Duration {
+                    start_offset,
+                    elapsed,
+                    secs,
+                    ease,
+                    reversing_start,
+                    shortening,
+                },
+                AnimationMotion::Duration {
+                    secs: new_secs,
+                    ease: new_ease,
+                },
+            ) => {
+                let Retarget {
+                    old_target,
+                    target,
+                    old_key,
+                    key,
+                    at_rest,
+                    ..
+                } = *change;
+                let cur: &T = change.cur;
                 let turns_back = match (key, &*reversing_start) {
                     (Some(key), ReversingStart::Key(from)) => *from == Some(key),
                     (None, ReversingStart::Value(from)) => from == target,
@@ -169,8 +164,25 @@ impl<T: Animatable> MotionRow<T> {
                 };
                 *start_offset = offset(cur, target);
                 *elapsed = 0.0;
+                *secs = new_secs;
+                *ease = new_ease;
             }
-            Self::Spring { offset: at, .. } => *at = offset(cur, target),
+            (
+                Self::Spring {
+                    velocity,
+                    offset: at,
+                    spring,
+                },
+                AnimationMotion::Spring(new_spring),
+            ) => {
+                change.cur.normalize_for_spring(change.target, velocity);
+                *at = offset(change.cur, change.target);
+                *spring = new_spring;
+            }
+            (this, motion) => {
+                *this = Self::new(motion, change.cur, change.target);
+                this.retarget(change, motion);
+            }
         }
     }
 

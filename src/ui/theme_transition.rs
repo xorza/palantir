@@ -95,16 +95,12 @@ impl ThemeTransition {
         !self.spec.is_instant()
     }
 
-    /// Run on under `spec`. Returns whether a run ended, as an instant spec ends one.
+    /// Run the next change under `spec`; a run in flight keeps its own, as a row does. An instant
+    /// spec ends the run, as CSS stops a transition whose property no longer transitions.
+    /// Returns whether a run ended.
     pub(crate) fn set_spec(&mut self, spec: AnimationSpec) -> bool {
         self.spec = spec;
-        if spec.is_instant() {
-            return self.snap();
-        }
-        if let Some(run) = &mut self.run {
-            run.phase.conform(spec);
-        }
-        false
+        spec.is_instant() && self.snap()
     }
 
     /// The blend this frame shows, while a run is on.
@@ -142,8 +138,8 @@ impl ThemeTransition {
                     ends,
                 });
             }
-            Some(run) if Rc::ptr_eq(new, &run.from) => run.phase.turn(PhaseEnd::Start),
-            Some(run) if Rc::ptr_eq(new, &run.to) => run.phase.turn(PhaseEnd::End),
+            Some(run) if Rc::ptr_eq(new, &run.from) => run.phase.turn(PhaseEnd::Start, spec),
+            Some(run) if Rc::ptr_eq(new, &run.to) => run.phase.turn(PhaseEnd::End, spec),
             Some(run) => {
                 // The blend becomes the new start, and the rest of this frame shows a copy of it:
                 // in the old start's buffer where the run owns it, else in a spare, as the app

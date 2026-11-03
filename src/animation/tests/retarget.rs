@@ -1,4 +1,5 @@
-//! A new target mid-flight, including one that switches spec mode.
+//! A new target mid-flight, including one that switches spec mode, and a spec that changes
+//! with no new target.
 
 use crate::animation::animation_key::AnimationKey;
 use crate::animation::animation_map_typed::AnimationMapTyped;
@@ -51,23 +52,44 @@ fn a_target_that_moves_every_frame_moves_every_frame() {
     }
 }
 
+/// A spring in flight runs on under its own spec when the spec turns to a duration with no new
+/// target, step for step as a twin under the spring, velocity included. The next target takes
+/// the duration from the value shown: `2 + (start − 2)·(1 − 0.02 / 0.1)`.
 #[test]
-fn spring_to_duration_same_target_restarts_from_current() {
+fn a_new_model_waits_for_the_next_target() {
     let mut map = AnimationMapTyped::<f32>::default();
+    let mut twin = AnimationMapTyped::<f32>::default();
     let id = support::widget_id("spec-switch");
-    let _ = map.step(
-        AnimationRequest::new(id, SLOT, 0.0_f32),
-        AnimationSpec::SPRING,
-        0.016,
-    );
-    for _ in 0..5 {
-        let _ = map.step(
-            AnimationRequest::new(id, SLOT, 1.0_f32),
+    for (target, frames) in [(0.0_f32, 1), (1.0, 5)] {
+        for _ in 0..frames {
+            let _ = map.step(
+                AnimationRequest::new(id, SLOT, target),
+                AnimationSpec::SPRING,
+                0.016,
+            );
+            let _ = twin.step(
+                AnimationRequest::new(id, SLOT, target),
+                AnimationSpec::SPRING,
+                0.016,
+            );
+        }
+    }
+    let dur = AnimationSpec::duration(Duration::from_millis(100), Easing::Linear);
+    for frame in 0..3 {
+        let kept = map.step(AnimationRequest::new(id, SLOT, 1.0), dur, 0.016);
+        let spring = twin.step(
+            AnimationRequest::new(id, SLOT, 1.0),
             AnimationSpec::SPRING,
             0.016,
         );
+        assert_eq!(kept.value, spring.value, "frame {frame}");
+        assert_eq!(
+            support::spring_velocity(&map.rows[&(id, SLOT)]),
+            support::spring_velocity(&twin.rows[&(id, SLOT)]),
+            "frame {frame}",
+        );
     }
-    let row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
+    let row = &map.rows[&(id, SLOT)];
     let segment_start = row.cur();
     let velocity = *support::spring_velocity(row);
     assert!(
@@ -75,20 +97,18 @@ fn spring_to_duration_same_target_restarts_from_current() {
         "test setup: spring should have built up velocity by now; got {velocity}",
     );
 
-    let dur = AnimationSpec::duration(Duration::from_millis(100), Easing::Linear);
     let dt = 0.02;
-    let result = map.step(AnimationRequest::new(id, SLOT, 1.0_f32), dur, dt);
-    let row = map.rows.get(&(id, SLOT)).expect("row exists post-switch");
-    let progress = dt / 0.1;
-    let expected = segment_start + (1.0 - segment_start) * progress;
-    let motion = support::duration_motion(row);
-    assert_eq!(*motion.start_offset, segment_start - 1.0);
+    let result = map.step(AnimationRequest::new(id, SLOT, 2.0), dur, dt);
+    let motion = support::duration_motion(&map.rows[&(id, SLOT)]);
+    assert_eq!(*motion.start_offset, segment_start - 2.0);
     assert_eq!(motion.elapsed, dt);
-    assert_eq!(result.value, expected);
+    assert_eq!(result.value, 2.0 + (segment_start - 2.0) * (1.0 - dt / 0.1));
 }
 
+/// Each new target takes the spec it comes with and starts that model from the value shown: a
+/// duration at 0.375 of the way to 1, a spring from rest toward 2, a duration again toward 3.
 #[test]
-fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
+fn each_target_starts_the_model_it_comes_with() {
     let mut map = AnimationMapTyped::<f32>::default();
     let id = support::widget_id("round-trip-spec-switch");
     let duration = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
@@ -98,36 +118,34 @@ fn duration_to_spring_to_duration_same_target_restarts_each_mode() {
     let duration_result = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, 0.375);
     assert_eq!(duration_result.value, 0.375);
 
-    // The spring takes over at rest 0.625 short of the target: `1 − 0.625·e^(-13t)(cos t + 13 sin t)` at t = 0.016 (k = 170, h = 13, ω = 1).
+    // The spring starts at rest 1.625 short of 2: `2 − 1.625·e^(-13t)(cos t + 13 sin t)` at
+    // t = 0.016 (k = 170, h = 13, ω = 1).
     let spring_result = map.step(
-        AnimationRequest::new(id, SLOT, 1.0),
+        AnimationRequest::new(id, SLOT, 2.0),
         AnimationSpec::SPRING,
         0.016,
     );
     let t = f64::from(0.016_f32);
-    let from_rest = 1.0 - 0.625 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
+    let from_rest = 2.0 - 1.625 * (-13.0 * t).exp() * (t.cos() + 13.0 * t.sin());
     domain::internals::assert_close(
         spring_result.value,
         from_rest,
-        1e-7,
-        "the spring starts from the duration's value, to f32 rounding near 0.4",
+        2.4e-7,
+        "the spring starts from the duration's value, to two f32 ulps (2 · 2⁻²³) of the offset near 1.6",
     );
-    let spring_row = map.rows.get(&(id, SLOT)).expect("row exists mid-spring");
+    let spring_row = &map.rows[&(id, SLOT)];
     assert!(*support::spring_velocity(spring_row) > 0.0);
 
     let segment_start = spring_result.value;
     let dt = 0.25;
-    let duration_result = map.step(AnimationRequest::new(id, SLOT, 1.0), duration, dt);
-    let duration_row = map
-        .rows
-        .get(&(id, SLOT))
-        .expect("row exists after duration restart");
-    // The segment's offset from the target fades by the linear ease.
-    let expected = 1.0 + (segment_start - 1.0) * (1.0 - dt);
-    let motion = support::duration_motion(duration_row);
-    assert_eq!(*motion.start_offset, segment_start - 1.0);
+    let duration_result = map.step(AnimationRequest::new(id, SLOT, 3.0), duration, dt);
+    let motion = support::duration_motion(&map.rows[&(id, SLOT)]);
+    assert_eq!(*motion.start_offset, segment_start - 3.0);
     assert_eq!(motion.elapsed, dt);
-    assert_eq!(duration_result.value, expected);
+    assert_eq!(
+        duration_result.value,
+        3.0 + (segment_start - 3.0) * (1.0 - dt)
+    );
 }
 
 /// CSS Transitions' faster reversing: a segment turned back to where it came from runs over the

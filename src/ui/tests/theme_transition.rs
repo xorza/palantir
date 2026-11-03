@@ -110,6 +110,32 @@ fn a_change_back_mid_way_runs_only_the_way_it_came() {
     assert!(shows(&h, &dark));
 }
 
+/// A spec set mid-way leaves the run on its own: two quarters in it shows ½, as under 125 ms. The
+/// change back takes the new 250 ms: the turn runs the ½ it covered, 125 ms, so a quarter frame,
+/// 31.25 ms, later it shows `0.5 · (1 − 0.25) = 0.375`, where 125 ms would show ¼.
+#[test]
+fn a_spec_set_mid_way_waits_for_the_next_change() {
+    let (mut h, dark) = running();
+    let light = Rc::new(Theme::stock(Light));
+    h.ui_mut().set_theme_for(Dark, Rc::clone(&light));
+    h.advance(QUARTER).frame(record);
+    h.ui_mut().set_theme_transition(AnimationSpec::duration(
+        Duration::from_millis(250),
+        Easing::Linear,
+    ));
+    h.advance(QUARTER).frame(record);
+    assert_eq!(
+        **h.ui().theme(),
+        Theme::lerp(&Theme::clone(&dark), &Theme::clone(&light), 0.5)
+    );
+    h.ui_mut().set_theme_for(Dark, Rc::clone(&dark));
+    h.advance(QUARTER).frame(record);
+    assert_eq!(
+        **h.ui().theme(),
+        Theme::lerp(&Theme::clone(&dark), &Theme::clone(&light), 0.375)
+    );
+}
+
 /// A third theme mid-way starts from the blend shown: a quarter on, the lerp from that blend.
 #[test]
 fn a_third_theme_mid_way_starts_from_the_blend_shown() {

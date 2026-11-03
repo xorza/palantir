@@ -340,36 +340,43 @@ fn a_non_finite_target_is_refused() {
     }
 }
 
-/// A duration whose length or ease changes mid-way starts again from where it is, so the value
-/// holds: an OutCubic run of 120 ms at 60 ms shows 87.5 % of the way from 0 to 1, and the frame
-/// that switches to 200 ms, or to Linear, spends no time and shows the same 0.875. Keeping its
-/// 60 ms under 200 ms would show 65.7 %.
+/// A run keeps the spec it started under: an OutCubic run of 120 ms at 60 ms shows 87.5 % of the
+/// way from 0 to 1, and frames under 200 ms or Linear keep that value and land on 1 by 130 ms,
+/// as the 120 ms run does. A finished run stays at rest under any spec. The next change takes the
+/// new spec: back from 1 to 0, 60 ms in shows `1 − OutCubic(0.3) = 0.7³ = 0.343` under 200 ms,
+/// and `1 − 0.5` under Linear 120 ms.
 #[test]
-fn a_new_length_or_ease_keeps_the_value() {
+fn a_new_length_or_ease_waits_for_the_next_change() {
     let ms = |ms: u64| Duration::from_millis(ms);
     let fast = AnimationSpec::duration(ms(120), Easing::OutCubic);
-    for switched in [
-        AnimationSpec::duration(ms(200), Easing::OutCubic),
-        AnimationSpec::duration(ms(120), Easing::Linear),
+    for (switched, back) in [
+        (AnimationSpec::duration(ms(200), Easing::OutCubic), 0.343),
+        (AnimationSpec::duration(ms(120), Easing::Linear), 0.5),
     ] {
         let mut map = AnimationMapTyped::<f32>::default();
         let id = support::widget_id("switch");
-        let _ = map.step(AnimationRequest::new(id, SLOT, 0.0), fast, 0.0);
-        let _ = map.step(AnimationRequest::new(id, SLOT, 1.0), fast, 0.0);
-        let at = map
-            .step(AnimationRequest::new(id, SLOT, 1.0), fast, 0.06)
-            .value;
+        let mut step = |target: f32, spec: AnimationSpec, dt: f32| {
+            map.step(AnimationRequest::new(id, SLOT, target), spec, dt)
+        };
+        let _ = step(0.0, fast, 0.0);
+        let _ = step(1.0, fast, 0.0);
+        let at = step(1.0, fast, 0.06).value;
         assert!((at - 0.875).abs() < 1e-6, "{at}");
-        let held = map.step(AnimationRequest::new(id, SLOT, 1.0), switched, 0.0);
-        assert_eq!(held.value, at, "{switched:?}");
-        assert!(!held.settled);
-        let on = map
-            .step(AnimationRequest::new(id, SLOT, 1.0), switched, 0.01)
-            .value;
-        assert!(
-            on > at && on < 1.0,
-            "{switched:?} moves on from {at} to {on}"
+        let held = step(1.0, switched, 0.0);
+        assert_eq!((held.value, held.settled), (at, false), "{switched:?}");
+        let done = step(1.0, switched, 0.07);
+        assert_eq!((done.value, done.settled), (1.0, true), "{switched:?}");
+        let rest = step(1.0, fast, 0.01);
+        assert_eq!((rest.value, rest.settled), (1.0, true), "{switched:?}");
+
+        assert_eq!(
+            step(0.0, switched, 0.0).value,
+            1.0,
+            "{switched:?}: from rest"
         );
+        let on = step(0.0, switched, 0.06).value;
+        // Six decimal places: `back` is the exact decimal, `on` its f32 rounding through the ease.
+        assert!((on - back).abs() < 1e-6, "{switched:?}: {on}");
     }
 }
 

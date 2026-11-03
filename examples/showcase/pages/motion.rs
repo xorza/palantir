@@ -26,8 +26,16 @@ struct Bars {
     wide: bool,
     /// The timed bars' duration in milliseconds, which the knob sets.
     duration_ms: f32,
-    /// When the last toggle sent the bars off, which the plots' dots ride from.
-    started: Option<Duration>,
+    /// The last toggle's run, which the plots' dots ride.
+    run: Option<Run>,
+}
+
+/// One toggle's run: when it started and the length it started under. A knob move reaches the next
+/// run, as it reaches the bars, which keep the spec each run started under.
+#[derive(Clone, Copy, Debug)]
+struct Run {
+    started: Duration,
+    length: Duration,
 }
 
 impl Default for Bars {
@@ -35,7 +43,7 @@ impl Default for Bars {
         Self {
             wide: false,
             duration_ms: 300.0,
-            started: None,
+            run: None,
         }
     }
 }
@@ -241,8 +249,9 @@ fn easing(ui: &mut Ui, k: Kit) {
                 ui,
                 k,
                 "Each bar retargets on the same frame through Ui::animate, with an \
-                 AnimationSpec of its own; the timed three share the knob's duration, the \
-                 spring keeps its own. Toggle to send them all the other way.",
+                 AnimationSpec of its own; the timed three share the knob's duration, which \
+                 each run takes when it starts, the spring keeps its own. Toggle to send them \
+                 all the other way.",
             );
             if ui.is_motion_reduced() {
                 support::note(
@@ -256,7 +265,10 @@ fn easing(ui: &mut Ui, k: Kit) {
                 support::row(ui, |ui| {
                     if Button::new().label("Toggle").show(ui).clicked() {
                         s.wide = !s.wide;
-                        s.started = Some(ui.now());
+                        s.run = Some(Run {
+                            started: ui.now(),
+                            length: Duration::from_secs_f32(s.duration_ms / 1000.0),
+                        });
                     }
                     Knob {
                         label: "duration",
@@ -268,9 +280,9 @@ fn easing(ui: &mut Ui, k: Kit) {
                 });
                 let target = if s.wide { 420.0 } else { 80.0 };
                 let duration = Duration::from_secs_f32(s.duration_ms / 1000.0);
-                // The share of the duration since the toggle, which each plot's dot sits at.
-                let t = s.started.map_or(1.0, |started| {
-                    (ui.now().saturating_sub(started).as_secs_f32() / duration.as_secs_f32())
+                // The share of the run's length since the toggle, which each plot's dot sits at.
+                let t = s.run.map_or(1.0, |run| {
+                    (ui.now().saturating_sub(run.started).as_secs_f32() / run.length.as_secs_f32())
                         .min(1.0)
                 });
                 if t < 1.0 {

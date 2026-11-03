@@ -47,28 +47,25 @@ impl Phase {
         self.motion.cur(&self.heads_for.at())
     }
 
-    /// Head for `end` from where it is; nothing if it already does.
-    pub(crate) fn turn(&mut self, end: PhaseEnd) {
+    /// Head for `end` from where it is under `spec`, which the turn takes as a row's retarget
+    /// does. Nothing if it already heads there: the run keeps its own spec.
+    pub(crate) fn turn(&mut self, end: PhaseEnd, spec: AnimationSpec) {
         if end == self.heads_for {
             return;
         }
-        let cur = self.at();
-        self.motion.retarget(&Retarget {
-            cur: &cur,
-            old_target: &self.heads_for.at(),
-            target: &end.at(),
-            old_key: None,
-            key: None,
-            at_rest: false,
-        });
+        let mut cur = self.at();
+        self.motion.retarget(
+            &mut Retarget {
+                cur: &mut cur,
+                old_target: &self.heads_for.at(),
+                target: &end.at(),
+                old_key: None,
+                key: None,
+                at_rest: false,
+            },
+            spec.motion,
+        );
         self.heads_for = end;
-    }
-
-    /// Run on under `spec` from where it is: the same model keeps its state, another starts
-    /// from rest.
-    pub(crate) fn conform(&mut self, spec: AnimationSpec) {
-        let cur = self.at();
-        self.motion.conform(spec.motion, &cur, &self.heads_for.at());
     }
 
     /// Move `dt` seconds on; settled once it rests on the end it heads for.
@@ -89,14 +86,12 @@ mod tests {
     /// way it came, ¼ s, so ⅛ s later it is halfway home at ⅛, and ⅛ s more lands at 0.
     #[test]
     fn a_turn_back_runs_only_the_way_it_came() {
-        let mut phase = Phase::start(AnimationSpec::duration(
-            Duration::from_secs(1),
-            Easing::Linear,
-        ));
+        let spec = AnimationSpec::duration(Duration::from_secs(1), Easing::Linear);
+        let mut phase = Phase::start(spec);
         assert_eq!(phase.at(), 0.0);
         let step = phase.advance(0.25);
         assert_eq!((step.value, step.settled), (0.25, false));
-        phase.turn(PhaseEnd::Start);
+        phase.turn(PhaseEnd::Start, spec);
         assert_eq!(phase.at(), 0.25);
         assert_eq!(phase.advance(0.125).value, 0.125);
         let step = phase.advance(0.125);
@@ -113,13 +108,13 @@ mod tests {
             phase.advance(1.0 / 60.0);
             twin.advance(1.0 / 60.0);
         }
-        phase.turn(PhaseEnd::End);
+        phase.turn(PhaseEnd::End, AnimationSpec::SPRING);
         assert_eq!(
             phase.advance(1.0 / 60.0).value,
             twin.advance(1.0 / 60.0).value
         );
         let at = phase.at();
-        phase.turn(PhaseEnd::Start);
+        phase.turn(PhaseEnd::Start, AnimationSpec::SPRING);
         assert_eq!(phase.at(), at);
     }
 }

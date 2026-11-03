@@ -273,7 +273,8 @@ impl Ui {
     /// the window's second frame, while the window is hidden, or with motion reduced
     /// ([`Self::is_motion_reduced`]). A change mid-way starts from the blend shown. A live edit,
     /// one theme a frame, sets `SNAP` for its span: under 300 ms `OutCubic` it lags 89 ms behind.
-    /// A transition running when `SNAP` is set ends where it heads.
+    /// A transition running when `SNAP` is set ends where it heads; one running under another spec
+    /// keeps its own, and the next change takes `spec`.
     pub fn set_theme_transition(&mut self, spec: AnimationSpec) {
         if self.window_theme.set_spec(spec) {
             self.frame_runtime.request_repaint();

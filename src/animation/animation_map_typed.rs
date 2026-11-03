@@ -43,6 +43,9 @@ impl<T: Animatable> AnimationMapTyped<T> {
     /// offset from it and the clock running it carry on, so a look rides a theme transition with
     /// no delay while its own state fade runs. A new key, or no key, retargets.
     ///
+    /// **`spec` is read only at a retarget**: a run in flight keeps the spec it started under
+    /// (`MotionRow`'s decision), and a row at rest has nothing to run.
+    ///
     /// **A motion starting from rest spends nothing on its first frame**, as a CSS
     /// transition shows its start value: the `dt` before it passed while the row
     /// was at rest, and after an idle window spending it would use up most of
@@ -132,34 +135,26 @@ impl<T: Animatable> AnimationMapTyped<T> {
                 };
             }
             let cur = row.motion.cur(&target);
-            row.motion.conform(spec.motion, &cur, &target);
             row.target = target;
             return row.advance_once(cur, already_advanced, dt);
         }
 
         let old_key = row.key;
         row.key = key;
-        let retargeted = row.target != target;
         let mut cur = row.cur();
-        let switched = row.motion.conform(spec.motion, &cur, &row.target);
-        // Only a new target or motion can pair the value with a target it can't do
-        // arithmetic against; otherwise every value is `target + offset`.
-        if retargeted || switched {
-            if let MotionRow::Spring { velocity, .. } = &mut row.motion {
-                cur.normalize_for_spring(&target, velocity);
-            }
-            row.motion.retarget(&Retarget {
-                cur: &cur,
-                old_target: &row.target,
-                target: &target,
-                old_key,
-                key,
-                at_rest: row.settled,
-            });
-        }
-
-        if retargeted {
+        if row.target != target {
             let from_rest = row.settled;
+            row.motion.retarget(
+                &mut Retarget {
+                    cur: &mut cur,
+                    old_target: &row.target,
+                    target: &target,
+                    old_key,
+                    key,
+                    at_rest: from_rest,
+                },
+                spec.motion,
+            );
             row.target = target;
             row.settled = false;
             // Snap-if-close, on the retarget alone: a change too small to see settles at
