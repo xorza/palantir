@@ -1,126 +1,100 @@
 //! A hugging grid: what an empty fill track collapses to, and what a nested
 //! floor pushes back.
 
-use crate::host::harness::Harness;
+use crate::internals::layout_rig::{GridTracks, LayoutRig, TextRun};
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::grid_cell::GridCell;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
-use crate::scene::layer::Layer;
+use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
-use crate::widgets::{block::Block, grid::Grid, panel::Panel};
-use glam::UVec2;
+use crate::widget_core::widget::Widget;
 
 #[test]
 fn grid_hug_grid_collapses_empty_fill_tracks() {
-    let mut h = Harness::mono(UVec2::new(400, 200));
-    h.frame(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Grid::new()
-                    .id(WidgetId::from_hash("hug-grid"))
-                    .cols([Track::fixed(80.0), Track::FILL])
-                    .rows([Track::fixed(40.0)])
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("a"))
-                            .grid_cell((0, 0))
-                            .show(ui);
-                        Block::new()
-                            .id(WidgetId::from_hash("b"))
-                            .grid_cell((0, 1))
-                            .show(ui);
-                    });
-            });
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(400.0, 200.0), |rec| {
+        rec.node(
+            "row",
+            Widget::hstack().size((Sizing::FILL, Sizing::FILL)),
+            |rec| {
+                let tracks = GridTracks {
+                    rows: &[Track::fixed(40.0)],
+                    cols: &[Track::fixed(80.0), Track::FILL],
+                };
+                rec.grid("hug-grid", Widget::grid(), tracks, |rec| {
+                    rec.leaf("a", Widget::leaf().grid_cell((0, 0)));
+                    rec.leaf("b", Widget::leaf().grid_cell((0, 1)));
+                });
+            },
+        );
     });
-    let r = h.arranged(WidgetId::from_hash("hug-grid"));
     assert_eq!(
-        r.unwrap().size.w,
-        80.0,
-        "empty Fill col contributes no floor"
+        rig.rect("hug-grid").size,
+        Size::new(80.0, 40.0),
+        "an empty Fill column contributes no floor"
     );
-    assert_eq!(r.unwrap().size.h, 40.0);
 }
 
 #[test]
 fn hug_grid_fill_track_contributes_nested_rigid_floor() {
-    let mut h = Harness::mono(UVec2::new(400, 100));
-    let root = h.frame_value(|ui| {
-        Grid::new()
-            .auto_id()
-            .cols([Track::FILL])
-            .rows([Track::fixed(20.0)])
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Panel::hstack()
-                    .id(WidgetId::from_hash("cell"))
-                    .grid_cell((0, 0))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("rigid"))
-                            .size((Sizing::fixed(120.0), Sizing::fixed(20.0)))
-                            .show(ui);
-                    });
-            })
-            .response
-            .node()
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(400.0, 100.0), |rec| {
+        let tracks = GridTracks {
+            rows: &[Track::fixed(20.0)],
+            cols: &[Track::FILL],
+        };
+        rec.grid("grid", Widget::grid(), tracks, |rec| {
+            let cell = Widget::hstack()
+                .grid_cell((0, 0))
+                .size((Sizing::FILL, Sizing::FILL));
+            rec.node("cell", cell, |rec| {
+                rec.leaf("rigid", Widget::leaf().size((120.0, 20.0)));
+            });
+        });
     });
-
-    let grid = h.ui().arranged_rect(Layer::Main, root);
-    let cell = h.main_child_rects(root)[0];
-    let rigid = h.arranged(WidgetId::from_hash("rigid"));
-    assert_eq!(grid.size, Size::new(120.0, 20.0));
-    assert_eq!(cell.size, Size::new(120.0, 20.0));
-    assert_eq!(rigid.unwrap().size, Size::new(120.0, 20.0));
+    for id in ["grid", "cell", "rigid"] {
+        assert_eq!(rig.rect(id).size, Size::new(120.0, 20.0), "{id}");
+    }
 }
 
 #[test]
 fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
-    let mut h = Harness::mono(UVec2::new(300, 40));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                Grid::new()
-                    .id(WidgetId::from_hash("grid"))
-                    .cols([Track::FILL])
-                    .rows([Track::FILL])
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui, |ui| {
-                        Panel::hstack()
-                            .id(WidgetId::from_hash("cell"))
-                            .grid_cell((0, 0))
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                Block::new()
-                                    .id(WidgetId::from_hash("rigid"))
-                                    .size((Sizing::fixed(200.0), Sizing::FILL))
-                                    .show(ui);
-                            });
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(300.0, 40.0), |rec| {
+        rec.node(
+            "row",
+            Widget::hstack().size((Sizing::FILL, Sizing::FILL)),
+            |rec| {
+                let tracks = GridTracks {
+                    rows: &[Track::FILL],
+                    cols: &[Track::FILL],
+                };
+                let grid = Widget::grid().size((Sizing::FILL, Sizing::FILL));
+                rec.grid("grid", grid, tracks, |rec| {
+                    let cell = Widget::hstack()
+                        .grid_cell((0, 0))
+                        .size((Sizing::FILL, Sizing::FILL));
+                    rec.node("cell", cell, |rec| {
+                        rec.leaf(
+                            "rigid",
+                            Widget::leaf().size((Sizing::fixed(200.0), Sizing::FILL)),
+                        );
                     });
-                Block::new()
-                    .id(WidgetId::from_hash("shrinkable"))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui);
-            })
-            .response
-            .node()
+                });
+                rec.leaf(
+                    "shrinkable",
+                    Widget::leaf().size((Sizing::FILL, Sizing::FILL)),
+                );
+            },
+        );
     });
-
-    let siblings = h.main_child_rects(root);
-    let rigid = h.arranged(WidgetId::from_hash("rigid"));
-    assert_eq!(siblings[0].size.w, 200.0);
-    assert_eq!(siblings[1].min.x, 200.0);
-    assert_eq!(siblings[1].size.w, 100.0);
-    assert_eq!(rigid.unwrap().size.w, 200.0);
+    assert_eq!(rig.rect("grid").size.w, 200.0);
+    let shrinkable = rig.rect("shrinkable");
+    assert_eq!((shrinkable.min.x, shrinkable.size.w), (200.0, 100.0));
+    assert_eq!(rig.rect("rigid").size.w, 200.0);
 }
 
 /// A hugging grid's Fill column takes its cells' max-content width, as a Stack's Fill child does:
@@ -128,41 +102,39 @@ fn stack_fill_sibling_yields_to_grid_fill_track_rigid_floor() {
 /// the column shrank to the longest word, and the label wrapped out of its row.
 #[test]
 fn hug_grid_fill_column_holds_its_wrapping_text() {
-    use crate::text::wrap::TextWrap;
-    use crate::widgets::text::Text;
-
-    let mut h = Harness::new(UVec2::new(600, 200));
-    h.frame(|ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Grid::new()
-                .id(WidgetId::from_hash("hug-grid"))
-                .cols([Track::fixed(40.0), Track::FILL])
-                .rows([Track::HUG])
-                .size((Sizing::HUG, Sizing::HUG))
-                .show(ui, |ui| {
-                    Text::new("several words that fit on one line")
-                        .id(WidgetId::from_hash("label"))
-                        .grid_cell((0, 1))
-                        .text_wrap(TextWrap::WrapWithOverflow)
-                        .show(ui);
-                });
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(600.0, 200.0), |rec| {
+        rec.node("row", Widget::hstack(), |rec| {
+            let tracks = GridTracks {
+                rows: &[Track::HUG],
+                cols: &[Track::fixed(40.0), Track::FILL],
+            };
+            rec.grid("hug-grid", Widget::grid(), tracks, |rec| {
+                rec.text_leaf(
+                    "label",
+                    Widget::leaf().grid_cell((0, 1)),
+                    TextRun::new(
+                        "several words that fit on one line",
+                        14.0,
+                        TextWrap::WrapWithOverflow,
+                    ),
+                );
+            });
         });
     });
-    let grid = h.arranged(WidgetId::from_hash("hug-grid"));
-    let label = h.arranged(WidgetId::from_hash("label"));
-    let shaped = h.ui().layout(Layer::Main).text_shapes[0].extent.size;
+    let shaped = rig.shaped_text("label").extent.size;
+    let label = rig.rect("label");
     assert_eq!(
-        label.unwrap().size.w,
-        shaped.w,
+        label.size.w, shaped.w,
         "the column is the label's one-line width"
     );
-    assert_eq!(grid.unwrap().size.w, 40.0 + shaped.w);
+    assert_eq!(rig.rect("hug-grid").size.w, 40.0 + shaped.w);
     assert_eq!(
-        grid.unwrap().size.h,
+        rig.rect("hug-grid").size.h,
         shaped.h,
         "the row holds the label it measured"
     );
-    assert_eq!(label.unwrap().size.h, shaped.h);
+    assert_eq!(label.size.h, shaped.h);
 }
 
 /// A hugging grid's Fill columns each take at least their cells' width, sized by CSS Grid's
@@ -177,7 +149,6 @@ fn hug_grid_fill_column_holds_its_wrapping_text() {
 fn hug_grid_fill_columns_each_hold_their_cells() {
     /// A cell at column `col`, `span` columns wide, `w` wide itself.
     type Cell = (u16, u16, f32);
-    let mut h = Harness::mono(UVec2::new(1200, 200));
     let fill = Track::fill(1.0);
     let cases: [([Track; 2], &[Cell], [f32; 2]); 4] = [
         ([fill, fill], &[(0, 1, 200.0), (1, 1, 20.0)], [200.0, 200.0]),
@@ -193,47 +164,43 @@ fn hug_grid_fill_columns_each_hold_their_cells() {
             [250.0, 250.0],
         ),
     ];
+    let mut rig = LayoutRig::new();
     for (tracks, cells, want) in cases {
         let weights = tracks.map(|t| t.sizing().fill_weight());
-        h.frame(|ui| {
-            Panel::hstack().auto_id().show(ui, |ui| {
-                Grid::new()
-                    .id(WidgetId::from_hash("hug-grid"))
-                    .cols(tracks)
-                    .rows([Track::fixed(20.0)])
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui| {
-                        for &(col, span, w) in cells {
-                            Block::new()
-                                .id(WidgetId::from_hash(("cell", col)))
+        rig.run(Size::new(1200.0, 200.0), |rec| {
+            rec.node("row", Widget::hstack(), |rec| {
+                let grid_tracks = GridTracks {
+                    rows: &[Track::fixed(20.0)],
+                    cols: &tracks,
+                };
+                rec.grid("hug-grid", Widget::grid(), grid_tracks, |rec| {
+                    for &(col, span, w) in cells {
+                        rec.leaf(
+                            &format!("cell{col}"),
+                            Widget::leaf()
                                 .grid_cell(GridCell::at(0, col).with_span(1, span))
-                                .size((Sizing::fixed(w), Sizing::fixed(20.0)))
-                                .show(ui);
-                        }
-                    });
+                                .size((w, 20.0)),
+                        );
+                    }
+                });
             });
         });
-        let grid = h.arranged(WidgetId::from_hash("hug-grid"));
         assert_eq!(
-            grid.unwrap().size.w,
+            rig.rect("hug-grid").size.w,
             want[0] + want[1],
             "{weights:?} {cells:?}"
         );
-        let node = h.node_for_widget_id(WidgetId::from_hash("hug-grid"));
         assert_eq!(
-            h.intrinsic(node, Axis::X, LenReq::MaxContent),
+            rig.intrinsic("hug-grid", Axis::X, LenReq::MaxContent),
             want[0] + want[1],
             "{weights:?} {cells:?}: the max-content width is the hugged one"
         );
         for &(col, span, w) in cells {
-            let cell = h.arranged(WidgetId::from_hash(("cell", col)));
+            let cell = rig.rect(&format!("cell{col}"));
             let left: f32 = want[..usize::from(col)].iter().sum();
-            assert_eq!(cell.unwrap().min.x, left, "{weights:?} cell {col}");
+            assert_eq!(cell.min.x, left, "{weights:?} cell {col}");
             let room: f32 = want[usize::from(col)..usize::from(col + span)].iter().sum();
-            assert!(
-                cell.unwrap().size.w <= room,
-                "{weights:?} cell {col}: {w} in {room}"
-            );
+            assert!(cell.size.w <= room, "{weights:?} cell {col}: {w} in {room}");
         }
     }
 }

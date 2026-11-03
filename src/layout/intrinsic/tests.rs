@@ -1,55 +1,50 @@
-use crate::host::harness::Harness;
+use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun};
 use crate::layout::intrinsic::intrinsic_pass::IntrinsicPass;
 use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::layout::plane_input::PlaneInput;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode};
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::Sizing;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
-use crate::scene::layer::Layer;
+use crate::scene::plane::Plane;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::wrap::TextWrap;
-use crate::theme::color_scheme::ColorScheme;
-use crate::theme::text_style::TextStyle;
-use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::{block::Block, grid::Grid, panel::Panel, scroll::Scroll, text::Text};
-use glam::UVec2;
+use crate::widget_core::widget::Widget;
 use std::mem;
+
+const SURFACE: Size = Size::new(400.0, 300.0);
+
+/// A Fill row around a Fill leaf `msg` that wraps `text` in the 16 px mono face, 8 px a char.
+fn wrapping_row(rig: &mut LayoutRig, text: &str) {
+    rig.run(SURFACE, |rec| {
+        rec.node(
+            "row",
+            Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
+            |rec| {
+                rec.text_leaf(
+                    "msg",
+                    Widget::leaf().size((Sizing::FILL, Sizing::HUG)),
+                    TextRun::new(text, 16.0, TextWrap::WrapWithOverflow),
+                );
+            },
+        );
+    });
+}
 
 /// Driver-triggered intrinsic queries during `run` populate the per-node cache; HStack with Fill wrap
 /// triggers them (pass 2 of `Stack::measure`).
 #[test]
 fn intrinsic_cache_populated_after_run() {
-    let mut h = Harness::mono(UVec2::new(400, 300));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| {
-                Text::new("lorem ipsum dolor sit amet")
-                    .id_salt("msg")
-                    .text_wrap(TextWrap::WrapWithOverflow)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-
-    let child = h
-        .ui()
-        .tree(Layer::Main)
-        .children(root)
-        .map(|c| c.id)
-        .next()
-        .expect("hstack has child");
+    let mut rig = LayoutRig::new();
+    wrapping_row(&mut rig, "lorem ipsum dolor sit amet");
     let slot = LenReq::MinContent.slot(Axis::X);
     // Mono's 8 px a char: the widest unbreakable word is five chars, 40.
     assert_eq!(
-        h.engines_mut().layout.scratch.intrinsics[child.idx()][slot],
+        rig.engine().scratch.intrinsics[rig.node("msg").idx()][slot],
         40.0,
         "MinContent X for the Fill+wrap child must be cached after run"
     );
@@ -60,55 +55,29 @@ fn intrinsic_cache_populated_after_run() {
 fn intrinsic_query_short_circuits_on_cache_hit() {
     const SENTINEL: f32 = 1234.5;
 
-    let mut h = Harness::mono(UVec2::new(400, 300));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| {
-                Text::new("hello world")
-                    .id_salt("msg")
-                    .text_wrap(TextWrap::WrapWithOverflow)
-                    .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui);
-            })
-            .response
-            .node()
-    });
-
-    let child = h
-        .ui()
-        .tree(Layer::Main)
-        .children(root)
-        .map(|c| c.id)
-        .next()
-        .unwrap();
+    let mut rig = LayoutRig::new();
+    wrapping_row(&mut rig, "hello world");
+    let child = rig.node("msg");
     let slot = LenReq::MinContent.slot(Axis::X);
+    rig.parts().engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
-    h.engines_mut().layout.scratch.intrinsics[child.idx()][slot] = SENTINEL;
-
-    let v = h.intrinsic(child, Axis::X, LenReq::MinContent);
+    let v = rig.intrinsic("msg", Axis::X, LenReq::MinContent);
     assert_eq!(
         v, SENTINEL,
         "cache hit must return the stored value verbatim, not recompute"
     );
 
-    let expected_max = h.intrinsic(child, Axis::X, LenReq::MaxContent);
+    let expected_max = rig.intrinsic("msg", Axis::X, LenReq::MaxContent);
     let max_slot = LenReq::MaxContent.slot(Axis::X);
-    h.engines_mut().layout.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
-    h.engines_mut()
-        .layout
-        .scratch
-        .counters
-        .reset_intrinsic_computes();
-    let parts = h.parts();
-    let store = parts.ui.record_store();
-    let interned_text = store.interned_text();
+    let parts = rig.parts();
+    parts.engine.scratch.intrinsics[child.idx()][max_slot] = f32::NAN;
+    parts.engine.scratch.counters.reset_intrinsic_computes();
+    let interned_text = parts.forest.record_store.interned_text();
     let input = PlaneInput {
-        tree: parts.ui.tree(Layer::Main),
+        tree: &parts.forest.trees[Plane::MAIN],
         interned_text: &interned_text,
     };
-    let range = IntrinsicPass::new(&mut parts.engines.layout, input).range(child, Axis::X);
+    let range = IntrinsicPass::new(parts.engine, input).range(child, Axis::X);
     assert_eq!(
         range,
         IntrinsicRange {
@@ -118,7 +87,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
         "a partially cached range must preserve the populated side",
     );
     assert_eq!(
-        h.engines_mut().layout.scratch.counters.intrinsic_computes(),
+        parts.engine.scratch.counters.intrinsic_computes(),
         1,
         "only the missing max-content side should compute",
     );
@@ -127,38 +96,33 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
 /// Recursive intrinsic queries populate descendant slots too.
 #[test]
 fn parent_intrinsic_query_populates_descendant_cache() {
-    let mut h = Harness::mono(UVec2::new(400, 300));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Text::new("abc").id_salt("a").show(ui);
-                Text::new("defgh").id_salt("b").show(ui);
-            })
-            .response
-            .node()
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        rec.node("row", Widget::hstack(), |rec| {
+            for (id, text) in [("a", "abc"), ("b", "defgh")] {
+                rec.text_leaf(
+                    id,
+                    Widget::leaf(),
+                    TextRun::new(text, 16.0, TextWrap::SingleLine),
+                );
+            }
+        });
     });
     // Drop measure-cache snapshots so the root query takes the recursive compute path.
-    h.engines_mut().layout.cache.forget_all();
+    let engine = rig.parts().engine;
+    engine.cache.forget_all();
     let slot = LenReq::MaxContent.slot(Axis::X);
-    for entry in &mut h.engines_mut().layout.scratch.intrinsics {
+    for entry in &mut engine.scratch.intrinsics {
         entry[slot] = f32::NAN;
     }
 
-    let _ = h.intrinsic(root, Axis::X, LenReq::MaxContent);
+    rig.intrinsic("row", Axis::X, LenReq::MaxContent);
 
     // Mono's 8 px a char: "abc" is 24, "defgh" 40, side by side 64.
-    let cached = |node: NodeId| h.engines().layout.scratch.intrinsics[node.idx()][slot];
-    assert_eq!(cached(root), 64.0, "root slot must be cached");
-    let children: Vec<_> = h
-        .ui()
-        .tree(Layer::Main)
-        .children(root)
-        .map(|c| c.id)
-        .collect();
+    let cached = |id| rig.engine().scratch.intrinsics[rig.node(id).idx()][slot];
+    assert_eq!(cached("row"), 64.0, "root slot must be cached");
     assert_eq!(
-        children.iter().map(|&c| cached(c)).collect::<Vec<_>>(),
+        [cached("a"), cached("b")],
         [24.0, 40.0],
         "each child slot must be cached after the parent query",
     );
@@ -166,67 +130,58 @@ fn parent_intrinsic_query_populates_descendant_cache() {
 
 #[test]
 fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
-    fn fixed(ui: &mut Ui, id: &'static str, size: (f32, f32)) {
-        Block::new().id_salt(id).size(size).show(ui);
+    fn fixed(rec: &mut NodeRecorder<'_>, id: &str, size: (f32, f32)) {
+        rec.leaf(id, Widget::leaf().size(size));
     }
 
-    let mut h = Harness::mono(UVec2::new(1200, 900));
-    h.frame(|ui| {
-        Panel::vstack().id_salt("range-root").show(ui, |ui| {
-            Text::new("leaf alpha-beta")
-                .id_salt("range-leaf")
-                .text_wrap(TextWrap::WrapWithOverflow)
-                .show(ui);
-            Panel::hstack().id_salt("range-hstack").show(ui, |ui| {
-                fixed(ui, "range-hstack-child", (20.0, 10.0));
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(1200.0, 900.0), |rec| {
+        rec.node("range-root", Widget::vstack(), |rec| {
+            let wrap = TextWrap::WrapWithOverflow;
+            rec.text_leaf(
+                "range-leaf",
+                Widget::leaf(),
+                TextRun::new("leaf alpha-beta", 16.0, wrap),
+            );
+            rec.node("range-hstack", Widget::hstack(), |rec| {
+                fixed(rec, "range-hstack-child", (20.0, 10.0));
             });
-            Panel::wrap_hstack()
-                .id_salt("range-wrap-hstack")
-                .gap(3.0)
-                .show(ui, |ui| {
-                    fixed(ui, "range-wrap-h-child", (30.0, 12.0));
-                });
-            Panel::wrap_vstack()
-                .id_salt("range-wrap-vstack")
-                .gap(5.0)
-                .show(ui, |ui| {
-                    fixed(ui, "range-wrap-v-child", (14.0, 25.0));
-                });
-            Panel::zstack().id_salt("range-zstack").show(ui, |ui| {
-                fixed(ui, "range-zstack-child", (22.0, 18.0));
+            rec.node("range-wrap-hstack", Widget::wrap_hstack().gap(3.0), |rec| {
+                fixed(rec, "range-wrap-h-child", (30.0, 12.0));
             });
-            Panel::canvas().id_salt("range-canvas").show(ui, |ui| {
-                Block::new()
-                    .id_salt("range-canvas-child")
-                    .at((7.0, 9.0))
-                    .size((19.0, 13.0))
-                    .show(ui);
+            rec.node("range-wrap-vstack", Widget::wrap_vstack().gap(5.0), |rec| {
+                fixed(rec, "range-wrap-v-child", (14.0, 25.0));
             });
-            Grid::new()
-                .id_salt("range-grid")
-                .cols([Track::HUG, Track::FILL])
-                .rows([Track::HUG])
-                .gap(4.0)
-                .show(ui, |ui| {
-                    Text::new("grid label")
-                        .id_salt("range-grid-label")
-                        .grid_cell((0, 0))
-                        .show(ui);
-                    Block::new()
-                        .id_salt("range-grid-body")
-                        .size((16.0, 11.0))
-                        .grid_cell((0, 1))
-                        .show(ui);
-                });
-            Scroll::vertical()
-                .id_salt("range-scroll")
-                .size((100.0, 60.0))
-                .show(ui, |ui| {
-                    fixed(ui, "range-scroll-child", (70.0, 90.0));
-                });
+            rec.node("range-zstack", Widget::zstack(), |rec| {
+                fixed(rec, "range-zstack-child", (22.0, 18.0));
+            });
+            rec.node("range-canvas", Widget::canvas(), |rec| {
+                let child = Widget::leaf().at((7.0, 9.0)).size((19.0, 13.0));
+                rec.leaf("range-canvas-child", child);
+            });
+            let tracks = GridTracks {
+                rows: &[Track::HUG],
+                cols: &[Track::HUG, Track::FILL],
+            };
+            rec.grid("range-grid", Widget::grid().gap(4.0), tracks, |rec| {
+                let cell = Widget::leaf().grid_cell((0, 0));
+                rec.text_leaf(
+                    "range-grid-label",
+                    cell,
+                    TextRun::new("grid label", 16.0, TextWrap::SingleLine),
+                );
+                let body = Widget::leaf().size((16.0, 11.0)).grid_cell((0, 1));
+                rec.leaf("range-grid-body", body);
+            });
+            let size = SizeSpec::new(Sizing::fixed(100.0), Sizing::fixed(60.0));
+            let scroll = Widget::scroll(ScrollAxes::VERTICAL.fit_content(size)).size(size);
+            rec.node("range-scroll", scroll, |rec| {
+                fixed(rec, "range-scroll-child", (70.0, 90.0));
+            });
         });
     });
-    h.engines_mut().layout.cache.forget_all();
+    let parts = rig.parts();
+    parts.engine.cache.forget_all();
 
     let expected_modes = [
         LayoutMode::Leaf,
@@ -239,8 +194,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         LayoutMode::Grid(GridDefId::from_idx(0)),
         LayoutMode::Scroll(ScrollAxes::VERTICAL),
     ];
-    let parts = h.parts();
-    let tree = parts.ui.tree(Layer::Main);
+    let tree = &parts.forest.trees[Plane::MAIN];
     for expected in expected_modes {
         assert!(
             tree.records.layout().iter().any(|layout| {
@@ -250,15 +204,14 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         );
     }
 
-    let store = parts.ui.record_store();
-    let interned_text = store.interned_text();
+    let interned_text = parts.forest.record_store.interned_text();
     let input = PlaneInput {
         tree,
         interned_text: &interned_text,
     };
-    let layout = &mut parts.engines.layout;
+    let layout = parts.engine;
     for idx in 0..tree.records.len() {
-        let node = NodeId(idx as u32);
+        let node = NodeId(u32::try_from(idx).unwrap());
         let mode = LayoutMode::from(tree.records.layout()[idx].meta);
         for axis in [Axis::X, Axis::Y] {
             layout.forget_intrinsics();
@@ -292,60 +245,49 @@ fn a_leaf_intrinsic_walk_records_the_axis_it_was_not_asked_about() {
     const EXPECT_X: f32 = 48.0;
     const EXPECT_Y: f32 = 30.0;
 
-    let mut h = Harness::mono(UVec2::new(400, 300));
-    let root = h.frame_value(|ui| {
-        Panel::hstack()
-            .auto_id()
-            .size((Sizing::FILL, Sizing::HUG))
-            .show(ui, |ui| {
-                Text::new("lorem ipsum dolor sit amet")
-                    .id_salt("msg")
-                    .style(
-                        &TextStyle::stock(ColorScheme::Dark)
-                            .with_font_size(16.0)
-                            .with_line_height_factor(1.0),
-                    )
-                    .text_wrap(TextWrap::WrapWithOverflow)
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .padding((3.0, 5.0))
-                    .margin((1.0, 2.0))
-                    .show(ui);
-            })
-            .response
-            .node()
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        rec.node(
+            "row",
+            Widget::hstack().size((Sizing::FILL, Sizing::HUG)),
+            |rec| {
+                let leaf = Widget::leaf().padding((3.0, 5.0)).margin((1.0, 2.0));
+                rec.text_leaf(
+                    "msg",
+                    leaf,
+                    TextRun::new(
+                        "lorem ipsum dolor sit amet",
+                        16.0,
+                        TextWrap::WrapWithOverflow,
+                    ),
+                );
+            },
+        );
     });
+    let leaf = rig.node("msg");
+    let slots = |rig: &LayoutRig| rig.engine().scratch.intrinsics[leaf.idx()];
 
-    let leaf = h
-        .ui()
-        .tree(Layer::Main)
-        .children(root)
-        .map(|c| c.id)
-        .next()
-        .expect("hstack has child");
-
-    h.engines_mut().layout.forget_intrinsics();
-    let x = h.intrinsic(leaf, Axis::X, LenReq::MinContent);
+    rig.parts().engine.forget_intrinsics();
+    let x = rig.intrinsic("msg", Axis::X, LenReq::MinContent);
     assert_eq!(
         x, EXPECT_X,
         "min-content X is the longest word plus the box"
     );
 
-    let recorded =
-        h.engines_mut().layout.scratch.intrinsics[leaf.idx()][LenReq::MinContent.slot(Axis::Y)];
     assert_eq!(
-        recorded, EXPECT_Y,
+        slots(&rig)[LenReq::MinContent.slot(Axis::Y)],
+        EXPECT_Y,
         "the X walk must record Y's outer min-content, padding and margin folded in",
     );
     assert!(
-        h.engines_mut().layout.scratch.intrinsics[leaf.idx()][LenReq::MaxContent.slot(Axis::Y)]
-            .is_nan(),
+        slots(&rig)[LenReq::MaxContent.slot(Axis::Y)].is_nan(),
         "a min-content query may record only the half it asked for",
     );
 
-    let y = h.intrinsic(leaf, Axis::Y, LenReq::MinContent);
+    let y = rig.intrinsic("msg", Axis::Y, LenReq::MinContent);
     assert_eq!(y, EXPECT_Y, "the recorded lane is Y's own min-content");
     assert_eq!(
-        h.engines_mut().layout.scratch.counters.intrinsic_computes(),
+        rig.engine().scratch.counters.intrinsic_computes(),
         1,
         "the second axis must read the recorded lane, not shape the runs again",
     );

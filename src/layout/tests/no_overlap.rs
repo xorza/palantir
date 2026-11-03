@@ -1,20 +1,22 @@
 //! Showcase regressions where two Grid cells (or back-to-back grids in a vstack) painted over each other, pinned by arranged-rect order and `DrawText` x positions.
-use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::paint::backdrop_filter::BackdropFilter;
-use crate::text::wrap::TextWrap;
-use crate::ui::Ui;
 
 use crate::host::harness::Harness;
+use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun};
 use crate::internals::paint_capture::PaintCall;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
-use crate::scene::layer::Layer;
+use crate::text::wrap::TextWrap;
+use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 
@@ -22,7 +24,22 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
     How vexingly quick daft zebras jump!";
 
-fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
+/// A titled Fill section under the id `id`, inset 9 on each side as a padded, bordered chrome
+/// section is.
+fn section(rec: &mut NodeRecorder<'_>, id: &str, body: impl FnOnce(&mut NodeRecorder<'_>)) {
+    let section = Widget::vstack()
+        .size((Sizing::FILL, Sizing::HUG))
+        .gap(6.0)
+        .padding(9.0);
+    rec.node(id, section, |rec| {
+        let title = TextRun::new("title", 12.0, TextWrap::SingleLine);
+        rec.text_leaf(&format!("{id}-title"), Widget::leaf(), title);
+        body(rec);
+    });
+}
+
+/// A titled Fill section of the showcase, painted as it paints one.
+fn chrome_section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
     Panel::vstack()
         .id(WidgetId::from_hash(id))
         .size((Sizing::FILL, Sizing::HUG))
@@ -62,51 +79,34 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
             (6.0, 16.0),
         ),
     ];
-    let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
-                     with five dozen liquor jugs. How vexingly quick daft zebras jump!";
     for (label_id, grid_main, cols, gaps) in cases {
-        let mut h = Harness::mono(UVec2::new(800, 600));
-        let mut left = None;
-        let mut right = None;
-        h.frame(|ui| {
-            Panel::vstack()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    let mut g = Grid::new().auto_id();
+        let mut rig = LayoutRig::new();
+        rig.run(Size::new(800.0, 600.0), |rec| {
+            rec.node(
+                "column",
+                Widget::vstack().size((Sizing::FILL, Sizing::FILL)),
+                |rec| {
+                    let mut grid = Widget::grid().line_gap(gaps.0).gap(gaps.1);
                     if let Some(s) = *grid_main {
-                        g = g.size((s, Sizing::HUG));
+                        grid = grid.size((s, Sizing::HUG));
                     }
-                    g.cols(*cols)
-                        .rows([Track::HUG])
-                        .line_gap(gaps.0)
-                        .gap(gaps.1)
-                        .show(ui, |ui| {
-                            left = Some(
-                                Text::new(long_text)
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            right = Some(
-                                Text::new("right column")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 1))
-                                    .show(ui)
-                                    .node(),
-                            );
-                        });
-                });
+                    let tracks = GridTracks {
+                        rows: &[Track::HUG],
+                        cols,
+                    };
+                    rec.grid("grid", grid, tracks, |rec| {
+                        let left = TextRun::new(PARAGRAPH, 14.0, TextWrap::WrapWithOverflow);
+                        rec.text_leaf("left", Widget::leaf().grid_cell((0, 0)), left);
+                        let right = TextRun::new("right column", 14.0, TextWrap::SingleLine);
+                        rec.text_leaf("right", Widget::leaf().grid_cell((0, 1)), right);
+                    });
+                },
+            );
         });
 
         // Mono at 14 px is 7 px a char: "right column" is 12 × 7 = 84.
-        let layout = h.ui().layout(Layer::Main);
-        let lr = layout.rect[left.unwrap().idx()];
-        let rr = layout.rect[right.unwrap().idx()];
+        let lr = rig.rect("left");
+        let rr = rig.rect("right");
         assert_eq!(rr.size.w, 84.0, "case: {label_id}");
         assert_eq!(
             rr.min.x,
@@ -120,87 +120,54 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
 
 #[test]
 fn text_layouts_two_sections_back_to_back_no_overlap() {
-    let mut h = Harness::mono(UVec2::new(1500, 900));
-
-    let mut hug_left = None;
-    let mut hug_right = None;
-    let mut prop_label = None;
-    let mut prop_value = None;
-
-    h.frame(|ui| {
-        Panel::vstack()
-            .auto_id()
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(1500.0, 900.0), |rec| {
+        let column = Widget::vstack()
             .gap(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                section(ui, "two-hug-columns", &mut |ui| {
-                    Grid::new()
-                        .id(WidgetId::from_hash("two-hug-inner"))
-                        .cols([Track::HUG, Track::HUG])
-                        .rows([Track::HUG])
-                        .line_gap(0.0)
-                        .gap(16.0)
-                        .show(ui, |ui| {
-                            hug_left = Some(
-                                Text::new(PARAGRAPH)
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .text_wrap(TextWrap::WrapWithOverflow)
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            hug_right = Some(
-                                Text::new("right column")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 1))
-                                    .show(ui)
-                                    .node(),
-                            );
-                        });
-                });
-
-                section(ui, "property-grid", &mut |ui| {
-                    Grid::new()
-                        .id(WidgetId::from_hash("property-grid-inner"))
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .cols([Track::HUG, Track::FILL])
-                        .rows([Track::HUG, Track::HUG, Track::HUG])
-                        .line_gap(6.0)
-                        .gap(16.0)
-                        .show(ui, |ui| {
-                            prop_label = Some(
-                                Text::new("Title:")
-                                    .auto_id()
-                                    .font_size(14.0)
-                                    .grid_cell((0, 0))
-                                    .show(ui)
-                                    .node(),
-                            );
-                            prop_value = Some(
-                                Text::new(
-                                    "Lorem Ipsum is simply dummy text of the printing industry.",
-                                )
-                                .auto_id()
-                                .font_size(14.0)
-                                .text_wrap(TextWrap::WrapWithOverflow)
-                                .grid_cell((0, 1))
-                                .show(ui)
-                                .node(),
-                            );
-                        });
+            .size((Sizing::FILL, Sizing::FILL));
+        rec.node("column", column, |rec| {
+            section(rec, "two-hug-columns", |rec| {
+                let tracks = GridTracks {
+                    rows: &[Track::HUG],
+                    cols: &[Track::HUG, Track::HUG],
+                };
+                rec.grid("two-hug-inner", Widget::grid().gap(16.0), tracks, |rec| {
+                    let left = TextRun::new(PARAGRAPH, 14.0, TextWrap::WrapWithOverflow);
+                    rec.text_leaf("hug-left", Widget::leaf().grid_cell((0, 0)), left);
+                    let right = TextRun::new("right column", 14.0, TextWrap::SingleLine);
+                    rec.text_leaf("hug-right", Widget::leaf().grid_cell((0, 1)), right);
                 });
             });
+
+            section(rec, "property-grid", |rec| {
+                let tracks = GridTracks {
+                    rows: &[Track::HUG; 3],
+                    cols: &[Track::HUG, Track::FILL],
+                };
+                let grid = Widget::grid()
+                    .size((Sizing::FILL, Sizing::HUG))
+                    .line_gap(6.0)
+                    .gap(16.0);
+                rec.grid("property-grid-inner", grid, tracks, |rec| {
+                    let label = TextRun::new("Title:", 14.0, TextWrap::SingleLine);
+                    rec.text_leaf("prop-label", Widget::leaf().grid_cell((0, 0)), label);
+                    let value = TextRun::new(
+                        "Lorem Ipsum is simply dummy text of the printing industry.",
+                        14.0,
+                        TextWrap::WrapWithOverflow,
+                    );
+                    rec.text_leaf("prop-value", Widget::leaf().grid_cell((0, 1)), value);
+                });
+            });
+        });
     });
 
-    let layout = h.ui().layout(Layer::Main);
-    let l1 = layout.rect[hug_left.unwrap().idx()];
-    let r1 = layout.rect[hug_right.unwrap().idx()];
-    let l2 = layout.rect[prop_label.unwrap().idx()];
-    let r2 = layout.rect[prop_value.unwrap().idx()];
+    let l1 = rig.rect("hug-left");
+    let r1 = rig.rect("hug-right");
+    let l2 = rig.rect("prop-label");
+    let r2 = rig.rect("prop-value");
 
-    // Mono 14 px is 7 px a char, in a section inset 8 + 1 px by padding and border: 1500 − 18 = 1482 wide. Two Hug columns: the 122-char paragraph fits one line, 854 px, then the 16 px gap. Property grid: "Title:" is 42, the Fill value column takes 1482 − 42 − 16 = 1424.
+    // Mono 14 px is 7 px a char, in a section inset 9: 1500 − 18 = 1482 wide. Two Hug columns: the 122-char paragraph fits one line, 854 px, then the 16 px gap. Property grid: "Title:" is 42, the Fill value column takes 1482 − 42 − 16 = 1424.
     assert_eq!([l1.min.x, l1.size.w], [9.0, 854.0], "two-hug-columns: left");
     assert_eq!(
         [r1.min.x, r1.size.w],
@@ -292,7 +259,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                         .gap(16.0)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            section(ui, "two-hug-columns", &mut |ui| {
+                            chrome_section(ui, "two-hug-columns", &mut |ui| {
                                 Grid::new().id(WidgetId::from_hash("two-hug-inner"))
                                     .cols([Track::HUG, Track::HUG])
                                     .rows([Track::HUG])
@@ -309,7 +276,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                             .show(ui);
                                     });
                             });
-                            section(ui, "property-grid", &mut |ui| {
+                            chrome_section(ui, "property-grid", &mut |ui| {
                                 Grid::new().id(WidgetId::from_hash("property-grid-inner"))
                                     .size((Sizing::FILL, Sizing::HUG))
                                     .cols([Track::HUG, Track::FILL])

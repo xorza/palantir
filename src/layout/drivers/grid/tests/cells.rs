@@ -1,38 +1,36 @@
 //! Placing a child in its resolved cell, and the depth stack bracketing the walk.
 
-use crate::host::harness::Harness;
-use crate::primitives::identity::widget_id::WidgetId;
+use crate::internals::layout_rig::{GridTracks, LayoutRig};
+use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
+use crate::primitives::layout::align::{Align, HAlign, VAlign};
+use crate::primitives::layout::grid_cell::GridCell;
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::layout::track::Track;
 use crate::widget_core::configure::Configure;
-use crate::widgets::{block::Block, grid::Grid};
-use glam::UVec2;
+use crate::widget_core::widget::Widget;
+
+const SURFACE: Size = Size::new(200.0, 200.0);
 
 #[test]
 fn grid_cell_alignment_override_pins_child_to_corner() {
-    use crate::primitives::layout::align::{Align, HAlign, VAlign};
-
-    let mut h = Harness::mono(UVec2::new(200, 200));
-    let root = h.frame_value(|ui| {
-        Grid::new()
-            .auto_id()
-            .cols([Track::fixed(100.0)])
-            .rows([Track::fixed(100.0)])
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("pinned"))
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        let tracks = GridTracks {
+            rows: &[Track::fixed(100.0)],
+            cols: &[Track::fixed(100.0)],
+        };
+        rec.grid("grid", Widget::grid(), tracks, |rec| {
+            rec.leaf(
+                "pinned",
+                Widget::leaf()
                     .grid_cell((0, 0))
                     .size((20.0, 20.0))
-                    .align(Align::new(HAlign::Right, VAlign::Bottom))
-                    .show(ui);
-            })
-            .response
-            .node()
+                    .align(Align::new(HAlign::Right, VAlign::Bottom)),
+            );
+        });
     });
-    let r = h.main_child_rects(root)[0];
-    assert_eq!(r.size.w, 20.0);
-    assert_eq!(r.size.h, 20.0);
-    assert_eq!(r.min.x, 80.0);
-    assert_eq!(r.min.y, 80.0);
+    assert_eq!(rig.rect("pinned"), Rect::new(80.0, 80.0, 20.0, 20.0));
 }
 
 /// Debug-only: `enter`/`exit` pairing is the layout engine's own, so this checks the crate, not a caller.
@@ -50,35 +48,18 @@ fn grid_depth_stack_rejects_exit_without_enter() {
 /// panicked at record time and a release build in layout.
 #[test]
 fn a_cell_past_the_tracks_is_held_inside_them() {
-    use crate::primitives::layout::grid_cell::GridCell;
-    use crate::primitives::layout::sizing::Sizing;
-
-    let mut h = Harness::mono(UVec2::new(200, 200));
-    h.frame(|ui| {
-        Grid::new()
-            .id(WidgetId::from_hash("grid"))
-            .cols([Track::fixed(50.0), Track::fixed(50.0)])
-            .rows([Track::fixed(50.0), Track::fixed(50.0)])
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("far"))
-                    .grid_cell((5, 7))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui);
-                Block::new()
-                    .id(WidgetId::from_hash("tall"))
-                    .grid_cell(GridCell::at(0, 0).with_span(3, 1))
-                    .size((Sizing::FILL, Sizing::FILL))
-                    .show(ui);
-            });
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        let tracks = GridTracks {
+            rows: &[Track::fixed(50.0), Track::fixed(50.0)],
+            cols: &[Track::fixed(50.0), Track::fixed(50.0)],
+        };
+        rec.grid("grid", Widget::grid(), tracks, |rec| {
+            let fill = || Widget::leaf().size((Sizing::FILL, Sizing::FILL));
+            rec.leaf("far", fill().grid_cell((5, 7)));
+            rec.leaf("tall", fill().grid_cell(GridCell::at(0, 0).with_span(3, 1)));
+        });
     });
-    let grid = h.arranged(WidgetId::from_hash("grid"));
-    let far = h.arranged(WidgetId::from_hash("far"));
-    assert_eq!(
-        far.unwrap().min - grid.unwrap().min,
-        glam::Vec2::new(50.0, 50.0)
-    );
-    assert_eq!((far.unwrap().size.w, far.unwrap().size.h), (50.0, 50.0));
-    let tall = h.arranged(WidgetId::from_hash("tall"));
-    assert_eq!((tall.unwrap().size.w, tall.unwrap().size.h), (50.0, 100.0));
+    assert_eq!(rig.rect("far"), Rect::new(50.0, 50.0, 50.0, 50.0));
+    assert_eq!(rig.rect("tall").size, Size::new(50.0, 100.0));
 }

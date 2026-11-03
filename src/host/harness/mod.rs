@@ -808,11 +808,10 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::{
         input::input_event::InputEvent, input::interaction::input_delta::InputDelta,
-        internals::paint_capture::PaintCapture, layout::intrinsic::intrinsic_query::IntrinsicQuery,
-        layout::intrinsic::len_req::LenReq, primitives::geometry::rect::Rect,
-        primitives::geometry::translate_scale::TranslateScale, primitives::layout::axis::Axis,
-        primitives::layout::sizing::Sizing, primitives::math::animatable::Animatable,
-        renderer::frontend::Frontend, renderer::frontend::encoder,
+        internals::paint_capture::PaintCapture, primitives::geometry::rect::Rect,
+        primitives::geometry::translate_scale::TranslateScale, primitives::layout::sizing::Sizing,
+        primitives::math::animatable::Animatable, renderer::frontend::Frontend,
+        renderer::frontend::encoder,
         renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas,
         scene::endpoint::Endpoint, scene::layer::Layer, scene::tree::node_id::NodeId, ui::Ui,
         ui::app::App, ui::frame_report::FrameReport, ui::resources::UiResources,
@@ -1069,12 +1068,6 @@ pub(crate) mod internals {
 
         pub(crate) fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             self.driver.ui.forest().node_for_widget_id(Layer::Main, id)
-        }
-
-        pub(crate) fn intrinsic(&mut self, node: NodeId, axis: Axis, req: LenReq) -> f32 {
-            self.driver
-                .intrinsic(node, IntrinsicQuery::single(axis, req))
-                .get(req)
         }
 
         pub(crate) fn node_of(&self, id: WidgetId) -> Option<Endpoint> {

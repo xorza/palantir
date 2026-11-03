@@ -696,12 +696,6 @@ impl WindowDriver {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::host::window_driver::WindowDriver;
-    #[cfg(test)]
-    use crate::layout::intrinsic::intrinsic_query::IntrinsicQuery;
-    #[cfg(test)]
-    use crate::layout::intrinsic::intrinsic_range::IntrinsicRange;
-    #[cfg(test)]
-    use crate::scene::tree::node_id::NodeId;
     use crate::ui::Ui;
     use crate::ui::frame_engines::FrameEngines;
 
@@ -732,14 +726,6 @@ pub(crate) mod internals {
                 ui: &mut self.ui,
                 engines: &mut self.engines,
             }
-        }
-
-        /// The main tree's intrinsic size at `node`, as the layout engine measures it.
-        #[cfg(test)]
-        pub(crate) fn intrinsic(&mut self, node: NodeId, query: IntrinsicQuery) -> IntrinsicRange {
-            self.engines
-                .layout
-                .main_intrinsic(self.ui.forest(), node, query)
         }
 
         /// Snap paint edges to physical pixels from the next frame on, or not.

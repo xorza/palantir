@@ -1,13 +1,13 @@
-use crate::internals::layout_rig::{self, LayoutRig, NodeRecorder};
+use crate::internals::layout_rig::{LayoutRig, NodeRecorder};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
-use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
-use crate::primitives::layout::sizing::{SizeSpec, Sizing};
-use crate::scene::node::Node;
+use crate::primitives::layout::sizing::Sizing;
 use crate::scene::scrollbars_def::ScrollbarsDef;
+use crate::widget_core::configure::Configure;
+use crate::widget_core::widget::Widget;
 use glam::Vec2;
 
 const SURFACE: Size = Size::new(400.0, 300.0);
@@ -16,57 +16,28 @@ const SURFACE: Size = Size::new(400.0, 300.0);
 /// overlay over it: an 8 px bar in an 8 px right gutter, a 20 px shortest thumb, scrolled 120 px
 /// down.
 fn scroller(rec: &mut NodeRecorder<'_>, content_h: f32) {
-    let fill = SizeSpec::new(Sizing::FILL, Sizing::FILL);
-    rec.node(
-        "scroller",
-        Node {
-            size: Some(SizeSpec::new(Sizing::fixed(200.0), Sizing::fixed(100.0))),
-            ..layout_rig::node(LayoutMode::ZStack)
-        },
-        |rec| {
-            rec.node(
-                "view",
-                Node {
-                    size: Some(fill),
-                    ..layout_rig::node(LayoutMode::Scroll(ScrollAxes::VERTICAL))
-                },
-                |rec| {
-                    rec.leaf(
-                        "content",
-                        Node {
-                            size: Some(SizeSpec::new(
-                                Sizing::fixed(180.0),
-                                Sizing::fixed(content_h),
-                            )),
-                            ..layout_rig::node(LayoutMode::Leaf)
-                        },
-                    );
-                },
-            );
-            let def = rec.scrollbars(ScrollbarsDef {
-                content: WidgetId::from_hash("view"),
-                offset: Vec2::new(0.0, 120.0),
-                zoom: 1.0,
-                axes: ScrollAxes::VERTICAL,
-                reserve: Spacing::new(0.0, 0.0, 8.0, 0.0),
-                padding: Spacing::ZERO,
-                bar_thickness: 8.0,
-                min_thumb: 20.0,
-            });
-            rec.node(
-                "bars",
-                Node {
-                    size: Some(fill),
-                    ..layout_rig::node(LayoutMode::Scrollbars(def))
-                },
-                |rec| {
-                    for bar in ["v-track", "v-thumb", "h-track", "h-thumb"] {
-                        rec.leaf(bar, layout_rig::node(LayoutMode::Leaf));
-                    }
-                },
-            );
-        },
-    );
+    let fill = (Sizing::FILL, Sizing::FILL);
+    rec.node("scroller", Widget::zstack().size((200.0, 100.0)), |rec| {
+        let view = Widget::scroll(ScrollAxes::VERTICAL).size(fill);
+        rec.node("view", view, |rec| {
+            rec.leaf("content", Widget::leaf().size((180.0, content_h)));
+        });
+        let def = ScrollbarsDef {
+            content: WidgetId::from_hash("view"),
+            offset: Vec2::new(0.0, 120.0),
+            zoom: 1.0,
+            axes: ScrollAxes::VERTICAL,
+            reserve: Spacing::new(0.0, 0.0, 8.0, 0.0),
+            padding: Spacing::ZERO,
+            bar_thickness: 8.0,
+            min_thumb: 20.0,
+        };
+        rec.scrollbars("bars", Widget::scrollbars().size(fill), def, |rec| {
+            for bar in ["v-track", "v-thumb", "h-track", "h-thumb"] {
+                rec.leaf(bar, Widget::leaf());
+            }
+        });
+    });
 }
 
 fn rect(min: (f32, f32), size: (f32, f32)) -> Rect {

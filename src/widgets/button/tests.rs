@@ -197,3 +197,53 @@ fn show_with_hands_the_body_its_states_ink() {
     assert_eq!(h.frame_value(ink(true, false)), RgbaF32::hex(0x201));
     assert_eq!(h.frame_value(ink(true, true)), RgbaF32::hex(0x203));
 }
+
+/// A label wider than its button's `Fixed` width truncates to one line (`TextWrap::Truncate`)
+/// rather than overflow or wrap, cut to the 80 px button less 2 × 12 padding and 2 × 1 border:
+/// 54 px of room.
+#[test]
+fn a_label_truncates_to_one_line_in_a_narrow_button() {
+    use crate::primitives::geometry::size::Size;
+    use crate::primitives::layout::sizing::Sizing;
+    use crate::shape::record::ShapeRecord;
+    use crate::text::wrap::TextWrap;
+    use crate::widgets::panel::Panel;
+
+    let mut h = Harness::mono(UVec2::new(400, 400));
+    let node = h.frame_value(|ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::fixed(80.0), Sizing::HUG))
+            .show(ui, |ui| {
+                Button::new()
+                    .auto_id()
+                    .label("the quick brown fox")
+                    .show(ui)
+                    .node()
+            })
+            .inner
+    });
+    let wrap = h
+        .ui()
+        .tree(Layer::Main)
+        .shapes_of(node)
+        .find_map(|s| match s {
+            ShapeRecord::Text { wrap, .. } => Some(*wrap),
+            _ => None,
+        })
+        .expect("a text shape");
+    assert_eq!(
+        wrap,
+        TextWrap::Truncate,
+        "a button label truncates by default"
+    );
+
+    let line_h = h.ui().theme().text.line_height();
+    let layout = h.ui().layout(Layer::Main);
+    let span = layout.text_spans[node.idx()];
+    assert_eq!(span.len, 1);
+    assert_eq!(
+        layout.text_shapes[span.start as usize].extent.size,
+        Size::new(54.0, line_h)
+    );
+}

@@ -11,5 +11,3 @@
 - hover card at a point for content that is not a widget
 - subtree theme, as Flutter's `Theme` widget
 - reel music track: a calm Pixabay one at 80 BPM, its license read for the use
-
-- layout driver tests on `internals::layout_rig` rather than `Harness` and widgets, so no widget default moves a layout expectation; scrollbars has moved

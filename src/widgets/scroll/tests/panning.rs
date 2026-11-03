@@ -330,7 +330,8 @@ fn shrinking_content_unstrands_offset_without_input() {
 /// Content that fits its viewport rests at offset zero even when a leading
 /// `content_margin` opens a band below it. The margin is invisible overscroll
 /// that leaves layout alone, so it may only widen the pannable range, never
-/// move content at rest.
+/// move content at rest, and it does not fold into the recorded content size, so
+/// bars track real content.
 #[test]
 fn content_margin_does_not_shift_content_that_fits() {
     let mut h = Harness::mono(SURFACE);
@@ -354,6 +355,12 @@ fn content_margin_does_not_shift_content_that_fits() {
         read_state(&h).offset(),
         Vec2::ZERO,
         "fitting content must rest at the origin, not at the leading margin",
+    );
+    assert_eq!(
+        h.ui()
+            .scroll_content(WidgetId::from_hash("scroll").with("viewport")),
+        Size::new(80.0, 80.0),
+        "the margin stays out of the content size",
     );
 
     // The margin still opens its band: the user can pan into it and back out to

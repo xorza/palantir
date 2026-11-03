@@ -187,3 +187,39 @@ impl Configure for Text<'_> {
         self.widget.configure()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::host::harness::Harness;
+    use crate::scene::layer::Layer;
+    use crate::shape::record::ShapeRecord;
+    use crate::text::wrap::TextWrap;
+    use crate::widgets::text::Text;
+    use glam::UVec2;
+
+    /// A run records the wrap its setter names, and a bare one `SingleLine`.
+    #[test]
+    fn a_run_records_its_wrap() {
+        let mut h = Harness::mono(UVec2::new(200, 100));
+        let nodes = h.frame_value(|ui| {
+            [
+                Text::new("bare").show(ui).node(),
+                Text::new("wrapping")
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .show(ui)
+                    .node(),
+            ]
+        });
+        let wraps = nodes.map(|node| {
+            h.ui()
+                .tree(Layer::Main)
+                .shapes_of(node)
+                .find_map(|s| match s {
+                    ShapeRecord::Text { wrap, .. } => Some(*wrap),
+                    _ => None,
+                })
+                .expect("a text shape")
+        });
+        assert_eq!(wraps, [TextWrap::SingleLine, TextWrap::WrapWithOverflow]);
+    }
+}

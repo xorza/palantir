@@ -2,13 +2,13 @@
 
 use crate::host::harness::Harness;
 use crate::internals::paint_capture::PaintCall;
-use crate::layout::tests::support::ChatMessage;
 use crate::layout::tests::support::PARAGRAPH;
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::Align;
+use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
@@ -20,7 +20,7 @@ use crate::text::wrap::TextWrap;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
-use crate::widgets::panel::Panel;
+use crate::widgets::{block::Block, panel::Panel, text::Text};
 use glam::UVec2;
 
 /// Pin: two `ShapeRecord::Text` on one node are both shaped (`text_spans[node].len == 2`) at distinct `TextShapeKey`s.
@@ -120,25 +120,11 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     const FRAMES: u32 = 12;
     let mut h = Harness::new(UVec2::new(200, 400));
     // Frame 0 shapes the unbounded root and the first bounded resolve.
-    h.frame_value(|ui| {
-        ChatMessage {
-            avatar_w: 40.0,
-            text: PARAGRAPH,
-            text_px: 14.0,
-        }
-        .show(ui)
-    });
+    h.frame_value(|ui| chat_message(ui, 40.0));
 
     // Redrawing at the same width reshapes nothing: the measure cache short-circuits the subtree.
     let before = h.ui().shaper().cache_counts();
-    h.frame_value(|ui| {
-        ChatMessage {
-            avatar_w: 40.0,
-            text: PARAGRAPH,
-            text_px: 14.0,
-        }
-        .show(ui)
-    });
+    h.frame_value(|ui| chat_message(ui, 40.0));
     let steady = h.ui().shaper().cache_counts() - before;
     assert_eq!(steady.shapes, 0, "a steady frame must not reshape");
     assert_eq!(steady.supersedes, 0, "nor demote the buffer still in use");
@@ -148,14 +134,7 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
     let mut supersedes = 0;
     for frame in 1..=FRAMES {
         let before = h.ui().shaper().cache_counts();
-        h.frame_value(|ui| {
-            ChatMessage {
-                avatar_w: 40.0 + frame as f32 * 3.0,
-                text: PARAGRAPH,
-                text_px: 14.0,
-            }
-            .show(ui)
-        });
+        h.frame_value(|ui| chat_message(ui, 40.0 + frame as f32 * 3.0));
         let d = h.ui().shaper().cache_counts() - before;
         // The unbounded root is shaped once for the whole drag; more than one means a driver measured this node at two widths in a frame.
         assert_eq!(
@@ -176,6 +155,33 @@ fn a_resize_drag_costs_one_reshape_a_frame_and_stays_bounded() {
         usize::try_from(PROBATION_KEEP_FRAMES + 1).unwrap(),
         "supersession is not reaching the drag's buffers through the layout stack",
     );
+}
+
+/// The chat-message pattern: a `(Fill × Hug)` HStack of a Fixed `avatar_w` avatar and a `Fill`
+/// paragraph wrapping at 14 px, in a VStack; returns the paragraph's node.
+fn chat_message(ui: &mut Ui, avatar_w: f32) -> NodeId {
+    Panel::vstack()
+        .auto_id()
+        .show(ui, |ui| {
+            Panel::hstack()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::HUG))
+                .show(ui, |ui| {
+                    Block::new()
+                        .id(WidgetId::from_hash("avatar"))
+                        .size((Sizing::fixed(avatar_w), Sizing::fixed(40.0)))
+                        .show(ui);
+                    Text::new(PARAGRAPH)
+                        .auto_id()
+                        .font_size(14.0)
+                        .size((Sizing::FILL, Sizing::HUG))
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .show(ui)
+                        .node()
+                })
+                .inner
+        })
+        .inner
 }
 
 /// Two `ShapeRecord::Text` runs in one leaf (slot 0 "first" at `(0, 0)+100x20`, slot 1 "second-with-different-text" at `(0, 22)+100x20`); returns the leaf `NodeId`.

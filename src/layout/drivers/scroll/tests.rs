@@ -1,207 +1,121 @@
 //! Driver-level tests for [`Scroll`](crate::layout::drivers::scroll::Scroll)'s
-//! measure and arrange.
+//! measure and arrange, on bare scroll nodes, as the `Scroll` widget's viewport and a
+//! `TextEdit` record them.
 
-use crate::host::harness::Harness;
+use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder};
 use crate::primitives::geometry::size::Size;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::scroll_axes::ScrollAxes;
 use crate::primitives::layout::sizing::{SizeSpec, Sizing};
 use crate::primitives::layout::track::Track;
-use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::widget::Widget;
-use crate::widgets::block::Block;
-use crate::widgets::grid::Grid;
-use crate::widgets::panel::Panel;
-use crate::widgets::scroll::Scroll;
-use glam::UVec2;
 
-const SURFACE: UVec2 = UVec2::new(400, 300);
+const SURFACE: Size = Size::new(400.0, 300.0);
 
-#[derive(Clone, Copy, Debug)]
-struct ScrollLayoutSnapshot {
-    outer: Size,
-    viewport: Size,
-    content: Size,
+/// A scroll node panning `axes`, sized `size`, fitting its content on each `Hug` panned axis,
+/// as the `Scroll` widget builds its viewport.
+fn scroll(axes: ScrollAxes, size: (Sizing, Sizing)) -> Widget {
+    Widget::scroll(axes.fit_content(SizeSpec::new(size.0, size.1))).size(size)
 }
 
-fn layout_for(ui: &Ui, id_salt: &'static str) -> ScrollLayoutSnapshot {
-    let outer_id = WidgetId::from_hash(id_salt);
-    let viewport_id = outer_id.with("viewport");
-    let outer = ui
-        .cascade()
-        .endpoint(outer_id)
-        .expect("scroll outer endpoint");
-    let viewport = ui
-        .cascade()
-        .endpoint(viewport_id)
-        .expect("scroll viewport endpoint");
-    let viewport_tree = ui.tree(viewport.plane.layer);
-    let viewport_rect = ui.arranged_rect(viewport.plane.layer, viewport.node);
-    ScrollLayoutSnapshot {
-        outer: ui.arranged_rect(outer.plane.layer, outer.node).size,
-        viewport: viewport_rect
-            .deflated_by(viewport_tree.records.layout()[viewport.node.idx()].padding)
-            .size,
-        content: ui.layout(viewport.plane.layer).scroll_content[viewport.node.idx()],
+/// `count` leaves of `size`, `{prefix}{i}`.
+fn rows(rec: &mut NodeRecorder<'_>, prefix: &str, count: u32, size: (Sizing, Sizing)) {
+    for i in 0..count {
+        rec.leaf(&format!("{prefix}{i}"), Widget::leaf().size(size));
     }
 }
 
-/// Vertical scroll measures children with INF on Y; the content extent is their
-/// full height.
+/// Vertical scroll measures children with INF on Y; the content extent is their full height:
+/// 5 × 50 = 250.
 #[test]
 fn vertical_scroll_records_content_extent() {
-    let mut h = Harness::mono(SURFACE);
-    h.frame(|ui| {
-        Scroll::vertical()
-            .id(WidgetId::from_hash("scroll"))
-            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
-            .show(ui, |ui| {
-                for i in 0..5u32 {
-                    Block::new()
-                        .id(WidgetId::from_hash(("row", i)))
-                        .size((Sizing::FILL, Sizing::fixed(50.0)))
-                        .show(ui);
-                }
-            });
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        let fixed = (Sizing::fixed(200.0), Sizing::fixed(100.0));
+        rec.node("scroll", scroll(ScrollAxes::VERTICAL, fixed), |rec| {
+            rows(rec, "row", 5, (Sizing::FILL, Sizing::fixed(50.0)));
+        });
     });
-    assert_eq!(layout_for(h.ui(), "scroll").content.h, 5.0 * 50.0);
+    assert_eq!(rig.scroll_content("scroll").h, 250.0);
 }
 
+/// Ten 40 px columns 4 px apart: 10 × 40 + 9 × 4 = 436.
 #[test]
 fn horizontal_scroll_records_content_extent() {
-    let mut h = Harness::mono(SURFACE);
-    h.frame(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .show(ui, |ui| {
-                Scroll::horizontal()
-                    .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::fixed(200.0), Sizing::fixed(80.0)))
-                    .gap(4.0)
-                    .show(ui, |ui| {
-                        for i in 0..10u32 {
-                            Block::new()
-                                .id(WidgetId::from_hash(("col", i)))
-                                .size((Sizing::fixed(40.0), Sizing::FILL))
-                                .show(ui);
-                        }
-                    });
-            });
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        let fixed = (Sizing::fixed(200.0), Sizing::fixed(80.0));
+        rec.node(
+            "scroll",
+            scroll(ScrollAxes::HORIZONTAL, fixed).gap(4.0),
+            |rec| {
+                rows(rec, "col", 10, (Sizing::fixed(40.0), Sizing::FILL));
+            },
+        );
     });
-    assert_eq!(layout_for(h.ui(), "scroll").content.w, 436.0);
+    assert_eq!(rig.scroll_content("scroll").w, 436.0);
 }
 
 #[test]
 fn both_axis_scroll_records_content_extent() {
-    let mut h = Harness::mono(SURFACE);
-    h.frame(|ui| {
-        Scroll::both()
-            .id(WidgetId::from_hash("scroll"))
-            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("wide-tall"))
-                    .size((Sizing::fixed(300.0), Sizing::fixed(250.0)))
-                    .show(ui);
-            });
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        let fixed = (Sizing::fixed(100.0), Sizing::fixed(100.0));
+        rec.node("scroll", scroll(ScrollAxes::BOTH, fixed), |rec| {
+            rec.leaf("wide-tall", Widget::leaf().size((300.0, 250.0)));
+        });
     });
-    assert_eq!(
-        layout_for(h.ui(), "scroll").content,
-        Size::new(300.0, 250.0)
-    );
+    assert_eq!(rig.scroll_content("scroll"), Size::new(300.0, 250.0));
 }
 
+/// A second run over the same nodes meets the first's measure cache and reports the same
+/// viewport and content: 4 × 40 = 160.
 #[test]
-fn layout_output_survives_across_frames() {
-    let mut h = Harness::mono(SURFACE);
-    let build = |ui: &mut Ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .show(ui, |ui| {
-                Scroll::vertical()
-                    .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::fixed(150.0), Sizing::fixed(100.0)))
-                    .show(ui, |ui| {
-                        for i in 0..4u32 {
-                            Block::new()
-                                .id(WidgetId::from_hash(("row", i)))
-                                .size((Sizing::FILL, Sizing::fixed(40.0)))
-                                .show(ui);
-                        }
-                    });
+fn layout_output_survives_across_runs() {
+    let mut rig = LayoutRig::new();
+    let run = |rig: &mut LayoutRig| {
+        rig.run(SURFACE, |rec| {
+            let fixed = (Sizing::fixed(150.0), Sizing::fixed(100.0));
+            rec.node("scroll", scroll(ScrollAxes::VERTICAL, fixed), |rec| {
+                rows(rec, "row", 4, (Sizing::FILL, Sizing::fixed(40.0)));
             });
+        });
+        (rig.rect("scroll"), rig.scroll_content("scroll"))
     };
-    h.frame(build);
-    let f1 = layout_for(h.ui(), "scroll");
-    h.frame(build);
-    let f2 = layout_for(h.ui(), "scroll");
-    assert_eq!(f1.content, f2.content);
-    assert_eq!(f1.viewport, f2.viewport);
-    assert_eq!(f1.outer, f2.outer);
-    assert_eq!(f1.content.h, 4.0 * 40.0);
+    let first = run(&mut rig);
+    assert_eq!(run(&mut rig), first);
+    assert_eq!(first.1.h, 160.0);
 }
 
-/// `Scroll::content_margin` does not fold into the recorded `content` size: margin
-/// applies at clamp time only, so bars track real content and the margin is
-/// invisible overscroll.
-#[test]
-fn content_margin_leaves_content_size_unchanged() {
-    let mut h = Harness::mono(SURFACE);
-    h.frame(|ui| {
-        Scroll::both()
-            .id(WidgetId::from_hash("scroll"))
-            .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
-            .content_margin((20.0, 50.0))
-            .show(ui, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("box"))
-                    .size((Sizing::fixed(80.0), Sizing::fixed(160.0)))
-                    .show(ui);
-            });
-    });
-    assert_eq!(layout_for(h.ui(), "scroll").content, Size::new(80.0, 160.0));
-}
-
-/// Arranged height of the scroll widget's outer wrapper (the node carrying the
-/// user's `id`).
-fn scroll_height(h: &Harness, id_salt: &'static str) -> f32 {
-    h.arranged(WidgetId::from_hash(id_salt)).unwrap().size.h
-}
-
-/// A harness holding a `count`-row vertical **Hug** scroll (50px rows) with the
-/// given min/max heights, in a Hug vstack that isolates the assertion from how the
-/// root is arranged.
-fn hug_scroll(count: u32, min_h: f32, max_h: f32) -> Harness {
-    let mut h = Harness::mono(SURFACE);
-    h.frame(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Scroll::vertical()
-                    .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::HUG, Sizing::HUG))
+/// A rig running a `count`-row vertical **Hug** scroll (50 px rows) with the given min and max
+/// heights, in a Hug vstack that isolates the assertion from how the root is arranged.
+fn hug_scroll(count: u32, min_h: f32, max_h: f32) -> LayoutRig {
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        rec.node("root", Widget::vstack(), |rec| {
+            rec.node(
+                "scroll",
+                scroll(ScrollAxes::VERTICAL, (Sizing::HUG, Sizing::HUG))
                     .min_size((0.0, min_h))
-                    .max_size((f32::INFINITY, max_h))
-                    .show(ui, |ui| {
-                        for i in 0..count {
-                            Block::new()
-                                .id(WidgetId::from_hash(("row", i)))
-                                .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
-                                .show(ui);
-                        }
-                    });
-            });
+                    .max_size((f32::INFINITY, max_h)),
+                |rec| {
+                    rows(
+                        rec,
+                        "row",
+                        count,
+                        (Sizing::fixed(120.0), Sizing::fixed(50.0)),
+                    );
+                },
+            );
+        });
     });
-    h
+    rig
 }
 
-/// A `Hug` scroll sizes to its content clamped to `[min, max]`: 3 × 50 = 150 below
-/// the cap, pinned to `min_size` under the floor (1 × 50 floored at 120), stopped
-/// at the cap above (8 × 50 = 400 capped at 200) with the content overflowing. The
-/// content extent records the rows in full, so bar and thumb size against real
-/// content.
+/// A `Hug` scroll sizes to its content clamped to `[min, max]`: 3 × 50 = 150 below the cap,
+/// pinned to `min_size` under the floor (1 × 50 floored at 120), stopped at the cap above
+/// (8 × 50 = 400 capped at 200) with the content overflowing. The content extent records the
+/// rows in full, so bar and thumb size against real content.
 #[test]
 fn hug_scroll_clamps_viewport_to_content() {
     let cases: &[(&str, u32, f32, f32, f32)] = &[
@@ -210,264 +124,190 @@ fn hug_scroll_clamps_viewport_to_content() {
         ("caps_at_max", 8, 0.0, 200.0, 200.0),
     ];
     for &(label, count, min_h, max_h, want) in cases {
-        let h = hug_scroll(count, min_h, max_h);
-        assert_eq!(scroll_height(&h, "scroll"), want, "case: {label}");
+        let rig = hug_scroll(count, min_h, max_h);
+        assert_eq!(rig.rect("scroll").size.h, want, "case: {label}");
         assert_eq!(
-            layout_for(h.ui(), "scroll").content.h,
+            rig.scroll_content("scroll").h,
             count as f32 * 50.0,
             "case: {label}: content extent",
         );
     }
 }
 
-/// A `Hug` scroll under a fixed 100 px parent takes the parent's bound as its
-/// viewport while its 8 × 50 = 400 of content overflows. One Hug stack further in,
-/// below a fixed 30 px header, a scroll's zero floor on its panned axis lets the
-/// stack take the parent's 100, and the viewport gives way to the 100 − 30 = 70 its
-/// rigid sibling leaves.
+/// A `Hug` scroll under a fixed 100 px parent takes the parent's bound as its viewport while
+/// its 8 × 50 = 400 of content overflows. One Hug stack further in, below a fixed 30 px header,
+/// a scroll's zero floor on its panned axis lets the stack take the parent's 100, and the
+/// viewport gives way to the 100 − 30 = 70 its rigid sibling leaves.
 #[test]
 fn hug_scroll_viewport_follows_parent_cap() {
-    let scroll = |ui: &mut Ui| {
-        Scroll::vertical()
-            .id(WidgetId::from_hash("parent-capped-scroll"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                for i in 0..8u32 {
-                    Block::new()
-                        .id(WidgetId::from_hash(("parent-capped-row", i)))
-                        .size((Sizing::fixed(120.0), Sizing::fixed(50.0)))
-                        .show(ui);
-                }
-            });
+    let capped = |rec: &mut NodeRecorder<'_>| {
+        rec.node(
+            "scroll",
+            scroll(ScrollAxes::VERTICAL, (Sizing::HUG, Sizing::HUG)),
+            |rec| rows(rec, "row", 8, (Sizing::fixed(120.0), Sizing::fixed(50.0))),
+        );
     };
-    let mut h = Harness::mono(SURFACE);
-    h.frame(|ui| {
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
-            .show(ui, scroll);
-    });
-    let st = layout_for(h.ui(), "parent-capped-scroll");
-    assert_eq!(st.viewport.h, 100.0, "viewport follows the parent cap");
-    assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
+    let parent = || Widget::vstack().size((Sizing::fixed(200.0), Sizing::fixed(100.0)));
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| rec.node("parent", parent(), capped));
+    assert_eq!(
+        rig.rect("scroll").size.h,
+        100.0,
+        "viewport follows the parent cap"
+    );
+    assert_eq!(
+        rig.scroll_content("scroll").h,
+        400.0,
+        "content keeps its natural extent"
+    );
 
-    h.frame(|ui| {
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::fixed(200.0), Sizing::fixed(100.0)))
-            .show(ui, |ui| {
-                Panel::vstack()
-                    .id(WidgetId::from_hash("hug-around-scroll"))
-                    .size((Sizing::HUG, Sizing::HUG))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .auto_id()
-                            .size((Sizing::fixed(120.0), Sizing::fixed(30.0)))
-                            .show(ui);
-                        scroll(ui);
-                    });
+    rig.run(SURFACE, |rec| {
+        rec.node("parent", parent(), |rec| {
+            rec.node("hug-around-scroll", Widget::vstack(), |rec| {
+                rec.leaf("header", Widget::leaf().size((120.0, 30.0)));
+                capped(rec);
             });
+        });
     });
     assert_eq!(
-        h.arranged(WidgetId::from_hash("hug-around-scroll"))
-            .unwrap()
-            .size
-            .h,
+        rig.rect("hug-around-scroll").size.h,
         100.0,
         "the Hug stack shrinks to the parent cap",
     );
-    let st = layout_for(h.ui(), "parent-capped-scroll");
     assert_eq!(
-        st.viewport.h, 70.0,
+        rig.rect("scroll").size.h,
+        70.0,
         "the viewport takes what the header leaves"
     );
-    assert_eq!(st.content.h, 400.0, "content keeps its natural extent");
+    assert_eq!(
+        rig.scroll_content("scroll").h,
+        400.0,
+        "content keeps its natural extent"
+    );
 }
 
-/// Counterpart guard: a `Fill` scroll keeps the content-independent viewport and
-/// reports zero on its pan axis, so it does **not** inflate a `Hug` ancestor.
+/// The `Hug` vstack holding one vertical scroll of `pan_h` over a 150 px row, run on `rig`.
+fn scroll_in_hug_parent(rig: &mut LayoutRig, pan_h: Sizing) {
+    rig.run(SURFACE, |rec| {
+        rec.node("root", Widget::vstack(), |rec| {
+            rec.node(
+                "scroll",
+                scroll(ScrollAxes::VERTICAL, (Sizing::HUG, pan_h)),
+                |rec| {
+                    rec.leaf("row", Widget::leaf().size((120.0, 150.0)));
+                },
+            );
+        });
+    });
+}
+
+/// Counterpart guard: a `Fill` scroll keeps the content-independent viewport and reports zero on
+/// its pan axis, so it does **not** inflate a `Hug` ancestor.
 #[test]
 fn fill_scroll_does_not_grow_hug_parent() {
-    let mut h = Harness::mono(SURFACE);
-    h.frame(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Scroll::vertical()
-                    .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::HUG, Sizing::fill(1.0)))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("row"))
-                            .size((Sizing::fixed(120.0), Sizing::fixed(150.0)))
-                            .show(ui);
-                    });
-            });
-    });
+    let mut rig = LayoutRig::new();
+    scroll_in_hug_parent(&mut rig, Sizing::fill(1.0));
     assert_eq!(
-        scroll_height(&h, "scroll"),
+        rig.rect("scroll").size.h,
         0.0,
         "a Fill scroll reports zero pan-axis extent; the Hug parent doesn't grow",
     );
 }
 
-/// Toggling a scroll's pan-axis `Sizing` (`Hug` ⇄ `Fill`) on the **same
-/// `WidgetId`** busts the `MeasureCache`: the fit bits ride the scroll
-/// specification, which is folded into the subtree hash. Without it the inner
-/// viewport's hash (a constant `Fill`) would not change and frame 1's stale 150
-/// would be served in frame 2.
+/// Toggling a scroll's pan-axis `Sizing` (`Hug` ⇄ `Fill`) on the **same id** busts the
+/// `MeasureCache`: the fit bits ride the scroll specification, which is folded into the
+/// subtree hash. Without it the second run would be served the first's stale 150.
 #[test]
 fn toggling_scroll_sizing_busts_measure_cache() {
-    let mut h = Harness::mono(SURFACE);
-    let build = |ui: &mut Ui, pan_h: Sizing| {
-        Panel::vstack()
-            .id(WidgetId::from_hash("root"))
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Scroll::vertical()
-                    .id(WidgetId::from_hash("scroll"))
-                    .size((Sizing::HUG, pan_h))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("row"))
-                            .size((Sizing::fixed(120.0), Sizing::fixed(150.0)))
-                            .show(ui);
-                    });
-            });
-    };
-    h.frame(|ui| build(ui, Sizing::HUG));
-    assert_eq!(scroll_height(&h, "scroll"), 150.0, "Hug fits its content");
-    h.frame(|ui| build(ui, Sizing::fill(1.0)));
+    let mut rig = LayoutRig::new();
+    scroll_in_hug_parent(&mut rig, Sizing::HUG);
+    assert_eq!(rig.rect("scroll").size.h, 150.0, "Hug fits its content");
+    scroll_in_hug_parent(&mut rig, Sizing::fill(1.0));
     assert_eq!(
-        scroll_height(&h, "scroll"),
+        rig.rect("scroll").size.h,
         0.0,
-        "Fill collapses in the Hug parent — the frame-1 fit measure is not served stale",
+        "Fill collapses in the Hug parent — the first run's fit measure is not served stale",
     );
 }
 
-/// Pin: a `Hug` scroll reports its content extent as its **intrinsic**, not just
-/// its measured size. If the intrinsic query ignored the `fit` bit and answered
-/// zero, nothing downstream of `measure` would notice (`AxisSlot::resolve` takes
-/// `max(content, intrinsic_min)`), but a Hug grid column, resolved from the Phase-1
-/// intrinsic walk, would resolve to zero and its cell would overflow.
+/// Pin: a `Hug` scroll reports its content extent as its **intrinsic**, not just its measured
+/// size. If the intrinsic query ignored the `fit` bit and answered zero, nothing downstream of
+/// `measure` would notice (`AxisSlot::resolve` takes `max(content, intrinsic_min)`), but a Hug
+/// grid column, resolved from the Phase-1 intrinsic walk, would resolve to zero and its cell
+/// would overflow.
 #[test]
 fn hug_scroll_drives_the_hug_grid_column_it_sits_in() {
     const CONTENT_W: f32 = 120.0;
 
-    let mut h = Harness::mono(SURFACE);
-    let root = h.frame_value(|ui| {
-        Grid::new()
-            .auto_id()
-            .cols([Track::HUG])
-            .rows([Track::HUG])
-            .size((Sizing::HUG, Sizing::HUG))
-            .show(ui, |ui| {
-                Scroll::horizontal()
-                    .id(WidgetId::from_hash("hug-scroll"))
-                    .size((Sizing::HUG, Sizing::fixed(40.0)))
-                    .show(ui, |ui| {
-                        Block::new()
-                            .id(WidgetId::from_hash("wide"))
-                            .size((Sizing::fixed(CONTENT_W), Sizing::fixed(20.0)))
-                            .show(ui);
-                    });
-            })
-            .response
-            .node()
+    let mut rig = LayoutRig::new();
+    rig.run(SURFACE, |rec| {
+        let tracks = GridTracks {
+            rows: &[Track::HUG],
+            cols: &[Track::HUG],
+        };
+        rec.grid("grid", Widget::grid(), tracks, |rec| {
+            rec.node(
+                "hug-scroll",
+                scroll(ScrollAxes::HORIZONTAL, (Sizing::HUG, Sizing::fixed(40.0))),
+                |rec| rec.leaf("wide", Widget::leaf().size((CONTENT_W, 20.0))),
+            );
+        });
     });
-
-    let cell = h.main_child_rects(root)[0];
     assert_eq!(
-        cell.size.w, CONTENT_W,
+        rig.rect("hug-scroll").size.w,
+        CONTENT_W,
         "a Hug column must resolve to the Hug scroll's content width, not collapse to zero",
     );
 }
 
-/// **A scroll viewport takes the slot it is placed in, whichever driver places
-/// it.** Its `desired` follows the content, so a bounded parent can hand it a
-/// smaller slot; the viewport clips, so it must not overflow that slot as an
-/// ordinary node does.
+/// **A scroll viewport takes the slot it is placed in, whichever driver places it.** Its
+/// `desired` follows the content, so a bounded parent can hand it a smaller slot; the viewport
+/// clips, so it must not overflow that slot as an ordinary node does.
 ///
-/// One case per placing driver: a bare scroll node in a Grid or a stack's cross
-/// axis once got no clamp, and `TextEdit` is such a node. A stack's *main* axis is
-/// the one placement `AxisPlacement` does not own (its flex solver shrinks against
-/// the zero min-content a panned scroll reports). Canvas is absent: its slot is the
-/// child's desired on a `Hug` axis and `inner` on a sized one, so the clamp is the
-/// identity.
+/// One case per placing driver: a bare scroll node in a Grid or a stack's cross axis once got
+/// no clamp, and `TextEdit` is such a node. A stack's *main* axis is the one placement
+/// `AxisPlacement` does not own (its flex solver shrinks against the zero min-content a panned
+/// scroll reports). Canvas is absent: its slot is the child's desired on a `Hug` axis and
+/// `inner` on a sized one, so the clamp is the identity.
 #[test]
 fn a_scroll_viewport_takes_its_slot_under_every_driver_that_places_one() {
     const SLOT: Size = Size { w: 200.0, h: 100.0 };
     const CONTENT: Size = Size { w: 400.0, h: 400.0 };
-    const SCROLL: &str = "bare-scroll";
 
-    /// A bare `Node::scroll`, not the `Scroll` widget, which wraps its viewport in
-    /// a ZStack (the one driver that always clamped); `TextEdit` records the bare
-    /// form.
-    fn record_scroll(ui: &mut Ui) {
-        Widget::scroll(ScrollAxes::BOTH.fit_content(SizeSpec::new(Sizing::HUG, Sizing::HUG)))
-            .size((Sizing::HUG, Sizing::HUG))
-            .id(WidgetId::from_hash(SCROLL))
-            .record(ui, None, |ui| {
-                Block::new()
-                    .id(WidgetId::from_hash("content"))
-                    .size((Sizing::fixed(CONTENT.w), Sizing::fixed(CONTENT.h)))
-                    .show(ui);
-            });
-    }
-
+    let viewport = |rec: &mut NodeRecorder<'_>| {
+        rec.node(
+            "scroll",
+            scroll(ScrollAxes::BOTH, (Sizing::HUG, Sizing::HUG)),
+            |rec| rec.leaf("content", Widget::leaf().size((CONTENT.w, CONTENT.h))),
+        );
+    };
     for driver in ["zstack", "hstack", "vstack", "grid"] {
-        let mut h = Harness::mono(SURFACE);
-        h.frame(|ui| {
-            let parent = WidgetId::from_hash("parent");
-            // **Hug capped by `max_size`, not `Fixed`.** A Hug axis measures
-            // children against `INFINITY`, so the cap makes the slot smaller than
-            // the desired; a Fixed parent bounds the measure instead and never
-            // reaches this placement.
-            let sized = (Sizing::HUG, Sizing::HUG);
-            let cap = (SLOT.w, SLOT.h);
+        let mut rig = LayoutRig::new();
+        rig.run(SURFACE, |rec| {
+            // **Hug capped by `max_size`, not `Fixed`.** A Hug axis measures children against
+            // `INFINITY`, so the cap makes the slot smaller than the desired; a Fixed parent
+            // bounds the measure instead and never reaches this placement.
+            let cap = |widget: Widget| widget.max_size((SLOT.w, SLOT.h));
             match driver {
-                "zstack" => {
-                    Panel::zstack()
-                        .id(parent)
-                        .size(sized)
-                        .max_size(cap)
-                        .show(ui, record_scroll);
-                }
-                "hstack" => {
-                    Panel::hstack()
-                        .id(parent)
-                        .size(sized)
-                        .max_size(cap)
-                        .show(ui, record_scroll);
-                }
-                "vstack" => {
-                    Panel::vstack()
-                        .id(parent)
-                        .size(sized)
-                        .max_size(cap)
-                        .show(ui, record_scroll);
-                }
+                "zstack" => rec.node("parent", cap(Widget::zstack()), viewport),
+                "hstack" => rec.node("parent", cap(Widget::hstack()), viewport),
+                "vstack" => rec.node("parent", cap(Widget::vstack()), viewport),
                 _ => {
-                    Grid::new()
-                        .id(parent)
-                        .size(sized)
-                        .max_size(cap)
-                        .cols([Track::HUG])
-                        .rows([Track::HUG])
-                        .show(ui, record_scroll);
+                    let tracks = GridTracks {
+                        rows: &[Track::HUG],
+                        cols: &[Track::HUG],
+                    };
+                    rec.grid("parent", cap(Widget::grid()), tracks, viewport);
                 }
             }
         });
-        let scroll_id = WidgetId::from_hash(SCROLL);
-        let rect = h.rect(scroll_id).expect("the scroll arranged");
         assert_eq!(
-            (rect.size.w, rect.size.h),
-            (SLOT.w, SLOT.h),
+            rig.rect("scroll").size,
+            SLOT,
             "{driver}: a viewport measuring {CONTENT:?} must still take its {SLOT:?} slot",
         );
         assert_eq!(
-            h.ui().scroll_content(scroll_id),
+            rig.scroll_content("scroll"),
             CONTENT,
             "{driver}: and still record the full content extent for its bars",
         );

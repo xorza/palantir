@@ -1,17 +1,15 @@
 //! `LayoutPass::measure`'s second pass must not assume
 //! `final_desired <= new_available`: a non-monotonic descendant (a `wrap_hstack`
 //! beside `Fill` cells that hug padded content) can desire ~10 px more. Sweeps
-//! a width range: no frame panics and every toolbar button stays in its toolbar.
-use crate::primitives::identity::widget_id::WidgetId;
-
-use crate::host::harness::Harness;
+//! a width range: no frame panics and every toolbar label stays in its toolbar.
+use crate::internals::layout_rig::{LayoutRig, TextRun};
+use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::sizing::Sizing;
-use crate::scene::layer::Layer;
+use crate::text::wrap::TextWrap;
 use crate::widget_core::configure::Configure;
-use crate::widgets::block::Block;
-use crate::widgets::button::Button;
-use crate::widgets::panel::Panel;
-use glam::UVec2;
+use crate::widget_core::widget::Widget;
+
+const FILL: (Sizing, Sizing) = (Sizing::FILL, Sizing::FILL);
 
 /// Two FILL/FILL cells in an HStack; the right has a Fixed(180×80) descendant
 /// (min-content floor 204). FILL siblings should split by shrink budget
@@ -19,71 +17,44 @@ use glam::UVec2;
 /// the summed `intrinsic_min` no child extends past the HStack's right edge.
 #[test]
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
-    for outer_w in (260u32..=600).step_by(10) {
-        let mut h = Harness::mono(UVec2::new(outer_w, 400));
-        let row_node = h.frame_value(|ui| {
-            Panel::hstack()
-                .auto_id()
-                .gap(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    Panel::vstack()
-                        .id(WidgetId::from_hash("left"))
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .padding(12.0)
-                        .show(ui, |ui| {
-                            Block::new()
-                                .id(WidgetId::from_hash("left-bg"))
-                                .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui);
-                        });
-                    // Right: Fixed(180×80) descendant, `intrinsic_min` = 204.
-                    Panel::vstack()
-                        .id(WidgetId::from_hash("right"))
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .padding(12.0)
-                        .show(ui, |ui| {
-                            Panel::zstack()
-                                .id(WidgetId::from_hash("right-z"))
-                                .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui, |ui| {
-                                    Block::new()
-                                        .id(WidgetId::from_hash("right-bg"))
-                                        .size((Sizing::FILL, Sizing::FILL))
-                                        .show(ui);
-                                    Block::new()
-                                        .id(WidgetId::from_hash("right-fixed"))
-                                        .size((Sizing::fixed(180.0), Sizing::fixed(80.0)))
-                                        .show(ui);
-                                });
-                        });
-                })
-                .response
-                .node()
+    for outer_w in (260u16..=600).step_by(10) {
+        let outer_w = f32::from(outer_w);
+        let mut rig = LayoutRig::new();
+        rig.run(Size::new(outer_w, 400.0), |rec| {
+            rec.node("row", Widget::hstack().gap(12.0).size(FILL), |rec| {
+                let cell = || Widget::vstack().size(FILL).padding(12.0);
+                rec.node("left", cell(), |rec| {
+                    rec.leaf("left-bg", Widget::leaf().size(FILL));
+                });
+                // Right: Fixed(180×80) descendant, `intrinsic_min` = 204.
+                rec.node("right", cell(), |rec| {
+                    rec.node("right-z", Widget::zstack().size(FILL), |rec| {
+                        rec.leaf("right-bg", Widget::leaf().size(FILL));
+                        rec.leaf("right-fixed", Widget::leaf().size((180.0, 80.0)));
+                    });
+                });
+            });
         });
 
-        let row = h.ui().arranged_rect(Layer::Main, row_node);
-        let left = h.arranged(WidgetId::from_hash("left"));
-        let right = h.arranged(WidgetId::from_hash("right"));
+        let row = rig.rect("row");
+        let left = rig.rect("left");
+        let right = rig.rect("right");
 
         // The row fills the surface, so the two cells share `outer_w − 12` (the gap): an
         // even split while each half covers the right cell's 204 floor, else the right
         // cell holds 204 and the left absorbs the squeeze (CSS Flexbox). Either way they
         // end flush with the row.
-        let share = (outer_w as f32 - 12.0) / 2.0;
+        let share = (outer_w - 12.0) / 2.0;
         assert_eq!(
-            right.unwrap().size.w,
+            right.size.w,
             share.max(204.0),
             "outer_w={outer_w}: left.w={} right.w={}",
-            left.unwrap().size.w,
-            right.unwrap().size.w,
+            left.size.w,
+            right.size.w,
         );
         assert_eq!(
-            [
-                row.min.x + row.size.w,
-                right.unwrap().min.x + right.unwrap().size.w
-            ],
-            [outer_w as f32; 2],
+            [row.max().x, right.max().x],
+            [outer_w; 2],
             "outer_w={outer_w}: right cell must end at the row's edge",
         );
     }
@@ -111,72 +82,54 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
         "spacing",
         "buttons",
     ];
-    // Sweep ~620-700 wide plus a wider band in 1 px steps, on one harness so each step is a resize.
-    let mut h = Harness::mono(UVec2::new(480, 600));
-    for w in (480u32..=900).step_by(1) {
-        h.resize(UVec2::new(w, 600));
-        h.frame(|ui| {
-            Panel::vstack()
-                .auto_id()
-                .padding(12.0)
-                .gap(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    // Toolbar: a `wrap_hstack` wider than `w`, so row count varies with width.
-                    Panel::wrap_hstack()
-                        .id(WidgetId::from_hash("toolbar"))
-                        .gap(6.0)
-                        .line_gap(6.0)
-                        .size((Sizing::FILL, Sizing::HUG))
-                        .show(ui, |ui| {
-                            for label in LABELS {
-                                Button::new()
-                                    .id(WidgetId::from_hash(*label))
-                                    .label(*label)
-                                    .show(ui);
+    // Sweep ~620-700 wide plus a wider band in 1 px steps, on one rig so each step is a resize.
+    let mut rig = LayoutRig::new();
+    for w in 480u16..=900 {
+        rig.run(Size::new(f32::from(w), 600.0), |rec| {
+            let column = Widget::vstack().padding(12.0).gap(12.0).size(FILL);
+            rec.node("column", column, |rec| {
+                // Toolbar: a `wrap_hstack` wider than `w`, so row count varies with width.
+                let toolbar = Widget::wrap_hstack()
+                    .gap(6.0)
+                    .line_gap(6.0)
+                    .size((Sizing::FILL, Sizing::HUG));
+                rec.node("toolbar", toolbar, |rec| {
+                    for label in LABELS {
+                        rec.text_leaf(
+                            label,
+                            Widget::leaf().padding((12.0, 6.0)),
+                            TextRun::new(label, 16.0, TextWrap::SingleLine),
+                        );
+                    }
+                });
+
+                // Central panel: 4 padded FILL cells with varying hug widths.
+                rec.node(
+                    "central",
+                    Widget::zstack().size(FILL).padding(16.0),
+                    |rec| {
+                        rec.node("cells", Widget::hstack().gap(12.0).size(FILL), |rec| {
+                            for (id, content_w) in
+                                [("c1", 132.0), ("c2", 60.0), ("c3", 80.0), ("c4", 100.0)]
+                            {
+                                rec.node(id, Widget::vstack().size(FILL).padding(12.0), |rec| {
+                                    let swatch = Widget::leaf().size((content_w, 40.0));
+                                    rec.leaf(&format!("{id}-swatch"), swatch);
+                                });
                             }
                         });
-
-                    // Central panel: 4 padded FILL cells with varying hug widths.
-                    Panel::zstack()
-                        .auto_id()
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .padding(16.0)
-                        .show(ui, |ui| {
-                            Panel::hstack()
-                                .auto_id()
-                                .gap(12.0)
-                                .size((Sizing::FILL, Sizing::FILL))
-                                .show(ui, |ui| {
-                                    for (id, content_w) in
-                                        [("c1", 132.0), ("c2", 60.0), ("c3", 80.0), ("c4", 100.0)]
-                                    {
-                                        Panel::vstack()
-                                            .id(WidgetId::from_hash(id))
-                                            .size((Sizing::FILL, Sizing::FILL))
-                                            .padding(12.0)
-                                            .show(ui, |ui| {
-                                                Block::new()
-                                                    .id(WidgetId::from_hash((id, "swatch")))
-                                                    .size((
-                                                        Sizing::fixed(content_w),
-                                                        Sizing::fixed(40.0),
-                                                    ))
-                                                    .show(ui);
-                                            });
-                                    }
-                                });
-                        });
-                });
+                    },
+                );
+            });
         });
-        // Every button sits inside its toolbar; the toolbar itself can exceed
+        // Every label sits inside its toolbar; the toolbar itself can exceed
         // the window (the cells below have a rigid 536 px floor).
-        let toolbar = h.arranged(WidgetId::from_hash("toolbar"));
+        let toolbar = rig.rect("toolbar");
         for label in LABELS {
-            let button = h.arranged(WidgetId::from_hash(*label)).unwrap();
+            let r = rig.rect(label);
             assert!(
-                toolbar.unwrap().contains_rect(button),
-                "w={w}: {label} at {button:?} leaves the toolbar at {toolbar:?}",
+                toolbar.contains_rect(r),
+                "w={w}: {label} at {r:?} leaves the toolbar at {toolbar:?}",
             );
         }
     }

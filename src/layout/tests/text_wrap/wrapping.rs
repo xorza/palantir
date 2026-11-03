@@ -1,224 +1,150 @@
-//! A wrapping leaf's height, its truncating peer, and the intrinsics both report.
+//! A wrapping leaf's height, and the intrinsics it reports.
 
-use crate::host::harness::Harness;
+use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun};
 use crate::layout::intrinsic::len_req::LenReq;
-use crate::layout::tests::support;
-use crate::layout::tests::support::PARAGRAPH;
-use crate::layout::tests::support::lines_h;
-use crate::layout::tests::support::two_hug_cols_with_wrap;
+use crate::layout::tests::support::{PARAGRAPH, two_hug_cols_with_wrap};
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
-use crate::primitives::layout::sizing::Sizing;
-use crate::scene::layer::Layer;
-use crate::scene::tree::node_id::NodeId;
-use crate::shape::record::ShapeRecord;
+use crate::primitives::layout::scroll_axes::ScrollAxes;
+use crate::primitives::layout::sizing::{SizeSpec, Sizing};
+use crate::primitives::layout::track::Track;
 use crate::text::wrap::TextWrap;
-use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::{button::Button, panel::Panel, text::Text};
-use glam::UVec2;
+use crate::widget_core::widget::Widget;
 
-/// The wrap mode `node`'s first text shape records.
-fn text_wrap_of(h: &Harness, node: NodeId) -> TextWrap {
-    h.ui()
-        .tree(Layer::Main)
-        .shapes_of(node)
-        .find_map(|s| match s {
-            ShapeRecord::Text { wrap, .. } => Some(*wrap),
-            _ => None,
-        })
-        .expect("a text shape")
-}
-
+/// The paragraph at 16 px in a 60 px column: 7 chars a line, so each word takes a line of its
+/// own, nine lines of 16, as wide as the widest word, 5 × 8 = 40.
 #[test]
 fn wrapping_text_grows_height_in_narrow_frame() {
-    let mut h = Harness::new(UVec2::new(400, 400));
-    let mut text_node = None;
-    h.frame(|ui| {
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::fixed(60.0), Sizing::HUG))
-            .show(ui, |ui| {
-                text_node = Some(
-                    Text::new(PARAGRAPH)
-                        .auto_id()
-                        .font_size(16.0)
-                        .text_wrap(TextWrap::WrapWithOverflow)
-                        .show(ui)
-                        .node(),
-                );
-            });
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(400.0, 400.0), |rec| {
+        let column = Widget::vstack().size((Sizing::fixed(60.0), Sizing::HUG));
+        rec.node("column", column, |rec| {
+            let run = TextRun::new(PARAGRAPH, 16.0, TextWrap::WrapWithOverflow);
+            rec.text_leaf("text", Widget::leaf(), run);
+        });
     });
-    let node = text_node.unwrap();
-    let r = h.ui().arranged_rect(Layer::Main, node);
-    assert_eq!(
-        r.size,
-        Size::new(60.0, lines_h(8, 16.0)),
-        "eight lines in 60 px"
-    );
-    assert_eq!(text_wrap_of(&h, node), TextWrap::WrapWithOverflow);
-    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
-    assert_eq!(shaped.extent.size, r.size);
+    let r = rig.rect("text");
+    assert_eq!(r.size, Size::new(40.0, 9.0 * 16.0), "nine lines in 60 px");
+    assert_eq!(rig.shaped_text("text").extent.size, r.size);
 }
 
-/// A `Button` with a label wider than its `Fixed` width elides to one line (`TextWrap::SingleLine`) rather than overflow or wrap.
-#[test]
-fn button_label_truncates_one_line_in_narrow_frame_by_default() {
-    let mut h = Harness::new(UVec2::new(400, 400));
-    let mut node = None;
-    h.frame(|ui| {
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::fixed(80.0), Sizing::HUG))
-            .show(ui, |ui| {
-                node = Some(Button::new().auto_id().label(PARAGRAPH).show(ui).node());
-            });
-    });
-    let node = node.unwrap();
-
-    assert_eq!(
-        text_wrap_of(&h, node),
-        TextWrap::Truncate,
-        "a button label defaults to the truncating wrap mode"
-    );
-
-    // Cut to the 80 px box less 2 × 12 padding and 2 × 1 border: 54 px of room.
-    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
-    assert_eq!(shaped.extent.size, Size::new(52.0, lines_h(1, 16.0)));
-}
-
-/// A wrapping `Text` in a `Grid` `Hug` column reshapes to the column's committed width, resolved in measure against `inner_avail` (200 px).
+/// A wrapping text in a `Grid` `Hug` column reshapes to the column's committed width, resolved in
+/// measure against `inner_avail`. At 16 px the paragraph runs 40 (`quick`) to 344 wide and the
+/// label 96 either way, so of 200 the paragraph's column takes `40 + (200 − 136) = 104`, 13
+/// chars: "the quick", "brown fox", "jumps over", "the lazy dog", 96 wide.
 #[test]
 fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
-    let mut h = Harness::new(UVec2::new(200, 400));
-    let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
-    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
-    assert_eq!(shaped.extent.size, Size::new(93.0, lines_h(4, 16.0)));
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(200.0, 400.0), |rec| {
+        two_hug_cols_with_wrap(rec, PARAGRAPH);
+    });
+    assert_eq!(
+        rig.shaped_text("wrapping").extent.size,
+        Size::new(96.0, 4.0 * 16.0)
+    );
 }
 
-/// `Ui::intrinsic` returns sane values for a wrapping text leaf in a Grid `Auto` cell.
+/// A wrapping text leaf in a Grid `Hug` cell reports its intrinsics: 43 chars of 8 at most,
+/// `quick` at least, one 16 px line tall.
 #[test]
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
-    let mut h = Harness::new(UVec2::new(200, 400));
-    let node = h.frame_value(|ui| two_hug_cols_with_wrap(ui, PARAGRAPH));
-    let max_w = h.intrinsic(node, Axis::X, LenReq::MaxContent);
-    let min_w = h.intrinsic(node, Axis::X, LenReq::MinContent);
-    let max_h = h.intrinsic(node, Axis::Y, LenReq::MaxContent);
-
-    assert_eq!([max_w, min_w, max_h], [335.0, 48.0, lines_h(1, 16.0)]);
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(200.0, 400.0), |rec| {
+        two_hug_cols_with_wrap(rec, PARAGRAPH);
+    });
+    let max_w = rig.intrinsic("wrapping", Axis::X, LenReq::MaxContent);
+    let min_w = rig.intrinsic("wrapping", Axis::X, LenReq::MinContent);
+    let max_h = rig.intrinsic("wrapping", Axis::Y, LenReq::MaxContent);
+    assert_eq!([max_w, min_w, max_h], [344.0, 40.0, 16.0]);
 }
 
-/// Pin (contains-content rule, cross axis): a FILL chrome panel around a paragraph in a Fixed(width) container grows on Y to contain the wrapped content even when surface_h is smaller. The intrinsic-min query underestimates (wrapping text runs at INF width), so the floor comes from the measure, which shaped at the laid-out width.
+/// Pin (contains-content rule, cross axis): a FILL chrome panel around a paragraph in a Fixed(width) container grows on Y to contain the wrapped content even when surface_h is smaller. The intrinsic-min query underestimates (wrapping text runs at INF width), so the floor comes from the measure, which shaped at the laid-out width: 360 less 2 × 8 padding is 344, 49 chars of 7, three lines.
 #[test]
 fn fill_panel_grows_to_contain_wrapped_content_on_y() {
-    use crate::primitives::layout::track::Track;
-    use crate::scene::tree::node_id::NodeId;
-    use crate::widgets::grid::Grid;
-    use crate::widgets::panel::Panel;
-
+    const TEXT: &str = "The quick brown fox jumps over the lazy dog. \
+                        Pack my box with five dozen liquor jugs. \
+                        How vexingly quick daft zebras jump!";
     #[derive(Clone, Copy, Debug)]
     enum Inner {
-        Panel(fn() -> Panel),
+        Stack(fn() -> Widget),
         Grid,
     }
-    fn build(ui: &mut Ui, inner_kind: Inner) -> [NodeId; 3] {
-        let mut inner = NodeId(0);
-        let mut text = NodeId(0);
-        Panel::zstack()
-            .auto_id()
-            .padding(16.0)
-            .size((Sizing::FILL, Sizing::FILL))
-            .show(ui, |ui| {
-                let paragraph = |ui: &mut Ui| {
-                    Text::new(
-                        "The quick brown fox jumps over the lazy dog. \
-                         Pack my box with five dozen liquor jugs. \
-                         How vexingly quick daft zebras jump!",
-                    )
-                    .auto_id()
-                    .font_size(14.0)
-                    .text_wrap(TextWrap::WrapWithOverflow)
-                    .show(ui)
-                    .node()
-                };
-                let size = (Sizing::fixed(360.0), Sizing::HUG);
-                inner = match inner_kind {
-                    Inner::Panel(panel) => panel()
-                        .id_salt("inner")
-                        .size(size)
-                        .padding(8.0)
-                        .show(ui, |ui| text = paragraph(ui))
-                        .response
-                        .node(),
-                    Inner::Grid => Grid::new()
-                        .id_salt("inner")
-                        .cols([Track::FILL])
-                        .rows([Track::HUG])
-                        .size(size)
-                        .padding(8.0)
-                        .show(ui, |ui| text = paragraph(ui))
-                        .response
-                        .node(),
-                };
-            });
-        [NodeId(1), inner, text]
-    }
     let inners = [
-        ("vstack", Inner::Panel(Panel::vstack)),
-        ("hstack", Inner::Panel(Panel::hstack)),
-        ("wrap_vstack", Inner::Panel(Panel::wrap_vstack)),
-        ("zstack", Inner::Panel(Panel::zstack)),
+        ("vstack", Inner::Stack(Widget::vstack)),
+        ("hstack", Inner::Stack(Widget::hstack)),
+        ("wrap_vstack", Inner::Stack(Widget::wrap_vstack)),
+        ("zstack", Inner::Stack(Widget::zstack)),
         ("grid", Inner::Grid),
     ];
     for (label, inner_kind) in inners {
-        for h in [800u32, 400, 300, 200, 150, 100, 50] {
-            let mut harness = Harness::new(UVec2::new(800, h));
-            let [chrome, inner, text] = harness.frame_value(|ui| build(ui, inner_kind));
-            let height = |node| harness.ui().arranged_rect(Layer::Main, node).size.h;
+        for surface_h in [800.0, 400.0, 300.0, 200.0, 150.0, 100.0, 50.0] {
+            let mut rig = LayoutRig::new();
+            rig.run(Size::new(800.0, surface_h), |rec| {
+                let chrome = Widget::zstack()
+                    .padding(16.0)
+                    .size((Sizing::FILL, Sizing::FILL));
+                rec.node("chrome", chrome, |rec| {
+                    let size = (Sizing::fixed(360.0), Sizing::HUG);
+                    let paragraph = |rec: &mut NodeRecorder<'_>| {
+                        let run = TextRun::new(TEXT, 14.0, TextWrap::WrapWithOverflow);
+                        rec.text_leaf("text", Widget::leaf(), run);
+                    };
+                    match inner_kind {
+                        Inner::Stack(stack) => {
+                            rec.node("inner", stack().size(size).padding(8.0), paragraph);
+                        }
+                        Inner::Grid => {
+                            let tracks = GridTracks {
+                                rows: &[Track::HUG],
+                                cols: &[Track::FILL],
+                            };
+                            let grid = Widget::grid().size(size).padding(8.0);
+                            rec.grid("inner", grid, tracks, paragraph);
+                        }
+                    }
+                });
+            });
+            let height = |id| rig.rect(id).size.h;
             // Three 14 px lines plus 2 × 8 padding at every surface height; the chrome grows past the surface to its inner container plus 2 × 16 padding.
-            assert_eq!(height(text), lines_h(3, 14.0), "{label} surface_h={h}");
+            assert_eq!(height("text"), 3.0 * 14.0, "{label} surface_h={surface_h}");
             assert_eq!(
-                height(inner),
-                lines_h(3, 14.0) + 16.0,
-                "{label} surface_h={h}"
+                height("inner"),
+                3.0 * 14.0 + 16.0,
+                "{label} surface_h={surface_h}"
             );
             assert_eq!(
-                height(chrome),
-                (h as f32).max(height(inner) + 32.0),
-                "{label} surface_h={h}"
+                height("chrome"),
+                surface_h.max(height("inner") + 32.0),
+                "{label} surface_h={surface_h}"
             );
         }
     }
 }
 
-/// A Hug `Scroll::vertical()` in a 300 px column wraps its text at 300: its Hug ZStack offers children the room it can grow to; offered `INFINITY`, the paragraph shaped as one overlong line.
+/// A Hug vertical scroll in a 300 px column wraps its text at 300: the Hug zstack around its
+/// Fill viewport, as the `Scroll` widget records them, offers children the room it can grow to,
+/// where offered `INFINITY` the paragraph shaped as one overlong line. Four paragraphs at 16 px,
+/// 37 chars a line, make five lines, the widest 37 × 8 = 296.
 #[test]
 fn a_hug_scroll_wraps_its_text_at_the_column_width() {
-    use crate::widgets::scroll::Scroll;
-
     let paragraph = [PARAGRAPH; 4].join(" ");
-    let mut h = Harness::new(UVec2::new(600, 400));
-    let mut text_node = None;
-    h.frame(|ui| {
-        Panel::vstack()
-            .auto_id()
-            .size((Sizing::fixed(300.0), Sizing::HUG))
-            .show(ui, |ui| {
-                Scroll::vertical().auto_id().show(ui, |ui| {
-                    text_node = Some(
-                        Text::new(&paragraph)
-                            .auto_id()
-                            .font_size(16.0)
-                            .text_wrap(TextWrap::WrapWithOverflow)
-                            .show(ui)
-                            .node(),
-                    );
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(600.0, 400.0), |rec| {
+        let column = Widget::vstack().size((Sizing::fixed(300.0), Sizing::HUG));
+        rec.node("column", column, |rec| {
+            rec.node("scroll", Widget::zstack(), |rec| {
+                let axes = ScrollAxes::VERTICAL.fit_content(SizeSpec::default());
+                let viewport = Widget::scroll(axes).size((Sizing::FILL, Sizing::FILL));
+                rec.node("viewport", viewport, |rec| {
+                    let run = TextRun::new(&paragraph, 16.0, TextWrap::WrapWithOverflow);
+                    rec.text_leaf("text", Widget::leaf(), run);
                 });
             });
+        });
     });
-    let node = text_node.unwrap();
-    let shaped = support::shaped_text(h.ui().layout(Layer::Main), node);
-    // Five 19.203125 px lines end at 96.015625, which ceils to 97.
-    assert_eq!(shaped.extent.size, Size::new(285.0, lines_h(5, 16.0)));
-    assert_eq!(lines_h(5, 16.0), 97.0);
+    assert_eq!(
+        rig.shaped_text("text").extent.size,
+        Size::new(296.0, 5.0 * 16.0)
+    );
 }

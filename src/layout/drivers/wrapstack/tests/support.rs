@@ -1,22 +1,21 @@
-//! The keyed cells the wrapstack cases share.
+//! The cells and the outer row the wrapstack cases share.
 
+use crate::internals::layout_rig::NodeRecorder;
 use crate::primitives::geometry::size::Size;
-use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
-use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::color::RgbaF32;
-use crate::scene::tree::node_id::NodeId;
-use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widgets::block::Block;
+use crate::widget_core::widget::Widget;
 
-/// A fixed-size white cell keyed by `id`, so a test reads its geometry
-/// back with `Harness::arranged` instead of threading a `NodeId` out.
-pub(super) fn cell(ui: &mut Ui, id: &'static str, size: Size) -> NodeId {
-    Block::new()
-        .id(WidgetId::from_hash(id))
-        .size((Sizing::fixed(size.w), Sizing::fixed(size.h)))
-        .chrome(Chrome::fill(RgbaF32::WHITE))
-        .show(ui)
-        .node()
+/// A leaf fixed at `size`, under the id `id`.
+pub(super) fn cell(rec: &mut NodeRecorder<'_>, id: &str, size: Size) {
+    rec.leaf(id, Widget::leaf().size((size.w, size.h)));
+}
+
+/// A Fill hstack around `body`, as an app's root row.
+pub(super) fn outer(rec: &mut NodeRecorder<'_>, body: impl FnOnce(&mut NodeRecorder<'_>)) {
+    rec.node(
+        "outer",
+        Widget::hstack().size((Sizing::FILL, Sizing::FILL)),
+        body,
+    );
 }
