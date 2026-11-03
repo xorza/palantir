@@ -35,15 +35,15 @@ impl ScaledRect {
 }
 
 impl Lowering<'_> {
-    /// Apply the walk transform to a logical rect and scale it to physical px with integer bounds,
-    /// once, for cull and instance alike.
+    /// A logical rect in physical px under the walk transform
+    /// ([`TransformStack::physical_rect`]), with integer bounds, once, for cull and instance
+    /// alike.
     pub(super) fn scaled_rect(&self, rect: Rect) -> ScaledRect {
         self.scaled_rect_with(rect, self.display.edge_rounding())
     }
 
     pub(super) fn scaled_rect_with(&self, rect: Rect, edges: EdgeRounding) -> ScaledRect {
-        let world = self.transform.apply_rect(rect);
-        let physical = world.scaled_by(self.display.scale_factor(), edges);
+        let physical = self.transform.physical_rect(rect, edges);
         ScaledRect::from_physical(physical, self.display.physical)
     }
 

@@ -1,6 +1,6 @@
 //! The transform in force during a compose pass, and its stack.
 
-use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::renderer::frontend::composer::physical_map::PhysicalMap;
 use glam::Vec2;
@@ -15,9 +15,9 @@ pub(super) struct TransformStack {
     cur: TranslateScale,
     /// The display's logical-to-physical factor, fixed for a pass.
     display_scale: f32,
-    /// Physical px per owner-local unit: `cur.scale · display_scale`, kept in step with `cur`
-    /// so a draw reads it instead of rebuilding it.
-    physical_scale: f32,
+    /// `cur` between physical px: its translation times `display_scale`, its scale as is. Kept in
+    /// step with `cur` so a draw reads it instead of rebuilding it.
+    physical: TranslateScale,
 }
 
 impl TransformStack {
@@ -28,14 +28,25 @@ impl TransformStack {
         self.set(TranslateScale::IDENTITY);
     }
 
-    fn set(&mut self, cur: TranslateScale) {
+    const fn set(&mut self, cur: TranslateScale) {
         self.cur = cur;
-        self.physical_scale = cur.scale() * self.display_scale;
+        self.physical = cur.in_units_of(self.display_scale);
     }
 
     /// Physical px per owner-local unit under the live product.
     pub(super) const fn physical_scale(&self) -> f32 {
-        self.physical_scale
+        self.physical.scale() * self.display_scale
+    }
+
+    /// `rect`, in logical px under the live product, in physical px: scaled by the display and
+    /// landed per `edges` in its own frame, then placed by the live product exactly. Blink snaps
+    /// layout to pixels and applies the transform to the drawing context after, so a translation
+    /// moves snapped geometry by sub-pixel steps and lands it back on its pixels at the identity.
+    /// Refused: snapping after the transform, which moved every animated translation by whole
+    /// pixels and held slow motion still for frames.
+    pub(super) fn physical_rect(&self, rect: Rect, edges: EdgeRounding) -> Rect {
+        self.physical
+            .apply_rect(rect.scaled_by(self.display_scale, edges))
     }
 
     /// The map from an owner's local space, at `origin`, to physical px under the live product.

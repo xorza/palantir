@@ -1,5 +1,6 @@
 //! What moves the offset, and where it is clamped.
 
+use crate::display::Display;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::pointer::PointerButton;
@@ -17,7 +18,7 @@ use crate::widgets::scroll::scroll_state::ScrollState;
 use crate::widgets::scroll::tests::support::{
     SURFACE, build, driven, fixed_block, read_state, scroll_viewport,
 };
-use glam::Vec2;
+use glam::{UVec2, Vec2};
 
 /// Wheel delta accumulates into the offset, clamped to `[0, content - viewport]`;
 /// content that fits stays at zero.
@@ -575,4 +576,34 @@ fn reveal_pans_the_least_that_shows_a_child() {
         30.0,
         "a row taller than the view shows its start"
     );
+}
+
+/// A pan lands on whole physical px where the display snaps: offset 10.3 at scale 1.5 is 15.45
+/// px, which paints at 15, a translation of −15 / 1.5 = −10; 10.4 is 15.6 px, which paints at 16,
+/// −16 / 1.5. At scale 1 both paint at −10. With the snap off the pan is the offset itself. The
+/// offset keeps its value, for the bars and the next wheel step.
+#[test]
+fn a_pan_lands_on_whole_physical_pixels() {
+    let at = |scale: f32| Display::from_physical(UVec2::new(400, 400), scale);
+    let unsnapped = Display {
+        pixel_snap: false,
+        ..at(1.5)
+    };
+    let mut state = ScrollState::default();
+    for (offset, display, want) in [
+        (10.3, at(1.5), -15.0 / 1.5),
+        (10.4, at(1.5), -16.0 / 1.5),
+        (10.3, at(1.0), -10.0),
+        (10.4, at(1.0), -10.0),
+        (10.3, unsnapped, -10.3),
+    ] {
+        state.set_offset(Vec2::new(0.0, offset));
+        let transform = state.transform(Vec2::ZERO, display);
+        assert_eq!(
+            transform.translation(),
+            Vec2::new(0.0, want),
+            "{offset} under {display:?}"
+        );
+        assert_eq!(state.offset().y, offset);
+    }
 }

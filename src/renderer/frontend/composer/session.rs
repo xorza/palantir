@@ -476,7 +476,10 @@ impl PaintSink for ComposeSession<'_> {
         let spin = t.spin.map(|spin| self.lowering().physical_spin(spin));
         let world = self.composer.transform.apply_rect(t.rect);
         let scale = self.out.display.scale_factor();
-        let physical_rect = world.scaled_by(scale, self.out.display.edge_rounding());
+        let physical_rect = self
+            .composer
+            .transform
+            .physical_rect(t.rect, self.out.display.edge_rounding());
         // What the glyphs can reach: ink from the placed origin at true size, padded by
         // the scale-step fraction like the run's damage rect (`inflate_text_damage`).
         // Covered, never rounded in, so the last AA column is not cut.

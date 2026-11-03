@@ -103,7 +103,8 @@ fn derived_transforms_reject_the_overflow_their_arithmetic_produces() {
 }
 
 /// `composed` maps `p` to `8p + (17, 27)`, so `inverse_point` takes `(33, 51)` back to `(2, 3)`
-/// and `(1, -5)` to `((1 - 17) / 8, (-5 - 27) / 8) = (-2, -4)`.
+/// and `(1, -5)` to `((1 - 17) / 8, (-5 - 27) / 8) = (-2, -4)`. In units 1.5 times as large it maps
+/// `p` to `8p + (25.5, 40.5)`: `(2, 3) · 1.5 = (3, 4.5)` lands on `(33, 51) · 1.5 = (49.5, 76.5)`.
 #[test]
 fn composition_rect_application_and_inverses_agree_exactly() {
     let parent = TranslateScale::new(Vec2::new(3.0, 5.0), 2.0);
@@ -131,4 +132,8 @@ fn composition_rect_application_and_inverses_agree_exactly() {
         composed.inverse_vector(Vec2::new(24.0, -40.0)),
         Vec2::new(3.0, -5.0)
     );
+    let physical = composed.in_units_of(1.5);
+    assert_eq!(physical.translation(), Vec2::new(25.5, 40.5));
+    assert_eq!(physical.scale(), 8.0);
+    assert_eq!(physical.apply_point(point * 1.5), Vec2::new(49.5, 76.5));
 }

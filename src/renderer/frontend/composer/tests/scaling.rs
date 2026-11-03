@@ -504,24 +504,47 @@ fn a_turned_triangle_turns_its_points_about_its_pivot() {
 /// The display's pixel snap reaches the composed quad: a fractional rect at
 /// DPR 1.5 lands on whole pixels with snap on and keeps quarter-pixel edges
 /// with it off (see `Rect::scaled_by`).
+///
+/// A transform places the snapped rect exactly, as Blink applies a transform after it snaps
+/// layout: under a (0.25, 0.5) translation, (15, 16, 31, 8) moves by (0.375, 0.75) physical px to
+/// (15.375, 16.75, 31, 8); under a 2× scale it grows to (30, 32, 62, 16). Snapped after the
+/// transform it read (16, 17, 31, 8) and (31, 32, 61, 16), and a slow translation stood still.
 #[test]
 fn compose_snaps_quad_edges_only_under_pixel_snap() {
-    for (display, want) in [
-        (
-            params(1.5, UVec2::new(400, 400)),
-            Rect::new(15.0, 16.0, 31.0, 8.0),
-        ),
+    let snapped = params(1.5, UVec2::new(400, 400));
+    for (display, transform, want) in [
+        (snapped, None, Rect::new(15.0, 16.0, 31.0, 8.0)),
         (
             params_unsnapped(1.5, UVec2::new(400, 400)),
+            None,
             Rect::new(15.375, 16.125, 30.75, 7.875),
+        ),
+        (
+            snapped,
+            Some(TranslateScale::from_translation(Vec2::new(0.25, 0.5))),
+            Rect::new(15.375, 16.75, 31.0, 8.0),
+        ),
+        (
+            snapped,
+            Some(TranslateScale::from_scale(2.0)),
+            Rect::new(30.0, 32.0, 62.0, 16.0),
         ),
     ] {
         let buf = run(
-            |b, _| draw(b, Rect::new(10.25, 10.75, 20.5, 5.25)),
+            |b, _| {
+                if let Some(transform) = transform {
+                    b.push_transform(transform);
+                }
+                draw(b, Rect::new(10.25, 10.75, 20.5, 5.25));
+            },
             &display,
         );
         assert_eq!(buf.quads.len(), 1);
-        assert_eq!(buf.quads[0].rect, want, "snap {}", display.pixel_snap);
+        assert_eq!(
+            buf.quads[0].rect, want,
+            "snap {}, {transform:?}",
+            display.pixel_snap
+        );
     }
 }
 

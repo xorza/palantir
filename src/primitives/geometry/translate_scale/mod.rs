@@ -145,6 +145,16 @@ impl TranslateScale {
         )
     }
 
+    /// The same map between coordinates `factor` times as large, as from logical to physical px:
+    /// `result(p · factor) == self.apply_point(p) · factor`. `factor`: *positive*.
+    pub(crate) const fn in_units_of(self, factor: f32) -> Self {
+        debug_assert!(domain::is_positive(factor), "{}", domain::POSITIVE_RULE);
+        Self::from_parts(
+            Vec2::new(self.translation.x * factor, self.translation.y * factor),
+            self.scale,
+        )
+    }
+
     /// Map a point through this transform. For a direction or offset, which
     /// translation does not apply to, use [`Self::inverse_vector`].
     pub const fn apply_point(self, p: Vec2) -> Vec2 {

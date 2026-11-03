@@ -584,7 +584,11 @@ impl<'a> TextEdit<'a> {
             // and block offset, and the scroll the caret follow just settled.
             let caret = geometry.caret_pos;
             let local = Rect::new(caret.x, caret.y_top, caret_width, caret.line_height);
-            let scrolled = state.view.scroll.transform(Vec2::ZERO).apply_rect(local);
+            let scrolled = state
+                .view
+                .scroll
+                .transform(Vec2::ZERO, ui.display())
+                .apply_rect(local);
             let [left, top, _, _] = ctx.padding.to_array();
             let origin = layout_rect.min + Vec2::new(left, top) + geometry.block_offset;
             ui.request_ime_area(response.transform.apply_rect(Rect {

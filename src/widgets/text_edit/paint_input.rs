@@ -1,5 +1,6 @@
 //! Everything the painter needs to record one editor's frame.
 
+use crate::display::Display;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
@@ -57,7 +58,7 @@ impl PaintInput<'_> {
         let ctx = layout.ctx;
         widget.fit_scroll_content();
 
-        let block = self.block(layout);
+        let block = self.block(layout, ui.display());
         widget.record(ui, Some(&self.chrome), |ui| {
             block.record(ui, None, |ui| {
                 for rect in self.selection_rects {
@@ -126,7 +127,7 @@ impl PaintInput<'_> {
     /// The caret's reserve is added, not deflated out of the aligned rect, so an end-of-line caret falls inside its block. Its lead is a margin, not part of the block, so the block's origin is the glyphs'. Single-line only, as [`TextGeometry::resolve`](crate::widgets::text_edit::text_geometry::TextGeometry::resolve).
     ///
     /// The scroll rides as a transform ([`ScrollState::transform`], as a `Scroll` viewport does), keeping the three shapes in one frame of reference.
-    fn block(&self, layout: TextLayout) -> Widget {
+    fn block(&self, layout: TextLayout, display: Display) -> Widget {
         let size = self.block_size(layout);
         let lead = layout.caret_lead();
         Widget::leaf()
@@ -134,6 +135,6 @@ impl PaintInput<'_> {
             .size((Sizing::fixed(size.w - lead), Sizing::fixed(size.h)))
             .margin(Spacing::new(lead, 0.0, 0.0, 0.0))
             .align(layout.block_align())
-            .transform(self.scroll.transform(Vec2::ZERO))
+            .transform(self.scroll.transform(Vec2::ZERO, display))
     }
 }

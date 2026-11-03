@@ -45,7 +45,8 @@ pub struct Display {
     /// app-global.
     pub user_scale: UserScale,
     /// Whether the composer snaps painted geometry edges (quads, shadows,
-    /// images, text bounds, clip scissors) to integer physical pixels. Mesh,
+    /// images, text bounds, clip scissors) to integer physical pixels, each in
+    /// its own frame before its transform, and a scroll lands its pan on them. Mesh,
     /// curve and polyline vertices and corner radii never snap. Damage
     /// scissors always snap, as `set_scissor_rect` takes `u32`.
     pub pixel_snap: bool,

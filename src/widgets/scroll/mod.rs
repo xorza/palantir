@@ -8,6 +8,7 @@ pub(crate) mod bars;
 pub(crate) mod scroll_state;
 pub(crate) mod zoom_config;
 
+use crate::display::Display;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::sense::Sense;
@@ -430,6 +431,7 @@ impl<'a> Scroll<'a> {
         scroll_id: WidgetId,
         geometry: ScrollGeometry,
         state: ScrollState,
+        display: Display,
     ) -> ScrollWrappers {
         // Inner owns the clip, pan transform, padding and `Scroll` layout mode. A `Hug`
         // panned axis sets a fit bit so the scroll sizes to its content (capped by
@@ -441,7 +443,7 @@ impl<'a> Scroll<'a> {
         inner
             .configure()
             .margin(geometry.bars.reserve)
-            .transform(state.transform(geometry.content_inset()));
+            .transform(state.transform(geometry.content_inset(), display));
         ScrollWrappers { outer, inner }
     }
 
@@ -517,7 +519,8 @@ impl<'a> Scroll<'a> {
             .configure()
             .sense(sense.difference(Sense::SCROLL.difference(pans)));
 
-        let ScrollWrappers { outer, inner } = self.wrappers(scroll_id, geometry, state);
+        let ScrollWrappers { outer, inner } =
+            self.wrappers(scroll_id, geometry, state, ui.display());
         let inner_chrome = self.chrome;
         let inner_value = outer.id(id).record(ui, None, |ui| {
             let inner_value = inner.record(ui, inner_chrome.as_ref(), body);

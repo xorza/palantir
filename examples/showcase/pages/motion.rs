@@ -13,7 +13,7 @@ use palantir::widget::{
 use palantir::{
     Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconFit,
     IconHandle, IconSet, IconTable, Image, ImageFit, Metrics, Panel, Rect, RgbaF32, Sense, Shadow,
-    Sizing, Stroke, Text, Ui, WidgetId,
+    Sizing, Stroke, Text, TranslateScale, Ui, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
@@ -329,7 +329,10 @@ fn easing(ui: &mut Ui, k: Kit) {
         });
 }
 
-/// One easing bar: its width tweens to the target under its own spec.
+/// The length of a bar's track: the 420 a bar heads for, and room for OutBack's overshoot.
+const BAR_TRACK_W: f32 = 480.0;
+
+/// One easing bar: its length tweens to the target under its own spec.
 #[derive(Debug)]
 struct Bar {
     key: &'static str,
@@ -343,16 +346,34 @@ impl Bar {
         let width = ui
             .animate(AnimationRequest::new(id, "width", target_width), self.spec)
             .value;
+        let bar = (Sizing::fixed(BAR_TRACK_W), Sizing::fixed(18.0));
         Panel::hstack()
             .id_salt(self.key)
             .size((Sizing::FILL, Sizing::HUG))
             .gap(M.space.md)
             .show(ui, |ui| {
-                Block::new()
-                    .id(id)
-                    .size((Sizing::fixed(width), Sizing::fixed(18.0)))
-                    .chrome(support::swatch_chrome(k.swatch.teal))
-                    .show(ui);
+                // A full bar slides out of a clip by a transform: a width is layout, which lands
+                // on whole pixels and steps through a slow tail, where a transform moves the
+                // snapped bar by sub-pixel steps.
+                Panel::zstack()
+                    .id(id.with("track"))
+                    .size(bar)
+                    .chrome(Chrome::rounded(
+                        RgbaF32::TRANSPARENT,
+                        Corners::all(M.radius.control),
+                    ))
+                    .clip_rounded()
+                    .transform(TranslateScale::from_translation(Vec2::new(
+                        width - BAR_TRACK_W,
+                        0.0,
+                    )))
+                    .show(ui, |ui| {
+                        Block::new()
+                            .id(id)
+                            .size(bar)
+                            .chrome(support::swatch_chrome(k.swatch.teal))
+                            .show(ui);
+                    });
                 Text::new(self.label).style(&k.t.caption()).show(ui);
             });
     }
