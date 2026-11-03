@@ -334,8 +334,10 @@ An exported item that breaks a rule below is a bug. `cargo drive surface` writes
   Refused: two switches in the `Theme`, a person's or a system's choice in a theme file that a
   transition would blend; a third "performance" flag, which reduced transparency already is, as
   Windows's transparency effects are.
-- **The stock themes frost their floats** at `Metrics::float_frost`. Refused: opaque defaults,
-  which made an app build its themes again to frost them and again to stop.
+- **The stock themes frost their floats** in `Metrics::float_material`: any `BackdropFilter`
+  look under the float's tint, its luminance bound derived from each float's ink. Refused:
+  opaque defaults, which made an app build its themes again to frost them and again to stop; a
+  token per look (blur, frost, glass), three spellings of a choice one filter holds.
 - **Frosted glass holds its ink at WCAG 4.5:1**; palantir owns the math, as it depends on its
   dither. Refused: `Chrome::with_frost` and a `Chrome` setter per `BackdropFilter` constructor
   ([WCAG 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum)).

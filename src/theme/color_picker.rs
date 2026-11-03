@@ -16,7 +16,6 @@ use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
 use crate::theme::popup::PopupTheme;
 use crate::theme::text_edit::TextEditTheme;
-use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
 /// Visuals and geometry for [`crate::ColorPicker`] and its parts
@@ -151,15 +150,6 @@ fn mono_edit(p: &Palette, m: &Metrics) -> TextEditTheme {
 impl ColorPickerTheme {
     /// The control's own sizes and the handle's ink are fixed; its lines and popup geometry come from `m`, its checker, border, popup fill and text from `p`.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        let label = TextStyleOverrides {
-            family: Some(FontFamily::MONO),
-            ..TextStyleOverrides::NONE
-                .with_color(p.text_muted)
-                .with_font_size(m.text.caption)
-        };
-        // The popup in the float frost, held for a channel's name.
-        let mut popup = PopupTheme::from_parts(p, m);
-        popup.panel = m.frosted_float(popup.panel, label.apply(&TextStyle::from_parts(p, m)).color);
         Self {
             field_width: 208.0,
             field_height: 160.0,
@@ -176,7 +166,8 @@ impl ColorPickerTheme {
             chip: chip(p, m),
             disabled_veil: p.element.with_alpha8(128),
             gap: m.space.sm,
-            popup,
+            // Held for the muted ink the channel names below read in.
+            popup: PopupTheme::from_parts(p, m),
             // One set of looks for the chip and its editor, so an editable value keeps its box
             // and text in place.
             value: {
@@ -186,7 +177,12 @@ impl ColorPickerTheme {
                 value
             },
             hex: mono_edit(p, m),
-            label,
+            label: TextStyleOverrides {
+                family: Some(FontFamily::MONO),
+                ..TextStyleOverrides::NONE
+                    .with_color(p.text_muted)
+                    .with_font_size(m.text.caption)
+            },
         }
     }
 

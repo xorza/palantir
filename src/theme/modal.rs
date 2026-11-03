@@ -8,7 +8,6 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
-use crate::theme::text_style::TextStyle;
 
 /// Visuals for [`crate::widgets::modal::Modal`]. Builder overrides (`.chrome(...)` / `.scrim(...)`) win; these defaults fill in.
 #[derive(
@@ -36,15 +35,14 @@ pub struct ModalTheme {
 }
 
 impl ModalTheme {
-    /// A floating panel over a half-opaque black scrim, in [`Metrics::float_frost`] held for the
+    /// A floating panel over a half-opaque black scrim, in [`Metrics::float_material`] held for the
     /// ambient ink, as the modal's content is the app's.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let panel = Chrome::rounded(p.element_mid, Corners::all(m.radius.float))
             .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
             .with_shadow(p.float_shadow(m));
-        let panel = m.frosted_float(panel, TextStyle::from_parts(p, m).color);
         Self {
-            panel,
+            panel: m.dress_float(panel, p.text),
             scrim: RgbaF32::BLACK.with_alpha8(128),
             padding: Spacing::all(m.space.xl),
             min_width: 280.0,

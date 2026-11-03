@@ -365,7 +365,7 @@ pub use theme::look::stateful_look::StatefulLook;
 pub use theme::menu::MenuTheme;
 pub use theme::menu::menu_item::MenuItemTheme;
 pub use theme::menu_bar::{MenuBarTheme, MenuState};
-pub use theme::metrics::Frost;
+pub use theme::metrics::FloatMaterial;
 pub use theme::metrics::Metrics;
 pub use theme::metrics::RadiusSteps;
 pub use theme::metrics::ShadowGeometry;

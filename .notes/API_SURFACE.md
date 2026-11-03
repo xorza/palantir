@@ -782,6 +782,12 @@ ExpanderTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 
+FloatMaterial
+    struct FloatMaterial: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
+        pub filter: BackdropFilter
+        pub tint_alpha: f32
+        pub fn dress(self, panel: &Chrome, ink: RgbaF32) -> Chrome
+
 FocusPolicy
     enum FocusPolicy: Clone, Copy, Debug, Default, Eq, PartialEq
         PreserveOnMiss
@@ -860,11 +866,6 @@ FrameSummary  [features: winit]
         pub repaint_requested: bool
         pub repaint_at: Option<Duration>
         pub busy: bool
-
-Frost
-    struct Frost: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
-        pub blur: f32
-        pub tint_alpha: f32
 
 Gpu
     struct Gpu: Clone, Debug
@@ -1504,7 +1505,7 @@ Metrics
         pub radius: RadiusSteps
         pub stroke: StrokeSteps
         pub float_shadow: ShadowGeometry
-        pub float_frost: Option<Frost>
+        pub float_material: Option<FloatMaterial>
         pub transition: AnimationSpec
         pub const DEFAULT: Self
 
@@ -2605,7 +2606,7 @@ Theme
         pub panel_chrome: Option<Chrome>
         pub panel_clip: ClipMode
         pub fn scale_text(&mut self, factor: f32)
-        pub fn frost_floats(&mut self, sigma: f32, tint_alpha: f32)
+        pub fn dress_floats(&mut self, material: FloatMaterial)
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 

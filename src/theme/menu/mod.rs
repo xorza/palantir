@@ -51,12 +51,12 @@ pub struct MenuTheme {
 }
 
 impl MenuTheme {
-    /// The popup panel in [`Metrics::float_frost`], held for the rows' shortcut ink, with a
+    /// The popup panel in [`Metrics::float_material`], held for the rows' shortcut ink, with a
     /// [`MenuItemTheme`] and the menu [`SeparatorTheme`].
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
         let item = MenuItemTheme::from_parts(p, m);
         Self {
-            panel: m.frosted_float(p.popup_panel(m), item.shortcut),
+            panel: m.dress_float(p.popup_panel(m), item.shortcut),
             padding: Spacing::all(m.space.xs),
             min_width: MIN_WIDTH,
             gap: 0.0,

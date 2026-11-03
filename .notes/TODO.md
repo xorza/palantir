@@ -4,8 +4,6 @@
 - mesh once registrations
 - flexbox
 - mcp
-- reduced motion/backdrops theme options selection
-- organize ui mod.rs
 - scrim: Option<RgbaF32> - to backdrop? for blur, etc?
 
 - table widget: sortable header, virtual rows over a fixed row height

@@ -73,7 +73,7 @@ fn material_section(ui: &mut Ui, k: Kit) {
     Section::new("Frosted glass")
         .apis(&[
             api!(Ui::set_transparency_preference),
-            api!(Theme::frost_floats),
+            api!(Theme::dress_floats),
         ])
         .show(ui, k, |ui| {
             support::note(

@@ -8,7 +8,6 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::Metrics;
 use crate::theme::palette::Palette;
-use crate::theme::text_style::TextStyle;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 use std::time::Duration;
 
@@ -47,18 +46,16 @@ pub struct TooltipTheme {
 }
 
 impl TooltipTheme {
-    /// A small control-rounded bubble that floats as a menu does, in [`Metrics::float_frost`]
-    /// held for its text.
+    /// A small control-rounded bubble that floats as a menu does, in [`Metrics::float_material`]
+    /// held for its text's ink.
     pub fn from_parts(p: &Palette, m: &Metrics) -> Self {
-        // The caption tier, a step under the body, as Fluent's tooltip sets its text.
-        let text = TextStyleOverrides::NONE.with_font_size(m.text.caption);
         let panel = Chrome::rounded(p.element, Corners::all(m.radius.control))
             .with_border(Stroke::new(p.border_mid(), m.stroke.hairline))
             .with_shadow(p.float_shadow(m));
-        let ink = text.apply(&TextStyle::from_parts(p, m)).color;
         Self {
-            panel: m.frosted_float(panel, ink),
-            text,
+            panel: m.dress_float(panel, p.text),
+            // The caption tier, a step under the body, as Fluent's tooltip sets its text.
+            text: TextStyleOverrides::NONE.with_font_size(m.text.caption),
             // Fluent's tooltip insets its text 12 px on each side.
             padding: Spacing::xy(m.space.md, m.space.xs),
             max_size: Size::new(280.0, f32::INFINITY),

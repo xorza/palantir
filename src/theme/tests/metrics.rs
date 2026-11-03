@@ -4,11 +4,12 @@ use crate::animation::animation_spec::AnimationSpec;
 
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::spacing::Spacing;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::shadow::Shadow;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::metrics::{
-    Frost, Metrics, RadiusSteps, ShadowGeometry, SpaceSteps, StrokeSteps, TextSteps,
+    FloatMaterial, Metrics, RadiusSteps, ShadowGeometry, SpaceSteps, StrokeSteps, TextSteps,
 };
 use crate::theme::palette::Palette;
 use crate::theme::{FACES_ERROR, Theme};
@@ -72,8 +73,8 @@ const DISTINCT: Metrics = Metrics {
         offset: Vec2::new(19.0, 21.0),
         blur: 23.0,
     },
-    float_frost: Some(Frost {
-        blur: 31.0,
+    float_material: Some(FloatMaterial {
+        filter: BackdropFilter::blur(31.0),
         tint_alpha: 0.5,
     }),
     transition: AnimationSpec::MEDIUM,
@@ -183,7 +184,7 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         assert_eq!(got, want, "{slot}");
     }
     assert_eq!(t.dock.ghost_offset, Vec2::new(5.0, 7.0));
-    // Each float wears the frost's blur, and its fill at the frost's tint.
+    // Each float wears the material's blur, and its fill at the material's tint.
     for (slot, panel) in [
         ("menu", &t.menu.panel),
         ("popup", &t.popup.panel),
