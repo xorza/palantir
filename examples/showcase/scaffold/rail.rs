@@ -4,17 +4,21 @@
 //! ([Apple HIG, Sidebars](https://developer.apple.com/design/human-interface-guidelines/sidebars)).
 
 use palantir::{
-    Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Metrics,
-    Panel, ReducePreference, SchemePreference, Scroll, Sizing, SlotDefaults, Spacing, StatefulLook,
-    Text, TextStyleOverrides, Theme, Tooltip, Ui, WidgetId, WidgetLook,
+    Align, Axis, Button, ButtonTheme, Chrome, ColorScheme, Configure, Corners, FontWeight, Grid,
+    GridCell, Metrics, Panel, ReducePreference, RgbaF32, SchemePreference, Scroll, Sizing,
+    SlotDefaults, Spacing, StatefulLook, Stroke, Text, TextStyleOverrides, Theme, Tooltip, Track,
+    Ui, VAlign, WidgetId, WidgetLook,
 };
 
 use crate::scaffold::tokens::Tokens;
 
 const M: Metrics = Metrics::DEFAULT;
 
-/// The rail's width.
-pub(crate) const WIDTH: f32 = 208.0;
+/// The rail's width: room for a preference row's name beside its [`Segmented`] track, as the
+/// longest name, "Transparency", takes 78 px at the caption size. The track takes the rest,
+/// 256 − 3 × [`INSET`] − 78 − [`NAME_GAP`] = 134 px: three segments of 43.3 px inside its
+/// [`TRACK_PAD`], which leave the widest choice, "Light" at 32 px, 5.7 px each side.
+pub(crate) const WIDTH: f32 = 256.0;
 /// The inset of the rail's blocks from its edges, and of an item's text from its pill.
 pub(crate) const INSET: f32 = M.space.md;
 /// An item's height: macOS's medium sidebar row.
@@ -133,22 +137,35 @@ impl Nav {
     }
 }
 
-/// The tour's three preferences, each a captioned row of segments: the scheme, motion and
-/// transparency. A press sets one for every window. Here alone, apart from the pages, so no demo
-/// reads as one of them.
+/// The tour's three preferences, each a grid row of its name beside a [`Segmented`] track: the
+/// scheme, motion and transparency. The names' column hugs the longest, so the tracks share both
+/// edges. A press sets one for every window. Here alone, apart from the pages, so no demo reads as
+/// one of them.
 pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
+    Grid::new()
+        .id_salt("preferences")
+        .cols([Track::HUG, Track::FILL])
+        .rows([Track::HUG; 3])
+        .gap(NAME_GAP)
+        .line_gap(M.space.sm)
+        .size((Sizing::FILL, Sizing::HUG))
+        .show(ui, |ui| preference_rows(ui, &Segmented::new(ui.theme(), t)));
+}
+
+/// The rows of [`preferences`], each set from the segment pressed this frame.
+fn preference_rows(ui: &mut Ui, track: &Segmented) {
     let scheme = ui.scheme_preference();
     let follows_scheme = match ui.system_color_scheme() {
         Some(ColorScheme::Light) => "Follows the system, light now",
         Some(ColorScheme::Dark) => "Follows the system, dark now",
         None => "Follows the system, which reports no scheme: dark until it does",
     };
-    let picked = segments(
+    let picked = track.row(
         ui,
-        t,
+        0,
         "Theme",
         [
-            (SchemePreference::System, "System"),
+            (SchemePreference::System, "Auto"),
             (SchemePreference::Light, "Light"),
             (SchemePreference::Dark, "Dark"),
         ],
@@ -160,10 +177,10 @@ pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
     }
 
     let motion = ui.motion_preference();
-    let picked = segments(
+    let picked = track.row(
         ui,
-        t,
-        "Reduce motion",
+        1,
+        "Motion",
         REDUCE,
         motion,
         follows_reduction(ui.system_motion_reduced()),
@@ -173,10 +190,10 @@ pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
     }
 
     let transparency = ui.transparency_preference();
-    let picked = segments(
+    let picked = track.row(
         ui,
-        t,
-        "Reduce transparency",
+        2,
+        "Transparency",
         REDUCE,
         transparency,
         follows_reduction(ui.system_transparency_reduced()),
@@ -186,67 +203,130 @@ pub(crate) fn preferences(ui: &mut Ui, t: Tokens) {
     }
 }
 
-/// The choices of a [`ReducePreference`] under a "Reduce …" caption, as macOS names the
-/// switches: off is full, on reduced. Short, as "Reduced" overflows a third of the rail.
+/// The choices of a [`ReducePreference`] under the name of what it reduces: "Less", not "On"
+/// under a "Reduce …" name, so the segment says what it does without the name.
 const REDUCE: [(ReducePreference, &str); 3] = [
-    (ReducePreference::System, "System"),
-    (ReducePreference::Full, "Off"),
-    (ReducePreference::Reduced, "On"),
+    (ReducePreference::System, "Auto"),
+    (ReducePreference::Full, "Full"),
+    (ReducePreference::Reduced, "Less"),
 ];
 
 /// What following the system shows now, where the system asks for a reduction or not.
 const fn follows_reduction(reduced: bool) -> &'static str {
     if reduced {
-        "Follows the system, reduced now"
+        "Follows the system, less now"
     } else {
         "Follows the system, full now"
     }
 }
 
-/// `label` over a segment per choice, `current`'s selected; the choice pressed this frame, else
-/// `current`. The first segment follows the system, and its tooltip, `follows`, says what that
-/// shows now, as the segment alone cannot.
-fn segments<T: Copy + PartialEq>(
-    ui: &mut Ui,
+/// The space between a preference's name and its track.
+const NAME_GAP: f32 = M.space.sm;
+/// A segment's height, inside the track's [`TRACK_PAD`].
+const SEGMENT: f32 = 20.0;
+/// The track's inset around its segments.
+const TRACK_PAD: f32 = 2.0;
+
+/// A segmented control: one track, its choices flat on it and the picked one on a pill of the
+/// ground, as the open tab chip wears the ground and Radix's tabs put the active trigger on the
+/// background over a muted list. Refused: a gapped row of buttons, whose picked one showed only as
+/// a ring a focus ring also draws; a raised pill of the `element` rungs, which reads raised in a
+/// dark scheme and sunk in a light one, where the rungs step darker
+/// ([Apple HIG, Segmented controls](https://developer.apple.com/design/human-interface-guidelines/segmented-controls),
+/// [Radix Tabs](https://www.radix-ui.com/themes/docs/components/tabs)).
+#[derive(Debug)]
+struct Segmented {
+    theme: ButtonTheme,
+    track: Chrome,
     t: Tokens,
-    label: &'static str,
-    choices: [(T, &'static str); 3],
-    current: T,
-    follows: &'static str,
-) -> T {
-    let mut next = current;
-    Panel::vstack()
-        .id_salt(label)
-        .size((Sizing::FILL, Sizing::HUG))
-        .gap(M.space.xxs)
-        .show(ui, |ui| {
-            Text::new(label)
-                .style(&t.caption())
-                .margin((INSET, 0.0, 0.0, 0.0))
-                .show(ui);
-            Panel::hstack()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::HUG))
-                .gap(M.space.xxs)
-                .show(ui, |ui| {
-                    for (idx, (choice, text)) in choices.into_iter().enumerate() {
-                        // A narrower inset than a button's, so three labels share the rail's width.
-                        let segment = Button::new()
-                            .id_salt(text)
-                            .label(text)
-                            .selected(current == choice)
-                            .padding(Spacing::xy(M.space.xs, M.space.xs))
-                            .size((Sizing::FILL, Sizing::HUG))
-                            .show(ui);
-                        if segment.clicked() {
-                            next = choice;
-                        }
-                        if idx == 0 {
-                            let segment = segment.snapshot();
-                            Tooltip::on(&segment, follows).show(ui);
-                        }
+}
+
+impl Segmented {
+    fn new(theme: &Theme, t: Tokens) -> Self {
+        let corners = Corners::all(M.radius.control - TRACK_PAD);
+        let look = |fill: RgbaF32, ink| WidgetLook {
+            chrome: Chrome::rounded(fill, corners),
+            text: TextStyleOverrides::NONE
+                .with_font_size(M.text.caption)
+                .with_color(ink),
+        };
+        let pill = WidgetLook {
+            chrome: Chrome::rounded(t.ground, corners)
+                .with_border(Stroke::new(t.hairline, M.stroke.hairline)),
+            ..look(t.ground, t.ink)
+        };
+        let rest = look(RgbaF32::TRANSPARENT, t.ink_dim);
+        Self {
+            theme: ButtonTheme {
+                selected: StatefulLook {
+                    normal: pill.clone(),
+                    hovered: pill.clone(),
+                    active: pill.clone(),
+                    disabled: pill,
+                },
+                unselected: StatefulLook {
+                    normal: rest.clone(),
+                    hovered: look(t.control_strong, t.ink),
+                    // A press shows the pill's ground before the release moves the pill there.
+                    active: look(t.ground, t.ink),
+                    disabled: rest,
+                },
+                defaults: SlotDefaults {
+                    padding: Spacing::ZERO,
+                    ..theme.button.defaults
+                },
+            },
+            track: Chrome::rounded(t.control, Corners::all(M.radius.control)),
+            t,
+        }
+    }
+
+    /// Grid row `row` of `label` beside a segment per choice, `current`'s on the pill; the choice
+    /// pressed this frame, else `current`. The track is one arrow group, so one Tab lands in it,
+    /// as a radio group takes one (WAI-ARIA APG, Radio Group). The first segment follows the
+    /// system, and its tooltip, `follows`, says what that shows now, as the segment alone cannot.
+    fn row<T: Copy + PartialEq>(
+        &self,
+        ui: &mut Ui,
+        row: u16,
+        label: &'static str,
+        choices: [(T, &'static str); 3],
+        current: T,
+        follows: &'static str,
+    ) -> T {
+        let mut next = current;
+        Text::new(label)
+            .id_salt(label)
+            .style(&self.t.caption())
+            .margin((INSET, 0.0, 0.0, 0.0))
+            .grid_cell(GridCell::at(row, 0))
+            .align(Align::v(VAlign::Center))
+            .show(ui);
+        Panel::hstack()
+            .id_salt((label, "track"))
+            .grid_cell(GridCell::at(row, 1))
+            .size((Sizing::FILL, Sizing::HUG))
+            .padding(TRACK_PAD)
+            .chrome(self.track.clone())
+            .arrow_focus(Axis::X)
+            .show(ui, |ui| {
+                for (idx, (choice, text)) in choices.into_iter().enumerate() {
+                    let segment = Button::new()
+                        .id_salt(text)
+                        .label(text)
+                        .style(&self.theme)
+                        .selected(current == choice)
+                        .size((Sizing::FILL, Sizing::fixed(SEGMENT)))
+                        .show(ui);
+                    if segment.clicked() {
+                        next = choice;
                     }
-                });
-        });
-    next
+                    if idx == 0 {
+                        let segment = segment.snapshot();
+                        Tooltip::on(&segment, follows).show(ui);
+                    }
+                }
+            });
+        next
+    }
 }

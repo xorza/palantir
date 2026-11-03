@@ -811,7 +811,10 @@ mod tests {
     use std::path::Path;
 
     use palantir::glam::UVec2;
-    use palantir::{Harness, Key, Scroll, Shortcut, ShortcutMods, WidgetId};
+    use palantir::{
+        Harness, Key, Locator, ReducePreference, SchemePreference, Scroll, Shortcut, ShortcutMods,
+        WidgetId,
+    };
 
     use crate::appearance::{SEEDS, accent_for};
     use crate::shell::{LIST, PAGES, SEARCH, Shell, accent_id};
@@ -913,6 +916,58 @@ mod tests {
 
     /// A click on an accent swatch asks for the frame that builds the theme, with no other input
     /// to wake one: the ring the theme draws takes the seed as the shown scheme solves it.
+    /// Each preference row sets only its own preference, and the arrows step within one track.
+    #[test]
+    fn a_pressed_segment_sets_its_rows_preference() {
+        let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
+        let mut shell = Shell::open(0);
+        h.settle(&mut shell).expect("the frames settle");
+        let all_system = (
+            SchemePreference::System,
+            ReducePreference::System,
+            ReducePreference::System,
+        );
+        let prefs = |h: &Harness| {
+            let ui = h.ui();
+            (
+                ui.scheme_preference(),
+                ui.motion_preference(),
+                ui.transparency_preference(),
+            )
+        };
+        assert_eq!(prefs(&h), all_system);
+
+        h.click("Dark");
+        h.settle(&mut shell).expect("the frames settle");
+        // "Less" is on the motion row, then the transparency row.
+        h.click(Locator::from("Less").nth(1));
+        h.settle(&mut shell).expect("the frames settle");
+        assert_eq!(
+            prefs(&h),
+            (
+                SchemePreference::Dark,
+                ReducePreference::System,
+                ReducePreference::Reduced,
+            )
+        );
+
+        // The motion row's "Full", then one arrow right to its "Less", which Space presses.
+        h.click(Locator::from("Full").nth(0));
+        h.settle(&mut shell).expect("the frames settle");
+        assert_eq!(h.ui().motion_preference(), ReducePreference::Full);
+        h.key(Key::ArrowRight);
+        h.key(Key::Char(' '));
+        h.settle(&mut shell).expect("the frames settle");
+        assert_eq!(
+            prefs(&h),
+            (
+                SchemePreference::Dark,
+                ReducePreference::Reduced,
+                ReducePreference::Reduced,
+            )
+        );
+    }
+
     #[test]
     fn a_picked_accent_reaches_the_theme() {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
