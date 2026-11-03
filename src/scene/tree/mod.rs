@@ -349,14 +349,19 @@ impl Tree {
             if !meta.visibility().is_visible() {
                 container_text.remove_range(i..subtree_ends[i].end() as usize);
             }
+            // Each mode's payload, which `LayoutCore::hash_with_flags` leaves out; exhaustive, so a
+            // new mode states what it hashes. A side-table id is a per-frame index, so its
+            // definition is hashed, not the id.
             match mode {
+                LayoutMode::Leaf | LayoutMode::ZStack | LayoutMode::Canvas => {}
+                LayoutMode::Stack(axis) | LayoutMode::WrapStack(axis) => axis.hash(&mut lh),
+                LayoutMode::Scroll(axes) => axes.hash(&mut lh),
                 LayoutMode::Grid(id) => {
                     grid_defs[usize::from(id)].hash_visual(grid_tracks, &mut lh);
                 }
                 LayoutMode::Scrollbars(id) => {
                     scrollbar_defs[usize::from(id)].def.hash_visual(&mut lh);
                 }
-                _ => {}
             }
             let layout_hash = lh.finish();
             ph.write_u64(layout_hash);

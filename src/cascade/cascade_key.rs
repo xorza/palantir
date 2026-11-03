@@ -3,6 +3,7 @@
 use crate::cascade::cascade_source::CascadeSource;
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
+use crate::scene::tree::root_slot::RootSlot;
 use std::hash::Hasher as _;
 
 /// What [`CascadeEngine::run`](crate::cascade::engine::CascadeEngine::run) reads. Equal keys skip the run; keys agreeing on structure refresh geometry and paint in place.
@@ -16,7 +17,7 @@ pub(crate) struct CascadeKey {
     scale: u32,
     /// [`CascadeSource::font_epoch`].
     font_epoch: u32,
-    /// Each plane's `TreeFingerprint::cascade_static` and `TreeFingerprint::paint_counts`: the structural tables' source; a moved row count is a full rebuild.
+    /// Each plane's `TreeFingerprint::cascade_static` and `TreeFingerprint::paint_counts`, and each root's requested layer, which the root rows carry: the structural tables' source; a moved row count is a full rebuild.
     structure: ContentHash,
     /// Each plane's `PlaneLayout::rect_hash`.
     rects: ContentHash,
@@ -41,8 +42,16 @@ impl CascadeKey {
             structure.write_u64(tree.fingerprint.cascade_static.0);
             structure.write_u64(tree.fingerprint.paint_counts.0);
             rects.write_u64(layout[plane].rect_hash().0);
-            for slot in &tree.roots {
-                paint.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
+            // Destructured, so a new root input fails to compile until the key names it.
+            for &RootSlot {
+                first_node,
+                placement: _,
+                layer,
+            } in &tree.roots
+            {
+                // The placement reaches the walk only as rects, which `rects` names.
+                structure.write_u8(layer.idx() as u8);
+                paint.write_u64(tree.rollups.subtree[first_node.idx()].0);
             }
             // A root moving between planes is a paint change too.
             paint.write_u8(u8::MAX);

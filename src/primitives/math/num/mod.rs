@@ -38,8 +38,10 @@ pub(crate) trait F32Px {
     /// call. NaN and magnitudes beyond `i64` report `false`.
     fn is_integral(&self) -> bool;
 
-    /// Snap to the whole-pixel grid that cache keys use, as an integer so it
-    /// compares and hashes exactly.
+    /// Snap down to the whole-pixel grid that cache keys use, as an integer so it
+    /// compares and hashes exactly: the whole pixels that fit, as a maximum width
+    /// promises, so text wrapped at the snap is never wider than its box. Float noise
+    /// under a whole pixel, up to [`PX_SNAP_TOLERANCE`], keeps that pixel.
     ///
     /// One definition so the measure cache and text wrap widths share a grid.
     /// Non-finite saturates to `i32::MAX`.
@@ -55,6 +57,10 @@ pub(crate) trait F32Px {
     /// A negative extent answers zero.
     fn canonical_px(self) -> f32;
 }
+
+/// How far under a whole pixel [`F32Px::quantize_px`] still keeps it: one step of the 1/64-px
+/// grid text shapes on, so a sum of fractions that lands a hair under a pixel is not a pixel less.
+const PX_SNAP_TOLERANCE: f32 = 1.0 / 64.0;
 
 impl F32Px for f32 {
     #[inline]
@@ -114,7 +120,7 @@ impl F32Px for f32 {
     #[inline]
     fn quantize_px(self) -> i32 {
         if self.is_finite() {
-            self.fast_round() as i32
+            (self + PX_SNAP_TOLERANCE).floor() as i32
         } else {
             i32::MAX
         }

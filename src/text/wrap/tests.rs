@@ -60,9 +60,10 @@ fn only_a_fitting_single_line_truncation_reuses_the_unbounded_root() {
         (LineFit::Wrap, true, 100.0, false),
         (LineFit::Clip, false, 100.0, false),
         (LineFit::Clip, true, 99.0, false),
-        // Compared on the whole-px wrap grid: 99.6 rounds up to the root's 100 and fits; 99.4 does not.
-        (LineFit::Clip, true, 99.6, true),
-        (LineFit::Clip, true, 99.4, false),
+        // Compared on the whole-px wrap grid, which snaps down: 99.6 holds 99 px and the root's 100
+        // does not fit; 99.99 is 100 under the tolerance and fits.
+        (LineFit::Clip, true, 99.6, false),
+        (LineFit::Clip, true, 99.99, true),
     ] {
         assert_eq!(
             fit.resolves_to_unbounded(
@@ -105,12 +106,13 @@ fn only_wrap_with_overflow_floors_the_shaping_width_at_its_widest_segment() {
     );
 }
 
-/// The wrap width is on the whole-pixel grid, so a sub-pixel change of the offer keeps the wrap.
+/// The wrap width is on the whole-pixel grid, so a sub-pixel change of the offer keeps the wrap,
+/// and snaps down, so a line wrapped at it is never wider than the offer.
 #[test]
 fn wrap_target_is_on_the_whole_pixel_grid() {
-    assert_eq!(100.1_f32.canonical_px(), 100.4_f32.canonical_px());
-    assert_eq!(99.6_f32.canonical_px(), 100.4_f32.canonical_px());
-    assert_ne!(100.4_f32.canonical_px(), 100.6_f32.canonical_px());
+    assert_eq!(100.1_f32.canonical_px(), 100.9_f32.canonical_px());
+    assert_eq!(99.6_f32.canonical_px(), 99.0);
+    assert_ne!(99.6_f32.canonical_px(), 100.4_f32.canonical_px());
     // A negative committed width (over-constrained layout) clamps to zero.
     for width in [-0.4_f32, -1.0, -1e9] {
         assert_eq!(width.canonical_px(), 0.0, "width={width}");

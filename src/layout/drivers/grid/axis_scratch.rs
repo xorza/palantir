@@ -27,7 +27,7 @@ pub(super) struct AxisScratch {
     /// at their preferred extent. Fill tracks read every total, which the
     /// caller answers for.
     pub(super) stable_from: f32,
-    /// Per track, what measure found it must hold where the grid hugs or its offer is indefinite:
+    /// Per track, what measure found it must hold:
     /// a Fill track its single-track cells' measured extent, grown by the spans crossing it;
     /// any other track its resolved size. [`grid::fill_fraction`](super::fill_fraction) reads it.
     pub(super) extents: Vec<f32>,

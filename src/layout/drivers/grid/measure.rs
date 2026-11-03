@@ -2,6 +2,7 @@
 
 use crate::primitives::layout::offer;
 
+use crate::layout::drivers::grid::axis_scratch::AxisScratch;
 use crate::layout::drivers::grid::grid_ctx::GridCtx;
 use crate::layout::drivers::grid::{self, Grid};
 use crate::layout::intrinsic::len_req::LenReq;
@@ -189,16 +190,14 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         track_state.record_resolution(rows.id, inner_avail.h, &s.row.sizes);
     }
 
-    // What a Fill track holds where no leftover exists: its single-track cells' extent, with the
-    // other tracks at their resolved sizes, grown by the spans that cross a Fill track. Only an
-    // axis whose Fill tracks [contribute](fill_contribution) reads it.
-    let grid_sizing_h = tree.records.layout()[node.idx()].size.h();
+    // What a Fill track holds: its single-track cells' extent, with the other tracks at their
+    // resolved sizes, grown by the spans that cross a Fill track.
     for axis in [Axis::X, Axis::Y] {
-        let (grid_axis, sizing, avail) = match axis {
-            Axis::X => (cols, grid_sizing_w, inner_avail.w),
-            Axis::Y => (rows, grid_sizing_h, inner_avail.h),
+        let grid_axis = match axis {
+            Axis::X => cols,
+            Axis::Y => rows,
         };
-        if !fills_without_leftover(sizing, avail) || !grid::has_fill(grid_axis.tracks) {
+        if !grid::has_fill(grid_axis.tracks) {
             continue;
         }
         {
@@ -231,12 +230,12 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
         }
     }
 
-    // Returned content size: non-Fill track sizes + gaps. Fill claims leftover at
-    // arrange, except where the grid hugs or its offer is indefinite: there no leftover
-    // exists to claim, so the Fill tracks add what holds each one's extent at a shared
-    // fraction ([`grid::fill_extent`]), and their cells fit. `AxisSlot::resolve` floors this
-    // at the Grid intrinsic. The floor sums each track at its least: a Fixed track's size, a
-    // Hug track's content floor.
+    // Returned content size: non-Fill track sizes, what the Fill tracks hold
+    // ([`fill_contribution`]), and gaps. On every path: a Fill grid offered a finite width
+    // shapes its cells at the Fill widths it commits, and a parent that hugs it must hold them,
+    // as a stack reports what its Fill children measured to. Fill still claims the leftover at
+    // arrange. `AxisSlot::resolve` floors this at the Grid intrinsic. The floor sums each track
+    // at its least: a Fixed track's size, a Hug track's content floor.
     let GridCtx {
         depth_stack,
         track_state,
@@ -245,29 +244,26 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     let s = depth_stack.cur();
     let col_gaps = cols.gap.gaps_between(col_count);
     let row_gaps = rows.gap.gaps_between(row_count);
-    let fill_w = fill_contribution(grid_sizing_w, inner_avail.w, cols.tracks, &s.col.extents);
-    let fill_h = fill_contribution(grid_sizing_h, inner_avail.h, rows.tracks, &s.row.extents);
-    let total_w = grid::sum_non_fill(cols.tracks, &s.col.sizes) + fill_w + col_gaps;
-    let total_h = grid::sum_non_fill(rows.tracks, &s.row.sizes) + fill_h + row_gaps;
+    let grid_sizing_h = tree.records.layout()[node.idx()].size.h();
+    let fill_w = FillShare::of(grid_sizing_w, inner_avail.w, cols.tracks, &s.col);
+    let fill_h = FillShare::of(grid_sizing_h, inner_avail.h, rows.tracks, &s.row);
+    let total_w = grid::sum_non_fill(cols.tracks, &s.col.sizes) + fill_w.extent + col_gaps;
+    let total_h = grid::sum_non_fill(rows.tracks, &s.row.sizes) + fill_h.extent + row_gaps;
     let floor_w =
         floor_non_fill(cols.tracks, track_state.ranges(cols.id).min, &s.col.sizes) + col_gaps;
     let floor_h =
         floor_non_fill(rows.tracks, track_state.ranges(rows.id).min, &s.row.sizes) + row_gaps;
-    // Cells are offered their column widths and, down, Fixed rows or nothing, so
-    // the grid holds while its Fixed and Hug tracks do; Fill sizes reach neither,
-    // except Fill columns a non-Hug grid commits.
-    let commits_fill_cols = !grid_sizing_w.is_hug()
-        && cols
-            .tracks
-            .iter()
-            .any(|t| t.sizing().fill_weight().is_some());
+    // Cells are offered their column widths and, down, Fixed rows or nothing, so the grid holds
+    // while its tracks do ([`FillShare::stable_from`]); Fill sizes reach no cell, except Fill
+    // columns a non-Hug grid commits.
+    let commits_fill_cols = !grid_sizing_w.is_hug() && grid::has_fill(cols.tracks);
     let stable_from = Size::new(
         if commits_fill_cols {
             offer::AT_OFFER_ONLY
         } else {
-            s.col.stable_from
+            fill_w.stable_from
         },
-        s.row.stable_from,
+        fill_h.stable_from,
     );
     Measured {
         size: Size::new(total_w, total_h),
@@ -276,21 +272,44 @@ pub(super) fn run(grid: Grid, pass: &mut LayoutPass<'_>, inner_avail: Size) -> M
     }
 }
 
-/// What an axis's Fill tracks add to a grid sized `sizing` on it: where it hugs or its offer is
-/// indefinite, as no leftover exists there, what holds each track's extent
-/// ([`grid::fill_extent`]); elsewhere nothing, as they take the leftover.
-fn fill_contribution(sizing: Sizing, avail: f32, tracks: &[Track], extents: &[f32]) -> f32 {
-    if fills_without_leftover(sizing, avail) {
-        grid::fill_extent(tracks, extents)
-    } else {
-        0.0
-    }
+/// What an axis's Fill tracks add to the grid's measured size, and the least offer it holds from.
+#[derive(Clone, Copy, Debug)]
+struct FillShare {
+    /// What holds each track's measured extent at a shared fraction ([`grid::fill_extent`]), as
+    /// CSS Grid §12.7.1 sizes a flexible track in indefinite space and WPF's Grid sums a star
+    /// track's `MinSize` into its desired size. Where the grid fills a finite offer, at most what
+    /// the tracks resolved to at it, as arrange gives them no more there: a min-clamped track
+    /// would raise the shared fraction past the offer.
+    extent: f32,
+    /// The axis's [`Measured::stable_from`], the tracks' own and the cap's.
+    stable_from: f32,
 }
 
-/// Whether a grid sized `sizing` on an axis, offered `avail` there, leaves its Fill tracks no
-/// leftover to share: it hugs, or its offer is indefinite.
-const fn fills_without_leftover(sizing: Sizing, avail: f32) -> bool {
-    sizing.is_hug() || !avail.is_finite()
+impl FillShare {
+    /// The share of `tracks`, resolved into `axis`, on a grid sized `sizing` offered `avail`.
+    fn of(sizing: Sizing, avail: f32, tracks: &[Track], axis: &AxisScratch) -> Self {
+        let held = grid::fill_extent(tracks, &axis.extents);
+        if sizing.is_hug() || !avail.is_finite() || !grid::has_fill(tracks) {
+            return Self {
+                extent: held,
+                stable_from: axis.stable_from,
+            };
+        }
+        let resolved = grid::sum_fill(tracks, &axis.sizes);
+        if held <= resolved {
+            // A larger offer gives the Fill tracks no less, so the hold stands from this offer
+            // up; a smaller one may cap it.
+            Self {
+                extent: held,
+                stable_from: axis.stable_from.max(avail),
+            }
+        } else {
+            Self {
+                extent: resolved,
+                stable_from: offer::AT_OFFER_ONLY,
+            }
+        }
+    }
 }
 
 /// What [`grid::sum_non_fill`] sums at each track's least; never more than the sum.

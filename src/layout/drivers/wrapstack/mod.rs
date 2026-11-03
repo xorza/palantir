@@ -81,7 +81,7 @@ impl LinePacker {
     /// first child on an empty line never wraps.
     ///
     /// The extent is quantized like the budget: a Hug stack is arranged at its
-    /// widest line, which rounds to its budget, so a raw 200.4 against 200 would
+    /// widest line, which snaps to its budget, so a raw 200.4 against 200 would
     /// break in arrange where measure kept it whole.
     #[inline]
     fn would_wrap(&self, child_main: f32) -> bool {

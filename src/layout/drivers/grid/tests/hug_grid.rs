@@ -1,7 +1,7 @@
 //! A hugging grid: what an empty fill track collapses to, and what a nested
 //! floor pushes back.
 
-use crate::internals::layout_rig::{GridTracks, LayoutRig, TextRun};
+use crate::internals::layout_rig::{GridTracks, LayoutRig, NodeRecorder, TextRun};
 use crate::layout::intrinsic::len_req::LenReq;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::axis::Axis;
@@ -202,5 +202,71 @@ fn hug_grid_fill_columns_each_hold_their_cells() {
             let room: f32 = want[usize::from(col)..usize::from(col + span)].iter().sum();
             assert!(cell.size.w <= room, "{weights:?} cell {col}: {w} in {room}");
         }
+    }
+}
+
+/// A Fill grid offered a finite width under a parent that hugs it reports what its Fill track
+/// holds, so the parent hugs the cells it shaped. 39 mono glyphs at 10 px are 390 px: at the
+/// 300 px Fill width the run wraps to "aaaa … ffff" (29 glyphs, 290 px) and "gggg hhhh", so the
+/// grid, its parent and the cell are all 290 wide. Reporting no Fill extent let the parent hug
+/// the 40 px floor, the widest word, and the text shaped for 300 overflowed it.
+#[test]
+fn a_fill_grid_under_a_hugging_parent_holds_the_cells_it_shaped() {
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(300.0, 200.0), |rec| {
+        rec.node("popup", Widget::vstack(), |rec| {
+            let tracks = GridTracks {
+                rows: &[Track::HUG],
+                cols: &[Track::FILL],
+            };
+            let grid = Widget::grid().size((Sizing::FILL, Sizing::HUG));
+            rec.grid("grid", grid, tracks, |rec| {
+                rec.text_leaf(
+                    "label",
+                    Widget::leaf()
+                        .grid_cell((0, 0))
+                        .size((Sizing::FILL, Sizing::HUG)),
+                    TextRun::new(
+                        "aaaa bbbb cccc dddd eeee ffff gggg hhhh",
+                        20.0,
+                        TextWrap::Wrap,
+                    ),
+                );
+            });
+        });
+    });
+    for id in ["popup", "grid", "label"] {
+        assert_eq!(rig.rect(id).size.w, 290.0, "{id}");
+    }
+}
+
+/// A Fill grid's height under a hugging parent follows its offer once the Fill rows' cap binds,
+/// so the measure cache must not serve a taller offer's answer to a shorter one. Two Fill rows,
+/// the first holding a 100 px cell: the shared fraction holds 100 a row, 200 in all. At 300 the
+/// rows resolve to 150 each and hold the 200; at 150 they resolve to 100 and 50, and the grid
+/// caps at 150.
+#[test]
+fn a_fill_grid_height_capped_by_a_shorter_offer_is_measured_again() {
+    let record = |rec: &mut NodeRecorder<'_>| {
+        rec.node("popup", Widget::vstack(), |rec| {
+            let tracks = GridTracks {
+                rows: &[Track::FILL, Track::FILL],
+                cols: &[Track::fixed(40.0)],
+            };
+            let grid = Widget::grid().size((Sizing::HUG, Sizing::FILL));
+            rec.grid("grid", grid, tracks, |rec| {
+                rec.leaf(
+                    "tall",
+                    Widget::leaf()
+                        .grid_cell((0, 0))
+                        .size((Sizing::fixed(40.0), Sizing::fixed(100.0))),
+                );
+            });
+        });
+    };
+    let mut rig = LayoutRig::new();
+    for (surface_h, want) in [(300.0, 200.0), (150.0, 150.0), (300.0, 200.0)] {
+        rig.run(Size::new(100.0, surface_h), record);
+        assert_eq!(rig.rect("popup").size.h, want, "offered {surface_h}");
     }
 }

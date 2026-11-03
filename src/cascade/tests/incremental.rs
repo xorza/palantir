@@ -344,12 +344,16 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         transformed: bool,
         disabled: bool,
         tab_idx: i16,
+        /// The layer a root inside a modal asks for: `Popup` and `Modal` both record on the
+        /// plane one above the modal's, so only the root's own row tells them apart.
+        nested: Layer,
     }
     const BASE: Scene = Scene {
         size: 100.0,
         transformed: false,
         disabled: false,
         tab_idx: 0,
+        nested: Layer::Modal,
     };
     fn scene(ui: &mut Ui, s: Scene) {
         Panel::vstack()
@@ -369,6 +373,18 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
                     .disabled(s.disabled)
                     .show(ui, |_| {});
             });
+        ui.layer(Layer::Modal).show(|ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("modal"))
+                .show(ui, |ui| {
+                    ui.layer(s.nested).show(|ui| {
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("nested"))
+                            .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                            .show(ui, |_| {});
+                    });
+                });
+        });
     }
 
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -393,6 +409,10 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         ..BASE
     };
     const TAB_INDEXED: Scene = Scene { tab_idx: 3, ..BASE };
+    const RE_LAYERED: Scene = Scene {
+        nested: Layer::Popup,
+        ..BASE
+    };
     let mutations: &[Mutation] = &[
         ("resized child", Path::Refresh, |h| {
             h.frame(|ui| scene(ui, RESIZED));
@@ -409,6 +429,9 @@ fn every_cascade_input_moves_the_key_and_takes_its_path() {
         }),
         ("tab index", Path::Rebuild, |h| {
             h.frame(|ui| scene(ui, TAB_INDEXED));
+        }),
+        ("root layer", Path::Rebuild, |h| {
+            h.frame(|ui| scene(ui, RE_LAYERED));
         }),
         ("font load", Path::Rebuild, |h| {
             h.ui().load_font(INTER).expect("the bundled Inter loads");

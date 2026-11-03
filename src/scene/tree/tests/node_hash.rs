@@ -290,6 +290,37 @@ fn changing_layout_property_changes_hash() {
     }
 }
 
+/// Every layout mode a panel records hashes apart from every other, the stack axis included:
+/// `Stack(X)` and `Stack(Y)` share a tag and differ in the payload alone, which a hash of the
+/// tag let the measure cache replay across.
+#[test]
+fn every_panel_mode_hashes_apart() {
+    type Mode = (&'static str, fn() -> Panel);
+    let modes: [Mode; 6] = [
+        ("hstack", Panel::hstack),
+        ("vstack", Panel::vstack),
+        ("wrap hstack", Panel::wrap_hstack),
+        ("wrap vstack", Panel::wrap_vstack),
+        ("zstack", Panel::zstack),
+        ("canvas", Panel::canvas),
+    ];
+    let hashes = modes.map(|(label, panel)| {
+        let hashes = support::record(|ui| {
+            panel()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |_| {})
+                .response
+                .node()
+        });
+        (label, hashes.layout_subtree)
+    });
+    for (i, (a, hash_a)) in hashes.iter().enumerate() {
+        for (b, hash_b) in &hashes[i + 1..] {
+            assert_ne!(hash_a, hash_b, "{a} and {b}");
+        }
+    }
+}
+
 #[test]
 fn changing_text_content_changes_hash() {
     use crate::widgets::text::Text;

@@ -7,6 +7,7 @@ use crate::layout::drivers::{DriverOp, OutsideInputOp};
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::layout_mode::LayoutMode;
+use crate::primitives::math::float_hash::FloatHash;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::text::shaped_text::ShapedText;
@@ -69,14 +70,15 @@ impl PlaneLayout {
     /// Takes [`Self::rect_hash`] from the rects as they stand; `LayoutEngine::run` calls it once a
     /// layer's rects are final.
     ///
-    /// Hashed as raw bytes, not through `FloatHash`'s visual quantization, on purpose: this gates a
-    /// *cache-validity* decision, so it must be at least as strict as the exact comparison it replaces,
-    /// and quantizing would let a sub-quantum arrange shift retain a cascade built for the old rects.
-    /// `Rect` is `Pod`, so the whole column hashes in one bulk write.
+    /// Under `FloatHash`'s visual canonicalization, the tolerance the cascade's per-node check
+    /// (`CascadeInputHash::finish`) reads each rect under: a shift that check reads as held would
+    /// only run a cascade that keeps every row.
     pub(super) fn hash_rects(&mut self) {
         let mut h = Hasher::new();
         h.write_usize(self.rect.len());
-        h.pod_slice(&self.rect);
+        for rect in &self.rect {
+            rect.hash_visual(&mut h);
+        }
         self.rect_hash = ContentHash(h.finish());
     }
 }

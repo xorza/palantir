@@ -91,7 +91,7 @@ impl SegmentScratch {
     /// rather than widening the segment; interior non-breaking whitespace counts.
     ///
     /// **Reported on the whole-pixel grid, rounded up.** `WrapWithOverflow` floors
-    /// its width here and `F32Px::canonical_px` snaps to nearest, so a raw 57.4
+    /// its width here and `F32Px::canonical_px` snaps down, so a raw 57.4
     /// would become 57 and break the segment the floor keeps whole.
     ///
     /// **Scanned in logical order.** Glyphs arrive visually; in a right-to-left run

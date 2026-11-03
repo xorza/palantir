@@ -2,13 +2,11 @@
 
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::spacing::Spacing;
-use crate::primitives::layout::layout_mode::LayoutMode;
 use crate::primitives::layout::packed_layout_meta::PackedLayoutMeta;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::scene::node::Node;
 use crate::scene::node::node_flags::NodeFlags;
 use std::hash;
-use std::hash::Hash;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -44,20 +42,22 @@ impl LayoutCore {
         rect.deflated_by(self.padding)
     }
 
-    /// Fold this column and the node's flags into one hash. A method, not `Hash`, because the flags live in their own column and folding them into this tail word saves a write on a per-node path.
+    /// Fold this column and the node's flags into one hash. A method, not `Hash`, because the flags live in their own column and folding them into this tail word saves a write on a per-node path. Destructured, so a new field fails to compile until it is hashed. The mode's tag is here and its payload is not: [`Tree`](crate::scene::tree::Tree)'s rollup hashes each mode's payload in one exhaustive match, as a grid's and a scrollbar's live in its side tables.
     #[inline]
     pub(crate) fn hash_with_flags<H: hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
-        h.write_u64(self.size.as_u64());
-        h.write_u64(self.padding.as_u64());
-        h.write_u64(self.margin.as_u64());
-        let mode = self.meta.into();
+        let Self {
+            size,
+            padding,
+            margin,
+            meta,
+        } = self;
+        h.write_u64(size.as_u64());
+        h.write_u64(padding.as_u64());
+        h.write_u64(margin.as_u64());
         // Shifted, not byte-cast, like [`Gaps::as_u32`](crate::scene::node::gaps::Gaps::as_u32): avoids a layout-dependent hash.
-        let tail = u64::from(self.meta.metadata())
-            | (u64::from(self.meta.tag()) << 8)
+        let tail = u64::from(meta.metadata())
+            | (u64::from(meta.tag()) << 8)
             | (u64::from(flags.bits()) << 16);
         h.write_u64(tail);
-        if let LayoutMode::Scroll(spec) = mode {
-            spec.hash(h);
-        }
     }
 }

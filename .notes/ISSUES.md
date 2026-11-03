@@ -1,9 +1,5 @@
 # Open issues
 - `Staging::abort` (`src/gpu/surface/staging.rs`) unmaps a buffer whose `MapState` reads pending. wgpu-core 30's `Buffer::map`, run by a device poll, sets the buffer's map state to idle for the length of the map, so an abort on one thread while another thread polls the same device can unmap a buffer wgpu holds as idle: a "Buffer is not mapped" validation error, which `device_health` turns into a panic. The Windows CI runner hit it in `gpu::surface::map_state` tests on the shared test device. Waits on the wgpu release that carries https://github.com/gfx-rs/wgpu/pull/9959 (merged after 30.0.1, not on the `v30` branch).
-- `LayoutCore::hash_with_flags` (`src/scene/node/layout_core.rs`) leaves out the 16-bit payload of `PackedLayoutMeta`, so `Stack(X)` and `Stack(Y)` (and `WrapStack`) hash alike and the measure cache replays the old arrangement after an axis change.
-- `CascadeKey` does not fold `RootSlot.layer`, so a root that changes its requested layer on the same plane keeps a stale `roots[..].layer`.
-- A Fill grid with a finite offer measures its cells at Fill widths but reports a desired size without its Fill tracks (`src/layout/drivers/grid/measure.rs`), so a Hug parent hugs narrower than the cells and they overflow with text shaped for the wider measure.
-- `canonical_px` rounds a wrap width to the nearest pixel, so a run offered 99.6 px wraps or truncates against 100 px.
 - `BackdropFilter::min_luminance_for` returns `Result` but `after_storing` panics on `checked_add(1)` for an ink whose contrast ground stores as byte 255, so `Theme::from_parts` panics for a light popup with a mid-grey `text_muted` under `float_material`.
 - Lerp and spring overshoot of `Corners`, `Stroke` width and `Shadow` blur can go below zero, which `Chrome` validation refuses with a release panic.
 - `Stop::new` validates with `domain::color`, which admits HDR and negative channels, then stores `to_srgba8()`, which clamps them.

@@ -206,10 +206,19 @@ pub(super) fn fill_extent(tracks: &[Track], extents: &[f32]) -> f32 {
 
 /// The sum of `sizes` over the tracks that do not Fill.
 pub(super) fn sum_non_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
+    sum_of(tracks, sizes, |t| t.sizing().fill_weight().is_none())
+}
+
+/// The sum of `sizes` over the tracks that Fill.
+pub(super) fn sum_fill(tracks: &[Track], sizes: &[f32]) -> f32 {
+    sum_of(tracks, sizes, |t| t.sizing().fill_weight().is_some())
+}
+
+fn sum_of(tracks: &[Track], sizes: &[f32], keep: impl Fn(&Track) -> bool) -> f32 {
     tracks
         .iter()
         .zip(sizes)
-        .filter(|(t, _)| t.sizing().fill_weight().is_none())
+        .filter(|(t, _)| keep(t))
         .map(|(_, &size)| size)
         .sum()
 }

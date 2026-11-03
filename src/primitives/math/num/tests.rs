@@ -107,26 +107,27 @@ fn is_integral_matches_round_equality() {
 
 #[test]
 fn quantize_px_snaps_to_whole_pixels_and_saturates() {
-    // Half away from zero, matching `fast_round`, so the grid a cache
-    // key lands on is the same one a wrap width lands on.
+    // Down to the whole pixels that fit, a step of the 1/64-px grid under a pixel keeping it:
+    // 99.99 + 1/64 = 100.0056 floors to 100, 99.98 + 1/64 = 99.9956 to 99.
     for (v, expected) in [
         (0.0_f32, 0),
         (0.4, 0),
-        (0.5, 1),
-        (99.6, 100),
-        (100.1, 100),
-        (100.4, 100),
-        (100.6, 101),
-        (-0.4, 0),
-        (-0.6, -1),
+        (0.99, 1),
+        (0.98, 0),
+        (99.6, 99),
+        (99.99, 100),
+        (99.98, 99),
+        (100.0, 100),
+        (100.6, 100),
+        (-0.4, -1),
         (-100.5, -101),
     ] {
         assert_eq!(v.quantize_px(), expected, "v = {v}");
     }
-    // Neighboring inputs inside one pixel collapse, adjacent pixels don't: that keeps the key stable
-    // under sub-pixel jitter during a resize drag.
-    assert_eq!(100.1_f32.quantize_px(), 100.4_f32.quantize_px());
-    assert_ne!(100.4_f32.quantize_px(), 100.6_f32.quantize_px());
+    // Inputs inside one pixel collapse, adjacent pixels don't: that keeps the key stable under
+    // sub-pixel jitter during a resize drag.
+    assert_eq!(100.1_f32.quantize_px(), 100.9_f32.quantize_px());
+    assert_ne!(100.9_f32.quantize_px(), 101.0_f32.quantize_px());
     // An unbounded axis saturates instead of wrapping through `as`.
     assert_eq!(f32::INFINITY.quantize_px(), i32::MAX);
     assert_eq!(f32::NEG_INFINITY.quantize_px(), i32::MAX);

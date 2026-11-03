@@ -182,22 +182,6 @@ the reduction of complexity. Each batch stays inside one system, so one review c
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
 
-### Batch 2. Hashes and keys that list every input (`scene`, `cascade`, `layout` cache)
-
-Root cause R2. Silent stale layout and wrong focus traps.
-
-- `LayoutCore::hash_with_flags` folds the whole `PackedLayoutMeta` word, the payload included
-  ✔ (SC-01).
-- `CascadeKey::structure` folds each `RootSlot.layer` (SC-03).
-- Write both hash feeds as an exhaustive destructure, as the shape hashes are. Drive the two
-  coverage tables from every `LayoutMode` and every root layer (SC-21).
-- Pick one policy for rect hashing, exact or quantized, in `hash_rects` and in the per-node
-  check (SC-19).
-- A Fill grid reports the extents its Fill tracks hold on every path. Add a test of a Fill
-  grid inside a Hug parent (LT-01).
-- `canonical_px` floors with a 1/64 tolerance, so a run never shapes wider than its box
-  (LT-05).
-
 ### Batch 3. Close the domain under arithmetic (`primitives`, `theme`, `shape`, `text`)
 
 Root cause R7. Panics on reachable input.
@@ -458,7 +442,6 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 2 | SC-01 ✔, SC-03, SC-19, SC-21, LT-01, LT-05 |
 | 3 | PR-01 ✔, PR-02, PR-03, PR-04, PR-08, PR-24, SC-02, SC-18, LT-09, LT-10, UI-20 |
 | 4 | HS-01, HS-02, HS-03 ✔, HS-04, HS-10, HS-14, HS-16, HS-21, HS-22, HS-23 |
 | 5 | GA-03, GA-04, GB-01, GB-02, GB-03, GB-05, GB-10, GB-11, GB-12, GB-16, GB-21, GB-22, GB-23 |
