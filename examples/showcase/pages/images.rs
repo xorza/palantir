@@ -5,6 +5,7 @@
     reason = "the showcase casts non-negative sizes, ids and color channels"
 )]
 
+use crate::made_image::MadeImage;
 use crate::scaffold::api;
 use crate::support;
 use crate::support::{DemoCell, Kit, Section};
@@ -102,37 +103,30 @@ fn starfield() -> Image {
     Image::from_srgba8(UVec2::new(N, N), pixels).expect("the demo pixels match their size")
 }
 
+fn sources_id() -> WidgetId {
+    WidgetId::from_hash("showcase::images::sources")
+}
+
 /// The four demo images, registered once and parked in a state row; their GPU textures live as long as these handles, and dropping the row frees the VRAM.
 #[derive(Clone, Debug)]
 struct Sources {
-    checker: ImageHandle,
-    gradient: ImageHandle,
-    sprite: ImageHandle,
-    starfield: ImageHandle,
+    checker: MadeImage,
+    gradient: MadeImage,
+    sprite: MadeImage,
+    starfield: MadeImage,
 }
 
 impl Sources {
     fn load(ui: &mut Ui) -> Self {
-        ui.with_state::<Option<Self>, _>(
-            WidgetId::from_hash("showcase::images::sources"),
-            |ui, slot| {
-                slot.get_or_insert_with(|| Self {
-                    checker: ui
-                        .load_image(&checker())
-                        .expect("showcase checker fits every supported GPU"),
-                    gradient: ui
-                        .load_image(&gradient())
-                        .expect("showcase gradient fits every supported GPU"),
-                    sprite: ui
-                        .load_image(&sprite())
-                        .expect("showcase sprite fits every supported GPU"),
-                    starfield: ui
-                        .load_image(&starfield())
-                        .expect("showcase starfield fits every supported GPU"),
-                })
-                .clone()
-            },
-        )
+        ui.with_state::<Option<Self>, _>(sources_id(), |ui, slot| {
+            slot.get_or_insert_with(|| Self {
+                checker: MadeImage::new(ui, checker),
+                gradient: MadeImage::new(ui, gradient),
+                sprite: MadeImage::new(ui, sprite),
+                starfield: MadeImage::new(ui, starfield),
+            })
+            .clone()
+        })
     }
 }
 
@@ -156,7 +150,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     ("None — 1:1, centered", ImageFit::None),
                 ] {
                     DemoCell::new(label).size(232.0, 132.0).show(ui, k, |ui| {
-                        ui.add_shape(fitted(&src.checker, fit));
+                        ui.add_shape(fitted(src.checker.handle(), fit));
                     });
                 }
             });
@@ -168,14 +162,15 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             support::note(ui, k, "The tint multiplies each sampled texel.");
             support::tiles(ui, |ui| {
                 DemoCell::new("no tint").show(ui, k, |ui| {
-                    ui.add_shape(fitted(&src.gradient, ImageFit::Fill));
+                    ui.add_shape(fitted(src.gradient.handle(), ImageFit::Fill));
                 });
                 DemoCell::new("red tint").show(ui, k, |ui| {
-                    ui.add_shape(fitted(&src.gradient, ImageFit::Fill).tint(k.swatch.red));
+                    ui.add_shape(fitted(src.gradient.handle(), ImageFit::Fill).tint(k.swatch.red));
                 });
                 DemoCell::new("half alpha").show(ui, k, |ui| {
                     ui.add_shape(
-                        fitted(&src.gradient, ImageFit::Fill).tint(RgbaF32::WHITE.with_alpha(0.5)),
+                        fitted(src.gradient.handle(), ImageFit::Fill)
+                            .tint(RgbaF32::WHITE.with_alpha(0.5)),
                     );
                 });
             });
@@ -189,14 +184,14 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     offset: Vec2::ZERO,
                     scale: Vec2::splat(3.0),
                 };
-                ui.add_shape(fitted(&src.checker, fit));
+                ui.add_shape(fitted(src.checker.handle(), fit));
             });
             DemoCell::new("tile 2×4, offset 0.25").show(ui, k, |ui| {
                 let fit = ImageFit::Tile {
                     offset: Vec2::new(0.25, 0.0),
                     scale: Vec2::new(2.0, 4.0),
                 };
-                ui.add_shape(fitted(&src.gradient, fit));
+                ui.add_shape(fitted(src.gradient.handle(), fit));
             });
         });
     });
@@ -212,16 +207,16 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("magnify — Linear").show(ui, k, |ui| {
-                    magnified(ui, &src.sprite, ImageFilter::Linear);
+                    magnified(ui, src.sprite.handle(), ImageFilter::Linear);
                 });
                 DemoCell::new("magnify — Nearest").show(ui, k, |ui| {
-                    magnified(ui, &src.sprite, ImageFilter::Nearest);
+                    magnified(ui, src.sprite.handle(), ImageFilter::Nearest);
                 });
                 DemoCell::new("minify — Linear").show(ui, k, |ui| {
-                    minified(ui, &src.checker, ImageFilter::Linear);
+                    minified(ui, src.checker.handle(), ImageFilter::Linear);
                 });
                 DemoCell::new("minify — Nearest").show(ui, k, |ui| {
-                    minified(ui, &src.checker, ImageFilter::Nearest);
+                    minified(ui, src.checker.handle(), ImageFilter::Nearest);
                 });
             });
         });
@@ -238,13 +233,13 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
             );
             support::tiles(ui, |ui| {
                 DemoCell::new("Single (default)").show(ui, k, |ui| {
-                    downsampled(ui, &src.starfield, ImageDownsample::Single);
+                    downsampled(ui, src.starfield.handle(), ImageDownsample::Single);
                 });
                 DemoCell::new("Mean").show(ui, k, |ui| {
-                    downsampled(ui, &src.starfield, ImageDownsample::Mean);
+                    downsampled(ui, src.starfield.handle(), ImageDownsample::Mean);
                 });
                 DemoCell::new("Peak").show(ui, k, |ui| {
-                    downsampled(ui, &src.starfield, ImageDownsample::Peak);
+                    downsampled(ui, src.starfield.handle(), ImageDownsample::Peak);
                 });
             });
         });
@@ -340,8 +335,48 @@ fn live(ui: &mut Ui, k: Kit, src: &Sources) {
                 DemoCell::new("the knobs' image")
                     .size(360.0, 160.0)
                     .show(ui, k, |ui| {
-                        ui.add_shape(fitted(&src.sprite, fit).mag_filter(filter));
+                        ui.add_shape(fitted(src.sprite.handle(), fit).mag_filter(filter));
                     });
             });
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use palantir::glam::UVec2;
+    use palantir::internals::headless_test_gpu;
+    use palantir::{ColorScheme, Depth, Harness, ImageHandle, Palette, Ui};
+
+    use crate::pages::images::{Sources, build, sources_id};
+    use crate::support::Kits;
+
+    /// A new device holds none of the demo images, and the page's next frame fills each one
+    /// again: the window paints as it did on the old device.
+    #[test]
+    fn a_new_device_gets_every_image_again() {
+        let gpu = headless_test_gpu();
+        let k = Kits::new().kit(ColorScheme::Dark, &Palette::DARK);
+        let mut record = |ui: &mut Ui| build(ui, k);
+        let mut h = Harness::builder(UVec2::new(1000, 600))
+            .depth(Depth::gpu(gpu.handles()))
+            .build();
+        h.frame(&mut record);
+        let before = h.read_back();
+        let src = h
+            .state::<Option<Sources>>(sources_id())
+            .unwrap()
+            .clone()
+            .unwrap();
+        let handles = [&src.checker, &src.gradient, &src.sprite, &src.starfield]
+            .map(|made| made.handle().clone());
+
+        h.recover(gpu.handles());
+        assert!(handles.iter().all(|handle| !handle.is_resident()));
+        h.frame(&mut record);
+        assert!(handles.iter().all(ImageHandle::is_resident));
+        assert!(
+            h.read_back() == before,
+            "the page paints as before the new device"
+        );
+    }
 }

@@ -8,6 +8,7 @@
 mod app_state;
 mod appearance;
 mod job;
+mod made_image;
 mod pages;
 mod scaffold;
 mod shell;

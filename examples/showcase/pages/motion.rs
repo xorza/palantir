@@ -1,5 +1,6 @@
 //! Motion over time: `Ui::animate` value interpolation (easing bars), the drag lifecycle driving position (cards), and a paint animation's turn on every shape kind.
 
+use crate::made_image::MadeImage;
 use crate::scaffold::api;
 use crate::support;
 use crate::support::DemoCell;
@@ -11,8 +12,8 @@ use palantir::widget::{
 };
 use palantir::{
     Animated, AnimationSpec, Block, Button, Chrome, Configure, Corners, Easing, IconFit,
-    IconHandle, IconSet, IconTable, Image, ImageFit, ImageHandle, Metrics, Panel, Rect, RgbaF32,
-    Sense, Shadow, Sizing, Stroke, Text, Ui, WidgetId,
+    IconHandle, IconSet, IconTable, Image, ImageFit, Metrics, Panel, Rect, RgbaF32, Sense, Shadow,
+    Sizing, Stroke, Text, Ui, WidgetId,
 };
 use std::array;
 use std::rc::Rc;
@@ -72,6 +73,20 @@ const TURN_ICON_SVG: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox=
 <rect x="9" y="4" width="4" height="8" rx="1" fill="#facc15"/>
 </svg>"##;
 
+fn turn_sources_id() -> WidgetId {
+    WidgetId::from_hash("motion::turn::sources")
+}
+
+fn turn_image() -> Image {
+    let texels = [
+        [230, 70, 60, 255],
+        [60, 160, 230, 255],
+        [250, 210, 60, 255],
+        [80, 200, 110, 255],
+    ];
+    Image::from_srgba8(UVec2::new(2, 2), texels.concat()).expect("a 2x2 image is four RGBA8 texels")
+}
+
 /// What the turn demo draws from: an icon set and an image, loaded once and parked in a state row
 /// so they stay loaded across frames.
 #[derive(Clone, Debug)]
@@ -79,38 +94,25 @@ struct TurnSources {
     #[expect(dead_code, reason = "held so its icon stays loaded")]
     set: IconSet,
     icon: IconHandle,
-    image: ImageHandle,
+    image: MadeImage,
 }
 
 impl TurnSources {
     fn load(ui: &mut Ui) -> Self {
-        ui.with_state::<Option<Self>, _>(
-            WidgetId::from_hash("motion::turn::sources"),
-            |ui, held| {
-                held.get_or_insert_with(|| {
-                    let set = ui.load_icons(Rc::new(
-                        IconTable::from_svgs([("badge", TURN_ICON_SVG)])
-                            .expect("the bundled icon is a readable SVG"),
-                    ));
-                    let texels = [
-                        [230, 70, 60, 255],
-                        [60, 160, 230, 255],
-                        [250, 210, 60, 255],
-                        [80, 200, 110, 255],
-                    ];
-                    let image = Image::from_srgba8(UVec2::new(2, 2), texels.concat())
-                        .expect("a 2x2 image is four RGBA8 texels");
-                    Self {
-                        icon: set.by_name("badge").expect("bundled icon"),
-                        image: ui
-                            .load_image(&image)
-                            .expect("a 2x2 image fits every supported GPU"),
-                        set,
-                    }
-                })
-                .clone()
-            },
-        )
+        ui.with_state::<Option<Self>, _>(turn_sources_id(), |ui, held| {
+            held.get_or_insert_with(|| {
+                let set = ui.load_icons(Rc::new(
+                    IconTable::from_svgs([("badge", TURN_ICON_SVG)])
+                        .expect("the bundled icon is a readable SVG"),
+                ));
+                Self {
+                    icon: set.by_name("badge").expect("bundled icon"),
+                    image: MadeImage::new(ui, turn_image),
+                    set,
+                }
+            })
+            .clone()
+        })
     }
 }
 
@@ -200,7 +202,7 @@ fn turn(ui: &mut Ui, k: Kit) {
                 });
                 cell(ui, "image", &mut |ui| {
                     ui.add_shape_animated(
-                        Shape::image(sources.image.clone())
+                        Shape::image(sources.image.handle().clone())
                             .at(source)
                             .fit(ImageFit::Fill),
                         spin,
@@ -443,4 +445,45 @@ fn plot(ui: &mut Ui, k: Kit, easing: Easing, t: f32) {
             .corners(Corners::all(5.0))
             .fill(k.swatch.orange),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use palantir::glam::UVec2;
+    use palantir::internals::headless_test_gpu;
+    use palantir::{ColorScheme, Depth, Harness, Palette, Ui};
+
+    use crate::pages::motion::{TurnSources, turn, turn_sources_id};
+    use crate::support::Kits;
+
+    /// A new device holds none of the turn demo's image, and the section's next frame fills it
+    /// again: the window paints as it did on the old device.
+    #[test]
+    fn a_new_device_gets_the_turn_image_again() {
+        let gpu = headless_test_gpu();
+        let k = Kits::new().kit(ColorScheme::Dark, &Palette::DARK);
+        let mut record = |ui: &mut Ui| turn(ui, k);
+        let mut h = Harness::builder(UVec2::new(1000, 600))
+            .depth(Depth::gpu(gpu.handles()))
+            .build();
+        h.frame(&mut record);
+        let before = h.read_back();
+        let image = h
+            .state::<Option<TurnSources>>(turn_sources_id())
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .image
+            .handle()
+            .clone();
+
+        h.recover(gpu.handles());
+        assert!(!image.is_resident());
+        h.frame(&mut record);
+        assert!(image.is_resident());
+        assert!(
+            h.read_back() == before,
+            "the section paints as before the new device"
+        );
+    }
 }

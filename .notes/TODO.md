@@ -5,6 +5,7 @@
 - flexbox
 - mcp
 - scrim: Option<RgbaF32> - to backdrop? for blur, etc?
+- image handle with closure for reupload?
 
 - table widget: sortable header, virtual rows over a fixed row height
 - reorderable list: a drag handle and Alt+arrows
