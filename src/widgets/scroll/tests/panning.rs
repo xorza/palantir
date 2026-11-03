@@ -72,7 +72,7 @@ fn content_margin_allows_negative_pan_into_left_top_band() {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-            .hide_bars()
+            .hidden_bars()
             .content_margin(m)
             .show(ui, |ui| {
                 fixed_block(ui, WidgetId::from_hash("content"), 400.0, 400.0);
@@ -339,7 +339,7 @@ fn content_margin_does_not_shift_content_that_fits() {
         Scroll::both()
             .id(WidgetId::from_hash("scroll"))
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
-            .hide_bars()
+            .hidden_bars()
             .content_margin(m)
             .show(ui, |ui| {
                 // Smaller than the 200x200 viewport: no overflow, so rest offset must be zero.

@@ -37,7 +37,6 @@ use cosmic_text::{
 };
 use glam::{IVec2, UVec2};
 use std::fmt;
-use std::fs;
 use std::sync::Arc;
 use swash::scale::image::{Content, Image as SwashImage};
 use swash::scale::{Render, ScaleContext, Scaler, Source, StrikeWith};
@@ -252,23 +251,11 @@ impl CosmicMeasure {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file cannot be read or mapped,
     /// [`FontLoadError::NoFaces`] when the bytes hold no parsable face,
     /// [`FontLoadError::FamilyNameTooLong`] when every family it names is longer than a
     /// [`FontFamily`] holds.
     pub(super) fn load_font(&mut self, source: FontSource) -> Result<FontFamily, FontLoadError> {
-        let source = match source {
-            FontSource::Bytes(bytes) => fontdb::Source::Binary(Arc::new(bytes)),
-            FontSource::File(path) => {
-                // Opened first only to learn why a bad path failed: `load_font_source` reports an
-                // unreadable file as zero faces.
-                fs::File::open(&path).map_err(|source| FontLoadError::Io {
-                    path: path.clone(),
-                    source,
-                })?;
-                fontdb::Source::File(path)
-            }
-        };
+        let source = fontdb::Source::Binary(Arc::new(source.bytes));
         let ids = self.font_system.db_mut().load_font_source(source);
         let mut names: Vec<String> = Vec::new();
         for id in ids {

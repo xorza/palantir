@@ -34,7 +34,7 @@ pub enum BatchKind {
 
 impl BatchKind {
     /// How many kinds there are.
-    pub const COUNT: usize = 10;
+    pub(crate) const COUNT: usize = 10;
 
     /// Every kind, in discriminant order.
     pub const ALL: [Self; Self::COUNT] = [

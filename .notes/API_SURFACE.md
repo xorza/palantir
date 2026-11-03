@@ -161,7 +161,6 @@ BatchKind
         Image = 7
         Curve = 8
         Icon = 9
-        pub const COUNT: usize
         pub const ALL: [Self; 10]
         pub const fn label(self) -> &'static str
 
@@ -801,8 +800,7 @@ FontFamily
         pub fn name(&self) -> &str
 
 FontLoadError
-    enum FontLoadError: Debug, Display, Error
-        Io { path: PathBuf, source: Error }
+    enum FontLoadError: Clone, Copy, Debug, Display, Eq, Error, PartialEq
         NoFaces
         FamilyNameTooLong
 
@@ -817,9 +815,7 @@ FontSlant
         Italic = 1
 
 FontSource
-    enum FontSource: Clone, Debug, From<&'static [u8]>, From<&Path>, From<&str>, From<Cow<'static, [u8]>>, From<PathBuf>, From<Vec<u8>>
-        Bytes(Cow<'static, [u8]>)
-        File(PathBuf)
+    struct FontSource: Clone, Debug, From<&'static [u8]>, From<Cow<'static, [u8]>>, From<Vec<u8>>
         impl<const N: usize> From<&'static [u8; N]> for FontSource
 
 FontWeight
@@ -972,7 +968,7 @@ Grid
         impl<Rows: Debug, Cols: Debug> Debug for Grid<Rows, Cols>
 
 GridCell
-    struct GridCell: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<(u16, u16)>, Hash, NoUninit, PartialEq
+    struct GridCell: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<(u16, u16)>, Hash, PartialEq
         pub const fn at(row: u16, col: u16) -> Self
         pub const fn with_span(self, row_span: u16, col_span: u16) -> Self
         pub const fn row(self) -> u16
@@ -1926,7 +1922,7 @@ Scroll
         pub fn style(self, s: impl Into<Option<&'a ScrollbarTheme>>) -> Self
         pub const fn bar_mode(self, mode: BarMode) -> Self
         pub const fn overlay_bars(self) -> Self
-        pub const fn hide_bars(self) -> Self
+        pub const fn hidden_bars(self) -> Self
         pub fn content_margin(self, m: impl Into<Spacing>) -> Self
         pub fn zoomable(self) -> Self
         pub fn zoom_config(self, config: ZoomConfig) -> Self
@@ -2529,7 +2525,7 @@ TextStyle
         pub const fn italic(self) -> Self
 
 TextStyleOverrides
-    struct TextStyleOverrides: Animatable, Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
+    struct TextStyleOverrides: Clone, Copy, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub color: Option<RgbaF32>
         pub font_size: Option<f32>
         pub line_height_factor: Option<f32>
@@ -3140,19 +3136,12 @@ widget::Mesh
         pub fn triangle(&mut self, a: u32, b: u32, c: u32)
         pub fn append(&mut self, other: &Self)
         pub fn bbox(&self) -> Rect
-        pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<RgbaF32>) -> Self
         pub fn filled_polygon(points: &[Vec2], color: impl Into<RgbaF32>) -> Self
 
 widget::MeshShape
     struct MeshShape<'a>: Clone, Debug, Lower (blanket)
         pub const fn at(self, rect: Rect) -> Self
         pub const fn tint(self, tint: RgbaF32) -> Self
-
-widget::MeshVertex
-    struct MeshVertex: Clone, Copy, Debug, Default, PartialEq, Pod, Zeroable
-        pub pos: Vec2
-        pub color: SrgbaU8
-        pub fn new(pos: Vec2, color: impl Into<RgbaF32>) -> Self
 
 widget::OverlayScope
     struct OverlayScope: Debug

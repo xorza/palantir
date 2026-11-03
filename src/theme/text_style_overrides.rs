@@ -1,7 +1,6 @@
 //! Per-axis overrides a text widget or a theme slot folds onto a resolved
 //! [`TextStyle`].
 
-use crate::primitives::math::animatable::Animatable;
 use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
 use crate::primitives::paint::color::RgbaF32;
@@ -184,11 +183,10 @@ impl TextStyleOverrides {
     }
 }
 
-/// Each axis as [`TextStyle`] treats it: the color blends, the size and leading blend in a lerp
-/// and take the target at once in motion, the face switches at `t = 0.5`. An axis one end names
-/// and the other leaves to the ambient style switches at `t = 0.5` as well, as the overrides alone
-/// hold no ambient to blend from; a whole theme's lerp first gives that end its ambient's value
-/// (`Theme::share_text_axes`), and motion takes the target's at once.
+/// Each axis as [`TextStyle`] blends it: the color, the size and the leading blend, and the face
+/// switches at `t = 0.5`. An axis one end names and the other leaves to the ambient style switches
+/// at `t = 0.5` as well, as the overrides alone hold no ambient to blend from; a whole theme's lerp
+/// first gives that end its ambient's value (`Theme::share_text_axes`).
 impl Lerp for TextStyleOverrides {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
@@ -209,62 +207,9 @@ impl Lerp for TextStyleOverrides {
     }
 }
 
-impl Animatable for TextStyleOverrides {
-    #[inline]
-    fn sub(self, other: Self) -> Self {
-        Self {
-            color: self.color.zip(other.color).map(|(a, b)| a.sub(b)),
-            ..self
-        }
-    }
-    #[inline]
-    fn add(self, other: Self) -> Self {
-        Self {
-            color: match (self.color, other.color) {
-                (Some(value), Some(offset)) => Some(value.add(offset)),
-                (value, _) => value,
-            },
-            ..self
-        }
-    }
-    #[inline]
-    fn scale(self, k: f32) -> Self {
-        Self {
-            color: self.color.map(|offset| offset.scale(k)),
-            ..self
-        }
-    }
-    #[inline]
-    fn magnitude_squared(self) -> f32 {
-        self.color.map_or(0.0, RgbaF32::magnitude_squared)
-    }
-    #[inline]
-    fn settle_distance_squared(self) -> f32 {
-        self.color.map_or(0.0, RgbaF32::settle_distance_squared)
-    }
-    #[inline]
-    fn zero() -> Self {
-        Self::NONE
-    }
-    #[inline]
-    fn to_motion(self) -> Self {
-        Self {
-            color: self.color.map(RgbaF32::to_motion),
-            ..self
-        }
-    }
-    #[inline]
-    fn from_motion(motion: Self) -> Self {
-        Self {
-            color: motion.color.map(RgbaF32::from_motion),
-            ..motion
-        }
-    }
-}
-
 /// Both ends blended where both name the axis, else switched at `t = 0.5`.
 #[inline]
-fn lerp_axis<T: Animatable>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
+fn lerp_axis<T: Lerp>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
     match (a, b) {
         (Some(a), Some(b)) => Some(T::lerp(a, b, t)),
         (a, b) => switch_axis(a, b, t),

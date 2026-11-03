@@ -186,7 +186,7 @@ pub mod widget {
     pub use crate::animation::animation_slot::AnimationSlot;
     pub use crate::primitives::geometry::circular_arc::CircularArc;
     pub use crate::primitives::geometry::cubic_bezier::CubicBezier;
-    pub use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
+    pub use crate::primitives::geometry::mesh::Mesh;
     pub use crate::primitives::geometry::quadratic_bezier::QuadraticBezier;
     pub use crate::primitives::math::animatable::Animatable;
     pub use crate::primitives::math::domain;

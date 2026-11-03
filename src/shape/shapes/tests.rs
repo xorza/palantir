@@ -392,8 +392,8 @@ fn builders_refuse_what_they_check() {
         || drop(Shape::circle(Vec2::new(N, 0.0), 4.0, thin())),
         || drop(Shape::polyline(&[Vec2::ZERO, Vec2::new(N, 1.0)], thin())),
         || {
-            drop(Mesh::filled_triangle(
-                [Vec2::new(N, 0.0), Vec2::X, Vec2::Y],
+            drop(Mesh::filled_polygon(
+                &[Vec2::new(N, 0.0), Vec2::X, Vec2::Y],
                 RgbaF32::WHITE,
             ));
         },

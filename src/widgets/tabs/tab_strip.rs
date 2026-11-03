@@ -289,7 +289,7 @@ impl<'a> TabStrip<'a> {
                 Scroll::horizontal()
                     .id(Self::band_id(id))
                     .size((Sizing::FILL, Sizing::HUG))
-                    .hide_bars()
+                    .hidden_bars()
                     .pan_by(reveal)
                     .padding(t.strip_padding)
                     .gap(t.gap)

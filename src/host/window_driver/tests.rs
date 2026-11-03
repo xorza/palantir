@@ -589,8 +589,8 @@ mod record_store_tests {
             Duration::ZERO,
         );
 
-        let mesh_a = Mesh::filled_triangle(
-            [
+        let mesh_a = Mesh::filled_polygon(
+            &[
                 Vec2::new(12.0, 14.0),
                 Vec2::new(72.0, 20.0),
                 Vec2::new(26.0, 74.0),

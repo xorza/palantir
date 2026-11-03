@@ -857,18 +857,18 @@ impl Ui {
     /// ```
     /// # fn load(ui: &palantir::Ui, iosevka: &'static [u8]) -> Result<(), palantir::FontLoadError> {
     /// let mono = ui.load_font(iosevka)?; // the bytes of `include_bytes!("Iosevka.ttf")`
-    /// let sans = ui.load_font("/usr/share/fonts/TTF/Charter.ttf")?;
     /// # Ok(())
     /// # }
     /// ```
     ///
-    /// A `&str` is a path, never a family name.
+    /// Bytes only: a font on disk is read by the caller, as `std::fs::read(path)?` gives a
+    /// `Vec<u8>`.
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] when the file cannot be read, [`FontLoadError::NoFaces`]
-    /// when it holds no parsable face, [`FontLoadError::FamilyNameTooLong`] when every
-    /// family it names is longer than a [`FontFamily`] holds.
+    /// [`FontLoadError::NoFaces`] when the bytes hold no parsable face,
+    /// [`FontLoadError::FamilyNameTooLong`] when every family it names is longer than a
+    /// [`FontFamily`] holds.
     #[inline]
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         self.resources.text().load_font(source)

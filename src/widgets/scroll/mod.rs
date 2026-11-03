@@ -278,7 +278,7 @@ impl<'a> Scroll<'a> {
     }
 
     /// [`BarMode::Hidden`]: no bars; pan, wheel and zoom still work.
-    pub const fn hide_bars(self) -> Self {
+    pub const fn hidden_bars(self) -> Self {
         self.bar_mode(BarMode::Hidden)
     }
 

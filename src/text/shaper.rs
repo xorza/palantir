@@ -162,9 +162,8 @@ impl TextShaper {
     ///
     /// # Errors
     ///
-    /// [`FontLoadError::Io`] for an unreadable file, [`FontLoadError::NoFaces`] for
-    /// bytes with no face, [`FontLoadError::FamilyNameTooLong`] for a font whose every
-    /// family name is too long.
+    /// [`FontLoadError::NoFaces`] for bytes with no face, [`FontLoadError::FamilyNameTooLong`]
+    /// for a font whose every family name is too long.
     pub fn load_font(&self, source: impl Into<FontSource>) -> Result<FontFamily, FontLoadError> {
         let loaded = self
             .shared

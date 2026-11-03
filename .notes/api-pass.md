@@ -121,12 +121,6 @@ follow it.
    c0, c1)`), as peniko's `Gradient::new_radial(center, radius)` takes it before the stops
    ([peniko](https://docs.rs/peniko/latest/peniko/struct.Gradient.html)). Refused: `centered(c0,
    c1)` for the kinds that hide a geometry, two names in one family.
-6. **The glyph plumbing goes** (`TextShaper::glyphs`, `TextGlyphs`, `GlyphLine`, `PlacedGlyph`,
-   `GlyphRasterKey`, `RasterImage`, `ContentType`): no caller anywhere, and a public item removed
-   later breaks callers. Refused: keeping it with an example that labels a `GpuView`, until a view
-   asks for a designed API.
-7. **`IconTable::baked` and `IconDefinition` go**: no generator exists. Refused: shipping the baker
-   for a path no app uses.
 8. **`FontSource` takes bytes only**: `File`, the path `From`s and `FontLoadError::Io` go, as the
    workspace rule says a library takes bytes, readers and writers, never paths. The system fonts
    keep fontdb's memory-mapped path loading inside `FontScope::System`. Refused: keeping the path
@@ -143,6 +137,15 @@ follow it.
 
 ### Refused
 
+- **Removing surface for want of a caller** (2026-11-03, AGENTS.md "No caller is no reason to
+  remove"). Kept: the glyph lease (`TextShaper::glyphs` and its types), which a `GpuView` labels
+  a scene with; `IconTable::baked`, a const set a `build.rs` can emit; `TextProbe::text_hash` and
+  `hash_of`; `TranslateScale`'s algebra, as kurbo's offers; `HueSlice`; `Ui::render_frame_id`,
+  `pointer_actions`, `input_policy` and `set_input_policy`; `Ui::has_font` and `font_families`,
+  the only door to them from a frame, beside `load_font`; `Platform` and `PLATFORM`;
+  `Widget::grid` and `grid_tracks`, beside `Widget::canvas`; `GridCell::along`;
+  `EditableLabel::label_id`, as the part-id rule publishes; `Scroll::zoom_by` and
+  `content_margin`.
 - **The harness reopens its own device after a loss.** It contradicts the caller-supplied `Gpu` and
   "`Gpu` owns the device's health". The harness takes `recover(gpu)`, as `OffscreenHost` does.
 - **`TabStrip::drop_caret` made public.** The strip reports its own reorder (`TabMove`), so a caller
@@ -157,28 +160,6 @@ follow it.
 Batches run most harmful first. A batch changes palantir and darkroom together and leaves both
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
-
-### Batch 11: Dead surface
-
-Each item has no caller outside palantir's own definition and tests, or a newer item replaced it.
-
-- [ ] Text (decided, 6 and 8): `TextShaper::glyphs`, `TextGlyphs`, `GlyphLine`, `PlacedGlyph`,
-  `GlyphRasterKey`, `RasterImage`, `ContentType`; `FontSource::File` and its path `From`s;
-  `TextProbe::text_hash` and `hash_of` crate-private.
-- [ ] Icons (decided, 7): `IconTable::baked`, `IconDefinition`.
-- [ ] Geometry: `MeshVertex` and `Mesh::content_hash` crate-private; `Mesh::filled_triangle` goes;
-  `TranslateScale`'s `compose`, `anchored_at`, `is_identity` and the point and rect maps
-  crate-private; `BatchKind::COUNT` goes.
-- [ ] Colors: `HueSlice` and `ColorModel::slice` crate-private.
-- [ ] Ui: `render_frame_id`, `pointer_actions` with `PointerAction` and `PointerEdge`, `has_font`
-  and `font_families` (twins of `TextShaper`'s), `input_policy`, `set_input_policy` and
-  `InputPolicy`; `Platform` and `PLATFORM`, whose methods are all crate-private.
-- [ ] Widgets: `Widget::grid` and `grid_tracks` crate-private, as `scroll` is; `GridCell::along`
-  crate-private and `GridCell`'s `NoUninit` derive replaced by a hand pack;
-  `EditableLabel::label_id` goes; `Scroll::zoom_by` and `content_margin` go, as tests alone call
-  them; `Scroll::hide_bars` renamed `hidden_bars`.
-- [ ] Animation (decided): `impl Animatable for TextStyleOverrides` goes. Overrides blend and
-  never spring, as a theme does; `Lerp` stays.
 
 ### Batch 12: Names and polish
 

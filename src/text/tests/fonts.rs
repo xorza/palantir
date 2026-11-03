@@ -4,7 +4,6 @@
 use super::*;
 use crate::text::error::FontLoadError;
 use crate::text::font_scope::internals::{INTER, MONO};
-use std::error::Error;
 
 // No face file is unregistered by the bundled scope, so the load cases start
 // from an empty database and introduce a bundled face.
@@ -54,29 +53,15 @@ fn a_late_load_makes_its_family_resolvable() {
     );
 }
 
-/// Both untrusted-input arms report which one failed.
+/// Bytes that parse to no face report it, rather than a family.
 #[test]
-fn a_load_that_cannot_produce_a_face_says_which_way_it_failed() {
+fn bytes_with_no_face_load_no_family() {
     let mut c = CosmicMeasure::with_no_fonts();
 
     let not_a_font = c.load_font(b"this is not a font file".into());
     assert!(
         matches!(not_a_font, Err(FontLoadError::NoFaces)),
         "bytes that parse to no face are NoFaces, got {not_a_font:?}",
-    );
-
-    let missing_file = c.load_font("/nonexistent/palantir-test-font.ttf".into());
-    let Err(error @ FontLoadError::Io { source, .. }) = &missing_file else {
-        panic!("an unreadable path is Io, not NoFaces, got {missing_file:?}");
-    };
-    assert_eq!(
-        error.to_string(),
-        "cannot read the font file /nonexistent/palantir-test-font.ttf"
-    );
-    assert_eq!(
-        Error::source(error).map(ToString::to_string),
-        Some(source.to_string()),
-        "the filesystem's words ride in the chain, not in the sentence"
     );
 }
 

@@ -25,17 +25,17 @@ use std::hash::Hasher as _;
 /// at output.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Pod, Zeroable)]
-pub struct MeshVertex {
+pub(crate) struct MeshVertex {
     /// Position in the owner's local logical pixels.
-    pub pos: Vec2,
+    pub(crate) pos: Vec2,
     /// Vertex color, sRGB-encoded.
-    pub color: SrgbaU8,
+    pub(crate) color: SrgbaU8,
 }
 
 impl MeshVertex {
     /// Construct at `pos`, `color` encoded to sRGB bytes, as a gradient stop stores its
     /// color. An `SrgbaU8` decodes and encodes back to itself exactly.
-    pub fn new(pos: Vec2, color: impl Into<RgbaF32>) -> Self {
+    pub(crate) fn new(pos: Vec2, color: impl Into<RgbaF32>) -> Self {
         Self {
             pos,
             color: color.into().to_srgba8(),
@@ -203,17 +203,6 @@ impl Mesh {
         let b = compute_aabb(&self.vertices);
         self.cached_bbox.set(Some(b));
         b
-    }
-
-    /// Filled triangle over `corners` in a single color, with its bbox
-    /// pre-cached: [`Self::filled_polygon`] over three points.
-    ///
-    /// # Panics
-    ///
-    /// As [`Self::vertex`].
-    #[track_caller]
-    pub fn filled_triangle(corners: [Vec2; 3], color: impl Into<RgbaF32>) -> Self {
-        Self::filled_polygon(&corners, color)
     }
 
     /// Filled convex polygon (fan around the first vertex), bbox pre-cached.

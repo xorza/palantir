@@ -6,8 +6,7 @@ use crate::primitives::math::domain;
 use std::hash;
 
 /// Per-child placement in a `Grid` parent; inert otherwise. `(row, col)` is the top-left cell, spans default to 1.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::NoUninit)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[must_use]
 pub struct GridCell {
     row: u16,
@@ -17,10 +16,16 @@ pub struct GridCell {
 }
 
 impl hash::Hash for GridCell {
-    /// One `write` of the packed `[u16; 4]` instead of four `write_u16`s; hot in `BoundsExtras::hash`.
+    /// One `write_u64` of the four fields packed instead of four `write_u16`s; hot in
+    /// `BoundsExtras::hash`.
     #[inline]
     fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
+        state.write_u64(
+            u64::from(self.row)
+                | (u64::from(self.col) << 16)
+                | (u64::from(self.row_span) << 32)
+                | (u64::from(self.col_span) << 48),
+        );
     }
 }
 

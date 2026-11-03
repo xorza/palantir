@@ -28,7 +28,7 @@ fn hidden_scroll_skips_bar_ids_and_cold_relayout_but_keeps_pan_and_zoom() {
     let build = |ui: &mut Ui| {
         Scroll::both()
             .id(outer_id)
-            .hide_bars()
+            .hidden_bars()
             .zoomable()
             .size((Sizing::fixed(200.0), Sizing::fixed(200.0)))
             .show(ui, |ui| {
