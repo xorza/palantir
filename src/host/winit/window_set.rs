@@ -36,7 +36,8 @@ impl WindowSet {
         &mut self.windows[slot.0]
     }
 
-    /// Every window but `ran` follows the frame `ran` ran ([`FramePresent::followed`]).
+    /// Every window but `ran` follows the frame `ran` ran
+    /// ([`FramePresent::followed`](crate::host::winit::window::FramePresent::followed)).
     pub(super) fn follow(&mut self, ran: WindowSlot, now: Instant) {
         for (idx, win) in self.windows.iter_mut().enumerate() {
             if idx != ran.0 {
