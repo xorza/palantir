@@ -292,7 +292,9 @@ impl BackdropFilter {
         if !(0.0..1.0).contains(&alpha) {
             return Err(InkBound::TintNotTranslucent { alpha });
         }
-        let ground = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05);
+        let Some(ground) = after_storing(TEXT_CONTRAST * (ink.luminance() + 0.05) - 0.05) else {
+            return Err(InkBound::InkFailsOnTint);
+        };
         let tint_luminance = tint.luminance();
         if tint_luminance < ground {
             return Err(InkBound::InkFailsOnTint);
@@ -423,20 +425,22 @@ impl Default for BackdropFilter {
 /// `blur`, `saturation` and `noise` blend and spring. An absent floor or lens blends through its
 /// neutral, as an absent chrome blends through `Chrome::NONE`: a floor of 0 lifts nothing, and
 /// `Lens::FLAT` bends nothing. The ceiling switches at `t = 0.5`, as its neutral, no bound, is
-/// no lane value. In motion the three take the target at once, as a `lerp_only` field does.
+/// no lane value. In motion the three take the target at once, as a `lerp_only` field does. A
+/// blend is coerced into the filter's domain (`BackdropFilter::coerce`).
 impl Lerp for BackdropFilter {
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
+        let (a, b) = (*a, *b);
         if t == 0.0 {
             return a;
         }
         if t == 1.0 {
             return b;
         }
-        Self {
-            blur: f32::lerp(a.blur, b.blur, t),
-            saturation: f32::lerp(a.saturation, b.saturation, t),
-            noise: f32::lerp(a.noise, b.noise, t),
+        let mut blend = Self {
+            blur: f32::lerp(&a.blur, &b.blur, t),
+            saturation: f32::lerp(&a.saturation, &b.saturation, t),
+            noise: f32::lerp(&a.noise, &b.noise, t),
             max_luminance: if t < 0.5 {
                 a.max_luminance
             } else {
@@ -444,7 +448,7 @@ impl Lerp for BackdropFilter {
             },
             min_luminance: match (a.min_luminance, b.min_luminance) {
                 (None, None) => None,
-                (a, b) => Some(f32::lerp(a.unwrap_or(0.0), b.unwrap_or(0.0), t)),
+                (a, b) => Some(f32::lerp(&a.unwrap_or(0.0), &b.unwrap_or(0.0), t)),
             },
             lens: match (a.lens, b.lens) {
                 (None, None) => None,
@@ -455,40 +459,42 @@ impl Lerp for BackdropFilter {
                 )),
             },
             fallback: if t < 0.5 { a.fallback } else { b.fallback },
-        }
+        };
+        blend.coerce();
+        blend
     }
 }
 
 impl Animatable for BackdropFilter {
     #[inline]
-    fn sub(self, other: Self) -> Self {
+    fn sub(&self, other: &Self) -> Self {
         Self {
             blur: self.blur - other.blur,
             saturation: self.saturation - other.saturation,
             noise: self.noise - other.noise,
-            ..self
+            ..*self
         }
     }
     #[inline]
-    fn add(self, other: Self) -> Self {
+    fn add(&self, other: &Self) -> Self {
         Self {
             blur: self.blur + other.blur,
             saturation: self.saturation + other.saturation,
             noise: self.noise + other.noise,
-            ..self
+            ..*self
         }
     }
     #[inline]
-    fn scale(self, k: f32) -> Self {
+    fn scale(&self, k: f32) -> Self {
         Self {
             blur: self.blur * k,
             saturation: self.saturation * k,
             noise: self.noise * k,
-            ..self
+            ..*self
         }
     }
     #[inline]
-    fn magnitude_squared(self) -> f32 {
+    fn magnitude_squared(&self) -> f32 {
         self.blur * self.blur + self.saturation * self.saturation + self.noise * self.noise
     }
     #[inline]
@@ -501,6 +507,29 @@ impl Animatable for BackdropFilter {
             min_luminance: None,
             lens: None,
             fallback: None,
+        }
+    }
+    #[inline]
+    fn from_motion(mut motion: Self) -> Self {
+        motion.coerce();
+        motion
+    }
+}
+
+impl BackdropFilter {
+    /// Coerce each blended value into its kind, as a curve overshooting below a floor leaves
+    /// it: the blur a length, the saturation, noise and floor factors, the lens its own
+    /// ([`Lens::coerce`]). CSS clamps an interpolated value into its property's range (CSS
+    /// Values 4, "Range Checking").
+    const fn coerce(&mut self) {
+        self.blur = domain::raised_to(self.blur, 0.0);
+        self.saturation = domain::raised_to(self.saturation, 0.0);
+        self.noise = domain::raised_to(self.noise, 0.0);
+        if let Some(luminance) = &mut self.min_luminance {
+            *luminance = domain::raised_to(*luminance, 0.0);
+        }
+        if let Some(lens) = &mut self.lens {
+            lens.coerce();
         }
     }
 }
@@ -542,14 +571,21 @@ impl Lens {
         highlight: 0.0,
     };
 
+    /// Coerce the bezel and thickness to lengths and the index to at least 1.
+    const fn coerce(&mut self) {
+        self.bezel = domain::raised_to(self.bezel, 0.0);
+        self.thickness = domain::raised_to(self.thickness, 0.0);
+        self.refractive_index = domain::raised_to(self.refractive_index, 1.0);
+    }
+
     /// Field by field, as `f32` blends.
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         Self {
-            bezel: f32::lerp(a.bezel, b.bezel, t),
-            thickness: f32::lerp(a.thickness, b.thickness, t),
-            refractive_index: f32::lerp(a.refractive_index, b.refractive_index, t),
-            dispersion: f32::lerp(a.dispersion, b.dispersion, t),
-            highlight: f32::lerp(a.highlight, b.highlight, t),
+            bezel: f32::lerp(&a.bezel, &b.bezel, t),
+            thickness: f32::lerp(&a.thickness, &b.thickness, t),
+            refractive_index: f32::lerp(&a.refractive_index, &b.refractive_index, t),
+            dispersion: f32::lerp(&a.dispersion, &b.dispersion, t),
+            highlight: f32::lerp(&a.highlight, &b.highlight, t),
         }
     }
 
@@ -617,20 +653,16 @@ fn before_storing(g: f32) -> Option<f32> {
 /// The darkest linear level a composite may reach and still store at least `g`: the mirror of
 /// [`before_storing`], a step above `B`, the lowest byte that decodes to at least `g`. A colored
 /// pixel stores no darker than a neutral one of its luminance when that luminance is past the
-/// floor's bend, which [`ceiling_bend`] derives.
-fn after_storing(g: f32) -> f32 {
+/// floor's bend, which [`ceiling_bend`] derives. `None` where no level lies a step above `B`: a
+/// `g` past the last step under white, the ground of every ink lighter than `Y ≈ 0.18`, which no
+/// tint holds.
+fn after_storing(g: f32) -> Option<f32> {
     let level = |byte: u8| RgbaF32::from_srgba8(SrgbaU8::rgb(byte, byte, byte)).r;
     let mut bottom = RgbaF32::new(g, g, g, 1.0).to_srgba8().r;
     if level(bottom) < g {
-        bottom = bottom
-            .checked_add(1)
-            .expect("the ink holds its contrast on white");
+        bottom = bottom.checked_add(1)?;
     }
-    level(
-        bottom
-            .checked_add(1)
-            .expect("the ink holds its contrast a step below white"),
-    )
+    Some(level(bottom.checked_add(1)?))
 }
 
 #[cfg(test)]

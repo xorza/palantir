@@ -254,3 +254,20 @@ fn every_recipe_reads_its_geometry_from_the_metrics() {
         );
     }
 }
+
+/// A float the material cannot hold its ink in keeps its opaque panel, as `dress_float` falls
+/// back: a mid-grey muted ink on the light popup needs a floor past white, which the bound
+/// refuses as a case where it once panicked.
+#[test]
+fn a_float_whose_ink_no_floor_holds_keeps_its_panel() {
+    use crate::theme::popup::PopupTheme;
+    let mut palette = Palette::for_scheme(ColorScheme::Light).clone();
+    palette.text_muted = RgbaF32::hex(0x808080);
+    let m = Metrics::DEFAULT;
+    assert!(m.float_material.is_some(), "the stock metrics frost floats");
+    assert_eq!(
+        PopupTheme::from_parts(&palette, &m).panel,
+        palette.popup_panel(&m)
+    );
+    let _ = Theme::from_parts(&palette, &m);
+}

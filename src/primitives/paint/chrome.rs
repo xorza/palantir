@@ -201,18 +201,18 @@ impl Default for Chrome {
 /// zero.
 impl Lerp for Option<Chrome> {
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
         if t == 0.0 {
-            return a;
+            return a.clone();
         }
         if t == 1.0 {
-            return b;
+            return b.clone();
         }
         match (a, b) {
             (None, None) => None,
             (a, b) => Some(Chrome::lerp(
-                a.unwrap_or(Chrome::NONE),
-                b.unwrap_or(Chrome::NONE),
+                a.as_ref().unwrap_or(&Chrome::NONE),
+                b.as_ref().unwrap_or(&Chrome::NONE),
                 t,
             )),
         }
@@ -221,38 +221,42 @@ impl Lerp for Option<Chrome> {
 
 impl Animatable for Option<Chrome> {
     #[inline]
-    fn sub(self, other: Self) -> Self {
+    fn sub(&self, other: &Self) -> Self {
         match (self, other) {
             (None, None) => None,
-            (a, b) => Some(a.unwrap_or(Chrome::NONE).sub(b.unwrap_or(Chrome::NONE))),
+            (a, b) => Some(
+                a.as_ref()
+                    .unwrap_or(&Chrome::NONE)
+                    .sub(b.as_ref().unwrap_or(&Chrome::NONE)),
+            ),
         }
     }
     #[inline]
-    fn add(self, other: Self) -> Self {
+    fn add(&self, other: &Self) -> Self {
         match other {
-            None => self,
-            Some(offset) => Some(self.unwrap_or(Chrome::NONE).add(offset)),
+            None => self.clone(),
+            Some(offset) => Some(self.as_ref().unwrap_or(&Chrome::NONE).add(offset)),
         }
     }
     #[inline]
-    fn scale(self, k: f32) -> Self {
-        self.map(|chrome| chrome.scale(k))
+    fn scale(&self, k: f32) -> Self {
+        self.as_ref().map(|chrome| chrome.scale(k))
     }
     #[inline]
-    fn magnitude_squared(self) -> f32 {
-        self.map_or(0.0, Chrome::magnitude_squared)
+    fn magnitude_squared(&self) -> f32 {
+        self.as_ref().map_or(0.0, Chrome::magnitude_squared)
     }
     #[inline]
-    fn settle_distance_squared(self) -> f32 {
-        self.map_or(0.0, Chrome::settle_distance_squared)
+    fn settle_distance_squared(&self) -> f32 {
+        self.as_ref().map_or(0.0, Chrome::settle_distance_squared)
     }
     #[inline]
     fn zero() -> Self {
         None
     }
     #[inline]
-    fn to_motion(self) -> Self {
-        self.map(Chrome::to_motion)
+    fn to_motion(&self) -> Self {
+        self.as_ref().map(Chrome::to_motion)
     }
     #[inline]
     fn from_motion(motion: Self) -> Self {
@@ -345,25 +349,25 @@ mod tests {
         let chrome = Chrome::rounded(ink, Corners::all(8.0))
             .with_border(Stroke::new(RgbaF32::BLACK, 2.0))
             .with_shadow(Shadow::drop(RgbaF32::BLACK, glam::Vec2::new(0.0, 4.0), 6.0));
-        let half = |color| RgbaF32::lerp(RgbaF32::TRANSPARENT, color, 0.5);
+        let half = |color| RgbaF32::lerp(&RgbaF32::TRANSPARENT, color, 0.5);
         let mid = Chrome {
-            fill: half(ink).into(),
-            border: Stroke::new(half(RgbaF32::BLACK), 1.0),
+            fill: half(&ink).into(),
+            border: Stroke::new(half(&RgbaF32::BLACK), 1.0),
             corners: Corners::all(4.0),
-            shadow: Shadow::drop(half(RgbaF32::BLACK), glam::Vec2::new(0.0, 2.0), 3.0),
+            shadow: Shadow::drop(half(&RgbaF32::BLACK), glam::Vec2::new(0.0, 2.0), 3.0),
             backdrop_filter: BackdropFilter::NONE,
         };
-        assert_eq!(half(ink).a, 0.5);
+        assert_eq!(half(&ink).a, 0.5);
         let some = Some(chrome.clone());
-        assert_eq!(Option::lerp(None, some.clone(), 0.5), Some(mid.clone()));
-        assert_eq!(Option::lerp(some.clone(), None, 0.5), Some(mid));
-        assert_eq!(Option::lerp(None, some.clone(), 0.0), None);
-        assert_eq!(Option::lerp(None, some.clone(), 1.0), some);
-        assert_eq!(Option::<Chrome>::lerp(None, None, 0.5), None);
+        assert_eq!(Option::lerp(&None, &some, 0.5), Some(mid.clone()));
+        assert_eq!(Option::lerp(&some, &None, 0.5), Some(mid));
+        assert_eq!(Option::lerp(&None, &some, 0.0), None);
+        assert_eq!(Option::lerp(&None, &some.clone(), 1.0), some);
+        assert_eq!(Option::<Chrome>::lerp(&None, &None, 0.5), None);
 
-        let offset = None.sub(some.clone());
-        assert_eq!(offset, Some(Chrome::NONE.sub(chrome)));
-        assert_eq!(some.clone().add(None), some);
+        let offset = None.sub(&some);
+        assert_eq!(offset, Some(Chrome::NONE.sub(&chrome)));
+        assert_eq!(some.clone().add(&None), some);
         assert_eq!(Option::<Chrome>::zero(), None);
         assert_eq!(Option::<Chrome>::None.magnitude_squared(), 0.0);
     }

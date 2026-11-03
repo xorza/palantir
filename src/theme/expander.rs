@@ -62,8 +62,8 @@ pub struct ExpanderTheme {
 impl ExpanderTheme {
     pub(crate) fn arrow_angle(&self, openness: f32) -> f32 {
         Lerp::lerp(
-            self.arrow_closed_angle,
-            self.arrow_open_angle,
+            &self.arrow_closed_angle,
+            &self.arrow_open_angle,
             openness.clamp(0.0, 1.0),
         )
     }

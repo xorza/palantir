@@ -6,7 +6,6 @@
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::primitives::geometry::corners::Corners;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -14,7 +13,6 @@ use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
@@ -84,19 +82,14 @@ pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
 
 /// Lower a `Chrome` to a `ChromeRow`, sharing gradient lowering with shapes so chrome and shapes share one pool. Takes `chrome` by reference: [`Chrome`] is deliberately not `Copy`.
 pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> ChromeRow {
-    // Chrome's NaN gate, before lowering because `fill` interns its gradient. Shapes have none: their setters check every input.
-    //
-    // It sanitizes where the shape path drops: `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op, so the stencil mask can read `corners`, and dropping it would leave the mask reading the NaN. Each field falls back to what its NaN meant; sanitizing before the hash keeps `ChromeRow.hash` honest.
     debug_assert!(
         !chrome.has_nan(),
-        "NaN in a Chrome — it degrades to no rounding and no paint: {chrome:?}",
+        "a Chrome reaches lowering validated, by `Widget::record`: {chrome:?}",
     );
     // A pane under reduced transparency paints its solid infill and no filter.
-    let solid = (store.transparency.is_reduced()
-        && !chrome.backdrop_filter.is_noop()
-        && !chrome.backdrop_filter.has_nan())
-    .then(|| chrome.backdrop_filter.solid_infill(&chrome.fill));
-    let fill_brush = if chrome.fill.has_nan() || chrome.is_noop() {
+    let solid = (store.transparency.is_reduced() && !chrome.backdrop_filter.is_noop())
+        .then(|| chrome.backdrop_filter.solid_infill(&chrome.fill));
+    let fill_brush = if chrome.is_noop() {
         &Brush::TRANSPARENT
     } else {
         solid.as_ref().unwrap_or(&chrome.fill)
@@ -104,23 +97,11 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
     let fill = brush(store, fill_brush);
     let border = ShapeStroke {
         width: chrome.border_inset(),
-        ..ShapeStroke::from(if chrome.border.has_nan() {
-            Stroke::NONE
-        } else {
-            chrome.border
-        })
+        ..ShapeStroke::from(chrome.border)
     };
-    let corners = if chrome.corners.has_nan() {
-        Corners::ZERO
-    } else {
-        chrome.corners
-    };
-    let shadow: LoweredShadow = if chrome.shadow.has_nan() {
-        Shadow::NONE.into()
-    } else {
-        chrome.shadow.into()
-    };
-    let backdrop = if chrome.backdrop_filter.has_nan() || solid.is_some() {
+    let corners = chrome.corners;
+    let shadow = LoweredShadow::from(chrome.shadow);
+    let backdrop = if solid.is_some() {
         None
     } else {
         LoweredBackdrop::of(chrome.backdrop_filter)

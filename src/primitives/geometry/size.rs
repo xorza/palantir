@@ -1,6 +1,6 @@
 //! A 2D extent in logical pixels: a magnitude, not a position.
 
-use crate::primitives::math::animatable::Animatable;
+use crate::primitives::math::animatable::{Animatable, PX_SETTLE_EPS};
 use crate::primitives::math::domain;
 use crate::primitives::math::float_hash::{self, FloatHash};
 use crate::primitives::math::lerp::Lerp;
@@ -191,10 +191,10 @@ impl NanCheck for Size {
 /// a lerp against one switches at `t = 0.5` and motion takes the target at once, its offset zero.
 impl Lerp for Size {
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
         let axis = |a: f32, b: f32| {
             if a.is_finite() && b.is_finite() {
-                f32::lerp(a, b, t)
+                f32::lerp(&a, &b, t)
             } else if t < 0.5 {
                 a
             } else {
@@ -207,7 +207,7 @@ impl Lerp for Size {
 
 impl Animatable for Size {
     #[inline]
-    fn sub(self, other: Self) -> Self {
+    fn sub(&self, other: &Self) -> Self {
         let axis = |a: f32, b: f32| {
             if a.is_finite() && b.is_finite() {
                 a - b
@@ -218,16 +218,22 @@ impl Animatable for Size {
         Self::new(axis(self.w, other.w), axis(self.h, other.h))
     }
     #[inline]
-    fn add(self, other: Self) -> Self {
+    fn add(&self, other: &Self) -> Self {
         Self::new(self.w + other.w, self.h + other.h)
     }
     #[inline]
-    fn scale(self, k: f32) -> Self {
+    fn scale(&self, k: f32) -> Self {
         Self::new(self.w * k, self.h * k)
     }
     #[inline]
-    fn magnitude_squared(self) -> f32 {
+    fn magnitude_squared(&self) -> f32 {
         self.w * self.w + self.h * self.h
+    }
+    /// Both axes lengths in logical pixels.
+    #[inline]
+    fn settle_distance_squared(&self) -> f32 {
+        let eps = PX_SETTLE_EPS;
+        self.magnitude_squared() / (eps * eps)
     }
     #[inline]
     fn zero() -> Self {
@@ -266,14 +272,14 @@ mod tests {
         let a = Size::new(200.0, f32::INFINITY);
         let b = Size::new(280.0, 120.0);
         // 200 + 80·¼ = 220.
-        assert_eq!(Size::lerp(a, b, 0.25), Size::new(220.0, f32::INFINITY));
-        assert_eq!(Size::lerp(a, b, 0.5), Size::new(240.0, 120.0));
+        assert_eq!(Size::lerp(&a, &b, 0.25), Size::new(220.0, f32::INFINITY));
+        assert_eq!(Size::lerp(&a, &b, 0.5), Size::new(240.0, 120.0));
         assert_eq!(
-            Size::lerp(a, Size::INF, 0.25),
+            Size::lerp(&a, &Size::INF, 0.25),
             Size::new(200.0, f32::INFINITY)
         );
-        assert_eq!(a.sub(b), Size::new(-80.0, 0.0));
-        assert_eq!(b.add(a.sub(b)), Size::new(200.0, 120.0));
-        assert_eq!(Size::INF.add(Size::INF.sub(Size::INF)), Size::INF);
+        assert_eq!(a.sub(&b), Size::new(-80.0, 0.0));
+        assert_eq!(b.add(&a.sub(&b)), Size::new(200.0, 120.0));
+        assert_eq!(Size::INF.add(&Size::INF.sub(&Size::INF)), Size::INF);
     }
 }

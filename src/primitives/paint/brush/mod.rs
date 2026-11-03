@@ -136,16 +136,15 @@ impl From<ConicGradient> for Brush {
 
 impl Lerp for Brush {
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
-        // Match by reference so the gradient fallback can return an original without cloning.
-        match (&a, &b) {
-            (Self::Solid(x), Self::Solid(y)) => Self::Solid(RgbaF32::lerp(*x, *y, t)),
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
+        match (a, b) {
+            (Self::Solid(x), Self::Solid(y)) => Self::Solid(RgbaF32::lerp(x, y, t)),
             // No blend reaches a gradient yet, so it switches halfway, as a snap field does.
             _ => {
                 if t < 0.5 {
-                    a
+                    a.clone()
                 } else {
-                    b
+                    b.clone()
                 }
             }
         }
@@ -154,23 +153,23 @@ impl Lerp for Brush {
 
 impl Animatable for Brush {
     #[inline]
-    fn sub(self, other: Self) -> Self {
-        match (&self, &other) {
-            (Self::Solid(x), Self::Solid(y)) => Self::Solid(x.sub(*y)),
+    fn sub(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Solid(x), Self::Solid(y)) => Self::Solid(x.sub(y)),
             _ => Self::zero(),
         }
     }
 
     #[inline]
-    fn add(self, other: Self) -> Self {
-        match (&self, &other) {
-            (Self::Solid(x), Self::Solid(y)) => Self::Solid(x.add(*y)),
-            _ => self,
+    fn add(&self, other: &Self) -> Self {
+        match (self, other) {
+            (Self::Solid(x), Self::Solid(y)) => Self::Solid(x.add(y)),
+            _ => self.clone(),
         }
     }
 
     #[inline]
-    fn scale(self, k: f32) -> Self {
+    fn scale(&self, k: f32) -> Self {
         match self {
             Self::Solid(c) => Self::Solid(c.scale(k)),
             Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => Self::zero(),
@@ -178,7 +177,7 @@ impl Animatable for Brush {
     }
 
     #[inline]
-    fn magnitude_squared(self) -> f32 {
+    fn magnitude_squared(&self) -> f32 {
         match self {
             Self::Solid(c) => c.magnitude_squared(),
             Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => 0.0,
@@ -186,7 +185,7 @@ impl Animatable for Brush {
     }
 
     #[inline]
-    fn settle_distance_squared(self) -> f32 {
+    fn settle_distance_squared(&self) -> f32 {
         match self {
             Self::Solid(c) => c.settle_distance_squared(),
             Self::Linear(_) | Self::Radial(_) | Self::Conic(_) => 0.0,
@@ -199,10 +198,10 @@ impl Animatable for Brush {
     }
 
     #[inline]
-    fn to_motion(self) -> Self {
+    fn to_motion(&self) -> Self {
         match self {
             Self::Solid(c) => Self::Solid(c.to_motion()),
-            gradient @ (Self::Linear(_) | Self::Radial(_) | Self::Conic(_)) => gradient,
+            gradient @ (Self::Linear(_) | Self::Radial(_) | Self::Conic(_)) => gradient.clone(),
         }
     }
 

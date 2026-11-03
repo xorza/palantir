@@ -19,7 +19,9 @@ use crate::scene::endpoint::Endpoint;
 use crate::scene::forest::{Forest, NodeChrome};
 use crate::scene::node::Node;
 use crate::scene::node::ident::Ident;
+use crate::scene::plane::Plane;
 use crate::scene::scrollbars_def::ScrollbarsDef;
+use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
 use crate::text::glyph_font::GlyphFont;
@@ -107,6 +109,11 @@ impl LayoutRig {
         self.engine
             .main_intrinsic(&self.forest, node, IntrinsicQuery::single(axis, req))
             .get(req)
+    }
+
+    /// The tree the last run recorded on `plane`; a `Layer` names its base plane.
+    pub(crate) fn tree(&self, plane: impl Into<Plane>) -> &Tree {
+        &self.forest.trees[plane.into()]
     }
 
     /// The node recorded under `id`, for what a test reads of the engine's scratch.

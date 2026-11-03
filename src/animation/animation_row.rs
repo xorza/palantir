@@ -175,12 +175,12 @@ impl<T: Animatable> MotionRow<T> {
     }
 
     /// Whether `displacement` (and a spring's velocity) is too small to animate.
-    pub(super) fn close_enough(&self, displacement: T) -> bool {
+    pub(super) fn close_enough(&self, displacement: &T) -> bool {
         match self {
             Self::Duration { .. } => duration::within_snap_eps(displacement),
             Self::Spring {
                 velocity, spring, ..
-            } => spring.within_settle_eps(displacement, velocity.clone()),
+            } => spring.within_settle_eps(displacement, velocity),
         }
     }
 
@@ -216,10 +216,7 @@ impl<T: Animatable> MotionRow<T> {
                     };
                 }
                 Animated {
-                    value: placed(
-                        &target,
-                        &start_offset.clone().scale(1.0 - ease.apply(progress)),
-                    ),
+                    value: placed(&target, &start_offset.scale(1.0 - ease.apply(progress))),
                     settled: false,
                 }
             }
@@ -228,7 +225,7 @@ impl<T: Animatable> MotionRow<T> {
                 offset,
                 spring,
             } => {
-                let step = spring.step(offset.clone(), velocity.clone(), dt);
+                let step = spring.step(offset, velocity, dt);
                 *velocity = step.velocity;
                 *offset = step.offset;
                 Animated {
@@ -246,7 +243,7 @@ impl<T: Animatable> MotionRow<T> {
 
 /// The offset from `target` to `cur`, in motion space.
 pub(super) fn offset<T: Animatable>(cur: &T, target: &T) -> T {
-    cur.clone().to_motion().sub(target.clone().to_motion())
+    cur.to_motion().sub(&target.to_motion())
 }
 
 /// The value `offset` from `target`. An offset of no length is the target itself, exactly: the
@@ -254,10 +251,10 @@ pub(super) fn offset<T: Animatable>(cur: &T, target: &T) -> T {
 /// target. Its length, not `== zero()`: a derived offset keeps its snap and
 /// lerp-only fields.
 fn placed<T: Animatable>(target: &T, offset: &T) -> T {
-    if offset.clone().magnitude_squared() == 0.0 {
+    if offset.magnitude_squared() == 0.0 {
         return target.clone();
     }
-    T::from_motion(target.clone().to_motion().add(offset.clone()))
+    T::from_motion(target.to_motion().add(offset))
 }
 
 /// How far through a segment of `length` seconds `elapsed` is; a segment of no length is done.

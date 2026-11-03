@@ -4,7 +4,7 @@ use std::num::NonZeroU16;
 
 /// Arena index whose nonzero encoding keeps `Option<Self>` at two bytes: the stored value is the index plus one.
 ///
-/// **[`Self::LAST`] is a real ceiling.** A table addressed this way holds at most 65 535 rows and a row past that panics in release, naming the table; see [`ExtrasIdx`](crate::scene::tree::extras_idx::ExtrasIdx).
+/// **[`Self::LAST`] is a real ceiling.** A table addressed this way holds at most 65 535 rows and a row past that panics in release, naming the table: a plane's grid and scrollbar definitions, whose ids pack into a 16-bit layout payload.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct Idx16(NonZeroU16);

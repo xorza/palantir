@@ -1,5 +1,6 @@
 //! One drop or inset shadow behind a chrome or shape.
 
+use crate::primitives::math::animatable::PX_SETTLE_EPS;
 use crate::primitives::math::domain::{self, vec2};
 use crate::primitives::math::nan::{self, NanCheck};
 use crate::primitives::paint::color::RgbaF32;
@@ -15,18 +16,22 @@ use palantir_anim_derive::{Animatable, Lerp};
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable,
 )]
+#[animate(coerce = Self::coerce)]
 #[must_use]
 pub struct Shadow {
     /// Shadow color.
     pub color: RgbaF32,
     /// Shift in logical pixels.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
+    #[animate(settle_eps = PX_SETTLE_EPS)]
     pub offset: Vec2,
     /// Gaussian σ in logical pixels, half CSS's `blur-radius`.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[animate(settle_eps = PX_SETTLE_EPS)]
     pub blur: f32,
     /// Inflates a drop shadow's source rect, deflates an inset one's.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset")]
+    #[animate(settle_eps = PX_SETTLE_EPS)]
     pub spread: f32,
     /// Paints inside the chrome boundary rather than outside it.
     #[animate(snap)]
@@ -44,6 +49,12 @@ impl Shadow {
         vec2::lane(vec2::offset(self.offset));
         domain::lane(domain::length(self.blur));
         domain::lane(domain::offset(self.spread));
+    }
+
+    /// Coerce the blur to a length, as a curve overshooting below zero leaves it: CSS clamps an
+    /// interpolated value into its property's range (CSS Values 4, "Range Checking").
+    const fn coerce(&mut self) {
+        self.blur = domain::raised_to(self.blur, 0.0);
     }
 
     /// The "no shadow" sentinel; `const` for theme tables.

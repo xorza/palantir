@@ -19,7 +19,7 @@ use crate::primitives::packed::serde::{LaneCodec, TwoNode};
 #[must_use]
 pub struct Corners(F16x4);
 
-f16x4_lanes!(Corners, [tl, tr, br, bl]);
+f16x4_lanes!(Corners, [tl, tr, br, bl], floor = 0.0);
 
 impl Corners {
     /// Panics unless every radius is a [length](crate::widget::domain::length) and a

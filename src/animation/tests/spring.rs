@@ -92,7 +92,7 @@ fn closed_form_matches_the_analytic_solution_in_every_damping_regime() {
             spring.is_valid(),
             "{label}: fixture must be an accepted spring",
         );
-        let step = spring.step(1.0_f32, 0.0, 0.1);
+        let step = spring.step(&1.0_f32, &0.0, 0.1);
         assert!(!step.settled, "{label}: a unit displacement is not settled");
         domain::internals::assert_close(
             step.offset,
@@ -120,7 +120,7 @@ fn travel_does_not_depend_on_how_the_frames_partition_it() {
         let mut cur = 300.0_f32;
         let mut velocity = 0.0_f32;
         for _ in 0..steps {
-            let step = spring.step(cur, velocity, dt);
+            let step = spring.step(&cur, &velocity, dt);
             assert!(
                 !step.settled,
                 "fixture must stay in flight for the whole 0.1s"
@@ -151,7 +151,11 @@ fn travel_does_not_depend_on_how_the_frames_partition_it() {
 #[test]
 fn the_critically_damped_boundary_has_no_seam() {
     let stiffness = 100.0_f32;
-    let at = |damping: f32| Spring { stiffness, damping }.step(1.0_f32, 0.0, 0.1).offset;
+    let at = |damping: f32| {
+        Spring { stiffness, damping }
+            .step(&1.0_f32, &0.0, 0.1)
+            .offset
+    };
     let critical = at(20.0);
     for offset in [1e-3, 1e-4, 1e-5] {
         let under = at(20.0 - offset);
@@ -382,19 +386,19 @@ fn settling_waits_for_the_swing_to_fall_under_the_type_tolerance() {
         ("both near", 0.8e-4, k.sqrt() * 0.8e-4, false),
         ("f32 past a color's tolerance", 8e-5, 0.0, true),
     ] {
-        assert_eq!(spring(k).within_settle_eps(x, v), settled, "{label}");
+        assert_eq!(spring(k).within_settle_eps(&x, &v), settled, "{label}");
     }
     let red = |r: f32| RgbaF32::new(r, 0.0, 0.0, 0.0);
     assert!(
-        spring(k).within_settle_eps(red(5e-5), red(0.0)),
+        spring(k).within_settle_eps(&red(5e-5), &red(0.0)),
         "a color at 5e-5"
     );
     assert!(
-        !spring(k).within_settle_eps(red(8e-5), red(0.0)),
+        !spring(k).within_settle_eps(&red(8e-5), &red(0.0)),
         "a color at 8e-5"
     );
     assert!(
-        !spring(300.0).within_settle_eps(red(0.0), red(0.05)),
+        !spring(300.0).within_settle_eps(&red(0.0), &red(0.05)),
         "a bouncy color crossing its target",
     );
 }
@@ -462,7 +466,7 @@ fn color_spring_converges_to_target() {
     let distance = f64::from(
         target
             .to_motion()
-            .sub(start.to_motion())
+            .sub(&start.to_motion())
             .magnitude_squared(),
     )
     .sqrt();
@@ -520,7 +524,7 @@ fn solid_brush_spring_matches_color_trajectory() {
     let distance = f64::from(
         target
             .to_motion()
-            .sub(start.to_motion())
+            .sub(&start.to_motion())
             .magnitude_squared(),
     )
     .sqrt();

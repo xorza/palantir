@@ -2994,13 +2994,13 @@ widget::Activation
 
 widget::Animatable
     trait Animatable: Lerp + Clone + PartialEq + 'static
-        fn sub(self, other: Self) -> Self
-        fn add(self, other: Self) -> Self
-        fn scale(self, k: f32) -> Self
-        fn magnitude_squared(self) -> f32
-        fn settle_distance_squared(self) -> f32 { .. }
+        fn sub(&self, other: &Self) -> Self
+        fn add(&self, other: &Self) -> Self
+        fn scale(&self, k: f32) -> Self
+        fn magnitude_squared(&self) -> f32
+        fn settle_distance_squared(&self) -> f32 { .. }
         fn zero() -> Self
-        fn to_motion(self) -> Self { .. }
+        fn to_motion(&self) -> Self { .. }
         fn from_motion(motion: Self) -> Self { .. }
         fn normalize_for_spring(&mut self, _target: &Self, _velocity: &mut Self) { .. }
 
@@ -3141,8 +3141,8 @@ widget::ImageShape
 
 widget::Lerp
     trait Lerp: Sized
-        fn lerp(a: Self, b: Self, t: f32) -> Self
-        fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self) where Self: Clone { .. }
+        fn lerp(a: &Self, b: &Self, t: f32) -> Self
+        fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self) { .. }
 
 widget::LineCap
     enum LineCap: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq

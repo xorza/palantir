@@ -182,24 +182,6 @@ the reduction of complexity. Each batch stays inside one system, so one review c
 batch marked **API** changes the public surface and needs your go-ahead (AGENTS.md "Public
 API").
 
-### Batch 3. Close the domain under arithmetic (`primitives`, `theme`, `shape`, `text`)
-
-Root cause R7. Panics on reachable input.
-
-- `min_luminance_for` returns `InkFailsOnTint` before it does byte arithmetic, so
-  `try_dress` can fall back. Add tests of the refusal paths ✔ (PR-01, PR-24).
-- Clamp length lanes at zero where lerp and spring results come back (`Corners`, `Stroke`
-  width, `Shadow` blur) (PR-04).
-- A gradient stop validates against what it stores, or documents the clamp (PR-08).
-- `Widget::record` validates `Chrome` with `#[track_caller]`. Delete the NaN sanitizing in
-  `lower::chrome` (SC-02).
-- Widen the `bounds_table` index, or make its ceiling a documented coercion (SC-18).
-- Give `FamilyKeys` (LT-10) and `GlyphInk.bounds` (LT-09) a bound, with the case at the bound
-  handled.
-- Give pixel-valued springs a pixel settle tolerance. 1e-4 stays for unitless values (PR-03).
-- `Lerp`/`Animatable` take `&Self`, which removes the clones of heavy values (PR-02, UI-20,
-  **API**: the derive changes).
-
 ### Batch 4. Host scheduling and the agent protocol (`host/winit`, `host/harness`, `remote`, `window`)
 
 Root cause R5. CPU burn with several windows, and flaky agent steps.
@@ -257,7 +239,9 @@ Root cause R10. Each item is small and visible to the user.
 
 - Correct coverage for gamma and contrast, keyed on the text's luma, as gpui, WebRender and
   Skia do (GB-15). This changes every golden.
-- Set Inter's `opsz` to the font size in shaping, ink and raster (LT-14).
+- Set Inter's `opsz` to the font size in shaping, ink and raster (LT-14). The shape store then
+  reuses a shape across sizes only within one optical size: `TextShapeKey::shape_identity` must
+  carry it.
 
 ### Batch 8. One owner for widget and pane identity (`scene`, `cascade`, `layout`, `damage`, `renderer`)
 
@@ -338,6 +322,8 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   into one `Memory` with one `sweep(removed)`. Group the host seam (`window_requests`,
   `window_frame`, `gpu_pass_stats`, `waker`) into one struct (UI-16).
 - Decision 4: measure an eager `Response`, then decide (UI-10).
+- `Theme::lerp` still copies both ends each transition frame, for its text-axis hook to edit;
+  share the axes once when a run starts and blend the shared ends by reference (UI-20).
 - Remove the theme-transition spares (UI-19). Give each field of `FrameRuntime` one access
   path (UI-26). State the bounds of `repaint_wakes`, the input queue and `Watches` (UI-27).
   `faces_valid` takes `&self` (UI-28).
@@ -442,14 +428,13 @@ Prefixes:
 
 | Batch | Findings |
 |---|---|
-| 3 | PR-01 ✔, PR-02, PR-03, PR-04, PR-08, PR-24, SC-02, SC-18, LT-09, LT-10, UI-20 |
 | 4 | HS-01, HS-02, HS-03 ✔, HS-04, HS-10, HS-14, HS-16, HS-21, HS-22, HS-23 |
 | 5 | GA-03, GA-04, GB-01, GB-02, GB-03, GB-05, GB-10, GB-11, GB-12, GB-16, GB-21, GB-22, GB-23 |
 | 6 | WG-01 ✔, WG-02, WG-03 ✔, WG-04, WG-05, WG-06, WG-07, WG-08, WG-19, WG-20, WG-21, WG-26 |
 | 7 | GB-15, LT-14 |
 | 8 | SC-04, SC-05, SC-11, LT-04, RD-03, RD-04, RD-06, RD-08, RD-09, RD-19, RD-20 |
 | 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |
-| 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
+| 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11 | HS-05 to HS-09, HS-11 to HS-13, HS-15, HS-17 to HS-20, HS-24 to HS-26 |
 | 12 | LT-02, LT-03, LT-06, LT-07, LT-08, LT-11 to LT-13, LT-15 to LT-20 |
 | 13 | RD-01, RD-02, RD-05, RD-07, RD-10 to RD-18, RD-21, SC-06 to SC-10, SC-12 to SC-17 |

@@ -110,8 +110,8 @@ fn authoring_values_convert_to_their_brush_variants() {
 fn solid_solid_animatable_lerp_matches_color() {
     let a = RgbaF32::BLACK;
     let b = RgbaF32::WHITE;
-    let mid_color = RgbaF32::lerp(a, b, 0.5);
-    let mid_brush = Brush::lerp(Brush::Solid(a), Brush::Solid(b), 0.5);
+    let mid_color = RgbaF32::lerp(&a, &b, 0.5);
+    let mid_brush = Brush::lerp(&Brush::Solid(a), &Brush::Solid(b), 0.5);
     assert_eq!(mid_brush, Brush::Solid(mid_color));
 }
 
@@ -438,7 +438,7 @@ fn gradient_brush_lerp_switches_halfway() {
     ] {
         for (t, want) in [(0.0, &a), (0.49, &a), (0.5, &b), (1.0, &b)] {
             assert_eq!(
-                &Brush::lerp(a.clone(), b.clone(), t),
+                &Brush::lerp(&a.clone(), &b.clone(), t),
                 want,
                 "{a:?} → {b:?} at {t}"
             );

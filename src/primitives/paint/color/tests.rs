@@ -249,25 +249,25 @@ const OKLAB_TRIP: f64 = 5e-7;
 fn lerp_blends_in_premultiplied_oklab_and_overshoots() {
     let a = RgbaF32::new(1.0, 0.0, 0.5, 0.5);
     let b = RgbaF32::new(0.0, 1.0, 0.5, 0.0);
-    assert_eq!(Lerp::lerp(a, b, 0.0), a);
-    assert_eq!(Lerp::lerp(a, b, 1.0), b);
+    assert_eq!(Lerp::lerp(&a, &b, 0.0), a);
+    assert_eq!(Lerp::lerp(&a, &b, 1.0), b);
     let teal = RgbaF32::srgb(0.1, 0.6, 0.7);
-    assert_eq!(Lerp::lerp(teal, teal, 0.37), teal);
+    assert_eq!(Lerp::lerp(&teal, &teal, 0.37), teal);
     assert_color_close(
-        Lerp::lerp(a, b, 0.25),
+        Lerp::lerp(&a, &b, 0.25),
         [1.0, 0.0, 0.5, 0.375],
         OKLAB_TRIP,
         "a fade keeps its hue",
     );
     assert_color_close(
-        Lerp::lerp(a, b, 0.5),
+        Lerp::lerp(&a, &b, 0.5),
         [1.0, 0.0, 0.5, 0.25],
         OKLAB_TRIP,
         "a fade keeps its hue",
     );
 
     assert_color_close(
-        Lerp::lerp(RgbaF32::BLACK, RgbaF32::WHITE, 0.5),
+        Lerp::lerp(&RgbaF32::BLACK, &RgbaF32::WHITE, 0.5),
         [0.125, 0.125, 0.125, 1.0],
         OKLAB_TRIP,
         "the perceptual midpoint of a neutral",
@@ -278,18 +278,18 @@ fn lerp_blends_in_premultiplied_oklab_and_overshoots() {
         RgbaF32::new(0.0, 1.0, 0.0, 1.0),
     );
     assert_color_close(
-        Lerp::lerp(red, green, 0.5),
+        Lerp::lerp(&red, &green, 0.5),
         [0.631_818_39, 0.393_603_26, 0.000_136_99, 1.0],
         OKLAB_TRIP,
         "red to green",
     );
     assert_color_close(
-        Lerp::lerp(red, green, 2.0),
+        Lerp::lerp(&red, &green, 2.0),
         [-1.442_684_7, 1.918_345_5, -0.000_996_3, 1.0],
         4.0 * OKLAB_TRIP,
         "a capped overshoot, the trip's error scaled by the lanes' size",
     );
-    assert_eq!(Lerp::lerp(a, b, 2.0), RgbaF32::new(0.0, 0.0, 0.0, -0.5));
+    assert_eq!(Lerp::lerp(&a, &b, 2.0), RgbaF32::new(0.0, 0.0, 0.0, -0.5));
 }
 
 /// A tween that overshoots toward a nearly transparent color stays bounded: opaque red to blue at
@@ -308,7 +308,7 @@ fn an_overshoot_toward_a_nearly_transparent_color_stays_bounded() {
         (1.05, [-0.004_136_568, 0.000_574_980, 0.004_291_076]),
         (1.052, [-0.001_445_063, 0.000_268_546, 0.001_034_874]),
     ] {
-        let got = Lerp::lerp(red, faint_blue, t);
+        let got = Lerp::lerp(&red, &faint_blue, t);
         for (lane, (channel, want)) in [got.r, got.g, got.b].into_iter().zip(painted).enumerate() {
             domain::internals::assert_close(
                 channel * got.a,
@@ -333,14 +333,14 @@ fn an_overshoot_toward_a_nearly_transparent_color_stays_bounded() {
         RgbaF32::new(2.0, 2.0, 2.0, 1.0),
         RgbaF32::new(2.0, 2.0, 2.0, 0.5),
     );
-    assert_eq!(Lerp::lerp(hdr, faint_hdr, 1.0), faint_hdr);
+    assert_eq!(Lerp::lerp(&hdr, &faint_hdr, 1.0), faint_hdr);
     assert_eq!(
-        Lerp::lerp(hdr, hdr, 0.5),
+        Lerp::lerp(&hdr, &hdr, 0.5),
         hdr,
         "an equal pair does not move"
     );
     assert_color_close(
-        Lerp::lerp(hdr, faint_hdr, 0.5),
+        Lerp::lerp(&hdr, &faint_hdr, 0.5),
         [0.999_999_94, 1.000_000_1, 0.999_999_34, 0.75],
         OKLAB_TRIP,
         "an HDR neutral capped at white",
@@ -423,8 +423,8 @@ fn lowering_clamps_what_a_tween_overshoots() {
         })
         .unwrap();
     let peak = Lerp::lerp(
-        RgbaF32::TRANSPARENT,
-        RgbaF32::WHITE,
+        &RgbaF32::TRANSPARENT,
+        &RgbaF32::WHITE,
         Easing::OutBack.apply(t),
     );
     assert!(

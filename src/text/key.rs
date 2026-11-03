@@ -133,7 +133,8 @@ impl TextShapeKey {
 
     /// What the run's shape depends on: its text and face, not its size, leading, width or
     /// fit. Shaping runs unhinted, so cosmic-text's glyphs are in em units, and two keys of
-    /// one identity shape alike.
+    /// one identity shape alike. Holds while shaping sets no font axis that follows the size,
+    /// as an optical size (`opsz`) would: one that does must join the identity.
     pub(super) const fn shape_identity(self) -> ShapeIdentity {
         ShapeIdentity {
             text_hash: self.text_hash,

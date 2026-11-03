@@ -62,7 +62,7 @@ pub struct PaintRange {
 impl PaintRange {
     /// The value at the curve's output `t`.
     fn at(self, t: f32) -> f32 {
-        f32::lerp(self.from, self.to, t)
+        f32::lerp(&self.from, &self.to, t)
     }
 }
 

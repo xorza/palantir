@@ -194,6 +194,6 @@ fn one_share_places_the_knob_and_blends_its_ink() {
     let ShapeBrush::Solid(fill) = chrome.fill else {
         panic!("the knob is a solid fill");
     };
-    let ink = Lerp::lerp(Palette::DARK.text, Palette::DARK.on_accent, 0.16);
+    let ink = Lerp::lerp(&Palette::DARK.text, &Palette::DARK.on_accent, 0.16);
     assert_eq!(fill, ink.to_f16());
 }

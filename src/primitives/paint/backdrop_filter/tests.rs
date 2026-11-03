@@ -247,15 +247,15 @@ fn an_absent_floor_or_lens_blends_through_its_neutral() {
     let plain = BackdropFilter::blur(4.0);
     let floored = plain.with_min_luminance(0.4);
     assert_eq!(
-        BackdropFilter::lerp(floored, plain, 0.5).min_luminance,
+        BackdropFilter::lerp(&floored, &plain, 0.5).min_luminance,
         Some(0.2)
     );
-    assert_eq!(BackdropFilter::lerp(floored, plain, 0.0), floored);
-    assert_eq!(BackdropFilter::lerp(floored, plain, 1.0), plain);
+    assert_eq!(BackdropFilter::lerp(&floored, &plain, 0.0), floored);
+    assert_eq!(BackdropFilter::lerp(&floored, &plain, 1.0), plain);
     assert_eq!(
         BackdropFilter::lerp(
-            BackdropFilter::NONE,
-            BackdropFilter::glass(Lens::WINDOW_GLASS),
+            &BackdropFilter::NONE,
+            &BackdropFilter::glass(Lens::WINDOW_GLASS),
             0.25
         )
         .lens,
@@ -269,14 +269,14 @@ fn an_absent_floor_or_lens_blends_through_its_neutral() {
     );
     let ceiling = plain.with_max_luminance(0.5);
     assert_eq!(
-        BackdropFilter::lerp(ceiling, plain, 0.49).max_luminance,
+        BackdropFilter::lerp(&ceiling, &plain, 0.49).max_luminance,
         Some(0.5)
     );
     assert_eq!(
-        BackdropFilter::lerp(ceiling, plain, 0.5).max_luminance,
+        BackdropFilter::lerp(&ceiling, &plain, 0.5).max_luminance,
         None
     );
-    let neither = BackdropFilter::lerp(BackdropFilter::blur(2.0), plain, 0.5);
+    let neither = BackdropFilter::lerp(&BackdropFilter::blur(2.0), &plain, 0.5);
     assert_eq!(neither, BackdropFilter::blur(3.0));
 }
 
@@ -356,6 +356,46 @@ fn a_floor_for_an_ink_holds_it_at_the_text_contrast() {
     let thick = RgbaF32::hex(0xe4e6e8).with_alpha(0.72);
     let clear = BackdropFilter::frosted(20.0).with_min_luminance_for(ink, thick);
     assert_eq!(clear.min_luminance, Some(0.0));
+}
+
+/// Every refusal of a bound comes back as its case, none as a panic. A floor for `#808080`
+/// (`Y ≈ 0.2159`) needs a ground of `4.5 · 0.2659 − 0.05 ≈ 1.147`, past white, so no tint holds
+/// it; one for black over a black tint needs about 0.175, which the tint's 0 misses. A ceiling for
+/// `#202020` (`Y ≈ 0.0144`) needs `0.0644 / 4.5 − 0.05 < 0`, where no level lies; one for white
+/// needs about 0.183, which a white tint's 1 exceeds.
+#[test]
+fn each_refused_bound_returns_its_case() {
+    use crate::primitives::paint::backdrop_filter::InkBound;
+    let filter = BackdropFilter::frosted(20.0);
+    let half = |hex: u32| RgbaF32::hex(hex).with_alpha(0.5);
+    let floors = [
+        (0x808080, half(0xffffff), InkBound::InkFailsOnTint),
+        (0x000000, half(0x000000), InkBound::InkFailsOnTint),
+        (
+            0x000000,
+            RgbaF32::hex(0xffffff),
+            InkBound::TintNotTranslucent { alpha: 1.0 },
+        ),
+    ];
+    for (ink, tint, want) in floors {
+        assert_eq!(
+            filter.min_luminance_for(RgbaF32::hex(ink), tint),
+            Err(want),
+            "floor for {ink:06x}"
+        );
+    }
+    assert_eq!(
+        filter.max_luminance_for(RgbaF32::hex(0xffffff), half(0xffffff)),
+        Err(InkBound::InkFailsOnTint),
+        "ceiling for white over white"
+    );
+    assert!(
+        matches!(
+            filter.max_luminance_for(RgbaF32::hex(0x202020), half(0x000000)),
+            Err(InkBound::InkTooDark { .. })
+        ),
+        "ceiling for a dark grey"
+    );
 }
 
 /// IEC 61966-2-1 in `f64`, written out here as a reference apart from palantir's own.

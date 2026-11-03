@@ -47,15 +47,15 @@ fn a_lerp_ends_on_either_theme() {
         Theme::stock(ColorScheme::Dark),
         Theme::stock(ColorScheme::Light),
     );
-    assert_eq!(Theme::lerp(dark.clone(), light.clone(), 0.0), dark);
-    assert_eq!(Theme::lerp(dark.clone(), light.clone(), 1.0), light);
-    assert_ne!(Theme::lerp(dark.clone(), light.clone(), 0.5), dark);
+    assert_eq!(Theme::lerp(&dark.clone(), &light, 0.0), dark);
+    assert_eq!(Theme::lerp(&dark, &light.clone(), 1.0), light);
+    assert_ne!(Theme::lerp(&dark.clone(), &light, 0.5), dark);
 
     for factor in [1.0, 0.5, 2.0] {
         let mut scaled = light.clone();
         scaled.scale_text(factor);
         for t in [0.25, 0.5, 0.75] {
-            let mut step = Theme::lerp(dark.clone(), scaled.clone(), t);
+            let mut step = Theme::lerp(&dark.clone(), &scaled.clone(), t);
             assert!(step.faces_valid(1.0), "{factor}× at {t}");
         }
     }
@@ -87,7 +87,7 @@ fn the_midpoint_of_a_built_pair_blends_every_value() {
     b.tooltip.max_size = Size::new(320.0, 200.0);
     b.window_bg = RED;
 
-    let mid = Theme::lerp(a.clone(), b, 0.5);
+    let mid = Theme::lerp(&a, &b, 0.5);
     // 1 + 2·½ = 2.
     assert_eq!(mid.focus_ring.width, 2.0);
     // (4, 4, 4, 4) + ((8, 12, 8, 12) − (4, 4, 4, 4))·½.
@@ -106,7 +106,7 @@ fn the_midpoint_of_a_built_pair_blends_every_value() {
     assert_eq!(mid.menu.panel.corners, Corners::all(6.0));
     // 280 + 40·½ = 300; the unbounded height switches to `b`'s at ½.
     assert_eq!(mid.tooltip.max_size, Size::new(300.0, 200.0));
-    assert_eq!(mid.window_bg, RgbaF32::lerp(a.window_bg, RED, 0.5),);
+    assert_eq!(mid.window_bg, RgbaF32::lerp(&a.window_bg, &RED, 0.5),);
     assert_ne!(mid.window_bg, a.window_bg);
     assert_eq!(mid.slider, a.slider);
     assert_eq!(mid.tabs, a.tabs);
@@ -134,7 +134,7 @@ fn values_with_no_blend_switch_halfway() {
         !a.button.unselected.normal.chrome.shadow.inset;
 
     for (t, want) in [(0.25, &a), (0.49, &a), (0.5, &b), (0.75, &b)] {
-        let mix = Theme::lerp(a.clone(), b.clone(), t);
+        let mix = Theme::lerp(&a.clone(), &b.clone(), t);
         assert_eq!(mix.panel_clip, want.panel_clip, "{t}");
         assert_eq!(mix.tabs.close_shown, want.tabs.close_shown, "{t}");
         assert_eq!(mix.spinner.period, want.spinner.period, "{t}");
@@ -162,12 +162,12 @@ fn an_appearing_panel_chrome_is_half_there_halfway() {
     a.panel_chrome = None;
     let mut b = a.clone();
     b.panel_chrome = Some(Chrome::fill(RED));
-    let mid = Theme::lerp(a, b, 0.5)
+    let mid = Theme::lerp(&a, &b, 0.5)
         .panel_chrome
         .expect("a blend, not an absence");
     assert_eq!(
         mid.fill,
-        RgbaF32::lerp(RgbaF32::TRANSPARENT, RED, 0.5).into()
+        RgbaF32::lerp(&RgbaF32::TRANSPARENT, &RED, 0.5).into()
     );
     let Brush::Solid(fill) = mid.fill else {
         panic!("a solid fill blends to a solid fill");
@@ -198,31 +198,34 @@ fn a_text_axis_one_end_leaves_to_the_ambient_blends_from_it() {
     a.button.unselected.hovered.text = named;
     b.button.unselected.hovered.text = TextStyleOverrides::NONE;
 
-    let mid = Theme::lerp(a.clone(), b.clone(), 0.5);
+    let mid = Theme::lerp(&a, &b, 0.5);
     let appearing = mid.button.unselected.normal.text;
     assert_eq!(
         appearing.color,
-        Some(RgbaF32::lerp(RgbaF32::WHITE, RED, 0.5))
+        Some(RgbaF32::lerp(&RgbaF32::WHITE, &RED, 0.5))
     );
     // 14 + (20 − 14)·½ = 17.
     assert_eq!(appearing.font_size, Some(17.0));
     assert_eq!(appearing.family, Some(FontFamily::MONO));
     let leaving = mid.button.unselected.hovered.text;
-    assert_eq!(leaving.color, Some(RgbaF32::lerp(RED, RgbaF32::BLACK, 0.5)));
+    assert_eq!(
+        leaving.color,
+        Some(RgbaF32::lerp(&RED, &RgbaF32::BLACK, 0.5))
+    );
     // 20 + (18 − 20)·½ = 19.
     assert_eq!(leaving.font_size, Some(19.0));
-    let early = Theme::lerp(a, b, 0.49);
+    let early = Theme::lerp(&a, &b, 0.49);
     assert_eq!(
         early.button.unselected.normal.text.family,
         Some(FontFamily::SANS)
     );
 
     assert_eq!(
-        TextStyleOverrides::lerp(TextStyleOverrides::NONE, named, 0.49),
+        TextStyleOverrides::lerp(&TextStyleOverrides::NONE, &named, 0.49),
         TextStyleOverrides::NONE
     );
     assert_eq!(
-        TextStyleOverrides::lerp(TextStyleOverrides::NONE, named, 0.5),
+        TextStyleOverrides::lerp(&TextStyleOverrides::NONE, &named, 0.5),
         named
     );
 }
@@ -277,7 +280,7 @@ fn a_blend_in_place_is_the_blend() {
         let (mut shared_from, mut shared_to) = (from.clone(), to.clone());
         Theme::share_text_axes(&mut shared_from, &mut shared_to);
         for t in [0.0, 0.1, 0.37, 0.49, 0.5, 0.9, 1.0] {
-            let want = exact(&Theme::lerp(from.clone(), to.clone(), t));
+            let want = exact(&Theme::lerp(&from, &to, t));
             let mut out = Theme::stock(ColorScheme::Light);
             out.scale_text(0.5);
             Theme::lerp_into(&from, &to, t, &mut out);

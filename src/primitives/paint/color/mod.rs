@@ -79,7 +79,8 @@ impl Lerp for RgbaF32 {
     /// The ends are exact: `t` of 0 or 1, or two equal ends, return an end with no round trip
     /// through Oklab, so a color two themes share stays itself through their lerp.
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
+        let (a, b) = (*a, *b);
         if t == 0.0 {
             return a;
         }
@@ -92,7 +93,7 @@ impl Lerp for RgbaF32 {
 
 impl Animatable for RgbaF32 {
     #[inline]
-    fn sub(self, other: Self) -> Self {
+    fn sub(&self, other: &Self) -> Self {
         Self::new(
             self.r - other.r,
             self.g - other.g,
@@ -102,7 +103,7 @@ impl Animatable for RgbaF32 {
     }
 
     #[inline]
-    fn add(self, other: Self) -> Self {
+    fn add(&self, other: &Self) -> Self {
         Self::new(
             self.r + other.r,
             self.g + other.g,
@@ -112,17 +113,17 @@ impl Animatable for RgbaF32 {
     }
 
     #[inline]
-    fn scale(self, k: f32) -> Self {
+    fn scale(&self, k: f32) -> Self {
         Self::new(self.r * k, self.g * k, self.b * k, self.a * k)
     }
 
     #[inline]
-    fn magnitude_squared(self) -> f32 {
+    fn magnitude_squared(&self) -> f32 {
         self.r * self.r + self.g * self.g + self.b * self.b + self.a * self.a
     }
 
     #[inline]
-    fn settle_distance_squared(self) -> f32 {
+    fn settle_distance_squared(&self) -> f32 {
         self.magnitude_squared() / (SETTLE_EPS * SETTLE_EPS)
     }
 
@@ -132,8 +133,8 @@ impl Animatable for RgbaF32 {
     }
 
     #[inline]
-    fn to_motion(self) -> Self {
-        let lab = Oklab::from_color(self).scale(self.a);
+    fn to_motion(&self) -> Self {
+        let lab = Oklab::from_color(*self).scale(self.a);
         Self::new(lab.l, lab.a, lab.b, self.a)
     }
 

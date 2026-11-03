@@ -36,6 +36,14 @@ struct Scaled {
     b: f32,
 }
 
+/// A field naming its own tolerance beside one in its type's: `0.25`, a power of two.
+#[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
+struct FieldTolerance {
+    #[animate(settle_eps = 0.25)]
+    px: f32,
+    unit_free: f32,
+}
+
 /// Two fields, each settling in its own unit.
 #[derive(Clone, Copy, Debug, PartialEq, Lerp, Animatable)]
 struct Mixed {
@@ -90,10 +98,10 @@ fn derived_methods_split_animated_from_snapped_fields() {
         label: 3,
         mode: 5,
     };
-    assert_eq!(Probe::lerp(a, b, 0.25), quarter);
+    assert_eq!(Probe::lerp(&a, &b, 0.25), quarter);
     // 1 + 4·½ = 3; (4, 2); 14; the snap fields switch to `b` at ½.
     assert_eq!(
-        Probe::lerp(a, b, 0.5),
+        Probe::lerp(&a, &b, 0.5),
         Probe {
             x: 3.0,
             v: Vec2::new(4.0, 2.0),
@@ -101,10 +109,10 @@ fn derived_methods_split_animated_from_snapped_fields() {
             ..b
         },
     );
-    assert_eq!(Probe::lerp(a, b, 0.0), a);
-    assert_eq!(Probe::lerp(a, b, 1.0), b);
+    assert_eq!(Probe::lerp(&a, &b, 0.0), a);
+    assert_eq!(Probe::lerp(&a, &b, 1.0), b);
     assert_eq!(
-        b.sub(a),
+        b.sub(&a),
         Probe {
             x: 4.0,
             v: Vec2::new(4.0, -4.0),
@@ -112,7 +120,7 @@ fn derived_methods_split_animated_from_snapped_fields() {
         },
     );
     assert_eq!(
-        a.add(b),
+        a.add(&b),
         Probe {
             x: 6.0,
             v: Vec2::new(8.0, 4.0),
@@ -143,15 +151,15 @@ fn derived_methods_split_animated_from_snapped_fields() {
 
     // The hook sees both ends past the exact ones: at ¼ it reads ¾ of the way, 1 + 4·¾ = 4.
     let (p, q) = (Hooked { x: 1.0 }, Hooked { x: 5.0 });
-    assert_eq!(Hooked::lerp(p, q, 0.25), Hooked { x: 4.0 });
-    assert_eq!(Hooked::lerp(p, q, 0.0), p);
-    assert_eq!(Hooked::lerp(p, q, 1.0), q);
+    assert_eq!(Hooked::lerp(&p, &q, 0.25), Hooked { x: 4.0 });
+    assert_eq!(Hooked::lerp(&p, &q, 0.0), p);
+    assert_eq!(Hooked::lerp(&p, &q, 1.0), q);
 
     // All snap: no arithmetic at all, and a zero magnitude.
     let (p, q) = (AllSnap { a: 1, b: 2 }, AllSnap { a: 3, b: 4 });
-    assert_eq!(AllSnap::lerp(p, q, 0.49), p);
-    assert_eq!(AllSnap::lerp(p, q, 0.5), q);
-    assert_eq!(p.sub(q), p);
+    assert_eq!(AllSnap::lerp(&p, &q, 0.49), p);
+    assert_eq!(AllSnap::lerp(&p, &q, 0.5), q);
+    assert_eq!(p.sub(&q), p);
     assert_eq!(p.magnitude_squared(), 0.0);
     assert_eq!(AllSnap::zero(), AllSnap { a: 0, b: 0 });
 
@@ -162,7 +170,7 @@ fn derived_methods_split_animated_from_snapped_fields() {
     };
     assert_eq!(pair.magnitude_squared(), 25.0);
     assert_eq!(
-        Pair::lerp(pair, Pair::zero(), 0.5),
+        Pair::lerp(&pair, &Pair::zero(), 0.5),
         Pair {
             first: 1.5,
             second: 2.0,
@@ -182,4 +190,14 @@ fn derived_settle_distance_measures_each_field_in_its_own_unit() {
     };
     assert_eq!(mixed.settle_distance_squared(), 101.0);
     assert_eq!(AllSnap { a: 1, b: 2 }.settle_distance_squared(), 0.0);
+    // A field's own tolerance divides its magnitude alone: `1² / 0.25² = 16`, beside the `f32`
+    // field's `(5e-5 / 1e-4)² = 0.25`.
+    let field = FieldTolerance {
+        px: 1.0,
+        unit_free: 5e-5,
+    };
+    assert_eq!(
+        field.settle_distance_squared(),
+        16.0 + (5e-5_f32 * 5e-5) / (1e-4 * 1e-4)
+    );
 }

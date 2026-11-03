@@ -114,11 +114,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
         // never does: such a target would retarget and repaint every frame. Through `sub`, so
         // `inf - inf` is caught too.
         assert!(
-            target
-                .clone()
-                .sub(target.clone())
-                .magnitude_squared()
-                .is_finite(),
+            target.sub(&target).magnitude_squared().is_finite(),
             "animation target of {id:?} {slot:?} is not finite",
         );
 
@@ -171,7 +167,7 @@ impl<T: Animatable> AnimationMapTyped<T> {
             // `OutBack` short where it crosses the target toward the overshoot.
             if row
                 .motion
-                .close_enough(animation_row::offset(&cur, &row.target))
+                .close_enough(&animation_row::offset(&cur, &row.target))
             {
                 row.motion.stop();
                 row.settled = true;

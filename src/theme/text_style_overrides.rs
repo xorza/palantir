@@ -189,7 +189,8 @@ impl TextStyleOverrides {
 /// first gives that end its ambient's value (`Theme::share_text_axes`).
 impl Lerp for TextStyleOverrides {
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
+        let (a, b) = (*a, *b);
         if t == 0.0 {
             return a;
         }
@@ -211,7 +212,7 @@ impl Lerp for TextStyleOverrides {
 #[inline]
 fn lerp_axis<T: Lerp>(a: Option<T>, b: Option<T>, t: f32) -> Option<T> {
     match (a, b) {
-        (Some(a), Some(b)) => Some(T::lerp(a, b, t)),
+        (Some(a), Some(b)) => Some(T::lerp(&a, &b, t)),
         (a, b) => switch_axis(a, b, t),
     }
 }

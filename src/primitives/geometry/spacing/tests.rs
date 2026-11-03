@@ -151,21 +151,24 @@ fn lanes_blend_and_add_one_by_one() {
         Spacing::new(4.0, 6.0, 8.0, 16.0),
     );
     // 0 + 4·¼ = 1, 2 + 4·¼ = 3, 4 + 4·¼ = 5, 8 + 8·¼ = 10.
-    assert_eq!(Spacing::lerp(a, b, 0.25), Spacing::new(1.0, 3.0, 5.0, 10.0));
-    assert_eq!(Spacing::lerp(a, b, 0.0), a);
-    assert_eq!(Spacing::lerp(a, b, 1.0), b);
-    assert_eq!(b.sub(a), Spacing::new(4.0, 4.0, 4.0, 8.0));
-    assert_eq!(a.add(b.sub(a)), b);
+    assert_eq!(
+        Spacing::lerp(&a, &b, 0.25),
+        Spacing::new(1.0, 3.0, 5.0, 10.0)
+    );
+    assert_eq!(Spacing::lerp(&a, &b, 0.0), a);
+    assert_eq!(Spacing::lerp(&a, &b, 1.0), b);
+    assert_eq!(b.sub(&a), Spacing::new(4.0, 4.0, 4.0, 8.0));
+    assert_eq!(a.add(&b.sub(&a)), b);
     assert_eq!(b.scale(0.5), Spacing::new(2.0, 3.0, 4.0, 8.0));
     // 0² + 2² + 4² + 8² = 84.
     assert_eq!(a.magnitude_squared(), 84.0);
     assert_eq!(
-        Spacing::all(60000.0).add(Spacing::all(60000.0)),
+        Spacing::all(60000.0).add(&Spacing::all(60000.0)),
         Spacing::all(65504.0)
     );
 
     let (c, d) = (Corners::all(2.0), Corners::new(6.0, 10.0, 2.0, 0.0));
     // 2 + 4·½ = 4, 2 + 8·½ = 6, 2, 2 − 2·½ = 1.
-    assert_eq!(Corners::lerp(c, d, 0.5), Corners::new(4.0, 6.0, 2.0, 1.0));
-    assert_eq!(Corners::lerp(c, d, 1.0), d);
+    assert_eq!(Corners::lerp(&c, &d, 0.5), Corners::new(4.0, 6.0, 2.0, 1.0));
+    assert_eq!(Corners::lerp(&c, &d, 1.0), d);
 }

@@ -1,5 +1,6 @@
 //! A line's color and width, as a border or as a path's stroke.
 
+use crate::primitives::math::animatable::PX_SETTLE_EPS;
 use crate::primitives::math::domain;
 use crate::primitives::math::domain::is_invisible;
 use crate::primitives::math::nan::NanCheck;
@@ -12,11 +13,13 @@ use palantir_anim_derive::{Animatable, Lerp};
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Lerp, Animatable,
 )]
+#[animate(coerce = Self::coerce)]
 pub struct Stroke {
     /// Ink color.
     pub color: RgbaF32,
     /// Width in logical pixels.
     #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[animate(settle_eps = PX_SETTLE_EPS)]
     pub width: f32,
 }
 
@@ -27,6 +30,12 @@ impl Stroke {
     pub(crate) const fn validate(&self) {
         domain::length(self.width);
         let _ = domain::color(self.color);
+    }
+
+    /// Coerce the width to a length, as a curve overshooting below zero leaves it, as
+    /// [`Shadow`](crate::Shadow)'s blur is.
+    const fn coerce(&mut self) {
+        self.width = domain::raised_to(self.width, 0.0);
     }
 
     /// The "no stroke" sentinel: width 0, transparent; `Stroke::default()` but `const`.

@@ -278,10 +278,13 @@ what was rejected and why, and what is still open. What was kept is in the commi
   derive overrides field by field, and a run that shares its ends' text axes once: a frame
   cloned both 28 KiB themes for the by-value `lerp`, moved each part again at every nesting
   level and walked every text slot to share axes the run's ends fix (the fanless's `sample`: 19 µs a
-  frame in `ThemeTransition::advance`, a third of it `memmove`). Refused: `lerp` by reference
-  in place of by value, a break of every impl for one caller. A test holds the blend in place to
-  `Theme::lerp`, bit for bit through RON. `cpu/theming` −2.6 % local, −2.0 % fanless; the rest
-  within each host's floor.
+  frame in `ThemeTransition::advance`, a third of it `memmove`). A test holds the blend in place
+  to `Theme::lerp`, bit for bit through RON. `cpu/theming` −2.6 % local, −2.0 % fanless; the rest
+  within each host's floor. Since then `lerp` and every `Animatable` method borrow their
+  operands too, as Bevy's `Animatable::interpolate` reads its ends, which also drops the clones
+  of the animation engine's spring step, offset and settle checks; `lerp_into` stays for the
+  parts it writes in place. Refused at first as a break of every impl for one caller, before the
+  engine's clones were counted. Not measured since.
 
 - **The blur residual's loop follows the device** (run 6). `ResidualLoop::One` on Broadcom's
   VideoCore, one loop that mirrors each read where the window crosses the level's edge;

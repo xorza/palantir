@@ -44,7 +44,7 @@ impl Spring {
     /// floor suits both slow and bouncy springs, since a swing of amplitude `A`
     /// crosses the target at `A·ω`; the bound uses the spring's own `ω² = k`.
     #[inline]
-    pub(super) fn within_settle_eps<T: Animatable>(self, displacement: T, velocity: T) -> bool {
+    pub(super) fn within_settle_eps<T: Animatable>(self, displacement: &T, velocity: &T) -> bool {
         displacement.settle_distance_squared()
             + self.velocity_reach(velocity).settle_distance_squared()
             < 1.0
@@ -54,7 +54,7 @@ impl Spring {
     /// the value (see [`Self::within_settle_eps`]). Scaled before squaring so a stiff
     /// spring cannot overflow.
     #[inline]
-    pub(super) fn velocity_reach<T: Animatable>(self, velocity: T) -> T {
+    pub(super) fn velocity_reach<T: Animatable>(self, velocity: &T) -> T {
         velocity.scale(self.stiffness.sqrt().recip())
     }
 
@@ -84,22 +84,19 @@ impl Spring {
     /// precision: the caller paints `target + offset`, rounded once and never fed
     /// back, so the decay reaches the settle tolerance however large the value is.
     /// A settled step is at rest, with zero offset and velocity.
-    pub(super) fn step<T: Animatable>(self, offset: T, velocity: T, dt: f32) -> SpringStep<T> {
+    pub(super) fn step<T: Animatable>(self, offset: &T, velocity: &T, dt: f32) -> SpringStep<T> {
         debug_assert!(
             dt.is_finite() && dt >= 0.0,
             "a step is a finite delta, not {dt}"
         );
         let transition = SpringTransition::new(self, dt);
-        // `T: Animatable` is `Clone`, not `Copy`, so heavyweights like `Chrome`
-        // are only `Copy` when their fields are; scalar clones compile to noops.
         let moved = offset
-            .clone()
             .scale(transition.pos_from_pos)
-            .add(velocity.clone().scale(transition.pos_from_velocity));
+            .add(&velocity.scale(transition.pos_from_velocity));
         let velocity = velocity
             .scale(transition.velocity_from_velocity)
-            .add(offset.scale(transition.velocity_from_pos));
-        if self.within_settle_eps(moved.clone(), velocity.clone()) {
+            .add(&offset.scale(transition.velocity_from_pos));
+        if self.within_settle_eps(&moved, &velocity) {
             return SpringStep {
                 offset: T::zero(),
                 velocity: T::zero(),

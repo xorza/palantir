@@ -225,7 +225,7 @@ fn sample(texels: &[RgbaF32], size: UVec2, u: f32, v: f32) -> RgbaF32 {
     } = axis(v, size.y);
     let x1 = (x + 1).min(size.x - 1);
     let y1 = (y + 1).min(size.y - 1);
-    let mix = |a: RgbaF32, b: RgbaF32, t: f32| Lerp::lerp(a, b, t);
+    let mix = |a: RgbaF32, b: RgbaF32, t: f32| Lerp::lerp(&a, &b, t);
     let top = mix(
         texels[(y * size.x + x) as usize],
         texels[(y * size.x + x1) as usize],

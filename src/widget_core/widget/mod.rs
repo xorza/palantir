@@ -269,12 +269,21 @@ impl Widget {
     /// Open this widget's node, run its body, and close it; the crate's one opener.
     /// `chrome` is `None` for chrome-less widgets, `Some(chrome)` for a painted one; both it
     /// and the node pass by reference down to `Node::cols`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `chrome` is valid, as [`Chrome`]'s setters check it: the door every chrome
+    /// passes, so a widget built outside the crate draws none quietly wrong.
+    #[track_caller]
     pub fn record<R>(
         mut self,
         ui: &mut Ui,
         chrome: Option<&Chrome>,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> R {
+        if let Some(chrome) = chrome {
+            chrome.validate();
+        }
         let resolved = self.resolved(ui);
         ui.open_node(resolved, &self.node, chrome);
         let r = body(ui);
@@ -285,6 +294,11 @@ impl Widget {
     /// [`Self::record`] plus a lazy [`Response`] for the node just recorded, for
     /// decorative widgets. A widget that acts on input opens with [`Self::response`]
     /// and closes with [`Response::new`] instead.
+    ///
+    /// # Panics
+    ///
+    /// As [`Self::record`].
+    #[track_caller]
     pub fn show<'a, R>(
         mut self,
         ui: &'a mut Ui,

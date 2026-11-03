@@ -26,6 +26,6 @@ pub(super) const fn is_valid(secs: f32) -> bool {
 ///
 /// The spring's tolerance ([`Animatable::settle_distance_squared`]): any visible change runs the full curve; only sub-perceptual drift (ulp rounding in theme math) snaps. Duration rows carry no velocity, so this is position-only, checked on retarget; completion is `MotionRow::advance`'s `progress >= 1` arm.
 #[inline]
-pub(super) fn within_snap_eps<T: Animatable>(displacement: T) -> bool {
+pub(super) fn within_snap_eps<T: Animatable>(displacement: &T) -> bool {
     displacement.settle_distance_squared() < 1.0
 }

@@ -23,11 +23,15 @@ use syn::{
 ///   from it, as Flutter's `ThemeData.lerp` and CSS's discrete animation type switch.
 /// - `#[animate(lerp_only)]` blends as an unmarked field does; it matters to `Animatable`.
 ///
-/// Struct attribute: `#[animate(before_lerp = PATH)]` names a `fn(&mut Self, &mut Self)` that
-/// `lerp` runs on its two ends before it blends them, past the exact ends: a value whose fields
-/// blend against context another field holds, as a theme's text overrides fold onto its
-/// ambient style. `lerp_into` runs it on copies of the ends, and an inherent `lerp_ends_into`
-/// blends ends it already ran on, for a caller that blends one pair at many phases.
+/// Struct attributes:
+/// - `#[animate(before_lerp = PATH)]` names a `fn(&mut Self, &mut Self)` that `lerp` runs on its
+///   two ends before it blends them, past the exact ends: a value whose fields blend against
+///   context another field holds, as a theme's text overrides fold onto its ambient style.
+///   `lerp_into` runs it on copies of the ends, and an inherent `lerp_ends_into` blends ends it
+///   already ran on, for a caller that blends one pair at many phases.
+/// - `#[animate(coerce = PATH)]` names a `fn(&mut Self)` that `lerp` and `lerp_into` run on the
+///   blend, past the exact ends: a value with a floor, as a width a curve overshooting below zero
+///   would leave negative. `Animatable` runs it on `from_motion` too.
 #[proc_macro_derive(Lerp, attributes(animate))]
 pub fn derive_lerp(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -46,10 +50,15 @@ pub fn derive_lerp(input: TokenStream) -> TokenStream {
 /// - `#[animate(lerp_only)]`, a value that blends in `lerp` but takes the target at once in
 ///   motion, as a snap field does: one whose every step costs work a fade should not pay, as a
 ///   font size reshapes its text. `zero` is its own.
+/// - `#[animate(settle_eps = EXPR)]` on an animated field: its settle tolerance in its own unit,
+///   where its type's is unit-free, as a width in pixels held in an `f32`.
 ///
-/// Struct attribute: `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own
-/// unit (`settle_distance_squared` = `magnitude_squared / EXPR²`); without it, the animated
-/// fields' own sum.
+/// Struct attributes:
+/// - `#[animate(settle_eps = EXPR)]` sets one settle tolerance in the value's own unit
+///   (`settle_distance_squared` = `magnitude_squared / EXPR²`); without it, the animated fields'
+///   own sum.
+/// - `#[animate(coerce = PATH)]`, as `Lerp` reads it: `from_motion` runs it on the value it
+///   returns, so a spring or an eased motion that overshoots lands in the value's domain.
 #[proc_macro_derive(Animatable, attributes(animate))]
 pub fn derive_animatable(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -90,17 +99,23 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let fields = named_fields(input, "Lerp")?;
-    let ContainerOptions { before_lerp, .. } = ContainerOptions::of(input)?;
+    let ContainerOptions {
+        before_lerp,
+        coerce,
+        ..
+    } = ContainerOptions::of(input)?;
 
     let mut blend = Vec::new();
     let mut blend_into = Vec::new();
     for f in fields {
         let ident = f.ident.as_ref().expect("named fields have idents");
-        let kind = FieldKind::of(f)?;
+        let kind = FieldOptions::of(f)?.kind;
         blend.push(match kind {
-            FieldKind::Snap => quote! { #ident: if t < 0.5 { a.#ident } else { b.#ident }, },
+            FieldKind::Snap => quote! {
+                #ident: ::core::clone::Clone::clone(if t < 0.5 { &a.#ident } else { &b.#ident }),
+            },
             FieldKind::Animated | FieldKind::LerpOnly => {
-                quote! { #ident: ::palantir::widget::Lerp::lerp(a.#ident, b.#ident, t), }
+                quote! { #ident: ::palantir::widget::Lerp::lerp(&a.#ident, &b.#ident, t), }
             }
         });
         blend_into.push(match kind {
@@ -112,6 +127,7 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
             },
         });
     }
+    let coerce_out = coerce.as_ref().map(|path| quote! { #path(out); });
     let exact_ends_into = quote! {
         if t == 0.0 {
             ::core::clone::Clone::clone_from(out, a);
@@ -125,8 +141,9 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let (before_lerp_call, lerp_into_body, ends_into) = match before_lerp {
         Some(path) => (
             Some(quote! {
-                let (mut a, mut b) = (a, b);
+                let (mut a, mut b) = (::core::clone::Clone::clone(a), ::core::clone::Clone::clone(b));
                 #path(&mut a, &mut b);
+                let (a, b) = (&a, &b);
             }),
             quote! {
                 #exact_ends_into
@@ -142,6 +159,7 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
                     #[inline]
                     pub(crate) fn lerp_ends_into(a: &Self, b: &Self, t: f32, out: &mut Self) {
                         #(#blend_into)*
+                        #coerce_out
                     }
                 }
             }),
@@ -151,31 +169,35 @@ fn expand_lerp(input: &DeriveInput) -> syn::Result<TokenStream2> {
             quote! {
                 #exact_ends_into
                 #(#blend_into)*
+                #coerce_out
             },
             None,
         ),
     };
+    let blended = coerced(
+        coerce.as_ref(),
+        quote! {
+            Self {
+                #(#blend)*
+            }
+        },
+    );
     Ok(quote! {
         impl #impl_generics ::palantir::widget::Lerp for #name #ty_generics #where_clause {
             #[inline]
-            fn lerp(a: Self, b: Self, t: f32) -> Self {
+            fn lerp(a: &Self, b: &Self, t: f32) -> Self {
                 if t == 0.0 {
-                    return a;
+                    return ::core::clone::Clone::clone(a);
                 }
                 if t == 1.0 {
-                    return b;
+                    return ::core::clone::Clone::clone(b);
                 }
                 #before_lerp_call
-                Self {
-                    #(#blend)*
-                }
+                #blended
             }
 
             #[inline]
-            fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self)
-            where
-                Self: ::core::clone::Clone,
-            {
+            fn lerp_into(a: &Self, b: &Self, t: f32, out: &mut Self) {
                 #lerp_into_body
             }
         }
@@ -213,43 +235,62 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let fields = named_fields(input, "Animatable")?;
-    let ContainerOptions { settle_eps, .. } = ContainerOptions::of(input)?;
+    let ContainerOptions {
+        settle_eps, coerce, ..
+    } = ContainerOptions::of(input)?;
 
     let mut animation: Vec<(&Ident, &Type)> = Vec::new();
     let mut lerp_only: Vec<(&Ident, &Type)> = Vec::new();
     let mut snap: Vec<(&Ident, &Type)> = Vec::new();
+    let mut field_eps: Vec<Option<Expr>> = Vec::new();
     for f in fields {
         let ident = f.ident.as_ref().expect("named fields have idents");
-        match FieldKind::of(f)? {
-            FieldKind::Animated => animation.push((ident, &f.ty)),
+        let FieldOptions { kind, settle_eps } = FieldOptions::of(f)?;
+        if settle_eps.is_some() && kind != FieldKind::Animated {
+            return Err(syn::Error::new_spanned(
+                f,
+                "`settle_eps` is an animated field's; a `snap` or `lerp_only` field never settles",
+            ));
+        }
+        match kind {
+            FieldKind::Animated => {
+                animation.push((ident, &f.ty));
+                field_eps.push(settle_eps);
+            }
             FieldKind::LerpOnly => lerp_only.push((ident, &f.ty)),
             FieldKind::Snap => snap.push((ident, &f.ty)),
         }
+    }
+    if settle_eps.is_some() && field_eps.iter().any(Option::is_some) {
+        return Err(syn::Error::new_spanned(
+            input,
+            "a struct's `settle_eps` holds every field; a field's `settle_eps` under it is never read",
+        ));
     }
 
     // A lerp-only field keeps `self` in motion, as a snap field does.
     let keep_snap: Vec<TokenStream2> = lerp_only
         .iter()
         .chain(&snap)
-        .map(|(f, _)| quote! { #f: self.#f, })
+        .map(|(f, _)| quote! { #f: ::core::clone::Clone::clone(&self.#f), })
         .collect();
 
     let sub_animation = animation.iter().map(|(f, _)| {
-        quote! { #f: ::palantir::widget::Animatable::sub(self.#f, other.#f), }
+        quote! { #f: ::palantir::widget::Animatable::sub(&self.#f, &other.#f), }
     });
 
     let add_animation = animation.iter().map(|(f, _)| {
-        quote! { #f: ::palantir::widget::Animatable::add(self.#f, other.#f), }
+        quote! { #f: ::palantir::widget::Animatable::add(&self.#f, &other.#f), }
     });
 
     let scale_animation = animation.iter().map(|(f, _)| {
-        quote! { #f: ::palantir::widget::Animatable::scale(self.#f, k), }
+        quote! { #f: ::palantir::widget::Animatable::scale(&self.#f, k), }
     });
 
     let magnitude_squared_body = sum_or_zero(
         animation
             .iter()
-            .map(|(f, _)| quote! { ::palantir::widget::Animatable::magnitude_squared(self.#f) }),
+            .map(|(f, _)| quote! { ::palantir::widget::Animatable::magnitude_squared(&self.#f) }),
     );
 
     let settle_distance_squared_body = if let Some(eps) = &settle_eps {
@@ -258,13 +299,23 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             ::palantir::widget::Animatable::magnitude_squared(self) / (eps * eps)
         }
     } else {
-        sum_or_zero(animation.iter().map(|(f, _)| {
-            quote! { ::palantir::widget::Animatable::settle_distance_squared(self.#f) }
+        sum_or_zero(animation.iter().zip(&field_eps).map(|((f, _), eps)| {
+            if let Some(eps) = eps {
+                // Parenthesized: a bare block opening the sum would end the expression there.
+                quote! {
+                    ({
+                        let eps: f32 = #eps;
+                        ::palantir::widget::Animatable::magnitude_squared(&self.#f) / (eps * eps)
+                    })
+                }
+            } else {
+                quote! { ::palantir::widget::Animatable::settle_distance_squared(&self.#f) }
+            }
         }))
     };
 
     let to_motion_animation = animation.iter().map(|(f, _)| {
-        quote! { #f: ::palantir::widget::Animatable::to_motion(self.#f), }
+        quote! { #f: ::palantir::widget::Animatable::to_motion(&self.#f), }
     });
     let from_motion_animation = animation.iter().map(|(f, _)| {
         quote! { #f: ::palantir::widget::Animatable::from_motion(motion.#f), }
@@ -273,6 +324,15 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
         .iter()
         .chain(&snap)
         .map(|(f, _)| quote! { #f: motion.#f, });
+    let from_motion_body = coerced(
+        coerce.as_ref(),
+        quote! {
+            Self {
+                #(#from_motion_animation)*
+                #(#motion_snap)*
+            }
+        },
+    );
 
     let zero_animation = animation.iter().chain(&lerp_only).map(|(f, ty)| {
         quote! { #f: <#ty as ::palantir::widget::Animatable>::zero(), }
@@ -294,32 +354,32 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let expanded = quote! {
         impl #impl_generics ::palantir::widget::Animatable for #name #ty_generics #where_clause {
             #[inline]
-            fn sub(self, other: Self) -> Self {
+            fn sub(&self, other: &Self) -> Self {
                 Self {
                     #(#sub_animation)*
                     #(#keep_snap)*
                 }
             }
             #[inline]
-            fn add(self, other: Self) -> Self {
+            fn add(&self, other: &Self) -> Self {
                 Self {
                     #(#add_animation)*
                     #(#keep_snap)*
                 }
             }
             #[inline]
-            fn scale(self, k: f32) -> Self {
+            fn scale(&self, k: f32) -> Self {
                 Self {
                     #(#scale_animation)*
                     #(#keep_snap)*
                 }
             }
             #[inline]
-            fn magnitude_squared(self) -> f32 {
+            fn magnitude_squared(&self) -> f32 {
                 #magnitude_squared_body
             }
             #[inline]
-            fn settle_distance_squared(self) -> f32 {
+            fn settle_distance_squared(&self) -> f32 {
                 #settle_distance_squared_body
             }
             #[inline]
@@ -330,7 +390,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
                 }
             }
             #[inline]
-            fn to_motion(self) -> Self {
+            fn to_motion(&self) -> Self {
                 Self {
                     #(#to_motion_animation)*
                     #(#keep_snap)*
@@ -338,10 +398,7 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
             }
             #[inline]
             fn from_motion(motion: Self) -> Self {
-                Self {
-                    #(#from_motion_animation)*
-                    #(#motion_snap)*
-                }
+                #from_motion_body
             }
             #[inline]
             fn normalize_for_spring(&mut self, target: &Self, velocity: &mut Self) {
@@ -352,6 +409,20 @@ fn expand(input: &DeriveInput) -> syn::Result<TokenStream2> {
     };
 
     Ok(expanded)
+}
+
+/// `value` through `coerce`, which coerces in place, or as it is with none.
+fn coerced(coerce: Option<&ExprPath>, value: TokenStream2) -> TokenStream2 {
+    match coerce {
+        Some(path) => quote! {
+            {
+                let mut value = #value;
+                #path(&mut value);
+                value
+            }
+        },
+        None => value,
+    }
 }
 
 /// `a + b + …` over `terms`, or `0.0_f32` for none.
@@ -369,6 +440,7 @@ fn sum_or_zero(terms: impl IntoIterator<Item = TokenStream2>) -> TokenStream2 {
 struct ContainerOptions {
     settle_eps: Option<Expr>,
     before_lerp: Option<ExprPath>,
+    coerce: Option<ExprPath>,
 }
 
 /// By the options' tokens, as syn's `Debug` sits behind a feature this crate leaves off.
@@ -380,6 +452,7 @@ impl fmt::Debug for ContainerOptions {
         f.debug_struct("ContainerOptions")
             .field("settle_eps", &tokens(self.settle_eps.as_ref()))
             .field("before_lerp", &tokens(self.before_lerp.as_ref()))
+            .field("coerce", &tokens(self.coerce.as_ref()))
             .finish()
     }
 }
@@ -405,9 +478,15 @@ impl ContainerOptions {
                     }
                     options.before_lerp = Some(meta.value()?.parse::<ExprPath>()?);
                     Ok(())
+                } else if meta.path.is_ident("coerce") {
+                    if options.coerce.is_some() {
+                        return Err(meta.error("`coerce` given twice"));
+                    }
+                    options.coerce = Some(meta.value()?.parse::<ExprPath>()?);
+                    Ok(())
                 } else {
                     Err(meta.error(
-                        "unknown #[animate(...)] option on a struct; expected `settle_eps` or `before_lerp`",
+                        "unknown #[animate(...)] option on a struct; expected `settle_eps`, `before_lerp` or `coerce`",
                     ))
                 }
             })?;
@@ -427,31 +506,46 @@ enum FieldKind {
     Snap,
 }
 
-impl FieldKind {
+/// A field's `#[animate(...)]` options.
+struct FieldOptions {
+    kind: FieldKind,
+    settle_eps: Option<Expr>,
+}
+
+impl FieldOptions {
     /// Unknown idents and a second option error, so typos fail to compile.
     fn of(f: &Field) -> syn::Result<Self> {
-        let mut kind = Self::Animated;
+        let mut kind = FieldKind::Animated;
+        let mut settle_eps = None;
         for attr in &f.attrs {
             if !attr.path().is_ident("animate") {
                 continue;
             }
             attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("settle_eps") {
+                    if settle_eps.is_some() {
+                        return Err(meta.error("`settle_eps` given twice"));
+                    }
+                    settle_eps = Some(meta.value()?.parse::<Expr>()?);
+                    return Ok(());
+                }
                 let next = if meta.path.is_ident("snap") {
-                    Self::Snap
+                    FieldKind::Snap
                 } else if meta.path.is_ident("lerp_only") {
-                    Self::LerpOnly
+                    FieldKind::LerpOnly
                 } else {
-                    return Err(meta
-                        .error("unknown #[animate(...)] option; expected `snap` or `lerp_only`"));
+                    return Err(meta.error(
+                        "unknown #[animate(...)] option; expected `snap`, `lerp_only` or `settle_eps`",
+                    ));
                 };
-                if kind != Self::Animated {
+                if kind != FieldKind::Animated {
                     return Err(meta.error("a field takes one of `snap` and `lerp_only`"));
                 }
                 kind = next;
                 Ok(())
             })?;
         }
-        Ok(kind)
+        Ok(Self { kind, settle_eps })
     }
 }
 
@@ -464,10 +558,9 @@ mod tests {
     #[test]
     fn refused_inputs_name_the_reason() {
         let shape = "Animatable can only be derived on structs with named fields";
-        let option = "unknown #[animate(...)] option; expected `snap` or `lerp_only`";
-        let container =
-            "unknown #[animate(...)] option on a struct; expected `settle_eps` or `before_lerp`";
-        let cases: [(&str, DeriveInput, &str); 10] = [
+        let option = "unknown #[animate(...)] option; expected `snap`, `lerp_only` or `settle_eps`";
+        let container = "unknown #[animate(...)] option on a struct; expected `settle_eps`, `before_lerp` or `coerce`";
+        let cases: [(&str, DeriveInput, &str); 13] = [
             ("enum", parse_quote! { enum E { A } }, shape),
             ("tuple struct", parse_quote! { struct T(f32); }, shape),
             ("unit struct", parse_quote! { struct U; }, shape),
@@ -497,6 +590,21 @@ mod tests {
                 "`before_lerp` given twice",
             ),
             (
+                "a settle tolerance on a snap field",
+                parse_quote! { struct S { #[animate(snap, settle_eps = 0.5)] a: f32 } },
+                "`settle_eps` is an animated field's; a `snap` or `lerp_only` field never settles",
+            ),
+            (
+                "a field tolerance under a struct tolerance",
+                parse_quote! { #[animate(settle_eps = 0.5)] struct S { #[animate(settle_eps = 0.25)] a: f32 } },
+                "a struct's `settle_eps` holds every field; a field's `settle_eps` under it is never read",
+            ),
+            (
+                "two coercions",
+                parse_quote! { #[animate(coerce = f, coerce = g)] struct S { a: f32 } },
+                "`coerce` given twice",
+            ),
+            (
                 "two field options in one attribute",
                 parse_quote! { struct S { #[animate(snap, lerp_only)] a: f32 } },
                 "a field takes one of `snap` and `lerp_only`",
@@ -511,6 +619,29 @@ mod tests {
             let error = expand(&input).expect_err(label);
             assert_eq!(error.to_string(), message, "{label}");
         }
+    }
+
+    /// `coerce` runs on the blend `lerp` returns and the one `lerp_into` writes, past their exact
+    /// ends, and on the value `from_motion` returns, and in no other method.
+    #[test]
+    fn coerce_wraps_the_blend_and_the_value_back_from_motion() {
+        let input: DeriveInput = parse_quote! {
+            #[animate(coerce = Self::floored)]
+            struct S { a: f32 }
+        };
+        let lerp = expand_lerp(&input).expect("a lerp").to_string();
+        assert_eq!(lerp.matches("Self :: floored (").count(), 2, "{lerp}");
+        let animatable = expand(&input).expect("an animatable").to_string();
+        assert_eq!(
+            animatable.matches("Self :: floored (").count(),
+            1,
+            "{animatable}"
+        );
+        let from_motion = animatable.find("fn from_motion").expect("from_motion");
+        assert!(
+            animatable.find("Self :: floored (").expect("the call") > from_motion,
+            "{animatable}"
+        );
     }
 
     /// `Lerp` refuses what `Animatable` refuses, naming itself.

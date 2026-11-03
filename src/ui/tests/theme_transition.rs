@@ -72,7 +72,7 @@ fn each_frame_shows_the_lerp_at_its_phase() {
         let t = quarters as f32 / 4.0;
         assert_eq!(
             **h.ui().theme(),
-            Theme::lerp(Theme::clone(&dark), Theme::clone(&light), t),
+            Theme::lerp(&Theme::clone(&dark), &Theme::clone(&light), t),
             "{t}"
         );
         assert!(report.repaint_requested, "{t}: a blend owes the next frame");
@@ -104,7 +104,7 @@ fn a_change_back_mid_way_runs_only_the_way_it_came() {
     h.advance(QUARTER / 2).frame(record);
     assert_eq!(
         **h.ui().theme(),
-        Theme::lerp(Theme::clone(&dark), Theme::clone(&light), 0.125)
+        Theme::lerp(&Theme::clone(&dark), &Theme::clone(&light), 0.125)
     );
     h.advance(QUARTER / 2).frame(record);
     assert!(shows(&h, &dark));
@@ -126,7 +126,7 @@ fn a_third_theme_mid_way_starts_from_the_blend_shown() {
     h.advance(QUARTER).frame(record);
     assert_eq!(
         **h.ui().theme(),
-        Theme::lerp(blend, Theme::clone(&third), 0.25)
+        Theme::lerp(&blend, &Theme::clone(&third), 0.25)
     );
     assert_ne!(**h.ui().theme(), *dark);
 }
@@ -144,7 +144,7 @@ fn a_scheme_change_blends_from_the_next_frame() {
     let light = Rc::clone(h.ui().theme_for(Light));
     assert_eq!(
         **h.ui().theme(),
-        Theme::lerp(Theme::clone(&dark), Theme::clone(&light), 0.25)
+        Theme::lerp(&Theme::clone(&dark), &Theme::clone(&light), 0.25)
     );
 
     // Two schemes that hold one theme change nothing: no run, so no frame is owed, and the theme

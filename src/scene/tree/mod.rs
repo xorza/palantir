@@ -21,7 +21,7 @@ pub(crate) mod tree_fingerprint;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::common::idx16::Idx16;
+use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;
@@ -459,11 +459,11 @@ impl Tree {
 
         let mut ex = ExtrasIdx::default();
         if !cols.bounds.is_default() {
-            ex.bounds = Some(Idx16::new(self.bounds_table.len(), "bounds_table"));
+            ex.bounds = Some(NonMaxU32::index(self.bounds_table.len()));
             self.bounds_table.push(cols.bounds);
         }
         if !cols.panel.is_default() {
-            ex.panel = Some(Idx16::new(self.panel_table.len(), "panel_table"));
+            ex.panel = Some(NonMaxU32::index(self.panel_table.len()));
             self.panel_table.push(cols.panel);
         }
         if let Some(ChromeInput {
@@ -485,7 +485,7 @@ impl Tree {
                 if row.ring {
                     self.focus_ring = ShapeStroke::from(focus_ring);
                 }
-                ex.chrome = Some(Idx16::new(self.chrome_table.len(), "chrome_table"));
+                ex.chrome = Some(NonMaxU32::index(self.chrome_table.len()));
                 self.chrome_table.push(row);
             }
         }

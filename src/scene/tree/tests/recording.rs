@@ -231,3 +231,35 @@ fn child_iter_traverses_correctly_after_finalize() {
         .collect();
     assert_eq!(inner_kids, vec![4], "inner's direct child: b");
 }
+
+/// A plane holds more side-table rows than a 16-bit index names: 65 536 nodes with a Tab index
+/// each take 65 536 `bounds_table` rows, one past the 65 535 a 16-bit index held, and the last
+/// reads back its own row.
+#[test]
+fn a_plane_holds_more_side_rows_than_a_16_bit_index_names() {
+    use crate::internals::layout_rig::LayoutRig;
+    use crate::primitives::geometry::size::Size;
+    use crate::widget_core::widget::Widget;
+
+    const NODES: i16 = i16::MAX;
+    let mut rig = LayoutRig::new();
+    rig.run(Size::new(100.0, 100.0), |rec| {
+        rec.node("root", Widget::canvas(), |rec| {
+            for pass in 0..2 {
+                for tab in 1..=NODES {
+                    let id = format!("{pass}.{tab}");
+                    rec.leaf(&id, Widget::leaf().tab_idx(tab));
+                }
+            }
+            rec.leaf("second last", Widget::leaf().tab_idx(1));
+            rec.leaf("last", Widget::leaf().tab_idx(7));
+        });
+    });
+    let tree = rig.tree(Layer::Main);
+    let last = rig.node("last");
+    let row = tree.records.extras()[last.idx()]
+        .bounds
+        .expect("a Tab index takes a bounds row");
+    assert_eq!(row.idx(), 2 * NODES as usize + 1);
+    assert_eq!(tree.bounds_table[row.idx()].tab_idx, 7);
+}

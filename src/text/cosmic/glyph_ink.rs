@@ -14,6 +14,10 @@ use swash::scale::outline::Outline;
 /// Ink bounds of every glyph a run has shaped, read once per glyph and face. Ink can reach past the measured
 /// advance block (italic overhang, negative bearing); [`Self::extent`] answers by how much. Stored in ems from
 /// the unhinted outline (`attrs_named` sets `DISABLE_HINTING`), so one entry serves every size.
+///
+/// Bounded at [`MAX_INKED_GLYPHS`]: past it the table starts over, and each glyph's ink is read again
+/// from its outline as shaping meets it. A glyph's bounds follow from its face alone, so the
+/// table is a cache, and starting over answers the same.
 #[derive(Default)]
 pub(super) struct GlyphInk {
     bounds: FxHashMap<GlyphInkKey, EmBox>,
@@ -29,6 +33,10 @@ impl fmt::Debug for GlyphInk {
             .finish_non_exhaustive()
     }
 }
+
+/// The glyphs [`GlyphInk`] holds the ink of: a CJK face's twenty thousand at three weights, about
+/// 4 MiB.
+const MAX_INKED_GLYPHS: usize = 1 << 16;
 
 /// What a glyph's ink depends on beyond size: face, glyph, variable weight, synthetic skew.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -97,8 +105,17 @@ impl GlyphInk {
             return em;
         }
         let em = self.read_em_box(font_system, key);
-        self.bounds.insert(key, em);
+        self.remember(key, em);
         em
+    }
+
+    /// Hold `em` for `key`, starting the table over at [`MAX_INKED_GLYPHS`]; `clear` keeps the
+    /// allocation, so the table never grows past it.
+    fn remember(&mut self, key: GlyphInkKey, em: EmBox) {
+        if self.bounds.len() >= MAX_INKED_GLYPHS {
+            self.bounds.clear();
+        }
+        self.bounds.insert(key, em);
     }
 
     /// The glyph's bounds from the source the rasterizer draws from (`GLYPH_SOURCES`), skewed as it skews a
@@ -142,5 +159,31 @@ impl GlyphInk {
             min: Vec2::new(lo.x + skew * lo.y, -hi.y) / units_per_em,
             max: Vec2::new(hi.x + skew * hi.y, -lo.y) / units_per_em,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::text::cosmic::glyph_ink::{EmBox, GlyphInk, GlyphInkKey, MAX_INKED_GLYPHS};
+    use cosmic_text::fontdb;
+
+    /// The table holds [`MAX_INKED_GLYPHS`] glyphs; the next starts it over, holding that glyph
+    /// alone.
+    #[test]
+    fn the_ink_table_starts_over_at_its_bound() {
+        let mut ink = GlyphInk::default();
+        let key = |i: usize| GlyphInkKey {
+            font_id: fontdb::ID::dummy(),
+            glyph_id: (i % (1 << 16)) as u16,
+            weight: (i / (1 << 16)) as u16,
+            fake_italic: false,
+        };
+        for i in 0..MAX_INKED_GLYPHS {
+            ink.remember(key(i), EmBox::default());
+        }
+        assert_eq!(ink.bounds.len(), MAX_INKED_GLYPHS);
+        ink.remember(key(MAX_INKED_GLYPHS), EmBox::default());
+        assert_eq!(ink.bounds.len(), 1);
+        assert!(ink.bounds.contains_key(&key(MAX_INKED_GLYPHS)));
     }
 }

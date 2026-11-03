@@ -32,7 +32,7 @@ pub(crate) struct NodeRecord {
     pub layout: LayoutCore,
     /// Packed paint/input flags (4 B), read by cascade, encoder, hit-test and input routing.
     pub attrs: NodeFlags,
-    /// Optional two-byte indices into the sparse `bounds_table` / `panel_table` / `chrome_table`; a field, so `Soa`
+    /// Optional indices into the sparse `bounds_table` / `panel_table` / `chrome_table`; a field, so `Soa`
     /// guarantees one row per node.
     pub extras: ExtrasIdx,
 }

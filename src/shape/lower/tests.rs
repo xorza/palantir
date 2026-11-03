@@ -1,6 +1,9 @@
+use crate::host::harness::Harness;
+use crate::internals::panic_probe;
 use crate::primitives::geometry::corners::Corners;
+use crate::primitives::math::domain;
 use crate::primitives::math::lerp::Lerp;
-use crate::primitives::math::nan::NanCheck;
+use crate::primitives::packed::serde::LaneCodec;
 use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
@@ -23,9 +26,10 @@ use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
 use crate::shape::record_store::recorded_gradients::GradientId;
 use crate::shape::sealed::LowerShape;
+use crate::widget_core::widget::Widget;
+use glam::UVec2;
 use glam::Vec2;
 use std::collections::HashSet;
-use std::panic;
 
 fn gradient_id(store: &mut RecordStore, value: &Brush) -> GradientId {
     match brush(store, value) {
@@ -41,17 +45,21 @@ fn with_corners(corners: Corners) -> Chrome {
     }
 }
 
-/// The five ways a `Chrome` can carry a NaN, one per field; no no-op predicate owns the question.
-fn nan_chromes() -> [(&'static str, Chrome); 6] {
+/// The ways a `Chrome` can carry a NaN, one per field, each with the rule its check refuses it by;
+/// no no-op predicate owns the question.
+fn nan_chromes() -> [(&'static str, Chrome, &'static str); 6] {
     [
         (
             "corners",
-            // The constructors refuse a NaN radius; a blend at a NaN weight still makes one.
-            with_corners(Corners::lerp(Corners::ZERO, Corners::all(4.0), f32::NAN)),
+            // The constructors refuse a NaN radius; a blend at a NaN weight still makes one, as
+            // the floor its blend is coerced to keeps a NaN.
+            with_corners(Corners::lerp(&Corners::ZERO, &Corners::all(4.0), f32::NAN)),
+            <Corners as LaneCodec>::LANE_RULE,
         ),
         (
             "fill",
             Chrome::fill(RgbaF32::srgba(1.0, f32::NAN, 1.0, 1.0)),
+            domain::COLOR_RULE,
         ),
         (
             "stroke",
@@ -59,6 +67,7 @@ fn nan_chromes() -> [(&'static str, Chrome); 6] {
                 border: Stroke::new(RgbaF32::WHITE, f32::NAN),
                 ..Chrome::fill(RgbaF32::WHITE)
             },
+            domain::LENGTH_RULE,
         ),
         (
             "shadow",
@@ -70,15 +79,18 @@ fn nan_chromes() -> [(&'static str, Chrome); 6] {
                 },
                 ..Chrome::fill(RgbaF32::WHITE)
             },
+            domain::LENGTH_RULE,
         ),
         (
             "backdrop filter",
             Chrome::fill(RgbaF32::WHITE).with_backdrop_filter(BackdropFilter::blur(f32::NAN)),
+            domain::LENGTH_RULE,
         ),
         (
             "luminance ceiling",
             Chrome::fill(RgbaF32::WHITE)
                 .with_backdrop_filter(BackdropFilter::blur(1.0).with_max_luminance(f32::NAN)),
+            domain::FACTOR_RULE,
         ),
     ]
 }
@@ -315,37 +327,17 @@ fn chrome_lowering_keeps_an_authored_field() {
     }
 }
 
-/// `chrome` is the NaN gate for chrome, which no shape setter sees. It sanitizes rather than drops,
-/// since `chrome_table` keeps a row for `ClipMode::Rounded` even when the paint is no-op. A NaN never reaches
-/// the row: debug asserts, release falls each field back, and `catch_unwind` accepts either.
+/// `Widget::record` is the door every chrome passes, a widget built outside the crate's included:
+/// a NaN in any field panics there, by its field's rule, rather than drawing quietly wrong.
 #[test]
-fn a_nan_chrome_field_never_reaches_the_row() {
-    let mut store = RecordStore::default();
-    for (label, authored) in nan_chromes() {
-        let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            chrome(&mut store, &authored, Stroke::NONE)
-        })) else {
-            continue;
-        };
-        assert!(
-            !row.corners.has_nan()
-                && !row.border.has_nan()
-                && !row.shadow.has_nan()
-                && !row.backdrop.has_nan()
-                && !row.fill.has_nan(),
-            "a NaN {label} must not survive lowering",
-        );
-    }
-
-    // A radius falls back to no rounding so a `ClipMode::Rounded` stencil never clips to a shape nobody chose.
-    if let Ok(row) = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-        chrome(
-            &mut store,
-            &with_corners(Corners::new(4.0, f32::NAN, 4.0, 4.0)),
-            Stroke::NONE,
-        )
-    })) {
-        assert!(row.corners.is_approx_zero(), "a radius collapses to none");
+fn a_nan_chrome_field_panics_at_the_record_door() {
+    for (_, authored, rule) in nan_chromes() {
+        let mut h = Harness::mono(UVec2::new(40, 40));
+        panic_probe::assert_panics_with(rule, || {
+            h.frame(|ui| {
+                Widget::leaf().record(ui, Some(&authored), |_| {});
+            });
+        });
     }
 }
 

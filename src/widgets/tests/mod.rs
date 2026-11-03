@@ -266,14 +266,14 @@ fn chrome_setters_check_the_chrome() {
             <Corners as LaneCodec>::LANE_RULE,
             Chrome::rounded(
                 RgbaF32::WHITE,
-                Corners::lerp(Corners::ZERO, Corners::all(1.0), f32::NAN),
+                Corners::lerp(&Corners::ZERO, &Corners::all(1.0), f32::NAN),
             ),
         ),
         (
             <Corners as LaneCodec>::LANE_RULE,
             Chrome::rounded(
                 RgbaF32::WHITE,
-                Animatable::sub(Corners::all(1.0), Corners::all(2.0)),
+                Animatable::sub(&Corners::all(1.0), &Corners::all(2.0)),
             ),
         ),
         (

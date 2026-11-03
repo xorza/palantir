@@ -27,7 +27,9 @@ pub struct Stop {
 
 impl Stop {
     /// Construct a stop. `offset` is a *fraction*, coerced (clamped to 0..=1,
-    /// non-finite read as 0). `color` is a *color*.
+    /// non-finite read as 0). `color` is a *color*, coerced into 8-bit sRGB as the stop stores
+    /// it: a channel above 1 or below 0, which a color admits, clamps there, as an 8-bit target
+    /// stores a solid brush of it. A file's stop reads the same.
     ///
     /// # Panics
     ///

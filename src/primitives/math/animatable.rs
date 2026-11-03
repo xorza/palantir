@@ -5,6 +5,13 @@
 //! `#[derive(Lerp, Animatable)]` (`palantir-anim-derive`, type-erased `AnimationMap`).
 
 use crate::primitives::math::domain::EPS;
+
+/// The settle tolerance of a length in logical pixels: under the `1/1020` px an antialiased edge
+/// moves for one step of 8-bit coverage at a device scale of 4, so a motion that ends here ends
+/// on no visible step. Refused: the unit-free [`EPS`], which ran a 4 px spring about 11 frames
+/// longer at 60 Hz for change no target shows; Android's `MIN_VISIBLE_CHANGE_PIXELS`, a whole
+/// pixel, which a slow settle shows as a jump.
+pub(crate) const PX_SETTLE_EPS: f32 = 1.0 / 1024.0;
 use crate::primitives::math::lerp::Lerp;
 use glam::Vec2;
 
@@ -12,7 +19,7 @@ use glam::Vec2;
 ///
 /// The arithmetic is linear, and a spring runs it on values in motion space
 /// ([`Self::to_motion`]): its offset from the target and its velocity live there, and the
-/// painted value is `from_motion(target.to_motion().add(offset))`. Motion space is the value
+/// painted value is `from_motion(target.to_motion().add(&offset))`. Motion space is the value
 /// itself unless a type blends in another one, as `RgbaF32` does in premultiplied Oklab.
 ///
 /// `PartialEq` lets `tick` skip the sub + magnitude pair when the target is
@@ -22,33 +29,36 @@ use glam::Vec2;
 /// recording chain once per chromed widget per frame, where auto-`Copy` was
 /// measurably costly. A `Copy` supertrait would bring that back, so copies
 /// spell `.clone()`; small `Copy` types still cost nothing. Sizes are pinned
-/// by `hot_struct_sizes_are_pinned`.
+/// by `hot_struct_sizes_are_pinned`. Every operand is borrowed, as Bevy's
+/// `Animatable::interpolate` and Flutter's static `lerp` read theirs, so reading a heavy value
+/// clones nothing.
 pub trait Animatable: Lerp + Clone + PartialEq + 'static {
     #[must_use]
     /// Difference `self - other`.
-    fn sub(self, other: Self) -> Self;
+    fn sub(&self, other: &Self) -> Self;
     /// Componentwise sum, the inverse of [`Self::sub`].
     #[must_use]
-    fn add(self, other: Self) -> Self;
+    fn add(&self, other: &Self) -> Self;
     /// Componentwise multiplication by a scalar.
     #[must_use]
-    fn scale(self, k: f32) -> Self;
+    fn scale(&self, k: f32) -> Self;
     /// Squared Euclidean length in the type's own unit (`self * self` for
     /// scalars, `dot(self, self)` for vectors, summed components for derives).
-    fn magnitude_squared(self) -> f32;
+    fn magnitude_squared(&self) -> f32;
     /// Squared length in units of this type's settle tolerance: under `1.0` a
     /// displacement is too small to see and motion may end on its target.
     ///
     /// **Unit-free by default:** an `f32` may be pixels or a 0..1 fraction, so the
     /// default divides [`Self::magnitude_squared`] by `EPS²` (`EPS = 1e-4`). A type
     /// that knows its unit says so: `RgbaF32` settles at `2^-14` in motion space, under
-    /// the shortest step one 8-bit sRGB code makes there.
+    /// the shortest step one 8-bit sRGB code makes there, and a length in logical pixels at
+    /// 1/1024 px, under the shift one step of 8-bit coverage shows at a device scale of 4.
     ///
     /// The derive sums its fields' own distances, so pixel and color fields keep
     /// their own tolerances. A derive with one unit of its own uses
     /// `#[animate(settle_eps = ...)]`.
     #[inline]
-    fn settle_distance_squared(self) -> f32 {
+    fn settle_distance_squared(&self) -> f32 {
         self.magnitude_squared() / (EPS * EPS)
     }
     /// The additive identity: zero displacement and a fresh spring's velocity.
@@ -58,11 +68,13 @@ pub trait Animatable: Lerp + Clone + PartialEq + 'static {
     /// [`Self::scale`] blend as the type means to. The identity unless overridden.
     #[inline]
     #[must_use]
-    fn to_motion(self) -> Self {
-        self
+    fn to_motion(&self) -> Self {
+        self.clone()
     }
 
-    /// The value at `motion`, back from motion space: the inverse of [`Self::to_motion`].
+    /// The value at `motion`, back from motion space: the inverse of [`Self::to_motion`]. A value
+    /// with a floor coerces to it here, as its [`Lerp`] does, so a spring or an eased motion that
+    /// overshoots paints a value in its domain.
     #[inline]
     #[must_use]
     fn from_motion(motion: Self) -> Self {
@@ -72,7 +84,7 @@ pub trait Animatable: Lerp + Clone + PartialEq + 'static {
     /// Normalize fields that cannot participate in spring arithmetic.
     ///
     /// Runs when a spring takes a new target or a row becomes a spring. Between
-    /// those the value is `from_motion(target.to_motion().add(offset))`, so an
+    /// those the value is `from_motion(target.to_motion().add(&offset))`, so an
     /// [`Self::add`] that keeps `self` for such a field keeps it compatible.
     /// Compound derives forward this fieldwise; implementations may install the
     /// target and clear only their matching velocity. `self` is a value and
@@ -87,7 +99,8 @@ pub trait Animatable: Lerp + Clone + PartialEq + 'static {
 /// infinities, so both ends and an equal pair return an end.
 impl Lerp for f32 {
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
+        let (a, b) = (*a, *b);
         if t == 0.0 {
             a
         } else if t == 1.0 || a == b {
@@ -100,19 +113,19 @@ impl Lerp for f32 {
 
 impl Animatable for f32 {
     #[inline]
-    fn sub(self, other: Self) -> Self {
+    fn sub(&self, other: &Self) -> Self {
         self - other
     }
     #[inline]
-    fn add(self, other: Self) -> Self {
+    fn add(&self, other: &Self) -> Self {
         self + other
     }
     #[inline]
-    fn scale(self, k: f32) -> Self {
+    fn scale(&self, k: f32) -> Self {
         self * k
     }
     #[inline]
-    fn magnitude_squared(self) -> f32 {
+    fn magnitude_squared(&self) -> f32 {
         self * self
     }
     #[inline]
@@ -124,26 +137,26 @@ impl Animatable for f32 {
 impl Lerp for Vec2 {
     /// Per axis, as `f32` blends.
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
-        Self::new(f32::lerp(a.x, b.x, t), f32::lerp(a.y, b.y, t))
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
+        Self::new(f32::lerp(&a.x, &b.x, t), f32::lerp(&a.y, &b.y, t))
     }
 }
 
 impl Animatable for Vec2 {
     #[inline]
-    fn sub(self, other: Self) -> Self {
-        self - other
+    fn sub(&self, other: &Self) -> Self {
+        *self - *other
     }
     #[inline]
-    fn add(self, other: Self) -> Self {
-        self + other
+    fn add(&self, other: &Self) -> Self {
+        *self + *other
     }
     #[inline]
-    fn scale(self, k: f32) -> Self {
-        self * k
+    fn scale(&self, k: f32) -> Self {
+        *self * k
     }
     #[inline]
-    fn magnitude_squared(self) -> f32 {
+    fn magnitude_squared(&self) -> f32 {
         self.length_squared()
     }
     #[inline]
@@ -155,43 +168,40 @@ impl Animatable for Vec2 {
 /// Element by element.
 impl<T: Lerp, const N: usize> Lerp for [T; N] {
     #[inline]
-    fn lerp(a: Self, b: Self, t: f32) -> Self {
-        let mut b = b.into_iter();
-        a.map(|a| T::lerp(a, b.next().expect("arrays of one length"), t))
+    fn lerp(a: &Self, b: &Self, t: f32) -> Self {
+        std::array::from_fn(|i| T::lerp(&a[i], &b[i], t))
     }
 }
 
 /// Element by element, each settling in its own unit, as a derive sums its fields.
 impl<T: Animatable, const N: usize> Animatable for [T; N] {
     #[inline]
-    fn sub(self, other: Self) -> Self {
-        let mut other = other.into_iter();
-        self.map(|x| x.sub(other.next().expect("arrays of one length")))
+    fn sub(&self, other: &Self) -> Self {
+        std::array::from_fn(|i| self[i].sub(&other[i]))
     }
     #[inline]
-    fn add(self, other: Self) -> Self {
-        let mut other = other.into_iter();
-        self.map(|x| x.add(other.next().expect("arrays of one length")))
+    fn add(&self, other: &Self) -> Self {
+        std::array::from_fn(|i| self[i].add(&other[i]))
     }
     #[inline]
-    fn scale(self, k: f32) -> Self {
-        self.map(|x| x.scale(k))
+    fn scale(&self, k: f32) -> Self {
+        std::array::from_fn(|i| self[i].scale(k))
     }
     #[inline]
-    fn magnitude_squared(self) -> f32 {
-        self.into_iter().map(T::magnitude_squared).sum()
+    fn magnitude_squared(&self) -> f32 {
+        self.iter().map(T::magnitude_squared).sum()
     }
     #[inline]
-    fn settle_distance_squared(self) -> f32 {
-        self.into_iter().map(T::settle_distance_squared).sum()
+    fn settle_distance_squared(&self) -> f32 {
+        self.iter().map(T::settle_distance_squared).sum()
     }
     #[inline]
     fn zero() -> Self {
         std::array::from_fn(|_| T::zero())
     }
     #[inline]
-    fn to_motion(self) -> Self {
-        self.map(T::to_motion)
+    fn to_motion(&self) -> Self {
+        std::array::from_fn(|i| self[i].to_motion())
     }
     #[inline]
     fn from_motion(motion: Self) -> Self {
@@ -224,11 +234,14 @@ mod tests {
     #[test]
     fn scalars_end_exactly_and_keep_an_equal_pair() {
         assert_ne!(0.32_f32 + (1.32_f32 - 0.32) * 1.0, 1.32);
-        assert_eq!(f32::lerp(0.32, 1.32, 1.0), 1.32);
-        assert_eq!(f32::lerp(0.32, 1.32, 0.0), 0.32);
-        assert_eq!(f32::lerp(f32::INFINITY, f32::INFINITY, 0.3), f32::INFINITY);
+        assert_eq!(f32::lerp(&0.32, &1.32, 1.0), 1.32);
+        assert_eq!(f32::lerp(&0.32, &1.32, 0.0), 0.32);
+        assert_eq!(
+            f32::lerp(&f32::INFINITY, &f32::INFINITY, 0.3),
+            f32::INFINITY
+        );
         // 2 + (10 − 2)·¼ = 4.
-        assert_eq!(f32::lerp(2.0, 10.0, 0.25), 4.0);
+        assert_eq!(f32::lerp(&2.0, &10.0, 0.25), 4.0);
         assert_eq!(
             Vec2::lerp(Vec2::new(0.32, 2.0), Vec2::new(1.32, 10.0), 1.0),
             Vec2::new(1.32, 10.0)
@@ -246,11 +259,11 @@ mod tests {
         let b = [Vec2::new(4.0, 0.0), Vec2::new(2.0, 6.0)];
         // (0, 4) + ((4, 0) − (0, 4))·¼ = (1, 3); (2, 2) + (0, 4)·¼ = (2, 3).
         assert_eq!(
-            <[Vec2; 2]>::lerp(a, b, 0.25),
+            <[Vec2; 2]>::lerp(&a, &b, 0.25),
             [Vec2::new(1.0, 3.0), Vec2::new(2.0, 3.0)]
         );
-        assert_eq!(b.sub(a), [Vec2::new(4.0, -4.0), Vec2::new(0.0, 4.0)]);
-        assert_eq!(a.add(b.sub(a)), b);
+        assert_eq!(b.sub(&a), [Vec2::new(4.0, -4.0), Vec2::new(0.0, 4.0)]);
+        assert_eq!(a.add(&b.sub(&a)), b);
         assert_eq!(a.scale(0.5), [Vec2::new(0.0, 2.0), Vec2::new(1.0, 1.0)]);
         // 0² + 4² + 2² + 2² = 24.
         assert_eq!(a.magnitude_squared(), 24.0);

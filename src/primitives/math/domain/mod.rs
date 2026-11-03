@@ -394,6 +394,13 @@ pub const fn idx(i: usize, len: usize) -> Option<usize> {
     }
 }
 
+/// `v` raised to `floor`, the coercion a blend that overshoots a value's floor takes. A NaN stays
+/// NaN, where `f32::max` would make it the floor, so the check it reaches still refuses it.
+#[inline]
+pub(crate) const fn raised_to(v: f32, floor: f32) -> f32 {
+    if v < floor { floor } else { v }
+}
+
 /// A theme length floored at `min`, a widget design rule rather than validation.
 #[inline]
 pub const fn length_at_least(v: f32, min: f32) -> f32 {
