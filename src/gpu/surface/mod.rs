@@ -18,8 +18,6 @@ pub(crate) mod staging;
 pub(crate) mod stencil;
 #[cfg(feature = "winit")]
 pub(crate) mod surface_manager;
-#[cfg(feature = "winit")]
-pub(crate) mod surface_usages;
 pub(crate) mod texel_readback;
 #[cfg(feature = "winit")]
 pub(crate) mod window_surface;

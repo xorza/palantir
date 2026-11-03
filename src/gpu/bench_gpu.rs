@@ -5,7 +5,6 @@
 use crate::diagnostics::gpu_pass_stats::GpuPassStats;
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::GpuRequest;
 use crate::gpu::device::requested_gpu::RequestedGpu;
 use crate::gpu::frame::gpu_timings::{GpuTimings, Mark};
@@ -19,7 +18,7 @@ use std::time::Duration;
 pub(crate) const TARGET_FORMAT: TargetFormat = TargetFormat::RGBA8_SRGB;
 
 /// The adapter policy every bench device opens with, and [`BenchGpu::probe`] picks by.
-const BENCH_POWER: PowerPreference = PowerPreference::HighPerformance;
+const BENCH_POWER: wgpu::PowerPreference = wgpu::PowerPreference::HighPerformance;
 
 /// What the adapter the bench devices open on offers, read without opening a device.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

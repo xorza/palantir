@@ -9,16 +9,15 @@ use wgpu::rwh::HasDisplayHandle;
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
-use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
 use crate::gpu::error::{GpuRequestError, SurfaceError, SurfaceStartError};
-use crate::gpu::surface::surface_usages::SurfaceUsages;
 use crate::gpu::surface::window_surface::WindowSurface;
 use crate::gpu::wgpu_backend::FrameTiming;
 use crate::window::vsync::Vsync;
 use std::fmt;
 
-const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = SurfaceUsages::ALL.to_wgpu();
+/// The compositor renders into the surface texture.
+const REQUIRED_SURFACE_USAGES: wgpu::TextureUsages = wgpu::TextureUsages::RENDER_ATTACHMENT;
 
 /// Taken when offered. A GLES surface is the default framebuffer and
 /// advertises only `RENDER_ATTACHMENT`, so requiring these made it unusable;
@@ -31,7 +30,7 @@ const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages =
 /// Device and swapchain choices a host seals at startup.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct HostGpuConfig {
-    pub(crate) power_preference: PowerPreference,
+    pub(crate) power_preference: wgpu::PowerPreference,
     pub(crate) vsync: Vsync,
     pub(crate) timing: FrameTiming,
 }
@@ -272,7 +271,7 @@ fn build_surface_config(
     if caps.formats.is_empty() || caps.present_modes.is_empty() || caps.alpha_modes.is_empty() {
         return Err(SurfaceError::Incompatible);
     }
-    let missing = SurfaceUsages::ALL.difference(SurfaceUsages::from_wgpu_truncate(caps.usages));
+    let missing = REQUIRED_SURFACE_USAGES.difference(caps.usages);
     if !missing.is_empty() {
         return Err(SurfaceError::MissingUsages { missing });
     }

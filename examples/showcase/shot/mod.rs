@@ -15,7 +15,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use palantir::glam::UVec2;
-use palantir::{Depth, Gpu, Harness, Image, PlayError, PowerPreference, Rect, RequestedGpu};
+use palantir::{Depth, Gpu, Harness, Image, PlayError, Rect, RequestedGpu};
 
 use crate::shell::Shell;
 use crate::shot::report::Legend;
@@ -128,7 +128,7 @@ pub(crate) fn shots(script: &Path, folders: Folders<'_>) -> Result<(), String> {
         clippy::default_trait_access,
         reason = "the features are a wgpu type, which only `palantir::gpu` names"
     )]
-    let gpu = RequestedGpu::headless(PowerPreference::HighPerformance, Default::default())
+    let gpu = RequestedGpu::headless(wgpu::PowerPreference::HighPerformance, Default::default())
         .map_err(|error| error.to_string())?
         .gpu;
     run(gpu, script, folders, &mut io::stdout().lock()).map_err(|error| error.to_string())

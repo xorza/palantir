@@ -508,20 +508,6 @@ Depth
         pub const fn gpu(gpu: Gpu) -> Self
         pub const fn gpu_float(gpu: Gpu) -> Self
 
-DeviceFeatures
-    struct DeviceFeatures: BitOr, Clone, Copy, Debug, Default, Display, DockTab (blanket), Eq, Hash, PartialEq
-        pub const IMMEDIATES: Self
-        pub const NONE: Self
-        pub const ALL: Self
-        pub const fn is_empty(self) -> bool
-        pub const fn contains(self, other: Self) -> bool
-        pub const fn intersects(self, other: Self) -> bool
-        pub const fn union(self, other: Self) -> Self
-        pub const fn difference(self, other: Self) -> Self
-        pub const fn insert(&mut self, other: Self)
-        pub const fn remove(&mut self, other: Self)
-        pub const fn set(&mut self, other: Self, on: bool)
-
 DeviceRequirements
     struct DeviceRequirements: Clone, Debug
         pub features: Features
@@ -529,7 +515,6 @@ DeviceRequirements
         pub const FEATURES: Features
         pub const GPU_TIMING_FEATURES: Features
         pub fn negotiate(adapter: &Adapter, optional: Features) -> Result<Self, UnmetRequirements>
-        pub fn met_by(device: &Device) -> Result<(), UnmetRequirements>
 
 Display
     struct Display: Clone, Copy, Debug, Default, PartialEq
@@ -882,6 +867,8 @@ Gpu
         pub fn new(device: Device, queue: Queue) -> Self
         pub const fn device(&self) -> &Device
         pub const fn queue(&self) -> &Queue
+        pub fn create_render_pipeline(&self, desc: &RenderPipelineDescriptor<'_>) -> RenderPipeline
+        pub fn create_compute_pipeline(&self, desc: &ComputePipelineDescriptor<'_>) -> ComputePipeline
 
 GpuFrameCtx
     struct GpuFrameCtx<'a>: Debug
@@ -1775,12 +1762,6 @@ PopupTrigger
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
 
-PowerPreference
-    enum PowerPreference: Clone, Copy, Debug, Default, Eq, PartialEq
-        Any
-        LowPower
-        HighPerformance
-
 ProgressBar
     struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(fraction: f32) -> Self
@@ -2278,21 +2259,7 @@ SurfaceError  [features: winit]
         Create { source: CreateSurfaceError }
         Incompatible
         MissingSrgb
-        MissingUsages { missing: SurfaceUsages }
-
-SurfaceUsages  [features: winit]
-    struct SurfaceUsages: BitOr, Clone, Copy, Debug, Default, Display, DockTab (blanket), Eq, Hash, PartialEq
-        pub const RENDER_ATTACHMENT: Self
-        pub const NONE: Self
-        pub const ALL: Self
-        pub const fn is_empty(self) -> bool
-        pub const fn contains(self, other: Self) -> bool
-        pub const fn intersects(self, other: Self) -> bool
-        pub const fn union(self, other: Self) -> Self
-        pub const fn difference(self, other: Self) -> Self
-        pub const fn insert(&mut self, other: Self)
-        pub const fn remove(&mut self, other: Self)
-        pub const fn set(&mut self, other: Self, on: bool)
+        MissingUsages { missing: TextureUsages }
 
 SvgParseError
     struct SvgParseError: Debug, Display, Error
@@ -2785,7 +2752,7 @@ Ui
 
 UnmetRequirements
     enum UnmetRequirements: Clone, Debug, Display, Eq, Error, PartialEq
-        Features { missing: DeviceFeatures }
+        Features { missing: Features }
         Limit { name: &'static str, required: u64, available: u64 }
 
 UserScale

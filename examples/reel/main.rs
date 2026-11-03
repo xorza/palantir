@@ -44,7 +44,7 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::Duration;
 
 use palantir::glam::{UVec2, Vec2};
-use palantir::{Depth, Harness, PowerPreference, RequestedGpu, Scroll, SystemScale};
+use palantir::{Depth, Harness, RequestedGpu, Scroll, SystemScale};
 
 use crate::deck::{Deck, SLIDE, SLIDES};
 use crate::downscale::{Linear, Shrink};
@@ -154,7 +154,7 @@ fn run(args: &Args) -> Result<(), String> {
         Mode::Final { .. } => Render::FINAL,
         Mode::Preview { .. } | Mode::Png { .. } => Render::PREVIEW,
     };
-    let gpu = RequestedGpu::headless(PowerPreference::HighPerformance, Default::default())
+    let gpu = RequestedGpu::headless(wgpu::PowerPreference::HighPerformance, Default::default())
         .map_err(|error| error.to_string())?
         .gpu;
     let depth = if render.float {

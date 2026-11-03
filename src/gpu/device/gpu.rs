@@ -44,7 +44,8 @@ impl Gpu {
     /// needs to know of a loss, so a callback or a handler set on `device` before is replaced.
     /// The handler still panics on an error while the device is healthy, as wgpu's default
     /// does. Wrap a device once and clone the `Gpu`: a second `new` on the same device takes the
-    /// callback from the first.
+    /// callback from the first, and holds a pipeline turn of its own, so its builds do not take
+    /// turns with the first's ([`Self::create_render_pipeline`]).
     pub fn new(device: wgpu::Device, queue: wgpu::Queue) -> Self {
         Self {
             health: DeviceHealth::watch(&device),
@@ -110,7 +111,9 @@ impl Gpu {
         buffer
     }
 
-    /// A render pipeline as `desc` describes, built while no other build on the device runs.
+    /// A render pipeline as `desc` describes, built while no other build through this `Gpu` or a
+    /// clone of it runs. A [`GpuPaint`](crate::GpuPaint) builds its own pipelines here, as views
+    /// on parallel threads share one device.
     ///
     /// wgpu-hal's Direct3D 12 backend takes a reference to a cached FXC blob under its cache's
     /// lock and releases it outside, and FXC counts references without atomics, so two threads
@@ -121,12 +124,26 @@ impl Gpu {
         clippy::disallowed_methods,
         reason = "the one place a render pipeline is built, under the device's turn"
     )]
-    pub(crate) fn create_render_pipeline(
+    pub fn create_render_pipeline(
         &self,
         desc: &wgpu::RenderPipelineDescriptor<'_>,
     ) -> wgpu::RenderPipeline {
         let _turn = self.take_pipeline_turn();
         self.device.create_render_pipeline(desc)
+    }
+
+    /// A compute pipeline as `desc` describes, built in the device's turn, as
+    /// [`Self::create_render_pipeline`] builds.
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "the one place a compute pipeline is built, under the device's turn"
+    )]
+    pub fn create_compute_pipeline(
+        &self,
+        desc: &wgpu::ComputePipelineDescriptor<'_>,
+    ) -> wgpu::ComputePipeline {
+        let _turn = self.take_pipeline_turn();
+        self.device.create_compute_pipeline(desc)
     }
 
     /// The device's pipeline turn. A build that panicked, as the uncaptured-error handler does on
@@ -224,20 +241,6 @@ pub(crate) mod internals {
     use crate::gpu::device::gpu::Gpu;
 
     impl Gpu {
-        /// A compute pipeline as `desc` describes, built in the device's turn, as
-        /// [`Self::create_render_pipeline`] builds.
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "the one place a compute pipeline is built, under the device's turn"
-        )]
-        pub(crate) fn create_compute_pipeline(
-            &self,
-            desc: &wgpu::ComputePipelineDescriptor<'_>,
-        ) -> wgpu::ComputePipeline {
-            let _turn = self.take_pipeline_turn();
-            self.device.create_compute_pipeline(desc)
-        }
-
         /// Lose the device, as a GPU hang does: `Device::destroy` makes every later call a no-op,
         /// as wgpu's own device-loss tests use it, and the wait runs the lost callback, as a real
         /// loss runs it inside the call that finds the loss.

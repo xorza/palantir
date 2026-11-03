@@ -245,21 +245,17 @@ pub use display::user_scale::UserScale;
 pub use driver::action::Action;
 pub use driver::error::{ActError, LocateError, PlayError};
 pub use driver::locator::{Found, Locate, Locator};
-pub use gpu::device::device_features::DeviceFeatures;
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;
 pub use gpu::device::gpu_frame_ctx::GpuFrameCtx;
 pub use gpu::device::gpu_init_ctx::GpuInitCtx;
 pub use gpu::device::gpu_wait::GpuWait;
-pub use gpu::device::power_preference::PowerPreference;
 pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
 pub use gpu::error::{GpuRequestError, UnmetRequirements};
 pub use gpu::gpu_paint::GpuPaint;
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
-#[cfg(feature = "winit")]
-pub use gpu::surface::surface_usages::SurfaceUsages;
 pub use host::harness::Harness;
 pub use host::harness::harness_builder::{Depth, HarnessBuilder};
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};

@@ -69,7 +69,6 @@ mod window;
 mod window_set;
 
 use crate::display::system_scale::SystemScale;
-use crate::gpu::device::power_preference::PowerPreference;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
@@ -201,7 +200,11 @@ where
     }
 
     /// Adapter power preference. `LowPower` by default, unlike the headless paths (`HighPerformance`).
-    pub const fn power_preference(mut self, preference: PowerPreference) -> Self {
+    #[expect(
+        clippy::disallowed_types,
+        reason = "the builder takes the adapter preference as wgpu names it and hands it to `crate::gpu`"
+    )]
+    pub const fn power_preference(mut self, preference: wgpu::PowerPreference) -> Self {
         self.config.power_preference = preference;
         self
     }

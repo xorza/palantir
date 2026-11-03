@@ -158,15 +158,6 @@ Batches run most harmful first. A batch changes palantir and darkroom together a
 gates green, then regenerates `API_SURFACE.md`. A rendering change also runs `cargo drive run
 visual`. Counts are call sites outside the defining file: palantir / darkroom.
 
-### Batch 10: GPU
-
-- [ ] Remove `DeviceFeatures`, `SurfaceUsages` and `PowerPreference`: the error variants and
-  `RequestedGpu::headless` take the wgpu types, and `wgpu_mirror!` goes. Callers: 2 / 1.
-- [ ] `Gpu::create_render_pipeline` and `create_compute_pipeline` public; the examples'
-  `GpuPaint::init` use them, as views build on parallel test threads over one shared device;
-  `Gpu::new` documents that its turn and lost callback are its own.
-- [ ] `DeviceRequirements::met_by` becomes crate-private.
-
 ### Batch 11: Dead surface
 
 Each item has no caller outside palantir's own definition and tests, or a newer item replaced it.

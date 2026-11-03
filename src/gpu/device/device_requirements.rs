@@ -1,6 +1,5 @@
 //! What Palantir needs from the device it draws on.
 
-use crate::gpu::device::device_features::DeviceFeatures;
 use crate::gpu::error::UnmetRequirements;
 
 /// Size of the immediate (push-constant) region every shader declares in `prelude.wgsl`: the
@@ -27,8 +26,8 @@ pub struct DeviceRequirements {
 }
 
 impl DeviceRequirements {
-    /// Features no configuration runs without: [`DeviceFeatures::ALL`].
-    pub const FEATURES: wgpu::Features = DeviceFeatures::ALL.to_wgpu();
+    /// Features no configuration runs without: immediate data, which the viewport rides in.
+    pub const FEATURES: wgpu::Features = wgpu::Features::IMMEDIATES;
 
     /// The four features `collect_gpu_stats` asks for, as the one set that
     /// instruments the GPU timeline.
@@ -62,7 +61,7 @@ impl DeviceRequirements {
         ceiling: &wgpu::Limits,
         optional: wgpu::Features,
     ) -> Result<Self, UnmetRequirements> {
-        let missing = DeviceFeatures::ALL.difference(DeviceFeatures::from_wgpu_truncate(available));
+        let missing = Self::FEATURES.difference(available);
         if !missing.is_empty() {
             return Err(UnmetRequirements::Features { missing });
         }
@@ -102,7 +101,7 @@ impl DeviceRequirements {
     /// caller-supplied device: the negotiation against what the device was made with, so a
     /// device requested with lower limits than Palantir's pipelines consume fails here, not in
     /// wgpu's validation of the first pipeline.
-    pub fn met_by(device: &wgpu::Device) -> Result<(), UnmetRequirements> {
+    pub(crate) fn met_by(device: &wgpu::Device) -> Result<(), UnmetRequirements> {
         Self::against(device.features(), &device.limits(), wgpu::Features::empty()).map(drop)
     }
 }
@@ -111,7 +110,6 @@ impl DeviceRequirements {
 mod tests {
     use wgpu::{Features, Limits};
 
-    use crate::gpu::device::device_features::DeviceFeatures;
     use crate::gpu::device::device_requirements::DeviceRequirements;
     use crate::gpu::device::device_requirements::IMMEDIATES_BYTES;
     use crate::gpu::error::UnmetRequirements;
@@ -138,7 +136,7 @@ mod tests {
         assert_eq!(
             missing,
             UnmetRequirements::Features {
-                missing: DeviceFeatures::IMMEDIATES
+                missing: Features::IMMEDIATES
             },
             "the feature that is absent, not the one the adapter has"
         );

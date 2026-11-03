@@ -123,7 +123,7 @@ fn surface_config_rejects_each_missing_hard_capability() {
     };
     assert_eq!(
         *missing,
-        SurfaceUsages::RENDER_ATTACHMENT,
+        TextureUsages::RENDER_ATTACHMENT,
         "the usage the surface lacks, not the one it has"
     );
     assert_eq!(

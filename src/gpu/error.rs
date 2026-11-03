@@ -4,17 +4,16 @@ use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 
-use crate::gpu::device::device_features::DeviceFeatures;
-#[cfg(feature = "winit")]
-use crate::gpu::surface::surface_usages::SurfaceUsages;
+use crate::gpu::flag_names;
 
 /// A device or adapter cannot run Palantir's pipelines.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum UnmetRequirements {
     /// A required feature is absent.
     Features {
-        /// The features needed and missing.
-        missing: DeviceFeatures,
+        /// The features of [`DeviceRequirements::FEATURES`](crate::DeviceRequirements::FEATURES)
+        /// the device lacks.
+        missing: wgpu::Features,
     },
     /// A limit sits below the floor Palantir needs.
     Limit {
@@ -32,7 +31,8 @@ impl Display for UnmetRequirements {
         match self {
             Self::Features { missing } => write!(
                 f,
-                "graphics device is missing {missing}, which Palantir requires"
+                "graphics device is missing {}, which Palantir requires",
+                fmt::from_fn(|f| flag_names::write(f, missing.iter_names()))
             ),
             Self::Limit {
                 name,
@@ -111,7 +111,7 @@ pub enum SurfaceError {
     /// The surface lacks texture usages Palantir's compositor needs.
     MissingUsages {
         /// The usages the compositor needs and the surface lacks.
-        missing: SurfaceUsages,
+        missing: wgpu::TextureUsages,
     },
 }
 
@@ -148,7 +148,8 @@ impl Display for SurfaceError {
             Self::MissingSrgb => f.write_str("window surface has no sRGB format and color space"),
             Self::MissingUsages { missing } => write!(
                 f,
-                "window surface cannot do {missing}, which Palantir's compositor needs"
+                "window surface cannot do {}, which Palantir's compositor needs",
+                fmt::from_fn(|f| flag_names::write(f, missing.iter_names()))
             ),
         }
     }

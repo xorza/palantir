@@ -1,7 +1,6 @@
 //! Opening the device: what Palantir asks of an adapter, the handles it
 //! hands out, and the contexts a `GpuPaint` receives.
 
-pub(crate) mod device_features;
 pub(crate) mod device_health;
 pub(crate) mod device_requirements;
 pub(crate) mod gpu;
@@ -10,6 +9,5 @@ pub(crate) mod gpu_frame_ctx;
 pub(crate) mod gpu_init_ctx;
 pub(crate) mod gpu_wait;
 pub(crate) mod pass_traffic;
-pub(crate) mod power_preference;
 pub(crate) mod requested_gpu;
 pub(crate) mod vendor;
