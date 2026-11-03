@@ -1,16 +1,21 @@
 use std::rc::Rc;
 
 use crate::animation::animation_spec::AnimationSpec;
+use crate::primitives::paint::color::RgbaF32;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme::{Dark, Light};
 use crate::ui::window_theme::{Motion, WindowTheme};
 
+/// A theme neither stock theme equals, so a set of it is a change on either scheme.
 fn theme() -> Rc<Theme> {
-    Rc::new(Theme::stock(Dark))
+    let mut theme = Theme::stock(Dark);
+    theme.window_bg = RgbaF32::new(0.25, 0.5, 0.75, 1.0);
+    Rc::new(theme)
 }
 
 /// A theme set on the shown scheme lands at once under `Snap` and moves the epoch; one set on the
-/// other scheme, or the handle a slot holds already, changes nothing shown and keeps it.
+/// other scheme, the handle a slot holds already, or an equal theme in a new handle changes
+/// nothing shown and keeps it.
 #[test]
 fn a_snapped_set_moves_the_epoch_only_for_the_shown_scheme() {
     let mut window = WindowTheme::new(Dark);
@@ -27,6 +32,12 @@ fn a_snapped_set_moves_the_epoch_only_for_the_shown_scheme() {
         "not shown"
     );
     assert!(Rc::ptr_eq(window.get(Light), &other));
+    assert_eq!(window.epoch(), 0);
+
+    assert!(
+        !window.set(Dark, Rc::new(Theme::stock(Dark)), Motion::Snap),
+        "an equal theme in a new handle"
+    );
     assert_eq!(window.epoch(), 0);
 
     let new = theme();

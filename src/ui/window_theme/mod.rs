@@ -79,10 +79,12 @@ impl WindowTheme {
     }
 
     /// Hold `theme` for `scheme`. Returns whether the shown target changed, which the next frame
-    /// shows: a transition starts or turns under [`Motion::Animate`], else the theme lands.
+    /// shows: a transition starts or turns under [`Motion::Animate`], else the theme lands. A
+    /// theme equal to the held one is no change, as Flutter's `AnimatedTheme` compares
+    /// `ThemeData` by value, so an app that sets its theme each frame still idles.
     pub(crate) fn set(&mut self, scheme: ColorScheme, theme: Rc<Theme>, motion: Motion) -> bool {
         let slot = self.pair.get_mut(scheme);
-        if Rc::ptr_eq(slot, &theme) {
+        if Rc::ptr_eq(slot, &theme) || **slot == *theme {
             return false;
         }
         let old = mem::replace(slot, theme);

@@ -2,6 +2,7 @@
 
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::watch::KeyboardWake;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::response::ResponseSnapshot;
@@ -91,7 +92,7 @@ impl<'a> Editor<'a> {
         let clipboard = ui.clipboard();
         let mut clicked_action = None;
         Menu::context(snapshot).show(ui, |ui, popup| {
-            for &keypress in ui.keyboard_events() {
+            for &keypress in ui.keyboard_events(KeyboardWake::NONE) {
                 if !filter.takes(keypress.class()) {
                     continue;
                 }

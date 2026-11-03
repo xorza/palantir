@@ -57,6 +57,17 @@ impl Pointer {
         &mut self.captures[b.idx()]
     }
 
+    /// The widget the pointer hovers: [`Self::hovered`], unless a held press of any button
+    /// belongs to another widget, as a pointer capture holds every button's gesture (W3C Pointer
+    /// Events, `setPointerCapture`). The one hover every reader reads.
+    pub(super) fn hover_target(&self) -> Option<WidgetId> {
+        let hovered = self.hovered?;
+        self.captures
+            .iter()
+            .all(|cap| cap.press.is_none_or(|press| press.target == hovered))
+            .then_some(hovered)
+    }
+
     /// Whether any button holds a live capture; a captured widget tracks the pointer wherever it
     /// is.
     pub(super) fn any_press(&self) -> bool {

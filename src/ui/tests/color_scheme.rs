@@ -4,8 +4,9 @@ use glam::UVec2;
 
 use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
+use crate::primitives::paint::color::RgbaF32;
 use crate::theme::Theme;
-use crate::theme::color_scheme::ColorScheme::{Dark, Light};
+use crate::theme::color_scheme::ColorScheme::{self, Dark, Light};
 use crate::theme::scheme_preference::SchemePreference;
 use crate::ui::Ui;
 use crate::ui::frame_report::FramePaint;
@@ -17,6 +18,13 @@ const SURFACE: UVec2 = UVec2::new(200, 100);
 
 fn record(ui: &mut Ui) {
     Button::new().id_salt("apply").label("Apply").show(ui);
+}
+
+/// `scheme`'s stock theme on another window color, which no stock theme equals.
+fn edited(scheme: ColorScheme) -> Theme {
+    let mut theme = Theme::stock(scheme);
+    theme.window_bg = RgbaF32::new(0.25, 0.5, 0.75, 1.0);
+    theme
 }
 
 /// With no transition, a pick made during a record keeps that frame's scheme and theme, asks for
@@ -102,7 +110,7 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
     h.frame(record);
     let epoch = h.ui().window_theme.epoch();
 
-    let light = Rc::new(Theme::stock(Light));
+    let light = Rc::new(edited(Light));
     h.ui_mut().set_theme_for(Light, Rc::clone(&light));
     assert_eq!(
         h.ui().window_theme.epoch(),
@@ -119,19 +127,27 @@ fn the_theme_epoch_moves_only_with_the_shown_theme() {
         "dark resolves to dark again"
     );
 
-    h.ui_mut().set_theme_for(Dark, Theme::stock(Dark));
+    let held = Theme::clone(h.ui().theme_for(Dark));
+    h.ui_mut().set_theme_for(Dark, held);
+    assert_eq!(
+        h.ui().window_theme.epoch(),
+        epoch,
+        "an equal theme moves nothing"
+    );
+    h.ui_mut().set_theme_for(Dark, edited(Dark));
     assert_eq!(h.ui().window_theme.epoch(), epoch.wrapping_add(1));
 }
 
 /// A write to the shown slot during a record asks for the frame that records the rest under it;
-/// a write to the hidden slot, or of the handle the slot holds, asks for nothing. With no
-/// transition, so no blend owes frames of its own.
+/// a write to the hidden slot, of the handle the slot holds, or of an equal theme in a new handle,
+/// as an app that sets its theme each frame writes, asks for nothing. With no transition, so no
+/// blend owes frames of its own.
 #[test]
 fn a_shown_theme_write_asks_for_a_frame() {
     let mut h = Harness::mono(SURFACE);
     h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
     h.frame(record);
-    let shown = Rc::new(Theme::stock(Dark));
+    let shown = Rc::new(edited(Dark));
     let report = h.frame(|ui| {
         record(ui);
         ui.set_theme_for(Dark, Rc::clone(&shown));
@@ -142,6 +158,7 @@ fn a_shown_theme_write_asks_for_a_frame() {
     let report = h.frame(|ui| {
         record(ui);
         ui.set_theme_for(Dark, Rc::clone(&shown));
+        ui.set_theme_for(Dark, Theme::clone(&shown));
         ui.set_theme_for(Light, Theme::stock(Light));
     });
     assert!(!report.repaint_requested);

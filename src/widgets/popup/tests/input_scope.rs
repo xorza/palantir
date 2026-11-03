@@ -13,6 +13,7 @@ use crate::ui::Ui;
 use crate::widget_core::click_outside::ClickOutside;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::overlay_response::OverlayClose;
+use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::tests::support::{ANCHOR, BODY_H, BODY_W, SURFACE, frame_body};
@@ -112,7 +113,8 @@ fn each_click_outside_mode_decides_whether_main_sees_the_press() {
 }
 
 /// The key-scope claim is the other capture, and `PassThrough` drops it too:
-/// a host that can be clicked but not typed into is just as dead.
+/// a host that can be clicked but not typed into is just as dead. The body holds a button, as a
+/// toast's Undo, whose own Space and Enter scope claims no layer.
 #[test]
 fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
     for (mode, main_reads_key) in [
@@ -136,7 +138,12 @@ fn only_pass_through_leaves_the_keyboard_to_the_layers_below() {
                             Panel::vstack()
                                 .id(WidgetId::from_hash("popup-content"))
                                 .size((Sizing::fixed(BODY_W), Sizing::fixed(BODY_H)))
-                                .show(ui, |_| {});
+                                .show(ui, |ui| {
+                                    Button::new()
+                                        .id(WidgetId::from_hash("undo"))
+                                        .label("Undo")
+                                        .show(ui);
+                                });
                         });
                     saw
                 })

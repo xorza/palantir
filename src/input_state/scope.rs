@@ -22,8 +22,14 @@ pub(super) struct Scopes {
     path: Vec<ScopeRow>,
     /// [`live_scopes`] folded once per resolve (the filter costs two `Vec` scans per row); every read of the live set goes through here.
     live: Vec<ScopeRow>,
-    /// Topmost plane declaring any scope; an overlay raising it cuts off every plane beneath, on keyboard and pointer.
+    /// The plane keys route on: the focused widget's, unless an overlay's claim sits above it
+    /// ([`Self::blocking_plane`]); with nothing focused, the claim's, else the lowest plane
+    /// declaring a scope. A widget's own scope on a higher plane, as a button's in a toast,
+    /// raises nothing.
     active_plane: Option<Plane>,
+    /// The topmost plane an overlay claims ([`ScopeRow::blocks_below`]); it cuts off every plane
+    /// beneath, on keyboard and pointer.
+    blocking_plane: Option<Plane>,
     outermost: Option<WidgetId>,
     reader_memo: Option<ReaderMemo>,
     /// Scopes withdrawn by [`Self::close`] this frame, honored from the next resolve (the cascade is a frame stale, so a closing overlay has already recorded its scope).
@@ -66,7 +72,26 @@ impl Scopes {
         self.live.clear();
         self.live
             .extend(live_scopes(cascade, &self.closing, &self.closed));
-        self.active_plane = self.live.iter().map(|row| row.plane).max();
+        let blocking = self
+            .live
+            .iter()
+            .filter(|row| row.blocks_below)
+            .map(|row| row.plane)
+            .max();
+        let focus_plane = focused
+            .and_then(|id| cascade.endpoint(id))
+            .map(|at| at.plane)
+            .filter(|&plane| blocking.is_none_or(|blocking| plane >= blocking));
+        self.blocking_plane = blocking;
+        self.active_plane = focus_plane
+            .or(blocking)
+            .or_else(|| self.live.iter().map(|row| row.plane).min());
+        if let Some(blocking) = blocking {
+            debug_assert!(
+                self.active_plane.is_some_and(|active| active >= blocking),
+                "keys route on a plane a claim silences",
+            );
+        }
         if let Some(active) = self.active_plane {
             if let Some(anchor) = focused {
                 self.path.extend(
@@ -117,9 +142,10 @@ impl Scopes {
         mem::swap(&mut self.closed, &mut self.closing);
     }
 
-    /// Whether an overlay's scope cuts `reader`'s plane off both streams (strictly below, so its own body keeps reading).
+    /// Whether an overlay's claim cuts `reader`'s plane off both streams (strictly below, so its own body keeps reading).
     pub(super) fn silences(&self, reader: Plane) -> bool {
-        self.active_plane.is_some_and(|active| active > reader)
+        self.blocking_plane
+            .is_some_and(|blocking| blocking > reader)
     }
 
     /// Whether a scope on the focused widget's path takes `class`: a claim, rather than the outermost fallback of [`Self::grant`].

@@ -68,7 +68,7 @@ pub struct OverlaySpec {
 /// One overlay's turn on a layer, from stamping its root until it closes.
 /// [`Popup`](crate::Popup), [`Modal`](crate::Modal) and [`Tooltip`](crate::Tooltip)
 /// share this lifecycle; two steps have ordering constraints (see [`Self::record`],
-/// [`Self::finish`]). A scope silences the layers strictly *below* its own, never
+/// [`Self::finish`]). A claim silences the layers strictly *below* its own, never
 /// its own body, so a `TextEdit` in a popup keeps the keyboard.
 ///
 /// A custom overlay follows the same order: [`Self::claim`] with the root before
@@ -82,7 +82,8 @@ pub struct OverlayScope {
 
 impl OverlayScope {
     /// Claim `spec.layer` for `root`, stamping it as the node taking its layer's key
-    /// scope when there is a backdrop; the owner is the root's resolved id. Every
+    /// scope when there is a backdrop, which cuts every plane below off the keyboard and the
+    /// pointer streams; the owner is the root's resolved id. Every
     /// class but [`KeyFilter::FOCUS`] is taken, so a popup under a modal does not
     /// dismiss on the same Escape; `FOCUS` stays out so Tab walks the overlay's own
     /// stops.
@@ -100,7 +101,8 @@ impl OverlayScope {
         );
         if spec.backdrop.owns_input() {
             root.configure()
-                .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS));
+                .input_scope(KeyFilter::ALL.difference(KeyFilter::FOCUS))
+                .blocks_below();
         }
         let owner = root.resolve(ui);
         Self { owner, spec }

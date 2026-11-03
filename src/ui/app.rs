@@ -11,7 +11,7 @@ use crate::window::window_token::WindowToken;
 /// to follow another's asks no window to follow it in turn, so a change a record pass makes with
 /// no input, wake or animation of its own shows in the other windows at their next frame.
 pub trait App {
-    /// Runs once before the first record pass of a fully recorded frame, for work that must not replay. `ui` is read-only.
+    /// Runs once before the first record pass of a fully recorded frame, for work that must not replay. `ui` is read-only, and reads the state the frame starts with: focus before this frame's Tab and arrow presses move it, which the first record pass sees moved.
     fn update(&mut self, _window: WindowToken, _ui: &Ui) {}
 
     /// Build the UI for `window`. May replay (warmup, action input, relayout) with no action input after the first pass, so unconditional effects belong in [`Self::update`].

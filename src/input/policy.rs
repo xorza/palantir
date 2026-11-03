@@ -68,7 +68,9 @@ impl InputSignal {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FocusPolicy {
     /// A press on a non-focusable widget or empty surface keeps focus, so e.g.
-    /// clicking a Button while editing a field keeps the cursor there.
+    /// clicking a toolbar button set [`focusable(false)`](crate::Configure::focusable) while
+    /// editing a field keeps the cursor there; a focusable button takes the focus under either
+    /// policy.
     PreserveOnMiss,
     /// A press anywhere not focusable clears focus (click-outside-to-blur). Default.
     #[default]

@@ -204,7 +204,7 @@ fn a_dismissed_modal_stops_owning_input_on_the_very_next_frame() {
         scene(ui, &mut open);
         [
             ui.pointer_events(PointerWake::BUTTONS).len(),
-            ui.keyboard_events().len(),
+            ui.keyboard_events(KeyboardWake::NONE).len(),
         ]
     });
     assert_eq!(pointer, 1, "the dismissed modal still held the pointer");
@@ -312,7 +312,6 @@ fn closing_from_outside_gives_the_input_back_at_once() {
             let mut h = Harness::mono(UVec2::new(400, 300));
             let mut open = true;
             let mut scene = |ui: &mut Ui, ending: bool| {
-                ui.watch_keyboard(KeyboardWake::KEY);
                 if open {
                     match overlay {
                         Overlay::Modal => {
@@ -335,7 +334,7 @@ fn closing_from_outside_gives_the_input_back_at_once() {
                         }
                     }
                 }
-                ui.keyboard_events().len()
+                ui.keyboard_events(KeyboardWake::KEY).len()
             };
             h.frame(|ui| {
                 scene(ui, false);

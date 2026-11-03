@@ -17,4 +17,8 @@ pub(crate) struct ScopeRow {
     pub(crate) plane: Plane,
     pub(crate) id: WidgetId,
     pub(crate) filter: KeyFilter,
+    /// An overlay's claim on its layer ([`OverlayScope::claim`](crate::widget::OverlayScope::claim)):
+    /// it cuts every plane below its own off. A widget's own scope, as a button's Space and
+    /// Enter, says only which keys it takes.
+    pub(crate) blocks_below: bool,
 }

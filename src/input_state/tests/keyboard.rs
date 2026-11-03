@@ -8,9 +8,10 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
 use crate::input::policy::FocusPolicy;
 use crate::input::scroll_targets::ScrollTargets;
+use crate::input::watch::KeyboardWake;
 use crate::input_state::InputState;
 use crate::input_state::tests::{
-    BUTTON_SURFACE, Sample, Stream, fixed_button, forged_focus, sample_layers,
+    BUTTON_SURFACE, Sample, Stream, claiming, fixed_button, forged_focus, sample_layers,
 };
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -79,22 +80,34 @@ fn a_tree_with_no_scopes_still_reads_every_chord() {
     assert!(pressed, "no scopes declared must not gate the chord out");
 }
 
-/// A scope silences the layers **strictly below** it and only those: an overlay
-/// with one on `Layer::Popup` cuts `Main` off while its own layer and everything
-/// above keep reading.
+/// An overlay's claim silences the layers **strictly below** it and only those: one on
+/// `Layer::Popup` cuts `Main` off while its own layer and everything above keep reading. A
+/// widget's own scope there, as a button's in a toast, cuts nothing off.
 #[test]
-fn a_scope_silences_the_layers_strictly_below_it() {
-    let mut h = Harness::mono(glam::UVec2::new(200, 200));
-    // The scope is declared during the first record; its path resolves from the
-    // cascade at the start of the next.
-    h.frame(popup_with_scope);
-    press_escape(&mut h);
-    let seen = sample_layers(&mut h, Stream::Keyboard, popup_with_scope).layers;
+fn a_claim_silences_the_layers_strictly_below_it() {
+    for claims in [true, false] {
+        let scene = if claims {
+            popup_with_claim
+        } else {
+            popup_with_widget_scope
+        };
+        let main_reads = usize::from(!claims);
+        let mut h = Harness::mono(glam::UVec2::new(200, 200));
+        // The scope is declared during the first record; its path resolves from the
+        // cascade at the start of the next.
+        h.frame(scene);
+        press_escape(&mut h);
+        let seen = sample_layers(&mut h, Stream::Keyboard, scene).layers;
 
-    assert_eq!(seen[Layer::Popup.idx()], 1, "the scope's own layer reads");
-    assert_eq!(seen[Layer::Main.idx()], 0);
-    assert_eq!(seen[Layer::Modal.idx()], 1);
-    assert_eq!(seen[Layer::Tooltip.idx()], 1);
+        assert_eq!(seen[Layer::Popup.idx()], 1, "the scope's own layer reads");
+        assert_eq!(
+            seen[Layer::Main.idx()],
+            main_reads,
+            "Main under a claim reads nothing"
+        );
+        assert_eq!(seen[Layer::Modal.idx()], 1);
+        assert_eq!(seen[Layer::Tooltip.idx()], 1);
+    }
 }
 
 /// A scope on a nested plane silences the plane it opened from, as one on a higher layer does:
@@ -103,10 +116,12 @@ fn a_scope_silences_the_layers_strictly_below_it() {
 fn a_nested_overlays_scope_silences_its_opener() {
     let record = |ui: &mut Ui| {
         let mut seen = [0; 3];
-        seen[0] = ui.keyboard_events().len();
-        popup_scope(ui, "outer", |ui| {
-            seen[1] = ui.keyboard_events().len();
-            popup_scope(ui, "inner", |ui| seen[2] = ui.keyboard_events().len());
+        seen[0] = ui.keyboard_events(KeyboardWake::NONE).len();
+        popup_claim(ui, "outer", |ui| {
+            seen[1] = ui.keyboard_events(KeyboardWake::NONE).len();
+            popup_claim(ui, "inner", |ui| {
+                seen[2] = ui.keyboard_events(KeyboardWake::NONE).len();
+            });
         });
         seen
     };
@@ -118,14 +133,27 @@ fn a_nested_overlays_scope_silences_its_opener() {
     assert_eq!(h.frame_value(record), [0, 0, 1], "main, outer, inner");
 }
 
+/// The raw key stream holds a press with nothing focused only for a reader that watches
+/// `KeyboardWake::KEY`, which reading with it does; a read with no wake gets none.
+#[test]
+fn reading_the_key_stream_with_a_key_wake_keeps_unfocused_presses() {
+    for (wake, want) in [(KeyboardWake::KEY, 1), (KeyboardWake::NONE, 0)] {
+        let mut h = Harness::mono(glam::UVec2::new(200, 200));
+        let read = |ui: &mut Ui| ui.keyboard_events(wake).len();
+        let _ = h.frame_value(read);
+        h.key(Key::Char('a'));
+        assert_eq!(h.frame_value(read), want, "{wake:?}");
+    }
+}
+
 /// A scope that stops being recorded stops owning input, with no release call.
 #[test]
 fn a_scope_that_stops_recording_reopens_the_stream() {
     let mut h = Harness::mono(glam::UVec2::new(200, 200));
-    h.frame(popup_with_scope);
+    h.frame(popup_with_claim);
     press_escape(&mut h);
     assert_eq!(
-        sample_layers(&mut h, Stream::Keyboard, popup_with_scope).layers[Layer::Main.idx()],
+        sample_layers(&mut h, Stream::Keyboard, popup_with_claim).layers[Layer::Main.idx()],
         0
     );
 
@@ -198,7 +226,7 @@ fn closing_one_of_two_scopes_on_a_layer_leaves_it_blocked() {
         let two = |ui: &mut Ui| {
             let mut read_by_survivor = false;
             for id in ["first", "second"] {
-                popup_scope(ui, id, |ui| {
+                popup_claim(ui, id, |ui| {
                     if id == survivor {
                         read_by_survivor = ui.shortcut_pressed(Key::Escape);
                     }
@@ -365,18 +393,31 @@ fn press_escape(h: &mut Harness) {
 }
 
 /// A node on the popup layer declaring an all-taking scope; `body` records inside it.
-fn popup_scope(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+/// An overlay on `Layer::Popup` claiming its layer, with `body` inside.
+fn popup_claim(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     ui.layer(Layer::Popup).show(|ui| {
-        Panel::vstack()
-            .id(WidgetId::from_hash(id))
-            .input_scope(KeyFilter::ALL)
-            .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-            .show(ui, body);
+        claiming(
+            Panel::vstack()
+                .id(WidgetId::from_hash(id))
+                .size((Sizing::fixed(20.0), Sizing::fixed(20.0))),
+        )
+        .show(ui, body);
     });
 }
 
-fn popup_with_scope(ui: &mut Ui) {
-    popup_scope(ui, "overlay", |_| {});
+fn popup_with_claim(ui: &mut Ui) {
+    popup_claim(ui, "overlay", |_| {});
+}
+
+/// A widget's own scope on `Layer::Popup`, taking the keys a button acts on and claiming nothing.
+fn popup_with_widget_scope(ui: &mut Ui) {
+    ui.layer(Layer::Popup).show(|ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("toast-button"))
+            .input_scope(KeyFilter::SPACE.union(KeyFilter::ENTER))
+            .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+            .show(ui, |_| {});
+    });
 }
 
 #[test]

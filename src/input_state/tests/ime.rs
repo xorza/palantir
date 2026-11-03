@@ -6,6 +6,7 @@ use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
+use crate::input::watch::KeyboardWake;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
@@ -58,7 +59,7 @@ fn a_commit_splits_between_characters_and_types_whole() {
     h.on_input(InputEvent::ImeCommit("日本語の文章を入力する\tz\n"));
     let pieces = h.frame_value(|ui| {
         let pieces: Vec<String> = ui
-            .keyboard_events()
+            .keyboard_events(KeyboardWake::NONE)
             .iter()
             .map(|press| press.text.as_str().to_owned())
             .collect();

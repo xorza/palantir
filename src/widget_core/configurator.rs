@@ -228,6 +228,15 @@ impl Configurator<'_> {
         self
     }
 
+    /// Make this node's input scope an overlay's claim on its layer, which cuts the planes below
+    /// off; [`OverlayScope::claim`](crate::widget_core::overlay_scope::OverlayScope::claim) is its
+    /// one caller.
+    #[inline]
+    pub(crate) const fn blocks_below(&mut self) -> &mut Self {
+        self.widget.node.flags.set_blocks_below(true);
+        self
+    }
+
     /// See [`Configure::visibility`](crate::widget_core::configure::Configure::visibility).
     #[inline]
     pub const fn visibility(&mut self, v: Visibility) -> &mut Self {

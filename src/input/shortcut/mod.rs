@@ -175,7 +175,7 @@ impl Shortcut {
 }
 
 /// The bare key, no modifiers: `ui.shortcut_pressed(Key::Delete)` is
-/// `ui.shortcut_pressed(Key::Delete)`.
+/// `ui.shortcut_pressed(Shortcut::key(Key::Delete))`.
 impl From<Key> for Shortcut {
     fn from(key: Key) -> Self {
         Self::key(key)

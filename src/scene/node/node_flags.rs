@@ -24,21 +24,28 @@ impl NodeFlags {
     /// The axis whose arrows move focus between stops inside the node: `0` none, `1 + Axis`.
     const ARROW_SHIFT: u32 = 21;
     const ARROW_MASK: u32 = 0b11 << Self::ARROW_SHIFT;
+    /// The node's key scope is an overlay's claim on its layer, which cuts the planes below off.
+    const BLOCKS_BELOW: u32 = 1 << 23;
     const ALL: u32 = Self::SENSE_MASK
         | Self::DISABLED
         | Self::CLIP_MASK
         | Self::FOCUSABLE
         | Self::SCOPE_MASK
         | Self::NOT_TAB_STOP
-        | Self::ARROW_MASK;
+        | Self::ARROW_MASK
+        | Self::BLOCKS_BELOW;
     pub(crate) const WIDTH: u32 = Self::ALL.bit_width();
     /// What a node that takes over another's slot takes from it ([`Self::adopt`]): whether the
     /// slot is disabled and whether it is a Tab stop.
     const ADOPTED: u32 = Self::DISABLED | Self::NOT_TAB_STOP;
     /// What such a node keeps of its own: how it senses, focuses, clips, scopes keys and moves
     /// focus by arrows.
-    const OWN: u32 =
-        Self::SENSE_MASK | Self::CLIP_MASK | Self::FOCUSABLE | Self::SCOPE_MASK | Self::ARROW_MASK;
+    const OWN: u32 = Self::SENSE_MASK
+        | Self::CLIP_MASK
+        | Self::FOCUSABLE
+        | Self::SCOPE_MASK
+        | Self::ARROW_MASK
+        | Self::BLOCKS_BELOW;
 
     /// The whole bitset, for folding into a hash.
     #[inline]
@@ -80,6 +87,17 @@ impl NodeFlags {
     #[inline]
     pub(crate) const fn key_filter(self) -> KeyFilter {
         KeyFilter::from_bits_truncate(((self.bits & Self::SCOPE_MASK) >> Self::SCOPE_SHIFT) as u16)
+    }
+
+    /// Whether the node's key scope cuts the planes below it off, as an overlay's claim does.
+    #[inline]
+    pub(crate) const fn blocks_below(self) -> bool {
+        self.bits & Self::BLOCKS_BELOW != 0
+    }
+
+    #[inline]
+    pub(crate) const fn set_blocks_below(&mut self, v: bool) {
+        self.bits = (self.bits & !Self::BLOCKS_BELOW) | (if v { Self::BLOCKS_BELOW } else { 0 });
     }
 
     #[inline]

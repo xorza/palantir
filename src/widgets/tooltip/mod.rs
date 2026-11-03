@@ -168,7 +168,7 @@ impl<'a> Tooltip<'a> {
                 .default_id(bubble_id)
                 .default_padding(theme.padding)
                 .default_max_size(theme.max_size);
-            // `Backdrop::None`: a tooltip annotates, and a scope recorded every
+            // `Backdrop::None`: a tooltip annotates, and a claim recorded every
             // frame would cut off every plane below.
             let spec = OverlaySpec {
                 layer: Layer::Tooltip,

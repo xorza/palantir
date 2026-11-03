@@ -29,6 +29,7 @@ use crate::primitives::layout::clip_mode::ClipMode;
 use crate::primitives::layout::grid_def::GridDef;
 use crate::primitives::layout::layout_mode::{GridDefId, LayoutMode, ScrollbarsDefId};
 use crate::primitives::layout::track::Track;
+use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::layer::Layer;
@@ -60,6 +61,9 @@ use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 use std::mem;
+
+/// The lane the cascade's static hash gives a node's [`Visibility`], above its flag word.
+const VISIBILITY_BITS: u32 = 2;
 
 /// A single plane's arena. Planes share no storage, so `Ui::layer` records
 /// straight into its destination tree. `records` is in pre-order paint order;
@@ -272,7 +276,11 @@ impl Tree {
             // shape. The top bit of the end word says whether a Tab key follows.
             const {
                 assert!(
-                    32 + NodeFlags::WIDTH + u8::BITS <= 63,
+                    (Visibility::Collapsed as u32) < 1 << VISIBILITY_BITS,
+                    "visibility outgrows its lane",
+                );
+                assert!(
+                    32 + NodeFlags::WIDTH + VISIBILITY_BITS <= 63,
                     "the flag word and visibility overrun the Tab bit",
                 );
             }

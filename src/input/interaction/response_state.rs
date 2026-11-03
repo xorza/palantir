@@ -2,6 +2,7 @@
 
 use crate::input::interaction::button_phase::ButtonPhase;
 use crate::input::interaction::button_state::ButtonState;
+use crate::input::interaction::drag::Drag;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
@@ -59,10 +60,16 @@ impl ResponseState {
     }
 
     /// Reports one left click the pointer never made: an activation key or a menu shortcut, so a
-    /// reader of `clicked()` need not know which device acted.
+    /// reader of `clicked()` need not know which device acted. Only over a left button with no
+    /// gesture of its own this frame: a held press keeps its gesture and makes its own click on
+    /// release, a click already counts, and a drag that stopped keeps its edge.
     #[inline]
-    pub(crate) const fn activate(&mut self) {
-        self.left.phase = ButtonPhase::Up { click: Some(1) };
+    pub(crate) fn activate(&mut self) {
+        if let (ButtonPhase::Idle | ButtonPhase::Up { click: None }, Drag::None) =
+            (self.left.phase, self.left.drag)
+        {
+            self.left = ButtonState::new(ButtonPhase::Up { click: Some(1) }, Drag::None);
+        }
     }
 
     /// Everything the pointer and wheel contributed this frame, back to default. Geometry stays: `rect`, `transform`, `pointer_over`, and `pointer_local`, which say where the pointer is, not what it did.

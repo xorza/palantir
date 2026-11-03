@@ -5,6 +5,7 @@ use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
+use crate::input::watch::KeyboardWake;
 use crate::text::probe::{Caret, TextProbe};
 use crate::ui::Ui;
 use crate::widgets::text_edit::action::EditAction;
@@ -136,8 +137,8 @@ impl InputPass<'_> {
 
         // Drain presses in arrival order, by index so probes can borrow `ui`:
         // shared edit actions first, then `apply_key`.
-        for i in 0..ui.keyboard_events().len() {
-            let kp = ui.keyboard_events()[i];
+        for i in 0..ui.keyboard_events(KeyboardWake::NONE).len() {
+            let kp = ui.keyboard_events(KeyboardWake::NONE)[i];
             if !filter.takes(kp.class()) {
                 continue;
             }
@@ -147,7 +148,7 @@ impl InputPass<'_> {
             // Single-line Enter submits without editing the buffer.
             if !ed.multiline() && kp.key == Key::Enter && !kp.mods.has_command() {
                 ended = Some(EditEnd::Submitted);
-                assert_only_repeats_after(ui.keyboard_events(), i);
+                assert_only_repeats_after(ui.keyboard_events(KeyboardWake::NONE), i);
                 break;
             }
             if let Some(action) = EditAction::from_keypress(kp) {
@@ -157,7 +158,7 @@ impl InputPass<'_> {
             match apply_key(&mut ed, kp, TextNav::new(PLATFORM)) {
                 KeyOutcome::Blur => {
                     ended = Some(EditEnd::Canceled);
-                    assert_only_repeats_after(ui.keyboard_events(), i);
+                    assert_only_repeats_after(ui.keyboard_events(KeyboardWake::NONE), i);
                     break;
                 }
                 KeyOutcome::Probe(probe) => probe.apply(&mut ed, ui, ctx),

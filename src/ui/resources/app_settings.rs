@@ -13,7 +13,8 @@ use std::time::Duration;
 /// [`UiResources`](crate::ui::resources::UiResources), and whether any moved since the host last
 /// asked: windows that did not record are asleep, so a write raises the signal and the host's
 /// [`Self::take_change`] repaints them all. Writing the held value is not a change, so a
-/// per-frame assign repaints nothing. Refused: a signal per setting, which the host must take
+/// per-frame assign repaints nothing. Each setter returns whether its value moved, so the
+/// writing window asks for its own frame on every host, a winit one or a headless one. Refused: a signal per setting, which the host must take
 /// one by one and OR, and a new setting's could be missed.
 #[derive(Debug)]
 pub(crate) struct AppSettings {
@@ -67,48 +68,48 @@ impl AppSettings {
         self.debug_overlay.get()
     }
 
-    pub(crate) fn set_debug_overlay(&self, overlay: DebugOverlayConfig) {
-        self.write(&self.debug_overlay, overlay);
+    pub(crate) fn set_debug_overlay(&self, overlay: DebugOverlayConfig) -> bool {
+        self.write(&self.debug_overlay, overlay)
     }
 
     pub(crate) const fn user_scale(&self) -> UserScale {
         self.user_scale.get()
     }
 
-    pub(crate) fn set_user_scale(&self, scale: UserScale) {
-        self.write(&self.user_scale, scale);
+    pub(crate) fn set_user_scale(&self, scale: UserScale) -> bool {
+        self.write(&self.user_scale, scale)
     }
 
     pub(crate) const fn scheme_preference(&self) -> SchemePreference {
         self.scheme_preference.get()
     }
 
-    pub(crate) fn set_scheme_preference(&self, preference: SchemePreference) {
-        self.write(&self.scheme_preference, preference);
+    pub(crate) fn set_scheme_preference(&self, preference: SchemePreference) -> bool {
+        self.write(&self.scheme_preference, preference)
     }
 
     pub(crate) const fn system_color_scheme(&self) -> Option<ColorScheme> {
         self.system_color_scheme.get()
     }
 
-    pub(crate) fn set_system_color_scheme(&self, scheme: Option<ColorScheme>) {
-        self.write(&self.system_color_scheme, scheme);
+    pub(crate) fn set_system_color_scheme(&self, scheme: Option<ColorScheme>) -> bool {
+        self.write(&self.system_color_scheme, scheme)
     }
 
     pub(crate) const fn motion_preference(&self) -> ReducePreference {
         self.motion_preference.get()
     }
 
-    pub(crate) fn set_motion_preference(&self, preference: ReducePreference) {
-        self.write(&self.motion_preference, preference);
+    pub(crate) fn set_motion_preference(&self, preference: ReducePreference) -> bool {
+        self.write(&self.motion_preference, preference)
     }
 
     pub(crate) const fn system_motion(&self) -> Reduction {
         self.system_motion.get()
     }
 
-    pub(crate) fn set_system_motion(&self, motion: Reduction) {
-        self.write(&self.system_motion, motion);
+    pub(crate) fn set_system_motion(&self, motion: Reduction) -> bool {
+        self.write(&self.system_motion, motion)
     }
 
     /// The motion every window runs now: the preference resolved against the system's.
@@ -120,16 +121,16 @@ impl AppSettings {
         self.transparency_preference.get()
     }
 
-    pub(crate) fn set_transparency_preference(&self, preference: ReducePreference) {
-        self.write(&self.transparency_preference, preference);
+    pub(crate) fn set_transparency_preference(&self, preference: ReducePreference) -> bool {
+        self.write(&self.transparency_preference, preference)
     }
 
     pub(crate) const fn system_transparency(&self) -> Reduction {
         self.system_transparency.get()
     }
 
-    pub(crate) fn set_system_transparency(&self, transparency: Reduction) {
-        self.write(&self.system_transparency, transparency);
+    pub(crate) fn set_system_transparency(&self, transparency: Reduction) -> bool {
+        self.write(&self.system_transparency, transparency)
     }
 
     /// The transparency every window paints now: the preference resolved against the system's.
@@ -143,8 +144,8 @@ impl AppSettings {
     }
 
     #[cfg(any(test, feature = "winit"))]
-    pub(crate) fn set_double_click_interval(&self, interval: Duration) {
-        self.write(&self.double_click_interval, interval);
+    pub(crate) fn set_double_click_interval(&self, interval: Duration) -> bool {
+        self.write(&self.double_click_interval, interval)
     }
 
     /// The scheme every window shows now: the preference resolved against the system's.
@@ -158,10 +159,14 @@ impl AppSettings {
         self.changed.replace(false)
     }
 
-    fn write<T: Copy + PartialEq>(&self, setting: &Cell<T>, value: T) {
-        if setting.replace(value) != value {
+    /// Hold `value`; returns whether it moved, so the window that wrote it asks for a frame, as
+    /// [`Self::take_change`] asks the host for every other window.
+    fn write<T: Copy + PartialEq>(&self, setting: &Cell<T>, value: T) -> bool {
+        let moved = setting.replace(value) != value;
+        if moved {
             self.changed.set(true);
         }
+        moved
     }
 }
 
@@ -174,18 +179,18 @@ mod tests {
     use crate::theme::scheme_preference::SchemePreference;
     use crate::ui::resources::app_settings::AppSettings;
 
-    /// A real move of any setting raises the one signal, which an ask lowers; writing the held
-    /// value raises nothing.
+    /// A real move of any setting raises the one signal, which an ask lowers, and the write
+    /// returns it moved; writing the held value raises nothing and returns no move.
     #[test]
     fn a_move_of_any_setting_signals_once_and_a_repeat_not_at_all() {
         let settings = AppSettings::default();
         assert!(!settings.take_change(), "nothing has written yet");
-        let writes: [&dyn Fn(&AppSettings); 8] = [
+        let writes: [&dyn Fn(&AppSettings) -> bool; 8] = [
             &|s| {
                 s.set_debug_overlay(DebugOverlayConfig {
                     frame_stats: true,
                     ..DebugOverlayConfig::default()
-                });
+                })
             },
             &|s| s.set_user_scale(UserScale::new(1.25).unwrap()),
             &|s| s.set_scheme_preference(SchemePreference::Light),
@@ -196,10 +201,13 @@ mod tests {
             &|s| s.set_transparency_preference(ReducePreference::Reduced),
         ];
         for (i, write) in writes.iter().enumerate() {
-            write(&settings);
+            assert!(write(&settings), "setting {i} returns its move");
             assert!(settings.take_change(), "setting {i} moved");
             assert!(!settings.take_change(), "the ask lowers the signal");
-            write(&settings);
+            assert!(
+                !write(&settings),
+                "setting {i} held: the write returns no move"
+            );
             assert!(!settings.take_change(), "setting {i} held: no change");
         }
         assert!(settings.debug_overlay().frame_stats);

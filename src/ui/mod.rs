@@ -44,6 +44,7 @@ use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
 use crate::input::interaction::response_state::ResponseState;
+use crate::input::key_class::KeyClass;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
 use crate::input::keyboard::modifiers::Modifiers;
@@ -233,13 +234,15 @@ impl Ui {
     }
 
     /// Replace this window's theme for `scheme`; takes an `Rc` so swapping prebuilt themes copies
-    /// nothing, and the handle the slot holds already changes nothing. The other scheme's waits
+    /// nothing, and a theme equal to the one the slot holds changes nothing, the same handle
+    /// with no compare. The other scheme's waits
     /// until its scheme shows. The shown scheme's moves there under
     /// [`Self::set_theme_transition`] from the next frame, this one keeping what it shows. Under
     /// [`AnimationSpec::SNAP`], before the window's second frame, in the first frame after the
     /// window was hidden, or with motion reduced, it applies at once, to the widgets recorded
-    /// after the call, and asks for a frame that records the rest under it. Set it on a change,
-    /// not every frame.
+    /// after the call, and asks for a frame that records the rest under it. Set it on a change:
+    /// a call each frame with an equal theme starts nothing, but builds and compares a whole
+    /// theme.
     ///
     /// ```
     /// # use palantir::{ColorScheme, SchemePreference, Theme, Ui};
@@ -309,8 +312,7 @@ impl Ui {
     /// resolved scheme from its next frame, which this call asks for; this frame keeps its
     /// scheme, so no frame mixes two. Persisting the pick is the app's.
     pub fn set_scheme_preference(&mut self, preference: SchemePreference) {
-        if self.scheme_preference() != preference {
-            self.resources.settings().set_scheme_preference(preference);
+        if self.resources.settings().set_scheme_preference(preference) {
             self.frame_runtime.request_repaint();
         }
     }
@@ -359,8 +361,7 @@ impl Ui {
     /// steps after this call runs under it, and every window is asked for a frame. Persisting the
     /// pick is the app's.
     pub fn set_motion_preference(&mut self, preference: ReducePreference) {
-        if self.motion_preference() != preference {
-            self.resources.settings().set_motion_preference(preference);
+        if self.resources.settings().set_motion_preference(preference) {
             self.frame_runtime.request_repaint();
         }
     }
@@ -368,10 +369,11 @@ impl Ui {
     /// A host's report of the system's reduced-motion setting; a change asks this window for a
     /// frame.
     pub(crate) fn set_system_motion_reduced(&mut self, reduced: bool) {
-        if self.system_motion_reduced() != reduced {
-            self.resources
-                .settings()
-                .set_system_motion(Reduction::from(reduced));
+        if self
+            .resources
+            .settings()
+            .set_system_motion(Reduction::from(reduced))
+        {
             self.frame_runtime.request_repaint();
         }
     }
@@ -407,10 +409,11 @@ impl Ui {
     /// window paints the resolved transparency from its next frame, which this call asks for.
     /// Persisting the pick is the app's.
     pub fn set_transparency_preference(&mut self, preference: ReducePreference) {
-        if self.transparency_preference() != preference {
-            self.resources
-                .settings()
-                .set_transparency_preference(preference);
+        if self
+            .resources
+            .settings()
+            .set_transparency_preference(preference)
+        {
             self.frame_runtime.request_repaint();
         }
     }
@@ -418,18 +421,18 @@ impl Ui {
     /// A host's report of the system's reduced-transparency setting; a change asks this window
     /// for a frame.
     pub(crate) fn set_system_transparency_reduced(&mut self, reduced: bool) {
-        if self.system_transparency_reduced() != reduced {
-            self.resources
-                .settings()
-                .set_system_transparency(Reduction::from(reduced));
+        if self
+            .resources
+            .settings()
+            .set_system_transparency(Reduction::from(reduced))
+        {
             self.frame_runtime.request_repaint();
         }
     }
 
     /// A host's report of the system's scheme; a change asks this window for a frame.
     pub(crate) fn set_system_color_scheme(&mut self, scheme: Option<ColorScheme>) {
-        if self.system_color_scheme() != scheme {
-            self.resources.settings().set_system_color_scheme(scheme);
+        if self.resources.settings().set_system_color_scheme(scheme) {
             self.frame_runtime.request_repaint();
         }
     }
@@ -509,9 +512,13 @@ impl Ui {
         self.input.pointer_events(self.forest.cur_plane())
     }
 
-    /// This frame's presses, in arrival order. Gated like [`Self::pointer_events`].
+    /// This frame's presses, in arrival order, and a watch of `wake`. A press reaches the
+    /// stream when a widget is focused, or a reader watched its key, its chord or
+    /// [`KeyboardWake::KEY`] in the pass before, so a reader with nothing focused passes `KEY`; a focused
+    /// widget passes [`KeyboardWake::NONE`]. Gated like [`Self::pointer_events`].
     #[inline]
-    pub fn keyboard_events(&self) -> &[KeyPress] {
+    pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress] {
+        self.input.watch_keyboard(wake);
         self.input.keyboard_events(self.forest.cur_plane())
     }
 
@@ -580,6 +587,13 @@ impl Ui {
         let reader = self.key_reader_as(reader);
         self.input
             .shortcut_pressed(reader, &self.cascade, shortcut.into())
+    }
+
+    /// [`InputState::class_pressed`] read inside `reader`, as [`Self::shortcut_pressed_as`] is.
+    #[inline]
+    pub(crate) fn class_pressed_as(&mut self, reader: WidgetId, class: KeyClass) -> bool {
+        let reader = self.key_reader_as(reader);
+        self.input.class_pressed(reader, &self.cascade, class)
     }
 
     /// The key reader at this record position.
@@ -865,7 +879,9 @@ impl Ui {
     /// Replace this app's debug-overlay flags, visible in every window.
     #[inline]
     pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
-        self.resources.settings().set_debug_overlay(overlay);
+        if self.resources.settings().set_debug_overlay(overlay) {
+            self.frame_runtime.request_repaint();
+        }
     }
 
     /// This window's most recent GPU instrumentation sample, which the backend publishes and the
@@ -1307,7 +1323,9 @@ impl Ui {
     }
 
     /// True when the pointer's hover target is `ancestor` or in its subtree.
-    /// Occlusion-aware, and changes only when a repaint is already scheduled.
+    /// Occlusion-aware, empty while another widget holds a press of any button, as
+    /// [`ResponseState::hovered`](crate::ResponseState::hovered) reads, and changes only when a repaint
+    /// is already scheduled.
     #[inline]
     pub fn is_hover_within(&self, ancestor: WidgetId) -> bool {
         self.input
@@ -1329,7 +1347,8 @@ impl Ui {
     }
 
     /// Scale the whole UI by `scale` on top of the platform factor. App-global;
-    /// takes effect next frame, so this frame's [`Self::display`] reports the old value.
+    /// takes effect next frame, which a change asks for, so this frame's [`Self::display`]
+    /// reports the old value.
     ///
     /// ```
     /// # use palantir::{Ui, UserScale};
@@ -1345,7 +1364,9 @@ impl Ui {
     /// distinct scale re-rasterizes every glyph; see [`UserScale`].
     #[inline]
     pub fn set_user_scale(&mut self, scale: UserScale) {
-        self.resources.settings().set_user_scale(scale);
+        if self.resources.settings().set_user_scale(scale) {
+            self.frame_runtime.request_repaint();
+        }
     }
 
     /// This frame's monotonic index over frames authoring code ran on. Retained

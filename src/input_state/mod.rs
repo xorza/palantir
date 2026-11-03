@@ -200,9 +200,10 @@ impl InputState {
         self.pointer.pos
     }
 
+    /// The widget the pointer hovers, under every button's capture ([`Pointer::hover_target`]).
     #[inline]
-    pub(crate) const fn hovered(&self) -> Option<WidgetId> {
-        self.pointer.hovered
+    pub(crate) fn hovered(&self) -> Option<WidgetId> {
+        self.pointer.hover_target()
     }
 
     #[inline]
@@ -306,6 +307,18 @@ impl InputState {
     pub(crate) fn key_pressed(&mut self, reader: KeyReader, cascade: &Cascade, key: Key) -> bool {
         self.subs.watch_key(key);
         self.granted_press(reader, cascade, |press| press.key.same_key(key))
+    }
+
+    /// Whether a press of `class` came this frame, whatever its key and modifiers, and is granted
+    /// to the scope `reader`'s parent sits in: what a scope that takes `class` acts on, as Shift
+    /// and Space are still [`KeyClass::Space`]. Watches nothing, as its reader is focused.
+    pub(crate) fn class_pressed(
+        &mut self,
+        reader: KeyReader,
+        cascade: &Cascade,
+        class: KeyClass,
+    ) -> bool {
+        self.granted_press(reader, cascade, |press| press.class() == class)
     }
 
     /// Whether a press this frame passes `matches` and is granted to `reader`'s scope.
@@ -872,11 +885,7 @@ impl InputState {
             return state;
         }
 
-        let me_under_pointer = self.pointer.hovered == Some(id);
-        let left_press = self.pointer.capture(PointerButton::Left).press;
-        // Gated on the left capture: while another widget holds the press, the pointer belongs to
-        // that gesture.
-        state.pointer_over = me_under_pointer && left_press.is_none_or(|p| p.target == id);
+        state.pointer_over = self.pointer.hover_target() == Some(id);
 
         // One slice per button, each with its own drag. A live press is `Down` (fresh) or
         // `Held`; otherwise a release edge is `Up`.

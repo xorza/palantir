@@ -324,9 +324,11 @@ pub trait Configure: Sized {
     /// Make this node an input scope taking `takes` while active. A key press walks
     /// the active path deepest-first and goes to the first scope whose filter contains
     /// its [`KeyClass`](crate::KeyClass), so a focused text field owns `Ctrl+Z` while
-    /// `Ctrl+S` passes on ([`KeyFilter::TEXT_FIELD`] omits `ACCEL`). An overlay declaring
-    /// [`KeyFilter::ALL`] cuts the layers below off. Not focus: a scope is where input
-    /// belongs, focus is where typing goes. [`KeyFilter::NONE`] clears it.
+    /// `Ctrl+S` passes on ([`KeyFilter::TEXT_FIELD`] omits `ACCEL`). A scope says which keys
+    /// the node takes and cuts no layer off, so a button in a toast leaves `Main` its keys; an
+    /// overlay cuts the layers below off through
+    /// [`OverlayScope::claim`](crate::widget::OverlayScope::claim). Not focus: a scope is where
+    /// input belongs, focus is where typing goes. [`KeyFilter::NONE`] clears it.
     #[inline]
     #[must_use]
     fn input_scope(mut self, takes: KeyFilter) -> Self {

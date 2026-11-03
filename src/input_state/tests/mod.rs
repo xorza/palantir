@@ -18,6 +18,7 @@ use crate::cascade::Cascade;
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
+use crate::input::key_class::KeyFilter;
 use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
 use crate::input_state::{InputCtx, InputState};
 use crate::primitives::identity::widget_id::WidgetId;
@@ -28,6 +29,16 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::UVec2;
 use std::time::Duration;
+
+/// `widget` as an overlay's claim on its layer, as `OverlayScope::claim` stamps a root: a
+/// scope taking every key, which cuts the planes below off.
+fn claiming<W: Configure>(mut widget: W) -> W {
+    widget
+        .configure()
+        .input_scope(KeyFilter::ALL)
+        .blocks_below();
+    widget
+}
 
 impl InputState {
     /// Feed `event` at time zero against an empty cascade: the input machine alone.

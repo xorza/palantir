@@ -50,6 +50,7 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
 fn space_and_enter_click_a_focused_button() {
     use crate::input::key_class::KeyFilter;
     use crate::input::keyboard::key::Key;
+    use crate::input::shortcut::{Shortcut, ShortcutMods};
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::ui::Ui;
     use crate::widgets::panel::Panel;
@@ -84,6 +85,16 @@ fn space_and_enter_click_a_focused_button() {
             !h.frame_value(record(false)),
             "{key:?}: one click per press"
         );
+    }
+    // A key acts by the class the scope takes: Shift keeps Space and Enter in their classes, so
+    // they click; Ctrl makes a chord, which the button leaves to the app.
+    for (shortcut, clicks) in [
+        (Shortcut::new(ShortcutMods::SHIFT, Key::Char(' ')), true),
+        (Shortcut::new(ShortcutMods::SHIFT, Key::Enter), true),
+        (Shortcut::new(ShortcutMods::CTRL, Key::Char(' ')), false),
+    ] {
+        h.key(shortcut);
+        assert_eq!(h.frame_value(record(false)), clicks, "{shortcut:?}");
     }
     // The button takes Space and Enter alone from the app's scope around it: a letter reaches
     // the app, Enter does not.
@@ -246,5 +257,51 @@ fn a_label_truncates_to_one_line_in_a_narrow_button() {
     assert_eq!(
         layout.text_shapes[span.start as usize].extent.size,
         Size::new(54.0, 20.0)
+    );
+}
+
+/// A Space under a held left press on the focused button adds no click: the press keeps its
+/// gesture, its drag included, and makes its own edge on release, so no frame reads a release
+/// beside a live drag.
+#[test]
+fn an_activation_key_under_a_held_press_keeps_the_gesture() {
+    use crate::input::interaction::button_phase::ButtonPhase;
+    use crate::input::interaction::button_state::ButtonState;
+    use crate::input::interaction::drag::Drag;
+    use crate::input::keyboard::key::Key;
+    use crate::input::pointer::PointerButton;
+    use crate::primitives::identity::widget_id::WidgetId;
+    use crate::ui::Ui;
+    use glam::Vec2;
+
+    let id = WidgetId::from_hash("button");
+    let record = |ui: &mut Ui| Button::new().id(id).size((80.0, 30.0)).show(ui).left;
+    let mut h = Harness::mono(UVec2::new(200, 80));
+    let _ = h.frame_value(record);
+    let at = h.center_of(id);
+    h.click(at);
+    let _ = h.frame_value(record);
+    assert_eq!(h.focus(), Some(id));
+
+    h.press(at, PointerButton::Left);
+    h.drag_to(at + Vec2::new(10.0, 0.0));
+    let _ = h.frame_value(record);
+    h.key(Key::Char(' '));
+    let held = h.frame_value(record);
+    assert_eq!(held.phase, ButtonPhase::Held, "the press holds");
+    assert_eq!(
+        held.drag,
+        Drag::Active {
+            delta: Vec2::new(10.0, 0.0)
+        },
+        "its drag runs on"
+    );
+    assert!(!held.clicked(), "Space adds no click under it");
+
+    h.release(PointerButton::Left);
+    assert_eq!(
+        h.frame_value(record),
+        ButtonState::new(ButtonPhase::Up { click: None }, Drag::Stopped),
+        "the release ends the drag with no click"
     );
 }

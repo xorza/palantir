@@ -1,7 +1,9 @@
 //! When a frame is asked for again, and what a paint-only one may skip.
 
+use crate::animation::animation_spec::AnimationSpec;
 use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
+use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
 use crate::input::policy::InputPolicy;
@@ -16,6 +18,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::lut_row::LutRow;
+use crate::primitives::reduce_preference::ReducePreference;
 use crate::renderer::frontend::encoder;
 use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
@@ -24,6 +27,7 @@ use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
+use crate::theme::scheme_preference::SchemePreference;
 use crate::ui::Ui;
 use crate::ui::frame_report::FrameProcessing;
 use crate::ui::resources::UiResources;
@@ -587,4 +591,55 @@ fn request_relayout_is_legal_from_a_layer_scope_with_nothing_recorded_yet() {
             ui.request_relayout();
         });
     });
+}
+
+/// Every app-global setter asks the writing window for a frame when its value moves, on a
+/// headless host as on winit, and for none when it writes the value held, so a per-frame assign
+/// idles. With no theme transition, so a scheme pick owes no blend of its own.
+#[test]
+fn an_app_global_setting_asks_for_a_frame_only_when_it_moves() {
+    type Set = (&'static str, fn(&mut Ui));
+    let sets: [Set; 5] = [
+        ("user scale", |ui| {
+            ui.set_user_scale(UserScale::new(1.5).unwrap());
+        }),
+        ("debug overlay", |ui| {
+            ui.set_debug_overlay(DebugOverlayConfig {
+                damage_rect: true,
+                ..DebugOverlayConfig::default()
+            });
+        }),
+        ("scheme", |ui| {
+            ui.set_scheme_preference(SchemePreference::Light);
+        }),
+        ("motion", |ui| {
+            ui.set_motion_preference(ReducePreference::Reduced);
+        }),
+        ("transparency", |ui| {
+            ui.set_transparency_preference(ReducePreference::Reduced);
+        }),
+    ];
+    for (name, set) in sets {
+        let mut h = Harness::mono(SURFACE);
+        h.ui_mut().set_theme_transition(AnimationSpec::SNAP);
+        h.prime(2, |ui| {
+            support::blue_frame(ui, "steady");
+        });
+        let moved = h.frame(|ui| {
+            support::blue_frame(ui, "steady");
+            set(ui);
+        });
+        assert!(moved.repaint_requested, "{name}: a move asks for a frame");
+        h.prime(2, |ui| {
+            support::blue_frame(ui, "steady");
+        });
+        let held = h.frame(|ui| {
+            support::blue_frame(ui, "steady");
+            set(ui);
+        });
+        assert!(
+            !held.repaint_requested,
+            "{name}: the held value asks for nothing"
+        );
+    }
 }

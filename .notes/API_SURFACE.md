@@ -2711,7 +2711,7 @@ Ui
         pub fn set_transparency_preference(&mut self, preference: ReducePreference)
         pub const fn watch_keyboard(&mut self, flags: KeyboardWake)
         pub fn pointer_events(&mut self, wake: PointerWake) -> &[PointerEvent]
-        pub fn keyboard_events(&self) -> &[KeyPress]
+        pub fn keyboard_events(&mut self, wake: KeyboardWake) -> &[KeyPress]
         pub fn key_pressed(&mut self, key: Key) -> bool
         pub fn key_held(&mut self, key: Key) -> bool
         pub fn key_released(&mut self, key: Key) -> bool

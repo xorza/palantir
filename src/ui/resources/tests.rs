@@ -74,7 +74,7 @@ fn settings_are_shared_across_clones() {
         host.settings().debug_overlay(),
         DebugOverlayConfig::default()
     );
-    ui.settings().set_debug_overlay(DebugOverlayConfig {
+    let _ = ui.settings().set_debug_overlay(DebugOverlayConfig {
         damage_rect: true,
         ..DebugOverlayConfig::default()
     });

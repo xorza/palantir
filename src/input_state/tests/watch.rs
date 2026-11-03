@@ -1,12 +1,11 @@
 //! Off-target wake gates (`PointerWake` flags and key chords): no watcher means
 //! no wake and no `Ui::pointer_events` entry; pre-record clear drops stale watches.
 use crate::input::zoom_factor::ZoomFactor;
-use crate::input_state::tests::{Stream, sample_layers};
+use crate::input_state::tests::{Stream, claiming, sample_layers};
 use crate::primitives::identity::widget_id::WidgetId;
 
 use crate::host::harness::Harness;
 use crate::input::input_event::InputEvent;
-use crate::input::key_class::KeyFilter;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::{PointerButton, PointerEvent};
@@ -335,18 +334,19 @@ fn pointer_events_drain_between_frames() {
 }
 
 /// The pointer watch stream is layer-gated like the keyboard's: an overlay's
-/// scope silences watchers strictly below it.
+/// claim silences watchers strictly below it.
 #[test]
-fn a_scope_silences_pointer_watchers_strictly_below_it() {
+fn a_claim_silences_pointer_watchers_strictly_below_it() {
     let mut h = Harness::mono(UVec2::new(200, 200));
     let scoped = |ui: &mut Ui| {
         empty_watch_buttons(ui);
         ui.layer(Layer::Popup).show(|ui| {
-            Block::new()
-                .id(WidgetId::from_hash("overlay"))
-                .input_scope(KeyFilter::ALL)
-                .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
-                .show(ui);
+            claiming(
+                Block::new()
+                    .id(WidgetId::from_hash("overlay"))
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0))),
+            )
+            .show(ui);
         });
     };
     // Two frames: the scope records, then resolves. Counts are read inside pass A.

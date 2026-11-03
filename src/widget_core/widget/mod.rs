@@ -4,7 +4,7 @@
 
 use crate::animation::animation_request::AnimationRequest;
 use crate::animation::animation_slot::AnimationSlot;
-use crate::input::key_class::KeyFilter;
+use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
@@ -208,10 +208,11 @@ impl Widget {
         self.configure().input_scope(scope);
         let mut response = self.response(ui);
         if !response.disabled && ui.is_focus_within(response.id) {
-            // Each chord is sampled, not short-circuited: reading keeps it subscribed for the
-            // wake gate.
-            let space = self.shortcut_pressed(ui, Key::Char(' '));
-            let enter = activation == Activation::Button && self.shortcut_pressed(ui, Key::Enter);
+            // By class, the classes the scope takes: a chord read would need exact modifiers,
+            // and the scope would swallow a Shift+Space that acts on nothing.
+            let space = ui.class_pressed_as(response.id, KeyClass::Space);
+            let enter = activation == Activation::Button
+                && ui.class_pressed_as(response.id, KeyClass::Enter);
             if space || enter {
                 response.state.activate();
             }

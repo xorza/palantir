@@ -101,16 +101,17 @@ impl SystemPreferences {
     /// Write the settings into the host's shared cells: the scheme, the motion and the
     /// transparency always, as an absent scheme is an answer; the double-click time only when the
     /// system gave one.
+    ///
+    /// Each write's own move is dropped: the host takes the one signal
+    /// ([`AppSettings::take_change`](crate::ui::resources::app_settings::AppSettings::take_change))
+    /// for every window.
     pub(super) fn apply(self, resources: &UiResources) {
-        resources
-            .settings()
-            .set_system_color_scheme(self.color_scheme);
-        resources.settings().set_system_motion(self.motion);
-        resources
-            .settings()
-            .set_system_transparency(self.transparency);
+        let settings = resources.settings();
+        let _ = settings.set_system_color_scheme(self.color_scheme);
+        let _ = settings.set_system_motion(self.motion);
+        let _ = settings.set_system_transparency(self.transparency);
         if let Some(interval) = self.double_click {
-            resources.settings().set_double_click_interval(interval);
+            let _ = settings.set_double_click_interval(interval);
         }
     }
 }

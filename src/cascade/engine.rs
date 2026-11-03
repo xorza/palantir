@@ -134,7 +134,12 @@ impl RowSink for TreeSink<'_> {
             attrs.key_filter()
         };
         if filter.is_scope() {
-            self.scopes.push(ScopeRow { plane, id, filter });
+            self.scopes.push(ScopeRow {
+                plane,
+                id,
+                filter,
+                blocks_below: attrs.blocks_below(),
+            });
         }
         self.entries.push(rows.entry());
     }

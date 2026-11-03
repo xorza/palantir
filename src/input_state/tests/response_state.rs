@@ -266,6 +266,46 @@ fn non_quiescent_frame_computes_interaction() {
     );
 }
 
+/// While a press of any button belongs to one widget, the pointer hovers no other: `hovered`
+/// and `Ui::is_hover_within` read one capture-aware target, so the two agree, and the release
+/// gives the hover back.
+#[test]
+fn a_held_press_of_any_button_keeps_the_hover_off_other_widgets() {
+    let (a, b) = (WidgetId::from_hash("a"), WidgetId::from_hash("b"));
+    let two = |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            fixed_button(a).show(ui);
+            fixed_button(b).show(ui);
+        });
+    };
+    let (on_a, on_b) = (Vec2::new(50.0, 20.0), Vec2::new(150.0, 20.0));
+    for button in PointerButton::ALL {
+        let mut h = Harness::mono(BUTTON_SURFACE);
+        h.frame(two);
+        h.press(on_a, button);
+        h.hover(on_b);
+        h.frame(two);
+        assert!(
+            !h.ui().response_for(b).hovered(),
+            "{button:?}: A holds the press"
+        );
+        assert!(
+            !h.ui().is_hover_within(b),
+            "{button:?}: the subtree read agrees"
+        );
+        h.release(button);
+        h.frame(two);
+        assert!(
+            h.ui().response_for(b).hovered(),
+            "{button:?}: the release gives the hover back"
+        );
+        assert!(
+            h.ui().is_hover_within(b),
+            "{button:?}: and to the subtree read"
+        );
+    }
+}
+
 #[test]
 fn pointer_and_drag_vectors_are_scale_invariant() {
     let id = WidgetId::from_hash("scaled-button");

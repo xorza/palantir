@@ -3,6 +3,7 @@
 use crate::input::key_class::{KeyClass, KeyFilter};
 use crate::input::keyboard::key::Key;
 use crate::input::sense::Sense;
+use crate::input::watch::KeyboardWake;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -481,8 +482,8 @@ impl Configure for DragValue<'_> {
 
 /// Whether a character was typed into the focused chip this frame; a space is its own class, as
 /// a spin button doesn't type it.
-fn typed(ui: &Ui) -> bool {
-    ui.keyboard_events()
+fn typed(ui: &mut Ui) -> bool {
+    ui.keyboard_events(KeyboardWake::NONE)
         .iter()
         .any(|press| press.class() == KeyClass::Text && !press.text.is_empty())
 }
