@@ -148,7 +148,11 @@ impl<'a> FrameCycle<'a> {
         };
 
         // Re-queue the next paint-anim boundary on every path, else PaintOnly drains the ANIM wake and the caret freezes.
-        if let Some(min_wake) = self.ui.forest.min_paint_animation_wake(self.ui.now()) {
+        if let Some(min_wake) =
+            self.ui
+                .cascade
+                .min_paint_animation_wake(&self.ui.forest, surface, self.ui.now())
+        {
             self.ui.frame_runtime.schedule_wake(
                 min_wake,
                 WakeReasons::ANIMATION,

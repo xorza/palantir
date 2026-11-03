@@ -25,12 +25,15 @@ use crate::cascade::rows::scope_row::ScopeRow;
 use crate::cascade::rows::tab_stop_row::{TabEnd, TabStopRow};
 use crate::input::scroll_targets::ScrollTargets;
 use crate::input::sense::Sense;
+use crate::primitives::geometry::rect::Rect;
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
 use crate::scene::endpoint::Endpoint;
+use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::per_plane::PerPlane;
 use crate::scene::plane::Plane;
 use glam::Vec2;
+use std::time::Duration;
 
 /// Read-only artifact of `CascadeEngine::run`: per-plane state ([`PlaneCascade`]) plus the [`Self::by_id`] snapshot.
 #[derive(Debug, Default)]
@@ -104,6 +107,29 @@ pub(crate) struct HitTargets {
 }
 
 impl Cascade {
+    /// The earliest `next_wake` of a paint animation that shows on `surface`, or `None` when
+    /// none wants a wake. One a clip or the surface edge hides paints nothing, so its phase
+    /// flips owe no frame; a scroll or a resize that shows it records, which asks again.
+    pub(crate) fn min_paint_animation_wake(
+        &self,
+        forest: &Forest,
+        surface: Rect,
+        now: Duration,
+    ) -> Option<Duration> {
+        forest
+            .trees
+            .iter_paint_order()
+            .flat_map(|(plane, tree)| {
+                let arena = &self.planes[plane].paint_arena;
+                tree.paint_animations
+                    .entries
+                    .iter()
+                    .filter(move |entry| arena.shown_animation_row(entry, surface).is_some())
+            })
+            .filter_map(|entry| entry.animation.next_wake(now))
+            .min()
+    }
+
     /// Every interactive row in paint order, for the widget inspection.
     pub(crate) fn hit_rows(&self) -> &[HitRow] {
         &self.hits

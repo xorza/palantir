@@ -1,6 +1,6 @@
 //! The per-paint-row arena: one [`Paint`] per pixel-producing contribution,
 //! plus the per-node index into it. Split from the rest of the cascade
-//! because only damage's per-shape legs read it.
+//! because only damage's per-shape legs and the paint-animation wake read it.
 
 use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;
@@ -8,6 +8,7 @@ use crate::common::non_max_u32;
 use crate::common::non_max_u32::NonMaxU32;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
+use crate::scene::tree::paint_animations::PaintAnimationEntry;
 
 /// One row of a node's paint span: chrome (row 0), one direct shape, or a
 /// child marker, in record order. Child markers put shape/child interleave
@@ -58,6 +59,31 @@ impl PaintArena {
     #[inline]
     pub(crate) fn rows_of(&self, i: usize) -> &[Paint] {
         &self.rows[self.node_spans[i].range()]
+    }
+
+    /// The index into [`Self::rows`] of the row `entry`'s shape painted, or `None` where a clip
+    /// or the `surface` edge hides all of it. A hidden row is clamped to an empty rect that keeps
+    /// its place, which `Rect::intersects` still reads as inside a rect around it.
+    #[inline]
+    pub(crate) fn shown_animation_row(
+        &self,
+        entry: &PaintAnimationEntry,
+        surface: Rect,
+    ) -> Option<u32> {
+        let span = self.node_spans[entry.node.idx()];
+        // `entry.row` came from the recording counter and `compute_paint_rect` emits rows in the same order, so a miss means they drifted.
+        debug_assert!(
+            entry.row < span.len,
+            "paint-anim row {} out of the owner's {} paint rows",
+            entry.row,
+            span.len,
+        );
+        let row = span.start + entry.row;
+        let shown = !self.rows[row as usize]
+            .screen
+            .clamp_to(surface)
+            .is_paint_empty();
+        shown.then_some(row)
     }
 
     /// Resets both columns for a new frame; `rows` is only seeded with

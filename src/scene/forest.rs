@@ -28,7 +28,6 @@ use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
 use crate::text::family_keys::FamilyKeys;
-use std::time::Duration;
 
 /// One arena per [`Plane`]; recording dispatches to `trees[cur_plane]`.
 #[derive(Debug, Default)]
@@ -156,15 +155,6 @@ impl Forest {
             );
             tree.post_record();
         }
-    }
-
-    /// Minimum `next_wake` across every plane's paint anims, or `None` when nothing wants a wake.
-    pub(crate) fn min_paint_animation_wake(&self, now: Duration) -> Option<Duration> {
-        self.trees
-            .iter()
-            .flat_map(|tree| &tree.paint_animations.entries)
-            .filter_map(|entry| entry.animation.next_wake(now))
-            .min()
     }
 
     /// Opens a node whose id was already resolved by [`crate::widget::Widget::resolve`], and records its endpoint (also emitting any pending explicit collision pair).

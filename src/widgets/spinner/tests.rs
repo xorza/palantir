@@ -16,7 +16,9 @@ use crate::shape::record::ShapeRecord;
 use crate::theme::spinner::SpinnerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
+use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
+use crate::widgets::scroll::Scroll;
 use crate::widgets::spinner::Spinner;
 use crate::widgets::spinner::{ArcGeometry, comet};
 use glam::UVec2;
@@ -319,6 +321,59 @@ fn spinner_animation_stops_when_hidden_and_resumes_when_shown() {
         1,
         "showing must restore the active animation row",
     );
+}
+
+/// A spinner out of view keeps its row but schedules no frame, as its turns paint nothing:
+/// clipped by a scroll viewport, and past the surface edge with no clip on its branch. A
+/// scroll that shows it records, and that frame schedules its turn at once.
+#[test]
+fn a_spinner_out_of_view_schedules_no_frame() {
+    let scroll = WidgetId::from_hash("scroll");
+    let in_scroll = |ui: &mut Ui| {
+        Scroll::vertical()
+            .id(scroll)
+            .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("above"))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(200.0)))
+                    .show(ui);
+                Spinner::new().id(WidgetId::from_hash("spinner")).show(ui);
+            });
+    };
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let clipped = h.frame(in_scroll);
+    assert_eq!(
+        h.ui().tree(Layer::Main).paint_animations.entries.len(),
+        1,
+        "a clipped spinner keeps its row",
+    );
+    assert_eq!(clipped.repaint_at, None, "the viewport clips the spinner");
+
+    Scroll::set_offset(h.ui_mut(), scroll, Vec2::new(0.0, 200.0));
+    h.ui_mut().request_repaint();
+    let shown_at = Duration::from_millis(16);
+    let shown = h.at(shown_at).frame(in_scroll);
+    assert_eq!(shown.repaint_at, Some(shown_at), "scrolled into view");
+
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let below = h.frame(|ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("column"))
+            .show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("above"))
+                    .size((Sizing::fixed(100.0), Sizing::fixed(150.0)))
+                    .show(ui);
+                Spinner::new().id(WidgetId::from_hash("spinner")).show(ui);
+            });
+    });
+    assert_eq!(
+        h.ui().tree(Layer::Main).paint_animations.entries.len(),
+        1,
+        "a spinner past the surface edge keeps its row",
+    );
+    assert_eq!(below.repaint_at, None, "the surface edge hides the spinner");
 }
 
 /// Under reduced motion a spinner's turn shows progress and keeps running, and a decorative turn

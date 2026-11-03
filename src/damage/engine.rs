@@ -215,36 +215,30 @@ impl DamageEngine {
         self.note_presented(input.baseline, damage)
     }
 
-    /// Push the rect of every paint animation whose phase flipped since the last frame.
+    /// Push the rect of every paint animation that shows on the surface and whose phase flipped since the last frame.
     fn extend_predamaged(&mut self, input: &DamageInput<'_>) {
         // No prev frame: Pass 1 already contributed every painting widget, and an anim rect is a sub-rect of its owner.
         let Some(prev) = input.prev_time else { return };
         let DamageInput {
             forest,
             cascade,
+            surface,
             now,
             ..
         } = *input;
         for (ord, (plane, tree)) in forest.trees.iter_paint_order().enumerate() {
             let arena = &cascade.planes[plane].paint_arena;
-            let paints = &arena.rows;
-            let node_spans = &arena.node_spans;
             for e in &tree.paint_animations.entries {
                 if e.animation.next_wake(prev).is_none_or(|wake| wake > now) {
                     continue;
                 }
-                let node_span = node_spans[e.node.idx()];
-                // `e.row` came from the recording counter and `compute_paint_rect` emits rows in the same order, so a miss means they drifted.
-                debug_assert!(
-                    e.row < node_span.len,
-                    "paint-anim row {} out of the owner's {} paint rows",
-                    e.row,
-                    node_span.len,
-                );
-                let row = node_span.start + e.row;
+                // A hidden flip paints nothing, and its empty rect would still stale a pane around it.
+                let Some(row) = arena.shown_animation_row(e, surface) else {
+                    continue;
+                };
                 self.panes
                     .mark(self.raw_rects.len(), PaneWalk::position(ord, row));
-                self.raw_rects.push(paints[row as usize].screen);
+                self.raw_rects.push(arena.rows[row as usize].screen);
             }
         }
     }

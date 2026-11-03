@@ -13,6 +13,7 @@ use crate::shape::Shape;
 use crate::shape::paint::blur_plan::BlurPlan;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::paint_animation::curves;
+use crate::shape::rect::RectShape;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
@@ -69,21 +70,28 @@ impl Scene {
                             if i == 0 {
                                 ui.add_shape(Shape::rect().at(OVER).fill(self.over));
                                 if self.blink {
-                                    ui.add_shape_animated(
-                                        Shape::rect()
-                                            .at(Rect::new(60.0, 60.0, 2.0, 10.0))
-                                            .fill(RgbaF32::WHITE),
-                                        PaintAnimation::alpha(0.0, 1.0)
-                                            .with_period(Duration::from_millis(1000))
-                                            .with_steps(2)
-                                            .with_curve(curves::square),
-                                    );
+                                    ui.add_shape_animated(blink_shape(), blink());
                                 }
                             }
                         });
                 }
             });
     }
+}
+
+/// A caret-like square inside [`PANE`]'s footprint, which [`blink`] turns on and off.
+fn blink_shape() -> RectShape {
+    Shape::rect()
+        .at(Rect::new(60.0, 60.0, 2.0, 10.0))
+        .fill(RgbaF32::WHITE)
+}
+
+/// A square-wave alpha that flips every 500 ms.
+fn blink() -> PaintAnimation {
+    PaintAnimation::alpha(0.0, 1.0)
+        .with_period(Duration::from_millis(1000))
+        .with_steps(2)
+        .with_curve(curves::square)
 }
 
 /// The key of pane `i`: the first row of its chromeless canvas.
@@ -187,6 +195,41 @@ fn a_blink_inside_a_pane_leaves_it() {
     h.advance(Duration::from_millis(600));
     let damage = frame(&mut h, |ui| scene.record(ui));
     assert!(damage.is_some(), "the blink flipped");
+    assert!(!h.engines_mut().damage.dirty_panes().contains(key(0)));
+}
+
+/// A blink that a clip hides, painted before a pane, damages nothing when it flips and leaves
+/// the pane, though the clip clamps its row to an empty rect that stays inside the footprint.
+#[test]
+fn a_clipped_blink_before_a_pane_leaves_it() {
+    let record = |ui: &mut Ui| {
+        Panel::zstack()
+            .id(WidgetId::from_hash("scene"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Panel::canvas()
+                    .id(WidgetId::from_hash("clip"))
+                    .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
+                    .clip_rect()
+                    .show(ui, |ui| ui.add_shape_animated(blink_shape(), blink()));
+                Panel::canvas()
+                    .id(WidgetId::from_hash(("pane", 0)))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        ui.add_shape(
+                            Shape::rect()
+                                .at(PANE)
+                                .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                        );
+                    });
+            });
+    };
+    let mut h = Harness::mono(DISPLAY.physical);
+    frame(&mut h, record);
+    h.advance(Duration::from_millis(600));
+    let damage = frame(&mut h, record);
+    assert_eq!(damage, None, "the hidden blink damages nothing");
+    assert!(h.engines_mut().damage.raw_rects().is_empty());
     assert!(!h.engines_mut().damage.dirty_panes().contains(key(0)));
 }
 

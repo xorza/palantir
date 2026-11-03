@@ -10,7 +10,7 @@ pub(crate) struct WakeReasons(u8);
 impl WakeReasons {
     /// A wake via `Ui::request_repaint_after` (spring tick, host schedule, widget owing a paint); needs a full record + measure + arrange + cascade pass.
     pub(crate) const REAL: Self = Self(1 << 0);
-    /// Paint-anim quantum boundary, filed in `FrameCycle::run` from `Forest::min_paint_animation_wake`; alone it needs only damage compute + paint, reusing the prior frame's record output.
+    /// Paint-anim quantum boundary, filed in `FrameCycle::run` from `Cascade::min_paint_animation_wake`; alone it needs only damage compute + paint, reusing the prior frame's record output.
     pub(crate) const ANIMATION: Self = Self(1 << 1);
 
     #[inline]
