@@ -11,6 +11,8 @@ use crate::text::font_weight::FontWeight;
 use crate::theme::Theme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::theme::look::WidgetLook;
+use crate::theme::metrics::Metrics;
+use crate::theme::palette::Palette;
 use crate::theme::text_style_overrides::TextStyleOverrides;
 
 use super::pretty;
@@ -24,6 +26,16 @@ fn default_theme_roundtrips_through_ron() {
     assert_eq!(loaded, Theme::stock(ColorScheme::Dark));
     assert_eq!(pretty(&loaded), serialized);
     assert!(!serialized.contains("color("), "an off-grid default color");
+    // A backdrop costs a capture and a blur each frame its pane repaints, so only what floats
+    // over content wears one: the menu, popup, picker popup, tooltip and modal panels, and no
+    // slot at all without a float material. A file omits a no-op filter.
+    assert_eq!(serialized.matches("backdrop_filter:").count(), 5);
+    let opaque = Metrics {
+        float_material: None,
+        ..Metrics::DEFAULT
+    };
+    let opaque = pretty(&Theme::from_parts(&Palette::DARK, &opaque));
+    assert_eq!(opaque.matches("backdrop_filter:").count(), 0);
 }
 
 #[test]

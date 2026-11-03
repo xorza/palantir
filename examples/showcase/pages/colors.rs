@@ -7,9 +7,8 @@ use crate::scaffold::api;
 use crate::support;
 use crate::support::{Kit, Section, Swatches};
 use palantir::{
-    Align, Button, Chrome, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker,
-    ColorStrip, ColorSwatch, Configure, Metrics, Panel, RgbaF32, Shadow, Sizing, SwatchRow, Ui,
-    VAlign, WidgetId,
+    Align, Button, ColorButton, ColorCoords, ColorField, ColorModel, ColorPicker, ColorStrip,
+    ColorSwatch, Configure, Metrics, Panel, RgbaF32, Sizing, SwatchRow, Ui, VAlign, WidgetId,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -50,7 +49,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                      shows an app-owned swatch row instead, filled by each commit of the first.",
                 );
                 panels(ui, |ui| {
-                    panel(ui, |ui| {
+                    panel(ui, k, |ui| {
                         let picked = ColorPicker::new(&mut state.picked)
                             .alpha(true)
                             .swatches(SwatchRow::History)
@@ -62,7 +61,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                             state.recent.insert(0, state.picked);
                         }
                     });
-                    panel(ui, |ui| {
+                    panel(ui, k, |ui| {
                         ColorPicker::new(&mut state.accent)
                             .swatches(SwatchRow::Fixed(&state.recent))
                             .show(ui);
@@ -95,10 +94,10 @@ pub(crate) fn build(ui: &mut Ui, k: Kit, look: &mut Appearance) {
                      field has a texel size of 16, for the difference it makes.",
                 );
                 panels(ui, |ui| {
-                    panel(ui, |ui| {
+                    panel(ui, k, |ui| {
                         ColorField::new(&mut state.parts).show(ui);
                     });
-                    panel(ui, |ui| {
+                    panel(ui, k, |ui| {
                         Panel::vstack()
                             .gap(M.space.sm)
                             .size((Sizing::fixed(180.0), Sizing::HUG))
@@ -142,20 +141,16 @@ fn panels(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-/// The surface a picker sits on: the panel the chip's popup wears, less its shadow, as the picker
-/// lies on the page rather than floats over it. Without it a field's and a bar's colors run into
-/// the page's.
+/// The surface a picker sits on: the tour's raised card, padded as the chip's popup pads the
+/// panel. Refused: the popup's own chrome, whose float material would capture and blur the page
+/// under a panel that does not float. Without a surface a field's and a bar's colors run into the
+/// page's.
 #[track_caller]
-fn panel(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
-    let theme = &ui.theme().color_picker;
-    let chrome = Chrome {
-        shadow: Shadow::NONE,
-        ..theme.popup.panel.clone()
-    };
-    let padding = theme.popup.padding;
+fn panel(ui: &mut Ui, k: Kit, body: impl FnOnce(&mut Ui)) {
+    let padding = ui.theme().color_picker.popup.padding;
     Panel::vstack()
         .auto_id()
         .padding(padding)
-        .chrome(chrome)
+        .chrome(support::raised_chrome(k))
         .show(ui, body);
 }
