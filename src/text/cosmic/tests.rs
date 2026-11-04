@@ -2,11 +2,11 @@
 //! of order.
 
 use crate::text::cosmic::axis_range::AxisRange;
-use crate::text::cosmic::{GLYPH_SOURCES, Hinting, ScalerSpec, WGHT_AXIS};
+use crate::text::cosmic::{Hinting, ScalerSpec, WGHT_AXIS};
 use crate::text::font_scope::internals::MONO;
 use cosmic_text::{Font, FontSystem, Weight, fontdb};
 use std::sync::Arc;
-use swash::scale::{Render, ScaleContext};
+use swash::scale::{Render, ScaleContext, Source};
 use swash::zeno::Format;
 
 fn be_u16(data: &[u8], at: usize) -> usize {
@@ -44,11 +44,22 @@ fn with_inverted_wght(font: &[u8]) -> Vec<u8> {
     font
 }
 
+/// The bundled JetBrains Mono, from a database of its own.
+pub(super) fn mono() -> Arc<Font> {
+    let [mono] = faces([MONO.to_vec()]);
+    mono
+}
+
 /// The bundled JetBrains Mono and its inverted copy, in that order, from one database.
 fn mono_and_inverted() -> [Arc<Font>; 2] {
+    faces([MONO.to_vec(), with_inverted_wght(MONO)])
+}
+
+/// Each face of `fonts`, loaded into one database.
+fn faces<const N: usize>(fonts: [Vec<u8>; N]) -> [Arc<Font>; N] {
     let mut font_system =
         FontSystem::new_with_locale_and_db(String::from("en-US"), fontdb::Database::new());
-    [MONO.to_vec(), with_inverted_wght(MONO)].map(|bytes| {
+    fonts.map(|bytes| {
         let ids = font_system
             .db_mut()
             .load_font_source(fontdb::Source::Binary(Arc::new(bytes)));
@@ -67,7 +78,7 @@ fn render(ctx: &mut ScaleContext, font: &Font, weight: u16) -> Vec<u8> {
         weight: Weight(weight),
     }
     .scaler(ctx, font);
-    Render::new(&GLYPH_SOURCES)
+    Render::new(&[Source::Outline])
         .format(Format::Alpha)
         .render(&mut scaler, glyph)
         .expect("an outline glyph renders")

@@ -142,7 +142,6 @@ and some `Result` paths panic:
 | Text editing | No goal column (WG-02). Triple-click selects all in multi-line (WG-03) ✔. No Ctrl+Y (WG-19). Undo groups with no bound (WG-20). |
 | Keyboard | Scroll takes no keys and does not reveal focus (WG-06). Menubar Down/Up do nothing (WG-07). Radio groups (WG-08). Shift+Space is swallowed (UI-21). |
 | Pointer | Tooltip does not hide on a press or Escape (WG-05). Splitter drops the grab offset (WG-21). Dock shows a drop it refuses (WG-04). |
-| Text render | No gamma or contrast on glyph coverage (GB-15). Inter's `opsz` is never set (LT-14). |
 | Platform | Wayland clipboard (HS-15). Tiler detection on DXGI and GLES (GA-01). |
 
 ### R11. Test seams in production state
@@ -182,14 +181,6 @@ API").
 What Batch 6 left: a radio group with one Tab stop whose arrow keys move focus and the pick
 together, as the APG radio group does. It needs a group container or `arrow_focus` that writes
 the pick, which is new public surface (WG-08).
-
-### Batch 7. Text quality (`gpu/raster` shader, `text/cosmic`)
-
-- Correct coverage for gamma and contrast, keyed on the text's luma, as gpui, WebRender and
-  Skia do (GB-15). This changes every golden.
-- Set Inter's `opsz` to the font size in shaping, ink and raster (LT-14). The shape store then
-  reuses a shape across sizes only within one optical size: `TextShapeKey::shape_identity` must
-  carry it.
 
 ### Batch 8. One owner for widget and pane identity (`scene`, `cascade`, `layout`, `damage`, `renderer`)
 
@@ -380,7 +371,6 @@ Prefixes:
 | Batch | Findings |
 |---|---|
 | 6b | WG-08 |
-| 7 | GB-15, LT-14 |
 | 8 | SC-04, SC-05, SC-11, LT-04, RD-03, RD-04, RD-06, RD-08, RD-09, RD-19, RD-20 |
 | 9 | GA-01, GA-02, GA-05, GA-07 to GA-13, GA-15 to GA-22, GB-04, GB-05, GB-06 to GB-09, GB-13, GB-14, GB-17 to GB-20, GB-24 to GB-28 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
@@ -405,19 +395,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **Why it matters:** the APG radio group has one Tab stop, and the arrows move focus and check together (selection follows focus). The color picker's model switch (`color_picker/mod.rs:569-580`) inherits this.
 - **Direction:** add a group container, or make a focused radio's arrow keys write the neighbouring value. This needs a group notion.
 - Confidence: high on behavior, medium on direction · public API change: likely · root cause: no group abstraction for discrete picks.
-
-### Batch 7
-
-**GB-15 · idiom/canonical · `raster_pipeline/shader.wgsl:158,193`** · conf med · API no
-- **What's wrong:** glyph mask coverage is used as plain linear alpha (`premultiply(in.color.rgb, in.color.a * cov)`) into sRGB targets, with no gamma or contrast correction anywhere (I searched `text`, `raster` and the raster shader).
-- **Why it matters:** linear-light blending makes dark text on light backgrounds look thin and light-on-dark look heavy.
-- **Canonical practice:** Zed gpui (`apply_contrast_and_gamma_correction`, from DirectWrite/Windows Terminal), WebRender and Skia all correct coverage.
-- **Direction:** add contrast/gamma-corrected coverage keyed on the text's luma.
-- **Root cause:** the "linear end to end" rule is applied to coverage too.
-
-**LT-14 · idiom · `text/cosmic/mod.rs` (`ScalerSpec::scaler`, sets only `wght`), `text/font_scope.rs:73` (`Inter-VariableFont_opsz,wght.ttf`)** — conf: med · public API: no · root cause: only the weight axis is applied
-- **What's wrong:** The bundled Inter has an `opsz` axis that is never set, so it renders at its default optical size at every font size.
-- **Direction:** Set `opsz` to the font size on raster, ink and shaping alike, as CSS `font-optical-sizing: auto` does.
 
 ### Batch 8
 

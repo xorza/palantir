@@ -14,9 +14,11 @@ use crate::text::cosmic::cluster_glyph::ClusterGlyph;
 use crate::text::cosmic::ellipsis_memo::EllipsisMemo;
 use crate::text::cosmic::geometry::{SegmentScratch, ShapedGeometry, first_line_right};
 use crate::text::cosmic::glyph_ink::GlyphInk;
+use crate::text::cosmic::outline_raster::{OutlineGlyph, OutlineRaster};
 use crate::text::cosmic::shaped_buffer_cache::{
     Recycled, ShapedBuffer, ShapedBufferCache, ShapedRun,
 };
+use crate::text::cosmic::stem_darkening::StemDarkening;
 use crate::text::cosmic::text_cut::{CutSuffix, TextCut};
 use crate::text::error::FontLoadError;
 use crate::text::extent::TextExtent;
@@ -50,8 +52,10 @@ pub(super) mod counters;
 pub(super) mod ellipsis_memo;
 pub(super) mod geometry;
 pub(super) mod glyph_ink;
+mod outline_raster;
 pub(super) mod shape_store;
 pub(super) mod shaped_buffer_cache;
+mod stem_darkening;
 pub(crate) mod text_cut;
 
 const ELLIPSIS_MEMO_SLOTS: usize = 4;
@@ -129,15 +133,18 @@ const fn cosmic_align(align: LineAlign) -> Option<CosmicAlign> {
     }
 }
 
-/// Glyph sources [`CosmicMeasure::rasterize_glyph`] tries, in cosmic-text's order. An emoji face
-/// must hit one of the first two or it renders as a coverage mask.
-const GLYPH_SOURCES: [Source; 3] = [
+/// The color sources [`CosmicMeasure::rasterize_glyph`] tries, in cosmic-text's order, before the
+/// plain outline, which [`OutlineRaster`] draws. An emoji face must hit one of them or it renders
+/// as a coverage mask. A color glyph is not darkened: its layers are artwork, not stems.
+const COLOR_SOURCES: [Source; 2] = [
     Source::ColorOutline(0),
     Source::ColorBitmap(StrikeWith::BestFit),
-    Source::Outline,
 ];
 
-/// The OpenType weight axis, for variable faces.
+/// The OpenType weight axis, for variable faces: the one axis set. Every other axis, Inter's
+/// `opsz` among them, stays at the face's default, as cosmic-text 0.19 instances a face for
+/// shaping and advances on `wght` alone (`font/mod.rs`); a raster at another optical size would
+/// draw glyphs the shaper did not measure. Refused: a fork of cosmic-text for `opsz`.
 const WGHT_AXIS: swash::Tag = u32::from_be_bytes(*b"wght");
 
 /// The angle a synthetic italic leans by, rasterized and measured alike; cosmic's own.
@@ -207,6 +214,7 @@ pub(super) struct CosmicMeasure {
     scale_ctx: ScaleContext,
     /// The image every glyph rasterizes into, reused to avoid per-glyph allocation.
     glyph_image: SwashImage,
+    outline_raster: OutlineRaster,
     /// Which buffers are resident and for how long; also owns the shared frame clock.
     cache: ShapedBufferCache,
     /// Trailing advance of "…" for the last few faces asked about. Fixed slots, not a
@@ -238,6 +246,7 @@ impl CosmicMeasure {
             resolved: Vec::new(),
             scale_ctx: ScaleContext::new(),
             glyph_image: SwashImage::new(),
+            outline_raster: OutlineRaster::default(),
             cache: ShapedBufferCache::default(),
             ellipsis: ArrayVec::new(),
             truncate_scratch: String::new(),
@@ -548,30 +557,47 @@ impl CosmicMeasure {
         } else {
             Hinting::On
         };
+        let ppem = f32::from_bits(cache_key.font_size_bits);
         let mut scaler = ScalerSpec {
-            size: f32::from_bits(cache_key.font_size_bits),
+            size: ppem,
             hinting,
             weight: cache_key.font_weight,
         }
         .scaler(&mut self.scale_ctx, &font);
+        let offset = subpixel_offset(cache_key);
+        // A pixel font's artwork sits on the pixel grid, which a dilation would blur.
+        let darkening = if cache_key.flags.contains(CacheKeyFlags::PIXEL_FONT) {
+            StemDarkening::NONE
+        } else {
+            StemDarkening::at_ppem(ppem)
+        };
+        let skew = cache_key
+            .flags
+            .contains(CacheKeyFlags::FAKE_ITALIC)
+            .then(|| {
+                Transform::skew(
+                    Angle::from_degrees(FAKE_ITALIC_SKEW_DEGREES),
+                    Angle::from_degrees(0.0),
+                )
+            });
         // Cleared, not overwritten: `render_into` zero-fills only what a resize added, so a smaller
         // glyph would read the last one's coverage.
         self.glyph_image.clear();
-        let rendered = Render::new(&GLYPH_SOURCES)
+        let rendered = Render::new(&COLOR_SOURCES)
             .format(Format::Alpha)
-            .offset(subpixel_offset(cache_key))
-            .transform(
-                cache_key
-                    .flags
-                    .contains(CacheKeyFlags::FAKE_ITALIC)
-                    .then(|| {
-                        Transform::skew(
-                            Angle::from_degrees(FAKE_ITALIC_SKEW_DEGREES),
-                            Angle::from_degrees(0.0),
-                        )
-                    }),
-            )
-            .render_into(&mut scaler, cache_key.glyph_id, &mut self.glyph_image);
+            .offset(offset)
+            .transform(skew)
+            .render_into(&mut scaler, cache_key.glyph_id, &mut self.glyph_image)
+            || self.outline_raster.render(
+                &mut scaler,
+                OutlineGlyph {
+                    id: cache_key.glyph_id,
+                    darkening,
+                    skew,
+                    offset,
+                },
+                &mut self.glyph_image,
+            );
         if !rendered {
             return None;
         }

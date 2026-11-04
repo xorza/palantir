@@ -634,12 +634,16 @@ fn caret_and_hit_test_round_trip_in_block_local_space() {
 }
 
 /// A run's ink outsets, cross-checked against the rasterizer: glyphs drawn as
-/// the backend draws them, at scale 1 from the block origin. Coverage past
-/// the block on each side must be inside the outset, and the outset no more
-/// than one whole pixel past it (the rounding up).
+/// the backend draws them, from the block origin, at scale 1 and at 1/4. The
+/// pixels drawn must lie inside the block grown by the outset, scaled and
+/// rounded out to physical pixels, as the backend rounds out what text reaches,
+/// and at scale 1 the outset no more than one whole pixel past the coverage
+/// (the rounding up). At 1/4 the 64 px run draws at 16 ppem, where stem darkening grows a side
+/// by 0.0121 and 0.015125 of the size, its bound.
 ///
 /// Cases: an italic `f` hangs top right and tail left, at a variable face's
-/// regular and bold; a synthetic italic leans right via skew alone; a ring
+/// regular and bold; a synthetic italic leans right via skew, and its stem
+/// lies near enough the pen for the darkening bound to reach left; a ring
 /// above a capital and a descender below leave the line box; a negative left
 /// bearing starts left of the pen. A plain `x` stays inside on every side.
 #[test]
@@ -700,7 +704,7 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
         FontSlant::Italic,
         FontWeight::REGULAR,
         false,
-        [false, false, true, false],
+        [true, false, true, false],
     );
     for (idx, (label, text, slant, weight, tight, reaches)) in
         cases.into_iter().chain([synthetic]).enumerate()
@@ -717,42 +721,50 @@ fn ink_outsets_cover_what_the_rasterizer_draws() {
             .weight(weight)
             .unbounded_request(text);
         let root = m.root(request, WrapFloor::Skip);
-
-        let mut placed = Vec::new();
-        m.extract_glyphs(
-            request,
-            RunPlacement {
-                origin: Vec2::ZERO,
-                scale: 1.0,
-                bounds: None,
-            },
-            &mut placed,
-        );
-        let (mut lo, mut hi) = (glam::IVec2::MAX, glam::IVec2::MIN);
-        for glyph in &placed {
-            let Some(image) = m.rasterize_glyph(glyph.raster_key) else {
-                continue;
-            };
-            let top_left = glam::IVec2::new(
-                glyph.physical.x + image.bearing.x,
-                glyph.physical.y - image.bearing.y,
-            );
-            lo = lo.min(top_left);
-            hi = hi.max(top_left + image.size.as_ivec2());
-        }
-        let past = |reach: i32| reach.max(0) as f32;
-        let drawn = [
-            past(-lo.x),
-            past(-lo.y),
-            past(hi.x - root.extent.size.w as i32),
-            past(hi.y - root.extent.size.h as i32),
-        ];
+        let size = root.extent.size;
         let ink = root.extent.ink.to_array();
-        for side in 0..4 {
-            assert!(
-                drawn[side] <= ink[side] && ink[side] <= drawn[side] + 1.0,
-                "{label}: side {side} draws {drawn:?} past the block, ink says {ink:?}",
+        for scale in [1.0, 0.25] {
+            let mut placed = Vec::new();
+            m.extract_glyphs(
+                request,
+                RunPlacement {
+                    origin: Vec2::ZERO,
+                    scale,
+                    bounds: None,
+                },
+                &mut placed,
             );
+            let (mut lo, mut hi) = (glam::IVec2::MAX, glam::IVec2::MIN);
+            for glyph in &placed {
+                let Some(image) = m.rasterize_glyph(glyph.raster_key) else {
+                    continue;
+                };
+                let top_left = glam::IVec2::new(
+                    glyph.physical.x + image.bearing.x,
+                    glyph.physical.y - image.bearing.y,
+                );
+                lo = lo.min(top_left);
+                hi = hi.max(top_left + image.size.as_ivec2());
+            }
+            // Each side's edge, outward positive: the left and top negated.
+            let drawn = [-lo.x, -lo.y, hi.x, hi.y].map(|edge| edge as f32);
+            let block = [0.0, 0.0, size.w, size.h];
+            for side in 0..4 {
+                let inked = ((block[side] + ink[side]) * scale).ceil();
+                assert!(
+                    drawn[side] <= inked,
+                    "{label} at {scale}x: side {side} draws to {drawn:?}, ink {ink:?}",
+                );
+                if scale == 1.0 {
+                    let past = (drawn[side] - block[side]).max(0.0);
+                    assert!(
+                        ink[side] <= past + 1.0,
+                        "{label}: side {side} draws to {drawn:?}, ink {ink:?}",
+                    );
+                }
+            }
+        }
+        for side in 0..4 {
             assert_eq!(
                 ink[side] > 0.0,
                 reaches[side],

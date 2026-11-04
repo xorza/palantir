@@ -154,7 +154,8 @@ fn a_placed_glyph_rasterizes_to_the_bitmap_it_describes() {
         .rasterize(placed.raster_key)
         .expect("a capital A has an image");
     assert_eq!(image.content, ContentType::Mask);
-    assert_eq!(image.size, UVec2::new(22, 24));
+    // Stem darkening grows each side by 0.3 px at 32 ppem, so the 24-row `A` takes a 25th row.
+    assert_eq!(image.size, UVec2::new(22, 25));
     assert_eq!(image.data.len(), (image.size.x * image.size.y) as usize);
     assert_eq!(
         image.data.iter().max(),

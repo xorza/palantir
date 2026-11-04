@@ -2,6 +2,7 @@
 
 use crate::primitives::geometry::spacing::Spacing;
 use crate::text::cosmic::geometry::ShapedGeometry;
+use crate::text::cosmic::stem_darkening::StemDarkening;
 use crate::text::cosmic::{FAKE_ITALIC_SKEW_DEGREES, Hinting, ScalerSpec};
 use crate::text::extent::TextExtent;
 use cosmic_text::{Buffer, CacheKeyFlags, FontSystem, LayoutGlyph, fontdb};
@@ -13,7 +14,8 @@ use swash::scale::outline::Outline;
 
 /// Ink bounds of every glyph a run has shaped, read once per glyph and face. Ink can reach past the measured
 /// advance block (italic overhang, negative bearing); [`Self::extent`] answers by how much. Stored in ems from
-/// the unhinted outline (`attrs_named` sets `DISABLE_HINTING`), so one entry serves every size.
+/// the unhinted outline (`attrs_named` sets `DISABLE_HINTING`), so one entry serves every size, and
+/// grown by [`StemDarkening::bound`], the most the rasterizer grows it at any size and scale.
 ///
 /// Bounded at [`MAX_INKED_GLYPHS`]: past it the table starts over, and each glyph's ink is read again
 /// from its outline as shaping meets it. A glyph's bounds follow from its face alone, so the
@@ -118,8 +120,9 @@ impl GlyphInk {
         self.bounds.insert(key, em);
     }
 
-    /// The glyph's bounds from the source the rasterizer draws from (`GLYPH_SOURCES`), skewed as it skews a
-    /// synthetic italic, in y-up font units.
+    /// The glyph's bounds from each source the rasterizer can draw it from: its color outline, else
+    /// its plain outline grown as the raster darkens it and, for a face with bitmap strikes, the
+    /// face's box. Skewed as it skews a synthetic italic, from y-up font units.
     fn read_em_box(&mut self, font_system: &mut FontSystem, key: GlyphInkKey) -> EmBox {
         let Some(font) = font_system.get_font(key.font_id, fontdb::Weight(key.weight)) else {
             return EmBox::default();
@@ -135,21 +138,33 @@ impl GlyphInk {
             weight: fontdb::Weight(key.weight),
         }
         .scaler(&mut self.ctx, &font);
-        let outlined = scaler.scale_color_outline_into(key.glyph_id, &mut self.outline)
-            || (!scaler.has_color_bitmaps()
-                && scaler.scale_outline_into(key.glyph_id, &mut self.outline));
-        let (lo, hi) = if outlined {
-            let bounds = self.outline.bounds();
-            (
-                Vec2::new(bounds.min.x, bounds.min.y),
-                Vec2::new(bounds.max.x, bounds.max.y),
-            )
-        } else {
-            match font.metrics().bounds {
-                Some(b) => (Vec2::new(b.x_min, b.y_min), Vec2::new(b.x_max, b.y_max)),
-                None => return EmBox::default(),
-            }
+        let mut lo = Vec2::INFINITY;
+        let mut hi = Vec2::NEG_INFINITY;
+        let mut take = |min: Vec2, max: Vec2| {
+            lo = lo.min(min);
+            hi = hi.max(max);
         };
+        if scaler.scale_color_outline_into(key.glyph_id, &mut self.outline) {
+            let b = self.outline.bounds();
+            take(Vec2::new(b.min.x, b.min.y), Vec2::new(b.max.x, b.max.y));
+        } else {
+            let outlined = scaler.scale_outline_into(key.glyph_id, &mut self.outline);
+            if outlined {
+                StemDarkening::bound(units_per_em).dilate(&mut self.outline);
+                let b = self.outline.bounds();
+                take(Vec2::new(b.min.x, b.min.y), Vec2::new(b.max.x, b.max.y));
+            }
+            // A bitmap strike draws in place of the outline where it holds the glyph, and only the
+            // face's box bounds it, so the box joins the darkened outline the raster falls back to.
+            if (scaler.has_color_bitmaps() || !outlined)
+                && let Some(b) = font.metrics().bounds
+            {
+                take(Vec2::new(b.x_min, b.y_min), Vec2::new(b.x_max, b.y_max));
+            }
+        }
+        if lo.x > hi.x {
+            return EmBox::default();
+        }
         let skew = if key.fake_italic {
             FAKE_ITALIC_SKEW_DEGREES.to_radians().tan()
         } else {
