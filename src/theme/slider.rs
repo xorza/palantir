@@ -22,10 +22,10 @@ pub struct SliderTheme {
     /// The colors of a disabled slider, itself or by an ancestor.
     pub disabled: SliderColors,
     /// Knob diameter in logical px — also the widget's height.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub knob_size: f32,
     /// Track thickness in logical px; the pill radius is half.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub track_thickness: f32,
 }
 

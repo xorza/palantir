@@ -1,7 +1,7 @@
 //! [`IconHandle`] — one icon of one loaded set. Lives in `primitives` because `shape` records it.
 
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::icon_ref::IconRef;
-use glam::Vec2;
 
 /// Names one icon of one loaded set, with the size its artwork was drawn at.
 /// `Copy`, so it carries `view_box` and icon-fit resolution needs no registry
@@ -19,18 +19,18 @@ pub struct IconHandle {
     ///
     /// Read-only: the shape hash omits it because one `(set, icon)` pair has one
     /// value, so a writable field could move the painted rect unseen.
-    view_box: Vec2,
+    view_box: Size,
 }
 
 impl IconHandle {
-    pub(crate) const fn new(icon: IconRef, view_box: Vec2) -> Self {
+    pub(crate) const fn new(icon: IconRef, view_box: Size) -> Self {
         Self { icon, view_box }
     }
 
     /// The artwork's viewBox extent in logical px, the size to give its node.
     /// Valid to read after the set is gone; drawing is not.
     #[inline]
-    pub const fn view_box(&self) -> Vec2 {
+    pub const fn view_box(&self) -> Size {
         self.view_box
     }
 }

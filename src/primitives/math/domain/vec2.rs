@@ -1,5 +1,6 @@
 //! Per-axis twins of the [`domain`](super) rules for two-axis widgets: the scalar rule on `x` and `y` each.
 
+use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
 use glam::Vec2;
 
@@ -13,10 +14,10 @@ pub const fn approx_eq(a: Vec2, b: Vec2) -> bool {
 
 /// [`domain::band_fraction`] per axis.
 #[inline]
-pub const fn band_fraction(pos: Vec2, extent: Vec2, band: Vec2) -> Vec2 {
+pub const fn band_fraction(pos: Vec2, extent: Size, band: Size) -> Vec2 {
     Vec2::new(
-        domain::band_fraction(pos.x, extent.x, band.x),
-        domain::band_fraction(pos.y, extent.y, band.y),
+        domain::band_fraction(pos.x, extent.w, band.w),
+        domain::band_fraction(pos.y, extent.h, band.h),
     )
 }
 

@@ -21,7 +21,7 @@ pub struct FocusRingTheme {
     /// Ring color.
     pub color: RgbaF32,
     /// Ring width in logical px. `0` draws no ring.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub width: f32,
 }
 

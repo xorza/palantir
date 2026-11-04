@@ -8,7 +8,6 @@ use crate::input::shortcut::{Shortcut, ShortcutMods};
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::align::{Align, VAlign};
 use crate::primitives::layout::justify::Justify;
-use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::Shape;
 use crate::shape::style::{LineCap, LineJoin};
@@ -184,10 +183,9 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
                 .style(&text_style)
                 .show(ui);
 
-            let arrow = Widget::leaf().id(id.with("arrow")).size((
-                Sizing::fixed(geometry.arrow_size.x),
-                Sizing::fixed(geometry.arrow_size.y),
-            ));
+            let arrow = Widget::leaf()
+                .id(id.with("arrow"))
+                .size(geometry.arrow_size);
             arrow.record(ui, None, |ui| {
                 let pts = geometry.chevron_points();
                 ui.add_shape(

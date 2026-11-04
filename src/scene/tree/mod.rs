@@ -21,7 +21,7 @@ pub(crate) mod tree_fingerprint;
 
 use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::translate_scale::TranslateScale;

@@ -19,7 +19,23 @@ use crate::primitives::packed::serde::{LaneCodec, TwoNode};
 #[must_use]
 pub struct Corners(F16x4);
 
-f16x4_lanes!(Corners, [tl, tr, br, bl], floor = 0.0);
+// Wire format: see `LaneCodec`. No 2-node array: CSS reads one as the two diagonals and
+// `Spacing` as horizontal and vertical, so a file names all four corners, or the ones it rounds in
+// a table, as WPF's `CornerRadius` takes one value or four.
+f16x4_lanes!(
+    Corners,
+    [tl, tr, br, bl],
+    floor = Some(0.0),
+    two_node = TwoNode::Refused,
+    rule = "a corner radius must be finite, not negative, and round to at most 65504 in f16",
+    valid = is_radius_lane,
+);
+
+/// A radius a lane holds: a [length](crate::widget::domain::length) and a
+/// [lane](crate::widget::domain::lane).
+const fn is_radius_lane(lane: f32) -> bool {
+    domain::is_length(lane) && domain::is_lane(lane)
+}
 
 impl Corners {
     /// Panics unless every radius is a [length](crate::widget::domain::length) and a
@@ -33,19 +49,6 @@ impl Corners {
             "{}",
             <Self as LaneCodec>::LANE_RULE,
         );
-    }
-
-    /// Four radii in lane order, each a [length](crate::widget::domain::length) and a
-    /// [lane](crate::widget::domain::lane).
-    #[inline]
-    #[track_caller]
-    fn checked(lanes: [f32; 4]) -> Self {
-        assert!(
-            lanes.into_iter().all(<Self as LaneCodec>::lane_is_valid),
-            "{}",
-            <Self as LaneCodec>::LANE_RULE,
-        );
-        Self(F16x4::from_lanes(lanes))
     }
 
     /// Radii the crate derives from valid lengths (half a stroke's width), whose lanes
@@ -199,30 +202,6 @@ impl<TL: Number, TR: Number, BR: Number, BL: Number> From<(TL, TR, BR, BL)> for 
     #[track_caller]
     fn from((tl, tr, br, bl): (TL, TR, BR, BL)) -> Self {
         Self::new(tl.to_f32(), tr.to_f32(), br.to_f32(), bl.to_f32())
-    }
-}
-
-/// Wire format: see [`LaneCodec`]. No 2-node array: CSS reads one as the two diagonals and
-/// `Spacing` as horizontal and vertical, so a file names all four corners, or the ones it rounds
-/// in a table, as WPF's `CornerRadius` takes one value or four.
-impl LaneCodec for Corners {
-    const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
-
-    fn from_lane_array(lanes: [f32; 4]) -> Self {
-        Self(F16x4::from_lanes(lanes))
-    }
-
-    fn to_lane_array(&self) -> [f32; 4] {
-        self.to_array()
-    }
-
-    const TWO_NODE: TwoNode = TwoNode::Refused;
-
-    const LANE_RULE: &'static str =
-        "a corner radius must be finite, not negative, and round to at most 65504 in f16";
-
-    fn lane_is_valid(lane: f32) -> bool {
-        domain::is_length(lane) && domain::is_lane(lane)
     }
 }
 

@@ -42,22 +42,22 @@ pub struct ToggleTheme {
     /// and a radio paint no mark when off).
     pub unchecked_indicator: RgbaF32,
     /// Box side.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub box_size: f32,
     /// Stroke width of the indicator.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub indicator_width: f32,
     /// The check polyline's three points (Checkbox only) as fractions of [`Self::box_size`], so the tick keeps its proportions at any size.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset_points3")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset_points3")]
     pub check_points: [Vec2; 3],
     /// Inset of the filled dot inside the pip (RadioButton); dot side is `box_size - 2 * indicator_inset`.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub indicator_inset: f32,
     /// Gap between box and label.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
     /// Track width as a multiple of its height ([`crate::Switch`] only, ~7:4); `1.0` for the square checkbox and radio.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub track_aspect: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]

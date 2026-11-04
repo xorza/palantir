@@ -52,7 +52,7 @@ fn downsample_modes_encode_to_distinct_tap_flags() {
     }
 }
 
-/// The cascade bounds an image by the rect the encoder draws under every fit, so an `ImageFit::None` image overflowing its node is damaged and culled where it paints. A 200×100 image in a 100×100 node at (40, 40), no transform or clip.
+/// The cascade bounds an image by the rect the encoder draws under every fit, so an `ImageFit::Natural` image overflowing its node is damaged and culled where it paints. A 200×100 image in a 100×100 node at (40, 40), no transform or clip.
 #[test]
 fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
     use crate::primitives::identity::widget_id::WidgetId;
@@ -63,7 +63,7 @@ fn the_cascade_bounds_an_image_by_the_rect_the_encoder_draws() {
         ImageFit::Fill,
         ImageFit::Contain,
         ImageFit::Cover,
-        ImageFit::None,
+        ImageFit::Natural,
         ImageFit::Tile {
             offset: Vec2::ZERO,
             scale: Vec2::splat(2.0),

@@ -102,7 +102,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .size(30.0)
                 .show(ui, |ui| {
                     let fit = if k.fit_none {
-                        ImageFit::None
+                        ImageFit::Natural
                     } else {
                         ImageFit::Fill
                     };

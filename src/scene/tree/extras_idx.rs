@@ -1,6 +1,6 @@
 //! Sparse side-table indices for optional per-node data.
 
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 
 /// One node's slots in the three optional side tables; `None` keeps them sparse (a plain leaf pays
 /// twelve bytes of zeros).

@@ -4,8 +4,6 @@
 //! [`Spacing`](crate::primitives::geometry::spacing::Spacing) differ in lane names and pairing,
 //! which [`LaneCodec`] captures; the serde impls live beside each type.
 
-pub(crate) mod checked;
-
 use std::fmt;
 use std::marker::PhantomData;
 
@@ -20,7 +18,8 @@ pub(crate) trait LaneCodec: Sized {
     /// Struct-form field names, in lane order. Must be length 4.
     const FIELDS: &'static [&'static str];
 
-    fn from_lane_array(lanes: [f32; 4]) -> Self;
+    /// The lanes packed, each one [`Self::lane_is_valid`] holds.
+    fn from_valid_lanes(lanes: [f32; 4]) -> Self;
     fn to_lane_array(&self) -> [f32; 4];
 
     const TWO_NODE: TwoNode;
@@ -46,7 +45,7 @@ pub(crate) enum TwoNode {
 fn checked_lanes<T: LaneCodec, E: de::Error>(lanes: [f32; 4]) -> Result<T, E> {
     match lanes.into_iter().find(|lane| !T::lane_is_valid(*lane)) {
         Some(bad) => Err(E::custom(format_args!("{}, got {bad}", T::LANE_RULE))),
-        None => Ok(T::from_lane_array(lanes)),
+        None => Ok(T::from_valid_lanes(lanes)),
     }
 }
 

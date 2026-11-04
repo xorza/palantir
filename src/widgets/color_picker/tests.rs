@@ -3,8 +3,8 @@ use crate::input::pointer::PointerButton;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
-use crate::primitives::paint::color::okhsv::Okhsv;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
@@ -42,8 +42,8 @@ fn the_hue_survives_black() {
     frame(&mut h, id, &mut color);
     h.release(PointerButton::Left);
     frame(&mut h, id, &mut color);
-    let started = Okhsv::from_color(start, 0.0).h;
-    let ended = Okhsv::from_color(color, 0.0).h;
+    let started = ColorCoords::from_color(start, ColorModel::Okhsv, 0.0).hue();
+    let ended = ColorCoords::from_color(color, ColorModel::Okhsv, 0.0).hue();
     assert_close(
         ended,
         started,

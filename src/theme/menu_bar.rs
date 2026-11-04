@@ -36,10 +36,10 @@ pub struct MenuBarTheme {
     pub bar: Chrome,
     /// Inset between the band's edges and the titles; its sides match a tab strip's, so the first
     /// title and the first tab line up.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub bar_padding: Spacing,
     /// Gutter between two titles.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
     /// A title's padding and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]

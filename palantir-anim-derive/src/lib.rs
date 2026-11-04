@@ -2,7 +2,7 @@
 //! fieldwise; `Animatable` adds the spring arithmetic, where animated fields forward to their own
 //! impls and `#[animate(snap)]` and `#[animate(lerp_only)]` fields take the target at once and are
 //! left out of it. A snap field switches halfway through a `lerp`; a `lerp_only` field blends
-//! there. `TextSlots` is palantir's own: a theme part's text walk.
+//! there. A hidden `TextSlots` derive is palantir's own, for its theme parts' text walk.
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
@@ -70,6 +70,11 @@ pub fn derive_animatable(input: TokenStream) -> TokenStream {
 /// `#[derive(TextSlots)]`, palantir's own, on a theme part: its text walk visits every field in
 /// field order, each through the field type's own `TextSlots`, so a field whose type has no walk
 /// fails to compile until it gets one, as serde's and `gc`'s derives ask of each field.
+///
+/// Hidden: its expansion names palantir's crate-private `crate::theme::TextSlots`, so it compiles
+/// inside palantir alone, and a proc-macro crate can export nothing but its macros. Refused: a
+/// second derive crate for one private derive.
+#[doc(hidden)]
 #[proc_macro_derive(TextSlots)]
 pub fn derive_text_slots(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);

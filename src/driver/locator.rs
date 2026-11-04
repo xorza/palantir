@@ -136,11 +136,7 @@ impl<X> Locator<X> {
                     [one] => Ok(*one),
                     many => Err(LocateError::Ambiguous {
                         locator: format!("{self:?}"),
-                        matches: many
-                            .iter()
-                            .enumerate()
-                            .map(|(n, found)| format!("{n}: at {:?}", found.point))
-                            .collect(),
+                        matches: many.to_vec(),
                     }),
                 }
             }

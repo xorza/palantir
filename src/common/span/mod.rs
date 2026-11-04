@@ -25,10 +25,18 @@ impl Span {
     }
 
     /// `start..start + len`, to slice the arena or text it indexes.
+    ///
+    /// # Panics
+    ///
+    /// When the span ends past `usize::MAX`, as a span of plain data can on a 32-bit target,
+    /// which no arena there holds.
     #[inline]
     pub const fn range(self) -> Range<usize> {
         let start = self.start as usize;
-        start..start + self.len as usize
+        match start.checked_add(self.len as usize) {
+            Some(end) => start..end,
+            None => panic!("a span ends within usize"),
+        }
     }
 
     /// [`Self::range`] in `u32`, as a GPU draw counts instances and indices.

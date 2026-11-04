@@ -39,7 +39,7 @@ pub struct DragValueTheme {
     /// Ink for the editor's caret.
     pub caret: RgbaF32,
     /// Width of the editor's caret in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub caret_width: f32,
     /// The editor's selection wash, behind the selected glyphs.
     pub selection: RgbaF32,

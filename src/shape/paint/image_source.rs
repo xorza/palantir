@@ -1,7 +1,8 @@
 //! Where a lowered image's texels come from.
 
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::texture_id::TextureId;
-use glam::{UVec2, Vec2};
+use glam::UVec2;
 
 /// Where a textured rect samples from. A registered image and an app-rendered GPU surface composite through
 /// the one image pipeline; only the source of the `TextureId` and the damage hash differ.
@@ -26,10 +27,10 @@ pub(crate) enum ImageSource {
 
 impl ImageSource {
     /// The intrinsic size [`ImageFit::resolve`](crate::primitives::paint::image::ImageFit::resolve) fits; a view has none.
-    pub(crate) const fn intrinsic(&self) -> Vec2 {
+    pub(crate) const fn intrinsic(&self) -> Size {
         match self {
-            Self::Texture { size, .. } => Vec2::new(size.x as f32, size.y as f32),
-            Self::GpuView { .. } => Vec2::ZERO,
+            Self::Texture { size, .. } => Size::new(size.x as f32, size.y as f32),
+            Self::GpuView { .. } => Size::ZERO,
         }
     }
 }

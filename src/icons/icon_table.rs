@@ -4,9 +4,9 @@
 use crate::common::span::Span;
 use crate::icons::error::{IconTableError, SvgParseError};
 use crate::icons::svg_facts::SvgFacts;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::icon_id::IconId;
 use crate::primitives::math::domain;
-use glam::Vec2;
 use std::borrow::Cow;
 
 /// One baked icon: its name, the size it was drawn at, where its normalized SVG
@@ -17,7 +17,7 @@ pub struct IconDefinition {
     /// key [`IconSet::by_name`](crate::IconSet::by_name) searches.
     pub name: Cow<'static, str>,
     /// The SVG's viewBox extent in logical px.
-    pub view_box: Vec2,
+    pub view_box: Size,
     /// Byte range of this icon's SVG within its set's blob.
     pub svg: Span,
     /// Every paint resolves to one color (or `currentColor`), so it rasterizes to
@@ -64,7 +64,7 @@ impl IconTable {
                 "a baked icon's svg span must lie inside the set's blob",
             );
             assert!(
-                domain::is_positive(def.view_box.x) && domain::is_positive(def.view_box.y),
+                domain::is_positive(def.view_box.w) && domain::is_positive(def.view_box.h),
                 "a baked icon's view box must be positive on both axes",
             );
             assert!(
@@ -226,8 +226,8 @@ mod tests {
     use crate::icons::icon_table::{IconDefinition, IconTable, blob_len};
     use crate::icons::internals::{BROKEN, ONE_COLOR, TWO_COLORS};
     use crate::internals::panic_probe;
+    use crate::primitives::geometry::size::Size;
     use crate::primitives::identity::icon_id::IconId;
-    use glam::Vec2;
     use std::borrow::Cow;
 
     /// `from_svgs` sorts by name, which `by_name`'s binary search rests on.
@@ -240,7 +240,7 @@ mod tests {
             ["one", "two"],
             "sorted, whatever order they arrived in"
         );
-        assert_eq!(table.icons()[0].view_box, Vec2::new(24.0, 12.0));
+        assert_eq!(table.icons()[0].view_box, Size::new(24.0, 12.0));
         assert!(table.icons()[0].tintable, "facts ride through to the def");
     }
 
@@ -260,7 +260,7 @@ mod tests {
     /// inside the blob, every view box positive. A blob of 4 bytes takes a span ending at 4, not 5.
     #[test]
     fn baked_tables_are_checked() {
-        const fn def(name: &'static str, svg: Span, view_box: Vec2) -> IconDefinition {
+        const fn def(name: &'static str, svg: Span, view_box: Size) -> IconDefinition {
             IconDefinition {
                 name: Cow::Borrowed(name),
                 view_box,
@@ -268,7 +268,7 @@ mod tests {
                 tintable: true,
             }
         }
-        const ONE: Vec2 = Vec2::ONE;
+        const ONE: Size = Size::new(1.0, 1.0);
         const GOOD: &[IconDefinition] = &[
             def("a", Span::new(0, 2), ONE),
             def("ab", Span::new(2, 2), ONE),
@@ -283,7 +283,7 @@ mod tests {
             def("a", Span::new(1, 1), ONE),
         ];
         const PAST_BLOB: &[IconDefinition] = &[def("a", Span::new(1, 4), ONE)];
-        const FLAT: &[IconDefinition] = &[def("a", Span::new(0, 1), Vec2::new(1.0, 0.0))];
+        const FLAT: &[IconDefinition] = &[def("a", Span::new(0, 1), Size::new(1.0, 0.0))];
         const BLOB: &[u8] = b"abcd";
 
         let table = IconTable::baked(GOOD, BLOB);

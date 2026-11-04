@@ -14,7 +14,7 @@
 //! [`CpuGradientAtlas::register`]:
 //!     crate::renderer::gradient_atlas::CpuGradientAtlas::register
 
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 
 #[derive(Debug)]
 pub(super) struct MruList {

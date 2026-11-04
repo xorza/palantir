@@ -47,7 +47,7 @@ pub(crate) mod swatch_row;
 ///
 /// Each control writes only the part of the color it owns; the picker never
 /// rebuilds the rest from its axes. A wedge of sRGB around pure blue lies
-/// outside the Okhsv cube (see [`Okhsv`](crate::Okhsv)), so rebuilding on an
+/// outside the Okhsv cube (see [`ColorModel::Okhsv`]), so rebuilding on an
 /// opacity change would shift `#0000ff` to `#0037ff`.
 ///
 /// # Retained state
@@ -573,8 +573,8 @@ impl Rows<'_> {
             .show(ui, |ui| {
                 for choice in ColorModel::ALL {
                     RadioButton::new(&mut model, choice)
-                        .label(choice.label())
-                        .id(id.with(choice.label()))
+                        .label(model_label(choice))
+                        .id(id.with(model_label(choice)))
                         .show(ui);
                 }
             });
@@ -644,6 +644,14 @@ fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> ValueE
     ValueEdges {
         changed,
         committed: writes.committed,
+    }
+}
+
+/// What the model switch calls `model`: the picker's text, not the color model's.
+const fn model_label(model: ColorModel) -> &'static str {
+    match model {
+        ColorModel::Okhsv => "Okhsv",
+        ColorModel::Hsv => "HSV",
     }
 }
 

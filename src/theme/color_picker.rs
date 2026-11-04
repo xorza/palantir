@@ -35,25 +35,25 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 )]
 pub struct ColorPickerTheme {
     /// Saturation/value field width in logical px; also the bars' and rows' width.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub field_width: f32,
     /// Saturation/value field height in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub field_height: f32,
     /// Hue and alpha bar height in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub bar_thickness: f32,
     /// Side of the preview chip beside the bars, in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub chip_size: f32,
     /// Side of one swatch in the preset row, in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub swatch_size: f32,
     /// Radius of the ring marking the field's position, in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub handle_radius: f32,
     /// Stroke width of each of the handle's two rings, in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub handle_width: f32,
     /// Outer ring of every handle. Dark and not a palette color: a handle sits
     /// over every color the field shows.
@@ -65,7 +65,7 @@ pub struct ColorPickerTheme {
     /// Dark square of the same checker.
     pub checker_dark: RgbaF32,
     /// Side of one checker square in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::positive")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::positive")]
     pub checker_cell: f32,
     /// What a [`crate::ColorButton`], a [`crate::ColorSwatch`] and the preview chip wear in each
     /// state, as a button does: the look's chrome frames the color, which fills the chip inside
@@ -77,7 +77,7 @@ pub struct ColorPickerTheme {
     /// (<https://gitlab.gnome.org/GNOME/libadwaita/-/merge_requests/307>).
     pub disabled_veil: RgbaF32,
     /// Gap between the panel's rows and between swatches, in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
     /// The popup a [`crate::ColorButton`] drops its panel in: [`Palette::popup_panel`], as for
     /// menus and combo lists, padded wider than [`Self::gap`] so the panel reads as set in a

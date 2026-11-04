@@ -2,9 +2,9 @@
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::f32::consts::TAU;
@@ -14,10 +14,10 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct ConicGeometry {
     /// Sweep center, in object-space `0..1` coordinates.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
     pub center: Vec2,
     /// Where the sweep begins, in radians.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::angle")]
     pub start_angle: f32,
 }
 
@@ -25,9 +25,6 @@ pub struct ConicGeometry {
 pub type ConicGradient = Gradient<ConicGeometry>;
 
 impl Geometry for ConicGeometry {
-    /// Conic gradients are usually color wheels, where linear-RGB interpolation gives the most predictable hue sweep; Oklab can shift hue at the midpoint. (An `Oklch{hue}` interpolation would be the right default.)
-    const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Linear;
-
     /// The shader reads these as `(cx, cy, start_angle, _)` on the conic branch. The angle is
     /// wrapped into one turn first: f16 steps 0.5 rad apart at 1000, so a raw large angle would turn
     /// the sweep.

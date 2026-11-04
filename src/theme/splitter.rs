@@ -17,12 +17,12 @@ use crate::theme::palette::Palette;
 )]
 pub struct SplitterTheme {
     /// Grab-bar breadth in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub grab_thickness: f32,
     /// Resting rule color.
     pub rule: RgbaF32,
     /// Rule breadth in logical px; the layout space reserved.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub rule_thickness: f32,
     /// Full-bar fill while hovered.
     pub rule_hovered: RgbaF32,

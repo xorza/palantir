@@ -1,6 +1,6 @@
 //! Per-frame layout scratch for the measure and arrange passes, with capacity kept across frames.
 
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 use crate::layout::cache::CachedSubtree;
 use crate::layout::counters::LayoutCounters;

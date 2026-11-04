@@ -16,7 +16,7 @@ use crate::cascade::rows::root_row::RootRow;
 use crate::cascade::rows::scope_row::ScopeRow;
 use crate::cascade::rows::tab_stop_row::TabStopRow;
 use crate::common::hash::Hasher;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::common::tracy;
 use crate::input::key_class::KeyFilter;
 use crate::input::sense::Sense;

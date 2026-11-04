@@ -1,7 +1,7 @@
 //! The support module's swatches and knobs, here and not in `support`, which the visual suite
 //! compiles whole, so these run once, with the example.
 
-use palantir::{ColorScheme, Okhsv, Palette, RgbaF32, SrgbaU8};
+use palantir::{ColorCoords, ColorModel, ColorScheme, Palette, RgbaF32, SrgbaU8};
 
 use crate::support::{Knob, Swatches, on_swatch_style};
 
@@ -58,12 +58,16 @@ fn the_swatches_hold_their_luminance_hue_and_floors() {
             let over = swatch.luminance() - luminance;
             assert!((0.0..3e-7).contains(&over), "{scheme:?} {swatch:?}: {over}");
             // Okhsv's round trip through linear RGB holds each axis to a few f32 steps.
-            let axes = Okhsv::from_color(swatch, 0.0);
-            assert!((axes.h - hue).abs() < 1e-6, "{scheme:?} hue {}", axes.h);
+            let axes = ColorCoords::from_color(swatch, ColorModel::Okhsv, 0.0);
             assert!(
-                (axes.s - saturation).abs() < 2e-6,
+                (axes.hue() - hue).abs() < 1e-6,
+                "{scheme:?} hue {}",
+                axes.hue()
+            );
+            assert!(
+                (axes.saturation() - saturation).abs() < 2e-6,
                 "{scheme:?} sat {}",
-                axes.s
+                axes.saturation()
             );
             // The ratios to four places.
             assert!((swatch.contrast_ratio(ground) - ground_ratio).abs() < 1e-4);

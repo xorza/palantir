@@ -5,7 +5,7 @@
 //! A block is rounded up to a multiple of [`BlockSlot::GRANULE`] and reusable only within its class, so [`BlockArena::release`] recovers capacity from the span length alone. The cost: **the arena is bounded by the sum over classes of each class's peak block count, not the peak live set**; span lengths drifting upward strand a block per class, so keep the longest span bounded (`drifting_run_lengths_strand_a_block_in_every_class_they_leave`).
 
 use crate::common::counters::counter_snapshot;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 
 /// Size class of a span of `len` entries; `len` must be non-zero.

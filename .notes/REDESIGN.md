@@ -32,7 +32,7 @@ in step.
   per-depth stack (LT-02) ✔.
 - **Node fields:** written in `Configure`, `Configurator`, `ThemeDefaults`, `authored_*`, and
   `Node::set`/`fill`. About 100 methods (UI-07).
-- **Other copies:** `Hsv` and `Okhsv` (PR-05). `OffscreenHost` and `Harness` (HS-05) ✔.
+- **Other copies:** `Hsv` and `Okhsv` (PR-05) ✔. `OffscreenHost` and `Harness` (HS-05) ✔.
   `Singletons` beside `StateMap` (UI-06). Two ways to close an overlay (UI-05).
 
 ### R2. Hand-written keys and hashes
@@ -252,21 +252,6 @@ The rest of Batch 13 is done.
 - Each resident `ColorRamp` is held once, through a `hashbrown::HashTable<u32>` that hashes
   through the slots (RD-17). It makes `hashbrown` a direct dependency, which needs your go-ahead.
 
-### Batch 14. Primitive types and their public surface (`primitives`, `common`, `animation`) **API**
-
-- `ColorCoords { model, h, s, v }` replaces `Hsv`/`Okhsv` and the parallel enum pairs
-  (PR-05).
-- `Size` for every extent and `Vec2` for offsets (PR-06). `Range<usize>` in `ImePreedit`
-  (PR-19).
-- One checked lane packer generated from `LaneCodec` (PR-10). One niche-index encoding
-  (PR-13).
-- One gradient default, Oklab (PR-11). Drop the dead `Eq` (PR-12). Drop `is_snap` (PR-14).
-- Move the theme-file validators beside `domain` (PR-09). Make the domain aliases delegate
-  (PR-18).
-- The `TextSlots` derive leaves the public derive crate (PR-17).
-- Smaller items: PR-07, PR-15, PR-16, PR-20 to PR-23. `GpuFrameCtx`/`GpuInitCtx`
-  `#[non_exhaustive]` (GA-14). `LocateError` holds points (UI-25).
-
 ## Findings index
 
 Prefixes:
@@ -291,7 +276,6 @@ Prefixes:
 | 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
 | 12b | LT-15 |
 | 13b | RD-17 |
-| 14 | PR-05 to PR-07, PR-09 to PR-23, GA-14, UI-25 |
 
 These findings are kept as they are, with no change: SC-20 (the `SeenIds` size is justified
 by a measurement) and RD-16 (the copies of the rounded-clip chain are accepted unless a
@@ -541,79 +525,3 @@ Logical window sizes are integer `UVec2` (`WindowConfig::inner_size`, `WindowGeo
 - **Confidence:** med. **Public API:** no. **Root cause:** a map plus a reverse map.
 
 **Already logged:** `PaneBreak.since` is a single bounding box, so an L-shaped layout breaks the pass needlessly (`composer/pane_break.rs:191`). `.notes/PERF.md` shelves it. `.notes/ISSUES.md` and `.notes/TODO.md` hold nothing else in this scope.
-
-### Batch 14
-
-**PR-05 · complexity/api · `paint/color/hsv.rs:147`, `okhsv/mod.rs:23`, `color_coords/mod.rs:115-219`, `color_model.rs:44-102`**
-`Hsv` and `Okhsv` are two public structs with identical fields `{h, s, v}`, the same `new`/`to_color`/`from_color(color, fallback_hue)`. `ColorCoords` is an enum of the two in which every method (`hue`, `saturation`, `value`, `with_*` ×3) matches both arms to reach the same field. `ColorModel` repeats the tag. Parallel enum pairs follow below it: `HueSlice`/`HueSliceKind`, `HueBlock`/`HueBlockKind`, `HsvColumn`/`OkhsvColumn`, `HsvBlock`/`OkhsvBlock`.
-Fix: make `ColorCoords { model: ColorModel, h, s, v }` (or one triple plus the model), dispatch once per conversion, and drop the per-accessor matches. Confidence med. Public API change. Root cause: the model tag is duplicated into the type structure.
-
-**PR-06 · api/complexity · `primitives/identity/icon_handle.rs:33`, API surface lines 418/774/941/1099**
-A float extent has two public spellings. `Rect.size`, `Sizing` and `Size::INF` use `Size`, while `IconHandle::view_box() -> Vec2` (documented as "the size to give its node"), `IconDefinition::view_box`, `ComboBoxTheme/ExpanderTheme::arrow_size: Vec2` and `RadialGeometry::radius: Vec2` use `Vec2`. The int side differs again: `URect.size: UVec2`, not a `USize`.
-Fix: use `Size` wherever the value is an extent, and keep `Vec2` for positions and offsets (euclid/kurbo separate `Size` from `Vector` the same way). Confidence med. Public API change. Root cause: no rule for extent versus vector.
-
-**PR-07 · complexity · `paint/color/oklab.rs:84-105`**
-The hand-rolled `cbrt` (bit-pattern seed plus three f64 Halley steps) is justified as platform-deterministic, but its own test's oracle is `f64::from(x).cbrt() as f32`. That expression has the same determinism property: f64 libm differs by at most an ulp across platforms, and only near f32 rounding ties survive the cast, which is exactly the caveat the custom doc admits. The comparison in the doc is against `f32::cbrt`, which is the wrong baseline.
-Fix: replace it with `(f64::from(x).cbrt()) as f32`, unless a measured perf need is shown. Confidence med-low. No API change. Root cause: the bespoke version was argued against the wrong alternative.
-
-**PR-09 · layering · `src/primitives/packed/serde/checked/mod.rs`**
-The file-scalar validators for every theme field (length, font_size, angle, refractive_index, fraction, padding…) live under `packed::serde`. They have nothing to do with the packed encodings: they are `domain` applied to serde. The optional variants also repeat the `read` pattern by hand (`optional_factor`, `optional_lane_factor`, `optional_font_size`, `lane_length`).
-Fix: move them beside `domain` (for example `math::domain::serde`) and build the `Option`/lane variants from one generic reader. Confidence med. No API change. Root cause: validation spread across modules by where it was first needed.
-
-**PR-10 · complexity · `primitives/geometry/corners/mod.rs:101-108`, `spacing/mod.rs:374-381`, `packed/serde/mod.rs:177-191`**
-`Corners::checked` and `Spacing::from_array` are the same checked pack and differ only in the lane predicate, which `LaneCodec::lane_is_valid` already names. `LaneCodec::to_lane_array` is a pass-through to the macro's `to_array`. `from_lane_array` validates for `Spacing` but not for `Corners`, an inconsistency.
-Fix: generate the checked constructor and the `LaneCodec` plumbing in `f16x4_lanes!` from the codec's predicate. Confidence med. No API change. Root cause: two hand copies beside a macro that already generates the rest.
-
-**PR-11 · api · `paint/brush/gradient/conic_geometry.rs:29` vs `color_ramp.rs:243`**
-`ConicGradient::new` defaults to `Interpolation::Linear`, while `ColorRamp::new` and `Interpolation::default()` give Oklab. A ramp built by hand into a conic `Gradient { ramp: ColorRamp::new(..), .. }` therefore interpolates differently from `ConicGradient::new`. CSS Color 4 uses Oklab for every gradient, and the code comment itself says "An `Oklch{hue}` interpolation would be the right default". `sealed::Geometry::DEFAULT_INTERPOLATION` exists only for this deviation, and `from_stops` duplicates `ColorRamp::new`.
-Fix: one default (Oklab), with `from_stops = ColorRamp::new(stops)`, and drop the constant. Confidence med. Behavior change. Root cause: a per-kind default with a single deviation.
-
-**PR-12 · idiom · `paint/brush/gradient/mod.rs:95`**
-`Gradient<G>` derives `Eq`, which yields `impl<G: Eq> Eq`. No geometry is `Eq` (all hold `f32`), so the derive is dead. Fix: remove it. Confidence high. Public API: invisible. Root cause: derive by habit.
-
-**PR-13 · complexity · `common/idx16.rs:148` vs `common/non_max_u32.rs:229`**
-Two niche-index encodings for one idea: `Idx16` stores the index plus one in a `NonZeroU16`, and `NonMaxU32` stores the inverted value in a `NonZeroU32`. Both make zero mean `None`. They also have asymmetric `to_raw`: a method on `Idx16`, a free fn on `NonMaxU32`.
-Fix: one encoding and one API shape, generic or a pair from one macro. Confidence med. No API change. Root cause: added independently.
-
-**PR-14 · complexity · `animation/animation_spec/mod.rs:126,135`**
-`is_instant(self)` and `is_snap(&self)` are the same predicate, the second only to fit serde's `fn(&T)`. Fix: make `is_instant(&self)` (it is `Copy`) and drop `is_snap`. Confidence high. Public API: `is_instant` re-signed. Root cause: serde's signature drove a second name.
-
-**PR-15 · complexity · `common/hash/mod.rs:17-19` vs `animation/animation_key.rs:17`**
-The hash module says "use it instead of `FxHasher::default()`", yet `AnimationKey::of` uses `FxHasher` directly. Fix: route it through `common::hash::Hasher`, or a `clippy.toml` disallow. Confidence high. No API change. Root cause: a convention with no enforcement.
-
-**PR-16 · idiom/docs · `paint/color/mod.rs:372-378`**
-`Display for RgbaF32` carries two overlapping doc paragraphs that state the same wire-format rule twice ("Wire format: CSS hex…" and "The form FromStr reads back…"). Fix: keep one. Confidence high. No API change.
-
-**PR-17 · layering · `palantir-anim-derive/src/lib.rs:61-67,128-150`**
-The public derive crate exports `TextSlots`, whose expansion names `crate::theme::TextSlots`/`ThemeText`. It compiles only inside palantir, so any other user gets a broken expansion. Its sibling derives use `::palantir::widget::…`.
-Fix: move palantir-private derives behind a doc-hidden path, or a separate internal macro crate. Confidence med. Public surface of the derive crate. Root cause: private tooling shipped in a public crate.
-
-**PR-18 · complexity · `primitives/math/domain/mod.rs:128,240` and `106,278`**
-`is_factor` has exactly `is_length`'s body (`v >= 0 && v <= MAX`), and `is_angle` has exactly `is_offset`'s (finite), each pair with its own checker and rule string. `refractive_index` is a public kind with a single caller (`Lens`). Every kind is public API under `widget::domain`. A semantic alias may be intended, but the module then carries 18 kinds × (predicate + checker + RULE) plus vec2 and f64 twins.
-Fix: keep the names if the semantics matter, but define the aliases as delegations, and consider making single-use kinds private. Confidence med. Possible public API removal. Root cause: validation that grows a kind per field.
-
-**PR-19 · api · `common/span/mod.rs:230`, `input/ime_preedit.rs:11`, `icons/icon_table.rs:22`**
-`Span { start: u32, len: u32 }`, an internal arena handle, is public as `ImePreedit::cursor: Option<Span>`, where std's `Range<usize>` is the idiomatic byte range (winit hands `(usize, usize)`). `Span::range()` computes `start + len as usize` with no overflow guard, which can wrap on 32-bit targets.
-Fix: a `Range<usize>` in the IME API, keeping `Span` for the icon blob's const data. Confidence med-low. Public API change. Root cause: an internal storage type leaked as a value type.
-
-**PR-20 · complexity · `primitives/geometry/arrow.rs:234`, `packed/fill_axis.rs:242`**
-`Arrow { size }` is a one-field struct whose two methods could be `arrow::points(size)`. `FillAxis` is a newtype over `F16x4` with only pass-throughs (`from_lanes`, `lanes`, `scaled_saturating`, `From<F16x4>`) and no invariant. That is acceptable as a type tag, but it is a pure forwarder. Confidence low. No API change.
-
-**PR-21 · layering · `paint/color/color_model.rs:26`**
-`ColorModel::label()` returns English UI text ("Okhsv", "HSV") from a primitive. Fix: move it to the picker widget or theme. Confidence low. Public API change.
-
-**PR-22 · idiom · `paint/image/mod.rs:30`, `image/icon_fit.rs:418`**
-The enum variants `ImageFit::None` and `IconFit::None` shadow `Option::None` under a glob import or in match arms. The CSS name is "none", but Rust APIs usually spell it `Natural` or `Intrinsic`. Confidence low. Public API change.
-
-**PR-23 · idiom · `paint/color/rgba_f16.rs:68` vs `packed/half_simd/mod.rs:45`**
-`RgbaF16` derives only `PartialEq`, while the `F16x4` it wraps is `Eq` and its sibling wrappers (`Corners`, `Spacing`, `FillAxis`) derive `Eq`. Confidence low. No public API impact.
-
-**GA-14 — api — `device/gpu_frame_ctx.rs:9`, `device/gpu_init_ctx.rs:8`**
-- **What:** `GpuFrameCtx` and `GpuInitCtx` are public structs with all-public fields and no `#[non_exhaustive]`.
-- **Why it matters:** Apps can construct them, and every added field (likely — e.g. a `text` handle in the frame context) is a breaking change. Context structs handed to callbacks are usually `#[non_exhaustive]`.
-- **Direction:** Add `#[non_exhaustive]` (this needs a go-ahead).
-- **Confidence:** high · **Public API:** yes · **Root cause:** public plain data used where a sealed context is meant.
-
-**UI-25 · idiom · low · no API change** — `src/driver/error.rs:22-27`
-- **What:** `LocateError::Ambiguous { matches: Vec<String> }` holds pre-formatted "n: at (x, y)" strings, so a caller can't read the points.
-- **Direction:** hold `Vec<Found>` and format in `Display`.

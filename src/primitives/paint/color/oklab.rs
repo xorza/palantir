@@ -14,7 +14,7 @@ pub(crate) struct Oklab {
 }
 
 impl Oklab {
-    /// `color` in Oklab, ignoring alpha, as [`Hsv::from_color`](crate::Hsv::from_color) does.
+    /// `color` in Oklab, ignoring alpha.
     /// [`cbrt`] keeps the sign, so an out-of-gamut color with a negative cone response goes
     /// there and back.
     #[inline]
@@ -33,8 +33,7 @@ impl Oklab {
         }
     }
 
-    /// This color, opaque, the inverse of [`Self::from_color`], as [`Hsv::to_color`](crate::Hsv::to_color) is. The
-    /// intermediate cubes can go negative for an out-of-gamut color, and so can a channel. A
+    /// This color, opaque, the inverse of [`Self::from_color`]. The intermediate cubes can go negative for an out-of-gamut color, and so can a channel. A
     /// straight line between two in-gamut colors can leave the gamut: red to white peaks 11 %
     /// over in red at `t = 0.55`.
     #[inline]
@@ -81,12 +80,14 @@ pub(crate) fn cone_color([l_, m_, s_]: [f32; 3]) -> RgbaF32 {
     )
 }
 
-/// The cube root of `x`, its sign kept, the same on every platform. `f32::cbrt` calls the
-/// platform's libm, whose last bit differs (MSVC's against Apple's and glibc's), so a motion, a
-/// gradient and a golden would differ by platform. Here three Halley steps in `f64` from a
-/// bit-pattern seed, as fdlibm's `cbrt` seeds it, reach `f64` precision with IEEE operations
-/// alone, which round alike everywhere; the one rounding to `f32` then gives the nearest `f32`
-/// to the true root but where that root sits within an `f64` ulp of a tie.
+/// The cube root of `x`, its sign kept, the same on every platform: three Halley steps in `f64`
+/// from a bit-pattern seed, as fdlibm's `cbrt` seeds it, reach `f64` precision with IEEE
+/// operations alone, which round alike everywhere; the one rounding to `f32` then gives the
+/// nearest `f32` to the true root but where that root sits within an `f64` ulp of a tie.
+/// Refused: `f32::cbrt`, the platform's libm, whose last bit differs (MSVC's against Apple's and
+/// glibc's), so a motion, a gradient and a golden would differ by platform; `f64::cbrt` rounded
+/// to `f32`, as exact on this platform and the test's oracle, but whose last `f64` bit is still
+/// libm's, so a platform that rounds it the other way flips the `f32` at a tie.
 #[inline]
 pub(crate) fn cbrt(x: f32) -> f32 {
     /// Adds a third of the exponent bias back after the bit pattern is divided by 3, leaving the

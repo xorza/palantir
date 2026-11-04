@@ -25,7 +25,7 @@ pub struct PopupTheme {
     /// Panel chrome behind the body.
     pub panel: Chrome,
     /// Padding inside the panel, applied when the caller leaves it unset.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub padding: Spacing,
 }
 

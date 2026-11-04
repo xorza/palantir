@@ -21,10 +21,10 @@ pub struct SpinnerTheme {
     /// Arc color at the comet's head; the tail fades to transparent.
     pub color: RgbaF32,
     /// Diameter in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub diameter: f32,
     /// Arc length in radians; under a full turn, or it reads as a static ring.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::angle")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::angle")]
     pub sweep: f32,
     /// One full turn. A zero period holds the arc still. A theme's lerp switches it halfway, as
     /// the arc's angle is the clock over the period and a blended period would swing it.
@@ -32,10 +32,10 @@ pub struct SpinnerTheme {
     #[animate(snap)]
     pub period: Duration,
     /// Stroke width as a fraction of the diameter.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
     pub width_ratio: f32,
     /// Floor on the derived stroke width in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub min_stroke_width: f32,
 }
 

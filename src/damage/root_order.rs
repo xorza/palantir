@@ -1,6 +1,6 @@
 //! The paint order of a plane's roots between frames.
 
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::damage::inverted_overlaps::InvertedOverlaps;
 use crate::damage::plane_frame::PlaneFrame;
 use crate::primitives::geometry::rect::Rect;

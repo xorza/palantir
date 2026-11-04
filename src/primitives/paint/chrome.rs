@@ -49,7 +49,7 @@ pub struct Chrome {
     #[serde(
         default,
         skip_serializing_if = "Corners::is_approx_zero",
-        deserialize_with = "crate::primitives::packed::serde::checked::corners"
+        deserialize_with = "crate::primitives::math::domain::file::corners"
     )]
     #[animate(lerp_only)]
     pub corners: Corners,

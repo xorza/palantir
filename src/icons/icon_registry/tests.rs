@@ -3,20 +3,20 @@
 use super::*;
 use crate::common::span::Span;
 use crate::icons::icon_table::IconDefinition;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::icon_id::IconId;
-use glam::Vec2;
 use std::borrow::Cow;
 use std::collections;
 
 const A_ICONS: &[IconDefinition] = &[IconDefinition {
     name: Cow::Borrowed("a"),
-    view_box: Vec2::splat(24.0),
+    view_box: Size::new(24.0, 24.0),
     svg: Span::new(0, 1),
     tintable: true,
 }];
 const B_ICONS: &[IconDefinition] = &[IconDefinition {
     name: Cow::Borrowed("b"),
-    view_box: Vec2::splat(16.0),
+    view_box: Size::new(16.0, 16.0),
     svg: Span::new(0, 1),
     tintable: false,
 }];
@@ -74,7 +74,7 @@ fn clones_of_the_registry_share_one_table() {
         vec![id],
         "the backend's clone sees the load"
     );
-    assert_eq!(clone.get(id).icons()[0].view_box, Vec2::splat(24.0));
+    assert_eq!(clone.get(id).icons()[0].view_box, Size::new(24.0, 24.0));
 }
 
 #[test]

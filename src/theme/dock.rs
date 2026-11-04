@@ -27,10 +27,10 @@ pub struct DockTheme {
     /// The chip trailing the pointer while a tab is dragged.
     pub ghost: WidgetLook,
     /// Inset between the ghost chip's edges and its label.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub ghost_padding: Spacing,
     /// Where the ghost chip sits relative to the pointer.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
     pub ghost_offset: Vec2,
 }
 

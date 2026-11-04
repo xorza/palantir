@@ -152,7 +152,7 @@ fn set_mode_refines_a_node_and_never_rekinds_it() {
 
     let last_grid = GridDefId::from_idx(65_534);
     assert_eq!(usize::from(last_grid), 65_534);
-    panic_probe::assert_panics_with("exceeded its 65535 row ceiling", || {
+    panic_probe::assert_panics_with("index 65535 is past the index ceiling 65534", || {
         GridDefId::from_idx(65_535)
     });
 }

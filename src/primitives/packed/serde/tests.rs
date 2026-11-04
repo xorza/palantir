@@ -12,7 +12,7 @@ struct TestLanes([f32; 4]);
 impl LaneCodec for TestLanes {
     const FIELDS: &'static [&'static str] = &["a", "b", "c", "d"];
 
-    fn from_lane_array(lanes: [f32; 4]) -> Self {
+    fn from_valid_lanes(lanes: [f32; 4]) -> Self {
         Self(lanes)
     }
 

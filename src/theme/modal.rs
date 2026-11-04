@@ -27,10 +27,10 @@ pub struct ModalTheme {
     /// shows the page through itself. Refused: a blurred scrim, which captures the whole window.
     pub scrim: RgbaF32,
     /// Padding inside the panel, applied when the builder leaves it unset.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub padding: Spacing,
     /// Minimum panel width in logical px; the panel hugs its content above it.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub min_width: f32,
 }
 

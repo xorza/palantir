@@ -1,4 +1,5 @@
 use crate::host::harness::Harness;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
@@ -164,14 +165,14 @@ fn dropdown_aligns_to_the_full_trigger_rect_when_flipped_above() {
 fn trigger_geometry_follows_the_combo_box_theme() {
     #[derive(Debug, PartialEq)]
     struct Trigger {
-        arrow: Vec2,
+        arrow: Size,
         gap: f32,
     }
 
     let options = ["One"];
     let id = WidgetId::from_hash("geom-combo");
 
-    let measure = |arrow: Vec2, gap: f32, instance: Option<&ComboBoxTheme>, caller: Option<f32>| {
+    let measure = |arrow: Size, gap: f32, instance: Option<&ComboBoxTheme>, caller: Option<f32>| {
         let mut h = Harness::mono(SURFACE);
         h.ui_mut().theme_mut().combo_box.arrow_size = arrow;
         h.ui_mut().theme_mut().combo_box.gap = gap;
@@ -193,30 +194,30 @@ fn trigger_geometry_follows_the_combo_box_theme() {
         let label = h.rect(id.with("label")).expect("label arranged");
         let arrow_rect = h.rect(id.with("arrow")).expect("arrow arranged");
         Trigger {
-            arrow: Vec2::new(arrow_rect.size.w, arrow_rect.size.h),
+            arrow: arrow_rect.size,
             gap: arrow_rect.min.x - label.max().x,
         }
     };
 
-    let a = measure(Vec2::new(10.0, 6.0), 12.0, None, None);
-    assert_eq!(a.arrow, Vec2::new(10.0, 6.0), "arrow node takes arrow_size");
+    let a = measure(Size::new(10.0, 6.0), 12.0, None, None);
+    assert_eq!(a.arrow, Size::new(10.0, 6.0), "arrow node takes arrow_size");
     assert_eq!(a.gap, 12.0, "gutter is gap");
 
-    let b = measure(Vec2::new(20.0, 14.0), 30.0, None, None);
-    assert_eq!(b.arrow, Vec2::new(20.0, 14.0));
+    let b = measure(Size::new(20.0, 14.0), 30.0, None, None);
+    assert_eq!(b.arrow, Size::new(20.0, 14.0));
     assert_eq!(b.gap, 30.0, "gutter is gap");
     assert_ne!(a.arrow, b.arrow);
     assert_ne!(a.gap, b.gap);
 
     // The same knobs through `style`: the instance wins.
     let instance = ComboBoxTheme {
-        arrow_size: Vec2::new(20.0, 14.0),
+        arrow_size: Size::new(20.0, 14.0),
         gap: 30.0,
         ..ComboBoxTheme::stock(ColorScheme::Dark)
     };
-    let c = measure(Vec2::new(10.0, 6.0), 12.0, Some(&instance), None);
+    let c = measure(Size::new(10.0, 6.0), 12.0, Some(&instance), None);
     assert_eq!(c, b, "`style` overrides the slot's arrow_size and gap");
-    let d = measure(Vec2::new(10.0, 6.0), 12.0, None, Some(3.0));
+    let d = measure(Size::new(10.0, 6.0), 12.0, None, Some(3.0));
     assert_eq!(d.gap, 3.0, "a caller's gap wins over the theme's");
 }
 

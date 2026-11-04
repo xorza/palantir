@@ -42,50 +42,50 @@ pub struct TabsTheme {
     /// Selection cap on a strip that does not hold focus.
     pub cap_unfocused: RgbaF32,
     /// Cap breadth in logical px; the selected chip lifts its top inset by the same amount.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub cap_thickness: f32,
     /// The band behind the chips; the palette's `surround` by default.
     pub strip: Chrome,
     /// Inset between the band's edges and the chips.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub strip_padding: Spacing,
     /// Gutter between two chips.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
     /// Hairline under the band, drawn only when [`Self::rule_thickness`] is set.
     pub rule: RgbaF32,
     /// Hairline breadth in logical px; `0.0` records no rule.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub rule_thickness: f32,
     /// Chip corner radius, top corners only.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub radius: f32,
     /// Inset between a chip's edges and its label, apart from [`SlotDefaults::padding`].
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub chip_padding: Spacing,
     /// Trailing inset replacing [`Self::chip_padding`]'s right one when a close button follows.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub trailing_inset: f32,
     /// Chip width floor.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub min_width: f32,
     /// Chip width ceiling, so a long title ellipsizes.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub max_width: f32,
     /// Look pack for the chip's close button.
     pub close: StatefulLook,
     /// Close button side in logical px, and the floor of every chip's content height, closable or
     /// not, so the strip keeps one height.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub close_size: f32,
     /// The close cross's extent in logical px, centered in the button, which also spaces the
     /// overflow button's dots; its arms are drawn strokes, not a font's "×", so the cross sits on
     /// the button's center at a weight the theme sets.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub close_glyph_span: f32,
     /// The width of the close cross's stroke in logical px, and half the overflow button's dot
     /// diameter.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub close_glyph_width: f32,
     /// Which chips show their close button.
     #[animate(snap)]
@@ -93,10 +93,10 @@ pub struct TabsTheme {
     /// The insertion mark a chip drag shows at the slot it would drop into.
     pub caret: RgbaF32,
     /// Breadth of the insertion mark in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub caret_width: f32,
     /// Gutter between the parts of a chip's content, and before its close button.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub label_gap: f32,
     /// Spacing and transition spec — see [`SlotDefaults`].
     #[serde(flatten)]

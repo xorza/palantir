@@ -2,8 +2,8 @@
 //! built into each window's themes once an edit.
 
 use palantir::{
-    AnimationSpec, ButtonTheme, ColorScheme, FocusRingTheme, Metrics, Okhsv, Palette, RgbaF32,
-    Theme, Ui, WidgetId,
+    AnimationSpec, ButtonTheme, ColorCoords, ColorModel, ColorScheme, FocusRingTheme, Metrics,
+    Palette, RgbaF32, Theme, Ui, WidgetId,
 };
 
 use crate::support;
@@ -207,8 +207,9 @@ pub(crate) fn accent_for(seed: RgbaF32, scheme: ColorScheme) -> RgbaF32 {
     if holds(seed) {
         return seed;
     }
-    let Okhsv { h, s, v } = Okhsv::from_color(seed, 0.0);
-    let at = |s, v| Okhsv::new(h, s, v).to_color();
+    let axes = ColorCoords::from_color(seed, ColorModel::Okhsv, 0.0);
+    let (s, v) = (axes.saturation(), axes.value());
+    let at = |s, v| axes.with_saturation(s).with_value(v).to_color();
     if p.on_accent.luminance() < p.accent.luminance() {
         if holds(at(s, 1.0)) {
             let rise = |x: f32| v + (1.0 - v) * x;
@@ -226,7 +227,10 @@ pub(crate) fn accent_for(seed: RgbaF32, scheme: ColorScheme) -> RgbaF32 {
 #[cfg(test)]
 mod tests {
     use palantir::glam::UVec2;
-    use palantir::{AnimationSpec, ColorScheme, Harness, Metrics, Okhsv, Palette, RgbaF32, Theme};
+    use palantir::{
+        AnimationSpec, ColorCoords, ColorModel, ColorScheme, Harness, Metrics, Palette, RgbaF32,
+        Theme,
+    };
 
     use crate::appearance::{Appearance, SEEDS, accent_for, holds_floors};
 
@@ -246,15 +250,18 @@ mod tests {
                     assert_eq!(accent, seed, "{scheme:?}: a seed that holds stays");
                     continue;
                 }
-                let seed_hsv = Okhsv::from_color(seed, 0.0);
-                let got = Okhsv::from_color(accent, 0.0);
-                if seed_hsv.s > 0.0 {
+                let seed_hsv = ColorCoords::from_color(seed, ColorModel::Okhsv, 0.0);
+                let got = ColorCoords::from_color(accent, ColorModel::Okhsv, 0.0);
+                if seed_hsv.saturation() > 0.0 {
                     // The round trip through linear RGB holds the hue to a few f32 steps.
-                    assert!((got.h - seed_hsv.h).abs() < 1e-4, "{scheme:?} {seed:?}");
+                    assert!(
+                        (got.hue() - seed_hsv.hue()).abs() < 1e-4,
+                        "{scheme:?} {seed:?}"
+                    );
                 }
-                let back = (seed_hsv.v - got.v).signum() * 1e-3;
-                if (got.s - seed_hsv.s).abs() < 1e-4 && back != 0.0 {
-                    let nearer = Okhsv::new(got.h, got.s, got.v + back).to_color();
+                let back = (seed_hsv.value() - got.value()).signum() * 1e-3;
+                if (got.saturation() - seed_hsv.saturation()).abs() < 1e-4 && back != 0.0 {
+                    let nearer = got.with_value(got.value() + back).to_color();
                     assert!(
                         !holds_floors(nearer, p),
                         "{scheme:?} {seed:?}: not the nearest"
@@ -271,8 +278,9 @@ mod tests {
             SEEDS[1],
             "a translucent seed paints opaque"
         );
-        let blue = Okhsv::from_color(accent_for(RgbaF32::hex(0x0000ff), ColorScheme::Dark), 0.0);
-        assert!(blue.s < Okhsv::from_color(RgbaF32::hex(0x0000ff), 0.0).s);
+        let okhsv = |color| ColorCoords::from_color(color, ColorModel::Okhsv, 0.0);
+        let blue = okhsv(accent_for(RgbaF32::hex(0x0000ff), ColorScheme::Dark));
+        assert!(blue.saturation() < okhsv(RgbaF32::hex(0x0000ff)).saturation());
     }
 
     /// A seed or a ring edit moves the generation, so each window builds both themes once from

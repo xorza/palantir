@@ -1,6 +1,7 @@
 //! Why a [`Locator`](crate::Locator) names no one place, and why an [`Action`](crate::Action)
 //! could not be played.
 
+use crate::driver::locator::Found;
 use crate::input_state::capture::DRAG_THRESHOLD;
 use glam::Vec2;
 use std::error;
@@ -23,8 +24,8 @@ pub enum LocateError {
     Ambiguous {
         /// The locator, as its `Debug` writes it.
         locator: String,
-        /// Each match, with its index and the point a press takes.
-        matches: Vec<String>,
+        /// Each match, in the order [`Locator::Nth`](crate::Locator::Nth) counts them.
+        matches: Vec<Found>,
     },
     /// It matches only what the ancestors' clips hide, so no pointer reaches it.
     OffScreen {
@@ -64,12 +65,22 @@ impl Display for LocateError {
                 "{locator} matches nothing; the nearest are: {}",
                 nearest.join(", ")
             ),
-            Self::Ambiguous { locator, matches } => write!(
-                f,
-                "{locator} matches {} places; pick one with Nth: {}",
-                matches.len(),
-                matches.join(", ")
-            ),
+            Self::Ambiguous { locator, matches } => {
+                write!(
+                    f,
+                    "{locator} matches {} places; pick one with Nth:",
+                    matches.len()
+                )?;
+                for (n, found) in matches.iter().enumerate() {
+                    let separator = if n == 0 { " " } else { ", " };
+                    write!(
+                        f,
+                        "{separator}{n}: at ({}, {})",
+                        found.point.x, found.point.y
+                    )?;
+                }
+                Ok(())
+            }
             Self::OffScreen { locator } => {
                 write!(f, "{locator} is clipped out of view; scroll it into view")
             }

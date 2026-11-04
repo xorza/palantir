@@ -33,6 +33,7 @@ use crate::primitives::packed::half_simd::F16x4;
 use crate::primitives::paint::color::RgbaF32;
 
 pub mod f64;
+pub(crate) mod file;
 pub mod vec2;
 
 /// Float comparisons at UI tolerance, below 8-bit color precision and sub-pixel resolution.
@@ -235,10 +236,11 @@ pub const fn positive(v: f32) -> f32 {
     v
 }
 
-/// True if `v` is a [`factor`]: finite and not negative.
+/// True if `v` is a [`factor`]: finite and not negative, a [length](is_length)'s rule under the
+/// name of a multiplier.
 #[inline]
 pub const fn is_factor(v: f32) -> bool {
-    v >= 0.0 && v <= f32::MAX
+    is_length(v)
 }
 
 /// `v`, which must be a *factor*: a multiplier, finite and not negative, where zero takes the
@@ -273,10 +275,10 @@ pub const fn refractive_index(n: f32) -> f32 {
     n
 }
 
-/// True if `v` is an [`angle`]: finite.
+/// True if `v` is an [`angle`]: finite, an [offset](is_offset)'s rule under the name of a turn.
 #[inline]
 pub const fn is_angle(v: f32) -> bool {
-    v.is_finite()
+    is_offset(v)
 }
 
 /// `v`, which must be an *angle*: finite, in radians.

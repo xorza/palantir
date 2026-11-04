@@ -20,9 +20,10 @@ const fn size_at(divisor: u32) -> UVec2 {
 pub(crate) fn atomic(c: &mut Criterion) {
     let mut group = Kind::Atomic.group(c, "color_field", Scale::Frame);
     for model in ColorModel::ALL {
+        let name = format!("{model:?}").to_lowercase();
         // The default divisor, and a texel per pixel as the worst a caller can set.
         for divisor in [1u32, 4] {
-            let case = format!("fill/{}/divisor_{divisor}", model.label().to_lowercase());
+            let case = format!("fill/{name}/divisor_{divisor}");
             group.bench_function(Backend::Cpu.case(&case), |b| {
                 let mut image = Image::blank(size_at(divisor));
                 b.iter(|| {

@@ -21,7 +21,7 @@ pub struct ProgressBarTheme {
     /// Fill color (the completed portion).
     pub fill: RgbaF32,
     /// Cross-axis thickness of the bar in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub thickness: f32,
 }
 

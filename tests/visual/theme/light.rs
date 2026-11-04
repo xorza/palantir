@@ -458,7 +458,7 @@ pub(super) fn theme() -> Theme {
         },
         combo_box: ComboBoxTheme {
             gap: 12.0,
-            arrow_size: Vec2::new(10.0, 6.0),
+            arrow_size: Size::new(10.0, 6.0),
             arrow_width: 1.5,
         },
         modal: ModalTheme {
@@ -845,7 +845,7 @@ pub(super) fn theme() -> Theme {
                     },
                 },
             },
-            arrow_size: Vec2::new(11.0, 11.0),
+            arrow_size: Size::new(11.0, 11.0),
             arrow_radius: 1.5,
             arrow_closed_angle: -FRAC_PI_2,
             arrow_open_angle: 0.0,

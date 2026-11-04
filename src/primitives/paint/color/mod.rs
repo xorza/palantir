@@ -370,13 +370,11 @@ impl From<SrgbaU8> for RgbaF32 {
     }
 }
 
-/// Wire format: CSS hex, `#rrggbb` or `#rrggbbaa` when alpha is not fully opaque, for a color on
-/// the 8-bit sRGB grid; otherwise CSS Color 4's `color(srgb-linear r g b / a)`, the stored linear
-/// channels in shortest round-trip form, with `/ a` left out for an opaque one. Either way the
-/// color loads back the same. Refused: hex alone, which moves every color off the grid.
-/// The form [`FromStr`](str::FromStr) reads back to the same value: `#rrggbb`, or `#rrggbbaa`
-/// below full alpha, for a color on the 8-bit sRGB grid, else `color(srgb-linear r g b)`, with
-/// ` / a` below full alpha, in the shortest digits that round-trip.
+/// The wire format, which [`FromStr`](str::FromStr) reads back to the same value: CSS hex,
+/// `#rrggbb` or `#rrggbbaa` below full alpha, for a color on the 8-bit sRGB grid; otherwise CSS
+/// Color 4's `color(srgb-linear r g b)`, with ` / a` below full alpha, the stored linear channels
+/// in the shortest digits that round-trip. Refused: hex alone, which moves every color off the
+/// grid.
 impl fmt::Display for RgbaF32 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bytes = self.to_srgba8();

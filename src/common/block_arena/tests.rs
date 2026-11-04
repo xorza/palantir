@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::common::counters::CounterSet;
-use crate::common::non_max_u32;
 
 /// The cheapest thing satisfying the trait: the link is the whole
 /// element, so a test can read a slot back and say what it holds.
@@ -15,7 +14,7 @@ impl BlockSlot for Slot {
     const GRANULE: u32 = 4;
 
     fn free_link(next: Option<NonMaxU32>) -> Self {
-        Self(non_max_u32::to_raw(next))
+        Self(NonMaxU32::to_raw(next))
     }
 
     fn next_free(self) -> Option<NonMaxU32> {

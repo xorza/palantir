@@ -283,7 +283,7 @@ impl PaintRectCtx<'_> {
                         spun_if_animated(record::mesh_paint_bbox_local(*bbox, *local_rect), idx),
                         shape_clip,
                     ),
-                    // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::None`.
+                    // Bounded by the rect the encoder draws, which overflows the base under `ImageFit::Natural`.
                     ShapeRecord::Image {
                         local_rect,
                         source,

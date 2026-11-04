@@ -107,7 +107,7 @@ fn scene(ui: &mut Ui, k: Knobs, picture: &ImageHandle) {
                 .size(40.0)
                 .show(ui, |ui| {
                     let fit = if k.fit_none {
-                        ImageFit::None
+                        ImageFit::Natural
                     } else {
                         ImageFit::Fill
                     };
@@ -263,7 +263,7 @@ fn shape_becomes_animated() {
     ]);
 }
 
-/// A 100 px image in a 40 px node switches to `ImageFit::None` and back: damage covers the overflow both ways.
+/// A 100 px image in a 40 px node switches to `ImageFit::Natural` and back: damage covers the overflow both ways.
 #[test]
 fn image_fit_overflows_its_node() {
     run(&[

@@ -3,12 +3,13 @@ use crate::icons::icon_raster_key::IconRasterKey;
 use crate::icons::icon_rasterizer::{IconRasterizer, MAX_PARSED_TREES};
 use crate::icons::icon_table::{IconDefinition, IconTable};
 use crate::icons::internals::BROKEN;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::icon_id::IconId;
 use crate::primitives::identity::icon_ref::IconRef;
 use crate::primitives::identity::icon_set_id::IconSetId;
 use crate::primitives::paint::content_type::ContentType;
 use crate::primitives::paint::raster_image::RasterImage;
-use glam::{IVec2, U16Vec2, UVec2, Vec2};
+use glam::{IVec2, U16Vec2, UVec2};
 use std::borrow::Cow;
 
 /// A solid black square filling its 8x8 viewBox: coverage is exactly 255 everywhere.
@@ -125,7 +126,7 @@ fn color_icon_rasterizes_to_straight_srgb_rgba() {
 fn unparseable_icon_fails_once_and_is_not_retried() {
     static BROKEN_ICONS: [IconDefinition; 1] = [IconDefinition {
         name: Cow::Borrowed("broken"),
-        view_box: Vec2::splat(8.0),
+        view_box: Size::new(8.0, 8.0),
         svg: Span::new(0, BROKEN.len() as u32),
         tintable: true,
     }];

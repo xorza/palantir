@@ -2,7 +2,7 @@
 
 use crate::cascade::paint::Paint;
 use crate::common::block_arena::BlockArena;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 use crate::damage;
 use crate::damage::pane_walk::PaneWalk;
@@ -335,7 +335,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::non_max_u32::NonMaxU32;
+    use crate::common::non_max::NonMaxU32;
     use crate::damage::row_matcher::RowMatcher;
 
     /// Curr rows 0..6 matched to prev rows 3, none, 0, 5, none and 6 of 7. Slot `t` holds the last

@@ -78,15 +78,15 @@ use crate::primitives::paint::color::{RgbaF32, TEXT_CONTRAST};
 #[must_use]
 pub struct BackdropFilter {
     /// The blur's Gaussian σ in logical px, as CSS `blur()` takes it; 0 leaves the pixels sharp.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::lane_length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::lane_length")]
     pub blur: f32,
     /// The color's saturation as CSS `saturate()` scales it: 1 leaves it, 0 is gray, above 1
     /// deepens it.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::lane_factor")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::lane_factor")]
     pub saturation: f32,
     /// The amplitude of a grain fixed to the pane, so frosted glass does not read as a flat
     /// color; 0 is none, and a few hundredths show it.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::lane_factor")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::lane_factor")]
     pub noise: f32,
     /// The highest relative luminance the pane shows under its tint, if any: a brighter pixel is
     /// scaled down to it, its hue and chroma kept. The lane it packs into rounds it down, never
@@ -94,7 +94,7 @@ pub struct BackdropFilter {
     /// half a step of dither and half of the rounding to a byte.
     #[serde(
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::primitives::packed::serde::checked::optional_lane_factor"
+        deserialize_with = "crate::primitives::math::domain::file::optional_lane_factor"
     )]
     pub max_luminance: Option<f32>,
     /// The lowest relative luminance the pane shows under its tint, if any: a darker pixel is
@@ -103,7 +103,7 @@ pub struct BackdropFilter {
     /// cross.
     #[serde(
         skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::primitives::packed::serde::checked::optional_lane_factor"
+        deserialize_with = "crate::primitives::math::domain::file::optional_lane_factor"
     )]
     pub min_luminance: Option<f32>,
     /// Glass that bends what the pane shows across a rounded bezel at its edge, if any.
@@ -133,23 +133,23 @@ pub struct BackdropFilter {
 #[must_use]
 pub struct Lens {
     /// The width of the rounded band at the edge, in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub bezel: f32,
     /// The glass's height inside the bezel, in logical px: how far it bends a ray aside.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub thickness: f32,
     /// The glass's index of refraction; 1 bends nothing, 1.5 is window glass.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::refractive_index")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::refractive_index")]
     pub refractive_index: f32,
     /// The index's step from red to blue, `n_F − n_C` between Fraunhofer's C (656.3 nm) and F
     /// (486.1 nm) lines, as a glass catalog gives it; `refractive_index` is the index at the D
     /// line (589.3 nm). It spreads the spectrum across the bezel, fringing what the glass bends
     /// with color. Window glass (N-BK7) has 0.008, dense flint (N-SF11) 0.031; a UI's glass
     /// takes more, so the fringe shows.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
     pub dispersion: f32,
     /// The strength of the lamp's glint off the bezel.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
     pub highlight: f32,
 }
 

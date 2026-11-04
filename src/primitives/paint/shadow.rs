@@ -22,15 +22,15 @@ pub struct Shadow {
     /// Shadow color.
     pub color: RgbaF32,
     /// Shift in logical pixels.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
     #[animate(settle_eps = PX_SETTLE_EPS)]
     pub offset: Vec2,
     /// Gaussian σ in logical pixels, half CSS's `blur-radius`.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     #[animate(settle_eps = PX_SETTLE_EPS)]
     pub blur: f32,
     /// Inflates a drop shadow's source rect, deflates an inset one's.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset")]
     #[animate(settle_eps = PX_SETTLE_EPS)]
     pub spread: f32,
     /// Paints inside the chrome boundary rather than outside it.

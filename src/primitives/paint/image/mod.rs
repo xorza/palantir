@@ -26,8 +26,9 @@ pub enum ImageFit {
     /// (centered).
     Cover,
     /// Paint at intrinsic pixel size, centered; a larger image overflows
-    /// uncropped.
-    None,
+    /// uncropped. CSS `object-fit: none`, named for what it keeps, as the variant `None` would
+    /// shadow `Option::None` under a glob import and in a match.
+    Natural,
     /// Repeat across the paint rect. The UV is taken raw from `offset` and
     /// `scale` (intrinsic size ignored) and wrapped with `fract()` in the
     /// shader: `scale` is the repeat count (`uv_size`), `offset` the scroll
@@ -342,8 +343,8 @@ impl ImageFit {
     /// the encoder draws with it and the cascade bounds damage by its `rect`.
     ///
     /// An empty `intrinsic` or `base` paints `base` at full UV.
-    pub(crate) const fn resolve(self, base: Rect, intrinsic: Vec2) -> FitRect {
-        let (iw, ih) = (intrinsic.x, intrinsic.y);
+    pub(crate) const fn resolve(self, base: Rect, intrinsic: Size) -> FitRect {
+        let Size { w: iw, h: ih } = intrinsic;
         let (bw, bh) = (base.size.w, base.size.h);
         if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
             return FitRect::whole(base);
@@ -352,7 +353,7 @@ impl ImageFit {
             Self::Fill => FitRect::whole(base),
             Self::Contain => {
                 let scale = (bw / iw).min(bh / ih);
-                FitRect::whole(centered_in(base, iw * scale, ih * scale))
+                FitRect::whole(centered_in(base, intrinsic.scaled_by(scale)))
             }
             Self::Cover => {
                 // The larger axis ratio decides the scale; the UV crops the overhang.
@@ -365,7 +366,7 @@ impl ImageFit {
                     uv_size: Vec2::new(uv_w, uv_h),
                 }
             }
-            Self::None => FitRect::whole(centered_in(base, iw, ih)),
+            Self::Natural => FitRect::whole(centered_in(base, intrinsic)),
             // The shader wraps the raw UV with `fract`.
             Self::Tile { offset, scale } => FitRect {
                 rect: base,
@@ -376,14 +377,14 @@ impl ImageFit {
     }
 }
 
-/// A `w`x`h` box centered inside `base`.
-const fn centered_in(base: Rect, w: f32, h: f32) -> Rect {
+/// A box of `size` centered inside `base`.
+const fn centered_in(base: Rect, size: Size) -> Rect {
     Rect {
         min: Vec2::new(
-            base.min.x + (base.size.w - w) * 0.5,
-            base.min.y + (base.size.h - h) * 0.5,
+            base.min.x + (base.size.w - size.w) * 0.5,
+            base.min.y + (base.size.h - size.h) * 0.5,
         ),
-        size: Size { w, h },
+        size,
     }
 }
 
@@ -391,7 +392,7 @@ impl NanCheck for ImageFit {
     #[inline]
     fn has_nan(&self) -> bool {
         match self {
-            Self::Fill | Self::Contain | Self::Cover | Self::None => false,
+            Self::Fill | Self::Contain | Self::Cover | Self::Natural => false,
             Self::Tile { offset, scale } => offset.has_nan() || scale.has_nan(),
         }
     }

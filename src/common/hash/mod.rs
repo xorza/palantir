@@ -1,11 +1,15 @@
 //! Shared hashing primitive: `FxHasher` wrapped to add a whole-slice
-//! [`Hasher::pod_slice`] write beside the `Hasher` trait; use it instead of
-//! `FxHasher::default()`.
+//! [`Hasher::pod_slice`] write beside the `Hasher` trait; `clippy.toml` refuses `FxHasher`
+//! everywhere else.
 //! FxHasher beat foldhash and ahash in the per-frame micro-shootout (~2.4-3.3x
 //! on the node+shape mix) because our writes are many and small.
 //!
 //! Text is the exception, as text comes from outside the program and FxHash's fixed seed lets
 //! its author pick a collision: [`str()`] is foldhash under a seed drawn once per process.
+#![expect(
+    clippy::disallowed_types,
+    reason = "the one wrapper of FxHasher, which `clippy.toml` refuses everywhere else"
+)]
 
 use foldhash::SharedSeed;
 use foldhash::quality::SeedableRandomState;

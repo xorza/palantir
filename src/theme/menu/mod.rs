@@ -36,13 +36,13 @@ pub struct MenuTheme {
     /// Panel chrome behind the items; its `padding` carves the gutter to the rows.
     pub panel: Chrome,
     /// Padding inside the container, around the items.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub padding: Spacing,
     /// Floor for the container width.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub min_width: f32,
     /// Vertical gutter between rows. `0.0` stacks them flush, like native menus.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
     /// Per-row visuals. See [`MenuItemTheme`].
     pub item: MenuItemTheme,

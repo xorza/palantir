@@ -2,32 +2,12 @@
 
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
+use crate::primitives::paint::color::color_coords::ColorCoords;
+use crate::primitives::paint::color::color_model::ColorModel;
 use crate::primitives::paint::color::oklab::{self, Oklab};
 use crate::primitives::paint::color::srgb_transfer;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use std::f32::consts::TAU;
-
-/// Hue, saturation and value in Björn Ottosson's Okhsv space
-/// (<https://bottosson.github.io/posts/colorpicker/>), in linear light.
-///
-/// Every axis is `0..1` and `h` wraps. `s = 1` is the sRGB gamut edge and `v = 1`
-/// its brightest slice, so **every triple in the unit cube is in gamut**. Unlike
-/// [`Hsv`](crate::Hsv), hue stays put as the other axes move.
-///
-/// # The blue sliver
-///
-/// A wedge around pure blue is unreachable: Okhsv's gamut edge is the *first*
-/// crossing, so `#0000ff` sits just outside the cube (`s = 1, v = 1` at blue's hue
-/// is `#0037ff`). Keep hex, channels and [`Hsv`](crate::Hsv) available in a picker.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Okhsv {
-    /// Hue around the Oklab circle, `0..1`. Wraps.
-    pub h: f32,
-    /// Saturation, `0` gray to `1` at the gamut edge.
-    pub s: f32,
-    /// Value, `0` black to `1` at the brightest slice of this hue.
-    pub v: f32,
-}
 
 /// Chroma below which a color has no hue and the caller's fallback answers: `f32`
 /// rounding leaves an exact gray up to ~`3e-7`, one byte from gray is at least
@@ -46,50 +26,34 @@ const TOE_K3: f32 = (1.0 + TOE_K1) / (1.0 + TOE_K2);
 /// Halley steps to land the cusp; see [`max_saturation`].
 const HALLEY_STEPS: usize = 3;
 
-impl Okhsv {
-    /// Construct from the three axes. [`Self::to_color`] wraps the hue, clamps the
-    /// rest and reads a non-finite axis as `0`.
-    pub const fn new(h: f32, s: f32, v: f32) -> Self {
-        Self { h, s, v }
+/// The slice of hue `hue`, which wraps, with its gamut solved.
+pub(crate) fn slice(hue: f32) -> OkhsvSlice {
+    let (sin, cos) = (TAU * domain::turn(hue)).sin_cos();
+    OkhsvSlice::from_direction(cos, sin)
+}
+
+/// The axes naming `color`, ignoring alpha; `fallback_hue` answers gray, which has no hue.
+pub(crate) fn from_color(color: RgbaF32, fallback_hue: f32) -> ColorCoords {
+    let lab = Oklab::from_color(color);
+    let lightness = lab.l;
+    let chroma = lab.a.hypot(lab.b);
+    if chroma < GRAY_CHROMA || lightness <= 0.0 {
+        return ColorCoords::new(ColorModel::Okhsv, fallback_hue, 0.0, toe(lightness));
     }
+    let slice = OkhsvSlice::from_direction(lab.a / chroma, lab.b / chroma);
+    let CuspSlopes { t, .. } = slice.slopes;
 
-    /// The opaque color these axes name; apply alpha with [`RgbaF32::with_alpha`].
-    pub fn to_color(self) -> RgbaF32 {
-        Self::slice(self.h).color(self.s, self.v)
-    }
+    let at_top = t / (chroma + lightness * t);
+    let l_v = at_top * lightness;
+    let c_v = at_top * chroma;
+    let toed = toe(lightness / slice.top_scale(l_v, c_v));
 
-    pub(crate) fn slice(hue: f32) -> OkhsvSlice {
-        let (sin, cos) = (TAU * domain::turn(hue)).sin_cos();
-        OkhsvSlice::from_direction(cos, sin)
-    }
-
-    /// The axes naming `color`, ignoring alpha; `fallback_hue` answers gray, which
-    /// has no hue.
-    pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self {
-        let lab = Oklab::from_color(color);
-        let lightness = lab.l;
-        let chroma = lab.a.hypot(lab.b);
-        if chroma < GRAY_CHROMA || lightness <= 0.0 {
-            return Self {
-                h: domain::turn(fallback_hue),
-                s: 0.0,
-                v: toe(lightness).clamp(0.0, 1.0),
-            };
-        }
-        let slice = OkhsvSlice::from_direction(lab.a / chroma, lab.b / chroma);
-        let CuspSlopes { t, .. } = slice.slopes;
-
-        let at_top = t / (chroma + lightness * t);
-        let l_v = at_top * lightness;
-        let c_v = at_top * chroma;
-        let toed = toe(lightness / slice.top_scale(l_v, c_v));
-
-        Self {
-            h: (lab.b.atan2(lab.a) / TAU).rem_euclid(1.0),
-            s: ((ANCHOR_S + t) * c_v / (t * ANCHOR_S + t * slice.k * c_v)).clamp(0.0, 1.0),
-            v: (toed / l_v).clamp(0.0, 1.0),
-        }
-    }
+    ColorCoords::new(
+        ColorModel::Okhsv,
+        (lab.b.atan2(lab.a) / TAU).rem_euclid(1.0),
+        (ANCHOR_S + t) * c_v / (t * ANCHOR_S + t * slice.k * c_v),
+        toed / l_v,
+    )
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -167,7 +131,7 @@ impl OkhsvSlice {
     }
 }
 
-/// One hue and saturation of [`Okhsv`], ready to answer a run of values: the triangle's top and
+/// One hue and saturation of [`ColorModel::Okhsv`], ready to answer a run of values: the triangle's top and
 /// the gamut scale depend on the saturation alone. Take one from [`OkhsvSlice::column`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OkhsvColumn {

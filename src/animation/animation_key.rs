@@ -1,7 +1,7 @@
 //! [`AnimationKey`]: the cause of an animated target.
 
-use rustc_hash::FxHasher;
-use std::hash::{Hash, Hasher};
+use crate::common::hash::Hasher;
+use std::hash::{Hash, Hasher as _};
 
 /// What an animated target follows from, as a widget's state. A new target under the same key
 /// means its inputs moved, as during a theme transition, and the value follows it at once while
@@ -14,7 +14,7 @@ pub struct AnimationKey(u64);
 impl AnimationKey {
     /// The key of `cause`, by its hash: equal causes give equal keys.
     pub fn of(cause: impl Hash) -> Self {
-        let mut hasher = FxHasher::default();
+        let mut hasher = Hasher::new();
         cause.hash(&mut hasher);
         Self(hasher.finish())
     }

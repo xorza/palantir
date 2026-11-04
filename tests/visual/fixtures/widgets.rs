@@ -387,7 +387,7 @@ fn color_field_and_bars_match_golden() {
                 for model in ColorModel::ALL {
                     let mut coords = ColorCoords::from_color(RgbaF32::hex(0x2b7fd4), model, 0.0);
                     Panel::vstack()
-                        .id_salt(model.label())
+                        .id_salt(model)
                         .gap(8.0)
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui, |ui| {

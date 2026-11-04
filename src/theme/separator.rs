@@ -22,10 +22,10 @@ pub struct SeparatorTheme {
     /// Rule color.
     pub color: RgbaF32,
     /// Rule breadth in logical px.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub thickness: f32,
     /// Breathing room when the builder left margin unset. `ZERO` in flow; the menu slot uses a vertical gutter, since a horizontal inset would leave the rule short of the labels.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::margin")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::margin")]
     pub margin: Spacing,
 }
 

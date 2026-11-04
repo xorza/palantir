@@ -4,7 +4,7 @@ use crate::cascade::cascade_input_hash::CascadeInputHash;
 use crate::cascade::paint::PaintArena;
 use crate::cascade::pane_row::PaneRow;
 use crate::common::content_hash::ContentHash;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::primitives::geometry::rect::Rect;
 
 /// All per-plane cascade state. `cascade_inputs`, `subtree_paint_rects` and

@@ -1,5 +1,6 @@
 use crate::internals::panic_probe;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain::{self, EPS, is_approx_zero, is_invisible, share_of, vec2};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
@@ -194,8 +195,8 @@ fn band_fraction_offsets_by_half_the_band() {
     // Per component: 60 on 120 beside 20 on 40 with a 10 band reads (0.5, 0.5).
     let point = vec2::band_fraction(
         Vec2::new(60.0, 20.0),
-        Vec2::new(120.0, 40.0),
-        Vec2::new(20.0, 10.0),
+        Size::new(120.0, 40.0),
+        Size::new(20.0, 10.0),
     );
     assert_eq!(point, Vec2::splat(0.5), "{point}");
 }

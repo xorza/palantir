@@ -28,7 +28,7 @@ pub struct TooltipTheme {
     #[serde(default, skip_serializing_if = "TextStyleOverrides::is_empty")]
     pub text: TextStyleOverrides,
     /// Padding between chrome and the text.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::padding")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::padding")]
     pub padding: Spacing,
     /// Cap on the bubble's outer size. Width gates wrap; height is usually `INF`. Override via `.max_size(...)`. Infinite axes round-trip because `Size`'s serde maps non-finite to `None`.
     pub max_size: Size,
@@ -41,7 +41,7 @@ pub struct TooltipTheme {
     #[animate(snap)]
     pub warmup: Duration,
     /// Gap in logical px between trigger rect and bubble.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub gap: f32,
 }
 

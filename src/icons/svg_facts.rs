@@ -1,12 +1,12 @@
 //! The survey parse of an icon's SVG and the parse settings every parse shares; the only place outside the rasterizer that talks to `usvg`.
 
-use glam::Vec2;
+use crate::primitives::geometry::size::Size;
 use resvg::usvg;
 
 /// The two facts an [`IconDefinition`](crate::IconDefinition) carries that the markup does not state outright, read off one parse.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct SvgFacts {
-    pub(crate) view_box: Vec2,
+    pub(crate) view_box: Size,
     /// Every paint resolved to at most one color, so a draw's tint can supply it.
     pub(crate) tintable: bool,
 }
@@ -26,7 +26,7 @@ impl SvgFacts {
         };
         survey.walk(tree.root());
         Ok(Self {
-            view_box: Vec2::new(tree.size().width(), tree.size().height()),
+            view_box: Size::new(tree.size().width(), tree.size().height()),
             tintable: survey.tintable,
         })
     }
@@ -79,7 +79,7 @@ impl Survey {
 mod tests {
     use crate::icons::internals::{BROKEN, ONE_COLOR, TWO_COLORS};
     use crate::icons::svg_facts::SvgFacts;
-    use glam::Vec2;
+    use crate::primitives::geometry::size::Size;
 
     const GRADIENT: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><defs><linearGradient id="g"><stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="16" height="16" fill="url(#g)"/></svg>"##;
     /// A stroke in a second color: strokes are surveyed too.
@@ -95,8 +95,8 @@ mod tests {
 
     #[test]
     fn survey_reads_viewbox_and_tintability() {
-        assert_eq!(facts(ONE_COLOR).view_box, Vec2::new(24.0, 12.0));
-        assert_eq!(facts(TWO_COLORS).view_box, Vec2::new(16.0, 16.0));
+        assert_eq!(facts(ONE_COLOR).view_box, Size::new(24.0, 12.0));
+        assert_eq!(facts(TWO_COLORS).view_box, Size::new(16.0, 16.0));
 
         assert!(facts(ONE_COLOR).tintable, "one color across two shapes");
         assert!(!facts(TWO_COLORS).tintable, "two fills, two colors");

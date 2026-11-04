@@ -5,7 +5,7 @@ use crate::animation::animation_slot::AnimationSlot;
 use crate::animation::animation_spec::AnimationSpec;
 use crate::input::interaction::response_state::ResponseState;
 use crate::input::sense::Sense;
-use crate::primitives::geometry::arrow::Arrow;
+use crate::primitives::geometry::arrow;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::spacing::Spacing;
 use crate::primitives::identity::widget_id::WidgetId;
@@ -160,13 +160,13 @@ impl<'a> Expander<'a> {
             // and a close shows the body until it rests at 0, not while its swing dips under 0.
             let openness = swing.value.clamp(0.0, 1.0);
             let showing = now_open || !swing.settled;
-            let [a, b, c] = Arrow { size: t.arrow_size }.rotated(t.arrow_angle(openness));
+            let [a, b, c] = arrow::rotated(t.arrow_size, t.arrow_angle(openness));
             let text = look.text;
             let label = ui.intern(label);
             header.record(ui, Some(&look.chrome), |ui| {
                 let arrow_box = Widget::leaf()
                     .id(header_id.with("arrow"))
-                    .size((Sizing::fixed(t.arrow_size.x), Sizing::fixed(t.arrow_size.y)));
+                    .size(t.arrow_size);
                 arrow_box.record(ui, None, |ui| {
                     ui.add_shape(
                         Shape::triangle(a, b, c)

@@ -106,7 +106,7 @@ AnimationSpec
         pub const SPRING: Self
         pub const fn duration(length: Duration, ease: Easing) -> Self
         pub fn spring(stiffness: f32, damping: f32) -> Self
-        pub const fn is_instant(self) -> bool
+        pub const fn is_instant(&self) -> bool
 
 App
     trait App
@@ -302,9 +302,8 @@ ColorButton
         pub fn is_open(ui: &Ui, id: WidgetId) -> bool
 
 ColorCoords
-    enum ColorCoords: Clone, Copy, Debug, Default, PartialEq
-        Okhsv(Okhsv)
-        Hsv(Hsv)
+    struct ColorCoords: Clone, Copy, Debug, Default, PartialEq
+        pub const fn new(model: ColorModel, h: f32, s: f32, v: f32) -> Self
         pub fn from_color(color: RgbaF32, model: ColorModel, fallback_hue: f32) -> Self
         pub const fn model(self) -> ColorModel
         pub fn to_color(self) -> RgbaF32
@@ -328,8 +327,6 @@ ColorModel
         Okhsv
         Hsv
         pub const ALL: [Self; 2]
-        pub const fn label(self) -> &'static str
-        pub fn slice(self, hue: f32) -> HueSlice
 
 ColorPicker
     struct ColorPicker<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -415,7 +412,7 @@ ComboBox
 ComboBoxTheme
     struct ComboBoxTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
         pub gap: f32
-        pub arrow_size: Vec2
+        pub arrow_size: Size
         pub arrow_width: f32
         pub const fn from_parts(_p: &Palette, m: &Metrics) -> Self
         pub const fn stock(scheme: ColorScheme) -> Self
@@ -771,7 +768,7 @@ ExpanderResponse
 ExpanderTheme
     struct ExpanderTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
         pub looks: StatefulLook
-        pub arrow_size: Vec2
+        pub arrow_size: Size
         pub arrow_radius: f32
         pub arrow_closed_angle: f32
         pub arrow_open_angle: f32
@@ -876,6 +873,7 @@ Gpu
         pub fn create_compute_pipeline(&self, desc: &ComputePipelineDescriptor<'_>) -> ComputePipeline
 
 GpuFrameCtx
+    #[non_exhaustive]
     struct GpuFrameCtx<'a>: Debug
         pub gpu: &'a Gpu
         pub encoder: &'a mut CommandEncoder
@@ -888,6 +886,7 @@ GpuFrameCtx
         pub dt: Duration
 
 GpuInitCtx
+    #[non_exhaustive]
     struct GpuInitCtx<'a>: Debug
         pub gpu: &'a Gpu
         pub target_format: TextureFormat
@@ -949,7 +948,6 @@ Gradient
         impl<'de, G> Deserialize<'de> where G: Deserialize<'de>
         impl<G: Clone> Clone for Gradient<G>
         impl<G: Debug> Debug for Gradient<G>
-        impl<G: Eq> Eq for Gradient<G>
         impl<G: GradientGeometry> Hash for Gradient<G>
         impl<G: PartialEq> PartialEq for Gradient<G>
         impl<G> Serialize where G: Serialize
@@ -1080,23 +1078,10 @@ HostHandle  [features: winit]
         pub fn quit(&self)
         pub fn remote(&self, window: WindowToken) -> Remote<T>
 
-Hsv
-    struct Hsv: Clone, Copy, Debug, Default, PartialEq
-        pub h: f32
-        pub s: f32
-        pub v: f32
-        pub const fn new(h: f32, s: f32, v: f32) -> Self
-        pub fn to_color(self) -> RgbaF32
-        pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self
-
-HueSlice
-    struct HueSlice: Clone, Copy, Debug
-        pub fn color(self, s: f32, v: f32) -> RgbaF32
-
 IconDefinition
     struct IconDefinition: Clone, Debug
         pub name: Cow<'static, str>
-        pub view_box: Vec2
+        pub view_box: Size
         pub svg: Span
         pub tintable: bool
 
@@ -1104,11 +1089,11 @@ IconFit
     enum IconFit: Clone, Copy, Debug, Default, Eq, PartialEq
         Fill
         Contain
-        None
+        Natural
 
 IconHandle
     struct IconHandle: Clone, Copy, Debug, PartialEq
-        pub const fn view_box(&self) -> Vec2
+        pub const fn view_box(&self) -> Size
 
 IconSet
     struct IconSet: Clone, Debug
@@ -1161,7 +1146,7 @@ ImageFit
         Fill
         Contain
         Cover
-        None
+        Natural
         Tile { offset: Vec2, scale: Vec2 }
 
 ImageHandle
@@ -1381,7 +1366,7 @@ Locate
 LocateError
     enum LocateError: Clone, Debug, Display, Error, PartialEq
         NotFound { locator: String, nearest: Vec<String> }
-        Ambiguous { locator: String, matches: Vec<String> }
+        Ambiguous { locator: String, matches: Vec<Found> }
         OffScreen { locator: String }
         Covered { locator: String, point: Vec2 }
         Disabled { locator: String }
@@ -1592,15 +1577,6 @@ OffscreenTime
     enum OffscreenTime: Clone, Copy, Debug, Eq, PartialEq
         Realtime
         Manual
-
-Okhsv
-    struct Okhsv: Clone, Copy, Debug, Default, PartialEq
-        pub h: f32
-        pub s: f32
-        pub v: f32
-        pub const fn new(h: f32, s: f32, v: f32) -> Self
-        pub fn to_color(self) -> RgbaF32
-        pub fn from_color(color: RgbaF32, fallback_hue: f32) -> Self
 
 OverlayClose
     enum OverlayClose: Clone, Copy, Debug, Eq, PartialEq
@@ -3569,7 +3545,7 @@ widget::domain::vec2::approx_eq
     const fn approx_eq(a: Vec2, b: Vec2) -> bool
 
 widget::domain::vec2::band_fraction
-    const fn band_fraction(pos: Vec2, extent: Vec2, band: Vec2) -> Vec2
+    const fn band_fraction(pos: Vec2, extent: Size, band: Size) -> Vec2
 
 widget::domain::vec2::fraction_or
     const fn fraction_or(v: Vec2, fallback: Vec2) -> Vec2

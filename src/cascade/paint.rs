@@ -4,8 +4,7 @@
 
 use crate::common::block_arena::BlockSlot;
 use crate::common::content_hash::ContentHash;
-use crate::common::non_max_u32;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::common::span::Span;
 use crate::primitives::geometry::rect::Rect;
 use crate::scene::tree::paint_animations::PaintAnimationEntry;
@@ -33,7 +32,7 @@ impl BlockSlot for Paint {
     fn free_link(next: Option<NonMaxU32>) -> Self {
         Self {
             screen: Rect::ZERO,
-            hash: ContentHash(u64::from(non_max_u32::to_raw(next))),
+            hash: ContentHash(u64::from(NonMaxU32::to_raw(next))),
         }
     }
 

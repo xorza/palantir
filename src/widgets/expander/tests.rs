@@ -5,8 +5,9 @@ use glam::{UVec2, Vec2};
 use crate::animation::animation_spec::AnimationSpec;
 use crate::host::harness::Harness;
 use crate::input::keyboard::key::Key;
-use crate::primitives::geometry::arrow::Arrow;
+use crate::primitives::geometry::arrow;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::math::domain::internals::assert_close;
@@ -383,11 +384,9 @@ fn space_and_enter_toggle_a_focused_header() {
 /// A quarter turn takes the dropdown `v` to the disclosure `>`.
 #[test]
 fn a_quarter_turn_points_the_arrow_at_the_label() {
-    let c = Arrow {
-        size: Vec2::new(8.0, 8.0),
-    };
+    let size = Size::new(8.0, 8.0);
     assert_eq!(
-        c.points(),
+        arrow::points(size),
         [
             Vec2::new(0.0, 0.0),
             Vec2::new(4.0, 8.0),
@@ -396,7 +395,7 @@ fn a_quarter_turn_points_the_arrow_at_the_label() {
         "the tip is the middle point, on the bottom edge",
     );
 
-    let turned = c.rotated(-consts::FRAC_PI_2);
+    let turned = arrow::rotated(size, -consts::FRAC_PI_2);
     let expected = [
         Vec2::new(0.0, 8.0),
         Vec2::new(8.0, 4.0),

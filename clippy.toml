@@ -3,6 +3,7 @@ allowed-wildcard-imports = ["x86_64", "aarch64", "arch"]
 absolute-paths-allowed-crates = ["std", "core", "alloc"]
 disallowed-types = [
     { path = "std::thread::LocalKey", reason = "state lives on an owner and travels by parameter" },
+    { path = "rustc_hash::FxHasher", reason = "hash through crate::common::hash::Hasher, the one wrapper of it" },
     # wgpu belongs to `crate::gpu`, whose `mod.rs` expects `clippy::disallowed_types` for every file
     # under it; everywhere else a device, a texture or a format travels as one of Palantir's own
     # handles (`Gpu`, `RenderTarget`, `TargetFormat`). Clippy resolves each entry to one type by exact

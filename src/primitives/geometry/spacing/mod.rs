@@ -4,7 +4,7 @@ use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
 use crate::primitives::math::num::Number;
 use crate::primitives::packed::half_simd::F16x4;
-use crate::primitives::packed::serde::{LaneCodec, TwoNode};
+use crate::primitives::packed::serde::TwoNode;
 use std::ops;
 
 /// Per-side spacing (padding / margin) as four f16 lanes in `[u16; 4]`, order `left | top | right | bottom`.
@@ -16,7 +16,15 @@ use std::ops;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Spacing(F16x4);
 
-f16x4_lanes!(Spacing, [left, top, right, bottom]);
+// Wire format: see `LaneCodec`. The 2-node shorthand is `[horizontal, vertical]`.
+f16x4_lanes!(
+    Spacing,
+    [left, top, right, bottom],
+    floor = None,
+    two_node = TwoNode::Alternate,
+    rule = "a spacing lane must be finite and round to within ±65504 in f16",
+    valid = domain::is_lane,
+);
 
 impl Spacing {
     /// Packed 8-byte form, used by `LayoutCore::hash_with_flags`.
@@ -67,12 +75,7 @@ impl Spacing {
     #[inline]
     #[track_caller]
     pub fn from_array(v: [f32; 4]) -> Self {
-        assert!(
-            v.iter().all(|&lane| domain::is_lane(lane)),
-            "{}",
-            <Self as LaneCodec>::LANE_RULE
-        );
-        Self(F16x4::from_lanes(v))
+        Self::checked(v)
     }
 
     /// A spacing the crate derives from valid lengths (a padding grown by a border, ink past a
@@ -123,28 +126,6 @@ impl<L: Number, T: Number, R: Number, B: Number> From<(L, T, R, B)> for Spacing 
     #[track_caller]
     fn from((l, t, r, b): (L, T, R, B)) -> Self {
         Self::new(l.to_f32(), t.to_f32(), r.to_f32(), b.to_f32())
-    }
-}
-
-/// Wire format: see [`LaneCodec`]. The 2-node shorthand is `[horizontal, vertical]`.
-impl LaneCodec for Spacing {
-    const FIELDS: &'static [&'static str] = &["left", "top", "right", "bottom"];
-
-    fn from_lane_array(lanes: [f32; 4]) -> Self {
-        Self::from_array(lanes)
-    }
-
-    fn to_lane_array(&self) -> [f32; 4] {
-        self.to_array()
-    }
-
-    const TWO_NODE: TwoNode = TwoNode::Alternate;
-
-    const LANE_RULE: &'static str =
-        "a spacing lane must be finite and round to within ±65504 in f16";
-
-    fn lane_is_valid(lane: f32) -> bool {
-        domain::is_lane(lane)
     }
 }
 

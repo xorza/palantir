@@ -12,9 +12,10 @@ use std::ops::RangeInclusive;
 use std::panic::Location;
 
 use palantir::{
-    Align, Block, Checkbox, Chrome, CloseHandle, ColorScheme, Configure, Corners, Expander,
-    FontWeight, Justify, Metrics, Modal, Okhsv, OverlayResponse, Palette, Panel, RgbaF32, Sizing,
-    Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId, fmt,
+    Align, Block, Checkbox, Chrome, CloseHandle, ColorCoords, ColorModel, ColorScheme, Configure,
+    Corners, Expander, FontWeight, Justify, Metrics, Modal, OverlayResponse, Palette, Panel,
+    RgbaF32, Sizing, Slider, Stroke, Text, TextInput, TextStyle, TextWrap, Ui, VAlign, WidgetId,
+    fmt,
 };
 
 use crate::scaffold::chip::Chip;
@@ -113,7 +114,8 @@ impl Target {
     }
 
     fn color(self, hue: f32) -> RgbaF32 {
-        let at = |value| Okhsv::new(hue, self.saturation, value).to_color();
+        let at =
+            |value| ColorCoords::new(ColorModel::Okhsv, hue, self.saturation, value).to_color();
         debug_assert!(
             at(1.0).luminance() >= self.luminance,
             "hue {hue} cannot reach the target luminance"

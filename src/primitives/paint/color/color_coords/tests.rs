@@ -3,8 +3,6 @@ use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::primitives::paint::color::color_model::ColorModel;
-use crate::primitives::paint::color::hsv::Hsv;
-use crate::primitives::paint::color::okhsv::Okhsv;
 
 /// A model switch keeps the color and moves only the axes.
 #[test]
@@ -92,12 +90,9 @@ fn raw_axes_coerce_on_conversion() {
     }
 }
 
-/// `model`'s coordinates at raw axes `(h, s, v)` through its own constructor (wraps and clamps), not the setters.
-fn axes(model: ColorModel, h: f32, s: f32, v: f32) -> ColorCoords {
-    match model {
-        ColorModel::Okhsv => ColorCoords::Okhsv(Okhsv::new(h, s, v)),
-        ColorModel::Hsv => ColorCoords::Hsv(Hsv::new(h, s, v)),
-    }
+/// `model`'s coordinates at raw axes `(h, s, v)` through the constructor (wraps and clamps), not the setters.
+const fn axes(model: ColorModel, h: f32, s: f32, v: f32) -> ColorCoords {
+    ColorCoords::new(model, h, s, v)
 }
 
 /// Distance between two hues the short way round the circle.

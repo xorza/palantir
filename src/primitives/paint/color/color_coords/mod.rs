@@ -3,116 +3,97 @@
 use crate::primitives::math::domain;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_model::ColorModel;
-use crate::primitives::paint::color::hsv::Hsv;
-use crate::primitives::paint::color::okhsv::Okhsv;
+use crate::primitives::paint::color::{hsv, okhsv};
 
-/// A picker's three axes with their model, retained between frames: black has no hue and gray no
-/// saturation, so re-deriving from the bound color would lose the hue.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Hue, saturation and value in a [`ColorModel`], each `0..=1`: a picker's three axes, retained
+/// between frames, since black has no hue and gray no saturation, so re-deriving from the bound
+/// color would lose the hue. One triple for both models, which dispatch once per conversion.
+/// Refused: a struct per model with the same three fields, and an enum of them whose every accessor
+/// matched both arms to reach one field.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 #[must_use]
-pub enum ColorCoords {
-    /// Okhsv coordinates.
-    Okhsv(Okhsv),
-    /// HSV coordinates.
-    Hsv(Hsv),
-}
-
-impl Default for ColorCoords {
-    fn default() -> Self {
-        Self::Okhsv(Okhsv::default())
-    }
+pub struct ColorCoords {
+    model: ColorModel,
+    h: f32,
+    s: f32,
+    v: f32,
 }
 
 impl ColorCoords {
-    /// Coordinates of `color` in `model`; `fallback_hue` stands in where hue is undefined.
+    /// The axes `h`, `s`, `v` in `model`, read as [`Self::to_color`] paints them: a hue outside
+    /// `0..=1` wraps, the others clamp, and a non-finite axis reads `0`.
+    pub const fn new(model: ColorModel, h: f32, s: f32, v: f32) -> Self {
+        let h = if domain::is_fraction(h) {
+            h
+        } else {
+            domain::turn(h)
+        };
+        Self {
+            model,
+            h,
+            s: domain::fraction(s),
+            v: domain::fraction(v),
+        }
+    }
+
+    /// Coordinates of `color` in `model`, ignoring its alpha; `fallback_hue` stands in where hue
+    /// is undefined.
     pub fn from_color(color: RgbaF32, model: ColorModel, fallback_hue: f32) -> Self {
         match model {
-            ColorModel::Okhsv => Self::Okhsv(Okhsv::from_color(color, fallback_hue)),
-            ColorModel::Hsv => Self::Hsv(Hsv::from_color(color, fallback_hue)),
+            ColorModel::Okhsv => okhsv::from_color(color, fallback_hue),
+            ColorModel::Hsv => hsv::from_color(color, fallback_hue),
         }
     }
 
     /// The color model.
     pub const fn model(self) -> ColorModel {
-        match self {
-            Self::Okhsv(_) => ColorModel::Okhsv,
-            Self::Hsv(_) => ColorModel::Hsv,
-        }
+        self.model
     }
 
-    /// The color these coordinates give.
+    /// The opaque color these coordinates give; apply alpha with [`RgbaF32::with_alpha`].
     pub fn to_color(self) -> RgbaF32 {
-        match self {
-            Self::Okhsv(c) => c.to_color(),
-            Self::Hsv(c) => c.to_color(),
-        }
+        self.model.slice(self.h).color(self.s, self.v)
     }
 
     /// The same color read in `model`; only the handles move, gray keeps its hue.
     pub fn with_model(self, model: ColorModel) -> Self {
-        if model == self.model() {
+        if model == self.model {
             return self;
         }
-        Self::from_color(self.to_color(), model, self.hue())
+        Self::from_color(self.to_color(), model, self.h)
     }
 
-    /// Hue as the turn [`Self::to_color`] paints: wraps outside `0..=1`, non-finite reads `0`.
+    /// Hue, a turn in `0..=1`: both ends name red.
     pub const fn hue(self) -> f32 {
-        let h = match self {
-            Self::Okhsv(c) => c.h,
-            Self::Hsv(c) => c.h,
-        };
-        if domain::is_fraction(h) {
-            h
-        } else {
-            domain::turn(h)
-        }
+        self.h
     }
 
-    /// Clamped to `0..=1`, `0` if non-finite.
+    /// Saturation, `0..=1`.
     pub const fn saturation(self) -> f32 {
-        domain::fraction(match self {
-            Self::Okhsv(c) => c.s,
-            Self::Hsv(c) => c.s,
-        })
+        self.s
     }
 
-    /// Clamped to `0..=1`, `0` if non-finite.
+    /// Value, `0..=1`.
     pub const fn value(self) -> f32 {
-        domain::fraction(match self {
-            Self::Okhsv(c) => c.v,
-            Self::Hsv(c) => c.v,
-        })
+        self.v
     }
 
     /// These coordinates at hue `h`, a fraction: clamped to `0..=1`, `0` if non-finite. Both ends
     /// name red and both are kept, so a hue bar dragged to its right edge keeps its marker there.
     pub const fn with_hue(mut self, h: f32) -> Self {
-        let h = domain::fraction(h);
-        match &mut self {
-            Self::Okhsv(c) => c.h = h,
-            Self::Hsv(c) => c.h = h,
-        }
+        self.h = domain::fraction(h);
         self
     }
 
     /// These coordinates at saturation `s`, a fraction as [`Self::with_hue`] takes one.
     pub const fn with_saturation(mut self, s: f32) -> Self {
-        let s = domain::fraction(s);
-        match &mut self {
-            Self::Okhsv(c) => c.s = s,
-            Self::Hsv(c) => c.s = s,
-        }
+        self.s = domain::fraction(s);
         self
     }
 
     /// These coordinates at value `v`, a fraction as [`Self::with_hue`] takes one.
     pub const fn with_value(mut self, v: f32) -> Self {
-        let v = domain::fraction(v);
-        match &mut self {
-            Self::Okhsv(c) => c.v = v,
-            Self::Hsv(c) => c.v = v,
-        }
+        self.v = domain::fraction(v);
         self
     }
 }

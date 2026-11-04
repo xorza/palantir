@@ -7,6 +7,6 @@ use crate::common::span::Span;
 pub struct ImePreedit<'a> {
     /// The composition so far; empty only in an event, where it ends the composition.
     pub text: &'a str,
-    /// The input method's cursor in `text`, as byte offsets on character boundaries. An event with an out-of-range or mid-character cursor is refused.
+    /// The input method's cursor in `text`, as byte offsets on character boundaries. An event with an out-of-range or mid-character cursor is refused. A [`Span`], not a `Range<usize>`, which is not `Copy`, so the event stays `Copy`.
     pub cursor: Option<Span>,
 }

@@ -1,7 +1,8 @@
 //! The swatch row a picker keeps for itself, and the colors it starts with.
 
 use crate::primitives::paint::color::RgbaF32;
-use crate::primitives::paint::color::okhsv::Okhsv;
+use crate::primitives::paint::color::color_coords::ColorCoords;
+use crate::primitives::paint::color::color_model::ColorModel;
 use tinyvec::ArrayVec;
 
 /// Recently committed colors, most recent first, seeded with a preset row so it keeps its length; the newest
@@ -20,15 +21,15 @@ impl History {
 
     const NEUTRALS: [f32; 4] = [0.0, 0.35, 0.7, 1.0];
 
-    /// The preset row, computed when a picker first opens its history (`Okhsv::to_color` is not `const`).
+    /// The preset row, computed when a picker first opens its history (`ColorCoords::to_color` is not `const`).
     fn presets() -> Self {
         let mut colors = ArrayVec::new();
         for step in 0..Self::HUES {
             let hue = step as f32 / Self::HUES as f32;
-            colors.push(Okhsv::new(hue, 1.0, 1.0).to_color());
+            colors.push(ColorCoords::new(ColorModel::Okhsv, hue, 1.0, 1.0).to_color());
         }
         for value in Self::NEUTRALS {
-            colors.push(Okhsv::new(0.0, 0.0, value).to_color());
+            colors.push(ColorCoords::new(ColorModel::Okhsv, 0.0, 0.0, value).to_color());
         }
         Self { colors }
     }

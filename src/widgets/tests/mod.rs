@@ -517,7 +517,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     use crate::primitives::paint::brush::gradient::linear_geometry::LinearGradient;
     use crate::primitives::paint::brush::gradient::stops::Stop;
     use crate::primitives::paint::color::color_coords::ColorCoords;
-    use crate::primitives::paint::color::okhsv::Okhsv;
+    use crate::primitives::paint::color::color_model::ColorModel;
     use crate::scene::layer::Layer;
     use crate::shape::Shape;
     use crate::widgets::color_field::ColorField;
@@ -538,7 +538,7 @@ fn coercing_inputs_at_their_worst_paint_no_nan() {
     let (mut stale, mut empty, mut page, mut no_page) = (&gone, &gone, 9_usize, 0_usize);
     let mut slid = f64::NAN;
     let mut dragged = f64::NAN;
-    let mut coords = ColorCoords::Okhsv(Okhsv::new(f32::NAN, f32::INFINITY, f32::NAN));
+    let mut coords = ColorCoords::new(ColorModel::Okhsv, f32::NAN, f32::INFINITY, f32::NAN);
     let gradient = LinearGradient::new(
         0.0,
         [

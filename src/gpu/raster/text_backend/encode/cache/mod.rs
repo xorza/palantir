@@ -7,8 +7,7 @@
 
 use crate::common::block_arena::{BlockArena, BlockSlot};
 use crate::common::expiry_wheel::ExpiryWheel;
-use crate::common::non_max_u32;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 
@@ -46,7 +45,7 @@ impl BlockSlot for TextChunk {
 
     fn free_link(next: Option<NonMaxU32>) -> Self {
         let mut bytes = [0; CHUNK_BYTES];
-        bytes[..4].copy_from_slice(&non_max_u32::to_raw(next).to_le_bytes());
+        bytes[..4].copy_from_slice(&NonMaxU32::to_raw(next).to_le_bytes());
         Self(bytes)
     }
 
@@ -79,7 +78,7 @@ impl BlockSlot for EncodedGlyph {
                 uv_and_kind: 0,
                 color: RgbaF16::TRANSPARENT,
             },
-            atlas_slot: non_max_u32::to_raw(next),
+            atlas_slot: NonMaxU32::to_raw(next),
             generation: 0,
         }
     }

@@ -2,7 +2,7 @@
 //! stable, purely integral cache key.
 
 use crate::common::hash;
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::primitives::layout::align::HAlign;
 use crate::primitives::math::domain::{self, EPS};
 use crate::primitives::math::num::F32Px;

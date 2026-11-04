@@ -121,19 +121,14 @@ impl AnimationSpec {
     }
 
     /// True when this spec is a single-frame snap (a `Duration` canonicalized to
-    /// zero); springs never are. `Ui::animate` short-circuits on this.
+    /// zero); springs never are. `Ui::animate` short-circuits on this, and a theme file leaves a
+    /// snap out. By reference, as serde's `skip_serializing_if` calls it.
     #[inline(always)]
-    pub const fn is_instant(self) -> bool {
+    pub const fn is_instant(&self) -> bool {
         match self.motion {
             AnimationMotion::Duration { secs, .. } => secs == 0.0,
             AnimationMotion::Spring(_) => false,
         }
-    }
-
-    /// Serde's `skip_serializing_if` for a spec field, which takes it by reference: a snap is the
-    /// default a file leaves out.
-    pub(crate) const fn is_snap(&self) -> bool {
-        self.is_instant()
     }
 }
 

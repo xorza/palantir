@@ -106,8 +106,8 @@ fn nth_picks_among_ambiguous_matches() {
         Err(LocateError::Ambiguous {
             locator: r#"Text("Twin")"#.to_owned(),
             matches: vec![
-                "0: at Vec2(40.0, 80.0)".to_owned(),
-                "1: at Vec2(40.0, 110.0)".to_owned()
+                find(&h, &text("Twin").nth(0)).unwrap(),
+                find(&h, &text("Twin").nth(1)).unwrap(),
             ],
         })
     );
@@ -258,9 +258,12 @@ fn locate_errors_read_as_corrections() {
     assert_eq!(
         error(LocateError::Ambiguous {
             locator: "L".to_owned(),
-            matches: vec!["0: x".to_owned(), "1: y".to_owned()],
+            matches: vec![
+                Found::center_of(Rect::new(30.0, 70.0, 20.0, 20.0)),
+                Found::center_of(Rect::new(30.5, 100.0, 20.0, 20.0)),
+            ],
         }),
-        "L matches 2 places; pick one with Nth: 0: x, 1: y"
+        "L matches 2 places; pick one with Nth: 0: at (40, 80), 1: at (40.5, 110)"
     );
     assert_eq!(
         error(LocateError::Covered {

@@ -1,4 +1,5 @@
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::error::ImageDataError;
 use crate::primitives::paint::image::{Image, ImageFit, fitted_size};
@@ -8,12 +9,12 @@ use glam::{UVec2, Vec2};
 /// - `Fill`: the full rect (stretched).
 /// - `Contain`: scale min(2, 4) = 2 → 200×100, centered.
 /// - `Cover`: scale max(2, 4) = 4 → 400×200, painted 200×200 over the centered half of the width: `uv_size.x = 0.5`, `uv_min.x = 0.25`.
-/// - `None`: intrinsic 100×50, centered.
+/// - `Natural`: intrinsic 100×50, centered.
 /// - `Tile`: raw UV, full rect.
 #[test]
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     let base = Rect::new(0.0, 0.0, 200.0, 200.0);
-    let img = Vec2::new(100.0, 50.0);
+    let img = Size::new(100.0, 50.0);
     let tile = ImageFit::Tile {
         offset: Vec2::new(0.5, 0.25),
         scale: Vec2::new(3.0, 2.0),
@@ -35,21 +36,21 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
             Vec2::new(0.5, 1.0),
         ),
         (
-            ImageFit::None,
+            ImageFit::Natural,
             img,
             Rect::new(50.0, 75.0, 100.0, 50.0),
             Vec2::ZERO,
             Vec2::ONE,
         ),
         (tile, img, base, Vec2::new(0.5, 0.25), Vec2::new(3.0, 2.0)),
-        (ImageFit::Contain, Vec2::ZERO, base, Vec2::ZERO, Vec2::ONE),
+        (ImageFit::Contain, Size::ZERO, base, Vec2::ZERO, Vec2::ONE),
     ];
     for (fit, intrinsic, rect, uv_min, uv_size) in rows {
         let got = fit.resolve(base, intrinsic);
         assert_eq!(
             (got.rect, got.uv_min, got.uv_size),
             (rect, uv_min, uv_size),
-            "{fit:?} over {intrinsic}",
+            "{fit:?} over {intrinsic:?}",
         );
     }
 }

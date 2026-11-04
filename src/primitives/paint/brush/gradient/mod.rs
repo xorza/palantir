@@ -4,7 +4,7 @@
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
-use crate::primitives::paint::brush::gradient::stops::{GradientStops, Stop};
+use crate::primitives::paint::brush::gradient::stops::Stop;
 use std::hash;
 
 pub(crate) mod color_ramp;
@@ -58,7 +58,6 @@ pub trait GradientGeometry: sealed::Geometry {}
 impl<T: sealed::Geometry> GradientGeometry for T {}
 
 pub(crate) mod sealed {
-    use crate::primitives::paint::brush::gradient::Interpolation;
     use std::hash;
 
     /// The renderer's view of one gradient kind.
@@ -67,9 +66,6 @@ pub(crate) mod sealed {
         reason = "sealed: code outside the crate may use it, never name or implement it"
     )]
     pub trait Geometry {
-        /// Interpolation space a new gradient of this kind starts in.
-        const DEFAULT_INTERPOLATION: Interpolation;
-
         /// The four axis lanes the shader reads, before `FillAxis` packs them to f16.
         fn axis_lanes(&self) -> [f32; 4];
 
@@ -86,13 +82,17 @@ pub(crate) mod sealed {
 /// `spread` folds values outside `0..=1` back in, and `ramp` maps the value to
 /// a color.
 ///
-/// **Not `Copy`**: the inline [`GradientStops`] made implicit copies expensive
+/// **Not `Copy`**: the inline [`GradientStops`](crate::GradientStops) made implicit copies expensive
 /// through the recording chain (see `Brush`). `.clone()` is one memcpy.
 // `repr(C)`, here and on `ColorRamp`, pins the two enum bytes last: `Brush`
 // stores its tag in values `interpolation` and `spread` never take, which only
 // works if that byte sits past the end of every smaller variant.
 #[repr(C)]
-#[derive(Clone, Debug, PartialEq, Eq, ::serde::Serialize, ::serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
+#[expect(
+    clippy::derive_partial_eq_without_eq,
+    reason = "no geometry is `Eq`, as each holds `f32`, so a derived `impl<G: Eq> Eq` would never apply"
+)]
 #[must_use]
 pub struct Gradient<G> {
     #[serde(flatten)]
@@ -132,10 +132,7 @@ impl<G: GradientGeometry> Gradient<G> {
     fn from_stops(geometry: G, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
             geometry,
-            ramp: ColorRamp {
-                stops: GradientStops::new(stops),
-                interpolation: G::DEFAULT_INTERPOLATION,
-            },
+            ramp: ColorRamp::new(stops),
             spread: Spread::default(),
         }
     }

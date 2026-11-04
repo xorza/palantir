@@ -208,7 +208,7 @@ fn a_bad_gradient_panics_at_the_call_site() {
     }
 }
 
-/// Each kind's `two_stop` runs 0 → 1 with `Spread::Pad`; Oklab for linear and radial, linear for conic. It paints unless both stops are transparent, is never solid, and setters change only what they name.
+/// Each kind's `two_stop` runs 0 → 1 with `Spread::Pad`; Oklab for every kind, as CSS Color 4 interpolates every gradient. It paints unless both stops are transparent, is never solid, and setters change only what they name.
 #[test]
 fn two_stop_gradients_take_their_kind_defaults() {
     fn check<G: Clone + fmt::Debug + PartialEq>(
@@ -262,7 +262,7 @@ fn two_stop_gradients_take_their_kind_defaults() {
     check(
         "conic",
         |a, b| ConicGradient::two_stop(Vec2::splat(0.5), 0.0, a, b),
-        Interpolation::Linear,
+        Interpolation::Oklab,
     );
 
     // Each kind keeps the geometry its `two_stop` takes: center (0.25, 0.75) and radius
@@ -422,7 +422,7 @@ fn gradient_builders_preserve_geometry_stops_and_options() {
     );
     assert_eq!(conic.geometry.center, center);
     assert_eq!(conic.geometry.start_angle, FRAC_PI_4);
-    assert_eq!(conic.ramp.interpolation, Interpolation::Linear);
+    assert_eq!(conic.ramp.interpolation, Interpolation::Oklab);
 }
 
 /// A gradient has no blend, so a lerp switches at `t = 0.5`, against a solid fill too.

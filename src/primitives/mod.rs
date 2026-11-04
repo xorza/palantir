@@ -5,13 +5,56 @@
 /// siblings: lane access, `Debug` naming the lanes, `Animatable` lane by lane, scalar `From`, serde
 /// forwarders. For [`Corners`](crate::Corners)
 /// and [`Spacing`](crate::Spacing); `RgbaF16` and `FillAxis` have no lane names or wire format and derive `Debug`.
-/// `floor = EXPR` gives the lanes a least value, which every blend and motion is coerced to.
+/// `floor` gives the lanes a least value, which every blend and motion is coerced to, or `None`;
+/// `two_node`, `rule` and `valid` are the type's [`LaneCodec`](crate::primitives::packed::serde::LaneCodec)
+/// policy, whose lane names are the lanes', and from which the checked pack `checked` follows,
+/// so one predicate refuses a lane at a call site and in a file alike.
 macro_rules! f16x4_lanes {
-    ($t:ident, [$($lane:ident),+ $(,)?]) => {
-        f16x4_lanes!(@impl $t, [$($lane),+], None);
-    };
-    ($t:ident, [$($lane:ident),+ $(,)?], floor = $floor:expr) => {
-        f16x4_lanes!(@impl $t, [$($lane),+], Some($floor));
+    (
+        $t:ident,
+        [$($lane:ident),+ $(,)?],
+        floor = $floor:expr,
+        two_node = $two_node:expr,
+        rule = $rule:expr,
+        valid = $valid:path $(,)?
+    ) => {
+        impl $crate::primitives::packed::serde::LaneCodec for $t {
+            const FIELDS: &'static [&'static str] = &[$(stringify!($lane)),+];
+            const TWO_NODE: $crate::primitives::packed::serde::TwoNode = $two_node;
+            const LANE_RULE: &'static str = $rule;
+
+            fn lane_is_valid(lane: f32) -> bool {
+                $valid(lane)
+            }
+
+            fn from_valid_lanes(lanes: [f32; 4]) -> Self {
+                debug_assert!(lanes.into_iter().all($valid), "{}", Self::LANE_RULE);
+                Self($crate::primitives::packed::half_simd::F16x4::from_lanes(lanes))
+            }
+
+            fn to_lane_array(&self) -> [f32; 4] {
+                self.to_array()
+            }
+        }
+
+        impl $t {
+            /// Four lanes in lane order, each one [`LaneCodec::lane_is_valid`] holds.
+            ///
+            /// [`LaneCodec::lane_is_valid`]: crate::primitives::packed::serde::LaneCodec::lane_is_valid
+            ///
+            /// # Panics
+            ///
+            /// Panics on a lane the type cannot hold, at the caller's site.
+            #[inline]
+            #[track_caller]
+            fn checked(lanes: [f32; 4]) -> Self {
+                use $crate::primitives::packed::serde::LaneCodec as _;
+                assert!(lanes.into_iter().all($valid), "{}", Self::LANE_RULE);
+                Self::from_valid_lanes(lanes)
+            }
+        }
+
+        f16x4_lanes!(@impl $t, [$($lane),+], $floor);
     };
     (@impl $t:ident, [$($lane:ident),+], $floor:expr) => {
         impl $t {

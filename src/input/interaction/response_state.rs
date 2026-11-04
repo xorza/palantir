@@ -6,6 +6,7 @@ use crate::input::interaction::drag::Drag;
 use crate::input::interaction::scroll_delta::ScrollDelta;
 use crate::input::pointer::PointerButton;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::primitives::geometry::translate_scale::TranslateScale;
 use crate::primitives::math::domain::vec2;
 use glam::Vec2;
@@ -152,7 +153,7 @@ impl ResponseState {
         let local = self.pointer_local?;
         let rect = self.layout_rect?;
         Some(vec2::fraction_or(
-            vec2::band_fraction(local, rect.size.into(), Vec2::splat(band)),
+            vec2::band_fraction(local, rect.size, Size::from(band)),
             Vec2::ZERO,
         ))
     }

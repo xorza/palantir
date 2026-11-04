@@ -1,6 +1,6 @@
 //! Damage for items whose relative paint order flipped.
 
-use crate::common::non_max_u32::NonMaxU32;
+use crate::common::non_max::NonMaxU32;
 use crate::damage;
 use crate::primitives::geometry::rect::Rect;
 

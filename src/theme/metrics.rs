@@ -37,7 +37,7 @@ pub struct Metrics {
     pub float_material: Option<FloatMaterial>,
     /// What a control's state change runs under: a button's, a menu-bar title's, a menu row's and
     /// a tab chip's. A file that leaves it out reads [`AnimationSpec::SNAP`].
-    #[serde(default, skip_serializing_if = "AnimationSpec::is_snap")]
+    #[serde(default, skip_serializing_if = "AnimationSpec::is_instant")]
     pub transition: AnimationSpec,
 }
 
@@ -46,13 +46,13 @@ pub struct Metrics {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextSteps {
     /// Secondary text and dense surfaces: a tooltip, a caption over a group, a field's help.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::font_size")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
     pub caption: f32,
     /// The ambient text every widget reads: a button's label, a menu row, a field.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::font_size")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
     pub body: f32,
     /// A heading: a pane's or a dialog's title.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::font_size")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::font_size")]
     pub title: f32,
 }
 
@@ -60,22 +60,22 @@ pub struct TextSteps {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpaceSteps {
     /// The densest rows: a subtitle under its title, a chip's vertical inset.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub xxs: f32,
     /// Inside a dense cluster: a control's vertical inset, a menu's padding, the gap between tabs.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub xs: f32,
     /// Between siblings: a field's horizontal inset, a row's vertical inset, a label's gap.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub sm: f32,
     /// A button's and a row's horizontal inset.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub md: f32,
     /// A dragged chip's distance below the pointer.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub lg: f32,
     /// A modal's padding and a menu row's shortcut gutter.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub xl: f32,
 }
 
@@ -83,16 +83,16 @@ pub struct SpaceSteps {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RadiusSteps {
     /// A glyph-sized shape: a dock's drop preview.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub mark: f32,
     /// A field, a button, a menu row, a tooltip, a checkbox.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub control: f32,
     /// A tab chip and the ghost a dragged tab leaves.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub card: f32,
     /// A menu, a popup and a modal; over [`Self::control`], so a row's chip nests in the panel's corner.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub float: f32,
 }
 
@@ -100,13 +100,13 @@ pub struct RadiusSteps {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StrokeSteps {
     /// A rule or a border, a field's included.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub hairline: f32,
     /// A field's caret, a drop preview, a small glyph's stroke.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub fine: f32,
     /// The focus ring, a tab's cap and caret, a check mark.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub line: f32,
 }
 
@@ -115,10 +115,10 @@ pub struct StrokeSteps {
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ShadowGeometry {
     /// Shift in logical pixels.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
     pub offset: Vec2,
     /// Gaussian σ in logical pixels, half CSS's `blur-radius`.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub blur: f32,
 }
 
@@ -132,7 +132,7 @@ pub struct FloatMaterial {
     /// luminance bounds are replaced by the one each float's ink needs.
     pub filter: BackdropFilter,
     /// The alpha of the surface's fill over the filter; a fraction, and 1 shows nothing through.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::fraction")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::fraction")]
     pub tint_alpha: f32,
 }
 

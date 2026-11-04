@@ -1,5 +1,6 @@
+use crate::primitives::geometry::size::Size;
 use crate::primitives::math::domain;
-use crate::primitives::packed::serde::checked;
+use crate::primitives::math::domain::file;
 use glam::Vec2;
 
 /// Run one validator over `text` read as RON.
@@ -18,31 +19,31 @@ fn each_scalar_rule_holds_its_ends() {
     let rows: [(&str, Rule, &[&'static str], &[&'static str]); 5] = [
         (
             domain::FILE_LENGTH_RULE,
-            |d| checked::length(d),
+            |d| file::length(d),
             &["0.0", "8192.0"],
             &["-1.0", "8192.001", "1e30", "inf", "NaN"],
         ),
         (
             domain::POSITIVE_RULE,
-            |d| checked::positive(d),
+            |d| file::positive(d),
             &["1e-30"],
             &["0.0", "-1.0", "inf"],
         ),
         (
             domain::FRACTION_RULE,
-            |d| checked::fraction(d),
+            |d| file::fraction(d),
             &["0.0", "1.0"],
             &["-0.5", "1.5", "NaN"],
         ),
         (
             domain::FILE_OFFSET_RULE,
-            |d| checked::offset(d),
+            |d| file::offset(d),
             &["-8192.0", "8192.0"],
             &["-8192.001", "8192.001", "inf", "-inf", "NaN"],
         ),
         (
             domain::ANGLE_RULE,
-            |d| checked::angle(d),
+            |d| file::angle(d),
             &["-1e30", "1e30"],
             &["inf", "-inf", "NaN"],
         ),
@@ -62,36 +63,45 @@ fn each_scalar_rule_holds_its_ends() {
 #[test]
 fn vector_rules_check_every_axis() {
     assert_eq!(
-        check(|d| checked::length2(d), "(1.0, 2.0)"),
+        check(|d| file::length2(d), "(1.0, 2.0)"),
         Ok(Vec2::new(1.0, 2.0))
     );
-    assert!(check(|d| checked::length2(d), "(1.0, -2.0)").is_err());
+    assert!(check(|d| file::length2(d), "(1.0, -2.0)").is_err());
     assert_eq!(
-        check(|d| checked::offset2(d), "(-1.0, 2.0)"),
+        check(|d| file::offset2(d), "(-1.0, 2.0)"),
         Ok(Vec2::new(-1.0, 2.0))
     );
-    assert!(check(|d| checked::offset2(d), "(inf, 2.0)").is_err());
-    assert!(check(|d| checked::length2(d), "(1.0, 8193.0)").is_err());
-    assert!(check(|d| checked::offset2(d), "(-8193.0, 0.0)").is_err());
-    assert!(check(|d| checked::padding(d), "8192.0").is_ok());
-    // A spacing is checked as packed: 8193 rounds to the f16 8192, and 8200 is the next lane value.
-    let error = check(|d| checked::padding(d), "(1.0, 8200.0)").expect_err("a long edge");
+    assert!(check(|d| file::offset2(d), "(inf, 2.0)").is_err());
+    assert!(check(|d| file::length2(d), "(1.0, 8193.0)").is_err());
+    assert_eq!(
+        check(|d| file::size(d), "(w: Some(10.0), h: Some(6.0))"),
+        Ok(Size::new(10.0, 6.0))
+    );
+    // An axis left out reads as unbounded, which no file length is.
+    let error = check(|d| file::size(d), "(w: Some(10.0))").expect_err("a missing axis");
     assert!(error.contains(domain::FILE_LENGTH_RULE), "{error}");
-    let error = check(|d| checked::margin(d), "-8200.0").expect_err("a long edge");
-    assert!(error.contains(domain::FILE_OFFSET_RULE), "{error}");
-    assert!(check(|d| checked::corners(d), "8192.0").is_ok());
     let error =
-        check(|d| checked::corners(d), "(0.0, 0.0, 0.0, 8200.0)").expect_err("a long radius");
+        check(|d| file::size(d), "(w: Some(10.0), h: Some(8193.0))").expect_err("a long axis");
+    assert!(error.contains(domain::FILE_LENGTH_RULE), "{error}");
+    assert!(check(|d| file::offset2(d), "(-8193.0, 0.0)").is_err());
+    assert!(check(|d| file::padding(d), "8192.0").is_ok());
+    // A spacing is checked as packed: 8193 rounds to the f16 8192, and 8200 is the next lane value.
+    let error = check(|d| file::padding(d), "(1.0, 8200.0)").expect_err("a long edge");
+    assert!(error.contains(domain::FILE_LENGTH_RULE), "{error}");
+    let error = check(|d| file::margin(d), "-8200.0").expect_err("a long edge");
+    assert!(error.contains(domain::FILE_OFFSET_RULE), "{error}");
+    assert!(check(|d| file::corners(d), "8192.0").is_ok());
+    let error = check(|d| file::corners(d), "(0.0, 0.0, 0.0, 8200.0)").expect_err("a long radius");
     assert!(error.contains(domain::FILE_LENGTH_RULE), "{error}");
     assert!(
         check(
-            |d| checked::offset_points3(d),
+            |d| file::offset_points3(d),
             "((0.0, 0.0), (1.0, 1.0), (2.0, 0.0))"
         )
         .is_ok()
     );
     let error = check(
-        |d| checked::offset_points3(d),
+        |d| file::offset_points3(d),
         "((0.0, 0.0), (NaN, 1.0), (2.0, 0.0))",
     )
     .expect_err("a NaN point");

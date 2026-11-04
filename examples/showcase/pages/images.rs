@@ -147,7 +147,7 @@ pub(crate) fn build(ui: &mut Ui, k: Kit) {
                     ("Fill — stretch to the rect", ImageFit::Fill),
                     ("Contain — whole image, letterboxed", ImageFit::Contain),
                     ("Cover — fill the rect, crop", ImageFit::Cover),
-                    ("None — 1:1, centered", ImageFit::None),
+                    ("Natural — 1:1, centered", ImageFit::Natural),
                 ] {
                     DemoCell::new(label).size(232.0, 132.0).show(ui, k, |ui| {
                         ui.add_shape(fitted(src.checker.handle(), fit));
@@ -280,7 +280,7 @@ static FITS: [(&str, ImageFit); 5] = [
     ("Fill", ImageFit::Fill),
     ("Contain", ImageFit::Contain),
     ("Cover", ImageFit::Cover),
-    ("None", ImageFit::None),
+    ("Natural", ImageFit::Natural),
     (
         "Tile 3×3",
         ImageFit::Tile {

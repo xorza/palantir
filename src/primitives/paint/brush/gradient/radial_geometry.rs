@@ -2,9 +2,9 @@
 
 use crate::primitives::math::float_hash::FloatHash;
 use crate::primitives::math::nan::NanCheck;
+use crate::primitives::paint::brush::gradient::Gradient;
 use crate::primitives::paint::brush::gradient::sealed::Geometry;
 use crate::primitives::paint::brush::gradient::stops::Stop;
-use crate::primitives::paint::brush::gradient::{Gradient, Interpolation};
 use crate::primitives::paint::color::RgbaF32;
 use glam::Vec2;
 use std::hash;
@@ -13,10 +13,13 @@ use std::hash;
 #[derive(Clone, Copy, Debug, PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 pub struct RadialGeometry {
     /// Ramp origin, in object-space `0..1` coordinates.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::offset2")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::offset2")]
     pub center: Vec2,
-    /// Elliptical radius, per axis, in the same coordinates.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length2")]
+    /// Elliptical radius, per axis, in the same coordinates. A `Vec2`, not a
+    /// [`Size`](crate::Size): a pair of semi-axes the projection divides by, in object space, as
+    /// kurbo's `Ellipse::radii` is, where a `Size` is an extent in logical px with an unbounded
+    /// sentinel.
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length2")]
     pub radius: Vec2,
 }
 
@@ -24,9 +27,6 @@ pub struct RadialGeometry {
 pub type RadialGradient = Gradient<RadialGeometry>;
 
 impl Geometry for RadialGeometry {
-    /// Radial fills are usually soft glows, where perceptual smoothness matters most.
-    const DEFAULT_INTERPOLATION: Interpolation = Interpolation::Oklab;
-
     /// The shader reads these as `(cx, cy, rx, ry)` on the radial branch.
     fn axis_lanes(&self) -> [f32; 4] {
         [self.center.x, self.center.y, self.radius.x, self.radius.y]

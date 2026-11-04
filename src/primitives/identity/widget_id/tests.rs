@@ -1,3 +1,8 @@
+#![expect(
+    clippy::disallowed_types,
+    reason = "the raw `FxHasher` is the oracle the wrapper is checked against"
+)]
+
 use crate::primitives::identity::widget_id::WidgetId;
 use rustc_hash::FxHasher;
 use std::collections;

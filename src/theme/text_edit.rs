@@ -47,7 +47,7 @@ pub struct TextEditTheme {
     pub caret: RgbaF32,
     /// Width of the caret rect in logical px, painted as a thin Overlay rect at the
     /// caret's prefix-x.
-    #[serde(deserialize_with = "crate::primitives::packed::serde::checked::length")]
+    #[serde(deserialize_with = "crate::primitives::math::domain::file::length")]
     pub caret_width: f32,
     /// Selection highlight fill, a wash behind the selected glyphs.
     pub selection: RgbaF32,
