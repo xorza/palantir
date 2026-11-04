@@ -1773,14 +1773,34 @@ RadialGeometry
 RadialGradient
     type RadialGradient = Gradient<RadialGeometry>
 
-RadioButton
-    struct RadioButton<'a, T>: Configure, ThemeDefaults (blanket)
-        pub fn new(cur: &'a mut T, value: T) -> Self
-        pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
+RadioGroup
+    struct RadioGroup<'a, T>: Configure, ThemeDefaults (blanket)
+        pub fn new(cur: &'a mut T) -> Self
+        pub const fn axis(self, axis: Axis) -> Self
+        pub const fn look(self, look: RadioLook) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
-        impl<T: PartialEq> RadioButton<'_, T>
+        pub fn segmented_style(self, s: impl Into<Option<&'a SegmentedTheme>>) -> Self
+        impl<T: PartialEq> RadioGroup<'_, T>
+            pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &mut RadioOptions<'_, T>)) -> ValueResponse<'_>
+        impl<'a, T: Debug> Debug for RadioGroup<'a, T>
+
+RadioLook
+    enum RadioLook: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
+        Pip
+        Segment
+
+RadioOption
+    struct RadioOption<'o, 'g, T>: Configure, ThemeDefaults (blanket)
+        impl<'o, T: PartialEq> RadioOption<'o, '_, T>
+            pub fn label(self, label: impl Into<TextInput<'o>>) -> Self
             pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
-        impl<'a, T: Debug> Debug for RadioButton<'a, T>
+        impl<'o, 'g, T: Debug> Debug for RadioOption<'o, 'g, T>
+
+RadioOptions
+    struct RadioOptions<'g, T>
+        impl<'g, T: PartialEq> RadioOptions<'g, T>
+            pub fn option(&mut self, value: T) -> RadioOption<'_, 'g, T>
+        impl<'g, T: Debug> Debug for RadioOptions<'g, T>
 
 RadiusSteps
     struct RadiusSteps: Clone, Copy, Debug, Deserialize<'de>, PartialEq, Serialize
@@ -1949,6 +1969,14 @@ ScrollbarTheme
         pub thumb: RgbaF32
         pub thumb_hovered: RgbaF32
         pub thumb_active: RgbaF32
+        pub fn from_parts(p: &Palette, m: &Metrics) -> Self
+        pub fn stock(scheme: ColorScheme) -> Self
+
+SegmentedTheme
+    struct SegmentedTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
+        pub track: Chrome
+        pub track_padding: Spacing
+        pub segment: ButtonTheme
         pub fn from_parts(p: &Palette, m: &Metrics) -> Self
         pub fn stock(scheme: ColorScheme) -> Self
 
@@ -2558,6 +2586,7 @@ Theme
         pub button: ButtonTheme
         pub checkbox: ToggleTheme
         pub radio: ToggleTheme
+        pub segmented: SegmentedTheme
         pub switch: ToggleTheme
         pub scrollbar: ScrollbarTheme
         pub text_edit: TextEditTheme
