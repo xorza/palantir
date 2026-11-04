@@ -96,26 +96,24 @@ pub struct PipelineStats {
     pub clipper_primitives_out: u64,
     /// Fragment stage invocations.
     pub fragment_shader_invocations: u64,
-    /// Compute workgroup invocations; zero for Palantir's own render passes.
-    pub compute_shader_invocations: u64,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Inner {
-    pass_ns: Option<u64>,
-    kind_ns: [Option<u64>; BatchKind::COUNT],
+    pass: Option<Duration>,
+    kinds: [Option<Duration>; BatchKind::COUNT],
     stats: Option<PipelineStats>,
-    copy_out_ns: Option<u64>,
+    copy_out: Option<Duration>,
     backdrops: BackdropTimes,
-    main_pass_cpu_ns: Option<u64>,
+    main_pass_cpu: Option<Duration>,
 }
 
-/// The last frame's backdrop work on the device, in ns: the sums over its breaks of their
-/// captures and of their blurs, `None` when it timed none.
+/// The last frame's backdrop work on the device: the sums over its breaks of their captures and
+/// of their blurs, `None` when it timed none.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct BackdropTimes {
-    pub(crate) captures: Option<u64>,
-    pub(crate) blurs: Option<u64>,
+    pub(crate) captures: Option<Duration>,
+    pub(crate) blurs: Option<Duration>,
 }
 
 /// Shared GPU-stats handle; clones share the latest sample, `None` until the first
@@ -130,7 +128,7 @@ impl GpuPassStats {
     /// `TIMESTAMP_QUERY`. On a frame whose backdrop panes capture, the main pass
     /// breaks at each, and the duration spans the captures and blurs between.
     pub fn last_pass(&self) -> Option<Duration> {
-        self.inner.borrow().pass_ns.map(Duration::from_nanos)
+        self.inner.borrow().pass
     }
 
     /// Per-category duration; `None` without `TIMESTAMP_QUERY_INSIDE_PASSES` or if
@@ -138,7 +136,7 @@ impl GpuPassStats {
     /// passes the main pass breaks into count in no category, and a frame of more
     /// breaks than its timestamps hold publishes none.
     pub fn last_kind(&self, kind: BatchKind) -> Option<Duration> {
-        self.inner.borrow().kind_ns[kind.idx()].map(Duration::from_nanos)
+        self.inner.borrow().kinds[kind.idx()]
     }
 
     /// Pipeline-statistics counters around the main pass, summed over the passes
@@ -152,40 +150,37 @@ impl GpuPassStats {
     /// painted; `None` if it copied nothing or `TIMESTAMP_QUERY_INSIDE_ENCODERS` is
     /// unavailable.
     pub fn last_copy_out(&self) -> Option<Duration> {
-        self.inner.borrow().copy_out_ns.map(Duration::from_nanos)
+        self.inner.borrow().copy_out
     }
 
     /// Host CPU time the last frame spent recording the main render pass; no
     /// adapter feature gates it, and it scales with draw-step count, not pixels.
     pub fn last_main_pass_cpu(&self) -> Option<Duration> {
-        self.inner
-            .borrow()
-            .main_pass_cpu_ns
-            .map(Duration::from_nanos)
+        self.inner.borrow().main_pass_cpu
     }
 
-    pub(crate) fn record_pass_ns(&self, ns: u64) {
-        self.inner.borrow_mut().pass_ns = Some(ns);
+    pub(crate) fn record_pass(&self, time: Duration) {
+        self.inner.borrow_mut().pass = Some(time);
     }
 
-    pub(crate) fn record_main_pass_cpu_ns(&self, ns: u64) {
-        self.inner.borrow_mut().main_pass_cpu_ns = Some(ns);
+    pub(crate) fn record_main_pass_cpu(&self, time: Duration) {
+        self.inner.borrow_mut().main_pass_cpu = Some(time);
     }
 
-    pub(crate) fn record_kind_ns(&self, kind: BatchKind, ns: u64) {
-        self.inner.borrow_mut().kind_ns[kind.idx()] = Some(ns);
+    pub(crate) fn record_kind(&self, kind: BatchKind, time: Duration) {
+        self.inner.borrow_mut().kinds[kind.idx()] = Some(time);
     }
 
     pub(crate) fn clear_kinds(&self) {
-        self.inner.borrow_mut().kind_ns = [None; BatchKind::COUNT];
+        self.inner.borrow_mut().kinds = [None; BatchKind::COUNT];
     }
 
     pub(crate) fn record_pipeline_stats(&self, stats: Option<PipelineStats>) {
         self.inner.borrow_mut().stats = stats;
     }
 
-    pub(crate) fn record_copy_out_ns(&self, ns: Option<u64>) {
-        self.inner.borrow_mut().copy_out_ns = ns;
+    pub(crate) fn record_copy_out(&self, time: Option<Duration>) {
+        self.inner.borrow_mut().copy_out = time;
     }
 
     #[cfg_attr(
@@ -196,7 +191,7 @@ impl GpuPassStats {
         self.inner.borrow().backdrops
     }
 
-    pub(crate) fn record_backdrop_ns(&self, times: BackdropTimes) {
+    pub(crate) fn record_backdrops(&self, times: BackdropTimes) {
         self.inner.borrow_mut().backdrops = times;
     }
 }
@@ -219,8 +214,8 @@ mod tests {
     fn handle_clones_share_state() {
         let a = GpuPassStats::default();
         let b = a.clone();
-        a.record_pass_ns(3_500_000);
-        a.record_main_pass_cpu_ns(250_000);
+        a.record_pass(Duration::from_micros(3500));
+        a.record_main_pass_cpu(Duration::from_micros(250));
         assert_eq!(b.last_pass(), Some(Duration::from_micros(3500)));
         assert_eq!(b.last_main_pass_cpu(), Some(Duration::from_micros(250)));
     }
@@ -228,19 +223,19 @@ mod tests {
     #[test]
     fn record_overrides_previous_value() {
         let s = GpuPassStats::default();
-        s.record_pass_ns(1_000_000);
-        s.record_pass_ns(5_000_000);
+        s.record_pass(Duration::from_millis(1));
+        s.record_pass(Duration::from_millis(5));
         assert_eq!(s.last_pass(), Some(Duration::from_millis(5)));
-        s.record_main_pass_cpu_ns(80_000);
-        s.record_main_pass_cpu_ns(20_000);
+        s.record_main_pass_cpu(Duration::from_micros(80));
+        s.record_main_pass_cpu(Duration::from_micros(20));
         assert_eq!(s.last_main_pass_cpu(), Some(Duration::from_micros(20)));
     }
 
     #[test]
     fn per_kind_independent_of_total() {
         let s = GpuPassStats::default();
-        s.record_kind_ns(BatchKind::Quads, 1_500_000);
-        s.record_kind_ns(BatchKind::Text, 500_000);
+        s.record_kind(BatchKind::Quads, Duration::from_micros(1500));
+        s.record_kind(BatchKind::Text, Duration::from_micros(500));
         assert_eq!(
             s.last_kind(BatchKind::Quads),
             Some(Duration::from_micros(1500))
@@ -262,12 +257,11 @@ mod tests {
             clipper_invocations: 2,
             clipper_primitives_out: 3,
             fragment_shader_invocations: 4,
-            compute_shader_invocations: 0,
         };
-        s.record_kind_ns(BatchKind::Quads, 2_000_000);
-        s.record_kind_ns(BatchKind::Text, 1_000_000);
-        s.record_pass_ns(3_000_000);
-        s.record_main_pass_cpu_ns(500_000);
+        s.record_kind(BatchKind::Quads, Duration::from_millis(2));
+        s.record_kind(BatchKind::Text, Duration::from_millis(1));
+        s.record_pass(Duration::from_millis(3));
+        s.record_main_pass_cpu(Duration::from_micros(500));
         s.record_pipeline_stats(Some(stats));
         s.clear_kinds();
         for kind in BatchKind::ALL {

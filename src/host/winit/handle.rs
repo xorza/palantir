@@ -131,8 +131,14 @@ impl<T: 'static> HostHandle<T> {
 
     /// The last frame `window` ran, or `None` before its first frame, after it closes, and
     /// once the loop ends. A window skips its frames while hidden, so its summary holds still.
-    pub fn last_frame(&self, window: WindowToken) -> Option<FrameSummary> {
+    pub(crate) fn last_frame(&self, window: WindowToken) -> Option<FrameSummary> {
         self.frames.get(window)
+    }
+
+    /// Whether `window` ran a frame and has not closed; `false` before its first frame and once
+    /// the loop ends.
+    pub fn is_open(&self, window: WindowToken) -> bool {
+        self.last_frame(window).is_some()
     }
 
     /// Whether `window` is minimized or occluded, which holds its frames until it shows; `false`

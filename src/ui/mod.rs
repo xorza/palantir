@@ -117,7 +117,7 @@ use crate::window::window_geometry::WindowGeometry;
 use crate::window::window_output::WindowOutput;
 use crate::window::window_requests::WindowRequests;
 use crate::window::window_token::WindowToken;
-use glam::{UVec2, Vec2};
+use glam::Vec2;
 use std::fmt;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -726,7 +726,14 @@ impl Ui {
     /// logged and stays closed, so [`Self::is_window_open`] answers `false`. A host with one
     /// window, as [`OffscreenHost`](crate::OffscreenHost) and [`Harness`](crate::Harness), opens
     /// none and records the command in its `window_commands`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless each size `config` holds is positive on both axes, as
+    /// [`WindowConfig::with_inner_size`] asks.
+    #[track_caller]
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
+        config.validate();
         self.window_requests.commands.open(token, config);
     }
 
@@ -820,11 +827,15 @@ impl Ui {
             .facts
             .restored_size
             .unwrap_or(display.physical);
+        // A window skips its frames while hidden, minimized included, so one that records has an
+        // extent, as `WindowConfig::with_geometry` asks.
+        debug_assert!(
+            physical.min_element() > 0,
+            "a recording window has a size: {physical}"
+        );
+        let scale = display.system_scale.get();
         WindowGeometry {
-            inner_size: (physical.as_vec2() / display.system_scale.get())
-                .round()
-                .as_uvec2()
-                .max(UVec2::ONE),
+            inner_size: Size::new(physical.x as f32 / scale, physical.y as f32 / scale),
             placement: self.window_frame.facts.placement,
         }
     }

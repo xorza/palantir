@@ -812,8 +812,8 @@ mod tests {
 
     use palantir::glam::UVec2;
     use palantir::{
-        Harness, Key, Locator, ReducePreference, SchemePreference, Scroll, Shortcut, ShortcutMods,
-        WidgetId,
+        AgentWindow, Harness, Key, Locator, ReducePreference, SchemePreference, Scroll, Shortcut,
+        ShortcutMods, WidgetId,
     };
 
     use crate::appearance::{SEEDS, accent_for};
@@ -859,7 +859,7 @@ mod tests {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
         let mut shell = Shell::open(0);
         let settle = |h: &mut Harness, shell: &mut Shell| {
-            h.settle(shell).expect("the frames settle");
+            h.session(shell).settle().expect("the frames settle");
         };
         settle(&mut h, &mut shell);
         let alt = |key| Shortcut::new(ShortcutMods::ALT, key);
@@ -921,7 +921,7 @@ mod tests {
     fn a_pressed_segment_sets_its_rows_preference() {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
         let mut shell = Shell::open(0);
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         let all_system = (
             SchemePreference::System,
             ReducePreference::System,
@@ -938,10 +938,10 @@ mod tests {
         assert_eq!(prefs(&h), all_system);
 
         h.click("Dark");
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         // "Less" is on the motion row, then the transparency row.
         h.click(Locator::from("Less").nth(1));
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(
             prefs(&h),
             (
@@ -953,10 +953,10 @@ mod tests {
 
         // The motion row's "Full", then one arrow right, which moves the pick to its "Less".
         h.click(Locator::from("Full").nth(0));
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(h.ui().motion_preference(), ReducePreference::Full);
         h.key(Key::ArrowRight);
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(
             prefs(&h),
             (
@@ -971,14 +971,14 @@ mod tests {
     fn a_picked_accent_reaches_the_theme() {
         let mut h = Harness::builder(UVec2::new(1280, 800)).mono().build();
         let mut shell = Shell::open(0);
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         h.click(accent_id(1));
         let report = h.frame_app(&mut shell);
         assert!(
             report.repaint_requested,
             "the edit asks for the frame that builds its theme"
         );
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         let scheme = h.ui().color_scheme();
         assert_eq!(shell.app.appearance.seed(), Some(SEEDS[0]));
         assert_eq!(
@@ -995,7 +995,7 @@ mod tests {
         let mut h = Harness::builder(UVec2::new(1280, 480)).mono().build();
         let last = PAGES.len() - 1;
         let mut shell = Shell::open(last - 1);
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         let item = PAGES[last].item_id();
         let list = WidgetId::from_hash(LIST);
         let shown = |h: &mut Harness| h.ui().response_for(item).rect.map(|rect| rect.size.h);
@@ -1006,7 +1006,7 @@ mod tests {
         );
         let before = Scroll::offset(h.ui(), list).y;
         h.key(Shortcut::new(ShortcutMods::ALT, Key::ArrowDown));
-        h.settle(&mut shell).expect("the frames settle");
+        h.session(&mut shell).settle().expect("the frames settle");
         assert_eq!(label(&shell), "Frame bench");
         assert!(Scroll::offset(h.ui(), list).y > before, "the list scrolled");
         assert_eq!(shown(&mut h), Some(28.0), "the whole item shows");

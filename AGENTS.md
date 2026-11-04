@@ -148,6 +148,10 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
   locators; any sensing widget, which reaches a button a label covers.
 - **Methods are input; `play` is a person.** A method queues events and panics on a missed
   locator; `play` settles, spaces presses and returns an error an agent reads.
+- **One set of agent verbs**: `AgentWindow` (`play`, `settle`, `shot`, `find`, `widgets`), on a
+  `Remote` and on `Harness::session(&mut app)`, so a driver writes a step once for both hosts.
+  Refused: matching inherent methods on each host, which darkroom still joined in an enum; a
+  harness that owns its app, which the closure-as-app rule refuses.
 - **`play` refuses a step that would pass with no sign**: a press on a disabled widget, a drag
   under the drag threshold, as Playwright's actionability
   check refuses a target that is not enabled. A hover still reaches a disabled widget.

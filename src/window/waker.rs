@@ -6,11 +6,11 @@ use std::sync::Arc;
 /// Asks the window whose [`Ui::waker`](crate::Ui::waker) made it for a frame, from any thread,
 /// for work done off the frame: a worker that finished, a file that loaded. Every host gives
 /// one. The winit host runs the window's next frame. [`Harness`](crate::Harness) marks a wake
-/// that its next frame takes as a repaint request, and that [`Harness::settle`] waits for while
+/// that its next frame takes as a repaint request, and that a [`HarnessSession`]'s settle waits for while
 /// the app [is busy](crate::App::is_busy). [`OffscreenHost`](crate::OffscreenHost) runs no loop
 /// of its own, so its next frame takes the wake as a repaint request.
 ///
-/// [`Harness::settle`]: crate::Harness::settle
+/// [`HarnessSession`]: crate::HarnessSession
 #[derive(Clone)]
 pub struct Waker {
     wake: Arc<dyn Fn() + Send + Sync>,

@@ -37,7 +37,7 @@ use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;
 use criterion::{Bencher, Criterion, Throughput};
 use glam::{UVec2, Vec2};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 const SIZES: [UVec2; 2] = [UVec2::new(1920, 1080), UVec2::new(3840, 2160)];
 /// The pane's σ in physical px: two levels down, so the blur after the capture stays small.
@@ -140,7 +140,7 @@ fn capture(c: &mut Criterion, backends: &Backends, backend: Backend) {
                 state.scroll = (state.scroll + 1.0) % 64.0;
                 frames.frame(gpu, &target, |ui| state.record(ui));
                 let times = frames.host.ui().gpu_pass_stats().last_backdrops();
-                times.captures.map(Duration::from_nanos)
+                times.captures
             };
             fixture::settle_timestamps(&mut frame);
             bencher.iter_custom(|iters| fixture::device_time(iters, &mut frame));
@@ -251,7 +251,7 @@ fn composite(c: &mut Criterion, backends: &Backends, backend: Backend) {
                     let stats = host.ui().gpu_pass_stats();
                     let backdrop = stats.last_backdrops();
                     let between = backdrop.captures? + backdrop.blurs?;
-                    Some(stats.last_pass()? - Duration::from_nanos(between))
+                    Some(stats.last_pass()? - between)
                 };
                 fixture::settle_timestamps(&mut frame);
                 bencher.iter_custom(|iters| fixture::device_time(iters, &mut frame));

@@ -106,8 +106,8 @@ fn backdrops_publish_their_sums_or_clear() {
     assert_eq!(
         sink.last_backdrops(),
         BackdropTimes {
-            captures: Some(40),
-            blurs: Some(100),
+            captures: Some(Duration::from_nanos(40)),
+            blurs: Some(Duration::from_nanos(100)),
         }
     );
     publisher.backdrops(&bytes, 0);
@@ -121,13 +121,12 @@ fn stats_publish_in_flag_declaration_order() {
         period_ns: 1.0,
         sink: &sink,
     }
-    .stats(&ts_bytes(&[10, 20, 30, 40, 0, 1, 2, 3, 4, 5]), Some(2));
+    .stats(&ts_bytes(&[10, 20, 30, 40, 1, 2, 3, 4]), Some(2));
     let s = sink.last_pipeline_stats().expect("published");
     assert_eq!(s.vertex_shader_invocations, 11);
     assert_eq!(s.clipper_invocations, 22);
     assert_eq!(s.clipper_primitives_out, 33);
     assert_eq!(s.fragment_shader_invocations, 44);
-    assert_eq!(s.compute_shader_invocations, 5);
     Publisher {
         period_ns: 1.0,
         sink: &sink,

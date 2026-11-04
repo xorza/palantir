@@ -110,10 +110,10 @@ impl WallClockTracer {
             }
             slot.in_flight = false;
             let elapsed = Duration::from_nanos(done.saturating_sub(slot.submitted));
-            sink.record_pass_ns(u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX));
+            sink.record_pass(elapsed);
             sink.clear_kinds();
-            sink.record_copy_out_ns(None);
-            sink.record_backdrop_ns(BackdropTimes::default());
+            sink.record_copy_out(None);
+            sink.record_backdrops(BackdropTimes::default());
         }
     }
 }
@@ -125,6 +125,7 @@ mod tests {
     use crate::gpu::frame::gpu_timings::wall_clock_tracer::{PENDING, WallClockTracer};
     use crate::gpu::test_gpu::headless_test_gpu;
     use std::sync::atomic::Ordering::Acquire;
+    use std::time::Duration;
 
     /// A frame `finish` closed is timed from its submit to the queue's callback and publishes as
     /// the pass time, every finer time absent; a call with no frame closed since starts nothing,
@@ -135,7 +136,7 @@ mod tests {
         let gpu = lease.handles();
         let mut tracer = WallClockTracer::new();
         let sink = GpuPassStats::default();
-        sink.record_kind_ns(BatchKind::Quads, 5);
+        sink.record_kind(BatchKind::Quads, Duration::from_nanos(5));
         let mut encoder = gpu
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());

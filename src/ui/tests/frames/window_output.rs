@@ -3,6 +3,7 @@
 use crate::display::system_scale::SystemScale;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
+use crate::primitives::geometry::size::Size;
 use crate::ui::tests::support::SURFACE;
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_geometry::WindowGeometry;
@@ -56,23 +57,24 @@ fn window_requests_reach_the_host_after_the_frame() {
     h.ui_mut().window_frame.facts.placement = placed;
     let geometry = h.ui().window_geometry();
     assert_eq!(
-        geometry.inner_size, SURFACE,
+        geometry.inner_size,
+        Size::new(SURFACE.x as f32, SURFACE.y as f32),
         "no restored size: the live one"
     );
     assert_eq!(geometry.placement, placed);
     // A maximized window persists the size it returns to, not the screen it fills.
     h.ui_mut().window_frame.facts.restored_size = Some(UVec2::new(640, 360));
     let restored = h.ui().window_geometry();
-    assert_eq!(restored.inner_size, UVec2::new(640, 360));
+    assert_eq!(restored.inner_size, Size::new(640.0, 360.0));
     let config = WindowConfig::new("restored").with_geometry(restored);
     assert_eq!(
         (config.inner_size, config.placement),
-        (Some(UVec2::new(640, 360)), placed),
+        (Some(Size::new(640.0, 360.0)), placed),
     );
     assert_eq!(
         restored,
         WindowGeometry {
-            inner_size: UVec2::new(640, 360),
+            inner_size: Size::new(640.0, 360.0),
             placement: placed
         }
     );
@@ -115,7 +117,7 @@ fn close_request_veto_protocol() {
     );
 }
 
-/// `window_geometry` answers in the window manager's logical pixels, so a persisted geometry reopens the same window whatever the user scale: a 200×200 surface at dpr 2 is 100×100 to the platform at any scale, while dividing by the product would shrink it 20% per launch at 125%. A restored size takes the same division: 641 × 361 physical px at dpr 2 is 321 × 181, halves rounding up.
+/// `window_geometry` answers in the window manager's logical pixels, so a persisted geometry reopens the same window whatever the user scale: a 200×200 surface at dpr 2 is 100×100 to the platform at any scale, while dividing by the product would shrink it 20% per launch at 125%. A restored size takes the same division, exact: 641 × 361 physical px at dpr 2 is 320.5 × 180.5, which reopens at the same 641 × 361.
 #[test]
 fn window_geometry_reports_the_platform_space_not_the_ui_space() {
     let mut h = Harness::builder(SURFACE)
@@ -123,9 +125,9 @@ fn window_geometry_reports_the_platform_space_not_the_ui_space() {
         .system_scale(SystemScale::new(2.0).unwrap())
         .build();
     h.frame(|_| {});
-    assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(100, 100));
+    assert_eq!(h.ui().window_geometry().inner_size, Size::new(100.0, 100.0));
     h.ui_mut().window_frame.facts.restored_size = Some(UVec2::new(641, 361));
-    assert_eq!(h.ui().window_geometry().inner_size, UVec2::new(321, 181));
+    assert_eq!(h.ui().window_geometry().inner_size, Size::new(320.5, 180.5));
     h.ui_mut().window_frame.facts.restored_size = None;
 
     let mut zoomed = Harness::builder(SURFACE)
@@ -143,7 +145,7 @@ fn window_geometry_reports_the_platform_space_not_the_ui_space() {
     );
     assert_eq!(
         zoomed.ui().window_geometry().inner_size,
-        UVec2::new(100, 100),
+        Size::new(100.0, 100.0),
         "and the platform hears the unscaled one",
     );
 }

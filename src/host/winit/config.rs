@@ -3,6 +3,7 @@
 //! [`WinitHostBuilder`]: super::WinitHostBuilder
 //! [`WinitHost`]: super::WinitHost
 
+use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::surface::surface_manager::HostGpuConfig;
 use crate::host::host_options::HostOptions;
 use crate::text::font_scope::FontScope;
@@ -14,11 +15,7 @@ use crate::window::window_config::WindowConfig;
 pub(super) struct WinitHostConfig {
     pub(super) window: WindowConfig,
     pub(super) vsync: Vsync,
-    #[expect(
-        clippy::disallowed_types,
-        reason = "the builder takes the adapter preference as wgpu names it and hands it to `crate::gpu`"
-    )]
-    pub(super) power_preference: wgpu::PowerPreference,
+    pub(super) power_preference: PowerPreference,
     pub(super) options: HostOptions,
 }
 
@@ -27,7 +24,7 @@ impl Default for WinitHostConfig {
         Self {
             window: WindowConfig::default(),
             vsync: Vsync::On,
-            power_preference: wgpu::PowerPreference::LowPower,
+            power_preference: PowerPreference::LowPower,
             options: HostOptions {
                 system_clipboard: true,
                 ..HostOptions::new(FontScope::System)

@@ -70,6 +70,7 @@ mod window;
 mod window_set;
 
 use crate::display::system_scale::SystemScale;
+use crate::gpu::device::power_preference::PowerPreference;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
@@ -169,7 +170,13 @@ where
     T: App + 'static,
 {
     /// Set the bootstrap window's configuration.
+    ///
+    /// # Panics
+    ///
+    /// As [`Ui::open_window`](crate::Ui::open_window).
+    #[track_caller]
     pub fn window(mut self, window: WindowConfig) -> Self {
+        window.validate();
         self.config.window = window;
         self
     }
@@ -200,12 +207,8 @@ where
         self
     }
 
-    /// Adapter power preference. `LowPower` by default, unlike the headless paths (`HighPerformance`).
-    #[expect(
-        clippy::disallowed_types,
-        reason = "the builder takes the adapter preference as wgpu names it and hands it to `crate::gpu`"
-    )]
-    pub const fn power_preference(mut self, preference: wgpu::PowerPreference) -> Self {
+    /// Which GPU to ask for. [`PowerPreference::LowPower`] by default, unlike the headless paths.
+    pub const fn power_preference(mut self, preference: PowerPreference) -> Self {
         self.config.power_preference = preference;
         self
     }

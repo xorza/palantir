@@ -15,7 +15,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use palantir::glam::UVec2;
-use palantir::{Depth, Gpu, Harness, Image, PlayError, Rect, RequestedGpu};
+use palantir::{AgentWindow, Depth, Gpu, Harness, Image, PlayError, Rect, RequestedGpu};
 
 use crate::shell::Shell;
 use crate::shot::report::Legend;
@@ -128,9 +128,12 @@ pub(crate) fn shots(script: &Path, folders: Folders<'_>) -> Result<(), String> {
         clippy::default_trait_access,
         reason = "the features are a wgpu type, which only `palantir::gpu` names"
     )]
-    let gpu = RequestedGpu::headless(wgpu::PowerPreference::HighPerformance, Default::default())
-        .map_err(|error| error.to_string())?
-        .gpu;
+    let gpu = RequestedGpu::headless(
+        palantir::PowerPreference::HighPerformance,
+        Default::default(),
+    )
+    .map_err(|error| error.to_string())?
+    .gpu;
     run(gpu, script, folders, &mut io::stdout().lock()).map_err(|error| error.to_string())
 }
 
@@ -254,8 +257,9 @@ pub(crate) fn play(
         .build();
     h.set_system_color_scheme(header.scheme);
     let mut shell = Shell::open(page);
+    let mut window = h.session(&mut shell);
     let failed = |line| move |error| ShotError::Play { line, error };
-    h.settle(&mut shell).map_err(failed(0))?;
+    window.settle().map_err(failed(0))?;
     let written = |path: &Path| {
         let path = path.to_path_buf();
         move |source| ShotError::Write { path, source }
@@ -264,20 +268,17 @@ pub(crate) fn play(
         let line = step.line;
         match &step.kind {
             StepKind::Act(action) => {
-                h.play(&mut shell, std::slice::from_ref(action))
+                window
+                    .play(std::slice::from_ref(action))
                     .map_err(|error| failed(line)(error.error))?;
             }
             StepKind::Shot { name, region, zoom } => {
                 let region = match region {
                     None => None,
                     Some(Region::Rect(rect)) => Some(*rect),
-                    Some(Region::At(at)) => Some(
-                        h.find(&shell, at)
-                            .map_err(|error| failed(line)(error.into()))?
-                            .rect,
-                    ),
+                    Some(Region::At(at)) => Some(window.find(at).map_err(failed(line))?.rect),
                 };
-                let shot = h.shot(&mut shell, region).map_err(failed(line))?;
+                let shot = window.shot(region).map_err(failed(line))?;
                 let picture = if *zoom > 1 {
                     let side = shot.image().size().max_element() * zoom;
                     if side > header.max_side {
@@ -294,7 +295,7 @@ pub(crate) fn play(
                 fs::create_dir_all(out).map_err(written(out))?;
                 let path = out.join(format!("{name}.png"));
                 write_png(&picture, &path).map_err(written(&path))?;
-                let widgets = h.widgets(None);
+                let widgets = window.widgets(None).map_err(failed(line))?;
                 let legend = Legend::of(&shot, picture.size(), &widgets);
                 report::shot(report, &path, &shot, picture.size(), &legend)
                     .map_err(ShotError::Report)?;
@@ -309,14 +310,14 @@ pub(crate) fn play(
             }
             StepKind::Probe(point) => {
                 let pixel = Rect::new(point.x, point.y, 1.0, 1.0);
-                let shot = h.shot(&mut shell, Some(pixel)).map_err(failed(line))?;
+                let shot = window.shot(Some(pixel)).map_err(failed(line))?;
                 let image = shot.image();
                 let center = image.size() / 2;
                 let texel = image.texels()[(center.y * image.size().x + center.x) as usize];
                 report::probe(report, *point, texel).map_err(ShotError::Report)?;
             }
             StepKind::Widgets(filter) => {
-                let widgets = h.widgets(filter.as_deref());
+                let widgets = window.widgets(filter.as_deref()).map_err(failed(line))?;
                 report::widgets(report, &widgets).map_err(ShotError::Report)?;
             }
         }

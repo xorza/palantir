@@ -1,3 +1,4 @@
+use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::GpuRequestError;
 use crate::gpu::surface::surface_manager::{
     FirstWindow, HostGpuConfig, SurfaceManager, SurfaceStartup,
@@ -34,7 +35,7 @@ fn builder_setters_override_the_defaults() {
     let builder = WinitHost::<Inert>::builder(WindowToken(9))
         .window(WindowConfig::new("window"))
         .title("title")
-        .power_preference(wgpu::PowerPreference::HighPerformance)
+        .power_preference(PowerPreference::HighPerformance)
         .collect_gpu_stats(true)
         .pixel_snap(false)
         .vsync(Vsync::Off)
@@ -57,10 +58,7 @@ fn builder_setters_override_the_defaults() {
             builder.config.power_preference,
             defaults.config.power_preference
         ),
-        (
-            wgpu::PowerPreference::HighPerformance,
-            wgpu::PowerPreference::LowPower
-        )
+        (PowerPreference::HighPerformance, PowerPreference::LowPower)
     );
     let (set, unset) = (&builder.config.options, &defaults.config.options);
     assert!(set.shaper.is_some() && unset.shaper.is_none());

@@ -152,7 +152,7 @@ impl HarnessBuilder {
         self
     }
 
-    /// The time one frame of [`Harness::settle`] and [`Harness::play`] takes; 1/60 s by
+    /// The time one frame of a session's [settle](crate::AgentWindow::settle) and [play](crate::AgentWindow::play) takes; 1/60 s by
     /// default.
     ///
     /// # Panics
@@ -164,7 +164,7 @@ impl HarnessBuilder {
         self
     }
 
-    /// The frames that ask for another a [`Harness::settle`] runs before the window reads as
+    /// The frames that ask for another a session's [settle](crate::AgentWindow::settle) runs before the window reads as
     /// unsettled; 600 by default, ten seconds at 60 frames a second. Frames a busy app's wakes
     /// bring do not count.
     ///
@@ -176,7 +176,7 @@ impl HarnessBuilder {
         self
     }
 
-    /// How long, in real time, [`Harness::settle`] waits for a [wake](crate::Waker) while the app
+    /// How long, in real time, a session's [settle](crate::AgentWindow::settle) waits for a [wake](crate::Waker) while the app
     /// [is busy](crate::App::is_busy) and asks no frame; 30 s by default.
     pub const fn background_wait(mut self, wait: Duration) -> Self {
         self.background_wait = wait;

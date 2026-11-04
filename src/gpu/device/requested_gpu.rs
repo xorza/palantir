@@ -2,6 +2,7 @@
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::error::GpuRequestError;
 use pollster::FutureExt;
 
@@ -23,7 +24,7 @@ impl RequestedGpu {
     /// Open one with no surface attached, taking the `optional` features that
     /// are available. Blocks the calling thread until the driver answers.
     pub fn headless(
-        power_preference: wgpu::PowerPreference,
+        power_preference: PowerPreference,
         optional: wgpu::Features,
     ) -> Result<Self, GpuRequestError> {
         let instance = GpuRequest::instance()?;
@@ -44,7 +45,7 @@ impl RequestedGpu {
 pub(crate) struct GpuRequest<'a> {
     /// Names the device in a debugger and in wgpu's messages.
     pub(crate) label: &'static str,
-    pub(crate) power_preference: wgpu::PowerPreference,
+    pub(crate) power_preference: PowerPreference,
     /// Taken when the adapter has them; see [`DeviceRequirements::negotiate`].
     pub(crate) optional: wgpu::Features,
     /// The surface the adapter must present to; `None` when headless.
@@ -101,7 +102,7 @@ impl GpuRequest<'_> {
     ) -> Result<wgpu::Adapter, GpuRequestError> {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: self.power_preference,
+                power_preference: self.power_preference.into(),
                 compatible_surface: self.compatible_surface,
                 force_fallback_adapter: false,
                 apply_limit_buckets: false,

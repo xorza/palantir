@@ -1,5 +1,6 @@
 use crate::animation::animation_spec::AnimationSpec;
 use crate::animation::easing::Easing;
+use crate::driver::agent_window::AgentWindow;
 use crate::host::harness::Harness;
 use crate::primitives::math::domain::internals::assert_close;
 use crate::primitives::math::lerp::Lerp;
@@ -114,7 +115,8 @@ fn knob_rests_inset_from_the_end_it_sits_against() {
 
     h.click(id);
     h.frame(&mut record);
-    h.settle(&mut record)
+    h.session(&mut record)
+        .settle()
         .expect("the knob and the look it rides settle inside 2 s");
     assert_eq!(margins(&h), [18.0, 3.0, 3.0, 3.0], "on, at the right");
 }
@@ -149,7 +151,8 @@ fn the_knob_wears_the_ink_of_its_state() {
 
     h.click(id);
     h.frame(&mut record);
-    h.settle(&mut record)
+    h.session(&mut record)
+        .settle()
         .expect("the knob's slide and ink settle inside 2 s");
     assert_eq!(knob_fill(&h), Palette::DARK.on_accent.to_f16(), "on");
     assert_ne!(Palette::DARK.text, Palette::DARK.on_accent);

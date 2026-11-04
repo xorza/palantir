@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use glam::Vec2;
 
 use crate::driver::action::Action;
+use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{ActError, PlayError};
 use crate::driver::locator::{Found, Locate, Locator, Reach};
 use crate::driver::play::{self, BUSY_SETTLE_WAITS, Stage};
@@ -76,6 +77,85 @@ impl<T: 'static> Debug for Remote<T> {
             .field("window", &self.window)
             .field("sent", &self.sent.get())
             .finish_non_exhaustive()
+    }
+}
+
+impl<T: 'static> AgentWindow<T> for Remote<T> {
+    /// Wait for a frame that saw every event this remote sent, asks no repaint and finds the app
+    /// not [busy](crate::App::is_busy), as a [`HarnessSession`](crate::HarnessSession) waits on
+    /// its clock; returns the frames the window ran meanwhile.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::Unsettled`] when the window still asks for frames after the
+    /// [wait](Self::with_wait),
+    /// [`PlayError::Busy`] when a busy app runs no frame for as long, [`PlayError::NoFrame`] when
+    /// the window runs none, and [`PlayError::Disconnected`] when it closed.
+    fn settle(&mut self) -> Result<u32, PlayError> {
+        let first = self.record_frame_id();
+        self.wait_frame(true)?;
+        Ok(u32::try_from(self.record_frame_id().saturating_sub(first)).unwrap_or(u32::MAX))
+    }
+
+    /// Play `actions` in order as a person at the window would, in real time, settling after
+    /// each, as a [`HarnessSession`](crate::HarnessSession) plays them. Returns the frames the window
+    /// ran meanwhile.
+    ///
+    /// # Errors
+    ///
+    /// [`ActError`], naming the step it stopped at.
+    fn play<X: Locate<T> + Clone + Send + 'static>(
+        &mut self,
+        actions: &[Action<X>],
+    ) -> Result<u32, ActError> {
+        let first = self.record_frame_id();
+        let mut stage = RemoteStage { remote: self };
+        for (ran, action) in actions.iter().enumerate() {
+            play::play(&mut stage, action).map_err(|error| ActError { ran, error })?;
+        }
+        let frames = stage.remote.record_frame_id().saturating_sub(first);
+        Ok(u32::try_from(frames).unwrap_or(u32::MAX))
+    }
+
+    /// A picture of `region`, the whole window for none, as a later frame paints it.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::Disconnected`]
+    /// when the window closed, and [`PlayError::NoFrame`] when no picture landed within the
+    /// [wait](Self::with_wait).
+    fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
+        self.check_waiting(Instant::now(), Answer::InFrame)?;
+        let (reply, answer) = mpsc::sync_channel(1);
+        self.handle
+            .send(UserEvent::Shot(self.window, ShotAsk { region, reply }))
+            .map_err(|_| PlayError::Disconnected)?;
+        self.receive(&answer, Answer::InFrame)?
+    }
+
+    /// The one place `at` names in the last frame, as a [`HarnessSession`](crate::HarnessSession)
+    /// finds it.
+    ///
+    /// # Errors
+    ///
+    /// [`PlayError::Locate`] when `at` names no one place, and as [`Self::query`].
+    fn find<X: Locate<T> + Clone + Send + 'static>(
+        &self,
+        at: &Locator<X>,
+    ) -> Result<Found, PlayError> {
+        let at = at.clone();
+        Ok(self.query(move |app, ui| at.find(&*app, ui))??)
+    }
+
+    /// The visible interactive widgets of the last frame whose text holds `filter`, ignoring
+    /// case, in paint order, as a [`HarnessSession`](crate::HarnessSession) lists them.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::query`].
+    fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
+        let filter = filter.map(str::to_owned);
+        self.query(move |_, ui| InspectedWidget::visible(ui, filter.as_deref()))
     }
 }
 
@@ -147,83 +227,6 @@ impl<T: 'static> Remote<T> {
             given_up.store(true, Ordering::Release);
         }
         answered
-    }
-
-    /// Wait for a frame that saw every event this remote sent, asks no repaint and finds the app
-    /// not [busy](crate::App::is_busy), as [`Harness::settle`](crate::Harness::settle) waits on
-    /// its clock; returns the frames the window ran meanwhile.
-    ///
-    /// # Errors
-    ///
-    /// [`PlayError::Unsettled`] when the window still asks for frames after the
-    /// [wait](Self::with_wait),
-    /// [`PlayError::Busy`] when a busy app runs no frame for as long, [`PlayError::NoFrame`] when
-    /// the window runs none, and [`PlayError::Disconnected`] when it closed.
-    pub fn settle(&mut self) -> Result<u32, PlayError> {
-        let first = self.record_frame_id();
-        self.wait_frame(true)?;
-        Ok(u32::try_from(self.record_frame_id().saturating_sub(first)).unwrap_or(u32::MAX))
-    }
-
-    /// Play `actions` in order as a person at the window would, in real time, settling after
-    /// each, as [`Harness::play`](crate::Harness::play) plays them. Returns the frames the window
-    /// ran meanwhile.
-    ///
-    /// # Errors
-    ///
-    /// [`ActError`], naming the step it stopped at.
-    pub fn play<X: Locate<T> + Clone + Send + 'static>(
-        &mut self,
-        actions: &[Action<X>],
-    ) -> Result<u32, ActError> {
-        let first = self.record_frame_id();
-        let mut stage = RemoteStage { remote: self };
-        for (ran, action) in actions.iter().enumerate() {
-            play::play(&mut stage, action).map_err(|error| ActError { ran, error })?;
-        }
-        let frames = stage.remote.record_frame_id().saturating_sub(first);
-        Ok(u32::try_from(frames).unwrap_or(u32::MAX))
-    }
-
-    /// A picture of `region`, the whole window for none, as a later frame paints it.
-    ///
-    /// # Errors
-    ///
-    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::Disconnected`]
-    /// when the window closed, and [`PlayError::NoFrame`] when no picture landed within the
-    /// [wait](Self::with_wait).
-    pub fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError> {
-        self.check_waiting(Instant::now(), Answer::InFrame)?;
-        let (reply, answer) = mpsc::sync_channel(1);
-        self.handle
-            .send(UserEvent::Shot(self.window, ShotAsk { region, reply }))
-            .map_err(|_| PlayError::Disconnected)?;
-        self.receive(&answer, Answer::InFrame)?
-    }
-
-    /// The one place `at` names in the last frame, as [`Harness::find`](crate::Harness::find)
-    /// finds it.
-    ///
-    /// # Errors
-    ///
-    /// [`PlayError::Locate`] when `at` names no one place, and as [`Self::query`].
-    pub fn find<X: Locate<T> + Clone + Send + 'static>(
-        &self,
-        at: &Locator<X>,
-    ) -> Result<Found, PlayError> {
-        let at = at.clone();
-        Ok(self.query(move |app, ui| at.find(&*app, ui))??)
-    }
-
-    /// The visible interactive widgets of the last frame whose text holds `filter`, ignoring
-    /// case, in paint order, as [`Harness::widgets`](crate::Harness::widgets) lists them.
-    ///
-    /// # Errors
-    ///
-    /// As [`Self::query`].
-    pub fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError> {
-        let filter = filter.map(str::to_owned);
-        self.query(move |_, ui| InspectedWidget::visible(ui, filter.as_deref()))
     }
 
     /// What `answer` receives, bounded in real time; an answer a frame gives waits on a hidden

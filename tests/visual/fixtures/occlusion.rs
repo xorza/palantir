@@ -31,7 +31,7 @@ fn render_fractional_layers(grouping: Grouping) -> RgbaImage {
         .size(VIEWPORT)
         .clear(CLEAR)
         .frame(|ui| {
-            assert!(!ui.display().pixel_snap);
+            assert!(!ui.display().pixel_snap());
             fixtures::canvas(ui, |ui| {
                 add_layer(ui, RgbaF32::srgb(1.0, 0.0, 0.0));
                 match grouping {

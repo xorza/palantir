@@ -1,10 +1,7 @@
 //! The scale the *platform* reports, held apart from the scale the user chose.
 
-use crate::display::system_scale::error::SystemScaleError;
 use crate::display::user_scale::UserScale;
 use crate::primitives::math::domain::EPS;
-
-pub(crate) mod error;
 
 /// The device pixel ratio the platform reports for a window's output: physical pixels per
 /// logical pixel, `2.0` on a 2× display. [`UserScale`] multiplies onto it, and
@@ -17,7 +14,8 @@ pub(crate) mod error;
 /// division by a product outside it corrupts every pointer coordinate and logical size
 /// downstream.
 ///
-/// Built through [`Self::new`], or [`TryFrom<f32>`] for one that names what it refused.
+/// Built through [`Self::new`], which answers `None` for the one rule it checks, as palantir takes
+/// data from outside the program.
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 #[must_use]
 pub struct SystemScale(f32);
@@ -61,15 +59,6 @@ impl SystemScale {
             tracing::warn!(reported, "display.system_scale_rejected");
             Self::ONE
         })
-    }
-}
-
-/// [`SystemScale::new`] with the factor refused as an error.
-impl TryFrom<f32> for SystemScale {
-    type Error = SystemScaleError;
-
-    fn try_from(factor: f32) -> Result<Self, Self::Error> {
-        Self::new(factor).ok_or(SystemScaleError { found: factor })
     }
 }
 

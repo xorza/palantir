@@ -31,7 +31,7 @@
 //!    stamps both frames and input.
 //! 7. **A frozen clock makes every click one run of clicks**: the double-click interval is 500 ms
 //!    and 5 px, so [`Harness::advance_past_double_click`] goes between separate clicks.
-//!    [`Harness::play`] waits it out by itself.
+//!    [`AgentWindow::play`](crate::AgentWindow::play) waits it out by itself.
 //! 8. **Animation time is not the frame clock.** An animation's step is the frame's delta clamped
 //!    to 0.1 s, so a long wait moves it no further than one step; it moves through
 //!    [`Harness::advance_frames`].
@@ -46,22 +46,23 @@
 //!     and answers from the last; [`Harness::step`] runs one.
 //!
 //! The input methods are a test's: each queues input, which the next frame plays, and a locator
-//! that names no one place panics. [`Harness::play`] is a person's: it settles the window after
+//! that names no one place panics. [`AgentWindow::play`](crate::AgentWindow::play), through [`Harness::session`], is a person's: it settles the window after
 //! each step and returns an error an agent can read.
 
 pub(crate) mod harness_builder;
+pub(crate) mod harness_session;
 mod play;
 
 use crate::common::time::MAX_ANIMATION_DT;
 use crate::display::system_scale::SystemScale;
-use crate::driver::error::LocateError;
-use crate::driver::locator::{Found, Locate, Locator};
+use crate::driver::locator::Locator;
 use crate::gpu::device::gpu::Gpu;
 use crate::gpu::device::gpu_wait::GpuWait;
 use crate::gpu::surface::owned_target::OwnedTarget;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::host::device_core::DeviceCore;
 use crate::host::harness::harness_builder::{HarnessBuilder, TARGET_LABEL};
+use crate::host::harness::harness_session::HarnessSession;
 use crate::host::headless_window::{HeadlessDepth, HeadlessFrame, HeadlessWindow};
 use crate::host::window_driver::{FrameSpec, TargetKey};
 use crate::input::input_event::InputEvent;
@@ -118,13 +119,13 @@ pub struct Harness {
     window: HeadlessWindow,
     /// How far frames run, and the window's size, held by its texture where it paints.
     paint: HarnessPaint,
-    /// Moves only on [`Self::advance`] and [`Self::at`], and the frames [`Self::settle`] and
-    /// [`Self::play`] run.
+    /// Moves only on [`Self::advance`] and [`Self::at`], and the frames a [session](Self::session)'s settle and
+    /// play run.
     time: Duration,
     /// Each button pressed and not released, with the press position; written only in
     /// [`Self::on_input`].
     held: [Option<PressOrigin>; PointerButton::COUNT],
-    /// The time of the frame after [`Self::play`]'s last press, which its next press waits out
+    /// The time of the frame after a session's last press, which its next press waits out
     /// the double-click interval from.
     last_press: Option<Duration>,
     frame_dt: Duration,
@@ -609,17 +610,16 @@ impl Harness {
         self.on_input(InputEvent::ImeCommit(text))
     }
 
-    /// The one place `at` names in `app`'s last frame. See [`Locator::find`].
-    ///
-    /// # Errors
-    ///
-    /// [`LocateError`] when it names no place, or several.
-    pub fn find<A, X: Locate<A>>(&self, app: &A, at: &Locator<X>) -> Result<Found, LocateError> {
-        at.find(app, &self.window.driver.ui)
+    /// This harness with `app`, driven through the [`AgentWindow`](crate::AgentWindow) verbs a
+    /// [`Remote`](crate::Remote) offers on a live window: play, settle, shot, find and widgets.
+    pub const fn session<'h, A>(&'h mut self, app: &'h mut A) -> HarnessSession<'h, A> {
+        HarnessSession { harness: self, app }
     }
 
     /// The visible interactive widgets of the last frame whose text holds `filter`, ignoring
-    /// case, in paint order: what an agent reads to pick a locator.
+    /// case, in paint order: what an agent reads to pick a locator. Needs no app, so a test with a
+    /// closure app reads it here; a [session](Self::session) lists the same through
+    /// [`AgentWindow::widgets`](crate::AgentWindow::widgets).
     pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget> {
         InspectedWidget::visible(&self.window.driver.ui, filter)
     }
@@ -1068,14 +1068,15 @@ pub(crate) mod internals {
             self.step(record)
         }
 
-        /// Frames of `app` until one asks no repaint, as [`Self::settle`] runs them; the frames
+        /// Frames of `app` until one asks no repaint, as a session's settle runs them; the frames
         /// run.
         ///
         /// # Panics
         ///
         /// When the window does not settle.
         pub(crate) fn settled(&mut self, app: &mut impl App) -> u32 {
-            self.settle(app).unwrap_or_else(|error| panic!("{error}"))
+            self.settle_frames_of(app)
+                .unwrap_or_else(|error| panic!("{error}"))
         }
 
         /// A `FILL` × `FILL` hstack around `f`, returning `f`'s value from pass A.

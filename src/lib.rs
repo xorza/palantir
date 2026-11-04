@@ -240,14 +240,15 @@ pub use common::span::error::SpanRangeError;
 pub use diagnostics::DebugOverlayConfig;
 pub use display::Display;
 pub use display::system_scale::SystemScale;
-pub use display::system_scale::error::SystemScaleError;
 pub use display::user_scale::UserScale;
 pub use driver::action::Action;
+pub use driver::agent_window::AgentWindow;
 pub use driver::error::{ActError, LocateError, PlayError};
 pub use driver::locator::{Found, Locate, Locator};
 pub use gpu::device::device_requirements::DeviceRequirements;
 pub use gpu::device::gpu::Gpu;
 pub use gpu::device::gpu_wait::GpuWait;
+pub use gpu::device::power_preference::PowerPreference;
 pub use gpu::device::requested_gpu::RequestedGpu;
 #[cfg(feature = "winit")]
 pub use gpu::error::SurfaceError;
@@ -258,12 +259,12 @@ pub use gpu::gpu_paint::gpu_init_ctx::GpuInitCtx;
 pub use gpu::surface::render_target::{RenderTarget, TargetFormat};
 pub use host::harness::Harness;
 pub use host::harness::harness_builder::{Depth, HarnessBuilder};
+pub use host::harness::harness_session::HarnessSession;
 pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder, OffscreenTime};
 #[cfg(feature = "winit")]
 pub use host::winit::{
     WinitHost, WinitHostBuilder,
     error::{HostDisconnected, WinitHostError},
-    frame_summary::FrameSummary,
     handle::HostHandle,
     remote::Remote,
 };

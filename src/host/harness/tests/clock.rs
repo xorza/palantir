@@ -1,5 +1,6 @@
 //! The two clocks, and the step sizes that would silently clamp.
 
+use crate::driver::agent_window::AgentWindow;
 use crate::host::harness::tests::support::{self, INSIDE, SURFACE};
 use crate::host::harness::*;
 use crate::input_state::capture::DOUBLE_CLICK_INTERVAL;
@@ -94,7 +95,7 @@ fn settle_counts_the_frames_a_motion_takes() {
     harness.frame(&mut record);
     to.set(1.0);
     harness.frame(&mut record);
-    assert_eq!(harness.settle(&mut record), Ok(4));
+    assert_eq!(harness.session(&mut record).settle(), Ok(4));
     assert_eq!(harness.time, tick * 4);
 }
 

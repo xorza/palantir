@@ -154,9 +154,12 @@ fn run(args: &Args) -> Result<(), String> {
         Mode::Final { .. } => Render::FINAL,
         Mode::Preview { .. } | Mode::Png { .. } => Render::PREVIEW,
     };
-    let gpu = RequestedGpu::headless(wgpu::PowerPreference::HighPerformance, Default::default())
-        .map_err(|error| error.to_string())?
-        .gpu;
+    let gpu = RequestedGpu::headless(
+        palantir::PowerPreference::HighPerformance,
+        Default::default(),
+    )
+    .map_err(|error| error.to_string())?
+    .gpu;
     let depth = if render.float {
         Depth::gpu_float(gpu)
     } else {

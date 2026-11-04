@@ -1,5 +1,6 @@
 use crate::display::system_scale::SystemScale;
 use crate::driver::action::Action;
+use crate::driver::agent_window::AgentWindow;
 use crate::driver::error::{ActError, LocateError, PlayError};
 use crate::driver::locator::Locator;
 use crate::gpu::device::gpu_wait::GpuWait;
@@ -193,21 +194,23 @@ fn play_acts_as_a_person() {
         .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
-    h.settle(&mut app).unwrap();
+    h.session(&mut app).settle().unwrap();
 
-    h.play(&mut app, &[Action::click("One")]).unwrap();
+    h.session(&mut app).play(&[Action::click("One")]).unwrap();
     assert_eq!((app.one, app.double), (1, 0));
 
     let twin = Locator::from("Twin");
     let Err(ActError {
         ran: 0,
         error: PlayError::Locate(LocateError::Ambiguous { matches, .. }),
-    }) = h.play(&mut app, &[Action::click(twin.clone())])
+    }) = h.session(&mut app).play(&[Action::click(twin.clone())])
     else {
         panic!("two buttons show \"Twin\"");
     };
     assert_eq!(matches.len(), 2);
-    h.play(&mut app, &[Action::click(twin.nth(1))]).unwrap();
+    h.session(&mut app)
+        .play(&[Action::click(twin.nth(1))])
+        .unwrap();
     assert_eq!(app.twin_b, 1);
 
     assert!(matches!(
@@ -239,7 +242,7 @@ fn play_acts_as_a_person() {
         steps: Action::DRAG_STEPS,
     };
     assert_eq!(
-        h.play(&mut app, &[short]),
+        h.session(&mut app).play(&[short]),
         Err(ActError {
             ran: 0,
             error: PlayError::ShortDrag { travel: 2.0 },
@@ -247,10 +250,12 @@ fn play_acts_as_a_person() {
     );
     assert_eq!(app.one, 1, "the refused drag clicked nothing");
 
-    h.play(&mut app, &[Action::click("One"), Action::click("One")])
+    h.session(&mut app)
+        .play(&[Action::click("One"), Action::click("One")])
         .unwrap();
     assert_eq!((app.one, app.double), (3, 0), "two clicks, spaced apart");
-    h.play(&mut app, &[Action::<Infallible>::DoubleClick("One".into())])
+    h.session(&mut app)
+        .play(&[Action::<Infallible>::DoubleClick("One".into())])
         .unwrap();
     assert_eq!(app.double, 1, "one double click");
 
@@ -285,7 +290,8 @@ fn a_key_down_step_holds_its_key_until_a_key_up_step() {
     .unwrap();
     assert!(held.get());
     assert_eq!(h.ui().input().modifiers_after_held_input(), Modifiers::NONE);
-    h.play(&mut app, &[Action::<Infallible>::KeyUp(space.into())])
+    h.session(&mut app)
+        .play(&[Action::<Infallible>::KeyUp(space.into())])
         .unwrap();
     assert!(!held.get());
 }
@@ -296,7 +302,7 @@ fn a_key_down_step_holds_its_key_until_a_key_up_step() {
 fn a_step_settles_and_lets_go() {
     let mut h = Harness::mono(UVec2::new(400, 200));
     let mut app = Board::default();
-    h.settle(&mut app).unwrap();
+    h.session(&mut app).settle().unwrap();
     let before = h.time;
     h.play(
         &mut app,
@@ -324,7 +330,7 @@ fn an_app_that_always_repaints_is_unsettled() {
     let mut h = Harness::mono(UVec2::new(64, 32));
     let mut app = |ui: &mut Ui| ui.request_repaint();
     assert_eq!(
-        h.settle(&mut app),
+        h.session(&mut app).settle(),
         Err(PlayError::Unsettled { frames: 600 })
     );
 }
@@ -393,7 +399,7 @@ fn a_settle_waits_for_a_busy_apps_wake() {
         waker.wake();
     });
     let before = app.frames;
-    h.settle(&mut app).unwrap();
+    h.session(&mut app).settle().unwrap();
     work.join().unwrap();
     assert!(!app.is_busy());
     assert!(app.frames > before, "the woken frame recorded");
@@ -412,7 +418,7 @@ fn a_settle_waits_for_a_busy_apps_wake() {
         frames: 0,
     };
     assert_eq!(
-        stuck.settle(&mut app),
+        stuck.session(&mut app).settle(),
         Err(PlayError::Busy {
             waited: Duration::from_millis(10)
         })
@@ -428,7 +434,7 @@ fn a_settle_waits_for_a_busy_apps_wake() {
         steps_left: 10,
         frames: 0,
     };
-    assert_eq!(progressing.settle(&mut app), Ok(11));
+    assert_eq!(progressing.session(&mut app).settle(), Ok(11));
     assert_eq!((app.steps_left, app.frames), (0, 11));
 
     // Work that never ends but wakes the window each frame holds a settle for twenty background
@@ -441,7 +447,7 @@ fn a_settle_waits_for_a_busy_apps_wake() {
         steps_left: u32::MAX,
         frames: 0,
     };
-    match endless.settle(&mut app) {
+    match endless.session(&mut app).settle() {
         Err(PlayError::StillBusy { waited }) => {
             assert!(waited > Duration::from_millis(20), "{waited:?}");
         }
@@ -459,20 +465,21 @@ fn a_lost_device_fails_a_shot_and_a_settle_on_one() {
         .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = tile;
-    h.settle(&mut app).unwrap();
+    h.session(&mut app).settle().unwrap();
     gpu.lose();
-    assert_eq!(h.shot(&mut app, None), Err(PlayError::DeviceLost));
+    assert_eq!(h.session(&mut app).shot(None), Err(PlayError::DeviceLost));
     assert_eq!(h.wait_for_gpu(), GpuWait::DeviceLost);
     h.ui_mut().request_screenshot(None).unwrap();
-    assert_eq!(h.settle(&mut app), Err(PlayError::DeviceLost));
+    assert_eq!(h.session(&mut app).settle(), Err(PlayError::DeviceLost));
     assert!(h.is_device_lost());
 
     let fresh = isolated_headless_test_gpu();
     h.recover(fresh.handles());
     assert!(!h.is_device_lost());
-    h.settle(&mut app).unwrap();
+    h.session(&mut app).settle().unwrap();
     let shot = h
-        .shot(&mut app, None)
+        .session(&mut app)
+        .shot(None)
         .expect("the recovered harness paints");
     assert_eq!(shot.image().size(), UVec2::new(64, 32));
 }
@@ -488,21 +495,23 @@ fn a_shot_is_the_painted_window() {
         .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
-    h.settle(&mut app).unwrap();
-    let whole = h.shot(&mut app, None).unwrap();
+    h.session(&mut app).settle().unwrap();
+    let whole = h.session(&mut app).shot(None).unwrap();
     assert_eq!(whole.image().size(), UVec2::new(600, 300));
     assert_eq!(whole.scale(), 1.5);
     let region = h
-        .shot(&mut app, Some(Rect::new(10.0, 10.0, 20.0, 10.0)))
+        .session(&mut app)
+        .shot(Some(Rect::new(10.0, 10.0, 20.0, 10.0)))
         .unwrap();
     assert_eq!(region.image().size(), UVec2::new(30, 15));
     assert_eq!(
-        h.shot(&mut app, Some(Rect::new(900.0, 900.0, 5.0, 5.0))),
+        h.session(&mut app)
+            .shot(Some(Rect::new(900.0, 900.0, 5.0, 5.0))),
         Err(PlayError::EmptyRegion)
     );
 
     let mut cpu = Harness::mono(UVec2::new(64, 32));
-    assert_eq!(cpu.shot(&mut app, None), Err(PlayError::NoPixels));
+    assert_eq!(cpu.session(&mut app).shot(None), Err(PlayError::NoPixels));
 }
 
 /// A capture runs one frame at the parked clock and moves it no further, and its bytes are the
@@ -516,7 +525,7 @@ fn a_capture_is_one_frame_at_the_parked_clock() {
         .depth(Depth::gpu(gpu.handles()))
         .build();
     let mut app = Board::default();
-    h.settle(&mut app).unwrap();
+    h.session(&mut app).settle().unwrap();
     let at = Duration::from_secs(7);
     h.at(at);
     let frames = h.frames;
@@ -525,7 +534,7 @@ fn a_capture_is_one_frame_at_the_parked_clock() {
     assert_eq!(h.frames, frames + 1, "one frame");
     assert_eq!(h.time, at, "the clock stays");
     assert_eq!(pixels.len(), 120 * 80 * 4);
-    let shot = h.shot(&mut app, None).unwrap();
+    let shot = h.session(&mut app).shot(None).unwrap();
     assert_eq!(pixels, shot.image().pixels);
     let mut again = Vec::new();
     h.capture(&mut app, &mut again).unwrap();
@@ -584,13 +593,15 @@ fn input_aims_by_text_id_and_point() {
     h.frame(|ui: &mut Ui| app.record(WindowToken(0), ui));
     assert_eq!(app.one, 3);
 
-    let texts: Vec<String> = h
+    let window = h.session(&mut app);
+    let texts: Vec<String> = window
         .widgets(Some("twin"))
+        .unwrap()
         .into_iter()
         .map(|widget| widget.text)
         .collect();
     assert_eq!(texts, ["Twin", "Twin"]);
-    assert!(h.widgets(Some("hidden")).is_empty());
+    assert!(window.widgets(Some("hidden")).unwrap().is_empty());
 }
 
 /// A white 2 × 1 logical block at the origin over a black clear. At scale 1 on 8 × 6 it covers

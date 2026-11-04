@@ -29,6 +29,7 @@ use crate::host::winit::window::present_schedule::{AcquireOutcome, PresentSchedu
 use crate::host::winit::window::visibility::Visibility;
 use crate::input::input_event::InputEvent;
 use crate::primitives::geometry::rect::Rect;
+use crate::primitives::geometry::size::Size;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::app::App;
 use crate::window::vsync::Vsync;
@@ -131,7 +132,7 @@ pub(super) struct OpenedWindow {
     pub(super) surface: WindowSurface,
     pub(super) driver: WindowDriver,
     pub(super) decorations: ColorScheme,
-    pub(super) inner_size: Option<UVec2>,
+    pub(super) inner_size: Option<Size>,
 }
 
 impl Window {
@@ -145,7 +146,7 @@ impl Window {
         } = opened;
         let system_scale = SystemScale::from_platform(window.scale_factor());
         let restored = inner_size.map(|size| {
-            (size.as_vec2() * system_scale.get())
+            (Vec2::from(size) * system_scale.get())
                 .round()
                 .as_uvec2()
                 .max(UVec2::ONE)

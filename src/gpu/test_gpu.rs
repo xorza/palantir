@@ -1,6 +1,7 @@
 //! Shared headless GPU lifecycle for feature-gated tests.
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
+use crate::gpu::device::power_preference::PowerPreference;
 use glam::UVec2;
 use std::env;
 use std::fmt::{self, Display, Formatter};
@@ -25,7 +26,7 @@ use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::surface::texel_readback::TexelReadback;
 
 /// HighPerformance, as the benches use: with several adapters, goldens must record the one users see.
-const TEST_POWER: wgpu::PowerPreference = wgpu::PowerPreference::HighPerformance;
+const TEST_POWER: PowerPreference = PowerPreference::HighPerformance;
 
 const ADAPTER_RETRY_INTERVAL: Duration = Duration::from_millis(25);
 const ADAPTER_RETRY_TIMEOUT: Duration = Duration::from_secs(2);

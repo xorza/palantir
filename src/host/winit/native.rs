@@ -57,10 +57,10 @@ pub(super) fn create_window(
         .with_theme(Some(color_scheme(scheme)))
         .with_maximized(cfg.placement.maximized);
     if let Some(s) = cfg.inner_size {
-        attrs = attrs.with_inner_size(LogicalSize::new(s.x, s.y));
+        attrs = attrs.with_inner_size(LogicalSize::new(s.w, s.h));
     }
     if let Some(s) = cfg.min_inner_size {
-        attrs = attrs.with_min_inner_size(LogicalSize::new(s.x, s.y));
+        attrs = attrs.with_min_inner_size(LogicalSize::new(s.w, s.h));
     }
     if let Some(image) = &cfg.icon {
         attrs = attrs.with_window_icon(Some(icon(image)));
@@ -69,7 +69,7 @@ pub(super) fn create_window(
     // Restore a saved position only where the title bar reaches a connected monitor; winit does
     // not clamp.
     if let Some(p) = cfg.placement.physical_pos
-        && title_bar_on_monitor(event_loop, p, cfg.inner_size.map(|size| size.x))
+        && title_bar_on_monitor(event_loop, p, cfg.inner_size.map(|size| size.w))
     {
         attrs = attrs.with_position(PhysicalPosition::new(p.x, p.y));
     }
@@ -96,7 +96,7 @@ struct MonitorArea {
 fn title_bar_on_monitor(
     event_loop: &ActiveEventLoop,
     pos: IVec2,
-    inner_width: Option<u32>,
+    inner_width: Option<f32>,
 ) -> bool {
     title_bar_reaches(
         pos,
@@ -119,7 +119,7 @@ fn title_bar_on_monitor(
 /// border starts 7 px left of the screen.
 fn title_bar_reaches(
     pos: IVec2,
-    inner_width: Option<u32>,
+    inner_width: Option<f32>,
     monitors: impl IntoIterator<Item = MonitorArea>,
 ) -> bool {
     let (x, y) = (i64::from(pos.x), i64::from(pos.y));
@@ -164,44 +164,44 @@ mod tests {
             scale: 2.0,
         };
         for (pos, inner_width, on, why) in [
-            (IVec2::new(100, 100), Some(800), true, "inside"),
+            (IVec2::new(100, 100), Some(800.0), true, "inside"),
             (
                 IVec2::new(-7, 0),
-                Some(960),
+                Some(960.0),
                 true,
                 "snapped to the left edge",
             ),
             (
                 IVec2::new(-2000, 0),
-                Some(960),
+                Some(960.0),
                 false,
                 "wholly left of the screen",
             ),
             (
                 IVec2::new(-2000, 0),
-                Some(2100),
+                Some(2100.0),
                 true,
                 "its title bar's right end shows",
             ),
             (
                 IVec2::new(100, -40),
-                Some(800),
+                Some(800.0),
                 false,
                 "above the top of the left screen",
             ),
             (
                 IVec2::new(100, -20),
-                Some(800),
+                Some(800.0),
                 true,
                 "its title bar's lower rows show",
             ),
             (
                 IVec2::new(2000, -40),
-                Some(800),
+                Some(800.0),
                 true,
                 "a 64-row band at scale 2 shows",
             ),
-            (IVec2::new(4480, 0), Some(800), false, "past the far edge"),
+            (IVec2::new(4480, 0), Some(800.0), false, "past the far edge"),
             (
                 IVec2::new(1919, 1079),
                 None,
@@ -228,7 +228,7 @@ mod tests {
             );
         }
         assert!(
-            !native::title_bar_reaches(IVec2::ZERO, Some(800), []),
+            !native::title_bar_reaches(IVec2::ZERO, Some(800.0), []),
             "no monitor, no place"
         );
     }

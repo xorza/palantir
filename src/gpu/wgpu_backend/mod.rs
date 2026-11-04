@@ -623,8 +623,7 @@ impl WgpuBackend {
                     );
                     if segment.closes() {
                         let started = started.expect("a main pass opens before it closes");
-                        draw.stats
-                            .record_main_pass_cpu_ns(started.elapsed().as_nanos() as u64);
+                        draw.stats.record_main_pass_cpu(started.elapsed());
                     }
                 }
                 PassStep::Break { at } => {

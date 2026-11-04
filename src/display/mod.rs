@@ -30,29 +30,15 @@ pub(crate) const fn scale_factor_is_valid(scale_factor: f32) -> bool {
 ///
 /// A host's window driver mints it each frame from the frame's target, scale and refresh rate,
 /// and the host-wide user scale and pixel snapping. Changes to rasterized output are detected by
-/// [`Self::raster_eq`]; `refresh_millihertz` is pacing-only and never forces a
-/// repaint.
+/// `raster_eq`; the refresh rate is pacing-only and never forces a repaint. Handed out read-only,
+/// so its state is read through getters.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Display {
-    /// Physical surface size in pixels, as in `wgpu::SurfaceConfiguration`.
-    pub physical: UVec2,
-    /// The device pixel ratio the platform reported (`2.0` on a 2× display). For
-    /// the window manager's space; paint with [`Self::scale_factor`].
-    pub system_scale: SystemScale,
-    /// The application's own scale, multiplied onto [`Self::system_scale`].
-    /// Set through [`Ui::set_user_scale`](crate::Ui::set_user_scale), which is
-    /// app-global.
-    pub user_scale: UserScale,
-    /// Whether the composer snaps painted geometry edges (quads, shadows,
-    /// images, text bounds, clip scissors) to integer physical pixels, each in
-    /// its own frame before its transform, and a scroll lands its pan on them. Mesh,
-    /// curve and polyline vertices and corner radii never snap. Damage
-    /// scissors always snap, as `set_scissor_rect` takes `u32`.
-    pub pixel_snap: bool,
-    /// Monitor refresh rate in millihertz, or `None` when unknown (headless,
-    /// unmapped window, VRR). Read only by repaint-wake coalescing; it never
-    /// forces a relayout.
-    pub refresh_millihertz: Option<u32>,
+    pub(crate) physical: UVec2,
+    pub(crate) system_scale: SystemScale,
+    pub(crate) user_scale: UserScale,
+    pub(crate) pixel_snap: bool,
+    pub(crate) refresh_millihertz: Option<u32>,
 }
 
 impl Default for Display {
@@ -68,6 +54,42 @@ impl Default for Display {
 }
 
 impl Display {
+    /// Physical surface size in pixels, as in `wgpu::SurfaceConfiguration`.
+    #[inline]
+    pub const fn physical(&self) -> UVec2 {
+        self.physical
+    }
+
+    /// The device pixel ratio the platform reported (`2.0` on a 2× display). For the window
+    /// manager's space; paint with [`Self::scale_factor`].
+    #[inline]
+    pub const fn system_scale(&self) -> SystemScale {
+        self.system_scale
+    }
+
+    /// The application's own scale, multiplied onto [`Self::system_scale`]. Set through
+    /// [`Ui::set_user_scale`](crate::Ui::set_user_scale), which is app-global.
+    #[inline]
+    pub const fn user_scale(&self) -> UserScale {
+        self.user_scale
+    }
+
+    /// Whether the composer snaps painted geometry edges (quads, shadows, images, text bounds,
+    /// clip scissors) to integer physical pixels, each in its own frame before its transform, and
+    /// a scroll lands its pan on them. Mesh, curve and polyline vertices and corner radii never
+    /// snap. Damage scissors always snap, as `set_scissor_rect` takes `u32`.
+    #[inline]
+    pub const fn pixel_snap(&self) -> bool {
+        self.pixel_snap
+    }
+
+    /// Monitor refresh rate in millihertz, or `None` when unknown (headless, unmapped window,
+    /// VRR). Read only by repaint-wake coalescing; it never forces a relayout.
+    #[inline]
+    pub const fn refresh_millihertz(&self) -> Option<u32> {
+        self.refresh_millihertz
+    }
+
     /// Where the composer lands painted geometry edges, per [`Self::pixel_snap`].
     pub(crate) const fn edge_rounding(&self) -> EdgeRounding {
         if self.pixel_snap {
@@ -120,7 +142,7 @@ impl Display {
     /// `refresh_millihertz` is excluded. The scales are compared as
     /// themselves, as the product cannot tell a 2× monitor from a 1× one at
     /// 200%.
-    pub fn raster_eq(&self, other: &Self) -> bool {
+    pub(crate) fn raster_eq(&self, other: &Self) -> bool {
         self.physical == other.physical
             && self.system_scale == other.system_scale
             && self.user_scale == other.user_scale
@@ -141,16 +163,18 @@ pub(crate) mod internals {
         ///
         /// # Panics
         ///
-        /// Panics with [`SystemScaleError`](crate::SystemScaleError)'s message outside
-        /// [`SystemScale`]'s range.
+        /// Panics outside [`SystemScale`]'s range.
         #[track_caller]
         pub(crate) fn from_physical(physical: UVec2, system_scale: f32) -> Self {
             Self {
                 physical,
-                system_scale: match SystemScale::try_from(system_scale) {
-                    Ok(scale) => scale,
-                    Err(refused) => panic!("{refused}"),
-                },
+                system_scale: SystemScale::new(system_scale).unwrap_or_else(|| {
+                    panic!(
+                        "a system scale must be from {:e} to {:e}, not {system_scale}",
+                        SystemScale::MIN,
+                        SystemScale::MAX
+                    )
+                }),
                 user_scale: UserScale::ONE,
                 pixel_snap: true,
                 refresh_millihertz: None,

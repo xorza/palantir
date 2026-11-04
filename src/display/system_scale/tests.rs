@@ -1,19 +1,14 @@
 use crate::display::scale_factor_is_valid;
 use crate::display::system_scale::SystemScale;
-use crate::display::system_scale::error::SystemScaleError;
 use crate::display::user_scale::UserScale;
 
 /// A scale from `MIN` to `MAX` stands as given, unclamped; outside them, or not a number, is
-/// refused, and `TryFrom` names the refused factor. `ONE` is the default.
+/// refused. `ONE` is the default.
 #[test]
 fn a_scale_in_range_stands_and_the_rest_is_refused() {
     assert_eq!(SystemScale::MIN, 2e-4, "1e-4 / 0.5, exact as a halving");
     for factor in [1.0, 2.0, 1.5, 64.0, SystemScale::MIN, SystemScale::MAX] {
         assert_eq!(SystemScale::new(factor).map(SystemScale::get), Some(factor));
-        assert_eq!(
-            SystemScale::try_from(factor).map(SystemScale::get),
-            Ok(factor)
-        );
     }
     let outside = [
         0.0,
@@ -26,18 +21,9 @@ fn a_scale_in_range_stands_and_the_rest_is_refused() {
     ];
     for factor in outside {
         assert_eq!(SystemScale::new(factor), None, "{factor}");
-        assert_eq!(
-            SystemScale::try_from(factor),
-            Err(SystemScaleError { found: factor }),
-            "{factor}"
-        );
     }
-    assert!(SystemScale::try_from(f32::NAN).is_err());
+    assert_eq!(SystemScale::new(f32::NAN), None);
     assert_eq!(SystemScale::default(), SystemScale::ONE);
-    assert_eq!(
-        SystemScaleError { found: 0.0 }.to_string(),
-        "a system scale must be from 2e-4 to 1.1342745e38, not 0"
-    );
 }
 
 /// The bounds keep the product valid under every user scale, which is why a frame only

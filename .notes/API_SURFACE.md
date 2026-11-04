@@ -33,6 +33,14 @@ Action
         impl<X: Debug> Debug for Action<X>
         impl<X: PartialEq> PartialEq for Action<X>
 
+AgentWindow
+    trait AgentWindow<A>
+        fn play<X: Locate<A> + Clone + Send + 'static>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>
+        fn settle(&mut self) -> Result<u32, PlayError>
+        fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError>
+        fn find<X: Locate<A> + Clone + Send + 'static>(&self, at: &Locator<X>) -> Result<Found, PlayError>
+        fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>
+
 Align
     struct Align: Clone, Copy, Debug, Default, DockTab (blanket), Eq, Hash, PartialEq
         pub const fn new(h: HAlign, v: VAlign) -> Self
@@ -516,16 +524,15 @@ DeviceRequirements
 
 Display
     struct Display: Clone, Copy, Debug, Default, PartialEq
-        pub physical: UVec2
-        pub system_scale: SystemScale
-        pub user_scale: UserScale
-        pub pixel_snap: bool
-        pub refresh_millihertz: Option<u32>
+        pub const fn physical(&self) -> UVec2
+        pub const fn system_scale(&self) -> SystemScale
+        pub const fn user_scale(&self) -> UserScale
+        pub const fn pixel_snap(&self) -> bool
+        pub const fn refresh_millihertz(&self) -> Option<u32>
         pub const fn scale_factor(&self) -> f32
         pub fn logical_size(&self) -> Size
         pub fn system_logical_size(&self) -> Size
         pub fn logical_rect(&self) -> Rect
-        pub fn raster_eq(&self, other: &Self) -> bool
 
 DockDrop
     enum DockDrop: Clone, Copy, Debug, Deserialize<'de>, Eq, PartialEq, Serialize
@@ -856,14 +863,6 @@ FrameReport
         pub repaint_at: Option<Duration>
         pub const fn paint(&self) -> FramePaint
 
-FrameSummary  [features: winit]
-    struct FrameSummary: Clone, Copy, Debug, Eq, PartialEq
-        pub record_frame_id: u64
-        pub sent_events: u64
-        pub repaint_requested: bool
-        pub repaint_at: Option<Duration>
-        pub busy: bool
-
 Gpu
     struct Gpu: Clone, Debug
         pub fn new(device: Device, queue: Queue) -> Self
@@ -994,11 +993,8 @@ HAlign
 
 Harness
     struct Harness: Debug
-        pub fn play<A: App, X: Locate<A>>(&mut self, app: &mut A, actions: &[Action<X>]) -> Result<u32, ActError>
-        pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError>
         pub fn wait_for_wake(&self, timeout: Duration) -> bool
         pub fn has_pending_wake(&self) -> bool
-        pub fn shot(&mut self, app: &mut impl App, region: Option<Rect>) -> Result<Screenshot, PlayError>
         pub fn capture(&mut self, app: &mut impl App, pixels: &mut Vec<u8>) -> Result<(), PlayError>
         pub const WINDOW: WindowToken
         pub fn new(size: UVec2) -> Self
@@ -1035,7 +1031,7 @@ Harness
         pub fn hold_modifiers(&mut self, mods: Modifiers) -> InputDelta
         pub fn type_text(&mut self, text: &str) -> InputDelta
         pub fn insert_text(&mut self, text: &str) -> InputDelta
-        pub fn find<A, X: Locate<A>>(&self, app: &A, at: &Locator<X>) -> Result<Found, LocateError>
+        pub const fn session<'h, A>(&'h mut self, app: &'h mut A) -> HarnessSession<'h, A>
         pub fn widgets(&self, filter: Option<&str>) -> Vec<InspectedWidget>
         pub fn rect(&self, id: WidgetId) -> Option<Rect>
         pub fn arranged(&self, id: WidgetId) -> Option<Rect>
@@ -1067,12 +1063,17 @@ HarnessBuilder
         pub const fn background_wait(self, wait: Duration) -> Self
         pub fn build(self) -> Harness
 
+HarnessSession
+    struct HarnessSession<'h, A>
+        impl<'h, A: Debug> Debug for HarnessSession<'h, A>
+        impl<A: App> AgentWindow<A> for HarnessSession<'_, A>
+
 HostDisconnected  [features: winit]
     struct HostDisconnected: Clone, Copy, Debug, Display, Eq, Error, PartialEq
 
 HostHandle  [features: winit]
     struct HostHandle<T: 'static>: Clone, Debug
-        pub fn last_frame(&self, window: WindowToken) -> Option<FrameSummary>
+        pub fn is_open(&self, window: WindowToken) -> bool
         pub fn is_hidden(&self, window: WindowToken) -> bool
         pub fn run_on_main(&self, f: impl FnOnce(&mut T) + Send + 'static) -> Result<(), HostDisconnected>
         pub fn quit(&self)
@@ -1653,7 +1654,6 @@ PipelineStats
         pub clipper_invocations: u64
         pub clipper_primitives_out: u64
         pub fragment_shader_invocations: u64
-        pub compute_shader_invocations: u64
 
 Platform
     enum Platform: Clone, Copy, Debug, DockTab (blanket), Eq, Hash, PartialEq
@@ -1751,6 +1751,11 @@ PopupTrigger
         pub fn close(ui: &mut Ui, for_id: WidgetId)
         pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool
 
+PowerPreference
+    enum PowerPreference: Clone, Copy, Debug, Default, DockTab (blanket), Eq, From<PowerPreference>, Hash, PartialEq
+        LowPower
+        HighPerformance
+
 ProgressBar
     struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(fraction: f32) -> Self
@@ -1839,15 +1844,10 @@ ReducePreference
         Reduced
 
 Remote  [features: winit]
-    struct Remote<T: 'static>: Debug
+    struct Remote<T: 'static>: AgentWindow<T>, Debug
         pub fn with_blocked(self, blocked: impl Fn() -> bool + Send + 'static) -> Self
         pub const fn with_wait(self, wait: Duration) -> Self
         pub fn query<R: Send + 'static>(&self, f: impl FnOnce(&mut T, &mut Ui) -> R + Send + 'static) -> Result<R, PlayError>
-        pub fn settle(&mut self) -> Result<u32, PlayError>
-        pub fn play<X: Locate<T> + Clone + Send + 'static>(&mut self, actions: &[Action<X>]) -> Result<u32, ActError>
-        pub fn shot(&mut self, region: Option<Rect>) -> Result<Screenshot, PlayError>
-        pub fn find<X: Locate<T> + Clone + Send + 'static>(&self, at: &Locator<X>) -> Result<Found, PlayError>
-        pub fn widgets(&self, filter: Option<&str>) -> Result<Vec<InspectedWidget>, PlayError>
 
 RenderTarget
     struct RenderTarget<'a>: Clone, Copy, Debug
@@ -2301,16 +2301,12 @@ Switch
         pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
 
 SystemScale
-    struct SystemScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd, TryFrom<f32>
+    struct SystemScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd
         pub const ONE: Self
         pub const MIN: f32
         pub const MAX: f32
         pub const fn new(factor: f32) -> Option<Self>
         pub const fn get(self) -> f32
-
-SystemScaleError
-    struct SystemScaleError: Clone, Copy, Debug, Display, Error, PartialEq
-        pub found: f32
 
 TabAddress
     struct TabAddress: Clone, Copy, Debug, Eq, PartialEq
@@ -2859,14 +2855,14 @@ WindowCommand
 WindowConfig
     struct WindowConfig: Clone, Debug, Default
         pub title: String
-        pub inner_size: Option<UVec2>
-        pub min_inner_size: Option<UVec2>
+        pub inner_size: Option<Size>
+        pub min_inner_size: Option<Size>
         pub placement: WindowPlacement
         pub icon: Option<Image>
         pub app_id: Option<String>
         pub fn new(title: impl Into<String>) -> Self
-        pub const fn with_inner_size(self, size: UVec2) -> Self
-        pub const fn with_min_inner_size(self, size: UVec2) -> Self
+        pub const fn with_inner_size(self, size: Size) -> Self
+        pub const fn with_min_inner_size(self, size: Size) -> Self
         pub const fn with_physical_pos(self, pos: IVec2) -> Self
         pub const fn with_geometry(self, geometry: WindowGeometry) -> Self
         pub const fn with_maximized(self, maximized: bool) -> Self
@@ -2874,8 +2870,8 @@ WindowConfig
         pub fn with_app_id(self, app_id: impl Into<String>) -> Self
 
 WindowGeometry
-    struct WindowGeometry: Clone, Copy, Debug, Default, Eq, PartialEq
-        pub inner_size: UVec2
+    struct WindowGeometry: Clone, Copy, Debug, PartialEq
+        pub inner_size: Size
         pub placement: WindowPlacement
 
 WindowPlacement

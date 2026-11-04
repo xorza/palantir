@@ -208,22 +208,15 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   for `TabbedView` (WG-16). Dress `Menu::context` only when it is open (WG-22).
   `TextEdit.text` is not an `Option` (WG-23).
 
-### Batch 11b. Host tests and public surface (`host`, `display`, `window`)
+### Batch 11b. Host tests (`host`)
 
-The non-API part of Batch 11 is done. What is left:
+The API part of Batch 11b is done. What is left:
 
 - A test of `WinitRuntime`'s scheduling (draw, follow, recover) on a fake loop and clock, and
-  `Remote` on a clock it is handed in place of real sleeps (HS-23).
+  `Remote` on a clock it is handed in place of real sleeps (HS-23). The runtime half needs a
+  seam first: each window's next frame moves out of `Window` into one pacing column of
+  `WindowSet`, with no winit type, which a test drives on a clock of its own.
 - Enable the Wayland clipboard (HS-15): a feature with new dependencies, so it waits for an ask.
-- **API:**
-  - Matching verbs on `Harness` and `Remote`, or a public trait from `driver::play::Stage`
-    (HS-12).
-  - `FrameSummary` becomes crate-private (HS-13).
-  - One `SystemScale` constructor (HS-17).
-  - A type for logical and physical window sizes (HS-18).
-  - A palantir enum for `PowerPreference` (HS-19).
-  - Getters on `Display` (HS-26).
-  - `Option<Duration>` in `gpu_pass_stats`, and the `compute_shader_invocations` field (HS-25).
 
 ### Batch 13b. Gradient atlas index (`renderer`) **dependency**
 
@@ -251,7 +244,7 @@ Prefixes:
 | Batch | Findings |
 |---|---|
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
-| 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
+| 11b | HS-23, HS-15 |
 | 13b | RD-17 |
 
 These findings are kept as they are, with no change: SC-20 (the `SeenIds` size is justified
@@ -435,32 +428,9 @@ its own findings here; the line numbers are from the review and drift as the cod
 **HS-23 · test · `src/host/winit/runtime.rs:423-472`; `src/host/winit/remote/tests.rs:258, 298`; `src/host/harness/tests/play.rs:372`**
 Nothing tests `WinitRuntime` scheduling (`draw`, follow, `schedule`, `recover`); only pure helpers are covered (`earliest_wake`, `FramePresent::followed`), which is how HS-01 passes. Remote reads `Instant::now()` and `thread::sleep` directly, so its tests sleep for real (a 300 ms query, 4 ticks), against "no real sleep where the code takes a clock". *Conf:* high. *API:* no. *Root cause:* no seam for the clock or the event loop.
 
-**HS-12 · api · `src/host/harness/play.rs:350-437`; `src/host/winit/remote/mod.rs:164-229`; consumer `darkroom/src/driver/backend.rs:45-46`**
-`Harness` and `Remote` offer the same verbs in different shapes: `play(app, actions)` vs `play(actions)`, `settle(app)` vs `settle()`, `shot(app, region)` vs `shot(region)`, `find(app, at)` vs `find(at)`. The only consumer re-unifies them in an enum (`Backend::Offscreen/Window`). The shared abstraction exists, but only crate-private (`driver::play::Stage`).
-*Direction:* a public trait for "a window an agent drives", or matching signatures. *Conf:* med. *API:* yes. *Root cause:* HS-05.
-
-**HS-13 · api · `src/host/winit/frame_summary.rs:8-24`; `src/host/winit/handle.rs:119-133`**
-`FrameSummary` is public, but `sent_inputs` counts only events from the crate-private `send_input`, and `busy` is a Remote internal. darkroom uses `last_frame()` only as "is the window open" (`window_backend.rs:65`).
-*Direction:* keep the summary crate-private and expose `is_open(window)` / `is_hidden(window)`. *Conf:* med. *API:* yes. *Root cause:* the Remote protocol leaks into the public surface.
-
 **HS-15 · hygiene/bug · `Cargo.toml:90-92`; `src/clipboard/mod.rs:344-350`**
 `arboard` is built with `default-features = false, features = ["image-data"]`, so without `wayland-data-control`. On a Wayland session the system clipboard either goes through XWayland's X11 selection or `Clipboard::new()` fails and the host quietly uses memory only. egui-winit uses `smithay-clipboard` with the window's Wayland display on Wayland.
 *Direction:* enable `wayland-data-control`, or add a Wayland backend fed the display handle. *Conf:* med (features verified; runtime behaviour per arboard docs). *API:* no. *Root cause:* platform service chosen without the Wayland case.
-
-**HS-17 · api/two routes · `src/display/system_scale/mod.rs:256-288`**
-`SystemScale::new(f32) -> Option<Self>` and `TryFrom<f32>` (Result) are two public constructors for one rule. AGENTS.md says data from outside is "`Option` for one rule". *Direction:* keep one. *Conf:* high. *API:* yes. *Root cause:* one fact, many shapes.
-
-**HS-18 · api/units · `src/window/window_config.rs:16-19`; `src/window/window_geometry.rs:7-8`; `src/host/harness/mod.rs:176`**
-Logical window sizes are integer `UVec2` (`WindowConfig::inner_size`, `WindowGeometry::inner_size`), while every other logical length is f32 `Size`, and `UVec2` means *physical* in `Harness::new(size)`, `Display::physical` and `resize`. Nothing in the type tells the reader which unit. *Direction:* `Size` for logical, or a physical newtype. *Conf:* med. *API:* yes. *Root cause:* a unit not in the type.
-
-**HS-19 · api · `src/host/winit/mod.rs:203-210`; `src/host/winit/config.rs:382-386`**
-`WinitHostBuilder::power_preference(wgpu::PowerPreference)` is the one raw wgpu type in the host builders, and needs two `expect(disallowed_types)`. Elsewhere the surface wraps wgpu (`Gpu`, `TargetFormat`, `Vsync`). *Direction:* a palantir enum. *Conf:* med. *API:* yes. *Root cause:* inconsistent wrapping.
-
-**HS-25 · idiom/api · `src/diagnostics/gpu_pass_stats.rs:128-140`**
-`Inner` stores `Option<u64>` nanoseconds and every getter converts to `Duration`; it could store `Option<Duration>`. Public `PipelineStats::compute_shader_invocations` is documented as always zero for palantir's passes. *Conf:* high. *API:* the field is. *Root cause:* a unit not in the type.
-
-**HS-26 · api · `src/display/mod.rs:36-56, 123-128`**
-`Display` is handed out read-only, yet has all-public mutable fields and a public `raster_eq`, which is the damage engine's comparison. *Direction:* getters, `raster_eq` crate-private. *Conf:* med. *API:* yes. *Root cause:* internal detail exported.
 
 ### Batch 13b
 

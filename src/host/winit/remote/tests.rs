@@ -2,6 +2,7 @@
 //! its thread as the event loop serves a window's: a query between two frames, sent input before
 //! a frame, a shot handed back in the frame it lands in, a frame summary after each frame.
 
+use crate::driver::agent_window::AgentWindow;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -201,7 +202,7 @@ fn serve() -> (HostHandle<Counter>, JoinHandle<()>) {
     });
     // The window's first frame, before a remote reads it.
     let start = Instant::now();
-    while handle.last_frame(WINDOW).is_none() {
+    while !handle.is_open(WINDOW) {
         assert!(
             start.elapsed() < Duration::from_secs(30),
             "the loop ran no frame"
@@ -416,7 +417,8 @@ fn both_players_play_each_gesture_alike() {
     let mut last = Gestures::default();
     for (i, (action, want)) in steps.into_iter().enumerate() {
         let on_harness = h
-            .play(&mut app, std::slice::from_ref(&action))
+            .session(&mut app)
+            .play(std::slice::from_ref(&action))
             .map(|_| app.gestures.clone())
             .map_err(|failed| failed.error);
         let on_remote = remote
@@ -450,7 +452,8 @@ fn both_players_play_each_gesture_alike() {
 
     let wait = Duration::from_millis(10);
     let before = h.ui().now();
-    h.play(&mut app, &[Action::<Infallible>::Wait(wait)])
+    h.session(&mut app)
+        .play(&[Action::<Infallible>::Wait(wait)])
         .unwrap();
     assert!(
         h.ui().now() >= before + wait,

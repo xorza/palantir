@@ -5,8 +5,8 @@ use std::{env, fs, process};
 use palantir::glam::{UVec2, Vec2};
 use palantir::internals::headless_test_gpu;
 use palantir::{
-    Action, ColorScheme, Depth, Harness, Key, Locator, Palette, PointerButton, Rect, Shortcut,
-    ShortcutMods, SystemScale, ZoomFactor,
+    Action, AgentWindow, ColorScheme, Depth, Harness, Key, Locator, Palette, PointerButton, Rect,
+    Shortcut, ShortcutMods, SystemScale, ZoomFactor,
 };
 
 use crate::shell::Shell;
@@ -417,8 +417,8 @@ fn draws_every_page(scheme: ColorScheme) {
     let palette = Palette::for_scheme(scheme);
     for (page, label) in Shell::page_labels().enumerate() {
         let mut shell = Shell::open(page);
-        h.settle(&mut shell).unwrap();
-        let shot = h.shot(&mut shell, None).unwrap();
+        h.session(&mut shell).settle().unwrap();
+        let shot = h.session(&mut shell).shot(None).unwrap();
         let texels = shot.image().texels();
         let w = usize::try_from(shot.image().size().x).unwrap();
         assert_eq!(texels[0], palette.surround.to_srgba8(), "{label}");

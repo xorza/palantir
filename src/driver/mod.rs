@@ -3,6 +3,7 @@
 //! read it, so a test, a script and an agent name a widget the same way.
 
 pub(crate) mod action;
+pub(crate) mod agent_window;
 pub(crate) mod error;
 pub(crate) mod locator;
 pub(crate) mod play;

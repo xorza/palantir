@@ -24,7 +24,6 @@ use std::env;
 use std::io::{self, Write};
 use std::process::ExitCode;
 
-use palantir::glam::UVec2;
 use palantir::{WindowConfig, WinitHost};
 use tracing_subscriber::EnvFilter;
 
@@ -67,7 +66,10 @@ fn main() -> ExitCode {
 /// The window, open on the page at `page`.
 fn window(page: usize) -> Result<(), String> {
     WinitHost::builder(shell::MAIN_WINDOW)
-        .window(WindowConfig::new("palantir showcase").with_inner_size(UVec2::new(1600, 1000)))
+        .window(
+            WindowConfig::new("palantir showcase")
+                .with_inner_size(palantir::Size::new(1600.0, 1000.0)),
+        )
         .build(move |_ui, _handle| Shell::open(page))
         .and_then(WinitHost::run)
         .map_err(|error| error.to_string())

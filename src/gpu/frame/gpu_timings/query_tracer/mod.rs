@@ -20,6 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering::Acquire, Ordering::Release};
+use std::time::Duration;
 
 const BYTES_PER_U64: u64 = 8;
 
@@ -42,7 +43,7 @@ const _: () = assert!(COPY_OUT_OFFSET.is_multiple_of(wgpu::QUERY_RESOLVE_BUFFER_
 const _: () = assert!(BACKDROP_OFFSET.is_multiple_of(wgpu::QUERY_RESOLVE_BUFFER_ALIGNMENT));
 const _: () = assert!(COPY_OUT_IDX + 2 <= BACKDROP_IDX);
 
-const STATS_FIELD_COUNT: usize = 5;
+const STATS_FIELD_COUNT: usize = 4;
 const STATS_QUERY_BYTES: u64 = STATS_FIELD_COUNT as u64 * BYTES_PER_U64;
 /// The passes of a main pass whose pipeline statistics a frame sums; a frame broken into more
 /// publishes none.
@@ -57,8 +58,7 @@ const PIPELINE_STATS_FLAGS: wgpu::PipelineStatisticsTypes =
     wgpu::PipelineStatisticsTypes::VERTEX_SHADER_INVOCATIONS
         .union(wgpu::PipelineStatisticsTypes::CLIPPER_INVOCATIONS)
         .union(wgpu::PipelineStatisticsTypes::CLIPPER_PRIMITIVES_OUT)
-        .union(wgpu::PipelineStatisticsTypes::FRAGMENT_SHADER_INVOCATIONS)
-        .union(wgpu::PipelineStatisticsTypes::COMPUTE_SHADER_INVOCATIONS);
+        .union(wgpu::PipelineStatisticsTypes::FRAGMENT_SHADER_INVOCATIONS);
 
 /// Where a slot's frame stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -577,23 +577,23 @@ impl Publisher<'_> {
     fn timestamps(self, ts: &[u8], segment_kinds: &[Option<BatchKind>], count: usize) {
         // Pass duration = last - first. The per-kind table clears on every measured frame, so a begin/end-only frame doesn't keep stale values.
         if count >= 2 {
-            self.sink.record_pass_ns(self.span_ns(ts, 0, count - 1));
+            self.sink.record_pass(self.span(ts, 0, count - 1));
             self.sink.clear_kinds();
         }
         if count >= 3 {
-            let mut per_kind_ns = [0u64; BatchKind::COUNT];
+            let mut per_kind = [Duration::ZERO; BatchKind::COUNT];
             let mut seen = [false; BatchKind::COUNT];
             for i in 0..count - 1 {
                 let Some(kind) = segment_kinds.get(i).copied().flatten() else {
                     continue;
                 };
-                let seg_ns = self.span_ns(ts, i, i + 1);
+                let segment = self.span(ts, i, i + 1);
                 seen[kind.idx()] = true;
-                per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
+                per_kind[kind.idx()] = per_kind[kind.idx()].saturating_add(segment);
             }
             for kind in BatchKind::ALL {
                 if seen[kind.idx()] {
-                    self.sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
+                    self.sink.record_kind(kind, per_kind[kind.idx()]);
                 }
             }
         }
@@ -601,8 +601,8 @@ impl Publisher<'_> {
 
     fn copy_out(self, ts: &[u8], copied_out: bool) {
         let begin = COPY_OUT_IDX as usize;
-        let ns = copied_out.then(|| self.span_ns(ts, begin, begin + 1));
-        self.sink.record_copy_out_ns(ns);
+        let time = copied_out.then(|| self.span(ts, begin, begin + 1));
+        self.sink.record_copy_out(time);
     }
 
     /// The sums of `breaks` backdrop breaks' capture and blur times; a frame with none clears
@@ -611,11 +611,11 @@ impl Publisher<'_> {
         let at = |at: u32, phase: u32| (BACKDROP_IDX + 3 * at + phase) as usize;
         let sum = |from: u32, to: u32| {
             (0..breaks)
-                .map(|b| self.span_ns(ts, at(b, from), at(b, to)))
-                .sum::<u64>()
+                .map(|b| self.span(ts, at(b, from), at(b, to)))
+                .fold(Duration::ZERO, Duration::saturating_add)
         };
         let timed = breaks > 0;
-        self.sink.record_backdrop_ns(BackdropTimes {
+        self.sink.record_backdrops(BackdropTimes {
             captures: timed.then(|| sum(0, 1)),
             blurs: timed.then(|| sum(1, 2)),
         });
@@ -639,7 +639,6 @@ impl Publisher<'_> {
             clipper_invocations: values[1],
             clipper_primitives_out: values[2],
             fragment_shader_invocations: values[3],
-            compute_shader_invocations: values[4],
         }));
     }
 
@@ -647,8 +646,10 @@ impl Publisher<'_> {
         clippy::cast_sign_loss,
         reason = "a tick delta is a saturating difference and the period is positive, so the product is never negative"
     )]
-    fn span_ns(self, ts: &[u8], from: usize, to: usize) -> u64 {
-        (tick(ts, to).saturating_sub(tick(ts, from)) as f64 * f64::from(self.period_ns)) as u64
+    fn span(self, ts: &[u8], from: usize, to: usize) -> Duration {
+        Duration::from_nanos(
+            (tick(ts, to).saturating_sub(tick(ts, from)) as f64 * f64::from(self.period_ns)) as u64,
+        )
     }
 }
 

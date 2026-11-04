@@ -9,6 +9,7 @@ use wgpu::rwh::HasDisplayHandle;
 
 use crate::gpu::device::device_requirements::DeviceRequirements;
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::device::power_preference::PowerPreference;
 use crate::gpu::device::requested_gpu::{GpuRequest, RequestedGpu};
 use crate::gpu::error::{GpuRequestError, SurfaceError, SurfaceStartError};
 use crate::gpu::surface::window_surface::WindowSurface;
@@ -30,7 +31,7 @@ const OPTIONAL_SURFACE_USAGES: wgpu::TextureUsages =
 /// Device and swapchain choices a host seals at startup.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct HostGpuConfig {
-    pub(crate) power_preference: wgpu::PowerPreference,
+    pub(crate) power_preference: PowerPreference,
     pub(crate) vsync: Vsync,
     pub(crate) timing: FrameTiming,
 }

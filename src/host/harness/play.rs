@@ -1,5 +1,5 @@
-//! [`Harness::play`], [`Harness::settle`] and [`Harness::shot`]: the window driven as a person at
-//! it would, waiting for it to settle after each step.
+//! The harness side of [`HarnessSession`](crate::HarnessSession)'s play, settle and shot: the
+//! window driven as a person at it would, waiting for it to settle after each step.
 
 use crate::driver::action::Action;
 use crate::driver::error::{ActError, PlayError};
@@ -16,16 +16,8 @@ use glam::Vec2;
 use std::time::{Duration, Instant};
 
 impl Harness {
-    /// Play `actions` on `app` in order, as a person at the window would, settling after each;
-    /// the first that fails stops the rest. Every locator of a step resolves before its input
-    /// goes in, and a button or a modifier it holds is always released, so a failed step leaves
-    /// nothing held. Separate presses wait out the double-click interval, and a press moves the
-    /// pointer first and settles, so it lands on what the pointer hovers. Returns the frames run.
-    ///
-    /// # Errors
-    ///
-    /// [`ActError`], naming the step it stopped at.
-    pub fn play<A: App, X: Locate<A>>(
+    /// [`HarnessSession`](crate::HarnessSession)'s play of `actions` on `app`.
+    pub(super) fn play<A: App, X: Locate<A>>(
         &mut self,
         app: &mut A,
         actions: &[Action<X>],
@@ -38,27 +30,9 @@ impl Harness {
         Ok(self.frames - start)
     }
 
-    /// Run frames of `app`, the clock moving one frame's time before each, until one asks no
-    /// repaint, no screenshot is on its way back from the device, which it waits for, no
-    /// [wake](crate::Waker) waits, and the app is not [busy](App::is_busy). While the app is busy
-    /// and asks nothing, the settle waits in real time for each wake its work sends, as long as
-    /// the work goes on. A caret blink asks a timed wake, not a repaint, so it settles. Returns
-    /// the frames run.
-    ///
-    /// # Errors
-    ///
-    /// [`PlayError::Unsettled`] when the window still asks after the builder's
-    /// [`settle_frames`](crate::HarnessBuilder::settle_frames) frames that ask,
-    /// [`PlayError::Busy`] when a busy app sends no wake in its
-    /// [`background_wait`](crate::HarnessBuilder::background_wait), and
-    /// [`PlayError::DeviceLost`] when the window asks for frames or screenshots of a lost device.
-    pub fn settle(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
-        self.settle_frames_of(app)
-    }
-
     /// Block until a [`Waker`](crate::Waker) of this window wakes it, or `timeout` passes, in
     /// real time; whether a wake waits for the next frame. For a caller that waits on work it
-    /// knows of, past what [`Self::settle`] waits for.
+    /// knows of, past what [a session's settle](crate::AgentWindow::settle) waits for.
     pub fn wait_for_wake(&self, timeout: Duration) -> bool {
         self.window.wait_for_wake(Instant::now() + timeout)
     }
@@ -69,17 +43,8 @@ impl Harness {
         self.window.is_wake_pending()
     }
 
-    /// A picture of `region`, the whole window for none, as the next frame paints it, as the
-    /// app's own [`Ui::request_screenshot`](crate::Ui::request_screenshot) takes it.
-    ///
-    /// # Errors
-    ///
-    /// [`PlayError::NoPixels`] below [`Depth::Gpu`](crate::Depth::Gpu),
-    /// [`PlayError::EmptyRegion`] for a region outside the window, [`PlayError::DeviceLost`] when
-    /// the device is lost, and [`PlayError::Unsettled`] when the picture has not landed after the
-    /// builder's
-    /// [`settle_frames`](crate::HarnessBuilder::settle_frames).
-    pub fn shot(
+    /// [`HarnessSession`](crate::HarnessSession)'s shot of `app`'s `region`.
+    pub(super) fn shot(
         &mut self,
         app: &mut impl App,
         region: Option<Rect>,
@@ -120,7 +85,7 @@ impl Harness {
     /// ([`Depth::Gpu`](crate::Depth::Gpu)'s `format`): rows top down with no
     /// padding, 4 bytes a pixel of 8-bit sRGB RGBA by default, 8 of `Rgba16Float`. That frame
     /// alone: no held input is delivered, the clock does not move, and no frame waits for the
-    /// picture to land, as [`Self::shot`] does. For a recording, which sets each frame's time.
+    /// picture to land, as [a session's shot](crate::AgentWindow::shot) does. For a recording, which sets each frame's time.
     ///
     /// # Errors
     ///
@@ -144,10 +109,10 @@ impl Harness {
         }
     }
 
-    /// Frames of `app` until it settles, as [`Self::settle`] runs them. Only a frame that asks for another counts against
+    /// Frames of `app` until it settles, as [a session's settle](crate::AgentWindow::settle) runs them. Only a frame that asks for another counts against
     /// [`settle_frames`](crate::HarnessBuilder::settle_frames): a frame a busy app's wake brought
     /// is its progress, and the wait for the next wake starts again after each.
-    fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
+    pub(super) fn settle_frames_of(&mut self, app: &mut impl App) -> Result<u32, PlayError> {
         let start = self.frames;
         let began = Instant::now();
         let busy_limit = self.background_wait * BUSY_SETTLE_WAITS;
