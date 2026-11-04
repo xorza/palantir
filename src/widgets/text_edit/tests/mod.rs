@@ -77,15 +77,13 @@ impl FieldKeys {
             },
             self.now,
         );
-        let blur = match EditAction::from_keypress(kp) {
+        match EditAction::from_keypress(kp) {
             Some(action) => {
                 action.execute(&mut ed, &self.clipboard);
                 false
             }
             None => apply_editor_key(&mut ed, kp, TextNav::new(self.platform)) == KeyOutcome::Blur,
-        };
-        ed.observe_text();
-        blur
+        }
     }
 }
 

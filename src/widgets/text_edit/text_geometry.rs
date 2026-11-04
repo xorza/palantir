@@ -6,14 +6,12 @@ use crate::text::probe::Caret;
 use crate::ui::Ui;
 use crate::widgets::text_edit::text_layout::TextLayout;
 use glam::Vec2;
-use std::num::NonZeroU64;
 use std::ops::Range;
 
 #[derive(Clone, Copy, Debug)]
 struct Probed {
     measured: Size,
     caret_pos: Caret,
-    text_hash: Option<NonZeroU64>,
 }
 
 #[derive(Debug)]
@@ -36,8 +34,6 @@ pub(super) struct TextGeometry {
     /// What is on show: [`Self::content_size`], or the placeholder's size for an empty run with one.
     pub(super) display_size: Size,
     pub(super) caret_pos: Caret,
-    /// Hash of the probed bytes, `None` where the face named no size (see `EditState::observe_text_hash`).
-    pub(super) text_hash: Option<NonZeroU64>,
 }
 
 impl TextGeometry {
@@ -51,7 +47,6 @@ impl TextGeometry {
         let Probed {
             measured,
             caret_pos,
-            text_hash,
         } = {
             let probe = ui.probe_text(layout.ctx.run(input.text));
             match input.selection {
@@ -61,7 +56,6 @@ impl TextGeometry {
             Probed {
                 measured: probe.size(),
                 caret_pos: probe.caret_at(input.caret),
-                text_hash: probe.text_hash(),
             }
         };
         let placeholder_measured = if input.text.is_empty() && !input.placeholder.is_empty() {
@@ -83,7 +77,6 @@ impl TextGeometry {
             content_size: measured,
             display_size: placeholder_measured,
             caret_pos,
-            text_hash,
         }
     }
 }

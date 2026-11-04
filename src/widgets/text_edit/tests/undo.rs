@@ -198,24 +198,50 @@ fn external_replacement_discards_unrelated_history() {
     assert_eq!(state.history.undo_len(), 1);
 
     text = String::from("host value");
-    state.observe_text_hash(Some(EditState::text_hash(&text)));
-    assert_eq!(
-        state.history.undo_len(),
-        0,
-        "render observation drops stale undo"
-    );
-    assert_eq!(
-        state.history.redo_len(),
-        0,
-        "render observation drops stale redo"
-    );
     apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
     assert_eq!(text, "host value", "undo must not cross a host replacement");
+    assert_eq!(
+        (state.history.undo_len(), state.history.redo_len()),
+        (0, 0),
+        "the replacement dropped the stale history"
+    );
 
     apply_key(&mut text, &mut state, press(Key::Char('!')));
     assert_eq!(text, "hos!t value");
     apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
     assert_eq!(text, "host value", "new edits start fresh history");
+}
+
+/// The history sees the buffer exactly: each local edit, undo and redo keep its copy equal by the
+/// same splice, a host write of the same bytes is no replacement, and one changed byte, at an
+/// equal length, is.
+#[test]
+fn the_history_sees_the_buffer_exactly() {
+    let mut text = String::new();
+    let mut state = EditState::default();
+    for key in [
+        press(Key::Char('a')),
+        press(Key::Char('b')),
+        press(Key::Backspace),
+        ctrl_press(Key::Char('z')),
+        ctrl_shift_press(Key::Char('z')),
+    ] {
+        apply_key(&mut text, &mut state, key);
+        assert_eq!(state.seen, text, "after {key:?}");
+    }
+    assert_eq!(text, "a");
+
+    // The same bytes written back by the host: the undo still reaches the redone delete.
+    text = String::from("a");
+    apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(text, "ab", "a write of the same bytes keeps the history");
+
+    // One byte changed at the same length is a replacement.
+    apply_key(&mut text, &mut state, press(Key::Char('x')));
+    assert_eq!(text, "abx");
+    text = String::from("aby");
+    apply_key(&mut text, &mut state, ctrl_press(Key::Char('z')));
+    assert_eq!(text, "aby", "an equal-length replacement drops the history");
 }
 
 /// Redo is Ctrl+Shift+Z on every platform (Cmd+Shift+Z on macOS), and Ctrl+Y is no chord: the

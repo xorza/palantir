@@ -81,12 +81,6 @@ fn probing_a_run_maps_bytes_and_positions_both_ways() {
     // A `SingleLine` run keeps its unbounded shape when given a width (the `TextWrap::line_fit` mapping).
     let bounded = shaper.layout(&run("hello", Some(16.0))).size().w;
     assert_eq!(bounded, 5.0 * EM, "a width is inert on SingleLine");
-
-    let a = shaper.layout(&run("hello", None)).text_hash();
-    let b = shaper.layout(&run("hello", None)).text_hash();
-    let c = shaper.layout(&run("hellO", None)).text_hash();
-    assert_eq!(a, b, "same text, same hash");
-    assert_ne!(a, c, "one changed byte changes the hash");
 }
 
 /// Wrapping runs bind their width, so the same text reflows to a greater height.

@@ -248,12 +248,19 @@ impl<'a> Editor<'a> {
             return;
         }
         self.history_checked = true;
-        self.state.reconcile_before_edit(self.text);
+        self.state.reconcile(self.text);
     }
 
     const fn mark_local_edit(&mut self) {
-        self.state.local_edit_pending = true;
         self.state.goal = None;
+    }
+
+    /// Splice the buffer and what the history saw of it alike: the one way a session writes the
+    /// buffer, after the history is reconciled, so the two stay equal.
+    fn splice(&mut self, range: ops::Range<usize>, replacement: &str) {
+        debug_assert!(self.history_checked, "an edit reconciles the history first");
+        self.text.replace_range(range.clone(), replacement);
+        self.state.saw_splice(range, replacement);
     }
 
     fn replace_range(&mut self, range: ops::Range<usize>, replacement: &str, kind: EditKind) {
@@ -291,7 +298,7 @@ impl<'a> Editor<'a> {
             kind,
             self.now,
         );
-        self.text.replace_range(range, replacement);
+        self.splice(range, replacement);
         self.state.caret = after.caret;
         self.state.selection = after.selection;
         if let Some(count) = &mut self.state.char_count {
@@ -314,7 +321,7 @@ impl<'a> Editor<'a> {
             *count =
                 *count - self.text[delta.start..end].chars().count() + replacement.chars().count();
         }
-        self.text.replace_range(delta.start..end, replacement);
+        self.splice(delta.start..end, replacement);
         self.state.caret = selection.caret;
         self.state.selection = selection.selection;
         self.mark_local_edit();
@@ -402,7 +409,7 @@ impl<'a> Editor<'a> {
         };
         self.ensure_history_matches();
         self.state.history.clear();
-        *self.text = cleaned;
+        self.splice(0..self.text.len(), &cleaned);
         self.state.normalize(self.text);
         if self.state.char_count.is_some() {
             self.state.char_count = Some(self.text.chars().count());
@@ -540,17 +547,11 @@ impl<'a> Editor<'a> {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::widgets::text_edit::edit_state::EditState;
     use crate::widgets::text_edit::editor::Editor;
 
     impl Editor<'_> {
         pub(crate) fn redo_len(&self) -> usize {
             self.state.history.redo_len()
-        }
-
-        pub(crate) fn observe_text(&mut self) {
-            let text_hash = EditState::text_hash(self.text);
-            self.state.observe_text_hash(Some(text_hash));
         }
     }
 }

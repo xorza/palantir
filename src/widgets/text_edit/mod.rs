@@ -559,12 +559,6 @@ impl<'a> TextEdit<'a> {
             },
             &mut state.selection_rects,
         );
-        // The probe hashed what is on show, which is not the buffer while composing.
-        state.edit.observe_text_hash(if composing {
-            Some(EditState::text_hash(text))
-        } else {
-            geometry.text_hash
-        });
         let now = ui.now();
         let caret_animation = state.view.update(ViewUpdateInput {
             geometry,

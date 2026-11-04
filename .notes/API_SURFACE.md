@@ -3323,8 +3323,6 @@ widget::TextGlyphs
 widget::TextProbe
     struct TextProbe<'a>: Debug
         pub const fn size(&self) -> Size
-        pub fn text_hash(&self) -> Option<NonZeroU64>
-        pub fn hash_of(text: &str) -> NonZeroU64
         pub fn caret_at(&self, byte_offset: usize) -> Caret
         pub fn byte_at(&self, pos: Vec2) -> usize
         pub fn selection_rects(&self, range: Range<usize>, out: &mut Vec<Rect>)

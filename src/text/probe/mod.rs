@@ -3,7 +3,6 @@
 //! [`Ui::probe_text`](crate::Ui::probe_text). Nothing shaped escapes `src/text/`;
 //! the cosmic-text buffer stays private to this file.
 
-use crate::common::hash;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
 use crate::primitives::layout::align::HAlign;
@@ -14,7 +13,6 @@ use crate::text::run::TextRun;
 use crate::text::shaper::ShaperInner;
 use glam::Vec2;
 use std::cell::RefMut;
-use std::num::NonZeroU64;
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -67,26 +65,6 @@ impl<'a> TextProbe<'a> {
     /// Extent of the shaped run; `Size::ZERO` for empty text.
     pub const fn size(&self) -> Size {
         self.size
-    }
-
-    /// 64-bit hash of the run's text as the shaping cache keys it, for "same string as
-    /// last frame?" without a copy. `None` where the face names no size the shaper can
-    /// be asked for.
-    pub fn text_hash(&self) -> Option<NonZeroU64> {
-        Some(self.key?.text_hash)
-    }
-
-    /// What [`Self::text_hash`] would answer for `text`, without shaping. A caller
-    /// tracking a buffer's identity mixes both sources, so they must agree exactly; a
-    /// mismatch reads as "buffer replaced" (`TextEdit` wipes its undo stack).
-    ///
-    /// ```
-    /// # use palantir::widget::TextProbe;
-    /// assert_eq!(TextProbe::hash_of("hello"), TextProbe::hash_of("hello"));
-    /// assert_ne!(TextProbe::hash_of("hello"), TextProbe::hash_of("world"));
-    /// ```
-    pub fn hash_of(text: &str) -> NonZeroU64 {
-        TextShapeKey::content_hash(hash::str(text))
     }
 
     fn line_height(&self) -> f32 {

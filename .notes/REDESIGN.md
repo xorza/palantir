@@ -45,7 +45,7 @@ is the source of the silent correctness bugs:
 - `CascadeKey` leaves out the root layer (SC-03).
 - The exact rect hash and the quantized per-node hash disagree (SC-19).
 - A hash fold stands in for an exact identity in `MeasureSnapshot` (LT-04) ✔ and in
-  `TextProbe::text_hash` (LT-15).
+  `TextProbe::text_hash` (LT-15) ✔.
 
 The shape hashes destructure every field, so the compiler forces a decision. The layout tail
 and `CascadeKey` do not.
@@ -233,12 +233,6 @@ The non-API part of Batch 11 is done. What is left:
   - Getters on `Display` (HS-26).
   - `Option<Duration>` in `gpu_pass_stats`, and the `compute_shader_invocations` field (HS-25).
 
-### Batch 12b. Text identity (`text`) **API**
-
-The rest of Batch 12 is done.
-
-- Text identity becomes an edit generation, not a hash (LT-15).
-
 ### Batch 13b. Gradient atlas index (`renderer`) **dependency**
 
 The rest of Batch 13 is done.
@@ -267,7 +261,6 @@ Prefixes:
 | 9b | GA-16, GA-17 |
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
-| 12b | LT-15 |
 | 13b | RD-17 |
 
 These findings are kept as they are, with no change: SC-20 (the `SeenIds` size is justified
@@ -490,12 +483,6 @@ Logical window sizes are integer `UVec2` (`WindowConfig::inner_size`, `WindowGeo
 
 **HS-26 · api · `src/display/mod.rs:36-56, 123-128`**
 `Display` is handed out read-only, yet has all-public mutable fields and a public `raster_eq`, which is the damage engine's comparison. *Direction:* getters, `raster_eq` crate-private. *Conf:* med. *API:* yes. *Root cause:* internal detail exported.
-
-### Batch 12b
-
-**LT-15 · api · `text/probe/mod.rs:73-91`** — conf: med · public API: yes · root cause: identity approximated by a hash
-- **What's wrong:** `TextProbe::text_hash` and `hash_of` publish a 64-bit hash as "same string as last frame?". `TextEdit` keys its undo stack on it and hashes the whole buffer every frame. `key.rs` itself rejects hash-only identity ("No layer serves a collision").
-- **Direction:** Give the app an exact identity (an edit counter or generation on the buffer) and retire the hash surface. This is an API change and needs your go-ahead.
 
 ### Batch 13b
 
