@@ -56,7 +56,6 @@ fn freshly_disabled_subtree_masks_stale_interactions() {
             .style(&style)
             .disabled(true)
             .show(ui)
-            .snapshot()
     });
     assert!(
         response.disabled,

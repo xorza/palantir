@@ -41,7 +41,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{Response, ResponseSnapshot};
+use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text_edit::composition::{Composition, CompositionPass, Shown};
 use crate::widgets::text_edit::edit_end::EditEnd;
@@ -320,33 +320,16 @@ impl<'a> TextEdit<'a> {
     }
 
     /// Record the editor and run one frame of editing over its text.
-    pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_> {
+    pub fn show(self, ui: &mut Ui) -> TextEditResponse {
         let Self { text, mut field } = self;
         field.widget.configure().default_clip(ClipMode::Rect);
         let id = field.widget.resolve(ui);
         // The state row is held for the whole pass because its stages are separated by
         // `&mut Ui` calls; `with_state` moves it out and back without allocating.
-        let (PassOutcome { edges, response }, committed_text) =
-            ui.with_state::<TextEditState, _>(id, |ui, state| match text {
-                Bound::Live(text) => (field.pass(ui, state, id, text), None),
-                Bound::Buffered(current) => field.buffered_pass(ui, state, id, &current),
-            });
-        let EditEdges {
-            changed,
-            committed,
-            ended,
-            focus_gained,
-            focus_lost,
-        } = edges;
-        TextEditResponse {
-            response: Response::new(ui, response),
-            changed,
-            committed,
-            committed_text,
-            ended,
-            focus_gained,
-            focus_lost,
-        }
+        ui.with_state::<TextEditState, _>(id, |ui, state| match text {
+            Bound::Live(text) => field.pass(ui, state, id, text),
+            Bound::Buffered(current) => field.buffered_pass(ui, state, id, &current),
+        })
     }
 }
 
@@ -359,7 +342,7 @@ impl EditField<'_> {
         state: &mut TextEditState,
         id: WidgetId,
         current: &TextInput<'_>,
-    ) -> (PassOutcome, Option<String>) {
+    ) -> TextEditResponse {
         let mut draft = mem::take(&mut state.draft);
         let mut shown = mem::take(&mut state.current);
         shown.clear();
@@ -371,15 +354,14 @@ impl EditField<'_> {
         if !state.view.was_focused(ui.record_frame_id()) && draft != shown {
             draft.clone_from(&shown);
         }
-        let outcome = self.pass(ui, state, id, &mut draft);
-        let edges = outcome.edges;
-        let committed_text = (edges.committed && draft != shown).then(|| draft.clone());
-        if edges.ended == Some(EditEnd::Canceled) {
+        let mut outcome = self.pass(ui, state, id, &mut draft);
+        outcome.committed_text = (outcome.committed && draft != shown).then(|| draft.clone());
+        if outcome.ended == Some(EditEnd::Canceled) {
             draft.clone_from(&shown);
         }
         state.draft = draft;
         state.current = shown;
-        (outcome, committed_text)
+        outcome
     }
 
     fn pass(
@@ -388,7 +370,7 @@ impl EditField<'_> {
         state: &mut TextEditState,
         id: WidgetId,
         text: &mut String,
-    ) -> PassOutcome {
+    ) -> TextEditResponse {
         let mut is_focused = ui.focus() == Some(id);
         // The pass's one probe, handed back by `show`. Through `Widget::response`, so
         // `disabled` is folded in; a copy taken before the fold would report a freshly
@@ -436,15 +418,14 @@ impl EditField<'_> {
                 .configure()
                 .sense(sense.difference(Sense::SCROLL));
             self.widget.record(ui, Some(&look.chrome), |_| {});
-            return PassOutcome {
-                edges: EditEdges {
-                    changed: false,
-                    committed,
-                    ended: None,
-                    focus_gained: focus.gained,
-                    focus_lost: focus.lost,
-                },
+            return TextEditResponse {
                 response,
+                changed: false,
+                committed,
+                committed_text: None,
+                ended: None,
+                focus_gained: focus.gained,
+                focus_lost: focus.lost,
             };
         }
         let font = look.text.font();
@@ -623,15 +604,14 @@ impl EditField<'_> {
             }),
         }
         .record(ui, self.widget);
-        PassOutcome {
-            edges: EditEdges {
-                changed,
-                committed,
-                ended,
-                focus_gained: focus.gained,
-                focus_lost: focus.lost,
-            },
+        TextEditResponse {
             response,
+            changed,
+            committed,
+            committed_text: None,
+            ended,
+            focus_gained: focus.gained,
+            focus_lost: focus.lost,
         }
     }
 }
@@ -643,30 +623,12 @@ impl Configure for TextEdit<'_> {
     }
 }
 
-/// What one pass did to the edit: [`TextEditResponse`]'s edges, without the `Response` that
-/// borrows the `Ui`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct EditEdges {
-    changed: bool,
-    committed: bool,
-    ended: Option<EditEnd>,
-    focus_gained: bool,
-    focus_lost: bool,
-}
-
-/// What a pass reports while the state row is on loan.
-#[derive(Clone, Copy, Debug)]
-struct PassOutcome {
-    edges: EditEdges,
-    response: ResponseSnapshot,
-}
-
 /// What [`TextEdit::show`] returns: the widget's [`Response`] plus the edit signals computed inside
 /// `show()`.
-#[derive(Debug)]
-pub struct TextEditResponse<'a> {
+#[derive(Clone, Debug)]
+pub struct TextEditResponse {
     /// The widget's pointer/click/hover [`Response`].
-    pub response: Response<'a>,
+    pub response: Response,
     /// The buffer was edited this frame.
     pub changed: bool,
     /// The edit finished this frame and the buffer holds its result, as
@@ -692,26 +654,13 @@ pub struct TextEditResponse<'a> {
 pub(crate) mod internals {
     use crate::primitives::identity::widget_id::WidgetId;
     use crate::ui::Ui;
-    use crate::widgets::text_edit::{EditEdges, TextEdit, TextEditResponse, TextEditState};
+    use crate::widgets::text_edit::{TextEdit, TextEditState};
 
     impl TextEdit<'static> {
         /// The draft the [buffered](TextEdit::buffered) field `id` holds, `None` before it records.
         pub(crate) fn draft(ui: &Ui, id: WidgetId) -> Option<&str> {
             ui.state::<TextEditState>(id)
                 .map(|state| state.draft.as_str())
-        }
-    }
-
-    impl TextEditResponse<'_> {
-        /// The edges, copied out of the record pass whose `ui` borrow the response holds.
-        pub(super) const fn edges(&self) -> EditEdges {
-            EditEdges {
-                changed: self.changed,
-                committed: self.committed,
-                ended: self.ended,
-                focus_gained: self.focus_gained,
-                focus_lost: self.focus_lost,
-            }
         }
     }
 }

@@ -8,8 +8,8 @@ use crate::support::{Col, Kit, RADIUS, ROW_GAP, Section};
 use palantir::glam::Vec2;
 use palantir::widget::{Configurator, LineCap, LineJoin, PolylineShape, Shape, Widget};
 use palantir::{
-    Align, Chrome, Configure, Corners, DragValue, Key, Metrics, Panel, Response, ResponseState,
-    RgbaF32, Sense, Sizing, Stroke, Text, Ui, VAlign, WidgetId, fmt,
+    Align, Chrome, Configure, Corners, DragValue, Key, Metrics, Panel, Response, RgbaF32, Sense,
+    Sizing, Stroke, Text, Ui, VAlign, WidgetId, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -234,7 +234,7 @@ impl<'a> Stepper<'a> {
         self
     }
 
-    fn show(self, ui: &mut Ui) -> Response<'_> {
+    fn show(self, ui: &mut Ui) -> Response {
         // Clicks apply before recording, so the new value paints this frame.
         let mut widget = self.widget;
         let id = widget.resolve(ui);
@@ -276,8 +276,7 @@ impl<'a> Stepper<'a> {
         widget
             .show(ui, Some(&chrome), |ui| {
                 StepButton {
-                    id: minus_id,
-                    state: minus,
+                    response: minus,
                     glyph: Glyph::Minus,
                 }
                 .show(ui);
@@ -287,8 +286,7 @@ impl<'a> Stepper<'a> {
                     .min_size((VALUE_W, 0.0))
                     .show(ui);
                 StepButton {
-                    id: plus_id,
-                    state: plus,
+                    response: plus,
                     glyph: Glyph::Plus,
                 }
                 .show(ui);
@@ -313,21 +311,20 @@ enum Glyph {
 /// One of the stepper's two buttons.
 #[derive(Debug)]
 struct StepButton {
-    /// Explicit, so the node resolves to what [`Stepper::show`] read a response for.
-    id: WidgetId,
-    state: ResponseState,
+    /// What [`Stepper::show`] read for the button, whose id the node resolves to.
+    response: Response,
     glyph: Glyph,
 }
 
 impl StepButton {
     fn show(self, ui: &mut Ui) {
-        let Self { id, state, glyph } = self;
+        let Self { response, glyph } = self;
         // The theme's button looks, so the stepper follows a scheme switch as palantir's own
         // widgets do; only the corners are the stepper's.
         let looks = &ui.theme().button.unselected;
-        let look = if state.pressed() {
+        let look = if response.pressed() {
             &looks.active
-        } else if state.hovered() {
+        } else if response.hovered() {
             &looks.hovered
         } else {
             &looks.normal
@@ -338,7 +335,7 @@ impl StepButton {
         };
         let ink = ui.theme().text.color;
         let widget = Widget::leaf()
-            .id(id)
+            .id(response.id)
             .size((Sizing::fixed(BUTTON), Sizing::fixed(BUTTON)))
             .sense(Sense::CLICK);
         widget.record(ui, Some(&chrome), |ui| {

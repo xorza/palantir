@@ -8,7 +8,6 @@ use crate::shape::Shape;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
-use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::AxisKeys;
@@ -66,7 +65,7 @@ impl ValueArea<'_> {
 
     /// Records the area for `value`. A press writes on every gesture frame and commits on the
     /// release; a key writes and commits at once.
-    pub(crate) fn show<V: AreaValue>(self, ui: &mut Ui, mut value: V) -> ValueResponse<'_> {
+    pub(crate) fn show<V: AreaValue>(self, ui: &mut Ui, mut value: V) -> ValueResponse {
         let Self {
             widget,
             texel_size,
@@ -103,7 +102,7 @@ impl ValueArea<'_> {
             }
         });
         ValueResponse {
-            response: Response::new(ui, response),
+            response,
             changed: pressed | keyed,
             committed,
         }
@@ -121,7 +120,7 @@ mod tests {
     use crate::scene::layer::Layer;
     use crate::ui::Ui;
     use crate::widget_core::configure::Configure;
-    use crate::widget_core::value_response::ValueEdges;
+    use crate::widget_core::value_response::ValueResponse;
     use crate::widgets::color_field::ColorField;
     use crate::widgets::color_strip::ColorStrip;
     use glam::UVec2;
@@ -134,7 +133,7 @@ mod tests {
         label: &str,
         surface: UVec2,
         mut value: T,
-        show: fn(&mut Ui, &mut T, bool) -> ValueEdges,
+        show: fn(&mut Ui, &mut T, bool) -> ValueResponse,
         read: fn(&T) -> f32,
     ) {
         let id = WidgetId::from_hash("value-area");
@@ -145,18 +144,14 @@ mod tests {
         frame(&mut h, &mut value, false);
         h.ui_mut().set_focus(id);
         frame(&mut h, &mut value, false);
-        let both = ValueEdges {
-            changed: true,
-            committed: true,
-        };
         h.key(Key::Home);
-        assert_eq!(frame(&mut h, &mut value, false), both, "{label}: Home");
+        frame(&mut h, &mut value, false).assert_signals(true, true, &format!("{label}: Home"));
         assert_eq!(read(&value), 0.0, "{label}: Home");
         h.key(Key::Home);
-        assert_eq!(
-            frame(&mut h, &mut value, false),
-            ValueEdges::default(),
-            "{label}: a key that moves nothing"
+        frame(&mut h, &mut value, false).assert_signals(
+            false,
+            false,
+            &format!("{label}: a key that moves nothing"),
         );
 
         let shapes = |h: &Harness| {
@@ -166,11 +161,7 @@ mod tests {
         let enabled = shapes(&h);
         let before = read(&value);
         h.press(surface.as_vec2() / 2.0, PointerButton::Left);
-        assert_eq!(
-            frame(&mut h, &mut value, true),
-            ValueEdges::default(),
-            "{label}: disabled"
-        );
+        frame(&mut h, &mut value, true).assert_signals(false, false, &format!("{label}: disabled"));
         assert_eq!(
             read(&value),
             before,
@@ -194,7 +185,6 @@ mod tests {
                     .id(WidgetId::from_hash("value-area"))
                     .disabled(disabled)
                     .show(ui)
-                    .edges()
             },
             |coords| coords.saturation(),
         );
@@ -207,7 +197,6 @@ mod tests {
                     .id(WidgetId::from_hash("value-area"))
                     .disabled(disabled)
                     .show(ui)
-                    .edges()
             },
             |color| color.a,
         );

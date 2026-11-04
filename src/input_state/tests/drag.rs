@@ -284,7 +284,7 @@ impl Card {
     }
 
     // Runs on every pass as an app's handler does: pass B sees the edges drained.
-    fn fold(&mut self, r: &Response<'_>) {
+    fn fold(&mut self, r: &Response) {
         if r.left.drag.started() {
             self.anchor = self.pos;
         }
@@ -460,7 +460,7 @@ fn canvas_rearranges_with_dragged_child_position() {
                         .at(a.pos)
                         .sense(Sense::DRAG)
                         .show(ui);
-                    card_node = Some(r.node());
+                    card_node = Some(r.node(ui));
                     a.fold(&r);
                 });
         });

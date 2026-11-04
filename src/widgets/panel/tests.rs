@@ -25,7 +25,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .size(50.0)
                 .show(ui, |_| {})
                 .response
-                .node();
+                .node(ui);
             cases.push(("none", n, ClipMode::None, false));
 
             let n = Panel::zstack()
@@ -34,7 +34,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                 .show(ui, |_| {})
                 .response
-                .node();
+                .node(ui);
             cases.push(("paint-only", n, ClipMode::None, true));
 
             // Chrome is dropped at install (`Tree::open_node` filters invisible paint); only the clip flag survives.
@@ -44,7 +44,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .clip_rect()
                 .show(ui, |_| {})
                 .response
-                .node();
+                .node(ui);
             cases.push(("scissor", n, ClipMode::Rect, false));
 
             let n = Panel::zstack()
@@ -54,7 +54,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .clip_rect()
                 .show(ui, |_| {})
                 .response
-                .node();
+                .node(ui);
             cases.push(("clipped", n, ClipMode::Rect, true));
 
             let n = Panel::zstack()
@@ -68,7 +68,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .clip_rounded()
                 .show(ui, |_| {})
                 .response
-                .node();
+                .node(ui);
             cases.push(("rounded", n, ClipMode::Rounded, true));
 
             // Zero radius: open_node downgrades.
@@ -79,7 +79,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .clip_rounded()
                 .show(ui, |_| {})
                 .response
-                .node();
+                .node(ui);
             cases.push(("rounded-zero", n, ClipMode::Rect, true));
         });
     });
@@ -107,8 +107,8 @@ fn explicit_no_chrome_and_no_clip_override_panel_theme() {
                 .clip(ClipMode::None)
                 .show(ui, |_| {})
                 .response
-                .node(),
-            Panel::vstack().show(ui, |_| {}).response.node(),
+                .node(ui),
+            Panel::vstack().show(ui, |_| {}).response.node(ui),
         ]
     });
 
@@ -146,15 +146,15 @@ fn panel_hugs_largest_child_and_layers_them() {
                                 .id(WidgetId::from_hash("a"))
                                 .size((Sizing::fixed(80.0), Sizing::fixed(30.0)))
                                 .show(ui)
-                                .node(),
+                                .node(ui),
                             Button::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size((Sizing::fixed(60.0), Sizing::fixed(50.0)))
                                 .show(ui)
-                                .node(),
+                                .node(ui),
                         ]
                     });
-                [panel.response.node(), panel.inner[0], panel.inner[1]]
+                [panel.response.node(ui), panel.inner[0], panel.inner[1]]
             })
             .inner
     });
@@ -201,7 +201,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                             .size((Sizing::FILL, Sizing::FILL))
                             .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                             .show(ui)
-                            .node()
+                            .node(ui)
                     })
                     .inner
             })
@@ -290,16 +290,16 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                             .size((Sizing::fixed(40.0), Sizing::fixed(20.0)))
                             .at(Vec2::new(10.0, 5.0))
                             .show(ui)
-                            .node(),
+                            .node(ui),
                         Block::new()
                             .id(WidgetId::from_hash("b"))
                             .size((Sizing::fixed(30.0), Sizing::fixed(60.0)))
                             .at(Vec2::new(80.0, 40.0))
                             .show(ui)
-                            .node(),
+                            .node(ui),
                     ]
                 });
-                [canvas.response.node(), canvas.inner[0], canvas.inner[1]]
+                [canvas.response.node(ui), canvas.inner[0], canvas.inner[1]]
             })
             .inner
     });
@@ -333,15 +333,15 @@ fn zstack_layers_children_without_painting_chrome() {
                                 .size((Sizing::fixed(120.0), Sizing::fixed(80.0)))
                                 .chrome(Chrome::fill(RgbaF32::srgb(0.1, 0.1, 0.2)))
                                 .show(ui)
-                                .node(),
+                                .node(ui),
                             Button::new()
                                 .id(WidgetId::from_hash("fg"))
                                 .size((Sizing::fixed(60.0), Sizing::fixed(30.0)))
                                 .show(ui)
-                                .node(),
+                                .node(ui),
                         ]
                     });
-                [zstack.response.node(), zstack.inner[0], zstack.inner[1]]
+                [zstack.response.node(ui), zstack.inner[0], zstack.inner[1]]
             })
             .inner
     });
@@ -386,7 +386,7 @@ fn zstack_aligns_child_per_axis() {
                                 .align(*align)
                                 .chrome(Chrome::fill(RgbaF32::srgb(0.5, 0.5, 0.5)))
                                 .show(ui)
-                                .node()
+                                .node(ui)
                         })
                         .inner
                 })

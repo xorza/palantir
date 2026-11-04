@@ -20,7 +20,7 @@ fn frame(h: &mut Harness, buf: &mut String) -> NodeId {
                         .size((Sizing::HUG, Sizing::HUG))
                         .show(ui)
                         .response
-                        .node(),
+                        .node(ui),
                 );
             });
     };
@@ -70,7 +70,7 @@ fn sized_editor(h: &mut Harness, buf: &mut String, container_w: f32, editor_w: S
                         .size((editor_w, Sizing::fixed(40.0)))
                         .show(ui)
                         .response
-                        .node(),
+                        .node(ui),
                 );
             });
     };
@@ -168,7 +168,7 @@ fn every_text_form_measures_the_same_placeholder() {
                                 .size((Sizing::HUG, Sizing::HUG))
                                 .show(ui)
                                 .response
-                                .node(),
+                                .node(ui),
                         );
                     });
             });
@@ -212,7 +212,7 @@ fn field_height(h: &mut Harness, case: &HeightCase, multiline: bool) -> f32 {
                     .max_size((f32::INFINITY, case.max_h))
                     .show(ui)
                     .response
-                    .node(),
+                    .node(ui),
             );
         });
     });

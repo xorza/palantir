@@ -9,8 +9,7 @@ use crate::support::{Dialog, Kit, Section};
 use palantir::{
     Align, Anchor, AnchorAlign, Axis, Block, Button, Checkbox, Configure, Justify, Key, Menu,
     MenuBar, MenuItem, MenuSeparator, MenuTheme, Metrics, Modal, Panel, Popup, PopupTrigger,
-    ResponseSnapshot, Sense, Shortcut, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId,
-    fmt,
+    Response, Sense, Shortcut, Sizing, Slider, Spacing, Text, Theme, Tooltip, Ui, WidgetId, fmt,
 };
 
 const M: Metrics = Metrics::DEFAULT;
@@ -96,7 +95,7 @@ fn popup_section(ui: &mut Ui, k: Kit, s: &mut State) {
             );
             support::well(ui, k, |ui| {
                 support::row(ui, |ui| {
-                    let trigger = Button::new().label("Edit ▾").show(ui).snapshot();
+                    let trigger = Button::new().label("Edit ▾").show(ui);
                     let menu = &ui.theme().menu;
                     let (padding, gap, width) = (menu.padding, menu.gap, menu.min_width);
                     PopupTrigger::on(&trigger)
@@ -232,7 +231,7 @@ fn modal_section(ui: &mut Ui, k: Kit, s: &mut State, look: &Appearance) {
 fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
     Section::new("Tooltips")
         .apis(&[
-            api!(Tooltip::on as fn(&'static ResponseSnapshot, &'static str) -> Tooltip<'static>),
+            api!(Tooltip::on as fn(&'static Response, &'static str) -> Tooltip<'static>),
             api!(Tooltip::delay),
             api!(Tooltip::when_disabled),
         ])
@@ -246,7 +245,7 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
             );
             support::well(ui, k, |ui| {
                 support::row(ui, |ui| {
-                    let r = Button::new().label("hover me").show(ui).snapshot();
+                    let r = Button::new().label("hover me").show(ui);
                     Tooltip::on(
                         &r,
                         "The delay and the width to wrap at come from the sliders beside this \
@@ -271,18 +270,13 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
                     Text::new(width).style(&k.t.mono(k.t.ink)).show(ui);
                 });
                 support::row(ui, |ui| {
-                    let r = Button::new()
-                        .label("disabled")
-                        .disabled(true)
-                        .show(ui)
-                        .snapshot();
+                    let r = Button::new().label("disabled").disabled(true).show(ui);
                     Tooltip::on(&r, "Never shown: a disabled trigger skips its tooltip.").show(ui);
 
                     let r = Button::new()
                         .label("disabled, explains")
                         .disabled(true)
-                        .show(ui)
-                        .snapshot();
+                        .show(ui);
                     Tooltip::on(&r, "when_disabled(true) is for 'why is this off' hints.")
                         .when_disabled(true)
                         .show(ui);
@@ -295,11 +289,7 @@ fn tooltip_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         ("four", "Pause for a second and the next one waits again."),
                         ("five", "Last one."),
                     ] {
-                        let r = Button::new()
-                            .id_salt(label)
-                            .label(label)
-                            .show(ui)
-                            .snapshot();
+                        let r = Button::new().id_salt(label).label(label).show(ui);
                         Tooltip::on(&r, tip).show(ui);
                     }
                 });
@@ -319,7 +309,7 @@ fn context_menu_section(ui: &mut Ui, k: Kit, s: &mut State) {
                  has a looser theme.",
             );
             support::row(ui, |ui| {
-                let trigger = Button::new().label("right-click me").show(ui).snapshot();
+                let trigger = Button::new().label("right-click me").show(ui);
                 DemoMenu {
                     trigger: &trigger,
                     style: None,
@@ -339,8 +329,7 @@ fn context_menu_section(ui: &mut Ui, k: Kit, s: &mut State) {
                         .show(ui, |ui| {
                             Text::new(label).style(&k.t.caption()).show(ui);
                         })
-                        .response
-                        .snapshot();
+                        .response;
                     DemoMenu {
                         trigger: &surface,
                         style: roomy,
@@ -399,7 +388,7 @@ fn roomy_menu_theme(ui: &Ui) -> MenuTheme {
 /// The demo's context menu on `trigger`.
 #[derive(Debug)]
 struct DemoMenu<'a> {
-    trigger: &'a ResponseSnapshot,
+    trigger: &'a Response,
     /// Restyles through the theme bundle every menu widget reads; every `style` setter takes an `Option`, so "styled or default" is a threaded value, not a branch.
     style: Option<&'a MenuTheme>,
 }

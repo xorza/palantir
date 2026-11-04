@@ -18,7 +18,6 @@ use crate::theme::splitter::SplitterTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::{AxisEnd, AxisKeys, KeyPair};
@@ -133,11 +132,7 @@ impl<'a> Splitter<'a> {
     /// follows the pointer at once, but the ratio written back is the share the
     /// panes were arranged at, which only layout knows, so a content floor is never
     /// overridden.
-    pub fn show(
-        mut self,
-        ui: &mut Ui,
-        mut body: impl FnMut(&mut Ui, SplitHalf),
-    ) -> ValueResponse<'_> {
+    pub fn show(mut self, ui: &mut Ui, mut body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse {
         self.widget
             .configure()
             .default_size((Sizing::FILL, Sizing::FILL))
@@ -157,7 +152,7 @@ impl<'a> Splitter<'a> {
         // The splitter's own `disabled` reaches its divider through the cascade only next
         // frame; folded here, a splitter disabled mid-drag stops painting and steering at once.
         let mut divider = ui.response_for(divider_id);
-        divider.merge_disabled(response.disabled);
+        divider.state.merge_disabled(response.disabled);
         // A Tab stop taking the `CARET` keys as WAI-ARIA's window splitter does;
         // built here so it reads its keys before the grid records.
         let mut divider_widget = Widget::leaf()
@@ -301,7 +296,7 @@ impl<'a> Splitter<'a> {
         });
 
         ValueResponse {
-            response: Response::new(ui, response),
+            response,
             changed,
             committed,
         }

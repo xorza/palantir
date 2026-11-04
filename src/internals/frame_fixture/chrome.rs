@@ -77,11 +77,7 @@ pub(super) fn app_bar(ui: &mut Ui) {
                 .show(ui);
             for i in 0..5 {
                 let label = fmt!(ui, "Action {i}");
-                let btn = Button::new()
-                    .id_salt(("hdr", i))
-                    .label(label)
-                    .show(ui)
-                    .snapshot();
+                let btn = Button::new().id_salt(("hdr", i)).label(label).show(ui);
                 Tooltip::on(&btn, "Header action")
                     .delay(Duration::ZERO)
                     .show(ui);
@@ -191,8 +187,7 @@ pub(super) fn status_bar(state: &FrameFixture, ui: &mut Ui) {
                         .show(ui);
                 });
         })
-        .response
-        .snapshot();
+        .response;
 
     // Toast on the Popup layer above the right end of the status bar (anchoring to the full rect would cover the sidebar). Reading the bar's rect (last frame's, hence the frame-0 fallback) works at any viewport size.
     //

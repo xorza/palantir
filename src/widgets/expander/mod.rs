@@ -19,7 +19,7 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{Response, ResponseSnapshot};
+use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use std::rc::Rc;
@@ -101,7 +101,7 @@ impl<'a> Expander<'a> {
     }
 
     /// Record the header, and the body under it while open.
-    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R> {
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<R> {
         let theme = Rc::clone(ui.theme());
         let t = self.style.unwrap_or(&theme.expander);
         let ambient = theme.text;
@@ -122,7 +122,7 @@ impl<'a> Expander<'a> {
         let height = stored.and_then(|s| s.height);
 
         let mut pass = Pass {
-            header: ResponseSnapshot {
+            header: Response {
                 id: header_id,
                 state: ResponseState::default(),
             },
@@ -233,7 +233,7 @@ impl<'a> Expander<'a> {
         }
 
         ExpanderResponse {
-            response: Response::new(ui, pass.header),
+            response: pass.header,
             inner: pass.inner,
             changed: pass.toggled,
             openness: pass.openness,
@@ -270,7 +270,7 @@ impl Configure for Expander<'_> {
 
 #[derive(Debug)]
 struct Pass<R> {
-    header: ResponseSnapshot,
+    header: Response,
     toggled: bool,
     openness: f32,
     showing: bool,
@@ -288,10 +288,10 @@ struct ExpanderState {
 }
 
 /// What one pass over an [`Expander`] produced.
-#[derive(Debug)]
-pub struct ExpanderResponse<'a, R> {
+#[derive(Clone, Copy, Debug)]
+pub struct ExpanderResponse<R> {
     /// The header's response; the whole row is the hit target.
-    pub response: Response<'a>,
+    pub response: Response,
     /// What the body closure returned, or `None` on a frame the body did not
     /// record; a collapsed [`keep_body`](crate::Expander::keep_body) section still
     /// records.

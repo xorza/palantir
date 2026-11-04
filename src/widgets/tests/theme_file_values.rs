@@ -19,7 +19,7 @@ use crate::text::shaper::TextShaper;
 use crate::theme::Theme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
@@ -97,7 +97,7 @@ fn probe(ui: &mut Ui, scene: &mut Scene) {
         MenuSeparator::new().show(ui);
         MenuItem::new("Paste").show(ui);
     });
-    let hovered = ResponseSnapshot {
+    let hovered = Response {
         id: WidgetId::from_hash("probe-tip-trigger"),
         state: ResponseState {
             rect: Some(Rect::new(40.0, 40.0, 40.0, 24.0)),

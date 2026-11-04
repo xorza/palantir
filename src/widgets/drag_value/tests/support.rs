@@ -5,7 +5,7 @@ use crate::host::harness::internals::Passes;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::value_response::ValueEdges;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::drag_value::DragValue;
 
 /// The settings a test frame adds to the drag value it shows.
@@ -23,7 +23,7 @@ pub(super) fn deferred_frame(
     id: WidgetId,
     canonical: &mut f64,
     set: Settings,
-) -> Passes<ValueEdges> {
+) -> Passes<ValueResponse> {
     h.frame_passes(|ui| {
         let mut draft = *canonical;
         let r = set(DragValue::new(&mut draft))
@@ -35,6 +35,6 @@ pub(super) fn deferred_frame(
         if r.committed {
             *canonical = draft;
         }
-        r.edges()
+        r
     })
 }

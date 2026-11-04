@@ -44,7 +44,6 @@ use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
 use crate::input::interaction::pointer_action::PointerAction;
-use crate::input::interaction::response_state::ResponseState;
 use crate::input::key_class::KeyClass;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::key_press::KeyPress;
@@ -104,6 +103,7 @@ use crate::ui::resources::UiResources;
 use crate::ui::ui_preferences::UiPreferences;
 use crate::ui::window_theme::{Motion, WindowTheme};
 use crate::widget_core::overlay_stack::OverlayStack;
+use crate::widget_core::response::Response;
 use crate::window::cursor_icon::CursorIcon;
 use crate::window::screenshot::{Screenshot, ScreenshotId, ScreenshotRequest};
 use crate::window::vsync::Vsync;
@@ -1101,17 +1101,17 @@ impl Ui {
             .map_or(Size::ZERO, |endpoint| self.layout.scroll_content(endpoint))
     }
 
-    /// Snapshot of input/cascade state for a widget. `rect` and `disabled` are last
+    /// The [`Response`] of the widget `id`, probed now. `rect` and `disabled` are last
     /// frame's; interaction fields are computed against this frame's input, so read it
     /// during record. The widget's own `NodeFlags::is_disabled` is folded in by
     /// `Widget::response`.
-    pub fn response_for(&self, id: WidgetId) -> ResponseState {
+    pub fn response_for(&self, id: WidgetId) -> Response {
         let loc = self.last_frame_location(id);
         let mut state = self.input.response_for(id, loc, self.arranged_frame());
         // Cascade lags a frame; fold in this frame's ancestor-disabled so a newly
         // disabled subtree paints disabled at once.
         state.merge_disabled(self.forest.ancestor_disabled());
-        state
+        Response { id, state }
     }
 
     /// Last frame's cascade and layout, as a response reads them.

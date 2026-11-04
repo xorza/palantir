@@ -79,7 +79,7 @@ impl<'a> Spinner<'a> {
     }
 
     /// Records the spinner.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let theme = self.style.unwrap_or(&ui.theme().spinner);
         let fixed = self
             .widget

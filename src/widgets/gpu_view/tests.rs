@@ -33,7 +33,7 @@ fn records_one_gpu_view_shape_at_committed_size() {
                 GpuView::new(&scene())
                     .size((Sizing::fixed(150.0), Sizing::fixed(90.0)))
                     .show(ui)
-                    .node()
+                    .node(ui)
             })
             .inner
     });
@@ -62,7 +62,7 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
         let mut h = Harness::mono(UVec2::new(200, 120));
         let mut epochs = Vec::new();
         for _ in 0..2 {
-            let node = h.frame_value(|ui| GpuView::new(&paint).repaint(repaint).show(ui).node());
+            let node = h.frame_value(|ui| GpuView::new(&paint).repaint(repaint).show(ui).node(ui));
             let epoch = h
                 .ui()
                 .tree(Layer::Main)
@@ -86,11 +86,11 @@ fn repaint_false_holds_the_epoch_of_the_last_paint() {
 #[test]
 fn default_fills_parent() {
     let mut h = Harness::mono(UVec2::new(160, 100));
-    let node = h.frame_value(|ui| GpuView::new(&scene()).show(ui).node());
+    let node = h.frame_value(|ui| GpuView::new(&scene()).show(ui).node(ui));
     let r = h.ui().arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
 
-    let node = h.frame_value(|ui| GpuView::new(&scene()).default_size(50.0).show(ui).node());
+    let node = h.frame_value(|ui| GpuView::new(&scene()).default_size(50.0).show(ui).node(ui));
     let r = h.ui().arranged_rect(Layer::Main, node);
     assert_eq!((r.size.w, r.size.h), (50.0, 50.0));
 }

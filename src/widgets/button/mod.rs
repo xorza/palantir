@@ -97,7 +97,7 @@ impl<'a> Button<'a> {
     }
 
     /// Space and Enter on a focused button report one left click (WAI-ARIA), so `clicked()` covers keyboard.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         self.show_with(ui, |_, _| {}).response
     }
 
@@ -109,7 +109,7 @@ impl<'a> Button<'a> {
         mut self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &TextStyle) -> R,
-    ) -> InnerResponse<'_, R> {
+    ) -> InnerResponse<R> {
         let response = self.widget.activation_response(ui, self.activation);
         let theme = ui.theme();
         let slot = self.style.unwrap_or(&theme.button);
@@ -131,10 +131,7 @@ impl<'a> Button<'a> {
             }
             body(ui, &look.text)
         });
-        InnerResponse {
-            response: Response::new(ui, response),
-            inner,
-        }
+        InnerResponse { response, inner }
     }
 }
 

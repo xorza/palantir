@@ -35,7 +35,7 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{InnerResponse, Response, ResponseSnapshot};
+use crate::widget_core::response::{InnerResponse, Response};
 use glam::Vec2;
 use std::panic::Location;
 
@@ -192,14 +192,13 @@ impl Widget {
 
     /// This frame's interaction state, folding in the widget's own `disabled` bit so a
     /// widget disabled this frame paints as disabled before the cascade catches up.
-    /// Resolves the identity if needed. Returns an owned [`ResponseSnapshot`], not a
-    /// [`Response`], which holds `&Ui` while the body needs `&mut Ui`; it becomes the
-    /// widget's [`Response::new`] at the end.
-    pub fn response(&mut self, ui: &mut Ui) -> ResponseSnapshot {
+    /// Resolves the identity if needed, and probes the widget's [`Response`] with its own
+    /// `disabled` folded in.
+    pub fn response(&mut self, ui: &mut Ui) -> Response {
         let id = self.resolve(ui);
-        let mut state = ui.response_for(id);
-        state.merge_disabled(self.node.flags.is_disabled());
-        ResponseSnapshot { id, state }
+        let mut response = ui.response_for(id);
+        response.state.merge_disabled(self.node.flags.is_disabled());
+        response
     }
 
     /// [`Self::response`] with `activation`'s keys on a focused widget folded in as one left
@@ -208,7 +207,7 @@ impl Widget {
     /// [`input_scope`](Configure::input_scope), so an enclosing scope cannot take them while
     /// every other key, a letter shortcut, reaches it, as a Qt or GTK button accepts only the keys
     /// it acts on.
-    pub fn activation_response(&mut self, ui: &mut Ui, activation: Activation) -> ResponseSnapshot {
+    pub fn activation_response(&mut self, ui: &mut Ui, activation: Activation) -> Response {
         let keys = match activation {
             Activation::Button => KeyFilter::SPACE.union(KeyFilter::ENTER),
             Activation::Toggle => KeyFilter::SPACE,
@@ -300,24 +299,24 @@ impl Widget {
         r
     }
 
-    /// [`Self::record`] plus a lazy [`Response`] for the node just recorded, for
-    /// decorative widgets. A widget that acts on input opens with [`Self::response`]
-    /// and closes with [`Response::new`] instead.
+    /// [`Self::record`] plus the [`Response`] of the node just recorded, for decorative
+    /// widgets. A widget that acts on input opens with [`Self::response`] and hands that back
+    /// instead.
     ///
     /// # Panics
     ///
     /// As [`Self::record`].
     #[track_caller]
-    pub fn show<'a, R>(
+    pub fn show<R>(
         mut self,
-        ui: &'a mut Ui,
+        ui: &mut Ui,
         chrome: Option<&Chrome>,
         body: impl FnOnce(&mut Ui) -> R,
-    ) -> InnerResponse<'a, R> {
+    ) -> InnerResponse<R> {
         let id = self.resolve(ui);
         let inner = self.record(ui, chrome, body);
         InnerResponse {
-            response: Response::lazy(id, ui),
+            response: ui.response_for(id),
             inner,
         }
     }

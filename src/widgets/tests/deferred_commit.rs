@@ -11,7 +11,7 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::color_coords::ColorCoords;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::value_response::ValueEdges;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::color_field::ColorField;
 use crate::widgets::color_strip::ColorStrip;
 use crate::widgets::drag_value::DragValue;
@@ -23,8 +23,8 @@ const ID: &str = "deferred-commit";
 /// A caller that keeps a canonical value, shows the widget over a draft of it each record pass,
 /// and adopts the draft only on `committed`, as an undo-aware app does.
 trait DeferredCaller {
-    /// One frame, one [`ValueEdges`] per record pass.
-    fn frame(&mut self, h: &mut Harness) -> Passes<ValueEdges>;
+    /// One frame, one [`ValueResponse`] per record pass.
+    fn frame(&mut self, h: &mut Harness) -> Passes<ValueResponse>;
     /// The canonical value, as the row reads it.
     fn reading(&self) -> Vec2;
 }
@@ -32,12 +32,12 @@ trait DeferredCaller {
 #[derive(Debug)]
 struct Deferred<T> {
     canonical: T,
-    show: fn(&mut Ui, &mut T) -> ValueEdges,
+    show: fn(&mut Ui, &mut T) -> ValueResponse,
     read: fn(&T) -> Vec2,
 }
 
 impl<T: Clone> DeferredCaller for Deferred<T> {
-    fn frame(&mut self, h: &mut Harness) -> Passes<ValueEdges> {
+    fn frame(&mut self, h: &mut Harness) -> Passes<ValueResponse> {
         let Self {
             canonical, show, ..
         } = self;
@@ -80,7 +80,6 @@ fn slider() -> Box<dyn DeferredCaller> {
                 .size((Sizing::fixed(118.0), Sizing::fixed(18.0)))
                 .id(WidgetId::from_hash(ID))
                 .show(ui)
-                .edges()
         },
         read: |value| Vec2::new(*value as f32, 0.0),
     })
@@ -97,7 +96,6 @@ fn drag_value() -> Box<dyn DeferredCaller> {
                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .id(WidgetId::from_hash(ID))
                 .show(ui)
-                .edges()
         },
         read: |value| Vec2::new(*value as f32, 0.0),
     })
@@ -110,12 +108,7 @@ fn color_field() -> Box<dyn DeferredCaller> {
         .with_value(0.2);
     Box::new(Deferred {
         canonical,
-        show: |ui, coords| {
-            ColorField::new(coords)
-                .id(WidgetId::from_hash(ID))
-                .show(ui)
-                .edges()
-        },
+        show: |ui, coords| ColorField::new(coords).id(WidgetId::from_hash(ID)).show(ui),
         read: |coords| Vec2::new(coords.saturation(), coords.value()),
     })
 }
@@ -127,7 +120,6 @@ fn alpha_strip() -> Box<dyn DeferredCaller> {
             ColorStrip::alpha(color)
                 .id(WidgetId::from_hash(ID))
                 .show(ui)
-                .edges()
         },
         read: |color| Vec2::new(color.a, 0.0),
     })
@@ -190,26 +182,28 @@ fn a_gesture_commits_once_with_its_final_value() {
     ];
     for row in rows {
         let label = row.label;
-        let quiet = ValueEdges::default();
-        let live = ValueEdges {
-            changed: true,
-            committed: false,
-        };
 
         let mut h = Harness::mono(row.surface);
         let mut caller = (row.caller)();
         caller.frame(&mut h);
         h.press(row.press, PointerButton::Left);
-        let pressed = ValueEdges {
-            changed: row.press_writes,
-            committed: false,
-        };
-        assert_eq!(*caller.frame(&mut h).a(), pressed, "{label}: press");
+        caller.frame(&mut h).a().assert_signals(
+            row.press_writes,
+            false,
+            &format!("{label}: press"),
+        );
         // `changed` is a level: a pointer held still re-writes the draft the caller re-seeded.
-        assert_eq!(*caller.frame(&mut h).a(), pressed, "{label}: held still");
+        caller.frame(&mut h).a().assert_signals(
+            row.press_writes,
+            false,
+            &format!("{label}: held still"),
+        );
         for at in row.drags {
             h.drag_to(at);
-            assert_eq!(*caller.frame(&mut h).a(), live, "{label}: drag to {at}");
+            caller
+                .frame(&mut h)
+                .a()
+                .assert_signals(true, false, &format!("{label}: drag to {at}"));
             assert_eq!(caller.reading(), row.start, "{label}: no adoption mid-drag");
         }
         h.release(PointerButton::Left);
@@ -217,10 +211,10 @@ fn a_gesture_commits_once_with_its_final_value() {
         assert!(released.a().committed, "{label}: the release commits");
         assert_eq!(released.count_where(|e| e.committed), 1, "{label}: once");
         assert_eq!(caller.reading(), row.dragged, "{label}: the final value");
-        assert_eq!(
-            *caller.frame(&mut h).a(),
-            quiet,
-            "{label}: no residual signals"
+        caller.frame(&mut h).a().assert_signals(
+            false,
+            false,
+            &format!("{label}: no residual signals"),
         );
         assert_eq!(caller.reading(), row.dragged, "{label}");
 
@@ -231,7 +225,10 @@ fn a_gesture_commits_once_with_its_final_value() {
         let mut caller = (row.caller)();
         caller.frame(&mut h);
         h.press(row.press, PointerButton::Left);
-        assert_eq!(*caller.frame(&mut h).a(), live, "{label}: a click's press");
+        caller
+            .frame(&mut h)
+            .a()
+            .assert_signals(true, false, &format!("{label}: a click's press"));
         assert_eq!(caller.reading(), row.start, "{label}");
         h.release(PointerButton::Left);
         let released = caller.frame(&mut h);
@@ -241,6 +238,9 @@ fn a_gesture_commits_once_with_its_final_value() {
             clicked,
             "{label}: the value the click wrote"
         );
-        assert_eq!(*caller.frame(&mut h).a(), quiet, "{label}: after the click");
+        caller
+            .frame(&mut h)
+            .a()
+            .assert_signals(false, false, &format!("{label}: after the click"));
     }
 }

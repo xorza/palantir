@@ -153,11 +153,7 @@ fn open_context_menu_shortcuts_alloc_free() {
     let trigger_id = WidgetId::from_hash("alloc-context-menu-trigger");
     let mut needs_open = true;
     Audit::new().run(move |ui| {
-        let trigger = Button::new()
-            .id(trigger_id)
-            .label("Actions")
-            .show(ui)
-            .snapshot();
+        let trigger = Button::new().id(trigger_id).label("Actions").show(ui);
         if needs_open {
             Menu::open(ui, trigger_id, Vec2::new(40.0, 40.0));
             needs_open = false;
@@ -260,7 +256,7 @@ fn value_and_toggle_widgets_alloc_free() {
 fn tooltip_bubble_alloc_free() {
     let host = WidgetId::from_hash("tip-host");
     let scene = |ui: &mut Ui| {
-        let trigger = Button::new().id(host).label("hover").show(ui).snapshot();
+        let trigger = Button::new().id(host).label("hover").show(ui);
         Tooltip::on(&trigger, "a tooltip body")
             .delay(Duration::ZERO)
             .show(ui)

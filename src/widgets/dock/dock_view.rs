@@ -162,7 +162,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
     }
 
     /// Record the pane tree and the drag feedback over it.
-    pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u> {
+    pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response {
         let app_theme = Rc::clone(ui.theme());
         let theme = self.style.unwrap_or(&app_theme.dock);
         let Self {
@@ -212,7 +212,7 @@ impl<'a, T: DockTab> DockView<'a, T> {
                 cx.drag_feedback(ui, tab);
             }
         });
-        Response::new(ui, response)
+        response
     }
 }
 

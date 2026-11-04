@@ -26,7 +26,7 @@ impl Block {
     }
 
     /// Records the block.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let chrome = self.chrome;
         self.widget.show(ui, chrome.as_ref(), |_| {}).response
     }

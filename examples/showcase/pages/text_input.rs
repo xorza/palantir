@@ -83,7 +83,7 @@ struct EventLog {
 impl EventLog {
     const LEN: usize = 8;
 
-    fn record(&mut self, r: &TextEditResponse<'_>) {
+    fn record(&mut self, r: &TextEditResponse) {
         for (fired, edge) in [
             (r.focus_gained, Edge::FocusGained),
             (r.changed, Edge::Changed),

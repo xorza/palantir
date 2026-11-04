@@ -94,7 +94,7 @@ impl GpuView {
 
     /// Record the view. With [`Self::repaint`] at its `true` default it re-renders on
     /// every painted frame; call [`Ui::request_repaint`] each frame to animate.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let Self {
             mut widget,
             paint,

@@ -733,10 +733,10 @@ fn moved_subtree_replays_translated_rects() {
                                             .size((Sizing::fixed(30.0), Sizing::FILL))
                                             .show(ui, |_ui| {})
                                             .response
-                                            .node(),
+                                            .node(ui),
                                     );
                                 });
-                            capture.push(outer.response.node());
+                            capture.push(outer.response.node(ui));
                         }
                     });
             });

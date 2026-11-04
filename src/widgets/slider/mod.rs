@@ -10,7 +10,6 @@ use crate::theme::slider::SliderTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::{AxisEnd, AxisKeys, Travel};
@@ -90,7 +89,7 @@ impl<'a> Slider<'a> {
     /// Record the slider and report what the drag did to the bound value. A
     /// [`ValueResponse`] because `left.drag.is_live()` cannot say whether it moved
     /// (a drag pinned at `min`/`max` keeps reporting).
-    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse {
         let response = self.widget.response(ui);
         let id = response.id;
 
@@ -149,7 +148,7 @@ impl<'a> Slider<'a> {
                 .record(ui, Some(&track_chrome), |_| {});
         });
         ValueResponse {
-            response: Response::new(ui, response),
+            response,
             changed,
             committed,
         }

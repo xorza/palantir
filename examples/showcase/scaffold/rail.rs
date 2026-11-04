@@ -278,8 +278,7 @@ impl Segmented {
                         .label(text)
                         .size((Sizing::FILL, Sizing::fixed(SEGMENT)))
                         .show(ui)
-                        .response
-                        .snapshot();
+                        .response;
                     if idx == 0 {
                         Tooltip::on(&segment, follows).show(ui);
                     }

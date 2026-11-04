@@ -159,7 +159,7 @@ impl<'a> Text<'a> {
     }
 
     /// Record the run; it senses nothing until [`Configure::sense`] says otherwise.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         // Folded back into a `TextStyle` so the `line_height_factor` formula has
         // one owner.
         let style = self.overrides.apply(self.style.unwrap_or(&ui.theme().text));
@@ -203,11 +203,11 @@ mod tests {
         let mut h = Harness::mono(UVec2::new(200, 100));
         let nodes = h.frame_value(|ui| {
             [
-                Text::new("bare").show(ui).node(),
+                Text::new("bare").show(ui).node(ui),
                 Text::new("wrapping")
                     .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui)
-                    .node(),
+                    .node(ui),
             ]
         });
         let wraps = nodes.map(|node| {

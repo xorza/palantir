@@ -77,7 +77,7 @@ impl<'a> MenuItem<'a> {
     }
 
     /// Record the row; activating it closes the innermost overlay recording it.
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(mut self, ui: &mut Ui) -> Response {
         // Single `response_for` probe: the body is decorative, so the response is identical before and after the node records.
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
@@ -142,12 +142,12 @@ impl<'a> MenuItem<'a> {
         if shortcut_fired {
             response.state.activate();
         }
-        // Eager: `response` folds in the synthesized shortcut click, which
-        // a lazy re-probe would drop.
+        // `response` folds in the synthesized shortcut click, which a probe of the id would not
+        // hold.
         if response.state.clicked() {
             ui.close_overlay();
         }
-        Response::new(ui, response)
+        response
     }
 }
 

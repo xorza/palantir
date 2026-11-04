@@ -30,7 +30,7 @@ use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{InnerResponse, Response, ResponseSnapshot};
+use crate::widget_core::response::{InnerResponse, Response};
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::{AxisEnd, AxisKeys};
 use crate::widgets::scroll::bars::{BarMode, Bars};
@@ -499,13 +499,13 @@ impl<'a> Scroll<'a> {
     /// Panics if the caller set a [`transform`](Configure::transform): a scroll owns its
     /// descendants' transform.
     #[track_caller]
-    pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
+    pub fn show<R>(mut self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
         self.widget.configure().default_clip(ClipMode::Rect);
         // The caller's salt names the outer wrapper but the arriving node is the
         // viewport, and the wrappers need the id first: resolve here, outer takes it later.
         // Through `Widget::response`, so a scroll disabled this frame reads no wheel.
         let snapshot = self.widget.response(ui);
-        let ResponseSnapshot {
+        let Response {
             id,
             state: response,
         } = snapshot;
@@ -594,16 +594,13 @@ impl<'a> Scroll<'a> {
 
         InnerResponse {
             // Eager: the caller usually reads a field, and only `focused` can change in the body.
-            response: Response::new(
-                ui,
-                ResponseSnapshot {
-                    id,
-                    state: ResponseState {
-                        focused: ui.focus() == Some(id),
-                        ..response
-                    },
+            response: Response {
+                id,
+                state: ResponseState {
+                    focused: ui.focus() == Some(id),
+                    ..response
                 },
-            ),
+            },
             inner: inner_value,
         }
     }

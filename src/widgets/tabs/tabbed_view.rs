@@ -21,10 +21,10 @@ use std::rc::Rc;
 /// What one pass over a [`TabbedView`] did, each edge on the frame it happened. Only
 /// [`activated`](Self::activated) is already done when reported; `closed` and `reordered` name a
 /// change to the caller's own collection, which the bound index already follows.
-#[derive(Debug)]
-pub struct TabbedViewResponse<'a, R> {
+#[derive(Clone, Copy, Debug)]
+pub struct TabbedViewResponse<R> {
     /// The view's own pointer/click/hover [`Response`].
-    pub response: Response<'a>,
+    pub response: Response,
     /// What the body returned, `None` with no page to show.
     pub inner: Option<R>,
     /// The bound index was written with another value: a pick, or a close or a move that
@@ -174,7 +174,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, usize) -> R,
-    ) -> TabbedViewResponse<'_, R> {
+    ) -> TabbedViewResponse<R> {
         let theme = Rc::clone(ui.theme());
         let t = self.style.unwrap_or(&theme.tabs);
         let Self {
@@ -252,7 +252,7 @@ impl<'a, S, L: Fn(&S) -> &str, K: Fn(usize, &S) -> TabKey> TabbedView<'a, S, L, 
             *selected = bound;
         }
         TabbedViewResponse {
-            response: Response::new(ui, response),
+            response,
             inner: pass.inner,
             changed,
             activated: pass.activated,

@@ -19,7 +19,7 @@ use crate::theme::text_style_overrides::TextStyleOverrides;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
-use crate::widget_core::response::{Response, ResponseSnapshot};
+use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use crate::widgets::text_edit::TextEdit;
@@ -159,8 +159,8 @@ impl<'a> EditableLabel<'a> {
     /// Record the label, or its editor while one is open. A label that is not
     /// [editable](Self::editable) or is disabled, itself or by an ancestor, closes an open editor
     /// and gives its focus back.
-    pub fn show(mut self, ui: &mut Ui) -> EditableLabelResponse<'_> {
-        let ResponseSnapshot { id, state } = self.widget.response(ui);
+    pub fn show(mut self, ui: &mut Ui) -> EditableLabelResponse {
+        let Response { id, state } = self.widget.response(ui);
         let editing = Self::is_editing(ui, id);
         let editable = self.editable && !state.disabled;
         if editing && editable {
@@ -180,7 +180,7 @@ impl<'a> EditableLabel<'a> {
     /// target and the label takes the editor's rect whatever it holds. A double click, or Enter
     /// or F2 while the label holds focus, opens the editor and gives it the focus. F2 is read as
     /// the enclosing node reads it, as the label takes no accelerators from the app.
-    fn show_label(mut self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse<'_> {
+    fn show_label(mut self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse {
         let keyed = self.editable
             && ui.focus() == Some(id)
             && (self.widget.shortcut_pressed(ui, Key::Enter) | ui.shortcut_pressed(Key::F2));
@@ -210,13 +210,12 @@ impl<'a> EditableLabel<'a> {
                     .min_size((0.0, text.block_height(1)))
                     .show(ui);
             })
-            .response
-            .snapshot();
+            .response;
         if keyed || (self.editable && response.left.double_clicked()) {
             Self::start_editing(ui, id);
         }
         EditableLabelResponse {
-            response: Response::new(ui, response),
+            response,
             editing: false,
             committed: false,
             committed_text: None,
@@ -225,7 +224,7 @@ impl<'a> EditableLabel<'a> {
     }
 
     /// The editor, closed on the frame it commits or Escape cancels it.
-    fn show_editor(self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse<'_> {
+    fn show_editor(self, ui: &mut Ui, id: WidgetId) -> EditableLabelResponse {
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.text_edit);
         let extent = self.extent();
@@ -249,7 +248,6 @@ impl<'a> EditableLabel<'a> {
             edit = edit.padding(padding);
         }
         let edited = edit.adopt_placement(&self.widget).show(ui);
-        let snapshot = edited.response.snapshot();
         let (committed, ended) = (edited.committed, edited.ended);
         let committed_text = edited.committed_text;
         // An editor without the focus after its frame never had it, as one whose opening focus
@@ -262,7 +260,7 @@ impl<'a> EditableLabel<'a> {
             }
         }
         EditableLabelResponse {
-            response: Response::new(ui, snapshot),
+            response: edited.response,
             editing: true,
             committed,
             committed_text,
@@ -351,10 +349,10 @@ impl Configure for EditableLabel<'_> {
 }
 
 /// What [`EditableLabel::show`] returns.
-#[derive(Debug)]
-pub struct EditableLabelResponse<'a> {
+#[derive(Clone, Debug)]
+pub struct EditableLabelResponse {
     /// The label's, or while it edits the editor's, pointer/click/hover [`Response`].
-    pub response: Response<'a>,
+    pub response: Response,
     /// The label showed its editor this frame.
     pub editing: bool,
     /// The edit finished this frame and kept its result, as

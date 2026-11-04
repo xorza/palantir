@@ -40,7 +40,7 @@ fn same_authoring_produces_same_hash() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     };
     assert_eq!(support::record(build).node, support::record(build).node);
     let padded = |ui: &mut Ui| {
@@ -55,7 +55,7 @@ fn same_authoring_produces_same_hash() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     };
     assert_ne!(
         support::record(build).node,
@@ -73,7 +73,7 @@ fn polyline_hash_uses_visual_points_and_lowered_colors() {
                 ui.add_shape(Shape::polyline(points, Stroke::new(color, 2.0)));
             })
             .response
-            .node()
+            .node(ui)
     }
 
     let base_points = [Vec2::ZERO, Vec2::new(10.0, 0.0)];
@@ -118,7 +118,7 @@ fn changing_fill_color_changes_hash() {
                         .size(50.0)
                         .chrome(Chrome::fill(fill))
                         .show(ui)
-                        .node(),
+                        .node(ui),
                 );
             });
         child.unwrap()
@@ -140,7 +140,7 @@ fn widget_id_only_affects_cascade_static_hash() {
                 .id(WidgetId::from_hash(id))
                 .show(ui, |_| {})
                 .response
-                .node()
+                .node(ui)
         })
     };
     let (a, b) = (build("a"), build("b"));
@@ -166,7 +166,7 @@ fn changing_layout_property_changes_hash() {
                     .size((Sizing::fixed(100.0), Sizing::fixed(50.0)))
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
@@ -174,7 +174,7 @@ fn changing_layout_property_changes_hash() {
                     .size((Sizing::fixed(101.0), Sizing::fixed(50.0)))
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
         ),
         (
@@ -186,7 +186,7 @@ fn changing_layout_property_changes_hash() {
                     .padding(8.0)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
@@ -194,7 +194,7 @@ fn changing_layout_property_changes_hash() {
                     .padding(12.0)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
         ),
         (
@@ -206,7 +206,7 @@ fn changing_layout_property_changes_hash() {
                     .visibility(Visibility::Visible)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
@@ -214,7 +214,7 @@ fn changing_layout_property_changes_hash() {
                     .visibility(Visibility::Hidden)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
         ),
         (
@@ -226,7 +226,7 @@ fn changing_layout_property_changes_hash() {
                     .justify(Justify::Start)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
@@ -234,7 +234,7 @@ fn changing_layout_property_changes_hash() {
                     .justify(Justify::Center)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
         ),
         (
@@ -246,7 +246,7 @@ fn changing_layout_property_changes_hash() {
                     .focusable(false)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
@@ -254,7 +254,7 @@ fn changing_layout_property_changes_hash() {
                     .focusable(true)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
         ),
         (
@@ -266,7 +266,7 @@ fn changing_layout_property_changes_hash() {
                     .disabled(false)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
@@ -274,7 +274,7 @@ fn changing_layout_property_changes_hash() {
                     .disabled(true)
                     .show(ui, |_| {})
                     .response
-                    .node()
+                    .node(ui)
             },
         ),
     ];
@@ -310,7 +310,7 @@ fn every_panel_mode_hashes_apart() {
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {})
                 .response
-                .node()
+                .node(ui)
         });
         (label, hashes.layout_subtree)
     });
@@ -331,7 +331,7 @@ fn changing_text_content_changes_hash() {
                 Text::new(label)
                     .id(WidgetId::from_hash("t"))
                     .show(ui)
-                    .node(),
+                    .node(ui),
             );
         });
         n.unwrap()
@@ -354,7 +354,7 @@ fn child_hash_does_not_affect_parent_hash() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     }
     let h1 = support::record(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8))).node;
     let h2 = support::record(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8))).node;
@@ -471,7 +471,7 @@ fn nesting_alone_changes_cascade_static() {
             .id(WidgetId::from_hash(name))
             .show(ui, |_| {})
             .response
-            .node()
+            .node(ui)
     };
 
     let siblings = support::record(|ui| {
@@ -482,7 +482,7 @@ fn nesting_alone_changes_cascade_static() {
                 leaf(ui, "b");
             })
             .response
-            .node()
+            .node(ui)
     })
     .cascade_static;
     let nested = support::record(|ui| {
@@ -494,7 +494,7 @@ fn nesting_alone_changes_cascade_static() {
                 });
             })
             .response
-            .node()
+            .node(ui)
     })
     .cascade_static;
 
@@ -526,7 +526,7 @@ fn a_paint_animation_moves_the_node_hash() {
                 }
             })
             .response
-            .node()
+            .node(ui)
     }
     let turn = PaintAnimation::turn(0.0, 1.0).with_period(Duration::from_secs(2));
     let still = support::record(|ui| build(ui, None)).node;
@@ -570,7 +570,7 @@ fn each_edit_moves_the_half_it_belongs_to() {
                         .show(ui);
                 })
                 .response
-                .node()
+                .node(ui)
         });
         let rollups = &h.ui().tree(Layer::Main).rollups;
         (

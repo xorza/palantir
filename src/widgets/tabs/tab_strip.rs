@@ -31,7 +31,7 @@ use crate::theme::text_style::TextStyle;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::{Response, ResponseSnapshot};
+use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
@@ -56,10 +56,10 @@ pub enum TabOverflow {
 }
 
 /// What one pass over a strip found: the chip acted on, by slot. Every field is a one-frame edge.
-#[derive(Debug)]
-pub struct TabStripResponse<'a> {
+#[derive(Clone, Copy, Debug)]
+pub struct TabStripResponse {
     /// The strip's own [`Response`].
-    pub response: Response<'a>,
+    pub response: Response,
     /// The chip a click, a keyboard move or an overflow-menu pick activated.
     pub activated: Option<usize>,
     /// The chip whose close button was clicked; the press activates nothing.
@@ -231,11 +231,7 @@ impl<'a> TabStrip<'a> {
     /// Records the strip, and its overflow menu when open. `content` records what each chip shows
     /// between its padding and its close button, [`TabChip::show_label`] for the name alone: the
     /// app draws a tab, the strip keeps its frame, as Zed's `Item::tab_content` splits it.
-    pub fn show(
-        self,
-        ui: &mut Ui,
-        mut content: impl FnMut(&mut Ui, &TabChip),
-    ) -> TabStripResponse<'_> {
+    pub fn show(self, ui: &mut Ui, mut content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse {
         let theme = Rc::clone(ui.theme());
         let t = self.style.unwrap_or(&theme.tabs);
         let ambient = theme.text;
@@ -356,7 +352,7 @@ impl<'a> TabStrip<'a> {
         let unscanned = keyed.or(menu_picked);
         let dragging = carried.and_then(|key| items.iter().position(|item| item.key == key));
         TabStripResponse {
-            response: Response::new(ui, response),
+            response,
             activated: clicked.or(unscanned),
             closed,
             reordered,
@@ -481,10 +477,7 @@ impl StripPass<'_> {
 
     /// A small glyph button wearing [`TabsTheme::close`], from its last frame's state.
     fn glyph_button(&self, ui: &Ui, id: WidgetId) -> GlyphButton {
-        let response = ResponseSnapshot {
-            id,
-            state: ui.response_for(id),
-        };
+        let response = ui.response_for(id);
         let look = self.theme.close.pick(&response, Engagement::Pressed);
         GlyphButton {
             chrome: look.chrome.clone(),
@@ -744,7 +737,7 @@ impl StripPass<'_> {
 /// sits on its baseline at the font's own weight, so it rode below the button's center.
 #[derive(Debug)]
 struct GlyphButton {
-    response: ResponseSnapshot,
+    response: Response,
     chrome: Chrome,
     ink: RgbaF32,
 }

@@ -67,7 +67,6 @@ use crate::host::headless_window::{HeadlessDepth, HeadlessFrame, HeadlessWindow}
 use crate::host::window_driver::{FrameSpec, TargetKey};
 use crate::input::input_event::InputEvent;
 use crate::input::interaction::input_delta::InputDelta;
-use crate::input::interaction::response_state::ResponseState;
 use crate::input::keyboard::key::Key;
 use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::pointer::PointerButton;
@@ -83,6 +82,7 @@ use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_report::FrameReport;
 use crate::ui::inspected_widget::InspectedWidget;
+use crate::widget_core::response::Response;
 use crate::window::window_commands::WindowCommand;
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
@@ -302,7 +302,7 @@ impl Harness {
     }
 
     /// `id`'s response, read inside pass A: the one way to read a one-frame edge.
-    pub fn response_in(&mut self, id: WidgetId, mut record: impl FnMut(&mut Ui)) -> ResponseState {
+    pub fn response_in(&mut self, id: WidgetId, mut record: impl FnMut(&mut Ui)) -> Response {
         self.frame_value(move |ui| {
             record(ui);
             ui.response_for(id)

@@ -32,8 +32,8 @@ fn explicit_zero_spacing_overrides_theme_spacing() {
                 .padding(Spacing::ZERO)
                 .margin(Spacing::ZERO)
                 .show(ui)
-                .node(),
-            Button::new().style(&theme).show(ui).node(),
+                .node(ui),
+            Button::new().style(&theme).show(ui).node(ui),
         ]
     });
 
@@ -231,7 +231,7 @@ fn a_label_truncates_to_one_line_in_a_narrow_button() {
                     .auto_id()
                     .label("the quick brown fox")
                     .show(ui)
-                    .node()
+                    .node(ui)
             })
             .inner
     });

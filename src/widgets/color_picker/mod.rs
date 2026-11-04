@@ -18,7 +18,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::response::Response;
-use crate::widget_core::value_response::{ValueEdges, ValueResponse};
+use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::color_field::ColorField;
 use crate::widgets::color_picker::history::History;
@@ -134,7 +134,7 @@ impl<'a> ColorPicker<'a> {
     }
 
     /// Record the panel and report what it did to the bound color.
-    pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(self, ui: &mut Ui) -> ValueResponse {
         // An `Rc` bump so rows can borrow styles across the `&mut Ui` record.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
@@ -155,7 +155,11 @@ impl<'a> ColorPicker<'a> {
         let swatches = self.swatches;
         let texel_size = self.texel_size;
 
-        let mut edit = ValueEdges::default();
+        let mut value = ValueResponse {
+            response,
+            changed: false,
+            committed: false,
+        };
         widget.record(ui, None, |ui| {
             ui.with_state::<PickerState, _>(id, |ui, state| {
                 let inputs = Inputs {
@@ -167,14 +171,10 @@ impl<'a> ColorPicker<'a> {
                     swatches,
                     texel_size,
                 };
-                edit = inputs.record(ui, state);
+                value = inputs.record(ui, state, response);
             });
         });
-        ValueResponse {
-            response: Response::new(ui, response),
-            changed: edit.changed,
-            committed: edit.committed,
-        }
+        value
     }
 }
 
@@ -224,7 +224,7 @@ struct Writes {
 
 impl Writes {
     /// A typed value's commit, which the history keeps.
-    const fn typed(&mut self, edit: ValueEdges) {
+    const fn typed(&mut self, edit: &ValueResponse) {
         self.committed |= edit.committed;
         self.remember |= edit.committed;
     }
@@ -300,7 +300,7 @@ fn same_rgb(a: SrgbaU8, b: SrgbaU8) -> bool {
 }
 
 impl Inputs<'_> {
-    fn record(self, ui: &mut Ui, state: &mut PickerState) -> ValueEdges {
+    fn record(self, ui: &mut Ui, state: &mut PickerState, response: Response) -> ValueResponse {
         let Self {
             id,
             theme,
@@ -399,7 +399,11 @@ impl Inputs<'_> {
         rows.swatch_row(ui, swatches);
 
         let Rows { state, writes, .. } = rows;
-        apply(state, color, writes)
+        ValueResponse {
+            response,
+            changed: apply(state, color, writes),
+            committed: writes.committed,
+        }
     }
 }
 
@@ -485,14 +489,14 @@ impl Rows<'_> {
                         self.writes.alpha = opacity as f32 / 100.0;
                         self.writes.alpha_moved = true;
                     }
-                    self.writes.typed(r);
+                    self.writes.typed(&r);
                 } else {
                     let r = self.value_cell(ui, VALUE, &mut val);
                     if r.changed {
                         self.state.coords = self.state.coords.with_value(val as f32 / 100.0);
                         self.writes.axes = true;
                     }
-                    self.writes.typed(r);
+                    self.writes.typed(&r);
                 }
 
                 let r = self.value_cell(ui, HUE, &mut hue);
@@ -500,7 +504,7 @@ impl Rows<'_> {
                     self.state.coords = self.state.coords.with_hue(hue as f32 / 360.0);
                     self.writes.axes = true;
                 }
-                self.writes.typed(r);
+                self.writes.typed(&r);
 
                 for (channel, cell) in CHANNELS.into_iter().enumerate() {
                     let r = self.value_cell(ui, cell, &mut rgb[channel]);
@@ -515,7 +519,7 @@ impl Rows<'_> {
                             .with_alpha(self.writes.alpha),
                         );
                     }
-                    self.writes.typed(r);
+                    self.writes.typed(&r);
                 }
 
                 let r = self.value_cell(ui, SATURATION, &mut sat);
@@ -523,18 +527,17 @@ impl Rows<'_> {
                     self.state.coords = self.state.coords.with_saturation(sat as f32 / 100.0);
                     self.writes.axes = true;
                 }
-                self.writes.typed(r);
+                self.writes.typed(&r);
             });
     }
 
     /// One grid cell: the channel's caption over its value, a drag from zero to the
     /// cell's top.
-    fn value_cell(&self, ui: &mut Ui, cell: ValueCell, value: &mut i64) -> ValueEdges {
+    fn value_cell(&self, ui: &mut Ui, cell: ValueCell, value: &mut i64) -> ValueResponse {
         let theme = self.theme;
         // Keyed on the channel letter alone: an id that moved with the unit would
         // drop the widget's state.
         let cell_id = self.id.with(&cell.caption[..1]);
-        let mut edit = ValueEdges::default();
         Panel::vstack()
             .id(cell_id)
             .gap(LABEL_GAP)
@@ -545,15 +548,14 @@ impl Rows<'_> {
                     .style(&theme.label.apply(&ui.theme().text))
                     .id(cell_id.with("label"))
                     .show(ui);
-                let r = DragValue::new(value)
+                DragValue::new(value)
                     .range(0.0..=cell.top)
                     .style(&theme.value)
                     .id(cell_id.with("value"))
                     .size((Sizing::FILL, Sizing::HUG))
-                    .show(ui);
-                edit = r.edges();
-            });
-        edit
+                    .show(ui)
+            })
+            .inner
     }
 
     /// The two models, as one either-or choice.
@@ -610,8 +612,8 @@ impl Rows<'_> {
 }
 
 /// Fold this frame's writes into the bound color, rebuilding only the part
-/// the moved control owns.
-fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> ValueEdges {
+/// the moved control owns; whether the color moved.
+fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> bool {
     let next = if let Some(exact) = writes.exact {
         exact
     } else if writes.axes {
@@ -633,10 +635,7 @@ fn apply(state: &mut PickerState, color: &mut RgbaF32, writes: Writes) -> ValueE
     if writes.remember {
         state.history.push(*color);
     }
-    ValueEdges {
-        changed,
-        committed: writes.committed,
-    }
+    changed
 }
 
 /// What the model switch calls `model`: the picker's text, not the color model's.

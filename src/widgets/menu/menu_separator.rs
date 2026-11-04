@@ -41,7 +41,7 @@ impl<'a> MenuSeparator<'a> {
     }
 
     /// Record the rule. Senses nothing.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         // A handle, not a borrow: `Separator::style` holds the reference across `show`'s `&mut Ui`, and this may point into the `Ui`'s theme.
         let ui_theme = Rc::clone(ui.theme());
         let style = self.style.unwrap_or(&ui_theme.menu.separator);

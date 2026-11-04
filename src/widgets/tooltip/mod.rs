@@ -17,7 +17,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
 use std::rc::Rc;
@@ -54,7 +54,7 @@ struct TooltipGlobal {
 /// ```
 /// # use palantir::{Button, Tooltip, Ui};
 /// # fn demo(ui: &mut Ui) {
-/// let r = Button::new().label("Save").show(ui).snapshot();
+/// let r = Button::new().label("Save").show(ui);
 /// Tooltip::on(&r, "Persist changes (Ctrl+S)").show(ui);
 /// # }
 /// ```
@@ -65,7 +65,7 @@ struct TooltipGlobal {
 #[derive(Debug)]
 #[must_use = "a widget records nothing until `show`"]
 pub struct Tooltip<'a> {
-    snapshot: ResponseSnapshot,
+    trigger: Response,
     label: TextInput<'a>,
     delay: Option<Duration>,
     when_disabled: bool,
@@ -75,15 +75,14 @@ pub struct Tooltip<'a> {
 }
 
 impl<'a> Tooltip<'a> {
-    /// Attach a tooltip showing `text` to a trigger's response snapshot
-    /// (`trigger.snapshot()` releases the `&Ui` borrow). An empty `text` records no
-    /// bubble.
+    /// Attach a tooltip showing `text` to the trigger whose response is `trigger`. An empty `text`
+    /// records no bubble.
     #[track_caller]
-    pub fn on(snapshot: &ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self {
+    pub fn on(trigger: &Response, text: impl Into<TextInput<'a>>) -> Self {
         // The bubble must never claim hover, or it would shadow its trigger.
         let widget = Widget::vstack().sense(Sense::NONE);
         Self {
-            snapshot: *snapshot,
+            trigger: *trigger,
             label: text.into(),
             delay: None,
             when_disabled: false,
@@ -121,14 +120,14 @@ impl<'a> Tooltip<'a> {
         let warmup = theme.warmup;
         let gap = theme.gap;
 
-        let trigger_id = self.snapshot.id;
+        let trigger_id = self.trigger.id;
         let bubble_id = Tooltip::bubble_id(trigger_id);
 
         // The observation, not the reaction: a disabled trigger is never hovered,
         // which `when_disabled` is for.
-        let pointer_over = self.snapshot.state.pointer_over;
-        let trigger_disabled = self.snapshot.state.disabled;
-        let trigger_rect = self.snapshot.state.rect;
+        let pointer_over = self.trigger.state.pointer_over;
+        let trigger_disabled = self.trigger.state.disabled;
+        let trigger_rect = self.trigger.state.rect;
         let active_trigger =
             pointer_over && !self.label.is_empty() && (!trigger_disabled || self.when_disabled);
 
@@ -270,7 +269,7 @@ impl Configure for Tooltip<'_> {
     }
 }
 
-/// What one pass over a [`Tooltip`] produced. No [`Response`](crate::Response): the
+/// What one pass over a [`Tooltip`] produced. No [`Response`]: the
 /// bubble senses nothing and records nothing while down.
 #[derive(Debug, Clone, Copy)]
 pub struct TooltipResponse {

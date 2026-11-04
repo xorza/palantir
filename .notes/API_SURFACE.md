@@ -177,7 +177,7 @@ BatchKind
 Block
     struct Block: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
 
@@ -206,8 +206,8 @@ Button
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
         pub const fn text_align(self, a: Align) -> Self
         pub const fn selected(self, selected: bool) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
-        pub fn show_with<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &TextStyle) -> R) -> InnerResponse<'_, R>
+        pub fn show(self, ui: &mut Ui) -> Response
+        pub fn show_with<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &TextStyle) -> R) -> InnerResponse<R>
 
 ButtonPhase
     enum ButtonPhase: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -246,7 +246,7 @@ Checkbox
         pub fn new(value: &'a mut bool) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 Chrome
     struct Chrome: Animatable, Clone, Debug, Default, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -296,7 +296,7 @@ ColorButton
     struct ColorButton<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(picker: ColorPicker<'a>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
         pub fn open(ui: &mut Ui, id: WidgetId)
         pub fn close(ui: &mut Ui, id: WidgetId)
         pub fn is_open(ui: &Ui, id: WidgetId) -> bool
@@ -320,7 +320,7 @@ ColorField
         pub fn new(coords: &'a mut ColorCoords) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 ColorModel
     enum ColorModel: Clone, Copy, Debug, Default, Deserialize<'de>, DockTab (blanket), Eq, Hash, PartialEq, Serialize
@@ -337,7 +337,7 @@ ColorPicker
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
         pub const fn color(&self) -> RgbaF32
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 ColorPickerTheme
     struct ColorPickerTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -384,13 +384,13 @@ ColorStrip
         pub fn alpha(color: &'a mut RgbaF32) -> Self
         pub const fn texel_size(self, n: u32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 ColorSwatch
     struct ColorSwatch<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(color: RgbaF32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ColorPickerTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 ComboBox
     struct ComboBox<'a, 'o, S, L>: Configure, ThemeDefaults (blanket)
@@ -401,7 +401,7 @@ ComboBox
             pub fn style(self, s: impl Into<Option<&'a ComboBoxTheme>>) -> Self
             pub fn button_style(self, s: impl Into<Option<&'a ButtonTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-            pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+            pub fn show(self, ui: &mut Ui) -> ValueResponse
         impl<'a, 'o, S: Debug, L: Debug> Debug for ComboBox<'a, 'o, S, L>
 
 ComboBoxList
@@ -645,7 +645,7 @@ DockView
             pub fn style(self, s: impl Into<Option<&'a DockTheme>>) -> Self
             pub fn tabs_style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-            pub fn show<'u, D: DockTabs<Tab = T>>(self, ui: &'u mut Ui, tabs: &mut D) -> Response<'u>
+            pub fn show<D: DockTabs<Tab = T>>(self, ui: &mut Ui, tabs: &mut D) -> Response
         impl<T: DockTab> DockView<'_, T>
             pub fn run<D: DockTabs<Tab = T>>(ui: &mut Ui, dock: WidgetId, state: &mut DockState<T>, tabs: &mut D)
             pub fn scan(ui: &mut Ui, dock: WidgetId, state: &DockState<T>, operations: &mut Vec<DockOperation<T>>)
@@ -673,7 +673,7 @@ DragValue
         pub fn suffix(self, text: impl Into<TextInput<'a>>) -> Self
         pub const fn editable(self, editable: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a DragValueTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
         pub fn start_editing(ui: &mut Ui, id: WidgetId)
         pub fn stop_editing(ui: &mut Ui, id: WidgetId, end: EditEnd)
         pub fn is_editing(ui: &Ui, id: WidgetId) -> bool
@@ -718,15 +718,15 @@ EditableLabel
         pub const fn italic(self) -> Self
         pub const fn editable(self, editable: bool) -> Self
         pub const fn max_chars(self, n: usize) -> Self
-        pub fn show(self, ui: &mut Ui) -> EditableLabelResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> EditableLabelResponse
         pub fn label_id(editable_label: WidgetId) -> WidgetId
         pub fn start_editing(ui: &mut Ui, id: WidgetId)
         pub fn stop_editing(ui: &mut Ui, id: WidgetId, end: EditEnd)
         pub fn is_editing(ui: &Ui, id: WidgetId) -> bool
 
 EditableLabelResponse
-    struct EditableLabelResponse<'a>: Debug
-        pub response: Response<'a>
+    struct EditableLabelResponse: Clone, Debug
+        pub response: Response
         pub editing: bool
         pub committed: bool
         pub committed_text: Option<String>
@@ -744,18 +744,20 @@ Expander
         pub const fn keep_body(self, keep_body: bool) -> Self
         pub fn style(self, s: impl Into<Option<&'a ExpanderTheme>>) -> Self
         pub fn header_id(expander: WidgetId) -> WidgetId
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<'_, R>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> ExpanderResponse<R>
         pub fn open(ui: &mut Ui, id: WidgetId)
         pub fn close(ui: &mut Ui, id: WidgetId)
         pub fn is_open(ui: &Ui, id: WidgetId) -> bool
 
 ExpanderResponse
-    struct ExpanderResponse<'a, R>
-        pub response: Response<'a>
+    struct ExpanderResponse<R>
+        pub response: Response
         pub inner: Option<R>
         pub changed: bool
         pub openness: f32
-        impl<'a, R: Debug> Debug for ExpanderResponse<'a, R>
+        impl<R: Clone> Clone for ExpanderResponse<R>
+        impl<R: Copy> Copy for ExpanderResponse<R>
+        impl<R: Debug> Debug for ExpanderResponse<R>
 
 ExpanderTheme
     struct ExpanderTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
@@ -899,7 +901,7 @@ GpuView
     struct GpuView: Configure, Debug, ThemeDefaults (blanket)
         pub fn new<T: GpuPaint + 'static>(paint: &Rc<RefCell<T>>) -> Self
         pub const fn repaint(self, repaint: bool) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 GpuWait
     enum GpuWait: Clone, Copy, Debug, Eq, PartialEq
@@ -952,7 +954,7 @@ Grid
             pub fn cols<NewCols: AsRef<[Track]>>(self, cols: NewCols) -> Grid<Rows, NewCols>
             pub const fn chrome(self, chrome: Chrome) -> Self
             pub const fn default_chrome(self, chrome: Chrome) -> Self
-            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> where Rows: AsRef<[Track]>, Cols: AsRef<[Track]>
+            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> where Rows: AsRef<[Track]>, Cols: AsRef<[Track]>
         impl<Rows, Cols> Configure for Grid<Rows, Cols>
         impl<Rows: Debug, Cols: Debug> Debug for Grid<Rows, Cols>
 
@@ -986,7 +988,7 @@ Harness
         pub fn frame_app(&mut self, app: &mut impl App) -> FrameReport
         pub fn step(&mut self, record: impl FnMut(&mut Ui)) -> FrameReport
         pub fn frame_value<R>(&mut self, record: impl FnMut(&mut Ui) -> R) -> R
-        pub fn response_in(&mut self, id: WidgetId, record: impl FnMut(&mut Ui)) -> ResponseState
+        pub fn response_in(&mut self, id: WidgetId, record: impl FnMut(&mut Ui)) -> Response
         pub fn prime(&mut self, frames: u32, record: impl FnMut(&mut Ui))
         pub fn advance(&mut self, dt: Duration) -> &mut Self
         pub const fn at(&mut self, time: Duration) -> &mut Self
@@ -1150,10 +1152,12 @@ ImePreedit
         pub cursor: Option<Span>
 
 InnerResponse
-    struct InnerResponse<'a, R>
-        pub response: Response<'a>
+    struct InnerResponse<R>
+        pub response: Response
         pub inner: R
-        impl<'a, R: Debug> Debug for InnerResponse<'a, R>
+        impl<R: Clone> Clone for InnerResponse<R>
+        impl<R: Copy> Copy for InnerResponse<R>
+        impl<R: Debug> Debug for InnerResponse<R>
 
 InputDelta
     struct InputDelta: Clone, Copy, Debug, Default, Eq, PartialEq
@@ -1380,8 +1384,8 @@ Locator
 Menu
     struct Menu<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn for_id(for_id: WidgetId) -> Self
-        pub fn context(snapshot: &ResponseSnapshot) -> Self
-        pub fn below(snapshot: &ResponseSnapshot) -> Self
+        pub fn context(trigger: &Response) -> Self
+        pub fn below(trigger: &Response) -> Self
         pub fn at(point: Vec2) -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
         pub const fn landing(self, landing: MenuLanding) -> Self
@@ -1398,7 +1402,7 @@ MenuBar
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a MenuBarTheme>>) -> Self
         pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut MenuBarMenus<'_>) -> R) -> InnerResponse<'_, R>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut MenuBarMenus<'_>) -> R) -> InnerResponse<R>
         pub fn open(ui: &mut Ui, bar: WidgetId, label: &str)
         pub fn close(ui: &mut Ui, bar: WidgetId)
         pub fn is_open(ui: &Ui, bar: WidgetId) -> bool
@@ -1425,7 +1429,7 @@ MenuItem
         pub const fn selected(self, selected: bool) -> Self
         pub const fn shortcut(self, shortcut: Shortcut) -> Self
         pub const fn shortcut_hint(self, shortcut: Shortcut) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 MenuItemTheme
     struct MenuItemTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
@@ -1446,7 +1450,7 @@ MenuSeparator
     struct MenuSeparator<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new() -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 MenuState
     enum MenuState: Clone, Copy, Debug, DockTab (blanket), Eq, From<bool>, Hash, PartialEq
@@ -1601,7 +1605,7 @@ Palette
 
 Panel
     struct Panel: Configure, Debug, ThemeDefaults (blanket)
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
         pub fn hstack() -> Self
         pub fn vstack() -> Self
         pub fn stack(axis: Axis) -> Self
@@ -1718,7 +1722,7 @@ PopupTheme
 
 PopupTrigger
     struct PopupTrigger<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn on(snapshot: &ResponseSnapshot) -> Self
+        pub fn on(trigger: &Response) -> Self
         pub fn style(self, s: impl Into<Option<&'a PopupTheme>>) -> Self
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
@@ -1750,7 +1754,7 @@ ProgressBar
     struct ProgressBar<'a>: Configure, Debug, ThemeDefaults (blanket)
         pub fn new(fraction: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a ProgressBarTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 ProgressBarTheme
     struct ProgressBarTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -1775,7 +1779,7 @@ RadioGroup
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
         pub fn segmented_style(self, s: impl Into<Option<&'a SegmentedTheme>>) -> Self
         impl<T: PartialEq> RadioGroup<'_, T>
-            pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &mut RadioOptions<'_, T>)) -> ValueResponse<'_>
+            pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &mut RadioOptions<'_, T>)) -> ValueResponse
         impl<'a, T: Debug> Debug for RadioGroup<'a, T>
 
 RadioLook
@@ -1787,7 +1791,7 @@ RadioOption
     struct RadioOption<'o, 'g, T>: Configure, ThemeDefaults (blanket)
         impl<'o, T: PartialEq> RadioOption<'o, '_, T>
             pub fn label(self, label: impl Into<TextInput<'o>>) -> Self
-            pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+            pub fn show(self, ui: &mut Ui) -> ValueResponse
         impl<'o, 'g, T: Debug> Debug for RadioOption<'o, 'g, T>
 
 RadioOptions
@@ -1848,13 +1852,7 @@ RequestedGpu
         pub fn headless(power_preference: PowerPreference, optional: Features) -> Result<Self, GpuRequestError>
 
 Response
-    struct Response<'a>: Debug, Deref
-        pub id: WidgetId
-        pub fn new(ui: &'a Ui, snapshot: ResponseSnapshot) -> Self
-        pub fn snapshot(&self) -> ResponseSnapshot
-
-ResponseSnapshot
-    struct ResponseSnapshot: Clone, Copy, Debug, Deref, PartialEq
+    struct Response: Clone, Copy, Debug, Deref, PartialEq
         pub id: WidgetId
         pub state: ResponseState
 
@@ -1926,7 +1924,7 @@ Scroll
         pub fn content_margin(self, m: impl Into<Spacing>) -> Self
         pub fn zoomable(self) -> Self
         pub fn zoom_config(self, config: ZoomConfig) -> Self
-        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
+        pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
         pub const fn chrome(self, chrome: Chrome) -> Self
         pub const fn default_chrome(self, chrome: Chrome) -> Self
         pub fn offset(ui: &Ui, id: WidgetId) -> Vec2
@@ -1992,7 +1990,7 @@ Separator
         pub fn along(axis: Axis) -> Self
         pub fn style(self, s: impl Into<Option<&'a SeparatorTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 SeparatorTheme
     struct SeparatorTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -2092,7 +2090,7 @@ Slider
         pub const fn step(self, step: f64) -> Self
         pub const fn decimals(self, n: usize) -> Self
         pub fn style(self, s: impl Into<Option<&'a SliderTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 SliderColors
     struct SliderColors: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -2154,7 +2152,7 @@ Spinner
         pub fn style(self, s: impl Into<Option<&'a SpinnerTheme>>) -> Self
         pub const fn color(self, color: RgbaF32) -> Self
         pub const fn width(self, px: f32) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 SpinnerTheme
     struct SpinnerTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -2192,7 +2190,7 @@ Splitter
         pub const fn min_pane(self, px: f32) -> Self
         pub const fn min_ratio(self, ratio: f32) -> Self
         pub fn style(self, s: impl Into<Option<&'a SplitterTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui, body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui, body: impl FnMut(&mut Ui, SplitHalf)) -> ValueResponse
 
 SplitterTheme
     struct SplitterTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize
@@ -2273,7 +2271,7 @@ Switch
         pub fn new(value: &'a mut bool) -> Self
         pub fn label(self, label: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a ToggleTheme>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> ValueResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> ValueResponse
 
 SystemScale
     struct SystemScale: Clone, Copy, Debug, Default, PartialEq, PartialOrd
@@ -2356,7 +2354,7 @@ TabStrip
         pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
         pub fn chip_id(strip: WidgetId, key: TabKey) -> WidgetId
         pub fn close_id(strip: WidgetId, key: TabKey) -> WidgetId
-        pub fn show(self, ui: &mut Ui, content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse<'_>
+        pub fn show(self, ui: &mut Ui, content: impl FnMut(&mut Ui, &TabChip)) -> TabStripResponse
 
 TabStripFocus
     enum TabStripFocus: Clone, Copy, Debug, Eq, From<bool>, PartialEq
@@ -2364,8 +2362,8 @@ TabStripFocus
         Unfocused
 
 TabStripResponse
-    struct TabStripResponse<'a>: Debug
-        pub response: Response<'a>
+    struct TabStripResponse: Clone, Copy, Debug
+        pub response: Response
         pub activated: Option<usize>
         pub closed: Option<usize>
         pub reordered: Option<TabMove>
@@ -2384,20 +2382,22 @@ TabbedView
             pub const fn overflow(self, overflow: TabOverflow) -> Self
             pub fn style(self, s: impl Into<Option<&'a TabsTheme>>) -> Self
             pub fn menu_style(self, s: impl Into<Option<&'a MenuTheme>>) -> Self
-            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize) -> R) -> TabbedViewResponse<'_, R>
+            pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, usize) -> R) -> TabbedViewResponse<R>
         impl<'a, S: Debug, L: Debug, K: Debug> Debug for TabbedView<'a, S, L, K>
         impl<S, L, K> Configure for TabbedView<'_, S, L, K>
 
 TabbedViewResponse
-    struct TabbedViewResponse<'a, R>
-        pub response: Response<'a>
+    struct TabbedViewResponse<R>
+        pub response: Response
         pub inner: Option<R>
         pub changed: bool
         pub activated: Option<usize>
         pub closed: Option<usize>
         pub reordered: Option<TabMove>
         pub dragging: Option<usize>
-        impl<'a, R: Debug> Debug for TabbedViewResponse<'a, R>
+        impl<R: Clone> Clone for TabbedViewResponse<R>
+        impl<R: Copy> Copy for TabbedViewResponse<R>
+        impl<R: Debug> Debug for TabbedViewResponse<R>
 
 TabsTheme
     struct TabsTheme: Clone, Debug, Deserialize<'de>, Lerp, PartialEq, Serialize, ThemeSlot
@@ -2446,7 +2446,7 @@ Text
         pub const fn italic(self) -> Self
         pub const fn text_wrap(self, wrap: TextWrap) -> Self
         pub const fn text_align(self, a: Align) -> Self
-        pub fn show(self, ui: &mut Ui) -> Response<'_>
+        pub fn show(self, ui: &mut Ui) -> Response
 
 TextEdit
     struct TextEdit<'a>: Configure, Debug, ThemeDefaults (blanket)
@@ -2467,11 +2467,11 @@ TextEdit
         pub const fn text_align(self, a: Align) -> Self
         pub const fn multiline(self, multiline: bool) -> Self
         pub fn placeholder(self, text: impl Into<TextInput<'a>>) -> Self
-        pub fn show(self, ui: &mut Ui) -> TextEditResponse<'_>
+        pub fn show(self, ui: &mut Ui) -> TextEditResponse
 
 TextEditResponse
-    struct TextEditResponse<'a>: Debug
-        pub response: Response<'a>
+    struct TextEditResponse: Clone, Debug
+        pub response: Response
         pub changed: bool
         pub committed: bool
         pub committed_text: Option<String>
@@ -2620,7 +2620,7 @@ ToggleTheme
 
 Tooltip
     struct Tooltip<'a>: Configure, Debug, ThemeDefaults (blanket)
-        pub fn on(snapshot: &ResponseSnapshot, text: impl Into<TextInput<'a>>) -> Self
+        pub fn on(trigger: &Response, text: impl Into<TextInput<'a>>) -> Self
         pub fn style(self, s: impl Into<Option<&'a TooltipTheme>>) -> Self
         pub const fn delay(self, delay: Duration) -> Self
         pub const fn when_disabled(self, when_disabled: bool) -> Self
@@ -2730,7 +2730,7 @@ Ui
         pub fn layer(&mut self, layer: Layer) -> LayerScope<'_>
         pub fn close_overlay(&mut self)
         pub fn withdraw_input_scope(&mut self, id: WidgetId)
-        pub fn response_for(&self, id: WidgetId) -> ResponseState
+        pub fn response_for(&self, id: WidgetId) -> Response
         pub fn state<S: 'static>(&self, id: WidgetId) -> Option<&S>
         pub fn with_state<S: Default + 'static, R>(&mut self, id: WidgetId, body: impl FnOnce(&mut Self, &mut S) -> R) -> R
         pub fn set_state<S: 'static>(&mut self, id: WidgetId, value: S)
@@ -2801,8 +2801,8 @@ VAlign
         Stretch = 4
 
 ValueResponse
-    struct ValueResponse<'a>: Debug
-        pub response: Response<'a>
+    struct ValueResponse: Clone, Copy, Debug
+        pub response: Response
         pub changed: bool
         pub committed: bool
 
@@ -3366,13 +3366,13 @@ widget::Widget
         pub fn canvas() -> Self
         pub fn grid() -> Self
         pub fn resolve(&mut self, ui: &mut Ui) -> WidgetId
-        pub fn response(&mut self, ui: &mut Ui) -> ResponseSnapshot
-        pub fn activation_response(&mut self, ui: &mut Ui, activation: Activation) -> ResponseSnapshot
+        pub fn response(&mut self, ui: &mut Ui) -> Response
+        pub fn activation_response(&mut self, ui: &mut Ui, activation: Activation) -> Response
         pub fn wear(&mut self, ui: &mut Ui, plan: LookPlan) -> AnimatedLook
         pub fn shortcut_pressed(&mut self, ui: &mut Ui, shortcut: impl Into<Shortcut>) -> bool
         pub fn key_pressed(&mut self, ui: &mut Ui, key: Key) -> bool
         pub fn record<R>(self, ui: &mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> R
-        pub fn show<'a, R>(self, ui: &'a mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'a, R>
+        pub fn show<R>(self, ui: &mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
         pub const fn authored_size(&self) -> Option<SizeSpec>
         pub const fn authored_min_size(&self) -> Option<Size>
         pub const fn authored_max_size(&self) -> Option<Size>

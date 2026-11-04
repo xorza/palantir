@@ -30,7 +30,7 @@ fn subtree_hash_stable_across_frames() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     };
     assert_eq!(
         support::record(build).subtree,
@@ -51,7 +51,7 @@ fn subtree_hash_changes_when_descendant_changes() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     }
     let h1 = support::record(|ui| build(ui, RgbaF32::srgb(0.2, 0.4, 0.8))).subtree;
     let h2 = support::record(|ui| build(ui, RgbaF32::srgb(0.9, 0.4, 0.8))).subtree;
@@ -87,7 +87,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                 }
             })
             .response
-            .node()
+            .node(ui)
     }
     let h_ab = support::record(|ui| build(ui, false)).subtree;
     let h_ba = support::record(|ui| build(ui, true)).subtree;
@@ -105,7 +105,7 @@ fn self_transform_change_flips_node_hash() {
             .transform(t)
             .show(ui, |_| {})
             .response
-            .node()
+            .node(ui)
     }
     // Both transforms are non-identity: identity is the noop sentinel (`PanelExtras::DEFAULT.transform`) and would carry no row.
     let t_a = TranslateScale::from_translation(Vec2::new(1.0, 0.0));
@@ -159,7 +159,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                         .rows(rows)
                         .show(ui, |_| {})
                         .response
-                        .node(),
+                        .node(ui),
                 );
                 Grid::new()
                     .id(WidgetId::from_hash("other"))
@@ -186,7 +186,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                         .rows(rows)
                         .show(ui, |_| {})
                         .response
-                        .node(),
+                        .node(ui),
                 );
             });
     });
@@ -225,7 +225,7 @@ fn subtree_end_rolls_up_during_recording() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     });
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
     assert_eq!(h.ui().tree(Layer::Main).records.len(), 7);

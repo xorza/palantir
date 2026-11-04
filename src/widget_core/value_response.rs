@@ -10,10 +10,10 @@ use crate::widget_core::response::Response;
 /// option, a `ComboBox`'s reports the list opening. Read `changed` for the value.
 ///
 /// [`TextEditResponse`](crate::TextEditResponse) stays separate (cancel, submit, focus edges).
-#[derive(Debug)]
-pub struct ValueResponse<'a> {
+#[derive(Clone, Copy, Debug)]
+pub struct ValueResponse {
     /// The widget's own [`Response`].
-    pub response: Response<'a>,
+    pub response: Response,
     /// The bound value was written with something other than what the caller passed this frame.
     ///
     /// A level, not an edge: true every frame an uncommitted draft exists; false on a drag pinned at a range end.
@@ -24,20 +24,16 @@ pub struct ValueResponse<'a> {
     pub committed: bool,
 }
 
-/// A [`ValueResponse`]'s two signals without the [`Response`] that borrows the `Ui`: what a
-/// composite widget gathers from the controls inside it, and a test reads out of a frame.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct ValueEdges {
-    pub(crate) changed: bool,
-    pub(crate) committed: bool,
-}
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::widget_core::value_response::ValueResponse;
 
-impl ValueResponse<'_> {
-    /// The two signals, copied out so the `ui` borrow can end.
-    pub(crate) const fn edges(&self) -> ValueEdges {
-        ValueEdges {
-            changed: self.changed,
-            committed: self.committed,
+    impl ValueResponse {
+        /// Assert both signals, one assert each, so a failure names the one that broke.
+        #[track_caller]
+        pub(crate) fn assert_signals(&self, changed: bool, committed: bool, label: &str) {
+            assert_eq!(self.changed, changed, "{label}: changed");
+            assert_eq!(self.committed, committed, "{label}: committed");
         }
     }
 }

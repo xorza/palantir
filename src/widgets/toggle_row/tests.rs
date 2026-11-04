@@ -135,7 +135,7 @@ enum Toggle {
 fn record_toggle(ui: &mut Ui, kind: Toggle, value: &mut bool, disabled: bool) -> [bool; 2] {
     let id = WidgetId::from_hash("toggle");
     let before = *value;
-    let edges = |r: ValueResponse<'_>| (r.response.left.clicked(), r.changed, r.committed);
+    let edges = |r: ValueResponse| (r.response.left.clicked(), r.changed, r.committed);
     let (clicked, changed, committed) = match kind {
         Toggle::Checkbox => edges(
             Checkbox::new(value)

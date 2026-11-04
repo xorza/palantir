@@ -252,8 +252,7 @@ fn form(ui: &mut Ui, k: Kit, s: &mut State, themes: &Themes) {
                 let del = Button::new()
                     .style(&themes.danger)
                     .label("Delete profile")
-                    .show(ui)
-                    .snapshot();
+                    .show(ui);
                 Tooltip::on(
                     &del,
                     "Deletes the profile. No undo — hence the danger theme.",

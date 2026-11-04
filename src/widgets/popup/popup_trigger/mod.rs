@@ -9,7 +9,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
@@ -22,7 +22,7 @@ use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 /// ```
 /// # use palantir::{Button, Configure, PopupTrigger, Text, Ui};
 /// # fn demo(ui: &mut Ui) {
-/// let trigger = Button::new().label("Filters").show(ui).snapshot();
+/// let trigger = Button::new().label("Filters").show(ui);
 /// PopupTrigger::on(&trigger).show(ui, |ui| {
 ///     Text::new("…").show(ui);
 /// });
@@ -40,7 +40,7 @@ use crate::widgets::popup::trigger_state::{Opening, TriggerFrame, TriggerState};
 #[must_use = "a widget records nothing until `show`"]
 pub struct PopupTrigger<'a> {
     for_id: WidgetId,
-    /// The trigger's state when the snapshot was taken: its click toggles the
+    /// The trigger's state as it showed: its click toggles the
     /// popup, its rect anchors it, its disabled flag closes it.
     trigger: ResponseState,
     /// The popup this trigger drops; anchored below the trigger at `show`.
@@ -48,12 +48,12 @@ pub struct PopupTrigger<'a> {
 }
 
 impl<'a> PopupTrigger<'a> {
-    /// Attach a popup to the trigger `snapshot` was taken from.
-    pub fn on(snapshot: &ResponseSnapshot) -> Self {
+    /// Attach a popup to the trigger whose response is `trigger`.
+    pub fn on(trigger: &Response) -> Self {
         Self {
-            for_id: snapshot.id,
-            trigger: snapshot.state,
-            popup: Popup::new().default_id(PopupTrigger::popup_id(snapshot.id)),
+            for_id: trigger.id,
+            trigger: trigger.state,
+            popup: Popup::new().default_id(PopupTrigger::popup_id(trigger.id)),
         }
     }
 

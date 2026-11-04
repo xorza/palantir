@@ -158,9 +158,8 @@ Each item needs your answer before its batch starts.
 
 1. Settled: the rule allows `pub(crate)` protocol entry points between crate widgets (WG-15).
 2. Settled: a pick over a list the widget reorders binds the index (WG-16).
-3. **"A `Response` borrows the `Ui`"** (UI-10). The borrow makes the owned twins
-   `ResponseSnapshot` and `ValueEdges`, and puts `'a` on every response type. No measurement
-   supports the lazy probe. The proposal is to measure an eager `Response` first.
+3. Settled: a `Response` is owned and probed at `show` (UI-10), at a measured 9 µs a record
+   pass (AGENTS.md "A `Response` is owned").
 
 ## Batches
 
@@ -178,11 +177,10 @@ Root causes R9 and R1. This batch removes the most code and changes the most pub
   copies (UI-07, WG-11, WG-12).
 - One `authored() -> &AuthoredNode` view replaces 21 `authored_*` getters (UI-07). Remove
   `ThemeDefaults` from the builders the app sees (UI-08).
-- Decision 3: measure an eager `Response`, then decide (UI-10).
 - State the bound of the input queue and decide what a full one does (the rest of UI-27).
 
 Done in this batch: decisions 1 and 2 (WG-15, WG-16), UI-05, UI-06, UI-09, UI-14, UI-16,
-UI-17, UI-18, UI-20, UI-23, UI-26, UI-28, WG-09, WG-10, WG-13, WG-14, WG-17, WG-18, WG-22, WG-23, WG-24, WG-25,
+UI-17, UI-18, UI-20, UI-23, UI-26, UI-28, UI-10, WG-09, WG-10, WG-13, WG-14, WG-17, WG-18, WG-22, WG-23, WG-24, WG-25,
 and the wake and watch bounds of UI-27. UI-09 carries `ClickOutside`, now `Block` or `Dismiss`, in
 the backdrop, not a new `Capture`, a name the GPU capture holds; a pass-through popup is
 `click_outside(None)`. WG-14 keeps a row for each widget, as both placements run one
@@ -195,7 +193,8 @@ field its widget closed unseen reads no stale focus. UI-17 took serde's remote d
 `remote = "Self"`: that derive adds a public inherent `Theme::deserialize` that skips the check.
 Its failure stays a rule text, as every `domain::file` rule is: serde carries only a message
 through `de::Error::custom`, so an enum no caller could match. UI-18 kept `TextStyle::stock`, a
-`const` base that `Theme::stock` cannot be. UI-19 is kept as it is: the
+`const` base that `Theme::stock` cannot be. UI-10 made `Response` owned: `ResponseSnapshot`, `ValueEdges`, `EditEdges`
+and the lifetimes of the response types are gone, and `Ui::response_for` answers a `Response`. UI-19 is kept as it is: the
 `theme_transition_alloc_free` test holds a transition to the buffers it keeps.
 
 ## Findings index
@@ -245,11 +244,6 @@ its own findings here; the line numbers are from the review and drift as the cod
 - **What:** the doc says "an app chaining `.default_padding(..)` onto a `Button` overrides nothing". In fact an app's `default_padding(x)` fills `padding` first (`Node::fill_padding`), and the theme's own fill in `wear` (`widget/mod.rs:240`) then does nothing. So for an app it is just a second spelling of `.padding(x)`.
 - **Direction:** fix the doc. Better, keep `ThemeDefaults` off the app-facing builders (export it only through `widget::`) so apps have one setter.
 - **Root cause:** the authoring surface is mirrored per field.
-
-**UI-10 · api/complexity · med · public API (flags an AGENTS decision)** — `src/widget_core/response.rs`
-- **What:** "A Response borrows the Ui immutably" so it can probe lazily. The borrow forces owned twins (`ResponseSnapshot`, `ValueEdges` in `value_response.rs`) and puts `'a` on `InnerResponse`, `ValueResponse` and every `*Response`. AGENTS cites no measurement for the lazy probe; egui's `Response` is owned and eager.
-- **Direction:** measure an eager `response_for` in `integration/frame/*`. If it costs only a few percent, make `Response` the owned snapshot and delete `ResponseSnapshot` and `ValueEdges`.
-- **Root cause:** the borrowed `Response` handle.
 
 **UI-27 · bound · low · no API change** — `src/ui/frame_runtime/mod.rs:100` (`repaint_wakes`), `src/input_state/input_queue/mod.rs:23` (`pending`), `src/input_state/watches.rs:13-15`
 - **What:** these grow without a stated limit. `Watches` pushes duplicates by design.

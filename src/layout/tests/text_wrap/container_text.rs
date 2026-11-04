@@ -47,7 +47,7 @@ fn container_text_is_paint_only_and_wraps_to_final_inner_width() {
         })
         .collect();
     assert_eq!(draw_keys, [shaped.buffer_key()]);
-    let leaf = h.frame_value(|ui| Text::new("leaf-only").show(ui).node());
+    let leaf = h.frame_value(|ui| Text::new("leaf-only").show(ui).node(ui));
     let layout = h.ui().layout(Layer::Main);
     assert_eq!(layout.text_shapes.len(), 1);
     assert_eq!(layout.text_spans[leaf.idx()].len, 1);
@@ -72,7 +72,7 @@ fn container_text_replays_at_its_width_and_reshapes_at_another() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     };
     let run_of = |h: &Harness, node: NodeId| {
         let layout = h.ui().layout(Layer::Main);
@@ -134,7 +134,7 @@ fn container_text_under_a_shown_ancestor_shapes_what_it_did_not_replay() {
                                     .show(ui);
                             })
                             .response
-                            .node(),
+                            .node(ui),
                     );
                 });
             inner.unwrap()
@@ -311,11 +311,11 @@ fn build_wrapping_container_text(ui: &mut Ui) -> ContainerTextScene {
                     .id_salt("container-size-driver")
                     .size((Sizing::fixed(80.0), Sizing::fixed(20.0)))
                     .show(ui)
-                    .node(),
+                    .node(ui),
             );
         })
         .response
-        .node();
+        .node(ui);
     ContainerTextScene {
         container,
         child: child.unwrap(),
@@ -341,7 +341,7 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
                     .id_salt("interleaved-child")
                     .font_size(18.0)
                     .show(ui)
-                    .node(),
+                    .node(ui),
             );
             DirectText {
                 text: "parent-after-is-longer",
@@ -353,7 +353,7 @@ fn build_interleaved_container_text(ui: &mut Ui) -> ContainerTextScene {
             .add(ui);
         })
         .response
-        .node();
+        .node(ui);
     ContainerTextScene {
         container,
         child: child.unwrap(),
@@ -370,7 +370,7 @@ fn build_container_text_with_visibility(ui: &mut Ui, visibility: Visibility) -> 
             DirectText::PARAGRAPH.add(ui);
         })
         .response
-        .node()
+        .node(ui)
 }
 
 /// One text shape recorded straight on the open node, at `local_origin` or the default.

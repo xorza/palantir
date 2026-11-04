@@ -191,8 +191,7 @@ fn build_copy(ui: &mut Ui, hint: bool) -> CopyRow {
                 .id(WidgetId::from_hash("trigger"))
                 .label("right click me")
                 .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
-                .show(ui)
-                .snapshot();
+                .show(ui);
             Menu::context(&trigger).show(ui, |ui| {
                 let item = MenuItem::new("Copy");
                 let item = if hint {
@@ -255,8 +254,7 @@ fn nested(ui: &mut Ui) {
                         .id(trigger_id())
                         .label("right click me")
                         .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
-                        .show(ui)
-                        .snapshot();
+                        .show(ui);
                     Menu::context(&trigger).show(ui, |ui| {
                         MenuItem::new("Copy").show(ui);
                     });
@@ -275,8 +273,7 @@ fn a_keyboard_open_focuses_the_first_row_and_a_disabled_trigger_closes() {
             .id(trigger_id())
             .label("menu")
             .disabled(disabled)
-            .show(ui)
-            .snapshot();
+            .show(ui);
         Menu::context(&trigger)
             .show(ui, |ui| {
                 MenuItem::new("Copy").id(copy).show(ui);
@@ -344,8 +341,7 @@ fn below_scene(top: f32) -> impl FnMut(&mut Ui) -> bool {
                     .id(trigger_id())
                     .label("menu")
                     .size((Sizing::fixed(120.0), Sizing::fixed(40.0)))
-                    .show(ui)
-                    .snapshot();
+                    .show(ui);
                 open = Menu::below(&trigger)
                     .show(ui, |ui| {
                         MenuItem::new("Copy").show(ui);

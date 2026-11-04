@@ -8,8 +8,7 @@ use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
-use crate::widget_core::response::Response;
-use crate::widget_core::value_response::{ValueEdges, ValueResponse};
+use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::color_swatch::ColorSwatch;
 use crate::widgets::popup::popup_trigger::PopupTrigger;
@@ -57,7 +56,7 @@ impl<'a> ColorButton<'a> {
     }
 
     /// Records the button.
-    pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(self, ui: &mut Ui) -> ValueResponse {
         // `Rc` bump so the popup can borrow chrome across the `&mut Ui` the chip's record takes.
         let theme = Rc::clone(ui.theme());
         let slot = self.style.unwrap_or(&theme.color_picker);
@@ -66,20 +65,17 @@ impl<'a> ColorButton<'a> {
             .swatch
             .style(slot)
             .default_size((Sizing::fixed(side), Sizing::fixed(side)))
-            .show(ui)
-            .snapshot();
+            .show(ui);
 
         let picker = self.picker.default_id(response.id.with("picker"));
         let opened = PopupTrigger::on(&response)
             .style(&slot.popup)
-            .show_as::<ColorButton<'static>, _>(ui, |ui| picker.show(ui).edges());
-        let ValueEdges { changed, committed } =
-            opened.map(|opened| opened.inner).unwrap_or_default();
-
+            .show_as::<ColorButton<'static>, _>(ui, |ui| picker.show(ui));
+        let picked = opened.map(|opened| opened.inner);
         ValueResponse {
-            response: Response::new(ui, response),
-            changed,
-            committed,
+            response,
+            changed: picked.is_some_and(|picked| picked.changed),
+            committed: picked.is_some_and(|picked| picked.committed),
         }
     }
 }

@@ -78,7 +78,7 @@ impl<'a> ColorStrip<'a> {
     }
 
     /// Records the strip.
-    pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(self, ui: &mut Ui) -> ValueResponse {
         self.area.show(ui, self.kind)
     }
 }

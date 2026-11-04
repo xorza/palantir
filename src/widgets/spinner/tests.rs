@@ -175,7 +175,7 @@ fn a_fixed_size_sets_the_box_and_the_arc() {
         if let Some(size) = size {
             spinner = spinner.size(size);
         }
-        spinner.show(ui).node()
+        spinner.show(ui).node(ui)
     });
     assert_eq!(
         trio,

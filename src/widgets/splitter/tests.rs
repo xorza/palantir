@@ -12,7 +12,7 @@ use crate::theme::color_scheme::ColorScheme;
 use crate::theme::splitter::SplitterTheme;
 use crate::ui::frame_report::FrameProcessing;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::value_response::ValueEdges;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::block::Block;
 use crate::widgets::panel::Panel;
 use crate::widgets::splitter::split_half::SplitHalf;
@@ -28,24 +28,14 @@ fn split_id() -> WidgetId {
 
 /// One frame: a 401×100 row splitter at the origin; the 1 px rule leaves a 400 span, seam center at ratio · 400 + 0.5, grab bar 6 px.
 ///
-/// One snapshot per record pass: action input records twice, signals fire on pass A.
-const QUIET: ValueEdges = ValueEdges {
-    changed: false,
-    committed: false,
-};
-const CHANGED: ValueEdges = ValueEdges {
-    changed: true,
-    committed: false,
-};
-
-fn frame_with(h: &mut Harness, ratio: &mut f32) -> Passes<ValueEdges> {
+/// One response per record pass: action input records twice, signals fire on pass A.
+fn frame_with(h: &mut Harness, ratio: &mut f32) -> Passes<ValueResponse> {
     h.frame_passes(|ui| {
         Splitter::row(ratio)
             .id(split_id())
             .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
             .min_pane(50.0)
             .show(ui, |_, _| {})
-            .edges()
     })
 }
 
@@ -65,8 +55,11 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
     );
     // Pass A lays panes out at the pointer; the binding takes the arranged ratio on pass B.
-    assert_eq!(*moved.a(), QUIET, "{moved:?}");
-    assert_eq!(moved.b(), Some(&CHANGED), "{moved:?}");
+    moved.a().assert_signals(false, false, "pass A");
+    moved
+        .b()
+        .expect("pass B")
+        .assert_signals(true, false, "pass B");
 
     // A later drag movement records once; the caller gets the prior ratio until the next record.
     h.drag_to(Vec2::new(999.0, 50.0));
@@ -76,7 +69,8 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         ratio, 0.75,
         "model holds the prior arranged ratio for one record, got {ratio}"
     );
-    assert_eq!(*held.a(), QUIET, "the binding did not move this frame");
+    held.a()
+        .assert_signals(false, false, "the binding did not move this frame");
     let rect = h.arranged(split_id().with("first"));
     assert_eq!(
         rect.unwrap().size.w,
@@ -92,24 +86,23 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
         ratio, 0.875,
         "the next record writes back the arranged 350/400 ratio, got {ratio}"
     );
-    assert_eq!(*caught_up.a(), CHANGED);
+    caught_up.a().assert_signals(true, false, "caught up");
 
     // Release commits the held ratio.
     h.release(PointerButton::Left);
     h.hover(Vec2::new(100.0, 50.0));
     let released = frame_with(&mut h, &mut ratio);
     assert_eq!(ratio, 0.875, "ratio holds after release, got {ratio}");
-    assert_eq!(
-        *released.a(),
-        ValueEdges {
-            changed: false,
-            committed: true
-        },
-        "the release commits the held ratio",
-    );
-    assert_eq!(released.b(), Some(&QUIET));
+    released
+        .a()
+        .assert_signals(false, true, "the release commits the held ratio");
+    released
+        .b()
+        .expect("pass B")
+        .assert_signals(false, false, "pass B");
     let after = frame_with(&mut h, &mut ratio);
-    assert_eq!((after.len(), *after.a()), (1, QUIET));
+    assert_eq!(after.len(), 1);
+    after.a().assert_signals(false, false, "after");
 
     // Double-click (seam at 350.5) resets to the center: layout takes 0.5 on pass A, the binding commits on pass B.
     let seam = Vec2::new(350.5, 50.0);
@@ -123,17 +116,14 @@ fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let reset = frame_with(&mut h, &mut ratio);
     assert_eq!(reset.len(), 2, "premise: a double-click records twice");
     assert_eq!(ratio, 0.5, "the reset writes the center, got {ratio}");
-    assert_eq!(*reset.a(), QUIET, "{reset:?}");
-    assert_eq!(
-        reset.b(),
-        Some(&ValueEdges {
-            changed: true,
-            committed: true
-        }),
-        "{reset:?}"
-    );
+    reset.a().assert_signals(false, false, "the reset's pass A");
+    reset
+        .b()
+        .expect("pass B")
+        .assert_signals(true, true, "the reset's pass B");
     let settled = frame_with(&mut h, &mut ratio);
-    assert_eq!((settled.len(), *settled.a()), (1, QUIET));
+    assert_eq!(settled.len(), 1);
+    settled.a().assert_signals(false, false, "settled");
 }
 
 /// A press off the seam's center keeps its grab offset: pressed 2 px right of the center at
@@ -453,7 +443,6 @@ fn a_splitter_disabled_mid_drag_lets_go() {
                 .size((Sizing::fixed(401.0), Sizing::fixed(100.0)))
                 .disabled(disabled)
                 .show(ui, |_, _| {})
-                .edges()
         })
     };
     let divider = split_id().with("divider");
@@ -477,12 +466,16 @@ fn a_splitter_disabled_mid_drag_lets_go() {
     assert_eq!(h.ui().window_requests().levels.cursor, CursorIcon::Default);
     assert_eq!(ratio, 0.75, "the pointer no longer steers");
     assert_eq!(h.arranged(split_id().with("first")).unwrap().size.w, 300.0);
-    assert_eq!(disabled.count_where(|e| *e != QUIET), 0, "{disabled:?}");
+    assert_eq!(
+        disabled.count_where(|e| e.changed || e.committed),
+        0,
+        "{disabled:?}"
+    );
 
     h.release(PointerButton::Left);
     let released = frame(&mut h, &mut ratio, true);
     assert_eq!(
-        released.count_where(|e| *e != QUIET),
+        released.count_where(|e| e.changed || e.committed),
         0,
         "no commit: {released:?}"
     );

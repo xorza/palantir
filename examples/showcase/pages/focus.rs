@@ -334,7 +334,6 @@ fn containment(ui: &mut Ui, k: Kit, s: &mut State, seen: &mut Seen) {
                 }
                 let trigger = Button::new().label("Filters ▾").show(ui);
                 seen.note("Filters ▾", trigger.focused);
-                let trigger = trigger.snapshot();
                 PopupTrigger::on(&trigger)
                     .padding(M.space.md)
                     .gap(M.space.sm)

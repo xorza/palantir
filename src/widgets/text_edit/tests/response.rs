@@ -1,6 +1,6 @@
 use crate::host::harness::internals::Passes;
 use crate::input::keyboard::key_text::KeyText;
-use crate::widgets::text_edit::EditEdges;
+use crate::widgets::text_edit::TextEditResponse;
 use crate::widgets::text_edit::edit_end::EditEnd;
 use crate::widgets::text_edit::tests::*;
 
@@ -8,7 +8,7 @@ const EDITOR: &str = "response-editor";
 
 /// Drives one frame and keeps each record pass's edges: `Ui::frame` re-records on relayout, so a per-frame edge
 /// shows only in pass A.
-fn frame(h: &mut Harness, buf: &mut String) -> Passes<EditEdges> {
+fn frame(h: &mut Harness, buf: &mut String) -> Passes<TextEditResponse> {
     h.frame_passes(|ui| {
         Panel::hstack()
             .auto_id()
@@ -17,7 +17,6 @@ fn frame(h: &mut Harness, buf: &mut String) -> Passes<EditEdges> {
                     .id(WidgetId::from_hash(EDITOR))
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
-                    .edges()
             })
             .inner
     })
@@ -199,7 +198,7 @@ fn reports_changed_on_same_length_overwrite() {
 /// Disabling a focused editor kicks focus out on the disable frame and drops that frame's keystrokes.
 #[test]
 fn disabling_a_focused_editor_blurs_and_drops_input() {
-    fn disabled_frame(h: &mut Harness, buf: &mut String) -> Passes<EditEdges> {
+    fn disabled_frame(h: &mut Harness, buf: &mut String) -> Passes<TextEditResponse> {
         h.frame_passes(|ui| {
             Panel::hstack()
                 .auto_id()
@@ -209,7 +208,6 @@ fn disabling_a_focused_editor_blurs_and_drops_input() {
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .disabled(true)
                         .show(ui)
-                        .edges()
                 })
                 .inner
         })

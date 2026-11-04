@@ -379,13 +379,13 @@ fn solver_order_text_runs_form_contiguous_subtree_snapshots() {
                         .id(WidgetId::from_hash("fill-text"))
                         .size((Sizing::FILL, Sizing::HUG))
                         .show(ui)
-                        .node(),
+                        .node(ui),
                 );
                 nodes.push(
                     Text::new("hug measured first")
                         .id(WidgetId::from_hash("hug-text"))
                         .show(ui)
-                        .node(),
+                        .node(ui),
                 );
             });
     }

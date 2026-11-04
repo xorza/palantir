@@ -15,7 +15,7 @@ use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::primitives::paint::image::Image;
 use crate::renderer::render_plan::RenderPlan;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::value_response::ValueEdges;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::color_field::{ColorField, fill};
 use glam::{UVec2, Vec2};
 use std::array;
@@ -34,8 +34,8 @@ fn coords(hue: f32, sat: f32, val: f32) -> ColorCoords {
         .with_value(val)
 }
 
-fn frame(h: &mut Harness, id: WidgetId, state: &mut ColorCoords) -> ValueEdges {
-    h.frame_value(|ui| ColorField::new(state).id(id).show(ui).edges())
+fn frame(h: &mut Harness, id: WidgetId, state: &mut ColorCoords) -> ValueResponse {
+    h.frame_value(|ui| ColorField::new(state).id(id).show(ui))
 }
 
 #[test]
@@ -80,19 +80,25 @@ fn changed_and_committed_are_edges() {
     frame(&mut h, id, &mut state);
 
     h.press(Vec2::new(104.0, 80.0), PointerButton::Left);
-    let ValueEdges { changed, committed } = frame(&mut h, id, &mut state);
+    let ValueResponse {
+        changed, committed, ..
+    } = frame(&mut h, id, &mut state);
     assert!(changed, "the press moved the value");
     assert!(!committed, "a press is not the end of a gesture");
 
-    let ValueEdges { changed, committed } = frame(&mut h, id, &mut state);
+    let ValueResponse {
+        changed, committed, ..
+    } = frame(&mut h, id, &mut state);
     assert!(!changed, "a held pointer that has not moved writes nothing");
     assert!(!committed);
 
     h.release(PointerButton::Left);
-    let ValueEdges { committed, .. } = frame(&mut h, id, &mut state);
+    let ValueResponse { committed, .. } = frame(&mut h, id, &mut state);
     assert!(committed, "the release frame is the one edit");
 
-    let ValueEdges { changed, committed } = frame(&mut h, id, &mut state);
+    let ValueResponse {
+        changed, committed, ..
+    } = frame(&mut h, id, &mut state);
     assert!(!changed && !committed, "no residual signals");
 }
 
@@ -120,7 +126,9 @@ fn keys_walk_both_axes() {
         h.ui_mut().set_focus(id);
         h.hold_modifiers(mods);
         h.key(key);
-        let ValueEdges { changed, committed } = frame(&mut h, id, &mut state);
+        let ValueResponse {
+            changed, committed, ..
+        } = frame(&mut h, id, &mut state);
         assert_eq!(
             (state.saturation(), state.value()),
             (sat, val),

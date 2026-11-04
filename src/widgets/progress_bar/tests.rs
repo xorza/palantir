@@ -15,7 +15,7 @@ fn explicit_size_overrides_fill_default() {
         if let Some(size) = size {
             bar = bar.size(size);
         }
-        bar.show(ui).node()
+        bar.show(ui).node(ui)
     });
     assert_eq!(
         trio,
@@ -43,7 +43,7 @@ fn endpoint_segments_collapse_without_invalid_fill_weights() {
             ProgressBar::new(fraction)
                 .size((Sizing::fixed(100.0), Sizing::fixed(10.0)))
                 .show(ui)
-                .node()
+                .node(ui)
         });
         let widths: Vec<_> = h
             .main_child_rects(root)

@@ -73,7 +73,7 @@ impl<'a> Separator<'a> {
     }
 
     /// Records the rule.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let theme = self.style.unwrap_or(&ui.theme().separator);
         let t = domain::length_at_least(theme.thickness, 0.0);
         let (default_size, stretch) = match self.axis {

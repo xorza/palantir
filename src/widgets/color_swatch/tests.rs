@@ -34,7 +34,13 @@ fn a_chip_is_a_themed_square_with_a_checker_behind_translucency() {
         ),
     ] {
         let mut h = Harness::mono(UVec2::new(100, 100));
-        let node = h.frame_value(|ui| ColorSwatch::new(color).id(id).style(style).show(ui).node());
+        let node = h.frame_value(|ui| {
+            ColorSwatch::new(color)
+                .id(id)
+                .style(style)
+                .show(ui)
+                .node(ui)
+        });
         let rect = h.arranged(id);
         assert_eq!(
             (rect.unwrap().size.w, rect.unwrap().size.h),
@@ -131,7 +137,7 @@ fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
                 .style(&style)
                 .disabled(disabled)
                 .show(ui)
-                .node()
+                .node(ui)
         });
         let tree = h.ui().tree(Layer::Main);
         let ring = tree.chrome(node).expect("the chip wears a ring").border;

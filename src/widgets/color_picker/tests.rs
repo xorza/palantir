@@ -11,7 +11,7 @@ use crate::theme::Theme;
 use crate::theme::color_picker::ColorPickerTheme;
 use crate::theme::color_scheme::ColorScheme;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::value_response::ValueEdges;
+use crate::widget_core::value_response::ValueResponse;
 use crate::widgets::color_picker::ColorPicker;
 use crate::widgets::color_picker::swatch_row::SwatchRow;
 use crate::widgets::text_edit::TextEdit;
@@ -21,8 +21,8 @@ fn harness() -> Harness {
     Harness::new(UVec2::new(320, 460))
 }
 
-fn frame(h: &mut Harness, id: WidgetId, color: &mut RgbaF32) -> ValueEdges {
-    h.frame_value(|ui| ColorPicker::new(color).alpha(true).id(id).show(ui).edges())
+fn frame(h: &mut Harness, id: WidgetId, color: &mut RgbaF32) -> ValueResponse {
+    h.frame_value(|ui| ColorPicker::new(color).alpha(true).id(id).show(ui))
 }
 
 /// Black has no hue; dragging the value to the bottom and back must return to the starting hue.
@@ -313,11 +313,7 @@ fn the_hex_field_commits_a_typed_color_and_nothing_else() {
     h.ui_mut().set_focus(hex);
     frame(&mut h, id, &mut color);
     h.ui_mut().clear_focus();
-    let nothing = ValueEdges {
-        changed: false,
-        committed: false,
-    };
-    assert_eq!(frame(&mut h, id, &mut color), nothing, "an unchanged blur");
+    frame(&mut h, id, &mut color).assert_signals(false, false, "an unchanged blur");
 
     let retype = |h: &mut Harness, color: &mut RgbaF32, text: &str, end: Key| {
         h.ui_mut().set_focus(hex);
@@ -331,21 +327,17 @@ fn the_hex_field_commits_a_typed_color_and_nothing_else() {
         h.key(end);
         frame(h, id, color)
     };
-    assert_eq!(
-        retype(&mut h, &mut color, "#4cd3ff", Key::Enter),
-        nothing,
-        "the shown color in lower case"
+    retype(&mut h, &mut color, "#4cd3ff", Key::Enter).assert_signals(
+        false,
+        false,
+        "the shown color in lower case",
     );
     assert_eq!(color, RgbaF32::hex(0x4cd3ff));
 
     assert!(retype(&mut h, &mut color, "#ff8800", Key::Enter).committed);
     assert_eq!(color.to_srgba8(), RgbaF32::hex(0xff8800).to_srgba8());
 
-    assert_eq!(
-        retype(&mut h, &mut color, "#0000ff", Key::Escape),
-        nothing,
-        "Escape"
-    );
+    retype(&mut h, &mut color, "#0000ff", Key::Escape).assert_signals(false, false, "Escape");
     assert_eq!(color.to_srgba8(), RgbaF32::hex(0xff8800).to_srgba8());
     frame(&mut h, id, &mut color);
     assert_eq!(

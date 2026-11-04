@@ -401,7 +401,7 @@ pub use ui::ui_preferences::UiPreferences;
 pub use widget_core::click_outside::ClickOutside;
 pub use widget_core::configure::Configure;
 pub use widget_core::overlay_response::{OverlayClose, OverlayResponse};
-pub use widget_core::response::{InnerResponse, Response, ResponseSnapshot};
+pub use widget_core::response::{InnerResponse, Response};
 pub use widget_core::value_response::ValueResponse;
 pub use widgets::block::Block;
 pub use widgets::bound_num::BoundNum;

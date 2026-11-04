@@ -177,7 +177,7 @@ fn chat_message(ui: &mut Ui, avatar_w: f32) -> NodeId {
                         .size((Sizing::FILL, Sizing::HUG))
                         .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)
-                        .node()
+                        .node(ui)
                 })
                 .inner
         })

@@ -31,18 +31,18 @@ fn instance_style_beats_the_global_slot_and_explicit_margin_beats_both() {
         let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
         col.show(ui, |ui| {
             [
-                Separator::horizontal().style(&styled).show(ui).node(),
+                Separator::horizontal().style(&styled).show(ui).node(ui),
                 Separator::horizontal()
                     .style(&styled)
                     .margin(Spacing::ZERO)
                     .show(ui)
-                    .node(),
-                Separator::horizontal().show(ui).node(),
+                    .node(ui),
+                Separator::horizontal().show(ui).node(ui),
                 Separator::horizontal()
                     .style(&styled)
                     .size((Sizing::HUG, Sizing::fixed(7.0)))
                     .show(ui)
-                    .node(),
+                    .node(ui),
             ]
         })
         .inner
@@ -87,7 +87,7 @@ fn explicit_size_overrides_stretch_default() {
         if let Some(size) = size {
             rule = rule.size(size);
         }
-        rule.show(ui).node()
+        rule.show(ui).node(ui)
     });
     assert_eq!(
         trio,
@@ -108,15 +108,15 @@ fn a_callers_alignment_survives_the_stretch_default_axis_by_axis() {
         layers
             .show(ui, |ui| {
                 [
-                    Separator::horizontal().show(ui).node(),
+                    Separator::horizontal().show(ui).node(ui),
                     Separator::horizontal()
                         .align(Align::h(HAlign::Center))
                         .show(ui)
-                        .node(),
+                        .node(ui),
                     Separator::horizontal()
                         .align(Align::v(VAlign::Bottom))
                         .show(ui)
-                        .node(),
+                        .node(ui),
                 ]
             })
             .inner

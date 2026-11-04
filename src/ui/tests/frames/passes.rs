@@ -14,7 +14,7 @@ use crate::ui::frame_report::FrameProcessing;
 use crate::ui::frame_runtime::wake::WakeReasons;
 use crate::ui::tests::support::SURFACE;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widgets::{block::Block, button::Button, panel::Panel};
 use crate::window::window_token::WindowToken;
 use glam::{UVec2, Vec2};
@@ -31,14 +31,13 @@ fn cascade_visible_to_relayout_pass() {
 
     let mut h = Harness::mono(SURFACE);
     h.frame(|ui| {
-        let probe_resp: RefCell<Option<ResponseSnapshot>> = RefCell::new(None);
+        let probe_resp: RefCell<Option<Response>> = RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(
                 Block::new()
                     .id(WidgetId::from_hash(id_salt))
                     .size(40.0)
-                    .show(ui)
-                    .snapshot(),
+                    .show(ui),
             );
         });
         let resp = probe_resp.into_inner().unwrap();

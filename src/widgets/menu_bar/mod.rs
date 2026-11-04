@@ -17,7 +17,7 @@ use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::{Configure, ThemeDefaults};
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::response::{InnerResponse, Response};
+use crate::widget_core::response::InnerResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_landing::MenuLanding;
@@ -130,7 +130,7 @@ impl<'a> MenuBar<'a> {
         mut self,
         ui: &mut Ui,
         body: impl FnOnce(&mut MenuBarMenus<'_>) -> R,
-    ) -> InnerResponse<'_, R> {
+    ) -> InnerResponse<R> {
         let bar = self.widget.resolve(ui);
         let mut row = ui.with_state::<MenuBarRow, _>(bar, |_, row| mem::take(row));
         let mut open = row.open;
@@ -202,7 +202,7 @@ impl<'a> MenuBar<'a> {
             };
         });
         InnerResponse {
-            response: Response::lazy(bar, ui),
+            response: ui.response_for(bar),
             inner,
         }
     }

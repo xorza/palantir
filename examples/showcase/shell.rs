@@ -728,7 +728,6 @@ fn ui_scale_row(ui: &mut Ui, k: Kit) {
                 .show(ui);
             let up = Button::new().style(&step).label("+").show(ui);
             let clicked = up.clicked();
-            let up = up.snapshot();
             if clicked {
                 next = scale.stepped_up();
             }
@@ -743,8 +742,7 @@ fn diagnostics(ui: &mut Ui) {
         .id_salt("diagnostics")
         .label("Diagnostics ▾")
         .size((Sizing::FILL, Sizing::HUG))
-        .show(ui)
-        .snapshot();
+        .show(ui);
     let mut overlay = ui.debug_overlay();
     let mut vsync_on = ui.vsync() == Vsync::On;
     PopupTrigger::on(&trigger)

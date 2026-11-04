@@ -241,7 +241,7 @@ fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
                     .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                     .show(ui)
                     .response
-                    .node()
+                    .node(ui)
             })
             .inner
     };
@@ -326,7 +326,7 @@ fn placeholder_per_line_aligns_under_wrap() {
                     .size((Sizing::fixed(300.0), Sizing::fixed(120.0)))
                     .show(ui)
                     .response
-                    .node()
+                    .node(ui)
             })
             .inner
     };

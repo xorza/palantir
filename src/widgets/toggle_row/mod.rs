@@ -14,7 +14,6 @@ use crate::theme::toggle::ToggleTheme;
 use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::text::Text;
@@ -88,7 +87,7 @@ impl ToggleRow<'_> {
 
     /// Records the row for `face`. A click or Space activates it, and a move commits at once
     /// (`committed == changed`).
-    pub(crate) fn show<F: ToggleFace>(self, ui: &mut Ui, face: F) -> ValueResponse<'_> {
+    pub(crate) fn show<F: ToggleFace>(self, ui: &mut Ui, face: F) -> ValueResponse {
         let Self {
             mut widget,
             label,
@@ -126,7 +125,7 @@ impl ToggleRow<'_> {
             }
         });
         ValueResponse {
-            response: Response::new(ui, response),
+            response,
             changed,
             committed: changed,
         }

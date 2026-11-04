@@ -28,14 +28,14 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
                         .label("hi")
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .show(ui)
-                        .node(),
-                    Text::new("hi").auto_id().show(ui).node(),
+                        .node(ui),
+                    Text::new("hi").auto_id().show(ui).node(ui),
                     TextEdit::new(&mut buf)
                         .id(WidgetId::from_hash("ed"))
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .response
-                        .node(),
+                        .node(ui),
                 ]
             })
             .inner
@@ -73,7 +73,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     let node = h.frame_value(|ui| {
         Panel::hstack()
             .auto_id()
-            .show(ui, |ui| Text::new("hi").auto_id().show(ui).node())
+            .show(ui, |ui| Text::new("hi").auto_id().show(ui).node(ui))
             .inner
     });
     let color = painted_shapes(h.ui(), node)
@@ -105,7 +105,7 @@ fn text_widget_color_override_wins_over_theme() {
                             .with_color(RgbaF32::srgb(0.0, 1.0, 0.0)),
                     )
                     .show(ui)
-                    .node()
+                    .node(ui)
             })
             .inner
     });
@@ -140,14 +140,14 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
                         .label("hi")
                         .size((Sizing::fixed(80.0), Sizing::fixed(40.0)))
                         .show(ui)
-                        .node(),
-                    Text::new("hi").auto_id().show(ui).node(),
+                        .node(ui),
+                    Text::new("hi").auto_id().show(ui).node(ui),
                     TextEdit::new(&mut buf)
                         .id(WidgetId::from_hash("ed"))
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .response
-                        .node(),
+                        .node(ui),
                 ]
             })
             .inner
@@ -230,13 +230,13 @@ fn invalid_runtime_metrics_record_no_text_or_shaping_state() {
                 .auto_id()
                 .show(ui, |ui| {
                     [
-                        Text::new("label").style(&style).show(ui).node(),
+                        Text::new("label").style(&style).show(ui).node(ui),
                         TextEdit::new(&mut buf)
                             .id(editor_id)
                             .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                             .show(ui)
                             .response
-                            .node(),
+                            .node(ui),
                     ]
                 })
                 .inner
@@ -302,7 +302,7 @@ fn textedit_style_override_replaces_default_theme() {
                         .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                         .show(ui)
                         .response
-                        .node()
+                        .node(ui)
                 })
                 .inner
         });
@@ -330,7 +330,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node()
+                    .node(ui)
             })
             .inner
     });
@@ -364,7 +364,7 @@ fn no_selection_paints_no_highlight_rect() {
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node()
+                    .node(ui)
             })
             .inner
     };
@@ -403,7 +403,7 @@ fn shift_end_paints_selection_highlight() {
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node()
+                    .node(ui)
             })
             .inner
     };
@@ -459,7 +459,7 @@ fn line_height_override_changes_caret_rect_height() {
                     if let Some(s) = style {
                         e = e.style(s);
                     }
-                    e.show(ui).response.node()
+                    e.show(ui).response.node(ui)
                 })
                 .inner
         };

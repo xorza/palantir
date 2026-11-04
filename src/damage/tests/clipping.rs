@@ -46,7 +46,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                     .size(child_size)
                                     .chrome(Chrome::fill(fill))
                                     .show(ui)
-                                    .node(),
+                                    .node(ui),
                             );
                         });
                 });

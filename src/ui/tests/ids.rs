@@ -53,7 +53,7 @@ fn record_duplicate_ids(h: &mut Harness) -> DuplicateIds {
     let duplicate_id = WidgetId::from_hash("dup");
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            let a_node = Button::new().id(duplicate_id).show(ui).node();
+            let a_node = Button::new().id(duplicate_id).show(ui).node(ui);
             Button::new().id(duplicate_id).show(ui);
             button_node.set(a_node);
         });

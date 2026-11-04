@@ -29,7 +29,7 @@ impl Panel {
     }
 
     /// Records the panel and its `body`.
-    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R> {
         let theme = Rc::clone(ui.theme());
         let widget = self.widget.default_clip(theme.panel_clip);
         let chrome = self.chrome.as_ref().or(theme.panel_chrome.as_ref());

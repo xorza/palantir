@@ -44,7 +44,7 @@ fn caret_blinks_on_and_off_while_focused() {
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node()
+                    .node(ui)
             })
             .inner
     }
@@ -149,7 +149,7 @@ fn caret_motion_alone_resets_blink() {
                     .size((Sizing::fixed(180.0), Sizing::fixed(40.0)))
                     .show(ui)
                     .response
-                    .node()
+                    .node(ui)
             })
             .inner
     }

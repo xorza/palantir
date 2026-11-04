@@ -23,7 +23,7 @@ fn shapes_attached_to_button_node() {
     let mut button_node = None;
     h.frame(|ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            button_node = Some(Button::new().auto_id().label("X").show(ui).node());
+            button_node = Some(Button::new().auto_id().label("X").show(ui).node(ui));
         });
     });
 
@@ -72,7 +72,7 @@ fn interleaved_shapes_record_correct_order() {
                 ui.add_shape(pos_rect(2));
             })
             .response
-            .node()
+            .node(ui)
     });
     let pi = p.idx();
     let p_shapes = h.ui().tree(Layer::Main).records.shape_span()[pi];
@@ -137,13 +137,13 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                             .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
                             .size((Sizing::fixed(20.0), Sizing::fixed(20.0)))
                             .show(ui)
-                            .node(),
+                            .node(ui),
                     );
                     ui.add_shape(pos_rect());
                     ui.add_shape(pos_rect());
                 })
                 .response
-                .node(),
+                .node(ui),
         );
     });
     let parent = parent_id.unwrap().idx();
@@ -214,7 +214,7 @@ fn child_iter_traverses_correctly_after_finalize() {
                     .show(ui);
             })
             .response
-            .node()
+            .node(ui)
     });
     let kids: Vec<u32> = h
         .ui()

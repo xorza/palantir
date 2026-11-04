@@ -794,8 +794,8 @@ struct Edges {
     dragging: Option<usize>,
 }
 
-impl<R> From<TabbedViewResponse<'_, R>> for Edges {
-    fn from(response: TabbedViewResponse<'_, R>) -> Self {
+impl<R> From<TabbedViewResponse<R>> for Edges {
+    fn from(response: TabbedViewResponse<R>) -> Self {
         Self {
             changed: response.changed,
             activated: response.activated,

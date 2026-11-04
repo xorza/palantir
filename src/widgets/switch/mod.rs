@@ -50,7 +50,7 @@ impl<'a> Switch<'a> {
     }
 
     /// Record the row and report whether this frame flipped the bound `bool` (`committed == changed`).
-    pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(self, ui: &mut Ui) -> ValueResponse {
         self.row.show(ui, Knob(self.value))
     }
 }

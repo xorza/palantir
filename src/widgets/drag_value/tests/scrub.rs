@@ -206,7 +206,7 @@ fn the_widgets_own_sense_survives_every_builder_order() {
                 .auto_id()
                 .show(ui)
                 .response
-                .node(),
+                .node(ui),
         );
         nodes.push(
             DragValue::new(&mut value)
@@ -214,7 +214,7 @@ fn the_widgets_own_sense_survives_every_builder_order() {
                 .auto_id()
                 .show(ui)
                 .response
-                .node(),
+                .node(ui),
         );
         nodes.push(
             DragValue::new(&mut value)
@@ -223,7 +223,7 @@ fn the_widgets_own_sense_survives_every_builder_order() {
                 .auto_id()
                 .show(ui)
                 .response
-                .node(),
+                .node(ui),
         );
         nodes.push(
             DragValue::new(&mut value)
@@ -231,7 +231,7 @@ fn the_widgets_own_sense_survives_every_builder_order() {
                 .auto_id()
                 .show(ui)
                 .response
-                .node(),
+                .node(ui),
         );
     });
     let want = [

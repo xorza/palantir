@@ -299,7 +299,7 @@ fn mid_recording_popup_keeps_trees_independent() {
                 ui.add_shape(marker(4));
             })
             .response
-            .node()
+            .node(ui)
     });
     let main_tree = h.ui().tree(Layer::Main);
     let popup_tree = h.ui().tree(Layer::Popup);

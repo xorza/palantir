@@ -15,7 +15,7 @@ use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
 use crate::widget_core::overlay_response::OverlayResponse;
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widgets::menu::menu_landing::MenuLanding;
 use crate::widgets::popup::Popup;
 use crate::widgets::popup::trigger_state::{Opening, Settled, TriggerFrame, TriggerState};
@@ -37,7 +37,7 @@ use std::rc::Rc;
 /// ```
 /// # use palantir::{Button, Menu, Configure, MenuItem, Ui};
 /// # fn demo(ui: &mut Ui) {
-/// let trigger = Button::new().label("…").show(ui).snapshot();
+/// let trigger = Button::new().label("…").show(ui);
 /// Menu::context(&trigger)
 ///     .max_size((280.0, 400.0))
 ///     .show(ui, |ui| { MenuItem::new("Delete").show(ui); });
@@ -96,32 +96,32 @@ impl<'a> Menu<'a> {
         )
     }
 
-    /// A context menu on the trigger `snapshot` was taken from: `show` opens it at the pointer
-    /// on a right-click. Use `trigger.snapshot()` to release the `&Ui` borrow.
-    pub fn context(snapshot: &ResponseSnapshot) -> Self {
+    /// A context menu on the trigger whose response is `trigger`: `show` opens it at the pointer
+    /// on a right-click.
+    pub fn context(trigger: &Response) -> Self {
         Self::on_trigger(
             TriggerFrame {
-                for_id: snapshot.id,
+                for_id: trigger.id,
                 toggled: false,
                 opened: None,
-                disabled: snapshot.disabled,
+                disabled: trigger.disabled,
                 rect: None,
             },
-            snapshot.right.clicked(),
+            trigger.right.clicked(),
         )
     }
 
-    /// A menu dropped below the trigger `snapshot` was taken from: a click on the trigger opens
+    /// A menu dropped below the trigger whose response is `trigger`: a click on the trigger opens
     /// it and a second closes it. It hangs from the trigger's rect each frame and flips above it
     /// when it does not fit below.
-    pub fn below(snapshot: &ResponseSnapshot) -> Self {
+    pub fn below(trigger: &Response) -> Self {
         Self::on_trigger(
             TriggerFrame {
-                for_id: snapshot.id,
-                toggled: snapshot.clicked(),
+                for_id: trigger.id,
+                toggled: trigger.clicked(),
                 opened: None,
-                disabled: snapshot.disabled,
-                rect: snapshot.rect,
+                disabled: trigger.disabled,
+                rect: trigger.rect,
             },
             false,
         )

@@ -43,7 +43,7 @@ impl<'a> ProgressBar<'a> {
     }
 
     /// Record the bar. Senses nothing by default.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let theme = self.style.unwrap_or(&ui.theme().progress_bar);
         let [fill, spacer] = Sizing::split(self.fraction);
         let thickness = domain::length_at_least(theme.thickness, 0.0);

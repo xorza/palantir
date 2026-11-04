@@ -339,8 +339,13 @@ driver serves that command alone; the drive table's `version` names it
 - **Responses.** `show` returns `Response`, or a `*Response` that holds `response` beside the
   frame's edges; none derefs to `Response`. A bound value returns `ValueResponse`, and a
   discrete pick commits at once.
-- **A `Response` borrows the `Ui` immutably**; an overlay attaches through a `ResponseSnapshot`.
-  Refused: `Response::tooltip`, which needs `&mut Ui` and names a widget above `widget_core`.
+- **A `Response` is owned**: `show` probes the widget's state once and hands it back, with no
+  borrow of the `Ui`, so one type serves a read, an overlay's anchor and a composite's gathering.
+  Measured on the frame fixture against the lazy probe it replaced, which read 2 of 896 handles a
+  pass: 9 µs a record pass, 6 to 10 µs and 2 to 9 % of a CPU frame. Refused: a lazy `Response`
+  over `&Ui`, whose borrow makes an owned twin of each response, `ResponseSnapshot`, `ValueEdges`
+  and `EditEdges`, and a lifetime on every response type; `Response::tooltip`, which needs
+  `&mut Ui` and names a widget above `widget_core`.
 - **A button holds shapes and shows a selected state**, as `aria-pressed`. Refused: a container
   button; a toggle bound to `&mut bool`; a `bool` pick
   ([WAI-ARIA button](https://www.w3.org/WAI/ARIA/apg/patterns/button/)).

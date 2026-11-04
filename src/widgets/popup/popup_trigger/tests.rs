@@ -19,8 +19,7 @@ fn scene(ui: &mut Ui, disabled: bool) -> Option<OverlayResponse<i32>> {
         .id(trigger_id())
         .label("open")
         .disabled(disabled)
-        .show(ui)
-        .snapshot();
+        .show(ui);
     PopupTrigger::on(&trigger).show(ui, |_| 7)
 }
 
@@ -96,11 +95,7 @@ fn a_keyboard_open_moves_focus_in_and_a_click_open_does_not() {
 
     let item = WidgetId::from_hash("popup-item");
     let record = |ui: &mut Ui| {
-        let trigger = Button::new()
-            .id(trigger_id())
-            .label("open")
-            .show(ui)
-            .snapshot();
+        let trigger = Button::new().id(trigger_id()).label("open").show(ui);
         PopupTrigger::on(&trigger).show(ui, |ui| {
             Block::new().id(item).size(20.0).focusable(true).show(ui);
         });
@@ -171,11 +166,7 @@ fn an_outside_close_gives_the_keys_back_and_each_kind_keeps_its_row() {
     let x = Shortcut::key(Key::Char('x'));
     let record = |ui: &mut Ui| {
         let main_read = ui.shortcut_pressed(x);
-        let trigger = Button::new()
-            .id(trigger_id())
-            .label("open")
-            .show(ui)
-            .snapshot();
+        let trigger = Button::new().id(trigger_id()).label("open").show(ui);
         PopupTrigger::on(&trigger).show(ui, |_| ());
         Menu::context(&trigger).show(ui, |_| ());
         main_read

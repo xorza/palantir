@@ -192,7 +192,7 @@ fn button_hover_and_unhover_damage_cover_only_the_button() {
                         .id(WidgetId::from_hash("hot"))
                         .label("Hover me")
                         .show(ui)
-                        .node();
+                        .node(ui);
                     Button::new()
                         .id(WidgetId::from_hash("cold"))
                         .label("Quiet")

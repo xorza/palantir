@@ -89,7 +89,7 @@ impl<'a> ColorField<'a> {
     }
 
     /// Record the field and report what the gesture did to the coordinates.
-    pub fn show(self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(self, ui: &mut Ui) -> ValueResponse {
         self.area.show(ui, Field(self.coords))
     }
 }

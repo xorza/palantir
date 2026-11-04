@@ -30,7 +30,7 @@ fn explicit_size_overrides_fill_default() {
         if let Some(size) = size {
             slider = slider.size(size);
         }
-        slider.show(ui).response.node()
+        slider.show(ui).response.node(ui)
     });
     assert_eq!(
         trio,
@@ -77,7 +77,7 @@ fn endpoint_rails_collapse_without_invalid_fill_weights() {
                 .size((Sizing::fixed(120.0), Sizing::fixed(18.0)))
                 .show(ui)
                 .response
-                .node()
+                .node(ui)
         });
         let widths: Vec<_> = h
             .main_child_rects(root)
@@ -265,7 +265,6 @@ fn a_focused_slider_walks_by_key() {
                     None => slider,
                 }
                 .show(ui)
-                .edges()
             })
         };
         frame(&mut h, &mut value);

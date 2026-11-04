@@ -200,7 +200,7 @@ fn scroll_records_content_extent() {
                     }
                 })
                 .response
-                .node(),
+                .node(ui),
             Axis::H => Scroll::horizontal()
                 .id(WidgetId::from_hash("scroll"))
                 .size((Sizing::fixed(200.0), Sizing::fixed(60.0)))
@@ -214,7 +214,7 @@ fn scroll_records_content_extent() {
                     }
                 })
                 .response
-                .node(),
+                .node(ui),
             Axis::XY => Scroll::both()
                 .id(WidgetId::from_hash("scroll"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
@@ -229,13 +229,13 @@ fn scroll_records_content_extent() {
                         .show(ui);
                 })
                 .response
-                .node(),
+                .node(ui),
             Axis::Empty => Scroll::vertical()
                 .id(WidgetId::from_hash("empty"))
                 .size((Sizing::fixed(100.0), Sizing::fixed(100.0)))
                 .show(ui, |_| {})
                 .response
-                .node(),
+                .node(ui),
         });
         let scroll_id = WidgetId::from_hash(scroll_key);
         assert_eq!(

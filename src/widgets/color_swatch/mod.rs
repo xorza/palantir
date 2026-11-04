@@ -50,7 +50,7 @@ impl<'a> ColorSwatch<'a> {
     }
 
     /// Record the chip and report whether it was clicked.
-    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(self, ui: &mut Ui) -> Response {
         // `Rc` bump so the theme outlives the `&mut Ui` the look's animation takes.
         let ui_theme = Rc::clone(ui.theme());
         let theme = self.style.unwrap_or(&ui_theme.color_picker);
@@ -74,7 +74,7 @@ impl<'a> ColorSwatch<'a> {
         widget.record(ui, Some(&look.chrome), |ui| {
             checker.paint_chip(ui, color, size, inset, veil);
         });
-        Response::new(ui, response)
+        response
     }
 }
 

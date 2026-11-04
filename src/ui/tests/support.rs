@@ -25,7 +25,7 @@ pub(super) fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
         .size(50.0)
         .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
         .show(ui)
-        .node()
+        .node(ui)
 }
 
 pub(super) fn add_blink_shape(ui: &mut Ui, half: Duration) {

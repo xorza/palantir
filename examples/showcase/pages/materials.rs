@@ -240,8 +240,7 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
             let trigger = Button::new()
                 .id(popup_button())
                 .label("open popup")
-                .show(ui)
-                .snapshot();
+                .show(ui);
             PopupTrigger::on(&trigger)
                 .padding((14.0, 10.0))
                 .chrome(frosted_chrome())
@@ -249,8 +248,7 @@ fn chrome_demo(ui: &mut Ui, k: Kit) {
                     Text::new("a frosted popup").style(&k.t.body()).show(ui);
                 });
         })
-        .response
-        .snapshot();
+        .response;
     let mut menu: MenuTheme = ui.theme().menu.clone();
     menu.panel = frosted_chrome();
     Menu::context(&page).style(&menu).show(ui, |ui| {

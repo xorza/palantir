@@ -17,7 +17,7 @@ use crate::scene::layer::Layer;
 use crate::shape::paint::shape_brush::ShapeBrush;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widgets::block::Block;
 use crate::widgets::grid::Grid;
 use crate::widgets::menu::Menu;
@@ -64,8 +64,8 @@ impl SetterOrder {
     }
 }
 
-fn hovered_trigger() -> ResponseSnapshot {
-    ResponseSnapshot {
+fn hovered_trigger() -> Response {
+    Response {
         id: WidgetId::from_hash("chrome-trigger"),
         state: ResponseState {
             rect: Some(Rect::new(20.0, 20.0, 40.0, 20.0)),

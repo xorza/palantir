@@ -18,7 +18,6 @@ use crate::theme::look::theme_slot::ThemeSlot;
 use crate::ui::Ui;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::axis_keys::{self, AxisEnd, AxisKeys, Travel};
@@ -212,7 +211,7 @@ impl<'a> DragValue<'a> {
     /// A focused chip is a spin button: Up/Down step by the [step](Self::step), else one unit of
     /// the last decimal (one for integers), ten with Shift; Page Up/Down step ten; Home/End jump
     /// to a bounded end of the range. Each is a committed edit.
-    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse {
         let required = self.required_sense();
         self.configure().add_sense(required);
         let mut response = self.widget.response(ui);
@@ -339,7 +338,7 @@ impl<'a> DragValue<'a> {
             );
         });
         ValueResponse {
-            response: Response::new(ui, response),
+            response,
             changed,
             committed,
         }
@@ -347,12 +346,7 @@ impl<'a> DragValue<'a> {
 
     /// Edit mode: the inline `TextEdit` over the same `id`, parsed back each frame. Enter or the
     /// blur that ends the session commits and closes it; Escape restores the opening value.
-    fn show_editing(
-        mut self,
-        ui: &mut Ui,
-        id: WidgetId,
-        prev_rect: Option<Rect>,
-    ) -> ValueResponse<'_> {
+    fn show_editing(mut self, ui: &mut Ui, id: WidgetId, prev_rect: Option<Rect>) -> ValueResponse {
         // The editor wears the chip's looks and box, or the field resizes on click; an unstyled
         // `TextEdit` would wear `theme.text_edit`.
         let editor = self.style.unwrap_or(&ui.theme().drag_value).editor();
@@ -413,7 +407,7 @@ impl<'a> DragValue<'a> {
             ui.set_focus(id);
         }
         ValueResponse {
-            response: Response::lazy(id, ui),
+            response: ui.response_for(id),
             changed,
             committed: edited.committed,
         }

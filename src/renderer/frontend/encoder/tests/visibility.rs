@@ -129,7 +129,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                     .size(Sizing::fixed(40.0))
                     .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
                     .show(ui)
-                    .node()
+                    .node(ui)
             })
             .inner
     });

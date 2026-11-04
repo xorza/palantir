@@ -20,7 +20,6 @@ use crate::ui::Ui;
 use crate::widget_core::activation::Activation;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::Response;
 use crate::widget_core::value_response::ValueResponse;
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::Menu;
@@ -121,7 +120,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
     /// the pick, Up and Home on its first row, and End on its last. No key changes the pick
     /// while the list is closed, so the value never changes where the user cannot see the list
     /// ([APG](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/examples/combobox-select-only/)).
-    pub fn show(mut self, ui: &mut Ui) -> ValueResponse<'_> {
+    pub fn show(mut self, ui: &mut Ui) -> ValueResponse {
         let mut response = self.widget.activation_response(ui, Activation::Button);
         let id = response.id;
         let list = Menu::menu_id(id);
@@ -222,7 +221,7 @@ impl<'a, 'o, S: PartialEq, L: Fn(&S) -> &str> ComboBox<'a, 'o, S, L> {
         let changed = resp.is_some_and(|resp| resp.inner);
 
         ValueResponse {
-            response: Response::new(ui, response),
+            response,
             changed,
             committed: changed,
         }

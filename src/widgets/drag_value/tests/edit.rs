@@ -315,7 +315,6 @@ fn a_caller_starts_and_stops_the_edit() {
                 .size((Sizing::fixed(100.0), Sizing::fixed(40.0)))
                 .id(id)
                 .show(ui)
-                .edges()
         })
     };
     for (end, want, committed) in [

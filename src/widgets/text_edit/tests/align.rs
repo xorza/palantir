@@ -45,7 +45,7 @@ fn frame(
             if let Some(p) = placeholder {
                 e = e.placeholder(p);
             }
-            node = Some(e.show(ui).response.node());
+            node = Some(e.show(ui).response.node(ui));
         });
     };
     h.frame(&mut record);
@@ -390,7 +390,7 @@ fn multiline_default_is_top_left() {
                     .size((Sizing::fixed(EDIT_W), Sizing::fixed(80.0)))
                     .show(ui)
                     .response
-                    .node(),
+                    .node(ui),
             );
         });
     };
@@ -419,7 +419,7 @@ fn text_origin_invariant_under_ancestor_transform_zoom() {
                             .size((Sizing::fixed(EDIT_W), Sizing::fixed(EDIT_H)))
                             .show(ui)
                             .response
-                            .node(),
+                            .node(ui),
                     );
                 });
         };
@@ -472,7 +472,7 @@ fn a_field_placed_by_its_own_text_centers_that_text_where_it_was_asked() {
                     .at(corner)
                     .show(ui)
                     .response
-                    .node(),
+                    .node(ui),
             );
         });
     };

@@ -129,7 +129,7 @@ fn edit() -> WidgetId {
     WidgetId::from_hash("edit")
 }
 
-fn button<'a>(ui: &'a mut Ui, id: &str, label: &str, pos: Vec2) -> Response<'a> {
+fn button(ui: &mut Ui, id: &str, label: &str, pos: Vec2) -> Response {
     Button::new()
         .id(WidgetId::from_hash(id))
         .label(label)

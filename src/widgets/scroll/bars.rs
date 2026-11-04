@@ -14,7 +14,7 @@ use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::theme::scrollbar::ScrollbarTheme;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widget_core::widget::Widget;
 use crate::widgets::scroll::scroll_state::{ScrollState, ThumbTravel};
 use crate::widgets::scroll::{Scroll, ScrollGeometry};
@@ -71,15 +71,15 @@ impl Bars {
     /// Last frame's responses of the bars of the scroll `scroll` answers for, with the
     /// scroll's own `disabled` folded in: the cascade reaches the bars with it only a frame
     /// later, so a scroll disabled mid-drag would still pan for one.
-    pub(super) fn read(ui: &Ui, scroll: &ResponseSnapshot, theme: &ScrollbarTheme) -> Self {
+    pub(super) fn read(ui: &Ui, scroll: &Response, theme: &ScrollbarTheme) -> Self {
         let scroll_id = Scroll::viewport_id(scroll.id);
         let disabled = scroll.disabled;
         let axis = |track: &str, thumb: &str| {
             let (track_id, thumb_id) = (scroll_id.with(track), scroll_id.with(thumb));
             let read = |id| {
-                let mut response = ui.response_for(id);
-                response.merge_disabled(disabled);
-                response
+                let mut state = ui.response_for(id).state;
+                state.merge_disabled(disabled);
+                state
             };
             BarAxis {
                 track_id,

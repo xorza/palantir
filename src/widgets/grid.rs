@@ -81,7 +81,7 @@ impl<Rows, Cols> Grid<Rows, Cols> {
     }
 
     /// Record the grid and its `body`; children name their slot with [`Configure::grid_cell`].
-    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R>
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
     where
         Rows: AsRef<[Track]>,
         Cols: AsRef<[Track]>,

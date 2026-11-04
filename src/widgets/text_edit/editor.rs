@@ -5,7 +5,7 @@ use crate::input::keyboard::modifiers::Modifiers;
 use crate::input::watch::KeyboardWake;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
-use crate::widget_core::response::ResponseSnapshot;
+use crate::widget_core::response::Response;
 use crate::widgets::menu::Menu;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::menu::menu_separator::MenuSeparator;
@@ -88,14 +88,9 @@ impl<'a> Editor<'a> {
     /// menu so undo history is reconciled once; `filter` is the field's own, as the
     /// menu drains the same layer-wide stream and owes the same
     /// gate, [`KeyFilter::takes`] of each press's [`class`](crate::KeyPress::class).
-    pub(super) fn show_menu(
-        &mut self,
-        ui: &mut Ui,
-        snapshot: &ResponseSnapshot,
-        filter: KeyFilter,
-    ) -> bool {
+    pub(super) fn show_menu(&mut self, ui: &mut Ui, field: &Response, filter: KeyFilter) -> bool {
         let mut clicked_action = None;
-        Menu::context(snapshot).show(ui, |ui| {
+        Menu::context(field).show(ui, |ui| {
             // The body runs only while the menu is open, so a closed menu takes no handle.
             let clipboard = ui.clipboard();
             let mut closes = false;

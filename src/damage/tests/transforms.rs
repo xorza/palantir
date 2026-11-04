@@ -37,7 +37,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                             .size(40.0)
                             .chrome(Chrome::fill(fill))
                             .show(ui)
-                            .node(),
+                            .node(ui),
                     );
                 });
         });
@@ -84,7 +84,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                             .size(40.0)
                             .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
-                            .node(),
+                            .node(ui),
                     );
                 });
         });
@@ -142,7 +142,7 @@ fn transform_animation_keeps_far_positions_split() {
                             .size(40.0)
                             .chrome(Chrome::fill(RgbaF32::srgb(0.2, 0.4, 0.8)))
                             .show(ui)
-                            .node(),
+                            .node(ui),
                     );
                 });
         });
