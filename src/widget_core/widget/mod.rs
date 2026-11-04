@@ -212,7 +212,7 @@ impl Widget {
             Activation::Button => KeyFilter::SPACE.union(KeyFilter::ENTER),
             Activation::Toggle => KeyFilter::SPACE,
         };
-        let scope = self.authored_input_scope().union(keys);
+        let scope = self.authored().input_scope().union(keys);
         self.configure().input_scope(scope);
         let mut response = self.response(ui);
         if !response.disabled && ui.is_focus_within(response.id) {
@@ -321,138 +321,12 @@ impl Widget {
         }
     }
 
-    /// The size the caller authored, or `None` where they stayed silent. A widget whose
-    /// default depends on whether the caller spoke must ask. Named `authored_*` because
-    /// an inherent `size(&self)` would shadow [`Configure::size`].
+    /// What the caller authored on this widget: each setting as the caller left it, for a widget
+    /// whose default depends on whether the caller spoke. A view of its own, so its getters
+    /// shadow no [`Configure`] setter of the same name.
     #[inline]
-    pub const fn authored_size(&self) -> Option<SizeSpec> {
-        self.node.size
-    }
-
-    /// The lower size bound the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_min_size(&self) -> Option<Size> {
-        self.node.min_size
-    }
-
-    /// The upper size bound the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_max_size(&self) -> Option<Size> {
-        self.node.max_size
-    }
-
-    /// The padding the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_padding(&self) -> Option<Spacing> {
-        self.node.padding
-    }
-
-    /// The margin the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_margin(&self) -> Option<Spacing> {
-        self.node.margin
-    }
-
-    /// The paint transform the caller authored; identity if none.
-    #[inline]
-    pub const fn authored_transform(&self) -> TranslateScale {
-        self.node.transform
-    }
-
-    /// The `Canvas`-parent position the caller authored; `Vec2::ZERO` if none.
-    #[inline]
-    pub const fn authored_pos(&self) -> Vec2 {
-        self.node.pos
-    }
-
-    /// The grid slot the caller named; a default [`GridCell`] means none.
-    #[inline]
-    pub const fn authored_grid_cell(&self) -> GridCell {
-        self.node.grid
-    }
-
-    /// The sibling gap the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_gap(&self) -> Option<f32> {
-        self.node.gaps.gap()
-    }
-
-    /// The line gap the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_line_gap(&self) -> Option<f32> {
-        self.node.gaps.line_gap()
-    }
-
-    /// The main-axis distribution the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_justify(&self) -> Option<Justify> {
-        self.node.justify
-    }
-
-    /// How the caller aligned this widget in its parent; `Auto` per axis if silent.
-    #[inline]
-    pub const fn authored_align(&self) -> Align {
-        self.node.align
-    }
-
-    /// The child alignment the caller authored; `Auto` per axis if silent.
-    #[inline]
-    pub const fn authored_child_align(&self) -> Align {
-        self.node.child_align
-    }
-
-    /// What the caller made this widget sense.
-    #[inline]
-    pub const fn authored_sense(&self) -> Sense {
-        self.node.flags.sense()
-    }
-
-    /// Whether the caller disabled this widget.
-    #[inline]
-    pub const fn authored_disabled(&self) -> bool {
-        self.node.flags.is_disabled()
-    }
-
-    /// Whether the caller made this widget focusable.
-    #[inline]
-    pub const fn authored_focusable(&self) -> bool {
-        self.node.flags.is_focusable()
-    }
-
-    /// Whether the caller kept this widget a Tab stop ([`Configure::tab_stop`]).
-    #[inline]
-    pub const fn authored_tab_stop(&self) -> bool {
-        self.node.flags.is_tab_stop()
-    }
-
-    /// The axis the caller made this widget an arrow group along, or `None`.
-    #[inline]
-    pub const fn authored_arrow_focus(&self) -> Option<Axis> {
-        self.node.flags.arrow_focus()
-    }
-
-    /// The caller's Tab order key. See [`Configure::tab_idx`].
-    #[inline]
-    pub const fn authored_tab_idx(&self) -> i16 {
-        self.node.tab_idx
-    }
-
-    /// The input scope the caller declared; empty if none.
-    #[inline]
-    pub const fn authored_input_scope(&self) -> KeyFilter {
-        self.node.flags.key_filter()
-    }
-
-    /// The visibility the caller set; [`Visibility::Visible`] if silent.
-    #[inline]
-    pub const fn authored_visibility(&self) -> Visibility {
-        self.node.visibility
-    }
-
-    /// The clip mode the caller authored, or `None`.
-    #[inline]
-    pub const fn authored_clip(&self) -> Option<ClipMode> {
-        self.node.clip
+    pub const fn authored(&self) -> Authored<'_> {
+        Authored { node: &self.node }
     }
 
     /// Install this grid's tracks, interned into the tree this widget records in. They live
@@ -492,7 +366,7 @@ impl Widget {
         let NodeMode::Resolved(LayoutMode::Scroll(axes)) = self.node.mode else {
             panic!("fit_scroll_content on a {:?} node", self.node.mode);
         };
-        let size = self.authored_size().unwrap_or_default();
+        let size = self.authored().size().unwrap_or_default();
         self.node
             .set_mode(LayoutMode::Scroll(axes.fit_content(size)));
     }
@@ -515,6 +389,147 @@ impl Configure for Widget {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         Configurator { widget: self }
+    }
+}
+
+/// What a caller authored on a [`Widget`], from [`Widget::authored`]: each setting as set, and
+/// `None` or the setting's default where the caller stayed silent.
+#[derive(Clone, Copy, Debug)]
+pub struct Authored<'a> {
+    node: &'a Node,
+}
+
+impl Authored<'_> {
+    /// The size the caller authored, or `None` where they stayed silent.
+    #[inline]
+    pub const fn size(&self) -> Option<SizeSpec> {
+        self.node.size
+    }
+
+    /// The lower size bound the caller authored, or `None`.
+    #[inline]
+    pub const fn min_size(&self) -> Option<Size> {
+        self.node.min_size
+    }
+
+    /// The upper size bound the caller authored, or `None`.
+    #[inline]
+    pub const fn max_size(&self) -> Option<Size> {
+        self.node.max_size
+    }
+
+    /// The padding the caller authored, or `None`.
+    #[inline]
+    pub const fn padding(&self) -> Option<Spacing> {
+        self.node.padding
+    }
+
+    /// The margin the caller authored, or `None`.
+    #[inline]
+    pub const fn margin(&self) -> Option<Spacing> {
+        self.node.margin
+    }
+
+    /// The paint transform the caller authored; identity if none.
+    #[inline]
+    pub const fn transform(&self) -> TranslateScale {
+        self.node.transform
+    }
+
+    /// The `Canvas`-parent position the caller authored; `Vec2::ZERO` if none.
+    #[inline]
+    pub const fn pos(&self) -> Vec2 {
+        self.node.pos
+    }
+
+    /// The grid slot the caller named; a default [`GridCell`] means none.
+    #[inline]
+    pub const fn grid_cell(&self) -> GridCell {
+        self.node.grid
+    }
+
+    /// The sibling gap the caller authored, or `None`.
+    #[inline]
+    pub const fn gap(&self) -> Option<f32> {
+        self.node.gaps.gap()
+    }
+
+    /// The line gap the caller authored, or `None`.
+    #[inline]
+    pub const fn line_gap(&self) -> Option<f32> {
+        self.node.gaps.line_gap()
+    }
+
+    /// The main-axis distribution the caller authored, or `None`.
+    #[inline]
+    pub const fn justify(&self) -> Option<Justify> {
+        self.node.justify
+    }
+
+    /// How the caller aligned this widget in its parent; `Auto` per axis if silent.
+    #[inline]
+    pub const fn align(&self) -> Align {
+        self.node.align
+    }
+
+    /// The child alignment the caller authored; `Auto` per axis if silent.
+    #[inline]
+    pub const fn child_align(&self) -> Align {
+        self.node.child_align
+    }
+
+    /// What the caller made this widget sense.
+    #[inline]
+    pub const fn sense(&self) -> Sense {
+        self.node.flags.sense()
+    }
+
+    /// Whether the caller disabled this widget.
+    #[inline]
+    pub const fn disabled(&self) -> bool {
+        self.node.flags.is_disabled()
+    }
+
+    /// Whether the caller made this widget focusable.
+    #[inline]
+    pub const fn focusable(&self) -> bool {
+        self.node.flags.is_focusable()
+    }
+
+    /// Whether the caller kept this widget a Tab stop ([`Configure::tab_stop`]).
+    #[inline]
+    pub const fn tab_stop(&self) -> bool {
+        self.node.flags.is_tab_stop()
+    }
+
+    /// The axis the caller made this widget an arrow group along, or `None`.
+    #[inline]
+    pub const fn arrow_focus(&self) -> Option<Axis> {
+        self.node.flags.arrow_focus()
+    }
+
+    /// The caller's Tab order key. See [`Configure::tab_idx`].
+    #[inline]
+    pub const fn tab_idx(&self) -> i16 {
+        self.node.tab_idx
+    }
+
+    /// The input scope the caller declared; empty if none.
+    #[inline]
+    pub const fn input_scope(&self) -> KeyFilter {
+        self.node.flags.key_filter()
+    }
+
+    /// The visibility the caller set; [`Visibility::Visible`] if silent.
+    #[inline]
+    pub const fn visibility(&self) -> Visibility {
+        self.node.visibility
+    }
+
+    /// The clip mode the caller authored, or `None`.
+    #[inline]
+    pub const fn clip(&self) -> Option<ClipMode> {
+        self.node.clip
     }
 }
 

@@ -172,15 +172,10 @@ API").
 
 Root causes R9 and R1. This batch removes the most code and changes the most public surface.
 
-- One macro generates each consuming setter from its borrowing form, `chrome`/`default_chrome`
-  on the nine containers, and the eight typography setters. Delete the test that polices the
-  copies (UI-07, WG-11, WG-12).
-- One `authored() -> &AuthoredNode` view replaces 21 `authored_*` getters (UI-07). Remove
-  `ThemeDefaults` from the builders the app sees (UI-08).
 - State the bound of the input queue and decide what a full one does (the rest of UI-27).
 
 Done in this batch: decisions 1 and 2 (WG-15, WG-16), UI-05, UI-06, UI-09, UI-14, UI-16,
-UI-17, UI-18, UI-20, UI-23, UI-26, UI-28, UI-10, WG-09, WG-10, WG-13, WG-14, WG-17, WG-18, WG-22, WG-23, WG-24, WG-25,
+UI-17, UI-18, UI-20, UI-23, UI-26, UI-28, UI-07, UI-08, UI-10, WG-09, WG-10, WG-13, WG-14, WG-17, WG-18, WG-22, WG-23, WG-24, WG-25,
 and the wake and watch bounds of UI-27. UI-09 carries `ClickOutside`, now `Block` or `Dismiss`, in
 the backdrop, not a new `Capture`, a name the GPU capture holds; a pass-through popup is
 `click_outside(None)`. WG-14 keeps a row for each widget, as both placements run one
@@ -194,7 +189,12 @@ field its widget closed unseen reads no stale focus. UI-17 took serde's remote d
 Its failure stays a rule text, as every `domain::file` rule is: serde carries only a message
 through `de::Error::custom`, so an enum no caller could match. UI-18 kept `TextStyle::stock`, a
 `const` base that `Theme::stock` cannot be. UI-10 made `Response` owned: `ResponseSnapshot`, `ValueEdges`, `EditEdges`
-and the lifetimes of the response types are gone, and `Ui::response_for` answers a `Response`. UI-19 is kept as it is: the
+and the lifetimes of the response types are gone, and `Ui::response_for` answers a `Response`.
+WG-11 and WG-12 are kept as written, by the owner's call: the per-widget setters stay hand
+copies, kept symmetrical (AGENTS.md "A setter each widget repeats"); the consuming half of UI-07
+stays too, as sugar over `Configurator`. UI-07's getters are one `Widget::authored()` view,
+`Authored`. UI-08 was a wrong doc: `ThemeDefaults` is already exported only through `widget::`,
+and its doc now says what an app's `default_*` does and whom the trait serves. UI-19 is kept as it is: the
 `theme_transition_alloc_free` test holds a transition to the buffers it keeps.
 
 ## Findings index
@@ -228,37 +228,9 @@ its own findings here; the line numbers are from the review and drift as the cod
 
 ### Batch 10
 
-**UI-07 · complexity · med · public API** — `src/widget_core/configure.rs`, `src/widget_core/configurator.rs`, `src/widget_core/widget/mod.rs:301-433`
-- **What:** each node field is written four or five times:
-  - the consuming `Configure` method (30),
-  - the borrowing `Configurator` method (41),
-  - the `ThemeDefaults::default_*` consuming form (11),
-  - a `Widget::authored_*` getter (21),
-  - plus `Node::set_*` and `fill_*` in `scene`.
-- **Usage:** 13 of the 21 `authored_*` getters have no caller outside `widget/mod.rs`. Several of the eight that are used rely on in-module or test callers alone.
-- **Why it matters:** about 100 methods with duplicated docs that drift.
-- **Direction:** generate the consuming forms from the borrowing ones with one macro (bulk is a valid reason for a macro), and replace `authored_*` with one read-only `authored() -> &AuthoredNode` view. Related to the TODO entry "widget-authoring surface".
-- **Root cause:** the authoring surface is mirrored per field.
-
-**UI-08 · api/doc · med · public API** — `src/widget_core/configure.rs:389`
-- **What:** the doc says "an app chaining `.default_padding(..)` onto a `Button` overrides nothing". In fact an app's `default_padding(x)` fills `padding` first (`Node::fill_padding`), and the theme's own fill in `wear` (`widget/mod.rs:240`) then does nothing. So for an app it is just a second spelling of `.padding(x)`.
-- **Direction:** fix the doc. Better, keep `ThemeDefaults` off the app-facing builders (export it only through `widget::`) so apps have one setter.
-- **Root cause:** the authoring surface is mirrored per field.
-
 **UI-27 · bound · low · no API change** — `src/ui/frame_runtime/mod.rs:100` (`repaint_wakes`), `src/input_state/input_queue/mod.rs:23` (`pending`), `src/input_state/watches.rs:13-15`
 - **What:** these grow without a stated limit. `Watches` pushes duplicates by design.
 - **Direction:** state a cap and decide what happens when it is reached.
-
-**WG-11 · complexity/api · `text.rs:85-144`, `text_edit/mod.rs:207-267`, `editable_label/mod.rs:86-144` + `with_overrides` 314-342**
-- **What's wrong:** the same eight typography setters (`color`, `font_size`, `line_height_factor`, `family`, `weight`, `slant`, `bold`, `italic`) are hand-copied three times. EditableLabel then forwards them axis by axis through a 30-line `with_overrides`.
-- **Direction:** add one `overrides(TextStyleOverrides)` setter, so a wrapper forwards in one call. Alternatively, generate the eight per-axis setters with one macro, since `const fn` cannot live in a trait.
-- Confidence: high · public API change: yes (adds a setter) · root cause: const setters can't be trait-provided.
-
-**WG-12 · complexity · `chrome`/`default_chrome` duplicated on nine types**
-- **Where:** `panel/mod.rs:321-340`, `grid.rs:414-432`, `scroll/mod.rs:556-575`, `popup/mod.rs:228-248`, `modal/mod.rs:160-179`, `tooltip/mod.rs:208-228`, `block/mod.rs:202-220`, `popup_trigger/mod.rs:73-88`, `menu/mod.rs:272-288`.
-- **What's wrong:** 18 identical bodies, kept in step by a test (`widgets/tests/mod.rs:93`).
-- **Disagreement with AGENTS:** a test that polices duplication is the symptom; the canonical fix is one implementation. Since `const fn` rules out a trait, a declarative macro (or a `ChromeSlot` value type with both setters) is justified bulk reduction.
-- Confidence: high · public API change: no (if done by macro) · root cause: const setters can't be trait-provided.
 
 **RD-16 · perf · `composer/session.rs:136-141`**
 - **What:** each rounded clip push copies its whole ancestor chain into `rounded_clips` with `extend_from_within`. The pool grows by the sum of depths, bounded at 255 per chain.

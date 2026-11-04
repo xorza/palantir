@@ -317,7 +317,7 @@ impl<'o, T: PartialEq> RadioOption<'o, '_, T> {
     pub fn show(mut self, ui: &mut Ui) -> ValueResponse {
         let node = self.configure();
         let auto_id = node.has_auto_id();
-        let disabled = node.widget.authored_disabled();
+        let disabled = node.widget.authored().disabled();
         debug_assert!(auto_id, "a radio option takes its id from its group");
         let Self {
             options,

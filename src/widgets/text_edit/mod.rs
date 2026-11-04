@@ -413,7 +413,7 @@ impl EditField<'_> {
                 ended: None,
                 disabled: response.disabled,
             });
-            let sense = self.widget.authored_sense();
+            let sense = self.widget.authored().sense();
             self.widget
                 .configure()
                 .sense(sense.difference(Sense::SCROLL));
@@ -434,7 +434,7 @@ impl EditField<'_> {
         // caret coordinates must use that value or the top glyph row is scissored away.
         let padding = look
             .chrome
-            .fold_padding(self.widget.authored_padding().unwrap());
+            .fold_padding(self.widget.authored().padding().unwrap());
         let prev_block_offset = state.view.block_offset;
         let layout = TextLayout::resolve(LayoutInput {
             response_rect: response.layout_rect,
@@ -579,7 +579,7 @@ impl EditField<'_> {
             }));
         }
         // The wheel senses only the overflow axis; the other reaches the container behind.
-        let sense = self.widget.authored_sense();
+        let sense = self.widget.authored().sense();
         self.widget
             .configure()
             .sense(sense.difference(Sense::SCROLL.difference(state.view.wheel_axes)));

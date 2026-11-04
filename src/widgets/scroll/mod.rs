@@ -435,7 +435,7 @@ impl<'a> Scroll<'a> {
                 zoom: start.zoom(),
                 axes: self.axes,
                 reserve: self.bar_mode.gutter(self.axes, theme),
-                padding: self.widget.authored_padding().unwrap_or(Spacing::ZERO),
+                padding: self.widget.authored().padding().unwrap_or(Spacing::ZERO),
                 bar_thickness: theme.thickness,
                 min_thumb: theme.min_thumb,
             },
@@ -480,7 +480,7 @@ impl<'a> Scroll<'a> {
         // Inner owns the clip, pan transform, padding and `Scroll` layout mode. A `Hug`
         // panned axis sets a fit bit so the scroll sizes to its content (capped by
         // `max_size`/available); `Fill`/`Fixed` stay content-independent.
-        let user = self.widget.authored_size().unwrap_or_default();
+        let user = self.widget.authored().size().unwrap_or_default();
         let axes = self.axes.fit_content(user);
         let ScrollWrappers { outer, inner } = ScrollWrappers::split(&self.widget, axes);
         let mut inner = inner.id(scroll_id);
@@ -576,7 +576,7 @@ impl<'a> Scroll<'a> {
         } else {
             state.wheel_sense(geometry.bounds(), self.axes)
         };
-        let sense = self.widget.authored_sense();
+        let sense = self.widget.authored().sense();
         self.widget
             .configure()
             .sense(sense.difference(Sense::SCROLL.difference(pans)));

@@ -3014,6 +3014,31 @@ widget::AnimationSlot
     struct AnimationSlot: Clone, Copy, Debug, DockTab (blanket), Eq, From<&'static str>, Hash, PartialEq
         pub const fn new(name: &'static str) -> Self
 
+widget::Authored
+    struct Authored<'a>: Clone, Copy, Debug
+        pub const fn size(&self) -> Option<SizeSpec>
+        pub const fn min_size(&self) -> Option<Size>
+        pub const fn max_size(&self) -> Option<Size>
+        pub const fn padding(&self) -> Option<Spacing>
+        pub const fn margin(&self) -> Option<Spacing>
+        pub const fn transform(&self) -> TranslateScale
+        pub const fn pos(&self) -> Vec2
+        pub const fn grid_cell(&self) -> GridCell
+        pub const fn gap(&self) -> Option<f32>
+        pub const fn line_gap(&self) -> Option<f32>
+        pub const fn justify(&self) -> Option<Justify>
+        pub const fn align(&self) -> Align
+        pub const fn child_align(&self) -> Align
+        pub const fn sense(&self) -> Sense
+        pub const fn disabled(&self) -> bool
+        pub const fn focusable(&self) -> bool
+        pub const fn tab_stop(&self) -> bool
+        pub const fn arrow_focus(&self) -> Option<Axis>
+        pub const fn tab_idx(&self) -> i16
+        pub const fn input_scope(&self) -> KeyFilter
+        pub const fn visibility(&self) -> Visibility
+        pub const fn clip(&self) -> Option<ClipMode>
+
 widget::Backdrop
     enum Backdrop: Clone, Copy, Debug
         None
@@ -3373,28 +3398,7 @@ widget::Widget
         pub fn key_pressed(&mut self, ui: &mut Ui, key: Key) -> bool
         pub fn record<R>(self, ui: &mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> R
         pub fn show<R>(self, ui: &mut Ui, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<R>
-        pub const fn authored_size(&self) -> Option<SizeSpec>
-        pub const fn authored_min_size(&self) -> Option<Size>
-        pub const fn authored_max_size(&self) -> Option<Size>
-        pub const fn authored_padding(&self) -> Option<Spacing>
-        pub const fn authored_margin(&self) -> Option<Spacing>
-        pub const fn authored_transform(&self) -> TranslateScale
-        pub const fn authored_pos(&self) -> Vec2
-        pub const fn authored_grid_cell(&self) -> GridCell
-        pub const fn authored_gap(&self) -> Option<f32>
-        pub const fn authored_line_gap(&self) -> Option<f32>
-        pub const fn authored_justify(&self) -> Option<Justify>
-        pub const fn authored_align(&self) -> Align
-        pub const fn authored_child_align(&self) -> Align
-        pub const fn authored_sense(&self) -> Sense
-        pub const fn authored_disabled(&self) -> bool
-        pub const fn authored_focusable(&self) -> bool
-        pub const fn authored_tab_stop(&self) -> bool
-        pub const fn authored_arrow_focus(&self) -> Option<Axis>
-        pub const fn authored_tab_idx(&self) -> i16
-        pub const fn authored_input_scope(&self) -> KeyFilter
-        pub const fn authored_visibility(&self) -> Visibility
-        pub const fn authored_clip(&self) -> Option<ClipMode>
+        pub const fn authored(&self) -> Authored<'_>
         pub fn grid_tracks(&mut self, ui: &mut Ui, rows: &[Track], cols: &[Track])
 
 widget::curves

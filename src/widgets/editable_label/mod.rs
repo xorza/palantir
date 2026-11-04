@@ -191,7 +191,8 @@ impl<'a> EditableLabel<'a> {
             .apply(&slot.looks.normal.text.apply(&theme.text));
         let padding = text_layout::label_padding(
             self.widget
-                .authored_padding()
+                .authored()
+                .padding()
                 .unwrap_or(slot.defaults.padding),
             slot.caret_width,
             HAlign::Left,
@@ -238,13 +239,13 @@ impl<'a> EditableLabel<'a> {
             edit = edit.max_chars(n);
         }
         edit = with_overrides(edit, self.overrides);
-        if let Some(min) = self.widget.authored_min_size() {
+        if let Some(min) = self.widget.authored().min_size() {
             edit = edit.min_size(min);
         }
-        if let Some(max) = self.widget.authored_max_size() {
+        if let Some(max) = self.widget.authored().max_size() {
             edit = edit.max_size(max);
         }
-        if let Some(padding) = self.widget.authored_padding() {
+        if let Some(padding) = self.widget.authored().padding() {
             edit = edit.padding(padding);
         }
         let edited = edit.adopt_placement(&self.widget).show(ui);
@@ -270,7 +271,7 @@ impl<'a> EditableLabel<'a> {
 
     /// The caller's size, else a hug on both axes.
     fn extent(&self) -> (Sizing, Sizing) {
-        let size = self.widget.authored_size().unwrap_or_default();
+        let size = self.widget.authored().size().unwrap_or_default();
         (size.w(), size.h())
     }
 

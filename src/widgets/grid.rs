@@ -114,11 +114,11 @@ mod tests {
     #[test]
     fn gaps_validate_and_store_values() {
         let configured = Grid::new().line_gap(3.0).gap(5.0);
-        assert_eq!(configured.widget.authored_line_gap(), Some(3.0));
-        assert_eq!(configured.widget.authored_gap(), Some(5.0));
+        assert_eq!(configured.widget.authored().line_gap(), Some(3.0));
+        assert_eq!(configured.widget.authored().gap(), Some(5.0));
 
         let edge = Grid::new().line_gap(MAX_GAP).gap(0.0);
-        assert_eq!(edge.widget.authored_line_gap(), Some(MAX_GAP));
-        assert_eq!(edge.widget.authored_gap(), Some(0.0));
+        assert_eq!(edge.widget.authored().line_gap(), Some(MAX_GAP));
+        assert_eq!(edge.widget.authored().gap(), Some(0.0));
     }
 }

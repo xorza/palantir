@@ -322,7 +322,7 @@ impl<'a> DragValue<'a> {
         let look = self.widget.wear(ui, plan);
         if self.editable {
             let padding = text_layout::label_padding(
-                self.widget.authored_padding().unwrap(),
+                self.widget.authored().padding().unwrap(),
                 caret_width,
                 self.text_align.halign(),
             );
@@ -353,8 +353,8 @@ impl<'a> DragValue<'a> {
         // Hold the editor at the chip's last width, so the field keeps its box on the click that
         // opens it rather than hugging the draft. `Fixed` (floored at `min_size.w`) makes long
         // values scroll. Before the first chip frame, use the field's own sizing.
-        let min_size = self.widget.authored_min_size().unwrap_or(Size::ZERO);
-        let sizes = self.widget.authored_size().unwrap_or_default();
+        let min_size = self.widget.authored().min_size().unwrap_or(Size::ZERO);
+        let sizes = self.widget.authored().size().unwrap_or_default();
         let held_w = prev_rect.map(|r| Sizing::fixed(r.size.w.max(min_size.w)));
         let width = held_w.unwrap_or_else(|| sizes.w());
         let (mut buffer, original) = match ui
@@ -376,12 +376,13 @@ impl<'a> DragValue<'a> {
                 .style(&editor)
                 .padding(
                     self.widget
-                        .authored_padding()
+                        .authored()
+                        .padding()
                         .unwrap_or(editor.defaults.padding),
                 )
                 .size((width, sizes.h()))
                 .min_size(min_size)
-                .max_size(self.widget.authored_max_size().unwrap_or(Size::INF));
+                .max_size(self.widget.authored().max_size().unwrap_or(Size::INF));
             let edited = edit.adopt_placement(&self.widget).show(ui);
             EditClose {
                 committed: edited.committed,

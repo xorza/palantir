@@ -1267,10 +1267,10 @@ fn a_new_strip_and_view_have_no_authored_size() {
     use crate::widgets::tabs::tab_strip::TabStrip;
     use crate::widgets::tabs::tabbed_view::TabbedView;
     let mut strip = TabStrip::new(&[]);
-    assert_eq!(strip.configure().widget.authored_size(), None);
+    assert_eq!(strip.configure().widget.authored().size(), None);
     let mut selected = 0;
     let mut view = TabbedView::labeled(&mut selected, &["a"], |s: &&str| s);
-    assert_eq!(view.configure().widget.authored_size(), None);
+    assert_eq!(view.configure().widget.authored().size(), None);
 }
 
 /// The overflow menu marks the selected chip and a keyboard open lands on its row; `menu_style`

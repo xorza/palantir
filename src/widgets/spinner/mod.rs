@@ -83,7 +83,8 @@ impl<'a> Spinner<'a> {
         let theme = self.style.unwrap_or(&ui.theme().spinner);
         let fixed = self
             .widget
-            .authored_size()
+            .authored()
+            .size()
             .and_then(|size| Some(Vec2::new(size.w().fixed_value()?, size.h().fixed_value()?)));
         let diameter =
             domain::length_at_least(fixed.map_or(theme.diameter, Vec2::min_element), 1.0);

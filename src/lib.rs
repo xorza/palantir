@@ -226,7 +226,7 @@ pub mod widget {
     pub use crate::widget_core::configurator::Configurator;
     pub use crate::widget_core::configure::ThemeDefaults;
     pub use crate::widget_core::overlay_scope::{Backdrop, OverlayScope, OverlaySpec};
-    pub use crate::widget_core::widget::Widget;
+    pub use crate::widget_core::widget::{Authored, Widget};
     pub use palantir_anim_derive::{Animatable, Lerp};
 }
 

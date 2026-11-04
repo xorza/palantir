@@ -249,5 +249,5 @@ fn split_rejects_an_authored_transform() {
 #[test]
 fn a_new_scroll_has_no_authored_clip() {
     let mut scroll = Scroll::both();
-    assert_eq!(scroll.configure().widget.authored_clip(), None);
+    assert_eq!(scroll.configure().widget.authored().clip(), None);
 }

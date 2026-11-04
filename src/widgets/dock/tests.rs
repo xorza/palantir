@@ -1301,7 +1301,7 @@ fn a_new_dock_view_has_no_authored_size() {
     let d = DockState::new(Tab::Main);
     let mut operations = Vec::new();
     let mut view = DockView::new(dock(), &d, &mut operations);
-    assert_eq!(view.configure().widget.authored_size(), None);
+    assert_eq!(view.configure().widget.authored().size(), None);
 }
 
 /// `tabs_style` restyles every pane's strip and `menu_style` the tab menus: a chip padding 5 px

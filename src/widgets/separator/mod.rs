@@ -86,7 +86,7 @@ impl<'a> Separator<'a> {
                 Align::v(VAlign::Stretch),
             ),
         };
-        let size = self.widget.authored_size().unwrap_or(default_size);
+        let size = self.widget.authored().size().unwrap_or(default_size);
         let long = match self.axis {
             Axis::X => size.w(),
             Axis::Y => size.h(),

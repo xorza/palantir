@@ -298,8 +298,14 @@ driver serves that command alone; the drive table's `version` names it
   as `Button::show_with` does; `show` calls it with an empty body. `Configure` carries every node
   setting; a widget does not repeat one.
 - **Theme.** `style(s)` takes the slot as `impl Into<Option<&Theme>>`, a second slot
-  `<slot>_style`; an override of one axis is a named setter. `chrome` and `default_chrome` are
-  held in step by a test in `widgets::tests`.
+  `<slot>_style`; an override of one axis is a named setter.
+- **A setter each widget repeats is written out on each widget**: `chrome` and
+  `default_chrome` on the containers, the eight typography setters on `Text`, `TextEdit` and
+  `EditableLabel`, each consuming `Configure` setter beside its `Configurator` form. The copies
+  stay symmetrical, one name, argument and doc for one axis, and a test in `widgets::tests`
+  holds the `chrome` copies in step. Refused: a macro that writes them, which hides the API from
+  a reader of the source; for the container and text setters, a mixin trait of default methods
+  as `Configure` is, which takes `const` off each setter and adds a trait each caller imports.
 - **Node values a widget supplies** go through `default_*` in `show`, so a caller's setter wins.
 - **`Metrics` carries the type ramp**, Fluent 2 by default. Refused: a size a recipe sets by
   hand, which an app's ramp cannot reach

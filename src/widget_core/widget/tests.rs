@@ -123,27 +123,27 @@ fn builder_setters_cover_the_complete_external_node_surface() {
 
     // Read back through the `authored_*` surface, the only one an outside widget has.
     assert!(matches!(widget.ident, Ident::Recipe(IdRecipe::Verbatim(value)) if value == id));
-    assert_eq!(widget.authored_size(), Some(size));
-    assert_eq!(widget.authored_min_size(), Some(min_size));
-    assert_eq!(widget.authored_max_size(), Some(max_size));
-    assert_eq!(widget.authored_padding(), Some(padding));
-    assert_eq!(widget.authored_margin(), Some(margin));
-    assert_eq!(widget.authored_pos(), pos);
+    assert_eq!(widget.authored().size(), Some(size));
+    assert_eq!(widget.authored().min_size(), Some(min_size));
+    assert_eq!(widget.authored().max_size(), Some(max_size));
+    assert_eq!(widget.authored().padding(), Some(padding));
+    assert_eq!(widget.authored().margin(), Some(margin));
+    assert_eq!(widget.authored().pos(), pos);
     assert_eq!(
-        widget.authored_grid_cell(),
+        widget.authored().grid_cell(),
         GridCell::at(2, 3).with_span(4, 5)
     );
-    assert_eq!(widget.authored_gap(), Some(6.0));
-    assert_eq!(widget.authored_line_gap(), Some(7.0));
-    assert_eq!(widget.authored_justify(), Some(Justify::SpaceBetween));
-    assert_eq!(widget.authored_align(), align);
-    assert_eq!(widget.authored_child_align(), child_align);
-    assert_eq!(widget.authored_sense(), sense);
-    assert!(!widget.authored_disabled());
-    assert!(widget.authored_focusable());
-    assert_eq!(widget.authored_visibility(), Visibility::Hidden);
-    assert_eq!(widget.authored_clip(), Some(ClipMode::None));
-    assert_eq!(widget.authored_transform(), transform);
+    assert_eq!(widget.authored().gap(), Some(6.0));
+    assert_eq!(widget.authored().line_gap(), Some(7.0));
+    assert_eq!(widget.authored().justify(), Some(Justify::SpaceBetween));
+    assert_eq!(widget.authored().align(), align);
+    assert_eq!(widget.authored().child_align(), child_align);
+    assert_eq!(widget.authored().sense(), sense);
+    assert!(!widget.authored().disabled());
+    assert!(widget.authored().focusable());
+    assert_eq!(widget.authored().visibility(), Visibility::Hidden);
+    assert_eq!(widget.authored().clip(), Some(ClipMode::None));
+    assert_eq!(widget.authored().transform(), transform);
 }
 
 /// The other half of [`builder_setters_cover_the_complete_external_node_surface`]: every reader answers the untouched default on an unconfigured widget.
@@ -151,24 +151,24 @@ fn builder_setters_cover_the_complete_external_node_surface() {
 fn authored_readers_answer_the_defaults_before_anything_is_set() {
     let widget = Widget::hstack();
 
-    assert_eq!(widget.authored_size(), None);
-    assert_eq!(widget.authored_min_size(), None);
-    assert_eq!(widget.authored_max_size(), None);
-    assert_eq!(widget.authored_padding(), None);
-    assert_eq!(widget.authored_margin(), None);
-    assert_eq!(widget.authored_clip(), None);
-    assert_eq!(widget.authored_gap(), None);
-    assert_eq!(widget.authored_line_gap(), None);
-    assert_eq!(widget.authored_pos(), Vec2::ZERO);
-    assert_eq!(widget.authored_grid_cell(), GridCell::default());
-    assert_eq!(widget.authored_justify(), None);
-    assert_eq!(widget.authored_align(), Align::default());
-    assert_eq!(widget.authored_child_align(), Align::default());
-    assert_eq!(widget.authored_sense(), Sense::NONE);
-    assert!(!widget.authored_disabled());
-    assert!(!widget.authored_focusable());
-    assert_eq!(widget.authored_visibility(), Visibility::Visible);
-    assert_eq!(widget.authored_transform(), TranslateScale::IDENTITY);
+    assert_eq!(widget.authored().size(), None);
+    assert_eq!(widget.authored().min_size(), None);
+    assert_eq!(widget.authored().max_size(), None);
+    assert_eq!(widget.authored().padding(), None);
+    assert_eq!(widget.authored().margin(), None);
+    assert_eq!(widget.authored().clip(), None);
+    assert_eq!(widget.authored().gap(), None);
+    assert_eq!(widget.authored().line_gap(), None);
+    assert_eq!(widget.authored().pos(), Vec2::ZERO);
+    assert_eq!(widget.authored().grid_cell(), GridCell::default());
+    assert_eq!(widget.authored().justify(), None);
+    assert_eq!(widget.authored().align(), Align::default());
+    assert_eq!(widget.authored().child_align(), Align::default());
+    assert_eq!(widget.authored().sense(), Sense::NONE);
+    assert!(!widget.authored().disabled());
+    assert!(!widget.authored().focusable());
+    assert_eq!(widget.authored().visibility(), Visibility::Visible);
+    assert_eq!(widget.authored().transform(), TranslateScale::IDENTITY);
 }
 
 #[test]
@@ -266,8 +266,8 @@ fn packed_gaps_accept_f16_boundaries_and_reject_invalid_values() {
     type Case = (&'static str, fn() -> Widget);
 
     let valid = Widget::hstack().gap(MAX_GAP).line_gap(MAX_GAP);
-    assert_eq!(valid.authored_gap(), Some(MAX_GAP));
-    assert_eq!(valid.authored_line_gap(), Some(MAX_GAP));
+    assert_eq!(valid.authored().gap(), Some(MAX_GAP));
+    assert_eq!(valid.authored().line_gap(), Some(MAX_GAP));
 
     let cases: &[Case] = &[
         ("negative gap", || Widget::hstack().gap(-1.0)),

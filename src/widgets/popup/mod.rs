@@ -113,7 +113,7 @@ impl<'a> Popup<'a> {
         // Resolved before the layer switch so the body and barrier ids are scoped
         // to the trigger's site, not the side layer's root.
         let id = widget.resolve(ui);
-        let margin = widget.authored_margin().unwrap_or(Spacing::ZERO);
+        let margin = widget.authored().margin().unwrap_or(Spacing::ZERO);
         let anchor = anchor.map(|anchor| Self::landed(ui, id, anchor, margin));
         let barrier_id = Self::barrier_id(id);
         // Takes the pointer and the keys from lower layers together, or neither.

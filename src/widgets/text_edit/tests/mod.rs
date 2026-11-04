@@ -204,7 +204,7 @@ impl Field {
 fn a_new_field_has_no_authored_clip() {
     let mut text = String::new();
     let mut field = TextEdit::new(&mut text);
-    assert_eq!(field.configure().widget.authored_clip(), None);
+    assert_eq!(field.configure().widget.authored().clip(), None);
 }
 
 mod align;

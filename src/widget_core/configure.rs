@@ -386,10 +386,12 @@ pub trait Configure: Sized {
     }
 }
 
-/// The theme half of [`Configure`]: fill a field only where the caller stayed
-/// silent. Public so widgets outside this crate resolve the same way; an app
-/// chaining `.default_padding(..)` onto a `Button` overrides nothing.
-/// Blanket-implemented for every `Configure`.
+/// The theme half of [`Configure`]: fill a field only where the caller stayed silent, for a
+/// wrapper that themes a builder it holds after its own caller's setters ran, as
+/// [`ColorButton`](crate::ColorButton) dresses the picker it is handed. Exported only through
+/// [`widget`](crate::widget), beside [`Widget`], for widget authors: an app sets a field with
+/// [`Configure`], as on a builder an app's `default_*` fills the field before the widget's own
+/// does, and so reads as the plain setter. Blanket-implemented for every `Configure`.
 pub trait ThemeDefaults: Configure {
     /// Identity to fall back on when the caller set none; an auto id doesn't count.
     #[inline]
