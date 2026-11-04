@@ -6,7 +6,7 @@ use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::stroke::Stroke;
 use crate::shape::lower;
-use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
+use crate::shape::lower::PaneFill;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::record::ShapeRecord;
@@ -133,18 +133,16 @@ impl sealed::LowerShape for RectShape {
             border,
             backdrop_filter,
         } = self;
-        // A pane under reduced transparency paints its solid infill and no filter.
-        let (fill, backdrop) = if store.transparency.is_reduced() && !backdrop_filter.is_noop() {
-            (backdrop_filter.solid_infill(&fill), None)
-        } else {
-            (fill, LoweredBackdrop::of(backdrop_filter))
+        let (fill, backdrop) = match lower::pane_fill(backdrop_filter, &fill, store.transparency) {
+            PaneFill::Through(backdrop) => (fill, backdrop),
+            PaneFill::Solid(solid) => (solid, None),
         };
         ShapeRecord::Quad(QuadShape::Rect {
             kind,
             local_rect,
             corners,
             fill: lower::brush(store, &fill),
-            border: ShapeStroke::from(border),
+            border: ShapeStroke::lower(border),
             backdrop,
         })
     }

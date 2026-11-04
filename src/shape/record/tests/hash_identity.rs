@@ -18,7 +18,7 @@ use crate::text::font_weight::FontWeight;
 #[test]
 fn quad_shapes_hash_apart() {
     let fill = ShapeBrush::Solid(RgbaF32::WHITE.to_f16());
-    let stroke = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 2.0));
+    let stroke = ShapeStroke::lower(Stroke::new(RgbaF32::BLACK, 2.0));
     let corners = Corners::all(8.0);
     let rect = |kind| {
         ShapeRecord::Quad(QuadShape::Rect {
@@ -41,7 +41,7 @@ fn quad_shapes_hash_apart() {
     let shadow = ShapeRecord::Quad(QuadShape::Shadow {
         local_rect: None,
         corners,
-        shadow: LoweredShadow::from(Shadow::default()),
+        shadow: LoweredShadow::lower(Shadow::default()),
     });
     let triangle = ShapeRecord::Quad(QuadShape::Triangle {
         a: Vec2::ZERO,
@@ -71,7 +71,7 @@ fn quad_shapes_hash_apart() {
 /// Cubics and arcs share [`ShapeRecord::Curve`]'s discriminant, so [`CurveBasis`]'s own must separate them and the arc's fields must reach the hasher.
 #[test]
 fn curve_and_arc_bases_hash_apart() {
-    let stroke = ShapeStroke::from(Stroke::new(RgbaF32::WHITE, 2.0));
+    let stroke = ShapeStroke::lower(Stroke::new(RgbaF32::WHITE, 2.0));
     let curve = |basis| ShapeRecord::Curve {
         cap: LineCap::Butt,
         basis,
@@ -131,7 +131,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         vertices: Span::new(0, 3),
         idxs: Span::new(0, 3),
         bbox: Rect::ZERO,
-        content_hash: 0xdead_beef,
+        content_hash: ContentHash(0xdead_beef),
     };
     let b = ShapeRecord::Mesh {
         local_rect: None,
@@ -139,7 +139,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         vertices: Span::new(1234, 3),
         idxs: Span::new(5678, 3),
         bbox: Rect::ZERO,
-        content_hash: 0xdead_beef,
+        content_hash: ContentHash(0xdead_beef),
     };
     assert_eq!(a.content_hash(), b.content_hash());
 
@@ -149,7 +149,7 @@ fn shape_mesh_hash_excludes_span_offsets() {
         vertices: Span::new(0, 3),
         idxs: Span::new(0, 3),
         bbox: Rect::ZERO,
-        content_hash: 0xdead_beef,
+        content_hash: ContentHash(0xdead_beef),
     };
     let zero = with_rect(Rect::ZERO).content_hash();
     assert_eq!(
@@ -331,7 +331,7 @@ fn text_shape(line_height: f32, weight: FontWeight, local_origin: Option<Vec2>) 
 fn text_face(font: ShapingFont, local_origin: Option<Vec2>) -> ShapeRecord {
     ShapeRecord::Text {
         local_origin,
-        text: RecordedText::new(Span::default(), hash::str("hi")),
+        text: RecordedText::new(Span::default(), ContentHash(hash::str("hi"))),
         color: RgbaF32::WHITE.to_f16(),
         font,
         wrap: TextWrap::Truncate,

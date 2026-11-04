@@ -46,11 +46,11 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         ),
         (
             "ShapeStroke::is_noop/width",
-            ShapeStroke::from(Stroke::new(RgbaF32::WHITE, N)).is_noop(),
+            ShapeStroke::lower(Stroke::new(RgbaF32::WHITE, N)).is_noop(),
         ),
         (
             "ShapeStroke::is_noop/color",
-            ShapeStroke::from(Stroke::new(nan_color, 2.0)).is_noop(),
+            ShapeStroke::lower(Stroke::new(nan_color, 2.0)).is_noop(),
         ),
         ("Brush::is_noop", Brush::Solid(nan_color).is_noop()),
         (
@@ -99,7 +99,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         ),
         (
             "LoweredShadow::is_noop/blur",
-            LoweredShadow::from(Shadow {
+            LoweredShadow::lower(Shadow {
                 color: RgbaF32::WHITE,
                 blur: N,
                 ..Shadow::default()
@@ -108,7 +108,7 @@ fn every_paint_noop_predicate_treats_nan_as_invisible() {
         ),
         (
             "LoweredShadow::is_noop/offset",
-            LoweredShadow::from(Shadow {
+            LoweredShadow::lower(Shadow {
                 color: RgbaF32::WHITE,
                 offset: Vec2::new(N, 0.0),
                 ..Shadow::default()

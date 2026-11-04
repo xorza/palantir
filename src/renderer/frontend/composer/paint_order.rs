@@ -74,7 +74,7 @@ struct OpenBatch {
     /// Index (into `out.groups`) of the last group whose text contributed, refreshed on every text
     /// push; tells the schedule where to emit the merged render step.
     last_group: u32,
-    /// [`TextClip::Cut`] once a cut run has joined. The batch scissor (`open_grid.union`) must then
+    /// [`TextClip::Cut`] once a cut run has joined. The batch scissor (`open_grid.union()`) must then
     /// equal that run's bounds, so later runs join only with matching `bounds`; the text shader has
     /// no per-instance clip.
     clip: TextClip,
@@ -116,7 +116,7 @@ impl BatchState {
     /// Take the open batch and empty its grid, the two together.
     fn close(&mut self) -> Option<ClosedBatch> {
         let batch = self.open.take()?;
-        let scissor = self.open_grid.union;
+        let scissor = self.open_grid.union();
         self.open_grid.clear();
         Some(ClosedBatch { batch, scissor })
     }
@@ -230,7 +230,7 @@ impl Ordering<'_> {
         let bounds = row.bounds;
         if let Some(b) = self.order.batch.open.as_ref()
             && (b.clip == TextClip::Cut || clip == TextClip::Cut)
-            && self.order.batch.open_grid.union != bounds
+            && self.order.batch.open_grid.union() != bounds
         {
             self.close_batch();
         }

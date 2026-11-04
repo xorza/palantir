@@ -55,9 +55,8 @@ pub struct Mesh {
     /// The largest index pushed, so [`Self::is_noop`] screens an index past
     /// the last vertex at one compare. Meaningless while `idxs` is empty.
     max_idx: u32,
-    /// Lazy cache of `content_hash`, cleared by every public mutator.
-    /// Internal arena pushes bypass it; arena meshes never hash. It turns a
-    /// retained mesh's per-frame O(n) re-hash into a hit.
+    /// Lazy cache of `content_hash`, cleared by every mutator. It turns a retained mesh's
+    /// per-frame O(n) re-hash into a hit.
     cached_hash: Cell<Option<u64>>,
     /// Lazy cache of the owner-local AABB, same contract as `cached_hash`.
     cached_bbox: Cell<Option<Rect>>,

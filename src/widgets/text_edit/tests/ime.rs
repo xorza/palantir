@@ -30,7 +30,7 @@ fn record(ui: &mut Ui, buf: &mut String) {
 fn painted(h: &Harness, caret_width: f32) -> (String, usize) {
     let node = h.node_of(field()).expect("recorded").node;
     let block = block_of(h.ui(), node);
-    let text = h.ui().record_store().interned_text();
+    let text = h.ui().record_store().text.interned();
     let mut shown = String::new();
     let mut underlines = 0;
     for shape in h.ui().tree(Layer::Main).shapes_of(block) {

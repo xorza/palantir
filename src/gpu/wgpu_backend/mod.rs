@@ -82,6 +82,7 @@ use crate::gpu::pipeline::stencil_variant::StencilMode;
 use crate::gpu::pipeline::viewport_push::ViewportPush;
 use crate::gpu::raster::icon_backend::IconBackend;
 use crate::gpu::raster::text_backend::{TextBackend, TextBatchInput};
+use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::gpu_gradient_atlas::GpuGradientAtlas;
 use crate::gpu::resource::gpu_view_targets::{GpuViewTargets, ViewSubmitter};
 use crate::gpu::resource::texture_binding::TextureBinding;
@@ -100,7 +101,6 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::repaint_scissors::{PartialScissors, RepaintScissors};
 use glam::UVec2;
 use rustc_hash::FxHashMap;
@@ -734,8 +734,8 @@ impl WgpuBackend {
         self.mesh.upload(
             &mut ctx,
             MeshUpload {
-                vertices: &store.meshes.vertices,
-                idxs: &store.meshes.idxs,
+                vertices: &store.mesh_vertices,
+                idxs: &store.mesh_idxs,
                 instances: buffer.meshes.instance(),
             },
         );
@@ -777,7 +777,7 @@ impl WgpuBackend {
                 "text.prepare_batches",
                 value = buffer.text_batches.len() as u64
             );
-            let interned_text = store.interned_text();
+            let interned_text = store.text.interned();
             for (idx, b) in buffer.text_batches.iter().enumerate() {
                 self.text.prepare_batch(TextBatchInput {
                     idx,

@@ -3,6 +3,7 @@
 use crate::primitives::geometry::corners::Corners;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::paint::shadow::Shadow;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::record::ShapeRecord;
 use crate::shape::record_store::RecordStore;
@@ -68,7 +69,7 @@ impl sealed::LowerShape for ShadowShape {
         ShapeRecord::Quad(QuadShape::Shadow {
             local_rect,
             corners,
-            shadow: shadow.into(),
+            shadow: LoweredShadow::lower(shadow),
         })
     }
 }

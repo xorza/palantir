@@ -31,6 +31,15 @@ pub(super) fn count_draw_rects(cmds: &PaintCapture) -> usize {
     cmds.calls.iter().filter(|c| as_rect(c).is_some()).count()
 }
 
+/// The fill of each plain rect drawn, in paint order: which draws a filter let through.
+pub(super) fn drawn_fills(cmds: &PaintCapture) -> Vec<RgbaF16> {
+    cmds.calls
+        .iter()
+        .filter_map(as_rect)
+        .map(|p| p.fill.color)
+        .collect()
+}
+
 /// The screen rect of the quad found filled with `color`, compared bit for bit.
 pub(super) fn rect_with_fill(drawn: &[(RgbaF16, Rect)], color: RgbaF32) -> Option<Rect> {
     let color = color.to_f16();

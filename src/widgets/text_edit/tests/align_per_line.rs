@@ -333,7 +333,7 @@ fn placeholder_per_line_aligns_under_wrap() {
     h.frame_value(&mut record);
     let node = h.frame_value(&mut record);
     let store = h.ui().record_store();
-    let interned_text = store.interned_text();
+    let interned_text = store.text.interned();
     let node = block_of(h.ui(), node);
     let tree = h.ui().tree(Layer::Main);
     let shape_align = tree.shapes_of(node).find_map(|s| match s {

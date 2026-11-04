@@ -50,7 +50,7 @@ pub(crate) const DEFAULT_MAX_ATLAS_ROWS: u32 = 2048;
 
 /// Policy ceiling on rows, below the device's `max_texture_dimension_2d`. Growth
 /// is a one-way ratchet, so a 16384-row bound would let one pathological frame
-/// pin 32 MB of rows plus a 32 MB texture for the process. Past it
+/// pin 32 MiB of rows plus a 32 MiB texture for the process (16384 rows × 2 KiB). Past it
 /// [`LutRow::FALLBACK`] paints magenta, without repainting what other draws captured.
 pub(crate) const MAX_ATLAS_ROWS: u32 = 4096;
 

@@ -1,7 +1,5 @@
 //! The path light takes through a pane's lens: the closed form the composite shades with.
 
-use crate::shape::paint::spectrum_tables::SPECTRUM_VIOLET;
-
 /// One lens in physical px: a bezel `bezel` wide rising to `thickness` as a squircle of the
 /// inward fraction, of refractive index `index`. Light falls straight down onto the glass and
 /// refracts once at its top surface, as kube.io's model has it; the backdrop shows where the bent
@@ -12,6 +10,11 @@ pub(crate) struct LensOptics {
     pub(crate) thickness: f32,
     pub(crate) index: f32,
 }
+
+/// The ends of the spectrum the composite spreads, µm: all but a sliver of the CIE 1931
+/// observer's response lies between them. The index peaks at the violet end.
+pub(crate) const SPECTRUM_RED: f32 = 0.7;
+pub(crate) const SPECTRUM_VIOLET: f32 = 0.4;
 
 /// Fraunhofer's D, F and C lines, µm: a lens's index is its index at D, and its dispersion the
 /// step from C to F, `n_F − n_C`, as glass catalogs give it beside the Abbe number.

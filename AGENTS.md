@@ -54,18 +54,14 @@ common → primitives → {animation, text, input, display, window, clipboard, i
 
 ## GPU memory
 
-- **Scratch decays.** Per-frame GPU scratch grows once a frame to the frame's need and steps down
-  at the end of an expiry window, 120 display frames (`ExpiryWindow`), to the window's peak: the
-  blur textures, every `DynamicBuffer` and a window's stencil. A display frame is a round in
-  which each live window submits once (`DisplayFrames`), so a second window does not halve the
-  window. An upload past the staging belt's chunk stages in a buffer of its own, as the belt
-  keeps every chunk it makes. A cache shrinks back to its budget once its live set fits. A
-  translucent image premultiplies through a CPU buffer of fixed bands, so no buffer keeps an
-  image's size for the session; wgpu stages each `write_texture` in a buffer of its own until the
-  submit (wgpu-core `Queue::write_texture`), so an upload holds the image's size in staging until
-  the GPU copies it. Refused: growth to a high-water mark the window keeps for life, which one
-  4K glass pane put at about 240 MiB; streaming an image's bands through one buffer, a wait on
-  the GPU per band to bound a peak that lasts one submit.
+- **Scratch decays.** Per-frame GPU scratch (the blur textures, every `DynamicBuffer`, a window's
+  stencil) grows to each frame's need, and at the end of an expiry window of 120 display frames
+  (`ExpiryWindow`) steps down to that window's peak. A display frame is one round of every live
+  window's submit (`DisplayFrames`). A cache shrinks back to its budget once its live set fits. An
+  upload past the staging belt's chunk gets a buffer of its own, and a translucent image
+  premultiplies through fixed CPU bands. Refused: a high-water mark kept for the window's life,
+  which one 4K glass pane put at about 240 MiB; streaming an image's bands through one buffer, a
+  GPU wait per band to bound a peak that lasts one submit.
 
 ## Swapchain
 
@@ -116,18 +112,8 @@ Facts and sources: `.notes/research/2026-10-30-device-loss.md`.
 - **No poll on the frame path**: each submit runs the callbacks. Refused: a loop of empty
   submits, which never ends on a destroyed device; `catch_unwind`, useless under
   `panic = "abort"`. Cost: a loss in a blocking wait ends the process, as in Zed.
-- **A failed recovery retries**, 100 ms doubling to 1 s, for 5 s, the `TdrDdiDelay` a Windows
-  reset gets; meanwhile frames run the app and paint nothing. Refused: one attempt, which a reset
-  still under way fails.
-- **Each recovery opens a new instance**: DX12 enumerates adapters from the factory its instance
-  made, which a driver update leaves stale.
-- **A call a loss can break is guarded in `gpu`**: `Gpu::create_filled_buffer` writes only if the
-  range maps, and a swapchain counts as built only if the device is healthy after its configure.
-  Refused: `create_buffer_init`, which panics on a lost device.
 - **The texture limit is shared state**, as the new adapter's can be smaller. Refused: asking for
   the old limits, which fails a recovery onto a smaller GPU.
-- **Every window gets a new surface.** Refused: the old surface on the new device, which
-  releases its swapchain through that device (wgpu-hal `vulkan::Surface::configure`).
 - **Tests lose a real device**, an isolated one, through `Gpu::lose`, as wgpu's tests do. By
   hand, `cat /sys/kernel/debug/dri/0/amdgpu_gpu_recover` as root resets the GPU for every app.
 
@@ -202,34 +188,6 @@ same steps on a live window. The rules of a frame are in `host/harness/mod.rs`'s
 - **A capture waits for its copy.** The target keeps one staging buffer, so a recording makes no
   buffer a frame. Refused until measured: a ring of staging buffers that keeps frames in flight,
   the usual recording pipeline.
-
-## Theme transition
-
-Facts and sources: `.notes/research/2026-11-01-reel.md`.
-
-- **A change blends the `Theme` tree**: each frame shows `lerp(from, to, t)`, so colors,
-  lengths and font sizes move with real layout. Refused: blending `Palette` and `Metrics` and
-  building again through `Theme::from_parts`, which loses every edit an app makes after it; a
-  snapshot of the old frame under a mask (Telegram), which freezes moving content and moves no
-  layout.
-- **An absent value blends through its neutral**, as Flutter's `Color.lerp` takes `null` as
-  transparent; only a value with no neutral switches at `t = 0.5`. Refused: every `Option`
-  switching at 0.5, a pop where a fade is possible.
-- **One setting on the `Ui`**, `set_theme_transition`, which a scheme change follows too, as
-  Flutter's `MaterialApp.themeAnimationStyle`. Refused: a separate animating call, one more
-  method for a choice the setting holds; a spec in `Metrics`, a field the transition itself
-  would snap; a spec per call, which a system change has no call to carry.
-- **No motion is `AnimationSpec::SNAP`**, the spec's `Default`, at every door: `Ui::animate`,
-  `set_theme_transition`, `Metrics::transition` and a slot's `transition`, which a theme file
-  that leaves it out reads as a snap. Refused: `Option<AnimationSpec>` beside `SNAP`, two
-  spellings of one choice that each caller had to check.
-- **Font sizes move unquantized.** The glyph atlas neither grows nor evicts over a 300 ms move
-  of 40 lines from 14 to 18 px at scale 2, and shape keys already quantize to 1/64 px. Refused:
-  whole-pixel sizes during a transition, which step the layout visibly for no measured saving.
-  The worst transition frame, `integration/frame/*/theming`, ran 318 µs on the CPU and 1.06 ms
-  on the GPU (Apple laptop, `--quick`), against 133 µs and 2.18 ms for `scrolling`.
-- **One theme per window.** A subtree theme, as Flutter's `Theme` widget, is not built; the reel
-  morphs the window's theme and morphs it back before the camera leaves the slide.
 
 ## Rounded-clip stencil
 

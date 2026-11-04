@@ -8,22 +8,29 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::sizing::Sizing;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
-use crate::renderer::frontend::encoder::tests::support::count_draw_rects;
+use crate::renderer::frontend::encoder::tests::support::{drawn_fills, screen_rects_by_fill};
 use crate::scene::layer::Layer;
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::{block::Block, panel::Panel};
 use glam::{UVec2, Vec2};
 
+/// A filter over the first block keeps it alone; one over both keeps both, in paint order.
 #[test]
 fn damage_filter_partitions_drawrects_by_dirty_region() {
-    let cases: &[(&str, Rect, usize)] = &[
+    let red = RgbaF32::srgb(1.0, 0.0, 0.0);
+    let green = RgbaF32::srgb(0.0, 1.0, 0.0);
+    let cases: &[(&str, Rect, &[RgbaF32])] = &[
         (
             "outside_filter_skipped",
             Rect::new(0.0, 0.0, 30.0, 200.0),
-            1,
+            &[red],
         ),
-        ("inside_filter_kept", Rect::new(0.0, 0.0, 200.0, 200.0), 2),
+        (
+            "inside_filter_kept",
+            Rect::new(0.0, 0.0, 200.0, 200.0),
+            &[red, green],
+        ),
     ];
     for (label, filter, expected) in cases {
         let mut h = Harness::mono(UVec2::new(200, 200));
@@ -32,17 +39,18 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                 Block::new()
                     .id(WidgetId::from_hash("a"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                    .chrome(Chrome::fill(red))
                     .show(ui);
                 Block::new()
                     .id(WidgetId::from_hash("b"))
                     .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                    .chrome(Chrome::fill(RgbaF32::srgb(0.0, 1.0, 0.0)))
+                    .chrome(Chrome::fill(green))
                     .show(ui);
             });
         });
         let cmds = h.encode_paint_for(DamageRegion::from(*filter));
-        assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
+        let expected: Vec<_> = expected.iter().map(|c| c.to_f16()).collect();
+        assert_eq!(drawn_fills(&cmds), expected, "case: {label}");
     }
 }
 
@@ -99,20 +107,27 @@ fn damage_filter_culls_subtree_outside_damage() {
     }
 }
 
+/// A leaf inside any of the damage rects paints: the two top corners, each under its own rect,
+/// and not the bottom one, under neither.
 #[test]
 fn damage_filter_paints_leaves_in_any_rect() {
+    let corners = [
+        ("tl", Vec2::new(0.0, 0.0), RgbaF32::srgb(1.0, 0.0, 0.0)),
+        ("tr", Vec2::new(160.0, 0.0), RgbaF32::srgb(0.0, 1.0, 0.0)),
+        ("bl", Vec2::new(0.0, 160.0), RgbaF32::srgb(0.0, 0.0, 1.0)),
+    ];
     let mut h = Harness::mono(UVec2::new(200, 200));
     h.frame(|ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                for (key, x, y) in &[("tl", 0.0, 0.0), ("tr", 160.0, 0.0), ("bl", 0.0, 160.0)] {
+                for (key, at, fill) in corners {
                     Block::new()
-                        .id(WidgetId::from_hash(*key))
+                        .id(WidgetId::from_hash(key))
                         .size((Sizing::fixed(40.0), Sizing::fixed(40.0)))
-                        .at(Vec2::new(*x, *y))
-                        .chrome(Chrome::fill(RgbaF32::srgb(1.0, 0.0, 0.0)))
+                        .at(at)
+                        .chrome(Chrome::fill(fill))
                         .show(ui);
                 }
             });
@@ -123,9 +138,11 @@ fn damage_filter_paints_leaves_in_any_rect() {
     ];
     let cmds = h.encode_paint_for(DamageRegion::from_rects(&rects));
     assert_eq!(
-        count_draw_rects(&cmds),
-        2,
-        "two top corners inside damage, bottom corner outside both",
+        screen_rects_by_fill(&cmds),
+        [
+            (corners[0].2.to_f16(), Rect::new(0.0, 0.0, 40.0, 40.0)),
+            (corners[1].2.to_f16(), Rect::new(160.0, 0.0, 40.0, 40.0)),
+        ],
     );
 }
 
@@ -203,15 +220,19 @@ fn viewport_and_damage_culls_advance_the_sparse_paint_anim_cursor() {
             }
         };
         assert_eq!(
-            count_draw_rects(&cmds),
-            0,
+            screen_rects_by_fill(&cmds),
+            [],
             "{cull:?}: the first visible animation must be culled and the later hidden animation must still be sampled",
         );
-        // Uncut by damage the same scene draws the visible one, so the zero above is the cull's.
+        // Uncut by damage the same scene draws the visible one, so the none above is the cull's.
         if matches!(cull, Cull::Damage) {
+            let drawn: Vec<Rect> = screen_rects_by_fill(&h.encode_paint())
+                .into_iter()
+                .map(|(_, rect)| rect)
+                .collect();
             assert_eq!(
-                count_draw_rects(&h.encode_paint()),
-                1,
+                drawn,
+                [Rect::new(10.0, 10.0, 20.0, 20.0)],
                 "uncut, the visible one draws"
             );
         }
@@ -240,26 +261,35 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
     let damage = Rect::new(60.0, 0.0, 40.0, 40.0);
     let cmds = h.encode_paint_for(DamageRegion::from(damage));
     assert_eq!(
-        count_draw_rects(&cmds),
-        1,
+        screen_rects_by_fill(&cmds),
+        [(RgbaF32::srgb(1.0, 0.0, 0.0).to_f16(), damage)],
         "the overflowing child paints inside damage and must not be culled by the parent's tight `paint_rect`",
     );
 }
 
-/// Regression: a static node in the backend's AA-padding ring (outside the raw damage rect, inside `RenderPlan::AA_PADDING`, 2 physical px) must still draw, since the backend clears the padded region every partial frame; testing only the raw rect left a hard cut along the damage boundary. A node beyond the ring must still be culled.
+/// Regression: a static node in the backend's AA-padding ring (outside the raw damage rect, inside `repaint_scissors::AA_PADDING_PX`, 2 physical px) must still draw, since the backend clears the padded region every partial frame; testing only the raw rect left a hard cut along the damage boundary. A node beyond the ring must still be culled.
 #[test]
 fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
-    // At `scale_factor() == 1` the cull margin is `RenderPlan::AA_PADDING + 1 = 3` logical px: a neighbor 2 px away repaints, one 10 px away stays culled.
-    let cases: &[(&str, Rect, usize)] = &[
-        ("within_aa_pad_gap_2", Rect::new(60.0, 100.0, 38.0, 20.0), 1),
+    // At `scale_factor() == 1` the cull margin is `AA_PADDING_PX + ROUNDING_SLACK_PX = 2 + 1 = 3` logical px: a neighbor 2 px away repaints, one 10 px away stays culled.
+    let neighbor = Rect::new(100.0, 100.0, 20.0, 20.0);
+    let cases: &[(&str, Rect, &[Rect])] = &[
+        (
+            "within_aa_pad_gap_2",
+            Rect::new(60.0, 100.0, 38.0, 20.0),
+            &[neighbor],
+        ),
         // Any gap under 3 px repaints; at 3 the pad's 2 px of clear stops a pixel short, so it stays culled.
-        ("at_the_margin_gap_3", Rect::new(60.0, 100.0, 37.0, 20.0), 0),
+        (
+            "at_the_margin_gap_3",
+            Rect::new(60.0, 100.0, 37.0, 20.0),
+            &[],
+        ),
         (
             "past_the_margin_gap_4",
             Rect::new(60.0, 100.0, 36.0, 20.0),
-            0,
+            &[],
         ),
-        ("beyond_pad_gap_10", Rect::new(60.0, 100.0, 30.0, 20.0), 0),
+        ("beyond_pad_gap_10", Rect::new(60.0, 100.0, 30.0, 20.0), &[]),
     ];
     for (label, damage, expected) in cases {
         let mut h = Harness::mono(UVec2::new(200, 200));
@@ -278,6 +308,10 @@ fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
                 });
         });
         let cmds = h.encode_paint_for(DamageRegion::from(*damage));
-        assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
+        let drawn: Vec<Rect> = screen_rects_by_fill(&cmds)
+            .into_iter()
+            .map(|(_, rect)| rect)
+            .collect();
+        assert_eq!(drawn, *expected, "case: {label}");
     }
 }

@@ -23,6 +23,7 @@ use crate::gpu::pipeline::shader_body::{GRADIENT, ShaderBody, ShaderConstant};
 use crate::gpu::pipeline::stencil_variant::{StencilMode, StencilVariant};
 use crate::gpu::resource::dynamic_buffer::DynamicBuffer;
 use crate::gpu::resource::texture_binding::TextureBinding;
+use crate::gpu::spectrum_tables;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::packed::fill_kind::FillKind;
 use crate::primitives::paint::brush::gradient::Spread;
@@ -30,7 +31,6 @@ use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::renderer::quad::Quad;
 use crate::shape::paint::lens_optics;
 use crate::shape::paint::lowered_shadow::ShadowGeometry;
-use crate::shape::paint::spectrum_tables;
 use glam::Vec2;
 use std::mem::offset_of;
 use std::ops::Range;
@@ -577,8 +577,8 @@ const SHADER_CONSTANTS: &[ShaderConstant] = &[
     ShaderConstant::float("LINE_D", lens_optics::LINE_D),
     ShaderConstant::float("LINE_F", lens_optics::LINE_F),
     ShaderConstant::float("LINE_C", lens_optics::LINE_C),
-    ShaderConstant::float("SPECTRUM_RED", spectrum_tables::SPECTRUM_RED),
-    ShaderConstant::float("SPECTRUM_VIOLET", spectrum_tables::SPECTRUM_VIOLET),
+    ShaderConstant::float("SPECTRUM_RED", lens_optics::SPECTRUM_RED),
+    ShaderConstant::float("SPECTRUM_VIOLET", lens_optics::SPECTRUM_VIOLET),
     ShaderConstant::uint("SPECTRUM_SAMPLES", spectrum_tables::SPECTRUM_SAMPLES as u32),
 ];
 

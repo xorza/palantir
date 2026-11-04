@@ -72,7 +72,7 @@ fn intrinsic_query_short_circuits_on_cache_hit() {
     let parts = rig.parts();
     parts.engine.scratch.measure.intrinsics[child.idx()][max_slot] = f32::NAN;
     parts.engine.scratch.counters.reset_intrinsic_computes();
-    let interned_text = parts.forest.record_store.interned_text();
+    let interned_text = parts.forest.record_store.text.interned();
     let input = PlaneInput {
         tree: &parts.forest.trees[Plane::MAIN],
         interned_text: &interned_text,
@@ -204,7 +204,7 @@ fn intrinsic_range_exactly_matches_separate_queries_for_every_driver() {
         );
     }
 
-    let interned_text = parts.forest.record_store.interned_text();
+    let interned_text = parts.forest.record_store.text.interned();
     let input = PlaneInput {
         tree,
         interned_text: &interned_text,

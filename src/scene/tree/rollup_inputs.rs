@@ -35,25 +35,49 @@ pub(super) struct RollupInputs {
     cur_rolled: bool,
 }
 
+/// A tree's recorded columns the rollups read, which [`RollupInputs::take_from`] trades for the
+/// last pass's.
+#[derive(Debug)]
+pub(super) struct RecordedColumns<'a> {
+    pub(super) records: &'a mut Soa<NodeRecord>,
+    pub(super) bounds_table: &'a mut Vec<BoundsExtras>,
+    pub(super) panel_table: &'a mut Vec<PanelExtras>,
+    pub(super) chrome_table: &'a mut Vec<ChromeRow>,
+    pub(super) shape_hashes: &'a mut Vec<ContentHash>,
+    pub(super) grid_tracks: &'a mut Vec<Track>,
+    pub(super) grid_defs: &'a mut Vec<GridDef>,
+    pub(super) scrollbar_defs: &'a mut Vec<ResolvedScrollbarsDef>,
+}
+
 impl RollupInputs {
     /// Takes `tree`'s recorded columns as the last pass's, leaving it the emptied buffers of the pass before.
-    pub(super) fn take_from(&mut self, tree: &mut Tree) {
-        mem::swap(&mut self.records, &mut tree.records);
-        mem::swap(&mut self.bounds_table, &mut tree.bounds_table);
-        mem::swap(&mut self.panel_table, &mut tree.panel_table);
-        mem::swap(&mut self.chrome_table, &mut tree.chrome_table);
-        mem::swap(&mut self.shape_hashes, &mut tree.shapes.hashes);
-        mem::swap(&mut self.grid_tracks, &mut tree.grid_tracks);
-        mem::swap(&mut self.grid_defs, &mut tree.grid_defs);
-        mem::swap(&mut self.scrollbar_defs, &mut tree.scrollbar_defs);
-        tree.records.clear();
-        tree.bounds_table.clear();
-        tree.panel_table.clear();
-        tree.chrome_table.clear();
-        tree.shapes.hashes.clear();
-        tree.grid_tracks.clear();
-        tree.grid_defs.clear();
-        tree.scrollbar_defs.clear();
+    pub(super) fn take_from(&mut self, tree: RecordedColumns<'_>) {
+        let RecordedColumns {
+            records,
+            bounds_table,
+            panel_table,
+            chrome_table,
+            shape_hashes,
+            grid_tracks,
+            grid_defs,
+            scrollbar_defs,
+        } = tree;
+        mem::swap(&mut self.records, records);
+        mem::swap(&mut self.bounds_table, bounds_table);
+        mem::swap(&mut self.panel_table, panel_table);
+        mem::swap(&mut self.chrome_table, chrome_table);
+        mem::swap(&mut self.shape_hashes, shape_hashes);
+        mem::swap(&mut self.grid_tracks, grid_tracks);
+        mem::swap(&mut self.grid_defs, grid_defs);
+        mem::swap(&mut self.scrollbar_defs, scrollbar_defs);
+        records.clear();
+        bounds_table.clear();
+        panel_table.clear();
+        chrome_table.clear();
+        shape_hashes.clear();
+        grid_tracks.clear();
+        grid_defs.clear();
+        scrollbar_defs.clear();
         self.rolled = mem::replace(&mut self.cur_rolled, false);
     }
 
@@ -116,13 +140,15 @@ mod tests {
     #[test]
     fn rollups_hold_only_for_a_pass_that_rolled() {
         let mut tree = Tree::default();
-        let mut inputs = RollupInputs::default();
-        inputs.take_from(&mut tree);
-        assert!(!inputs.hold_for(&tree), "nothing rolled yet");
-        inputs.note_rolled();
-        inputs.take_from(&mut tree);
-        assert!(inputs.hold_for(&tree), "the last pass rolled");
-        inputs.take_from(&mut tree);
-        assert!(!inputs.hold_for(&tree), "the last pass never rolled");
+        tree.pre_record();
+        assert!(!tree.last_inputs.hold_for(&tree), "nothing rolled yet");
+        tree.last_inputs.note_rolled();
+        tree.pre_record();
+        assert!(tree.last_inputs.hold_for(&tree), "the last pass rolled");
+        tree.pre_record();
+        assert!(
+            !tree.last_inputs.hold_for(&tree),
+            "the last pass never rolled"
+        );
     }
 }

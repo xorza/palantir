@@ -37,6 +37,7 @@ use crate::display::user_scale::UserScale;
 use crate::gpu::gpu_paint::gpu_views::{GpuViews, RecordedView};
 use crate::icons::icon_set::IconSet;
 use crate::icons::icon_table::IconTable;
+use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::input::ime_preedit::ImePreedit;
 use crate::input::input_event::InputEvent;
@@ -70,14 +71,14 @@ use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduce_preference::ReducePreference;
 use crate::primitives::text::interned_str::InternedStr;
 use crate::primitives::text::text_input::TextInput;
-use crate::renderer::error::ImageTooLarge;
 use crate::renderer::frontend::FrameScene;
-use crate::scene::forest::{Forest, NodeChrome};
+use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::id_recipe::IdRecipe;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
+use crate::scene::tree::NodeChrome;
 use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
@@ -989,14 +990,14 @@ impl Ui {
     #[must_use]
     #[inline]
     pub fn fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
-        self.forest.record_store.intern_fmt(args)
+        self.forest.record_store.text.intern_fmt(args)
     }
 
     /// Normalize borrowed, owned or interned text into an [`InternedStr`]. An
     /// [`InternedStr`] from an earlier pass or another window panics.
     #[must_use]
     pub fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
-        self.forest.record_store.intern(text.into())
+        self.forest.record_store.text.intern(text.into())
     }
 
     /// The characters of `text`, a handle this pass interned. The borrow holds
@@ -1007,7 +1008,7 @@ impl Ui {
     /// Panics when `text` was interned by an earlier pass or another window.
     #[must_use]
     pub fn text(&self, text: InternedStr) -> &str {
-        self.forest.record_store.text(text)
+        self.forest.record_store.text.text(text)
     }
 
     /// Append `shape` to the active node and animate it at paint time. The recorded
@@ -1073,8 +1074,8 @@ impl Ui {
     ///
     /// [`Widget::resolve`]: crate::widget::Widget::resolve
     #[inline]
-    pub(crate) fn resolve_ident(&mut self, ident: Ident) -> ResolvedId {
-        self.forest.widget_id(ident)
+    pub(crate) fn resolve_ident(&mut self, recipe: IdRecipe) -> ResolvedId {
+        self.forest.widget_id(recipe)
     }
 
     /// Open `node` under `resolved`, painting `chrome` and, for keyboard-sourced

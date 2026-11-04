@@ -1,3 +1,4 @@
+use crate::common::content_hash::ContentHash;
 use crate::internals::panic_probe;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
@@ -33,18 +34,18 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
         ..first
     };
     let mut gradients = RecordedGradients::default();
-    let first_id = gradients.intern(7, first.clone());
-    assert_eq!(gradients.intern(7, first.clone()), first_id);
+    let first_id = gradients.intern(ContentHash(7), first.clone());
+    assert_eq!(gradients.intern(ContentHash(7), first.clone()), first_id);
     assert_eq!(gradients.records.len(), 1);
 
     // Collision: same hash, different content; equality refuses `first_id` and mints a record.
-    let colliding_id = gradients.intern(7, colliding.clone());
+    let colliding_id = gradients.intern(ContentHash(7), colliding.clone());
     assert_ne!(first_id, colliding_id);
     assert_eq!(gradients.records.len(), 2);
     assert_eq!(gradients.records[colliding_id.0 as usize], colliding);
 
-    assert_ne!(gradients.intern(7, first), first_id);
-    assert_ne!(gradients.intern(7, colliding), colliding_id);
+    assert_ne!(gradients.intern(ContentHash(7), first), first_id);
+    assert_ne!(gradients.intern(ContentHash(7), colliding), colliding_id);
     assert_eq!(gradients.records.len(), 4);
 
     // The reset does not write the index: a slot left under hash 7 must read as absent on its serial alone.
@@ -54,14 +55,14 @@ fn gradient_interner_confirms_equality_across_hash_collisions_and_clears() {
         kind: FillKind::linear(Spread::Reflect),
         ramp: ramp.with_interpolation(Interpolation::Linear),
     };
-    let after_clear_id = gradients.intern(7, after_clear.clone());
+    let after_clear_id = gradients.intern(ContentHash(7), after_clear.clone());
     assert_eq!(after_clear_id.0, 0);
     assert_eq!(gradients.records.len(), 1);
 
     // ...including the frame the serial wraps.
     gradients.wind_index_to_last_frame();
     gradients.clear();
-    assert_eq!(gradients.intern(7, after_clear).0, 0);
+    assert_eq!(gradients.intern(ContentHash(7), after_clear).0, 0);
     assert_eq!(gradients.records.len(), 1);
 }
 
@@ -80,38 +81,38 @@ fn gradient_interner_dedups_at_every_table_width() {
 
     let mut gradients = RecordedGradients::default();
     for i in 0..COUNT {
-        assert_eq!(gradients.intern(i, gradient(i)).0, i as u32);
+        assert_eq!(gradients.intern(ContentHash(i), gradient(i)).0, i as u32);
     }
     assert_eq!(gradients.records.len() as u64, COUNT);
 
     gradients.clear();
     for i in 0..COUNT {
-        assert_eq!(gradients.intern(i, gradient(i)).0, i as u32);
+        assert_eq!(gradients.intern(ContentHash(i), gradient(i)).0, i as u32);
     }
     for i in 0..COUNT {
-        assert_eq!(gradients.intern(i, gradient(i)).0, i as u32);
+        assert_eq!(gradients.intern(ContentHash(i), gradient(i)).0, i as u32);
     }
     assert_eq!(gradients.records.len() as u64, COUNT);
 }
 
-/// A handle from an earlier pass is rejected by both paths that take one, in every build: the arena is cleared per pass, so a stale span would record another widget's text (hence the release panic `InternedStr` and `Ui::fmt` document). `reuse` copies nothing, so the epoch alone guards it.
+/// A handle from an earlier pass is rejected by both paths that take one, in every build: the arena is cleared per pass, so a stale span would record another widget's text (hence the release panic `InternedStr` and `Ui::fmt` document). Re-interning a handle copies nothing, so the epoch alone guards it.
 #[test]
 fn a_stale_handle_is_rejected_by_both_paths_in_every_build() {
     let mut store = RecordStore::default();
-    let stale = store.intern_str("last frame");
-    assert_eq!(store.record_text(stale).span, stale.span);
-    assert_eq!(store.reuse(stale).span, stale.span);
+    let stale = store.text.intern("last frame");
+    assert_eq!(store.text.record(stale).span, stale.span);
+    assert_eq!(store.text.intern(stale).span, stale.span);
 
     store.clear();
-    let fresh = store.intern_str("this frame");
+    let fresh = store.text.intern("this frame");
     panic_probe::assert_panics_with(
         "InternedStr outlived the record pass that minted it",
-        || store.record_text(stale),
+        || store.text.record(stale),
     );
     panic_probe::assert_panics_with(
         "InternedStr outlived the record pass that minted it",
-        || store.reuse(stale),
+        || store.text.intern(stale),
     );
     // The pass's own handle still resolves, so the epoch drives the rejection.
-    assert_eq!(store.record_text(fresh).span, fresh.span);
+    assert_eq!(store.text.record(fresh).span, fresh.span);
 }

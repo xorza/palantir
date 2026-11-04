@@ -4,6 +4,7 @@ use crate::gpu::backdrop::backdrops::{
 };
 use crate::gpu::backdrop::tests::CLEAR;
 use crate::gpu::pipeline::quad_pipeline::QuadPipeline;
+use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
 use crate::gpu::surface::render_target::TargetFormat;
 use crate::gpu::test_gpu::{HeadlessTestGpuLease, headless_test_gpu};
@@ -14,7 +15,6 @@ use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::srgba_u8::SrgbaU8;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::backdrop_row::{BackdropRow, PaneSource};
-use crate::renderer::render_owner_id::{RenderOwnerId, RenderOwners};
 use crate::shape::paint::blur_plan::BlurPlan;
 use glam::UVec2;
 use std::mem::offset_of;

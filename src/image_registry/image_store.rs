@@ -1,8 +1,8 @@
 //! The seam between a registered image's CPU lifecycle and the textures behind it.
 
+use crate::image_registry::error::ImageTooLarge;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use crate::renderer::error::ImageTooLarge;
 use std::fmt::Debug;
 
 /// Where a registered image's texels go. The backend implements it over wgpu and owns every texture; a deviceless recorder has no store and discards texels. Methods take `&self` since handles share one store through an `Rc` (the wgpu side keeps its map in a `RefCell`).

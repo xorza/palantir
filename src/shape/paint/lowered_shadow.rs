@@ -84,11 +84,12 @@ impl LoweredShadow {
     }
 }
 
-/// Saturating: [`Shadow::validate`] holds an authored shadow within the lanes, and an animated
-/// chrome's tween may overshoot it.
-impl From<Shadow> for LoweredShadow {
+impl LoweredShadow {
+    /// `shadow` lowered to f16 lanes, saturating: [`Shadow::validate`] holds an authored shadow
+    /// within the lanes, and an animated chrome's tween may overshoot it. A named method, not
+    /// `From`, as it loses precision and range.
     #[inline]
-    fn from(shadow: Shadow) -> Self {
+    pub(crate) fn lower(shadow: Shadow) -> Self {
         Self {
             color: shadow.color.to_f16(),
             geometry_f16: F16x4::from_lanes_saturating([

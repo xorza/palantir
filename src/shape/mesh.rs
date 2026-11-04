@@ -1,5 +1,6 @@
 //! Triangle-mesh builder; lowers to `ShapeRecord::Mesh`.
 
+use crate::common::content_hash::ContentHash;
 use crate::primitives::geometry::mesh::Mesh;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::math::domain;
@@ -71,7 +72,7 @@ impl sealed::LowerShape for MeshShape<'_> {
             vertices: staged.vertices,
             idxs: staged.idxs,
             bbox: mesh.bbox(),
-            content_hash: mesh.content_hash(),
+            content_hash: ContentHash(mesh.content_hash()),
         }
     }
 }

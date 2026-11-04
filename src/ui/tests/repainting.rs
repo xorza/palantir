@@ -5,6 +5,7 @@ use crate::damage::Damage;
 use crate::diagnostics::DebugOverlayConfig;
 use crate::display::user_scale::UserScale;
 use crate::host::harness::Harness;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::input::keyboard::key::Key;
 use crate::input::policy::InputPolicy;
 use crate::input::policy::InputSignal;
@@ -23,7 +24,6 @@ use crate::renderer::frontend::encoder;
 use crate::renderer::gradient_atlas::INITIAL_ATLAS_ROWS;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
 use crate::renderer::render_plan::RenderPlan;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::scene::layer::Layer;
 use crate::scene::plane::Plane;
 use crate::shape::Shape;
@@ -314,7 +314,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     {
         let store = &h.ui().forest.record_store;
-        assert_eq!(store.interned_text().all(), "retained 7");
+        assert_eq!(store.text.interned().all(), "retained 7");
     }
 
     let r1 = h.at(half).frame(|ui| body(ui, half));
@@ -329,7 +329,7 @@ fn paint_only_preserves_record_store_for_retained_shapes() {
     {
         let store = &h.ui().forest.record_store;
         assert_eq!(
-            store.interned_text().all(),
+            store.text.interned().all(),
             "retained 7",
             "PaintOnly must preserve bytes referenced by retained text",
         );

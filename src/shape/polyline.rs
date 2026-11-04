@@ -1,5 +1,6 @@
 //! The polyline builder and its per-vertex or per-segment color source.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash::Hasher;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::rect::aabb::Aabb;
@@ -184,7 +185,7 @@ impl sealed::LowerShape for PolylineShape<'_> {
             points: staged.points,
             colors: staged.colors,
             bbox,
-            content_hash,
+            content_hash: ContentHash(content_hash),
         }
     }
 }

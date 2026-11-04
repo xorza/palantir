@@ -11,4 +11,3 @@ pub(crate) mod lowered_shadow;
 pub(crate) mod quad_shape;
 pub(crate) mod shape_brush;
 pub(crate) mod shape_stroke;
-pub(crate) mod spectrum_tables;

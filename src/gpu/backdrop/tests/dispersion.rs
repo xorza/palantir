@@ -12,7 +12,7 @@ use crate::primitives::paint::backdrop_filter::{BackdropFilter, Lens};
 use crate::primitives::paint::color::RgbaF32;
 use crate::shape::Shape;
 use crate::shape::paint::lens_optics::{LINE_D, LensOptics};
-use crate::shape::paint::spectrum_tables::{SPECTRUM_RED, SPECTRUM_VIOLET};
+use crate::shape::paint::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
 use crate::ui::Ui;
 use crate::widget_core::configure::Configure;
 use crate::widgets::panel::Panel;

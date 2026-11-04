@@ -3,7 +3,7 @@ use crate::damage::region::DamageRegion;
 use crate::display::Display;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::urect::URect;
-use crate::renderer::repaint_scissors::RepaintScissors;
+use crate::renderer::repaint_scissors::{self, RepaintScissors};
 use glam::UVec2;
 
 fn display() -> Display {
@@ -86,4 +86,12 @@ fn partial_repaint_rejects_scissors_clamped_outside_viewport() {
         &display(),
         [],
     );
+}
+
+/// The cull margin is the 2 px padding and the 1 px rounding slack, in logical px: 3 at scale 1,
+/// 1.5 at scale 2.
+#[test]
+fn the_cull_margin_is_the_padding_and_the_slack_in_logical_px() {
+    assert_eq!(repaint_scissors::cull_margin(1.0), 3.0);
+    assert_eq!(repaint_scissors::cull_margin(2.0), 1.5);
 }

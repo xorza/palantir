@@ -24,7 +24,7 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::chrome::Chrome;
 use crate::scene::node::Node;
-use crate::scene::node::ident::{IdKind, Ident};
+use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
 use crate::scene::scrollbars_def::ScrollbarsDef;
 use crate::scene::seen_ids::ResolvedId;
@@ -38,6 +38,15 @@ use crate::widget_core::configure::Configure;
 use crate::widget_core::response::{InnerResponse, Response, ResponseSnapshot};
 use glam::Vec2;
 use std::panic::Location;
+
+/// A widget's identity: the recipe it was given, until first contact with `Ui` resolves it, then
+/// the id it resolved to, kept because resolution is not pure (`SeenIds` bumps a raw id another
+/// widget opened).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Ident {
+    Recipe(IdRecipe),
+    Resolved(ResolvedId),
+}
 
 /// What a widget records: its identity, and the node the tree reads. Every widget
 /// builder owns one, chains the [`Configure`] setters on it, and hands it to
@@ -151,7 +160,7 @@ impl Widget {
     #[track_caller]
     fn new(mode: NodeMode) -> Self {
         Self {
-            ident: Ident::Auto(Location::caller()),
+            ident: Ident::Recipe(IdRecipe::Scoped(ScopedRecipe::Auto(Location::caller()))),
             node: Node::new(mode),
         }
     }
@@ -173,7 +182,7 @@ impl Widget {
     fn resolved(&mut self, ui: &mut Ui) -> ResolvedId {
         match self.ident {
             Ident::Resolved(resolved) => resolved,
-            recipe => {
+            Ident::Recipe(recipe) => {
                 let resolved = ui.resolve_ident(recipe);
                 self.ident = Ident::Resolved(resolved);
                 resolved
@@ -489,13 +498,16 @@ impl Widget {
             .set_mode(LayoutMode::Scroll(axes.fit_content(size)));
     }
 
-    /// Identity's half of "explicit wins, the theme fills in the rest". Silence is
-    /// [`IdKind::Auto`], not an `Option`: every widget carries an auto id from
+    /// Identity's half of "explicit wins, the theme fills in the rest". Silence is an auto
+    /// recipe ([`ScopedRecipe::Auto`]), not an `Option`: every widget carries one from
     /// construction.
     #[inline]
     pub(crate) const fn fill_id(&mut self, id: WidgetId) {
-        if matches!(self.ident.kind(), IdKind::Auto) {
-            self.ident = Ident::Verbatim(id);
+        if matches!(
+            self.ident,
+            Ident::Recipe(IdRecipe::Scoped(ScopedRecipe::Auto(_)))
+        ) {
+            self.ident = Ident::Recipe(IdRecipe::Verbatim(id));
         }
     }
 }
@@ -504,6 +516,22 @@ impl Configure for Widget {
     #[inline]
     fn configure(&mut self) -> Configurator<'_> {
         Configurator { widget: self }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::scene::node::id_recipe::IdRecipe;
+    use crate::widget_core::widget::Ident;
+
+    impl Ident {
+        /// The recipe a widget not yet resolved holds.
+        pub(crate) fn recipe(self) -> IdRecipe {
+            match self {
+                Self::Recipe(recipe) => recipe,
+                Self::Resolved(resolved) => panic!("{:?} is resolved already", resolved.id()),
+            }
+        }
     }
 }
 

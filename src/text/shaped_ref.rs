@@ -18,7 +18,7 @@ impl ShapedTextRef {
     pub(crate) fn new(key: TextShapeKey, text: &RecordedText) -> Self {
         debug_assert_eq!(
             key.text_hash,
-            TextShapeKey::content_hash(text.hash),
+            TextShapeKey::content_hash(text.hash.0),
             "shaped-text key paired with a different run's source bytes",
         );
         Self {

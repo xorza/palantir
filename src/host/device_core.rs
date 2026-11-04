@@ -13,7 +13,7 @@ use crate::gpu::wgpu_backend::backend_resources::BackendResources;
 use crate::gpu::wgpu_backend::{FrameTiming, WgpuBackend};
 use crate::host::cpu_core::CpuCore;
 use crate::host::window_driver::{CpuFrame, FrameDepth, FrameSpec, PresentPath, WindowDriver};
-use crate::renderer::texture_limit::TextureLimit;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::ui::app::App;
 use crate::ui::resources::UiResources;
 use std::rc::Rc;

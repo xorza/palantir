@@ -1,10 +1,13 @@
 //! The record pass's text arena.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::hash;
 use crate::common::span::Span;
 use crate::primitives::text::interned_str::InternedStr;
+use crate::primitives::text::interned_text::InternedText;
 use crate::primitives::text::recorded_text::RecordedText;
 use crate::primitives::text::text_epoch::TextEpoch;
+use crate::primitives::text::text_input::TextInput;
 use std::fmt;
 use std::fmt::Write as _;
 
@@ -14,7 +17,7 @@ use std::fmt::Write as _;
 ///
 /// [`RecordStore`]: crate::shape::record_store::RecordStore
 #[derive(Debug)]
-pub(super) struct TextStore {
+pub(crate) struct TextStore {
     bytes: String,
     epoch: TextEpoch,
 }
@@ -29,8 +32,30 @@ impl Default for TextStore {
 }
 
 impl TextStore {
-    pub(super) fn bytes(&self) -> &str {
-        &self.bytes
+    /// Every byte this pass interned, as a [`InternedText`] resolves a span against them.
+    pub(crate) fn interned(&self) -> InternedText<'_> {
+        InternedText::new(&self.bytes)
+    }
+
+    /// The characters of a text shape this pass recorded, for the widget inspection.
+    pub(crate) fn recorded_str(&self, text: RecordedText) -> &str {
+        &self.bytes[text.span.range()]
+    }
+
+    /// Normalize borrowed, owned or already-interned text into an [`InternedStr`] of this pass.
+    /// Backs [`crate::Ui::intern`]. Borrowed and owned inputs are copied into the arena; an
+    /// already-interned handle is copied nothing and is screened, since a stale one resolves to
+    /// whatever text now sits at those offsets.
+    #[must_use]
+    pub(crate) fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
+        match text.into() {
+            TextInput::Borrowed(text) => self.intern_str(text),
+            TextInput::Owned(text) => self.intern_str(&text),
+            TextInput::Interned(text) => {
+                self.assert_cur(text);
+                text
+            }
+        }
     }
 
     /// Readies the arena for a new pass, dropping old bytes and retiring their handles via a fresh epoch.
@@ -39,13 +64,16 @@ impl TextStore {
         self.epoch = TextEpoch::reserve();
     }
 
-    pub(super) fn intern_str(&mut self, text: &str) -> InternedStr {
+    fn intern_str(&mut self, text: &str) -> InternedStr {
         let start = self.bytes.len();
         self.bytes.push_str(text);
         InternedStr::new(Span::new(start as u32, text.len() as u32), self.epoch)
     }
 
-    pub(super) fn intern_fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
+    /// Format `args` into the arena and return the [`InternedStr`] for the written bytes. Backs
+    /// [`crate::Ui::fmt`].
+    #[must_use]
+    pub(crate) fn intern_fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
         let start = self.bytes.len();
         self.bytes.write_fmt(args).unwrap();
         let end = self.bytes.len();
@@ -62,18 +90,19 @@ impl TextStore {
         );
     }
 
-    pub(super) fn reuse(&self, text: InternedStr) -> InternedStr {
-        self.assert_cur(text);
-        text
-    }
-
-    pub(super) fn text(&self, text: InternedStr) -> &str {
+    /// The characters of a handle this pass minted. Backs [`crate::Ui::text`].
+    pub(crate) fn text(&self, text: InternedStr) -> &str {
         self.assert_cur(text);
         &self.bytes[text.span.range()]
     }
 
-    pub(super) fn record(&self, text: InternedStr) -> RecordedText {
+    /// Lower a handle this pass minted into the span and content hash a `ShapeRecord::Text`
+    /// carries.
+    pub(crate) fn record(&self, text: InternedStr) -> RecordedText {
         self.assert_cur(text);
-        RecordedText::new(text.span, hash::str(&self.bytes[text.span.range()]))
+        RecordedText::new(
+            text.span,
+            ContentHash(hash::str(&self.bytes[text.span.range()])),
+        )
     }
 }

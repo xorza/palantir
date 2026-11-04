@@ -19,7 +19,9 @@ pub(crate) mod frame;
 pub(crate) mod gpu_paint;
 pub(crate) mod pipeline;
 pub(crate) mod raster;
+pub(crate) mod render_owner_id;
 pub(crate) mod resource;
+pub(crate) mod spectrum_tables;
 pub(crate) mod surface;
 #[cfg(feature = "internals")]
 pub(crate) mod test_gpu;

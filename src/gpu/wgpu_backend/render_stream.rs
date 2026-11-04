@@ -6,6 +6,7 @@ use crate::gpu::device::gpu::Gpu;
 use crate::gpu::frame::gpu_timings::GpuTimings;
 use crate::gpu::frame::submission::Route;
 use crate::gpu::pipeline::quad_pipeline::cutout_plan::{Census, CutoutMode, CutoutPlan};
+use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::expiry_window::ExpiryWindow;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::backbuffer::Backbuffer;
@@ -13,7 +14,6 @@ use crate::gpu::surface::damage_canvas::DamageCanvas;
 use crate::gpu::surface::render_target::RenderTarget;
 use crate::gpu::surface::stencil::Stencil;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::renderer::render_owner_id::RenderOwnerId;
 use crate::renderer::repaint_scissors::RepaintScissors;
 use glam::UVec2;
 
@@ -242,10 +242,10 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use crate::gpu::pipeline::quad_pipeline::cutout_plan::CutoutMode;
+    use crate::gpu::render_owner_id::RenderOwners;
     use crate::gpu::resource::expiry_window::EXPIRY_FRAMES;
     use crate::gpu::test_gpu::headless_test_gpu;
     use crate::gpu::wgpu_backend::render_stream::RenderStream;
-    use crate::renderer::render_owner_id::RenderOwners;
     use glam::UVec2;
 
     /// The stencil a frame stamps stays through the expiry window it fell in, and goes at the end

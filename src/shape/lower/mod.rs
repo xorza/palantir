@@ -9,11 +9,13 @@ use crate::common::hash::Hasher;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::packed::fill_axis::FillAxis;
 use crate::primitives::packed::fill_kind::FillKind;
+use crate::primitives::paint::backdrop_filter::BackdropFilter;
 use crate::primitives::paint::brush::Brush;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::brush::gradient::{Gradient, GradientGeometry};
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
+use crate::primitives::reduce_preference::Reduction;
 use crate::shape::paint::chrome_row::ChromeRow;
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::lowered_backdrop::LoweredBackdrop;
@@ -25,13 +27,33 @@ use crate::shape::record_store::recorded_gradient::RecordedGradient;
 use std::hash;
 use std::hash::{Hash as _, Hasher as _};
 
+/// What a pane of fill `fill` paints for its `filter` under `transparency`.
+#[derive(Debug)]
+pub(crate) enum PaneFill {
+    /// The pixels behind, shown through `filter` under the fill; `None` for a filter that changes
+    /// nothing, which makes no pane.
+    Through(Option<LoweredBackdrop>),
+    /// The solid infill the fill becomes, with no filter.
+    Solid(Brush),
+}
+
+/// The one statement of the reduced-transparency rule, for a chrome and a rect alike: a pane under
+/// reduced transparency paints its solid infill and no filter.
+pub(crate) fn pane_fill(filter: BackdropFilter, fill: &Brush, transparency: Reduction) -> PaneFill {
+    if transparency.is_reduced() && !filter.is_noop() {
+        PaneFill::Solid(filter.solid_infill(fill))
+    } else {
+        PaneFill::Through(LoweredBackdrop::of(filter))
+    }
+}
+
 /// Stable content hash for a gradient kind or curve ramp: the fill kind's word, which tells the kinds apart, then the value's `Hash`, captured at lowering so downstream cache keys stay context-free.
 #[inline]
-fn gradient_hash<G: hash::Hash>(kind: FillKind, g: &G) -> u64 {
+fn gradient_hash<G: hash::Hash>(kind: FillKind, g: &G) -> ContentHash {
     let mut h = Hasher::new();
     h.write_u32(kind.0);
     g.hash(&mut h);
-    h.finish()
+    ContentHash(h.finish())
 }
 
 fn gradient_brush<G: GradientGeometry>(
@@ -40,7 +62,7 @@ fn gradient_brush<G: GradientGeometry>(
     gradient: &Gradient<G>,
 ) -> ShapeBrush {
     let hash = gradient_hash(kind, gradient);
-    let id = store.intern_gradient(
+    let id = store.gradients.intern(
         hash,
         RecordedGradient {
             axis: gradient.axis(),
@@ -69,7 +91,7 @@ pub(crate) fn brush(store: &mut RecordStore, b: &Brush) -> ShapeBrush {
 /// Intern a curve's color ramp into the gradient pool [`brush`] fills, as a row with no axis.
 pub(crate) fn ramp(store: &mut RecordStore, ramp: &ColorRamp) -> CurveRamp {
     let hash = gradient_hash(FillKind::RAMP, ramp);
-    let id = store.intern_gradient(
+    let id = store.gradients.intern(
         hash,
         RecordedGradient {
             axis: FillAxis::ZERO,
@@ -86,27 +108,24 @@ pub(crate) fn chrome(store: &mut RecordStore, chrome: &Chrome, ring: Stroke) -> 
         !chrome.has_nan(),
         "a Chrome reaches lowering validated, by `Widget::record`: {chrome:?}",
     );
-    // A pane under reduced transparency paints its solid infill and no filter.
-    let solid = (store.transparency.is_reduced() && !chrome.backdrop_filter.is_noop())
-        .then(|| chrome.backdrop_filter.solid_infill(&chrome.fill));
+    let pane = pane_fill(chrome.backdrop_filter, &chrome.fill, store.transparency);
+    let (fill_brush, backdrop) = match &pane {
+        PaneFill::Through(backdrop) => (&chrome.fill, *backdrop),
+        PaneFill::Solid(solid) => (solid, None),
+    };
     let fill_brush = if chrome.is_noop() {
         &Brush::TRANSPARENT
     } else {
-        solid.as_ref().unwrap_or(&chrome.fill)
+        fill_brush
     };
     let fill = brush(store, fill_brush);
     let border = ShapeStroke {
         width: chrome.border_inset(),
-        ..ShapeStroke::from(chrome.border)
+        ..ShapeStroke::lower(chrome.border)
     };
     let corners = chrome.corners;
-    let shadow = LoweredShadow::from(chrome.shadow);
-    let backdrop = if solid.is_some() {
-        None
-    } else {
-        LoweredBackdrop::of(chrome.backdrop_filter)
-    };
-    let ring = ShapeStroke::from(ring);
+    let shadow = LoweredShadow::lower(chrome.shadow);
+    let ring = ShapeStroke::lower(ring);
     let has_ring = !ring.is_noop();
     // Fed as whole words from registers: a struct packed for one `write` is stored field by field and read back wider, a load the CPU can't forward.
     let brush = fill.hash_parts();

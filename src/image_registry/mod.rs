@@ -11,17 +11,19 @@
 //! `primitives`, [`TextureId`] and the counter it is minted from in
 //! `primitives::identity::texture_id`, and the device ceiling a source is
 //! measured against in
-//! [`TextureLimit`](crate::renderer::texture_limit::TextureLimit) — so this
+//! [`TextureLimit`](crate::image_registry::texture_limit::TextureLimit) — so this
 //! module owns only the lifecycle. `UiResources` mints the id and applies
 //! the ceiling before a handle is built, so nothing here can fail.
 
+pub(crate) mod error;
 pub(crate) mod image_handle;
 pub(crate) mod image_store;
+pub(crate) mod texture_limit;
 
+use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use crate::renderer::error::ImageTooLarge;
 use std::rc::Rc;
 
 /// Cheap to clone: every clone reaches the one store. `Default` is a deviceless recorder's.

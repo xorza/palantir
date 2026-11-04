@@ -33,7 +33,6 @@ pub(crate) mod image_draw_row;
 pub(crate) mod image_flags;
 pub(crate) mod mesh_draw_row;
 pub(crate) mod paint_tier;
-pub(crate) mod per_group_batch;
 pub(crate) mod render_target_draw;
 pub(crate) mod rounded_clip;
 pub(crate) mod row_spin;
@@ -48,7 +47,7 @@ pub(crate) const MAX_ROUNDED_CLIP_DEPTH: u32 = u8::MAX as u32;
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextDrawRow>,
-    /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::meshes`](crate::shape::record_store::RecordStore::meshes); each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
+    /// Scene-wide mesh rows, SoA. Vertex/index bytes live in [`RecordStore::mesh_vertices`](crate::shape::record_store::RecordStore::mesh_vertices) and `mesh_idxs`; each row's `draw` carries spans into them and `instance` the Pod GPU state uploaded verbatim.
     pub(crate) meshes: Soa<MeshDrawRow>,
     pub(crate) groups: Vec<DrawGroup>,
     /// One entry per batch of text runs sharing a text-backend call. Text coalesces across adjacent groups when paint order is preserved. A batch's `texts` span is contiguous; it anchors to a group via `TextBatch.last_group`.

@@ -1,12 +1,12 @@
 //! One framework-owned off-screen target for a composited `GpuView`.
 
 use crate::gpu::device::gpu::Gpu;
+use crate::gpu::render_owner_id::RenderOwnerId;
 use crate::gpu::resource::gpu_view_targets::TARGET_FORMAT;
 use crate::gpu::resource::texture_binding::TextureBinding;
 use crate::gpu::surface::owned_target::TargetSpec;
 use crate::gpu::texel;
 use crate::renderer::render_buffer::render_target_draw::ViewStamp;
-use crate::renderer::render_owner_id::RenderOwnerId;
 use glam::UVec2;
 use std::time::Duration;
 
@@ -58,8 +58,8 @@ pub(super) fn keep_target(entry_owner: RenderOwnerId, owner: RenderOwnerId, live
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::render_owner_id::{RenderOwnerId, RenderOwners};
     use crate::gpu::resource::gpu_view_targets::view_target::keep_target;
-    use crate::renderer::render_owner_id::{RenderOwnerId, RenderOwners};
 
     fn evicted(entries: &[(u64, RenderOwnerId)], owner: RenderOwnerId, live: &[u64]) -> Vec<u64> {
         entries

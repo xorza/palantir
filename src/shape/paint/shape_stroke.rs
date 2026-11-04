@@ -47,23 +47,17 @@ impl ShapeStroke {
     }
 }
 
-impl From<&Stroke> for ShapeStroke {
-    /// Normalized on the way in: a record's raw bytes are a hash key, and `-0.0`, a sub-`EPS` hair or invisible ink
-    /// would each hash apart while painting nothing.
+impl ShapeStroke {
+    /// `stroke` lowered: its color quantized to f16, and normalized on the way in, as a record's
+    /// raw bytes are a hash key, and `-0.0`, a sub-`EPS` hair or invisible ink would each hash
+    /// apart while painting nothing. A named method, not `From`, as it loses both.
     #[inline]
-    fn from(stroke: &Stroke) -> Self {
+    pub(crate) fn lower(stroke: Stroke) -> Self {
         Self {
             width: stroke.width,
             color: stroke.color.to_f16(),
         }
         .normalized()
-    }
-}
-
-impl From<Stroke> for ShapeStroke {
-    #[inline]
-    fn from(stroke: Stroke) -> Self {
-        Self::from(&stroke)
     }
 }
 
@@ -91,14 +85,14 @@ mod tests {
         ];
         for stroke in cases {
             assert_eq!(
-                ShapeStroke::from(&stroke),
+                ShapeStroke::lower(stroke),
                 ShapeStroke::NONE,
                 "{stroke:?} paints nothing",
             );
         }
         let visible = Stroke::new(RgbaF32::WHITE, 2.0);
         assert_eq!(
-            ShapeStroke::from(&visible),
+            ShapeStroke::lower(visible),
             ShapeStroke {
                 width: 2.0,
                 color: RgbaF32::WHITE.to_f16(),

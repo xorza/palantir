@@ -1,5 +1,6 @@
 //! How a lowered shape fills: a color or an interned gradient.
 
+use crate::common::content_hash::ContentHash;
 use crate::primitives::math::nan::NanCheck;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::shape::record_store::recorded_gradients::GradientId;
@@ -12,7 +13,7 @@ pub(crate) enum ShapeBrush {
     /// An interned gradient: `id` is where the content is this frame, `hash` what it is (computed at lowering).
     Gradient {
         id: GradientId,
-        hash: u64,
+        hash: ContentHash,
     },
 }
 
@@ -34,7 +35,7 @@ impl ShapeBrush {
             },
             Self::Gradient { id: _, hash } => BrushHash {
                 tag: 1,
-                payload: hash,
+                payload: hash.0,
             },
         }
     }
@@ -53,6 +54,7 @@ impl NanCheck for ShapeBrush {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::content_hash::ContentHash;
     use crate::primitives::paint::color::RgbaF32;
     use crate::shape::paint::shape_brush::ShapeBrush;
     use crate::shape::record_store::recorded_gradients::GradientId;
@@ -64,7 +66,7 @@ mod tests {
         let gradient = |id, hash| {
             ShapeBrush::Gradient {
                 id: GradientId(id),
-                hash,
+                hash: ContentHash(hash),
             }
             .hash_parts()
         };

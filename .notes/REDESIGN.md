@@ -63,7 +63,7 @@ Each resource has its own copy of a shared rule:
 - **Eviction:** four schemes. The raster clock, the backdrop LRU, `HeldTables`, and the
   gradient MRU.
 - **Upload:** two loops that stage rows (GB-22).
-- **Spatial index:** four indexing policies over `TileIndex` (RD-02).
+- **Spatial index:** four indexing policies over `TileIndex` (RD-02) ✔.
 - **Depth scratch:** three idioms (LT-08) ✔.
 
 ### R4. Bools and Options where an enum would hold the invariant
@@ -73,7 +73,7 @@ Each resource has its own copy of a shared rule:
 - **Overlay spec:** `OverlaySpec` asserts a link between `Backdrop` and `ClickOutside` at run
   time (UI-09).
 - **Mixed states:**
-  - `Ident` holds a recipe and its result in one enum (SC-06).
+  - `Ident` holds a recipe and its result in one enum (SC-06) ✔.
   - `activate()` writes `Up` beside `Drag::Active` (UI-12).
   - `TabDrag { tab: Option, target: Option }` (WG-18).
   - `HostCore` holds `Option<DeviceHalf>` (HS-08) ✔.
@@ -150,7 +150,7 @@ and some `Result` paths panic:
 - `shadow_grid: bool` ✔ (GB-20).
 - `#[cfg(test)]` stencil usage ✔ (GA-07).
 - `WgpuBackend.pass_traffic` mirror ✔ (GA-11).
-- The payload IR, whose second consumer is only for tests (RD-07).
+- The payload IR, whose second consumer is only for tests (RD-07) ✔.
 
 ## Decisions in AGENTS.md the reviewers dispute
 
@@ -245,25 +245,12 @@ The rest of Batch 12 is done.
 
 - Text identity becomes an edit generation, not a hash (LT-15).
 
-### Batch 13. Renderer and shape IR (`renderer`, `shape`)
+### Batch 13b. Gradient atlas index (`renderer`) **dependency**
 
-- Use one `RectSet` with lazy indexing past a threshold for `RectGrid`, `TierRects`,
-  `closed_grid` and the pruner (RD-02).
-- The brush resolver returns the GPU lanes directly. Remove `BrushSource` (RD-05). Record the
-  payload IR as a decision, or fold it into the lowering (RD-07). Embed `GroupBatch` in
-  `TextBatch` and remove `PerGroupBatch` (RD-10).
-- `ComposeSession::finish(self)` replaces the work done in `Drop` (RD-15). `from_damage`
-  takes a `Damage` (RD-12).
-- One `pane_fill` helper for reduced transparency (SC-07).
-- Remove the forwarding layers: `NodeChrome` passes straight through and `NodeCols` goes
-  (SC-08, SC-09). The `RecordStore` forwards go (SC-13).
-- The mesh arena becomes two `Vec`s (SC-14). One exhaustive `pre_record` (SC-15). Use
-  `ContentHash` everywhere (SC-16).
-- Give the lossy `From` conversions names (SC-12). Share one function for the inherited
-  disabled and visible values (SC-10).
-- Move these items: `ImageTooLarge` and `TextureLimit` out of `renderer` (RD-01).
-  `RenderOwnerId` into `gpu` (RD-11). The spectrum tables into `gpu` (SC-17).
-- Smaller items: RD-13, RD-14, RD-17, RD-18, RD-21.
+The rest of Batch 13 is done.
+
+- Each resident `ColorRamp` is held once, through a `hashbrown::HashTable<u32>` that hashes
+  through the slots (RD-17). It makes `hashbrown` a direct dependency, which needs your go-ahead.
 
 ### Batch 14. Primitive types and their public surface (`primitives`, `common`, `animation`) **API**
 
@@ -303,7 +290,7 @@ Prefixes:
 | 10 | UI-05 to UI-10, UI-14, UI-16, UI-17, UI-18, UI-19, UI-20, UI-23, UI-26 to UI-28, WG-09 to WG-18, WG-22 to WG-25 |
 | 11b | HS-23, HS-12, HS-13, HS-15, HS-17 to HS-19, HS-25, HS-26 |
 | 12b | LT-15 |
-| 13 | RD-01, RD-02, RD-05, RD-07, RD-10 to RD-18, RD-21, SC-06 to SC-10, SC-12 to SC-17 |
+| 13b | RD-17 |
 | 14 | PR-05 to PR-07, PR-09 to PR-23, GA-14, UI-25 |
 
 These findings are kept as they are, with no change: SC-20 (the `SeenIds` size is justified
@@ -541,61 +528,7 @@ Logical window sizes are integer `UVec2` (`WindowConfig::inner_size`, `WindowGeo
 - **What's wrong:** `TextProbe::text_hash` and `hash_of` publish a 64-bit hash as "same string as last frame?". `TextEdit` keys its undo stack on it and hashes the whole buffer every frame. `key.rs` itself rejects hash-only identity ("No layer serves a collision").
 - **Direction:** Give the app an exact identity (an edit counter or generation on the buffer) and retire the hash surface. This is an API change and needs your go-ahead.
 
-### Batch 13
-
-**RD-01 · layering · `image_registry/mod.rs:24`, `image_store.rs:5`, `image_handle.rs:4`**
-- **What:** `use crate::renderer::error::ImageTooLarge;` — `image_registry` sits left of `renderer` in the module order, so importing from it breaks the AGENTS.md rule that a module imports only modules to its left. `renderer/error.rs` holds nothing but this one image error, and `TextureLimit::accepts` returns it.
-- **Why it matters:** the order exists to prevent cycles; this edge points the wrong way.
-- **Direction:** move `ImageTooLarge` (and probably `TextureLimit`) into `image_registry` or `primitives`. The `palantir::ImageTooLarge` re-export keeps its path.
-- **Confidence:** high. **Public API:** no. **Root cause:** a type placed by who checks it, not by who owns it.
-
-**RD-02 · complexity · `frontend/composer/rect_grid/mod.rs:17`, `higher_kind_rects.rs:21`, `paint_order.rs:394-412`, `occlusion_pruner.rs:36`**
-- **What:** `RectGrid { tiles: TileIndex, rects: Vec<URect>, union }` and `TierRects { rects, union, tiles: TileIndex, indexed, unshaped }` are the same structure. They differ only in when they index: eagerly on push, or lazily on query past `LINEAR_RECTS`. A third variant is `closed_grid`, filled lazily from pending batches, and `OcclusionPruner` builds its index lazily past 16 entries.
-- **Why it matters:** there are four indexing policies over one `TileIndex` and seven grow-only `TileIndex` instances. Each policy was tuned separately and each needs its own tests.
-- **Direction:** one "rect set" type with lazy indexing past a threshold. `HigherKindRects` becomes `[RectSet; COUNT]` plus a union, and the text grids use the same type.
-- **Confidence:** med-high. **Public API:** no. **Root cause:** spatial index grown per call site.
-
-**RD-05 · complexity · `frontend/payload/brush_source.rs:30`, `resolved_gradient.rs`, `gpu_fill.rs`, `encoder/plane_ctx.rs:117-120`**
-- **What:** a fill passes through four types: `ShapeBrush` → `BrushSource::{Solid, Gradient(ResolvedGradient)}` → `GpuFill` + `FillAxis`. `BrushSource` lives only between `GradientPass::source` and `DrawQuadPayload::rect`, plus a match on solid-vs-gradient in `paint_pane`.
-- **Why it matters:** two intermediate types for one lowering step.
-- **Direction:** have the resolver return the lanes directly (`GpuFill` plus `FillAxis`), with `kind.is_gradient()` answering the pane-tint question.
-- **Confidence:** med. **Public API:** no. **Root cause:** intermediate representations stacked between record and row.
-
-**RD-07 · design (undocumented) · `frontend/paint_sink/mod.rs:186-254`**
-- **What:** the payload layer is a full intermediate representation: `PaintSink` plus `PaintPayload` double dispatch, 8 `Draw*Payload` types, `Spin`, `StrokeBounds`, `GpuFill` and `BrushSource`. It sits between `ShapeRecord` and the `RenderBuffer` rows. Its only production sink is `ComposeSession`; the second consumer is `PaintCapture`, used by tests and benches.
-- **Why it matters:** AGENTS.md records no decision for this representation, as it does elsewhere. egui and vello lower shapes directly.
-- **Direction:** record the decision (capture and replay for composer tests and benches), or fold the payloads into the lowering.
-- **Confidence:** med. **Public API:** no. **Root cause:** a test seam promoted to architecture.
-
-**RD-10 · complexity · `render_buffer/per_group_batch.rs`**
-- **What:** `PerGroupBatch` is a trait with a single getter, `last_group()`. Its two impls are `TextBatch` and `GroupBatch`, and two generic helpers in `gpu/frame/schedule` use it.
-- **Direction:** embed a `GroupBatch` in `TextBatch` (`{ batch: GroupBatch, scissor, rounded_clips }`), or pass a projection.
-- **Confidence:** med. **Public API:** no. **Root cause:** a trait used as a field accessor.
-
-**RD-11 · layering · `renderer/render_owner_id.rs`**
-- **What:** `renderer` never uses `RenderOwnerId` or `RenderOwners`. Only `gpu` (the `Backdrops` cache), `host` and `ui::resources` do.
-- **Direction:** move it into `gpu`; both of its users sit right of `gpu` in the order.
-- **Confidence:** high. **Public API:** no. **Root cause:** placement.
-
-**RD-12 · idiom · `render_plan.rs:25`**
-- **What:** `from_damage(damage: Option<Damage>, ..) -> Option<Self>` takes an `Option` and returns early on it, against "push ifs up".
-- **Direction:** the caller (`ui/frame_cycle.rs:170`) maps the option, and the constructor takes a `Damage`.
-- **Confidence:** high. **Public API:** no. **Root cause:** a convenience constructor.
-
-**RD-13 · doc/precision · `render_plan.rs:16-22`**
-- **What:** `cull_margin` returns `(AA_PADDING + 1.0) / scale`. The `+1` is the up-to-one-pixel slack from `WholePixels` rounding in `logical_rect_to_physical_scissor`, and nothing says so. The constant also belongs to the scissors, not the plan.
-- **Direction:** name the rounding slack, and consider moving the constant to `repaint_scissors`.
-- **Confidence:** high. **Public API:** no. **Root cause:** a derived constant split across modules.
-
-**RD-14 · bug (debug-only) · `encoder/collision_overlay.rs:323`**
-- **What:** the magenta outlines are drawn on partial frames with no damage entry. Once the collision is fixed, the part of the outline outside the damage stays on screen until the next full frame.
-- **Direction:** force a full frame while `forest.collisions` changes, or feed the outlines into damage.
-- **Confidence:** med. **Public API:** no. **Root cause:** paint that bypasses damage.
-
-**RD-15 · idiom · `composer/session.rs:96-104`**
-- **What:** finishing the frame (closing the last batch, flushing the last group) is done in `Drop`, and `Frontend::build` calls `drop(sink)` explicitly. A `let _ = composer.begin(..)` would close it at once.
-- **Direction:** an explicit `finish(self)`, the canonical form for an end-of-session step that order depends on.
-- **Confidence:** med. **Public API:** no. **Root cause:** finalization hidden in a destructor.
+### Batch 13b
 
 **RD-16 · perf · `composer/session.rs:136-141`**
 - **What:** each rounded clip push copies its whole ancestor chain into `rounded_clips` with `extend_from_within`. The pool grows by the sum of depths, bounded at 255 per chain.
@@ -607,76 +540,7 @@ Logical window sizes are integer `UVec2` (`WindowConfig::inner_size`, `WindowGeo
 - **Direction:** a `hashbrown::HashTable<u32>` that hashes through `slots`.
 - **Confidence:** med. **Public API:** no. **Root cause:** a map plus a reverse map.
 
-**RD-18 · doc · `gradient_atlas/mod.rs:53`**
-- **What:** "32 MB" against the AGENTS.md MiB rule. 16384 rows × 2048 B is 32 MiB.
-- **Confidence:** high. **Public API:** no. **Root cause:** naming rule.
-
-**RD-21 · test · `encoder/tests/damage_cull.rs:43`**
-- **What:** the filter tests assert `count_draw_rects` only. The user's rule is to check which elements survive a filter.
-- **Direction:** assert the surviving rects or ids.
-- **Confidence:** high. **Public API:** no. **Root cause:** tests by count.
-
 **Already logged:** `PaneBreak.since` is a single bounding box, so an L-shaped layout breaks the pass needlessly (`composer/pane_break.rs:191`). `.notes/PERF.md` shelves it. `.notes/ISSUES.md` and `.notes/TODO.md` hold nothing else in this scope.
-
-**SC-06 · complexity/idiom · `src/scene/node/ident.rs:20-41`, `src/scene/forest.rs:119-124`.** `Ident` holds both a recipe and its result.
-- `Ident` mixes three recipes (`Auto`, `Hash`, `Verbatim`) with the result (`Resolved(ResolvedId)`).
-- `raw_id` has an `unreachable!` arm for `Resolved`, and `Forest::widget_id`'s `_ =>` arm sends `Resolved` into that panic. `seen_ids::Recipe` stores an `Ident` that can only be `Auto` or `Hash`.
-- Direction: split into an `IdRecipe` enum and a widget-side `enum { Recipe(IdRecipe), Resolved(ResolvedId) }`, so the forest only ever receives a recipe.
-- Confidence: high. Public API: no. Root cause: two states in one enum (an illegal state that can be represented).
-
-**SC-07 · complexity · `src/shape/lower/mod.rs:94-108`, `src/shape/rect.rs:136-141`.** The reduced-transparency rule is written twice.
-- "A pane under reduced transparency paints its solid infill and no filter" is implemented in both places, with the same comment, and the two differ: chrome also gates on `!has_nan()`.
-- The rule's input, `RecordStore.transparency`, is lowering policy stored on a payload store.
-- Direction: one helper, `(fill, backdrop) = lower::pane_fill(filter, fill, reduction)`, called by both. Pass the reduction to it rather than storing it on the store.
-- Confidence: high. Public API: no. Root cause: chrome lowering and shape lowering grew side by side.
-
-**SC-08 · complexity · `src/scene/forest.rs:53-60,180-186`, `src/scene/tree/mod.rs:104-112`.** Two structs carry the same chrome and ring pair.
-- `NodeChrome { chrome: Option<&Chrome>, ring }` is converted into `ChromeInput { chrome: &Chrome, ring, store }`, and an absent chrome is replaced by `&Chrome::NONE` along the way.
-- Direction: pass `NodeChrome` and `&mut RecordStore` to `Tree::open_node` and decide row presence once there.
-- Confidence: high. Public API: no. Root cause: a forwarding layer.
-
-**SC-09 · complexity · `src/scene/node/node_cols.rs`, `src/scene/node/mod.rs:305-331`.** `NodeCols` is a one-hop carrier.
-- It exists only between `Node::cols` and `Tree::open_node`, which then mutates it: clip downgrade, disabled bit, padding fold.
-- Direction: let `Tree::open_node` take `&Node` plus the id, or have `Node::cols` return the `NodeRecord` fields and side rows directly.
-- Confidence: med. Public API: no. Root cause: three representations of one node (`Node` → `NodeCols` → `NodeRecord` plus side rows).
-
-**SC-10 · complexity · `src/scene/tree/mod.rs:490-517` vs `src/cascade/engine.rs:393-394`.** Inherited disabled and visible are computed twice.
-- At record time (`OpenFrame.ancestor_or_self_disabled`, `effectively_visible`) and again in the cascade walk.
-- The record-time values gate `PaneEntry` and `PaintAnimationEntry`; the cascade's gate paint spans. Nothing ties the two except the debug paint-row assert.
-- Owner-disabled crosses planes through `set_disabled` on the root, but invisibility has no matching path. Today both sides agree; nothing keeps them agreeing.
-- Direction: share one `fn inherit(parent, attrs, vis)` used by both, or derive the record-time gates from the cascade's result.
-- Confidence: med. Public API: no. Root cause: record runs one frame ahead of the cascade.
-
-**SC-12 · idiom · `src/shape/paint/lowered_shadow.rs:305-321`, `src/shape/paint/shape_stroke.rs:160-178`.** Two `From` impls lose data.
-- `From<Shadow> for LoweredShadow` saturates to f16, and `From<Stroke> for ShapeStroke` quantizes to f16 and collapses every invisible stroke to `NONE`.
-- std's guidance is that `From` is lossless and value-preserving; darkroom's rule is that a lossy conversion is a named method.
-- Direction: name them, for example `LoweredShadow::lower(shadow)` and `ShapeStroke::normalized_from`.
-- Confidence: high. Public API: no. Root cause: lowering is written as conversions.
-
-**SC-13 · complexity · `src/shape/record_store/mod.rs:112-161`.** `RecordStore` forwards to its own fields.
-- `intern_str`, `intern_fmt`, `reuse`, `text`, `record_text` and `intern_gradient` are one-line forwards to `TextStore` and `RecordedGradients`. `intern_str` and `reuse` are private forwards to forwards.
-- Direction: expose `text` and `gradients` as `pub(crate)` fields with their own methods (they are already types with invariants), or inline the private hops.
-- Confidence: high. Public API: no. Root cause: a forwarding layer.
-
-**SC-14 · complexity · `src/shape/record_store/mod.rs:37`, `primitives/geometry/mesh/mod.rs:52-64`.** The mesh arena is a public `Mesh`.
-- `stage_mesh` pushes into its fields directly, so `max_idx`, `cached_hash` and `cached_bbox` are stale by design ("arena meshes never hash").
-- Direction: two `Vec`s (`mesh_vertices`, `mesh_idxs`), as the polyline payloads are stored.
-- Confidence: high. Public API: no. Root cause: an authoring type reused as storage. The per-frame vertex copy itself is already logged ("mesh once registrations", TODO).
-
-**SC-15 · complexity · `src/scene/tree/mod.rs:148-157`, `src/scene/tree/rollup_inputs.rs:40-58`.** Clearing one struct happens in two places.
-- `Shapes.records` is cleared in `Tree::pre_record`, while `Shapes.hashes` is swapped out and cleared in `RollupInputs::take_from`. Its siblings `paint_animations`, `panes` and `roots` are cleared in a third list.
-- Direction: one `Tree::pre_record` that destructures `Self` exhaustively and states for every field whether it is cleared, swapped or kept.
-- Confidence: med. Public API: no. Root cause: the cross-frame rollup reuse was added beside the clear.
-
-**SC-16 · idiom · `shape/record/mod.rs:58,83`, `shape/paint/shape_brush.rs:15`, `shape/paint/curve_ramp.rs`, `primitives/text/recorded_text.rs:11`.** Content hashes use two types.
-- They are bare `u64` in records (`content_hash`, `hash`) beside the `ContentHash` newtype used elsewhere.
-- Direction: use `ContentHash` everywhere a content hash is stored.
-- Confidence: high. Low impact. Public API: no.
-
-**SC-17 · layering · `src/shape/paint/spectrum_tables/`.** GPU-only tables live in `shape`.
-- The CIE observer tables are read only by `gpu` (`gpu/backdrop/backdrops`, `quad_pipeline`). Lowering needs only the `SPECTRUM_VIOLET` constant, through `LensOptics::violet_index`.
-- Direction: move the table builder to `gpu` and keep the constant beside `LensOptics`.
-- Confidence: med. Public API: no.
 
 ### Batch 14
 

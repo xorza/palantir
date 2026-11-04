@@ -2,12 +2,12 @@
 
 use crate::display::Display;
 use crate::display::frame_stamp::FrameStamp;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::internals::paint_capture::PaintCapture;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::internals::TEST_TEXTURE_LIMIT;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::shared_device::SharedDevice;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::shape::record_store::RecordStore;
 use std::rc::Rc;
 use std::time::Duration;

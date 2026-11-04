@@ -307,7 +307,7 @@ fn builders_refuse_what_they_check() {
         spread: 65504.0,
         inset: false,
     };
-    let lowered = LoweredShadow::from(widest).geometry();
+    let lowered = LoweredShadow::lower(widest).geometry();
     assert_eq!(
         (lowered.offset, lowered.blur, lowered.spread),
         (widest.offset, widest.blur, widest.spread),
@@ -459,7 +459,7 @@ fn a_derived_shadow_past_65504_saturates_where_it_lowers() {
     use crate::primitives::paint::shadow::Shadow;
     use crate::shape::paint::lowered_shadow::LoweredShadow;
 
-    let geometry = LoweredShadow::from(Shadow {
+    let geometry = LoweredShadow::lower(Shadow {
         offset: Vec2::new(-65520.0, 1.0),
         blur: 65520.0,
         spread: 1.0e9,

@@ -270,6 +270,7 @@ pub use host::winit::{
 pub use icons::error::{IconTableError, SvgParseError};
 pub use icons::icon_set::IconSet;
 pub use icons::icon_table::{IconDefinition, IconTable};
+pub use image_registry::error::ImageTooLarge;
 pub use image_registry::image_handle::ImageHandle;
 pub use input::ime_preedit::ImePreedit;
 pub use input::input_event::InputEvent;
@@ -336,7 +337,6 @@ pub use primitives::paint::stroke::Stroke;
 pub use primitives::reduce_preference::ReducePreference;
 pub use primitives::text::interned_str::InternedStr;
 pub use primitives::text::text_input::TextInput;
-pub use renderer::error::ImageTooLarge;
 pub use scene::layer::Layer;
 pub use text::error::FontLoadError;
 pub use text::font_family::FontFamily;

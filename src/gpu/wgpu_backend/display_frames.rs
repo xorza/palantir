@@ -1,6 +1,6 @@
 //! [`DisplayFrames`]: the backend's frame clock across the windows it draws.
 
-use crate::renderer::render_owner_id::RenderOwnerId;
+use crate::gpu::render_owner_id::RenderOwnerId;
 
 /// The backend's display frame: it moves on when an owner submits a second time since it last
 /// moved, so a round in which each live window submits once is one frame, whatever the number of
@@ -34,8 +34,8 @@ impl DisplayFrames {
 
 #[cfg(test)]
 mod tests {
+    use crate::gpu::render_owner_id::RenderOwners;
     use crate::gpu::wgpu_backend::display_frames::DisplayFrames;
-    use crate::renderer::render_owner_id::RenderOwners;
 
     /// One window moves the clock each submit; two at one rate move it once a round, A then B in
     /// frame 2 and again in frame 3; a window that submits twice before the other moves it on.

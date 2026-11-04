@@ -56,6 +56,7 @@ use std::num::NonZeroU32;
 /// [`PaintSink`] in authoring order: each draw is lowered here (`lowering`, `packed_quad`,
 /// `curve_run`, `polyline_scratch`) and ordered through [`Ordering`].
 #[derive(Debug)]
+#[must_use = "a session leaves its last batch and group open until `finish`"]
 pub(crate) struct ComposeSession<'a> {
     pub(super) composer: &'a mut Composer,
     pub(super) store: &'a RecordStore,
@@ -93,10 +94,12 @@ impl ComposeSession<'_> {
     }
 }
 
-impl Drop for ComposeSession<'_> {
-    /// Close the trailing text batch and draw group. A destructor so a dropped session cannot leave
-    /// a `RenderBuffer` that looks populated but is missing its last group.
-    fn drop(&mut self) {
+impl ComposeSession<'_> {
+    /// End the session: close the trailing text batch and draw group, which the buffer's last
+    /// rows wait on. Explicit, as `BufWriter::flush` is beside its drop, since the frame's order
+    /// depends on when it runs. Refused: the work in `Drop`, which a `let _ =` ran at once and a
+    /// held session ran wherever its scope ended.
+    pub(crate) fn finish(mut self) {
         let mut ordering = self.ordering();
         ordering.close_batch();
         ordering.flush();

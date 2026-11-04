@@ -105,7 +105,7 @@ impl LayoutEngine {
         // First, so a run kept whole still leaves a slot for a plane that grew empty: the
         // cascade and the encoder index every plane the forest holds.
         out.cover(forest);
-        let interned_text = forest.record_store.interned_text();
+        let interned_text = forest.record_store.text.interned();
         // Once per run: `resize_for` runs inside the plane loop and would wipe earlier counts.
         self.scratch.counters.begin_pass();
         self.text.begin_run();
@@ -244,7 +244,7 @@ pub(crate) mod internals {
             node: NodeId,
             query: IntrinsicQuery,
         ) -> IntrinsicRange {
-            let interned_text = forest.record_store.interned_text();
+            let interned_text = forest.record_store.text.interned();
             let input = PlaneInput {
                 tree: &forest.trees[Plane::MAIN],
                 interned_text: &interned_text,

@@ -1,5 +1,6 @@
 //! Text as a shape record stores it: where the bytes are, and their hash.
 
+use crate::common::content_hash::ContentHash;
 use crate::common::span::Span;
 use std::hash::{Hash, Hasher};
 
@@ -8,17 +9,17 @@ use std::hash::{Hash, Hasher};
 pub(crate) struct RecordedText {
     pub(crate) span: Span,
     /// `hash::str` of the recorded bytes, computed once at record time and reused by scene identity and [`crate::text::key::TextShapeKey`].
-    pub(crate) hash: u64,
+    pub(crate) hash: ContentHash,
 }
 
 impl RecordedText {
-    pub(crate) const fn new(span: Span, hash: u64) -> Self {
+    pub(crate) const fn new(span: Span, hash: ContentHash) -> Self {
         Self { span, hash }
     }
 }
 
 impl Hash for RecordedText {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hash.hash(state);
+        state.write_u64(self.hash.0);
     }
 }

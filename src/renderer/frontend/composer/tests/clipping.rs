@@ -33,9 +33,9 @@ fn compose_with_no_clip_emits_one_unscissored_group() {
     assert_eq!(buf.groups[0].quads, Span::new(0, 2));
 }
 
-/// Closing is the session's destructor, so dropping it still emits the trailing group and text batch; nothing else surfaces the omission.
+/// Finishing a session emits the trailing group and text batch, which its rows wait on until then.
 #[test]
-fn dropping_a_session_emits_the_trailing_group_and_batch() {
+fn finishing_a_session_emits_the_trailing_group_and_batch() {
     let mut rig = ComposeRig::new(params(1.0, UVec2::new(200, 200)));
     {
         let mut session = rig.composer.begin(
@@ -52,13 +52,14 @@ fn dropping_a_session_emits_the_trailing_group_and_batch() {
         assert_eq!(session.out.texts.len(), 1);
         assert!(session.out.groups.is_empty());
         assert!(session.out.text_batches.is_empty());
+        session.finish();
     }
     let out = &rig.out;
     assert_eq!(out.quads.len(), 1);
     assert_eq!(out.texts.len(), 1);
-    assert_eq!(out.groups.len(), 1, "trailing group emitted on drop");
+    assert_eq!(out.groups.len(), 1, "trailing group emitted on finish");
     assert_eq!(out.groups[0].quads, Span::new(0, 1));
-    assert_eq!(out.text_batches.len(), 1, "trailing batch closed on drop");
+    assert_eq!(out.text_batches.len(), 1, "trailing batch closed on finish");
     assert_eq!(out.text_batches[0].texts, Span::new(0, 1));
     assert_eq!(out.text_batches[0].last_group, 0);
 }

@@ -1,9 +1,9 @@
 use crate::image_registry::ImageRegistry;
+use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_handle::ImageHandle;
 use crate::image_registry::image_store::ImageStore;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use crate::renderer::error::ImageTooLarge;
 use glam::UVec2;
 use std::cell::RefCell;
 use std::rc::Rc;

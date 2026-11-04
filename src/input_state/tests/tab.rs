@@ -311,7 +311,7 @@ fn the_focus_ring_shows_only_for_keyboard_focus() {
     let theme = &h.ui().theme().focus_ring;
     assert_eq!(
         h.ui().tree(Layer::Main).focus_ring,
-        ShapeStroke::from(Stroke::new(theme.color, theme.width)),
+        ShapeStroke::lower(Stroke::new(theme.color, theme.width)),
     );
     assert_eq!(padding(&h), unringed, "the ring moves no layout");
 

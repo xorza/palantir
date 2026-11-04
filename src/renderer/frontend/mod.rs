@@ -75,13 +75,14 @@ impl Frontend {
             self.composer
                 .begin(scene.stamp, &scene.forest.record_store, &mut self.buffer);
         self.encoder.encode(&scene, plan, &mut sink);
-        drop(sink);
+        sink.finish();
         self.buffer.live_panes.clone_from(&scene.cascade.pane_keys);
     }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::image_registry::texture_limit::TextureLimit;
     use crate::renderer::frontend::BuildPlan;
     #[cfg(test)]
     use crate::renderer::frontend::Frontend;
@@ -90,7 +91,6 @@ pub(crate) mod internals {
     use crate::renderer::render_plan::RenderPlan;
     #[cfg(test)]
     use crate::renderer::shared_device::SharedDevice;
-    use crate::renderer::texture_limit::TextureLimit;
     use std::num::NonZeroU32;
     #[cfg(test)]
     use std::rc::Rc;

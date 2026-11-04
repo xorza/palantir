@@ -7,23 +7,20 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::layout::layout_mode::{GridDefId, ScrollbarsDefId};
 use crate::primitives::layout::placement::Placement;
 use crate::primitives::layout::track::Track;
-use crate::primitives::paint::chrome::Chrome;
-use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduce_preference::Reduction;
 use crate::scene::endpoint::Endpoint;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::id_recipe::{IdKind, IdRecipe};
 use crate::scene::per_plane::PerPlane;
 use crate::scene::plane::Plane;
 use crate::scene::scrollbars_def::{ResolvedScrollbarsDef, ScrollbarsDef};
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId, SeenIds};
-use crate::scene::tree::ChromeInput;
-use crate::scene::tree::Tree;
 use crate::scene::tree::paint_animations::PaintAnimationEntry;
 use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::scene::tree::recording_scratch::OpenFrame;
 use crate::scene::tree::recording_scratch::RecordingScratch;
+use crate::scene::tree::{NodeChrome, Tree};
 use crate::shape::Lower;
 use crate::shape::paint_animation::PaintAnimation;
 use crate::shape::record_store::RecordStore;
@@ -47,15 +44,6 @@ pub(crate) struct Forest {
     ///
     /// Each pushed plane ranks strictly above the one below it (see [`Self::push_layer`]), so a plane is on the stack at most once and its `pending_placement` is single-occupancy.
     plane_stack: Vec<Plane>,
-}
-
-/// What paints behind a node [`Forest::open_node`] opens: its chrome, borrowed so a chromed widget doesn't re-copy it down the record chain, and the focus ring over it.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct NodeChrome<'a> {
-    /// `None` for a chrome-less node.
-    pub(crate) chrome: Option<&'a Chrome>,
-    /// `Stroke::NONE` unless the node shows keyboard focus.
-    pub(crate) ring: Stroke,
 }
 
 impl Forest {
@@ -111,15 +99,15 @@ impl Forest {
         self.trees[plane].push_scrollbars_def(ResolvedScrollbarsDef { def, content })
     }
 
-    /// Resolves `ident` against the open parent into the id this frame records under.
+    /// Resolves `recipe` against the open parent into the id this frame records under.
     ///
     /// Parent mixing and disambiguation must happen together: without the first the id moves with record order, without the second it collides. Parent-scoped idents pass their inputs to the tracker so an unchanged frame never hashes the raw id.
     #[inline]
-    pub(crate) fn widget_id(&mut self, ident: Ident) -> ResolvedId {
+    pub(crate) fn widget_id(&mut self, recipe: IdRecipe) -> ResolvedId {
         let parent = self.cur_parent_id();
-        match ident {
-            Ident::Auto(_) | Ident::Hash(_) => self.ids.resolve_scoped(ident, parent),
-            _ => self.ids.resolve(ident.raw_id(parent), ident.kind()),
+        match recipe {
+            IdRecipe::Scoped(scoped) => self.ids.resolve_scoped(scoped, parent),
+            IdRecipe::Verbatim(id) => self.ids.resolve(id, IdKind::Explicit),
         }
     }
 
@@ -167,16 +155,9 @@ impl Forest {
     ) {
         let plane = self.cur_plane();
         let store = &mut self.record_store;
-        let NodeChrome { chrome, ring } = node_chrome;
-        // A ring with no chrome rides an empty one.
-        let input = (chrome.is_some() || !ring.is_noop()).then(|| ChromeInput {
-            chrome: chrome.unwrap_or(&Chrome::NONE),
-            ring,
-            store,
-        });
         let tree = &mut self.trees[plane];
         let scratch = &mut self.scratch[plane];
-        let node_id = tree.open_node(scratch, node.cols(resolved.id()), input);
+        let node_id = tree.open_node(scratch, node.cols(resolved.id()), node_chrome, store);
         let endpoint = Endpoint {
             plane,
             node: node_id,
@@ -247,7 +228,7 @@ impl Forest {
             );
             return;
         }
-        if frame.effectively_visible && is_pane() {
+        if !frame.inherited.invisible && is_pane() {
             tree.panes.push(PaneEntry {
                 node: frame.node,
                 shape_idx,
@@ -274,7 +255,7 @@ impl Forest {
             tree.shapes.fold_paint_animation(shape_idx, &animation);
             Self::note_pane::<S>(tree, frame, shape_idx);
             // The paint row is charged either way.
-            if frame.effectively_visible {
+            if !frame.inherited.invisible {
                 tree.paint_animations.push_entry(PaintAnimationEntry {
                     animation,
                     shape_idx,

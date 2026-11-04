@@ -10,7 +10,7 @@ use crate::layout::Layout;
 use crate::layout::engine::LayoutEngine;
 use crate::layout::plane_layout::PlaneLayout;
 use crate::primitives::geometry::rect::Rect;
-use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::repaint_scissors;
 use crate::text::shaped_text::ShapedText;
 use crate::ui::frame_report::FrameReport;
 use std::cmp;
@@ -46,7 +46,7 @@ impl Oracle {
             .owned_paints(h.ui().forest(), &mut self.cur);
         if self.primed {
             let surface = h.ui().display().logical_rect();
-            let margin = RenderPlan::cull_margin(h.ui().display().scale_factor());
+            let margin = repaint_scissors::cull_margin(h.ui().display().scale_factor());
             let damage: Vec<Rect> = match report.plan.as_ref().map(|plan| &plan.damage) {
                 None => Vec::new(),
                 Some(Damage::Full) => vec![surface],

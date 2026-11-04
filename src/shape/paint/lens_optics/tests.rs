@@ -1,5 +1,5 @@
+use crate::shape::paint::lens_optics::SPECTRUM_VIOLET;
 use crate::shape::paint::lens_optics::{LINE_C, LINE_D, LINE_F, LensOptics, cauchy_offset};
-use crate::shape::paint::spectrum_tables::SPECTRUM_VIOLET;
 
 const LENS: LensOptics = LensOptics {
     bezel: 24.0,

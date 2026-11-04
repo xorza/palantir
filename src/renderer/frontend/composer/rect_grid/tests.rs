@@ -9,7 +9,7 @@ use glam::UVec2;
 fn rect_grid_empty_returns_no_overlap() {
     let mut g = RectGrid::default();
     g.start_frame(UVec2::new(1024, 1024));
-    assert_eq!(g.rects.len(), 0);
+    assert_eq!(g.len(), 0);
     assert!(!g.any_overlap(URect::new(10, 10, 50, 50)));
 }
 
@@ -20,7 +20,7 @@ fn rect_grid_zero_area_input_is_ignored() {
     g.start_frame(UVec2::new(1024, 1024));
     g.push(URect::new(10, 10, 0, 50));
     g.push(URect::new(10, 10, 50, 0));
-    assert_eq!(g.rects.len(), 0, "zero-area pushes don't grow the index");
+    assert_eq!(g.len(), 0, "zero-area pushes don't grow the index");
     g.push(URect::new(10, 10, 50, 50));
     assert!(!g.any_overlap(URect::new(10, 10, 0, 50)));
     assert!(!g.any_overlap(URect::new(10, 10, 50, 0)));
@@ -59,7 +59,7 @@ fn rect_grid_chains_past_the_row_and_the_u16_index() {
     let past_u16 = URect::new(10, 10, 1, 1);
     g.push(past_u16);
 
-    assert_eq!(g.rects.len(), u16::MAX as usize + 2);
+    assert_eq!(g.len(), u16::MAX as usize + 2);
     assert_eq!(g.tile_load(0), [TILE_CAP, u16::MAX as usize + 2 - TILE_CAP]);
     assert!(g.any_overlap(indexed));
     assert!(g.any_overlap(past_u16));
@@ -150,7 +150,7 @@ fn rect_grid_clear_drops_all_rects() {
     g.push(URect::new(10, 10, 40, 40));
     assert!(g.any_overlap(URect::new(20, 20, 5, 5)));
     g.clear();
-    assert_eq!(g.rects.len(), 0);
+    assert_eq!(g.len(), 0);
     assert!(!g.any_overlap(URect::new(20, 20, 5, 5)));
 }
 

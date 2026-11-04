@@ -1,6 +1,6 @@
 //! The facts of the device a host draws with, which every recorder and the frontend read.
 
-use crate::renderer::texture_limit::TextureLimit;
+use crate::image_registry::texture_limit::TextureLimit;
 use std::cell::Cell;
 
 /// The device's texture ceiling, and how many devices the host attached: one shared value that
@@ -32,8 +32,8 @@ impl SharedDevice {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use crate::image_registry::texture_limit::TextureLimit;
     use crate::renderer::shared_device::SharedDevice;
-    use crate::renderer::texture_limit::TextureLimit;
 
     impl SharedDevice {
         /// A value with `texture_limit` already attached, as a host's first attach leaves it.

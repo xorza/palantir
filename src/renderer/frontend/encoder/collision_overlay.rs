@@ -8,6 +8,7 @@ use crate::renderer::frontend::FrameScene;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::{DrawQuadPayload, RectQuad};
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 
 /// Magenta, distinct from the red damage-rect overlay. Painted unclipped after every layer.
@@ -26,7 +27,7 @@ pub(super) fn emit(scene: &FrameScene<'_>, out: &mut impl PaintSink) {
                     rect: screen,
                     corners: Corners::ZERO,
                     fill: BrushSource::Solid(RgbaF16::TRANSPARENT),
-                    stroke: STROKE.into(),
+                    stroke: ShapeStroke::lower(STROKE),
                 }),
                 1.0,
             );

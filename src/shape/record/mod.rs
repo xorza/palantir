@@ -55,7 +55,7 @@ pub(crate) enum ShapeRecord {
         points: Span,
         colors: Span,
         bbox: Rect,
-        content_hash: u64,
+        content_hash: ContentHash,
     },
     /// Shaped text run, *authoring inputs only*: measured size and the shaped-buffer key are layout outputs in `Layout.text_shapes`. `wrap` selects shape-once (`Single`) or reshape under a narrower committed width (`Wrap`); `align` positions the glyph bbox (`Auto`/`Stretch` collapse to top-left).
     ///
@@ -80,7 +80,7 @@ pub(crate) enum ShapeRecord {
         idxs: Span,
         /// Owner-local AABB of the vertex positions, frozen from `Mesh::bbox()` so the encoder doesn't re-scan.
         bbox: Rect,
-        content_hash: u64,
+        content_hash: ContentHash,
     },
     /// Textured rectangle: a registered image or a `GpuView` target, per [`ImageSource`]. `local_rect = None` paints the owner's rect, `Some(r)` paints `r` owner-relative. `tint` multiplies in linear-RGB premultiplied space.
     Image {
@@ -239,7 +239,7 @@ impl ShapeRecord {
                 points: _,
                 colors: _,
                 bbox: _,
-            } => h.write_u64(*content_hash),
+            } => h.write_u64(content_hash.0),
             // The shaping inputs are layout's as well as paint's, so one method feeds
             // both hashes.
             Self::Text {
@@ -270,7 +270,7 @@ impl ShapeRecord {
             } => {
                 hash_optional_rect(*local_rect, &mut h);
                 tint.hash(&mut h);
-                h.write_u64(*content_hash);
+                h.write_u64(content_hash.0);
             }
             // `ImageSource`'s discriminant goes in first to keep a texture draw and a
             // view composite apart; the shared placement fields are hashed once, around
@@ -371,7 +371,7 @@ impl ShapeRecord {
                     CurveRamp::None => h.write_u8(*cap as u8),
                     CurveRamp::Interned { id: _, hash } => {
                         h.write_u8(*cap as u8 | 0x80);
-                        h.write_u64(*hash);
+                        h.write_u64(hash.0);
                     }
                 }
             }

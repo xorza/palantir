@@ -27,7 +27,7 @@
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
-use crate::scene::node::ident::{IdKind, Ident};
+use crate::scene::node::id_recipe::{IdKind, ScopedRecipe};
 use std::collections::hash_map::Entry;
 use std::mem;
 use std::ptr;
@@ -70,10 +70,8 @@ pub(crate) struct ResolvedRow {
 
 /// An id [`SeenIds::resolve`] handed out this pass, with its entry's index.
 /// [`SeenIds::record_endpoint`] still checks the id against it: a stale value from
-/// an earlier pass would write another widget's entry. Packed to 4-byte alignment
-/// to fit beside [`Ident`]'s tag.
+/// an earlier pass would write another widget's entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(Rust, packed(4))]
 pub(crate) struct ResolvedId {
     id: WidgetId,
     entry: u32,
@@ -105,7 +103,7 @@ struct Origin {
 
 #[derive(Clone, Copy, Debug)]
 struct Recipe {
-    ident: Ident,
+    scoped: ScopedRecipe,
     parent: Option<WidgetId>,
 }
 
@@ -114,10 +112,11 @@ impl Recipe {
     /// compared by address; a duplicated call site just fails to match.
     #[inline]
     fn is(self, other: Self) -> bool {
-        let same = match (self.ident, other.ident) {
-            (Ident::Auto(a), Ident::Auto(b)) => ptr::eq(a, b),
-            (Ident::Hash(a), Ident::Hash(b)) => a == b,
-            _ => false,
+        let same = match (self.scoped, other.scoped) {
+            (ScopedRecipe::Auto(a), ScopedRecipe::Auto(b)) => ptr::eq(a, b),
+            (ScopedRecipe::Hash(a), ScopedRecipe::Hash(b)) => a == b,
+            (ScopedRecipe::Auto(_), ScopedRecipe::Hash(_))
+            | (ScopedRecipe::Hash(_), ScopedRecipe::Auto(_)) => false,
         };
         same && self.parent == other.parent
     }
@@ -343,14 +342,17 @@ impl SeenIds {
         self.resolve_raw(raw_id, kind, None)
     }
 
-    /// [`Self::resolve`] for a parent-scoped ident. In step, last frame's entry at this
+    /// [`Self::resolve`] for a parent-scoped recipe. In step, last frame's entry at this
     /// position supplies the id when it came from the same inputs, so the raw id is
     /// never hashed. An explicit salt takes it only when last frame's did not collide.
     #[inline]
-    pub(crate) fn resolve_scoped(&mut self, ident: Ident, parent: Option<WidgetId>) -> ResolvedId {
-        debug_assert!(matches!(ident, Ident::Auto(_) | Ident::Hash(_)));
-        let recipe = Recipe { ident, parent };
-        let kind = ident.kind();
+    pub(crate) fn resolve_scoped(
+        &mut self,
+        scoped: ScopedRecipe,
+        parent: Option<WidgetId>,
+    ) -> ResolvedId {
+        let recipe = Recipe { scoped, parent };
+        let kind = scoped.kind();
         if self.split.is_none()
             && let Some(last) = self.prev.entries.get(self.cur.entries.len())
             && last.origin.recipe.is_some_and(|last| last.is(recipe))
@@ -365,7 +367,7 @@ impl SeenIds {
                 },
             );
         }
-        self.resolve_raw(ident.raw_id(parent), kind, Some(recipe))
+        self.resolve_raw(scoped.raw_id(parent), kind, Some(recipe))
     }
 
     #[inline]
@@ -536,7 +538,7 @@ fn stale_resolved_id(id: WidgetId) -> ! {
 pub(crate) mod internals {
     use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap};
     use crate::scene::endpoint::Endpoint;
-    use crate::scene::node::ident::IdKind;
+    use crate::scene::node::id_recipe::IdKind;
     use crate::scene::seen_ids::SeenIds;
 
     impl SeenIds {

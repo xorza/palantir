@@ -88,8 +88,8 @@ impl BenchRun<'_> {
             origin,
             gray,
         } = self;
-        let interned = store.intern(text);
-        let recorded = store.record_text(interned);
+        let interned = store.text.intern(text);
+        let recorded = store.text.record(interned);
         // Warm through the run so the stamped key is the one the shaped buffer landed under (no width, non-binding policy: the unbounded root).
         let run = TextRun {
             text,
@@ -220,7 +220,7 @@ impl Fixture {
         {
             // Frame 0 throughout: the bench measures a steady frame, which no expiry window ends.
             let mut ctx = GpuCtx::new(&self.gpu, &mut self.belt, &mut encoder, 0);
-            let interned_text = self.store.interned_text();
+            let interned_text = self.store.text.interned();
             for (idx, batch) in batches.iter().enumerate() {
                 self.backend.prepare_batch(TextBatchInput {
                     idx,
@@ -278,7 +278,7 @@ impl Fixture {
             idx: 0,
             runs: &self.runs,
             scale,
-            interned_text: self.store.interned_text(),
+            interned_text: self.store.text.interned(),
         });
         self.backend.tick_frame();
     }

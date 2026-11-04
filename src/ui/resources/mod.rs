@@ -5,16 +5,16 @@
 use std::rc::Rc;
 
 use crate::clipboard::Clipboard;
+use crate::gpu::render_owner_id::RenderOwners;
 use crate::icons::icon_registry::IconRegistry;
 use crate::image_registry::ImageRegistry;
+use crate::image_registry::error::ImageTooLarge;
 use crate::image_registry::image_handle::ImageHandle;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use crate::renderer::error::ImageTooLarge;
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-use crate::renderer::render_owner_id::RenderOwners;
 use crate::renderer::shared_device::SharedDevice;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::text::shaper::TextShaper;
 use crate::theme::color_scheme::ColorScheme;
 use crate::ui::resources::app_settings::AppSettings;

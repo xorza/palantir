@@ -28,6 +28,7 @@ use crate::primitives::identity::widget_id::WidgetId;
 use crate::primitives::math::float_hash;
 use crate::scene::forest::Forest;
 use crate::scene::layer::Layer;
+use crate::scene::node::inherited::Inherited;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
@@ -186,21 +187,19 @@ impl<const I: bool> RowSink for TreePatch<'_, I> {
     }
 }
 
-/// The four values a node hands its descendants, the only inputs [`Self::prefix`] hashes; bundled because two adjacent `bool`s swap silently.
+/// The values a node hands its descendants, the only inputs [`Self::prefix`] hashes.
 #[derive(Clone, Copy, Debug)]
 pub(super) struct CascadeCtx {
     pub(super) transform: TranslateScale,
     pub(super) clip: Option<Rect>,
-    pub(super) disabled: bool,
-    pub(super) invisible: bool,
+    pub(super) inherited: Inherited,
 }
 
 impl CascadeCtx {
     pub(super) const ROOT: Self = Self {
         transform: TranslateScale::IDENTITY,
         clip: None,
-        disabled: false,
-        invisible: false,
+        inherited: Inherited::ROOT,
     };
 
     /// Ancestor-derived portion of the `cascade_input` hash, folded once per frame at push and cloned per descendant. Fed as words from registers: hashing a stored struct as bytes reads stores back across seams that can't be forwarded.
@@ -211,8 +210,8 @@ impl CascadeCtx {
             None => ([0; 4], false),
         };
         let flags = u32::from(clip_present)
-            | (u32::from(self.disabled) << 1)
-            | (u32::from(self.invisible) << 2);
+            | (u32::from(self.inherited.disabled) << 1)
+            | (u32::from(self.inherited.invisible) << 2);
         let word = |lo: u32, hi: u32| u64::from(lo) | (u64::from(hi) << 32);
         let mut h = Hasher::new();
         h.write_u64(word(
@@ -466,8 +465,11 @@ impl CascadeEngine {
             let attrs = attrs_col[iu];
             let layout_core = layout_col[iu];
 
-            let disabled = parent.disabled || attrs.is_disabled();
-            let invisible = parent.invisible || !layout_core.meta.visibility().is_visible();
+            let inherited = parent.inherited.child(attrs, layout_core.meta.visibility());
+            let Inherited {
+                disabled,
+                invisible,
+            } = inherited;
 
             let layout_rect = layout.rect[iu];
             let subtree_end = ends[iu].end();
@@ -561,8 +563,7 @@ impl CascadeEngine {
                 let cascade = CascadeCtx {
                     transform: desc_transform,
                     clip: shape_clip,
-                    disabled,
-                    invisible,
+                    inherited,
                 };
                 self.stack.push(Frame {
                     cascade,

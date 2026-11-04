@@ -325,11 +325,11 @@ fn matches_the_per_pass_tables_over_random_frames() {
                 for &step in &script {
                     let (got, want) = match step {
                         Resolve::Auto { site, parent } => (
-                            ids.resolve_scoped(Ident::Auto(sites[site]), parents[parent]),
+                            ids.resolve_scoped(ScopedRecipe::Auto(sites[site]), parents[parent]),
                             model.resolve(auto_raw(site, parent), IdKind::Auto),
                         ),
                         Resolve::Salt { salt, parent } => (
-                            ids.resolve_scoped(Ident::Hash(salts[salt]), parents[parent]),
+                            ids.resolve_scoped(ScopedRecipe::Hash(salts[salt]), parents[parent]),
                             model.resolve(salts[salt].scoped(parents[parent]), IdKind::Explicit),
                         ),
                         Resolve::Raw { raw, kind } => {
@@ -391,12 +391,12 @@ fn a_parent_of_id_zero_is_not_no_parent() {
     let mut ids = SeenIds::default();
     let salt = WidgetId::from_hash("salt");
     ids.pre_record();
-    let first = ids.resolve_scoped(Ident::Hash(salt), None);
+    let first = ids.resolve_scoped(ScopedRecipe::Hash(salt), None);
     assert!(ids.record_endpoint(first, ep(0)).is_none());
     ids.rollover();
     ids.pre_record();
     let zero = WidgetId::default();
-    let second = ids.resolve_scoped(Ident::Hash(salt), Some(zero));
+    let second = ids.resolve_scoped(ScopedRecipe::Hash(salt), Some(zero));
     assert_eq!(second.id(), salt.scoped(Some(zero)));
     assert_ne!(second.id(), first.id());
 }

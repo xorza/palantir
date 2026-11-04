@@ -12,7 +12,7 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::scene::layer::Layer;
 use crate::scene::node::Node;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
 use crate::shape::Shape;
 use crate::text::font_family::FontFamily;
@@ -84,7 +84,7 @@ pub(crate) fn record(ui: &mut Ui) {
 /// widget's `#[track_caller]` constructor.
 #[track_caller]
 fn record_node(ui: &mut Ui, node: &Node, chrome: Option<&Chrome>, body: impl FnOnce(&mut Ui)) {
-    let resolved = ui.resolve_ident(Ident::Auto(Location::caller()));
+    let resolved = ui.resolve_ident(IdRecipe::Scoped(ScopedRecipe::Auto(Location::caller())));
     ui.open_node(resolved, node, chrome);
     body(ui);
     ui.close_node();

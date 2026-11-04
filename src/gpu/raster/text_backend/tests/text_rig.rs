@@ -46,8 +46,8 @@ impl TextRig {
 
     /// A row drawing `text` at 14 px from `origin`, bounded by [`PHYSICAL`] at scale 1 in near-white. Shaped through the run first so the stamped key matches the shaped buffer's.
     pub(super) fn row(&mut self, text: &str, line_height: f32, origin: Vec2) -> TextDrawRow {
-        let interned = self.store.intern(text);
-        let recorded = self.store.record_text(interned);
+        let interned = self.store.text.intern(text);
+        let recorded = self.store.text.record(interned);
         let run = TextRun {
             text,
             font: GlyphFont {
@@ -77,7 +77,7 @@ impl TextRig {
 
     /// Prepare `batches` at `scale` in one deferred upload; submit and wait.
     pub(super) fn frame(&mut self, scale: f32, batches: &[&[TextDrawRow]]) {
-        let interned_text = self.store.interned_text();
+        let interned_text = self.store.text.interned();
         let backend = &mut self.backend;
         self.lease.frame(|ctx| {
             for (idx, runs) in batches.iter().enumerate() {

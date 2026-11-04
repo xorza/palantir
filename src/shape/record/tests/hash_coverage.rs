@@ -38,8 +38,8 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let white = RgbaF32::WHITE.to_f16();
     let red = RgbaF32::srgba(1.0, 0.0, 0.0, 1.0).to_f16();
     let solid = ShapeBrush::Solid(white);
-    let stroke = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 1.0));
-    let stroke2 = ShapeStroke::from(Stroke::new(RgbaF32::BLACK, 2.0));
+    let stroke = ShapeStroke::lower(Stroke::new(RgbaF32::BLACK, 1.0));
+    let stroke2 = ShapeStroke::lower(Stroke::new(RgbaF32::BLACK, 2.0));
     let rect = |r| Some(Rect::new(r, 0.0, 4.0, 4.0));
     let pt = |x| Vec2::new(x, 0.0);
 
@@ -141,7 +141,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     // A gradient's content hash rides in its brush; its frame-local id does not move the hash.
     let grad = |id, hash| ShapeBrush::Gradient {
         id: GradientId(id),
-        hash,
+        hash: ContentHash(hash),
     };
     let grad_rect = |fill| {
         quad_rect(
@@ -167,7 +167,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         ShapeRecord::Quad(QuadShape::Shadow {
             local_rect,
             corners,
-            shadow: LoweredShadow::from(sh),
+            shadow: LoweredShadow::lower(sh),
         })
     };
     let sh = Shadow {
@@ -279,7 +279,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
             points,
             colors,
             bbox,
-            content_hash,
+            content_hash: ContentHash(content_hash),
         };
     let base = poly(
         1.0,
@@ -407,7 +407,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
 
     let recorded = |hash| RecordedText {
         span: Span::new(0, 1),
-        hash,
+        hash: ContentHash(hash),
     };
     // A struct update varies one metric without restating the rest.
     let face = ShapingFont {
@@ -560,7 +560,7 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
         vertices,
         idxs,
         bbox,
-        content_hash,
+        content_hash: ContentHash(content_hash),
     };
     let base = mesh(
         rect(0.0),
@@ -830,9 +830,9 @@ fn every_named_field_either_moves_the_hash_or_is_pinned_as_excluded() {
     let none = CurveRamp::None;
     let interned = |id, hash| CurveRamp::Interned {
         id: GradientId(id),
-        hash,
+        hash: ContentHash(hash),
     };
-    let red_stroke = ShapeStroke::from(Stroke::new(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0));
+    let red_stroke = ShapeStroke::lower(Stroke::new(RgbaF32::srgba(1.0, 0.0, 0.0, 1.0), 1.0));
     let base = curve(LineCap::Butt, cubic, stroke, Rect::ZERO, none);
     moves(
         "Curve.basis",

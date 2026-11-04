@@ -20,6 +20,8 @@ use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::TriangleQuad;
 use crate::renderer::frontend::payload::spin::Spin;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::stroke_bounds::StrokeJoints;
 use crate::shape::style::{LineCap, LineJoin};
 use crate::text::TEXT_SCALE_STEP;
@@ -126,7 +128,7 @@ fn nan_stroke_width_normalizes_away_on_every_quad_geometry() {
                     ],
                     radius: 0.0,
                     fill: RgbaF32::WHITE.to_f16(),
-                    stroke: nan_stroke.into(),
+                    stroke: ShapeStroke::lower(nan_stroke),
                 }),
                 1.0,
             );
@@ -422,7 +424,7 @@ fn a_wide_triangle_keeps_its_corners_to_a_fraction_of_a_pixel() {
                     points,
                     radius: 2.0,
                     fill: RgbaF32::WHITE.to_f16(),
-                    stroke: Stroke::NONE.into(),
+                    stroke: ShapeStroke::lower(Stroke::NONE),
                 }),
                 1.0,
             );
@@ -476,7 +478,7 @@ fn a_turned_triangle_turns_its_points_about_its_pivot() {
                         ],
                         radius: 1.0,
                         fill: RgbaF32::WHITE.to_f16(),
-                        stroke: Stroke::NONE.into(),
+                        stroke: ShapeStroke::lower(Stroke::NONE),
                     })
                     .turned(spin),
                     1.0,
@@ -572,7 +574,7 @@ fn drop_shadow_quad_grows_from_the_snapped_source() {
         let [x, y, blur, spread] = lanes;
         let shadow = Shadow::drop(RgbaF32::srgba(0.0, 0.0, 0.0, 0.5), Vec2::new(x, y), blur)
             .with_spread(spread);
-        DrawQuadPayload::shadow(source, Corners::all(corners), shadow.into())
+        DrawQuadPayload::shadow(source, Corners::all(corners), LoweredShadow::lower(shadow))
             .expect("a half-black shadow paints")
     };
     let buf = run(

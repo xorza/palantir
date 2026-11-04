@@ -2,7 +2,7 @@
 
 use crate::primitives::identity::widget_id::{WidgetId, WidgetIdMap, WidgetIdSet};
 use crate::scene::endpoint::Endpoint;
-use crate::scene::node::ident::IdKind;
+use crate::scene::node::id_recipe::IdKind;
 use crate::scene::seen_ids::{CollisionRecord, ResolvedId};
 use std::mem;
 

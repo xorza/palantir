@@ -35,12 +35,20 @@ fn quad_stroke_normalization_is_shared_by_rect_and_triangle() {
     let cases: [(&str, ShapeStroke, bool); 4] = [
         (
             "transparent_color",
-            Stroke::new(RgbaF32::TRANSPARENT, 3.0).into(),
+            ShapeStroke::lower(Stroke::new(RgbaF32::TRANSPARENT, 3.0)),
             true,
         ),
-        ("zero_width", Stroke::new(green, 0.0).into(), true),
-        ("nan_width", Stroke::new(green, f32::NAN).into(), true),
-        ("live", Stroke::new(green, 3.0).into(), false),
+        (
+            "zero_width",
+            ShapeStroke::lower(Stroke::new(green, 0.0)),
+            true,
+        ),
+        (
+            "nan_width",
+            ShapeStroke::lower(Stroke::new(green, f32::NAN)),
+            true,
+        ),
+        ("live", ShapeStroke::lower(Stroke::new(green, 3.0)), false),
     ];
     for (label, stroke, expect_normalized) in cases {
         let rp = DrawQuadPayload::rect(RectQuad {

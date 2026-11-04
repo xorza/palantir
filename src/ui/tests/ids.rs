@@ -116,6 +116,48 @@ fn duplicate_explicit_widget_ids_are_outlined() {
     );
 }
 
+/// The outlines belong to no node, so a frame that paints them repaints whole, and the first
+/// frame after the last one clears them; then a change repaints its own rect again. Each frame
+/// moves a block's fill, so each has damage.
+#[cfg(debug_assertions)]
+#[test]
+fn collision_outlines_repaint_whole_until_they_clear() {
+    use crate::damage::Damage;
+    use crate::primitives::paint::chrome::Chrome;
+    use crate::primitives::paint::color::RgbaF32;
+
+    let mut h = Harness::mono(UVec2::new(100, 100));
+    let frame = |h: &mut Harness, duplicate: bool, red: f32| {
+        let report = h.frame(|ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Block::new()
+                    .id(WidgetId::from_hash("moving"))
+                    .size(10.0)
+                    .chrome(Chrome::fill(RgbaF32::srgb(red, 0.0, 0.0)))
+                    .show(ui);
+                Button::new().id(WidgetId::from_hash("dup")).show(ui);
+                if duplicate {
+                    Button::new().id(WidgetId::from_hash("dup")).show(ui);
+                }
+            });
+        });
+        report.plan.map(|plan| plan.damage)
+    };
+    frame(&mut h, false, 0.1);
+    assert!(matches!(
+        frame(&mut h, false, 0.2),
+        Some(Damage::Partial(_))
+    ));
+    for red in [0.3, 0.4] {
+        assert_eq!(frame(&mut h, true, red), Some(Damage::Full), "outlined");
+    }
+    assert_eq!(frame(&mut h, false, 0.5), Some(Damage::Full), "cleared");
+    assert!(matches!(
+        frame(&mut h, false, 0.6),
+        Some(Damage::Partial(_))
+    ));
+}
+
 /// Under a panned and zoomed panel the outline follows where the node paints: canvas translate (30, 20), scale 0.5, 40 px blocks at (10, 10) and (60, 10) land at (35, 25) and (60, 25), 20 px square.
 #[cfg(debug_assertions)]
 #[test]

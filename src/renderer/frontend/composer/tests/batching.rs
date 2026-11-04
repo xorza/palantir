@@ -23,6 +23,7 @@ use crate::renderer::frontend::payload::draw_image_payload::DrawImagePayload;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::resolved_gradient::ResolvedGradient;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
+use crate::shape::paint::lowered_shadow::LoweredShadow;
 use glam::{UVec2, Vec2};
 use std::f32::consts::{FRAC_PI_2, FRAC_PI_6};
 
@@ -253,7 +254,7 @@ fn compose_shadow_outer_halo_after_text_splits_group() {
                 DrawQuadPayload::shadow(
                     source,
                     Corners::ZERO,
-                    Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, sigma).into(),
+                    LoweredShadow::lower(Shadow::drop(RgbaF32::BLACK, Vec2::ZERO, sigma)),
                 )
                 .expect("a black shadow paints"),
                 1.0,

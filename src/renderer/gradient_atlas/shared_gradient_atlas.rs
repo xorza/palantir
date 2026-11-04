@@ -1,11 +1,11 @@
 //! Shared cross-frame handle for CPU gradient registration and flushing.
 
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::paint::brush::gradient::color_ramp::ColorRamp;
 use crate::primitives::paint::lut_row::LutRow;
 use crate::renderer::gradient_atlas::{
     CpuGradientAtlas, DEFAULT_MAX_ATLAS_ROWS, FlushedRows, MAX_ATLAS_ROWS,
 };
-use crate::renderer::texture_limit::TextureLimit;
 use std::cell::RefCell;
 use std::num::NonZeroU32;
 use std::rc::Rc;
@@ -55,8 +55,8 @@ fn max_rows(texture_limit: TextureLimit) -> u32 {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::common::counters::CounterSet;
+    use crate::image_registry::texture_limit::TextureLimit;
     use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-    use crate::renderer::texture_limit::TextureLimit;
 
     impl SharedGradientAtlas {
         /// An atlas cleared to `texture_limit`, as a host's first attach leaves it.

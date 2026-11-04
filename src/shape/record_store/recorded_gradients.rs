@@ -1,5 +1,6 @@
 //! The record pass's gradient interner.
 
+use crate::common::content_hash::ContentHash;
 use crate::shape::record_store::recorded_gradient::RecordedGradient;
 
 /// Record-local handle into [`RecordedGradients::records`].
@@ -16,9 +17,11 @@ pub(crate) struct RecordedGradients {
 }
 
 impl RecordedGradients {
-    pub(crate) fn intern(&mut self, content_hash: u64, gradient: RecordedGradient) -> GradientId {
+    /// Intern one gradient payload under its content `hash`, returning the id a
+    /// `ShapeBrush::Gradient` carries.
+    pub(crate) fn intern(&mut self, hash: ContentHash, gradient: RecordedGradient) -> GradientId {
         self.index.widen_for(self.records.len() + 1);
-        if let Some(id) = self.index.get(content_hash)
+        if let Some(id) = self.index.get(hash.0)
             && self.records[id.0 as usize] == gradient
         {
             return id;
@@ -29,7 +32,7 @@ impl RecordedGradients {
         );
         let id = GradientId(self.records.len() as u32);
         self.records.push(gradient);
-        self.index.put(content_hash, id);
+        self.index.put(hash.0, id);
         id
     }
 

@@ -207,7 +207,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     let _cmds = h.encode_paint();
 
     let store = h.ui().record_store();
-    let interned_text = store.interned_text();
+    let interned_text = store.text.interned();
     let main_tree = h.ui().tree(Layer::Main);
     let popup_tree = h.ui().tree(Layer::Popup);
 

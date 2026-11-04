@@ -266,7 +266,7 @@ fn the_button_styles_the_popup_and_the_picker_keeps_its_own() {
 #[test]
 fn each_call_site_mints_its_own_id() {
     fn id_of(mut chip: ColorButton<'_>) -> WidgetId {
-        chip.configure().widget.ident.raw_id(None)
+        chip.configure().widget.ident.recipe().raw_id(None)
     }
     let mut color = RgbaF32::WHITE;
     let first = id_of(ColorButton::new(ColorPicker::new(&mut color)));

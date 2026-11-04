@@ -7,6 +7,7 @@
 
 use crate::common::span::Span;
 use crate::display::Display;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::internals::compose_rig::ComposeRig;
 use crate::internals::paint_capture::PaintCapture;
 use crate::primitives::geometry::corners::Corners;
@@ -28,7 +29,6 @@ use crate::renderer::frontend::payload::push_clip_payload::PushClipPayload;
 use crate::renderer::frontend::payload::stroke_bounds::StrokeBounds;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::image_flags::ImageFlags;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::shape::record::ColorMode;
 use crate::shape::record_store::RecordStore;
 use crate::shape::style::{LineCap, LineJoin};

@@ -256,7 +256,7 @@ fn text_noop_rejects_invalid_metrics() {
         ("finite origin", Some(Vec2::new(1.0, 2.0))),
     ] {
         let shape = Shape::text(
-            store.intern("visible"),
+            store.text.intern("visible"),
             GlyphFont {
                 line_height: 19.2,
                 ..GlyphFont::new(16.0)
@@ -274,7 +274,7 @@ fn text_noop_rejects_invalid_metrics() {
     }
 
     let mut run =
-        |text: &str, color| Shape::text(store.intern(text), GlyphFont::new(16.0)).color(color);
+        |text: &str, color| Shape::text(store.text.intern(text), GlyphFont::new(16.0)).color(color);
     assert!(
         !run("hidden", RgbaF32::TRANSPARENT).is_noop(),
         "a transparent run still sizes its node"
@@ -286,7 +286,7 @@ fn text_noop_rejects_invalid_metrics() {
 
     for (label, font_size, line_height, expected_noop) in cases {
         let shape = Shape::text(
-            store.intern("visible"),
+            store.text.intern("visible"),
             GlyphFont {
                 line_height,
                 slant: FontSlant::Italic,
@@ -533,7 +533,7 @@ fn text_font_axes_override_their_own_field() {
         ..GlyphFont::new(14.0)
     };
     let shape = |text| Shape::text(text, font);
-    let text = store.intern("axes");
+    let text = store.text.intern("axes");
     assert_eq!(
         shape(text).family(FontFamily::MONO).font,
         GlyphFont {

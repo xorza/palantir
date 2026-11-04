@@ -90,7 +90,9 @@ impl DamageEngine {
             ..
         } = input;
         // Frame-wide inputs join the discarded base: a moved baseline repaints the whole surface, and no snapshot carries it.
-        let force_full = base == DamageBase::Discarded || self.presented != Some(baseline);
+        let force_full = base == DamageBase::Discarded
+            || self.presented != Some(baseline)
+            || baseline.collision_overlay;
         // `force_full` means a fresh frame. Dropping the snapshot map here keeps a caller from passing it without the invalidation; the diff still repopulates the map and `Damage::Full` is returned.
         if force_full {
             self.invalidate_prev();

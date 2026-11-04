@@ -11,7 +11,6 @@ use crate::primitives::geometry::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::renderer::render_buffer::paint_tier::PaintTier;
-use crate::renderer::render_buffer::per_group_batch::PerGroupBatch;
 use std::fmt;
 
 /// One clip chain staged into the mask-quad buffer: its source span and run.
@@ -241,13 +240,15 @@ impl ScheduleWalk<'_> {
         // A walk that resumes after a barrier skips what the walk before it drew: the composer
         // closes every batch at a barrier, so none straddles `from`.
         let from = self.from;
-        advance_past_skipped(&buffer.text_batches, &mut self.cursors.text, from);
+        self.cursors
+            .text
+            .skip_before(&buffer.text_batches, |b| b.last_group, from);
         for (i, g) in buffer.groups[..self.end].iter().enumerate().skip(from) {
             // Drop mesh/image/curve batches anchored in earlier damage-skipped groups.
             for tier in PaintTier::ALL {
-                advance_past_skipped(
+                self.cursors.higher[tier.idx()].skip_before(
                     buffer.batches(tier),
-                    &mut self.cursors.higher[tier.idx()],
+                    |b| b.last_group,
                     i,
                 );
             }
@@ -270,7 +271,10 @@ impl ScheduleWalk<'_> {
             // A group can be content-less at walk time (its text drains later); establishing
             // would emit a dead scissor and stamp a mask chain for nothing.
             let has_content = g.quads.len != 0
-                || pending_at(&buffer.text_batches, self.cursors.text, i)
+                || self
+                    .cursors
+                    .text
+                    .anchored_at(&buffer.text_batches, |b| b.last_group, i)
                 || self.has_tier_batch_at(i);
             if has_content {
                 self.state.narrow(|masks| masks.groups[i], effective);
@@ -284,9 +288,13 @@ impl ScheduleWalk<'_> {
     }
 
     fn has_tier_batch_at(&self, group: usize) -> bool {
-        PaintTier::ALL
-            .iter()
-            .any(|&t| pending_at(self.buffer.batches(t), self.cursors.higher[t.idx()], group))
+        PaintTier::ALL.iter().any(|&t| {
+            self.cursors.higher[t.idx()].anchored_at(
+                self.buffer.batches(t),
+                |b| b.last_group,
+                group,
+            )
+        })
     }
 
     /// Drain every text batch whose `last_group < target`, each with its own
@@ -295,9 +303,11 @@ impl ScheduleWalk<'_> {
     /// `i + 1` the group's own after its quads; `end` the tail.
     fn drain_text_batches(&mut self, target: usize) {
         let batches = &self.buffer.text_batches;
-        while self.cursors.text < batches.len() && batches[self.cursors.text].last_group() < target
+        while let Some(batch) = self
+            .cursors
+            .text
+            .anchored_before(batches, |b| b.last_group, target)
         {
-            let batch = self.cursors.text;
             let s = match self.damage_scissor {
                 Some(d) => batches[batch].scissor.intersect(d).unwrap_or_default(),
                 None => batches[batch].scissor,
@@ -306,7 +316,7 @@ impl ScheduleWalk<'_> {
                 self.state.narrow(|masks| masks.batches[batch], s);
                 self.state.push(RenderStep::Text { batch });
             }
-            self.cursors.text += 1;
+            self.cursors.text.advance();
         }
     }
 
@@ -335,12 +345,12 @@ impl ScheduleWalk<'_> {
     fn drain_tier_batches(&mut self, tier: PaintTier, group: usize) {
         let batches = self.buffer.batches(tier);
         let cursor = &mut self.cursors.higher[tier.idx()];
-        while pending_at(batches, *cursor, group) {
+        while cursor.anchored_at(batches, |b| b.last_group, group) {
             self.state.push(RenderStep::TierBatch {
                 tier,
-                batch: *cursor,
+                batch: cursor.idx(),
             });
-            *cursor += 1;
+            cursor.advance();
         }
     }
 }
@@ -452,21 +462,51 @@ impl PassState<'_> {
 /// Per-kind walk cursors: the next unconsumed batch of each kind.
 #[derive(Debug, Default)]
 struct ScheduleCursors {
-    text: usize,
-    higher: [usize; PaintTier::COUNT],
+    text: BatchCursor,
+    higher: [BatchCursor; PaintTier::COUNT],
 }
 
-/// Advance `cursor` past batches anchored in damage-skipped groups.
-fn advance_past_skipped<B: PerGroupBatch>(batches: &[B], cursor: &mut usize, before: usize) {
-    while *cursor < batches.len() && batches[*cursor].last_group() < before {
-        *cursor += 1;
+/// One batch kind's walk cursor: the next unconsumed batch. Each kind stages its batches against
+/// the last group they reach into, their anchor, which a caller reads off its own batch type.
+/// Refused: a trait whose one method read that field, beside two generic helpers over it.
+#[derive(Clone, Copy, Debug, Default)]
+struct BatchCursor(usize);
+
+impl BatchCursor {
+    const fn idx(self) -> usize {
+        self.0
     }
-}
 
-/// `true` if the batch at `cursor` anchors to group `group`. Generic over
-/// [`PerGroupBatch`] because anchoring is all the batch kinds share.
-fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> bool {
-    cursor < batches.len() && batches[cursor].last_group() == group
+    const fn advance(&mut self) {
+        self.0 += 1;
+    }
+
+    /// The next batch, if `anchor` puts it before group `before`.
+    fn anchored_before<B>(
+        self,
+        batches: &[B],
+        anchor: impl Fn(&B) -> u32,
+        before: usize,
+    ) -> Option<usize> {
+        batches
+            .get(self.0)
+            .is_some_and(|batch| (anchor(batch) as usize) < before)
+            .then_some(self.0)
+    }
+
+    /// Whether `anchor` puts the next batch at group `group`.
+    fn anchored_at<B>(self, batches: &[B], anchor: impl Fn(&B) -> u32, group: usize) -> bool {
+        batches
+            .get(self.0)
+            .is_some_and(|batch| anchor(batch) as usize == group)
+    }
+
+    /// Move past the batches anchored before group `before`, in groups damage skipped.
+    fn skip_before<B>(&mut self, batches: &[B], anchor: impl Fn(&B) -> u32, before: usize) {
+        while self.anchored_before(batches, &anchor, before).is_some() {
+            self.advance();
+        }
+    }
 }
 
 #[cfg(feature = "internals")]

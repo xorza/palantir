@@ -15,7 +15,7 @@ use crate::renderer::frontend::encoder::plane_ctx::PlaneCtx;
 use crate::renderer::frontend::paint_sink::PaintSink;
 use crate::renderer::frontend::{BuildPlan, FrameScene};
 use crate::renderer::gradient_atlas::shared_gradient_atlas::SharedGradientAtlas;
-use crate::renderer::render_plan::RenderPlan;
+use crate::renderer::repaint_scissors;
 
 /// The encode pass's retained state: the per-frame gradient memo and the footprints a partial
 /// frame encodes, kept for their capacity.
@@ -51,8 +51,8 @@ impl Encoder {
         } = plan;
         let viewport = scene.stamp.display.logical_rect();
         let now = scene.stamp.time;
-        // Matches the backend's padded physical scissor; both derive from `RenderPlan::AA_PADDING`.
-        let damage_cull_margin = RenderPlan::cull_margin(scene.stamp.display.scale_factor());
+        // Matches the backend's padded physical scissor; both derive from `AA_PADDING_PX`.
+        let damage_cull_margin = repaint_scissors::cull_margin(scene.stamp.display.scale_factor());
         // A pane that captures reads everything painted under its footprint before it.
         self.footprints.clear();
         let damage_filter = match &plan.damage {

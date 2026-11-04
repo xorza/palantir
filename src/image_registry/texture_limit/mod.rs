@@ -1,6 +1,6 @@
 //! The device ceiling every texture is measured against.
 
-use crate::renderer::error::ImageTooLarge;
+use crate::image_registry::error::ImageTooLarge;
 use glam::UVec2;
 use std::num::NonZeroU32;
 

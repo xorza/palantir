@@ -39,7 +39,7 @@ fn shadow_paint_bbox_tracks_shifted_drop_and_source_bounded_inset() {
     ];
 
     let lowered = |offset: Vec2, blur: f32, spread: f32, inset: bool| {
-        LoweredShadow::from(Shadow {
+        LoweredShadow::lower(Shadow {
             color: RgbaF32::BLACK,
             offset,
             blur,

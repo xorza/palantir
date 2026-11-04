@@ -1,5 +1,6 @@
 //! What a lowered curve's color multiplies by.
 
+use crate::common::content_hash::ContentHash;
 use crate::shape::record_store::recorded_gradients::GradientId;
 
 /// What a curve's stroke color multiplies: nothing, or an interned ramp.
@@ -8,5 +9,5 @@ use crate::shape::record_store::recorded_gradients::GradientId;
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum CurveRamp {
     None,
-    Interned { id: GradientId, hash: u64 },
+    Interned { id: GradientId, hash: ContentHash },
 }

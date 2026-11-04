@@ -21,11 +21,12 @@ use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::Node;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
 use crate::scene::node::node_mode::NodeMode;
 use crate::widget_core::configurator::Configurator;
 use crate::widget_core::configure::Configure;
 use crate::widget_core::configure::ThemeDefaults;
+use crate::widget_core::widget::Ident;
 use crate::widget_core::widget::Widget;
 use crate::widgets::menu::menu_item::MenuItem;
 use crate::widgets::scroll::Scroll;
@@ -51,7 +52,7 @@ fn default_setters_fill_only_where_the_caller_stayed_silent() {
         .default_padding(fallback_padding)
         .default_min_size(Size::new(10.0, 0.0))
         .default_max_size(Size::new(200.0, 300.0));
-    assert!(matches!(filled.ident, Ident::Verbatim(v) if v == fallback_id));
+    assert!(matches!(filled.ident, Ident::Recipe(IdRecipe::Verbatim(v)) if v == fallback_id));
     assert_eq!(filled.node.padding, Some(fallback_padding));
     assert_eq!(filled.node.min_size, Some(Size::new(10.0, 0.0)));
     assert_eq!(filled.node.max_size, Some(Size::new(200.0, 300.0)));
@@ -66,7 +67,7 @@ fn default_setters_fill_only_where_the_caller_stayed_silent() {
         .default_padding(fallback_padding)
         .default_min_size(Size::new(10.0, 0.0))
         .default_max_size(Size::new(200.0, 300.0));
-    assert!(matches!(kept.ident, Ident::Verbatim(v) if v == caller_id));
+    assert!(matches!(kept.ident, Ident::Recipe(IdRecipe::Verbatim(v)) if v == caller_id));
     assert_eq!(kept.node.padding, Some(caller_padding));
     assert_eq!(
         kept.node.min_size,
@@ -77,7 +78,10 @@ fn default_setters_fill_only_where_the_caller_stayed_silent() {
 
     // `id_salt` is explicit too, so it blocks the fallback the same way.
     let salted = Widget::leaf().id_salt("row").default_id(fallback_id);
-    assert!(matches!(salted.ident, Ident::Hash(_)));
+    assert!(matches!(
+        salted.ident,
+        Ident::Recipe(IdRecipe::Scoped(ScopedRecipe::Hash(_)))
+    ));
 }
 
 #[test]
@@ -118,7 +122,7 @@ fn builder_setters_cover_the_complete_external_node_surface() {
     widget.node.transform = transform;
 
     // Read back through the `authored_*` surface, the only one an outside widget has.
-    assert!(matches!(widget.ident, Ident::Verbatim(value) if value == id));
+    assert!(matches!(widget.ident, Ident::Recipe(IdRecipe::Verbatim(value)) if value == id));
     assert_eq!(widget.authored_size(), Some(size));
     assert_eq!(widget.authored_min_size(), Some(min_size));
     assert_eq!(widget.authored_max_size(), Some(max_size));
@@ -302,8 +306,8 @@ fn assert_distinct(label: &str, a: WidgetId, b: WidgetId) {
 }
 
 fn id_of<W: Configure>(mut w: W) -> WidgetId {
-    // No parent context: `Ident::raw_id(None)` yields the bare id.
-    w.configure().widget.ident.raw_id(None)
+    // No parent context: `IdRecipe::raw_id(None)` yields the bare id.
+    w.configure().widget.ident.recipe().raw_id(None)
 }
 
 /// Pin: [`Configure::auto_id`] is `#[track_caller]` and resolves a stable id at the call site: two calls on different lines give distinct `WidgetId`s. The cases cover every public widget constructor.

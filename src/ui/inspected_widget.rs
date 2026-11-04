@@ -103,7 +103,7 @@ fn own_text(tree: &Tree, store: &RecordStore, root: usize, listed: &WidgetIdSet)
             if !text.is_empty() {
                 text.push(' ');
             }
-            text.push_str(store.recorded_str(*recorded));
+            text.push_str(store.text.recorded_str(*recorded));
         }
     }
     text

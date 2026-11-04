@@ -7,9 +7,22 @@ use crate::display::Display;
 use crate::primitives::geometry::rect::{EdgeRounding, Rect};
 use crate::primitives::geometry::urect::URect;
 use crate::renderer::pane_captures::PaneCaptures;
-use crate::renderer::render_plan::RenderPlan;
 use std::{iter, slice};
 use tinyvec::ArrayVec;
+
+/// Physical px each partial scissor is padded by, for AA fringes and glyph overhang; [`cull_margin`]
+/// is the logical slack the frontend matches.
+pub(crate) const AA_PADDING_PX: u32 = 2;
+
+/// Physical px a scissor edge can land inside the exact scaled edge: a whole-pixel rounding moves
+/// each edge up to half a pixel, and a whole pixel covers it.
+const ROUNDING_SLACK_PX: u32 = 1;
+
+/// The logical slack a frontend's damage cull widens each damage rect by at `scale`, so it skips
+/// no node the backend clears: the scissor padding and the rounding slack, in logical px.
+pub(crate) const fn cull_margin(scale: f32) -> f32 {
+    (AA_PADDING_PX + ROUNDING_SLACK_PX) as f32 / scale
+}
 
 #[derive(Debug)]
 #[expect(
@@ -133,10 +146,10 @@ impl<'a> IntoIterator for &'a PartialScissors {
     }
 }
 
-/// Convert a logical-px damage rect to a physical-px scissor, padded by [`RenderPlan::AA_PADDING`] and clamped to the viewport; `None` if it clamps to zero area.
+/// Convert a logical-px damage rect to a physical-px scissor, padded by [`AA_PADDING_PX`] and clamped to the viewport; `None` if it clamps to zero area.
 fn logical_rect_to_physical_scissor(r: Rect, display: &Display) -> Option<URect> {
     let scaled = r.scaled_by(display.scale_factor(), EdgeRounding::WholePixels);
-    let padded = scaled.inflated(RenderPlan::AA_PADDING as f32);
+    let padded = scaled.inflated(AA_PADDING_PX as f32);
     let physical = display.physical;
     URect::covering(padded).intersect(URect::new(0, 0, physical.x, physical.y))
 }

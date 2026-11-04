@@ -1,5 +1,5 @@
-use crate::renderer::error::ImageTooLarge;
-use crate::renderer::texture_limit::TextureLimit;
+use crate::image_registry::error::ImageTooLarge;
+use crate::image_registry::texture_limit::TextureLimit;
 use glam::UVec2;
 use std::num::NonZeroU32;
 

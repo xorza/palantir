@@ -115,7 +115,7 @@ impl sealed::LowerShape for TextShape {
         } = self;
         ShapeRecord::Text {
             local_origin,
-            text: store.record_text(text),
+            text: store.text.record(text),
             color: color.to_f16(),
             font: ShapingFont::new(font, store.families()),
             wrap,

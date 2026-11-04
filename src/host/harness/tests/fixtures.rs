@@ -19,8 +19,8 @@ fn arena_interns_without_ever_recording() {
     let interned = harness.ui_mut().intern("label");
     // Lowered through the real path: `InternedStr` is a span plus an epoch and owns nothing, so only the store resolves it, which is what this harness makes reachable without a frame.
     let store = &harness.ui().forest().record_store;
-    let recorded = store.record_text(interned);
-    assert_eq!(store.interned_text().resolve(recorded.span), "label");
+    let recorded = store.text.record(interned);
+    assert_eq!(store.text.interned().resolve(recorded.span), "label");
 }
 
 /// Two harnesses built from one `UiResources` share what it holds; the clipboard shows it.

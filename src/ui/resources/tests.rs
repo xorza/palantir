@@ -1,7 +1,7 @@
 use crate::diagnostics::DebugOverlayConfig;
+use crate::image_registry::texture_limit::TextureLimit;
 use crate::primitives::identity::texture_id::TextureId;
 use crate::primitives::paint::image::Image;
-use crate::renderer::texture_limit::TextureLimit;
 use crate::ui::Ui;
 use crate::ui::resources::UiResources;
 use glam::UVec2;

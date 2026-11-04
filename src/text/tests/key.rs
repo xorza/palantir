@@ -315,7 +315,7 @@ fn quantized_key_shaping_is_insertion_order_independent() {
 
 fn key_for(recorded: &RecordedText) -> TextShapeKey {
     TextShapeKey::unbounded(
-        recorded.hash,
+        recorded.hash.0,
         keyed(GlyphFont {
             font_size: 16.0,
             line_height: 19.2,
@@ -330,13 +330,13 @@ fn key_for(recorded: &RecordedText) -> TextShapeKey {
 #[test]
 fn shaped_text_ref_resolves_the_recorded_pair() {
     let mut store = RecordStore::default();
-    let interned = store.intern("hi");
-    let recorded = store.record_text(interned);
-    assert_eq!(recorded.hash, hash::str("hi"));
+    let interned = store.text.intern("hi");
+    let recorded = store.text.record(interned);
+    assert_eq!(recorded.hash.0, hash::str("hi"));
     let key = key_for(&recorded);
     let text_ref = ShapedTextRef::new(key, &recorded);
 
-    let interned = store.interned_text();
+    let interned = store.text.interned();
     let request = text_ref.resolve_request(&interned);
     assert_eq!(request.text, "hi");
     assert_eq!(request.key, key);
@@ -348,10 +348,10 @@ fn shaped_text_ref_resolves_the_recorded_pair() {
 #[should_panic(expected = "shaped-text key paired with a different run's source bytes")]
 fn a_mismatched_key_and_source_are_rejected() {
     let mut store = RecordStore::default();
-    let interned = store.intern("hi");
-    let key = key_for(&store.record_text(interned));
-    let other_interned = store.intern("bye");
-    let other = store.record_text(other_interned);
+    let interned = store.text.intern("hi");
+    let key = key_for(&store.text.record(interned));
+    let other_interned = store.text.intern("bye");
+    let other = store.text.record(other_interned);
     let _ = ShapedTextRef::new(key, &other);
 }
 

@@ -33,6 +33,7 @@ use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::paint::chrome::Chrome;
 use crate::primitives::paint::stroke::Stroke;
 use crate::scene::node::bounds_extras::BoundsExtras;
+use crate::scene::node::inherited::Inherited;
 use crate::scene::node::node_cols::NodeCols;
 use crate::scene::node::node_flags::NodeFlags;
 use crate::scene::node::panel_extras::PanelExtras;
@@ -46,7 +47,7 @@ use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::scene::tree::recording_scratch::{OpenFrame, RecordingScratch};
 #[cfg(debug_assertions)]
 use crate::scene::tree::rollup_inputs::RollupCheck;
-use crate::scene::tree::rollup_inputs::RollupInputs;
+use crate::scene::tree::rollup_inputs::{RecordedColumns, RollupInputs};
 use crate::scene::tree::root_slot::RootSlot;
 use crate::scene::tree::subtree_end::SubtreeEnd;
 use crate::scene::tree::subtree_rollups::SubtreeRollups;
@@ -104,14 +105,13 @@ pub(crate) struct Tree {
     rollup_check: RollupCheck,
 }
 
-/// The chrome half of a [`Tree::open_node`] call: the chrome and the store
-/// its payloads land in.
-#[derive(Debug)]
-pub(crate) struct ChromeInput<'a> {
-    pub(crate) chrome: &'a Chrome,
-    /// Focus ring over the chrome; `Stroke::NONE` unless keyboard-focused.
+/// What paints behind a node [`Forest::open_node`](crate::scene::forest::Forest::open_node) opens: its chrome, borrowed so a chromed widget doesn't re-copy it down the record chain, and the focus ring over it.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct NodeChrome<'a> {
+    /// `None` for a chrome-less node.
+    pub(crate) chrome: Option<&'a Chrome>,
+    /// `Stroke::NONE` unless the node shows keyboard focus.
     pub(crate) ring: Stroke,
-    pub(crate) store: &'a mut RecordStore,
 }
 
 impl Tree {
@@ -139,15 +139,50 @@ impl Tree {
         self.records.subtree_end()[i].has_grid()
     }
 
+    /// Ready the tree for a record pass. Destructured, so every field states what a pass does
+    /// with it: the columns the rollups read are swapped out as the last pass's, the per-pass
+    /// rows cleared, and the rollups kept for `post_record`, which holds them or computes them
+    /// again.
     pub(crate) fn pre_record(&mut self) {
-        let mut last = mem::take(&mut self.last_inputs);
-        last.take_from(self);
-        self.last_inputs = last;
-        self.focus_ring = ShapeStroke::default();
-        self.shapes.records.clear();
-        self.paint_animations.clear();
-        self.panes.clear();
-        self.roots.clear();
+        let Self {
+            records,
+            bounds_table,
+            panel_table,
+            chrome_table,
+            focus_ring,
+            shapes:
+                Shapes {
+                    records: shape_records,
+                    hashes: shape_hashes,
+                },
+            grid_tracks,
+            grid_defs,
+            scrollbar_defs,
+            roots,
+            paint_animations,
+            panes,
+            rollups: _,
+            fingerprint: _,
+            container_text: _,
+            last_inputs,
+            #[cfg(debug_assertions)]
+                rollup_check: _,
+        } = self;
+        last_inputs.take_from(RecordedColumns {
+            records,
+            bounds_table,
+            panel_table,
+            chrome_table,
+            shape_hashes,
+            grid_tracks,
+            grid_defs,
+            scrollbar_defs,
+        });
+        *focus_ring = ShapeStroke::default();
+        shape_records.clear();
+        paint_animations.clear();
+        panes.clear();
+        roots.clear();
     }
 
     pub(crate) fn post_record(&mut self) {
@@ -396,16 +431,20 @@ impl Tree {
     /// and make it the tip. Roots stamp `scratch.pending_placement` onto the new
     /// `RootSlot`.
     ///
-    /// `input` is `None` for nodes without chrome; `ClipMode::Rounded` then
-    /// downgrades to `Rect`. With chrome, `Rounded` keeps the row even if
-    /// `Chrome::is_noop`, so the encoder can read `chrome.radius`.
+    /// A node with no chrome and no ring downgrades `ClipMode::Rounded` to `Rect`. With
+    /// chrome, `Rounded` keeps the row even if `Chrome::is_noop`, so the encoder can read
+    /// `chrome.radius`; the chrome's payloads land in `store`.
     #[inline]
     pub(super) fn open_node(
         &mut self,
         scratch: &mut RecordingScratch,
         mut cols: NodeCols,
-        input: Option<ChromeInput<'_>>,
+        node_chrome: NodeChrome<'_>,
+        store: &mut RecordStore,
     ) -> NodeId {
+        let NodeChrome { chrome, ring } = node_chrome;
+        // A ring with no chrome rides an empty one.
+        let chrome = chrome.or_else(|| (!ring.is_noop()).then_some(&Chrome::NONE));
         // Overflow is guarded in `SubtreeEnd::new_open` (31-bit arena ceiling).
         let new_id = NodeId(self.records.len() as u32);
 
@@ -427,9 +466,7 @@ impl Tree {
         // A rounded clip with no radius is a plain scissor. Applied to the recorded
         // flags: only here are the request and the chrome both visible.
         if cols.attrs.clip_mode() == ClipMode::Rounded
-            && input
-                .as_ref()
-                .is_none_or(|i| i.chrome.corners.is_approx_zero())
+            && chrome.is_none_or(|chrome| chrome.corners.is_approx_zero())
         {
             cols.attrs.set_clip(ClipMode::Rect);
         }
@@ -456,24 +493,19 @@ impl Tree {
             ex.panel = Some(NonMaxU32::index(self.panel_table.len()));
             self.panel_table.push(cols.panel);
         }
-        if let Some(ChromeInput {
-            chrome,
-            ring: focus_ring,
-            store,
-        }) = input
-        {
+        if let Some(chrome) = chrome {
             // A border paints inside the arranged rect, so `padding` grows by it. Done
             // here so layout columns carry the effective padding and the `LayoutCore`
             // hash invalidates `MeasureCache` when it shifts.
             cols.layout.padding = chrome.fold_padding(cols.layout.padding);
             // Storage noop gate for chrome; mirrors `Shapes::add`.
             let needs_chrome_row = !chrome.is_noop()
-                || !focus_ring.is_noop()
+                || !ring.is_noop()
                 || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = lower::chrome(store, chrome, focus_ring);
+                let row = lower::chrome(store, chrome, ring);
                 if row.ring {
-                    self.focus_ring = ShapeStroke::from(focus_ring);
+                    self.focus_ring = ShapeStroke::lower(ring);
                 }
                 ex.chrome = Some(NonMaxU32::index(self.chrome_table.len()));
                 self.chrome_table.push(row);
@@ -490,12 +522,11 @@ impl Tree {
             attrs: cols.attrs,
             extras: ex,
         });
-        let ancestor_or_self_disabled =
-            parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
-        let effectively_visible = parent_frame.is_none_or(|f| f.effectively_visible)
-            && cols.layout.meta.visibility().is_visible();
+        let inherited = parent_frame
+            .map_or(Inherited::ROOT, |f| f.inherited)
+            .child(cols.attrs, cols.layout.meta.visibility());
         // A chrome with a backdrop filter is a pane at the node's first row.
-        if effectively_visible
+        if !inherited.invisible
             && ex
                 .chrome
                 .is_some_and(|row| self.chrome_table[row.idx()].backdrop.is_some())
@@ -514,8 +545,7 @@ impl Tree {
         }
         scratch.open_frames.push(OpenFrame {
             node: new_id,
-            ancestor_or_self_disabled,
-            effectively_visible,
+            inherited,
             paint_rows: u32::from(ex.chrome.is_some()),
         });
         new_id

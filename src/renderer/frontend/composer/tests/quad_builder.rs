@@ -10,6 +10,7 @@ use crate::renderer::frontend::payload::brush_source::BrushSource;
 use crate::renderer::frontend::payload::draw_quad_payload::DrawQuadPayload;
 use crate::renderer::frontend::payload::draw_quad_payload::RectQuad;
 use crate::renderer::frontend::payload::spin::Spin;
+use crate::shape::paint::shape_stroke::ShapeStroke;
 use crate::shape::rect::RectKind;
 use glam::Vec2;
 
@@ -81,7 +82,7 @@ impl QuadBuilder {
                 rect: self.rect,
                 corners: self.corners,
                 fill: self.fill,
-                stroke: self.stroke.into(),
+                stroke: ShapeStroke::lower(self.stroke),
             })
             .turned(self.spin),
             1.0,

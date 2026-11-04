@@ -15,7 +15,8 @@ use crate::primitives::layout::justify::Justify;
 use crate::primitives::layout::sizing::SizeSpec;
 use crate::primitives::layout::visibility::Visibility;
 use crate::primitives::math::domain::vec2;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::id_recipe::{IdRecipe, ScopedRecipe};
+use crate::widget_core::widget::Ident;
 use crate::widget_core::widget::Widget;
 use glam::Vec2;
 use std::hash::Hash;
@@ -33,14 +34,16 @@ impl Configurator<'_> {
     /// See [`Configure::id_salt`](crate::widget_core::configure::Configure::id_salt).
     #[inline]
     pub fn id_salt(&mut self, key: impl Hash) -> &mut Self {
-        self.widget.ident = Ident::Hash(WidgetId::from_hash(key));
+        self.widget.ident = Ident::Recipe(IdRecipe::Scoped(ScopedRecipe::Hash(
+            WidgetId::from_hash(key),
+        )));
         self
     }
 
     /// See [`Configure::id`](crate::widget_core::configure::Configure::id).
     #[inline]
     pub const fn id(&mut self, id: WidgetId) -> &mut Self {
-        self.widget.ident = Ident::Verbatim(id);
+        self.widget.ident = Ident::Recipe(IdRecipe::Verbatim(id));
         self
     }
 
@@ -48,7 +51,7 @@ impl Configurator<'_> {
     #[track_caller]
     #[inline]
     pub const fn auto_id(&mut self) -> &mut Self {
-        self.widget.ident = Ident::Auto(Location::caller());
+        self.widget.ident = Ident::Recipe(IdRecipe::Scoped(ScopedRecipe::Auto(Location::caller())));
         self
     }
 

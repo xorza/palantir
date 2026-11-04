@@ -10,7 +10,7 @@ use crate::display;
 use crate::primitives::identity::widget_id::WidgetId;
 use crate::renderer::render_plan::RenderPlan;
 use crate::scene::node::Node;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::id_recipe::IdRecipe;
 use crate::ui::Ui;
 use crate::ui::app::App;
 use crate::ui::frame_engines::FrameEngines;
@@ -129,6 +129,7 @@ impl<'a> FrameCycle<'a> {
         let baseline = FrameBaseline {
             clear: self.ui.theme().window_bg,
             font_epoch: self.ui.resources.text().font_epoch(),
+            collision_overlay: cfg!(debug_assertions) && !self.ui.forest.collisions.is_empty(),
         };
         let input = DamageInput {
             forest: &self.ui.forest,
@@ -171,7 +172,10 @@ impl<'a> FrameCycle<'a> {
         let report = FrameReport {
             repaint_requested: self.ui.frame_runtime.repaint_requested(),
             repaint_at: self.ui.frame_runtime.next_wake(),
-            plan: RenderPlan::from_damage(damage, baseline.clear),
+            plan: damage.map(|damage| RenderPlan {
+                clear: baseline.clear,
+                damage,
+            }),
             processing,
         };
         // First-frame contract: with no prev snapshot every painting widget is new, so the walk can only be `Full`; and a retained-tree paint cannot be the first frame.
@@ -221,7 +225,9 @@ impl<'a> FrameCycle<'a> {
     fn record_user<T: App>(&mut self, win: WindowToken, app: &mut T) -> bool {
         self.pre_record();
         // Synthetic viewport root for Layer::Main; else the first user node becomes the root and layout forces its rect to the surface, overriding its `Sizing` / `Sense`.
-        let viewport_id = self.ui.resolve_ident(Ident::Verbatim(WidgetId::VIEWPORT));
+        let viewport_id = self
+            .ui
+            .resolve_ident(IdRecipe::Verbatim(WidgetId::VIEWPORT));
         self.ui.open_node(viewport_id, &Node::viewport(), None);
         {
             tracy::zone!("Ui::record_user");

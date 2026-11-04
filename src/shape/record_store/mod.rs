@@ -14,27 +14,25 @@ pub(crate) mod recorded_gradients;
 pub(crate) mod text_store;
 
 use crate::common::span::Span;
-use crate::primitives::geometry::mesh::Mesh;
+use crate::primitives::geometry::mesh::{Mesh, MeshVertex};
 use crate::primitives::paint::color::RgbaF32;
 use crate::primitives::paint::color::rgba_f16::RgbaF16;
 use crate::primitives::reduce_preference::Reduction;
-use crate::primitives::text::interned_str::InternedStr;
-use crate::primitives::text::interned_text::InternedText;
-use crate::primitives::text::recorded_text::RecordedText;
-use crate::primitives::text::text_input::TextInput;
-use crate::shape::record_store::recorded_gradient::RecordedGradient;
-use crate::shape::record_store::recorded_gradients::{GradientId, RecordedGradients};
+use crate::shape::record_store::recorded_gradients::RecordedGradients;
 use crate::shape::record_store::text_store::TextStore;
 use crate::text::family_keys::FamilyKeys;
 use glam::Vec2;
-use std::fmt;
 
 /// The payload columns and the only API that appends to them. Every writer
 /// holds `&mut Forest`, so the borrow checker excludes concurrent writes.
 #[derive(Default, Debug)]
 pub(crate) struct RecordStore {
-    /// User-supplied mesh geometry (`Shape::Mesh`), written at record time only.
-    pub(crate) meshes: Mesh,
+    /// Vertex storage for `ShapeRecord::Mesh`, indexed by the record's `vertices`. Two columns,
+    /// as the polyline payloads are kept, not an authoring `Mesh`, whose cached hash and bounds
+    /// the arena would leave stale.
+    pub(crate) mesh_vertices: Vec<MeshVertex>,
+    /// Index storage for `ShapeRecord::Mesh`, indexed by the record's `idxs`.
+    pub(crate) mesh_idxs: Vec<u32>,
     /// Point storage for `ShapeRecord::Polyline`, indexed by the record's `points`.
     pub(crate) polyline_points: Vec<Vec2>,
     /// Color storage for `ShapeRecord::Polyline`: 1, `points.len()` or
@@ -45,7 +43,7 @@ pub(crate) struct RecordStore {
     /// (set by `shape::lower::brush`). Cross-tree, so chrome and shape lowering
     /// share one pool and the encoder needs only this store.
     pub(crate) gradients: RecordedGradients,
-    text: TextStore,
+    pub(crate) text: TextStore,
     /// The families of the shaper that shapes what this store records, keyed as a text shape
     /// lowers. `Default` gives a table of its own, for a store no shaper reads.
     families: FamilyKeys,
@@ -81,16 +79,12 @@ impl RecordStore {
         &self.families
     }
 
-    /// The characters of a text shape this pass recorded, for the widget inspection.
-    pub(crate) fn recorded_str(&self, text: RecordedText) -> &str {
-        &self.text.bytes()[text.span.range()]
-    }
-
     /// Drop every payload the last record pass appended, keeping capacity.
     /// PaintOnly skips this so the retained tree and storage stay valid together.
     pub(crate) fn clear(&mut self) {
         let Self {
-            meshes,
+            mesh_vertices,
+            mesh_idxs,
             polyline_points,
             polyline_colors,
             gradients,
@@ -98,76 +92,21 @@ impl RecordStore {
             families: _,
             transparency: _,
         } = self;
-        meshes.clear();
+        mesh_vertices.clear();
+        mesh_idxs.clear();
         polyline_points.clear();
         polyline_colors.clear();
         gradients.clear();
         text.clear();
     }
 
-    pub(crate) fn interned_text(&self) -> InternedText<'_> {
-        InternedText::new(self.text.bytes())
-    }
-
-    /// Normalize borrowed, owned or already-interned text into an [`InternedStr`] of
-    /// this pass. Backs [`crate::Ui::intern`]. Borrowed and owned inputs are copied
-    /// into the record-pass arena; an already-interned handle is copied nothing and
-    /// is screened through [`Self::reuse`], since a stale one resolves to whatever
-    /// text now sits at those offsets.
-    #[must_use]
-    pub(crate) fn intern<'a>(&mut self, text: impl Into<TextInput<'a>>) -> InternedStr {
-        match text.into() {
-            TextInput::Borrowed(text) => self.intern_str(text),
-            TextInput::Owned(text) => self.intern_str(&text),
-            TextInput::Interned(text) => self.reuse(text),
-        }
-    }
-
-    /// Copy `s` into the record-pass text storage and return an [`InternedStr`].
-    #[must_use]
-    fn intern_str(&mut self, s: &str) -> InternedStr {
-        self.text.intern_str(s)
-    }
-
-    /// Format `args` into the record-pass text storage and return the
-    /// [`InternedStr`] for the written bytes. Backs [`crate::Ui::fmt`].
-    #[must_use]
-    pub(crate) fn intern_fmt(&mut self, args: fmt::Arguments<'_>) -> InternedStr {
-        self.text.intern_fmt(args)
-    }
-
-    /// Take a handle back as this pass's own, or panic if it belongs to another;
-    /// [`Self::intern`]'s already-interned arm.
-    #[must_use]
-    fn reuse(&self, text: InternedStr) -> InternedStr {
-        self.text.reuse(text)
-    }
-
-    /// The characters of a handle this pass minted. Backs [`crate::Ui::text`].
-    pub(crate) fn text(&self, text: InternedStr) -> &str {
-        self.text.text(text)
-    }
-
-    /// Lower a handle this pass minted into the span and content hash a
-    /// `ShapeRecord::Text` carries.
-    pub(crate) fn record_text(&self, text: InternedStr) -> RecordedText {
-        self.text.record(text)
-    }
-
-    /// Intern one gradient payload under its content `hash`, returning the id a
-    /// `ShapeBrush::Gradient` carries.
-    pub(crate) fn intern_gradient(&mut self, hash: u64, gradient: RecordedGradient) -> GradientId {
-        self.gradients.intern(hash, gradient)
-    }
-
     /// Copy one mesh's vertices and indices in, returning the spans a
     /// `ShapeRecord::Mesh` carries.
     pub(crate) fn stage_mesh(&mut self, mesh: &Mesh) -> MeshSpans {
-        let meshes = &mut self.meshes;
-        let vertices = Span::new(meshes.vertices.len() as u32, mesh.vertices.len() as u32);
-        meshes.vertices.extend_from_slice(&mesh.vertices);
-        let idxs = Span::new(meshes.idxs.len() as u32, mesh.idxs.len() as u32);
-        meshes.idxs.extend_from_slice(&mesh.idxs);
+        let vertices = Span::new(self.mesh_vertices.len() as u32, mesh.vertices.len() as u32);
+        self.mesh_vertices.extend_from_slice(&mesh.vertices);
+        let idxs = Span::new(self.mesh_idxs.len() as u32, mesh.idxs.len() as u32);
+        self.mesh_idxs.extend_from_slice(&mesh.idxs);
         MeshSpans { vertices, idxs }
     }
 

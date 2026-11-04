@@ -18,7 +18,7 @@ use crate::primitives::paint::shadow::Shadow;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduce_preference::Reduction;
 use crate::shape::Shape;
-use crate::shape::lower::{brush, chrome, ramp};
+use crate::shape::lower::{PaneFill, brush, chrome, pane_fill, ramp};
 use crate::shape::paint::curve_ramp::CurveRamp;
 use crate::shape::paint::quad_shape::QuadShape;
 use crate::shape::paint::shape_brush::ShapeBrush;
@@ -121,7 +121,7 @@ fn the_three_gradient_kinds_and_a_ramp_hash_apart_on_identical_stops() {
         .hash_parts()
         .payload,
         match ramp(&mut store, &ColorRamp::new(stops)) {
-            CurveRamp::Interned { hash, .. } => hash,
+            CurveRamp::Interned { hash, .. } => hash.0,
             CurveRamp::None => panic!("a ramp always interns"),
         },
     ];
@@ -396,4 +396,27 @@ fn gradient_interning_identity_covers_geometry_kind_spread_and_interpolation() {
     assert!(!mode_ids.contains(&conic));
     assert_ne!(radial, conic);
     assert_eq!(store.gradients.records.len(), 9);
+}
+
+/// The reduced-transparency rule, for a chrome and a rect alike: under reduced transparency a
+/// pane paints its fill made opaque and no filter; at full transparency it shows through its
+/// filter; a filter that changes nothing makes no pane either way.
+#[test]
+fn a_pane_under_reduced_transparency_paints_its_solid_infill() {
+    let fill = Brush::Solid(RgbaF32::new(0.2, 0.4, 0.6, 0.5));
+    let blur = BackdropFilter::blur(8.0);
+    match pane_fill(blur, &fill, Reduction::Reduced) {
+        PaneFill::Solid(solid) => assert_eq!(solid, Brush::Solid(RgbaF32::new(0.2, 0.4, 0.6, 1.0))),
+        PaneFill::Through(backdrop) => panic!("a reduced pane shows nothing through: {backdrop:?}"),
+    }
+    assert!(matches!(
+        pane_fill(blur, &fill, Reduction::Full),
+        PaneFill::Through(Some(_))
+    ));
+    for transparency in [Reduction::Full, Reduction::Reduced] {
+        assert!(matches!(
+            pane_fill(BackdropFilter::NONE, &fill, transparency),
+            PaneFill::Through(None)
+        ));
+    }
 }

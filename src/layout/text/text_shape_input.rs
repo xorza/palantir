@@ -96,7 +96,7 @@ fn text_shape_input<'a>(
         } => Some(TextShapeInput {
             ordinal: checked_text_ordinal(ordinal),
             text: interned_text.resolve(text.span),
-            text_hash: text.hash,
+            text_hash: text.hash.0,
             font: *font,
             wrap: *wrap,
             halign: align.halign(),

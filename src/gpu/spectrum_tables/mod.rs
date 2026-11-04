@@ -1,9 +1,7 @@
-//! The spectrum a dispersive lens spreads, as the composite sums it back to color.
+//! The spectrum a dispersive lens spreads, as the composite sums it back to color: the tables
+//! only the GPU reads, over the ends [`LensOptics`](crate::shape::paint::lens_optics) names.
 
-/// The ends of the spectrum the composite spreads, µm: all but a sliver of the CIE 1931
-/// observer's response lies between them. The index peaks at the violet end.
-pub(crate) const SPECTRUM_RED: f32 = 0.7;
-pub(crate) const SPECTRUM_VIOLET: f32 = 0.4;
+use crate::shape::paint::lens_optics::{SPECTRUM_RED, SPECTRUM_VIOLET};
 
 /// The cells the spectrum's weight is held flat across: even in `1 / λ²`, as the reads step,
 /// 3 nm wide at the violet end and 14 nm at the red. Each lobe of the observer's response spans

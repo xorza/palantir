@@ -69,8 +69,8 @@ impl Composer {
     }
 
     /// Open a compose session over `out`: stamp the display, reset scratch and
-    /// walk state, and hand back the sink. Dropping the [`ComposeSession`]
-    /// closes the trailing batch and group.
+    /// walk state, and hand back the sink. [`ComposeSession::finish`] closes the
+    /// trailing batch and group.
     pub(crate) fn begin<'a>(
         &'a mut self,
         stamp: FrameStamp,
@@ -101,10 +101,11 @@ pub(crate) mod internals {
     use crate::renderer::frontend::composer::session::ComposeSession;
 
     impl ComposeSession<'_> {
-        /// Replay a recorded paint stream into this session, closing it, so
+        /// Replay a recorded paint stream into this session and finish it, so
         /// tests and benches can drive the composer from a stream captured once.
         pub(crate) fn replay_from(mut self, recorded: &PaintCapture) {
             recorded.replay(&mut self);
+            self.finish();
         }
     }
 

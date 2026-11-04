@@ -16,11 +16,12 @@ use crate::primitives::layout::track::Track;
 use crate::primitives::paint::stroke::Stroke;
 use crate::primitives::reduce_preference::Reduction;
 use crate::scene::endpoint::Endpoint;
-use crate::scene::forest::{Forest, NodeChrome};
+use crate::scene::forest::Forest;
 use crate::scene::node::Node;
-use crate::scene::node::ident::Ident;
+use crate::scene::node::id_recipe::IdRecipe;
 use crate::scene::plane::Plane;
 use crate::scene::scrollbars_def::ScrollbarsDef;
+use crate::scene::tree::NodeChrome;
 use crate::scene::tree::Tree;
 use crate::scene::tree::node_id::NodeId;
 use crate::shape::Shape;
@@ -215,14 +216,14 @@ impl NodeRecorder<'_> {
     /// Record `widget`'s node under the id `id`, holding `run` and no children.
     pub(crate) fn text_leaf(&mut self, id: &str, widget: Widget, run: TextRun<'_>) {
         self.node(id, widget, |rec| {
-            let text = rec.forest.record_store.intern(run.text);
+            let text = rec.forest.record_store.text.intern(run.text);
             let font = GlyphFont::new(run.px);
             rec.forest.add_shape(Shape::text(text, font).wrap(run.wrap));
         });
     }
 
     fn open(&mut self, id: WidgetId, node: &Node) {
-        let resolved = self.forest.widget_id(Ident::Verbatim(id));
+        let resolved = self.forest.widget_id(IdRecipe::Verbatim(id));
         self.forest.open_node(
             resolved,
             node,

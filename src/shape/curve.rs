@@ -169,7 +169,7 @@ impl sealed::LowerShape for CurveShape {
                 )),
                 corners,
                 fill: lower::brush(store, &Brush::Solid(color)),
-                border: ShapeStroke::from(Stroke::NONE),
+                border: ShapeStroke::lower(Stroke::NONE),
                 backdrop: None,
             });
         }
@@ -177,7 +177,7 @@ impl sealed::LowerShape for CurveShape {
         ShapeRecord::Curve {
             cap,
             basis,
-            stroke: ShapeStroke::from(stroke),
+            stroke: ShapeStroke::lower(stroke),
             bbox: basis.bbox(),
             ramp: ramp.map_or(CurveRamp::None, |ramp| lower::ramp(store, &ramp)),
         }

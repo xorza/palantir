@@ -1,5 +1,6 @@
 //! The commands one recorded frame lowers to.
 
+use crate::common::content_hash::ContentHash;
 use crate::host::harness::Harness;
 use crate::primitives::geometry::rect::Rect;
 use crate::primitives::geometry::size::Size;
@@ -41,7 +42,7 @@ fn gradient_resolution_runs_once_per_id_and_restarts_each_encode() {
     let mut resolver = GradientResolver::new(atlas.clone());
     let brush = ShapeBrush::Gradient {
         id: GradientId(0),
-        hash: 0,
+        hash: ContentHash(0),
     };
 
     let mut pass = resolver.begin(&gradients);
@@ -423,7 +424,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     assert_eq!(cmds.kinds(), ["Text"]);
     let payload = cmds.calls[0].as_text().unwrap();
     let scene = h.ui().frame_scene();
-    let interned_text = scene.forest.record_store.interned_text();
+    let interned_text = scene.forest.record_store.text.interned();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
         !h.ui().shaper().has_cosmic_buffer(key),
@@ -449,7 +450,7 @@ fn text_shape_carries_source_without_reconstructing_buffer() {
     assert_eq!(replayed.kinds(), ["Text"], "replayed text must still emit");
     let payload = replayed.calls[0].as_text().unwrap();
     let scene = h.ui().frame_scene();
-    let interned_text = scene.forest.record_store.interned_text();
+    let interned_text = scene.forest.record_store.text.interned();
     assert_eq!(interned_text.resolve(payload.text.span), "hi");
     assert!(
         !h.ui().shaper().has_cosmic_buffer(replayed_key),

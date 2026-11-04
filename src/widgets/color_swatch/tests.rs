@@ -136,7 +136,7 @@ fn a_chip_wears_its_state_and_a_disabled_one_the_veil() {
         let ring = tree.chrome(node).expect("the chip wears a ring").border;
         (ring, tree.shapes_of(node).count())
     };
-    let want = |ring: Stroke, shapes: usize| (ShapeStroke::from(ring), shapes);
+    let want = |ring: Stroke, shapes: usize| (ShapeStroke::lower(ring), shapes);
     assert_eq!(frame(&mut h, false), want(rings[0], 1), "at rest");
     h.hover(id);
     assert_eq!(frame(&mut h, false), want(rings[1], 1), "hovered");

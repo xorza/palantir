@@ -2,14 +2,14 @@
 
 use crate::primitives::layout::placement::Placement;
 use crate::scene::layer::Layer;
+use crate::scene::node::inherited::Inherited;
 use crate::scene::tree::node_id::NodeId;
 
-/// One entry on the recording ancestor stack: the open node's `NodeId` plus precomputed disabled and visibility bits.
+/// One entry on the recording ancestor stack: the open node's `NodeId` plus what it inherits.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,
-    pub(crate) ancestor_or_self_disabled: bool,
-    pub(crate) effectively_visible: bool,
+    pub(crate) inherited: Inherited,
     /// Paint-arena rows this node's span holds so far: the chrome row (seeded to 1 at open) plus one per direct shape or child, mirroring `cascade::compute_paint_rect` so an animated shape records its row at add time.
     pub(crate) paint_rows: u32,
 }
@@ -43,6 +43,6 @@ impl RecordingScratch {
     pub(crate) fn ancestor_disabled(&self) -> bool {
         self.open_frames
             .last()
-            .map_or(self.owner_disabled, |f| f.ancestor_or_self_disabled)
+            .map_or(self.owner_disabled, |f| f.inherited.disabled)
     }
 }

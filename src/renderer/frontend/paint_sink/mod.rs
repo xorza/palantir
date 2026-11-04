@@ -14,6 +14,18 @@
 //! The encoder is generic over the sink, not `&mut dyn PaintSink`, so the
 //! gates inline.
 //!
+//! ## The payloads are a seam
+//!
+//! The encoder lowers each shape to a `Draw*Payload` and paints it through
+//! [`PaintSink`], not straight into the `RenderBuffer`, so the composer can be
+//! driven alone: `PaintCapture` records one frame's stream once, and the
+//! composer's tests and benches replay it against the composer with no scene,
+//! layout or encoder in front. Refused: lowering into the rows directly, as
+//! egui's tessellator writes its meshes and vello's encoding its scene, which
+//! makes every composer test build a scene and every composer bench time the
+//! encoder too. Cost: the payload types, and the sink the encoder is generic
+//! over, which production monomorphizes once.
+//!
 //! ## Noop policy
 //!
 //! The canonical statement of the pipeline's tier policy; other tiers point
@@ -73,7 +85,7 @@ pub(crate) trait PaintSink {
     fn text(&mut self, payload: DrawTextPayload);
 
     /// Paint a mesh against vertices and indices already staged in
-    /// `RecordStore.meshes`.
+    /// `RecordStore.mesh_vertices` and `RecordStore.mesh_idxs`.
     fn mesh(&mut self, payload: DrawMeshPayload);
 
     /// Paint a polyline against already-staged points and colors. The
