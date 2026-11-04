@@ -144,6 +144,13 @@ pub(super) enum PresentStrategy {
     /// A swapchain, whose images hold nothing, and the host owns skip frames: each frame takes
     /// the cheaper of a direct whole repaint and a partial one through the backbuffer
     /// ([`present_path`]).
+    #[cfg_attr(
+        not(any(feature = "winit", feature = "internals")),
+        expect(
+            dead_code,
+            reason = "the winit host and the `internals` hosts that present as it build it"
+        )
+    )]
     DirectAdaptive,
     /// One texture that keeps its pixels between frames: a painted frame paints into it, a
     /// partial one loading what it holds, and a still frame presents nothing. A frame that takes

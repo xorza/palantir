@@ -60,7 +60,6 @@ use crate::shape::shapes::Shapes;
 use fixedbitset::FixedBitSet;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
-use std::mem;
 
 /// The lane the cascade's static hash gives a node's [`Visibility`], above its flag word.
 const VISIBILITY_BITS: u32 = 2;
@@ -216,9 +215,9 @@ impl Tree {
 
     #[cfg(debug_assertions)]
     fn assert_rollups_hold(&mut self) {
-        let mut check = mem::take(&mut self.rollup_check);
-        mem::swap(&mut check.rollups, &mut self.rollups);
-        mem::swap(&mut check.container_text, &mut self.container_text);
+        let mut check = std::mem::take(&mut self.rollup_check);
+        std::mem::swap(&mut check.rollups, &mut self.rollups);
+        std::mem::swap(&mut check.container_text, &mut self.container_text);
         let cascade_static = self.fingerprint.cascade_static;
         self.roll_up();
         assert_eq!(self.rollups.node, check.rollups.node, "kept node hashes");

@@ -11,10 +11,15 @@ use crate::shape::paint::blur_plan::BlurPlan;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PaneRow {
     pub(crate) key: PaneKey,
-    /// The pane's row in the plane's `paint_arena.rows`. Everything painted before the pane has a
-    /// lower row, so a lower row reads as before it; a later shape of an ancestor does too, which
-    /// costs a recapture at worst.
+    /// The pane's row in the plane's `paint_arena.rows`.
     pub(crate) row: u32,
+    /// Where the pane stands in paint order, as a row of `paint_arena.rows`: every row below it
+    /// paints before the pane. Its own `row` for a chrome or a shape before its node's children;
+    /// for a shape after a child, the first row past that child's subtree, as the rows lie in
+    /// preorder, a node's before its children's, so the child's rows sit above the pane's own.
+    /// A row its node paints after the pane, lower than its children's, still reads as before
+    /// it, which costs a recapture at worst.
+    pub(crate) paint_row: u32,
     /// The pane's screen rect, its paint row's.
     pub(crate) rect: Rect,
     /// The blur of the pane's σ in physical px, taken in f32.

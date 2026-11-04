@@ -143,18 +143,18 @@ impl PaneWalk {
                 cascade.planes[plane]
                     .panes
                     .iter()
-                    .map(move |pane| (Self::position(ord, pane.row), pane))
+                    .map(move |pane| (Self::position(ord, pane.paint_row), pane))
             });
         self.walk_panes(panes, rects)
     }
 
     /// [`Self::walk`] over `panes`, each at its position, in paint order.
     ///
-    /// A position only approximates paint order: an ancestor's shape painted after its children
-    /// has a lower row than theirs, so the walk meets positions in any order. The rects before
-    /// the walk are sorted into runs by position once, with the bounds of each prefix, so the
-    /// runs before a pane are the prefix a binary search finds, and that prefix's bounds reject
-    /// a footprint far from all of it. The pane rects the walk pushes, at most
+    /// A position only approximates paint order: a pane stands past every row painted before it
+    /// ([`PaneRow::paint_row`]), but a row its node paints after it can stand below it, and the
+    /// marks come in any order. The rects before the walk are sorted into runs by position once,
+    /// with the bounds of each prefix, so the runs before a pane are the prefix a binary search
+    /// finds, and that prefix's bounds reject a footprint far from all of it. The pane rects the walk pushes, at most
     /// [`DirtyPanes::CAP`], are read at their own positions. Cost: each pane reads the bounds of
     /// each run before it whose prefix its footprint touches, and the rects of a run whose own
     /// bounds it touches.
@@ -289,6 +289,7 @@ mod tests {
                         shape: 0,
                     },
                     row: 5 * (i + 1),
+                    paint_row: 5 * (i + 1),
                     rect,
                     plan: BlurPlan::new(1.0),
                     footprint: rect,

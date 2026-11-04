@@ -316,6 +316,56 @@ fn a_pane_whose_row_moves_is_stale() {
     );
 }
 
+/// The outer pane of that scene captures what the child canvas paints under it: a recolor of
+/// the child's square, under the outer pane's footprint, stales the outer pane, which paints
+/// after the square though its row comes first. The inner pane, painted before the square, stays.
+#[test]
+fn a_child_canvas_change_under_a_later_ancestor_pane_stales_it() {
+    const INNER: Rect = Rect::new(20.0, 20.0, 20.0, 20.0);
+    const SQUARE: Rect = Rect::new(100.0, 100.0, 10.0, 10.0);
+    const OUTER: Rect = Rect::new(90.0, 90.0, 40.0, 40.0);
+    let record = |fill: RgbaF32| {
+        move |ui: &mut Ui| {
+            Panel::canvas()
+                .id(WidgetId::from_hash("outer"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::canvas()
+                        .id(WidgetId::from_hash("inner"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            ui.add_shape(
+                                Shape::rect()
+                                    .at(INNER)
+                                    .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                            );
+                            ui.add_shape(Shape::rect().at(SQUARE).fill(fill));
+                        });
+                    ui.add_shape(
+                        Shape::rect()
+                            .at(OUTER)
+                            .backdrop_filter(BackdropFilter::blur(SIGMA)),
+                    );
+                });
+        }
+    };
+    let mut h = Harness::mono(DISPLAY.physical);
+    frame(&mut h, record(BLUE));
+    frame(&mut h, record(BLUE));
+    let panes = &h.ui().cascade().planes[Plane::MAIN].panes;
+    let (inner, outer) = (panes[0].key, panes[1].key);
+    frame(&mut h, record(RED));
+    let dirty = h.parts().engines.damage.dirty_panes();
+    assert!(
+        dirty.contains(outer),
+        "the square under the outer pane changed"
+    );
+    assert!(
+        !dirty.contains(inner),
+        "the inner pane paints before the square"
+    );
+}
+
 /// A canvas paints a pane after a child canvas that paints its own pane: the outer pane paints
 /// last, though its row comes before the child's rows. The walk meets the panes out of position
 /// order and stays quiet on a frame that changes nothing.

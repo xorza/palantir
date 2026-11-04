@@ -31,6 +31,7 @@ use crate::scene::layer::Layer;
 use crate::scene::node::inherited::Inherited;
 use crate::scene::plane::Plane;
 use crate::scene::tree::Tree;
+use crate::scene::tree::iter::{TreeItem, TreeItems};
 use crate::scene::tree::node_id::NodeId;
 use crate::scene::tree::pane_entry::{PaneEntry, PaneOrigin};
 use crate::shape::paint::blur_plan::BlurPlan;
@@ -607,6 +608,7 @@ fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_
         if rect.is_paint_empty() {
             continue;
         }
+        let paint_row = after_children(tree, lc, entry).max(row);
         let backdrop = match entry.origin {
             PaneOrigin::Chrome => tree.chrome(entry.node).and_then(|row| row.backdrop),
             PaneOrigin::Shape => tree.shapes.records[entry.shape_idx as usize].backdrop(),
@@ -623,6 +625,7 @@ fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_
                 shape: entry.row,
             },
             row,
+            paint_row,
             rect,
             plan,
             footprint: rect.inflated(
@@ -633,6 +636,38 @@ fn list_panes(tree: &Tree, layout: &PlaneLayout, lc: &mut PlaneCascade, display_
     lc.pane_rows.clear();
     lc.pane_rows.extend(lc.panes.iter().map(|pane| pane.row));
     lc.pane_rows.sort_unstable();
+}
+
+/// The first row past the subtree of the last child `entry`'s node records before the pane, `0`
+/// for a pane no child precedes: a node's rows lie before its children's, each subtree's rows
+/// in one run from its root's span, so the run ends where the next node's span starts.
+fn after_children(tree: &Tree, lc: &PlaneCascade, entry: &PaneEntry) -> u32 {
+    if entry.origin == PaneOrigin::Chrome {
+        return 0;
+    }
+    let mut child = None;
+    for item in TreeItems::new(&tree.records, &tree.shapes.records, entry.node) {
+        match item {
+            TreeItem::ShapeRecord(idx, _) if idx == entry.shape_idx => break,
+            TreeItem::ShapeRecord(..) => {}
+            TreeItem::Child(c) => child = Some(c.id),
+        }
+    }
+    let Some(child) = child else {
+        return 0;
+    };
+    let spans = &lc.paint_arena.node_spans;
+    let next = lc.subtree_ends[child.idx()] as usize;
+    let end = spans
+        .get(next)
+        .map_or(lc.paint_arena.rows.len() as u32, |span| span.start);
+    debug_assert!(
+        spans[child.idx()..next]
+            .iter()
+            .all(|span| span.start >= spans[child.idx()].start && span.start + span.len <= end),
+        "a subtree's rows lie in one run, before the next node's"
+    );
+    end
 }
 
 /// The narrowest side, in logical px, of a pane drawn whole at `rect` on the screen, which a lens

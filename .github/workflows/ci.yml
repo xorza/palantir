@@ -68,6 +68,8 @@ jobs:
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-ship
       - if: ${{ !cancelled() }}
+        run: cargo --locked gate-ship-nowinit
+      - if: ${{ !cancelled() }}
         run: cargo --locked gate-test
       - if: ${{ !cancelled() }}
         run: cargo --locked gate-test-nowinit

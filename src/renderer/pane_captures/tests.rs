@@ -47,6 +47,7 @@ fn pane(i: u32, footprint: URect, sigma: f32) -> PaneRow {
     PaneRow {
         key: key(i),
         row: i,
+        paint_row: i,
         rect,
         plan: BlurPlan::new(sigma),
         footprint: rect,

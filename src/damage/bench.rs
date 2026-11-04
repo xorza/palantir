@@ -485,6 +485,7 @@ fn backdrop_walk(group: &mut CaseGroup<'_>) {
                                 shape: 0,
                             },
                             row: 2 * i + 1,
+                            paint_row: 2 * i + 1,
                             rect,
                             plan: BlurPlan::new(1.0),
                             footprint: rect.inflated(4.0),
